@@ -54,7 +54,7 @@ namespace Tellma.Defaults.Azure
             _ = services.AddSendGridEmail(tellma.Configuration);
 
             // --- Blobs: the image processor, and in Development the file-system store (spec 0017 §1.3) ---
-            // Outside Development no store is registered yet, so the blobs check fails the host
+            // Outside Development no store is registered yet, so the blobs.deployment check fails the host
             // until the Azure store joins the bundle.
             services.AddTellmaSkia();
             if (tellma.Environment.IsDevelopment())

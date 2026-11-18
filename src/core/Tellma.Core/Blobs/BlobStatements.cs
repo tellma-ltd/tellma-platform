@@ -26,8 +26,9 @@ namespace Tellma.Core.Blobs
         /// <summary>The blob table's sequence, the one source of blob ids.</summary>
         public const string BlobsSequence = "[core].[sq_Blobs]";
 
+        // spec 0017 §3.4: the stage statement.
         /// <summary>
-        ///     Appends the stage statement (spec 0017 §3.4): the soft per-user quota check, unless
+        ///     Appends the stage statement: the soft per-user quota check, unless
         ///     <paramref name="quota" /> is null, then the insert of the <see cref="BlobState.Staged" />
         ///     row with its id taken from the blob sequence inside the statement, and its id and
         ///     deadline as the one result set.

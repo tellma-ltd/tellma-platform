@@ -5,6 +5,7 @@
 
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.Metrics.Testing;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Testing;
 using System.Diagnostics.Metrics;
 using System.Globalization;
@@ -177,6 +178,35 @@ namespace Tellma.Core.Tests.Blobs
         }
 
         [Fact]
+        public async Task The_thumbnail_is_asked_for_with_the_kind_its_type_and_the_thumbnail_budget()
+        {
+            ThumbnailProcessor thumbnails = new(failure: null);
+
+            _ = await Create(thumbnails, new BlobOptions { ThumbnailTimeout = TimeSpan.FromSeconds(3) }).StageAsync(Request(File.Kind, Pdf(100), BlobContentTypes.Pdf), Token);
+
+            Assert.Equal((File.Kind, BlobContentTypes.Pdf, TimeSpan.FromSeconds(3)), (thumbnails.Kind, thumbnails.ContentType, thumbnails.Timeout));
+            Assert.Equal(ThumbnailPolicy.VariantName, _runner.Parameters["p9"]);
+        }
+
+        [Theory]
+        [InlineData(false)]
+        [InlineData(true)]
+        public async Task A_thumbnail_render_that_throws_stores_the_file_without_one_and_warns(bool cancelledOnItsOwn)
+        {
+            Exception failure = cancelledOnItsOwn ? new OperationCanceledException("The render's own budget ran out.") : new InvalidOperationException("A hostile page.");
+            ThumbnailProcessor thumbnails = new(failure);
+
+            BlobDescriptor staged = await Service(thumbnails).StageAsync(Request(File.Kind, Pdf(100), BlobContentTypes.Pdf), Token);
+
+            Assert.Equal(7, staged.Id);
+            Assert.Equal(string.Empty, _runner.Parameters["p9"]);
+            Assert.Single(_store.Names(1));
+            AssertCounted(File.Kind, BlobTelemetryTagValues.UploadStaged);
+            FakeLogRecord warning = Assert.Single(_logger.Collector.GetSnapshot(), static record => record.Id.Name == "BlobThumbnailFailed");
+            Assert.Equal((LogLevel.Warning, failure), (warning.Level, warning.Exception));
+        }
+
+        [Fact]
         public async Task An_attachment_without_a_processor_is_staged_without_a_thumbnail()
         {
             _ = await Service(processor: null).StageAsync(Request(File.Kind, Pdf(100), BlobContentTypes.Pdf), Token);
@@ -242,14 +272,25 @@ namespace Tellma.Core.Tests.Blobs
         }
 
         [Fact]
-        public async Task A_type_outside_the_allowed_set_is_refused_naming_it()
+        public async Task A_file_never_stored_is_refused_naming_what_its_bytes_are_not_what_was_declared()
         {
             byte[] executable = [(byte)'M', (byte)'Z', 0x90, 0x00, 0x03];
 
             BlobRejectedException refused = await RefusedAsync(Request(File.Kind, executable, "application/pdf"));
 
-            Assert.Equal((BlobRejectedException.UnsupportedType, (object?)BlobContentTypes.Pdf), (refused.Code, refused.Arguments[BlobRejectedException.ContentTypeArgument]));
+            Assert.Equal(
+                (BlobRejectedException.UnsupportedType, (object?)"application/vnd.microsoft.portable-executable"),
+                (refused.Code, refused.Arguments[BlobRejectedException.ContentTypeArgument]));
             AssertCounted(File.Kind, BlobTelemetryTagValues.UploadRejectedType);
+        }
+
+        [Fact]
+        public async Task A_type_outside_the_allowed_set_is_refused_naming_it()
+        {
+            BlobRejectedException refused = await RefusedAsync(Request(Photo.Kind, "%PDF-1.7"u8.ToArray(), "application/pdf"));
+
+            Assert.Equal((BlobRejectedException.UnsupportedType, (object?)BlobContentTypes.Pdf), (refused.Code, refused.Arguments[BlobRejectedException.ContentTypeArgument]));
+            AssertCounted(Photo.Kind, BlobTelemetryTagValues.UploadRejectedType);
         }
 
         [Fact]
@@ -556,6 +597,35 @@ namespace Tellma.Core.Tests.Blobs
                     new UserAccess(),
                     new Dictionary<string, Guid>(StringComparer.Ordinal),
                     null);
+            }
+        }
+
+        /// <summary>A processor that renders a thumbnail, recording what it was asked, or fails with a given exception.</summary>
+        /// <param name="failure">The exception every render fails with; null to render.</param>
+        private sealed class ThumbnailProcessor(Exception? failure) : IImageProcessor
+        {
+            /// <summary>The kind it was asked for.</summary>
+            public string? Kind { get; private set; }
+
+            /// <summary>The media type it was asked to render.</summary>
+            public string? ContentType { get; private set; }
+
+            /// <summary>The budget it was given.</summary>
+            public TimeSpan Timeout { get; private set; }
+
+            /// <inheritdoc />
+            public Task<ProcessedImage> ProcessAsync(
+                string kind, byte[] input, ImagePolicy policy, ThumbnailPolicy? thumbnail, TimeSpan timeout, CancellationToken cancellationToken)
+            {
+                throw new NotSupportedException();
+            }
+
+            /// <inheritdoc />
+            public Task<byte[]?> ThumbnailAsync(
+                string kind, Stream input, string contentType, ThumbnailPolicy policy, TimeSpan timeout, CancellationToken cancellationToken)
+            {
+                (Kind, ContentType, Timeout) = (kind, contentType, timeout);
+                return failure is null ? Task.FromResult<byte[]?>([1, 2, 3]) : Task.FromException<byte[]?>(failure);
             }
         }
 

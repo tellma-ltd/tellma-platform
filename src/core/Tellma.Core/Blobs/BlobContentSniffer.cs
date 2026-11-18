@@ -25,9 +25,11 @@ namespace Tellma.Core.Blobs
     }
 
     /// <summary>The outcome of determining an upload's media type.</summary>
-    /// <param name="ContentType">The type: the determined one when accepted; otherwise the best
-    ///     description of what was refused (the sniffed type, else the parsed declaration, else
-    ///     <c>application/octet-stream</c>), for the error's argument and the log.</param>
+    /// <param name="ContentType">The type: the determined one when accepted; otherwise what was
+    ///     refused, for the error's argument and the log: the sniffed type when the bytes say what
+    ///     they are, the parsed declaration when it alone is the reason (the kind does not allow
+    ///     it), else <c>application/octet-stream</c>. A declaration the bytes contradict is never
+    ///     reported, so a refusal never names a type the kind accepts.</param>
     /// <param name="Refusal">Why the file was refused, or <see cref="ContentTypeRefusal.None" />.</param>
     internal sealed record ContentTypeDecision(string ContentType, ContentTypeRefusal Refusal)
     {
@@ -68,6 +70,13 @@ namespace Tellma.Core.Blobs
         // An HTML comment, which opens a document a browser sniffs as HTML.
         private const string HtmlComment = "<!--";
 
+        // The types a refusal reports for what is never stored.
+        private const string PortableExecutable = "application/vnd.microsoft.portable-executable";
+        private const string ElfExecutable = "application/x-elf";
+        private const string MachOExecutable = "application/x-mach-binary";
+        private const string Html = "text/html";
+        private const string Svg = "image/svg+xml";
+
         // The HTML signatures the WHATWG MIME-sniffing standard recognises, lowercase. Each tag must
         // be followed by a byte that ends a tag name (whitespace, '/' or '>'), so "<br" does not
         // match "<brand"; that is slightly broader than the standard's space or '>', on purpose.
@@ -94,10 +103,10 @@ namespace Tellma.Core.Blobs
 
             string? declared = ParseMediaType(declaredContentType);
 
-            // 1. Never stored, whatever was declared or allowed.
-            if (IsExecutable(head) || IsMarkup(head))
+            // 1. Never stored, whatever was declared or allowed; reported as what the bytes are.
+            if ((ExecutableType(head) ?? MarkupType(head)) is string never)
             {
-                return new ContentTypeDecision(declared ?? UnknownContentType, ContentTypeRefusal.AlwaysRejected);
+                return new ContentTypeDecision(never, ContentTypeRefusal.AlwaysRejected);
             }
 
             // 2. A signature is the truth; the declaration is ignored.
@@ -122,8 +131,11 @@ namespace Tellma.Core.Blobs
                 return Allow(declared, allowedContentTypes);
             }
 
-            // 5. Nothing recognisable.
-            return new ContentTypeDecision(declared ?? UnknownContentType, ContentTypeRefusal.Unrecognised);
+            // 5. Nothing recognisable. A declaration the kind allows was contradicted by the bytes,
+            // so it is not what was refused; one the kind does not allow is the reason itself.
+            bool declaredAllowed = declared is not null
+                && allowedContentTypes.Any(allowedType => string.Equals(allowedType, declared, StringComparison.OrdinalIgnoreCase));
+            return new ContentTypeDecision(declared is null || declaredAllowed ? UnknownContentType : declared, ContentTypeRefusal.Unrecognised);
         }
 
         /// <summary>
@@ -203,27 +215,36 @@ namespace Tellma.Core.Blobs
                 || head.StartsWith((ReadOnlySpan<byte>)[0x50, 0x4B, 0x07, 0x08]);
         }
 
-        /// <summary>Whether the bytes start a native executable: PE (<c>MZ</c>), ELF or Mach-O.</summary>
+        /// <summary>The type of a native executable: PE (<c>MZ</c>), ELF or Mach-O.</summary>
         /// <param name="head">The first bytes.</param>
-        /// <returns>True for an executable.</returns>
-        private static bool IsExecutable(ReadOnlySpan<byte> head)
+        /// <returns>The executable's type, or null when the bytes start no executable.</returns>
+        private static string? ExecutableType(ReadOnlySpan<byte> head)
         {
-            return head.StartsWith("MZ"u8)
-                || head.StartsWith((ReadOnlySpan<byte>)[0x7F, 0x45, 0x4C, 0x46])
+            if (head.StartsWith("MZ"u8))
+            {
+                return PortableExecutable;
+            }
 
-                // Mach-O, 32- and 64-bit in both byte orders, and the universal (fat) container.
-                || head.StartsWith((ReadOnlySpan<byte>)[0xFE, 0xED, 0xFA, 0xCE])
+            if (head.StartsWith((ReadOnlySpan<byte>)[0x7F, 0x45, 0x4C, 0x46]))
+            {
+                return ElfExecutable;
+            }
+
+            // Mach-O, 32- and 64-bit in both byte orders, and the universal (fat) container.
+            return head.StartsWith((ReadOnlySpan<byte>)[0xFE, 0xED, 0xFA, 0xCE])
                 || head.StartsWith((ReadOnlySpan<byte>)[0xFE, 0xED, 0xFA, 0xCF])
                 || head.StartsWith((ReadOnlySpan<byte>)[0xCE, 0xFA, 0xED, 0xFE])
                 || head.StartsWith((ReadOnlySpan<byte>)[0xCF, 0xFA, 0xED, 0xFE])
                 || head.StartsWith((ReadOnlySpan<byte>)[0xCA, 0xFE, 0xBA, 0xBE])
-                || head.StartsWith((ReadOnlySpan<byte>)[0xCA, 0xFE, 0xBA, 0xBF]);
+                || head.StartsWith((ReadOnlySpan<byte>)[0xCA, 0xFE, 0xBA, 0xBF])
+                    ? MachOExecutable
+                    : null;
         }
 
-        /// <summary>Whether the bytes are HTML or SVG, after an optional byte-order mark and whitespace.</summary>
+        /// <summary>The type of HTML or SVG markup, after an optional byte-order mark and whitespace.</summary>
         /// <param name="head">The first bytes.</param>
-        /// <returns>True for markup a browser could render as a document.</returns>
-        private static bool IsMarkup(ReadOnlySpan<byte> head)
+        /// <returns><c>text/html</c> or <c>image/svg+xml</c> for markup a browser could render as a document; otherwise null.</returns>
+        private static string? MarkupType(ReadOnlySpan<byte> head)
         {
             // Decode the window as the text it claims to be. UTF-16 markup is as renderable as
             // UTF-8, so a BOM that names it is honoured; without one the bytes are read as
@@ -251,7 +272,7 @@ namespace Tellma.Core.Blobs
                 if (content.StartsWith(tag, StringComparison.OrdinalIgnoreCase)
                     && (tag == HtmlComment || content.Length == tag.Length || content[tag.Length] is ' ' or '\t' or '\r' or '\n' or '\f' or '/' or '>'))
                 {
-                    return true;
+                    return Html;
                 }
             }
 
@@ -260,7 +281,9 @@ namespace Tellma.Core.Blobs
             return content.StartsWith("<svg", StringComparison.OrdinalIgnoreCase)
                 || ((content.StartsWith("<?xml", StringComparison.OrdinalIgnoreCase)
                         || content.StartsWith("<!doctype", StringComparison.OrdinalIgnoreCase))
-                    && content.Contains("<svg", StringComparison.OrdinalIgnoreCase));
+                    && content.Contains("<svg", StringComparison.OrdinalIgnoreCase))
+                    ? Svg
+                    : null;
         }
 
         /// <summary>Whether every character is an HTTP token character (RFC 9110 <c>tchar</c>).</summary>

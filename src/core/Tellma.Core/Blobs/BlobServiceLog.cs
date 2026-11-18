@@ -50,5 +50,18 @@ namespace Tellma.Core.Blobs
             Level = LogLevel.Error,
             Message = "Writing the objects of the blob {Id} of kind {Kind} failed; its staged row expires into the sweep.")]
         public static partial void StoreWriteFailed(ILogger logger, Exception exception, string kind, int id);
+
+        /// <summary>
+        ///     The image processor failed to render a thumbnail; the upload is stored without one.
+        /// </summary>
+        /// <param name="logger">The logger.</param>
+        /// <param name="exception">The processor's failure.</param>
+        /// <param name="kind">The upload's kind.</param>
+        /// <param name="contentType">The upload's determined media type.</param>
+        [LoggerMessage(
+            EventName = "BlobThumbnailFailed",
+            Level = LogLevel.Warning,
+            Message = "Rendering the thumbnail of an upload of kind {Kind} ({ContentType}) failed; the file is stored without one.")]
+        public static partial void ThumbnailFailed(ILogger logger, Exception exception, string kind, string contentType);
     }
 }

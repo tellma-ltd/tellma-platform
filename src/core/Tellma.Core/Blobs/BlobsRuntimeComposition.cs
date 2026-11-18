@@ -50,7 +50,7 @@ namespace Tellma.Core.Blobs
             services.TryAddSingleton<IBlobKindRegistry>(static provider => provider.GetRequiredService<BlobKindRegistry>());
 
             // --- The staging service, per scope: it reads the scope's tenant and user ---
-            // A factory too: a host without a store fails the blobs check, not the container's validation.
+            // A factory too: a host without a store fails the blobs.deployment check, not the container's validation.
             services.TryAddScoped<IBlobService>(static provider => new BlobService(
                 provider.GetRequiredService<IBlobKindRegistry>(),
                 provider.GetRequiredService<IBlobStore>(),
@@ -62,10 +62,12 @@ namespace Tellma.Core.Blobs
                 provider.GetRequiredService<BlobUploadMetrics>(),
                 provider.GetRequiredService<ILogger<BlobService>>()));
 
-            // --- The check, after the built-in checks registered before it ---
-            IStartupCheck check = new BlobsCheck(record);
-            record.BuiltInChecks.Add(check);
-            services.AddSingleton(check);
+            // --- The checks, after the built-in checks registered before them: the composition's, then the deployment's ---
+            foreach (IStartupCheck check in new[] { new BlobsCheck(record, deployment: false), new BlobsCheck(record, deployment: true) })
+            {
+                record.BuiltInChecks.Add(check);
+                services.AddSingleton(check);
+            }
         }
     }
 }

@@ -16,8 +16,8 @@ public static void Compose(TellmaBuilder tellma) =>
 
 | Blobs | The Skia image processor (`AddTellmaSkia()`), which normalises uploaded images and renders thumbnails, and in Development the file-system blob store (`AddFileSystemBlobStore()`, rooted under the user's local application data unless `Tellma:Blobs:FileSystem:RootPath` says otherwise). |
 
-Outside Development the bundle registers no blob store yet, so the startup gate's `blobs` check
-fails the host until the Azure blob store joins the bundle.
+Outside Development the bundle registers no blob store yet, so the startup gate's
+`blobs.deployment` check fails the host until the Azure blob store joins the bundle.
 
 ## Rules
 

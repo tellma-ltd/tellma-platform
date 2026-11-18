@@ -19,7 +19,9 @@ builder.Services.AddTellmaSkia();
 `PdfWorkerMemoryLimit`, default 256 MiB, at least 32 MiB), and registers the `core.imaging` startup
 check, which loads Skia and, on a host that renders PDF thumbnails, starts a PDF worker that renders
 a probe page before the host serves traffic: a missing or mismatched native asset, or a deployment a
-worker cannot start in, fails startup with the fix, not the first upload.
+worker cannot start in, fails startup with the fix, not the first upload. The probe is bounded (30
+seconds), so it fails startup rather than hangs it. The check needs infrastructure, so a build step
+without a deployment (the client-asset emission) neither loads Skia nor starts a worker.
 
 ## What it does
 

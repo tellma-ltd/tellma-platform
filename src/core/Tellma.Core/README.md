@@ -577,12 +577,14 @@ tellma.Blobs(blobs => blobs
 - **Staging.** `IBlobService.StageAsync` (scoped) checks the declared length against the kind's
   `MaxSize` and the ceiling before reading, reads at most one byte more than declared, sniffs the
   type against the kind's allow-list, normalises an image kind through the one `IImageProcessor`
-  (bounded by `ImageProcessTimeout`), renders a thumbnail where the policy asks for one (a failure
-  stores none), inserts the `Staged` row — its id from `core.sq_Blobs`, its deadline from the
+  (bounded by `ImageProcessTimeout`), renders a thumbnail where the policy asks for one (a render
+  that returns nothing or throws stores none, with a `BlobThumbnailFailed` warning for a throw),
+  inserts the `Staged` row — its id from `core.sq_Blobs`, its deadline from the
   database clock — and then writes the primary and the thumbnail to the store under a fresh
   storage key. A refusal is a `BlobRejectedException` whose code names a resource string:
   `Blob.UnknownKind`, `Blob.LengthRequired` (no length, or a body shorter than declared),
-  `Blob.TooLarge`, `Blob.UnsupportedType`, `Blob.ImageRejected` and `Blob.StagingQuotaExceeded`.
+  `Blob.TooLarge`, `Blob.UnsupportedType` (naming what the bytes are, never a declaration they
+  contradict), `Blob.ImageRejected` and `Blob.StagingQuotaExceeded`.
   The quota counts the caller's unexpired staged rows and bytes in the same statement as the
   insert, without locks (it is soft: two racing uploads may both pass), and does not apply to the
   platform's own scope. A store write that fails leaves the staged row for the sweep.
@@ -590,12 +592,13 @@ tellma.Blobs(blobs => blobs
   tenant's container or directory through `IBlobStore.EnsureTenantAsync`, so the first upload finds
   it; a write that finds it missing still creates it. Removing a retired tenant's storage is an
   operator's action.
-- **The startup check.** `blobs` (needs infrastructure) requires exactly one `IBlobStore` and at
-  most one `IImageProcessor` (exactly one when an image kind exists), a transform only for a declared
-  kind, every policy well formed, every kind's `MaxSize` within `MaxUploadSize`, positive options, an
-  absolute scratch path and, for the file-system store, bound options and a passing create-only
-  publish probe. A host that runs no real store composes `AddInMemoryBlobs()` from
-  `Tellma.Core.Testing` in its tests.
+- **The startup checks.** `blobs` reads the composition alone, so the client-asset emission runs it
+  too: at most one `IImageProcessor` (exactly one when an image kind exists), a transform only for a
+  declared kind, and every final policy well formed. `blobs.deployment` needs infrastructure:
+  exactly one `IBlobStore`, positive options (the processor's time budgets also within a timer's
+  range), every kind's `MaxSize` within `MaxUploadSize`, an absolute scratch path and, for the
+  file-system store, bound options and a passing create-only publish probe. A host that runs no
+  real store composes `AddInMemoryBlobs()` from `Tellma.Core.Testing` in its tests.
 - **Telemetry.** `tellma.blobs.uploads` counts every staging call by kind and outcome (`staged`,
   each refusal, `busy`, `failed`), with `tellma.blobs.upload.bytes` and
   `tellma.blobs.upload.duration` beside it, on the `Tellma.Core` meter (the store's instruments

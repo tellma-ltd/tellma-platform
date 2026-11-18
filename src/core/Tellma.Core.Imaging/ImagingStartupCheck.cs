@@ -29,6 +29,11 @@ namespace Tellma.Core.Imaging
     ///         a server error, rather than as a startup failure that names the fix.
     ///     </para>
     ///     <para>
+    ///         The worker probe is bounded: a worker that does not render the probe page within
+    ///         <see cref="ProbeBudget" /> is ended and reported as a problem, so a deployment a worker
+    ///         cannot run in fails startup with the fix, never hangs it.
+    ///     </para>
+    ///     <para>
     ///         Two conditions are warnings in the host's log, not problems, since the host serves
     ///         everything else as well without their fix. A host that renders no PDF thumbnails (on
     ///         Windows or macOS outside Development, or on Linux without glibc) writes
@@ -62,7 +67,12 @@ namespace Tellma.Core.Imaging
         public string Name => CheckName;
 
         /// <inheritdoc />
-        public bool RequiresInfrastructure => false;
+        /// <remarks>
+        ///     True: the check reads the processor's options and the host's environment, loads native
+        ///     code and may start a worker process, all of which belong to the deployment. A build step
+        ///     without one (the client-asset emission) therefore never loads Skia or starts a worker.
+        /// </remarks>
+        public bool RequiresInfrastructure => true;
 
         /// <inheritdoc />
         public async Task<IReadOnlyList<CompositionProblem>> CheckAsync(IServiceProvider services, CancellationToken cancellationToken)

@@ -10,6 +10,7 @@ using Tellma.Core.Data.Metadata;
 
 namespace Tellma.Core.Blobs
 {
+    // spec 0017 §2.4: the owner walk.
     /// <summary>
     ///     The blob kinds of the realised composition, built once, on first use, from the entity
     ///     metadata and the stack registry: every <c>[BlobReference]</c> column of a stack's root and
@@ -19,7 +20,7 @@ namespace Tellma.Core.Blobs
     ///     <para>
     ///         The policy is the metadata's, which already applied the composition's transforms, so
     ///         the registry and every metadata consumer agree on it. The owner fields come from the
-    ///         walk (spec 0017 §2.4): a root's column is governed by the stack's resource; a child's by
+    ///         walk: a root's column is governed by the stack's resource; a child's by
     ///         the child's own query resource when the stack registers one for it, else by the
     ///         stack's, reached from the child through its dotted path of parent navigations.
     ///     </para>

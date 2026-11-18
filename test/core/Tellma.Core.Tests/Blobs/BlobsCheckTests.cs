@@ -19,7 +19,7 @@ using Tellma.Core.Tests.Infrastructure;
 namespace Tellma.Core.Tests.Blobs
 {
     /// <summary>
-    ///     The <c>blobs</c> startup check: each way the store and processor registrations, the kinds'
+    ///     The <c>blobs</c> and <c>blobs.deployment</c> startup checks: each way the store and processor registrations, the kinds'
     ///     final policies, the blob options, the file-system root and the scratch directory can be
     ///     wrong is a problem with a fix, and a sound composition has none.
     /// </summary>
@@ -44,12 +44,29 @@ namespace Tellma.Core.Tests.Blobs
         }
 
         [Fact]
-        public async Task The_check_needs_infrastructure_and_is_named_blobs()
+        public async Task The_composition_check_needs_no_infrastructure_and_the_deployment_check_does()
         {
             await using ServiceProvider provider = TestComposition.Compose(static _ => { }).BuildServiceProvider(validateScopes: true);
-            IStartupCheck check = Assert.Single(provider.GetServices<IStartupCheck>(), static check => check is BlobsCheck);
 
-            Assert.Equal(("blobs", true), (check.Name, check.RequiresInfrastructure));
+            Assert.Equal(
+                [("blobs", false), ("blobs.deployment", true)],
+                provider.GetServices<IStartupCheck>().OfType<BlobsCheck>().Select(static check => (check.Name, check.RequiresInfrastructure)));
+        }
+
+        [Fact]
+        public async Task A_build_step_without_a_deployment_reports_the_composition_rules_and_none_of_the_deployments()
+        {
+            IConfiguration configuration = TestComposition.Configuration();
+            IServiceCollection services = TestComposition.Compose(
+                static tellma => tellma.AddFeature(BlobModel.Feature()).Blobs(static blobs => blobs.Kind("bm-none", static policy => policy)),
+                configuration);
+            _ = services.RemoveAll<IBlobStore>();
+            await using ServiceProvider provider = services.BuildServiceProvider(validateScopes: true);
+
+            IReadOnlyList<CompositionProblem> problems = await TellmaStartupGate.RunChecksAsync(provider, includeInfrastructure: false, TestContext.Current.CancellationToken);
+
+            Assert.Contains(problems.From(CoreCheckNames.Blobs), static problem => problem.Problem.Contains("'bm-none'", StringComparison.Ordinal));
+            Assert.Empty(problems.From(CoreCheckNames.BlobsDeployment));
         }
 
         [Fact]
@@ -170,7 +187,8 @@ namespace Tellma.Core.Tests.Blobs
                 ("Tellma:Blobs:StagingTtl", "00:00:00"),
                 ("Tellma:Blobs:SweepBatchSize", "0"),
                 ("Tellma:Blobs:MaxStagedPerUser", "-1"),
-                ("Tellma:Blobs:ThumbnailTimeout", "-00:00:01")));
+                ("Tellma:Blobs:ThumbnailTimeout", "-00:00:01"),
+                ("Tellma:Blobs:ImageProcessTimeout", "50.00:00:00")));
 
             List<CompositionProblem> problems = await ProblemsAsync(static _ => { }, configuration: configuration);
 
@@ -180,8 +198,10 @@ namespace Tellma.Core.Tests.Blobs
                     nameof(BlobOptions.SweepBatchSize),
                     nameof(BlobOptions.MaxStagedPerUser),
                     nameof(BlobOptions.ThumbnailTimeout),
+                    nameof(BlobOptions.ImageProcessTimeout),
                 ],
                 problems.Select(static problem => problem.Problem.Split(' ')[3]));
+            Assert.EndsWith("(a time budget also at most 4294967294 milliseconds, the longest a timer runs).", problems[^1].Problem, StringComparison.Ordinal);
             Assert.All(problems, static problem => Assert.Contains("'Tellma:Blobs'", problem.Fix, StringComparison.Ordinal));
         }
 
@@ -239,11 +259,11 @@ namespace Tellma.Core.Tests.Blobs
                 Assert.Single(problems).Problem);
         }
 
-        /// <summary>Composes, adjusts the services, and runs every check, returning the blobs check's problems.</summary>
+        /// <summary>Composes, adjusts the services, and runs every check, returning the two blobs checks' problems.</summary>
         /// <param name="compose">The composition.</param>
         /// <param name="adjust">Changes the composed services, or null.</param>
         /// <param name="configuration">The configuration; the sound one when null.</param>
-        /// <returns>The blobs check's problems.</returns>
+        /// <returns>The blobs checks' problems.</returns>
         private static async Task<List<CompositionProblem>> ProblemsAsync(
             Action<TellmaBuilder> compose, Action<IServiceCollection>? adjust = null, IConfiguration? configuration = null)
         {
@@ -255,7 +275,7 @@ namespace Tellma.Core.Tests.Blobs
             adjust?.Invoke(services);
             await using ServiceProvider provider = services.BuildServiceProvider(validateScopes: true);
             IReadOnlyList<CompositionProblem> problems = await TellmaStartupGate.RunChecksAsync(provider, includeInfrastructure: true, TestContext.Current.CancellationToken);
-            return problems.From(CoreCheckNames.Blobs);
+            return [.. problems.From(CoreCheckNames.Blobs), .. problems.From(CoreCheckNames.BlobsDeployment)];
         }
 
         /// <summary>A second processor type, which the builder registers beside the first.</summary>

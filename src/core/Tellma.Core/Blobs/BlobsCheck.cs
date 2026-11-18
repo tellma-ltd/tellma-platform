@@ -15,11 +15,12 @@ using Tellma.Core.Data.Metadata;
 namespace Tellma.Core.Blobs
 {
     /// <summary>
-    ///     <c>blobs</c>: exactly one blob store is registered; an image processor is registered when a
-    ///     kind normalises images, and at most one; every kind transform names a declared kind; every
-    ///     kind's final policy is sound and within the global upload ceiling; the blob options are
-    ///     positive; the file-system store's root is valid and can publish create-only; and a configured
-    ///     scratch directory is absolute.
+    ///     Two checks of the blob composition. <c>blobs</c> reads the composition alone: an image
+    ///     processor is registered when a kind normalises images, and at most one; every kind
+    ///     transform names a declared kind; every kind's final policy is sound.
+    ///     <c>blobs.deployment</c> reads the deployment: exactly one blob store is registered; the
+    ///     blob options are positive and the upload ceiling covers every kind; the file-system store's
+    ///     root is valid and can publish create-only; and a configured scratch directory is absolute.
     /// </summary>
     /// <remarks>
     ///     <para>
@@ -29,18 +30,25 @@ namespace Tellma.Core.Blobs
     ///         options check's.
     ///     </para>
     ///     <para>
-    ///         It needs infrastructure: probing the file-system root creates the directory and, on
-    ///         Unix, hard-links a file under it. A build step without a deployment skips it.
+    ///         A build step without a deployment (the client-asset emission) runs <c>blobs</c>, so it
+    ///         never emits the policies of a composition the host would refuse, and skips
+    ///         <c>blobs.deployment</c>: the options and the scratch path are the deployment's, the
+    ///         store is often the deployment's choice, and probing the file-system root creates the
+    ///         directory and, on Unix, hard-links a file under it.
     ///     </para>
     /// </remarks>
     /// <param name="record">The realised composition, whose kind transforms are checked.</param>
-    internal sealed class BlobsCheck(TellmaCompositionRecord record) : IStartupCheck
+    /// <param name="deployment">True for <c>blobs.deployment</c>; false for <c>blobs</c>.</param>
+    internal sealed class BlobsCheck(TellmaCompositionRecord record, bool deployment) : IStartupCheck
     {
-        /// <inheritdoc />
-        public string Name => CoreCheckNames.Blobs;
+        /// <summary>The longest span a timer or a cancellation's deadline accepts, in milliseconds.</summary>
+        private const long MaxTimerMilliseconds = uint.MaxValue - 1L;
 
         /// <inheritdoc />
-        public bool RequiresInfrastructure => true;
+        public string Name => deployment ? CoreCheckNames.BlobsDeployment : CoreCheckNames.Blobs;
+
+        /// <inheritdoc />
+        public bool RequiresInfrastructure => deployment;
 
         /// <inheritdoc />
         public Task<IReadOnlyList<CompositionProblem>> CheckAsync(IServiceProvider services, CancellationToken cancellationToken)
@@ -52,7 +60,17 @@ namespace Tellma.Core.Blobs
             IBlobKindRegistry kinds = services.GetRequiredService<IBlobKindRegistry>();
             bool metadataBuilt = services.GetRequiredService<EntityMetadataSource>().Build.Provider is not null;
 
-            CheckStore(registrations, problems);
+            // --- The deployment's: the store, the options, the file-system root and the scratch path ---
+            if (deployment)
+            {
+                CheckStore(registrations, problems);
+                CheckOptions(services, kinds, problems);
+                CheckFileSystemStore(services, registrations, problems);
+                CheckScratch(services.GetRequiredService<ScratchDirectory>(), problems);
+                return Task.FromResult<IReadOnlyList<CompositionProblem>>(problems);
+            }
+
+            // --- The composition's: the processor, the transforms and every final policy ---
             CheckProcessor(registrations, kinds, problems);
             if (metadataBuilt)
             {
@@ -64,9 +82,6 @@ namespace Tellma.Core.Blobs
                 CheckPolicy(kind, problems);
             }
 
-            CheckOptions(services, kinds, problems);
-            CheckFileSystemStore(services, registrations, problems);
-            CheckScratch(services.GetRequiredService<ScratchDirectory>(), problems);
             return Task.FromResult<IReadOnlyList<CompositionProblem>>(problems);
         }
 
@@ -239,23 +254,26 @@ namespace Tellma.Core.Blobs
             }
 
             string fix = $"Set the value under '{BlobOptions.SectionPath}' to a positive one, or remove it to use the default.";
-            void Positive(string name, bool positive, string value)
+            string lifetime = $"a lifetime also at most {int.MaxValue.ToString(CultureInfo.InvariantCulture)} seconds";
+            string budget = $"a time budget also at most {MaxTimerMilliseconds.ToString(CultureInfo.InvariantCulture)} milliseconds, the longest a timer runs";
+            void Positive(string name, bool positive, string value, string? bound = null)
             {
                 if (!positive)
                 {
-                    problems.Add(new CompositionProblem(Name, $"The blob option {name} is {value}, which is not positive (a lifetime also at most {int.MaxValue.ToString(CultureInfo.InvariantCulture)} seconds).", fix));
+                    string qualifier = bound is null ? "." : $" ({bound}).";
+                    problems.Add(new CompositionProblem(Name, $"The blob option {name} is {value}, which is not positive{qualifier}", fix));
                 }
             }
 
             // --- Every value positive; the lifetimes in whole seconds a statement can bind ---
-            Positive(nameof(BlobOptions.StagingTtl), IsSeconds(options.StagingTtl), options.StagingTtl.ToString());
+            Positive(nameof(BlobOptions.StagingTtl), IsSeconds(options.StagingTtl), options.StagingTtl.ToString(), lifetime);
             Positive(nameof(BlobOptions.SweepBatchSize), options.SweepBatchSize > 0, options.SweepBatchSize.ToString(CultureInfo.InvariantCulture));
-            Positive(nameof(BlobOptions.SweepReclaimAfter), IsSeconds(options.SweepReclaimAfter), options.SweepReclaimAfter.ToString());
+            Positive(nameof(BlobOptions.SweepReclaimAfter), IsSeconds(options.SweepReclaimAfter), options.SweepReclaimAfter.ToString(), lifetime);
             Positive(nameof(BlobOptions.MaxStagedPerUser), options.MaxStagedPerUser > 0, options.MaxStagedPerUser.ToString(CultureInfo.InvariantCulture));
             Positive(nameof(BlobOptions.MaxStagedBytesPerUser), options.MaxStagedBytesPerUser > 0, options.MaxStagedBytesPerUser.ToString(CultureInfo.InvariantCulture));
             Positive(nameof(BlobOptions.MaxUploadSize), options.MaxUploadSize > 0, options.MaxUploadSize.ToString(CultureInfo.InvariantCulture));
-            Positive(nameof(BlobOptions.ThumbnailTimeout), options.ThumbnailTimeout > TimeSpan.Zero, options.ThumbnailTimeout.ToString());
-            Positive(nameof(BlobOptions.ImageProcessTimeout), options.ImageProcessTimeout > TimeSpan.Zero, options.ImageProcessTimeout.ToString());
+            Positive(nameof(BlobOptions.ThumbnailTimeout), IsTimerSpan(options.ThumbnailTimeout), options.ThumbnailTimeout.ToString(), budget);
+            Positive(nameof(BlobOptions.ImageProcessTimeout), IsTimerSpan(options.ImageProcessTimeout), options.ImageProcessTimeout.ToString(), budget);
 
             // --- The ceiling: a kind larger than it is a problem, never a silent clamp (spec 0017 §9) ---
             foreach (BlobKindDescriptor kind in kinds.All.Where(kind => kind.Policy.MaxSize > options.MaxUploadSize))
@@ -320,6 +338,14 @@ namespace Tellma.Core.Blobs
                     $"The scratch directory '{path}' configured under '{ScratchDirectory.ConfigurationKey}' is not an absolute path.",
                     $"Set '{ScratchDirectory.ConfigurationKey}' to an absolute directory, or remove it to use the system's temporary directory."));
             }
+        }
+
+        /// <summary>Whether a time budget is positive and no longer than a timer runs.</summary>
+        /// <param name="value">The budget.</param>
+        /// <returns>Whether a processor can arm a timer for it.</returns>
+        private static bool IsTimerSpan(TimeSpan value)
+        {
+            return value > TimeSpan.Zero && value.TotalMilliseconds <= MaxTimerMilliseconds;
         }
 
         /// <summary>Whether a lifetime is positive and its seconds, rounded up, fit a statement's <c>int</c>.</summary>

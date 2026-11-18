@@ -209,7 +209,8 @@ namespace Tellma.Core.Tests.Composition
                 ["core.entity-pipeline"] = false,
                 ["core.enlistments"] = false,
                 ["core.stack-securables"] = false,
-                ["blobs"] = true,
+                ["blobs"] = false,
+                ["blobs.deployment"] = true,
             };
 
             Assert.Equal(expected, checks);

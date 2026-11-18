@@ -16,8 +16,9 @@ using Tellma.Core.Data.Batches;
 
 namespace Tellma.Core.Blobs
 {
+    // spec 0017 §3.2: the staging steps, in order.
     /// <summary>
-    ///     Stages uploads (spec 0017 §3.2): resolves the kind, checks the length, reads the bytes,
+    ///     Stages uploads: resolves the kind, checks the length, reads the bytes,
     ///     determines the content type, normalises an image or renders a thumbnail, records the
     ///     <see cref="BlobState.Staged" /> row in one guarded round trip, then writes the objects
     ///     create-only. One per scope.
@@ -212,9 +213,10 @@ namespace Tellma.Core.Blobs
             }
         }
 
+        // spec 0017 §3.6: normalisation.
         /// <summary>
-        ///     Normalises an image through the processor (spec 0017 §3.6): what is stored is the
-        ///     processor's output, never the client's bytes, and the thumbnail comes from it.
+        ///     Normalises an image through the processor: what is stored is the processor's output,
+        ///     never the client's bytes, and the thumbnail comes from it.
         /// </summary>
         /// <param name="kind">The upload's kind.</param>
         /// <param name="body">The upload, in memory.</param>
@@ -263,9 +265,9 @@ namespace Tellma.Core.Blobs
         }
 
         /// <summary>
-        ///     Renders the thumbnail of a file that is not an image kind (spec 0017 §3.2 step 6), when the
-        ///     kind has one and a processor is registered; a file it cannot render has none, which is
-        ///     never a refusal.
+        ///     Renders the thumbnail of a file that is not an image kind, when the kind has one and a
+        ///     processor is registered. A file it cannot render, or a render that throws, has none,
+        ///     which never refuses or fails the upload.
         /// </summary>
         /// <param name="kind">The upload's kind.</param>
         /// <param name="body">The upload.</param>
@@ -286,9 +288,13 @@ namespace Tellma.Core.Blobs
                 {
                     rendered = await processor.ThumbnailAsync(kind, input, contentType, thumbnail, options.ThumbnailTimeout, cancellationToken).ConfigureAwait(false);
                 }
-                catch (Exception exception) when (exception is not OperationCanceledException)
+                catch (Exception exception) when (!(exception is OperationCanceledException && cancellationToken.IsCancellationRequested))
                 {
-                    throw Failed(kind, exception);
+                    // A thumbnail is never a reason to refuse or fail an upload (spec 0017 §3.2
+                    // step 6): a processor that throws, or cancels on its own budget, leaves the
+                    // file without one, and the warning names the kind and type for the operator.
+                    BlobServiceLog.ThumbnailFailed(logger, exception, kind, contentType);
+                    rendered = null;
                 }
                 finally
                 {

@@ -19,7 +19,7 @@ namespace Tellma.Core.Blobs
     ///     <para>
     ///         The store is resolved when the step runs, not when it is created, so a composition
     ///         without a store (one that emits client assets, say) still builds: the startup gate
-    ///         creates every step to read its name, and the blobs check names the missing store.
+    ///         creates every step to read its name, and the deployment's blobs check names the missing store.
     ///     </para>
     ///     <para>Removing a retired tenant's container is an operator's action; no step does it.</para>
     /// </remarks>

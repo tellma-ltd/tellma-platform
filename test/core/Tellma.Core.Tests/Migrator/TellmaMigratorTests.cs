@@ -304,7 +304,13 @@ namespace Tellma.Core.Tests.Migrator
             int code = await TellmaMigrator.RunAsync(
                 args,
                 TestComposition.Slug,
-                compose ?? (static _ => { }),
+                tellma =>
+                {
+                    // The core model's image kinds need a processor, and the emit, which runs no
+                    // host services, checks the composition for one.
+                    _ = tellma.Blobs(static blobs => blobs.ImageProcessor<StubImageProcessor>());
+                    compose?.Invoke(tellma);
+                },
                 migrateIdentityStore: null,
                 new MigratorRunSettings
                 {
