@@ -102,7 +102,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 
 | PC | Slot | Branch | Step | Implementer agent (name / id) | Reviewer agent (name / id) | Started (UTC) |
 |---|---|---|---|---|---|---|
-| PC-074 | pc-3 | pc/PC-074 | impl | impl (Opus, xhigh, launched 2026-11-18) | — | 2026-11-18 |
+| PC-074 | pc-3 | pc/PC-074 | R1 | impl (Opus, xhigh, launched 2026-11-18) | R1 (Opus, high, launched 2026-11-18) | 2026-11-18 |
 
 ## Fix items
 
@@ -357,7 +357,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-071 | 0024-d | 1 | done (279ef75, CI 43168140640 green) | 11c16b1, 9af3158, 8d54380, 279ef75 (pc) | 23.78M (impl+fix1+fix2 16.03, r1 1.64, r2 fable 6.11) | R1 1/0/7, R2 fable 0/0/6, all fixed; 20 deviations (D-054); e2e 726/726; core primary 12.47/12.5 KB |
 | PC-072 | 0015-f | 1 | done (dd5e55ca; green 44238677820) | 1dfae484, 7d99c0ac, 6e362741, dd5e55ca (pc/PC-072) | | carry from PC-050: after a GuardedBatchRunner call that refreshed the context, the call site must re-apply RequestContext.ApplyCultures (the runner applies them only within its own call; an async callee cannot change its caller's cultures) |
 | PC-073 | 0024-e | 1 | done (integrated 9f9adb7; CI 43408822577 red from PC-047's flaky TimerTests, fixed by PC-F28; green at a533113, CI 43421083528) | 2f3b1b4, 9812a0e, fe8eae5, a7c1051, e2e0665, 9f9adb7 (pc) |  |  |
-| PC-074 | 0015-g | 1 | impl | | | |
+| PC-074 | 0015-g | 1 | R1 | 2f168363 | | |
 | PC-075 | 0025-a | 1 | done 3301fbb (CI 43512232701 green) | 61c750f, 8f00d42, 777eeba, 3301fbb (pc) |  |  |
 | PC-076 | 0015-h | 1 | todo | | | |
 | PC-077 | 0015-i | 1 | todo | | | carry from PC-062 (D-079): the invoker accepts only registry-owned ApiActionDescriptor instances, matched by reference; carry from PC-066 (D-095): the spec 0015 §7.3 error re-homing view (PC-066 deviation 15) |

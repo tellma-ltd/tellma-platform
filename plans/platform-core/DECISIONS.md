@@ -359,6 +359,11 @@ Format, one entry per ruling:
 - Also accepted: a readonly select never opens (a pre-existing bug, fixed) and exposes aria-readonly.
 - **Misalignment for Ahmad:** 0010 §B.4 names contentChildren(TmOptionGroup), which the design does not need. See also D-036's §B.4 note.
 
+### D-114 (orchestrator, 2026-11-18): PC-074 hand-offs
+
+- PC-074 keeps `NoStackTableOwners` as the `IStackTableOwners` default and nothing produces write frames yet, so a ReadOnly tenant refuses every save and the foreign-stack refusal in OnPersist is pinned by unit tests only. PC-077 (write frames and enlisted writes) owns the producer; its brief must carry this so it wires the real owners and adds the integration test.
+- `Assignments.Concurrent` is a local constant because `ValidationCodes` in Abstractions lacks it. Kept for PC-074; moving it into Abstractions is a follow-up for the next checkpoint that touches `ValidationCodes`, or a fix item if R1 calls it out.
+
 ### D-113 (orchestrator, 2026-11-17): PC-072 R2 open questions; interim rulings, for Ahmad
 - Sensitive-Read stacks: a self-reference asks for (R, Read) step-up through the reference checks (D-111), but the before images, ModifiedByName and the write-once "differs" read of the same stack R do not; only the Save pair is asked, through RequireAsync. Reviewer 2 found this is not a bypass under spec 0014 §4.3. Interim ruling: keep it as built (the Save pair's step-up covers reading the rows being saved). Ahmad to choose one rule.
 - Spec 0015 §6.6 step 5 says uniqueness holders are skipped "on create and update alike", which is stricter than deviation 18 (a value is freed only where the persist's statement order frees it). Interim ruling: deviation 18 stands, because the literal rule lets a save pass validation and then fail on the unique index. Ahmad to amend the spec or overrule.
