@@ -359,6 +359,15 @@ Format, one entry per ruling:
 - Also accepted: a readonly select never opens (a pre-existing bug, fixed) and exposes aria-readonly.
 - **Misalignment for Ahmad:** 0010 §B.4 names contentChildren(TmOptionGroup), which the design does not need. See also D-036's §B.4 note.
 
+### D-119 (orchestrator, 2026-11-18): PC-078 implementer's open questions; R1 to judge, for Ahmad
+
+- Q1: delete-by-query bypasses ValidateDeleteAsync, so the user and role delete rules (self-deletion, the system user, OnlyNewUsersDeletable, HasMembers, the administrator role) rest only on L1-L3 and the foreign keys. Should users and roles refuse delete-by-query, or validate it?
+- Q2: a deployed bootstrap leaves the administrator New (no subject, no invite), so L1 is unmet and non-System security writes are refused until the invite. This is by design; to be confirmed.
+- Q3: the bootstrap does not reactivate an existing inactive user. The spec is silent.
+- Q4: users' and roles' saves are sensitive, so every fixture that writes them supplies aal2 step-up.
+- Q5: PC-078 places the guards on the stack's own tables only. The union over enlisted groups is PC-077's, being built in parallel; PC-077 was told.
+- Also: PC-078's implementer was blocked running `powershell.exe Get-CimInstance Win32_Process` (a check for lingering testhost processes). It did not retry, and the work completed. Ahmad was notified under §9.
+
 ### D-118 (orchestrator, 2026-11-18): PC-076 ActionContext.Persisted needs a custom awaitable; for Ahmad
 
 - A §4.4 verification of PC-076 confirmed a residual race. An action flow reads `Persisted`, awaits something else (say a slow HTTP call), then composes a write or an `Errors.Add`. RT2 may already have committed without it.
