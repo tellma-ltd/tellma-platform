@@ -359,6 +359,54 @@ Format, one entry per ruling:
 - Also accepted: a readonly select never opens (a pre-existing bug, fixed) and exposes aria-readonly.
 - **Misalignment for Ahmad:** 0010 §B.4 names contentChildren(TmOptionGroup), which the design does not need. See also D-036's §B.4 note.
 
+### D-123 (orchestrator, 2026-11-18): PC-084 round-trip budget and carries; for Ahmad
+
+- Spec 0017 §10.1 ("a save adds none") and the checkpoint's done-criterion conflict with §4.2's mandated blob load. A warm-buffer, insert-only save that attaches a blob needs one extra round trip, and the code cannot avoid it. Interim: accepted as a PC-084 deviation. On a cold buffer the load folds into round 1 (R1-1), so no other save shape pays. **For Ahmad:** amend §10.1 or the budget.
+- Spec 0015 §6.6: blob columns are exempt from the uniqueness rule that their UX_ index had triggered. R1 judged the exemption narrow and correct.
+- Carry: persist blob refusals raised by enlisted groups are counted by whichever of PC-077 and PC-084 integrates second (R1-6).
+
+### D-122 (orchestrator, 2026-11-18): PC-077 R2 rulings; for Ahmad
+
+- R2-1 (major, fixed in fix 2): the open write frame re-decides the [ApiAction] securable for the fresh ConnectedUser on every compose, as the other pipeline hosts do. A revoked grant must not commit enlisted writes on a permissions re-entry.
+- R2-2 (interim, fail closed): on a re-entry caused by a permissions change, a frame with enlisted groups does not commit on validators decided under stale grants. It either re-runs the groups' validators in memory or raises StaleContextException. **For Ahmad:** spec 0015 §5.1 should say which; PC-078's UserAccessRules and RoleAccessRules are grant-dependent target rules.
+- **For spec 0020:** PC-078's AccessGuards casts the batch to DataBatch, and the job seam runs PersistGuards on the worker's completion batch, so the worker must hand the frame a DataBatch.
+- Release order: PC-078 integrates first. PC-077 holds after fix 2 (D-087), then integrates under D-121.
+
+### D-121 (orchestrator, 2026-11-18): PC-077 and PC-078 meet at the access guards; the later to integrate reconciles
+
+- PC-077 contributes the access guards once per host, over the union of its own tables and every enlisted group's tables (nested groups included). The lock comes first, and the invariants run after the last group and OnPersist.
+- PC-078 places the guards on a stack's own tables. Its fix 1 may move the decision to batch.WrittenTables ∪ StackTables (D-119 R1-2).
+- Ruling: whichever of the two integrates second makes the union reach every guard path, including PC-077's OpenWriteFrame.Persist.cs. It also runs both checkpoints' guard and enlistment tests together in its integration gate.
+- PC-078 fix 1 (1a5de53e): the guards are now decided over StackTables ∪ batch.WrittenTables at the invariants step, and the lock stays a TransactionHead statement. PC-077's group union should adopt the same rule. **For Ahmad:** spec 0014 §8.3 decides over WrittenTables, while spec 0015 §6.7 step 4 calls ContributeLock "ahead of item 1" from metadata. One of the two needs aligning.
+- PC-078 fix 1 outcomes for D-119: users' and roles' delete-by-query is refused as a BadRequest naming the resource (spec 0018 §4 and spec 0015 §16.2 say otherwise). A deactivated existing administrator fails the bootstrap naming the user id; R1 preferred reactivating through the activate action. **Both are for Ahmad.**
+- PC-077 fix 1 (b5cf1ae7): PC-078's guard rule hooks into Crud/Save/PersistGuards.Contribute. That is called at all four persist sites, OpenWriteFrame.ComposeOntoAsync included, and whoever integrates second keeps those calls.
+- **For Ahmad (spec 0015 §5.1):** how re-run enlistments are answered. PC-077 matches them by task and step from the first run and treats divergence as stale (deviation 11). Also whether EnlistmentOutcome.Stamp should become nullable; today it falls back to the frame's clock (deviation 12).
+- Also from PC-077 R1, for spec 0020: the job-frame seam overwrites the worker batch's Limits.
+
+### D-120 (orchestrator, 2026-11-18): BlobContainerStep moves from PC-089 to PC-083; the provisioning-record row goes to the later of PC-078 and PC-083
+
+- Ruling: PC-083 built spec 0017 §6.4 BlobContainerStep (`core.blob-container`, order 20). D-096 had given it to PC-089. R1 accepted the build, and it is kept as PC-083 deviation 8. PC-089 no longer owns §6.4.
+- Carry: D-096's provisioning-record row (Acme MigratorTests.The_provisioning_record_holds_the_platform_steps_with_their_versions) needs `core.bootstrap-administrator` (PC-078), `core.settings` (PC-049, done) and `core.blob-container` (now PC-083). Whichever of PC-078 and PC-083 integrates last must see it run green. The carry is on PC-078's status row and in PC-083's integration message.
+
+### D-119 (orchestrator, 2026-11-18): PC-078 implementer's open questions; R1 to judge, for Ahmad
+
+- Q1: delete-by-query bypasses ValidateDeleteAsync, so the user and role delete rules (self-deletion, the system user, OnlyNewUsersDeletable, HasMembers, the administrator role) rest only on L1-L3 and the foreign keys. Should users and roles refuse delete-by-query, or validate it?
+- Q2: a deployed bootstrap leaves the administrator New (no subject, no invite), so L1 is unmet and non-System security writes are refused until the invite. This is by design; to be confirmed.
+- Q3: the bootstrap does not reactivate an existing inactive user. The spec is silent.
+- Q4: users' and roles' saves are sensitive, so every fixture that writes them supplies aal2 step-up.
+- Q5: PC-078 places the guards on the stack's own tables only. The union over enlisted groups is PC-077's, being built in parallel; PC-077 was told.
+- R1 (0/1/5) and interim rulings for fix 1:
+  - Q1: users' and roles' delete-by-query is refused with a closed-set error before any round trip (R1-1; spec 0015 §16.2's budget row). Today it skips CannotDeleteSelf and OnlyNewUsersDeletable for a user that no audit foreign key references.
+  - Q3: the bootstrap never silently restores privileges. An inactive existing administrator fails the step with an actionable error (R1-6). **For Ahmad:** reactivate or fail.
+  - Q5 / R1-2: the guard decision covers batch.WrittenTables ∪ StackTables. It lands in PC-078 if WrittenTables exists on platform-core; otherwise it carries to PC-077.
+  - R1-4: duplicate-permission collapse (spec 0014 §3.7) is owned by no checkpoint. PC-078 does it if contained; otherwise it carries to a later checkpoint.
+  - **For Ahmad:** spec 0014 §3.4's "DELETE half" deletes the wrong keys for delete actions. PC-078's fix is right, and the spec wording needs amending.
+- R2 (fable, 0/2/3) and interim rulings for fix 2. All three D-119 rulings held under R2.
+  - R2-1: the bootstrap step is no longer recorded as done when it bootstrapped nobody. A later run that names an administrator then performs it, including `provision --admin-email` on an Active tenant. **For Ahmad:** spec 0014 §8.3's recovery path depends on spec 0011's provisioning record. The two specs need one owner for that path.
+  - R2-4: fail closed. Changing the email of a New user that has memberships needs the same rights as those memberships, or is refused. **For Ahmad:** spec 0014 needs a line on this escalation.
+  - R2-5: DeleteByQuery is removed from the users' and roles' stack operations.
+- Also: PC-078's implementer was blocked running `powershell.exe Get-CimInstance Win32_Process` (a check for lingering testhost processes). It did not retry, and the work completed. Ahmad was notified under §9.
+
 ### D-118 (orchestrator, 2026-11-18): PC-076 ActionContext.Persisted needs a custom awaitable; for Ahmad
 
 - A §4.4 verification of PC-076 confirmed a residual race. An action flow reads `Persisted`, awaits something else (say a slow HTTP call), then composes a write or an `Errors.Add`. RT2 may already have committed without it.

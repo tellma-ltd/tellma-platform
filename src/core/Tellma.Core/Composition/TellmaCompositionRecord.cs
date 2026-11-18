@@ -11,6 +11,7 @@ using Tellma.Core.Abstractions.Jobs;
 using Tellma.Core.Abstractions.Localization;
 using Tellma.Core.Abstractions.Notifications;
 using Tellma.Core.Abstractions.Tenancy;
+using Tellma.Core.Blobs;
 using Tellma.Core.Jobs;
 using Tellma.Core.Localization;
 
@@ -95,6 +96,12 @@ namespace Tellma.Core.Composition
 
         /// <summary>The client event names the features contributed, in realisation order.</summary>
         public List<ContributedClientEvent> ClientEvents { get; } = [];
+
+        /// <summary>
+        ///     The blob-kind transforms: the features', in realisation order, then the host's, in call
+        ///     order. Each kind's policy is the result of applying its transforms in this order.
+        /// </summary>
+        public List<BlobKindTransform> BlobKindTransforms { get; } = [];
 
         /// <summary>The background job handlers the features registered, in realisation order, each read from its attribute.</summary>
         public List<ContributedJobHandler> JobHandlers { get; } = [];

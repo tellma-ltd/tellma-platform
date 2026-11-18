@@ -26,6 +26,42 @@ namespace Tellma.Core.Abstractions.Blobs
     public sealed class BlobRejectedException(string code, IReadOnlyDictionary<string, object?> arguments)
         : TellmaException(code, Describe(code), arguments ?? throw new ArgumentNullException(nameof(arguments)))
     {
+        /// <summary>The upload names a kind no blob reference declares (404).</summary>
+        public const string UnknownKind = "Blob.UnknownKind";
+
+        /// <summary>The upload carries no length, or a length its body does not match (411).</summary>
+        public const string LengthRequired = "Blob.LengthRequired";
+
+        /// <summary>The declared or actual length exceeds the kind's or the global limit (413). Argument: <see cref="MaxBytesArgument" />.</summary>
+        public const string TooLarge = "Blob.TooLarge";
+
+        /// <summary>The content type is outside the kind's allowed set, or is never stored (415). Argument: <see cref="ContentTypeArgument" />.</summary>
+        public const string UnsupportedType = "Blob.UnsupportedType";
+
+        /// <summary>
+        ///     The uploader holds too many staged files, or too many staged bytes (422). Arguments:
+        ///     <see cref="MaxCountArgument" />, <see cref="MaxBytesArgument" />.
+        /// </summary>
+        public const string StagingQuotaExceeded = "Blob.StagingQuotaExceeded";
+
+        /// <summary>
+        ///     The image processor refused the image (422). Argument: <see cref="ReasonArgument" />, one
+        ///     of the reasons of <see cref="ImageRejectedException" />.
+        /// </summary>
+        public const string ImageRejected = "Blob.ImageRejected";
+
+        /// <summary>The largest length the kind accepts, in bytes.</summary>
+        public const string MaxBytesArgument = "maxBytes";
+
+        /// <summary>The content type that was refused.</summary>
+        public const string ContentTypeArgument = "contentType";
+
+        /// <summary>The most staged files one uploader may hold.</summary>
+        public const string MaxCountArgument = "maxCount";
+
+        /// <summary>Why the image was refused.</summary>
+        public const string ReasonArgument = ImageRejectedException.ReasonArgument;
+
         /// <summary>Renders the log message.</summary>
         /// <param name="code">The code.</param>
         /// <returns>The message.</returns>

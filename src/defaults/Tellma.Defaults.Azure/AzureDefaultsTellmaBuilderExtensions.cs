@@ -4,10 +4,13 @@
 // LICENSE file in the root directory of this source tree.
 
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Tellma.Connector.AcsEmail.Adapter;
 using Tellma.Connector.SendGrid.Adapter;
+using Tellma.Core.Blobs;
 using Tellma.Core.Composition;
 using Tellma.Core.Email;
+using Tellma.Core.Imaging;
 
 namespace Tellma.Defaults.Azure
 {
@@ -20,8 +23,9 @@ namespace Tellma.Defaults.Azure
         /// <summary>
         ///     Composes the Azure defaults: the email pipeline, with the Azure Communication Services
         ///     (<c>acs-email</c>) and SendGrid (<c>sendgrid</c>) transports registered beside the
-        ///     Development log sink, and the sender chosen by <c>Email:Provider</c>. Calling it again
-        ///     changes nothing.
+        ///     Development log sink, and the sender chosen by <c>Email:Provider</c>; the Skia image
+        ///     processor; and, in Development, the file-system blob store. Calling it again changes
+        ///     nothing.
         /// </summary>
         /// <remarks>
         ///     Called from the distribution's composition method, which both hosts run, so the
@@ -48,6 +52,15 @@ namespace Tellma.Defaults.Azure
             _ = services.AddTellmaEmail();
             _ = services.AddAcsEmail(tellma.Configuration);
             _ = services.AddSendGridEmail(tellma.Configuration);
+
+            // --- Blobs: the image processor, and in Development the file-system store (spec 0017 §1.3) ---
+            // Outside Development no store is registered yet, so the blobs.deployment check fails the host
+            // until the Azure store joins the bundle.
+            services.AddTellmaSkia();
+            if (tellma.Environment.IsDevelopment())
+            {
+                services.AddFileSystemBlobStore();
+            }
 
             return tellma;
         }

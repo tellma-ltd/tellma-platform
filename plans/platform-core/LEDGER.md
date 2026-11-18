@@ -102,7 +102,9 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 
 | PC | Slot | Branch | Step | Implementer agent (name / id) | Reviewer agent (name / id) | Started (UTC) |
 |---|---|---|---|---|---|---|
-| PC-076 | pc-3 | pc/PC-076 | CI | impl (Opus, high, launched 2026-11-18) | verification fixes b665e864 (V-1..V-7 fixed); integrated 4c3a45c0 (plans-only merge); CI watch 2026-11-18 | 2026-11-18 |
+| PC-084 | pc-2 | pc/PC-084 | fix1 | impl (Opus, high, launched 2026-11-18) | R1 done (0/2/4); fix1 resumed 2026-11-18 | 2026-11-18 |
+| PC-077 | pc-3 | pc/PC-077 | fix2+hold | impl (Opus, xhigh, launched 2026-11-18) | R2 xhigh done (0/1/3); fix2 then hold behind PC-078, resumed 2026-11-18 | 2026-11-18 |
+| PC-078 | pc-1 | pc/PC-078 | fix2+integrate | impl (Opus, xhigh, launched 2026-11-18) | R2 fable done (0/2/3); fix2 + integrate resumed 2026-11-18 | 2026-11-18 |
 
 ## Fix items
 
@@ -359,20 +361,20 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-073 | 0024-e | 1 | done (integrated 9f9adb7; CI 43408822577 red from PC-047's flaky TimerTests, fixed by PC-F28; green at a533113, CI 43421083528) | 2f3b1b4, 9812a0e, fe8eae5, a7c1051, e2e0665, 9f9adb7 (pc) |  |  |
 | PC-074 | 0015-g | 1 | done | 2f168363, f206fbc2, b1a5382f, 1cdc5f20, ba639bf1, 9b9e4db5; green 44274178855 | | |
 | PC-075 | 0025-a | 1 | done 3301fbb (CI 43512232701 green) | 61c750f, 8f00d42, 777eeba, 3301fbb (pc) |  |  |
-| PC-076 | 0015-h | 1 | CI | 3ce126e3, ac365158, b665e864, 4c3a45c0 | | |
-| PC-077 | 0015-i | 1 | todo | | | carry from PC-062 (D-079): the invoker accepts only registry-owned ApiActionDescriptor instances, matched by reference; carry from PC-066 (D-095): the spec 0015 §7.3 error re-homing view (PC-066 deviation 15); carry from PC-074 (D-114): wire the real IStackTableOwners and the write-frames producer (a ReadOnly tenant refuses every save until then) and add the integration test for OnPersist's foreign-stack refusal |
-| PC-078 | 0014-f | 1 | todo |  |  | carry: §3.7 rule 1 save check must refuse (*, A) when no resource registers A (PC-043 D5); delegation coverage of Read must follow D-073; carry from PC-141 (D-096): TenantStateTests' UserId-binding, Frozen-read and ReadOnly-activity rows run (conditional skips) and must pass |
+| PC-076 | 0015-h | 1 | done | 3ce126e3, ac365158, b665e864, 4c3a45c0; green 44320663740 | | |
+| PC-077 | 0015-i | 1 | fix2+hold | 6eada9d9, b5cf1ae7 | | carry from PC-062 (D-079): the invoker accepts only registry-owned ApiActionDescriptor instances, matched by reference; carry from PC-066 (D-095): the spec 0015 §7.3 error re-homing view (PC-066 deviation 15); carry from PC-074 (D-114): wire the real IStackTableOwners and the write-frames producer (a ReadOnly tenant refuses every save until then) and add the integration test for OnPersist's foreign-stack refusal |
+| PC-078 | 0014-f | 1 | fix2+integrate | 5b0b6328, 1a5de53e |  | carry: §3.7 rule 1 save check must refuse (*, A) when no resource registers A (PC-043 D5); delegation coverage of Read must follow D-073; carry from PC-141 (D-096): TenantStateTests' UserId-binding, Frozen-read and ReadOnly-activity rows run (conditional skips) and must pass; carry (D-120): if PC-083 lands first, MigratorTests.The_provisioning_record_holds_the_platform_steps_with_their_versions runs and must pass in your integration gate |
 | PC-079 | 0013-h | 1 | todo | | | carry from PC-049: spec 0013 §5.5 settings securables are yours (category Resource names already match); D-076: a language change moves only the settings tag, so bump entity tags or fold the shape into wire tags |
 | PC-080 | 0016-c | 1 | todo | | | carry from PC-099 r1: core.Notification has no access criteria until PC-146, so a member gets 403 on their own rows; no member-facing surface reads the stack before PC-146; carry from PC-064: the get-by-parent-ids RouteContract.ResponseType is RowPage, so the projector wraps the bare QueryRowSet as new RowPage(rows, null, null); child surfaces take the root stack's ContractRevision plus their own [ApiResource] revision |
 | PC-081 | 0016-d | 1 | todo | | | |
 | PC-082 | 0016-e | 1 | todo | | | |
-| PC-083 | 0017-c1 | 1 | todo | | | |
-| PC-084 | 0017-c2 | 1 | todo | | | |
+| PC-083 | 0017-c1 | 1 | done | fe0edcc6, 6b4a02bf, 9d5dd16d; green 44392562042 | | |
+| PC-084 | 0017-c2 | 1 | fix1 | 108e56b5 | | |
 | PC-085 | 0011-g | 1 | done (integrated db81630; CI 43479519320 red: Acme E2E csproj never committed (.gitignore *.e2e matches the folder case-insensitively), fixed by PC-F30, green at 9a1754d (CI 43488423725); integration-windows itself green; fix1 6ba59cb; R1-6 pushed back: AspNetCore→Webhooks edge would break ARCHITECTURE rule 6, IVT seam kept and documented; R1-4 compares runtime models only; new fix: RCSI ALTER WITH ROLLBACK IMMEDIATE (pooled catalog connection timed out Acme readiness); integration-windows non-gating) | a147a95, 6ba59cb, db81630 (pc) |  |  |
 | PC-086 | 0029-a | 1 | todo | | | |
 | PC-087 | 0018-b | 1 | todo | | | |
 | PC-088 | 0018-c | 1 | todo | | | |
-| PC-089 | 0017-d | 1 | todo | | | carry (D-096): spec 0017 §6.4 BlobContainerStep (core.blob-container) is yours; MigratorTests.The_provisioning_record_holds_the_platform_steps_with_their_versions runs and must pass |
+| PC-089 | 0017-d | 1 | todo | | | carry: none from D-096 any more (D-120 moved §6.4 BlobContainerStep to PC-083 and the provisioning-record row to whichever of PC-078 and PC-083 lands last) |
 | PC-090 | 0018-d | 1 | todo | | | carry from PC-141 (D-096): TenantStateTests.An_action_allowed_when_read_only_succeeds_on_a_read_only_tenant runs and must pass |
 | PC-091 | 0018-e | 1 | todo | | | |
 | PC-092 | 0018-g | 1 | todo | | | carry from PC-094: extend the existing server AcmeFeature ("acme", empty); do not create another |

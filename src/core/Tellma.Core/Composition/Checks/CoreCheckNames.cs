@@ -143,5 +143,18 @@ namespace Tellma.Core.Composition.Checks
 
         /// <summary>Every built-in schedule's cron expression parses and has a next occurrence.</summary>
         public const string JobSchedules = "jobs.schedules";
+
+        /// <summary>
+        ///     At most one image processor is registered, one when a kind normalises images; every
+        ///     blob-kind transform names a declared kind; and every kind's final policy is sound.
+        /// </summary>
+        public const string Blobs = "blobs";
+
+        /// <summary>
+        ///     Exactly one blob store is registered; the blob options are positive and the upload
+        ///     ceiling covers every kind; and the file-system store's root and the scratch directory
+        ///     are usable.
+        /// </summary>
+        public const string BlobsDeployment = "blobs.deployment";
     }
 }

@@ -14,7 +14,10 @@ public static void Compose(TellmaBuilder tellma) =>
 |---|---|
 | Email | The email pipeline (`AddTellmaEmail()`), with the Azure Communication Services transport (`acs-email`) and the SendGrid transport (`sendgrid`) beside the Development log sink. `Email:Provider` chooses the sender; each transport reads its own section (`Email:AcsEmail`, `Email:SendGrid`). |
 
-The blob store and the image processor join the bundle with the blob storage work.
+| Blobs | The Skia image processor (`AddTellmaSkia()`), which normalises uploaded images and renders thumbnails, and in Development the file-system blob store (`AddFileSystemBlobStore()`, rooted under the user's local application data unless `Tellma:Blobs:FileSystem:RootPath` says otherwise). |
+
+Outside Development the bundle registers no blob store yet, so the startup gate's
+`blobs.deployment` check fails the host until the Azure blob store joins the bundle.
 
 ## Rules
 

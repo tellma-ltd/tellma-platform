@@ -475,6 +475,24 @@
   <data name="Blob_DuplicateReference" xml:space="preserve">
     <value>الملف نفسه مرفق أكثر من مرة.</value>
   </data>
+  <data name="Blob_UnknownKind" xml:space="preserve">
+    <value>لا يمكن رفع هذا النوع من الملفات هنا.</value>
+  </data>
+  <data name="Blob_LengthRequired" xml:space="preserve">
+    <value>لم يُحدَّد حجم الملف المرفوع، أو انقطع الملف قبل اكتماله. ارفعه مرة أخرى.</value>
+  </data>
+  <data name="Blob_TooLarge" xml:space="preserve">
+    <value>الملف كبير جدًا. الحد الأقصى المسموح به {maxBytes, number} بايت.</value>
+  </data>
+  <data name="Blob_UnsupportedType" xml:space="preserve">
+    <value>لا يمكن رفع الملفات من النوع ”{contentType}“ هنا.</value>
+  </data>
+  <data name="Blob_StagingQuotaExceeded" xml:space="preserve">
+    <value>لديك عدد كبير من الملفات المرفوعة غير المحفوظة: الحد الأقصى {maxCount, number} ملفًا أو {maxBytes, number} بايت. احفظ تغييراتك أو تجاهلها، ثم ارفع الملف مرة أخرى.</value>
+  </data>
+  <data name="Blob_ImageRejected" xml:space="preserve">
+    <value>{reason, select, format {صيغة هذه الصورة غير مدعومة. استخدم صورة JPEG أو PNG أو WebP أو GIF.} too-many-pixels {الصورة كبيرة جدًا. استخدم صورة أصغر.} timeout {استغرقت معالجة الصورة وقتًا طويلًا. جرّب صورة أصغر.} other {تعذّرت قراءة الصورة. قد تكون تالفة.}}</value>
+  </data>
   <data name="Concurrency_StampRequired" xml:space="preserve">
     <value>أعد تحميل السجل، ثم حاول مرة أخرى.</value>
   </data>

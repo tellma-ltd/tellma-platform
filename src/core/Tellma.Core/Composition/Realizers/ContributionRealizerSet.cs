@@ -33,6 +33,7 @@ namespace Tellma.Core.Composition.Realizers
                 .Add(new NotificationTypeContributionRealizer())
                 .Add(new NotificationChannelContributionRealizer())
                 .Add(new ClientEventContributionRealizer())
+                .Add(new BlobKindContributionRealizer())
                 .Add(new SecurablesContributionRealizer())
                 .Add(new StackContributionRealizer())
                 .Add(new StackCompanionContributionRealizer())

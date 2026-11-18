@@ -8,6 +8,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.Abstractions.Localization;
+using Tellma.Core.Blobs;
 using Tellma.Core.Localization;
 
 namespace Tellma.Core.Composition
@@ -30,6 +31,7 @@ namespace Tellma.Core.Composition
         private readonly List<CompositionProblem> _problems = [];
         private readonly List<AddedLanguage> _addedLanguages = [];
         private IReadOnlyList<string>? _languageCodes;
+        private BlobsBuilder? _blobs;
         private bool _sealed;
 
         /// <summary>Creates the builder over one composition's state.</summary>
@@ -69,6 +71,9 @@ namespace Tellma.Core.Composition
 
         /// <summary>What <see cref="Languages(IReadOnlyList{string})" /> and <see cref="AddLanguage" /> recorded.</summary>
         internal LanguageDeclaration LanguageDeclaration => new(_languageCodes, _addedLanguages);
+
+        /// <summary>The host's blob-kind transforms, in call order; empty when <see cref="Blobs" /> was never called.</summary>
+        internal IReadOnlyList<BlobKindTransform> BlobKindTransforms => _blobs?.Transforms ?? [];
 
         /// <summary>Adds a feature of <typeparamref name="TFeature" />. Idempotent: a type already added is not added again.</summary>
         /// <typeparam name="TFeature">The feature type.</typeparam>
@@ -188,6 +193,26 @@ namespace Tellma.Core.Composition
             return this;
         }
 
+        /// <summary>
+        ///     Configures blobs in code: transforms of the kinds' policies
+        ///     (<see cref="BlobsBuilder.Kind" />), applied after every feature's, and the image
+        ///     processor to use instead of the SkiaSharp one (<see cref="BlobsBuilder.ImageProcessor{TProcessor}" />).
+        ///     May be called more than once; the calls accumulate.
+        /// </summary>
+        /// <param name="configure">Configures the builder.</param>
+        /// <returns>This builder, for chaining.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="configure" /> is null.</exception>
+        /// <exception cref="InvalidOperationException">The composition method has already returned.</exception>
+        public TellmaBuilder Blobs(Action<BlobsBuilder> configure)
+        {
+            ArgumentNullException.ThrowIfNull(configure);
+            ThrowIfSealed();
+
+            _blobs ??= new BlobsBuilder(Services, ThrowIfSealed);
+            configure(_blobs);
+            return this;
+        }
+
         /// <summary>Refuses further selections; called when the composition method returns.</summary>
         internal void Seal()
         {
@@ -202,7 +227,7 @@ namespace Tellma.Core.Composition
             if (_sealed)
             {
                 throw new InvalidOperationException(
-                    "Features, leaf substitutions and languages can only be declared while the composition method runs.");
+                    "Features, leaf substitutions, languages and blob settings can only be declared while the composition method runs.");
             }
         }
     }

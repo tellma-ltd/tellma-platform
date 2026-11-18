@@ -14,15 +14,18 @@ using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 using OpenTelemetry.Trace;
+using Tellma.Core.Abstractions.Blobs;
 using Tellma.Core.Abstractions.Email;
 using Tellma.Core.AspNetCore;
 using Tellma.Core.Composition;
+using Tellma.Core.Imaging;
 using Tellma.Defaults.Azure.AspNetCore;
 
 namespace Tellma.Defaults.Azure.Tests
 {
     /// <summary>
-    ///     What the Azure bundles compose: the email transports for both hosts; the webhook endpoint,
+    ///     What the Azure bundles compose: the email transports and the blob processor and store for
+    ///     both hosts; the webhook endpoint,
     ///     the key ring and the exporter for the web host, each only once and each of the last two only
     ///     when configured.
     /// </summary>
@@ -34,6 +37,9 @@ namespace Tellma.Defaults.Azure.Tests
 
         // The blob repository is internal to its package, so it is recognized by name.
         private const string AzureBlobRepository = "AzureBlobXmlRepository";
+
+        // The file-system blob store is internal to the runtime, so it is recognized by name.
+        private const string FileSystemBlobStore = "FileSystemBlobStore";
 
         private const string ConnectionString = "InstrumentationKey=00000000-0000-0000-0000-000000000000;IngestionEndpoint=https://example.invalid/";
 
@@ -49,6 +55,19 @@ namespace Tellma.Defaults.Azure.Tests
                 .Order(StringComparer.Ordinal)];
             Assert.Equal(["acs-email", "log-sink", "sendgrid"], transports);
             Assert.Contains(services, static descriptor => descriptor.ServiceType == typeof(IEmailSender));
+        }
+
+        [Theory]
+        [InlineData("Development", true)]
+        [InlineData("Production", false)]
+        public void The_defaults_register_the_skia_processor_once_and_the_file_system_store_in_development_only(string environment, bool store)
+        {
+            ServiceCollection services = Compose([], static tellma => tellma.UseAzureDefaults().UseAzureDefaults(), new SuiteEnvironment { EnvironmentName = environment });
+
+            Assert.Equal(typeof(SkiaImageProcessor), Assert.Single(services, static descriptor => descriptor.ServiceType == typeof(IImageProcessor)).ImplementationType);
+            Assert.Equal(
+                store ? [FileSystemBlobStore] : [],
+                services.Where(static descriptor => descriptor.ServiceType == typeof(IBlobStore)).Select(static descriptor => descriptor.ImplementationType?.Name));
         }
 
         [Fact]
@@ -187,17 +206,18 @@ namespace Tellma.Defaults.Azure.Tests
         /// <summary>Composes a distribution of nothing but the bundles, as a host's composition would.</summary>
         /// <param name="values">The configuration.</param>
         /// <param name="compose">The composition.</param>
+        /// <param name="environment">The host's environment; the suite's Development one when null.</param>
         /// <returns>The composed services.</returns>
-        private static ServiceCollection Compose(Dictionary<string, string?> values, Action<TellmaBuilder> compose)
+        private static ServiceCollection Compose(Dictionary<string, string?> values, Action<TellmaBuilder> compose, IHostEnvironment? environment = null)
         {
             IConfiguration configuration = new ConfigurationBuilder().AddInMemoryCollection(values).Build();
             ServiceCollection services = [];
             _ = services.AddSingleton(configuration);
-            _ = services.AddTellma("acme", configuration, new SuiteEnvironment(), compose);
+            _ = services.AddTellma("acme", configuration, environment ?? new SuiteEnvironment(), compose);
             return services;
         }
 
-        /// <summary>A Development host environment over the suite's output.</summary>
+        /// <summary>A host environment over the suite's output, Development unless set otherwise.</summary>
         private sealed class SuiteEnvironment : IHostEnvironment
         {
             /// <inheritdoc />

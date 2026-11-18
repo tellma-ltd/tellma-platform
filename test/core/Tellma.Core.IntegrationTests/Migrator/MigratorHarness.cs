@@ -11,6 +11,7 @@ using System.Globalization;
 using Tellma.Core.Composition;
 using Tellma.Core.Migrator;
 using Tellma.Core.Migrator.TestDistribution;
+using Tellma.Core.Testing.Blobs;
 
 namespace Tellma.Core.IntegrationTests.Migrator
 {
@@ -164,6 +165,9 @@ namespace Tellma.Core.IntegrationTests.Migrator
                     ConfigureServices = collection =>
                     {
                         _ = collection.AddLogging(static logging => logging.ClearProviders());
+
+                        // The test distribution composes no blob store: the blobs check is satisfied in memory.
+                        _ = collection.AddInMemoryBlobs();
                         services?.Invoke(collection);
                     },
                 },

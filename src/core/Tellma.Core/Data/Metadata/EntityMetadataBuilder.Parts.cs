@@ -14,6 +14,7 @@ using Tellma.Core.Abstractions.Blobs;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Entities;
 using Tellma.Core.Abstractions.Localization;
+using Tellma.Core.Blobs;
 using Tellma.Core.Composition;
 using Tellma.Core.Data.Conventions;
 using Tellma.Core.EntityFrameworkCore.TableTypes;
@@ -757,9 +758,11 @@ namespace Tellma.Core.Data.Metadata
         }
 
         /// <summary>
-        ///     The blob-reference columns. Reports a reference on a property other than <c>int?</c>, a kind
-        ///     outside the kind grammar or declared by two properties, and a declaration whose policy cannot
-        ///     be made.
+        ///     The blob-reference columns, each with its final policy: the attribute's, then the
+        ///     composition's transforms of the kind in order. Reports a reference on a property other than
+        ///     <c>int?</c>, on an entity that is neither a stack's root nor a child entity of its aggregate,
+        ///     a kind outside the kind grammar or declared by two properties, a declaration whose policy
+        ///     cannot be made, and a transform that throws or returns no policy.
         /// </summary>
         /// <param name="leaf">The leaf.</param>
         /// <param name="mapped">The mapped members.</param>
@@ -777,6 +780,18 @@ namespace Tellma.Core.Data.Metadata
 
                 string declaration = $"{Display(leaf)}.{member.Name}";
                 bool valid = true;
+
+                // spec 0017 §2.3: the kind is registered with an owner a download can be authorised
+                // through, so the entity is a contributed stack's root or a child of its aggregate,
+                // never an entity only a model configuration maps.
+                if (!_definition.EntityTypes.Contains(leaf.ClrType))
+                {
+                    Report(
+                        $"The entity {Display(leaf)} declares the blob kind '{blob.Kind}' on {member.Name}, but it is neither a stack's root nor a child entity of a stack's aggregate, so no securable governs the kind.",
+                        $"Contribute {TypeDisplay.Short(leaf.ClrType)} as an entity (contribution.Entity<{TypeDisplay.Short(leaf.ClrType)}>()) or as a child collection of one, or move the [BlobReference] onto such an entity.");
+                    valid = false;
+                }
+
                 if (member.PropertyType != typeof(int?))
                 {
                     Report(
@@ -811,6 +826,19 @@ namespace Tellma.Core.Data.Metadata
                         $"The blob reference {declaration} cannot make its policy: {exception.Message}",
                         $"Correct the [BlobReference] on {member.Name}.");
                     valid = false;
+                }
+
+                // --- The composition's transforms of the kind, the features' then the host's, in order ---
+                if (policy is not null)
+                {
+                    policy = BlobKindTransform.Apply(blob.Kind, policy, _definition.BlobKindTransforms, out string? failure);
+                    if (failure is not null)
+                    {
+                        Report(
+                            $"The policy of the blob kind '{blob.Kind}' declared on {declaration} cannot be made: {failure}.",
+                            $"Correct the transform of '{blob.Kind}' so it returns a policy.");
+                        valid = false;
+                    }
                 }
 
                 if (valid && policy is not null)

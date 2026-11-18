@@ -13,6 +13,7 @@ using System.Text.Json;
 using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.Composition;
 using Tellma.Core.Migrator;
+using Tellma.Core.Testing.Blobs;
 using Tellma.Core.Tests.Infrastructure;
 
 namespace Tellma.Core.Tests.Migrator
@@ -303,7 +304,13 @@ namespace Tellma.Core.Tests.Migrator
             int code = await TellmaMigrator.RunAsync(
                 args,
                 TestComposition.Slug,
-                compose ?? (static _ => { }),
+                tellma =>
+                {
+                    // The core model's image kinds need a processor, and the emit, which runs no
+                    // host services, checks the composition for one.
+                    _ = tellma.Blobs(static blobs => blobs.ImageProcessor<StubImageProcessor>());
+                    compose?.Invoke(tellma);
+                },
                 migrateIdentityStore: null,
                 new MigratorRunSettings
                 {
@@ -316,6 +323,7 @@ namespace Tellma.Core.Tests.Migrator
                     ConfigureServices = collection =>
                     {
                         _ = collection.AddLogging(static logging => logging.ClearProviders());
+                        _ = collection.AddInMemoryBlobs();
                         services?.Invoke(collection);
                     },
                 },
