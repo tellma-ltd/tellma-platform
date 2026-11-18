@@ -372,6 +372,14 @@ Kept as built until Reviewer 1 judges them; spec 0015 gives no clear answer to a
    - A value-returning method has nothing to answer with, so its failure is raised. That may invite a duplicating retry.
 6. The Read-Denied → NotFound branch is reachable on cacheable stacks. Read takes no filter there, so a filtered write grant implies no read.
 
+R1 judgements (0/3/4) and interim rulings for fix 1:
+
+- Q1 and Q6: accepted. Q6's "only cacheable stacks" is wrong, because D-116 R2-5's criterion-only grants reach the branch too.
+- Q2: rejected for Tvp/DeclareIdTable/DeclareKeyTable (R1-2). Spec 0018's invite needs `SqlOptions.UserIds` to name a declared table, and spec 0014 §3.4's preference bag depends on the same. Fix 1 should solve it inside PC-076; if it cannot, this escalates as a cross-spec conflict.
+- Q3: the AsyncLocal gate is fine, but releasing the flow when it reads `Persisted` can hang the request or lose writes (R1-1). To be fixed.
+- Q4: accepted as interim, but the refusal must come before any round trip, as a closed-set error. The BigIdStampList gap is in spec 0012.
+- Q5: raising is kept for now, though it invites a retry. **For Ahmad:** a closed-set "committed, result lost" code, or a rule that such actions must be idempotent. A void method's failure after a normal commit (R1-4) is answered with ids, consistent with D-116.
+
 ### D-116 (orchestrator, 2026-11-18): PC-074 R2 open questions; interim rulings, for Ahmad
 
 - R2-2: a re-entered persist keeps round trip 1's row-level verdicts (before images under Read, the Save-grant pre-check, reference visibility), even if the stack's Read or Save filter narrowed in between. So an edit that moves another user's row into a just-narrowed Save filter can commit. Spec 0015 §5.1 is silent on this for a save's pre-check. Interim: kept as built and noted as a deviation. Ahmad to decide whether a changed filter should raise StaleContextException.
