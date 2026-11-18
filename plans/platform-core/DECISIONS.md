@@ -359,6 +359,10 @@ Format, one entry per ruling:
 - Also accepted: a readonly select never opens (a pre-existing bug, fixed) and exposes aria-readonly.
 - **Misalignment for Ahmad:** 0010 §B.4 names contentChildren(TmOptionGroup), which the design does not need. See also D-036's §B.4 note.
 
+### D-115 (orchestrator, 2026-11-18): PC-074 R1-7, a spec gap for Ahmad
+
+- Spec 0015 §14.2 has no row for a 547 raised by child synchronisation's deletes, when another table still references the deleted child row. Today it passes through as a 500 when the referencing table is outside the stack, and as `Fk.NotFound` when it is inside. Interim: if §14.2 already maps a delete's 547 to an in-use code, PC-074 reuses it; otherwise PC-074 keeps the current behaviour as a listed deviation. Ahmad to decide the row (likely an in-use code naming the child row).
+
 ### D-114 (orchestrator, 2026-11-18): PC-074 hand-offs
 
 - PC-074 keeps `NoStackTableOwners` as the `IStackTableOwners` default and nothing produces write frames yet, so a ReadOnly tenant refuses every save and the foreign-stack refusal in OnPersist is pinned by unit tests only. PC-077 (write frames and enlisted writes) owns the producer; its brief must carry this so it wires the real owners and adds the integration test.
