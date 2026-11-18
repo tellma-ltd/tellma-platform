@@ -359,6 +359,11 @@ Format, one entry per ruling:
 - Also accepted: a readonly select never opens (a pre-existing bug, fixed) and exposes aria-readonly.
 - **Misalignment for Ahmad:** 0010 §B.4 names contentChildren(TmOptionGroup), which the design does not need. See also D-036's §B.4 note.
 
+### D-120 (orchestrator, 2026-11-18): BlobContainerStep moves from PC-089 to PC-083; the provisioning-record row goes to the later of PC-078 and PC-083
+
+- Ruling: PC-083 built spec 0017 §6.4 BlobContainerStep (`core.blob-container`, order 20). D-096 had given it to PC-089. R1 accepted the build, and it is kept as PC-083 deviation 8. PC-089 no longer owns §6.4.
+- Carry: D-096's provisioning-record row (Acme MigratorTests.The_provisioning_record_holds_the_platform_steps_with_their_versions) needs `core.bootstrap-administrator` (PC-078), `core.settings` (PC-049, done) and `core.blob-container` (now PC-083). Whichever of PC-078 and PC-083 integrates last must see it run green. The carry is on PC-078's status row and in PC-083's integration message.
+
 ### D-119 (orchestrator, 2026-11-18): PC-078 implementer's open questions; R1 to judge, for Ahmad
 
 - Q1: delete-by-query bypasses ValidateDeleteAsync, so the user and role delete rules (self-deletion, the system user, OnlyNewUsersDeletable, HasMembers, the administrator role) rest only on L1-L3 and the foreign keys. Should users and roles refuse delete-by-query, or validate it?
