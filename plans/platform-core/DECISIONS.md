@@ -364,6 +364,8 @@ Format, one entry per ruling:
 - PC-077 contributes the access guards once per host, over the union of its own tables and every enlisted group's tables (nested groups included). The lock comes first, and the invariants run after the last group and OnPersist.
 - PC-078 places the guards on a stack's own tables. Its fix 1 may move the decision to batch.WrittenTables ∪ StackTables (D-119 R1-2).
 - Ruling: whichever of the two integrates second makes the union reach every guard path, including PC-077's OpenWriteFrame.Persist.cs. It also runs both checkpoints' guard and enlistment tests together in its integration gate.
+- PC-078 fix 1 (1a5de53e): the guards are now decided over StackTables ∪ batch.WrittenTables at the invariants step, and the lock stays a TransactionHead statement. PC-077's group union should adopt the same rule. **For Ahmad:** spec 0014 §8.3 decides over WrittenTables, while spec 0015 §6.7 step 4 calls ContributeLock "ahead of item 1" from metadata. One of the two needs aligning.
+- PC-078 fix 1 outcomes for D-119: users' and roles' delete-by-query is refused as a BadRequest naming the resource (spec 0018 §4 and spec 0015 §16.2 say otherwise). A deactivated existing administrator fails the bootstrap naming the user id; R1 preferred reactivating through the activate action. **Both are for Ahmad.**
 - Also from PC-077 R1, for spec 0020: the job-frame seam overwrites the worker batch's Limits.
 
 ### D-120 (orchestrator, 2026-11-18): BlobContainerStep moves from PC-089 to PC-083; the provisioning-record row goes to the later of PC-078 and PC-083
