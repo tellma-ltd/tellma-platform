@@ -102,8 +102,8 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 
 | PC | Slot | Branch | Step | Implementer agent (name / id) | Reviewer agent (name / id) | Started (UTC) |
 |---|---|---|---|---|---|---|
-| PC-B03 | pc-2 | pc/PC-B03 | integrate (released after PC-B02 push 65057698) | — | 3 finders done (fable, xhigh) | 2026-11-17 |
-| PC-072 | pc-3 | pc/PC-072 | fix1 (R1 0/1/4; R1-3 ruled D-111) | impl (Opus, xhigh, launched 2026-11-17) | impl (Opus, xhigh) | 2026-11-17 |
+| PC-B03 | pc-2 | pc/PC-B03 | CI (integrated b4849737) | — | 3 finders done (fable, xhigh) | 2026-11-17 |
+| PC-072 | pc-3 | pc/PC-072 | R2 (fix1 7d99c0ac: 5 fixed; 18 deviations) | impl (Opus, xhigh, launched 2026-11-17) | R2 (Opus inherit, xhigh) | 2026-11-17 |
 
 ## Fix items
 

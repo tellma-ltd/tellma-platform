@@ -359,8 +359,9 @@ Format, one entry per ruling:
 - Also accepted: a readonly select never opens (a pre-existing bug, fixed) and exposes aria-readonly.
 - **Misalignment for Ahmad:** 0010 §B.4 names contentChildren(TmOptionGroup), which the design does not need. See also D-036's §B.4 note.
 
-### D-112 (PC-B03, 2026-11-17): default step-up class aal2 with tier ranking; for Ahmad
+### D-112 (PC-B03, 2026-11-17): default step-up class aal2 with tier ranking; accepted by Ahmad
 - The PC-B03 fixer (XC-2/XC-3) added one shared tier ranking: aal1 < aal2/phr < aal3/phrh. AssuranceCheck accepts a session at or above the bar, falls back to exact match outside the scheme, StrongerAcr ranks lists by their strongest member, and a startup validator refuses an unranked step-up class when the identity server runs in-proc. The default step-up class is now urn:tellma:acr:aal2.
+- Ahmad (2026-11-17) accepted the departure: aal2 as the default step-up class with tier-ranked comparison stands. Spec 0011 §5.5 and its appsettings sample are to be brought in line with the code.
 - This departs from spec 0011 §5.5 and its appsettings sample (D-066 item 7). Spec 0011 §7.5 (reconcile `@readAt` predicate) and spec 0012 §7.3-7.4 plus spec 0011's listener contract (id buffers keyed by database location) also need text edits. For Ahmad.
 
 ### D-111 (orchestrator, 2026-11-17): PC-072 R1-3 reference-visibility reads follow D-108
