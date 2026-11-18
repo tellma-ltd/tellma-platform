@@ -52,7 +52,6 @@ namespace Tellma.Core.Crud.Save
     /// <param name="details">The details planner, which composes the read-back.</param>
     /// <param name="guards">The access guards of the security tables.</param>
     /// <param name="frames">The write frames the scope's persists may be nested in.</param>
-    /// <param name="recompositions">What made the runner re-enter a compose.</param>
     /// <param name="logger">The log of the post-commit failures.</param>
     internal sealed class SaveOperation(
         AccessEvaluator evaluator,
@@ -76,7 +75,6 @@ namespace Tellma.Core.Crud.Save
         DetailsPlanner details,
         IAccessGuards guards,
         WriteFrames frames,
-        RecomposeLog recompositions,
         ILogger<SaveOperation> logger)
     {
         /// <summary>The dependency a data-access failure names.</summary>
@@ -144,9 +142,6 @@ namespace Tellma.Core.Crud.Save
 
         /// <summary>The write frames the scope's persists may be nested in.</summary>
         internal WriteFrames Frames { get; } = frames;
-
-        /// <summary>What made the runner re-enter a compose.</summary>
-        internal RecomposeLog Recompositions { get; } = recompositions;
 
         /// <summary>The log of the post-commit failures.</summary>
         internal ILogger Logger { get; } = logger;

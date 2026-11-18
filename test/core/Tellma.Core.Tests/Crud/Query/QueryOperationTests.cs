@@ -699,6 +699,26 @@ namespace Tellma.Core.Tests.Crud.Query
         }
 
         [Fact]
+        public async Task A_query_recomposed_for_a_moved_tag_is_counted_as_one_stale_rerun_by_its_cause()
+        {
+            using MetricCollector<long> reruns = new(_rig.Services.GetRequiredService<IMeterFactory>(), CrudTelemetryNames.MeterName, CrudTelemetryNames.StaleContextReruns);
+            _rig.Grant((QueryModel.Accounts, AccessActions.Read, null));
+            _rig.GrantOnRecompose((QueryModel.Accounts, AccessActions.Read, null));
+            _ = _rig.Script.OnRows(static _ => QueryRig.Page(1));
+
+            // --- One recomposed query, then a plain one in a scope of its own ---
+            for (int i = 0; i < 2; i++)
+            {
+                await using AsyncServiceScope scope = _rig.Scope();
+                RowPage page = await Operation(scope).RunAsync(Surface(QueryModel.Accounts), new QueryRequest(), null, Token);
+                Assert.Equal(1, page.Rows.RowCount);
+            }
+
+            Assert.Equal([true, false, false], _rig.Script.Batches.Select(static batch => batch.IsRefused));
+            Assert.Equal("permissions", Assert.Single(reruns.GetMeasurementSnapshot()).Tags[CrudTelemetryNames.TagTag]);
+        }
+
+        [Fact]
         public async Task A_warm_query_discovers_nothing_again()
         {
             using MetricCollector<double> discoveries = new(_rig.Services.GetRequiredService<IMeterFactory>(), CrudTelemetryNames.MeterName, CrudTelemetryNames.QueryDiscoverDuration);

@@ -39,6 +39,9 @@ namespace Tellma.Core.Crud.Save
         /// <summary>The stored child rows the save deletes by synchronisation, by entity and id.</summary>
         private readonly HashSet<(EntityMetadata Entity, long Id)> _deleted = [];
 
+        /// <summary>The entities whose stored rows the synchronisation deletes, each with the payload collection that dropped them.</summary>
+        private readonly HashSet<DroppedRows> _drops = [];
+
         /// <summary>Runs the checks that follow round trip 1, once; the one-round-trip create runs them without it.</summary>
         /// <returns>A task that completes when the checks ran.</returns>
         /// <exception cref="NotFoundException">An update root is missing or hidden.</exception>
@@ -163,9 +166,10 @@ namespace Tellma.Core.Crud.Save
                     }
                 }
 
+                ValidationPath dropped = owner.Path.Property(collection.Property);
                 foreach (object deleted in stored.Values)
                 {
-                    Delete(collection.Child, deleted);
+                    Delete(collection.Child, deleted, dropped);
                 }
             }
         }
@@ -173,14 +177,16 @@ namespace Tellma.Core.Crud.Save
         /// <summary>Records a stored child the synchronisation deletes, and every child of it the round loaded.</summary>
         /// <param name="entity">The child's entity.</param>
         /// <param name="row">The stored child.</param>
-        private void Delete(EntityMetadata entity, object row)
+        /// <param name="dropped">The payload collection that dropped the child, or its ancestor.</param>
+        private void Delete(EntityMetadata entity, object row, ValidationPath dropped)
         {
             _ = _deleted.Add((entity, PayloadRows.KeyOf(entity, row)));
+            _ = _drops.Add(new DroppedRows(entity, dropped));
             foreach (ChildCollectionMetadata collection in entity.Children)
             {
                 foreach (object child in collection.Getter(row) ?? [])
                 {
-                    Delete(collection.Child, child);
+                    Delete(collection.Child, child, dropped);
                 }
             }
         }

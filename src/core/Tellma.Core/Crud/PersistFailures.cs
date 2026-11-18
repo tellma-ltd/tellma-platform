@@ -15,9 +15,10 @@ namespace Tellma.Core.Crud
 {
     // Spec 0015 §14.2: the executor raises spec 0012's internal data-layer exceptions, and the
     // pipeline translates those a persist raises into the closed set. The rows here are the save's
-    // and the action's; the delete-only rows (the delete-by-query cap and count, Fk.InUse) join them
-    // with the deletes. Retries exhausted and the ambiguous commit are the operation's own, as are
-    // 50412 and 50401, which the guarded runner raises and every operation passes through.
+    // and the action's, with the delete row's Fk.InUse for a row the save's child synchronisation
+    // deletes; the delete-by-query cap and count join them with the deletes. Retries exhausted and
+    // the ambiguous commit are the operation's own, as are 50412 and 50401, which the guarded runner
+    // raises and every operation passes through.
     /// <summary>Translates the data layer's failures of a persist into the exceptions a caller acts on.</summary>
     internal static class PersistFailures
     {
@@ -187,29 +188,76 @@ namespace Tellma.Core.Crud
                 string.Equals(ConstraintNames.UniqueIndex(entity.Table.Name, [property.Column]), indexName, StringComparison.OrdinalIgnoreCase));
         }
 
-        /// <summary>Translates a foreign key violation of a saved row into the reference that names no row.</summary>
+        // Spec 0015 §14.2: SQL Server raises 547 on the referencing table's FK_<Table>_<Column> for an
+        // insert or update that names no row and for a delete of a row still referenced. A reference
+        // a payload row writes is the former, Fk.NotFound; a reference no payload row writes can only
+        // have failed on a row the save's child synchronisation deleted, so it is the delete row's
+        // Fk.InUse, naming the referencing entity and property, at the payload collection that
+        // dropped the row when one alone dropped rows of the referenced entity, else at the root.
+        /// <summary>Translates a foreign key violation of a persist into the reference that names no row or the row still referenced.</summary>
         /// <param name="foreignKey">The violation.</param>
         /// <param name="context">What the operation knows.</param>
-        /// <returns>The exception to raise; null for a constraint the stack's tables do not hold.</returns>
+        /// <returns>The exception to raise; null for a constraint the persist cannot have violated.</returns>
         private static ValidationException? ForeignKey(ForeignKeyViolationException foreignKey, PersistFailureContext context)
         {
+            // --- A reference of the stack's tables that a payload row writes: the target names no row ---
             foreach (EntityMetadata entity in Entities(context.Root))
             {
-                ReferenceMetadata? reference = entity.References.FirstOrDefault(candidate =>
-                    string.Equals(ConstraintNames.ForeignKey(entity.Table.Name, candidate.ForeignKey.Column), foreignKey.ConstraintName, StringComparison.OrdinalIgnoreCase));
-                if (reference is null)
+                if (Referencing(entity, foreignKey.ConstraintName) is not ReferenceMetadata reference)
                 {
                     continue;
                 }
 
                 // The one row carrying a value names it, widened as the validators name it; several
                 // leave the value unknown.
-                return OnlyCarrier(context, entity, reference.ForeignKey, out object? row) is ValidationPath at
-                    ? new ValidationException([new ValidationError(at, ValidationCodes.FkNotFound, Arguments(("entity", reference.Target.Name), ("id", PayloadRows.ValueOf(reference.ForeignKey, row!))))])
-                    : AtRoot(ValidationCodes.FkNotFound, Arguments(("entity", reference.Target.Name), ("property", reference.ForeignKey.Name)));
+                if (OnlyCarrier(context, entity, reference.ForeignKey, out object? row) is ValidationPath at)
+                {
+                    return new ValidationException([new ValidationError(at, ValidationCodes.FkNotFound, Arguments(("entity", reference.Target.Name), ("id", PayloadRows.ValueOf(reference.ForeignKey, row!))))]);
+                }
+
+                if (context.Rows.Any(candidate => ReferenceEquals(candidate.Entity, entity) && reference.ForeignKey.Getter(candidate.Row) is not null))
+                {
+                    return AtRoot(ValidationCodes.FkNotFound, Arguments(("entity", reference.Target.Name), ("property", reference.ForeignKey.Name)));
+                }
+
+                break;
+            }
+
+            // --- A reference, of any table, to a row the child synchronisation deleted: still in use ---
+            foreach (EntityMetadata entity in context.Model ?? [.. Entities(context.Root)])
+            {
+                if (Referencing(entity, foreignKey.ConstraintName) is not ReferenceMetadata reference)
+                {
+                    continue;
+                }
+
+                // The conventions name a constraint by table name alone, so another schema's table of
+                // the same name may match; only a reference to an entity the save deleted rows of counts.
+                ValidationPath[] dropped = [.. context.Drops
+                    .Where(drop => ReferenceEquals(drop.Entity, reference.Target) || drop.Entity.Table == reference.Target.Table)
+                    .Select(static drop => drop.Collection)
+                    .DistinctBy(static path => path.ToString())];
+                if (dropped.Length == 0)
+                {
+                    continue;
+                }
+
+                return dropped.Length == 1
+                    ? new ValidationException([new ValidationError(dropped[0], ValidationCodes.FkInUse, Arguments(("entity", entity.Name), ("property", reference.ForeignKey.Name)))])
+                    : AtRoot(ValidationCodes.FkInUse, Arguments(("entity", entity.Name), ("property", reference.ForeignKey.Name)));
             }
 
             return null;
+        }
+
+        /// <summary>The reference of an entity whose foreign key the conventions name as the constraint.</summary>
+        /// <param name="entity">The entity.</param>
+        /// <param name="constraintName">The constraint's name.</param>
+        /// <returns>The reference; null when the entity's table holds no such constraint.</returns>
+        private static ReferenceMetadata? Referencing(EntityMetadata entity, string constraintName)
+        {
+            return entity.References.FirstOrDefault(candidate =>
+                string.Equals(ConstraintNames.ForeignKey(entity.Table.Name, candidate.ForeignKey.Column), constraintName, StringComparison.OrdinalIgnoreCase));
         }
 
         /// <summary>The path of the one payload row of an entity that carries a value of a property.</summary>
@@ -290,7 +338,19 @@ namespace Tellma.Core.Crud
     /// <param name="LanguageIndex">The request's 1-based content language, which a conflict's modifier is named in.</param>
     /// <param name="CarriesQueryText">Whether the request carries Queryex text the caller can change, so an arithmetic failure is theirs.</param>
     internal sealed record PersistFailureContext(
-        string Resource, string Action, EntityMetadata Root, IReadOnlyList<PersistRow> Rows, int LanguageIndex, bool CarriesQueryText = false);
+        string Resource, string Action, EntityMetadata Root, IReadOnlyList<PersistRow> Rows, int LanguageIndex, bool CarriesQueryText = false)
+    {
+        /// <summary>Every entity of the tenant model, whose references may point at a row the persist deletes; null for the stack's own.</summary>
+        public IReadOnlyList<EntityMetadata>? Model { get; init; }
+
+        /// <summary>The entities whose stored rows the persist's child synchronisation deletes, each with the payload collection that dropped them.</summary>
+        public IReadOnlyList<DroppedRows> Drops { get; init; } = [];
+    }
+
+    /// <summary>Stored rows of an entity a save's child synchronisation deletes, and the payload collection that dropped them or their ancestor.</summary>
+    /// <param name="Entity">The deleted rows' entity.</param>
+    /// <param name="Collection">The payload collection's path, such as <c>[0].Lines</c>.</param>
+    internal readonly record struct DroppedRows(EntityMetadata Entity, ValidationPath Collection);
 
     /// <summary>One payload row of a persist.</summary>
     /// <param name="Entity">The row's entity.</param>

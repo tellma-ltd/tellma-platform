@@ -4,22 +4,24 @@
 // LICENSE file in the root directory of this source tree.
 
 using Tellma.Core.Abstractions.Data;
+using Tellma.Core.Access;
 using Tellma.Core.Data;
 
 namespace Tellma.Core.Crud
 {
     // The unit of work's name is spec 0015 §5.1; the instruments and the cancelled outcome are
-    // §16.1 and §14.1.
+    // §16.1 and §14.1, the stale-context re-runs among them.
     /// <summary>
     ///     The frame every stack operation runs in: it names the scope's unit of work after the first
-    ///     operation the scope runs, and counts and times each operation under the outcome it ended
-    ///     with. Scoped.
+    ///     operation the scope runs, counts every compose the guarded runner re-enters inside it by its
+    ///     cause, and counts and times each operation under the outcome it ended with. Scoped.
     /// </summary>
     /// <param name="scope">The scope's data-access counters, whose unit of work this names.</param>
     /// <param name="metrics">The pipeline's instruments.</param>
     /// <param name="cancellation">The scope's data cancellation, whose abort counts as the caller's.</param>
     /// <param name="time">The clock the durations are measured on.</param>
-    internal sealed class CrudOperations(DataAccessScope scope, CrudMetrics metrics, DataCancellation cancellation, TimeProvider time)
+    /// <param name="recompositions">Where the guarded runner reports each re-entered compose.</param>
+    internal sealed class CrudOperations(DataAccessScope scope, CrudMetrics metrics, DataCancellation cancellation, TimeProvider time, RecomposeLog recompositions)
     {
         /// <summary>Runs one operation in the frame.</summary>
         /// <typeparam name="TResult">What the operation returns.</typeparam>
@@ -50,6 +52,7 @@ namespace Tellma.Core.Crud
 
             long started = time.GetTimestamp();
             string outcome = CrudOutcomes.Ok;
+            using IDisposable counting = recompositions.Count(metrics.CountStaleRerun);
             try
             {
                 return await body().ConfigureAwait(false);

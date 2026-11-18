@@ -11,12 +11,10 @@ using Tellma.Core.Abstractions.Assignments;
 using Tellma.Core.Abstractions.Caching;
 using Tellma.Core.Abstractions.Crud;
 using Tellma.Core.Abstractions.Data;
-using Tellma.Core.Abstractions.Entities;
 using Tellma.Core.Abstractions.Errors;
 using Tellma.Core.Abstractions.Notifications;
 using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.Abstractions.Validation;
-using Tellma.Core.Access;
 using Tellma.Core.Crud.Details;
 using Tellma.Core.Crud.Validation;
 using Tellma.Core.Data;
@@ -45,15 +43,6 @@ namespace Tellma.Core.Crud.Save
         /// <summary>The wait a caller is told before reloading after a commit the database could not confirm.</summary>
         private static readonly TimeSpan DatabaseRetryAfter = TimeSpan.FromSeconds(1);
 
-        /// <summary>The security tables whose writes the access guards hold to their invariants.</summary>
-        private static readonly TableName[] SecurityTables =
-        [
-            new("core", "Users"),
-            new("core", "Roles"),
-            new("core", "RoleMemberships"),
-            new("core", "Permissions"),
-        ];
-
         /// <summary>The <c>entity:*</c> dependencies the validation rounds were served under, by name, each as first served.</summary>
         private readonly Dictionary<string, VersionTagDependency> _served = new(StringComparer.Ordinal);
 
@@ -76,7 +65,7 @@ namespace Tellma.Core.Crud.Save
         private DetailsComposition<TEntity, TKey>? _readBack;
 
         /// <summary>The tables of the stack: the root's and every child collection's, at every depth.</summary>
-        private IReadOnlySet<TableName> StackTables => field ??= Tables(_root);
+        private IReadOnlySet<TableName> StackTables => field ??= StackTableSet.Of(_root);
 
         /// <summary>Persists the validated payload, commits it, and runs the post-commit phase.</summary>
         /// <returns>The saved rows' ids, and the rows when asked for.</returns>
@@ -86,8 +75,7 @@ namespace Tellma.Core.Crud.Save
             // --- The tenant-state verdict: a save is a mutation without AllowWhenReadOnly ---
             PersistVerdict.Ensure(_operation.Accessor.Current, mutation: true, allowWhenReadOnly: false, _operation.Frames.Open);
 
-            // --- One Persist batch; a cause the validation rounds left is not this batch's ---
-            _ = _operation.Recompositions.Take();
+            // --- One Persist batch ---
             BatchOutcome outcome;
             try
             {
@@ -116,12 +104,12 @@ namespace Tellma.Core.Crud.Save
                 throw;
             }
 
-            // --- The commit: the response, then the post-commit phase on the committed rows ---
+            // --- The commit: the post-commit phase on the committed rows, then the response, whose
+            // assembly runs contributor code that may fail after the commit ---
             _operation.Accessor.Current.ApplyCultures();
             SaveHandle handle = _handle ?? throw new InvalidOperationException("A committed persist composed the emitter's statement.");
-            EntitiesResult<TEntity> result = _readBack?.Complete() ?? IdsOnly();
             await AfterCommitAsync(outcome, handle.Receipt.Value.Stamp).ConfigureAwait(false);
-            return result;
+            return _readBack?.Complete() ?? IdsOnly();
         }
 
         // Spec 0015 §6.7: the fixed prefix and suffix are the executor's; between them the pipeline
@@ -134,15 +122,10 @@ namespace Tellma.Core.Crud.Save
         /// <exception cref="ForbiddenException">The connected user's set no longer grants a save of the stack.</exception>
         private async ValueTask ComposePersistAsync(ConnectedUser user, IDataBatch batch)
         {
-            // --- A re-entry: counted, then the validators re-run in memory under the fresh user ---
+            // --- A re-entry, which the operation's frame counts: the validators re-run in memory under the fresh user ---
             bool first = ++_entries == 1;
             if (!first)
             {
-                if (_operation.Recompositions.Take() is RecomposeCause cause)
-                {
-                    _operation.Metrics.CountStaleRerun(cause);
-                }
-
                 await RevalidateAsync(user).ConfigureAwait(false);
             }
 
@@ -163,7 +146,7 @@ namespace Tellma.Core.Crud.Save
             }
 
             // --- Step 4, ahead of item 1: the access guards' lock, when the stack writes a security table ---
-            bool guarded = !_operation.Accessor.Current.IsSystem && StackTables.Any(IsSecurityTable);
+            bool guarded = !_operation.Accessor.Current.IsSystem && StackTableSet.WritesSecurityTable(StackTables);
             if (guarded)
             {
                 _operation.AccessGuards.ContributeLock(batch);
@@ -323,55 +306,78 @@ namespace Tellma.Core.Crud.Save
         }
 
         // Spec 0015 §8: a save whose response was lost around COMMIT, and whose inserted rows the
-        // executor's probe found, committed. The read-back is re-issued as a plain Read, under the
-        // caller's Read filter, and the post-commit phase proceeds, whatever the caller's token says.
+        // executor's probe found, committed. A plain Read re-issues the read-back over the final ids,
+        // as the one inside the transaction reads the saved ids, so every id is answered whatever the
+        // caller's Read filter admits, and reads the roots' stamp with it. The post-commit phase runs
+        // whether or not that read succeeds, and whatever the caller's token says. The batch's commit
+        // callbacks do not run: the executor never read the lost batch's results.
         /// <summary>Reads back a save whose commit the probe proved, then runs its post-commit phase.</summary>
         /// <returns>The saved rows' ids, and the rows when asked for.</returns>
         private async Task<EntitiesResult<TEntity>> AfterProvenCommitAsync()
         {
-            DetailsComposition<TEntity, TKey>? composition = null;
             TKey[] ids = FinalIds();
-            BatchOutcome outcome = await _operation.Runner.RunAsync(
-                BatchPurpose.Read,
-                (user, batch) =>
-                {
-                    composition = _operation.Details.Compose(_stack, _behavior, _options.Details, ids, idsSource: null, user, batch);
-                    return ValueTask.CompletedTask;
-                },
-                static (_, outcome) => outcome,
-                CancellationToken.None).ConfigureAwait(false);
-            _operation.Accessor.Current.ApplyCultures();
-
-            // The batch's stamp is the roots' modification time, which the rows read back carry.
-            EntitiesResult<TEntity> read = composition!.Complete();
+            PropertyMetadata? stampProperty = _roots.Count > 0 ? _roots[0].Rules.Stamp : null;
+            DetailsComposition<TEntity, TKey>? composition = null;
+            BatchResult<EntityQueryResult<TEntity>>? stamps = null;
+            BatchOutcome? outcome = null;
             DateTimeOffset stamp = default;
-            foreach (object entity in read.Entities)
+            try
             {
-                if (entity is TopLevelEntity<TKey> stamped && stamped.ModifiedAt > stamp)
+                outcome = await _operation.Runner.RunAsync(
+                    BatchPurpose.Read,
+                    (user, batch) =>
+                    {
+                        // --- The final ids, the roots' stamp over them, and the details when asked for ---
+                        batch.Limits = QueryexProfiles.PipelineLimits;
+                        SqlIdentifier saved = KeyTables.Bind(batch, ids);
+                        stamps = stampProperty is null
+                            ? null
+                            : batch.Query(new EntityQuery<TEntity> { Select = stampProperty.Name, Restrictions = [new KeySetRestriction(_map.Descriptor(_root).Key.Name, saved.Name)] });
+                        composition = _options.ReturnEntities
+                            ? _operation.Details.Compose(_stack, _behavior, _options.Details, ids, saved, user, batch)
+                            : null;
+                        return ValueTask.CompletedTask;
+                    },
+                    static (_, outcome) => outcome,
+                    CancellationToken.None).ConfigureAwait(false);
+                _operation.Accessor.Current.ApplyCultures();
+
+                // One batch stamped every root it wrote; a later save of one of them moves its stamp past.
+                foreach (TEntity entity in stamps?.Value.Entities ?? [])
                 {
-                    stamp = stamped.ModifiedAt;
+                    if ((DateTimeOffset?)stampProperty!.Getter(entity) is DateTimeOffset modified && modified > stamp)
+                    {
+                        stamp = modified;
+                    }
                 }
             }
+            finally
+            {
+                await AfterCommitAsync(outcome, stamp).ConfigureAwait(false);
+            }
 
-            await AfterCommitAsync(outcome, stamp).ConfigureAwait(false);
-            return _options.ReturnEntities ? read : IdsOnly();
+            return composition?.Complete() ?? IdsOnly();
         }
 
         // Spec 0015 §13.2: the hook, then every effect, after the commit is acknowledged and outside
         // any transaction. A failure is logged with the operation's trace id and counted by the
         // component's type name; it never changes the response and is never retried.
         /// <summary>Meters the committed save and runs its post-commit phase.</summary>
-        /// <param name="committed">The committed batch's outcome.</param>
-        /// <param name="stamp">The batch's stamp.</param>
+        /// <param name="committed">The outcome of the batch that committed, or of the read that proved it; null when neither answered.</param>
+        /// <param name="stamp">The batch's stamp; the default when no read answered it.</param>
         /// <returns>A task that completes when every participant returned.</returns>
-        private async Task AfterCommitAsync(BatchOutcome committed, DateTimeOffset stamp)
+        private async Task AfterCommitAsync(BatchOutcome? committed, DateTimeOffset stamp)
         {
-            // --- The save's instruments ---
+            // --- The save's instruments: the rows at every depth, and an override of a change the caller had not seen ---
             _operation.Metrics.RecordSaveEntities(_rows.Count, CrudMetrics.Source(_options.Source), CrudMetrics.Lane(_rows.Count, _operation.LargeBatchThreshold));
-            if (_options.Concurrency == ConcurrencyMode.Override && _roots.Exists(static root => !root.IsNew))
+            if (_options.Concurrency == ConcurrencyMode.Override && _roots.Exists(Overrode))
             {
                 _operation.Metrics.CountOverride();
             }
+
+            // Without an answer, the tags are this instance's last snapshot of the tenant's.
+            VersionTagSnapshot tags = committed?.VersionTags
+                ?? _operation.Services.GetRequiredService<IVersionTagSnapshots>().Current(_operation.Accessor.Current.RequireTenant().Id);
 
             // --- The hook, then every effect, each failure contained ---
             SavePersistOutcome<TEntity> outcome = new()
@@ -379,8 +385,8 @@ namespace Tellma.Core.Crud.Save
                 Entities = _entities,
                 Stamp = stamp,
                 Context = _operation.Accessor.Current,
-                VersionTags = committed.VersionTags,
-                UserVersionTags = committed.UserVersionTags,
+                VersionTags = tags,
+                UserVersionTags = committed?.UserVersionTags,
                 Options = _options,
                 BeforeImages = _context.BeforeImages,
             };
@@ -389,6 +395,17 @@ namespace Tellma.Core.Crud.Save
             {
                 await ContainedAsync(effect.GetType(), () => effect.AfterCommitAsync(outcome)).ConfigureAwait(false);
             }
+        }
+
+        /// <summary>Whether an update root overwrote a stored row whose stamp differed from the one the caller echoed.</summary>
+        /// <param name="root">The root.</param>
+        /// <returns>True when it did.</returns>
+        private bool Overrode(SaveRow root)
+        {
+            return !root.IsNew
+                && root.Rules.Stamp is PropertyMetadata stamp
+                && root.Before is object stored
+                && (DateTimeOffset?)stamp.Getter(stored) != _stamps[root.RootIndex];
         }
 
         /// <summary>Runs one post-commit participant, logging and counting its failure instead of raising it.</summary>
@@ -436,12 +453,12 @@ namespace Tellma.Core.Crud.Save
         /// <param name="batch">The round's batch, once composed.</param>
         private void Served(IDataBatch batch)
         {
-            if (batch is not DataBatch data)
+            if (batch is not IBatchDependencies declared)
             {
                 return;
             }
 
-            foreach (VersionTagDependency dependency in data.Dependencies)
+            foreach (VersionTagDependency dependency in declared.Dependencies)
             {
                 if (dependency.Name.StartsWith(VersionTagNames.EntityPrefix, StringComparison.Ordinal))
                 {
@@ -472,7 +489,11 @@ namespace Tellma.Core.Crud.Save
                 AccessActions.Save,
                 _root,
                 [.. _rows.Select(static row => new PersistRow(row.Entity, row.Row, row.Path))],
-                _operation.Accessor.Current.ContentLanguageIndex);
+                _operation.Accessor.Current.ContentLanguageIndex)
+            {
+                Model = _operation.Services.GetRequiredService<IEntityMetadataProvider>().All,
+                Drops = [.. _drops],
+            };
         }
 
         /// <summary>The payload roots' final ids, in payload order, each once.</summary>
@@ -502,36 +523,6 @@ namespace Tellma.Core.Crud.Save
             {
                 authority.SetCallerAuthority(tables);
             }
-        }
-
-        /// <summary>Whether a table is one of the security tables the access guards hold to their invariants.</summary>
-        /// <param name="table">The table.</param>
-        /// <returns>True when it is.</returns>
-        private static bool IsSecurityTable(TableName table)
-        {
-            return SecurityTables.Any(security =>
-                string.Equals(security.Schema, table.Schema, StringComparison.OrdinalIgnoreCase) && string.Equals(security.Name, table.Name, StringComparison.OrdinalIgnoreCase));
-        }
-
-        /// <summary>The tables of an entity and of every entity its collections hold, at every depth.</summary>
-        /// <param name="root">The entity.</param>
-        /// <returns>The tables.</returns>
-        private static HashSet<TableName> Tables(EntityMetadata root)
-        {
-            HashSet<TableName> tables = [];
-            Stack<EntityMetadata> pending = new([root]);
-            while (pending.TryPop(out EntityMetadata? entity))
-            {
-                if (tables.Add(entity.Table))
-                {
-                    foreach (ChildCollectionMetadata collection in entity.Children)
-                    {
-                        pending.Push(collection.Child);
-                    }
-                }
-            }
-
-            return tables;
         }
     }
 }

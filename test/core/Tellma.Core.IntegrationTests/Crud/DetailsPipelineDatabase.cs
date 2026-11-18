@@ -18,7 +18,8 @@ namespace Tellma.Core.IntegrationTests.Crud
 {
     /// <summary>
     ///     The two tenant databases of <see cref="ConnectDatabase" />, served by an instance that adds
-    ///     a details contributor to the widget, with the first tenant seeded once with the rows the
+    ///     a details contributor and the save probe's validator and effect to the widget, with the
+    ///     first tenant seeded once with the rows the
     ///     details reads cover: four widgets with parts, a small tree of nodes with links between
     ///     them, a root with more children than a level may return, and two lookups, and the second
     ///     tenant with more lookups than the list's cache holds. Each test seeds its own caller and
@@ -93,8 +94,11 @@ namespace Tellma.Core.IntegrationTests.Crud
         /// <summary>The two tenant databases and their composition.</summary>
         public ConnectDatabase Connect { get; } = new(sql);
 
-        /// <summary>The instance with the widget's details contributor.</summary>
+        /// <summary>The instance with the widget's details contributor and save probe.</summary>
         public IServiceProvider Instance => _instance ?? throw new InvalidOperationException("The databases are not created yet.");
+
+        /// <summary>The widget's save probe, inert until a test arms it for a widget's code.</summary>
+        public WidgetSaveProbe Probe { get; } = new();
 
         /// <inheritdoc />
         public async ValueTask InitializeAsync()
@@ -102,7 +106,9 @@ namespace Tellma.Core.IntegrationTests.Crud
             await Connect.InitializeAsync();
             await Connect.ExecuteAsync(ConnectDatabase.TenantA, Seed);
             await Connect.ExecuteAsync(ConnectDatabase.TenantB, OversizedSeed);
-            _instance = Connect.CreateInstance(compose: static tellma => tellma.AddFeature(new WidgetDetailsFeature()));
+            _instance = Connect.CreateInstance(
+                configure: services => services.AddSingleton(Probe),
+                compose: static tellma => tellma.AddFeature(new WidgetDetailsFeature()));
         }
 
         /// <inheritdoc />
@@ -151,7 +157,7 @@ namespace Tellma.Core.IntegrationTests.Crud
             return subject;
         }
 
-        /// <summary>The feature that attaches <see cref="WidgetDetails" /> to the fixture's widget.</summary>
+        /// <summary>The feature that attaches <see cref="WidgetDetails" /> and the save probe to the fixture's widget.</summary>
         private sealed class WidgetDetailsFeature : ITellmaFeature
         {
             /// <inheritdoc />
@@ -166,7 +172,10 @@ namespace Tellma.Core.IntegrationTests.Crud
             public void Contribute(FeatureContribution contribution)
             {
                 ArgumentNullException.ThrowIfNull(contribution);
-                _ = contribution.DetailsContributor<Widget, WidgetDetails>();
+                _ = contribution
+                    .DetailsContributor<Widget, WidgetDetails>()
+                    .Validator<Widget, WidgetSaveProbeValidator>()
+                    .PersistEffect<Widget, WidgetSaveProbeEffect>();
             }
         }
     }

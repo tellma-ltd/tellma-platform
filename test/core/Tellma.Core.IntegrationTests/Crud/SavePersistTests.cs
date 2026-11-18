@@ -11,6 +11,7 @@ using Tellma.Core.Abstractions.Crud;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Errors;
 using Tellma.Core.Abstractions.Tenancy;
+using Tellma.Core.Abstractions.Validation;
 using Tellma.Core.IntegrationTests.Access;
 using Tellma.Core.IntegrationTests.Data;
 using Tellma.Testing.Entities;
@@ -22,9 +23,12 @@ namespace Tellma.Core.IntegrationTests.Crud
     ///     trip and an update on two, each returning the rows it committed; an update keeps what the
     ///     server owns; a row another connection changed, deleted, took the unique value of or whose
     ///     reference it deleted between the validation round trip and the persist is refused as the
-    ///     caller can act on it; the caller's statements commit with the save, and a distribution's guard rolls both
-    ///     back; a moved permissions tag recomposes the persist once; a read-only tenant refuses it; and
-    ///     a persist once sent commits whatever the caller's token says.
+    ///     caller can act on it, a tree move closed into a cycle among them; a move re-paths and
+    ///     recounts the rows outside the payload; the caller's statements commit with the save, and a
+    ///     distribution's guard rolls both back; a moved permissions tag recomposes the persist once,
+    ///     re-running the validators in memory, and a second move or a load the first run never made
+    ///     is stale; a read-only tenant refuses it; and a persist once sent commits whatever the
+    ///     caller's token says.
     /// </summary>
     /// <param name="fixture">The seeded tenant databases.</param>
     [Trait("Category", "Integration")]
@@ -170,6 +174,54 @@ namespace Tellma.Core.IntegrationTests.Crud
         }
 
         [Fact]
+        public async Task A_move_another_connection_closes_into_a_cycle_before_the_commit_is_refused_at_the_root_and_rolled_back()
+        {
+            (_, string subject) = await fixture.SeedCallerAsync((Nodes, AccessActions.Read, null), (Nodes, AccessActions.Save, null));
+            await fixture.Connect.ExecuteAsync(
+                ConnectDatabase.TenantA,
+                DataQueryDatabase.Stamped("fixture.Nodes", "[Id], [Code], [Name], [Node], [ParentId]", "(70, 'N-cycle-a', N'A', '/70/', NULL)", "(71, 'N-cycle-b', N'B', '/71/', NULL)"));
+
+            // --- The save moves A under B; meanwhile another connection moves B under A ---
+            await using AsyncServiceScope scope = await fixture.ScopeAsync(subject);
+            Node moving = Assert.Single((await NodeService(scope).GetByIdAsync(70, new DetailsRequest(), Token)).Entities);
+            moving.ParentId = 71;
+            SaveOptions options = new() { ReturnEntities = false, OnPersist = Meanwhile("UPDATE [fixture].[Nodes] SET [ParentId] = 70, [Node] = '/70/71/' WHERE [Id] = 71;") };
+
+            ValidationException refused = await Assert.ThrowsAsync<ValidationException>(() => NodeService(scope).SaveAsync([moving], options, Token));
+
+            // --- One 422 at the root, never a 500; only the other connection's move stands ---
+            Assert.Equal([$" {ValidationCodes.TreeCycle}"], Lines(refused));
+            Assert.Equal("70:/70/::1:1,71:/70/71/:70:1:1", await TreeAsync(70, 71));
+        }
+
+        [Fact]
+        public async Task A_move_re_paths_the_descendants_and_recounts_the_ancestors_outside_the_payload_without_stamping_them()
+        {
+            (_, string subject) = await fixture.SeedCallerAsync((Nodes, AccessActions.Read, null), (Nodes, AccessActions.Save, null));
+            await fixture.Connect.ExecuteAsync(
+                ConnectDatabase.TenantA,
+                DataQueryDatabase.Stamped(
+                    "fixture.Nodes",
+                    "[Id], [Code], [Name], [Node], [ParentId], [SubtreeCount], [ActiveSubtreeCount]",
+                    "(72, 'N-move-r', N'R', '/72/', NULL, 3, 3)",
+                    "(73, 'N-move-c', N'C', '/72/73/', 72, 2, 2)",
+                    "(74, 'N-move-g', N'G', '/72/73/74/', 73, 1, 1)",
+                    "(75, 'N-move-t', N'T', '/75/', NULL, 1, 1)"));
+            const string stamps = "SELECT STRING_AGG(CONVERT(varchar(40), [ModifiedAt], 127), ',') WITHIN GROUP (ORDER BY [Id]) FROM [fixture].[Nodes] WHERE [Id] IN (72, 74, 75);";
+            string? before = await fixture.Connect.ScalarAsync<string>(ConnectDatabase.TenantA, stamps);
+
+            // --- The payload holds C alone, moved from under R to under T ---
+            await using AsyncServiceScope scope = await fixture.ScopeAsync(subject);
+            Node moving = Assert.Single((await NodeService(scope).GetByIdAsync(73, new DetailsRequest(), Token)).Entities);
+            moving.ParentId = 75;
+            _ = await NodeService(scope).SaveAsync([moving], new SaveOptions { ReturnEntities = false }, Token);
+
+            // --- G re-pathed under C's new node, R and T recounted, and none of the three stamped ---
+            Assert.Equal("72:/72/::1:1,73:/75/73/:75:2:2,74:/75/73/74/:73:1:1,75:/75/::3:3", await TreeAsync(72, 75));
+            Assert.Equal(before, await fixture.Connect.ScalarAsync<string>(ConnectDatabase.TenantA, stamps));
+        }
+
+        [Fact]
         public async Task The_callers_statements_commit_with_the_save_and_a_distributions_guard_rolls_both_back_as_a_validation_failure()
         {
             (_, string subject) = await fixture.SeedCallerAsync((Exports, AccessActions.Read, null), (Exports, AccessActions.Save, null));
@@ -236,6 +288,58 @@ namespace Tellma.Core.IntegrationTests.Crud
         }
 
         [Fact]
+        public async Task A_persist_whose_permissions_move_after_its_validation_round_re_runs_the_validators_in_memory_and_commits_its_effect_once()
+        {
+            (int userId, string subject) = await fixture.SeedCallerAsync((Widgets, AccessActions.Read, null), (Widgets, AccessActions.Save, null));
+            await WarmWidgetsAsync(subject);
+            WidgetSaveArm arm = fixture.Probe.Arm("W-stale-1", new WidgetSaveArm { Loads = static _ => [1], JobId = 7404 });
+
+            await using AsyncServiceScope scope = await fixture.ScopeAsync(subject);
+            DataAccessScope access = scope.ServiceProvider.GetRequiredService<DataAccessScope>();
+            int before = access.RoundTrips;
+            SaveOptions options = new() { ReturnEntities = false, OnPersist = Meanwhile(() => fixture.Connect.BumpPermissionsAsync(userId)) };
+
+            long id = Assert.Single((await WidgetService(scope).SaveAsync([StaleWidget(1)], options, Token)).Ids);
+
+            // --- The validation round, the persist its guard refused and the recomposed one: the
+            // validator ran again in memory, the effect's statement was replayed and committed once ---
+            Assert.Equal(3, access.RoundTrips - before);
+            Assert.Equal((2, 1, 1), (arm.Validations, arm.Contributions, arm.Commits));
+            Assert.Equal(1, await JobsAsync(7404));
+            Assert.Equal(id, await fixture.Connect.ScalarAsync<int>(ConnectDatabase.TenantA, "SELECT [Id] FROM [fixture].[Widgets] WHERE [Code] = 'W-stale-1';"));
+        }
+
+        [Theory]
+        [InlineData(2, false)]
+        [InlineData(3, true)]
+        public async Task A_second_move_or_a_load_the_first_run_never_made_during_the_in_memory_re_run_is_stale_and_commits_nothing(int number, bool newLoad)
+        {
+            (int userId, string subject) = await fixture.SeedCallerAsync((Widgets, AccessActions.Read, null), (Widgets, AccessActions.Save, null));
+            await WarmWidgetsAsync(subject);
+            int jobId = 7403 + number;
+            WidgetSaveArm arm = fixture.Probe.Arm(
+                $"W-stale-{number}",
+                new WidgetSaveArm
+                {
+                    // The re-run either asks for a widget the round never loaded, or moves the tag again
+                    // while the recomposed persist is composed.
+                    Loads = run => run == 1 || !newLoad ? [1] : [2],
+                    Validated = run => run == 2 && !newLoad ? fixture.Connect.BumpPermissionsAsync(userId) : Task.CompletedTask,
+                    JobId = jobId,
+                });
+
+            await using AsyncServiceScope scope = await fixture.ScopeAsync(subject);
+            SaveOptions options = new() { ReturnEntities = false, OnPersist = Meanwhile(() => fixture.Connect.BumpPermissionsAsync(userId)) };
+
+            _ = await Assert.ThrowsAsync<StaleContextException>(() => WidgetService(scope).SaveAsync([StaleWidget(number)], options, Token));
+
+            // --- The validator re-ran, the effect contributed once, and nothing committed ---
+            Assert.Equal((2, 1, 0), (arm.Validations, arm.Contributions, arm.Commits));
+            Assert.Equal(0, await JobsAsync(jobId));
+            Assert.Equal(0, await fixture.Connect.ScalarAsync<int>(ConnectDatabase.TenantA, Invariant($"SELECT COUNT(*) FROM [fixture].[Widgets] WHERE [Code] = 'W-stale-{number}';")));
+        }
+
+        [Fact]
         public async Task A_read_only_tenant_refuses_the_persist_of_a_save()
         {
             (_, string subject) = await fixture.SeedCallerAsync((Exports, AccessActions.Read, null), (Exports, AccessActions.Save, null));
@@ -281,10 +385,21 @@ namespace Tellma.Core.IntegrationTests.Crud
         /// <returns>The save's caller statements, which append nothing.</returns>
         private Action<IDataBatch> Meanwhile(string statement)
         {
+            return Meanwhile(() => fixture.Connect.ExecuteAsync(ConnectDatabase.TenantA, statement));
+        }
+
+        /// <summary>
+        ///     Another caller's commit in the window between a save's validation round trip and its
+        ///     persist: the write commits on a connection of its own while the persist is composed.
+        /// </summary>
+        /// <param name="write">The other caller's write.</param>
+        /// <returns>The save's caller statements, which append nothing.</returns>
+        private static Action<IDataBatch> Meanwhile(Func<Task> write)
+        {
             // The caller's statements are composed synchronously, after the validation round trip
             // completed and before the persist is sent; the other connection's commit is awaited off
             // the composing thread.
-            return _ => Task.Run(() => fixture.Connect.ExecuteAsync(ConnectDatabase.TenantA, statement)).GetAwaiter().GetResult();
+            return _ => Task.Run(write).GetAwaiter().GetResult();
         }
 
         /// <summary>Appends a caller's insert of a job no other test's job takes.</summary>
@@ -307,6 +422,35 @@ namespace Tellma.Core.IntegrationTests.Crud
         private async Task WarmAsync(string subject)
         {
             _ = await CreateExportAsync(subject, "warm");
+        }
+
+        /// <summary>Saves one widget, which warms the caller's connection and set and the widgets' id buffer.</summary>
+        /// <param name="subject">The caller's subject.</param>
+        /// <returns>A task that completes when the widget committed.</returns>
+        private async Task WarmWidgetsAsync(string subject)
+        {
+            await using AsyncServiceScope scope = await fixture.ScopeAsync(subject);
+            string warm = Guid.NewGuid().ToString("N");
+            _ = await WidgetService(scope).SaveAsync([new Widget { Code = $"W-{warm[..12]}", Kind = WidgetKind.Plain, Name = "Warm", Subject = $"s-{warm}" }], new SaveOptions { ReturnEntities = false }, Token);
+        }
+
+        /// <summary>A new widget whose code the probe may be armed for.</summary>
+        /// <param name="number">The widget's number, which names its code and subject.</param>
+        /// <returns>The widget.</returns>
+        private static Widget StaleWidget(int number)
+        {
+            return new Widget { Code = Invariant($"W-stale-{number}"), Kind = WidgetKind.Plain, Name = Invariant($"Stale {number}"), Subject = Invariant($"s-stale-{number}") };
+        }
+
+        /// <summary>A range of nodes, each as its id, node, parent, subtree count and active subtree count, ordered by id.</summary>
+        /// <param name="from">The first id.</param>
+        /// <param name="to">The last id.</param>
+        /// <returns>The nodes, comma-separated.</returns>
+        private Task<string?> TreeAsync(int from, int to)
+        {
+            return fixture.Connect.ScalarAsync<string>(
+                ConnectDatabase.TenantA,
+                Invariant($"SELECT STRING_AGG(CONCAT([Id], ':', [Node].ToString(), ':', [ParentId], ':', [SubtreeCount], ':', [ActiveSubtreeCount]), ',') WITHIN GROUP (ORDER BY [Id]) FROM [fixture].[Nodes] WHERE [Id] BETWEEN {from} AND {to};"));
         }
 
         /// <summary>Creates an export.</summary>

@@ -5,8 +5,10 @@
 
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Diagnostics.Metrics.Testing;
 using System.Data;
 using System.Data.Common;
+using System.Diagnostics.Metrics;
 using System.Text.Json;
 using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Api;
@@ -114,6 +116,22 @@ namespace Tellma.Core.Tests.Crud.Details
             Assert.Equal(["ShipTo.", "BillTo."], selects.Select(static select => select[..7]));
             Assert.All(selects, select => Assert.All(select.Split(", "), item => Assert.StartsWith(select[..7], item, StringComparison.Ordinal)));
             Assert.Equal(1, _rig.Script.RoundTrips);
+        }
+
+        [Fact]
+        public async Task A_read_recomposed_for_a_moved_tag_is_counted_as_one_stale_rerun_by_its_cause()
+        {
+            using MetricCollector<long> reruns = new(_rig.Services.GetRequiredService<IMeterFactory>(), CrudTelemetryNames.MeterName, CrudTelemetryNames.StaleContextReruns);
+            _rig.Grant((DetailsModel.Orders, AccessActions.Read, null));
+            _rig.GrantOnRecompose((DetailsModel.Orders, AccessActions.Read, null));
+            Script(main: [1], orders: [Order(1, "A")]);
+
+            await using AsyncServiceScope scope = _rig.Scope();
+            EntitiesResult<DmOrder> read = await Orders(scope).GetByIdAsync(1, new DetailsRequest(), Token);
+
+            Assert.Equal(1, Assert.Single(read.Entities).Id);
+            Assert.Equal([true, false], _rig.Script.Batches.Select(static batch => batch.IsRefused));
+            Assert.Equal("permissions", Assert.Single(reruns.GetMeasurementSnapshot()).Tags[CrudTelemetryNames.TagTag]);
         }
 
         [Fact]

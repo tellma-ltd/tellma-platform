@@ -43,6 +43,12 @@ namespace Tellma.Core.Tests.Crud.Scripted
         /// <summary>The tables a stack owns, by table, with the owning stack's resource: a raw write of one is refused outside the appender's authority.</summary>
         public Dictionary<TableName, string> Owners { get; } = [];
 
+        /// <summary>
+        ///     The cached inputs each new batch of a purpose declares before it is composed, as a round
+        ///     served from a cached list declares its tag; none when null.
+        /// </summary>
+        public Func<BatchPurpose, IReadOnlyList<VersionTagDependency>>? Declares { get; set; }
+
         /// <summary>The batches handed out, in order.</summary>
         public IReadOnlyList<ScriptedBatch> Batches
         {
@@ -75,6 +81,11 @@ namespace Tellma.Core.Tests.Crud.Scripted
             lock (_gate)
             {
                 ScriptedBatch batch = new(this, _batches.Count + 1, purpose);
+                if (Declares?.Invoke(purpose) is { Count: > 0 } declared)
+                {
+                    batch.DependsOn(declared);
+                }
+
                 _batches.Add(batch);
                 return batch;
             }

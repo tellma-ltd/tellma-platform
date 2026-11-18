@@ -7,31 +7,46 @@ namespace Tellma.Core.Access
 {
     // Spec 0015 §16.1's stale-context counter is tagged with the mismatch that made the runner
     // re-enter a compose: the tag the prologue or the executor reported, or the guard for a 50412,
-    // which names none. Only the runner knows it, and only the pipeline counts it, so the runner
-    // notes it here before it re-enters.
+    // which names none. Only the runner knows it, so it notes it here as it re-enters; the frame every
+    // stack operation runs in opens the count, so every recompose of a query, a details read or a
+    // save is counted once, and a batch outside any stack operation is not.
     /// <summary>
-    ///     What made the guarded runner re-enter the compose of its current call. Scoped: the batches
-    ///     of one scope run one at a time.
+    ///     Where the guarded runner reports each re-entry of a compose, with its cause. Scoped: the
+    ///     batches of one scope run one at a time.
     /// </summary>
     internal sealed class RecomposeLog
     {
-        /// <summary>The cause of the last re-entry not yet taken; null when none is pending.</summary>
-        private RecomposeCause? _pending;
+        /// <summary>Counts a re-entry; null outside a counting frame.</summary>
+        private Action<RecomposeCause>? _counter;
 
-        /// <summary>Notes the cause of the re-entry the runner is about to make.</summary>
+        /// <summary>Reports the cause of the re-entry the runner is about to make.</summary>
         /// <param name="cause">The cause.</param>
         public void Note(RecomposeCause cause)
         {
-            _pending = cause;
+            _counter?.Invoke(cause);
         }
 
-        /// <summary>Takes the cause of the pending re-entry, clearing it.</summary>
-        /// <returns>The cause; null when the compose was not re-entered since the last take.</returns>
-        public RecomposeCause? Take()
+        /// <summary>Counts every re-entry reported until the frame is left; a frame nested in another keeps the outer's count.</summary>
+        /// <param name="counter">Counts one re-entry.</param>
+        /// <returns>The frame, which stops the count when disposed.</returns>
+        public IDisposable Count(Action<RecomposeCause> counter)
         {
-            RecomposeCause? cause = _pending;
-            _pending = null;
-            return cause;
+            ArgumentNullException.ThrowIfNull(counter);
+            Action<RecomposeCause>? outer = _counter;
+            _counter ??= counter;
+            return new Frame(this, outer);
+        }
+
+        /// <summary>A counting frame, which restores the count it found when disposed.</summary>
+        /// <param name="log">The log.</param>
+        /// <param name="outer">The count the frame found.</param>
+        private sealed class Frame(RecomposeLog log, Action<RecomposeCause>? outer) : IDisposable
+        {
+            /// <inheritdoc />
+            public void Dispose()
+            {
+                log._counter = outer;
+            }
         }
     }
 

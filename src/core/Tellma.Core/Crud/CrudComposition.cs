@@ -9,6 +9,7 @@ using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.Abstractions.Crud;
 using Tellma.Core.Abstractions.Validation;
+using Tellma.Core.Access;
 using Tellma.Core.Composition;
 using Tellma.Core.Crud.Checks;
 using Tellma.Core.Crud.Details;
@@ -86,6 +87,7 @@ namespace Tellma.Core.Crud
             // singletons hold no caller state ---
             services.TryAddScoped<IEntityPipelineFactory, EntityPipelineFactory>();
             services.TryAddScoped<CrudOperations>();
+            services.TryAddScoped<RecomposeLog>();
             services.TryAddSingleton<QuerySurfaces>();
             services.TryAddSingleton<QueryDiscoveries>();
             services.TryAddSingleton<QueryPlanner>();

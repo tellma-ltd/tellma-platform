@@ -45,7 +45,7 @@ namespace Tellma.Core.Data.Batches
     ///     </para>
     ///     <para>A batch is single-threaded: compose it, then execute it once.</para>
     /// </remarks>
-    internal sealed partial class DataBatch : IDataBatch, IBatchKeyTables, IBatchAuthority
+    internal sealed partial class DataBatch : IDataBatch, IBatchKeyTables, IBatchAuthority, IBatchDependencies
     {
         /// <summary>The executor that runs the batch.</summary>
         private readonly DataExecutor _executor;
@@ -230,7 +230,7 @@ namespace Tellma.Core.Data.Batches
         internal IReadOnlySet<string> ExplicitBumps => _bumps;
 
         /// <summary>The cached inputs the batch declared.</summary>
-        internal IReadOnlyList<VersionTagDependency> Dependencies => _dependencies;
+        public IReadOnlyList<VersionTagDependency> Dependencies => _dependencies;
 
         /// <summary>The sources of the users the batch's writes affect, for the user-level bumps.</summary>
         internal IReadOnlyList<UserIdSource> UserIdSources => _userIdSources;

@@ -7,7 +7,6 @@ using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Errors;
 using Tellma.Core.Abstractions.Tenancy;
-using Tellma.Core.Access;
 using Tellma.Core.Crud.Validation;
 using Tellma.Core.Queryex;
 using Tellma.Core.Tenancy;
@@ -58,19 +57,12 @@ namespace Tellma.Core.Crud.Save
             {
                 // The batch that executed, whose entity tags the persist re-declares (§6.7).
                 IDataBatch? served = null;
-                bool entered = false;
                 _ = await _operation.Runner.RunAsync(
                     BatchPurpose.Validate,
                     (user, batch) =>
                     {
-                        // A recomposition composes the round afresh, its decisions taken again,
-                        // and is counted by the tag that moved.
-                        if (_operation.Recompositions.Take() is RecomposeCause cause && entered)
-                        {
-                            _operation.Metrics.CountStaleRerun(cause);
-                        }
-
-                        entered = true;
+                        // A recomposition composes the round afresh, its decisions taken again; the
+                        // operation's frame counts it by the tag that moved.
                         Composer = user;
                         batch.Limits = QueryexProfiles.PipelineLimits;
                         loads.Compose(batch);

@@ -10,6 +10,7 @@ using System.ComponentModel.DataAnnotations.Schema;
 using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Api;
 using Tellma.Core.Abstractions.Crud;
+using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Entities;
 using Tellma.Core.Abstractions.Localization;
 using Tellma.Core.Abstractions.Validation;
@@ -25,7 +26,8 @@ namespace Tellma.Core.Tests.Crud.Save
     // another document, to a line (a child with a query surface) and to a sub-line (a child
     // without one), lines with a code unique within their document and a barcode unique across
     // documents, sub-lines below them, a warning a validator may raise, and a tree. Two persist
-    // effects and the service's persist hooks report to one shared body a test sets.
+    // effects and the service's persist hooks report to one shared body a test sets; a details
+    // contributor serves an extra whose assembly fails, and the access guards record their calls.
 
     /// <summary>Composes the save pipeline suite's model.</summary>
     internal static class PipelineSaveModel
@@ -66,6 +68,7 @@ namespace Tellma.Core.Tests.Crud.Save
                 .Validator<PsDocument, PsDocumentValidator>()
                 .PersistEffect<PsDocument, PsFirstEffect>()
                 .PersistEffect<PsDocument, PsSecondEffect>()
+                .DetailsContributor<PsDocument, PsDetails>()
                 .Model<PsLineConfiguration>()
                 .Confirmation(Recost)
                 .ValueSet(new ValueSetDescriptor(Colors, [new ValueSetEntry("Red", null, "Red"), new ValueSetEntry("Blue", null, "Blue")]))
@@ -190,8 +193,9 @@ namespace Tellma.Core.Tests.Crud.Save
         [References(typeof(PsCategory))]
         public int? CategoryId { get; set; }
 
-        /// <summary>The sub-lines.</summary>
+        /// <summary>The sub-lines, at most four per line.</summary>
         [NotMapped]
+        [MaxChildren(4)]
         public List<PsSubLine>? SubLines { get; set; }
     }
 
@@ -337,6 +341,53 @@ namespace Tellma.Core.Tests.Crud.Save
         public Task AfterCommitAsync(PersistOutcome<PsDocument> outcome)
         {
             return persistence?.AfterCommit?.Invoke(PsPersistence.Second, outcome) ?? Task.CompletedTask;
+        }
+    }
+
+    /// <summary>The documents' details contributor: an extra whose assembly after the batch fails.</summary>
+    [DetailsExtras(Failing)]
+    public sealed class PsDetails : IDetailsContributor<PsDocument>
+    {
+        /// <summary>The extra whose assembly throws.</summary>
+        public const string Failing = "failing";
+
+        /// <inheritdoc />
+        public void Contribute(DetailsPlan<PsDocument> plan, IReadOnlySet<string> requested)
+        {
+            ArgumentNullException.ThrowIfNull(plan);
+            plan.AddComputedExtra<int>(Failing, static _ => throw new InvalidOperationException("The extra's assembly failed."));
+        }
+    }
+
+    /// <summary>
+    ///     The access guards, recording each call and appending a statement named after it, so a test
+    ///     reads where in the persist batch each landed.
+    /// </summary>
+    public sealed class PsGuards : IAccessGuards
+    {
+        /// <summary>The text of the lock's statement.</summary>
+        public const string Lock = "lock";
+
+        /// <summary>The text of the invariants' statement.</summary>
+        public const string Invariants = "invariants";
+
+        /// <summary>The calls, in order.</summary>
+        public List<string> Calls { get; } = [];
+
+        /// <inheritdoc />
+        public void ContributeLock(IDataBatch batch)
+        {
+            ArgumentNullException.ThrowIfNull(batch);
+            Calls.Add(Lock);
+            _ = batch.Sql($"SELECT {Lock};", SqlOptions.None);
+        }
+
+        /// <inheritdoc />
+        public void ContributeInvariants(IDataBatch batch)
+        {
+            ArgumentNullException.ThrowIfNull(batch);
+            Calls.Add(Invariants);
+            _ = batch.Sql($"SELECT {Invariants};", SqlOptions.None);
         }
     }
 

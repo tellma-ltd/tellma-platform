@@ -56,6 +56,9 @@ namespace Tellma.Core.Tests.Crud.Save
         /// <summary>The documents' persist participants' body, shared with the rig's scopes.</summary>
         private readonly PsPersistence _persistence = new();
 
+        /// <summary>The access guards, which record where each persist called them.</summary>
+        private readonly PsGuards _guards = new();
+
         /// <summary>The rows a read-back finds, whatever ids it reads.</summary>
         private readonly List<PsDocument> _readBack = [];
 
@@ -99,6 +102,7 @@ namespace Tellma.Core.Tests.Crud.Save
             {
                 _ = services.AddSingleton(_validation);
                 _ = services.AddSingleton(_persistence);
+                _ = services.Replace(ServiceDescriptor.Singleton<IAccessGuards>(_guards));
                 _ = services.AddFakeLogging();
                 _ = services.AddSingleton(static provider => new TestIds(provider.GetRequiredService<IdAllocator>()));
                 _ = services.Replace(ServiceDescriptor.Singleton<IIdAllocator>(static provider => provider.GetRequiredService<TestIds>()));
@@ -299,6 +303,12 @@ namespace Tellma.Core.Tests.Crud.Save
 
             ValidationException shape = await RefusedAsync(Update(5, "A"), Update(5, "B"));
             Assert.Equal(["[1].Id Entity.DuplicateId"], Lines(shape));
+
+            // --- A collection beyond its ceiling two levels down ---
+            PsDocument crowded = New(-1, "A");
+            crowded.Lines = [new PsLine(), new PsLine { SubLines = [new PsSubLine(), new PsSubLine(), new PsSubLine(), new PsSubLine(), new PsSubLine()] }];
+            LimitExceededException children = await Assert.ThrowsAsync<LimitExceededException>(() => SaveAsync(crowded));
+            Assert.Equal((LimitNames.MaxChildren, 5, 4), (children.Limit, children.Actual, children.Maximum));
 
             _rig.Grant((PipelineSaveModel.Documents, AccessActions.Read, null));
             await using (AsyncServiceScope scope = _rig.Scope())

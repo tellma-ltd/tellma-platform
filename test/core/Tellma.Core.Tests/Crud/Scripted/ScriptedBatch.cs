@@ -31,7 +31,7 @@ namespace Tellma.Core.Tests.Crud.Scripted
     ///         needs a failure throws it from its execution hook.
     ///     </para>
     /// </remarks>
-    internal sealed class ScriptedBatch : IDataBatch, IBatchKeyTables, IBatchAuthority
+    internal sealed class ScriptedBatch : IDataBatch, IBatchKeyTables, IBatchAuthority, IBatchDependencies
     {
         /// <summary>The script that answers the statements.</summary>
         private readonly BatchScript _script;
@@ -70,6 +70,10 @@ namespace Tellma.Core.Tests.Crud.Scripted
 
         /// <summary>Every call, in append order.</summary>
         public IReadOnlyList<ScriptedStatement> Statements => _statements;
+
+        /// <inheritdoc />
+        public IReadOnlyList<VersionTagDependency> Dependencies =>
+            [.. Of(ScriptedKind.DependsOn).SelectMany(static statement => (IReadOnlyList<VersionTagDependency>)statement.Statement!)];
 
         /// <summary>The calls that append a statement with a result, in append order: what a round trip would carry.</summary>
         public IReadOnlyList<ScriptedStatement> Results => [.. _results.Select(static result => result.Statement)];

@@ -70,6 +70,9 @@ namespace Tellma.Core.Tests.Crud.Query
         /// <summary>The state of the caller's tenant; active by default.</summary>
         public TenantState TenantState { get; set; } = TenantState.Active;
 
+        /// <summary>Who the scope's context runs as: the caller, or the system.</summary>
+        public PrincipalKind Kind { get; set; } = PrincipalKind.User;
+
         /// <summary>The batches every query hands over, and their scripted answers.</summary>
         public BatchScript Script { get; } = new();
 
@@ -139,6 +142,16 @@ namespace Tellma.Core.Tests.Crud.Query
         public void GrantOnRecompose(params (string Resource, string Action, string? Filter)[] grants)
         {
             Recomposed = Connect(grants);
+        }
+
+        /// <summary>Makes the fresh set the next recomposition finds read a tenant tag at a value, as a write committed since would move it.</summary>
+        /// <param name="name">The tag's name.</param>
+        /// <param name="tag">The tag's value.</param>
+        /// <exception cref="InvalidOperationException">No recomposition is armed.</exception>
+        public void TagOnRecompose(string name, Guid tag)
+        {
+            ConnectedUser fresh = Recomposed ?? throw new InvalidOperationException("Arm a recomposition with its grants first.");
+            Recomposed = fresh with { TenantTags = new Dictionary<string, Guid>(fresh.TenantTags, StringComparer.Ordinal) { [name] = tag } };
         }
 
         /// <summary>Makes the next deny re-check find the caller with grants, as a grant saved since would.</summary>
@@ -280,7 +293,7 @@ namespace Tellma.Core.Tests.Crud.Query
             return RequestContext.Tenantless(new GregorianCalendarSystem(), Now) with
             {
                 Tenant = new TenantDescriptor(1, "Acme", null, null, ["en"], TenantCategory.Live, TenantState, null),
-                Kind = PrincipalKind.User,
+                Kind = Kind,
                 Subject = "sub-42",
                 UserId = UserId,
                 Assurance = Assurance,
