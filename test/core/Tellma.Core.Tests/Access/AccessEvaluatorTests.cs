@@ -428,7 +428,13 @@ namespace Tellma.Core.Tests.Access
         [InlineData(StepUpBar.DefaultAcr, 60, 15, true)]
         [InlineData(StepUpBar.DefaultAcr, 60, 1, true)]
         [InlineData(StepUpBar.DefaultAcr, 5, null, true)]
-        public async Task A_sensitive_pair_asks_for_a_recent_sign_in_of_the_bars_class(string? acr, int? signedInMinutesAgo, int? reachedMinutesAgo, bool passes)
+        [InlineData("urn:tellma:acr:aal1", 1, 1, false)]
+        [InlineData("urn:tellma:acr:aal3", 60, 1, true)]
+        [InlineData("phrh", 60, 1, true)]
+        [InlineData("phr", 60, 1, true)]
+        [InlineData("urn:tellma:acr:aal3", 60, 16, false)]
+        [InlineData("urn:tellma:acr:mfa", 60, 1, false)]
+        public async Task A_sensitive_pair_asks_for_a_recent_sign_in_of_the_bars_class_or_a_higher_tier(string? acr, int? signedInMinutesAgo, int? reachedMinutesAgo, bool passes)
         {
             _connection.Connected = Connected(Set(Caller, Row(1, Doc, "Save")));
             DateTimeOffset now = _time.GetUtcNow();

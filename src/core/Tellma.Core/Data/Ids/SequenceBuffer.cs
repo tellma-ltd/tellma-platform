@@ -4,6 +4,7 @@
 // LICENSE file in the root directory of this source tree.
 
 using Tellma.Core.Abstractions.Data;
+using Tellma.Core.Tenancy;
 
 namespace Tellma.Core.Data.Ids
 {
@@ -57,7 +58,8 @@ namespace Tellma.Core.Data.Ids
     /// </remarks>
     /// <param name="tenantId">The tenant whose database issued the ranges.</param>
     /// <param name="sequence">The sequence the ranges come from.</param>
-    internal sealed class SequenceBuffer(int tenantId, SequenceInfo sequence)
+    /// <param name="database">The location of the database that issues the ranges; null when the connection could not tell it.</param>
+    internal sealed class SequenceBuffer(int tenantId, SequenceInfo sequence, TenantLocation? database = null)
     {
         /// <summary>Guards the ranges.</summary>
         private readonly Lock _gate = new();
@@ -79,6 +81,24 @@ namespace Tellma.Core.Data.Ids
 
         /// <summary>The sequence the ranges come from.</summary>
         public SequenceInfo Sequence { get; } = sequence;
+
+        /// <summary>The location of the database that issues the ranges; null when the connection could not tell it.</summary>
+        public TenantLocation? Database { get; } = database;
+
+        /// <summary>
+        ///     Whether the buffer's ranges may serve the database at a location: the same server and
+        ///     database name, compared as SQL Server compares them, whatever the credentials. A side
+        ///     that cannot tell its database proves no move, so it matches any.
+        /// </summary>
+        /// <param name="location">The location, or null when the connection cannot tell it.</param>
+        /// <returns>False only when both name a database and the two differ.</returns>
+        public bool IsFrom(TenantLocation? location)
+        {
+            return Database is not { } held
+                || location is null
+                || (string.Equals(held.Server, location.Server, StringComparison.OrdinalIgnoreCase)
+                    && string.Equals(held.Database, location.Database, StringComparison.OrdinalIgnoreCase));
+        }
 
         /// <summary>How many ids the buffer holds.</summary>
         public long Count

@@ -1166,14 +1166,15 @@ namespace Tellma.Core.Tests.Crud.Save
             public IdReservation Reserve(IDataBatch batch, Type entityType, IReadOnlyList<object> rows)
             {
                 Reserved.Add(batch);
-                return Allocator.ReserveBuffered(Tenant, entityType, rows)
+                return Allocator.ReserveBuffered(Tenant, location: null, entityType, rows)
                     ?? throw new InvalidOperationException("The test warms the buffers the reservation statement stands in for.");
             }
 
             /// <inheritdoc />
-            public IdReservation? ReserveBuffered(int tenantId, Type entityType, IReadOnlyList<object> rows)
+            public IdReservation? ReserveBuffered(ITenantDatabase database, Type entityType, IReadOnlyList<object> rows)
             {
-                return Cold ? null : Allocator.ReserveBuffered(tenantId, entityType, rows);
+                // The rig's database is no batch connection and names no location: the warmed buffers serve it.
+                return Cold ? null : Allocator.ReserveBuffered(Tenant, location: null, entityType, rows);
             }
 
             /// <inheritdoc />

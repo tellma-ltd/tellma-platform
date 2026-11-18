@@ -312,8 +312,9 @@ sent persist's; a cancellation that leaves a write's outcome unknown surfaces as
 cancelled before its commit was rolled back and surfaces the cancellation. A final error
 becomes the data layer's exception for it, carrying the statement's ordinal: the
 `Tellma.Core.Data` exceptions for row security, conflicts, uniqueness, foreign keys, trees and
-arithmetic, `BatchAssertionFailedException` for any other assigned platform or distribution number,
-`InvalidOperationException` for a number outside the bands (a defect), and `DataAccessException`
+arithmetic, `TenantUnavailableException` (`tenant-schema-behind`, retry after 30 s) for the schema
+guard's refusal, `BatchAssertionFailedException` for any other assigned platform or distribution
+number, `InvalidOperationException` for a number outside the bands (a defect), and `DataAccessException`
 for the rest. A number outside the bands in a batch that commits its own transaction may come from
 a `RAISERROR`, which does not abort the batch, so it is probed (or reported unknown) as a defect
 before it surfaces. A statement's reader stages its results on the cursor, so only the attempt that
@@ -346,7 +347,8 @@ another database behind it. `TakeAsync` serves callers outside any batch, with o
 autocommit round trip when the buffer is short. `ReserveBuffered` (the internal `IIdBuffer`) is the
 save pipeline's first try: an immediate reservation when the buffer covers every table's deficit,
 else nothing, every take given back unmetered so the reservation that rides round trip 1 starts
-from the same buffer.
+from the same buffer. It takes the scope's tenant database, whose location picks the buffers as a
+batch's does: one another database filled is dropped, never served.
 
 `IDataBatch.Save` appends one statement per save, its text cached per root entity and recompile
 hint: two table-valued parameters per table (new and existing rows) plus each child collection's
@@ -460,7 +462,7 @@ connection string and no secret: a tenant row names a server, a database and a c
 | `CatalogDbContext`, `CatalogMigrations` | The catalog's EF model, in the platform collation with its own conventions (explicit names, `datetimeoffset(3)`, enum columns as `nvarchar(16)` with `CHECK`s, no identity), its sequence `catalog.sq_Tenants` from 1000, and the membership table type. The migrations live in `Tellma.Core.Migrator`; `CatalogMigrations.Latest` names the last, which the web host's startup compares with the catalog's history. |
 | `ITenantRegistry` | The process's snapshot of the tenants with their composed connection strings, probed every `Tellma:Catalog:RefreshInterval` (15 s) and reloaded only when `catalog.CatalogState.Version` differs (`!=`, so a restored older catalog reloads too). Refreshes are single-flight; a forced refresh never joins one already running, so it reads what was committed before it was asked for. Beyond `Tellma:Catalog:MaxStaleness` (5 min) since the last confirmation, or before the first load, every lookup throws `TenantUnavailableException` (`catalog-unavailable`). A row whose server is malformed or outside `Tellma:Sql:AllowedServers`, whose database is malformed, or whose profile is not configured stays out of the snapshot, logged at Error. Listeners (`ITenantStateListener`) hear of every descriptor a reload changed. A host that loads no snapshot at startup (the migrator) refreshes only after its own first load, so it never reads a catalog it has yet to create. |
 | The refresh service | Loads the registry at start within 10 seconds: a catalog behind `CatalogMigrations.Latest` fails startup naming the migrator command, as does a missing catalog database in Development (a login the server cuts off before saying why is settled by asking `master` whether the database exists); an unreachable catalog lets the host start not ready while the loop retries. The migrator turns this verification off. |
-| `ITenantConnectionFactory` | A tenant's connection from the snapshot's string, composed with `SqlConnectionStringBuilder` from the profile's fragment, the row's server and database and the deployment id as `Application Name`; and the catalog's. No string is cached twice or logged. |
+| `ITenantConnectionFactory` | A tenant's connection from the snapshot's string, composed with `SqlConnectionStringBuilder` from the profile's fragment, the row's server and database and the deployment id as `Application Name`, with SqlClient's connect retry off (`Connect Retry Count=0`) because the executor owns retry; and the catalog's. No string is cached twice or logged. |
 | `ITenantConnectionProvider` | The data layer's door inside a tenant scope: the snapshot's tenant and a connection to it, for the tenant the scope's request context is bound to and no other. Scoped; it keeps no string of its own, and a tenantless scope gets `InvalidOperationException`. |
 | `ITenantCatalog` | Registration (`Provisioning`, the sequence's id or a requested one in 1–999), state transitions against the state table, renames and relocations of frozen or provisioning tenants. Each is one transaction that bumps the catalog version and whose own precondition settles a race (`THROW 50409` translated to `TenantStateException`), then refreshes the local registry. |
 | `ITenantMembershipDirectory` | A subject's memberships in one query; the best-effort upsert of the hint writers, never thrown; and the per-tenant reconciliation that also deletes the tenant's stale hints, through the membership table type bound by `TableTypeBinder`. Internally, one tenant's hints in subject order, for the control plane's member list. |
@@ -1480,8 +1482,10 @@ advances the set's `ValidatedAt`, a moved tag brings the fresh rows, and a scope
 once, however many calls race; a re-check that fails (cancelled, timed out or refused) leaves the
 scope's one re-check to its next stale denial. `RequireAsync` raises `ForbiddenException` (`forbidden`, the
 registered pair, `NoGrant`) for a denial, then holds a sensitive pair to `StepUpBar` (the
-`urn:tellma:acr:mfa` class within 15 minutes unless the web host's `TellmaSessionOptions.StepUp`
-says otherwise; never for the system; `IndividualRequiredException` for a service account). Every
+`urn:tellma:acr:aal2` class within 15 minutes unless the web host's `TellmaSessionOptions.StepUp`
+says otherwise; never for the system; `IndividualRequiredException` for a service account). A
+session meets a bar of the identity server's tier scheme by rank, so `aal3` meets an `aal2` bar;
+a class outside the scheme is met only by itself. Every
 pair `EvaluateAsync` or `RequireAsync` decides is recorded in the scope's `AccessWitness` and counted
 (`tellma.access.decisions`, by `outcome`), once per pair however many re-checks it took.
 `EvaluateForAsync` decides for another user from that user's set, loaded once per scope and user

@@ -22,18 +22,24 @@ namespace Tellma.Core.AspNetCore.Tenancy
         /// <returns>The lock, released when disposed; null when another instance holds it.</returns>
         Task<IAsyncDisposable?> TryLeadAsync(CancellationToken cancellationToken);
 
+        /// <summary>The catalog's time, taken before a tenant's users are read: the hints written from then on are newer than the read.</summary>
+        /// <param name="cancellationToken">Cancels the read.</param>
+        /// <returns>The catalog's time.</returns>
+        Task<DateTimeOffset> CatalogTimeAsync(CancellationToken cancellationToken);
+
         /// <summary>Reads a tenant's users that have a subject: who should have a hint, and whether active.</summary>
         /// <param name="tenantId">The tenant.</param>
         /// <param name="cancellationToken">Cancels the read.</param>
         /// <returns>The hints the tenant should have.</returns>
         Task<IReadOnlyList<TenantMembershipRecord>> ReadUsersAsync(int tenantId, CancellationToken cancellationToken);
 
-        /// <summary>Rebuilds a tenant's hints in one catalog transaction.</summary>
+        /// <summary>Rebuilds a tenant's hints in one catalog transaction, leaving alone those written since the read.</summary>
         /// <param name="tenantId">The tenant.</param>
         /// <param name="records">The hints it should have.</param>
+        /// <param name="readAt">The catalog's time taken before the records were read.</param>
         /// <param name="cancellationToken">Cancels the write.</param>
         /// <returns>How many hint rows changed.</returns>
-        Task<int> ReconcileAsync(int tenantId, IReadOnlyList<TenantMembershipRecord> records, CancellationToken cancellationToken);
+        Task<int> ReconcileAsync(int tenantId, IReadOnlyList<TenantMembershipRecord> records, DateTimeOffset readAt, CancellationToken cancellationToken);
     }
 
     /// <summary>The reconciliation's reads and writes against the catalog and the tenants' databases.</summary>
@@ -88,6 +94,12 @@ namespace Tellma.Core.AspNetCore.Tenancy
         }
 
         /// <inheritdoc />
+        public Task<DateTimeOffset> CatalogTimeAsync(CancellationToken cancellationToken)
+        {
+            return directory.CatalogTimeAsync(cancellationToken);
+        }
+
+        /// <inheritdoc />
         public async Task<IReadOnlyList<TenantMembershipRecord>> ReadUsersAsync(int tenantId, CancellationToken cancellationToken)
         {
             List<TenantMembershipRecord> records = [];
@@ -107,9 +119,9 @@ namespace Tellma.Core.AspNetCore.Tenancy
         }
 
         /// <inheritdoc />
-        public Task<int> ReconcileAsync(int tenantId, IReadOnlyList<TenantMembershipRecord> records, CancellationToken cancellationToken)
+        public Task<int> ReconcileAsync(int tenantId, IReadOnlyList<TenantMembershipRecord> records, DateTimeOffset readAt, CancellationToken cancellationToken)
         {
-            return directory.ReconcileAsync(tenantId, records, cancellationToken);
+            return directory.ReconcileAsync(tenantId, records, readAt, cancellationToken);
         }
 
         /// <summary>The held lock: released, then its connection closed.</summary>

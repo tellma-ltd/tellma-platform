@@ -3,15 +3,19 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.Metrics.Testing;
 using System.Data;
 using System.Diagnostics.Metrics;
 using Tellma.Core.Abstractions.Data;
+using Tellma.Core.Abstractions.Settings;
 using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.Data;
 using Tellma.Core.Data.Batches;
 using Tellma.Core.Data.Ids;
+using Tellma.Core.Queryex;
+using Tellma.Core.Tenancy;
 using Tellma.Core.Tests.Data.Batches;
 using Tellma.Core.Tests.Data.Saves;
 
@@ -27,6 +31,9 @@ namespace Tellma.Core.Tests.Data.Ids
     {
         /// <summary>The fixture tenant the harness's connection reports.</summary>
         private const int Tenant = 1;
+
+        /// <summary>The fixture tenant's database where its connection cannot tell where it lives, which proves no move.</summary>
+        private static readonly LocatedDatabase Unplaced = new(location: null);
 
         /// <summary>The composition over the save model.</summary>
         private readonly BatchHarness _harness = new(compose: SaveModel.Compose);
@@ -62,7 +69,7 @@ namespace Tellma.Core.Tests.Data.Ids
             Allocator.Replenish(Tenant, typeof(Item), 500, 509);
             Crate[] crates = [Packed(compartments: 2, items: 1), new Crate { Id = 42, Name = "existing" }];
 
-            using IdReservation reservation = Allocator.ReserveBuffered(Tenant, typeof(Crate), crates)!;
+            using IdReservation reservation = Allocator.ReserveBuffered(Unplaced, typeof(Crate), crates)!;
             reservation.Assign(crates);
 
             Assert.True(reservation.IsImmediate);
@@ -79,13 +86,13 @@ namespace Tellma.Core.Tests.Data.Ids
             Allocator.Replenish(Tenant, typeof(Compartment), 300, 300);
             Crate[] crates = [Packed(compartments: 2, items: 0)];
 
-            Assert.Null(Allocator.ReserveBuffered(Tenant, typeof(Crate), crates));
+            Assert.Null(Allocator.ReserveBuffered(Unplaced, typeof(Crate), crates));
             Assert.Equal((10, 1), (Allocator.Buffered(Tenant, typeof(Crate)), Allocator.Buffered(Tenant, typeof(Compartment))));
             Assert.Equal(0, crates[0].Id);
 
             // The next reservation is served from the front, as if nothing was taken.
             Allocator.Replenish(Tenant, typeof(Compartment), 301, 301);
-            using IdReservation reservation = Allocator.ReserveBuffered(Tenant, typeof(Crate), crates)!;
+            using IdReservation reservation = Allocator.ReserveBuffered(Unplaced, typeof(Crate), crates)!;
             reservation.Assign(crates);
             Assert.Equal((100, 300, 301), (crates[0].Id, crates[0].Compartments![0].Id, crates[0].Compartments![1].Id));
         }
@@ -397,6 +404,57 @@ namespace Tellma.Core.Tests.Data.Ids
         }
 
         [Fact]
+        public void A_buffer_filled_from_another_database_than_the_tenants_current_one_is_dropped()
+        {
+            // The tenant moved to another database and this instance never saw it frozen: the ids
+            // buffered from the old database must never serve the new one.
+            Allocator.Replenish(Tenant, typeof(Crate), 100, 109, new TenantLocation("old-server", "tellma_1", "default"));
+            Allocator.Replenish(Tenant, typeof(Crate), 500, 504, new TenantLocation("new-server", "tellma_1", "default"));
+
+            Crate[] crates = [new Crate(), new Crate()];
+            using IdReservation reservation = Allocator.Reserve(_harness.Batch(BatchPurpose.Validate), typeof(Crate), crates);
+            reservation.Assign(crates);
+
+            Assert.Equal([500, 501], crates.Select(static crate => crate.Id));
+            Assert.Equal(3, Allocator.Buffered(Tenant, typeof(Crate)));
+        }
+
+        [Fact]
+        public void A_buffered_reservation_serves_no_id_a_buffer_from_another_database_holds_and_drops_that_buffer()
+        {
+            // The tenant moved to another database: the ids buffered from the old one must not serve
+            // the reservation a save makes before any batch exists.
+            TenantLocation current = new("new-server", "tellma_1", "default");
+            Allocator.Replenish(Tenant, typeof(Crate), 100, 109, new TenantLocation("old-server", "tellma_1", "default"));
+            Crate[] crates = [new Crate()];
+
+            Assert.Null(Allocator.ReserveBuffered(new LocatedDatabase(current), typeof(Crate), crates));
+            Assert.Equal((0, 0), (crates[0].Id, Allocator.Buffered(Tenant, typeof(Crate))));
+
+            // --- A buffer the current database filled serves at once ---
+            Allocator.Replenish(Tenant, typeof(Crate), 500, 509, current);
+            using IdReservation reservation = Allocator.ReserveBuffered(new LocatedDatabase(current), typeof(Crate), crates)!;
+            reservation.Assign(crates);
+
+            Assert.Equal((500, 9), (crates[0].Id, Allocator.Buffered(Tenant, typeof(Crate))));
+        }
+
+        [Fact]
+        public void A_buffer_compares_its_database_as_sql_server_names_it_whatever_the_credentials()
+        {
+            SequenceInfo crates = Allocator.SequenceOf(_harness.Services.GetRequiredService<IEntityMetadataProvider>().Get(typeof(Crate)));
+            SequenceBuffer buffer = new(Tenant, crates, new TenantLocation("Server-A", "Tellma_1", "default"));
+
+            Assert.True(buffer.IsFrom(new TenantLocation("server-a", "tellma_1", "rotated")));
+            Assert.False(buffer.IsFrom(new TenantLocation("server-b", "tellma_1", "default")));
+            Assert.False(buffer.IsFrom(new TenantLocation("server-a", "tellma_2", "default")));
+
+            // A connection that cannot tell its database proves no move.
+            Assert.True(buffer.IsFrom(null));
+            Assert.True(new SequenceBuffer(Tenant, crates).IsFrom(new TenantLocation("server-b", "tellma_1", "default")));
+        }
+
+        [Fact]
         public void Temporary_ids_are_rewritten_in_a_self_reference_a_child_parent_key_and_a_grandchild_parent_key()
         {
             Allocator.Replenish(Tenant, typeof(Crate), 100, 109);
@@ -570,6 +628,50 @@ namespace Tellma.Core.Tests.Data.Ids
                 Name = "packed",
                 Compartments = [.. Enumerable.Range(0, compartments).Select(_ => new Compartment { Items = [.. Enumerable.Range(0, items).Select(static _ => new Item { Label = "item" })] })],
             };
+        }
+
+        /// <summary>
+        ///     The fixture tenant's database, which tells only its tenant and where it lives: a buffered
+        ///     reservation reads nothing else of it, and it never opens a connection or composes a batch.
+        /// </summary>
+        /// <param name="location">Where the database lives; null when it cannot tell.</param>
+        private sealed class LocatedDatabase(TenantLocation? location) : ITenantDatabase, IBatchConnection
+        {
+            /// <inheritdoc />
+            public int TenantId => Tenant;
+
+            /// <inheritdoc />
+            public TenantLocation? Location => location;
+
+            /// <inheritdoc />
+            public QueryexSchema Schema => throw new NotSupportedException("A buffered reservation reads no schema.");
+
+            /// <inheritdoc />
+            public QueryexContextValues Context => throw new NotSupportedException("A buffered reservation binds no context values.");
+
+            /// <inheritdoc />
+            public MultilingualShape Shape => throw new NotSupportedException("A buffered reservation compiles no query.");
+
+            /// <inheritdoc />
+            public int? UserId => null;
+
+            /// <inheritdoc />
+            public IDataBatch CreateBatch(BatchPurpose purpose)
+            {
+                throw new NotSupportedException("A buffered reservation composes no batch.");
+            }
+
+            /// <inheritdoc />
+            public ValueTask<SqlConnection> AcquireAsync(CancellationToken cancellationToken)
+            {
+                throw new NotSupportedException("A buffered reservation opens no connection.");
+            }
+
+            /// <inheritdoc />
+            public ValueTask ReleaseAsync(SqlConnection connection)
+            {
+                return ValueTask.CompletedTask;
+            }
         }
     }
 }

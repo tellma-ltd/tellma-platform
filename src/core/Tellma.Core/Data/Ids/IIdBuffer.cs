@@ -17,14 +17,19 @@ namespace Tellma.Core.Data.Ids
     internal interface IIdBuffer
     {
         /// <summary>
-        ///     Reserves the ids a payload's new rows need from a tenant's buffers alone: the
-        ///     reservation is immediate, or none is made and the buffers keep every id.
+        ///     Reserves the ids a payload's new rows need from the buffers of a tenant's database alone:
+        ///     the reservation is immediate, or none is made and the buffers keep every id. A buffer
+        ///     filled from another database than the one the tenant lives in now is dropped, never
+        ///     served.
         /// </summary>
-        /// <param name="tenantId">The tenant.</param>
+        /// <param name="database">The tenant's database, which names the tenant and where its database lives now.</param>
         /// <param name="entityType">The payload's root entity.</param>
         /// <param name="rows">The payload's roots, children included through their collections.</param>
         /// <returns>The immediate reservation; null when some table's buffer holds fewer ids than its new rows.</returns>
-        /// <exception cref="ArgumentException">Two new rows of a table share a temporary id, or a row is null or of another type.</exception>
-        IdReservation? ReserveBuffered(int tenantId, Type entityType, IReadOnlyList<object> rows);
+        /// <exception cref="ArgumentException">
+        ///     The database is not one the platform composed, two new rows of a table share a temporary
+        ///     id, or a row is null or of another type.
+        /// </exception>
+        IdReservation? ReserveBuffered(ITenantDatabase database, Type entityType, IReadOnlyList<object> rows);
     }
 }

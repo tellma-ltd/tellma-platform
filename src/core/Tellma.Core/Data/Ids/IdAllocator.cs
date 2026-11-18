@@ -15,6 +15,7 @@ using System.Runtime.CompilerServices;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Data.Batches;
 using Tellma.Core.Data.Conventions;
+using Tellma.Core.Tenancy;
 
 namespace Tellma.Core.Data.Ids
 {
@@ -117,7 +118,7 @@ namespace Tellma.Core.Data.Ids
                 foreach ((EntityMetadata entity, long deficit) in deficits)
                 {
                     SequenceInfo sequence = SequenceOf(entity);
-                    SequenceBuffer buffer = BufferOf(tenantId, sequence);
+                    SequenceBuffer buffer = BufferOf(tenantId, data.Connection.Location, sequence);
                     List<IdRange> taken = buffer.Take(deficit);
                     long held = taken.Sum(static range => range.Count);
                     if (held > 0)
@@ -146,7 +147,26 @@ namespace Tellma.Core.Data.Ids
         }
 
         /// <inheritdoc />
-        public IdReservation? ReserveBuffered(int tenantId, Type entityType, IReadOnlyList<object> rows)
+        public IdReservation? ReserveBuffered(ITenantDatabase database, Type entityType, IReadOnlyList<object> rows)
+        {
+            ArgumentNullException.ThrowIfNull(database);
+            IBatchConnection connection = database as IBatchConnection
+                ?? throw new ArgumentException("The database is not one the platform composed.", nameof(database));
+            return ReserveBuffered(connection.TenantId, connection.Location, entityType, rows);
+        }
+
+        /// <summary>
+        ///     Reserves the ids a payload's new rows need from a tenant's buffers for the database at a
+        ///     location alone: the reservation is immediate, or none is made and the buffers keep every
+        ///     id. A buffer filled from another database is dropped, never served.
+        /// </summary>
+        /// <param name="tenantId">The tenant.</param>
+        /// <param name="location">Where the tenant's database lives now; null when the connection cannot tell it.</param>
+        /// <param name="entityType">The payload's root entity.</param>
+        /// <param name="rows">The payload's roots, children included through their collections.</param>
+        /// <returns>The immediate reservation; null when some table's buffer holds fewer ids than its new rows.</returns>
+        /// <exception cref="ArgumentException">Two new rows of a table share a temporary id, or a row is null or of another type.</exception>
+        internal IdReservation? ReserveBuffered(int tenantId, TenantLocation? location, Type entityType, IReadOnlyList<object> rows)
         {
             ArgumentNullException.ThrowIfNull(entityType);
             ArgumentNullException.ThrowIfNull(rows);
@@ -160,7 +180,7 @@ namespace Tellma.Core.Data.Ids
             List<(SequenceBuffer Buffer, List<IdRange> Taken)> takes = [];
             foreach ((EntityMetadata entity, long deficit) in deficits)
             {
-                SequenceBuffer buffer = BufferOf(tenantId, SequenceOf(entity));
+                SequenceBuffer buffer = BufferOf(tenantId, location, SequenceOf(entity));
                 List<IdRange> taken = buffer.Take(deficit);
                 takes.Add((buffer, taken));
                 if (taken.Sum(static range => range.Count) < deficit)
@@ -198,7 +218,7 @@ namespace Tellma.Core.Data.Ids
 
             EntityMetadata entity = _metadata.Get(entityType);
             SequenceInfo sequence = SequenceOf(entity);
-            SequenceBuffer buffer = BufferOf(connection.TenantId, sequence);
+            SequenceBuffer buffer = BufferOf(connection.TenantId, connection.Location, sequence);
 
             // --- The buffer first ---
             List<IdRange> ranges = buffer.Take(count);
@@ -251,10 +271,11 @@ namespace Tellma.Core.Data.Ids
         /// <param name="entityType">The entity whose sequence issued the range.</param>
         /// <param name="first">The range's first id.</param>
         /// <param name="last">The range's last id.</param>
-        internal void Replenish(int tenantId, Type entityType, long first, long last)
+        /// <param name="location">Where the database that issued the range lives; null when unknown.</param>
+        internal void Replenish(int tenantId, Type entityType, long first, long last, TenantLocation? location = null)
         {
             ArgumentOutOfRangeException.ThrowIfLessThan(last, first);
-            _ = BufferOf(tenantId, SequenceOf(_metadata.Get(entityType))).Append(new IdRange(first, last));
+            _ = BufferOf(tenantId, location, SequenceOf(_metadata.Get(entityType))).Append(new IdRange(first, last));
         }
 
         /// <summary>
@@ -277,8 +298,10 @@ namespace Tellma.Core.Data.Ids
             // In table order, so a batch's text does not depend on the set's enumeration order.
             foreach (TableName table in batch.WrittenTables.OrderBy(static table => table.ToString(), StringComparer.Ordinal).ToArray())
             {
+                // A buffer filled from another database than the batch reaches is the next take's to replace.
                 if (!map.ByTable.TryGetValue(table, out SequenceInfo? sequence)
-                    || !_buffers.TryGetValue((tenantId, sequence.Name), out SequenceBuffer? buffer))
+                    || !_buffers.TryGetValue((tenantId, sequence.Name), out SequenceBuffer? buffer)
+                    || !buffer.IsFrom(batch.Connection.Location))
                 {
                     continue;
                 }
@@ -403,7 +426,10 @@ namespace Tellma.Core.Data.Ids
         /// <param name="floor">The table's largest id.</param>
         internal void DropAtOrBelow(int tenantId, SequenceInfo sequence, long floor)
         {
-            _ = BufferOf(tenantId, sequence).DropAtOrBelow(floor);
+            if (_buffers.TryGetValue((tenantId, sequence.Name), out SequenceBuffer? buffer))
+            {
+                _ = buffer.DropAtOrBelow(floor);
+            }
         }
 
         /// <summary>The sequence that serves an entity's table.</summary>
@@ -457,13 +483,36 @@ namespace Tellma.Core.Data.Ids
             return deficits;
         }
 
-        /// <summary>A tenant's buffer of a sequence, created on first use.</summary>
+        /// <summary>
+        ///     A tenant's buffer of a sequence for the database at a location, created on first use. A
+        ///     buffer filled from another database is replaced and its ids dropped: the tenant was
+        ///     relocated or restored, and this instance never saw it frozen, so the buffer outlived the
+        ///     cut-over and its ids say nothing about the new database's sequence.
+        /// </summary>
         /// <param name="tenantId">The tenant.</param>
+        /// <param name="location">Where the tenant's database lives now; null when the connection cannot tell it.</param>
         /// <param name="sequence">The sequence.</param>
         /// <returns>The buffer.</returns>
-        private SequenceBuffer BufferOf(int tenantId, SequenceInfo sequence)
+        private SequenceBuffer BufferOf(int tenantId, TenantLocation? location, SequenceInfo sequence)
         {
-            return _buffers.GetOrAdd((tenantId, sequence.Name), static (key, sequence) => new SequenceBuffer(key.TenantId, sequence), sequence);
+            (int, TableName) key = (tenantId, sequence.Name);
+            while (true)
+            {
+                SequenceBuffer buffer = _buffers.GetOrAdd(key, static (key, state) => new SequenceBuffer(key.TenantId, state.Sequence, state.Location), (Sequence: sequence, Location: location));
+                if (buffer.IsFrom(location))
+                {
+                    return buffer;
+                }
+
+                // Ids still held by reservations return to the replaced buffer, never to the new one.
+                SequenceBuffer fresh = new(tenantId, sequence, location);
+                if (_buffers.TryUpdate(key, fresh, buffer))
+                {
+                    long dropped = buffer.Clear();
+                    IdAllocatorLog.DatabaseMoved(_logger, sequence.Tag, tenantId, dropped);
+                    return fresh;
+                }
+            }
         }
 
         /// <summary>

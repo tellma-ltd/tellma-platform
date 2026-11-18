@@ -177,19 +177,35 @@ namespace Tellma.Core.Tenancy
             """;
 
         /// <summary>
+        ///     The instant that splits the hints written before a read from those written after it, at
+        ///     the millisecond the hints' <c>UpdatedAt</c> stamps keep: one millisecond past the
+        ///     catalog's clock, so every stamp already written is below it, returned only once the
+        ///     clock has reached it, so every stamp written from then on is at or above it. The wait is
+        ///     up to one clock tick (about 16 ms on Windows), and the split assumes a clock that does
+        ///     not step back.
+        /// </summary>
+        public const string CatalogTime = """
+            DECLARE @readAt datetimeoffset(3) = DATEADD(MILLISECOND, 1, CAST(TODATETIMEOFFSET(SYSUTCDATETIME(), 0) AS datetimeoffset(3)));
+            WHILE CAST(TODATETIMEOFFSET(SYSUTCDATETIME(), 0) AS datetimeoffset(3)) < @readAt WAITFOR DELAY '00:00:00.001';
+            SELECT @readAt;
+            """;
+
+        /// <summary>
         ///     The reconciliation of one tenant's hints from <c>@rows</c>: the upsert, then the delete of
-        ///     the tenant's hints <c>@rows</c> does not hold, in one transaction.
+        ///     the tenant's hints <c>@rows</c> does not hold, in one transaction. A hint written at or after
+        ///     <c>@readAt</c>, the catalog's time before the tenant's users were read, is newer than the
+        ///     read, so neither its activity nor its existence is overwritten.
         /// </summary>
         public const string ReconcileMemberships = """
             SET XACT_ABORT ON; BEGIN TRAN;
             UPDATE m SET m.[IsActive] = r.[IsActive], m.[UpdatedAt] = SYSUTCDATETIME()
               FROM [catalog].[TenantMemberships] AS m JOIN @rows AS r ON r.[TenantId] = m.[TenantId] AND r.[Subject] = m.[Subject]
-             WHERE m.[IsActive] <> r.[IsActive];
+             WHERE m.[IsActive] <> r.[IsActive] AND m.[UpdatedAt] < @readAt;
             INSERT INTO [catalog].[TenantMemberships] ([Subject], [TenantId], [IsActive], [UpdatedAt])
             SELECT r.[Subject], r.[TenantId], r.[IsActive], SYSUTCDATETIME() FROM @rows AS r
              WHERE NOT EXISTS (SELECT 1 FROM [catalog].[TenantMemberships] AS m WHERE m.[Subject] = r.[Subject] AND m.[TenantId] = r.[TenantId]);
             DELETE m FROM [catalog].[TenantMemberships] AS m
-             WHERE m.[TenantId] = @tenantId AND NOT EXISTS (SELECT 1 FROM @rows AS r WHERE r.[Subject] = m.[Subject]);
+             WHERE m.[TenantId] = @tenantId AND m.[UpdatedAt] < @readAt AND NOT EXISTS (SELECT 1 FROM @rows AS r WHERE r.[Subject] = m.[Subject]);
             COMMIT;
             """;
     }

@@ -8,6 +8,7 @@ using System.Collections.Frozen;
 using System.Globalization;
 using System.Text.RegularExpressions;
 using Tellma.Core.Abstractions.Data;
+using Tellma.Core.Abstractions.Tenancy;
 
 namespace Tellma.Core.Data.Batches
 {
@@ -97,6 +98,9 @@ namespace Tellma.Core.Data.Batches
         /// <summary>The numbers of a lost connection: a broken link, a dropped session, a timeout.</summary>
         public static readonly FrozenSet<int> AmbiguousNumbers = new[] { 233, 64, CommandTimeout, 10053, 10054 }.ToFrozenSet();
 
+        /// <summary>How long a caller refused for a database behind the running schema waits before retrying: an upgrade's length.</summary>
+        public static readonly TimeSpan SchemaBehindRetryAfter = TimeSpan.FromSeconds(30);
+
         /// <summary>The severity from which an error ends the connection.</summary>
         private const byte FatalClass = 20;
 
@@ -121,12 +125,15 @@ namespace Tellma.Core.Data.Batches
         /// <summary>The lowest number a <c>THROW</c> may raise.</summary>
         private const int ThrowMin = 50000;
 
-        /// <summary>The platform-band numbers with a meaning; any other number of the band is a defect.</summary>
+        /// <summary>
+        ///     The platform-band numbers that surface as an assertion with their code; any other number
+        ///     of the band has an exception of its own or is a defect.
+        /// </summary>
         private static readonly FrozenSet<int> PlatformNumbers = new[]
         {
             TellmaSqlErrors.CallerInvalid, TellmaSqlErrors.RowSecurity, TellmaSqlErrors.NotFound, TellmaSqlErrors.Concurrency,
             TellmaSqlErrors.StaleVersionTag, TellmaSqlErrors.LimitExceeded, TellmaSqlErrors.Invariant, TellmaSqlErrors.CountMismatch,
-            TellmaSqlErrors.SchemaBehind, TellmaSqlErrors.Transient,
+            TellmaSqlErrors.Transient,
         }.ToFrozenSet();
 
         /// <summary>Classifies a failure the server reported after the command was sent.</summary>
@@ -190,8 +197,9 @@ namespace Tellma.Core.Data.Batches
         /// <param name="exception">The provider's exception, which the translation carries as its inner exception.</param>
         /// <param name="assembly">The batch's assembly, which resolves the error's line to a statement.</param>
         /// <param name="cursor">The round trip's cursor, holding the rows a statement reported before it threw; null before the send.</param>
+        /// <param name="tenantId">The tenant whose database the round trip ran against, which a schema refusal names.</param>
         /// <returns>The exception to throw.</returns>
-        public static Exception Translate(IReadOnlyList<SqlErrorInfo> errors, Exception exception, BatchAssembly assembly, ResultSetCursor? cursor)
+        public static Exception Translate(IReadOnlyList<SqlErrorInfo> errors, Exception exception, BatchAssembly assembly, ResultSetCursor? cursor, int tenantId)
         {
             ArgumentNullException.ThrowIfNull(exception);
             var primary = SqlErrorInfo.Primary(errors);
@@ -205,6 +213,11 @@ namespace Tellma.Core.Data.Batches
             {
                 return number switch
                 {
+                    // The schema guard's refusal is a verdict on the tenant, not on the batch: the
+                    // database does not list the running model's fingerprint, so the tenant is
+                    // unavailable until the migrator reaches it (spec 0011 §3.3, spec 0012 §4.3).
+                    TellmaSqlErrors.SchemaBehind => new TenantUnavailableException(
+                        tenantId, state: null, TenantProblemCodes.SchemaBehind, SchemaBehindRetryAfter, exception),
                     TellmaSqlErrors.RowSecurity => new RowSecurityException(ordinal, exception),
                     TellmaSqlErrors.Concurrency => cursor?.Conflicts is IReadOnlyList<ConflictRow> conflicts
                         ? new ConcurrencyConflictException(conflicts, ordinal, exception)

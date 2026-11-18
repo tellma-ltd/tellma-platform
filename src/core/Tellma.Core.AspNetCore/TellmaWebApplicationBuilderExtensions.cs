@@ -97,6 +97,7 @@ namespace Tellma.Core.AspNetCore
             _ = HostOptionsBinding.Bind<DistributionLinksOptions>(services, DistributionLinksOptions.SectionPath, OptionsOwner);
             _ = HostOptionsBinding.Bind<ApiOptions>(services, ApiOptions.SectionPath, OptionsOwner);
             _ = services.AddSingleton<IValidateOptions<IdentityHostOptions>, IdentityHostOptionsValidator>();
+            _ = services.AddSingleton<IValidateOptions<TellmaSessionOptions>, TellmaSessionOptionsValidator>();
             _ = services.AddSingleton<IValidateOptions<DistributionLinksOptions>, DistributionLinksOptionsValidator>();
             _ = services.AddSingleton<IValidateOptions<ForwardedHeadersHostOptions>, ForwardedHeadersHostOptionsValidator>();
             _ = services.AddSingleton<IValidateOptions<DataProtectionHostOptions>, DataProtectionHostOptionsValidator>();

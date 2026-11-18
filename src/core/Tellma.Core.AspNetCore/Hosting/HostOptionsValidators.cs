@@ -6,6 +6,7 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
+using Tellma.Core.Tenancy;
 
 namespace Tellma.Core.AspNetCore.Hosting
 {
@@ -26,6 +27,32 @@ namespace Tellma.Core.AspNetCore.Hosting
                 && authority.Scheme != Uri.UriSchemeHttps
                 ? ValidateOptionsResult.Fail(
                     $"{IdentityHostOptions.SectionPath}:{nameof(IdentityHostOptions.Authority)} is '{options.Authority}', which is not https; only Development may reach the identity server over http.")
+                : ValidateOptionsResult.Success;
+        }
+    }
+
+    /// <summary>
+    ///     Refuses a step-up class the platform's own identity server cannot satisfy: in
+    ///     <see cref="IdentityMode.InProc" /> mode the authority is the platform's engine, which
+    ///     satisfies only the classes of its tier scheme, so any other class would refuse every
+    ///     sensitive operation.
+    /// </summary>
+    /// <param name="identity">The identity host settings, which tell the mode.</param>
+    internal sealed class TellmaSessionOptionsValidator(IOptions<IdentityHostOptions> identity) : IValidateOptions<TellmaSessionOptions>
+    {
+        /// <inheritdoc />
+        public ValidateOptionsResult Validate(string? name, TellmaSessionOptions options)
+        {
+            ArgumentNullException.ThrowIfNull(options);
+
+            // A standalone authority may be a third party with classes of its own; an empty class is
+            // refused by the options' own validation.
+            string? acr = options.StepUp?.Acr;
+            return identity.Value.Mode == IdentityMode.InProc
+                && !string.IsNullOrWhiteSpace(acr)
+                && AssuranceTiers.Rank(acr) is null
+                ? ValidateOptionsResult.Fail(
+                    $"{TellmaSessionOptions.SectionPath}:{nameof(TellmaSessionOptions.StepUp)}:{nameof(StepUpOptions.Acr)} is '{acr}', which the in-process identity server cannot satisfy; name one of its tiers: {AssuranceTiers.Aal1}, {AssuranceTiers.Aal2} or {AssuranceTiers.Aal3}.")
                 : ValidateOptionsResult.Success;
         }
     }

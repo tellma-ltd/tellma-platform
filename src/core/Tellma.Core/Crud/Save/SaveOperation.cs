@@ -42,6 +42,7 @@ namespace Tellma.Core.Crud.Save
     /// <param name="data">The data layer's options, whose large-batch threshold picks a save's lane.</param>
     /// <param name="allocator">The id allocator, whose reservation rides round trip 1 when the buffer falls short.</param>
     /// <param name="buffer">The id allocator's buffer, which serves a reservation before any batch exists.</param>
+    /// <param name="database">The scope's tenant database, whose location picks the buffers that reservation is served from.</param>
     /// <param name="valueSets">The value sets the payload's values are checked against.</param>
     /// <param name="services">The scope's services, which hold each entity's validators.</param>
     /// <param name="stepUp">The assurance bar of the sensitive securables, which a reference to a sensitive target is held to.</param>
@@ -60,6 +61,7 @@ namespace Tellma.Core.Crud.Save
         IOptions<DataOptions> data,
         IIdAllocator allocator,
         IIdBuffer buffer,
+        ITenantDatabase database,
         IValueSetRegistry valueSets,
         IServiceProvider services,
         StepUpBar stepUp,
@@ -106,6 +108,9 @@ namespace Tellma.Core.Crud.Save
 
         /// <summary>The id allocator's buffer.</summary>
         internal IIdBuffer Buffer { get; } = buffer;
+
+        /// <summary>The scope's tenant database.</summary>
+        internal ITenantDatabase Database { get; } = database;
 
         /// <summary>The value sets.</summary>
         internal IValueSetRegistry ValueSets { get; } = valueSets;

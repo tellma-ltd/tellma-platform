@@ -7,7 +7,9 @@ using Microsoft.Extensions.Options;
 using System.Collections.Concurrent;
 using System.Data.Common;
 using System.Globalization;
+using Tellma.Core.Abstractions.Caching;
 using Tellma.Core.Abstractions.Data;
+using Tellma.Core.Data.Batches;
 using Tellma.Core.Data.TableTypes;
 
 namespace Tellma.Core.Data.Saves
@@ -19,7 +21,11 @@ namespace Tellma.Core.Data.Saves
     /// <param name="metadata">The running model's metadata.</param>
     /// <param name="binder">The table-type binder.</param>
     /// <param name="options">The execution settings: the large-batch threshold and the conflict-message cap.</param>
-    internal sealed class SaveEmitter(IEntityMetadataProvider metadata, TableTypeBinder binder, IOptions<DataOptions> options)
+    /// <param name="versionTags">
+    ///     The version tag registry, whose user-level rules name the columns a save captures its rows'
+    ///     users from; null when none is composed.
+    /// </param>
+    internal sealed class SaveEmitter(IEntityMetadataProvider metadata, TableTypeBinder binder, IOptions<DataOptions> options, IVersionTagRegistry? versionTags = null)
     {
         /// <summary>The fixed JSON text around a ten-digit count in the conflict message.</summary>
         private const int MessageOverhead = 48;
@@ -54,7 +60,7 @@ namespace Tellma.Core.Data.Saves
             ArgumentNullException.ThrowIfNull(entityType);
             EntityMetadata root = metadata.Get(entityType);
             return root.IsTopLevel
-                ? _plans.GetOrAdd(root.ClrType, _ => new SavePlan(root, binder))
+                ? _plans.GetOrAdd(root.ClrType, _ => new SavePlan(root, binder, table => UserIdCapture.Columns(versionTags, table)))
                 : throw new InvalidOperationException(
                     $"{root.Name} is not a top-level entity, so it is saved with its parent, as a child collection, never as a root.");
         }

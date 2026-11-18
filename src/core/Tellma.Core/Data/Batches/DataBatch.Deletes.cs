@@ -33,7 +33,7 @@ namespace Tellma.Core.Data.Batches
             // --- The plan, and the authority over the tables its statements name ---
             // A sibling's rows leave by the cascade its owning feature declared, so the caller needs no
             // authority over a sibling's table; the sibling still counts among the writes, for tags.
-            var plan = DeletePlan.For(metadata, _executor.Queries.Metadata);
+            var plan = DeletePlan.For(metadata, _executor.Queries.Metadata, _executor.VersionTags);
             CheckAuthority(plan.Aggregate);
 
             // --- The statements: the keys and their checks, then the deletes ---
@@ -99,6 +99,11 @@ namespace Tellma.Core.Data.Batches
                         _ = draft.Name(capture.Word);
                     }
 
+                    foreach (DeleteNode node in plan.UserIdCaptures)
+                    {
+                        _ = draft.Name(node.UserIdWord);
+                    }
+
                     Engine(draft, slots);
                 },
                 planned.Parameters + slots.Count,
@@ -121,6 +126,15 @@ namespace Tellma.Core.Data.Batches
                 }));
 
             AppendWrites(statements);
+
+            // --- The users the deleted rows name, which the bump epilogue reads ---
+            foreach (DeleteNode node in plan.UserIdCaptures)
+            {
+                foreach (UserIdSource source in UserIdCapture.Sources(node.Entity.Table, node.UserIdColumns, ReservedSqlNames.Statement(ordinal, node.UserIdWord)))
+                {
+                    AddUserIdSource(source);
+                }
+            }
 
             // --- Once it ran: the deleted rows, and a tree's recount ---
             string entity = metadata.Name;

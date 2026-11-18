@@ -44,6 +44,8 @@ namespace Tellma.Core.IntegrationTests.Data
         private const string ResetText = """
             DELETE FROM [core].[Jobs];
             DELETE FROM [core].[VersionTags];
+            DELETE FROM [core].[RoleMemberships];
+            DELETE FROM [core].[Roles] WHERE [Id] > 999;
             DELETE FROM [core].[UserStamps] WHERE [UserId] > 999;
             DELETE FROM [core].[Users] WHERE [Id] > 999;
             DELETE FROM [fixture].[WidgetExtras];
@@ -232,10 +234,11 @@ namespace Tellma.Core.IntegrationTests.Data
         ///     A scope of the fixture tenant whose context carries settings of one language, as the
         ///     settings load leaves it, so what reads the tenant's multilingual shape can.
         /// </summary>
+        /// <param name="userId">The user the scope's writes are stamped with; none by default.</param>
         /// <returns>The scope.</returns>
-        public AsyncServiceScope CreateSettledScope()
+        public AsyncServiceScope CreateSettledScope(int? userId = null)
         {
-            AsyncServiceScope scope = Tenant.CreateScope();
+            AsyncServiceScope scope = Tenant.CreateScope(userId);
             IRequestContextHolder holder = scope.ServiceProvider.GetRequiredService<IRequestContextHolder>();
             TenantSettings settings = new()
             {

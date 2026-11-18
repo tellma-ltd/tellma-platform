@@ -15,8 +15,16 @@ namespace Tellma.Core.Data.Ids
     ///     hand out ids the new database issues again.
     /// </summary>
     /// <remarks>
-    ///     The freeze sets the database read-only, so no range is read while the tenant is frozen;
-    ///     forgetting on the way out as well covers a range a batch read just before the freeze.
+    ///     <para>
+    ///         The freeze sets the database read-only, so no range is read while the tenant is frozen;
+    ///         forgetting on the way out as well covers a range a batch read just before the freeze.
+    ///     </para>
+    ///     <para>
+    ///         An instance that never loads a snapshot showing the freeze (it could not reach the
+    ///         catalog, or the freeze and the unfreeze fell between two of its refreshes) is never told
+    ///         of it. The allocator covers that case itself: each buffer remembers the database that
+    ///         filled it and is replaced once the tenant's registry entry names another.
+    ///     </para>
     /// </remarks>
     /// <param name="allocator">The id allocator.</param>
     internal sealed class IdBufferTenantListener(IdAllocator allocator) : ITenantStateListener

@@ -6,6 +6,7 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using System.Net;
 using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.Abstractions.Email;
@@ -148,6 +149,30 @@ namespace Tellma.Core.AspNetCore.Tests.Hosting
                 RequireAssuranceMetadata bar = app.Services.GetRequiredService<StepUpBar>().Requirement;
                 Assert.Equal(("urn:example:acr:strong", TimeSpan.FromMinutes(5)), (bar.Acr, bar.MaxAge));
             }
+        }
+
+        [Theory]
+        [InlineData("InProc", "urn:tellma:acr:aal2", true)]
+        [InlineData("InProc", "phrh", true)]
+        [InlineData("InProc", "urn:tellma:acr:mfa", false)]
+        [InlineData("Standalone", "urn:example:acr:strong", true)]
+        public void An_in_process_identity_server_must_be_able_to_satisfy_the_step_up_class(string mode, string acr, bool valid)
+        {
+            TellmaSessionOptionsValidator validator = new(Options.Create(new IdentityHostOptions { Mode = Enum.Parse<IdentityMode>(mode) }));
+
+            ValidateOptionsResult result = validator.Validate(null, new TellmaSessionOptions { StepUp = new StepUpOptions { Acr = acr } });
+
+            Assert.Equal(valid, result.Succeeded);
+            if (!valid)
+            {
+                Assert.Contains("Tellma:Session:StepUp:Acr is 'urn:tellma:acr:mfa'", result.FailureMessage, StringComparison.Ordinal);
+            }
+        }
+
+        [Fact]
+        public void The_default_step_up_class_is_one_the_identity_servers_tiers_rank()
+        {
+            Assert.Equal(2, AssuranceTiers.Rank(new StepUpOptions().Acr));
         }
 
         [Fact]

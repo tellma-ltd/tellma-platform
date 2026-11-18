@@ -7,6 +7,7 @@ using System.Globalization;
 using System.Text;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Hosting;
+using Tellma.Core.Data.Batches;
 using Tellma.Core.Data.Trees;
 
 namespace Tellma.Core.Data.Saves
@@ -14,7 +15,8 @@ namespace Tellma.Core.Data.Saves
     // The text follows spec 0012 §8.1–§8.5: the guard, the root inserts, each collection's
     // synchronise (nested collections under their parent's, with the descendants of removed rows
     // deleted deepest first), the root updates, a tree's statements (§10.2) and the receipt; the
-    // capture rule and the blob captures on every write.
+    // capture rule and the blob captures on every write, and the user-id captures of spec 0013 §2.5
+    // that the bump reads the affected users from.
     /// <summary>
     ///     Writes a save's text for a plan, its statement-local names under a placeholder ordinal
     ///     (<see cref="Placeholder" />) that the emitter replaces with the statement's own.
@@ -86,6 +88,7 @@ namespace Tellma.Core.Data.Saves
                 ReservedSqlNames.StatementNames.Touched,
                 ReservedSqlNames.StatementNames.Conflicts,
                 .. plan.Captures.Select(static capture => capture.Word),
+                .. plan.UserIdCaptures.Select(static node => node.UserIdWord),
             ];
         }
 
@@ -149,7 +152,7 @@ namespace Tellma.Core.Data.Saves
             SaveNode root = _plan.Root;
             string key = root.KeyType;
 
-            // --- The batch-local sets of fixed meaning, and every blob capture table ---
+            // --- The batch-local sets of fixed meaning, every blob capture table and every user-id capture ---
             Line($"DECLARE {Local(ReservedSqlNames.StatementNames.Now)} datetimeoffset(7) = SYSUTCDATETIME();");
             Line($"DECLARE {Local(ReservedSqlNames.StatementNames.New)} TABLE ([Id] {key} NOT NULL PRIMARY KEY);");
             Line($"DECLARE {Local(ReservedSqlNames.StatementNames.Saved)} TABLE ([Id] {key} NOT NULL PRIMARY KEY);");
@@ -158,6 +161,11 @@ namespace Tellma.Core.Data.Saves
             foreach (SaveCapture capture in _plan.Captures)
             {
                 Line($"DECLARE {Local(capture.Word)} TABLE ([RowId] {capture.Node.KeyType} NOT NULL, [OldBlobId] int NULL, [NewBlobId] int NULL);");
+            }
+
+            foreach (SaveNode node in _plan.UserIdCaptures)
+            {
+                Line(UserIdCapture.Declaration(Local(node.UserIdWord), node.KeyType, node.UserIdColumns));
             }
 
             // The saved set is filled before any write: every root of the payload, new and existing.
@@ -244,7 +252,7 @@ namespace Tellma.Core.Data.Saves
                 values.Add("hierarchyid::Parse('/0/' + CAST(s.[Id] AS varchar(20)) + '/')");
             }
 
-            Output output = PlanOutput(root, op: 'I', id: "inserted.[Id]", parent: null, toNew: true, touched: false, blobs: root.BlobColumns.Select(column => ("NULL", $"inserted.{Col(column)}")));
+            Output output = PlanOutput(root, op: 'I', id: "inserted.[Id]", parent: null, toNew: true, touched: false, before: null, after: "inserted");
             Line($"INSERT INTO {root.Table} ({string.Join(", ", columns)})");
             Line(output.Clause);
             Line($"SELECT {string.Join(", ", values)}");
@@ -277,7 +285,7 @@ namespace Tellma.Core.Data.Saves
             string absent = $"  AND NOT EXISTS (SELECT 1 FROM {newRows} AS s WHERE s.[Id] = c.[Id])\n  AND NOT EXISTS (SELECT 1 FROM {existing} AS s WHERE s.[Id] = c.[Id])";
 
             // --- The delete: through a removed-rows table when the rows own collections, whose rows go first ---
-            Output deleted = PlanOutput(node, op: 'D', id: "deleted.[Id]", parent: $"deleted.{parentKey}", toNew: false, touched: true, blobs: node.BlobColumns.Select(column => ($"deleted.{Col(column)}", "NULL")));
+            Output deleted = PlanOutput(node, op: 'D', id: "deleted.[Id]", parent: $"deleted.{parentKey}", toNew: false, touched: true, before: "deleted", after: null);
             if (node.Children.Count > 0)
             {
                 string gone = Local(string.Create(CultureInfo.InvariantCulture, $"gone{_gone++}"));
@@ -308,7 +316,7 @@ namespace Tellma.Core.Data.Saves
             List<SaveColumn> set = [.. node.Columns.Where(static column => column.IsSet)];
             if (set.Count > 0)
             {
-                Output updated = PlanOutput(node, op: 'U', id: "inserted.[Id]", parent: $"inserted.{parentKey}", toNew: false, touched: true, blobs: node.BlobColumns.Select(column => ($"deleted.{Col(column)}", $"inserted.{Col(column)}")));
+                Output updated = PlanOutput(node, op: 'U', id: "inserted.[Id]", parent: $"inserted.{parentKey}", toNew: false, touched: true, before: "deleted", after: "inserted");
                 Line($"UPDATE c SET {string.Join(", ", set.Select(static column => $"c.{Col(column.Name)} = s.{Col(column.Name)}"))}");
                 Line(updated.Clause);
                 Line($"FROM {node.Table} AS c JOIN {existing} AS s ON s.[Id] = c.[Id]");
@@ -318,7 +326,7 @@ namespace Tellma.Core.Data.Saves
             }
 
             // --- The insert ---
-            Output inserted = PlanOutput(node, op: 'I', id: "inserted.[Id]", parent: $"inserted.{parentKey}", toNew: false, touched: true, blobs: node.BlobColumns.Select(column => ("NULL", $"inserted.{Col(column)}")));
+            Output inserted = PlanOutput(node, op: 'I', id: "inserted.[Id]", parent: $"inserted.{parentKey}", toNew: false, touched: true, before: null, after: "inserted");
             Line($"INSERT INTO {node.Table} ({string.Join(", ", node.Columns.Select(static column => Col(column.Name)))})");
             Line(inserted.Clause);
             Statement($"SELECT {string.Join(", ", node.Columns.Select(static column => $"s.{Col(column.Name)}"))} FROM {newRows} AS s");
@@ -333,7 +341,7 @@ namespace Tellma.Core.Data.Saves
 
         /// <summary>
         ///     Writes the delete of a descendant table's rows under removed rows, its own descendants
-        ///     first, with the blob captures its table declares. These deletes touch nothing.
+        ///     first, with the blob and user-id captures its table declares. These deletes touch nothing.
         /// </summary>
         /// <param name="node">The descendant's node.</param>
         /// <param name="owners">A query of the ids of the owning rows being removed.</param>
@@ -346,7 +354,7 @@ namespace Tellma.Core.Data.Saves
                 WriteDescendantDelete(child, scope);
             }
 
-            Output deleted = PlanOutput(node, op: 'D', id: "deleted.[Id]", parent: $"deleted.{parentKey}", toNew: false, touched: false, blobs: node.BlobColumns.Select(column => ($"deleted.{Col(column)}", "NULL")));
+            Output deleted = PlanOutput(node, op: 'D', id: "deleted.[Id]", parent: $"deleted.{parentKey}", toNew: false, touched: false, before: "deleted", after: null);
             Line($"DELETE g{deleted.Prefixed}");
             Statement($"FROM {node.Table} AS g WHERE g.{parentKey} IN ({owners})");
             deleted.WriteAfter(this);
@@ -367,7 +375,7 @@ namespace Tellma.Core.Data.Saves
                 .Append($"t.[ModifiedAt] = {now}")
                 .Append($"t.[ModifiedById] = {Scalar(1)}");
 
-            Output updated = PlanOutput(root, op: 'U', id: "inserted.[Id]", parent: null, toNew: false, touched: false, blobs: root.BlobColumns.Select(column => ($"deleted.{Col(column)}", $"inserted.{Col(column)}")));
+            Output updated = PlanOutput(root, op: 'U', id: "inserted.[Id]", parent: null, toNew: false, touched: false, before: "deleted", after: "inserted");
             Line($"UPDATE t SET {string.Join(", ", assignments)}");
             if (updated.Clause.Length > 0)
             {
@@ -392,12 +400,15 @@ namespace Tellma.Core.Data.Saves
         /// <param name="parent">The written row's parent key; null for a root.</param>
         /// <param name="toNew">Whether the statement feeds the new-roots set.</param>
         /// <param name="touched">Whether the statement feeds the touched set.</param>
-        /// <param name="blobs">The old and new value of each blob column.</param>
+        /// <param name="before">The alias of the row before the write, <c>deleted</c>; null for an insert.</param>
+        /// <param name="after">The alias of the row after the write, <c>inserted</c>; null for a delete.</param>
         /// <returns>The output.</returns>
-        private Output PlanOutput(SaveNode node, char op, string id, string? parent, bool toNew, bool touched, IEnumerable<(string Old, string New)> blobs)
+        private Output PlanOutput(SaveNode node, char op, string id, string? parent, bool toNew, bool touched, string? before, string? after)
         {
-            List<(string Old, string New)> values = [.. blobs];
-            int targets = (toNew ? 1 : 0) + (touched ? 1 : 0) + values.Count;
+            // Each blob column feeds a capture of its own; the user-id columns feed one capture together.
+            List<(string Old, string New)> values = [.. node.BlobColumns.Select(column => (Image(before, column), Image(after, column)))];
+            IReadOnlyList<string> users = node.UserIdColumns;
+            int targets = (toNew ? 1 : 0) + (touched ? 1 : 0) + values.Count + (users.Count > 0 ? 1 : 0);
 
             // A child under a child reaches the touched set only through its ancestors' rows.
             bool mapped = touched && node.Level > 1;
@@ -413,7 +424,9 @@ namespace Tellma.Core.Data.Saves
                     ? $"OUTPUT {id} INTO {Local(ReservedSqlNames.StatementNames.New)} ([Id])"
                     : touched
                         ? string.Create(CultureInfo.InvariantCulture, $"OUTPUT {parent}, {node.RootCollection}, '{op}' INTO {Local(ReservedSqlNames.StatementNames.Touched)} ([Id], [Collection], [Op])")
-                        : $"OUTPUT {id}, {values[0].Old}, {values[0].New} INTO {Local(_plan.Captures.First(capture => capture.Node == node && capture.Column == node.BlobColumns[0]).Word)} ([RowId], [OldBlobId], [NewBlobId])";
+                        : users.Count > 0
+                            ? $"OUTPUT {UserIdCapture.Values(id, before, after, users)} INTO {Local(node.UserIdWord)} ({UserIdCapture.Targets(users)})"
+                            : $"OUTPUT {id}, {values[0].Old}, {values[0].New} INTO {Local(_plan.Captures.First(capture => capture.Node == node && capture.Column == node.BlobColumns[0]).Word)} ([RowId], [OldBlobId], [NewBlobId])";
                 return new Output(clause, []);
             }
 
@@ -433,17 +446,27 @@ namespace Tellma.Core.Data.Saves
                 capValues.Add(values[index].New);
             }
 
+            // The user-id images under names of their own, so a blob column of the same name never clashes.
+            foreach (string column in users)
+            {
+                _ = declaration.Append(CultureInfo.InvariantCulture, $", {Col(UserImage("Old", column))} int NULL, {Col(UserImage("New", column))} int NULL");
+                capColumns.Add(Col(UserImage("Old", column)));
+                capColumns.Add(Col(UserImage("New", column)));
+                capValues.Add(Image(before, column));
+                capValues.Add(Image(after, column));
+            }
+
             Line(declaration.Append(");").ToString());
 
-            List<string> after = [];
+            List<string> fills = [];
             if (toNew)
             {
-                after.Add($"INSERT INTO {Local(ReservedSqlNames.StatementNames.New)} ([Id]) SELECT [Id] FROM {cap}");
+                fills.Add($"INSERT INTO {Local(ReservedSqlNames.StatementNames.New)} ([Id]) SELECT [Id] FROM {cap}");
             }
 
             if (touched)
             {
-                after.Add(mapped ? MappedTouched(node, cap) : string.Create(
+                fills.Add(mapped ? MappedTouched(node, cap) : string.Create(
                     CultureInfo.InvariantCulture,
                     $"INSERT INTO {Local(ReservedSqlNames.StatementNames.Touched)} ([Id], [Collection], [Op]) SELECT [ParentId], {node.RootCollection}, [Op] FROM {cap}"));
             }
@@ -451,10 +474,34 @@ namespace Tellma.Core.Data.Saves
             foreach (string column in node.BlobColumns)
             {
                 string word = _plan.Captures.First(capture => capture.Node == node && capture.Column == column).Word;
-                after.Add($"INSERT INTO {Local(word)} ([RowId], [OldBlobId], [NewBlobId]) SELECT [Id], {Col("Old_" + column)}, {Col("New_" + column)} FROM {cap}");
+                fills.Add($"INSERT INTO {Local(word)} ([RowId], [OldBlobId], [NewBlobId]) SELECT [Id], {Col("Old_" + column)}, {Col("New_" + column)} FROM {cap}");
             }
 
-            return new Output($"OUTPUT {string.Join(", ", capValues)} INTO {cap} ({string.Join(", ", capColumns)})", after);
+            if (users.Count > 0)
+            {
+                string images = string.Join(", ", users.SelectMany(static column => new[] { Col(UserImage("Old", column)), Col(UserImage("New", column)) }));
+                fills.Add($"INSERT INTO {Local(node.UserIdWord)} ({UserIdCapture.Targets(users)}) SELECT [Id], {images} FROM {cap}");
+            }
+
+            return new Output($"OUTPUT {string.Join(", ", capValues)} INTO {cap} ({string.Join(", ", capColumns)})", fills);
+        }
+
+        /// <summary>One image of a column: the alias's column, or <c>NULL</c> when the write has no such image.</summary>
+        /// <param name="alias">The alias, <c>deleted</c> or <c>inserted</c>, or null.</param>
+        /// <param name="column">The column.</param>
+        /// <returns>The value.</returns>
+        private static string Image(string? alias, string column)
+        {
+            return alias is null ? "NULL" : $"{alias}.{Col(column)}";
+        }
+
+        /// <summary>A capture table's column holding one image of a user-id column, <c>User&lt;Image&gt;_&lt;Column&gt;</c>.</summary>
+        /// <param name="image"><c>Old</c> or <c>New</c>.</param>
+        /// <param name="column">The user-id column.</param>
+        /// <returns>The capture table's column.</returns>
+        private static string UserImage(string image, string column)
+        {
+            return $"User{image}_{column}";
         }
 
         /// <summary>

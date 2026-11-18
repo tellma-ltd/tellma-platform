@@ -471,8 +471,8 @@ namespace Tellma.Core.Crud.Save
                 return;
             }
 
-            int tenantId = _request.RequireTenant().Id;
-            _reservation = _operation.Buffer.ReserveBuffered(tenantId, typeof(TEntity), Payload);
+            // The buffers of the database the tenant lives in now; one a relocated database filled is dropped.
+            _reservation = _operation.Buffer.ReserveBuffered(_operation.Database, typeof(TEntity), Payload);
             if (_reservation is null)
             {
                 _deferred = true;

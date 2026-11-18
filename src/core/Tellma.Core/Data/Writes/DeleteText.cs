@@ -13,7 +13,8 @@ namespace Tellma.Core.Data.Writes
 {
     // The delete of spec 0012 §9.2 from its captured keys on: the stamp comparison, a tree's old
     // nodes, the children deepest first, the root with its ids read back, the blob captures of §8.5
-    // under the capture rule of §8.4, and a tree's recount (§10.3).
+    // under the capture rule of §8.4, the user-id captures the bump of spec 0013 §2.5 reads the
+    // affected users from, and a tree's recount (§10.3).
     /// <summary>
     ///     Writes the part of a delete statement that follows the key capture and the checks: it
     ///     names the keys table, which an earlier statement of the delete may have declared.
@@ -61,12 +62,17 @@ namespace Tellma.Core.Data.Writes
         /// <summary>Whether every data-modifying statement carries <c>OPTION (RECOMPILE)</c>.</summary>
         public bool Recompile { get; }
 
-        /// <summary>Writes the declarations of every blob capture table, first in the statement.</summary>
+        /// <summary>Writes the declarations of every blob capture table and every user-id capture, first in the statement.</summary>
         public void WriteCaptureDeclarations()
         {
             foreach (DeleteCapture capture in _plan.Captures)
             {
                 Line($"DECLARE {Local(capture.Word)} TABLE ([RowId] {capture.Node.KeyType} NOT NULL, [OldBlobId] int NULL, [NewBlobId] int NULL);");
+            }
+
+            foreach (DeleteNode node in _plan.UserIdCaptures)
+            {
+                Line(UserIdCapture.Declaration(Local(node.UserIdWord), node.KeyType, node.UserIdColumns));
             }
         }
 
@@ -147,34 +153,45 @@ namespace Tellma.Core.Data.Writes
         }
 
         /// <summary>
-        ///     Plans a delete's <c>OUTPUT … INTO</c> of its blob columns: straight into the one
-        ///     capture table, or into a capture table of its own that fills each column's after it.
+        ///     Plans a delete's <c>OUTPUT … INTO</c> of its blob columns and its users: straight into
+        ///     the one capture table, or into a capture table of its own that fills each capture after it.
         /// </summary>
         /// <param name="node">The node.</param>
         /// <returns>The output.</returns>
         private Output PlanOutput(DeleteNode node)
         {
             IReadOnlyList<string> columns = node.BlobColumns;
-            if (columns.Count == 0)
+            IReadOnlyList<string> users = node.UserIdColumns;
+            int targets = columns.Count + (users.Count > 0 ? 1 : 0);
+            if (targets == 0)
             {
                 return new Output(string.Empty, []);
             }
 
             // --- One set, fed directly ---
-            if (columns.Count == 1)
+            if (targets == 1)
             {
-                string word = Word(node, columns[0]);
-                return new Output($"OUTPUT deleted.[Id], deleted.{SqlNames.Quote(columns[0])}, NULL INTO {Local(word)} ([RowId], [OldBlobId], [NewBlobId])", []);
+                return users.Count > 0
+                    ? new Output($"OUTPUT {UserIdCapture.Values("deleted.[Id]", "deleted", null, users)} INTO {Local(node.UserIdWord)} ({UserIdCapture.Targets(users)})", [])
+                    : new Output($"OUTPUT deleted.[Id], deleted.{SqlNames.Quote(columns[0])}, NULL INTO {Local(Word(node, columns[0]))} ([RowId], [OldBlobId], [NewBlobId])", []);
             }
 
             // --- Several sets: a capture table, each set filled from it after the statement ---
+            // The user-id images under names of their own, so a blob column of the same name never clashes.
             string cap = Local(ReservedSqlNames.StatementNames.Capture(_captures++));
-            Line($"DECLARE {cap} TABLE ([Id] {node.KeyType} NOT NULL{string.Concat(columns.Select(static column => $", {SqlNames.Quote("Old_" + column)} int NULL"))});");
+            List<string> names = [.. columns.Select(static column => "Old_" + column), .. users.Select(static column => "UserOld_" + column)];
+            Line($"DECLARE {cap} TABLE ([Id] {node.KeyType} NOT NULL{string.Concat(names.Select(static name => $", {SqlNames.Quote(name)} int NULL"))});");
             List<string> after = [.. columns.Select(column =>
                 $"INSERT INTO {Local(Word(node, column))} ([RowId], [OldBlobId], [NewBlobId]) SELECT [Id], {SqlNames.Quote("Old_" + column)}, NULL FROM {cap}")];
-            string values = string.Join(", ", columns.Select(static column => $"deleted.{SqlNames.Quote(column)}"));
-            string targets = string.Join(", ", columns.Select(static column => SqlNames.Quote("Old_" + column)));
-            return new Output($"OUTPUT deleted.[Id], {values} INTO {cap} ([Id], {targets})", after);
+            if (users.Count > 0)
+            {
+                string images = string.Join(", ", users.Select(static column => $"{SqlNames.Quote("UserOld_" + column)}, NULL"));
+                after.Add($"INSERT INTO {Local(node.UserIdWord)} ({UserIdCapture.Targets(users)}) SELECT [Id], {images} FROM {cap}");
+            }
+
+            string values = string.Join(", ", columns.Concat(users).Select(static column => $"deleted.{SqlNames.Quote(column)}"));
+            string targetColumns = string.Join(", ", names.Select(SqlNames.Quote));
+            return new Output($"OUTPUT deleted.[Id], {values} INTO {cap} ([Id], {targetColumns})", after);
         }
 
         /// <summary>The capture word of a node's blob column.</summary>

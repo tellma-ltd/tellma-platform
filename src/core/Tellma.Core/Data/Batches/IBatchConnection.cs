@@ -6,6 +6,7 @@
 using Microsoft.Data.SqlClient;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Settings;
+using Tellma.Core.Tenancy;
 
 namespace Tellma.Core.Data.Batches
 {
@@ -17,6 +18,13 @@ namespace Tellma.Core.Data.Batches
     {
         /// <summary>The tenant whose database the connection reaches.</summary>
         int TenantId { get; }
+
+        /// <summary>
+        ///     Where the tenant's database lives, as the registry's snapshot placed it, which tells one
+        ///     database behind the tenant from the next across a relocation or a restore; null when the
+        ///     connection cannot tell it, which proves no move.
+        /// </summary>
+        TenantLocation? Location => null;
 
         /// <summary>The tenant's multilingual shape, which picks the query schema the batch's query statements compile against.</summary>
         /// <exception cref="InvalidOperationException">The connection has no tenant settings to read it from.</exception>

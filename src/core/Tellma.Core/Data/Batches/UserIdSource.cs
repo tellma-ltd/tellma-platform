@@ -17,5 +17,13 @@ namespace Tellma.Core.Data.Batches
     ///     of <paramref name="Tables" /> (a raw statement's declared ids).
     /// </param>
     /// <param name="Identifier">The batch-local table or table-valued parameter holding the ids.</param>
-    internal sealed record UserIdSource(IReadOnlySet<TableName> Tables, string? Column, SqlIdentifier Identifier);
+    /// <param name="Read">
+    ///     The columns of <paramref name="Identifier" /> the ids are read from, such as a written row's
+    ///     value before and after the write; null reads <paramref name="Column" />, else <c>Id</c>.
+    /// </param>
+    internal sealed record UserIdSource(IReadOnlySet<TableName> Tables, string? Column, SqlIdentifier Identifier, IReadOnlyList<string>? Read = null)
+    {
+        /// <summary>The columns the ids are read from: <see cref="Read" />, else <see cref="Column" />, else <c>Id</c>.</summary>
+        public IReadOnlyList<string> ReadColumns => Read is { Count: > 0 } read ? read : [Column ?? "Id"];
+    }
 }

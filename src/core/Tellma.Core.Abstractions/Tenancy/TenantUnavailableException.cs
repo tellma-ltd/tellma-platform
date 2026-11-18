@@ -33,12 +33,17 @@ namespace Tellma.Core.Abstractions.Tenancy
     /// <param name="state">The tenant's state when a state refused the request; null for the catalog and schema codes.</param>
     /// <param name="code">One of the codes above, from <see cref="TenantProblemCodes" />.</param>
     /// <param name="retryAfter">How long the caller should wait before retrying; null when retrying will not help.</param>
+    /// <param name="innerException">
+    ///     The failure that revealed the verdict, such as the server error of a database that does not
+    ///     list the running schema; null when the verdict was reached without one.
+    /// </param>
     /// <exception cref="ArgumentException"><paramref name="code" /> is not one of the codes above.</exception>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="retryAfter" /> is negative.</exception>
-    public sealed class TenantUnavailableException(int tenantId, TenantState? state, string code, TimeSpan? retryAfter)
+    public sealed class TenantUnavailableException(int tenantId, TenantState? state, string code, TimeSpan? retryAfter, Exception? innerException = null)
         : TellmaException(
             ValidateCode(code),
-            string.Create(CultureInfo.InvariantCulture, $"Tenant {tenantId} cannot serve the request: {code}."))
+            string.Create(CultureInfo.InvariantCulture, $"Tenant {tenantId} cannot serve the request: {code}."),
+            innerException: innerException)
     {
         /// <summary>The tenant the request named.</summary>
         public int TenantId { get; } = tenantId;

@@ -25,6 +25,7 @@ using Tellma.Core.AspNetCore.Hosting;
 using Tellma.Core.AspNetCore.Observability;
 using Tellma.Core.AspNetCore.Problems;
 using Tellma.Core.AspNetCore.Sessions;
+using Tellma.Core.Tenancy;
 
 namespace Tellma.Core.AspNetCore.Bff
 {
@@ -416,8 +417,9 @@ namespace Tellma.Core.AspNetCore.Bff
         /// <returns>The values to send, or null when neither names any.</returns>
         /// <remarks>
         ///     Values are ranked by the identity server's tier scheme (aal1, then aal2 or <c>phr</c>, then
-        ///     aal3 or <c>phrh</c>); a list ranks as its weakest member, since the identity server may
-        ///     satisfy any of them. When either side cannot be ranked, the caller's values win only when
+        ///     aal3 or <c>phrh</c>); a list ranks as its strongest member, since the identity server
+        ///     requires the highest tier a list names, so the values sent never demand less than the
+        ///     policy's alone would. When either side cannot be ranked, the caller's values win only when
         ///     they are the step-up class, which the distribution configured as its own bar; otherwise the
         ///     policy's do.
         /// </remarks>
@@ -434,35 +436,9 @@ namespace Tellma.Core.AspNetCore.Bff
             }
 
             // --- Both name a class: the higher tier, the policy's on a tie; unranked, the step-up class ---
-            return AcrRank(policy) is int policyRank && AcrRank(caller) is int callerRank
+            return AssuranceTiers.RankList(policy) is int policyRank && AssuranceTiers.RankList(caller) is int callerRank
                 ? (callerRank > policyRank ? caller : policy)
                 : (string.Equals(caller, stepUp, StringComparison.Ordinal) ? caller : policy);
-        }
-
-        /// <summary>The tier an acr value or list reaches in the identity server's scheme.</summary>
-        /// <param name="values">The space-separated values.</param>
-        /// <returns>The weakest member's tier, or null when any member is outside the scheme.</returns>
-        private static int? AcrRank(string values)
-        {
-            int? weakest = null;
-            foreach (string value in values.Split(' ', StringSplitOptions.RemoveEmptyEntries))
-            {
-                int? rank = value switch
-                {
-                    "urn:tellma:acr:aal1" => 1,
-                    "urn:tellma:acr:aal2" or "phr" => 2,
-                    "urn:tellma:acr:aal3" or "phrh" => 3,
-                    _ => null,
-                };
-                if (rank is not int known)
-                {
-                    return null;
-                }
-
-                weakest = weakest is int current && current < known ? current : known;
-            }
-
-            return weakest;
         }
 
         /// <summary>Writes a JSON answer.</summary>

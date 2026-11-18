@@ -14,15 +14,21 @@ namespace Tellma.Core.Data.Batches
     /// <summary>Opens tenant databases outside any tenant scope, each holding one connection.</summary>
     /// <param name="executor">The executor.</param>
     /// <param name="connections">The tenant connection factory.</param>
-    internal sealed class TenantDatabaseFactory(DataExecutor executor, ITenantConnectionFactory connections) : ITenantDatabaseFactory
+    /// <param name="registry">The tenant registry, which tells where each tenant's database lives.</param>
+    internal sealed class TenantDatabaseFactory(DataExecutor executor, ITenantConnectionFactory connections, ITenantRegistry registry) : ITenantDatabaseFactory
     {
         /// <inheritdoc />
         public async Task<ITenantDatabaseHandle> OpenAsync(int tenantId, IServiceProvider services, CancellationToken cancellationToken = default)
         {
             ArgumentNullException.ThrowIfNull(services);
 
+            // The location before the connection: should a relocation land in between, the handle names
+            // the database it left, so the ids it reads are never kept for the database it reached. Read
+            // from the snapshot's list, which never throws: a handle opened while the catalog is out of
+            // reach, such as a migration's, tells no location rather than failing.
+            TenantLocation? location = registry.Tenants.FirstOrDefault(tenant => tenant.Id == tenantId)?.Location;
             SqlConnection connection = await connections.OpenAsync(tenantId, cancellationToken).ConfigureAwait(false);
-            return new TenantDatabaseHandle(executor, services, tenantId, connection);
+            return new TenantDatabaseHandle(executor, services, tenantId, connection, location);
         }
     }
 
@@ -52,7 +58,8 @@ namespace Tellma.Core.Data.Batches
         /// <param name="services">The caller's scope.</param>
         /// <param name="tenantId">The tenant.</param>
         /// <param name="connection">The open connection, which the handle owns.</param>
-        public TenantDatabaseHandle(DataExecutor executor, IServiceProvider services, int tenantId, SqlConnection connection)
+        /// <param name="location">Where the tenant's database lives, as the registry placed it; null when unknown.</param>
+        public TenantDatabaseHandle(DataExecutor executor, IServiceProvider services, int tenantId, SqlConnection connection, TenantLocation? location = null)
         {
             ArgumentNullException.ThrowIfNull(executor);
             ArgumentNullException.ThrowIfNull(services);
@@ -62,10 +69,14 @@ namespace Tellma.Core.Data.Batches
             _services = services;
             TenantId = tenantId;
             _connection = connection;
+            Location = location;
         }
 
         /// <inheritdoc />
         public int TenantId { get; }
+
+        /// <inheritdoc />
+        public TenantLocation? Location { get; }
 
         /// <inheritdoc />
         public int? UserId => null;

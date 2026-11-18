@@ -146,6 +146,21 @@ namespace Tellma.Core.AspNetCore.Tests.Sessions
             Assert.Equal(2, tenantId);
         }
 
+        [Fact]
+        public async Task Each_tenant_is_reconciled_against_the_catalogs_time_taken_before_its_users_were_read()
+        {
+            await using TellmaTestHost host = await TellmaTestHost.StartAsync(options =>
+                options.Rows.Add(FakeCatalogReader.Row(2)));
+            FakeReconcileStore store = new();
+            using MembershipReconcileService service = Service(host, store);
+
+            Assert.True(await service.RunOnceAsync(TestContext.Current.CancellationToken));
+
+            // A hint a user save writes after the read is stamped after the time, which the
+            // reconciliation then leaves alone.
+            Assert.Equal(["time 1", "read 1", "reconcile 1 at 1", "time 2", "read 2", "reconcile 2 at 2"], store.Steps);
+        }
+
         /// <summary>A reconciliation service over the host's registry and clock.</summary>
         /// <param name="host">The host.</param>
         /// <param name="store">The store.</param>

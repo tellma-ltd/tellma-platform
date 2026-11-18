@@ -359,6 +359,21 @@ Format, one entry per ruling:
 - Also accepted: a readonly select never opens (a pre-existing bug, fixed) and exposes aria-readonly.
 - **Misalignment for Ahmad:** 0010 §B.4 names contentChildren(TmOptionGroup), which the design does not need. See also D-036's §B.4 note.
 
+### D-113 (orchestrator, 2026-11-17): PC-072 R2 open questions; interim rulings, for Ahmad
+- Sensitive-Read stacks: a self-reference asks for (R, Read) step-up through the reference checks (D-111), but the before images, ModifiedByName and the write-once "differs" read of the same stack R do not; only the Save pair is asked, through RequireAsync. Reviewer 2 found this is not a bypass under spec 0014 §4.3. Interim ruling: keep it as built (the Save pair's step-up covers reading the rows being saved). Ahmad to choose one rule.
+- Spec 0015 §6.6 step 5 says uniqueness holders are skipped "on create and update alike", which is stricter than deviation 18 (a value is freed only where the persist's statement order frees it). Interim ruling: deviation 18 stands, because the literal rule lets a save pass validation and then fail on the unique index. Ahmad to amend the spec or overrule.
+- PC-072 fix 2 (R2-2) changed deviation 1: a validator's Visible load of an entity type that no permission guards (no grant can reach it) is now unrestricted instead of denied, matching the reference rule (unguarded targets are checked for existence only). Noted for Ahmad with the rest of D-113.
+
+### D-112 (PC-B03, 2026-11-17): default step-up class aal2 with tier ranking; accepted by Ahmad
+- The PC-B03 fixer (XC-2/XC-3) added one shared tier ranking: aal1 < aal2/phr < aal3/phrh. AssuranceCheck accepts a session at or above the bar, falls back to exact match outside the scheme, StrongerAcr ranks lists by their strongest member, and a startup validator refuses an unranked step-up class when the identity server runs in-proc. The default step-up class is now urn:tellma:acr:aal2.
+- Ahmad (2026-11-17) accepted the departure: aal2 as the default step-up class with tier-ranked comparison stands. Spec 0011 §5.5 and its appsettings sample are to be brought in line with the code.
+- This departs from spec 0011 §5.5 and its appsettings sample (D-066 item 7). Spec 0011 §7.5 (reconcile `@readAt` predicate) and spec 0012 §7.3-7.4 plus spec 0011's listener contract (id buffers keyed by database location) also need text edits. For Ahmad.
+
+### D-111 (orchestrator, 2026-11-17): PC-072 R1-3 reference-visibility reads follow D-108
+- Ruling: the save's reference-visibility pre-load is a read decision like a traversal, so per D-108 it must not skip the step-up (AssuranceCheck) or the FastDenyWindow re-check that a direct Read of the same sensitive pair gets. A reference to a child-entity row is checked under the owning root's Read filter, as spec 0015 §7.4 says ("under the target's Read filter"), not for existence only. If the implementer shows the specs intend otherwise, it pushes back with the citation and the question goes to Ahmad.
+- PC-072's other spec-wording items for Ahmad: spec 0015 §6.6 step 5's signature for the D-095 ByValues seam.
+- PC-B02 spec-wording items for Ahmad: spec 0012 §6.3's two-step arrow for 50501, and the schema-behind row missing from spec 0015 §14.2.
+
 ### D-110 (orchestrator, 2026-11-17): PC-B02 and PC-B03 overdue; launch at the 20:00 UTC reset
 - Phases 2 (PC-015…PC-031) and 3 (PC-032…PC-061) are both fully `done`, but neither batch review was started when its last member closed. This was an orchestrator miss: §5.2 says to start as soon as the phase is done. Ahmad's question surfaced it.
 - At 18:55 UTC, U = 91 (R = 9) and F ≈ 1 (the PC-070 integration), so the §6.3 batch gate (R − F − 8 ≥ 5) fails. The weekly window resets at 20:00 UTC.

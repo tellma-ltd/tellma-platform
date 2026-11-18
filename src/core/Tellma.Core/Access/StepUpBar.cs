@@ -4,6 +4,7 @@
 // LICENSE file in the root directory of this source tree.
 
 using Tellma.Core.Abstractions.Tenancy;
+using Tellma.Core.Tenancy;
 
 namespace Tellma.Core.Access
 {
@@ -15,8 +16,11 @@ namespace Tellma.Core.Access
     /// <param name="Requirement">The bar: the authentication context class, and how recently it must have been reached.</param>
     internal sealed record StepUpBar(RequireAssuranceMetadata Requirement)
     {
-        /// <summary>The authentication context class required by default.</summary>
-        public const string DefaultAcr = "urn:tellma:acr:mfa";
+        /// <summary>
+        ///     The authentication context class required by default: the identity server's two-factor
+        ///     tier, which a passkey or a second factor reaches and its device-bound tier exceeds.
+        /// </summary>
+        public const string DefaultAcr = AssuranceTiers.Aal2;
 
         /// <summary>How recently the class must have been reached by default.</summary>
         public static readonly TimeSpan DefaultMaxAge = TimeSpan.FromMinutes(15);

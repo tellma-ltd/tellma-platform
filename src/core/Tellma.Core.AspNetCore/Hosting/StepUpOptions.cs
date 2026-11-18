@@ -14,7 +14,10 @@ namespace Tellma.Core.AspNetCore.Hosting
     /// </summary>
     public sealed class StepUpOptions
     {
-        /// <summary>The authentication context class required; <c>urn:tellma:acr:mfa</c> by default.</summary>
+        /// <summary>
+        ///     The authentication context class required; <c>urn:tellma:acr:aal2</c> by default. A session
+        ///     holding a higher tier of the identity server's scheme meets it.
+        /// </summary>
         public string Acr { get; set; } = StepUpBar.DefaultAcr;
 
         /// <summary>How recently the class must have been reached; 15 minutes by default, null for no limit.</summary>
