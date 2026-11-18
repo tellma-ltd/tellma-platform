@@ -366,6 +366,8 @@ Format, one entry per ruling:
 - Ruling: whichever of the two integrates second makes the union reach every guard path, including PC-077's OpenWriteFrame.Persist.cs. It also runs both checkpoints' guard and enlistment tests together in its integration gate.
 - PC-078 fix 1 (1a5de53e): the guards are now decided over StackTables ∪ batch.WrittenTables at the invariants step, and the lock stays a TransactionHead statement. PC-077's group union should adopt the same rule. **For Ahmad:** spec 0014 §8.3 decides over WrittenTables, while spec 0015 §6.7 step 4 calls ContributeLock "ahead of item 1" from metadata. One of the two needs aligning.
 - PC-078 fix 1 outcomes for D-119: users' and roles' delete-by-query is refused as a BadRequest naming the resource (spec 0018 §4 and spec 0015 §16.2 say otherwise). A deactivated existing administrator fails the bootstrap naming the user id; R1 preferred reactivating through the activate action. **Both are for Ahmad.**
+- PC-077 fix 1 (b5cf1ae7): PC-078's guard rule hooks into Crud/Save/PersistGuards.Contribute. That is called at all four persist sites, OpenWriteFrame.ComposeOntoAsync included, and whoever integrates second keeps those calls.
+- **For Ahmad (spec 0015 §5.1):** how re-run enlistments are answered. PC-077 matches them by task and step from the first run and treats divergence as stale (deviation 11). Also whether EnlistmentOutcome.Stamp should become nullable; today it falls back to the frame's clock (deviation 12).
 - Also from PC-077 R1, for spec 0020: the job-frame seam overwrites the worker batch's Limits.
 
 ### D-120 (orchestrator, 2026-11-18): BlobContainerStep moves from PC-089 to PC-083; the provisioning-record row goes to the later of PC-078 and PC-083
