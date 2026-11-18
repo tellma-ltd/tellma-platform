@@ -569,11 +569,11 @@ namespace Tellma.Core.IntegrationTests.Migrator
 
             MigratorResult result = await migrator.RunAsync("migrate");
 
-            // The platform's own settings step runs beside the three.
+            // The platform's own steps, the administrator bootstrap and the settings, run beside the three.
             Assert.True(result.ExitCode == MigratorExitCodes.Converged, result.ToString());
-            Assert.Contains(result.Lines, static line => line.StartsWith("tenant 1: provisioned (", StringComparison.Ordinal) && line.Contains(" 4 step(s)", StringComparison.Ordinal));
+            Assert.Contains(result.Lines, static line => line.StartsWith("tenant 1: provisioned (", StringComparison.Ordinal) && line.Contains(" 5 step(s)", StringComparison.Ordinal));
             Assert.Equal(
-                ["core.settings", "probe.counter", "probe.seed-a", "probe.seed-b"],
+                ["core.bootstrap-administrator", "core.settings", "probe.counter", "probe.seed-a", "probe.seed-b"],
                 await ListAsync(migrator.TenantConnectionString(1), "SELECT [Step] FROM [dbo].[__TellmaProvisioning] ORDER BY [Step];"));
         }
 

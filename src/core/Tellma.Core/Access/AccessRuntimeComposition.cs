@@ -9,6 +9,7 @@ using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.Composition;
 using Tellma.Core.Localization;
+using Tellma.Core.Provisioning;
 
 namespace Tellma.Core.Access
 {
@@ -16,8 +17,9 @@ namespace Tellma.Core.Access
     ///     Registers what permission evaluation needs beyond <see cref="CoreFeature" />'s contribution:
     ///     the access options, the permission classifier, the set builder and its instruments; the
     ///     user connection: its caches, the scoped connector and runner, and the connect initializer;
-    ///     and the scoped evaluator, its witness, the holders resolver, the administrator directory
-    ///     and the security tables' guards.
+    ///     the scoped evaluator, its witness, the holders resolver, the administrator directory and
+    ///     the security tables' guards; and the first administrator's bootstrap and the permission
+    ///     drift scan.
     /// </summary>
     internal static class AccessRuntimeComposition
     {
@@ -75,8 +77,17 @@ namespace Tellma.Core.Access
                 typeof(AccessHoldersResolver<,>).MakeGenericType(record.LeafOf(typeof(User)), record.LeafOf(typeof(Role))));
             services.TryAddScoped<IAdministratorDirectory, AdministratorDirectory>();
 
-            // --- The security tables' guards: none until they are registered in this seat (§8.3) ---
-            services.TryAddScoped<IAccessGuards, NullAccessGuards>();
+            // --- The security tables' guards: the lock and the three invariants (§8.3) ---
+            services.TryAddScoped<IAccessGuards, AccessGuards>();
+
+            // --- The first administrator's bootstrap, closed over the user leaf, and its held subject (§11) ---
+            services.TryAddScoped<BootstrapSubject>();
+            services.TryAddScoped(typeof(ITenantBootstrapper), typeof(TenantBootstrapper<>).MakeGenericType(record.LeafOf(typeof(User))));
+
+            // --- The drift scan, and the migrator's report of it after migrate (§9) ---
+            services.TryAddScoped<PermissionDriftScanner>();
+            services.TryAddScoped<IPermissionDriftScanner>(static provider => provider.GetRequiredService<PermissionDriftScanner>());
+            services.TryAddScoped<ITenantDriftReport>(static provider => provider.GetRequiredService<PermissionDriftScanner>());
         }
     }
 }

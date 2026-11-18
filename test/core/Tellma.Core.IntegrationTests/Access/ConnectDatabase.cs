@@ -35,8 +35,11 @@ namespace Tellma.Core.IntegrationTests.Access
         /// <summary>The second tenant, whose database reuses the first one's ids.</summary>
         public const int TenantB = 2;
 
-        /// <summary>The next user id a test seeds, above the reserved band; the two databases share the sequence.</summary>
-        private int _nextUserId = 1000;
+        /// <summary>
+        ///     The next user id a test seeds, far above the ids the users' sequence hands a save through
+        ///     the pipeline, so the two never meet; the two databases share the counter.
+        /// </summary>
+        private int _nextUserId = 1_000_000;
 
         /// <summary>The tenants, by id.</summary>
         private Dictionary<int, TenantInfo>? _tenants;
@@ -117,6 +120,7 @@ namespace Tellma.Core.IntegrationTests.Access
         /// <param name="state">The state the request sees the tenant in.</param>
         /// <param name="background">Whether the request is a background one that stamps no activity.</param>
         /// <param name="services">The instance the scope is of; this fixture's own when null.</param>
+        /// <param name="assurance">How the caller's session was authenticated, which a sensitive securable's step-up bar reads; none when null.</param>
         /// <returns>The scope.</returns>
         public async Task<AsyncServiceScope> ScopeAsync(
             string? subject,
@@ -125,13 +129,14 @@ namespace Tellma.Core.IntegrationTests.Access
             int tenantId = TenantA,
             TenantState state = TenantState.Active,
             bool background = false,
-            IServiceProvider? services = null)
+            IServiceProvider? services = null,
+            AuthenticationAssurance? assurance = null)
         {
             AsyncServiceScope scope = (services ?? Services).CreateAsyncScope();
             try
             {
                 IRequestContextHolder holder = scope.ServiceProvider.GetRequiredService<IRequestContextHolder>();
-                RequestContext context = holder.Current with { Tenant = Descriptor(tenantId, state), Kind = kind, Subject = subject, UserId = userId };
+                RequestContext context = holder.Current with { Tenant = Descriptor(tenantId, state), Kind = kind, Subject = subject, UserId = userId, Assurance = assurance };
                 holder.Set(context);
                 _ = await RequestContextInitialization.RunAsync(
                     holder,

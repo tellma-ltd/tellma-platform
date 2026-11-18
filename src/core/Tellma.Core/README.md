@@ -1676,14 +1676,153 @@ holds the scope's caller to `core.Role` × `Read` first.
 `IAdministratorDirectory` (`AdministratorDirectory`) reads, in one guarded round trip, the ids of at
 most 20 active individuals, invited or joined, with a current membership of the administrator role,
 lowest id first, for a tenant's administrative notices; it checks no permission of the caller.
-`IAccessGuards` is the persist pipeline's
-seat for the security tables' in-transaction invariants (the security lock, the last administrator,
-the public roles' members, the administrator role itself); `NullAccessGuards` holds it for now and
-contributes no lock and no assertion.
 
 `AccessOptions` binds from `Tellma:Access` and is judged by `core.options`: every count positive,
 `MaxFilterLength` within the 2048-character filter column, every span positive, `FastDenyWindow`
 within `PermissionsMaxAge`, and `ActivityStampInterval` at least 60 seconds.
+
+## The access write side
+
+Every path that writes the security tables keeps one thing true: the tenant has an active, invited
+or joined individual with a started, permanent membership of the administrator role. The users'
+and roles' stacks give a refused write its field-level message first; the guards hold the line
+inside the transaction whatever composed the write.
+
+### The guards
+
+`AccessGuards` (scoped `IAccessGuards`) joins a persist batch the tenant database created; any other
+batch, a `RecordingBatch` included, is an `ArgumentException`. Each call adds its text once per batch
+however often it is made:
+
+- `ContributeLock` puts the security lock at the transaction's head, ahead of the version-tag guard
+  and the caller re-check: `sp_getapplock 'tellma.access'`, exclusive, owned by the transaction,
+  waiting at most `AccessOptions.SecurityLockTimeout` (5 seconds by default, rounded up to whole
+  milliseconds). A deadlock victim (`Access.LockDeadlock`) and a timeout (`Access.LockTimeout`) are
+  `THROW 50503`, which the executor retries as transient.
+- `ContributeInvariants` appends three assertions after every write, each a `THROW 50422`:
+  `Access.LastAdministrator` (no active, invited or joined individual holds a started administrator
+  membership without an end), `Access.PublicRoleHasMembers` (a public role has a member) and
+  `Access.AdministratorRoleDamaged` (the administrator role is inactive or public, or lacks its
+  unfiltered `*` × `*` permission). A membership that ends later never stands in for a permanent
+  one, so ending the last permanent membership is refused even while a time-bounded one remains.
+
+The save, delete and action pipelines call both, around the writes, for a stack whose tables
+include `core.Users`, `Roles`, `RoleMemberships` or `Permissions`, unless the context is the
+system's. A guarded batch composed by hand that writes those tables calls them itself. Because every
+security write holds the lock, the assertions, which read under the transaction's snapshot, can never
+pass for two concurrent writes that together break them. A save's `50422` surfaces as a
+`ValidationException` carrying the code at the root; a hand-composed run's surfaces as
+`BatchAssertionFailedException` with the same `Code`.
+
+Each guard error of a failed attempt, a retried lock timeout included, is counted
+(`tellma.access.guards.triggered`, by `guard`: `last_administrator`, `public_role_members`,
+`administrator_damaged`, `lock_timeout`, `lock_deadlock`) and logged (`GuardTriggered`, 3103, at
+Warning, with the tenant, the user and the code). The guards see the errors through
+`DataBatch.OnServerErrors`, an observer the executor calls with each failed attempt's server errors.
+
+### The users' and roles' rules
+
+`CoreFeature` stacks `User` on `UserService<TUser>` and `Role` on `RoleService<TRole>`, the standard
+operations closed over the distribution's leaves. The users' service declares `IEnlists<TUser>`, for a
+user's self-service writes. The rules are separate components of the two stacks, `UserAccessRules<TUser>`
+and `RoleAccessRules<TRole>`, so a leaf's service cannot drop them; they validate deletes and the
+built-in actions as well as saves.
+
+| Code | The users' rules refuse |
+|---|---|
+| `Users.SystemUserImmutable` | a save, an action or a delete of the system user, row 1 |
+| `Users.KindNotAllowed` | a payload naming the system kind |
+| `Users.EmailNotAllowed` | an email on a user that is not an individual |
+| `Users.EmailLockedAfterInvite` | a changed email once the user was invited |
+| `RoleMemberships.EndsBeforeStart` | a membership ending at or before its start |
+| `RoleMemberships.EndsInPast` | a new membership, or one whose window changed, that ended already |
+| `RoleMemberships.Overlap` | two windows of one role that overlap; a permanent one overlaps every other |
+| `Users.TooManyRoles` | more memberships that have not ended than `MaxRolesPerUser` (`max`) |
+| `Users.CannotRemoveOwnAdministratorMembership` | the caller removing, ending or deferring their own current administrator membership |
+| `Users.CannotDeactivateSelf` / `Users.CannotDeleteSelf` | the caller deactivating or deleting their own user |
+| `Users.OnlyNewUsersDeletable` | a delete of a user past `New`, whom the audit columns may reference (it is deactivated instead) |
+| `Users.MembershipEscalation` | a new membership, or one moved to another role or widened, of a role holding a permission the caller does not hold unrestricted (`resource`, `action`) |
+
+| Code | The roles' rules refuse |
+|---|---|
+| `Permissions.UnknownSecurable` | a pair no securable registers; `(*, A)` when no resource registers `A` (`resource`, `action`) |
+| `Permissions.FilterNotSupported` | a filter on `*` or on a securable without a filter root |
+| `Permissions.FilterTooLong` | a filter beyond `MaxFilterLength` (`maxLength`) |
+| `Permissions.FilterVersionUnsupported` | an unchanged filter whose stored stamp this engine does not compile (`version`, `minimum`) |
+| `Permissions.FilterInvalid` | a blank filter, or one the engine does not validate against the tenant's current schema as a predicate over the root: one error per diagnostic, each with its `code` and arguments |
+| `Permissions.WildcardResourceOnPublicRole` | a permission on `*` of a public role |
+| `Roles.PublicRoleHasMembers` | a role saved as public that has members |
+| `Roles.AdministratorImmutable` | the administrator role made public, deactivated, deleted or stripped of its `*` × `*` grant |
+| `Roles.HasMembers` | a delete of a role that has members |
+| `Roles.TooManyPermissions` | more permissions than `MaxPermissionsPerRole` (`max`) |
+| `Permissions.EscalationBeyondSelf` | a new or changed permission the caller does not hold unrestricted; every permission of a role the save makes public |
+
+A filter's stamp follows its text: a new row, a changed text or a missing stamp takes the running
+language version, and unchanged text keeps the stamp it was affirmed under. The filter-root rule is
+the drift classifier's, so a permission the rules accept never drifts on the deployment that saved it.
+
+The escalation test (`AccessDelegation`) lets a caller hand out a pair only when their own set holds
+an unrestricted grant, current now, that covers it: the pair itself, the resource's `*` action, the
+action on `*`, or `*` × `*`; for `Read`, also any action on the resource, or any action on `*` the
+resource registers. A filtered grant never qualifies. The system set, and a caller holding `*` × `*`,
+are exempt. Self-protection refusals are counted with the guards (`self_deactivation`, `self_deletion`,
+`own_administrator_membership`) and logged as `GuardTriggered`; an escalation is counted as
+`escalation` and logged as `EscalationRejected` (3104, at Information, with the role and the pair).
+
+Saving a user or a role is a sensitive securable, so it asks for the step-up bar.
+
+### Stamps and preferences
+
+`UserStampsCompanion<TUser>`, a persist effect of the users' stack, inserts the `core.UserStamps` row
+of every user a save inserts, in the save's transaction: both tags set to the batch's bump value, no
+activity and an empty inbox. A row already there is kept, so a re-run after a lost connection is safe.
+
+`UserPreferenceStatements` writes a user's preference bag (`core.UserPreferences`) over
+`UserPreferenceList` rows, each write one statement appended to a persist batch: `Set` updates changed
+values and inserts absent keys, `Delete` removes the named keys, and `Replace` deletes the keys the
+items do not name, then sets the rest. `Set` and `Replace` assert the key cap after their insert
+(`Users.TooManyPreferenceKeys`, a `50422`), and the version-tag guard serialises two writes of one bag
+on the user's stamp row, so they cannot pass the cap together. The caller's own bag is written against
+the connect prologue's user; another user's is named in a one-row id list, so the epilogue moves that
+user's `PreferencesTag` either way. Keys compare as the database compares them, ignoring case; a value
+compares in binary, so a change of case alone is written. `Check` and `CheckKeys` judge the items in
+memory first: the key grammar (dotted segments, the first led by a lower-case letter, at most 128
+characters; `Users.PreferenceKeyInvalid`), a key named twice ignoring case
+(`Users.PreferenceKeyDuplicate`), and a value beyond `MaxPreferenceValueBytes` of UTF-8
+(`Users.PreferenceValueTooLarge`).
+
+### The first administrator
+
+`ITenantBootstrapper` (`TenantBootstrapper<TUser>`, scoped) makes a tenant's first individual
+administrator through the users' stack, in the platform's own scope of the tenant, so the audit stamps,
+the stamp row and the tag bumps come with it and the guards stand aside. A user scope is refused. The
+email address is trimmed and lower-cased, as the users' stack stores it.
+
+- **A new address** creates an individual with no invitation evidence, so its state reads `New` until
+  it is invited, and one permanent administrator membership.
+- **An existing user** keeps its state and its other roles, and gains the membership only when it
+  lacks a started, permanent one. Every administrator membership that has not ended is replaced by one
+  permanent row starting where the last ended one ended, so the windows never overlap.
+- **A subject** is accepted in a Development environment only (`InvalidOperationException` before
+  anything is written otherwise). It rides the same save: `BootstrapSubjectEffect<TUser>`, a persist
+  effect of the users' stack, records it on the created user as an invitation would (the subject, the
+  invitation's instant, `InviteStatus.Invited`).
+
+The bootstrap is idempotent on the address. The `core.bootstrap-administrator` provisioning step
+(order 10, before `core.settings`) calls it with the administrator the run names, named by the address's
+local part and preferring the distribution's first offered language. A run that names none, such as a
+plain migration, leaves the tenant as it is.
+
+### The drift scan
+
+`IPermissionDriftScanner` (`PermissionDriftScanner`, scoped, in the platform's own scope of the tenant)
+reads every stored permission with its role's code and visibility in one round trip, and classifies each
+with `PermissionClassifier`, the classifier the permission sets are built with, against the running
+deployment's securables and the tenant's current schema. It returns a `PermissionDriftItem` for every
+permission that grants nothing: the permission, the role and its code, the problem, and the engine's
+diagnostics. The same instance is the migrator's `ITenantDriftReport`, which prints one line per item
+after a tenant's migrations, such as
+`Permission 12 of role 4 (clerks) grants nothing: FilterInvalid; QX3001 property=Name2 entity=fx.Widget.`
 
 ## The identity-server client
 

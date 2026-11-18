@@ -1,7 +1,7 @@
 stack core.User
   segment: users
   entity: Tellma.Core.Abstractions.Access.User
-  service: Tellma.Core.Crud.DefaultEntityService<Tellma.Core.Abstractions.Access.User, int>
+  service: Tellma.Core.Users.UserService<Tellma.Core.Abstractions.Access.User>
   key: int
   description: -
   operations: All, Enlist
@@ -25,7 +25,7 @@ stack core.User
 stack core.Role
   segment: roles
   entity: Tellma.Core.Abstractions.Access.Role
-  service: Tellma.Core.Crud.DefaultEntityService<Tellma.Core.Abstractions.Access.Role, int>
+  service: Tellma.Core.Users.RoleService<Tellma.Core.Abstractions.Access.Role>
   key: int
   description: -
   operations: All
@@ -307,3 +307,4 @@ child fixture.Link
   exportable: yes
   limits: default
   mcp: Full
+enlistment Tellma.Core.Users.UserService<Tellma.Core.Abstractions.Access.User> -> core.User

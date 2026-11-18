@@ -54,7 +54,13 @@ namespace Tellma.Core.Abstractions.Access
         /// </summary>
         public const string ProblemTag = "problem";
 
-        /// <summary>The guard tag: the guard that refused a write.</summary>
+        /// <summary>
+        ///     The guard tag: the guard that refused a write, one of <see cref="GuardLastAdministrator" />,
+        ///     <see cref="GuardPublicRoleMembers" />, <see cref="GuardAdministratorDamaged" />,
+        ///     <see cref="GuardLockTimeout" />, <see cref="GuardLockDeadlock" />,
+        ///     <see cref="GuardSelfDeactivation" />, <see cref="GuardSelfDeletion" />,
+        ///     <see cref="GuardOwnAdministratorMembership" /> and <see cref="GuardEscalation" />.
+        /// </summary>
         public const string GuardTag = "guard";
 
         /// <summary>The connect result tag.</summary>
@@ -122,5 +128,32 @@ namespace Tellma.Core.Abstractions.Access
 
         /// <summary>The variant value of the platform's own prologue, which looks no user up.</summary>
         public const string VariantSystem = "system";
+
+        /// <summary>The guard value of a write that would leave no active, invited or joined individual with a permanent administrator membership.</summary>
+        public const string GuardLastAdministrator = "last_administrator";
+
+        /// <summary>The guard value of a write that would leave a public role with a member.</summary>
+        public const string GuardPublicRoleMembers = "public_role_members";
+
+        /// <summary>The guard value of a write that would leave the administrator role inactive, public or without its unrestricted wildcard grant.</summary>
+        public const string GuardAdministratorDamaged = "administrator_damaged";
+
+        /// <summary>The guard value of a security write that did not obtain the tenant's security lock in time.</summary>
+        public const string GuardLockTimeout = "lock_timeout";
+
+        /// <summary>The guard value of a security write whose lock request was chosen as a deadlock victim.</summary>
+        public const string GuardLockDeadlock = "lock_deadlock";
+
+        /// <summary>The guard value of a caller deactivating their own user.</summary>
+        public const string GuardSelfDeactivation = "self_deactivation";
+
+        /// <summary>The guard value of a caller deleting their own user.</summary>
+        public const string GuardSelfDeletion = "self_deletion";
+
+        /// <summary>The guard value of a caller removing, ending or deferring their own administrator membership.</summary>
+        public const string GuardOwnAdministratorMembership = "own_administrator_membership";
+
+        /// <summary>The guard value of a caller granting a permission, or a role, beyond what they hold unrestricted.</summary>
+        public const string GuardEscalation = "escalation";
     }
 }

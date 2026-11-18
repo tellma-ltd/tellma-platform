@@ -1,7 +1,7 @@
 stack core.User
   segment: users
   entity: Tellma.Core.Abstractions.Access.User
-  service: Tellma.Core.Crud.DefaultEntityService<Tellma.Core.Abstractions.Access.User, int>
+  service: Tellma.Core.Users.UserService<Tellma.Core.Abstractions.Access.User>
   key: int
   description: -
   operations: All, Enlist
@@ -25,7 +25,7 @@ stack core.User
 stack core.Role
   segment: roles
   entity: Tellma.Core.Abstractions.Access.Role
-  service: Tellma.Core.Crud.DefaultEntityService<Tellma.Core.Abstractions.Access.Role, int>
+  service: Tellma.Core.Users.RoleService<Tellma.Core.Abstractions.Access.Role>
   key: int
   description: -
   operations: All
@@ -236,3 +236,4 @@ service inbox
   feature: sm
   action mark-read: api member-only body - handler InboxService; mutation; result void; mcp Full, revision 0; -
   action purge: api sm.Inbox:Purge body - handler InboxService; mutation, destructive; result int; mcp Full, revision 0; -
+enlistment Tellma.Core.Users.UserService<Tellma.Core.Abstractions.Access.User> -> core.User

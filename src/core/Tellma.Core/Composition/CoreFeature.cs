@@ -29,6 +29,7 @@ using Tellma.Core.Localization;
 using Tellma.Core.Notifications;
 using Tellma.Core.Provisioning;
 using Tellma.Core.Settings;
+using Tellma.Core.Users;
 
 namespace Tellma.Core.Composition
 {
@@ -104,10 +105,17 @@ namespace Tellma.Core.Composition
                 .Model<TellmaProvisioningRowConfiguration>();
 
             // --- Access: users and roles with their children, each configuration closed over the leaf ---
-            // spec 0014 §1.2. The services of the two stacks join these lines when they land.
+            // spec 0014 §1.2, §8.2, §8.4 and §11: the two stacks' services, their access rules, the
+            // companion stamp row of every inserted user, and the first administrator's bootstrap:
+            // its subject statement and its provisioning step at 10.
             _ = contribution
-                .Entity<User>()
-                .Entity<Role>()
+                .Entity<User, UserService<User>>()
+                .Entity<Role, RoleService<Role>>()
+                .Validator<User, UserAccessRules<User>>()
+                .Validator<Role, RoleAccessRules<Role>>()
+                .PersistEffect<User, UserStampsCompanion<User>>()
+                .PersistEffect<User, BootstrapSubjectEffect<User>>()
+                .ProvisioningStep<BootstrapAdministratorStep>()
                 .Model(typeof(UserConfiguration<>))
                 .Model(typeof(RoleConfiguration<>))
                 .Model(typeof(RoleMembershipConfiguration<>))
