@@ -28,3 +28,5 @@ Verified, no finding:
 - Fix: say the call waits until the clock passes the current millisecond, which is up to one clock tick (about 16 ms on Windows). Say the split assumes a catalog clock that does not step back.
 
 ### Responses
+- R1-1: fixed in d6c3a1a3 (the full Tests: block is in that commit's message; 562077d8 is left as pushed, since rewording it would need a force-push)
+- R1-2: fixed in d6c3a1a3
