@@ -105,7 +105,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-079 | pc-1 | pc/PC-079 | impl | impl (Opus, high, launched 2026-11-19) | — | 2026-11-19 |
 | PC-080 | pc-3 | pc/PC-080 | impl | impl (Opus, high, launched 2026-11-19) | — | 2026-11-19 |
 | PC-098 | pc-4 | pc/PC-098 | impl | impl (Opus, xhigh, launched 2026-11-19) | — | 2026-11-19 |
-| PC-084 | pc-2 | pc/PC-084 | integrate | impl (Opus, high, launched 2026-11-18) | released 2026-11-18 after PC-077 green; integrating with D-123 carries | 2026-11-18 |
+| PC-084 | pc-2 | pc/PC-084 | CI (52e51448) | impl (Opus, high, launched 2026-11-18) | released 2026-11-18 after PC-077 green; integrating with D-123 carries | 2026-11-18 |
 
 ## Fix items
 
