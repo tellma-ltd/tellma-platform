@@ -128,34 +128,34 @@ namespace Tellma.Core.AspNetCore.Tests.Problems
         }
 
         /// <summary>The members each row adds to the body, by the exception that raises it.</summary>
-        /// <returns>The exception's name, the member's path in the body and its value as text.</returns>
+        /// <returns>The exception's name, the member's path in the body and its value as JSON, so its kind is pinned too.</returns>
         public static TheoryData<string, string, string> Members()
         {
             return new TheoryData<string, string, string>
             {
                 { "count-mismatch", "arguments.expected", "2" },
                 { "count-mismatch", "arguments.actual", "3" },
-                { "limit", "arguments.limit", "MaxIds" },
+                { "limit", "arguments.limit", "\"MaxIds\"" },
                 { "limit", "arguments.actual", "5" },
                 { "limit", "arguments.maximum", "3" },
-                { "not-found", "arguments.resource", "gl.Center" },
-                { "not-found", "arguments.ids[0]", "3" },
+                { "not-found", "arguments.resource", "\"gl.Center\"" },
+                { "not-found", "arguments.ids[0]", "\"3\"" },
                 { "concurrency", "errorDetails.conflicts[0].id", "3" },
-                { "concurrency", "errorDetails.conflicts[0].modifiedAt", "2026-11-19T08:30:00.0000000Z" },
+                { "concurrency", "errorDetails.conflicts[0].modifiedAt", "\"2026-11-19T08:30:00.0000000Z\"" },
                 { "concurrency", "errorDetails.conflicts[0].modifiedById", "7" },
-                { "concurrency", "errorDetails.conflicts[0].modifiedByName", "Jane Doe" },
+                { "concurrency", "errorDetails.conflicts[0].modifiedByName", "\"Jane Doe\"" },
                 { "concurrency", "errorDetails.conflicts[0].isMissing", "false" },
-                { "partial", "errorDetails.results[0]", "sent" },
-                { "partial", "errorDetails.failed[0]", "email" },
-                { "tenant-state", "detail", "The tenant cannot move from Active to Provisioning." },
-                { "confirmation", "errorDetails.confirmations[0].key", "Gl.Backdated" },
+                { "partial", "errorDetails.results[0]", "\"sent\"" },
+                { "partial", "errorDetails.failed[0]", "\"email\"" },
+                { "tenant-state", "detail", "\"The tenant cannot move from Active to Provisioning.\"" },
+                { "confirmation", "errorDetails.confirmations[0].key", "\"Gl.Backdated\"" },
                 { "confirmation", "errorDetails.confirmations[0].ids[1]", "2" },
                 { "confirmation", "errorDetails.confirmations[0].arguments.days", "3" },
-                { "stale", "errorDetails.dependencies[0]", "settings" },
-                { "dependency", "arguments.dependency", "database" },
-                { "blob-too-large", "errors[0].code", "Blob.TooLarge" },
+                { "stale", "errorDetails.dependencies[0]", "\"settings\"" },
+                { "dependency", "arguments.dependency", "\"database\"" },
+                { "blob-too-large", "errors[0].code", "\"Blob.TooLarge\"" },
                 { "blob-too-large", "errors[0].arguments.maxBytes", "1024" },
-                { "bad-request", "detail", "The ids are not distinct." },
+                { "bad-request", "detail", "\"The ids are not distinct.\"" },
             };
         }
 
@@ -167,7 +167,7 @@ namespace Tellma.Core.AspNetCore.Tests.Problems
 
             using JsonDocument body = await BodyAsync(host, name);
 
-            Assert.Equal(value, Text(At(body.RootElement, path)));
+            Assert.Equal(value, At(body.RootElement, path).GetRawText());
         }
 
         [Fact]
@@ -397,14 +397,6 @@ namespace Tellma.Core.AspNetCore.Tests.Problems
             }
 
             return current;
-        }
-
-        /// <summary>A member's value as text: a string as it is, anything else as its JSON.</summary>
-        /// <param name="member">The member.</param>
-        /// <returns>The text.</returns>
-        private static string Text(JsonElement member)
-        {
-            return member.ValueKind == JsonValueKind.String ? member.GetString()! : member.GetRawText();
         }
 
         /// <summary>Starts a host whose web surface maps the throwing endpoint.</summary>

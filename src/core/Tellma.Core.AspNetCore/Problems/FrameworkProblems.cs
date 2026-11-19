@@ -64,7 +64,7 @@ namespace Tellma.Core.AspNetCore.Problems
             ArgumentNullException.ThrowIfNull(http);
             int answered = status ?? http.Response.StatusCode;
             return !string.IsNullOrWhiteSpace(code)
-                ? new ProblemDescription(answered, code)
+                ? ProblemMapper.Named(answered, code)
                 : ProblemMapper.ForStatus(answered, IsRouteMiss(http))
                     ?? new ProblemDescription(
                         answered,

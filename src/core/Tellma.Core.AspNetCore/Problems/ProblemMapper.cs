@@ -42,6 +42,9 @@ namespace Tellma.Core.AspNetCore.Problems
         /// <summary>The problem code of a malformed request.</summary>
         public const string BadRequestCode = "bad-request";
 
+        /// <summary>The problem code of a refused permission or policy.</summary>
+        public const string ForbiddenCode = "forbidden";
+
         /// <summary>The problem code of a request over a limit.</summary>
         public const string LimitExceededCode = "limit-exceeded";
 
@@ -62,6 +65,15 @@ namespace Tellma.Core.AspNetCore.Problems
 
         /// <summary>The <c>arguments.dependency</c> of a busy image processor.</summary>
         public const string ImagingDependency = "imaging";
+
+        /// <summary>
+        ///     The detail of a refusal that names no securable (a session that fails its surface's
+        ///     policy, a component's bare 403): the general sentence, whose reason the refusal's
+        ///     detail resource selects on.
+        /// </summary>
+        private static readonly ProblemDetail GeneralRefusal = new ProblemDetail.Resource(
+            ProblemRenderer.TitleKey(ForbiddenCode) + ProblemRenderer.DetailSuffix,
+            new Dictionary<string, object?>(StringComparer.Ordinal) { ["reason"] = "other" });
 
         /// <summary>The wait of an unavailable tenant that names none.</summary>
         public static readonly TimeSpan DefaultTenantRetryAfter = TimeSpan.FromSeconds(30);
@@ -120,7 +132,8 @@ namespace Tellma.Core.AspNetCore.Problems
                 ConfirmationRequiredException confirmation => new(StatusCodes.Status409Conflict, confirmation.Code)
                 {
                     ErrorDetails = new ConfirmationDetails(confirmation.Requests),
-                    Detail = new ProblemDetail.Resource(MessageKey(confirmation.Requests[0].Key), confirmation.Requests[0].Arguments),
+                    // A confirmation's message is declared under its key as it is, which the composition requires.
+                    Detail = new ProblemDetail.Resource(confirmation.Requests[0].Key, confirmation.Requests[0].Arguments),
                 },
                 TenantStateException state => new(StatusCodes.Status409Conflict, state.Code) { Detail = new ProblemDetail.Verbatim(state.Detail) },
                 CountMismatchException mismatch => new(StatusCodes.Status409Conflict, mismatch.Code) { Arguments = Present(mismatch.Arguments) },
@@ -174,7 +187,7 @@ namespace Tellma.Core.AspNetCore.Problems
             {
                 StatusCodes.Status400BadRequest => BadRequestCode,
                 StatusCodes.Status401Unauthorized => "unauthenticated",
-                StatusCodes.Status403Forbidden => "forbidden",
+                StatusCodes.Status403Forbidden => ForbiddenCode,
                 StatusCodes.Status404NotFound => routeMiss ? "route-not-found" : "not-found",
                 StatusCodes.Status405MethodNotAllowed => "method-not-allowed",
                 StatusCodes.Status413PayloadTooLarge => LimitExceededCode,
@@ -191,8 +204,23 @@ namespace Tellma.Core.AspNetCore.Problems
 
                 // A body over its ceiling names the limit; its size is unknown, so no detail renders it.
                 LimitExceededCode => new(status, code) { Arguments = BodyLimit(), Detail = ProblemDetail.None },
-                _ => new(status, code),
+                _ => Named(status, code),
             };
+        }
+
+        /// <summary>
+        ///     The problem a component answers by its status and code alone: its code's own detail,
+        ///     except a refusal naming no securable, whose detail is the general sentence.
+        /// </summary>
+        /// <param name="status">The status.</param>
+        /// <param name="code">The kebab-case problem code.</param>
+        /// <returns>The problem.</returns>
+        public static ProblemDescription Named(int status, string code)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(code);
+            return string.Equals(code, ForbiddenCode, StringComparison.Ordinal)
+                ? new(status, code) { Detail = GeneralRefusal }
+                : new(status, code);
         }
 
         /// <summary>The resource key of a dotted code's message: each <c>.</c> written <c>_</c>.</summary>

@@ -192,7 +192,14 @@ under the verb but not the body's media type `415 unsupported-media`, and any ot
 `404 route-not-found` under a tenant id (`not-found` elsewhere); each reads the path alone, never
 whether the tenant exists, and tries only the routes of the path's segment count and last segment.
 A bare 404 from an endpoint that matched is `not-found`: `route-not-found` is reserved for a request
-no endpoint took, the SPA's sign of an outdated client.
+no endpoint took, the SPA's sign of an outdated client. A bare 403 (a session that fails its
+surface's policy) answers `forbidden` with the general refusal as its detail.
+
+A tenant endpoint refuses by throwing one of the mapped exceptions, never by returning
+`Results.Problem` or `Results.ValidationProblem`. The platform writes every problem-details body
+from its status and the `code` extension alone. It drops the caller's `title`, `detail` and other
+extensions, because a free-text detail could carry an exception message to the wire and the codes
+are a closed set. A status no code names answers `bad-request` (4xx) or `internal` (5xx).
 
 An endpoint on a tenant group carries exactly one of `RequireSecurable(resource, action)` and
 `AllowMember()`. Every `Web`, `Api` and `Blobs` endpoint states whether it changes data with

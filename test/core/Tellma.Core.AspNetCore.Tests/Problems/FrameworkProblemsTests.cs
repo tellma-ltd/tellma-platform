@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using System.Net;
 using System.Text;
+using System.Text.Json;
 using Tellma.Core.Abstractions.Errors;
 using Tellma.Core.AspNetCore.Tests.Infrastructure;
 
@@ -66,10 +67,15 @@ namespace Tellma.Core.AspNetCore.Tests.Problems
         }
 
         [Theory]
-        [InlineData(405, "method-not-allowed")]
-        [InlineData(429, "rate-limited")]
-        [InlineData(504, "timeout")]
+        [InlineData(400, "bad-request")]
+        [InlineData(401, "unauthenticated")]
+        [InlineData(403, "forbidden")]
         [InlineData(404, "not-found")]
+        [InlineData(405, "method-not-allowed")]
+        [InlineData(413, "limit-exceeded")]
+        [InlineData(429, "rate-limited")]
+        [InlineData(500, "internal")]
+        [InlineData(504, "timeout")]
         public async Task A_bare_status_a_component_set_answers_its_problem(int status, string code)
         {
             await using TellmaTestHost host = await StartAsync();
@@ -81,6 +87,26 @@ namespace Tellma.Core.AspNetCore.Tests.Problems
             Problem problem = await Problem.ReadAsync(response);
             Assert.Equal(code, problem.Code);
             Assert.Equal(Assert.Single(response.Headers.GetValues("Tellma-Trace-Id")), problem.Instance);
+
+            // A detail is rendered text, never a message pattern its arguments failed to fill.
+            if (problem.Document.TryGetProperty("detail", out JsonElement detail))
+            {
+                Assert.DoesNotContain('{', detail.GetString()!);
+            }
+        }
+
+        [Fact]
+        public async Task A_bare_forbidden_renders_the_general_refusal()
+        {
+            await using TellmaTestHost host = await StartAsync();
+
+            using HttpRequestMessage request = TellmaTestHost.SpaRequest(HttpMethod.Get, "/1/api/web/status/403", host.Cookie());
+            using HttpResponseMessage response = await host.Client.SendAsync(request, TestContext.Current.CancellationToken);
+
+            Problem problem = await Problem.ReadAsync(response);
+            Assert.Equal("forbidden", problem.Code);
+            Assert.Equal("Ask your administrator for access.", problem.Document.GetProperty("detail").GetString());
+            Assert.False(problem.Document.TryGetProperty("arguments", out _));
         }
 
         [Fact]

@@ -58,10 +58,11 @@ namespace Tellma.Core.AspNetCore.Problems
             HttpContext context, int status, string code, string? detail = null, IReadOnlyDictionary<string, object?>? arguments = null)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(code);
-            return WriteAsync(context, new ProblemDescription(status, code)
+            ProblemDescription named = ProblemMapper.Named(status, code);
+            return WriteAsync(context, named with
             {
                 Arguments = arguments is { Count: > 0 } ? arguments : null,
-                Detail = detail is null ? null : new ProblemDetail.Verbatim(detail),
+                Detail = detail is null ? named.Detail : new ProblemDetail.Verbatim(detail),
             });
         }
 

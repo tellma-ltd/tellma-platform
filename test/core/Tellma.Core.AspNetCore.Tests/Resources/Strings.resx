@@ -19,4 +19,8 @@
   <data name="Pj.OpenOrders" xml:space="preserve">
     <value>The center has open orders</value>
   </data>
+  <!-- A validation message of the projection suite that names its property, which the problem body renders by its label. -->
+  <data name="Pj_Untidy" xml:space="preserve">
+    <value>{property} is untidy</value>
+  </data>
 </root>

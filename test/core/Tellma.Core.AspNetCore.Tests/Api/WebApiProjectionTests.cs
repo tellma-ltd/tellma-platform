@@ -29,6 +29,7 @@ using Tellma.Core.Abstractions.Crud;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Errors;
 using Tellma.Core.Abstractions.Tenancy;
+using Tellma.Core.Abstractions.Validation;
 using Tellma.Core.Access;
 using Tellma.Core.Api;
 using Tellma.Core.AspNetCore.Api;
@@ -138,6 +139,42 @@ namespace Tellma.Core.AspNetCore.Tests.Api
             Assert.Equal(
                 [.. TellmaJson.Options.Converters.Select(static converter => converter.GetType())],
                 [.. options.Converters.Select(static converter => converter.GetType()).Take(TellmaJson.Options.Converters.Count)]);
+        }
+
+        [Fact]
+        public async Task A_save_refused_by_validation_names_each_entity_and_its_property_by_its_label()
+        {
+            await using TellmaTestHost host = await StartAsync();
+            host.Services.GetRequiredService<PipelineLog>().Refusal = new ValidationException(
+                [new ValidationError(ValidationPath.Root.Index(1).Property(nameof(PjCenter.IsActive)), "Pj.Untidy", new Dictionary<string, object?> { ["property"] = nameof(PjCenter.IsActive) })]);
+
+            using HttpResponseMessage response = await SendAsync(
+                host, host.Cookie(), "centers/save", /*lang=json,strict*/ """{"entities":[{"code":"C1","name":"One"},{"code":"C2","name":"Two"}]}""");
+
+            // The save route roots the path at its entities and names the property by its label; the arguments keep the raw name.
+            Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
+            Problem problem = await Problem.ReadAsync(response);
+            Assert.Equal("validation", problem.Code);
+            JsonElement error = Assert.Single(problem.Document.GetProperty("errors").EnumerateArray());
+            Assert.Equal("entities[1].isActive", error.GetProperty("path").GetString());
+            Assert.Equal("Active is untidy", error.GetProperty("message").GetString());
+            Assert.Equal(nameof(PjCenter.IsActive), error.GetProperty("arguments").GetProperty("property").GetString());
+        }
+
+        [Fact]
+        public async Task A_save_awaiting_confirmation_renders_its_first_warnings_own_message()
+        {
+            await using TellmaTestHost host = await StartAsync();
+            host.Services.GetRequiredService<PipelineLog>().Refusal = new ConfirmationRequiredException(
+                [new ConfirmationRequest(ProjectionModel.ConfirmationKeys[0], [1], new Dictionary<string, object?>())]);
+
+            using HttpResponseMessage response = await SendAsync(
+                host, host.Cookie(), "centers/save", /*lang=json,strict*/ """{"entities":[{"code":"C1","name":"One"}]}""");
+
+            Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+            Problem problem = await Problem.ReadAsync(response);
+            Assert.Equal("confirmation-required", problem.Code);
+            Assert.Equal("The posting date is before the period's start", problem.Document.GetProperty("detail").GetString());
         }
 
         [Fact]

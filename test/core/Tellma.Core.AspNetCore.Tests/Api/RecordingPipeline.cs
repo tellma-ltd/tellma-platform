@@ -57,6 +57,9 @@ namespace Tellma.Core.AspNetCore.Tests.Api
         /// <summary>Whether the stand-ins skip the witness, as a handler that evaluated nothing would.</summary>
         public bool SkipWitness { get; set; }
 
+        /// <summary>The exception every stand-in throws once it recorded its call, as a refusing pipeline would; null to answer.</summary>
+        public Exception? Refusal { get; set; }
+
         /// <summary>Records a call.</summary>
         /// <param name="call">The call.</param>
         public void Add(PipelineCall call)
@@ -315,6 +318,12 @@ namespace Tellma.Core.AspNetCore.Tests.Api
             if (!log.SkipWitness && resource is not null && action is not null)
             {
                 services.GetRequiredService<AccessWitness>().Record(resource, action);
+            }
+
+            // --- A refusing pipeline throws after its evaluation, as the real one does ---
+            if (log.Refusal is Exception refusal)
+            {
+                throw refusal;
             }
         }
     }

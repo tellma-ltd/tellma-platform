@@ -56,7 +56,7 @@ namespace Tellma.Core.AspNetCore.Sessions
                 context.HttpContext,
                 StatusCodes.Status401Unauthorized,
                 CarriesBearer(context.Request) ? UnsupportedCredentialCode : UnauthenticatedCode);
-            OnRedirectToAccessDenied = static context => ProblemWriter.WriteAsync(context.HttpContext, StatusCodes.Status403Forbidden, "forbidden");
+            OnRedirectToAccessDenied = static context => ProblemWriter.WriteAsync(context.HttpContext, StatusCodes.Status403Forbidden, ProblemMapper.ForbiddenCode);
             OnRedirectToLogout = static context =>
             {
                 context.Response.StatusCode = StatusCodes.Status204NoContent;
