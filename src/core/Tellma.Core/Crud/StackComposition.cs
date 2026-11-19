@@ -5,6 +5,7 @@
 
 using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.Abstractions.Crud;
+using Tellma.Core.Blobs;
 using Tellma.Core.Composition;
 using Tellma.Core.Composition.Checks;
 using Tellma.Core.Data;
@@ -111,6 +112,9 @@ namespace Tellma.Core.Crud
             var byLeaf = stacks.ToDictionary(static stack => stack.Leaf);
             AttachCompanions(record, byLeaf, problems);
             AttachComponents(record, stacks, problems);
+
+            // --- The blob pair, ahead of every other component, on every stack whose aggregate references a blob (spec 0017 §4.2) ---
+            BlobReferenceComponents.Attach(stacks, record);
 
             // --- Routed services: no leaf to close over, recorded once each ---
             List<ComposedApiService> apiServices = [.. record.ApiServices.Select(static service => new ComposedApiService(service.ServiceType, service.Owner))];

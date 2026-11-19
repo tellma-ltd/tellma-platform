@@ -31,7 +31,7 @@ namespace Tellma.Core.Tests.Blobs
     ///     leaving nothing behind; the quota's translation and the platform scope's exemption; and the
     ///     row written before the bytes when the store fails.
     /// </summary>
-    public sealed class BlobServiceTests : IDisposable
+    public sealed class BlobStagerTests : IDisposable
     {
         /// <summary>The instant the scope runs at.</summary>
         private static readonly DateTimeOffset Now = new(2026, 11, 18, 9, 0, 0, TimeSpan.Zero);
@@ -58,7 +58,7 @@ namespace Tellma.Core.Tests.Blobs
         private readonly StubImageProcessor _processor = new();
 
         /// <summary>The service's logs.</summary>
-        private readonly FakeLogger<BlobService> _logger = new();
+        private readonly FakeLogger<BlobStager> _logger = new();
 
         /// <summary>The meters the instruments are created on.</summary>
         private readonly ServiceProvider _meters = new ServiceCollection().AddMetrics().BuildServiceProvider();
@@ -76,7 +76,7 @@ namespace Tellma.Core.Tests.Blobs
         private readonly MetricCollector<long> _uploads;
 
         /// <summary>Creates the runner over the batches and the upload collector.</summary>
-        public BlobServiceTests()
+        public BlobStagerTests()
         {
             _runner = new StageRunner(_harness);
             _uploads = Collector<long>(BlobTelemetryNames.Uploads);
@@ -385,7 +385,7 @@ namespace Tellma.Core.Tests.Blobs
         /// <summary>The service over the suite's doubles and the stub processor.</summary>
         /// <param name="options">The options; the defaults when null.</param>
         /// <returns>The service.</returns>
-        private BlobService Service(BlobOptions? options = null)
+        private BlobStager Service(BlobOptions? options = null)
         {
             return Create(_processor, options);
         }
@@ -393,7 +393,7 @@ namespace Tellma.Core.Tests.Blobs
         /// <summary>The service over the suite's doubles and another processor, or none.</summary>
         /// <param name="processor">The processor; null for none.</param>
         /// <returns>The service.</returns>
-        private BlobService Service(IImageProcessor? processor)
+        private BlobStager Service(IImageProcessor? processor)
         {
             return Create(processor, null);
         }
@@ -402,9 +402,9 @@ namespace Tellma.Core.Tests.Blobs
         /// <param name="processor">The processor; null for none.</param>
         /// <param name="options">The options; the defaults when null.</param>
         /// <returns>The service.</returns>
-        private BlobService Create(IImageProcessor? processor, BlobOptions? options)
+        private BlobStager Create(IImageProcessor? processor, BlobOptions? options)
         {
-            return new BlobService(
+            return new BlobStager(
                 new Kinds(File, Photo, Small),
                 _store,
                 processor,

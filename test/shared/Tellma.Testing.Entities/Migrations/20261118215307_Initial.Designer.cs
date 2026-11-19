@@ -14,7 +14,7 @@ using Tellma.Testing.Entities;
 namespace Tellma.Testing.Entities.Migrations
 {
     [DbContext(typeof(TellmaFixtureDbContext))]
-    [Migration("20261115072719_Initial")]
+    [Migration("20261118215307_Initial")]
     partial class Initial
     {
         /// <inheritdoc />
@@ -28,6 +28,15 @@ namespace Tellma.Testing.Entities.Migrations
                 .HasAnnotation("Relational:UseNamedDefaultConstraints", true);
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
+
+            modelBuilder.HasSequence<int>("sq_BlobFolders", "fixture")
+                .StartsAt(1000L);
+
+            modelBuilder.HasSequence<int>("sq_BlobOwnerFiles", "fixture")
+                .StartsAt(1000L);
+
+            modelBuilder.HasSequence<int>("sq_BlobOwners", "fixture")
+                .StartsAt(1000L);
 
             modelBuilder.HasSequence<int>("sq_Blobs", "core")
                 .StartsAt(1000L);
@@ -19081,6 +19090,158 @@ namespace Tellma.Testing.Entities.Migrations
                     b.ToTable("NotificationPreferences", "core");
                 });
 
+            modelBuilder.Entity("Tellma.Testing.Entities.BlobFolder", b =>
+                {
+                    b.Property<int>("Id")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasPrecision(7)
+                        .HasColumnType("datetimeoffset(7)");
+
+                    b.Property<int>("CreatedById")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("IconId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset>("ModifiedAt")
+                        .HasPrecision(7)
+                        .HasColumnType("datetimeoffset(7)");
+
+                    b.Property<int>("ModifiedById")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
+
+                    b.Property<SqlHierarchyId>("Node")
+                        .HasColumnType("hierarchyid")
+                        .HasAnnotation("Tellma:TableType:Excluded", true);
+
+                    b.Property<int?>("ParentId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("SubtreeCount")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(1, "DF_BlobFolders_SubtreeCount");
+
+                    b.HasKey("Id")
+                        .HasName("PK_BlobFolders");
+
+                    b.HasIndex("IconId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_BlobFolders_IconId")
+                        .HasFilter("[IconId] IS NOT NULL");
+
+                    b.HasIndex("Node")
+                        .IsUnique()
+                        .HasDatabaseName("UX_BlobFolders_Node");
+
+                    b.HasIndex("ParentId")
+                        .HasDatabaseName("IX_BlobFolders_ParentId");
+
+                    b.ToTable("BlobFolders", "fixture", t =>
+                        {
+                            t.HasCheckConstraint("CK_BlobFolders_Id", "[Id] > 0");
+                        });
+
+                    b
+                        .HasAnnotation("Tellma:TableType:Enabled", true)
+                        .HasAnnotation("Tellma:TableType:Grants", "[\"tellma_app\"]")
+                        .HasAnnotation("Tellma:Tree:MaxDepth", 4);
+                });
+
+            modelBuilder.Entity("Tellma.Testing.Entities.BlobOwner", b =>
+                {
+                    b.Property<int>("Id")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasPrecision(7)
+                        .HasColumnType("datetimeoffset(7)");
+
+                    b.Property<int>("CreatedById")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("FileId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset>("ModifiedAt")
+                        .HasPrecision(7)
+                        .HasColumnType("datetimeoffset(7)");
+
+                    b.Property<int>("ModifiedById")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
+
+                    b.Property<int?>("PhotoId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id")
+                        .HasName("PK_BlobOwners");
+
+                    b.HasIndex("FileId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_BlobOwners_FileId")
+                        .HasFilter("[FileId] IS NOT NULL");
+
+                    b.HasIndex("PhotoId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_BlobOwners_PhotoId")
+                        .HasFilter("[PhotoId] IS NOT NULL");
+
+                    b.ToTable("BlobOwners", "fixture", t =>
+                        {
+                            t.HasCheckConstraint("CK_BlobOwners_Id", "[Id] > 0");
+                        });
+
+                    b
+                        .HasAnnotation("Tellma:TableType:Enabled", true)
+                        .HasAnnotation("Tellma:TableType:Grants", "[\"tellma_app\"]");
+                });
+
+            modelBuilder.Entity("Tellma.Testing.Entities.BlobOwnerFile", b =>
+                {
+                    b.Property<int>("Id")
+                        .HasColumnType("int");
+
+                    b.Property<int>("BlobOwnerId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("FileId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id")
+                        .HasName("PK_BlobOwnerFiles");
+
+                    b.HasIndex("BlobOwnerId")
+                        .HasDatabaseName("IX_BlobOwnerFiles_BlobOwnerId");
+
+                    SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("BlobOwnerId"), new[] { "Id" });
+
+                    b.HasIndex("FileId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_BlobOwnerFiles_FileId")
+                        .HasFilter("[FileId] IS NOT NULL");
+
+                    b.ToTable("BlobOwnerFiles", "fixture", t =>
+                        {
+                            t.HasCheckConstraint("CK_BlobOwnerFiles_Id", "[Id] > 0");
+                        });
+
+                    b
+                        .HasAnnotation("Tellma:TableType:Enabled", true)
+                        .HasAnnotation("Tellma:TableType:Grants", "[\"tellma_app\"]");
+                });
+
             modelBuilder.Entity("Tellma.Testing.Entities.Export", b =>
                 {
                     b.Property<int>("Id")
@@ -19813,6 +19974,80 @@ namespace Tellma.Testing.Entities.Migrations
                         .HasConstraintName("FK_NotificationPreferences_UserId");
                 });
 
+            modelBuilder.Entity("Tellma.Testing.Entities.BlobFolder", b =>
+                {
+                    b.HasOne("Tellma.Core.Abstractions.Access.User", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("FK_BlobFolders_CreatedById");
+
+                    b.HasOne("Tellma.Core.Abstractions.Blobs.Blob", null)
+                        .WithOne()
+                        .HasForeignKey("Tellma.Testing.Entities.BlobFolder", "IconId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("FK_BlobFolders_IconId");
+
+                    b.HasOne("Tellma.Core.Abstractions.Access.User", null)
+                        .WithMany()
+                        .HasForeignKey("ModifiedById")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("FK_BlobFolders_ModifiedById");
+
+                    b.HasOne("Tellma.Testing.Entities.BlobFolder", null)
+                        .WithMany()
+                        .HasForeignKey("ParentId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("FK_BlobFolders_ParentId");
+                });
+
+            modelBuilder.Entity("Tellma.Testing.Entities.BlobOwner", b =>
+                {
+                    b.HasOne("Tellma.Core.Abstractions.Access.User", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("FK_BlobOwners_CreatedById");
+
+                    b.HasOne("Tellma.Core.Abstractions.Blobs.Blob", null)
+                        .WithOne()
+                        .HasForeignKey("Tellma.Testing.Entities.BlobOwner", "FileId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("FK_BlobOwners_FileId");
+
+                    b.HasOne("Tellma.Core.Abstractions.Access.User", null)
+                        .WithMany()
+                        .HasForeignKey("ModifiedById")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("FK_BlobOwners_ModifiedById");
+
+                    b.HasOne("Tellma.Core.Abstractions.Blobs.Blob", null)
+                        .WithOne()
+                        .HasForeignKey("Tellma.Testing.Entities.BlobOwner", "PhotoId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("FK_BlobOwners_PhotoId");
+                });
+
+            modelBuilder.Entity("Tellma.Testing.Entities.BlobOwnerFile", b =>
+                {
+                    b.HasOne("Tellma.Testing.Entities.BlobOwner", null)
+                        .WithMany()
+                        .HasForeignKey("BlobOwnerId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("FK_BlobOwnerFiles_BlobOwnerId");
+
+                    b.HasOne("Tellma.Core.Abstractions.Blobs.Blob", null)
+                        .WithOne()
+                        .HasForeignKey("Tellma.Testing.Entities.BlobOwnerFile", "FileId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("FK_BlobOwnerFiles_FileId");
+                });
+
             modelBuilder.Entity("Tellma.Testing.Entities.Export", b =>
                 {
                     b.HasOne("Tellma.Core.Abstractions.Access.User", null)
@@ -20263,6 +20498,41 @@ namespace Tellma.Testing.Entities.Migrations
                 .Column(name: "Tag", storeType: "uniqueidentifier", nullable: true)
                 .Column(name: "Bumped", storeType: "bit")
                 .HasKey("Name")
+                .HasGrants("tellma_app"));
+
+            modelBuilder.HasTableTypeDefinition("BlobFoldersList", "fixture", type => type
+                .ForTable("BlobFolders", "fixture")
+                .Column(name: "Id", storeType: "int")
+                .Column(name: "Name", storeType: "nvarchar(255)", maxLength: 255)
+                .Column(name: "IconId", storeType: "int", nullable: true)
+                .Column(name: "CreatedAt", storeType: "datetimeoffset(7)", precision: 7)
+                .Column(name: "CreatedById", storeType: "int")
+                .Column(name: "ModifiedAt", storeType: "datetimeoffset(7)", precision: 7)
+                .Column(name: "ModifiedById", storeType: "int")
+                .Column(name: "ParentId", storeType: "int", nullable: true)
+                .Column(name: "SubtreeCount", storeType: "int")
+                .HasKey("Id")
+                .HasGrants("tellma_app"));
+
+            modelBuilder.HasTableTypeDefinition("BlobOwnerFilesList", "fixture", type => type
+                .ForTable("BlobOwnerFiles", "fixture")
+                .Column(name: "Id", storeType: "int")
+                .Column(name: "BlobOwnerId", storeType: "int")
+                .Column(name: "FileId", storeType: "int", nullable: true)
+                .HasKey("Id")
+                .HasGrants("tellma_app"));
+
+            modelBuilder.HasTableTypeDefinition("BlobOwnersList", "fixture", type => type
+                .ForTable("BlobOwners", "fixture")
+                .Column(name: "Id", storeType: "int")
+                .Column(name: "Name", storeType: "nvarchar(255)", maxLength: 255)
+                .Column(name: "FileId", storeType: "int", nullable: true)
+                .Column(name: "PhotoId", storeType: "int", nullable: true)
+                .Column(name: "CreatedAt", storeType: "datetimeoffset(7)", precision: 7)
+                .Column(name: "CreatedById", storeType: "int")
+                .Column(name: "ModifiedAt", storeType: "datetimeoffset(7)", precision: 7)
+                .Column(name: "ModifiedById", storeType: "int")
+                .HasKey("Id")
                 .HasGrants("tellma_app"));
 
             modelBuilder.HasTableTypeDefinition("ExportsList", "fixture", type => type

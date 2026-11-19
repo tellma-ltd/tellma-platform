@@ -41,7 +41,9 @@ namespace Tellma.Testing.Entities
                 .Entity<Node>()
                 .Entity<Shipment>()
                 .Entity<Export>()
-                .Entity<Lookup>();
+                .Entity<Lookup>()
+                .Entity<BlobOwner>()
+                .Entity<BlobFolder>();
 
             // --- The job handlers, one per shape: arguments only, over a long key, over an int key ---
             _ = contribution

@@ -235,7 +235,7 @@ namespace Tellma.Core.Crud.Save
                 return null;
             }
 
-            Exception translated = PersistFailures.Translate(failure, FailureContext(), _operation.Metrics) ?? failure;
+            Exception translated = TranslateFailure(failure) ?? failure;
             return translated switch
             {
                 ValidationException validation => new ValidationException([.. validation.Errors.Select(_errors.Rehome)]),

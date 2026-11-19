@@ -7,7 +7,7 @@ using Microsoft.Extensions.Logging;
 
 namespace Tellma.Core.Blobs
 {
-    /// <summary>Source-generated log messages of blob staging.</summary>
+    /// <summary>Source-generated log messages of blob staging and download resolution.</summary>
     /// <remarks>
     ///     The events carry the kind, the id and sizes, never file contents or the client's file name;
     ///     the tenant rides the log scope of the request or job.
@@ -63,5 +63,15 @@ namespace Tellma.Core.Blobs
             Level = LogLevel.Warning,
             Message = "Rendering the thumbnail of an upload of kind {Kind} ({ContentType}) failed; the file is stored without one.")]
         public static partial void ThumbnailFailed(ILogger logger, Exception exception, string kind, string contentType);
+
+        /// <summary>A download resolved to nothing the caller may read: no such blob, a hidden owner, another kind, or no such variant.</summary>
+        /// <param name="logger">The logger.</param>
+        /// <param name="kind">The kind the download named, a declared one.</param>
+        /// <param name="id">The blob id the download named.</param>
+        [LoggerMessage(
+            EventName = "BlobDownloadNotFound",
+            Level = LogLevel.Debug,
+            Message = "A download of the blob {Id} of kind {Kind} found nothing the caller may read.")]
+        public static partial void DownloadNotFound(ILogger logger, string kind, int id);
     }
 }

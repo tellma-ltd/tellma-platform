@@ -604,6 +604,49 @@ tellma.Blobs(blobs => blobs
   `tellma.blobs.upload.duration` beside it, on the `Tellma.Core` meter (the store's instruments
   alone have the `Tellma.Blobs` meter); never a tenant, a user or a file name.
 
+## Blobs: attaching, releasing and downloading
+
+- **The pair.** Every stack whose aggregate carries a `[BlobReference]` column, on its root or on a
+  child at any depth, runs `BlobReferenceValidator<T>` and `BlobReferenceEffect<T>`, attached by
+  `core` ahead of every other validator and effect. Nothing registers them by hand.
+- **The attach rule.** A value is newly attached when it is non-null on an inserted row (a child
+  row whose key the stored collection lacks counts as inserted) or differs from the stored value
+  on an updated one. Each must name a `Staged`, unexpired blob of the column's kind that the saving
+  user uploaded, once in the whole payload; otherwise the row's property is refused with
+  `Blob.NotAttachable` and a `reason` argument (`missing`, `not-staged`, `kind`, `uploader`,
+  `expired`) or `Blob.DuplicateReference`. The blob rows load on the save's first round whenever it
+  runs one (update rows, references, uniqueness, a tree, or new ids a cold buffer cannot cover, in
+  which case the save requests every blob row of the payload on that round itself). The one shape
+  that pays a round for them is an insert-only save whose ids come from a warm buffer and that
+  needs no first round otherwise. A blob column is never checked as a reference or for uniqueness,
+  so attaching needs no grant on `core.Blob`.
+- **The persist.** For each column the effect releases the blobs the capture's old values name
+  where the value changed or was cleared (`Released`, due at once), then confirms the new ones
+  (`Committed`, no deadline) under the same conditions the validator checked, and throws
+  `Blob.NotAttachable` (reason `persist`) when any new value was not confirmed: a blob that expired,
+  was claimed or deleted, or was taken by another row after the validation round rolls the whole
+  save back, and a missing blob row's foreign key failure is reported the same way. A
+  delete of any shape releases its rows' blobs and their children's. The old values come from the
+  rows as written, so an override save releases what the row actually held.
+- **Downloading.** `IBlobService.ResolveAsync(kind, id, variant)` decides the caller's read of the
+  kind's owner resource, then reads, on one read round trip, the owner row holding the id under that
+  read (through the owner path for a child kind whose entity has no query surface) and the blob
+  row. A committed blob is served when the owner row is visible; a staged one to its uploader alone;
+  a variant only when the row lists it and the kind declares its format. Missing, hidden, released
+  and another kind's blobs are all `null`, logged at debug level as `BlobDownloadNotFound`; a
+  malformed variant is a `BadRequestException`.
+  - **Step-up.** When the owner's read is sensitive, a granted owner read asks for the step-up a
+    direct read asks for (`StepUpRequiredException`, or `IndividualRequiredException` for a service
+    account), whether or not the owner row was found. The uploader's own staged blob, a kind any
+    member reads, and the platform's own work are outside it.
+  - **Round trips.** A download takes one round trip. The exception is a caller denied the owner
+    read whose cached set is older than the fast-deny window: that caller first pays the evaluator's
+    prologue-only re-check, so the download takes two.
+- **The reconcile statement.** `BlobStatements.Reconcile` releases a kind's committed blobs that no
+  owner row references and that were committed more than a day ago, and returns how many.
+- **Telemetry.** `tellma.blobs.attach.rejected` counts each refused attach by kind and reason
+  (`duplicate` and `persist` beside the reasons above).
+
 ## Calendars
 
 `CoreFeature` registers the three calendar systems, in this order, and the `ICalendarRegistry` over
@@ -1021,6 +1064,30 @@ the settings editor validates them. A row the step already completed is left alo
   never disagrees with `Now`.
 - **Client metadata.** The core chunk carries `languages` (each offered language with its direction,
   default region, regions and native digits), `calendars`, `settingKeys` and `settingCategories`.
+- **Securables.** `SettingsSecurableContributor` registers `core.Settings.General` (`Read`, and a
+  sensitive `Save`) and `core.Settings.<category>` (`Read`, `Save`) for every other category.
+- **The service.** `SettingsService` (route `settings`) serves five actions through the guarded
+  runner:
+  - `client` and `entity-tags` (any member): the client view's bytes and wire tag, and the
+    `entity:*` tags, after a read batch that keeps the snapshots current.
+  - `details` (any member holding `Read` on the typed row or a category, else forbidden): one read
+    batch with the typed row when held, the values of the held categories' non-secret keys (a
+    stored value only when it reads, else the default), the set keys and their stamps, and the
+    rows their reference keys point at (an id whose row is gone is left bare).
+  - `save` (`Save` on the resource of every listed field): a `TenantSettingsPatch` lists its
+    fields, typed members by name and entries as `entries.<key>`. One validate batch reads what
+    the patch lists (the typed row only when a typed member is listed); `SettingsPatchMerger`
+    applies the patch and reports every refusal at once, then the stamps under `Check` (a
+    conflict names who changed the row; a missing entry is a conflict of its own, id 0 when the
+    row was gone before the read). One persist batch writes the row, the entries (a reset is a
+    delete, an unchanged value is skipped) and the closing reads, and a language change also
+    bumps `permissions` and every `entity:*` tag. A concurrent first write of a key is a conflict,
+    not a unique violation. The answer carries the editor's view, the client view and the settings
+    wire tag; the store is offered the committed settings. A name change is mirrored into the
+    tenant catalog after commit; a failing mirror is logged (`SettingsNamesMirrorFailed`) and the
+    save stands.
+  - `refresh-caches` (`Save` on the typed row): one persist batch bumps every tenant tag and both
+    user tags of every user, and announces the preferences change.
 
 `core.CalendarMonths` holds every Umm al-Qura month of AH 1318 to 1500 as .NET computes it, keyed
 by calendar, year and month, with the month's first Gregorian day and the day after its last; the

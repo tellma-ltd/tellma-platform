@@ -35,7 +35,7 @@ namespace Tellma.Core.Tests.Composition.Checks
 
             await using ServiceProvider provider = TestComposition.Compose(static _ => { }).BuildServiceProvider(validateScopes: true);
             ISecurableRegistry registry = provider.GetRequiredService<ISecurableRegistry>();
-            // The stacks' securables, then the stamps' Core registers itself; a child surface's read is owned.
+            // The stacks' securables, the typed settings' read and save, then the stamps' Core registers itself; a child surface's read is owned.
             Assert.Equal(
                 [
                     new SecurableDescriptor("core.Job", "Read", "core.Job", false, "core", null),
@@ -50,6 +50,8 @@ namespace Tellma.Core.Tests.Composition.Checks
                     new SecurableDescriptor("core.Schedule", "Save", "core.Schedule", true, "core", null),
                     new SecurableDescriptor("core.Schedule", "Delete", "core.Schedule", true, "core", null),
                     new SecurableDescriptor("core.Schedule", "Activate", "core.Schedule", true, "core", null),
+                    new SecurableDescriptor("core.Settings.General", "Read", null, false, "core", null),
+                    new SecurableDescriptor("core.Settings.General", "Save", null, true, "core", null),
                     new SecurableDescriptor("core.User", "Read", "core.User", false, "core", null),
                     new SecurableDescriptor("core.User", "Save", "core.User", true, "core", null),
                     new SecurableDescriptor("core.User", "Delete", "core.User", true, "core", null),

@@ -231,6 +231,14 @@ child sm.SmGadgetPartNote
   exportable: yes
   limits: default
   mcp: Full
+service settings
+  class: Tellma.Core.Settings.SettingsService
+  feature: core
+  action client: api member-only body - handler SettingsService; idempotent; result ValueTuple<byte[], string>; mcp Hidden, revision 0; -
+  action entity-tags: api member-only body - handler SettingsService; idempotent; result IReadOnlyDictionary<string, string>; mcp Full, revision 0; -
+  action details: api member-only body - handler SettingsService; idempotent; result TenantSettingsDetails; mcp Hidden, revision 0; -
+  action refresh-caches: api core.Settings.General:Save body - handler SettingsService; mutation, idempotent; result void; mcp Hidden, revision 0; -
+  action save: api member-only body TenantSettingsPatch handler SettingsService; mutation; result SettingsSaveResult; mcp Hidden, revision 0; -
 service inbox
   class: Tellma.Core.Tests.Crud.InboxService
   feature: sm

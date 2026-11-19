@@ -8,9 +8,9 @@ namespace Tellma.Core.Abstractions.Blobs
     /// <summary>
     ///     Stages uploaded files as blobs of the scope's tenant: validates and normalises the bytes,
     ///     records a <see cref="BlobState.Staged" /> row in one database round trip, and writes the
-    ///     objects to the blob store. A record save then attaches the returned id. Scoped; the tenant
-    ///     and the uploader come from the scope's request context, so it works in request and job
-    ///     scopes alike.
+    ///     objects to the blob store. A record save then attaches the returned id. Resolves the blobs
+    ///     the caller may download. Scoped; the tenant and the caller come from the scope's request
+    ///     context, so it works in request and job scopes alike.
     /// </summary>
     public interface IBlobService
     {
@@ -32,5 +32,29 @@ namespace Tellma.Core.Abstractions.Blobs
         /// <exception cref="ImageProcessingBusyException">The image processor had no free slot in time; the caller may retry.</exception>
         /// <exception cref="BlobStoreException">The store failed to write the objects.</exception>
         Task<BlobDescriptor> StageAsync(BlobStageRequest request, CancellationToken cancellationToken = default);
+
+        /// <summary>
+        ///     Resolves a blob the caller may download, in one database round trip: a committed blob
+        ///     whose owner row the caller may read (any connected member, for a kind any member reads),
+        ///     or a staged one the caller uploaded and may still attach. Nothing is read from the store.
+        /// </summary>
+        /// <remarks>
+        ///     A missing blob, a hidden owner, a blob of another kind, a released one and a variant the
+        ///     blob does not carry all resolve to null alike, so a caller cannot tell them apart. The
+        ///     download usually takes one round trip; a caller denied the owner read whose cached
+        ///     permissions are older than the fast-deny window pays a re-check first. When the owner's
+        ///     read is sensitive, a caller granted it is held to the same step-up a direct read is,
+        ///     found or not; only the caller's own staged blob is served without it.
+        /// </remarks>
+        /// <param name="kind">The kind the request names.</param>
+        /// <param name="id">The blob's id.</param>
+        /// <param name="variant">A stored variant, such as <c>thumb</c>; null for the primary.</param>
+        /// <param name="cancellationToken">Cancels the read.</param>
+        /// <returns>The blob to serve, or null when there is nothing the caller may download.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="kind" /> is null.</exception>
+        /// <exception cref="Errors.BadRequestException"><paramref name="variant" /> is not a well-formed variant name.</exception>
+        /// <exception cref="Tenancy.StepUpRequiredException">The owner's read is sensitive and the caller's sign-in is below the step-up bar.</exception>
+        /// <exception cref="Errors.IndividualRequiredException">The owner's read is sensitive and the caller is a service account.</exception>
+        Task<BlobDownload?> ResolveAsync(string kind, int id, string? variant, CancellationToken cancellationToken = default);
     }
 }
