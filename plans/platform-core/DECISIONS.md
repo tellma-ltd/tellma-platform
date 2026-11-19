@@ -363,6 +363,7 @@ Format, one entry per ruling:
 
 - R1 found 4 majors (missing §16.2 budget rows, collections at depth, closers without actions/validators, untouched suites not run), so PC-142 gets a second review (PLAN §8.1), Opus inherit at high: it is not on the two-review list, so no fable.
 - For Ahmad: spec 0015 §16.1's tellma.crud.validation.rounds row should list the open frame's hosts (api_action, job, provisioning) as crud.operation values, as the enlistments row already does. Interim: the collector admits operations ∪ hosts.
+- For Ahmad: spec 0015 §16.2's delete-by-query row says a judged delete takes 2 round trips, but §10.2 and DeleteRun say a delete by query is always 1 (it never runs delete validators); the base asserts 1. Align §16.2 to §10.2's wording.
 - Carries: the conformance base's Excel rows lane goes to PC-174, and export/import reachability with their budget rows to PC-176/PC-177.
 
 ### D-130 PC-086 R1 rulings (2026-11-19)
