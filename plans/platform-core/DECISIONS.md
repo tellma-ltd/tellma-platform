@@ -363,6 +363,12 @@ Format, one entry per ruling:
 
 - Spec 0017 §10.1 ("a save adds none") and the checkpoint's done-criterion conflict with §4.2's mandated blob load. A warm-buffer, insert-only save that attaches a blob needs one extra round trip, and the code cannot avoid it. Interim: accepted as a PC-084 deviation. On a cold buffer the load folds into round 1 (R1-1), so no other save shape pays. **For Ahmad:** amend §10.1 or the budget.
 - Spec 0015 §6.6: blob columns are exempt from the uniqueness rule that their UX_ index had triggered. R1 judged the exemption narrow and correct.
+- R2 (fable, 0/1/3): R2-1 is fixed fail closed. A blob download whose owner's Read is sensitive runs AssuranceCheck, per D-108 and D-111. **For Ahmad:** spec 0017 §5.1 names only EvaluateAsync.
+- R2-2 corrects the carry below. The hook belongs in PC-077's SaveRun.Enlisted.cs `Translate`, where the group's roots are in scope. A second carry: call `BlobAttachments.Prefetch` from PC-077's `EnlistAsync`. PC-084 integrates after PC-077, so both are PC-084's.
+- Fix 2 (575849a4), both **for Ahmad**:
+  - Deviation 12: a download through an owner whose Read is sensitive asks for step-up even when nothing is found. Spec 0017 §5.1 needs the step-up.
+  - Deviation 11: a stale-denial download takes 2 round trips, against §5.1/§10.1's one.
+- The cold-buffer prefetch now sits inside ReserveIds, which PC-077's EnlistAsync already calls.
 - Carry: persist blob refusals raised by enlisted groups are counted by whichever of PC-077 and PC-084 integrates second (R1-6). The hook: in SaveRun.Persist.cs, where `Enlistments?.Translate(failure)` returns a translated exception, call `BlobAttachments.CountPersistRefusal(translated, groupRoots, _operation.Services.GetService<BlobAttachMetrics>())` before the throw, and add one enlisted-save test.
 
 ### D-122 (orchestrator, 2026-11-18): PC-077 R2 rulings; for Ahmad
