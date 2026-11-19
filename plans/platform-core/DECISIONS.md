@@ -359,6 +359,12 @@ Format, one entry per ruling:
 - Also accepted: a readonly select never opens (a pre-existing bug, fixed) and exposes aria-readonly.
 - **Misalignment for Ahmad:** 0010 §B.4 names contentChildren(TmOptionGroup), which the design does not need. See also D-036's §B.4 note.
 
+### D-126 PC-080 fix1 outcomes (2026-11-19)
+
+- R1-1: AccessWitnessFilter.Wrap now runs on every Web, Api and Blobs endpoint, RequestDelegate ones included. An unwitnessed 2xx that has started is aborted in OnStarting; one that has not is answered 500. PC-089's carry is updated.
+- The D-125 raw-bytes hand-off is closed in PC-080: ActionAnswers.Of writes an action declared as (byte[] Json, string WireTag) as its Json bytes, application/json, and the tag travels in the version-tags header. SettingsService.ClientAsync needs no edge work.
+- Agents share the scratchpad across slots; briefs now ask for checkpoint-prefixed log names.
+
 ### D-125 PC-079 hand-offs (2026-11-19)
 
 - PC-080 (in R1) must write SettingsService.ClientAsync's (byte[] Json, string WireTag) result as raw bytes at the edge, not serialize the tuple. Sent to PC-080 with its review-1 fix round.
