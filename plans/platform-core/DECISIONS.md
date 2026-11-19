@@ -359,6 +359,11 @@ Format, one entry per ruling:
 - Also accepted: a readonly select never opens (a pre-existing bug, fixed) and exposes aria-readonly.
 - **Misalignment for Ahmad:** 0010 §B.4 names contentChildren(TmOptionGroup), which the design does not need. See also D-036's §B.4 note.
 
+### D-130 PC-086 R1 rulings (2026-11-19)
+
+- R1-3: the client entity model emits each blob kind's MaxSize, not a cap from the emitting machine's Tellma:Blobs:MaxUploadSize (a deployment setting must not leak into a public, immutable chunk); recorded as a deviation.
+- Accepted deviations: one emitted name per C# enum type (<schema>.<Type>), with SettingKeyDescriptor.EnumType qualified (spec 0032 §7.3 already uses the qualified form); [EntityRef] action-field label keys drop the Id suffix (spec 0029 §2.4); the .d.ts golden is checked in as .txt because API Extractor crashes on the @tellma/core augmentation.
+
 ### D-129 PC-098 R1-4 deferred (2026-11-19)
 
 - For Ahmad: PC-098 deviation D-3 reads spec 0020 literally: Retry→Failed at MaxAttempts also applies to the Retry(0) of a guard failure and of a stop after progress. The guard fails whenever the tenant-wide permissions tag moves, so an administrator's role save during a job's last attempt (e.g. a third-attempt core.import) ends it Failed/AttemptsExhausted; likewise a host stop after progress. Kept as specified for now; the alternative is not counting guard failures and stops toward MaxAttempts.
