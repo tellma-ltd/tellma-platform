@@ -102,7 +102,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 
 | PC | Slot | Branch | Step | Implementer agent (name / id) | Reviewer agent (name / id) | Started (UTC) |
 |---|---|---|---|---|---|---|
-| PC-102 | pc-2 | pc/PC-102 | fix1 then hold (impl c586d072; R1 0/1/3) | impl (Opus, high, launched 2026-11-19) | 0029-f; R1 only | 2026-11-19 |
+| PC-102 | pc-2 | pc/PC-102 | held (2187f29c; merge-tree clean; release after PC-142) | impl (Opus, high, launched 2026-11-19) | 0029-f; R1 only | 2026-11-19 |
 | PC-081 | pc-3 | pc/PC-081 | fix2 then hold (fix1 7e6c3bba; R2 fable 0/0/5) | impl (Opus, high, launched 2026-11-19) | 0016-d; R1 then R2 fable (security-bound) | 2026-11-19 |
 | PC-142 | pc-1 | pc/PC-142 | held (e6f1d0b2; merge-tree clean; release after PC-098) | impl (Opus, high, launched 2026-11-19) | 0015-k (T2); R1 0B/4M/5m all fixed; R2 (escalated) 0B/2M/3m; then hold | 2026-11-19 |
 | PC-098 | pc-4 | pc/PC-098 | integrating (released after PC-F59 green 44617227800; held 10ac40b1) | impl (Opus, xhigh, launched 2026-11-19) | R1 0B/2M/5m (R1-4 deferred D-129); R2 (fable) 0B/0M/6m all fixed; merge-tree: README conflict (keep both); release after PC-F58 green and PC-086 | 2026-11-19 |

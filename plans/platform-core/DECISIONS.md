@@ -359,6 +359,11 @@ Format, one entry per ruling:
 - Also accepted: a readonly select never opens (a pre-existing bug, fixed) and exposes aria-readonly.
 - **Misalignment for Ahmad:** 0010 §B.4 names contentChildren(TmOptionGroup), which the design does not need. See also D-036's §B.4 note.
 
+### D-138 — PC-102 fix1 hand-offs (2026-11-19)
+
+- R1-1 fixed: IScopeConnection gains IsPrologueDue (past the fast-deny window, permissions aged, or an activity stamp due). Discover then runs the guarded runner's statement-less Read prologue, so a deactivated caller gets tenant-not-found; otherwise it costs 0 round trips. Supersedes D-136's second bullet.
+- **For Ahmad:** 0029 §9 "Messages" omits Permissions.FilterTooLong and Permissions.FilterInvalid, which the permission profile answers.
+
 ### D-137 — PC-081 Review 2 notes outside its diff (2026-11-19)
 
 - The telemetry stage wraps the Web group only; 0016 §5.1 puts the blob GET on the same chain. Carried to PC-089.
