@@ -102,6 +102,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 
 | PC | Slot | Branch | Step | Implementer agent (name / id) | Reviewer agent (name / id) | Started (UTC) |
 |---|---|---|---|---|---|---|
+| PC-F59 | pc-f | pc/PC-F59 | impl | fix agent (Opus, high, launched 2026-11-19) | integration-windows red on c54b24e6 (plans-only), run 44571660410: Core TenantScopeTests missing-database open got SQL 233 not 4060; line stopped; R1 only | 2026-11-19 |
 | PC-081 | pc-3 | pc/PC-081 | impl | impl (Opus, high, launched 2026-11-19) | 0016-d; R1 then R2 fable (security-bound) | 2026-11-19 |
 | PC-142 | pc-1 | pc/PC-142 | fix2 | impl (Opus, high, launched 2026-11-19) | 0015-k (T2); R1 0B/4M/5m all fixed; R2 (escalated) 0B/2M/3m; then hold | 2026-11-19 |
 | PC-086 | pc-2 | pc/PC-086 | CI (22c362f7) | impl (Opus, high, launched 2026-11-19) | R1 0B/0M/7m (6 fixed, R1-5 pushed back); merge-tree clean; released 2026-11-19 after PC-F58 green | 2026-11-19 |
