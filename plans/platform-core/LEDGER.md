@@ -103,7 +103,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC | Slot | Branch | Step | Implementer agent (name / id) | Reviewer agent (name / id) | Started (UTC) |
 |---|---|---|---|---|---|---|
 | PC-102 | pc-2 | pc/PC-102 | fix1 then hold (impl c586d072; R1 0/1/3) | impl (Opus, high, launched 2026-11-19) | 0029-f; R1 only | 2026-11-19 |
-| PC-081 | pc-3 | pc/PC-081 | R2 fable (impl 8c405881; fix1 7e6c3bba; R1 0/1/3 all fixed) | impl (Opus, high, launched 2026-11-19) | 0016-d; R1 then R2 fable (security-bound) | 2026-11-19 |
+| PC-081 | pc-3 | pc/PC-081 | fix2 then hold (fix1 7e6c3bba; R2 fable 0/0/5) | impl (Opus, high, launched 2026-11-19) | 0016-d; R1 then R2 fable (security-bound) | 2026-11-19 |
 | PC-142 | pc-1 | pc/PC-142 | held (e6f1d0b2; merge-tree clean; release after PC-098) | impl (Opus, high, launched 2026-11-19) | 0015-k (T2); R1 0B/4M/5m all fixed; R2 (escalated) 0B/2M/3m; then hold | 2026-11-19 |
 | PC-098 | pc-4 | pc/PC-098 | integrating (released after PC-F59 green 44617227800; held 10ac40b1) | impl (Opus, xhigh, launched 2026-11-19) | R1 0B/2M/5m (R1-4 deferred D-129); R2 (fable) 0B/0M/6m all fixed; merge-tree: README conflict (keep both); release after PC-F58 green and PC-086 | 2026-11-19 |
 
@@ -377,7 +377,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-086 | 0029-a | 1 | done | ce581934, 7a5cdf53, 84278111, 22c362f7; green 44575091654 | | |
 | PC-087 | 0018-b | 1 | todo | | | |
 | PC-088 | 0018-c | 1 | todo | | | |
-| PC-089 | 0017-d | 1 | todo | | | carry: none from D-096 any more (D-120 moved §6.4 BlobContainerStep to PC-083 and the provisioning-record row to whichever of PC-078 and PC-083 lands last); carry from PC-080 (D-124): blob endpoints must evaluate access or record the member witness, or the witness filter answers 500 (unstarted) or aborts the connection (started) |
+| PC-089 | 0017-d | 1 | todo | | | carry: none from D-096 any more (D-120 moved §6.4 BlobContainerStep to PC-083 and the provisioning-record row to whichever of PC-078 and PC-083 lands last); carry from PC-080 (D-124): blob endpoints must evaluate access or record the member witness, or the witness filter answers 500 (unstarted) or aborts the connection (started); carry D-137: wrap the blob GET in the telemetry stage (0016 §5.1 chain) |
 | PC-090 | 0018-d | 1 | todo | | | carry from PC-141 (D-096): TenantStateTests.An_action_allowed_when_read_only_succeeds_on_a_read_only_tenant runs and must pass |
 | PC-091 | 0018-e | 1 | todo | | | |
 | PC-092 | 0018-g | 1 | todo | | | carry from PC-094: extend the existing server AcmeFeature ("acme", empty); do not create another |
