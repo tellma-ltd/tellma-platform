@@ -4,12 +4,14 @@
 // LICENSE file in the root directory of this source tree.
 
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using System.Collections;
 using System.Globalization;
 using System.Numerics;
 using System.Reflection;
 using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Api;
+using Tellma.Core.Abstractions.Caching;
 using Tellma.Core.Abstractions.Crud;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Entities;
@@ -132,8 +134,8 @@ namespace Tellma.Core.Testing.Crud
         /// <summary>
         ///     A new entity of the stack that a save accepts: its key default, every required value
         ///     set, and every unique and natural-key value distinct for each ordinal. Each child
-        ///     collection holds at least one row, whose own unique values are distinct within the
-        ///     entity.
+        ///     collection at every depth holds at least one row, whose own unique values are distinct
+        ///     within the entity.
         /// </summary>
         /// <remarks>
         ///     Two ordinals give at least one editable value that differs, other than the unique and
@@ -226,6 +228,51 @@ namespace Tellma.Core.Testing.Crud
         protected virtual object? ActionArguments(EntityActionDescriptor action)
         {
             return null;
+        }
+
+        /// <summary>
+        ///     The validation rounds a declared entity action of the stack dispatches beyond its first,
+        ///     each a round trip of its own: the dependent loads its method and the stack's action
+        ///     validators make. Zero by default.
+        /// </summary>
+        /// <param name="action">The action.</param>
+        /// <returns>The rounds.</returns>
+        protected virtual int DependentActionRounds(EntityActionDescriptor action)
+        {
+            return 0;
+        }
+
+        /// <summary>
+        ///     The body a declared API action of the stack runs with in the reachability case: one its
+        ///     method answers without failing. Null by default, which suits an action that takes none.
+        /// </summary>
+        /// <param name="action">The action.</param>
+        /// <returns>The body, of the action's request type; null for none.</returns>
+        protected virtual object? ApiActionArguments(ApiActionDescriptor action)
+        {
+            return null;
+        }
+
+        /// <summary>
+        ///     Whether the in-use case exercises a reference to the stack: by default every foreign key
+        ///     whose row outlives a delete of its target and that a client writes, so never a
+        ///     collection's parent key (the delete takes the row along), a sibling's shared key (it goes
+        ///     by its cascade), a blob column, or a value the server owns. A closing class whose
+        ///     <see cref="ReferToAsync" /> stores a row through a server-owned reference, such as an
+        ///     audit column, widens it.
+        /// </summary>
+        /// <param name="referencing">The entity that holds the foreign key.</param>
+        /// <param name="reference">The reference, whose target is the stack's entity.</param>
+        /// <returns>True when the case refuses a delete of a row the reference holds.</returns>
+        protected virtual bool ExercisesReference(EntityMetadata referencing, ReferenceMetadata reference)
+        {
+            ArgumentNullException.ThrowIfNull(referencing);
+            ArgumentNullException.ThrowIfNull(reference);
+            PropertyMetadata key = reference.ForeignKey;
+            IEntityMetadataProvider provider = Harness.Services.GetRequiredService<IEntityMetadataProvider>();
+            bool parentKey = provider.All.SelectMany(static entity => entity.Children).Any(collection => ReferenceEquals(collection.ParentKey, key));
+            bool blob = referencing.BlobReferences.Any(blob => ReferenceEquals(blob.Property, key));
+            return !parentKey && !blob && !ReferenceEquals(key, referencing.Key) && key.Ownership is PropertyOwnership.Editable or PropertyOwnership.WriteOnce;
         }
 
         /// <summary>
@@ -380,28 +427,28 @@ namespace Tellma.Core.Testing.Crud
             return scope.GetRequiredService<EntityService<TEntity, TKey>>();
         }
 
-        /// <summary>Sets one of an entity's child collections.</summary>
-        /// <param name="entity">The entity.</param>
+        /// <summary>Sets one of a row's child collections.</summary>
+        /// <param name="owner">The row: the entity, or a row of one of its collections.</param>
         /// <param name="collection">The collection.</param>
         /// <param name="rows">The rows; null leaves the collection out of the payload.</param>
-        private static void SetRows(object entity, ChildCollectionDescriptor collection, IEnumerable<object>? rows)
+        private static void SetRows(object owner, ChildCollectionMetadata collection, IEnumerable<object>? rows)
         {
-            PropertyInfo property = entity.GetType().GetProperty(collection.Property)
-                ?? throw new InvalidOperationException($"The entity {entity.GetType().Name} has no property {collection.Property}.");
+            PropertyInfo property = owner.GetType().GetProperty(collection.Property)
+                ?? throw new InvalidOperationException($"The row {owner.GetType().Name} has no property {collection.Property}.");
             if (rows is null)
             {
-                property.SetValue(entity, null);
+                property.SetValue(owner, null);
                 return;
             }
 
             // --- A list of the child type, as the collection's property declares it ---
-            var list = (IList)Activator.CreateInstance(typeof(List<>).MakeGenericType(collection.ChildType))!;
+            var list = (IList)Activator.CreateInstance(typeof(List<>).MakeGenericType(collection.Child.ClrType))!;
             foreach (object row in rows)
             {
                 _ = list.Add(row);
             }
 
-            property.SetValue(entity, list);
+            property.SetValue(owner, list);
         }
 
         /// <summary>An id no row of the stack holds: far above any id a sequence hands out in a test run.</summary>
@@ -535,11 +582,20 @@ namespace Tellma.Core.Testing.Crud
         /// <returns>What it threw, null when nothing, and its round trips.</returns>
         private Task<Counted<Exception?>> AttemptAsync(StackConformanceCaller caller, Func<EntityService<TEntity, TKey>, Task> call)
         {
+            return AttemptInScopeAsync(caller, scope => call(Service(scope)));
+        }
+
+        /// <summary>Runs a call in a scope of a caller, counting its round trips and recording what it threw.</summary>
+        /// <param name="caller">The caller.</param>
+        /// <param name="call">The call, given the scope's services.</param>
+        /// <returns>What it threw, null when nothing, and its round trips.</returns>
+        private Task<Counted<Exception?>> AttemptInScopeAsync(StackConformanceCaller caller, Func<IServiceProvider, Task> call)
+        {
             return CountedAsync(caller, async scope =>
             {
                 try
                 {
-                    await call(Service(scope));
+                    await call(scope);
                     return null;
                 }
 #pragma warning disable CA1031 // The attempt records any refusal, which the case then judges.
@@ -549,6 +605,30 @@ namespace Tellma.Core.Testing.Crud
                     return refusal;
                 }
             });
+        }
+
+        /// <summary>
+        ///     Whether the stack's table holds more rows than its cached list may, so a cached list
+        ///     read probes and re-reads on every call rather than serving a cached list; counted by a
+        ///     query that reads inactive rows too, as the list's probe does.
+        /// </summary>
+        /// <returns>True when it does; null when the stack serves no query to count its rows by.</returns>
+        private async Task<bool?> OversizedAsync()
+        {
+            if (!Serves(StackOperations.Query))
+            {
+                return null;
+            }
+
+            // --- The row limit: the entity's own, or the configured default when it names none ---
+            int limit = Stack.EntityType.GetCustomAttribute<CacheableAttribute>(inherit: true)?.MaxRows ?? 0;
+            if (limit == 0)
+            {
+                limit = Harness.Services.GetRequiredService<IOptions<CacheOptions>>().Value.EntityMaxRowsDefault;
+            }
+
+            RowPage page = await AsWriterAsync(service => service.QueryAsync(new QueryRequest { Select = Metadata.Key.Name, Take = 1, IncludeCount = true, IncludeInactive = true }, Token));
+            return page.Count > limit;
         }
 
         /// <summary>Asserts a counted call's round trips, and the driver's count beside them when the harness observes it.</summary>
@@ -606,14 +686,6 @@ namespace Tellma.Core.Testing.Crud
         private PropertyMetadata Property(string name)
         {
             return Metadata.Properties.Single(property => property.Name == name);
-        }
-
-        /// <summary>One of the entity's child collections, as its metadata describes it.</summary>
-        /// <param name="collection">The collection's descriptor.</param>
-        /// <returns>The collection's metadata.</returns>
-        private ChildCollectionMetadata Collection(ChildCollectionDescriptor collection)
-        {
-            return Metadata.Children.Single(child => child.Property == collection.Property);
         }
 
         /// <summary>What a counted call answered, and the round trips it took.</summary>

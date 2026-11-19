@@ -41,10 +41,12 @@ namespace Tellma.Core.IntegrationTests.Crud.Conformance
         {
             ArgumentNullException.ThrowIfNull(entity);
 
-            // --- The row, under an id of its own, and the lookups' tag moved as a save would move it ---
+            // --- The row, under an id of its own and with the flag the entity holds, and the lookups'
+            // tag moved as a save would move it ---
             entity.Id = FirstId + NextOrdinal();
+            int active = entity.IsActive ? 1 : 0;
             await fixture.ExecuteAsync(
-                DataQueryDatabase.Stamped("[fixture].[Lookups]", "[Id], [Code], [Name], [IsActive]", Invariant($"({entity.Id}, '{entity.Code}', N'{entity.Name}', 1)")),
+                DataQueryDatabase.Stamped("[fixture].[Lookups]", "[Id], [Code], [Name], [IsActive]", Invariant($"({entity.Id}, '{entity.Code}', N'{entity.Name}', {active})")),
                 Invariant($"UPDATE [core].[VersionTags] SET [Tag] = NEWID() WHERE [Name] = N'{LookupTag}';"));
             return entity;
         }

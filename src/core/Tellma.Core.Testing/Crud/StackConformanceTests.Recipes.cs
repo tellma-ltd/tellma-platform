@@ -21,13 +21,46 @@ namespace Tellma.Core.Testing.Crud
     public abstract partial class StackConformanceTests<TEntity, TKey>
     {
         /// <summary>
-        ///     An activatable stack stores new rows active whatever the payload says, keeps the stored
-        ///     flag on an update, reads inactive rows only when asked, and leaves a row already in the
-        ///     state an action asks for unstamped.
+        ///     An activatable stack's queries read an inactive row only when asked for inactive rows,
+        ///     whether its actions or the closing class stored the row inactive.
         /// </summary>
         /// <returns>A task that completes when the case ran.</returns>
         [Fact]
-        public async Task An_activatable_stack_creates_rows_active_keeps_the_flag_on_save_and_reads_inactive_rows_only_when_asked()
+        public async Task An_activatable_stack_reads_inactive_rows_only_when_asked()
+        {
+            Assert.SkipUnless(Stack.Capabilities.Contains(Activatable), $"The stack {Stack.Resource} is not activatable.");
+            Assert.SkipUnless(Serves(StackOperations.Query), $"The stack {Stack.Resource} serves no query.");
+
+            // --- An inactive row: deactivated by the stack's action, or, on a stack without its
+            // actions, stored inactive by the closing class ---
+            TEntity created;
+            string how;
+            if (ServesActivation())
+            {
+                created = await CreateNewAsync();
+                _ = await AsWriterAsync(service => service.ExecuteActionAsync(DeactivateAction, [created.Id], null, new ActionOptions(), Token));
+                how = "deactivated";
+            }
+            else
+            {
+                TEntity entity = NewValidEntity(NextOrdinal());
+                Property(ActiveProperty).Setter(entity, false);
+                created = await CreateAsync(entity);
+                how = $"stored inactive (or {nameof(CreateAsync)} stored it active: store the flag the entity holds)";
+            }
+
+            Assert.False(await ExistsAsync(created.Id, includeInactive: false), $"{Stack.Resource}: a query read a row {how} without being asked for inactive rows.");
+            Assert.True(await ExistsAsync(created.Id, includeInactive: true), $"{Stack.Resource}: a query asked for inactive rows did not read a row {how}.");
+        }
+
+        /// <summary>
+        ///     An activatable stack that serves its actions stores new rows active whatever the payload
+        ///     says, leaves a row already in the state an action asks for unstamped, and keeps the
+        ///     stored flag on an update.
+        /// </summary>
+        /// <returns>A task that completes when the case ran.</returns>
+        [Fact]
+        public async Task An_activatable_stack_creates_rows_active_keeps_the_flag_on_save_and_changes_it_only_by_its_actions()
         {
             Assert.SkipUnless(Stack.Capabilities.Contains(Activatable), $"The stack {Stack.Resource} is not activatable.");
             Assert.SkipUnless(ServesActivation(), $"The stack {Stack.Resource} serves no save, so it has no activation actions.");
@@ -44,12 +77,9 @@ namespace Tellma.Core.Testing.Crud
             _ = await AsWriterAsync(service => service.ExecuteActionAsync(ActivateAction, [created.Id], null, new ActionOptions(), Token));
             Assert.True(stamp is null || stamp == StampOf(await LoadAsync(created.Id)), $"{Stack.Resource}: activating an active row stamped it.");
 
-            // --- Deactivated: read only with inactive rows ---
+            // --- Deactivated by its action, then an update keeps the stored flag, whatever the payload says ---
             _ = await AsWriterAsync(service => service.ExecuteActionAsync(DeactivateAction, [created.Id], null, new ActionOptions(), Token));
-            Assert.False(await ExistsAsync(created.Id, includeInactive: false), $"{Stack.Resource}: a query read an inactive row it was not asked for.");
-            Assert.True(await ExistsAsync(created.Id, includeInactive: true), $"{Stack.Resource}: a query asked for inactive rows did not read one.");
-
-            // --- An update keeps the stored flag, whatever the payload says ---
+            Assert.False(await ExistsAsync(created.Id, includeInactive: false), $"{Stack.Resource}: the deactivate left the row active.");
             TEntity loaded = await LoadAsync(created.Id);
             active.Setter(loaded, true);
             Change(loaded, NextOrdinal());
@@ -76,8 +106,7 @@ namespace Tellma.Core.Testing.Crud
             // --- The parent's children, and not their own ---
             if (Serves(StackOperations.Query))
             {
-                ParentIdsRequest request = new([long.CreateChecked(parent.Id)], Metadata.Key.Name, null, null);
-                Assert.Equal([child.Id], Keys(await AsWriterAsync(service => service.Pipeline.GetByParentIdsAsync(request, Token))));
+                Assert.Equal([child.Id], Keys(await AsWriterAsync(service => service.Pipeline.GetByParentIdsAsync(ByParent(parent.Id), Token))));
             }
 
             // --- The parent under its own grandchild closes a cycle ---
@@ -101,7 +130,10 @@ namespace Tellma.Core.Testing.Crud
             }
         }
 
-        /// <summary>A cacheable stack serves its list from the cache at no round trip, and a stored row reaches the list.</summary>
+        /// <summary>
+        ///     A cacheable stack's stored row reaches its list, and the list is served from the cache at
+        ///     no round trip, or at two on every read beyond the list's row limit.
+        /// </summary>
         /// <returns>A task that completes when the case ran.</returns>
         [Fact]
         public async Task A_cacheable_stack_serves_its_list_from_the_cache_and_a_stored_row_reaches_it()
@@ -109,11 +141,8 @@ namespace Tellma.Core.Testing.Crud
             Assert.SkipUnless(Serves(StackOperations.Details, Cacheable), $"The stack {Stack.Resource} is not cacheable.");
             StackConformanceCaller writer = await WriterAsync();
 
-            // --- Filled once, then served from the cache ---
+            // --- Filled once; a stored row moves the entity's tag, and once a batch reads the tags, the list refills ---
             _ = await AsWriterAsync(service => service.GetAllCachedAsync(DetailsRequest.None, Token));
-            AssertTrips(0, await CountedAsync(writer, scope => Service(scope).GetAllCachedAsync(DetailsRequest.None, Token)), "a cached list read");
-
-            // --- A stored row moves the entity's tag; once a batch reads the tags, the list refills ---
             TEntity stored = await CreateNewAsync();
             EntitiesResult<TEntity> refreshed = await AsWriterAsync(async service =>
             {
@@ -125,6 +154,12 @@ namespace Tellma.Core.Testing.Crud
                 return await service.GetAllCachedAsync(DetailsRequest.None, Token);
             });
             Assert.Contains(long.CreateChecked(stored.Id), refreshed.Ids);
+
+            // --- Then served from the cache, unless the table outgrew the list's row limit ---
+            bool? oversized = await OversizedAsync();
+            Assert.SkipWhen(oversized is null, $"The stack {Stack.Resource} serves no query to count its rows by, so the suite cannot tell whether its cached list is beyond its row limit.");
+            _ = await AsWriterAsync(service => service.GetAllCachedAsync(DetailsRequest.None, Token));
+            AssertTrips(oversized == true ? 2 : 0, await CountedAsync(writer, scope => Service(scope).GetAllCachedAsync(DetailsRequest.None, Token)), "a cached list read");
         }
 
         /// <summary>Each searchable property finds the row that holds the term, and a term no row holds finds nothing.</summary>

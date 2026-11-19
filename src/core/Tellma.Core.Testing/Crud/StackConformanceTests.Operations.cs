@@ -17,53 +17,86 @@ namespace Tellma.Core.Testing.Crud
     /// <content>The operations, the securables and the enlisted writes.</content>
     public abstract partial class StackConformanceTests<TEntity, TKey>
     {
-        /// <summary>Every declared operation reaches the pipeline, and every operation the stack omits is refused as an authoring error.</summary>
+        /// <summary>
+        ///     Every declared operation answers as it should when no row it names exists, and every
+        ///     operation the stack omits is refused as an authoring error.
+        /// </summary>
         /// <returns>A task that completes when the case ran.</returns>
         [Fact]
         public async Task Every_declared_operation_is_reachable_and_every_absent_one_is_refused()
         {
             StackConformanceCaller writer = await WriterAsync();
 
-            // --- Each operation, the stack operation and capability it needs, and a call that changes
-            // no row: every id is one no row holds, so a write that runs refuses it as missing. Excel
-            // rows are not built yet, and their import and export are not the pipeline's ---
-            (string Name, bool Served, Func<EntityService<TEntity, TKey>, Task> Call)[] operations =
+            // --- Each operation, whether the stack serves it, and what it answers given an id no row
+            // holds, so no call changes a row. A call answers the rows its answer holds, or null when
+            // its answer holds none to count. Each takes the scope's services rather than the stack's
+            // service, so an operation another service serves (Excel rows, an import) joins the table
+            // as one more row once the platform serves it ---
+            List<(string Name, bool Served, Reach Expected, Func<IServiceProvider, TKey, Task<int?>> Call)> operations =
             [
-                ("query", Serves(StackOperations.Query), service => service.QueryAsync(new QueryRequest { Select = Metadata.Key.Name, Take = 1 }, Token)),
-                ("get", Serves(StackOperations.Details), service => service.GetByIdAsync(MissingId(), DetailsRequest.None, Token)),
-                ("get_by_ids", Serves(StackOperations.Details), service => service.GetByIdsAsync([MissingId()], DetailsRequest.None, Token)),
-                ("all", Serves(StackOperations.Details, Cacheable), service => service.GetAllCachedAsync(DetailsRequest.None, Token)),
-                ("save", Serves(StackOperations.Save), service => service.SaveAsync([NewValidEntity(NextOrdinal())], new SaveOptions { ReturnEntities = false }, Token)),
-                ("delete", Serves(StackOperations.Delete), service => service.DeleteByIdsAsync([MissingId()], null, Token)),
-                ("delete_by_query", Serves(StackOperations.DeleteByQuery), service => service.DeleteByQueryAsync(new DeleteByQueryRequest($"{Metadata.Key.Name} = {Text(MissingId())}", null, 0), Token)),
-                ("get_by_parent_ids", Serves(StackOperations.Query, Tree), service => service.Pipeline.GetByParentIdsAsync(new ParentIdsRequest([long.CreateChecked(MissingId())], Metadata.Key.Name, null, null), Token)),
-                ("delete_with_descendants", Serves(StackOperations.Delete, Tree), service => service.Pipeline.DeleteWithDescendantsAsync([MissingId()], Token)),
-                ("activate", ServesActivation(), service => service.ExecuteActionAsync(ActivateAction, [MissingId()], null, new ActionOptions(), Token)),
-                ("deactivate", ServesActivation(), service => service.ExecuteActionAsync(DeactivateAction, [MissingId()], null, new ActionOptions(), Token)),
+                ("query", Serves(StackOperations.Query), Reach.Answers, async (scope, _) => (await Service(scope).QueryAsync(new QueryRequest { Select = Metadata.Key.Name, Take = 1 }, Token)).Rows.RowCount),
+                ("get", Serves(StackOperations.Details), Reach.NotFound, async (scope, id) => (await Service(scope).GetByIdAsync(id, DetailsRequest.None, Token)).Ids.Count),
+                ("get_by_ids", Serves(StackOperations.Details), Reach.AnswersNone, async (scope, id) => (await Service(scope).GetByIdsAsync([id], DetailsRequest.None, Token)).Ids.Count),
+                ("all", Serves(StackOperations.Details, Cacheable), Reach.Answers, async (scope, _) => (await Service(scope).GetAllCachedAsync(DetailsRequest.None, Token)).Ids.Count),
+                ("save", Serves(StackOperations.Save), Reach.Answers, async (scope, _) => (await Service(scope).SaveAsync([NewValidEntity(NextOrdinal())], new SaveOptions { ReturnEntities = false }, Token)).Ids.Count),
+                ("delete", Serves(StackOperations.Delete), Reach.NotFound, async (scope, id) => (await Service(scope).DeleteByIdsAsync([id], null, Token)).Count),
+                ("delete_by_query", Serves(StackOperations.DeleteByQuery), Reach.AnswersNone, async (scope, id) => (await Service(scope).DeleteByQueryAsync(new DeleteByQueryRequest($"{Metadata.Key.Name} = {Text(id)}", null, 0), Token)).Count),
+                ("get_by_parent_ids", Serves(StackOperations.Query, Tree), Reach.AnswersNone, async (scope, id) => (await Service(scope).Pipeline.GetByParentIdsAsync(ByParent(id), Token)).RowCount),
+                ("delete_with_descendants", Serves(StackOperations.Delete, Tree), Reach.NotFound, async (scope, id) => (await Service(scope).Pipeline.DeleteWithDescendantsAsync([id], Token)).Count),
+                ("activate", ServesActivation(), Reach.NotFound, (scope, id) => ActAsync(scope, ActivateAction, id, null)),
+                ("deactivate", ServesActivation(), Reach.NotFound, (scope, id) => ActAsync(scope, DeactivateAction, id, null)),
             ];
 
-            foreach ((string name, bool served, Func<EntityService<TEntity, TKey>, Task> call) in operations)
-            {
-                Counted<Exception?> attempt = await AttemptAsync(writer, call);
-                if (served)
-                {
-                    Assert.False(attempt.Result is InvalidOperationException, $"{Stack.Resource} declares {name}, yet its service refused it: {attempt.Result?.Message}");
-                }
-                else
-                {
-                    Assert.True(attempt.Result is InvalidOperationException, $"{Stack.Resource} omits {name}, yet its service answered {attempt.Result?.GetType().Name ?? "a result"} rather than refusing it.");
-                }
-            }
-
-            // --- The declared entity actions reach the pipeline; an undeclared one is refused ---
+            // --- The declared entity actions, each with its arguments, and the declared API actions,
+            // each with its body; then an action the stack does not declare ---
             foreach (EntityActionDescriptor action in Stack.Actions.OfType<EntityActionDescriptor>().Where(static action => !action.IsBuiltIn))
             {
-                Counted<Exception?> attempt = await AttemptAsync(writer, service => service.ExecuteActionAsync(action.Name, [MissingId()], ActionArguments(action), new ActionOptions(), Token));
-                Assert.False(attempt.Result is InvalidOperationException, $"{Stack.Resource} declares the action {action.Name}, yet its service refused it: {attempt.Result?.Message}");
+                operations.Add(($"the action {action.Name}", true, Reach.NotFound, (scope, id) => ActAsync(scope, action.Name, id, ActionArguments(action))));
             }
 
-            Counted<Exception?> undeclared = await AttemptAsync(writer, service => service.ExecuteActionAsync("conformance-undeclared", [MissingId()], null, new ActionOptions(), Token));
-            Assert.True(undeclared.Result is InvalidOperationException, $"{Stack.Resource} ran an action it does not declare.");
+            foreach (ApiActionDescriptor action in Stack.Actions.OfType<ApiActionDescriptor>())
+            {
+                operations.Add(($"the API action {action.Name}", true, Reach.Answers, (scope, _) => InvokeAsync(scope, action)));
+            }
+
+            operations.Add(("an undeclared action", false, Reach.Answers, (scope, id) => ActAsync(scope, "conformance-undeclared", id, null)));
+
+            // --- Each served operation answers as expected; each absent one is an authoring error ---
+            foreach ((string name, bool served, Reach expected, Func<IServiceProvider, TKey, Task<int?>> call) in operations)
+            {
+                TKey missing = MissingId();
+                int? rows = null;
+                Counted<Exception?> attempt = await AttemptInScopeAsync(writer, async scope => rows = await call(scope, missing));
+                Exception? failure = attempt.Result;
+                if (!served)
+                {
+                    Assert.True(failure is InvalidOperationException, $"{Stack.Resource} omits {name}, yet its service answered {failure?.GetType().Name ?? "a result"} rather than refusing it.");
+                    continue;
+                }
+
+                switch (expected)
+                {
+                    case Reach.NotFound:
+                        Assert.True(
+                            failure is NotFoundException refusal && refusal.Resource == Stack.Resource && refusal.Ids.SequenceEqual([Text(missing)]),
+                            $"{Stack.Resource}: {name} of a missing row answered {Describe(failure)} rather than as not found, naming it.");
+                        break;
+                    case Reach.AnswersNone:
+                        Assert.True(failure is null && rows == 0, $"{Stack.Resource}: {name} naming a missing row answered {(failure is null ? $"{rows} rows" : Describe(failure))} rather than none.");
+                        break;
+                    case Reach.Answers:
+                        Assert.True(failure is null, $"{Stack.Resource}: {name} answered {Describe(failure)} rather than a result.");
+                        break;
+                    default:
+                        throw new InvalidOperationException($"The outcome {expected} is not one the case judges.");
+                }
+            }
+
+            // A failure as its type and message, for an assertion's message.
+            static string Describe(Exception? failure)
+            {
+                return failure is null ? "a result" : $"{failure.GetType().Name} ({failure.Message})";
+            }
         }
 
         /// <summary>The registry holds exactly the securables the descriptor implies, and each child query surface reads through its owner.</summary>
@@ -115,21 +148,65 @@ namespace Tellma.Core.Testing.Crud
             // --- Each standard securable the stack registers, and an operation it guards; a write
             // grant implies the read, so the caller holds no grant of the stack at all ---
             StackConformanceCaller caller = await CallerAsync(none: true);
-            (string Action, bool Served, Func<EntityService<TEntity, TKey>, Task> Call)[] guarded =
+            List<(string Resource, string Action, bool Served, Func<IServiceProvider, Task> Call)> guarded =
             [
-                (AccessActions.Read, Serves(StackOperations.Query), service => service.QueryAsync(new QueryRequest { Select = Metadata.Key.Name, Take = 1 }, Token)),
-                (AccessActions.Save, Serves(StackOperations.Save), service => service.SaveAsync([NewValidEntity(NextOrdinal())], new SaveOptions(), Token)),
-                (AccessActions.Delete, Serves(StackOperations.Delete), service => service.DeleteByIdsAsync([MissingId()], null, Token)),
+                (Stack.Resource, AccessActions.Read, Serves(StackOperations.Query), scope => Service(scope).QueryAsync(new QueryRequest { Select = Metadata.Key.Name, Take = 1 }, Token)),
+                (Stack.Resource, AccessActions.Save, Serves(StackOperations.Save), scope => Service(scope).SaveAsync([NewValidEntity(NextOrdinal())], new SaveOptions(), Token)),
+                (Stack.Resource, AccessActions.Delete, Serves(StackOperations.Delete), scope => Service(scope).DeleteByIdsAsync([MissingId()], null, Token)),
             ];
 
-            foreach ((string action, _, Func<EntityService<TEntity, TKey>, Task> call) in guarded.Where(static operation => operation.Served))
+            // --- Each entity action, the built-ins among them, under its own securable; each API
+            // action under the securable it names, a member-only one under none ---
+            foreach (EntityActionDescriptor action in Stack.Actions.OfType<EntityActionDescriptor>())
             {
-                Counted<Exception?> attempt = await AttemptAsync(caller, call);
+                guarded.Add((Stack.Resource, action.Action, true, scope => ActAsync(scope, action.Name, MissingId(), action.IsBuiltIn ? null : ActionArguments(action))));
+            }
+
+            foreach (ApiActionDescriptor action in Stack.Actions.OfType<ApiActionDescriptor>())
+            {
+                if (action.Securable is SecurableRef securable)
+                {
+                    guarded.Add((securable.Resource, securable.Action, true, scope => InvokeAsync(scope, action)));
+                }
+            }
+
+            foreach ((string resource, string action, _, Func<IServiceProvider, Task> call) in guarded.Where(static operation => operation.Served))
+            {
+                Counted<Exception?> attempt = await AttemptInScopeAsync(caller, call);
 
                 Assert.True(attempt.Result is ForbiddenException, $"{Stack.Resource}: a caller without {action} was answered {attempt.Result?.GetType().Name ?? "with a result"} rather than refused.");
                 var refusal = (ForbiddenException)attempt.Result!;
-                Assert.Equal((Stack.Resource, action, ForbiddenReason.NoGrant), (refusal.Resource, refusal.Action, refusal.Reason));
+                Assert.Equal((resource, action, ForbiddenReason.NoGrant), (refusal.Resource, refusal.Action, refusal.Reason));
             }
+        }
+
+        /// <summary>Runs an entity action of the stack on one row.</summary>
+        /// <param name="scope">The scope's services.</param>
+        /// <param name="action">The action's name.</param>
+        /// <param name="id">The row's id.</param>
+        /// <param name="arguments">The action's arguments; null for none.</param>
+        /// <returns>The rows the action answered.</returns>
+        private static async Task<int?> ActAsync(IServiceProvider scope, string action, TKey id, object? arguments)
+        {
+            return (await Service(scope).ExecuteActionAsync(action, [id], arguments, new ActionOptions(), Token)).Ids.Count;
+        }
+
+        /// <summary>Invokes an API action of the stack with the body the closing class gives it.</summary>
+        /// <param name="scope">The scope's services.</param>
+        /// <param name="action">The action.</param>
+        /// <returns>Null: an action's answer holds no rows to count.</returns>
+        private async Task<int?> InvokeAsync(IServiceProvider scope, ApiActionDescriptor action)
+        {
+            _ = await scope.GetRequiredService<IApiActionInvoker>().InvokeAsync(action, ApiActionArguments(action), Token);
+            return null;
+        }
+
+        /// <summary>The read of the rows directly under a parent.</summary>
+        /// <param name="parent">The parent's id.</param>
+        /// <returns>The request.</returns>
+        private ParentIdsRequest ByParent(TKey parent)
+        {
+            return new ParentIdsRequest([long.CreateChecked(parent)], Metadata.Key.Name, null, null);
         }
 
         /// <summary>
@@ -197,6 +274,19 @@ namespace Tellma.Core.Testing.Crud
                     return exception;
                 }
             }
+        }
+
+        /// <summary>What a served operation answers when no row it names exists.</summary>
+        private enum Reach
+        {
+            /// <summary>A result, whatever rows it holds.</summary>
+            Answers,
+
+            /// <summary>A result that holds no rows.</summary>
+            AnswersNone,
+
+            /// <summary>A refusal as not found, naming the stack's resource and the id.</summary>
+            NotFound,
         }
 
         /// <summary>A writer of the stack the registry holds no pair for.</summary>

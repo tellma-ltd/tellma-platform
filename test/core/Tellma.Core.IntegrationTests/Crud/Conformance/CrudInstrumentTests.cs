@@ -23,11 +23,12 @@ namespace Tellma.Core.IntegrationTests.Crud.Conformance
     /// <summary>
     ///     The pipeline's instruments, each driven by the operation that records it: every one is
     ///     observed, every measurement carries exactly its instrument's tags, and every closed tag
-    ///     takes a value of its set.
+    ///     takes a value of its set. The instance's large-batch threshold is a few rows, so the large
+    ///     lane is driven too.
     /// </summary>
     /// <param name="fixture">The tenant databases.</param>
     [Trait("Category", "Integration")]
-    public sealed class CrudInstrumentTests(ConformanceDatabase fixture) : IClassFixture<ConformanceDatabase>
+    public sealed class CrudInstrumentTests(InstrumentDatabase fixture) : IClassFixture<InstrumentDatabase>
     {
         /// <summary>The exports' resource.</summary>
         private const string Exports = "fixture.Export";
@@ -37,6 +38,9 @@ namespace Tellma.Core.IntegrationTests.Crud.Conformance
 
         /// <summary>The shipments' resource.</summary>
         private const string Shipments = "fixture.Shipment";
+
+        /// <summary>The widgets' resource.</summary>
+        private const string Widgets = "fixture.Widget";
 
         /// <summary>The test's cancellation.</summary>
         private static CancellationToken Token => TestContext.Current.CancellationToken;
@@ -125,6 +129,56 @@ namespace Tellma.Core.IntegrationTests.Crud.Conformance
             Assert.Superset(
                 new HashSet<string> { $"{ConformanceDatabase.ExportConfirmation} required", $"{ConformanceDatabase.ExportConfirmation} confirmed" },
                 Values(collector, CrudTelemetryNames.Confirmations, CrudTelemetryNames.KeyTag, CrudTelemetryNames.OutcomeTag));
+
+            // --- The lanes: a save counts its rows at every depth, and only more rows than the
+            // threshold are large. A widget with a part is two rows, with a note under the part three,
+            // though each is one root; a read by ids counts its ids ---
+            Assert.Equal(["save small"], await LanesAsync(collector, "save", () => InScopeAsync(subject, scope => Service<Widget>(scope).SaveAsync([NewWidget(1, notes: false)], new SaveOptions { ReturnEntities = false }, Token))));
+            Assert.Equal(["save large"], await LanesAsync(collector, "save", () => InScopeAsync(subject, scope => Service<Widget>(scope).SaveAsync([NewWidget(2, notes: true)], new SaveOptions { ReturnEntities = false }, Token))));
+            Assert.Equal(["get_by_ids small"], await LanesAsync(collector, "get_by_ids", () => InScopeAsync(subject, scope => Service<Widget>(scope).GetByIdsAsync(MissingIds(InstrumentDatabase.LargeBatchThreshold), DetailsRequest.None, Token))));
+            Assert.Equal(["get_by_ids large"], await LanesAsync(collector, "get_by_ids", () => InScopeAsync(subject, scope => Service<Widget>(scope).GetByIdsAsync(MissingIds(InstrumentDatabase.LargeBatchThreshold + 1), DetailsRequest.None, Token))));
+            collector.AssertClosed();
+        }
+
+        /// <summary>The lanes an operation's durations carried on one call, the collector cleared before it.</summary>
+        /// <typeparam name="T">What the call answers.</typeparam>
+        /// <param name="collector">The collector.</param>
+        /// <param name="operation">The operation whose durations are read.</param>
+        /// <param name="call">The call.</param>
+        /// <returns>Each duration's operation and lane, distinct, in ordinal order.</returns>
+        private static async Task<List<string>> LanesAsync<T>(CrudInstrumentCollector collector, string operation, Func<Task<T>> call)
+        {
+            collector.Clear();
+            _ = await call();
+            return [.. collector.Snapshot(CrudTelemetryNames.OperationDuration)
+                .Where(measurement => measurement.Tag(CrudTelemetryNames.OperationTag) == operation)
+                .Select(static measurement => $"{measurement.Tag(CrudTelemetryNames.OperationTag)} {measurement.Tag(CrudTelemetryNames.LaneTag)}")
+                .Distinct()
+                .Order(StringComparer.Ordinal)];
+        }
+
+        /// <summary>A new widget with one part, and one note under the part when asked.</summary>
+        /// <param name="ordinal">A number no other widget of the test was created with.</param>
+        /// <param name="notes">Whether the part holds a note.</param>
+        /// <returns>The widget.</returns>
+        private static Widget NewWidget(int ordinal, bool notes)
+        {
+            return new Widget
+            {
+                Code = Invariant($"WI-{ordinal}"),
+                Kind = WidgetKind.Plain,
+                Name = Invariant($"Instrumented {ordinal}"),
+                Subject = Invariant($"wi-{ordinal}"),
+                Parts = [new WidgetPart { Ordinal = 1, PartNotes = notes ? [new WidgetPartNote { Text = "Noted" }] : null }],
+            };
+        }
+
+        /// <summary>Ids no widget holds.</summary>
+        /// <param name="count">How many.</param>
+        /// <returns>The ids.</returns>
+        private static int[] MissingIds(int count)
+        {
+            return [.. Enumerable.Range(2_000_000_000 - count, count)];
         }
 
         /// <summary>The values an instrument's measurements carried on some of their tags, each measurement's joined by spaces.</summary>
@@ -159,7 +213,7 @@ namespace Tellma.Core.IntegrationTests.Crud.Conformance
             return _ => Task.Run(write).GetAwaiter().GetResult();
         }
 
-        /// <summary>Seeds the caller, who reads and writes exports, nodes and shipments.</summary>
+        /// <summary>Seeds the caller, who reads and writes exports, nodes, shipments and widgets.</summary>
         /// <returns>The caller's id and subject.</returns>
         private async Task<(int UserId, string Subject)> SeedCallerAsync()
         {
@@ -168,6 +222,7 @@ namespace Tellma.Core.IntegrationTests.Crud.Conformance
                     new(Exports, AccessActions.Read), new(Exports, AccessActions.Save), new(Exports, AccessActions.Delete),
                     new(Nodes, AccessActions.Read), new(Nodes, AccessActions.Save),
                     new(Shipments, AccessActions.Read), new(Shipments, AccessActions.Save),
+                    new(Widgets, AccessActions.Read), new(Widgets, AccessActions.Save),
                 ],
                 Token);
             return (caller.UserId, caller.Subject);

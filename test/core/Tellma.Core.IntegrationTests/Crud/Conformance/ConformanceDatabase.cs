@@ -65,6 +65,7 @@ namespace Tellma.Core.IntegrationTests.Crud.Conformance
                         ?? throw new InvalidOperationException("The fixture composes its tenant connection provider from a factory.");
                     _ = services.AddScoped(scope => new RoundTripCountingProvider((ITenantConnectionProvider)open(scope)));
                     _ = services.Replace(ServiceDescriptor.Scoped<ITenantConnectionProvider>(static scope => scope.GetRequiredService<RoundTripCountingProvider>()));
+                    Configure(services);
                 },
                 compose: Compose);
         }
@@ -112,6 +113,12 @@ namespace Tellma.Core.IntegrationTests.Crud.Conformance
         public Task ExecuteAsync(params string[] statements)
         {
             return Connect.ExecuteAsync(ConnectDatabase.TenantA, statements);
+        }
+
+        /// <summary>Adds the instance's services beside the fixture's, after them; nothing by default.</summary>
+        /// <param name="services">The instance's services.</param>
+        protected virtual void Configure(IServiceCollection services)
+        {
         }
 
         /// <summary>Adds the instance's features beside the fixture's.</summary>

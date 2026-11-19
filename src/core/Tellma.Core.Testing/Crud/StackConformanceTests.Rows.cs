@@ -63,6 +63,11 @@ namespace Tellma.Core.Testing.Crud
                 operations.Add(("deactivate", (service, id) => service.ExecuteActionAsync(DeactivateAction, [id], null, new ActionOptions(), Token)));
             }
 
+            foreach (EntityActionDescriptor action in Stack.Actions.OfType<EntityActionDescriptor>().Where(static action => !action.IsBuiltIn))
+            {
+                operations.Add(($"the action {action.Name}", (service, id) => service.ExecuteActionAsync(action.Name, [id], ActionArguments(action), new ActionOptions(), Token)));
+            }
+
             // --- A read by ids answers the rows it finds, in request order: the visible row alone ---
             foreach (TKey id in (TKey[])[hidden.Id, MissingId()])
             {

@@ -16,7 +16,11 @@ namespace Tellma.Core.Testing.Crud
     /// <content>The round-trip budget.</content>
     public abstract partial class StackConformanceTests<TEntity, TKey>
     {
-        /// <summary>Each read takes its round-trip budget: one for a query, a details read and a child surface's query, none for a cached list.</summary>
+        /// <summary>
+        ///     Each read takes its round-trip budget: one for a query (with its count, and with its
+        ///     ancestors on a tree), a details read, a read by parent ids and a child surface's query;
+        ///     none for a cached list, or two on a table beyond the list's row limit.
+        /// </summary>
         /// <returns>A task that completes when the case ran.</returns>
         [Fact]
         public async Task Each_read_takes_its_round_trip_budget()
@@ -24,38 +28,68 @@ namespace Tellma.Core.Testing.Crud
             StackConformanceCaller writer = await WriterAsync();
             TEntity stored = await CreateNewAsync();
 
-            // --- A first read warms the caller's connection and access ---
+            // --- Each read the stack serves and its budget. Excel rows join this table, at one round
+            // trip per page, once the platform serves them ---
+            List<(string What, int Budget, Func<IServiceProvider, Task> Call)> reads = [];
             if (Serves(StackOperations.Query))
             {
-                _ = await CountedAsync(writer, scope => Service(scope).QueryAsync(ById(stored.Id), Token));
-                AssertTrips(1, await CountedAsync(writer, scope => Service(scope).QueryAsync(ById(stored.Id), Token)), "a query");
+                QueryRequest counted = ById(stored.Id);
+                counted.IncludeCount = true;
+                reads.Add(("a query", 1, scope => Service(scope).QueryAsync(ById(stored.Id), Token)));
+                reads.Add(("a query with its count", 1, scope => Service(scope).QueryAsync(counted, Token)));
+            }
+
+            if (Serves(StackOperations.Query, Tree))
+            {
+                QueryRequest ancestors = ById(stored.Id);
+                ancestors.IncludeAncestors = true;
+                reads.Add(("a query with its ancestors", 1, scope => Service(scope).QueryAsync(ancestors, Token)));
+                reads.Add(("a read by parent ids", 1, scope => Service(scope).Pipeline.GetByParentIdsAsync(ByParent(stored.Id), Token)));
             }
 
             if (Serves(StackOperations.Details))
             {
-                AssertTrips(1, await CountedAsync(writer, scope => Service(scope).GetByIdAsync(stored.Id, DetailsRequest.None, Token)), "a details read by id");
-                AssertTrips(1, await CountedAsync(writer, scope => Service(scope).GetByIdsAsync([stored.Id], DetailsRequest.None, Token)), "a details read by ids");
+                reads.Add(("a details read by id", 1, scope => Service(scope).GetByIdAsync(stored.Id, DetailsRequest.None, Token)));
+                reads.Add(("a details read by ids", 1, scope => Service(scope).GetByIdsAsync([stored.Id], DetailsRequest.None, Token)));
             }
 
-            // --- The cached list: one read fills the cache, and the next costs nothing ---
-            if (Serves(StackOperations.Details, Cacheable))
-            {
-                _ = await CountedAsync(writer, scope => Service(scope).GetAllCachedAsync(DetailsRequest.None, Token));
-                AssertTrips(0, await CountedAsync(writer, scope => Service(scope).GetAllCachedAsync(DetailsRequest.None, Token)), "a cached list read");
-            }
-
-            // --- Each child query surface: one round trip ---
             foreach (ChildQueryDescriptor child in ChildSurfaces())
             {
                 QueryRequest request = new() { Select = "Id", Take = 1 };
-                AssertTrips(1, await CountedAsync(writer, scope => scope.GetRequiredService<IChildQueryService>().QueryAsync(child.Resource, request, Token)), $"a query of {child.Resource}");
+                reads.Add(($"a query of {child.Resource}", 1, scope => scope.GetRequiredService<IChildQueryService>().QueryAsync(child.Resource, request, Token)));
+            }
+
+            // --- Each read once to warm its caller, its plan and its caches, then counted ---
+            foreach ((string what, int budget, Func<IServiceProvider, Task> call) in reads)
+            {
+                _ = await CountedAsync(writer, async scope =>
+                {
+                    await call(scope);
+                    return 0;
+                });
+                AssertTrips(budget, await CountedAsync(writer, async scope =>
+                {
+                    await call(scope);
+                    return 0;
+                }), what);
+            }
+
+            // --- The cached list: one read fills the cache, and the next costs nothing; beyond the
+            // list's row limit, every read probes and re-reads ---
+            if (Serves(StackOperations.Details, Cacheable))
+            {
+                bool? oversized = await OversizedAsync();
+                Assert.SkipWhen(oversized is null, $"The stack {Stack.Resource} serves no query to count its rows by, so the suite cannot tell whether its cached list is beyond its row limit.");
+                _ = await CountedAsync(writer, scope => Service(scope).GetAllCachedAsync(DetailsRequest.None, Token));
+                AssertTrips(oversized == true ? 2 : 0, await CountedAsync(writer, scope => Service(scope).GetAllCachedAsync(DetailsRequest.None, Token)), "a cached list read");
             }
         }
 
         /// <summary>
         ///     Each write takes its round-trip budget: a create one, or two when it has anything to
-        ///     load; an update two; a delete and a built-in action one, or two when a validator judges
-        ///     them.
+        ///     load; an update two; a delete by query one; a delete by ids or with descendants and a
+        ///     built-in action one, or two when a validator judges them; a custom action two; each plus
+        ///     the validators' dependent rounds where they apply.
         /// </summary>
         /// <returns>A task that completes when the case ran.</returns>
         [Fact]
@@ -87,10 +121,38 @@ namespace Tellma.Core.Testing.Crud
                 AssertTrips(budget, await CountedAsync(writer, scope => Service(scope).ExecuteActionAsync(ActivateAction, [warm.Id], null, new ActionOptions(), Token)), "an activate");
             }
 
-            // --- A delete: the delete with its pre-check, behind a validation round when judged ---
+            // --- Each custom action: its targets with the first round, its persist on the second,
+            // and the rounds its loads depend on ---
+            foreach (EntityActionDescriptor action in Stack.Actions.OfType<EntityActionDescriptor>().Where(static action => !action.IsBuiltIn))
+            {
+                AssertTrips(
+                    2 + DependentActionRounds(action),
+                    await CountedAsync(writer, scope => Service(scope).ExecuteActionAsync(action.Name, [warm.Id], ActionArguments(action), new ActionOptions(), Token)),
+                    $"the action {action.Name}");
+            }
+
+            // --- A delete by query: its count and delete in one round trip, judged or not, since it
+            // names no ids a validator could see (spec 0015 §10.2) ---
+            if (Serves(StackOperations.DeleteByQuery))
+            {
+                TEntity matched = await CreateNewAsync();
+                DeleteByQueryRequest request = new($"{Metadata.Key.Name} = {Text(matched.Id)}", null, 1);
+                AssertTrips(1, await CountedAsync(writer, scope => Service(scope).DeleteByQueryAsync(request, Token)), "a delete by query");
+            }
+
+            // --- The deletes that name ids: each with its pre-check, behind a validation round when judged ---
+            int deleteBudget = ValidatesDeletes ? 2 : 1;
+
+            if (Serves(StackOperations.Delete, Tree))
+            {
+                TEntity parent = await CreateNewAsync();
+                _ = await CreateAsync(NewChildOf(parent, NextOrdinal()));
+                AssertTrips(deleteBudget, await CountedAsync(writer, scope => Service(scope).Pipeline.DeleteWithDescendantsAsync([parent.Id], Token)), "a delete with descendants");
+            }
+
             if (Serves(StackOperations.Delete))
             {
-                AssertTrips(ValidatesDeletes ? 2 : 1, await CountedAsync(writer, scope => Service(scope).DeleteByIdsAsync([warm.Id], null, Token)), "a delete");
+                AssertTrips(deleteBudget, await CountedAsync(writer, scope => Service(scope).DeleteByIdsAsync([warm.Id], null, Token)), "a delete");
             }
         }
 

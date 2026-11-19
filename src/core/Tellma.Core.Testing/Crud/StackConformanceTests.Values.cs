@@ -58,46 +58,107 @@ namespace Tellma.Core.Testing.Crud
         }
 
         /// <summary>
-        ///     On each child collection, a payload without the collection keeps the stored rows, an
-        ///     empty one deletes them, and a row whose id another entity's collection holds is not found.
+        ///     On each child collection at every depth, a payload without the collection keeps the
+        ///     stored rows, an empty one deletes them, and a row whose id another entity's collection
+        ///     holds is not found.
         /// </summary>
         /// <returns>A task that completes when the case ran.</returns>
         [Fact]
         public async Task Each_collection_keeps_its_rows_when_null_deletes_them_when_empty_and_refuses_a_foreign_child_id()
         {
             Assert.SkipUnless(Serves(StackOperations.Save), $"The stack {Stack.Resource} serves no save.");
-            Assert.SkipWhen(Stack.Children.Count == 0, $"The stack {Stack.Resource} has no child collections.");
+            List<ChildCollectionMetadata[]> paths = CollectionPaths(Metadata);
+            Assert.SkipWhen(paths.Count == 0, $"The stack {Stack.Resource} has no child collections.");
 
-            foreach (ChildCollectionDescriptor collection in Stack.Children)
+            // --- Each collection, reached from the root through the first row of each collection above it ---
+            foreach (ChildCollectionMetadata[] path in paths)
             {
-                ChildCollectionMetadata metadata = Collection(collection);
+                ChildCollectionMetadata collection = path[^1];
+                string at = Render(path);
                 TEntity stored = await CreateNewAsync();
-                int count = metadata.Getter(await LoadAsync(stored.Id))?.Count ?? 0;
-                Assert.True(count > 0, $"{nameof(NewValidEntity)} gives the stack {Stack.Resource} no {collection.Property}: fill each collection with at least one row.");
+                int count = Rows(await LoadAsync(stored.Id), path).Count;
+                Assert.True(count > 0, $"{nameof(NewValidEntity)} gives the stack {Stack.Resource} no {at}: fill each collection with at least one row.");
 
-                // --- Absent: the stored rows stay ---
+                // --- Absent: the stored rows stay, though the row above them is in the payload ---
                 TEntity absent = await LoadAsync(stored.Id);
-                SetRows(absent, collection, null);
+                SetRows(Owner(absent, path), collection, null);
                 Change(absent, NextOrdinal());
                 _ = await SaveAsync([absent]);
-                Assert.True(count == metadata.Getter(await LoadAsync(stored.Id))?.Count, $"{Stack.Resource}: a payload without {collection.Property} changed its rows.");
+                Assert.True(count == Rows(await LoadAsync(stored.Id), path).Count, $"{Stack.Resource}: a payload without {at} changed its rows.");
 
                 // --- A row of another entity's collection, named by its id: not found ---
                 TEntity other = await CreateNewAsync();
-                object foreign = metadata.Getter(await LoadAsync(other.Id))![0];
+                object foreign = Rows(await LoadAsync(other.Id), path)[0];
                 TEntity stealing = await LoadAsync(stored.Id);
-                SetRows(stealing, collection, [foreign]);
+                SetRows(Owner(stealing, path), collection, [foreign]);
                 ValidationException refused = await Assert.ThrowsAsync<ValidationException>(() => SaveAsync([stealing]));
-                Assert.Contains($"[0].{collection.Property}[0].{metadata.Child.Key.Name} {ValidationCodes.EntityNotFound}", Lines(refused));
-                Assert.True(metadata.Getter(await LoadAsync(other.Id))?.Count > 0, $"{Stack.Resource}: the refused save moved another entity's {collection.Property}.");
+                Assert.Contains($"[0].{at}[0].{collection.Child.Key.Name} {ValidationCodes.EntityNotFound}", Lines(refused));
+                Assert.True(Rows(await LoadAsync(other.Id), path).Count > 0, $"{Stack.Resource}: the refused save moved another entity's {at}.");
 
                 // --- Empty: the stored rows are deleted ---
                 TEntity emptied = await LoadAsync(stored.Id);
-                SetRows(emptied, collection, []);
+                SetRows(Owner(emptied, path), collection, []);
                 Change(emptied, NextOrdinal());
                 _ = await SaveAsync([emptied]);
-                Assert.True((metadata.Getter(await LoadAsync(stored.Id))?.Count ?? 0) == 0, $"{Stack.Resource}: an empty {collection.Property} kept its rows.");
+                Assert.True(Rows(await LoadAsync(stored.Id), path).Count == 0, $"{Stack.Resource}: an empty {at} kept its rows.");
             }
+        }
+
+        /// <summary>The paths to every child collection of an entity at every depth, each a collection's parents first.</summary>
+        /// <param name="entity">The entity.</param>
+        /// <returns>The paths, each collection before the ones below it.</returns>
+        private static List<ChildCollectionMetadata[]> CollectionPaths(EntityMetadata entity)
+        {
+            List<ChildCollectionMetadata[]> paths = [];
+            Walk(entity, []);
+            return paths;
+
+            void Walk(EntityMetadata parent, ChildCollectionMetadata[] above)
+            {
+                foreach (ChildCollectionMetadata collection in parent.Children)
+                {
+                    ChildCollectionMetadata[] path = [.. above, collection];
+                    paths.Add(path);
+                    Walk(collection.Child, path);
+                }
+            }
+        }
+
+        /// <summary>A collection path as a refusal's path renders it, each collection above the last at its first row.</summary>
+        /// <param name="path">The path.</param>
+        /// <returns>The text, such as <c>Parts[0].PartNotes</c>.</returns>
+        private static string Render(IEnumerable<ChildCollectionMetadata> path)
+        {
+            return string.Join("[0].", path.Select(static collection => collection.Property));
+        }
+
+        /// <summary>
+        ///     The row a path's last collection hangs under: the entity itself, or the first row of the
+        ///     collection above, reached through the first row of each one above that.
+        /// </summary>
+        /// <param name="entity">The entity.</param>
+        /// <param name="path">The path.</param>
+        /// <returns>The row.</returns>
+        private object Owner(TEntity entity, ChildCollectionMetadata[] path)
+        {
+            object owner = entity;
+            for (int depth = 0; depth < path.Length - 1; depth++)
+            {
+                IReadOnlyList<object>? rows = path[depth].Getter(owner);
+                Assert.True(rows?.Count > 0, $"{nameof(NewValidEntity)} gives the stack {Stack.Resource} no {Render(path.Take(depth + 1))}: fill each collection with at least one row.");
+                owner = rows[0];
+            }
+
+            return owner;
+        }
+
+        /// <summary>The rows of a path's last collection under the row it hangs under.</summary>
+        /// <param name="entity">The entity.</param>
+        /// <param name="path">The path.</param>
+        /// <returns>The rows; empty when the collection is.</returns>
+        private IReadOnlyList<object> Rows(TEntity entity, ChildCollectionMetadata[] path)
+        {
+            return path[^1].Getter(Owner(entity, path)) ?? [];
         }
 
         /// <summary>
@@ -110,8 +171,8 @@ namespace Tellma.Core.Testing.Crud
         {
             Assert.SkipUnless(Serves(StackOperations.Save), $"The stack {Stack.Resource} serves no save.");
             List<PropertyMetadata> unique = Unique(Metadata);
-            List<(ChildCollectionDescriptor Collection, PropertyMetadata Property)> childUnique = [.. Stack.Children
-                .SelectMany(collection => Unique(Collection(collection).Child).Select(property => (collection, property)))];
+            List<(ChildCollectionMetadata Collection, PropertyMetadata Property)> childUnique = [.. Metadata.Children
+                .SelectMany(static collection => Unique(collection.Child).Select(property => (collection, property)))];
             Assert.SkipWhen(unique.Count == 0 && childUnique.Count == 0, $"The stack {Stack.Resource} has no unique values.");
 
             // --- Each root value, taken from a stored row ---
@@ -125,12 +186,11 @@ namespace Tellma.Core.Testing.Crud
             }
 
             // --- Each child value, repeated by a second row of the same collection ---
-            foreach ((ChildCollectionDescriptor collection, PropertyMetadata property) in childUnique)
+            foreach ((ChildCollectionMetadata collection, PropertyMetadata property) in childUnique)
             {
-                ChildCollectionMetadata metadata = Collection(collection);
                 TEntity entity = NewValidEntity(NextOrdinal());
-                object first = metadata.Getter(entity)![0];
-                object second = metadata.Getter(NewValidEntity(NextOrdinal()))![0];
+                object first = collection.Getter(entity)![0];
+                object second = collection.Getter(NewValidEntity(NextOrdinal()))![0];
                 property.Setter(second, property.Getter(first));
                 SetRows(entity, collection, [first, second]);
                 ValidationException refused = await Assert.ThrowsAsync<ValidationException>(() => SaveAsync([entity]));
@@ -195,31 +255,14 @@ namespace Tellma.Core.Testing.Crud
             };
         }
 
-        /// <summary>
-        ///     Every foreign key in the model whose target is the stack's entity and whose row outlives
-        ///     a delete of its target: never a collection's parent key, which the delete takes with it,
-        ///     a sibling's shared key, a blob column or a value the server owns.
-        /// </summary>
+        /// <summary>Every foreign key in the model whose target is the stack's entity and that <see cref="ExercisesReference" /> admits.</summary>
         /// <returns>Each referencing entity and its reference.</returns>
         private List<(EntityMetadata Entity, ReferenceMetadata Reference)> Incoming()
         {
             IEntityMetadataProvider provider = Harness.Services.GetRequiredService<IEntityMetadataProvider>();
-            HashSet<PropertyMetadata> parentKeys = new(provider.All.SelectMany(static entity => entity.Children).Select(static collection => collection.ParentKey), ReferenceEqualityComparer.Instance);
-            List<(EntityMetadata Entity, ReferenceMetadata Reference)> incoming = [];
-            foreach (EntityMetadata entity in provider.All)
-            {
-                HashSet<PropertyMetadata> blobs = new(entity.BlobReferences.Select(static blob => blob.Property), ReferenceEqualityComparer.Instance);
-                foreach (ReferenceMetadata reference in entity.References.Where(reference => reference.Target.ClrType == Stack.EntityType))
-                {
-                    PropertyMetadata key = reference.ForeignKey;
-                    if (!parentKeys.Contains(key) && !ReferenceEquals(key, entity.Key) && !blobs.Contains(key) && key.Ownership is PropertyOwnership.Editable or PropertyOwnership.WriteOnce)
-                    {
-                        incoming.Add((entity, reference));
-                    }
-                }
-            }
-
-            return incoming;
+            return [.. provider.All.SelectMany(entity => entity.References
+                .Where(reference => reference.Target.ClrType == Stack.EntityType && ExercisesReference(entity, reference))
+                .Select(reference => (entity, reference)))];
         }
     }
 }
