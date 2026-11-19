@@ -359,12 +359,29 @@ Format, one entry per ruling:
 - Also accepted: a readonly select never opens (a pre-existing bug, fixed) and exposes aria-readonly.
 - **Misalignment for Ahmad:** 0010 §B.4 names contentChildren(TmOptionGroup), which the design does not need. See also D-036's §B.4 note.
 
+### D-130 PC-086 R1 rulings (2026-11-19)
+
+- R1-3: the client entity model emits each blob kind's MaxSize, not a cap from the emitting machine's Tellma:Blobs:MaxUploadSize (a deployment setting must not leak into a public, immutable chunk); recorded as a deviation.
+- Accepted deviations: one emitted name per C# enum type (<schema>.<Type>), with SettingKeyDescriptor.EnumType qualified (spec 0032 §7.3 already uses the qualified form); [EntityRef] action-field label keys drop the Id suffix (spec 0029 §2.4); the .d.ts golden is checked in as .txt because API Extractor crashes on the @tellma/core augmentation.
+
+### D-129 PC-098 R1-4 deferred (2026-11-19)
+
+- For Ahmad: PC-098 deviation D-3 reads spec 0020 literally: Retry→Failed at MaxAttempts also applies to the Retry(0) of a guard failure and of a stop after progress. The guard fails whenever the tenant-wide permissions tag moves, so an administrator's role save during a job's last attempt (e.g. a third-attempt core.import) ends it Failed/AttemptsExhausted; likewise a host stop after progress. Kept as specified for now; the alternative is not counting guard failures and stops toward MaxAttempts.
+
+### D-128 PC-098 hand-offs (2026-11-19)
+
+- For Ahmad: spec 0020 §3.4 maps every OperationCanceledException to Released/Retry(0), which would release a handler that times out on its own forever without counting an attempt. PC-098 treats only a worker-issued token's cancellation as a stop; any other OCE retries with Jobs.Internal (deviation). Once the host is stopping, any exception ends the invocation as its stop (D-056).
+- D-121/D-122 carries closed in PC-098: the worker hands the frame a DataBatch; OpenWriteFrame.AppendAsync restores the completion batch's Limits; the frame's count/reservation release waits for EndCompletion(failure); CompletionBroken makes the worker send a fresh completion.
+- For Ahmad: spec 0020 §3.3 says IJobProgress.Report makes JobItem.State current at once; the Abstractions docs said the opposite and were corrected to the spec. Spec 0020 §9 gains JobScopeUnavailable and JobNoticeRecipientsFailed log events.
+- job.changed after a claim stays with PC-100; after a progress-writing renewal it is PC-098's. JobEnqueueCodes still lack resx entries (earlier carry); new Jobs.* codes are English and Arabic only, as Amharic is partial repo-wide.
+
 ### D-127 PC-080 R2 rulings (2026-11-19)
 
 - R2-3: the raw-bytes answer for actions returning (byte[] Json, string WireTag) applies only to actions declared in a platform (Tellma.Core*) assembly; an audit row fails startup when any other action returns that shape. The shape stays, so PC-079's SettingsService.ClientAsync is unchanged.
 - R2-2: WireBinding.SettledAsync cannot re-apply cultures from an async finally. The problem writer applying cultures itself is carried to PC-081.
 - R2-1 (major): the JSON contract gate must neither pass members that throw only on write (Type, delegates, IntPtr, multi-dimensional arrays) nor fail on [JsonIgnore] members.
 - PC-080 holds after fix2 to serialize with PC-079's integration; it is released at once if nothing is integrating.
+- Outcome: "platform" means an assembly named Tellma.Core or Tellma.Core.* (so Tellma.Core.AspNetCore.Tests qualifies). A name test, not a trust boundary; distributions own their assembly names. WireBinding.SettledAsync was removed; endpoints call services directly.
 
 ### D-126 PC-080 fix1 outcomes (2026-11-19)
 
