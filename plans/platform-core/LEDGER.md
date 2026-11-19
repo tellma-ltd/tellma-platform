@@ -102,10 +102,10 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 
 | PC | Slot | Branch | Step | Implementer agent (name / id) | Reviewer agent (name / id) | Started (UTC) |
 |---|---|---|---|---|---|---|
+| PC-142 | pc-1 | pc/PC-142 | impl | impl (Opus, high, launched 2026-11-19) | 0015-k (T2); R1 only | 2026-11-19 |
 | PC-086 | pc-2 | pc/PC-086 | fix1 | impl (Opus, high, launched 2026-11-19) | R1 0B/0M/7m; R1 only | 2026-11-19 |
-| PC-079 | pc-1 | pc/PC-079 | CI (4e824224) | impl (Opus, high, launched 2026-11-19) | R1 0B/1M/6m all fixed; integrating | 2026-11-19 |
-| PC-080 | pc-3 | pc/PC-080 | held (ea5e6dee) | impl (Opus, high, launched 2026-11-19) | R1 0B/1M/2m, R2 (fable) 0B/1M/3m, all fixed; merge-tree clean; release after PC-079 green | 2026-11-19 |
-| PC-098 | pc-4 | pc/PC-098 | fix1 | impl (Opus, xhigh, launched 2026-11-19) | R1 0B/2M/5m; R2 fable after fix1 (security-bound) | 2026-11-19 |
+| PC-080 | pc-3 | pc/PC-080 | integrate | impl (Opus, high, launched 2026-11-19) | R1 0B/1M/2m, R2 (fable) 0B/1M/3m, all fixed; merge-tree clean; released 2026-11-19 after PC-079 green | 2026-11-19 |
+| PC-098 | pc-4 | pc/PC-098 | fix2 | impl (Opus, xhigh, launched 2026-11-19) | R1 0B/2M/5m (R1-4 deferred D-129); R2 (fable) 0B/0M/6m; then hold | 2026-11-19 |
 
 ## Fix items
 
@@ -365,8 +365,8 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-076 | 0015-h | 1 | done | 3ce126e3, ac365158, b665e864, 4c3a45c0; green 44320663740 | | |
 | PC-077 | 0015-i | 1 | done | 6eada9d9, b5cf1ae7, d1d5a9d0, 23730416, 392703f6; green 44446698443 | | carry from PC-062 (D-079): the invoker accepts only registry-owned ApiActionDescriptor instances, matched by reference; carry from PC-066 (D-095): the spec 0015 §7.3 error re-homing view (PC-066 deviation 15); carry from PC-074 (D-114): wire the real IStackTableOwners and the write-frames producer (a ReadOnly tenant refuses every save until then) and add the integration test for OnPersist's foreign-stack refusal; carry from PC-078 (D-121): OpenWriteFrame decides guards over StackTables ∪ batch.WrittenTables; run both checkpoints' guard and enlistment tests together; add back a ReadOnly leg to MigratorTests.A_tenant_provisioned_without_an_administrator_records_no_bootstrap_and_a_later_provision_naming_one_bootstraps_it |
 | PC-078 | 0014-f | 1 | done | 5b0b6328, 1a5de53e, 4cfcd532, 2ac84a2a, bff6d356; green 44433481481 |  | carry: §3.7 rule 1 save check must refuse (*, A) when no resource registers A (PC-043 D5); delegation coverage of Read must follow D-073; carry from PC-141 (D-096): TenantStateTests' UserId-binding, Frozen-read and ReadOnly-activity rows run (conditional skips) and must pass; carry (D-120): if PC-083 lands first, MigratorTests.The_provisioning_record_holds_the_platform_steps_with_their_versions runs and must pass in your integration gate |
-| PC-079 | 0013-h | 1 | CI | 1d018296, 1f2290e8, 4e824224 | | carry from PC-049: spec 0013 §5.5 settings securables are yours (category Resource names already match); D-076: a language change moves only the settings tag, so bump entity tags or fold the shape into wire tags |
-| PC-080 | 0016-c | 1 | held | 8774aebb, 10fe4959, ea5e6dee | | carry from PC-099 r1: core.Notification has no access criteria until PC-146, so a member gets 403 on their own rows; no member-facing surface reads the stack before PC-146; carry from PC-064: the get-by-parent-ids RouteContract.ResponseType is RowPage, so the projector wraps the bare QueryRowSet as new RowPage(rows, null, null); child surfaces take the root stack's ContractRevision plus their own [ApiResource] revision |
+| PC-079 | 0013-h | 1 | done | 1d018296, 1f2290e8, 4e824224; green 44512159188 | | carry from PC-049: spec 0013 §5.5 settings securables are yours (category Resource names already match); D-076: a language change moves only the settings tag, so bump entity tags or fold the shape into wire tags |
+| PC-080 | 0016-c | 1 | integrate | 8774aebb, 10fe4959, ea5e6dee | | carry from PC-099 r1: core.Notification has no access criteria until PC-146, so a member gets 403 on their own rows; no member-facing surface reads the stack before PC-146; carry from PC-064: the get-by-parent-ids RouteContract.ResponseType is RowPage, so the projector wraps the bare QueryRowSet as new RowPage(rows, null, null); child surfaces take the root stack's ContractRevision plus their own [ApiResource] revision |
 | PC-081 | 0016-d | 1 | todo | | | carry from PC-080 (D-124): fold the early BadRequestException→400 and LimitExceededException→413 mapping in TellmaProblemExceptionHandler into the full mapping; carry from PC-080 R2-2 (D-127): the problem writer applies the request cultures itself (WireBinding's async finally does not persist them) |
 | PC-082 | 0016-e | 1 | todo | | | carry from PC-080 (D-124): register the tellma-web/tellma-long timeout policies before installing the timeout middleware (WithRequestTimeout("tellma-long") metadata is inert until then) |
 | PC-083 | 0017-c1 | 1 | done | fe0edcc6, 6b4a02bf, 9d5dd16d; green 44392562042 | | |
@@ -384,7 +384,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-095 | 0016-f | 1 | todo | | | |
 | PC-096 | 0025-b | 1 | todo | | | |
 | PC-097 | 0020-b | 1 | done a90b368 (CI 43515001627 green) | bf01975, fb0abb0, 262b849, a90b368 (pc) |  |  |
-| PC-098 | 0020-c | 1 | fix1 | 06ceb5dd | | |
+| PC-098 | 0020-c | 1 | fix2 | 06ceb5dd, 46456458 | | |
 | PC-099 | 0021-b | 1 | done (integrated 183e772, CI 43618488320 green) | 2e7dfd1, 2de32d7, f5174b3, 11a57e0 (pc), 69c009b, 183e772 (pc) |  |  |
 | PC-100 | 0020-d | 1 | todo | | | carry from PC-141 (D-096): TenantStateTests.A_job_whose_handler_runs_when_read_only_succeeds_on_a_read_only_tenant runs and must pass |
 | PC-101 | 0010-f4 | 1 | done (450f7dd, CI 43164947502 green) | b11e206, c66a4a7, 450f7dd (pc) | 8.94M (impl+fix1+int 7.20, r1 1.74) | R1 0/1/5 all fixed; new deviations: null for an IsNotNull parameter is a caller error; printed text over a parse ceiling reports that ceiling's diagnostic |
@@ -428,7 +428,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-139 | 0032-d | 1 | todo | | | carry from PC-056: composite cell editors (window, filter) must shield inner tm-* controls from TM_CELL_EDITOR_HOST's last-registration-wins rule, or use plain inputs; add a helper if needed |
 | PC-140 | MVP | 1 | todo | | | |
 | PC-141 | 0011-h | 2 | done (478b0ab0; CI 43879675326 green) | bb2a2d6, 15d1369 (pc/PC-141) | | |
-| PC-142 | 0015-k | 2 | todo | | | |
+| PC-142 | 0015-k | 2 | impl | | | |
 | PC-143 | 0018-f | 2 | todo | | | |
 | PC-144 | 0020-e | 2 | todo | | | |
 | PC-145 | 0020-f | 2 | todo | | | |
