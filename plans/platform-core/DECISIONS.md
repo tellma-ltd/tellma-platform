@@ -359,6 +359,11 @@ Format, one entry per ruling:
 - Also accepted: a readonly select never opens (a pre-existing bug, fixed) and exposes aria-readonly.
 - **Misalignment for Ahmad:** 0010 §B.4 names contentChildren(TmOptionGroup), which the design does not need. See also D-036's §B.4 note.
 
+### D-135 — PC-F59 root cause and an open classification gap (2026-11-19)
+
+- Root cause of the TenantScopeTests red (run 44571660410): over LocalDB named pipes, about 0.5-0.9% of refused logins to a missing database arrive as SQL 233 alone instead of [4060, 18456]. Production classification is correct: a failed open is unsent; 233 is Ambiguous, which reports before the send, and 4060 is reported-transient, so both get the same re-run budget. The fix is test-only.
+- Open gap, not seen locally or on CI: an error list ordered [18456, 4060] would classify as Final, because the classifier keys on the primary error. Carried to the next checkpoint that touches the SQL error classifier (0012 §6.3); no action until then.
+
 ### D-134 — PC-142 fix2 hand-offs (2026-11-19)
 
 - The D-132 gate is in: StackRegistry refuses at startup a stack that keeps DeleteByQuery while its service or a validator judges deletes (HookOverrides.ValidatesDeletes). No platform stack breaks; User and Role already omit DeleteByQuery.
