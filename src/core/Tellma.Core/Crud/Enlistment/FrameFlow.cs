@@ -21,6 +21,9 @@ namespace Tellma.Core.Crud.Enlistment
         /// <summary>Each frame's chain, as first entered.</summary>
         private static readonly ConditionalWeakTable<EnlistmentFrame, FrameLink> Links = [];
 
+        /// <summary>The innermost frame of any kind the current flow runs in; null when it runs in none.</summary>
+        public static EnlistmentFrame? Innermost => Current.Value?.Frame;
+
         /// <summary>The innermost open frame the current flow runs in; null when it runs in none.</summary>
         public static OpenWriteFrame? InnermostOpen
         {

@@ -20,7 +20,8 @@ namespace Tellma.Core.Crud.Enlistment
     // their unconfirmed warnings, refuse the persist; then one Persist batch carries every group,
     // the BeforeHost groups first, each with its own groups around it, under the access guards when
     // any group writes a security table outside the system scope, and with no post-check: the
-    // targets' grants are never asked. A failure the executor attributes to a group's statement is
+    // targets' grants are never asked, while an API action's own securable is decided again for the
+    // user every composition is for. A failure the executor attributes to a group's statement is
     // translated against that group and re-homed. Once committed, each group's post-commit phase runs
     // in the order the batch composed them. A job's frame appends its groups to the job's completion
     // batch instead, which the worker sends.
@@ -180,12 +181,14 @@ namespace Tellma.Core.Crud.Enlistment
         /// <param name="user">The connected user the batch is composed for; null when the batch names none.</param>
         /// <param name="batch">The batch.</param>
         /// <returns>A task that completes when the batch is composed.</returns>
-        /// <exception cref="StaleContextException">On a re-entry, a tag the rounds were served under moved.</exception>
+        /// <exception cref="ForbiddenException">The connected user's set no longer grants the API action's securable.</exception>
+        /// <exception cref="StaleContextException">On a re-entry, a tag the rounds were served under moved, or the permission set moved under a group they validated.</exception>
         private async ValueTask ComposeOntoAsync(ConnectedUser? user, IDataBatch batch)
         {
-            // --- A re-entry recomposes what the rounds validated, unless what they read moved ---
+            // --- A re-entry recomposes what the rounds validated, unless what they read moved; the
+            // action's securable is decided for the user every composition is for ---
             bool first = Interlocked.Increment(ref _entries) == 1;
-            _run.Prepare(user, batch, first);
+            _run.Prepare(user, batch, first, _securable, Rounds);
             IReadOnlySet<TableName> callers = batch.CallerAuthority;
 
             // --- The groups: those ahead of the host, then those after it, each with its own nested ---
@@ -229,12 +232,23 @@ namespace Tellma.Core.Crud.Enlistment
                 return DispatchRoundAsync(loader, cancellationToken);
             }
 
-            /// <summary>Prepares a persist batch: on a re-entry, refuses what the rounds read as stale; then declares the tags they were served under.</summary>
+            // Spec 0015 §5.1: the batch runs under exactly the grants its prologue confirmed, so a
+            // re-entry's fresh user is judged again, as each pipeline host decides its own grant on
+            // every entry. The invoker evaluated the action's securable from the cached set before
+            // the method ran; a revocation since reaches this frame only through the fresh user.
+            /// <summary>
+            ///     Prepares a persist batch: on a re-entry, refuses what the rounds read as stale; decides
+            ///     the API action's securable for the user; refuses a moved permission set under a
+            ///     validated group; then declares the tags the rounds were served under.
+            /// </summary>
             /// <param name="user">The connected user the batch is composed for; null when the batch names none.</param>
             /// <param name="batch">The batch.</param>
             /// <param name="first">Whether this is the batch's first composition.</param>
-            /// <exception cref="StaleContextException">On a re-entry, a tag the rounds were served under moved.</exception>
-            public void Prepare(ConnectedUser? user, IDataBatch batch, bool first)
+            /// <param name="securable">The API action's securable; null when the frame has none.</param>
+            /// <param name="rounds">The frame's rounds, whose groups the batch carries.</param>
+            /// <exception cref="ForbiddenException">The user's set no longer grants the securable.</exception>
+            /// <exception cref="StaleContextException">On a re-entry, a tag the rounds were served under moved, or the permission set moved under a group they validated.</exception>
+            public void Prepare(ConnectedUser? user, IDataBatch batch, bool first, SecurableRef? securable, EnlistmentRounds rounds)
             {
                 if (user is not null)
                 {
@@ -244,6 +258,16 @@ namespace Tellma.Core.Crud.Enlistment
                     }
 
                     Composer = user;
+                    if (securable is not null)
+                    {
+                        AccessDecision decision = Decide(user, securable.Resource, securable.Action);
+                        if (decision.Outcome == AccessOutcome.Denied)
+                        {
+                            throw new ForbiddenException(ForbiddenCode, decision.Resource, decision.Action, ForbiddenReason.NoGrant);
+                        }
+                    }
+
+                    EnsureGroupsJudgedUnder(user, rounds);
                 }
 
                 batch.Limits = QueryexProfiles.PipelineLimits;

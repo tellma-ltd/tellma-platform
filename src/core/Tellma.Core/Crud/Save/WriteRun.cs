@@ -14,6 +14,7 @@ using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Entities;
 using Tellma.Core.Abstractions.Errors;
 using Tellma.Core.Abstractions.Tenancy;
+using Tellma.Core.Crud.Enlistment;
 using Tellma.Core.Crud.Validation;
 using Tellma.Core.Data.Batches;
 using Tellma.Core.Data.Queries;
@@ -49,6 +50,9 @@ namespace Tellma.Core.Crud.Save
 
         /// <summary>The <c>entity:*</c> dependencies the validation rounds were served under, by name, each as first served.</summary>
         private readonly Dictionary<string, VersionTagDependency> _served = new(StringComparer.Ordinal);
+
+        /// <summary>The permission set the persist batch was last composed for; null before its first composition.</summary>
+        private UserAccess? _persistSet;
 
         /// <summary>The scope's write services.</summary>
         protected SaveOperation Services { get; } = operation;
@@ -209,6 +213,32 @@ namespace Tellma.Core.Crud.Save
             {
                 throw new StaleContextException(moved);
             }
+        }
+
+        // Spec 0015 §5.1 re-runs a host's own validators on a re-entry and replays its enlisted groups,
+        // whose validators never run again. A re-entry composed for another permission set than the
+        // composition before it (the runner reconnected past a moved permissions tag) would commit
+        // rows those validators judged under grants the caller may no longer hold, such as a role
+        // membership whose escalation test read the caller's own set. So it fails closed: stale,
+        // whenever a group's target validated its rows; a group no validator judged replays as it is.
+        /// <summary>
+        ///     Notes the permission set a persist composition is for; on a re-entry composed for
+        ///     another set, refuses it when a group the batch carries was validated under the one before.
+        /// </summary>
+        /// <param name="user">The connected user the composition is for.</param>
+        /// <param name="enlistments">The rounds whose groups the batch carries, at any depth; null when the write hosts none.</param>
+        /// <exception cref="StaleContextException">The set moved, and a group's target validated its rows under the one before.</exception>
+        protected void EnsureGroupsJudgedUnder(ConnectedUser user, EnlistmentRounds? enlistments)
+        {
+            ArgumentNullException.ThrowIfNull(user);
+            UserAccess? before = _persistSet;
+            _persistSet = user.Access;
+            if (before is null || ReferenceEquals(before, user.Access) || enlistments is null || !enlistments.Groups.Any(static group => group.Validates))
+            {
+                return;
+            }
+
+            throw new StaleContextException([new VersionTagDependency(VersionTagNames.Permissions, new VersionTag(before.Tag), VersionTagMismatchPolicy.Rerun)]);
         }
 
         /// <summary>Runs one post-commit participant, logging and counting its failure instead of raising it.</summary>

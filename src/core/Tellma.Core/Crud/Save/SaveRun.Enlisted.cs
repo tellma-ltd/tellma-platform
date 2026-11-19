@@ -3,6 +3,7 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+using Microsoft.Extensions.DependencyInjection;
 using Tellma.Core.Abstractions.Crud;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Entities;
@@ -69,6 +70,11 @@ namespace Tellma.Core.Crud.Save
 
         /// <inheritdoc />
         public IReadOnlyList<long> Ids => _abandoned ? [] : [.. _entities.Select(static entity => long.CreateChecked(entity.Id))];
+
+        /// <inheritdoc />
+        public bool Validates => !_abandoned
+            && _validatorsStarted is not null
+            && HookOverrides.ValidatesSaves(_behavior, _operation.Services.GetServices<IEntityValidator<TEntity>>());
 
         /// <inheritdoc />
         public DateTimeOffset? Stamp { get; private set; }

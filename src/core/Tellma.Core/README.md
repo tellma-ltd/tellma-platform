@@ -1479,8 +1479,10 @@ tenant, in a job that runs on one and in a provisioning step, refused in any oth
   components, a group's own participants, or the class an open frame was opened for), and only
   while a pipeline frame validates or before an open frame's `PersistAsync`. A write to the
   writer's own stack is admitted from the open frame of that stack's API action alone, and a root
-  id enlisted twice with one target in one frame is refused at the second. Each refusal is
-  `InvalidOperationException`.
+  id enlisted twice with one target in one frame is refused at the second. The injected
+  `IOpenWriteHost` enlists from the open frame's own work alone: code inside a pipeline's or a
+  group's frame nested in it (a hook of a front-door save the work called, an enlisted write's
+  participant) enlists with its context's `Host`. Each refusal is `InvalidOperationException`.
 - **A group** runs the target's own stages as tasks of the host's scheduler, on the host's rounds:
   preprocessing, the before images of its updates read unfiltered (a missing row is
   `Entity.NotFound` at the mapped path, with its ids), the server-owned members the writer names
@@ -1506,17 +1508,24 @@ tenant, in a job that runs on one and in a provisioning step, refused in any oth
   same step of the first run, with that group's ids, whatever order the tasks ran in. A step the
   first run had no such group for, or took while another flow of its task was parked at a load, or
   a first-run enlistment the re-run never makes, is `StaleContextException`; the groups an entity
-  action's method enlisted are replayed as they are, since a re-run never invokes the method.
+  action's method enlisted are replayed as they are, since a re-run never invokes the method. A
+  group's own validators never run again, so a re-entry composed for another permission set than
+  the composition before it is `StaleContextException`, naming the permissions tag, whenever it
+  would replay a group whose target's validators judged its rows; a group nothing validated
+  replays.
 - **The front door.** A service's `SaveAsync`, `DeleteByIdsAsync`, `DeleteByQueryAsync`,
   `ExecuteActionAsync`, `ActivateAsync`, `DeactivateAsync` or `DeleteWithDescendantsAsync` entered
   while a pipeline frame of the flow composes is `InvalidOperationException`. From an open frame it
   runs a pipeline frame of its own, and the open frame's `PersistAsync` is refused while it composes.
 - **Open frames** run their work as a task of their own rounds. `PersistAsync` is called once, from
   the work itself: it waits for the groups' rounds, raises their errors and then their warnings,
-  and sends every group in one persist batch (none enlisted: no round trip). Its outcome's stamp is
-  the one the batch's saves stamped; a batch that saved no row, a commit whose response was lost
-  and a job's frame report the frame's clock instead, which no stored row carries. Work that returns with
-  groups it never persisted is `InvalidOperationException`, and nothing is sent. A job's frame
+  and sends every group in one persist batch (none enlisted: no round trip). Every composition of
+  that batch decides an API action's securable again for the user it is composed for, so a
+  re-entry for a caller who lost it is `ForbiddenException` (`NoGrant`) and nothing commits. Its
+  outcome's stamp is the one the batch's saves stamped; a batch that saved no row, a commit whose
+  response was lost and a job's frame report the frame's clock instead, which no stored row
+  carries. Work that returns with groups it never persisted is `InvalidOperationException`, and
+  nothing is sent. A job's frame
   appends its groups to the completion batch the worker composes, after the outcome statement, and
   runs their post-commit phase once the worker reports the commit. A provisioning step runs inside
   a frame of its own, opened by `IProvisioningFrameOpener` around the step's creation and run.

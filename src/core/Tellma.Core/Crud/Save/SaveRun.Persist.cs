@@ -129,6 +129,7 @@ namespace Tellma.Core.Crud.Save
         /// <param name="batch">The batch.</param>
         /// <returns>A task that completes when the batch is composed.</returns>
         /// <exception cref="ForbiddenException">The connected user's set no longer grants a save of the stack.</exception>
+        /// <exception cref="StaleContextException">On a re-entry, what the validators read moved, or the permission set moved under a group they validated.</exception>
         private async ValueTask ComposePersistAsync(ConnectedUser user, IDataBatch batch)
         {
             // --- A re-entry, which the operation's frame counts: the validators re-run in memory under the fresh user ---
@@ -145,6 +146,8 @@ namespace Tellma.Core.Crud.Save
                 throw new ForbiddenException(ForbiddenCode, save.Resource, save.Action, ForbiddenReason.NoGrant);
             }
 
+            // --- A re-entry for a moved permission set never commits groups validated under the old one ---
+            EnsureGroupsJudgedUnder(user, Enlistments);
             batch.Limits = QueryexProfiles.PipelineLimits;
             IReadOnlySet<TableName> callers = batch.CallerAuthority;
 

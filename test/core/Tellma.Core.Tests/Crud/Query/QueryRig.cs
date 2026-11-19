@@ -46,6 +46,9 @@ namespace Tellma.Core.Tests.Crud.Query
         /// <summary>The next permission's id.</summary>
         private int _nextPermission = 1;
 
+        /// <summary>The cause the runner reports for the recomposition armed next.</summary>
+        private RecomposeCause _recomposedFor = RecomposeCause.Permissions;
+
         /// <summary>Composes the query model with the fakes.</summary>
         public QueryRig()
             : this(QueryModel.Compose)
@@ -142,6 +145,18 @@ namespace Tellma.Core.Tests.Crud.Query
         public void GrantOnRecompose(params (string Resource, string Action, string? Filter)[] grants)
         {
             Recomposed = Connect(grants);
+            _recomposedFor = RecomposeCause.Permissions;
+        }
+
+        /// <summary>
+        ///     Makes the next batch's guard find the settings tag moved, the permission set held: the
+        ///     runner executes the batch it composed, then composes another for the caller's own set,
+        ///     as a settings change saved since the scope cached its caller would.
+        /// </summary>
+        public void RecomposeOnSettings()
+        {
+            Recomposed = User;
+            _recomposedFor = RecomposeCause.Settings;
         }
 
         /// <summary>Makes the fresh set the next recomposition finds read a tenant tag at a value, as a write committed since would move it.</summary>
@@ -410,7 +425,7 @@ namespace Tellma.Core.Tests.Crud.Query
                 {
                     rig.Recomposed = null;
                     await batch.RefuseAsync();
-                    recompositions?.Note(RecomposeCause.Permissions);
+                    recompositions?.Note(rig._recomposedFor);
                     batch = rig.Script.NewBatch(purpose);
                     await compose(fresh, batch);
                     return read(fresh, await batch.ExecuteAsync(cancellationToken));

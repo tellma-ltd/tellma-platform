@@ -34,6 +34,9 @@ namespace Tellma.Core.Crud.Enlistment
         /// <summary>The first-run ids of the target's rows, in payload order, which a re-run of the host's validators reuses.</summary>
         IReadOnlyList<long> Ids { get; }
 
+        /// <summary>Whether the target's validators judged the group's rows: its service's or a component's hook ran over them.</summary>
+        bool Validates { get; }
+
         /// <summary>Runs what the group does once a round of its host was dispatched: its checks after the round that served its loads.</summary>
         /// <param name="round">The round's 1-based number.</param>
         /// <returns>A task that completes when the checks ran.</returns>

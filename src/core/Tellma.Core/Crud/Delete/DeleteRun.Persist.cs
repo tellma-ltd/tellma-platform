@@ -230,6 +230,7 @@ namespace Tellma.Core.Crud.Delete
         /// <returns>A task that completes when the batch is composed.</returns>
         /// <exception cref="ForbiddenException">The connected user's set no longer grants a delete of the stack.</exception>
         /// <exception cref="NotFoundException">The connected user reads no row of the stack, so every id is hidden.</exception>
+        /// <exception cref="StaleContextException">On a re-entry, what the validators read moved, or the permission set moved under a group they validated.</exception>
         private async ValueTask ComposePersistAsync(ConnectedUser user, IDataBatch batch)
         {
             // --- A re-entry, which the operation's frame counts: the validators re-run in memory under the fresh user ---
@@ -242,6 +243,9 @@ namespace Tellma.Core.Crud.Delete
             // --- The Delete grant, decided for the connected user ---
             Composer = user;
             AccessDecision granted = Granted(user, AccessActions.Delete);
+
+            // --- A re-entry for a moved permission set never commits groups validated under the old one ---
+            EnsureGroupsJudgedUnder(user, Enlistments);
             batch.Limits = QueryexProfiles.PipelineLimits;
             IReadOnlySet<TableName> callers = batch.CallerAuthority;
             DependOnServed(batch);

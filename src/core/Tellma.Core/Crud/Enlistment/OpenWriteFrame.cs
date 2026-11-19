@@ -4,6 +4,7 @@
 // LICENSE file in the root directory of this source tree.
 
 using System.Runtime.ExceptionServices;
+using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Crud;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Settings;
@@ -51,6 +52,9 @@ namespace Tellma.Core.Crud.Enlistment
         /// <summary>The job's completion batch the groups are appended to; null for a frame that persists itself.</summary>
         private readonly IDataBatch? _completion;
 
+        /// <summary>The API action's securable, which every persist composition decides again; null for a member-only action, a job or a step.</summary>
+        private readonly SecurableRef? _securable;
+
         /// <summary>Cancels the frame's rounds and persist: the frame's own token, and the token its persist is called with.</summary>
         private readonly CancellationTokenSource _cancellation;
 
@@ -95,6 +99,7 @@ namespace Tellma.Core.Crud.Enlistment
         /// <param name="openedFor">The class the frame was opened for.</param>
         /// <param name="admitsSelfPair">Whether a self-pair is admitted: on the frame of an API action alone.</param>
         /// <param name="completion">The job's completion batch the groups are appended to; null for a frame that persists itself.</param>
+        /// <param name="securable">The API action's securable; null for a member-only action, a job or a step.</param>
         /// <param name="cancellationToken">The frame's own token, such as the request's or a job's lease.</param>
         private OpenWriteFrame(
             SaveOperation services,
@@ -104,8 +109,10 @@ namespace Tellma.Core.Crud.Enlistment
             Type openedFor,
             bool admitsSelfPair,
             IDataBatch? completion,
+            SecurableRef? securable,
             CancellationToken cancellationToken)
         {
+            _securable = securable;
             _services = services;
             _descriptor = descriptor;
             _resource = resource;
@@ -151,7 +158,7 @@ namespace Tellma.Core.Crud.Enlistment
             ArgumentNullException.ThrowIfNull(action);
             ArgumentNullException.ThrowIfNull(method);
             WriteFrame descriptor = new(WriteHostKind.ApiAction, $"{method.Owner}:{action.Name}", AdmitsReadOnly: !action.Mutation || action.AllowWhenReadOnly);
-            return new OpenWriteFrame(services, descriptor, method.Owner, CrudOperationNames.ApiAction, method.Handler, admitsSelfPair: true, completion: null, cancellationToken);
+            return new OpenWriteFrame(services, descriptor, method.Owner, CrudOperationNames.ApiAction, method.Handler, admitsSelfPair: true, completion: null, action.Securable, cancellationToken);
         }
 
         /// <summary>Opens the frame of a provisioning step, which persists itself under the system scope.</summary>
@@ -166,7 +173,7 @@ namespace Tellma.Core.Crud.Enlistment
             ArgumentException.ThrowIfNullOrWhiteSpace(step);
             ArgumentNullException.ThrowIfNull(stepType);
             WriteFrame descriptor = new(WriteHostKind.Provisioning, $"provisioning:{step}", AdmitsReadOnly: true);
-            return new OpenWriteFrame(services, descriptor, ProvisioningResource, CrudOperationNames.Provisioning, stepType, admitsSelfPair: false, completion: null, cancellationToken);
+            return new OpenWriteFrame(services, descriptor, ProvisioningResource, CrudOperationNames.Provisioning, stepType, admitsSelfPair: false, completion: null, securable: null, cancellationToken);
         }
 
         // Spec 0015 §13.3 and spec 0020 §3.1: a job's frame appends its groups to the job's completion
@@ -188,7 +195,7 @@ namespace Tellma.Core.Crud.Enlistment
             ArgumentNullException.ThrowIfNull(handler);
             ArgumentNullException.ThrowIfNull(completion);
             WriteFrame descriptor = new(WriteHostKind.Job, $"job:{key}", runsWhenReadOnly);
-            return new OpenWriteFrame(services, descriptor, JobResource, CrudOperationNames.Job, handler, admitsSelfPair: false, completion, cancellationToken);
+            return new OpenWriteFrame(services, descriptor, JobResource, CrudOperationNames.Job, handler, admitsSelfPair: false, completion, securable: null, cancellationToken);
         }
 
         /// <summary>

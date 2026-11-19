@@ -187,6 +187,7 @@ namespace Tellma.Core.Crud.Actions
         /// <returns>A task that completes when the batch is composed.</returns>
         /// <exception cref="ForbiddenException">The connected user's set no longer grants the action.</exception>
         /// <exception cref="NotFoundException">The connected user reads no row of the stack, so every target is hidden.</exception>
+        /// <exception cref="StaleContextException">On a re-entry, what the validators read moved, or the permission set moved under a group they validated.</exception>
         private async ValueTask ComposePersistAsync(ConnectedUser user, IDataBatch batch)
         {
             // --- Every entry is abandoned unsent when a task composed after reading Persisted, a flow
@@ -208,6 +209,9 @@ namespace Tellma.Core.Crud.Actions
             // --- The action grant, decided for the connected user ---
             Composer = user;
             AccessDecision granted = Granted(user, _descriptor.Action);
+
+            // --- A re-entry for a moved permission set never commits groups validated under the old one ---
+            EnsureGroupsJudgedUnder(user, Enlistments);
             batch.Limits = QueryexProfiles.PipelineLimits;
             IReadOnlySet<TableName> callers = batch.CallerAuthority;
             DependOnServed(batch);

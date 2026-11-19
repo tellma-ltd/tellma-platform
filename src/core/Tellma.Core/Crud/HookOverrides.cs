@@ -13,13 +13,17 @@ namespace Tellma.Core.Crud
     // SQL-only round trip unless the service or a component validates them. A hook that is not
     // overridden is the empty base method, so whether one is overridden is a fact of the class: the
     // service's protected virtual hook below its EntityService base, or a component's default
-    // interface method left in place. Each class is inspected once.
+    // interface method left in place. Each class is inspected once. A re-entry asks the same of an
+    // enlisted save's target (§5.1): whether a validator judged the rows it replays.
     /// <summary>
-    ///     Tells whether a stack's service or a component overrides a delete or action validation hook,
-    ///     so the operation needs the round that runs it.
+    ///     Tells whether a stack's service or a component overrides a save, delete or action
+    ///     validation hook, so the operation needs the round that runs it.
     /// </summary>
     internal static class HookOverrides
     {
+        /// <summary>The service's and the components' save validation hook.</summary>
+        public const string ValidateSave = "ValidateAsync";
+
         /// <summary>The service's and the components' delete validation hook.</summary>
         public const string ValidateDelete = "ValidateDeleteAsync";
 
@@ -31,6 +35,17 @@ namespace Tellma.Core.Crud
 
         /// <summary>Whether a class overrides a hook, by the class and the hook's name.</summary>
         private static readonly ConcurrentDictionary<(Type Type, string Hook), bool> Overrides = new();
+
+        /// <summary>Whether the service or any component validates the stack's saves: a component always does.</summary>
+        /// <typeparam name="TEntity">The stack's entity type.</typeparam>
+        /// <typeparam name="TKey">The stack's key type.</typeparam>
+        /// <param name="behavior">The service's hooks.</param>
+        /// <param name="validators">The entity's validators.</param>
+        /// <returns>True when a save's rows are judged by a validator.</returns>
+        public static bool ValidatesSaves<TEntity, TKey>(IEntityBehavior<TEntity, TKey> behavior, IEnumerable<IEntityValidator<TEntity>> validators)
+        {
+            return Validates(behavior, validators, ValidateSave);
+        }
 
         /// <summary>Whether the service or any component validates the stack's deletes.</summary>
         /// <typeparam name="TEntity">The stack's entity type.</typeparam>

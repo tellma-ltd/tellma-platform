@@ -56,6 +56,9 @@ namespace Tellma.Core.Crud.Delete
         public IReadOnlyList<long> Ids => [.. _ids.Select(static id => long.CreateChecked(id))];
 
         /// <inheritdoc />
+        public bool Validates => !_abandoned && _hooked && _ids.Length > 0;
+
+        /// <inheritdoc />
         public DateTimeOffset? Stamp => null;
 
         /// <summary>The frame the delete is enlisted with and how.</summary>
