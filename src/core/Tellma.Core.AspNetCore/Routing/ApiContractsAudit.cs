@@ -14,6 +14,7 @@ using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Excel;
 using Tellma.Core.Api;
+using Tellma.Core.AspNetCore.Api;
 using Tellma.Core.Composition;
 using Tellma.Core.Crud;
 
@@ -173,11 +174,13 @@ namespace Tellma.Core.AspNetCore.Routing
         /// <param name="problems">Receives the problems.</param>
         private static void Resolve(Type type, JsonSerializerOptions options, HashSet<Type> resolved, List<CompositionProblem> problems)
         {
-            // A route without a body, a streamed workbook and an untyped value have no contract to resolve.
+            // A route without a body, a streamed workbook, a pre-serialized document and an untyped value
+            // have no contract to resolve.
             Stack<Type> pending = new([type]);
             while (pending.TryPop(out Type? current))
             {
-                if (current == typeof(void) || current == typeof(object) || current == typeof(ExportOutcome) || current.IsGenericParameter || !resolved.Add(current))
+                if (current == typeof(void) || current == typeof(object) || current == typeof(ExportOutcome) || ActionAnswers.IsPreSerialized(current)
+                    || current.IsGenericParameter || !resolved.Add(current))
                 {
                     continue;
                 }

@@ -104,11 +104,15 @@ namespace Tellma.Core.AspNetCore.Tests.Api
         public string? Text { get; set; }
     }
 
-    /// <summary>A ledger: a stack keyed by <see cref="long" />.</summary>
+    /// <summary>A ledger: a stack keyed by <see cref="long" />, whose own save ceiling is below the web surface's.</summary>
     [Table("Ledgers", Schema = "pj")]
+    [Stack(MaxSaveCount = LedgerMaxSaveCount)]
     [TableType]
     public class PjLedger : TopLevelEntity<long>
     {
+        /// <summary>The most entities one ledger save carries.</summary>
+        public const int LedgerMaxSaveCount = 2;
+
         /// <summary>The name.</summary>
         [MaxLength(255)]
         public string Name { get; set; } = null!;
@@ -254,6 +258,14 @@ namespace Tellma.Core.AspNetCore.Tests.Api
         public Task<PjInboxSummary> SummaryAsync()
         {
             return Task.FromResult(new PjInboxSummary(0));
+        }
+
+        /// <summary>The caller's inbox document, serialized once by the service: written as its bytes.</summary>
+        /// <returns>The document's UTF-8 JSON and its wire tag.</returns>
+        [ApiAction("document", Mutation = false, Idempotent = true, MemberOnly = true)]
+        public Task<(byte[] Json, string WireTag)> DocumentAsync()
+        {
+            return Task.FromResult((Array.Empty<byte>(), string.Empty));
         }
 
         /// <summary>Purges every inbox: a secured action.</summary>

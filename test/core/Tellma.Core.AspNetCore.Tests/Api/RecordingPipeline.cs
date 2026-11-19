@@ -38,6 +38,12 @@ namespace Tellma.Core.AspNetCore.Tests.Api
         /// <summary>The calls, in arrival order.</summary>
         public IReadOnlyList<PipelineCall> Calls => [.. _calls];
 
+        /// <summary>
+        ///     The pre-serialized document the inbox's document action answers: PascalCase, which the
+        ///     host's camel-case JSON options would never write, so its bytes prove they were not re-serialized.
+        /// </summary>
+        public static ReadOnlySpan<byte> Document => /*lang=json,strict*/ """{"Unread":3}"""u8;
+
         /// <summary>Whether the stand-ins skip the witness, as a handler that evaluated nothing would.</summary>
         public bool SkipWitness { get; set; }
 
@@ -67,6 +73,7 @@ namespace Tellma.Core.AspNetCore.Tests.Api
                 _ when type == typeof(string) => "done",
                 _ when type == typeof(int) => 7,
                 _ when type == typeof(PjInboxSummary) => new PjInboxSummary(3),
+                _ when type == typeof(ValueTuple<byte[], string>) => (Document.ToArray(), "1.document"),
                 _ => null,
             };
         }

@@ -167,7 +167,9 @@ namespace Tellma.Core.AspNetCore
 
             if (guarded)
             {
-                // Endpoint filters reach route handlers alone; this reaches every endpoint of the group.
+                // Endpoint filters reach route handlers alone; these reach every endpoint of the group.
+                // The witness wraps first, so the guard's wrapper, which the audit checks, stays outermost.
+                conventions.Finally(AccessWitnessFilter.Wrap);
                 conventions.Finally(TenantAccessFilter.Wrap);
             }
 

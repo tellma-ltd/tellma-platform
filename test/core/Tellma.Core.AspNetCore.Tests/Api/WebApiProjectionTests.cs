@@ -11,7 +11,10 @@ using Microsoft.AspNetCore.Http.Timeouts;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Diagnostics.Metrics.Testing;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using System.Diagnostics.Metrics;
 using System.Net;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -271,6 +274,18 @@ namespace Tellma.Core.AspNetCore.Tests.Api
         }
 
         [Fact]
+        public async Task A_pre_serialized_document_is_written_as_its_bytes()
+        {
+            await using TellmaTestHost host = await StartAsync();
+
+            using HttpResponseMessage response = await SendAsync(host, host.Cookie(), "inbox/document", null);
+
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            Assert.Equal("application/json", response.Content.Headers.ContentType?.MediaType);
+            Assert.Equal(PipelineLog.Document.ToArray(), await response.Content.ReadAsByteArrayAsync(TestContext.Current.CancellationToken));
+        }
+
+        [Fact]
         public async Task Tenant_JSON_answers_carry_no_store()
         {
             await using TellmaTestHost host = await StartAsync();
@@ -288,7 +303,10 @@ namespace Tellma.Core.AspNetCore.Tests.Api
         [Fact]
         public async Task A_stated_contract_that_differs_is_refused_before_anything_runs()
         {
-            await using TellmaTestHost host = await StartAsync();
+            CapturingLoggerProvider logs = new();
+            await using TellmaTestHost host = await StartAsync(options => Capture(options, logs));
+            using MetricCollector<long> rejections = new(
+                host.Services.GetRequiredService<IMeterFactory>(), ApiTelemetryNames.MeterName, ApiTelemetryNames.RequestsRejected);
             string cookie = host.Cookie();
             string fingerprint = host.Services.GetRequiredService<IRouteContracts>().For(RouteContracts.TemplatePrefix + "centers/save")!.Fingerprint;
 
@@ -298,6 +316,20 @@ namespace Tellma.Core.AspNetCore.Tests.Api
             Assert.Equal("client-outdated", (await Problem.ReadAsync(stale)).Code);
             Assert.True(stale.Headers.CacheControl?.NoStore);
             Assert.Empty(host.Services.GetRequiredService<PipelineLog>().Calls);
+
+            // --- Counted by reason and logged by route ---
+            CollectedMeasurement<long> rejection = Assert.Single(rejections.GetMeasurementSnapshot());
+            Assert.Equal(1, rejection.Value);
+            Assert.Equal("client_outdated", rejection.Tags[ApiTelemetryNames.ReasonTag]);
+            CapturedEvent logged = Assert.Single(logs.Events, static captured => captured.Message.Contains("was refused before its endpoint ran", StringComparison.Ordinal));
+            Assert.Equal(LogLevel.Information, logged.Level);
+            Assert.Contains("/api/web/centers/save", logged.Message, StringComparison.Ordinal);
+
+            // --- Before the tenant: a tenant that does not exist is never looked up, so the refusal is still 412 ---
+            using HttpRequestMessage unknown = TellmaTestHost.SpaRequest(HttpMethod.Post, "/99/api/web/centers/save", cookie, /*lang=json,strict*/ """{"entities":[]}""");
+            unknown.Headers.Add(TellmaHeaders.Contract, "AAAAAAAAAAAA");
+            using HttpResponseMessage beforeTenant = await host.Client.SendAsync(unknown, TestContext.Current.CancellationToken);
+            Assert.Equal(HttpStatusCode.PreconditionFailed, beforeTenant.StatusCode);
 
             // --- The matching contract and no contract at all both pass ---
             using HttpResponseMessage current = await SendAsync(host, cookie, "centers/save", /*lang=json,strict*/ """{"entities":[]}""", contract: fingerprint);
@@ -335,6 +367,20 @@ namespace Tellma.Core.AspNetCore.Tests.Api
             Assert.Empty(host.Services.GetRequiredService<PipelineLog>().Calls);
         }
 
+        [Theory]
+        [InlineData(100, HttpStatusCode.OK)]
+        [InlineData(101, HttpStatusCode.BadRequest)]
+        public async Task A_confirmation_key_is_at_most_100_characters(int length, HttpStatusCode status)
+        {
+            await using TellmaTestHost host = await StartAsync();
+            string key = "Pj." + new string('K', length - 3);
+
+            using HttpResponseMessage response = await SendAsync(host, host.Cookie(), "centers/delete", /*lang=json,strict*/ """{"ids":[1]}""", confirm: key);
+
+            Assert.Equal(status, response.StatusCode);
+            Assert.Equal(status == HttpStatusCode.OK ? 1 : 0, host.Services.GetRequiredService<PipelineLog>().Calls.Count);
+        }
+
         [Fact]
         public async Task Sixteen_confirmation_keys_seed_the_declared_ones_before_the_call()
         {
@@ -365,6 +411,38 @@ namespace Tellma.Core.AspNetCore.Tests.Api
             // At the ceiling, the save runs.
             await PostAsync(host, cookie, "centers/save", /*lang=json,strict*/ """{"entities":[{"code":"A","name":"A"},{"code":"B","name":"B"}]}""", HttpStatusCode.OK);
             Assert.Single(host.Services.GetRequiredService<PipelineLog>().Calls);
+        }
+
+        [Fact]
+        public async Task A_stack_ceiling_below_the_web_ceiling_wins()
+        {
+            // The web ceiling is the default 1,000; the ledger's own is 2.
+            await using TellmaTestHost host = await StartAsync();
+            string cookie = host.Cookie();
+
+            using HttpResponseMessage refused = await SendAsync(host, cookie, "ledgers/save", /*lang=json,strict*/ """{"entities":[{"name":"A"},{"name":"B"},{"name":"C"}]}""");
+            Assert.Equal(HttpStatusCode.RequestEntityTooLarge, refused.StatusCode);
+            Problem problem = await Problem.ReadAsync(refused);
+            Assert.Equal("3", problem.Argument("actual"));
+            Assert.Equal(PjLedger.LedgerMaxSaveCount.ToString(System.Globalization.CultureInfo.InvariantCulture), problem.Argument("maximum"));
+            Assert.Empty(host.Services.GetRequiredService<PipelineLog>().Calls);
+
+            await PostAsync(host, cookie, "ledgers/save", /*lang=json,strict*/ """{"entities":[{"name":"A"},{"name":"B"}]}""", HttpStatusCode.OK);
+            Assert.Single(host.Services.GetRequiredService<PipelineLog>().Calls);
+        }
+
+        [Fact]
+        public async Task The_projected_child_query_surfaces_are_logged_once_at_startup()
+        {
+            CapturingLoggerProvider logs = new();
+            await using TellmaTestHost host = await StartAsync(options => Capture(options, logs));
+
+            CapturedEvent logged = Assert.Single(logs.Events, static captured => captured.Message.Contains("child query surfaces", StringComparison.Ordinal));
+            Assert.Equal(LogLevel.Information, logged.Level);
+            // Every projected surface is counted, the core stacks' beside the model's.
+            int surfaces = Projected(host).Count(static endpoint => endpoint.Metadata.GetRequiredMetadata<ProjectedRouteMetadata>().Kind == ProjectedRouteKind.ChildQuery);
+            Assert.StartsWith($"The web surface projects {surfaces} child query surfaces: ", logged.Message, StringComparison.Ordinal);
+            Assert.Contains("pj.PjCenterNote (center-notes, owner pj.PjCenter)", logged.Message, StringComparison.Ordinal);
         }
 
         [Fact]
@@ -459,9 +537,22 @@ namespace Tellma.Core.AspNetCore.Tests.Api
             });
         }
 
+        /// <summary>Adds a capturing logger provider to a host's services, after the stand-ins.</summary>
+        /// <param name="options">The host's options, whose services already hold the stand-ins.</param>
+        /// <param name="logs">The provider that keeps every event.</param>
+        private static void Capture(TestHostOptions options, CapturingLoggerProvider logs)
+        {
+            Action<IServiceCollection>? prior = options.ConfigureServices;
+            options.ConfigureServices = services =>
+            {
+                prior?.Invoke(services);
+                _ = services.AddSingleton<ILoggerProvider>(logs);
+            };
+        }
+
         /// <summary>Registers the recording pipeline, invoker and child query service, and the log they share.</summary>
         /// <param name="services">The host's services.</param>
-        private static void StandIns(IServiceCollection services)
+        internal static void StandIns(IServiceCollection services)
         {
             _ = services.AddSingleton<PipelineLog>();
             _ = services.AddScoped<RecordingPipelineFactory>();

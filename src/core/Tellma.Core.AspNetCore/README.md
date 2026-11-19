@@ -140,14 +140,16 @@ securable, or member access for a member-only action), the route's contract fing
 `tellma-long` timeout policy for a long action, no activity stamp for the client's polling routes,
 the session's step-up bar for a sensitive securable, and the problems it may answer.
 
-Every `Web` endpoint runs one more filter after the tenant's: it seeds the request's confirmations
-from `Tellma-Confirm` (at most 16 keys of 1 to 100 visible ASCII characters each; more, or another
-character, answers `400 bad-request`; undeclared keys are dropped) and applies the request's
-cultures. A save holding more entities than the lower of `Tellma:Api:MaxEntitiesPerSave` and the
-stack's own limit answers `413 limit-exceeded` before the service runs. A JSON body above
+The tenant filter applies the request's cultures before the handler runs, and a projected endpoint
+applies them again after its service call. Every `Web` endpoint runs one more filter after the
+tenant's: it seeds the request's confirmations from `Tellma-Confirm` (at most 16 keys of 1 to 100
+visible ASCII characters each; more, or another character, answers `400 bad-request`; undeclared
+keys are dropped). A save holding more entities than the lower of `Tellma:Api:MaxEntitiesPerSave`
+and the stack's own limit answers `413 limit-exceeded` before the service runs. A JSON body above
 `Tellma:Api:MaxJsonBodyBytes` is refused unless the endpoint states a size of its own or accepts
 binary bodies. A success on a guarded group (`Web`, `Api`, `Blobs`) without a recorded access check
-answers `500 internal`.
+answers `500 internal`, whether the endpoint is a route handler or a plain request delegate; one
+that already started writing its body loses its connection before its status line leaves.
 
 An endpoint on a tenant group carries exactly one of `RequireSecurable(resource, action)` and
 `AllowMember()`. Every `Web`, `Api` and `Blobs` endpoint states whether it changes data with
@@ -168,7 +170,8 @@ reached through without the platform's controls:
 - a missing or doubled grant, another policy than the group's, anonymous access, CORS on a cookie
   surface, or a cookie mutation answering `GET`;
 - a tenant endpoint that lets the cookie handler redirect (`AllowCookieRedirect()`), or disables
-  antiforgery, rate limiting or the request timeout;
+  antiforgery, rate limiting or the request timeout (a SignalR hub's endpoint on the `Hub` group
+  alone may disable the timeout, as `MapHub` does for its long-lived connection);
 - two tenant endpoints on one method and route.
 
 It also fails startup for a distribution route, or a stack's or child query surface's resource

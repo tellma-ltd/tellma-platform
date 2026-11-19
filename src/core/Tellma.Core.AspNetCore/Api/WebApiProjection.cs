@@ -202,7 +202,9 @@ namespace Tellma.Core.AspNetCore.Api
                     ? endpoint.Produces(StatusCodes.Status204NoContent)
                     : action.ResultType == typeof(ExportOutcome)
                         ? endpoint.Produces(StatusCodes.Status200OK, responseType: null, ActionAnswers.WorkbookContentType)
-                        : endpoint.Produces(ActionAnswers.StatusOf(action.ResultType), action.ResultType, ActionAnswers.JsonContentType);
+                        : ActionAnswers.IsPreSerialized(action.ResultType)
+                            ? endpoint.Produces(StatusCodes.Status200OK, responseType: null, ActionAnswers.JsonContentType)
+                            : endpoint.Produces(ActionAnswers.StatusOf(action.ResultType), action.ResultType, ActionAnswers.JsonContentType);
             }
 
             // --- A long route runs under the long timeout ---

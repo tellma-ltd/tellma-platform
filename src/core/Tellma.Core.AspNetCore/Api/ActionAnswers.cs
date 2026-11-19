@@ -47,8 +47,42 @@ namespace Tellma.Core.AspNetCore.Api
             {
                 _ when declared == typeof(void) => TypedResults.NoContent(),
                 ExportOutcome workbook => new WorkbookResult(workbook),
+
+                // A document the service serialized once and caches (the client settings): its
+                // bytes are the body as they are; the tag travels in the version-tags header.
+                ValueTuple<byte[], string> document when declared == typeof(ValueTuple<byte[], string>)
+                    => new Utf8JsonResult(document.Item1 ?? throw new InvalidOperationException("A pre-serialized JSON result carries no bytes.")),
                 _ => new ContractJsonResult(result, declared, StatusOf(declared)),
             };
+        }
+
+        /// <summary>Whether a declared result type is a pre-serialized JSON document, written as its bytes.</summary>
+        /// <param name="declared">The action's declared result type.</param>
+        /// <returns>True for <c>(byte[] Json, string WireTag)</c>.</returns>
+        public static bool IsPreSerialized(Type declared)
+        {
+            return declared == typeof(ValueTuple<byte[], string>);
+        }
+
+        /// <summary>A JSON document already serialized as UTF-8, written as it is.</summary>
+        /// <param name="utf8">The document's bytes.</param>
+        private sealed class Utf8JsonResult(byte[] utf8) : IResult, IStatusCodeHttpResult, IContentTypeHttpResult
+        {
+            /// <inheritdoc />
+            public int? StatusCode => StatusCodes.Status200OK;
+
+            /// <inheritdoc />
+            public string ContentType => JsonContentType;
+
+            /// <inheritdoc />
+            public Task ExecuteAsync(HttpContext httpContext)
+            {
+                ArgumentNullException.ThrowIfNull(httpContext);
+                httpContext.Response.StatusCode = StatusCodes.Status200OK;
+                httpContext.Response.ContentType = JsonContentType;
+                httpContext.Response.ContentLength = utf8.Length;
+                return httpContext.Response.Body.WriteAsync(utf8, httpContext.RequestAborted).AsTask();
+            }
         }
 
         /// <summary>A JSON answer written under its declared type with the host's HTTP JSON options.</summary>
