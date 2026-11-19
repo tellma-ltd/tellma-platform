@@ -359,6 +359,14 @@ Format, one entry per ruling:
 - Also accepted: a readonly select never opens (a pre-existing bug, fixed) and exposes aria-readonly.
 - **Misalignment for Ahmad:** 0010 §B.4 names contentChildren(TmOptionGroup), which the design does not need. See also D-036's §B.4 note.
 
+### D-124 PC-080 hand-offs and spec notes (2026-11-19)
+
+- For Ahmad: spec 0016 §3.1's JsonIgnore gate fails only Editable/WriteOnce properties; Derived and DatabaseOwned pass beside ServerOwned. Align the wording ("that a save writes").
+- For Ahmad: spec 0016 §4.6. SignalR MapHub stamps DisableRequestTimeout on the hub connection endpoint, so Hub-group hub endpoints are exempt from that rule; the spec should say so.
+- The witness filter covers the Web, Api and Blobs groups. A guarded endpoint that neither evaluates access nor records the member witness turns its successes into 500. PC-083/PC-084 blob endpoints are already on platform-core: R1 checks them, and PC-080's integration gate must cover them. PC-089's blob endpoints must comply (carry).
+- Carry to PC-082: WithRequestTimeout("tellma-long") metadata is inert until PC-082 registers the tellma-web/tellma-long policies; register them before installing the timeout middleware.
+- Carry to PC-081: BadRequestException→400 and LimitExceededException→413 are mapped early in TellmaProblemExceptionHandler; fold them into the full mapping.
+
 ### D-123 (orchestrator, 2026-11-18): PC-084 round-trip budget and carries; for Ahmad
 
 - Spec 0017 §10.1 ("a save adds none") and the checkpoint's done-criterion conflict with §4.2's mandated blob load. A warm-buffer, insert-only save that attaches a blob needs one extra round trip, and the code cannot avoid it. Interim: accepted as a PC-084 deviation. On a cold buffer the load folds into round 1 (R1-1), so no other save shape pays. **For Ahmad:** amend §10.1 or the budget.
