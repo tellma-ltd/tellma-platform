@@ -362,6 +362,7 @@ Format, one entry per ruling:
 ### D-130 PC-086 R1 rulings (2026-11-19)
 
 - R1-3: the client entity model emits each blob kind's MaxSize, not a cap from the emitting machine's Tellma:Blobs:MaxUploadSize (a deployment setting must not leak into a public, immutable chunk); recorded as a deviation.
+- Fix1 outcome: an enum's emitted name now comes from its home schema (the ordinally smallest schema among sites declared in the enum's own assembly, else among all sites), replacing the first-site rule (R1-1). R1-5 pushed back: the metadata builder refuses a parent key with no navigation, pinned by a test.
 - Accepted deviations: one emitted name per C# enum type (<schema>.<Type>), with SettingKeyDescriptor.EnumType qualified (spec 0032 §7.3 already uses the qualified form); [EntityRef] action-field label keys drop the Id suffix (spec 0029 §2.4); the .d.ts golden is checked in as .txt because API Extractor crashes on the @tellma/core augmentation.
 
 ### D-129 PC-098 R1-4 deferred (2026-11-19)
