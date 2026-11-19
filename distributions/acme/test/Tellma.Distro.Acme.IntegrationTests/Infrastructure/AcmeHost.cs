@@ -14,6 +14,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using System.Net;
 using Tellma.Core.AspNetCore;
+using Tellma.Core.Tenancy;
 using Tellma.Core.Testing.Blobs;
 using Tellma.Core.Testing.Email;
 using Tellma.Distro.Acme.Web;
@@ -33,14 +34,19 @@ namespace Tellma.Distro.Acme.IntegrationTests.Infrastructure
     {
         private readonly WebApplication _app;
 
+        /// <summary>Whether starting the host waits until its tenant snapshot is loaded.</summary>
+        private readonly bool _awaitsCatalog;
+
         /// <summary>Initializes a host over a built application.</summary>
         /// <param name="app">The application.</param>
+        /// <param name="awaitsCatalog">Whether starting the host waits until its tenant snapshot is loaded.</param>
         /// <param name="emails">The capturing transport.</param>
         /// <param name="warnings">The host's warnings and errors.</param>
         /// <param name="probes">What the tenant probes record; null when the host maps none.</param>
-        private AcmeHost(WebApplication app, CapturingEmailSender emails, WarningLog warnings, TenantProbeLog? probes)
+        private AcmeHost(WebApplication app, bool awaitsCatalog, CapturingEmailSender emails, WarningLog warnings, TenantProbeLog? probes)
         {
             _app = app;
+            _awaitsCatalog = awaitsCatalog;
             Emails = emails;
             Warnings = warnings;
             Probes = probes;
@@ -74,14 +80,26 @@ namespace Tellma.Distro.Acme.IntegrationTests.Infrastructure
         /// </summary>
         public HttpMessageHandler? BackchannelLogoutSink { get; set; }
 
-        /// <summary>Builds and starts a host.</summary>
+        /// <summary>
+        ///     Builds and starts a host and, unless <see cref="AcmeHostOptions.AwaitsCatalog" /> is
+        ///     off, waits until its tenant snapshot is loaded.
+        /// </summary>
         /// <param name="values">The deployment's settings, over Acme's configuration files.</param>
         /// <param name="options">What the test adds to the host; null for nothing.</param>
         /// <returns>The started host.</returns>
         public static async Task<AcmeHost> StartAsync(IReadOnlyDictionary<string, string?> values, AcmeHostOptions? options = null)
         {
             AcmeHost host = Build(values, options);
-            await host._app.StartAsync(TestContext.Current.CancellationToken);
+            try
+            {
+                await host.StartAsync();
+            }
+            catch
+            {
+                await host.DisposeAsync();
+                throw;
+            }
+
             return host;
         }
 
@@ -154,15 +172,42 @@ namespace Tellma.Distro.Acme.IntegrationTests.Infrastructure
                 TenantProbes.Map(groups);
             }
 
-            host = new AcmeHost(app, emails, warnings, probes);
+            host = new AcmeHost(app, options.AwaitsCatalog, emails, warnings, probes);
             return host;
         }
 
-        /// <summary>Starts a built host.</summary>
-        /// <returns>A task that completes when the host started.</returns>
-        public Task StartAsync()
+        /// <summary>
+        ///     Starts a built host and, unless its <see cref="AcmeHostOptions.AwaitsCatalog" /> was off,
+        ///     waits until its tenant snapshot is loaded.
+        /// </summary>
+        /// <returns>A task that completes when the host started and, when it waits, its snapshot is available.</returns>
+        public async Task StartAsync()
         {
-            return _app.StartAsync(TestContext.Current.CancellationToken);
+            await _app.StartAsync(TestContext.Current.CancellationToken);
+
+            // A host whose first catalog load outlasts its startup bound starts not ready, and a
+            // load balancer sends it nothing until readiness turns: wait for the snapshot the same
+            // way, joining the load still in flight, rather than racing it with the first request.
+            if (_awaitsCatalog)
+            {
+                await AwaitCatalogAsync();
+            }
+        }
+
+        /// <summary>
+        ///     Waits until the host's tenant snapshot may be served: at once when it is, else for the
+        ///     refresh in flight, or one started now when none is.
+        /// </summary>
+        /// <returns>A task that completes when the snapshot is available, failing as the refresh failed.</returns>
+        public async Task AwaitCatalogAsync()
+        {
+            ITenantRegistry registry = Services.GetRequiredService<ITenantRegistry>();
+            if (!registry.IsAvailable)
+            {
+                await registry.RefreshAsync(force: false, TestContext.Current.CancellationToken);
+            }
+
+            Assert.True(registry.IsAvailable, "The host's tenant snapshot is not available after a successful refresh.");
         }
 
         /// <summary>

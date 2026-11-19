@@ -78,5 +78,18 @@ namespace Tellma.Core.Settings
             Level = LogLevel.Information,
             Message = "The settings of tenant {TenantId} were read but not stored: the cache is already disposed, as it is while the host stops.")]
         public static partial void SettingsNotStored(ILogger logger, int tenantId);
+
+        /// <summary>
+        ///     The tenant catalog could not mirror the names a committed settings save changed; the
+        ///     save stands, and the next save that changes the names or the languages mirrors them again.
+        /// </summary>
+        /// <param name="logger">The logger.</param>
+        /// <param name="exception">The failure.</param>
+        /// <param name="tenantId">The tenant.</param>
+        [LoggerMessage(
+            EventName = "SettingsNamesMirrorFailed",
+            Level = LogLevel.Error,
+            Message = "The tenant catalog did not mirror the display names of tenant {TenantId} after a committed settings save; the catalog shows the former names until a later save that changes them succeeds in mirroring them.")]
+        public static partial void SettingsNamesMirrorFailed(ILogger logger, Exception exception, int tenantId);
     }
 }

@@ -359,6 +359,58 @@ Format, one entry per ruling:
 - Also accepted: a readonly select never opens (a pre-existing bug, fixed) and exposes aria-readonly.
 - **Misalignment for Ahmad:** 0010 §B.4 names contentChildren(TmOptionGroup), which the design does not need. See also D-036's §B.4 note.
 
+### D-131 PC-142 R1: escalation, spec item and carries (2026-11-19)
+
+- R1 found 4 majors (missing §16.2 budget rows, collections at depth, closers without actions/validators, untouched suites not run), so PC-142 gets a second review (PLAN §8.1), Opus inherit at high: it is not on the two-review list, so no fable.
+- For Ahmad: spec 0015 §16.1's tellma.crud.validation.rounds row should list the open frame's hosts (api_action, job, provisioning) as crud.operation values, as the enlistments row already does. Interim: the collector admits operations ∪ hosts.
+- Carries: the conformance base's Excel rows lane goes to PC-174, and export/import reachability with their budget rows to PC-176/PC-177.
+
+### D-130 PC-086 R1 rulings (2026-11-19)
+
+- R1-3: the client entity model emits each blob kind's MaxSize, not a cap from the emitting machine's Tellma:Blobs:MaxUploadSize (a deployment setting must not leak into a public, immutable chunk); recorded as a deviation.
+- Fix1 outcome: an enum's emitted name now comes from its home schema (the ordinally smallest schema among sites declared in the enum's own assembly, else among all sites), replacing the first-site rule (R1-1). R1-5 pushed back: the metadata builder refuses a parent key with no navigation, pinned by a test.
+- Accepted deviations: one emitted name per C# enum type (<schema>.<Type>), with SettingKeyDescriptor.EnumType qualified (spec 0032 §7.3 already uses the qualified form); [EntityRef] action-field label keys drop the Id suffix (spec 0029 §2.4); the .d.ts golden is checked in as .txt because API Extractor crashes on the @tellma/core augmentation.
+
+### D-129 PC-098 R1-4 deferred (2026-11-19)
+
+- For Ahmad: PC-098 deviation D-3 reads spec 0020 literally: Retry→Failed at MaxAttempts also applies to the Retry(0) of a guard failure and of a stop after progress. The guard fails whenever the tenant-wide permissions tag moves, so an administrator's role save during a job's last attempt (e.g. a third-attempt core.import) ends it Failed/AttemptsExhausted; likewise a host stop after progress. Kept as specified for now; the alternative is not counting guard failures and stops toward MaxAttempts.
+
+### D-128 PC-098 hand-offs (2026-11-19)
+
+- For Ahmad: spec 0020 §3.4 maps every OperationCanceledException to Released/Retry(0), which would release a handler that times out on its own forever without counting an attempt. PC-098 treats only a worker-issued token's cancellation as a stop; any other OCE retries with Jobs.Internal (deviation). Once the host is stopping, any exception ends the invocation as its stop (D-056).
+- D-121/D-122 carries closed in PC-098: the worker hands the frame a DataBatch; OpenWriteFrame.AppendAsync restores the completion batch's Limits; the frame's count/reservation release waits for EndCompletion(failure); CompletionBroken makes the worker send a fresh completion.
+- For Ahmad: spec 0020 §3.3 says IJobProgress.Report makes JobItem.State current at once; the Abstractions docs said the opposite and were corrected to the spec. Spec 0020 §9 gains JobScopeUnavailable and JobNoticeRecipientsFailed log events.
+- job.changed after a claim stays with PC-100; after a progress-writing renewal it is PC-098's. JobEnqueueCodes still lack resx entries (earlier carry); new Jobs.* codes are English and Arabic only, as Amharic is partial repo-wide.
+
+### D-127 PC-080 R2 rulings (2026-11-19)
+
+- R2-3: the raw-bytes answer for actions returning (byte[] Json, string WireTag) applies only to actions declared in a platform (Tellma.Core*) assembly; an audit row fails startup when any other action returns that shape. The shape stays, so PC-079's SettingsService.ClientAsync is unchanged.
+- R2-2: WireBinding.SettledAsync cannot re-apply cultures from an async finally. The problem writer applying cultures itself is carried to PC-081.
+- R2-1 (major): the JSON contract gate must neither pass members that throw only on write (Type, delegates, IntPtr, multi-dimensional arrays) nor fail on [JsonIgnore] members.
+- PC-080 holds after fix2 to serialize with PC-079's integration; it is released at once if nothing is integrating.
+- Outcome: "platform" means an assembly named Tellma.Core or Tellma.Core.* (so Tellma.Core.AspNetCore.Tests qualifies). A name test, not a trust boundary; distributions own their assembly names. WireBinding.SettledAsync was removed; endpoints call services directly.
+
+### D-126 PC-080 fix1 outcomes (2026-11-19)
+
+- R1-1: AccessWitnessFilter.Wrap now runs on every Web, Api and Blobs endpoint, RequestDelegate ones included. An unwitnessed 2xx that has started is aborted in OnStarting; one that has not is answered 500. PC-089's carry is updated.
+- The D-125 raw-bytes hand-off is closed in PC-080: ActionAnswers.Of writes an action declared as (byte[] Json, string WireTag) as its Json bytes, application/json, and the tag travels in the version-tags header. SettingsService.ClientAsync needs no edge work.
+- Agents share the scratchpad across slots; briefs now ask for checkpoint-prefixed log names.
+
+### D-125 PC-079 hand-offs (2026-11-19)
+
+- PC-080 (in R1) must write SettingsService.ClientAsync's (byte[] Json, string WireTag) result as raw bytes at the edge, not serialize the tuple. Sent to PC-080 with its review-1 fix round.
+- A language change bumps every entity:* tag along with permissions (closes the D-076 carry).
+- A missing expected entry in a settings save is a ConcurrencyException conflict (IsMissing, Id 0), never NotFound.
+- Settings MCP exposure: R1-4 found spec 0016 names only details, save and refresh-caches as never exposed, and client returns a byte[]/tag tuple that the invoker would answer as {}. Ruling: client is Hidden too, entity-tags stays Full. For Ahmad: add client to spec 0016's never-exposed list.
+
+### D-124 PC-080 hand-offs and spec notes (2026-11-19)
+
+- For Ahmad: spec 0016 §3.1's JsonIgnore gate fails only Editable/WriteOnce properties; Derived and DatabaseOwned pass beside ServerOwned. Align the wording ("that a save writes").
+- For Ahmad: spec 0016 §4.6. SignalR MapHub stamps DisableRequestTimeout on the hub connection endpoint, so Hub-group hub endpoints are exempt from that rule; the spec should say so.
+- The witness filter covers the Web, Api and Blobs groups. A guarded endpoint that neither evaluates access nor records the member witness turns its successes into 500. PC-083/PC-084 blob endpoints are already on platform-core: R1 checks them, and PC-080's integration gate must cover them. PC-089's blob endpoints must comply (carry).
+- Carry to PC-082: WithRequestTimeout("tellma-long") metadata is inert until PC-082 registers the tellma-web/tellma-long policies; register them before installing the timeout middleware.
+- Carry to PC-081: BadRequestException→400 and LimitExceededException→413 are mapped early in TellmaProblemExceptionHandler; fold them into the full mapping.
+
 ### D-123 (orchestrator, 2026-11-18): PC-084 round-trip budget and carries; for Ahmad
 
 - Spec 0017 §10.1 ("a save adds none") and the checkpoint's done-criterion conflict with §4.2's mandated blob load. A warm-buffer, insert-only save that attaches a blob needs one extra round trip, and the code cannot avoid it. Interim: accepted as a PC-084 deviation. On a cold buffer the load folds into round 1 (R1-1), so no other save shape pays. **For Ahmad:** amend §10.1 or the budget.

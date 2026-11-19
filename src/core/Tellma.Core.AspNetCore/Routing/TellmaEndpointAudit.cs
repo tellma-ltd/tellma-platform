@@ -3,15 +3,20 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Cors.Infrastructure;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http.Metadata;
+using Microsoft.AspNetCore.Http.Timeouts;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.AspNetCore.Routing.Patterns;
 using Microsoft.AspNetCore.SignalR;
 using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.Access;
+using Tellma.Core.AspNetCore.Api;
 using Tellma.Core.Composition;
 using Tellma.Core.Composition.Checks;
 
@@ -20,9 +25,10 @@ namespace Tellma.Core.AspNetCore.Routing
     /// <summary>
     ///     The endpoint audit: a walk over every endpoint the host maps that fails startup, naming the
     ///     route and method, for an endpoint a tenant could be reached through without the platform's
-    ///     controls, that requires a securable no feature registers, or that takes a route word the
-    ///     platform or the SPA owns. <c>MapTellma</c> runs it over the platform's endpoints, and the
-    ///     realised gate again over every endpoint, against the securable registry.
+    ///     controls, that requires a securable no feature registers, that takes a route word the
+    ///     platform or the SPA owns, or that another endpoint already answers. <c>MapTellma</c> runs
+    ///     it over the platform's endpoints, and the realised gate again over every endpoint, against
+    ///     the securable registry, beside the web surface's JSON contracts.
     /// </summary>
     /// <param name="mapped">The application's endpoint sources.</param>
     /// <param name="policies">The authorization policy provider.</param>
@@ -61,7 +67,11 @@ namespace Tellma.Core.AspNetCore.Routing
             // --- Every rule; the securables only against a registry that composed ---
             IReadOnlyList<Endpoint> endpoints = mapped.Endpoints();
             (ISecurableRegistry? securables, bool failed) = SecurableRegistry.ForChecks(services);
-            IReadOnlyList<CompositionProblem> problems = await AuditAsync(endpoints, policies, stacks.Routes, securables).ConfigureAwait(false);
+            IReadOnlyList<CompositionProblem> problems =
+            [
+                .. await AuditAsync(endpoints, policies, stacks.Routes, securables).ConfigureAwait(false),
+                .. ApiContractsAudit.Check(services),
+            ];
             if (!failed || !endpoints.Any(static endpoint => endpoint.Metadata.GetMetadata<SecurableEndpointMetadata>() is not null))
             {
                 return problems;
@@ -91,20 +101,28 @@ namespace Tellma.Core.AspNetCore.Routing
             ArgumentNullException.ThrowIfNull(provider);
 
             List<CompositionProblem> problems = [];
+            List<RouteEndpoint> routed = [.. endpoints.OfType<RouteEndpoint>()];
 
-            // --- The stacks' segments sit at /{tenantId}/{segment}, beside the platform's words ---
+            // --- The stacks' and child query surfaces' segments sit at /{tenantId}/{segment}, beside the platform's words ---
             foreach (string segment in (stacks ?? []).Select(static stack => stack.ResourceSegment).Distinct(StringComparer.OrdinalIgnoreCase))
             {
-                if (Contains(TellmaRoutes.ServerTenantSegments, segment) || Contains(TellmaRoutes.SpaTenantSegments, segment))
-                {
-                    problems.Add(Problem(
-                        $"The stack at /{{tenantId}}/{segment}",
-                        $"takes '{segment}' as its resource segment, which names a platform tenant surface or an SPA page under /{{tenantId}}.",
-                        $"Give the stack another resource segment than '{segment}'."));
-                }
+                AuditResourceSegment("stack", segment, problems);
             }
 
-            foreach (RouteEndpoint endpoint in endpoints.OfType<RouteEndpoint>())
+            IEnumerable<string> children = routed
+                .Select(static endpoint => endpoint.Metadata.GetMetadata<ProjectedRouteMetadata>())
+                .Where(static projected => projected is { Kind: ProjectedRouteKind.ChildQuery })
+                .Select(static projected => projected!.Segment)
+                .Distinct(StringComparer.OrdinalIgnoreCase);
+            foreach (string segment in children)
+            {
+                AuditResourceSegment("child query surface", segment, problems);
+            }
+
+            // --- No two tenant endpoints answer one method on one route: routing could not choose ---
+            AuditDuplicates(routed, problems);
+
+            foreach (RouteEndpoint endpoint in routed)
             {
                 string where = Describe(endpoint);
 
@@ -168,6 +186,12 @@ namespace Tellma.Core.AspNetCore.Routing
                     }
                 }
 
+                // --- The tenant groups: API answers, never redirects, and no control switched off ---
+                if (group is TellmaGroup.Web or TellmaGroup.Api or TellmaGroup.Hub or TellmaGroup.Blobs)
+                {
+                    AuditTenantGroupEndpoint(metadata, where, group.Value, problems);
+                }
+
                 // --- Cookie endpoints: side-effect-free GETs, same-origin only ---
                 // An unstated endpoint is refused as such, not as the mutation it is stamped for safety.
                 bool unstated = metadata.GetMetadata<MutationUnstatedMetadata>() is not null;
@@ -201,6 +225,86 @@ namespace Tellma.Core.AspNetCore.Routing
             }
 
             return problems;
+        }
+
+        /// <summary>Audits a resource segment against the platform's tenant surfaces and the SPA's pages.</summary>
+        /// <param name="owner">What takes the segment: a stack or a child query surface.</param>
+        /// <param name="segment">The segment.</param>
+        /// <param name="problems">The problems found so far.</param>
+        private static void AuditResourceSegment(string owner, string segment, List<CompositionProblem> problems)
+        {
+            if (Contains(TellmaRoutes.ServerTenantSegments, segment) || Contains(TellmaRoutes.SpaTenantSegments, segment))
+            {
+                problems.Add(Problem(
+                    $"The {owner} at /{{tenantId}}/{segment}",
+                    $"takes '{segment}' as its resource segment, which names a platform tenant surface or an SPA page under /{{tenantId}}.",
+                    $"Give the {owner} another resource segment than '{segment}'."));
+            }
+        }
+
+        /// <summary>
+        ///     Audits that no two tenant endpoints answer one method on one route, which routing would
+        ///     refuse at request time as ambiguous: a hand-mapped endpoint on a projected route, say.
+        /// </summary>
+        /// <param name="endpoints">The endpoints.</param>
+        /// <param name="problems">The problems found so far.</param>
+        private static void AuditDuplicates(IEnumerable<RouteEndpoint> endpoints, List<CompositionProblem> problems)
+        {
+            // Routes match ignoring case, so two that differ only in case collide.
+            IEnumerable<IGrouping<string, RouteEndpoint>> repeated = endpoints
+                .Where(static endpoint => BeginsWithTenantId(endpoint.RoutePattern))
+                .SelectMany(static endpoint => Methods(endpoint).Select(method => (Key: method + " " + (endpoint.RoutePattern.RawText ?? string.Empty), Endpoint: endpoint)))
+                .GroupBy(static pair => pair.Key, static pair => pair.Endpoint, StringComparer.OrdinalIgnoreCase)
+                .Where(static group => group.Count() > 1);
+            foreach (IGrouping<string, RouteEndpoint> group in repeated)
+            {
+                problems.Add(Problem(
+                    Describe(group.First()),
+                    $"is mapped {group.Count()} times for {group.Key.Split(' ')[0]}, so routing cannot choose between them.",
+                    "Map each tenant route once; a projected stack, child query surface or service route cannot be mapped again by hand."));
+            }
+
+            static IEnumerable<string> Methods(RouteEndpoint endpoint)
+            {
+                IReadOnlyList<string>? methods = endpoint.Metadata.GetMetadata<HttpMethodMetadata>()?.HttpMethods;
+                return methods is { Count: > 0 } ? methods : ["*"];
+            }
+        }
+
+        /// <summary>
+        ///     Audits an endpoint on a tenant group: it carries the API-endpoint marker, so the cookie
+        ///     handler answers 401 and 403 rather than redirecting, and switches off none of the
+        ///     group's antiforgery, rate and timeout controls. A SignalR hub's connection is long-lived
+        ///     by design, so the request timeout the framework switches off for it is not audited.
+        /// </summary>
+        /// <param name="metadata">The endpoint's metadata.</param>
+        /// <param name="where">Its description.</param>
+        /// <param name="group">Its group.</param>
+        /// <param name="problems">The problems found so far.</param>
+        private static void AuditTenantGroupEndpoint(EndpointMetadataCollection metadata, string where, TellmaGroup group, List<CompositionProblem> problems)
+        {
+            if (metadata.GetMetadata<IDisableCookieRedirectMetadata>() is null || metadata.GetMetadata<IAllowCookieRedirectMetadata>() is not null)
+            {
+                problems.Add(Problem(where, $"on the {group} group allows the cookie handler to redirect, so a refused call would answer with the sign-in page rather than 401 or 403.", "Map the endpoint through the tenant group, which disables cookie redirects for every endpoint on it, and remove AllowCookieRedirect()."));
+            }
+
+            if (metadata.GetOrderedMetadata<IAntiforgeryMetadata>().Any(static antiforgery => !antiforgery.RequiresValidation))
+            {
+                problems.Add(Problem(where, $"on the {group} group disables antiforgery.", "Remove DisableAntiforgery(): the tenant groups use no antiforgery tokens, and CSRF is the platform's middleware."));
+            }
+
+            if (metadata.GetMetadata<DisableRateLimitingAttribute>() is not null)
+            {
+                problems.Add(Problem(where, $"on the {group} group disables rate limiting.", "Remove DisableRateLimiting(): every tenant endpoint runs under the platform's rate policies."));
+            }
+
+            // SignalR's MapHub disables the timeout on its connection endpoints: a hub connection
+            // stays open for the session, so only a Hub-group hub endpoint may carry it.
+            bool hub = group is TellmaGroup.Hub && metadata.GetMetadata<HubMetadata>() is not null;
+            if (!hub && metadata.GetMetadata<DisableRequestTimeoutAttribute>() is not null)
+            {
+                problems.Add(Problem(where, $"on the {group} group disables the request timeout.", "Remove DisableRequestTimeout(); a long operation takes the long timeout policy instead."));
+            }
         }
 
         /// <summary>Whether a route begins with the tenant id parameter.</summary>

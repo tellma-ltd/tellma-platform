@@ -32,18 +32,6 @@ namespace Tellma.Core.Tests.Localization
             ["Problem_unsupported_media"] = "The HTTP surface raises it for a body it cannot read.",
             ["Problem_unsupported_credential"] = "The HTTP surface raises it for a credential it does not accept.",
 
-            // --- The settings save's validation codes (spec 0013 §6.5) ---
-            ["Settings_CalendarNotRegistered"] = "The settings save refuses a calendar no feature composes.",
-            ["Settings_CalendarsNotDistinct"] = "The settings save refuses a calendar pair of one calendar.",
-            ["Settings_EntryTypeMismatch"] = "The settings save refuses a value of the wrong type.",
-            ["Settings_FieldUnknown"] = "The settings save refuses a field mask naming no field.",
-            ["Settings_KeyUndeclared"] = "The settings save refuses a key no feature declares.",
-            ["Settings_LanguageNotOffered"] = "The settings save refuses a language the distribution does not offer.",
-            ["Settings_LanguagesNotDistinct"] = "The settings save refuses a language twice.",
-            ["Settings_RegionNotOffered"] = "The settings save refuses a region its language does not offer.",
-            ["Settings_TertiaryRequiresSecondary"] = "The settings save refuses a tertiary language without a secondary one.",
-            ["Settings_TimeZoneUnknown"] = "The settings save refuses a zone outside the time-zone set.",
-
             // --- Reports and dashboards (specs 0033, 0035, and the export job of spec 0019) ---
             ["ReportKind_List"] = "A report's kind.",
             ["ReportKind_Summary"] = "A report's kind.",

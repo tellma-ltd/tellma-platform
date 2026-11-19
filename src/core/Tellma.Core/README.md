@@ -1096,6 +1096,30 @@ the settings editor validates them. A row the step already completed is left alo
   never disagrees with `Now`.
 - **Client metadata.** The core chunk carries `languages` (each offered language with its direction,
   default region, regions and native digits), `calendars`, `settingKeys` and `settingCategories`.
+- **Securables.** `SettingsSecurableContributor` registers `core.Settings.General` (`Read`, and a
+  sensitive `Save`) and `core.Settings.<category>` (`Read`, `Save`) for every other category.
+- **The service.** `SettingsService` (route `settings`) serves five actions through the guarded
+  runner:
+  - `client` and `entity-tags` (any member): the client view's bytes and wire tag, and the
+    `entity:*` tags, after a read batch that keeps the snapshots current.
+  - `details` (any member holding `Read` on the typed row or a category, else forbidden): one read
+    batch with the typed row when held, the values of the held categories' non-secret keys (a
+    stored value only when it reads, else the default), the set keys and their stamps, and the
+    rows their reference keys point at (an id whose row is gone is left bare).
+  - `save` (`Save` on the resource of every listed field): a `TenantSettingsPatch` lists its
+    fields, typed members by name and entries as `entries.<key>`. One validate batch reads what
+    the patch lists (the typed row only when a typed member is listed); `SettingsPatchMerger`
+    applies the patch and reports every refusal at once, then the stamps under `Check` (a
+    conflict names who changed the row; a missing entry is a conflict of its own, id 0 when the
+    row was gone before the read). One persist batch writes the row, the entries (a reset is a
+    delete, an unchanged value is skipped) and the closing reads, and a language change also
+    bumps `permissions` and every `entity:*` tag. A concurrent first write of a key is a conflict,
+    not a unique violation. The answer carries the editor's view, the client view and the settings
+    wire tag; the store is offered the committed settings. A name change is mirrored into the
+    tenant catalog after commit; a failing mirror is logged (`SettingsNamesMirrorFailed`) and the
+    save stands.
+  - `refresh-caches` (`Save` on the typed row): one persist batch bumps every tenant tag and both
+    user tags of every user, and announces the preferences change.
 
 `core.CalendarMonths` holds every Umm al-Qura month of AH 1318 to 1500 as .NET computes it, keyed
 by calendar, year and month, with the month's first Gregorian day and the day after its last; the

@@ -6,6 +6,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http.Metadata;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.AspNetCore.Routing.Patterns;
 using Microsoft.AspNetCore.SignalR;
@@ -114,6 +115,11 @@ namespace Tellma.Core.AspNetCore.Tests.Routing
                 { "hub-stamped-mutation", "POST /{tenantId:int:min(1)}/hub/write", "states whether it changes data on the Hub group" },
                 { "tenantless-short-circuit", "GET /api/short", "short-circuits routing without allowing anonymous callers" },
                 { "tenant-short-circuit", "GET /{tenantId:int:min(1)}/api/web/short", "short-circuits routing without allowing anonymous callers" },
+                { "cookie-redirect-allowed", "GET /{tenantId:int:min(1)}/api/web/redirect", "allows the cookie handler to redirect" },
+                { "antiforgery-disabled", "POST /{tenantId:int:min(1)}/api/web/form", "disables antiforgery" },
+                { "rate-limiting-disabled", "GET /{tenantId:int:min(1)}/api/v{version:apiVersion}/unlimited", "disables rate limiting" },
+                { "request-timeout-disabled", "GET /{tenantId:int:min(1)}/blobs/forever", "disables the request timeout" },
+                { "route-mapped-twice", "GET /{tenantId:int:min(1)}/api/web/probe", "is mapped 2 times for GET" },
             };
         }
 
@@ -242,7 +248,8 @@ namespace Tellma.Core.AspNetCore.Tests.Routing
                     new TenantEndpointMetadata(TenantSurface.Web, IsMutation: false, AllowWhenReadOnly: false),
                     new TenantGuardMetadata(Guarded),
                     new AuthorizeAttribute(TellmaPolicies.Web),
-                    new MemberEndpointMetadata()),
+                    new MemberEndpointMetadata(),
+                    new ApiEndpointMarker()),
                 "raw");
 
             IReadOnlyList<CompositionProblem> problems = await TellmaEndpointAudit.AuditAsync(
@@ -397,9 +404,17 @@ namespace Tellma.Core.AspNetCore.Tests.Routing
                     .AllowMember(),
                 "tenantless-short-circuit" => endpoints.Tenantless.MapGet("/short", Nothing).AsTenantlessEndpoint("test").ShortCircuit(),
                 "tenant-short-circuit" => endpoints.Web.MapGet("/short", Nothing).WithMutation(false).AllowMember().ShortCircuit(),
+                "cookie-redirect-allowed" => endpoints.Web.MapGet("/redirect", Nothing).WithMutation(false).AllowMember().AllowCookieRedirect(),
+                "antiforgery-disabled" => endpoints.Web.MapPost("/form", static () => Results.NoContent()).WithMutation(true).AllowMember().DisableAntiforgery(),
+                "rate-limiting-disabled" => endpoints.Api.MapGet("/unlimited", Nothing).WithMutation(false).AllowMember().DisableRateLimiting(),
+                "request-timeout-disabled" => endpoints.Blobs.MapGet("/forever", Nothing).WithMutation(false).AllowMember().DisableRequestTimeout(),
+                "route-mapped-twice" => endpoints.Web.MapGet("/probe", Nothing).WithMutation(false).AllowMember(),
                 _ => throw new ArgumentOutOfRangeException(nameof(violation), violation, "Not a violation of the suite."),
             };
         }
+
+        /// <summary>The API-endpoint marker the tenant groups stamp, for an endpoint the suite builds by hand.</summary>
+        private sealed class ApiEndpointMarker : IDisableCookieRedirectMetadata;
 
         /// <summary>A bundle's platform route: under a reserved segment, answering no content.</summary>
         private sealed class ProbePlatformSource : IPlatformEndpointSource

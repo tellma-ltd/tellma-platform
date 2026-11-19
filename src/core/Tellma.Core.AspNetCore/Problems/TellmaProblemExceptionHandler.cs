@@ -15,7 +15,8 @@ using Tellma.Core.AspNetCore.Observability;
 namespace Tellma.Core.AspNetCore.Problems
 {
     /// <summary>
-    ///     Maps the tenancy and assurance exceptions to problem details, and everything else to the
+    ///     Maps the tenancy and assurance exceptions, and the web surface's binding refusals (a
+    ///     malformed request, a limit exceeded), to problem details, and everything else to the
     ///     <c>500 internal</c> backstop: the host's mapping until the web API's full mapping replaces it.
     /// </summary>
     /// <param name="metrics">The host's instruments, which count step-up challenges.</param>
@@ -34,7 +35,9 @@ namespace Tellma.Core.AspNetCore.Problems
                 or IndividualRequiredException
                 or TenantNotFoundException
                 or TenantUnavailableException
-                or TenantStateException;
+                or TenantStateException
+                or BadRequestException
+                or LimitExceededException;
         }
 
         /// <inheritdoc />
@@ -75,6 +78,15 @@ namespace Tellma.Core.AspNetCore.Problems
                 // --- A catalog write the catalog refused ---
                 case TenantStateException refused:
                     await ProblemWriter.WriteAsync(httpContext, StatusCodes.Status409Conflict, refused.Code, refused.Detail).ConfigureAwait(false);
+                    return true;
+
+                // --- The web surface's binding: a request it cannot bind, a body over a ceiling ---
+                case BadRequestException malformed:
+                    await ProblemWriter.WriteAsync(httpContext, StatusCodes.Status400BadRequest, malformed.Code, malformed.Detail, malformed.Arguments).ConfigureAwait(false);
+                    return true;
+
+                case LimitExceededException exceeded:
+                    await ProblemWriter.WriteAsync(httpContext, StatusCodes.Status413PayloadTooLarge, exceeded.Code, arguments: exceeded.Arguments).ConfigureAwait(false);
                     return true;
 
                 // --- The backstop: nothing but the trace id outside Development ---
