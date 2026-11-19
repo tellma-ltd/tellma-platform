@@ -102,9 +102,10 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 
 | PC | Slot | Branch | Step | Implementer agent (name / id) | Reviewer agent (name / id) | Started (UTC) |
 |---|---|---|---|---|---|---|
-| PC-081 | pc-3 | pc/PC-081 | impl | impl (Opus, high, launched 2026-11-19) | 0016-d; R1 then R2 fable (security-bound) | 2026-11-19 |
-| PC-142 | pc-1 | pc/PC-142 | fix2 | impl (Opus, high, launched 2026-11-19) | 0015-k (T2); R1 0B/4M/5m all fixed; R2 (escalated) 0B/2M/3m; then hold | 2026-11-19 |
-| PC-086 | pc-2 | pc/PC-086 | CI (22c362f7) | impl (Opus, high, launched 2026-11-19) | R1 0B/0M/7m (6 fixed, R1-5 pushed back); merge-tree clean; released 2026-11-19 after PC-F58 green | 2026-11-19 |
+| PC-102 | pc-2 | pc/PC-102 | R1 (impl c586d072) | impl (Opus, high, launched 2026-11-19) | 0029-f; R1 only | 2026-11-19 |
+| PC-F59 | pc-f | pc/PC-F59 | fix1+integrate (impl d83b9501; R1 0/0/2) | fix agent (Opus, high, launched 2026-11-19) | integration-windows red on c54b24e6 (plans-only), run 44571660410: Core TenantScopeTests missing-database open got SQL 233 not 4060; line stopped; R1 only | 2026-11-19 |
+| PC-081 | pc-3 | pc/PC-081 | fix1 (impl 8c405881; R1 0/1/3) | impl (Opus, high, launched 2026-11-19) | 0016-d; R1 then R2 fable (security-bound) | 2026-11-19 |
+| PC-142 | pc-1 | pc/PC-142 | held (e6f1d0b2; merge-tree clean; release after PC-098) | impl (Opus, high, launched 2026-11-19) | 0015-k (T2); R1 0B/4M/5m all fixed; R2 (escalated) 0B/2M/3m; then hold | 2026-11-19 |
 | PC-098 | pc-4 | pc/PC-098 | held (10ac40b1) | impl (Opus, xhigh, launched 2026-11-19) | R1 0B/2M/5m (R1-4 deferred D-129); R2 (fable) 0B/0M/6m all fixed; merge-tree: README conflict (keep both); release after PC-F58 green and PC-086 | 2026-11-19 |
 
 ## Fix items
@@ -369,11 +370,11 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-079 | 0013-h | 1 | done | 1d018296, 1f2290e8, 4e824224; green 44512159188 | | carry from PC-049: spec 0013 §5.5 settings securables are yours (category Resource names already match); D-076: a language change moves only the settings tag, so bump entity tags or fold the shape into wire tags |
 | PC-080 | 0016-c | 1 | done | 8774aebb, 10fe4959, ea5e6dee, 6ced2f4e, 7eb13769, fc1ad812; CI red 44526593455 (test-host race, PC-F58); green 44554210017 | | carry from PC-099 r1: core.Notification has no access criteria until PC-146, so a member gets 403 on their own rows; no member-facing surface reads the stack before PC-146; carry from PC-064: the get-by-parent-ids RouteContract.ResponseType is RowPage, so the projector wraps the bare QueryRowSet as new RowPage(rows, null, null); child surfaces take the root stack's ContractRevision plus their own [ApiResource] revision |
 | PC-081 | 0016-d | 1 | impl | | | carry from PC-080 (D-124): fold the early BadRequestException→400 and LimitExceededException→413 mapping in TellmaProblemExceptionHandler into the full mapping; carry from PC-080 R2-2 (D-127): the problem writer applies the request cultures itself (WireBinding's async finally does not persist them); carry from PC-080 integration (D-127): write the Tellma-Version-Tags header (BatchOutcome composite) on settings/client too, since PC-080's raw-bytes path drops the action's WireTag; Acme signed-in HTTP tests are still skipped (NeedsUserConnectionAndBootstrap) |
-| PC-082 | 0016-e | 1 | todo | | | carry from PC-080 (D-124): register the tellma-web/tellma-long timeout policies before installing the timeout middleware (WithRequestTimeout("tellma-long") metadata is inert until then) |
+| PC-082 | 0016-e | 1 | todo | | | carry from PC-080 (D-124): register the tellma-web/tellma-long timeout policies before installing the timeout middleware (WithRequestTimeout("tellma-long") metadata is inert until then); carry D-133: Tellma-Priority parsing and 429 Retry-After from the limiter OnRejected |
 | PC-083 | 0017-c1 | 1 | done | fe0edcc6, 6b4a02bf, 9d5dd16d; green 44392562042 | | |
 | PC-084 | 0017-c2 | 1 | done | 108e56b5, 46b70189, 575849a4, 52e51448; green 44457610985 | | carry (D-123): at integration, PC-077's SaveRun.Enlisted.cs Translate calls TranslateFailure(failure) in place of PersistFailures.Translate(...) before the re-home; add one enlisted test (refusals counted once per value; round count of a cold enlisted attach) |
 | PC-085 | 0011-g | 1 | done (integrated db81630; CI 43479519320 red: Acme E2E csproj never committed (.gitignore *.e2e matches the folder case-insensitively), fixed by PC-F30, green at 9a1754d (CI 43488423725); integration-windows itself green; fix1 6ba59cb; R1-6 pushed back: AspNetCore→Webhooks edge would break ARCHITECTURE rule 6, IVT seam kept and documented; R1-4 compares runtime models only; new fix: RCSI ALTER WITH ROLLBACK IMMEDIATE (pooled catalog connection timed out Acme readiness); integration-windows non-gating) | a147a95, 6ba59cb, db81630 (pc) |  |  |
-| PC-086 | 0029-a | 1 | CI | ce581934, 7a5cdf53, 84278111, 22c362f7 | | |
+| PC-086 | 0029-a | 1 | done | ce581934, 7a5cdf53, 84278111, 22c362f7; green 44575091654 | | |
 | PC-087 | 0018-b | 1 | todo | | | |
 | PC-088 | 0018-c | 1 | todo | | | |
 | PC-089 | 0017-d | 1 | todo | | | carry: none from D-096 any more (D-120 moved §6.4 BlobContainerStep to PC-083 and the provisioning-record row to whichever of PC-078 and PC-083 lands last); carry from PC-080 (D-124): blob endpoints must evaluate access or record the member witness, or the witness filter answers 500 (unstarted) or aborts the connection (started) |
@@ -389,7 +390,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-099 | 0021-b | 1 | done (integrated 183e772, CI 43618488320 green) | 2e7dfd1, 2de32d7, f5174b3, 11a57e0 (pc), 69c009b, 183e772 (pc) |  |  |
 | PC-100 | 0020-d | 1 | todo | | | carry from PC-141 (D-096): TenantStateTests.A_job_whose_handler_runs_when_read_only_succeeds_on_a_read_only_tenant runs and must pass |
 | PC-101 | 0010-f4 | 1 | done (450f7dd, CI 43164947502 green) | b11e206, c66a4a7, 450f7dd (pc) | 8.94M (impl+fix1+int 7.20, r1 1.74) | R1 0/1/5 all fixed; new deviations: null for an IsNotNull parameter is a caller error; printed text over a parse ceiling reports that ceiling's diagnostic |
-| PC-102 | 0029-f | 1 | todo | | | |
+| PC-102 | 0029-f | 1 | impl | | | |
 | PC-103 | 0024-g | 1 | todo | | | carry from PC-094: replace Acme's interim main.ts (bootstrapApplication) and AcmeApp with bootstrapTellma/TmApp |
 | PC-104 | 0024-h | 1 | todo | | | carry from PC-094: switch Acme to tmEnglish()/tmArabic() and cut angular.json styles to src/styles.css importing @tellma/core/styles.css and @tellma/locale-ar/styles.css |
 | PC-105 | 0029-b | 1 | todo | | | |
