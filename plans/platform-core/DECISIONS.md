@@ -359,6 +359,10 @@ Format, one entry per ruling:
 - Also accepted: a readonly select never opens (a pre-existing bug, fixed) and exposes aria-readonly.
 - **Misalignment for Ahmad:** 0010 §B.4 names contentChildren(TmOptionGroup), which the design does not need. See also D-036's §B.4 note.
 
+### D-139 — New flake candidate from PC-098's gate (2026-11-19)
+
+- BlobLifecycleStatementTests.The_sweeps_claim_blocks_on_a_row_a_save_is_confirming_and_skips_it_once_the_save_commits (from PC-084) failed once in PC-098's local integration gate: "No request waited for the lock within 30 seconds" on a loaded host; the class passed 2/2 in two reruns alone, and PC-098 does not touch it. Under D-011/D-113 it is not quarantined: if it recurs (locally or on CI) it becomes a PC-Fnn fix item and is root-caused. Briefs list it as a known candidate meanwhile.
+
 ### D-138 — PC-102 fix1 hand-offs (2026-11-19)
 
 - R1-1 fixed: IScopeConnection gains IsPrologueDue (past the fast-deny window, permissions aged, or an activity stamp due). Discover then runs the guarded runner's statement-less Read prologue, so a deactivated caller gets tenant-not-found; otherwise it costs 0 round trips. Supersedes D-136's second bullet.
