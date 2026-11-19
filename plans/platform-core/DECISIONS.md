@@ -359,6 +359,13 @@ Format, one entry per ruling:
 - Also accepted: a readonly select never opens (a pre-existing bug, fixed) and exposes aria-readonly.
 - **Misalignment for Ahmad:** 0010 §B.4 names contentChildren(TmOptionGroup), which the design does not need. See also D-036's §B.4 note.
 
+### D-127 PC-080 R2 rulings (2026-11-19)
+
+- R2-3: the raw-bytes answer for actions returning (byte[] Json, string WireTag) applies only to actions declared in a platform (Tellma.Core*) assembly; an audit row fails startup when any other action returns that shape. The shape stays, so PC-079's SettingsService.ClientAsync is unchanged.
+- R2-2: WireBinding.SettledAsync cannot re-apply cultures from an async finally. The problem writer applying cultures itself is carried to PC-081.
+- R2-1 (major): the JSON contract gate must neither pass members that throw only on write (Type, delegates, IntPtr, multi-dimensional arrays) nor fail on [JsonIgnore] members.
+- PC-080 holds after fix2 to serialize with PC-079's integration; it is released at once if nothing is integrating.
+
 ### D-126 PC-080 fix1 outcomes (2026-11-19)
 
 - R1-1: AccessWitnessFilter.Wrap now runs on every Web, Api and Blobs endpoint, RequestDelegate ones included. An unwitnessed 2xx that has started is aborted in OnStarting; one that has not is answered 500. PC-089's carry is updated.
