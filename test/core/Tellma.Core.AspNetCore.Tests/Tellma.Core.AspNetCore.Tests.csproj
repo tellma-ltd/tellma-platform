@@ -27,6 +27,8 @@
   <ItemGroup>
     <!-- The tenant catalog's in-memory reader, shared with the core suite rather than copied. -->
     <Compile Include="..\Tellma.Core.Tests\Infrastructure\FakeCatalogReader.cs" Link="Infrastructure\FakeCatalogReader.cs" />
+    <!-- The test feature the projection suite composes its stacks with, shared with the core suite. -->
+    <Compile Include="..\Tellma.Core.Tests\Infrastructure\TestFeature.cs" Link="Infrastructure\TestFeature.cs" />
     <!-- The launch-landing vectors the client's launch redirect reads too: the sign-in's landing follows the same file. -->
     <None Include="../../../client/projects/core/tellma-core/src/launch/launch-landing-vectors.json" Link="Bff\launch-landing-vectors.json" CopyToOutputDirectory="PreserveNewest" />
     <!-- The host's alert queries are read at runtime and cross-checked against the emitted

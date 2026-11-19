@@ -25,6 +25,8 @@ feature or entity added there would diverge the web host's model from the migrat
   `Tellma:DataProtection`, `Tellma:ForwardedHeaders`, `Tellma:Admin`, `Tellma:Support`,
   `Tellma:ClientTelemetry`, `Tellma:Links`, `Tellma:Api`), validated by the startup gate's options
   check;
+- the HTTP JSON options under the platform's JSON rules (`TellmaJson`), so the web API's bodies
+  and answers read and write as every other Tellma surface does;
 - the access evaluator's step-up bar for a sensitive securable, taken from `Tellma:Session:StepUp`
   in place of Core's default (`urn:tellma:acr:aal2` within 15 minutes, which a session holding
   `urn:tellma:acr:aal3` also meets);
@@ -82,12 +84,17 @@ Installs the pipeline in this order and nothing else:
 7. the in-proc identity engine's middleware, in in-proc mode;
 8. authentication, then authorization;
 9. the CSRF control;
-10. the tenant middleware, which binds a tenant request's tenant and principal and hands the
+10. the contract check: a request to a projected web endpoint whose `Tellma-Contract` header names
+    another fingerprint than the route's answers `412 client-outdated` before the tenant is resolved
+    or the body read; a request without the header passes;
+11. the tenant middleware, which binds a tenant request's tenant and principal and hands the
     request's aborted token to the scope's `DataCancellation`, so a client that goes away cancels
     its reads, validations and retry waits.
 
-The web API's compression, rate limiting, timeouts, output caching and contract middleware take
-their places in this order when those features are composed. A distribution's own middleware goes between `UseTellma` and `MapTellma`.
+Every answer of a `Web`, `Api` or MCP endpoint that states no caching of its own carries
+`Cache-Control: no-store`, refusals included. The web API's compression, rate limiting, timeouts
+and output caching take their places in this order when those features are composed. A
+distribution's own middleware goes between `UseTellma` and `MapTellma`.
 
 ## `MapTellma`
 
@@ -120,6 +127,28 @@ development endpoint that serves files from disk; it is stamped like the publish
 | `Blobs` | `/{tenantId}/blobs` | `Tellma.Web` | the access filter |
 | `Tenantless` | `/api` | each endpoint's own | none; each calls `AsTenantlessEndpoint` |
 
+### The web API
+
+`MapTellma` maps the route model (`IRouteContracts.Routes`) on the `Web` group, one `POST` endpoint
+per route and nothing else: each stack's standard operations and actions, each child query surface
+and each routed API service. An endpoint binds its body to the request type the route states
+(`IdsRequest`, `IdRequest`, `EntityActionRequest`, their argument-carrying forms, or an API
+action's own request) and calls the entity service, the API action invoker or the child query
+service; an id outside the resource's key answers `400 bad-request` naming its path (`ids[1]`).
+Each endpoint carries its tenant facts (mutation, read-only allowance), its one grant (the
+securable, or member access for a member-only action), the route's contract fingerprint, the
+`tellma-long` timeout policy for a long action, no activity stamp for the client's polling routes,
+the session's step-up bar for a sensitive securable, and the problems it may answer.
+
+Every `Web` endpoint runs one more filter after the tenant's: it seeds the request's confirmations
+from `Tellma-Confirm` (at most 16 keys of 1 to 100 visible ASCII characters each; more, or another
+character, answers `400 bad-request`; undeclared keys are dropped) and applies the request's
+cultures. A save holding more entities than the lower of `Tellma:Api:MaxEntitiesPerSave` and the
+stack's own limit answers `413 limit-exceeded` before the service runs. A JSON body above
+`Tellma:Api:MaxJsonBodyBytes` is refused unless the endpoint states a size of its own or accepts
+binary bodies. A success on a guarded group (`Web`, `Api`, `Blobs`) without a recorded access check
+answers `500 internal`.
+
 An endpoint on a tenant group carries exactly one of `RequireSecurable(resource, action)` and
 `AllowMember()`. Every `Web`, `Api` and `Blobs` endpoint states whether it changes data with
 `WithMutation(bool)`, which also clears any read-only allowance; nothing is inferred from its HTTP
@@ -137,10 +166,15 @@ reached through without the platform's controls:
 - an endpoint that short-circuits routing (`ShortCircuit()`) without `AllowAnonymous()`, since
   authentication, authorization, CSRF and the tenant middleware would never run for it;
 - a missing or doubled grant, another policy than the group's, anonymous access, CORS on a cookie
-  surface, or a cookie mutation answering `GET`.
+  surface, or a cookie mutation answering `GET`;
+- a tenant endpoint that lets the cookie handler redirect (`AllowCookieRedirect()`), or disables
+  antiforgery, rate limiting or the request timeout;
+- two tenant endpoints on one method and route.
 
-It also fails startup for a distribution route, or a stack's resource segment, that takes a word
-the platform or the SPA owns under `/{tenantId}`, and, in the realised gate, for any endpoint whose
+It also fails startup for a distribution route, or a stack's or child query surface's resource
+segment, that takes a word the platform or the SPA owns under `/{tenantId}`. In the realised gate it
+fails for a type the web API reads or writes that has no JSON contract under the host's JSON
+options, for an editable or write-once mapped property that is `[JsonIgnore]`, and for any endpoint whose
 `RequireSecurable(resource, action)` names a pair no feature registers in the securable registry
 (compared ignoring case), or names it only through a renamed resource's alias; `MapTellma`'s own
 run leaves the pairs to the gate. When the securable registry did not compose, the gate's audit
