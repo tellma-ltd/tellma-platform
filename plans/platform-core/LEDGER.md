@@ -103,7 +103,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC | Slot | Branch | Step | Implementer agent (name / id) | Reviewer agent (name / id) | Started (UTC) |
 |---|---|---|---|---|---|---|
 | PC-F58 | pc-f | pc/PC-F58 | R1 (d430d6ae) | PC-080's implementer resumed (§8.3) | root cause: Acme test-host readiness race (first catalog load >10 s on loaded Windows runner), not PC-080; fix: AcmeHost awaits the snapshot; R1 (Opus, high) | 2026-11-19 |
-| PC-142 | pc-1 | pc/PC-142 | R1 | impl (Opus, high, launched 2026-11-19) | 0015-k (T2); R1 (Opus, high); R1 only | 2026-11-19 |
+| PC-142 | pc-1 | pc/PC-142 | fix1 | impl (Opus, high, launched 2026-11-19) | 0015-k (T2); R1 0B/4M/5m -> escalated: R2 (Opus inherit) after fix1 | 2026-11-19 |
 | PC-086 | pc-2 | pc/PC-086 | held (7a5cdf53) | impl (Opus, high, launched 2026-11-19) | R1 0B/0M/7m (6 fixed, R1-5 pushed back); merge-tree clean; release after PC-F58 green | 2026-11-19 |
 | PC-080 | pc-3 | pc/PC-080 | CI red (fc1ad812, 44526593455); fix PC-F58 | impl (Opus, high, launched 2026-11-19) | R1 0B/1M/2m, R2 (fable) 0B/1M/3m, all fixed; merge-tree clean; released 2026-11-19 after PC-079 green | 2026-11-19 |
 | PC-098 | pc-4 | pc/PC-098 | fix2 | impl (Opus, xhigh, launched 2026-11-19) | R1 0B/2M/5m (R1-4 deferred D-129); R2 (fable) 0B/0M/6m; then hold | 2026-11-19 |
@@ -429,7 +429,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-139 | 0032-d | 1 | todo | | | carry from PC-056: composite cell editors (window, filter) must shield inner tm-* controls from TM_CELL_EDITOR_HOST's last-registration-wins rule, or use plain inputs; add a helper if needed |
 | PC-140 | MVP | 1 | todo | | | |
 | PC-141 | 0011-h | 2 | done (478b0ab0; CI 43879675326 green) | bb2a2d6, 15d1369 (pc/PC-141) | | |
-| PC-142 | 0015-k | 2 | R1 | e86138b6 | | |
+| PC-142 | 0015-k | 2 | fix1 | e86138b6 | | |
 | PC-143 | 0018-f | 2 | todo | | | |
 | PC-144 | 0020-e | 2 | todo | | | |
 | PC-145 | 0020-f | 2 | todo | | | |
@@ -461,9 +461,9 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-171 | 0031-i | 2 | todo | | | |
 | PC-172 | 0032-h | 2 | todo | | | |
 | PC-173 | 0019-a | 3 | done (c316f5b4; CI 44034804023 green) | 8f3e494, 437a88f2, c316f5b4 (pc/PC-173) | | |
-| PC-174 | 0015-j | 3 | todo | | | |
+| PC-174 | 0015-j | 3 | todo | | | carry from PC-142 (D-131): extend StackConformanceTests with the excel_rows lane and its §16.2 budget rows |
 | PC-175 | 0019-b | 3 | todo | | | carry from PC-173: implement IExcelExporter over the internal WorkbookWriter (WriteAsync takes ExcelContext + CancellationToken), and bind Tellma:ScratchPath in C# (none exists yet; spec 0017 needs it too); WriteAsync (exporter and WorkbookWriter) takes a Func<Stream> openDestination, called once after the first page passes the cap |
-| PC-176 | 0019-c | 3 | todo | | | |
+| PC-176 | 0019-c | 3 | todo | | | carry from PC-142 (D-131): extend StackConformanceTests with export/import reachability and their budget rows (with PC-177) |
 | PC-177 | 0019-d | 3 | todo | | | |
 | PC-178 | 0019-e | 3 | todo | | | |
 | PC-179 | 0030-f2 | 3 | todo | | | |

@@ -359,6 +359,12 @@ Format, one entry per ruling:
 - Also accepted: a readonly select never opens (a pre-existing bug, fixed) and exposes aria-readonly.
 - **Misalignment for Ahmad:** 0010 §B.4 names contentChildren(TmOptionGroup), which the design does not need. See also D-036's §B.4 note.
 
+### D-131 PC-142 R1: escalation, spec item and carries (2026-11-19)
+
+- R1 found 4 majors (missing §16.2 budget rows, collections at depth, closers without actions/validators, untouched suites not run), so PC-142 gets a second review (PLAN §8.1), Opus inherit at high: it is not on the two-review list, so no fable.
+- For Ahmad: spec 0015 §16.1's tellma.crud.validation.rounds row should list the open frame's hosts (api_action, job, provisioning) as crud.operation values, as the enlistments row already does. Interim: the collector admits operations ∪ hosts.
+- Carries: the conformance base's Excel rows lane goes to PC-174, and export/import reachability with their budget rows to PC-176/PC-177.
+
 ### D-130 PC-086 R1 rulings (2026-11-19)
 
 - R1-3: the client entity model emits each blob kind's MaxSize, not a cap from the emitting machine's Tellma:Blobs:MaxUploadSize (a deployment setting must not leak into a public, immutable chunk); recorded as a deviation.
