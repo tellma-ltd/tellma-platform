@@ -359,6 +359,10 @@ Format, one entry per ruling:
 - Also accepted: a readonly select never opens (a pre-existing bug, fixed) and exposes aria-readonly.
 - **Misalignment for Ahmad:** 0010 §B.4 names contentChildren(TmOptionGroup), which the design does not need. See also D-036's §B.4 note.
 
+### D-129 PC-098 R1-4 deferred (2026-11-19)
+
+- For Ahmad: PC-098 deviation D-3 reads spec 0020 literally: Retry→Failed at MaxAttempts also applies to the Retry(0) of a guard failure and of a stop after progress. The guard fails whenever the tenant-wide permissions tag moves, so an administrator's role save during a job's last attempt (e.g. a third-attempt core.import) ends it Failed/AttemptsExhausted; likewise a host stop after progress. Kept as specified for now; the alternative is not counting guard failures and stops toward MaxAttempts.
+
 ### D-128 PC-098 hand-offs (2026-11-19)
 
 - For Ahmad: spec 0020 §3.4 maps every OperationCanceledException to Released/Retry(0), which would release a handler that times out on its own forever without counting an attempt. PC-098 treats only a worker-issued token's cancellation as a stop; any other OCE retries with Jobs.Internal (deviation). Once the host is stopping, any exception ends the invocation as its stop (D-056).
