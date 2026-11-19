@@ -102,7 +102,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 
 | PC | Slot | Branch | Step | Implementer agent (name / id) | Reviewer agent (name / id) | Started (UTC) |
 |---|---|---|---|---|---|---|
-| PC-086 | pc-2 | pc/PC-086 | impl | impl (Opus, high, launched 2026-11-19) | 0029-a; R1 only | 2026-11-19 |
+| PC-086 | pc-2 | pc/PC-086 | R1 | impl (Opus, high, launched 2026-11-19) | R1 (Opus, high); R1 only | 2026-11-19 |
 | PC-079 | pc-1 | pc/PC-079 | integrate | impl (Opus, high, launched 2026-11-19) | R1 0B/1M/6m all fixed; integrating | 2026-11-19 |
 | PC-080 | pc-3 | pc/PC-080 | fix2 | impl (Opus, high, launched 2026-11-19) | R1 0B/1M/2m all fixed; R2 (fable) 0B/1M/3m; then hold | 2026-11-19 |
 | PC-098 | pc-4 | pc/PC-098 | fix1 | impl (Opus, xhigh, launched 2026-11-19) | R1 0B/2M/5m; R2 fable after fix1 (security-bound) | 2026-11-19 |
@@ -372,7 +372,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-083 | 0017-c1 | 1 | done | fe0edcc6, 6b4a02bf, 9d5dd16d; green 44392562042 | | |
 | PC-084 | 0017-c2 | 1 | done | 108e56b5, 46b70189, 575849a4, 52e51448; green 44457610985 | | carry (D-123): at integration, PC-077's SaveRun.Enlisted.cs Translate calls TranslateFailure(failure) in place of PersistFailures.Translate(...) before the re-home; add one enlisted test (refusals counted once per value; round count of a cold enlisted attach) |
 | PC-085 | 0011-g | 1 | done (integrated db81630; CI 43479519320 red: Acme E2E csproj never committed (.gitignore *.e2e matches the folder case-insensitively), fixed by PC-F30, green at 9a1754d (CI 43488423725); integration-windows itself green; fix1 6ba59cb; R1-6 pushed back: AspNetCore→Webhooks edge would break ARCHITECTURE rule 6, IVT seam kept and documented; R1-4 compares runtime models only; new fix: RCSI ALTER WITH ROLLBACK IMMEDIATE (pooled catalog connection timed out Acme readiness); integration-windows non-gating) | a147a95, 6ba59cb, db81630 (pc) |  |  |
-| PC-086 | 0029-a | 1 | impl | | | |
+| PC-086 | 0029-a | 1 | R1 | ce581934 | | |
 | PC-087 | 0018-b | 1 | todo | | | |
 | PC-088 | 0018-c | 1 | todo | | | |
 | PC-089 | 0017-d | 1 | todo | | | carry: none from D-096 any more (D-120 moved §6.4 BlobContainerStep to PC-083 and the provisioning-record row to whichever of PC-078 and PC-083 lands last); carry from PC-080 (D-124): blob endpoints must evaluate access or record the member witness, or the witness filter answers 500 (unstarted) or aborts the connection (started) |
