@@ -229,6 +229,20 @@ namespace Tellma.Core.Tests.Composition.Checks
         }
 
         [Fact]
+        public async Task Two_enum_types_of_one_name_under_one_schema_are_reported()
+        {
+            // Both are fixture.Shade to the client, whatever their namespaces.
+            IReadOnlyList<CompositionProblem> problems = await TestComposition.CheckAsync(static tellma => tellma
+                .AddFeature(new TestFeature<Tag.A>("fixture", contribute: static contribution => contribution.Entity<ShadedItem>())));
+
+            CompositionProblem problem = Assert.Single(problems.From(Check));
+            Assert.Equal(
+                "The enums Tellma.Core.Tests.Composition.Checks.Light.Shade and Tellma.Core.Tests.Composition.Checks.Dark.Shade are both named 'fixture.Shade'.",
+                problem.Problem);
+            Assert.StartsWith("Rename one of the enum types", problem.Fix, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public async Task A_property_that_draws_from_a_set_no_feature_contributes_is_reported()
         {
             IReadOnlyList<CompositionProblem> problems = await TestComposition.CheckAsync(static tellma => Graded(tellma, set: null));
@@ -299,5 +313,40 @@ namespace Tellma.Core.Tests.Composition.Checks
         [MaxLength(64)]
         [ValueSet(CoreValueSets.TimeZone)]
         public string? Zone { get; set; }
+    }
+
+    /// <summary>An entity that carries two enum types of one name.</summary>
+    [Table("ShadedItems", Schema = "fixture")]
+    [TableType]
+    public class ShadedItem : TopLevelEntity
+    {
+        /// <summary>The light shade.</summary>
+        [MaxLength(16)]
+        public Light.Shade? LightShade { get; set; }
+
+        /// <summary>The dark shade.</summary>
+        [MaxLength(16)]
+        public Dark.Shade? DarkShade { get; set; }
+    }
+    /// <summary>The light shades.</summary>
+    public static class Light
+    {
+        /// <summary>A light shade.</summary>
+        public enum Shade
+        {
+            /// <summary>Cream.</summary>
+            Cream,
+        }
+    }
+
+    /// <summary>The dark shades.</summary>
+    public static class Dark
+    {
+        /// <summary>A dark shade.</summary>
+        public enum Shade
+        {
+            /// <summary>Charcoal.</summary>
+            Charcoal,
+        }
     }
 }

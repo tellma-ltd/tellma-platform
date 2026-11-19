@@ -7,8 +7,10 @@ using Microsoft.Extensions.DependencyInjection;
 using System.Text.RegularExpressions;
 using Tellma.Core.Abstractions.Calendars;
 using Tellma.Core.Abstractions.Composition;
+using Tellma.Core.Abstractions.Crud;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Localization;
+using Tellma.Core.Abstractions.Settings;
 using Tellma.Core.Data.Metadata;
 using Tellma.Core.Localization;
 
@@ -16,8 +18,8 @@ namespace Tellma.Core.Composition.Checks
 {
     /// <summary>
     ///     <c>core.value-sets</c>: every value set is well formed, set names are unique and differ
-    ///     from the names of the model's enums, and every property that draws from a set names a
-    ///     composed one.
+    ///     from the names of the composition's C# enums, no two C# enums share a name, and every
+    ///     property that draws from a set names a composed one.
     /// </summary>
     /// <remarks>
     ///     <para>
@@ -25,6 +27,10 @@ namespace Tellma.Core.Composition.Checks
     ///         values are unique without regard to case, each value carries exactly one of a label
     ///         key and a literal label, and each alias maps to one of its values and is none of
     ///         them, without regard to case.
+    ///     </para>
+    ///     <para>
+    ///         A C# enum is named by the schema of the first entity, setting key or stack whose
+    ///         properties or action arguments carry it, and its type's name (<c>gl.CenterType</c>).
     ///     </para>
     ///     <para>
     ///         Reads the composition alone. The registry keeps the first set of a name and drops a
@@ -83,7 +89,7 @@ namespace Tellma.Core.Composition.Checks
             // be judged without it.
             if (services.GetService<EntityMetadataSource>()?.Build.Provider is IEntityMetadataProvider metadata)
             {
-                CheckModel(metadata, sets, problems);
+                CheckModel(metadata, Enums(services, metadata), sets, problems);
             }
 
             return Task.FromResult<IReadOnlyList<CompositionProblem>>(problems);
@@ -158,31 +164,68 @@ namespace Tellma.Core.Composition.Checks
             }
         }
 
-        /// <summary>Checks the sets against the tenant model.</summary>
+        /// <summary>
+        ///     The composition's C# enums, from the model, the setting keys and the stacks; a source
+        ///     that does not build is left out, as its own check reports it.
+        /// </summary>
+        /// <param name="services">The root service provider.</param>
         /// <param name="metadata">The model's entity metadata.</param>
+        /// <returns>The enums.</returns>
+        private static IReadOnlyList<NamedEnum> Enums(IServiceProvider services, IEntityMetadataProvider metadata)
+        {
+            IReadOnlyList<SettingKey> keys = Guarded(() => services.GetService<ISettingKeyRegistry>()?.Keys) ?? [];
+            IStackRegistry? stacks = Guarded(() => services.GetService<IStackRegistry>());
+            return Guarded(() => NamedEnums.Discover(metadata, keys, stacks)) ?? NamedEnums.Discover(metadata, keys, stacks: null);
+        }
+
+        /// <summary>Reads a source that may not build.</summary>
+        /// <typeparam name="T">The source's type.</typeparam>
+        /// <param name="read">Reads the source.</param>
+        /// <returns>The source, or null when reading it throws.</returns>
+        private static T? Guarded<T>(Func<T?> read)
+            where T : class
+        {
+            try
+            {
+                return read();
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException and not OutOfMemoryException)
+            {
+                return null;
+            }
+        }
+
+        /// <summary>Checks the sets and the C# enums against each other and against the tenant model.</summary>
+        /// <param name="metadata">The model's entity metadata.</param>
+        /// <param name="enums">The composition's C# enums.</param>
         /// <param name="sets">Every composed set with its owner.</param>
         /// <param name="problems">Receives the problems.</param>
-        private void CheckModel(IEntityMetadataProvider metadata, List<(ValueSetDescriptor Set, string Owner)> sets, List<CompositionProblem> problems)
+        private void CheckModel(IEntityMetadataProvider metadata, IReadOnlyList<NamedEnum> enums, List<(ValueSetDescriptor Set, string Owner)> sets, List<CompositionProblem> problems)
         {
-            // --- Set names differ from the names of the model's enums ---
-            // A C# enum is named on every surface by its entity's schema and its type name
-            // (gl.CenterType), the namespace a value set's name lives in (spec 0029 §2.2).
-            Dictionary<string, string> enums = new(StringComparer.OrdinalIgnoreCase);
-            foreach (EntityMetadata entity in metadata.All)
+            // --- No two C# enums share a name, without regard to case ---
+            // A C# enum is named on every surface by a schema and its type name (gl.CenterType), so
+            // two types of one name under one schema would be one enum to the client (spec 0029 §2.2).
+            foreach (IGrouping<string, NamedEnum> clash in enums
+                .GroupBy(static named => named.Name, StringComparer.OrdinalIgnoreCase)
+                .Where(static group => group.Count() > 1))
             {
-                foreach (PropertyMetadata property in entity.Properties)
-                {
-                    Type underlying = Nullable.GetUnderlyingType(property.ClrType) ?? property.ClrType;
-                    if (underlying.IsEnum)
-                    {
-                        _ = enums.TryAdd($"{entity.Table.Schema}.{underlying.Name}", TypeDisplay.Qualified(underlying));
-                    }
-                }
+                string types = string.Join(" and ", clash.Select(static named => TypeDisplay.Qualified(named.Type)));
+                problems.Add(new CompositionProblem(
+                    Name,
+                    $"The enums {types} are both named '{clash.Key}'.",
+                    "Rename one of the enum types: every enum the entities, setting keys and action arguments of one schema carry needs a distinct type name."));
+            }
+
+            // --- Set names differ from the names of the C# enums: one kind, one namespace ---
+            Dictionary<string, string> named = new(StringComparer.OrdinalIgnoreCase);
+            foreach (NamedEnum item in enums)
+            {
+                _ = named.TryAdd(item.Name, TypeDisplay.Qualified(item.Type));
             }
 
             foreach ((ValueSetDescriptor set, string owner) in sets)
             {
-                if (set.Name is not null && enums.TryGetValue(set.Name, out string? enumType))
+                if (set.Name is not null && named.TryGetValue(set.Name, out string? enumType))
                 {
                     problems.Add(new CompositionProblem(
                         Name,

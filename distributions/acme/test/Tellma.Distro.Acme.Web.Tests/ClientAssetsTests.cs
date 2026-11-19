@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
 using System.Globalization;
 using System.Reflection;
+using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Tellma.Core.Abstractions.Client;
@@ -105,6 +106,29 @@ namespace Tellma.Distro.Acme.Web.Tests
                     }
                 }
             }
+        }
+
+        [Fact]
+        public async Task The_emit_writes_the_entity_model_and_its_declarations()
+        {
+            using AcmeEmit emit = await AcmeEmit.RunAsync(TestContext.Current.CancellationToken);
+
+            // --- The summaries in the Core chunk, the full model and the enums in the Entities chunk ---
+            using var core = JsonDocument.Parse(emit.Chunk("core-"));
+            using var entities = JsonDocument.Parse(emit.Chunk("entities-"));
+            Assert.Contains(core.RootElement.GetProperty("entities").EnumerateArray(), static summary => summary.GetProperty("name").GetString() == "core.User");
+            Assert.Contains(entities.RootElement.GetProperty("entities").EnumerateArray(), static entity => entity.GetProperty("name").GetString() == "core.User");
+            Assert.Contains(entities.RootElement.GetProperty("enums").EnumerateArray(), static item => item.GetProperty("name").GetString() == "core.TimeZone");
+            Assert.Equal(
+                core.RootElement.GetProperty("entities").GetArrayLength(),
+                entities.RootElement.GetProperty("entities").GetArrayLength());
+
+            // --- The declarations beside the assets, registering every entity ---
+            SortedDictionary<string, byte[]> files = emit.Files();
+            Assert.True(files.TryGetValue("tellma-entities.d.ts", out byte[]? written), "The emit wrote no tellma-entities.d.ts.");
+            string declarations = Encoding.UTF8.GetString(written);
+            Assert.Contains("declare module '@tellma/core' {", declarations, StringComparison.Ordinal);
+            Assert.Contains("    'core.User': CoreUser;", declarations, StringComparison.Ordinal);
         }
 
         /// <summary>Runs an emit under a culture, restoring the caller's cultures after it.</summary>

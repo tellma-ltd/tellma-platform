@@ -22,6 +22,7 @@ using Tellma.Core.Api;
 using Tellma.Core.Blobs;
 using Tellma.Core.Caching;
 using Tellma.Core.Calendars;
+using Tellma.Core.Client;
 using Tellma.Core.Data;
 using Tellma.Core.Identity;
 using Tellma.Core.Jobs;
@@ -98,6 +99,11 @@ namespace Tellma.Core.Composition
             _ = contribution
                 .Singleton<IRouteContracts, RouteContracts>()
                 .Singleton<IClientAssetContributor, ContractsClientAssetContributor>();
+
+            // --- The client entity model: summaries, metadata, named enums and typed declarations (spec 0029 §2, §15) ---
+            _ = contribution
+                .Singleton<IClientEntityModel, ClientEntityModel>()
+                .Singleton<IClientAssetContributor, EntityClientAssetContributor>();
 
             // --- The platform's own tables in every tenant database, mapped for migrations only ---
             _ = contribution

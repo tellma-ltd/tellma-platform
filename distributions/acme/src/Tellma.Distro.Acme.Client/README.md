@@ -12,7 +12,7 @@ and one theme delta. Everything else, from the routes to the service worker, the
 | `src/index.html` | `<base href="/">`, the manifest, the colour-scheme meta and `tm-boot.js` as the first script |
 | `src/styles.css` | Acme's one theme delta, `--color-primary` in `@layer tm.theme` |
 | `public/` | `manifest.webmanifest`, the favicon and the three PNG icons (192, 512, maskable 512) |
-| `generated/` | Gitignored: the client metadata, string packs and loaders module the Migrator emits |
+| `generated/` | Gitignored: the client metadata, string packs and loaders module the Migrator emits, and `tellma-entities.d.ts`, the typed entity model every `tsconfig` includes so rows and paths type-check by entity name |
 | `Tellma.Distro.Acme.Client.esproj` | The MSBuild project the web project references, so `dotnet publish` builds the app into its `wwwroot` |
 
 Acme ships no brand files of its own, so the build copies the platform's defaults from

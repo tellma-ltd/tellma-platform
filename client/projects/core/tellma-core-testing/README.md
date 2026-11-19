@@ -38,5 +38,11 @@ TestBed.inject(TmFakeSession).setState('expired');
 await expect(store.put(user, 'tenants', { tag: null, savedAt: Date.now(), data: [] })).rejects.toThrow(TmStoreRefusedError);
 ```
 
+`fixtures/entity-model/` holds the server's own output for its Acme-like test model, recorded by
+`test/core/Tellma.Core.Tests` (rerun it with `TELLMA_UPDATE_GOLDENS=1` after a change to the model):
+`entities-chunk.json`, the Entities chunk, and `core-entities.json`, the Core chunk's summaries. The
+workspace's type tests (`tools/tests/entity-model.spec.mts`) check that each satisfies its client
+type, and compile the declarations the same model writes. They are fixtures, not part of the package.
+
 The package builds against the built `@tellma/core` (`tsconfig.lib.json`), as a consumer would;
 `tsconfig.json` is the editor, lint and typecheck view over the sources.

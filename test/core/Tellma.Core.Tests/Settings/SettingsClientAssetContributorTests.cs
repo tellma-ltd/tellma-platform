@@ -83,10 +83,10 @@ namespace Tellma.Core.Tests.Settings
             Assert.Equal("Setting_acme_posting_autoNumber", autoNumber.GetProperty("labelKey").GetString());
             Assert.False(autoNumber.TryGetProperty("descriptionKey", out _));
 
-            // An enum names its type and its members in declaration order; a two-segment key has no group.
+            // An enum names its named enum, by the key's schema, and its members in declaration order; a two-segment key has no group.
             JsonElement period = byName["acme.period"];
             Assert.Equal("Enum", period.GetProperty("valueType").GetString());
-            Assert.Equal("Cadence", period.GetProperty("enumType").GetString());
+            Assert.Equal("acme.Cadence", period.GetProperty("enumType").GetString());
             Assert.Equal(["Monthly", "Quarterly"], period.GetProperty("enumValues").EnumerateArray().Select(static value => value.GetString()));
             Assert.False(period.TryGetProperty("group", out _));
 

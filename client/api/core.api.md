@@ -504,6 +504,10 @@ export interface TmEntityMetadata extends TmEntitySummary {
 export type TmEntityOperation = 'delete' | 'details' | 'export' | 'import' | 'query' | 'save';
 
 // @public
+export interface TmEntityShapes {
+}
+
+// @public
 export interface TmEntitySummary {
     readonly capabilities: readonly string[];
     readonly displayName: TmDisplayNameRule;
@@ -516,6 +520,13 @@ export interface TmEntitySummary {
     readonly operations: readonly TmEntityOperation[];
     readonly pluralLabelKey: string;
     readonly segment: string | null;
+}
+
+// @public
+export type TmEntityType<N extends string> = N extends keyof TmEntityTypes ? TmEntityTypes[N] : TmJsonObject;
+
+// @public
+export interface TmEntityTypes {
 }
 
 // @public
