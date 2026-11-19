@@ -767,7 +767,7 @@ namespace Tellma.Core.Tests.Crud.Save
         // --- The access guards ---
 
         [Fact]
-        public async Task A_stack_writing_a_security_table_joins_the_guards_after_every_contribution_and_before_the_post_check()
+        public async Task A_stack_writing_a_security_table_takes_the_guards_lock_and_invariants_after_every_contribution_and_before_the_post_check()
         {
             WarmRoles();
             _rig.Grant([.. Grants(categories: null), (CoreResources.Role, AccessActions.Read, null), (CoreResources.Role, AccessActions.Save, "IsPublic = false")]);
@@ -775,8 +775,9 @@ namespace Tellma.Core.Tests.Crud.Save
 
             _ = await SaveRolesAsync(options, new Role { Name = "Clerks" });
 
-            // --- The emitter, the caller's statement, then the guards (whose lock the executor takes
-            // first in the transaction), the post-check, the read-back ---
+            // --- The emitter, the caller's statement, the lock, the invariants, the post-check, the read-back ---
+            // The lock is appended once every write is declared; the real guards place it at the
+            // transaction's head, whenever it is appended.
             ScriptedBatch persist = Assert.Single(_rig.Script.Batches, static batch => batch.Purpose == BatchPurpose.Persist);
             int Text(string text)
             {
@@ -793,6 +794,23 @@ namespace Tellma.Core.Tests.Crud.Save
                 Assert.Single(persist.Of(ScriptedKind.Query)).Ordinal,
             ];
             Assert.Equal([.. order.Order()], order);
+            Assert.Equal([PsGuards.Lock, PsGuards.Invariants], _guards.Calls);
+        }
+
+        [Fact]
+        public async Task A_stack_writing_no_security_table_takes_the_guards_when_a_statement_of_its_persist_declares_a_write_of_one()
+        {
+            Warm();
+            SaveOptions options = IdsOnly();
+            options.OnPersist = static batch => _ = batch.Sql($"SELECT {"raw"};", new SqlOptions(new HashSet<TableName> { new("core", "Roles") }));
+
+            _ = await SaveAsync(options, New(-1, "A"));
+
+            // --- The caller's raw write is declared before the guards decide, so both join, after it ---
+            ScriptedBatch persist = Assert.Single(_rig.Script.Batches);
+            Assert.Equal(
+                ["raw", PsGuards.Lock, PsGuards.Invariants],
+                persist.Of(ScriptedKind.Sql).Select(static statement => (string)statement.Text.GetArgument(0)!));
             Assert.Equal([PsGuards.Lock, PsGuards.Invariants], _guards.Calls);
         }
 

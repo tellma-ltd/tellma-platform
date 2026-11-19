@@ -120,7 +120,7 @@ namespace Tellma.Core.Crud
         public Task<AffectedResult> DeleteByQueryAsync(DeleteByQueryRequest request, CancellationToken cancellationToken)
         {
             ArgumentNullException.ThrowIfNull(request);
-            Require(StackOperations.Delete, CrudOperationNames.DeleteByQuery);
+            Require(StackOperations.DeleteByQuery, CrudOperationNames.DeleteByQuery);
             FrameFlow.EnsureFrontDoor(Descriptor.Resource, CrudOperationNames.DeleteByQuery);
             return deletes.DeleteByQueryAsync(Descriptor, behavior, request, cancellationToken);
         }

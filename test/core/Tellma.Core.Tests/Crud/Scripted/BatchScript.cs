@@ -49,6 +49,12 @@ namespace Tellma.Core.Tests.Crud.Scripted
         /// </summary>
         public Func<BatchPurpose, IReadOnlyList<VersionTagDependency>>? Declares { get; set; }
 
+        /// <summary>
+        ///     The tables a save, an update or a delete of an entity type declares it writes, as the
+        ///     platform's batch declares its own statements' writes; none when null.
+        /// </summary>
+        public Func<Type, IEnumerable<TableName>>? Writes { get; set; }
+
         /// <summary>The batches handed out, in order.</summary>
         public IReadOnlyList<ScriptedBatch> Batches
         {

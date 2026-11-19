@@ -81,6 +81,22 @@ removing one behind the store's back, and planting incomplete artefacts. It pins
   a reserved device name) refused by every member before storage is touched, and every
   non-positive tenant id refused.
 
+**[InMemoryBlobStore](Blobs/InMemoryBlobStore.cs)** is an `IBlobStore` over a dictionary per
+tenant that passes the conformance suite above: create-only writes, the contract's name and length
+validation, and the out-of-band reads a test asserts with (`Find`, `Names`, `TenantExists`,
+`RemoveTenant`). `FailWrites` makes every write throw, for the failure paths of the code that
+writes.
+
+**[StubImageProcessor](Blobs/StubImageProcessor.cs)** is an `IImageProcessor` that decodes nothing:
+it hands the input back as the normalised image at the policy's dimensions and renders a fixed
+thumbnail, and it scripts a rejection (`RejectReason`), a busy refusal (`Busy`) or no thumbnail
+(`RenderThumbnails`), counting its calls.
+
+**`AddInMemoryBlobs()`** replaces whatever store and processor the composition registered with one
+of each and returns the store. Every host composes the core model, whose user image and signature
+kinds need a store and a processor for the startup check to pass, so a test host that runs neither
+real one calls it.
+
 **[TestOutputLoggerProvider](Diagnostics/TestOutputLoggerProvider.cs)** and its
 `AddTestOutput()` builder extension route `ILogger` records into the running test's output.
 `AddLogging()` registers no provider of its own, so a transport's account of what went wrong —

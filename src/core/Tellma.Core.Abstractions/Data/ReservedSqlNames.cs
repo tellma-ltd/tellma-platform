@@ -64,6 +64,9 @@ namespace Tellma.Core.Abstractions.Data
         /// <summary>The connect prologue's verdict, which guards the batch body.</summary>
         public const string Guard = "@tm_Guard";
 
+        /// <summary>The return code of the tenant's security lock, taken first in a security write's transaction.</summary>
+        public const string SecurityLock = "@tm_Lock";
+
         /// <summary>The version tags a persist batch expects, checked by the tag guard.</summary>
         public const string ExpectedTags = "@tm_expectedTags";
 
@@ -268,6 +271,18 @@ namespace Tellma.Core.Abstractions.Data
 
             /// <summary>The number of rows a statement counted, such as the size of an id range to reserve.</summary>
             public const string Count = "n";
+
+            /// <summary>The staged blobs a staging statement counted against the uploader's quota.</summary>
+            public const string StagedCount = "count";
+
+            /// <summary>The staged bytes a staging statement summed against the uploader's quota.</summary>
+            public const string StagedBytes = "bytes";
+
+            /// <summary>The deadline a statement computes, such as a staged blob's.</summary>
+            public const string Expiry = "exp";
+
+            /// <summary>The one id a statement takes from a sequence.</summary>
+            public const string Id = "id";
 
             /// <summary>The name of the statement's <paramref name="index" />th table-valued parameter, <c>t{i}</c>.</summary>
             /// <param name="index">The parameter's index within the statement.</param>

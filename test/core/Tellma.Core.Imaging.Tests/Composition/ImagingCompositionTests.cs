@@ -132,7 +132,7 @@ namespace Tellma.Core.Imaging.Tests.Composition
             IReadOnlyList<CompositionProblem> problems = await check.CheckAsync(provider, TestContext.Current.CancellationToken);
 
             Assert.Equal("core.imaging", check.Name);
-            Assert.False(check.RequiresInfrastructure);
+            Assert.True(check.RequiresInfrastructure);
             Assert.Empty(problems);
         }
 

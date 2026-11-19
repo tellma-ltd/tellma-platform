@@ -10,7 +10,9 @@ using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Settings;
 using Tellma.Core.Access;
+using Tellma.Core.Composition;
 using Tellma.Core.Composition.Checks;
+using Tellma.Core.Provisioning;
 using Tellma.Core.Queryex;
 using Tellma.Core.Tests.Infrastructure;
 
@@ -18,8 +20,8 @@ namespace Tellma.Core.Tests.Access
 {
     /// <summary>
     ///     The access runtime as every composition registers it: the options bound and judged by the
-    ///     startup gate, the set builder over the composed registry and schema, and the membership
-    ///     filter against the composed model.
+    ///     startup gate, the set builder over the composed registry and schema, the write side's rules,
+    ///     effects, bootstrapper and drift scanner, and the membership filter against the composed model.
     /// </summary>
     public class AccessRuntimeCompositionTests(AccessModel model) : IClassFixture<AccessModel>
     {
@@ -50,12 +52,38 @@ namespace Tellma.Core.Tests.Access
             Assert.Same(first.ServiceProvider.GetRequiredService<AccessWitness>(), first.ServiceProvider.GetRequiredService<AccessWitness>());
             Assert.NotSame(first.ServiceProvider.GetRequiredService<AccessWitness>(), second.ServiceProvider.GetRequiredService<AccessWitness>());
 
-            // --- The default bar, the composer once, the holders resolver closed over the leaves, and no guards yet ---
+            // --- The default bar, the composer once, the holders resolver closed over the leaves, and the guards ---
             Assert.Same(StepUpBar.Default, provider.GetRequiredService<StepUpBar>());
             Assert.Same(provider.GetRequiredService<HoldersComposer>(), provider.GetRequiredService<HoldersComposer>());
             _ = Assert.IsType<AccessHoldersResolver<User, Role>>(first.ServiceProvider.GetRequiredService<IAccessHoldersResolver>());
             _ = Assert.IsType<AdministratorDirectory>(first.ServiceProvider.GetRequiredService<IAdministratorDirectory>());
-            _ = Assert.IsType<NullAccessGuards>(first.ServiceProvider.GetRequiredService<IAccessGuards>());
+            _ = Assert.IsType<AccessGuards>(first.ServiceProvider.GetRequiredService<IAccessGuards>());
+        }
+
+        [Fact]
+        public async Task The_write_side_is_composed_over_the_leaves()
+        {
+            await using ServiceProvider provider = TestComposition.Compose(static _ => { }).BuildServiceProvider(validateScopes: true);
+            await using AsyncServiceScope scope = provider.CreateAsyncScope();
+            TellmaCompositionRecord record = provider.GetRequiredService<TellmaCompositionRecord>();
+
+            // --- The rules and the effects of the users' and the roles' stacks, the core feature's own ---
+            Assert.Equal(
+                [
+                    (typeof(User), typeof(UserAccessRules<User>), ComponentKind.Validator),
+                    (typeof(Role), typeof(RoleAccessRules<Role>), ComponentKind.Validator),
+                    (typeof(User), typeof(UserStampsCompanion<User>), ComponentKind.PersistEffect),
+                    (typeof(User), typeof(BootstrapSubjectEffect<User>), ComponentKind.PersistEffect),
+                ],
+                record.Components.Where(static component => component.EntityType == typeof(User) || component.EntityType == typeof(Role))
+                    .Select(static component => (component.EntityType, component.ComponentType, component.Kind)));
+            Assert.Contains(record.ProvisioningSteps, static step => step.StepType == typeof(BootstrapAdministratorStep));
+
+            // --- The bootstrapper over the user leaf; the scanner once behind both its contracts ---
+            _ = Assert.IsType<TenantBootstrapper<User>>(scope.ServiceProvider.GetRequiredService<ITenantBootstrapper>());
+            PermissionDriftScanner scanner = scope.ServiceProvider.GetRequiredService<PermissionDriftScanner>();
+            Assert.Same(scanner, scope.ServiceProvider.GetRequiredService<IPermissionDriftScanner>());
+            Assert.Same(scanner, scope.ServiceProvider.GetRequiredService<ITenantDriftReport>());
         }
 
         [Fact]

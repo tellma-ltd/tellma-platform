@@ -375,6 +375,29 @@ namespace Tellma.Core.Data.Batches
             return false;
         }
 
+        /// <summary>
+        ///     Hands one failed attempt's server errors to the batch's observers, each failure of an
+        ///     observer logged and contained.
+        /// </summary>
+        /// <param name="batch">The batch.</param>
+        /// <param name="tenantId">The tenant, for the log.</param>
+        /// <param name="errors">The attempt's server errors.</param>
+        private void ObserveErrors(DataBatch batch, int tenantId, IReadOnlyList<SqlErrorInfo> errors)
+        {
+            foreach (Action<IReadOnlyList<SqlErrorInfo>> observer in batch.ErrorObservers)
+            {
+                try
+                {
+                    observer(errors);
+                }
+                catch (Exception observing) when (observing is not OutOfMemoryException)
+                {
+                    // Observing never replaces the batch's own failure.
+                    DataBatchLog.FailureObservationFailed(_logger, observing, batch.Access.Operation, tenantId);
+                }
+            }
+        }
+
         /// <summary>The command timeout of a purpose: the maintenance one for a maintenance batch, the ordinary one otherwise.</summary>
         /// <param name="purpose">The batch's purpose.</param>
         /// <param name="options">The execution settings.</param>
@@ -436,6 +459,11 @@ namespace Tellma.Core.Data.Batches
                 // --- Classification ---
                 IReadOnlyList<SqlErrorInfo>? errors = failure is SqlException sql ? SqlErrorInfo.Of(sql) : null;
                 FailureKind kind = Classify(result.Sent, result.ConnectionLost, assembly.InTextTransaction, errors);
+                if (errors is not null)
+                {
+                    ObserveErrors(batch, run.TenantId, errors);
+                }
+
                 bool timedOut = errors is not null && errors.Any(static error => error.Number == DataErrors.CommandTimeout);
 
                 // A re-run after a not-committed verdict that collides with the probed rows: the first

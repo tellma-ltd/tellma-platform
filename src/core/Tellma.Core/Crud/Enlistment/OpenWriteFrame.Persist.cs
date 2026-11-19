@@ -195,10 +195,11 @@ namespace Tellma.Core.Crud.Enlistment
             await ComposeGroupsAsync(batch, EnlistOrder.BeforeHost, first).ConfigureAwait(false);
             await ComposeGroupsAsync(batch, EnlistOrder.AfterHost, first).ConfigureAwait(false);
 
-            // --- The access guards, after every group, under the caller's authority again, when the
-            // batch writes a security table: a group's at any depth, or any statement's declared writes ---
+            // --- The access guards, after every group, under the caller's authority again, when a
+            // statement's declared writes meet a security table: the frame owns no table, and each
+            // group's save or delete declares its target's ---
             FrameRun.AuthorizeFor(batch, callers);
-            _ = PersistGuards.Contribute(_services.AccessGuards, _services.Accessor.Current, batch, Rounds.GroupTables);
+            _ = PersistGuards.Contribute(_services.AccessGuards, _services.Accessor.Current, batch, tables: []);
         }
 
         /// <summary>The write steps an open frame shares with the pipeline: its rounds' dispatch, its reads' decisions and its persist's preparation.</summary>

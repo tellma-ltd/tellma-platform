@@ -225,6 +225,43 @@ namespace Tellma.Core.IntegrationTests.Migrator
         }
 
         [Fact]
+        public async Task A_tenant_provisioned_without_an_administrator_records_no_bootstrap_and_a_later_provision_naming_one_bootstraps_it()
+        {
+            MigratorHarness migrator = new(sql, "mig_boot");
+            migrator.Seed(1);
+            string tenant = migrator.TenantConnectionString(1);
+            const string Recorded = "SELECT COUNT(*) FROM [dbo].[__TellmaProvisioning] WHERE [Step] = N'core.bootstrap-administrator';";
+
+            // --- No administrator named: the bootstrap neither ran nor was recorded as done ---
+            _ = await migrator.RunConvergedAsync("migrate");
+            Assert.Equal(0, await SqlServerFixture.ScalarAsync<int>(tenant, Recorded));
+            Assert.Equal(0, await AdministratorsAsync(tenant, "owner@acme.example"));
+
+            // --- A provision naming one on the active tenant bootstraps it and records the step ---
+            MigratorResult bootstrapped = await migrator.RunConvergedAsync("provision", "--tenant", "1", "--admin-email", "Owner@Acme.Example");
+            Assert.Contains("tenant 1: provisioned (already; 1 administrator step(s))", bootstrapped.Lines);
+            Assert.Equal(1, await AdministratorsAsync(tenant, "owner@acme.example"));
+            Assert.Equal(1, await SqlServerFixture.ScalarAsync<int>(tenant, Recorded));
+            Assert.Equal("Active", await StateAsync(migrator, 1));
+
+            // --- A migration still runs no bootstrap, and a provision naming no one reports the tenant as before ---
+            Assert.Contains("tenant 1: migrated (0 migration(s), 0 step(s))", (await migrator.RunConvergedAsync("migrate")).Lines);
+            Assert.Contains("tenant 1: provisioned (already)", (await migrator.RunConvergedAsync("provision", "--tenant", "1")).Lines);
+
+            // --- A second address adds a second administrator beside the first ---
+            Assert.Contains("tenant 1: provisioned (already; 1 administrator step(s))", (await migrator.RunConvergedAsync("provision", "--tenant", "1", "--admin-email", "second@acme.example")).Lines);
+            Assert.Equal(1, await AdministratorsAsync(tenant, "second@acme.example"));
+            Assert.Equal(1, await AdministratorsAsync(tenant, "owner@acme.example"));
+
+            // --- On a read-only tenant the bootstrap's save runs in the provisioning step's frame,
+            // which admits it, and the tenant stays read-only ---
+            Assert.Equal(MigratorExitCodes.Converged, (await migrator.RunAsync("set-state", "--tenant", "1", "--state", "ReadOnly", "--reason", "audit")).ExitCode);
+            Assert.Contains("tenant 1: provisioned (already; 1 administrator step(s))", (await migrator.RunConvergedAsync("provision", "--tenant", "1", "--admin-email", "third@acme.example")).Lines);
+            Assert.Equal(1, await AdministratorsAsync(tenant, "third@acme.example"));
+            Assert.Equal("ReadOnly", await StateAsync(migrator, 1));
+        }
+
+        [Fact]
         public async Task Migrate_reports_a_tenant_whose_database_is_ahead_and_runs_no_step_on_it()
         {
             MigratorHarness migrator = Steps(new(sql, "mig_ahead"));
@@ -569,11 +606,11 @@ namespace Tellma.Core.IntegrationTests.Migrator
 
             MigratorResult result = await migrator.RunAsync("migrate");
 
-            // The platform's own settings step runs beside the three.
+            // The platform's own settings and blob-container steps run beside the three; the run names no administrator, so its bootstrap does not.
             Assert.True(result.ExitCode == MigratorExitCodes.Converged, result.ToString());
-            Assert.Contains(result.Lines, static line => line.StartsWith("tenant 1: provisioned (", StringComparison.Ordinal) && line.Contains(" 4 step(s)", StringComparison.Ordinal));
+            Assert.Contains(result.Lines, static line => line.StartsWith("tenant 1: provisioned (", StringComparison.Ordinal) && line.Contains(" 5 step(s)", StringComparison.Ordinal));
             Assert.Equal(
-                ["core.settings", "probe.counter", "probe.seed-a", "probe.seed-b"],
+                ["core.blob-container", "core.settings", "probe.counter", "probe.seed-a", "probe.seed-b"],
                 await ListAsync(migrator.TenantConnectionString(1), "SELECT [Step] FROM [dbo].[__TellmaProvisioning] ORDER BY [Step];"));
         }
 
@@ -762,6 +799,18 @@ namespace Tellma.Core.IntegrationTests.Migrator
         private static Task<string?> StateAsync(MigratorHarness migrator, int tenantId)
         {
             return SqlServerFixture.ScalarAsync<string>(migrator.CatalogConnectionString, string.Create(CultureInfo.InvariantCulture, $"SELECT [State] FROM [catalog].[Tenants] WHERE [Id] = {tenantId};"));
+        }
+
+        /// <summary>How many permanent administrator memberships the user of an email address holds in a tenant.</summary>
+        /// <param name="tenant">The tenant database.</param>
+        /// <param name="email">The normalised email address.</param>
+        /// <returns>The count.</returns>
+        private static Task<int> AdministratorsAsync(string tenant, string email)
+        {
+            return SqlServerFixture.ScalarAsync<int>(tenant, $"""
+                SELECT COUNT(*) FROM [core].[RoleMemberships] AS M JOIN [core].[Users] AS U ON U.[Id] = M.[UserId]
+                 WHERE U.[Email] = N'{email}' AND M.[RoleId] = 1 AND M.[EndsAt] IS NULL;
+                """);
         }
 
         /// <summary>When the counted step's record was last written.</summary>

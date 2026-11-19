@@ -108,6 +108,40 @@ namespace Tellma.Core.Access
         public static partial void ConnectRejected(ILogger logger, int tenantId, int? userId, string reason);
 
         /// <summary>
+        ///     A security guard refused a write: an invariant of the security tables, the security
+        ///     lock, or a validator's self-protection rule. Escalation has its own event.
+        /// </summary>
+        /// <param name="logger">The logger.</param>
+        /// <param name="tenantId">The tenant.</param>
+        /// <param name="userId">The user whose write was refused; null when the scope names none.</param>
+        /// <param name="guard">The guard's tag value.</param>
+        /// <param name="code">The code the refusal carries.</param>
+        [LoggerMessage(
+            EventId = AccessEvents.GuardTriggered,
+            EventName = nameof(AccessEvents.GuardTriggered),
+            Level = LogLevel.Warning,
+            Message = "A security guard ({Guard}) refused a write of user {UserId} in tenant {TenantId} with {Code}.")]
+        public static partial void GuardTriggered(ILogger logger, int tenantId, int? userId, string guard, string code);
+
+        /// <summary>
+        ///     A save tried to grant beyond what its author holds unrestricted: a permission on a role,
+        ///     or a membership of a role holding such a permission.
+        /// </summary>
+        /// <param name="logger">The logger.</param>
+        /// <param name="tenantId">The tenant.</param>
+        /// <param name="userId">The author of the save.</param>
+        /// <param name="roleId">The role saved, or the role a membership grants; 0 for a role not yet saved.</param>
+        /// <param name="resource">The permission's resource.</param>
+        /// <param name="action">The permission's action.</param>
+        /// <param name="code">The code the refusal carries.</param>
+        [LoggerMessage(
+            EventId = AccessEvents.EscalationRejected,
+            EventName = nameof(AccessEvents.EscalationRejected),
+            Level = LogLevel.Information,
+            Message = "User {UserId} in tenant {TenantId} may not grant {Resource}:{Action} through role {RoleId}, which they do not hold unrestricted ({Code}).")]
+        public static partial void EscalationRejected(ILogger logger, int tenantId, int userId, int roleId, string resource, string action, string code);
+
+        /// <summary>
         ///     A query under a composed access filter exceeded the compile ceilings: an
         ///     administrator's configuration problem, surfaced as an error rather than a silent denial.
         ///     The exception carries the engine's diagnostics.

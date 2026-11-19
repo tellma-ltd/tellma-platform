@@ -28,6 +28,7 @@ using Tellma.Core.AspNetCore.Sessions;
 using Tellma.Core.AspNetCore.Surfaces;
 using Tellma.Core.AspNetCore.Tenancy;
 using Tellma.Core.Tenancy;
+using Tellma.Core.Testing.Blobs;
 using Tellma.Core.Testing.Settings;
 using Tellma.Core.Tests.Infrastructure;
 
@@ -158,6 +159,9 @@ namespace Tellma.Core.AspNetCore.Tests.Infrastructure
 
             // --- What stands in for the tenant database's settings, read by the locale negotiation ---
             _ = builder.Services.UseFixedTenantSettings();
+
+            // --- What stands in for the blob store and the image processor the blobs check requires ---
+            _ = builder.Services.AddInMemoryBlobs();
 
             // --- The real user connection, which needs a tenant database with users, gives way to the stand-in ---
             _ = builder.Services.Remove(builder.Services.Single(static descriptor => descriptor.ImplementationType == typeof(ConnectInitializer)));

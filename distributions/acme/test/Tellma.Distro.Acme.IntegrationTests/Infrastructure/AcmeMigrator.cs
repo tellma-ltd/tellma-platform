@@ -12,6 +12,7 @@ using System.Globalization;
 using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.Composition;
 using Tellma.Core.Migrator;
+using Tellma.Core.Testing.Blobs;
 using Tellma.Distro.Acme.Migrator;
 using Tellma.Identity.Migrations;
 
@@ -148,7 +149,11 @@ namespace Tellma.Distro.Acme.IntegrationTests.Infrastructure
                     // project links and copies beside the suite.
                     ContentRootPath = AppContext.BaseDirectory,
                     ConfigureConfiguration = configuration => configuration.AddInMemoryCollection(values),
-                    ConfigureServices = static services => services.AddLogging(static logging => logging.ClearProviders()),
+                    // Blobs in memory, so the container step and the startup gate's probe never write
+                    // under the developer's application data.
+                    ConfigureServices = static services => services
+                        .AddLogging(static logging => logging.ClearProviders())
+                        .AddInMemoryBlobs(),
                 },
                 TestContext.Current.CancellationToken);
 

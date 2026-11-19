@@ -4,6 +4,7 @@
 // LICENSE file in the root directory of this source tree.
 
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Api;
 using Tellma.Core.Abstractions.Crud;
@@ -14,6 +15,7 @@ using Tellma.Core.Abstractions.Validation;
 using Tellma.Core.Crud;
 using Tellma.Core.Data;
 using Tellma.Core.Tests.Crud.Query;
+using Tellma.Core.Tests.Crud.Save;
 using Tellma.Core.Tests.Crud.Scripted;
 
 namespace Tellma.Core.Tests.Crud.Writes
@@ -39,6 +41,9 @@ namespace Tellma.Core.Tests.Crud.Writes
         /// <summary>The tickets' hooks and methods, shared with the rig's scopes.</summary>
         private readonly PwHooks _hooks = new();
 
+        /// <summary>The access guards, which record their calls and append a statement each.</summary>
+        private readonly PsGuards _guards = new();
+
         /// <summary>The composed model.</summary>
         private readonly QueryRig _rig;
 
@@ -57,6 +62,7 @@ namespace Tellma.Core.Tests.Crud.Writes
             _rig = new QueryRig(PipelineWriteModel.Compose, services =>
             {
                 _ = services.AddSingleton(_hooks);
+                _ = services.Replace(ServiceDescriptor.Singleton<IAccessGuards>(_guards));
                 _ = services.AddFakeLogging();
             });
             Grant();

@@ -525,7 +525,10 @@ namespace Tellma.Core.Tests.Crud.Enlistment
         /// <returns>The ordinal.</returns>
         private static int SqlOrdinal(ScriptedBatch batch, string text)
         {
-            return Assert.Single(batch.Of(ScriptedKind.Sql), statement => (string?)statement.Text.GetArgument(0) == text).Ordinal;
+            // The users' own statements sit among the raw ones too, their first argument an identifier or none.
+            return Assert.Single(
+                batch.Of(ScriptedKind.Sql),
+                statement => statement.Text.ArgumentCount > 0 && statement.Text.GetArgument(0) is string first && first == text).Ordinal;
         }
 
         /// <summary>

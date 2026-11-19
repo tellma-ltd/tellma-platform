@@ -223,6 +223,7 @@ namespace Tellma.Core.Crud.Delete
             ArgumentNullException.ThrowIfNull(engine);
 
             // --- A blank filter is "delete all", never exposed; then the type-level grant ---
+            // A stack over a security table serves no delete by query: the startup gate refuses it.
             _shape = DeleteShape.ByQuery;
             if (string.IsNullOrWhiteSpace(request.Filter))
             {

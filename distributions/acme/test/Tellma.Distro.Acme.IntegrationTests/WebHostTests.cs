@@ -11,6 +11,7 @@ using System.Net;
 using System.Text.Json;
 using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.AspNetCore;
+using Tellma.Core.Testing.Blobs;
 using Tellma.Distro.Acme.IntegrationTests.Infrastructure;
 using Tellma.Identity;
 using Tellma.Identity.TestSupport;
@@ -141,8 +142,14 @@ namespace Tellma.Distro.Acme.IntegrationTests
                 await using AcmeHost host = await AcmeHost.StartAsync(values, new AcmeHostOptions
                 {
                     Environment = "Production",
-                    Services = static services => services.Configure<JwtBearerOptions>(
-                        TellmaAuthentication.BearerScheme, static bearer => bearer.Configuration = new OpenIdConnectConfiguration { Issuer = Authority }),
+                    Services = static services =>
+                    {
+                        _ = services.Configure<JwtBearerOptions>(
+                            TellmaAuthentication.BearerScheme, static bearer => bearer.Configuration = new OpenIdConnectConfiguration { Issuer = Authority });
+
+                        // Outside Development the Azure defaults register no blob store yet.
+                        _ = services.AddInMemoryBlobs();
+                    },
                 });
                 using HttpClient client = host.Server.CreateClient();
 

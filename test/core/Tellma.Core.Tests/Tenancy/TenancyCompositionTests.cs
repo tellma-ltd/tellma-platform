@@ -13,6 +13,7 @@ using Tellma.Core.Access;
 using Tellma.Core.Composition;
 using Tellma.Core.Localization;
 using Tellma.Core.Tenancy;
+using Tellma.Core.Testing.Blobs;
 using Tellma.Core.Tests.Infrastructure;
 
 namespace Tellma.Core.Tests.Tenancy
@@ -174,7 +175,7 @@ namespace Tellma.Core.Tests.Tenancy
 
             builder.Configuration.AddInMemoryCollection(configuration ?? TestComposition.SoundConfiguration);
             builder.Services.AddSingleton<TimeProvider>(time);
-            builder.Services.AddTellma(TestComposition.Slug, builder.Configuration, builder.Environment, static _ => { }).UseFakeCatalog(catalog);
+            builder.Services.AddTellma(TestComposition.Slug, builder.Configuration, builder.Environment, static _ => { }).UseFakeCatalog(catalog).AddInMemoryBlobs();
             return builder.Build();
         }
 

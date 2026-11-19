@@ -28,11 +28,14 @@ namespace Tellma.Core.Crud.Save
     // guards' lock, the emitter, the service hook and the effects through the recording view, the
     // caller's OnPersist, the guards' invariants, the post-check of §9.3 and the read-back of §6.9.
     // The groups enlisted with the save (§13.3) sit around its own statements: the BeforeHost ones
-    // ahead of its emitter, the AfterHost ones after its effects and before OnPersist, and the access
-    // guards join once the batch is composed, over every table any statement of it writes. A re-entered compose re-runs the validators in
-    // memory, recomposes the pipeline's own statements under the fresh grants and replays the
-    // recording (§5.1). The executor's failures are translated by §14.2, a group's against the
-    // group, and a committed save runs its post-commit phase (§13.2), then its groups', whatever the
+    // ahead of its emitter, the AfterHost ones after its effects and before OnPersist. The access
+    // guards are decided once the batch is composed, over the stack's tables and every statement's
+    // declared writes (a group's save or delete declares its target's tables); the lock is a
+    // transaction-head statement, so it is appended beside the invariants and still written first.
+    // A re-entered compose re-runs the validators in memory, recomposes the pipeline's own statements
+    // under the fresh grants and replays the recording (§5.1). The executor's failures are
+    // translated by §14.2, a group's against the group, and a committed save runs its post-commit
+    // phase (§13.2), then its groups', whatever the
     // caller's token says, since a sent persist completes (§14.1).
     /// <summary>One save of one stack: the persist, its translation and its post-commit phase.</summary>
     internal sealed partial class SaveRun<TEntity, TKey>
@@ -58,12 +61,6 @@ namespace Tellma.Core.Crud.Save
         /// <summary>The tables of the stack: the root's and every child collection's, at every depth.</summary>
         private IReadOnlySet<TableName> StackTables => field ??= StackTableSet.Of(_root);
 
-        /// <summary>The tables the save's own statements write: its stack's, and every group's enlisted with it at any depth.</summary>
-        /// <returns>The tables.</returns>
-        private IEnumerable<TableName> ComposedTables()
-        {
-            return Enlistments is EnlistmentRounds enlistments ? StackTables.Concat(enlistments.GroupTables) : StackTables;
-        }
 
         /// <summary>Persists the validated payload, commits it, and runs the post-commit phase.</summary>
         /// <returns>The saved rows' ids, and the rows when asked for.</returns>
@@ -189,10 +186,12 @@ namespace Tellma.Core.Crud.Save
                 appends.Replay(batch);
             }
 
-            // --- Step 4: the access guards, after every contribution, when the batch writes a security
-            // table: the stack's, a group's at any depth, or any statement's declared writes ---
+            // --- Step 4: the access guards' lock and invariants, after every contribution, when a write
+            // meets a security table: decided over the stack's tables and every statement's declared
+            // writes, a group's, a participant's or the caller's raw ones included (spec 0014 §8.3);
+            // the lock is a transaction-head statement, written first in the transaction ---
             Authorize(batch, callers);
-            _ = PersistGuards.Contribute(_operation.AccessGuards, _operation.Accessor.Current, batch, ComposedTables());
+            _ = PersistGuards.Contribute(_operation.AccessGuards, _operation.Accessor.Current, batch, StackTables);
 
             // --- Step 5: the post-check over the saved ids, under a filtered grant ---
             if (save.Outcome == AccessOutcome.Filtered)

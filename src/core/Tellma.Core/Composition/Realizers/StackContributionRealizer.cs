@@ -55,7 +55,7 @@ namespace Tellma.Core.Composition.Realizers
                 context.Report(new CompositionProblem(
                     CompositionNames.Source,
                     $"Feature '{owner.Name}' contributes the entity {TypeDisplay.Qualified(entityType)} with the operations {(int)operations}, which include flags the platform does not define.",
-                    "Combine the StackOperations values: Query, Details, Save, Delete, Import, Export and Enlist."));
+                    "Combine the StackOperations values: Query, Details, Save, Delete, DeleteByQuery, Import, Export and Enlist."));
                 return;
             }
 

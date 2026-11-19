@@ -13,7 +13,6 @@ using Tellma.Core.Abstractions.Errors;
 using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.Abstractions.Validation;
 using Tellma.Core.Crud.Details;
-using Tellma.Core.Crud.Enlistment;
 using Tellma.Core.Crud.Save;
 using Tellma.Core.Crud.Validation;
 using Tellma.Core.Data;
@@ -23,7 +22,8 @@ using Tellma.Core.Queryex;
 namespace Tellma.Core.Crud.Actions
 {
     // Spec 0015 §11.1 and §11.2 step 4: one Persist batch through the runner. Between the executor's
-    // fixed prefix and suffix it carries the access guards' lock, the emitter for the rows Save
+    // fixed prefix and suffix it carries the access guards' lock (a transaction-head statement,
+    // appended beside the invariants once every write is declared), the emitter for the rows Save
     // marked (ConcurrencyMode.Override: an action is a command over rows it just loaded), the
     // updates over the target ids under the caller's Read filter and the action grant, all or
     // nothing (the built-in action's own, then those Update composed), the statements the hook, the
@@ -245,11 +245,12 @@ namespace Tellma.Core.Crud.Actions
             // --- The groups enlisted after the action ---
             await ComposeEnlistedAsync(batch, EnlistOrder.AfterHost, first).ConfigureAwait(false);
 
-            // --- The access guards, after every contribution, when the batch writes a security table:
-            // the stack's, a group's at any depth, or any statement's declared writes ---
+            // --- The access guards' lock and invariants, after every contribution, when a write meets a
+            // security table: decided over the stack's tables and every statement's declared writes, a
+            // group's, a participant's or the caller's raw ones included (spec 0014 §8.3); the lock is
+            // a transaction-head statement, written first in the transaction ---
             Authorize(batch, callers);
-            IEnumerable<TableName> composed = Enlistments is EnlistmentRounds enlistments ? StackTables.Concat(enlistments.GroupTables) : StackTables;
-            _ = PersistGuards.Contribute(Services.AccessGuards, Services.Accessor.Current, batch, composed);
+            _ = PersistGuards.Contribute(Services.AccessGuards, Services.Accessor.Current, batch, StackTables);
 
             // --- The post-check over the marked and the updated ids, when the action asks for it ---
             if (_descriptor.PostCheck && granted.Outcome == AccessOutcome.Filtered)

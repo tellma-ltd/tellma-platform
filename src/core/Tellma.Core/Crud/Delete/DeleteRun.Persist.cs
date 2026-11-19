@@ -27,13 +27,14 @@ namespace Tellma.Core.Crud.Delete
     // and counts them under the Delete grant (§9.2), beside every load the validators request before
     // their first await; the validators then run their rounds. The persist is one batch through the
     // runner, composed in §6.7's order: the access guards' lock, the delete, the participants through
-    // the recording view, the guards' invariants. A re-entered compose re-runs the validators in
-    // memory, keeps round trip 1's verdicts, recomposes the delete under the fresh grants and replays
-    // the recording (§5.1). The groups the validators enlisted (§13.3) sit around the delete: the
-    // BeforeHost ones ahead of it, the AfterHost ones after its participants, and the access guards
-    // join once the batch is composed, over every table any statement of it writes. The executor's failures are translated by §14.2, a
-    // group's against the group, and a committed delete runs its post-commit phase (§13.2), then its
-    // groups'.
+    // the recording view, the guards' invariants. The lock is a transaction-head statement, so it is
+    // appended beside the invariants, once every write is declared. A re-entered compose re-runs the
+    // validators in memory, keeps round trip 1's verdicts, recomposes the delete under the fresh
+    // grants and replays the recording (§5.1). The groups the validators enlisted (§13.3) sit around
+    // the delete: the BeforeHost ones ahead of it, the AfterHost ones after its participants, and
+    // their saves and deletes declare the writes the guards are decided over. The executor's
+    // failures are translated by §14.2, a group's against the group, and a committed delete runs its
+    // post-commit phase (§13.2), then its groups'.
     /// <summary>One delete of one stack: its validation rounds, its persist and its post-commit phase.</summary>
     internal sealed partial class DeleteRun<TEntity, TKey>
     {
@@ -284,11 +285,12 @@ namespace Tellma.Core.Crud.Delete
             // --- The groups enlisted after the delete ---
             await ComposeEnlistedAsync(batch, EnlistOrder.AfterHost, first).ConfigureAwait(false);
 
-            // --- The access guards, after every contribution, when the batch writes a security table:
-            // the stack's, a group's at any depth, or any statement's declared writes ---
+            // --- The access guards' lock and invariants, after every contribution, when a write meets a
+            // security table: decided over the stack's tables and every statement's declared writes, a
+            // group's, a participant's or the caller's raw ones included (spec 0014 §8.3); the lock is
+            // a transaction-head statement, written first in the transaction ---
             Authorize(batch, callers);
-            IEnumerable<TableName> composed = Enlistments is EnlistmentRounds enlistments ? StackTables.Concat(enlistments.GroupTables) : StackTables;
-            _ = PersistGuards.Contribute(Services.AccessGuards, Services.Accessor.Current, batch, composed);
+            _ = PersistGuards.Contribute(Services.AccessGuards, Services.Accessor.Current, batch, StackTables);
         }
 
         // Spec 0015 §10.1 to §10.3: by ids and with descendants, the ids are counted under the caller's

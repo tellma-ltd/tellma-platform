@@ -5,7 +5,6 @@
 
 using System.Globalization;
 using Tellma.Core.Abstractions.Crud;
-using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Crud.Save;
 using Tellma.Core.Crud.Validation;
 using Tellma.Core.Data;
@@ -78,9 +77,6 @@ namespace Tellma.Core.Crud.Enlistment
                 }
             }
         }
-
-        /// <summary>Every table the host's groups write.</summary>
-        public IEnumerable<TableName> GroupTables => Groups.SelectMany(static group => group.Tables);
 
         /// <summary>Records a group, in enlistment order.</summary>
         /// <param name="group">The group.</param>

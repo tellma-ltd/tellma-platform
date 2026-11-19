@@ -30,7 +30,7 @@ namespace Tellma.Core.Abstractions.Crud
         /// <summary><c>save</c>, and <c>activate</c>/<c>deactivate</c> on an activatable stack; securable actions <c>Save</c> and <c>Activate</c>.</summary>
         Save = 4,
 
-        /// <summary><c>delete</c>, <c>delete-by-query</c>, and <c>delete-with-descendants</c> on a tree; securable action <c>Delete</c>.</summary>
+        /// <summary><c>delete</c>, and <c>delete-with-descendants</c> on a tree; securable action <c>Delete</c>.</summary>
         Delete = 8,
 
         /// <summary>
@@ -49,10 +49,19 @@ namespace Tellma.Core.Abstractions.Crud
         /// </summary>
         Enlist = 64,
 
+        /// <summary>
+        ///     <c>delete-by-query</c>; requires <see cref="Delete" />, whose securable action
+        ///     <c>Delete</c> it shares. A stack whose deletes must be judged row by row leaves it out.
+        /// </summary>
+        DeleteByQuery = 128,
+
         /// <summary>The read operations: <see cref="Query" />, <see cref="Details" /> and <see cref="Export" />.</summary>
         Read = Query | Details | Export,
 
-        /// <summary>Every front-door operation: <see cref="Read" />, <see cref="Save" />, <see cref="Delete" /> and <see cref="Import" />.</summary>
-        All = Read | Save | Delete | Import,
+        /// <summary>
+        ///     Every front-door operation: <see cref="Read" />, <see cref="Save" />, <see cref="Delete" />,
+        ///     <see cref="DeleteByQuery" /> and <see cref="Import" />.
+        /// </summary>
+        All = Read | Save | Delete | DeleteByQuery | Import,
     }
 }

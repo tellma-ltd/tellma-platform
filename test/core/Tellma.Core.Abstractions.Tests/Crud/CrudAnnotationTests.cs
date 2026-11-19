@@ -19,15 +19,16 @@ namespace Tellma.Core.Abstractions.Tests.Crud
         public void Stack_operations_are_flags_with_enlistment_outside_all()
         {
             Assert.Equal(
-                [0, 1, 2, 4, 8, 16, 32, 64],
+                [0, 1, 2, 4, 8, 16, 32, 64, 128],
                 new[]
                 {
                     StackOperations.None, StackOperations.Query, StackOperations.Details, StackOperations.Save,
                     StackOperations.Delete, StackOperations.Import, StackOperations.Export, StackOperations.Enlist,
+                    StackOperations.DeleteByQuery,
                 }.Select(static operation => (int)operation));
 
             Assert.Equal(StackOperations.Query | StackOperations.Details | StackOperations.Export, StackOperations.Read);
-            Assert.Equal(StackOperations.Read | StackOperations.Save | StackOperations.Delete | StackOperations.Import, StackOperations.All);
+            Assert.Equal(StackOperations.Read | StackOperations.Save | StackOperations.Delete | StackOperations.DeleteByQuery | StackOperations.Import, StackOperations.All);
             Assert.False(StackOperations.All.HasFlag(StackOperations.Enlist));
             Assert.NotNull(typeof(StackOperations).GetCustomAttribute<FlagsAttribute>());
         }

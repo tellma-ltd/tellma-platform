@@ -14,6 +14,7 @@ using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Errors;
 using Tellma.Core.Abstractions.TableTypes;
 using Tellma.Core.Abstractions.Validation;
+using Tellma.Core.Crud.Save;
 using Tellma.Core.Data;
 using Tellma.Core.Data.Ids;
 using Tellma.Core.Tests.Crud.Query;
@@ -90,6 +91,11 @@ namespace Tellma.Core.Tests.Crud.Enlistment
             _ids.Allocator.Replenish(Tenant, typeof(EnTag), 301, 399);
             _ids.Allocator.Replenish(Tenant, typeof(User), 401, 499);
             _rig.Grant(Grants);
+
+            // --- A save, an update or a delete declares the tables of its target's stack, as the
+            // platform's batch declares them, so the guards see a group's writes of a security table ---
+            IEntityMetadataProvider metadata = _rig.Services.GetRequiredService<IEntityMetadataProvider>();
+            _rig.Script.Writes = type => StackTableSet.Of(metadata.Get(type));
 
             // --- Every statement a frame may append: the rows the loads find, unfiltered, and every
             // persist's saves, deletes and raw statements ---

@@ -125,7 +125,7 @@ namespace Tellma.Core.Tests.Blobs
             ContentTypeDecision decision = BlobContentSniffer.Determine(text, "text/plain", Attachment);
 
             Assert.Equal(ContentTypeRefusal.Unrecognised, decision.Refusal);
-            Assert.Equal("text/plain", decision.ContentType);
+            Assert.Equal(BlobContentSniffer.UnknownContentType, decision.ContentType);
         }
 
         [Fact]
@@ -168,6 +168,28 @@ namespace Tellma.Core.Tests.Blobs
 
                 Assert.Equal(ContentTypeRefusal.AlwaysRejected, decision.Refusal);
             }
+        }
+
+        [Theory]
+        [InlineData(new byte[] { (byte)'M', (byte)'Z', 0x90 }, "application/vnd.microsoft.portable-executable")]
+        [InlineData(new byte[] { 0x7F, 0x45, 0x4C, 0x46, 0x02 }, "application/x-elf")]
+        [InlineData(new byte[] { 0xCF, 0xFA, 0xED, 0xFE, 0x00 }, "application/x-mach-binary")]
+        [InlineData(new byte[] { (byte)'<', (byte)'p', (byte)'>' }, "text/html")]
+        [InlineData(new byte[] { (byte)'<', (byte)'s', (byte)'v', (byte)'g', (byte)'>' }, "image/svg+xml")]
+        public void A_file_never_stored_is_reported_as_what_its_bytes_are(byte[] head, string reported)
+        {
+            ContentTypeDecision decision = BlobContentSniffer.Determine(head, "application/pdf", Attachment);
+
+            Assert.Equal((ContentTypeRefusal.AlwaysRejected, reported), (decision.Refusal, decision.ContentType));
+        }
+
+        [Theory]
+        [InlineData(null, "application/octet-stream")]
+        [InlineData("application/pdf", "application/octet-stream")]
+        [InlineData("application/x-custom", "application/x-custom")]
+        public void Unrecognised_bytes_report_a_declaration_only_when_the_kind_refuses_it(string? declared, string reported)
+        {
+            Assert.Equal(reported, BlobContentSniffer.Determine("just some bytes"u8, declared, Attachment).ContentType);
         }
 
         public static TheoryData<byte[]> AlwaysRejected()

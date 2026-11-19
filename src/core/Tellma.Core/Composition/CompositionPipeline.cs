@@ -11,6 +11,7 @@ using System.Reflection;
 using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.Abstractions.Hosting;
 using Tellma.Core.Access;
+using Tellma.Core.Blobs;
 using Tellma.Core.Caching;
 using Tellma.Core.Composition.Checks;
 using Tellma.Core.Composition.Realizers;
@@ -137,6 +138,9 @@ namespace Tellma.Core.Composition
             // --- What no single job item shows: a key registered twice, a retired key still in use ---
             JobContributionChecks.Check(context);
 
+            // --- The host's blob-kind transforms, after every feature's (spec 0017 §2.4) ---
+            _record.BlobKindTransforms.AddRange(_builder.BlobKindTransforms);
+
             // --- Declared options ---
             OptionsRegistrar options = new(context, configuration);
             foreach (ComposedFeature feature in ordered)
@@ -179,6 +183,9 @@ namespace Tellma.Core.Composition
 
             // --- Stacks: the registry, its route source, the services and components it closes, its securables (spec 0015 §2) ---
             CrudComposition.Register(services, _record);
+
+            // --- Blobs: the options, the kind registry, the staging service and the blobs check (spec 0017 §1.3, §9) ---
+            BlobsRuntimeComposition.Register(services, _record, options);
 
             // --- Server-built links (spec 0011 §5.10), over the stack registry's routes ---
             services.AddSingleton<ITellmaLinks, TellmaLinks>();

@@ -7,6 +7,7 @@ using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using Tellma.Core.Abstractions.Api;
 using Tellma.Core.Abstractions.Caching;
+using Tellma.Core.Abstractions.Crud;
 using Tellma.Core.Abstractions.Entities;
 
 namespace Tellma.Core.Abstractions.Access
@@ -25,12 +26,17 @@ namespace Tellma.Core.Abstractions.Access
     ///         role whose unfiltered wildcard grant is guaranteed: it cannot be made public, deactivated
     ///         or deleted. Every write of a role or its permissions moves the tenant's permissions tag.
     ///     </para>
+    ///     <para>
+    ///         The stack serves no delete by query: roles are deleted by their ids, so every deletion
+    ///         meets the rules that keep the tenant's administrators.
+    ///     </para>
     /// </remarks>
     [Table("Roles", Schema = "core")]
     [TableType]
     [Temporal]
     [BumpsVersionTag(VersionTagNames.Permissions)]
     [ApiResource]
+    [Stack(Operations = StackOperations.All & ~StackOperations.DeleteByQuery)]
     public class Role : TopLevelEntity, IActivatable
     {
         /// <summary>The name in the tenant's primary language, <c>nvarchar(255)</c>, unique.</summary>

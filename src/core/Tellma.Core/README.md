@@ -550,6 +550,60 @@ Internally the namespace also holds the upload content-type sniffer (signatures 
 declaration; executables, HTML and SVG never stored) and the file-name sanitiser, which the
 staging service uses.
 
+## Blobs: kinds, options and staging
+
+```csharp
+// A feature adjusts a kind it or another feature declares; the host adjusts after every feature.
+contribution.BlobKind("acme-scan", policy => policy with { MaxSize = 8 * 1024 * 1024 });
+tellma.Blobs(blobs => blobs
+    .Kind("user-image", policy => policy with { Thumbnail = null })
+    .ImageProcessor<MyProcessor>());
+```
+
+- **Kinds come from the model.** Every `[BlobReference(kind, preset)]` of a stack's aggregate
+  declares one kind, once across the composition. `IBlobKindRegistry` lists them with the policy
+  (the preset after every transform, features' in contribution order and then the host's) and the
+  owner: the nearest entity with a query surface (a stack's root, or a child that is queryable),
+  the column, and the navigation path from the declaring entity up to that owner (`Spread.Album`
+  for a grandchild whose parent has no query surface). The entity metadata carries the same policy
+  instance. A transform that throws or returns null, or a kind on an entity no stack carries, fails
+  the composition naming the kind.
+- **Options.** `BlobOptions` binds `Tellma:Blobs`: `StagingTtl` (24 h; a kind's own `StagingTtl`
+  overrides it), `MaxStagedPerUser` (200) and `MaxStagedBytesPerUser` (512 MiB) for the soft
+  per-user quota, `MaxUploadSize` (100 MiB, the ceiling over every kind's `MaxSize`),
+  `ThumbnailTimeout` (5 s), `ImageProcessTimeout` (15 s), and the sweep's `SweepBatchSize` and
+  `SweepReclaimAfter`. A large body spools to `Tellma:ScratchPath` (the system temp directory when
+  unset), in a file deleted on close.
+- **Staging.** `IBlobService.StageAsync` (scoped) checks the declared length against the kind's
+  `MaxSize` and the ceiling before reading, reads at most one byte more than declared, sniffs the
+  type against the kind's allow-list, normalises an image kind through the one `IImageProcessor`
+  (bounded by `ImageProcessTimeout`), renders a thumbnail where the policy asks for one (a render
+  that returns nothing or throws stores none, with a `BlobThumbnailFailed` warning for a throw),
+  inserts the `Staged` row — its id from `core.sq_Blobs`, its deadline from the
+  database clock — and then writes the primary and the thumbnail to the store under a fresh
+  storage key. A refusal is a `BlobRejectedException` whose code names a resource string:
+  `Blob.UnknownKind`, `Blob.LengthRequired` (no length, or a body shorter than declared),
+  `Blob.TooLarge`, `Blob.UnsupportedType` (naming what the bytes are, never a declaration they
+  contradict), `Blob.ImageRejected` and `Blob.StagingQuotaExceeded`.
+  The quota counts the caller's unexpired staged rows and bytes in the same statement as the
+  insert, without locks (it is soft: two racing uploads may both pass), and does not apply to the
+  platform's own scope. A store write that fails leaves the staged row for the sweep.
+- **Provisioning.** The `core.blob-container` step (order 20, after `core.settings`) creates the
+  tenant's container or directory through `IBlobStore.EnsureTenantAsync`, so the first upload finds
+  it; a write that finds it missing still creates it. Removing a retired tenant's storage is an
+  operator's action.
+- **The startup checks.** `blobs` reads the composition alone, so the client-asset emission runs it
+  too: at most one `IImageProcessor` (exactly one when an image kind exists), a transform only for a
+  declared kind, and every final policy well formed. `blobs.deployment` needs infrastructure:
+  exactly one `IBlobStore`, positive options (the processor's time budgets also within a timer's
+  range), every kind's `MaxSize` within `MaxUploadSize`, an absolute scratch path and, for the
+  file-system store, bound options and a passing create-only publish probe. A host that runs no
+  real store composes `AddInMemoryBlobs()` from `Tellma.Core.Testing` in its tests.
+- **Telemetry.** `tellma.blobs.uploads` counts every staging call by kind and outcome (`staged`,
+  each refusal, `busy`, `failed`), with `tellma.blobs.upload.bytes` and
+  `tellma.blobs.upload.duration` beside it, on the `Tellma.Core` meter (the store's instruments
+  alone have the `Tellma.Blobs` meter); never a tenant, a user or a file name.
+
 ## Calendars
 
 `CoreFeature` registers the three calendar systems, in this order, and the `ICalendarRegistry` over
@@ -1497,8 +1551,9 @@ tenant, in a job that runs on one and in a provisioning step, refused in any oth
 - **The persist** is the host's one batch. Each group's statements sit ahead of (`BeforeHost`) or
   after (`AfterHost`, the default) its immediate host's own, so a group's own groups nest: B
   enlisted ahead of A, with C after B, composes B, C, A. Each group appends under its target's
-  authority, the access guards join once every statement composed when any table the batch writes
-  is a security table (a group's at any depth included), and a failure is attributed by its
+  authority, the access guards join once every statement composed when the host's stack or any
+  statement's declared writes meet a security table (a group's save or delete declares its
+  target's tables, at any depth), and a failure is attributed by its
   statement's ordinal to the group that raised it, translated by that group and re-rooted onto the
   host's paths. After the commit the host's post-commit phase runs first, then each group's in
   composition order. Each enlisted write is counted once (`tellma.crud.enlistments`) under the
@@ -1547,7 +1602,8 @@ tenant, in a job that runs on one and in a provisioning step, refused in any oth
 the stack registry: one `RouteContract` per projected endpoint, in mapping order. Each stack
 projects its standard operations as its operations and capabilities imply them (`query`, and
 `get-by-parent-ids` for a tree; `get`, `get-by-ids`, and `all` for a cacheable entity; `save`;
-`delete`, `delete-by-query`, and `delete-with-descendants` for a tree), then every action, the
+`delete`, `delete-by-query` when the stack keeps `DeleteByQuery`, and `delete-with-descendants` for
+a tree), then every action, the
 built-in ones and its companions' included; each child query surface projects `query`, then its
 actions; each routed service its actions. A route's template is
 `POST /{tenantId}/api/web/<segment>/<operation>`. Each carries its body and result types, its
@@ -1757,14 +1813,180 @@ holds the scope's caller to `core.Role` × `Read` first.
 `IAdministratorDirectory` (`AdministratorDirectory`) reads, in one guarded round trip, the ids of at
 most 20 active individuals, invited or joined, with a current membership of the administrator role,
 lowest id first, for a tenant's administrative notices; it checks no permission of the caller.
-`IAccessGuards` is the persist pipeline's
-seat for the security tables' in-transaction invariants (the security lock, the last administrator,
-the public roles' members, the administrator role itself); `NullAccessGuards` holds it for now and
-contributes no lock and no assertion.
 
 `AccessOptions` binds from `Tellma:Access` and is judged by `core.options`: every count positive,
 `MaxFilterLength` within the 2048-character filter column, every span positive, `FastDenyWindow`
 within `PermissionsMaxAge`, and `ActivityStampInterval` at least 60 seconds.
+
+## The access write side
+
+Every path that writes the security tables keeps one thing true: the tenant has an active, invited
+or joined individual with a started, permanent membership of the administrator role. The users'
+and roles' stacks give a refused write its field-level message first; the guards hold the line
+inside the transaction whatever composed the write.
+
+### The guards
+
+`AccessGuards` (scoped `IAccessGuards`) joins a persist batch the tenant database created; any other
+batch, a `RecordingBatch` included, is an `ArgumentException`. Each call adds its text once per batch
+however often it is made:
+
+- `ContributeLock` puts the security lock at the transaction's head, ahead of the version-tag guard
+  and the caller re-check: `sp_getapplock 'tellma.access'`, exclusive, owned by the transaction,
+  waiting at most `AccessOptions.SecurityLockTimeout` (5 seconds by default, rounded up to whole
+  milliseconds). A deadlock victim (`Access.LockDeadlock`) and a timeout (`Access.LockTimeout`) are
+  `THROW 50503`, which the executor retries as transient.
+- `ContributeInvariants` appends three assertions after every write, each a `THROW 50422`:
+  `Access.LastAdministrator` (no active, invited or joined individual holds a started administrator
+  membership without an end), `Access.PublicRoleHasMembers` (a public role has a member) and
+  `Access.AdministratorRoleDamaged` (the administrator role is inactive or public, or lacks its
+  unfiltered `*` × `*` permission). A membership that ends later never stands in for a permanent
+  one, so ending the last permanent membership is refused even while a time-bounded one remains.
+
+The save, delete and action pipelines call both once every write is composed, when the stack's
+tables or any statement's declared writes (`IDataBatch.WrittenTables`: a participant's, the
+caller's `OnPersist`, an action's own) include `core.Users`, `Roles`, `RoleMemberships` or
+`Permissions`, unless the context is the system's; the lock still runs first, at the transaction's
+head. A guarded batch composed by hand that writes those tables calls them itself. Because every
+security write holds the lock, the assertions, which read under the transaction's snapshot, can never
+pass for two concurrent writes that together break them. A save's `50422` surfaces as a
+`ValidationException` carrying the code at the root; a hand-composed run's surfaces as
+`BatchAssertionFailedException` with the same `Code`.
+
+Each guard error of a failed attempt, a retried lock timeout included, is counted
+(`tellma.access.guards.triggered`, by `guard`: `last_administrator`, `public_role_members`,
+`administrator_damaged`, `lock_timeout`, `lock_deadlock`) and logged (`GuardTriggered`, 3103, at
+Warning, with the tenant, the user and the code). The guards see the errors through
+`DataBatch.OnServerErrors`, an observer the executor calls with each failed attempt's server errors.
+
+### The users' and roles' rules
+
+`CoreFeature` stacks `User` on `UserService<TUser>` and `Role` on `RoleService<TRole>`, the standard
+operations closed over the distribution's leaves. The users' service declares `IEnlists<TUser>`, for a
+user's self-service writes. The rules are separate components of the two stacks, `UserAccessRules<TUser>`
+and `RoleAccessRules<TRole>`, so a leaf's service cannot drop them; they validate deletes and the
+built-in actions as well as saves.
+
+| Code | The users' rules refuse |
+|---|---|
+| `Users.SystemUserImmutable` | a save, an action or a delete of the system user, row 1 |
+| `Users.KindNotAllowed` | a payload naming the system kind |
+| `Users.EmailNotAllowed` | an email on a user that is not an individual |
+| `Users.EmailLockedAfterInvite` | a changed email once the user was invited |
+| `RoleMemberships.EndsBeforeStart` | a membership ending at or before its start |
+| `RoleMemberships.EndsInPast` | a new membership, or one whose window changed, that ended already |
+| `RoleMemberships.Overlap` | two windows of one role that overlap; a permanent one overlaps every other |
+| `Users.TooManyRoles` | more memberships that have not ended than `MaxRolesPerUser` (`max`) |
+| `Users.CannotRemoveOwnAdministratorMembership` | the caller removing, ending or deferring their own current administrator membership |
+| `Users.CannotDeactivateSelf` / `Users.CannotDeleteSelf` | the caller deactivating or deleting their own user |
+| `Users.OnlyNewUsersDeletable` | a delete of a user past `New`, whom the audit columns may reference (it is deactivated instead) |
+| `Users.MembershipEscalation` | a new membership, or one moved to another role or widened, of a role holding a permission the caller does not hold unrestricted (`resource`, `action`) |
+
+| Code | The roles' rules refuse |
+|---|---|
+| `Permissions.UnknownSecurable` | a pair no securable registers; `(*, A)` when no resource registers `A` (`resource`, `action`) |
+| `Permissions.FilterNotSupported` | a filter on `*` or on a securable without a filter root |
+| `Permissions.FilterTooLong` | a filter beyond `MaxFilterLength` (`maxLength`) |
+| `Permissions.FilterVersionUnsupported` | an unchanged filter whose stored stamp this engine does not compile (`version`, `minimum`) |
+| `Permissions.FilterInvalid` | a blank filter, or one the engine does not validate against the tenant's current schema as a predicate over the root: one error per diagnostic, each with its `code` and arguments |
+| `Permissions.WildcardResourceOnPublicRole` | a permission on `*` of a public role |
+| `Roles.PublicRoleHasMembers` | a role saved as public that has members |
+| `Roles.AdministratorImmutable` | the administrator role made public, deactivated, deleted or stripped of its `*` × `*` grant |
+| `Roles.HasMembers` | a delete of a role that has members |
+| `Roles.TooManyPermissions` | more permissions than `MaxPermissionsPerRole` (`max`) |
+| `Permissions.EscalationBeyondSelf` | a new or changed permission the caller does not hold unrestricted; every permission of a role the save makes public |
+
+A filter's stamp follows its text: a new row, a changed text or a missing stamp takes the running
+language version, and unchanged text keeps the stamp it was affirmed under. The filter-root rule is
+the drift classifier's, so a permission the rules accept never drifts on the deployment that saved it.
+
+The escalation test (`AccessDelegation`) lets a caller hand out a pair only when their own set holds
+an unrestricted grant, current now, that covers it: the pair itself, the resource's `*` action, the
+action on `*`, or `*` × `*`; for `Read`, also any action on the resource, or any action on `*` the
+resource registers. A filtered grant never qualifies. The system set, and a caller holding `*` × `*`,
+are exempt. Self-protection refusals are counted with the guards (`self_deactivation`, `self_deletion`,
+`own_administrator_membership`) and logged as `GuardTriggered`; an escalation is counted as
+`escalation` and logged as `EscalationRejected` (3104, at Information, with the role and the pair).
+
+Saving a user or a role is a sensitive securable, so it asks for the step-up bar.
+
+`RoleService<TRole>`'s preprocessing collapses a role's exact duplicate permissions (the same
+resource, action and filter, compared ordinally) to one row before the rules count and stamp them,
+since no unique index can hold them apart: a stored row survives over a new one, and a stored
+duplicate is deleted by the save. A leaf that overrides `PreprocessAsync` calls the base to keep it.
+
+A delete by query runs no validation round, so the delete rules above would never see its targets:
+the users' and the roles' stacks leave `DeleteByQuery` out of their operations, so neither projects
+`delete-by-query` and their services refuse it before any round trip. Their rows are deleted by id.
+The startup gate refuses any stack over a security table that keeps it, such as a distribution's
+leaf that declares every operation again.
+
+A new user's email is where the invitation goes, so a save that changes it hands the user's
+memberships to whoever holds the new address: every membership that has not ended is then tested
+for escalation as if granted (`Users.MembershipEscalation`). A payload that omits the memberships
+keeps the stored ones, whose roles' pairs load in a second round, and the refusal is reported at
+`Email`.
+
+### Stamps and preferences
+
+`UserStampsCompanion<TUser>`, a persist effect of the users' stack, inserts the `core.UserStamps` row
+of every user a save inserts, in the save's transaction: both tags set to the batch's bump value, no
+activity and an empty inbox. A row already there is kept, so a re-run after a lost connection is safe.
+
+`UserPreferenceStatements` writes a user's preference bag (`core.UserPreferences`) over
+`UserPreferenceList` rows, each write one statement appended to a persist batch: `Set` updates changed
+values and inserts absent keys, `Delete` removes the named keys, and `Replace` deletes the keys the
+items do not name, then sets the rest. `Set` and `Replace` assert the key cap after their insert
+(`Users.TooManyPreferenceKeys`, a `50422`), and every write of one bag holds its owner's stamp row
+under an update lock to its commit, so two writes cannot pass the cap together. The caller's own bag
+is written against the connect prologue's user, whose re-check holds that row from the batch's head;
+another user's is locked on that user's row by the statement's first line and named in a one-row id
+list, so the epilogue moves that user's `PreferencesTag` either way. Keys compare as the database compares them, ignoring case; a value
+compares in binary, so a change of case alone is written. `Check` and `CheckKeys` judge the items in
+memory first: the key grammar (dotted segments, the first led by a lower-case letter, at most 128
+characters; `Users.PreferenceKeyInvalid`), a key named twice ignoring case
+(`Users.PreferenceKeyDuplicate`), and a value beyond `MaxPreferenceValueBytes` of UTF-8
+(`Users.PreferenceValueTooLarge`).
+
+### The first administrator
+
+`ITenantBootstrapper` (`TenantBootstrapper<TUser>`, scoped) makes a tenant's first individual
+administrator through the users' stack, in the platform's own scope of the tenant, so the audit stamps,
+the stamp row and the tag bumps come with it and the guards stand aside. A user scope is refused. The
+email address is trimmed and lower-cased, as the users' stack stores it.
+
+- **A new address** creates an individual with no invitation evidence, so its state reads `New` until
+  it is invited, and one permanent administrator membership.
+- **An existing user** keeps its state and its other roles, and gains the membership only when it
+  lacks a started, permanent one. Every administrator membership that has not ended is replaced by one
+  permanent row starting where the last ended one ended, so the windows never overlap. A deactivated
+  user is never reactivated: the bootstrap fails with an `InvalidOperationException` naming the user
+  and pointing to another address, whose administrator then decides whether its privileges come
+  back (no administrator may remain to reactivate it).
+- **A subject** is accepted in a Development environment only (`InvalidOperationException` before
+  anything is written otherwise). It rides the same save: `BootstrapSubjectEffect<TUser>`, a persist
+  effect of the users' stack, records it on the created user as an invitation would (the subject, the
+  invitation's instant, `InviteStatus.Invited`).
+
+The bootstrap is idempotent on the address. The `core.bootstrap-administrator` provisioning step
+(order 10, before `core.settings`) calls it with the administrator the run names, named by the address's
+local part and preferring the distribution's first offered language. The step runner schedules it by
+the run's administrator, not by the tenant's record: a run that names none, such as a migration,
+neither runs nor records it (and logs `ProvisioningAdministratorNotBootstrapped` while no run ever
+has), and a run that names one runs it whatever the tenant records. `provision --tenant <id>
+--admin-email <address>` on an active or read-only tenant runs it alone, which is how a tenant
+provisioned without an administrator, or left without one, gets one.
+
+### The drift scan
+
+`IPermissionDriftScanner` (`PermissionDriftScanner`, scoped, in the platform's own scope of the tenant)
+reads every stored permission with its role's code and visibility in one round trip, and classifies each
+with `PermissionClassifier`, the classifier the permission sets are built with, against the running
+deployment's securables and the tenant's current schema. It returns a `PermissionDriftItem` for every
+permission that grants nothing: the permission, the role and its code, the problem, and the engine's
+diagnostics. The same instance is the migrator's `ITenantDriftReport`, which prints one line per item
+after a tenant's migrations, such as
+`Permission 12 of role 4 (clerks) grants nothing: FilterInvalid; QX3001 property=Name2 entity=fx.Widget.`
 
 ## The identity-server client
 
