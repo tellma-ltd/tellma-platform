@@ -359,6 +359,25 @@ Format, one entry per ruling:
 - Also accepted: a readonly select never opens (a pre-existing bug, fixed) and exposes aria-readonly.
 - **Misalignment for Ahmad:** 0010 §B.4 names contentChildren(TmOptionGroup), which the design does not need. See also D-036's §B.4 note.
 
+### D-123 (orchestrator, 2026-11-18): PC-084 round-trip budget and carries; for Ahmad
+
+- Spec 0017 §10.1 ("a save adds none") and the checkpoint's done-criterion conflict with §4.2's mandated blob load. A warm-buffer, insert-only save that attaches a blob needs one extra round trip, and the code cannot avoid it. Interim: accepted as a PC-084 deviation. On a cold buffer the load folds into round 1 (R1-1), so no other save shape pays. **For Ahmad:** amend §10.1 or the budget.
+- Spec 0015 §6.6: blob columns are exempt from the uniqueness rule that their UX_ index had triggered. R1 judged the exemption narrow and correct.
+- R2 (fable, 0/1/3): R2-1 is fixed fail closed. A blob download whose owner's Read is sensitive runs AssuranceCheck, per D-108 and D-111. **For Ahmad:** spec 0017 §5.1 names only EvaluateAsync.
+- R2-2 corrects the carry below. The hook belongs in PC-077's SaveRun.Enlisted.cs `Translate`, where the group's roots are in scope. A second carry: call `BlobAttachments.Prefetch` from PC-077's `EnlistAsync`. PC-084 integrates after PC-077, so both are PC-084's.
+- Fix 2 (575849a4), both **for Ahmad**:
+  - Deviation 12: a download through an owner whose Read is sensitive asks for step-up even when nothing is found. Spec 0017 §5.1 needs the step-up.
+  - Deviation 11: a stale-denial download takes 2 round trips, against §5.1/§10.1's one.
+- The cold-buffer prefetch now sits inside ReserveIds, which PC-077's EnlistAsync already calls.
+- Carry: persist blob refusals raised by enlisted groups are counted by whichever of PC-077 and PC-084 integrates second (R1-6). The hook: in SaveRun.Persist.cs, where `Enlistments?.Translate(failure)` returns a translated exception, call `BlobAttachments.CountPersistRefusal(translated, groupRoots, _operation.Services.GetService<BlobAttachMetrics>())` before the throw, and add one enlisted-save test.
+
+### D-122 (orchestrator, 2026-11-18): PC-077 R2 rulings; for Ahmad
+
+- R2-1 (major, fixed in fix 2): the open write frame re-decides the [ApiAction] securable for the fresh ConnectedUser on every compose, as the other pipeline hosts do. A revoked grant must not commit enlisted writes on a permissions re-entry.
+- R2-2 (interim, fail closed): on a re-entry caused by a permissions change, a frame with enlisted groups does not commit on validators decided under stale grants. It either re-runs the groups' validators in memory or raises StaleContextException. **For Ahmad:** spec 0015 §5.1 should say which; PC-078's UserAccessRules and RoleAccessRules are grant-dependent target rules.
+- **For spec 0020:** PC-078's AccessGuards casts the batch to DataBatch, and the job seam runs PersistGuards on the worker's completion batch, so the worker must hand the frame a DataBatch.
+- Release order: PC-078 integrates first. PC-077 holds after fix 2 (D-087), then integrates under D-121.
+
 ### D-121 (orchestrator, 2026-11-18): PC-077 and PC-078 meet at the access guards; the later to integrate reconciles
 
 - PC-077 contributes the access guards once per host, over the union of its own tables and every enlisted group's tables (nested groups included). The lock comes first, and the invariants run after the last group and OnPersist.
@@ -366,6 +385,11 @@ Format, one entry per ruling:
 - Ruling: whichever of the two integrates second makes the union reach every guard path, including PC-077's OpenWriteFrame.Persist.cs. It also runs both checkpoints' guard and enlistment tests together in its integration gate.
 - PC-078 fix 1 (1a5de53e): the guards are now decided over StackTables ∪ batch.WrittenTables at the invariants step, and the lock stays a TransactionHead statement. PC-077's group union should adopt the same rule. **For Ahmad:** spec 0014 §8.3 decides over WrittenTables, while spec 0015 §6.7 step 4 calls ContributeLock "ahead of item 1" from metadata. One of the two needs aligning.
 - PC-078 fix 1 outcomes for D-119: users' and roles' delete-by-query is refused as a BadRequest naming the resource (spec 0018 §4 and spec 0015 §16.2 say otherwise). A deactivated existing administrator fails the bootstrap naming the user id; R1 preferred reactivating through the activate action. **Both are for Ahmad.**
+- PC-077 fix 1 (b5cf1ae7): PC-078's guard rule hooks into Crud/Save/PersistGuards.Contribute. That is called at all four persist sites, OpenWriteFrame.ComposeOntoAsync included, and whoever integrates second keeps those calls.
+- **For Ahmad (spec 0015 §5.1):** how re-run enlistments are answered. PC-077 matches them by task and step from the first run and treats divergence as stale (deviation 11). Also whether EnlistmentOutcome.Stamp should become nullable; today it falls back to the frame's clock (deviation 12).
+- Outcome (PC-077 integration 23730416/392703f6):
+  - One guard rule everywhere: StackTables ∪ batch.WrittenTables, decided at the invariants step. Save, delete and action pass StackTables. OpenWriteFrame passes none and relies on each group's save or delete declaring its target's tables in WrittenTables. GroupTables and ComposedTables are removed.
+  - With real stack-table ownership wired, PC-078's two AdministratorGuardTests for another stack's raw security write now hit the append refusal first. Each test asserts that refusal, then asserts the guards' Access.LastAdministrator refusal in an instance using NoStackTableOwners. Accepted: both layers stay pinned.
 - Also from PC-077 R1, for spec 0020: the job-frame seam overwrites the worker batch's Limits.
 
 ### D-120 (orchestrator, 2026-11-18): BlobContainerStep moves from PC-089 to PC-083; the provisioning-record row goes to the later of PC-078 and PC-083
@@ -386,6 +410,16 @@ Format, one entry per ruling:
   - Q5 / R1-2: the guard decision covers batch.WrittenTables ∪ StackTables. It lands in PC-078 if WrittenTables exists on platform-core; otherwise it carries to PC-077.
   - R1-4: duplicate-permission collapse (spec 0014 §3.7) is owned by no checkpoint. PC-078 does it if contained; otherwise it carries to a later checkpoint.
   - **For Ahmad:** spec 0014 §3.4's "DELETE half" deletes the wrong keys for delete actions. PC-078's fix is right, and the spec wording needs amending.
+- R2 (fable, 0/2/3) and interim rulings for fix 2. All three D-119 rulings held under R2.
+  - R2-1: the bootstrap step is no longer recorded as done when it bootstrapped nobody. A later run that names an administrator then performs it, including `provision --admin-email` on an Active tenant. **For Ahmad:** spec 0014 §8.3's recovery path depends on spec 0011's provisioning record. The two specs need one owner for that path.
+  - R2-4: fail closed. Changing the email of a New user that has memberships needs the same rights as those memberships, or is refused. **For Ahmad:** spec 0014 needs a line on this escalation.
+  - R2-5: DeleteByQuery is removed from the users' and roles' stack operations.
+- Fix 2 outcomes (4cfcd532), each **for Ahmad**:
+  - The bootstrap step runs only when the run names an administrator. A run that names none neither runs nor records it, and logs a warning. `provision --tenant N --admin-email` on an Active or ReadOnly tenant runs that step alone. Spec 0011 §6.1-§6.2 ("already provisioned") and spec 0014 §8.3's recovery path need aligning.
+  - Changing a New user's email tests every membership that has not ended as granted (Users.MembershipEscalation). Spec 0014 §8.4 names only added, moved or widened memberships.
+  - There is a new public `StackOperations.DeleteByQuery = 128`, part of All and requiring Delete. It is not in the enum of spec 0015 §2 or spec 0016 §4. User and Role omit it, and the startup gate refuses it over a security table. Spec 0018 §4 still projects delete-by-query on both stacks.
+  - Spec 0015 §6.7 step 4's "ahead of item 1" should read "a transaction-head statement".
+- A second block on PC-078: `powershell -NoProfile -Command "Get-Process testhost,dotnet,sqlservr ..."` was refused by the classifier. It was not needed, and Ahmad was notified.
 - Also: PC-078's implementer was blocked running `powershell.exe Get-CimInstance Win32_Process` (a check for lingering testhost processes). It did not retry, and the work completed. Ahmad was notified under §9.
 
 ### D-118 (orchestrator, 2026-11-18): PC-076 ActionContext.Persisted needs a custom awaitable; for Ahmad

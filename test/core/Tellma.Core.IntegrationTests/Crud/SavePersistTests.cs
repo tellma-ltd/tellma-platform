@@ -51,7 +51,7 @@ namespace Tellma.Core.IntegrationTests.Crud
         private const string Exports = "fixture.Export";
 
         /// <summary>The table the caller's statements write: no stack owns it.</summary>
-        private static readonly HashSet<TableName> Jobs = [new("core", "Jobs")];
+        private static readonly HashSet<TableName> CallerRows = [DetailsPipelineDatabase.CallerRows];
 
         /// <summary>The test's cancellation.</summary>
         private static CancellationToken Token => TestContext.Current.CancellationToken;
@@ -236,11 +236,11 @@ namespace Tellma.Core.IntegrationTests.Crud
             // --- Committed together ---
             await using (AsyncServiceScope scope = await fixture.ScopeAsync(subject))
             {
-                SaveOptions options = new() { ReturnEntities = false, OnPersist = batch => InsertJob(batch, 7401) };
-                long id = Assert.Single((await ExportService(scope).SaveAsync([new Export { Name = "with-job" }], options, Token)).Ids);
+                SaveOptions options = new() { ReturnEntities = false, OnPersist = batch => InsertCallerRow(batch, 7401) };
+                long id = Assert.Single((await ExportService(scope).SaveAsync([new Export { Name = "with-row" }], options, Token)).Ids);
 
-                Assert.Equal("with-job", await NameAsync((int)id));
-                Assert.Equal(1, await JobsAsync(7401));
+                Assert.Equal("with-row", await NameAsync((int)id));
+                Assert.Equal(1, await CallerRowsAsync(7401));
             }
 
             // --- A distribution's THROW in its band: the save and the caller's statement roll back ---
@@ -251,7 +251,7 @@ namespace Tellma.Core.IntegrationTests.Crud
                     ReturnEntities = false,
                     OnPersist = batch =>
                     {
-                        InsertJob(batch, 7402);
+                        InsertCallerRow(batch, 7402);
                         _ = batch.Sql($"THROW 50650, N'Acme.PeriodClosed', 1;", SqlOptions.None);
                     },
                 };
@@ -261,7 +261,7 @@ namespace Tellma.Core.IntegrationTests.Crud
                 Assert.Equal([" Acme.PeriodClosed"], Lines(refused));
             }
 
-            Assert.Equal(0, await JobsAsync(7402));
+            Assert.Equal(0, await CallerRowsAsync(7402));
             Assert.Equal(0, await fixture.Connect.ScalarAsync<int>(ConnectDatabase.TenantA, "SELECT COUNT(*) FROM [fixture].[Exports] WHERE [Name] = N'rolled-back';"));
         }
 
@@ -282,7 +282,7 @@ namespace Tellma.Core.IntegrationTests.Crud
                 OnPersist = batch =>
                 {
                     called++;
-                    InsertJob(batch, 7403);
+                    InsertCallerRow(batch, 7403);
                 },
             };
 
@@ -291,7 +291,7 @@ namespace Tellma.Core.IntegrationTests.Crud
             // --- The failed guard's round trip ran nothing; the recomposed batch replayed the caller's statement ---
             Assert.Equal((1, 2), (called, access.RoundTrips - before));
             Assert.Equal("recomposed", await NameAsync((int)id));
-            Assert.Equal(1, await JobsAsync(7403));
+            Assert.Equal(1, await CallerRowsAsync(7403));
         }
 
         [Fact]
@@ -299,7 +299,7 @@ namespace Tellma.Core.IntegrationTests.Crud
         {
             (int userId, string subject) = await fixture.SeedCallerAsync((Widgets, AccessActions.Read, null), (Widgets, AccessActions.Save, null));
             await WarmWidgetsAsync(subject);
-            WidgetSaveArm arm = fixture.Probe.Arm("W-stale-1", new WidgetSaveArm { Loads = static _ => [1], JobId = 7404 });
+            WidgetSaveArm arm = fixture.Probe.Arm("W-stale-1", new WidgetSaveArm { Loads = static _ => [1], RowId = 7404 });
 
             await using AsyncServiceScope scope = await fixture.ScopeAsync(subject);
             DataAccessScope access = scope.ServiceProvider.GetRequiredService<DataAccessScope>();
@@ -312,7 +312,7 @@ namespace Tellma.Core.IntegrationTests.Crud
             // validator ran again in memory, the effect's statement was replayed and committed once ---
             Assert.Equal(3, access.RoundTrips - before);
             Assert.Equal((2, 1, 1), (arm.Validations, arm.Contributions, arm.Commits));
-            Assert.Equal(1, await JobsAsync(7404));
+            Assert.Equal(1, await CallerRowsAsync(7404));
             Assert.Equal(id, await fixture.Connect.ScalarAsync<int>(ConnectDatabase.TenantA, "SELECT [Id] FROM [fixture].[Widgets] WHERE [Code] = 'W-stale-1';"));
         }
 
@@ -323,7 +323,7 @@ namespace Tellma.Core.IntegrationTests.Crud
         {
             (int userId, string subject) = await fixture.SeedCallerAsync((Widgets, AccessActions.Read, null), (Widgets, AccessActions.Save, null));
             await WarmWidgetsAsync(subject);
-            int jobId = 7403 + number;
+            int rowId = 7403 + number;
             WidgetSaveArm arm = fixture.Probe.Arm(
                 $"W-stale-{number}",
                 new WidgetSaveArm
@@ -332,7 +332,7 @@ namespace Tellma.Core.IntegrationTests.Crud
                     // while the recomposed persist is composed.
                     Loads = run => run == 1 || !newLoad ? [1] : [2],
                     Validated = run => run == 2 && !newLoad ? fixture.Connect.BumpPermissionsAsync(userId) : Task.CompletedTask,
-                    JobId = jobId,
+                    RowId = rowId,
                 });
 
             await using AsyncServiceScope scope = await fixture.ScopeAsync(subject);
@@ -342,7 +342,7 @@ namespace Tellma.Core.IntegrationTests.Crud
 
             // --- The validator re-ran, the effect contributed once, and nothing committed ---
             Assert.Equal((2, 1, 0), (arm.Validations, arm.Contributions, arm.Commits));
-            Assert.Equal(0, await JobsAsync(jobId));
+            Assert.Equal(0, await CallerRowsAsync(rowId));
             Assert.Equal(0, await fixture.Connect.ScalarAsync<int>(ConnectDatabase.TenantA, Invariant($"SELECT COUNT(*) FROM [fixture].[Widgets] WHERE [Code] = 'W-stale-{number}';")));
         }
 
@@ -548,18 +548,14 @@ namespace Tellma.Core.IntegrationTests.Crud
             return _ => Task.Run(write).GetAwaiter().GetResult();
         }
 
-        /// <summary>Appends a caller's insert of a job no other test's job takes.</summary>
+        /// <summary>Appends a caller's insert of a row no other test's row takes, into a table no stack owns.</summary>
         /// <param name="batch">The persist batch.</param>
-        /// <param name="jobId">The job's id.</param>
-        private static void InsertJob(IDataBatch batch, int jobId)
+        /// <param name="rowId">The row's id.</param>
+        private static void InsertCallerRow(IDataBatch batch, int rowId)
         {
-            // The job row stands for a caller's own statement: the test writes the platform's jobs table
-            // from a class that owns no stack, deliberately, as a caller's OnPersist would.
-#pragma warning disable TELLMA0006
-            _ = batch.Sql(
-                $"INSERT INTO [core].[Jobs] ([Id], [HandlerKey], [Status], [DueAt], [RunAsUserId], [CreatedAt]) VALUES ({jobId}, N'fixture.probe', 'Pending', SYSUTCDATETIME(), 1, SYSUTCDATETIME());",
-                new SqlOptions(writes: Jobs));
-#pragma warning restore TELLMA0006
+            // The row stands for a caller's own statement, as a caller's OnPersist writes a table of
+            // its own; a table a stack owns would be refused at append.
+            _ = batch.Sql($"INSERT INTO [dbo].[CallerRows] ([Id]) VALUES ({rowId});", new SqlOptions(writes: CallerRows));
         }
 
         /// <summary>Saves one export, which warms the caller's connection and set and the exports' id buffer.</summary>
@@ -626,12 +622,12 @@ namespace Tellma.Core.IntegrationTests.Crud
             return fixture.Connect.ScalarAsync<string>(ConnectDatabase.TenantA, Invariant($"SELECT [Name] FROM [fixture].[Exports] WHERE [Id] = {id};"));
         }
 
-        /// <summary>How many jobs hold an id.</summary>
-        /// <param name="jobId">The id.</param>
+        /// <summary>How many caller rows hold an id.</summary>
+        /// <param name="rowId">The id.</param>
         /// <returns>The count.</returns>
-        private Task<int> JobsAsync(int jobId)
+        private Task<int> CallerRowsAsync(int rowId)
         {
-            return fixture.Connect.ScalarAsync<int>(ConnectDatabase.TenantA, Invariant($"SELECT COUNT(*) FROM [core].[Jobs] WHERE [Id] = {jobId};"));
+            return fixture.Connect.ScalarAsync<int>(ConnectDatabase.TenantA, Invariant($"SELECT COUNT(*) FROM [dbo].[CallerRows] WHERE [Id] = {rowId};"));
         }
 
         /// <summary>A refusal's errors, each as its path and code, ordered.</summary>

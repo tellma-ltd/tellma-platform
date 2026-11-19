@@ -21,9 +21,45 @@ namespace Tellma.Core.Abstractions.Validation
     /// </remarks>
     public class ValidationErrors
     {
+        /// <summary>The argument a re-homed error names the stack it was raised for under: the enlisted target's entity name.</summary>
+        internal const string EnlistedResourceArgument = "enlistedResource";
+
         private readonly Lock _gate = new();
         private readonly List<ValidationError> _items = [];
         private ReadOnlyCollection<ValidationError>? _snapshot;
+
+        /// <summary>The list an enlisted stack's errors land in, re-homed; null for an operation's own list.</summary>
+        private readonly ValidationErrors? _host;
+
+        /// <summary>Maps a path of the enlisted stack's payload onto its host's; null maps every path to the host's root.</summary>
+        private readonly Func<ValidationPath, ValidationPath>? _map;
+
+        /// <summary>The enlisted stack's entity name, which every re-homed error carries; null for an operation's own list.</summary>
+        private readonly string? _enlistedResource;
+
+        /// <summary>Creates an operation's own list of errors.</summary>
+        public ValidationErrors()
+        {
+        }
+
+        // Spec 0015 §13.3: each participant of an enlisted group writes its own paths, and the view
+        // re-homes every error into the host's one list through the enlistment's path map, applied to
+        // the whole path, adding the target's entity name. A view over a view composes the maps along
+        // the nesting, the innermost first, and keeps the innermost target's name.
+        /// <summary>Creates the re-homing view an enlisted stack's participants write their errors to.</summary>
+        /// <param name="host">The host's list, or the view of the group the stack was enlisted from.</param>
+        /// <param name="map">Maps a path of the enlisted stack's payload onto the host's; null maps every path to the host's root.</param>
+        /// <param name="enlistedResource">The enlisted stack's entity name.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="host" /> is null.</exception>
+        /// <exception cref="ArgumentException"><paramref name="enlistedResource" /> is null, empty or white space.</exception>
+        internal ValidationErrors(ValidationErrors host, Func<ValidationPath, ValidationPath>? map, string enlistedResource)
+        {
+            ArgumentNullException.ThrowIfNull(host);
+            ArgumentException.ThrowIfNullOrWhiteSpace(enlistedResource);
+            _host = host;
+            _map = map;
+            _enlistedResource = enlistedResource;
+        }
 
         /// <summary>Whether any error was added.</summary>
         public bool HasErrors
@@ -64,6 +100,60 @@ namespace Tellma.Core.Abstractions.Validation
         {
             ValidationError error = new(path, code, arguments ?? ReadOnlyDictionary<string, object?>.Empty);
 
+            // --- The re-homed error first, so a path map that refuses leaves this list untouched ---
+            ValidationError? rehomed = _host is null ? null : Rehome(error);
+            lock (_gate)
+            {
+                _items.Add(error);
+                _snapshot = null;
+            }
+
+            _host?.AddRehomed(rehomed!);
+        }
+
+        /// <summary>
+        ///     The error as the operation's own list holds it: re-homed through every enlistment between
+        ///     this list and the operation's, the innermost first; unchanged for an operation's own list.
+        /// </summary>
+        /// <param name="error">An error at a path of this list's payload.</param>
+        /// <returns>The error at the operation's path, naming the innermost enlisted stack.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="error" /> is null.</exception>
+        /// <exception cref="InvalidOperationException">An enlistment's path map returned null.</exception>
+        internal ValidationError Rehome(ValidationError error)
+        {
+            ArgumentNullException.ThrowIfNull(error);
+            if (_host is null)
+            {
+                return error;
+            }
+
+            // --- This enlistment's map over the whole path; the default lands on the host's root ---
+            ValidationPath path = _map is null
+                ? ValidationPath.Root
+                : _map(error.Path) ?? throw new InvalidOperationException(
+                    $"The path map of the enlisted write to {_enlistedResource} returned null for the path '{error.Path}'. Map every path onto one of the host's, ValidationPath.Root when no other fits.");
+
+            // --- The innermost enlisted stack's name, kept as the error moves outward ---
+            IReadOnlyDictionary<string, object?> arguments = error.Arguments;
+            if (!arguments.ContainsKey(EnlistedResourceArgument))
+            {
+                Dictionary<string, object?> named = new(arguments, StringComparer.Ordinal) { [EnlistedResourceArgument] = _enlistedResource };
+                arguments = named.AsReadOnly();
+            }
+
+            return _host.Rehome(new ValidationError(path, error.Code, arguments));
+        }
+
+        /// <summary>Adds an error another list already re-homed onto the operation's paths: only the operation's own list holds it.</summary>
+        /// <param name="error">The re-homed error.</param>
+        private void AddRehomed(ValidationError error)
+        {
+            if (_host is not null)
+            {
+                _host.AddRehomed(error);
+                return;
+            }
+
             lock (_gate)
             {
                 _items.Add(error);
@@ -83,6 +173,20 @@ namespace Tellma.Core.Abstractions.Validation
     /// </example>
     public sealed class ValidationErrors<TEntity> : ValidationErrors
     {
+        /// <summary>Creates an operation's own list of errors.</summary>
+        public ValidationErrors()
+        {
+        }
+
+        /// <summary>Creates the re-homing view an enlisted stack's participants write their errors to.</summary>
+        /// <param name="host">The host's list, or the view of the group the stack was enlisted from.</param>
+        /// <param name="map">Maps a path of the enlisted stack's payload onto the host's; null maps every path to the host's root.</param>
+        /// <param name="enlistedResource">The enlisted stack's entity name.</param>
+        internal ValidationErrors(ValidationErrors host, Func<ValidationPath, ValidationPath>? map, string enlistedResource)
+            : base(host, map, enlistedResource)
+        {
+        }
+
         /// <summary>
         ///     Adds an error at a property of a payload row: the path
         ///     <c>Root.Index(index).Property(name)</c>, <c>[i].ParentId</c> in bracket form.

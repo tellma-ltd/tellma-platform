@@ -22,15 +22,19 @@ using Tellma.Core.Queryex;
 namespace Tellma.Core.Crud.Actions
 {
     // Spec 0015 §11.1 and §11.2 step 4: one Persist batch through the runner. Between the executor's
-    // fixed prefix and suffix it carries the access guards' lock, the emitter for the rows Save
+    // fixed prefix and suffix it carries the access guards' lock (a transaction-head statement,
+    // appended beside the invariants once every write is declared), the emitter for the rows Save
     // marked (ConcurrencyMode.Override: an action is a command over rows it just loaded), the
     // updates over the target ids under the caller's Read filter and the action grant, all or
     // nothing (the built-in action's own, then those Update composed), the statements the hook, the
     // components and the method appended, the participants over an ActionPersistContext, the guards'
     // invariants, the post-check when the action asks for it, and the read-back when the action
     // answers the target ids. A re-entered compose re-runs the validators in memory, recomposes the
-    // pipeline's own statements under the fresh grants and replays the rest (§5.1). The method's
-    // Persisted completes once the batch committed, before the post-commit phase (§13.2).
+    // pipeline's own statements under the fresh grants and replays the rest (§5.1). The groups the
+    // tasks enlisted (§13.3) sit around the action's statements: the BeforeHost ones ahead of the
+    // stack's own writes, the AfterHost ones after its participants, and the access guards join
+    // once the batch is composed, over every table any statement of it writes. The method's Persisted completes once the batch committed,
+    // before the post-commit phase (§13.2), whose groups' part follows the action's own.
     /// <summary>One action of one stack: the persist, its translation and its post-commit phase.</summary>
     internal sealed partial class ActionRun<TEntity, TKey>
     {
@@ -107,8 +111,19 @@ namespace Tellma.Core.Crud.Actions
             catch (DataAccessException failure)
             {
                 // The runner may have refreshed the context in its own frame: the conflict names its
-                // modifier in the culture of the context the batch was composed under.
+                // modifier in the culture of the context the batch was composed under. A failure of a
+                // statement a group composed is the group's.
                 Services.Accessor.Current.ApplyCultures();
+                if (Enlistments?.Translate(failure) is Exception grouped)
+                {
+                    if (ReferenceEquals(grouped, failure))
+                    {
+                        throw;
+                    }
+
+                    throw grouped;
+                }
+
                 if (PersistFailures.Translate(failure, FailureContext(), Services.Metrics) is Exception translated)
                 {
                     throw translated;
@@ -172,6 +187,7 @@ namespace Tellma.Core.Crud.Actions
         /// <returns>A task that completes when the batch is composed.</returns>
         /// <exception cref="ForbiddenException">The connected user's set no longer grants the action.</exception>
         /// <exception cref="NotFoundException">The connected user reads no row of the stack, so every target is hidden.</exception>
+        /// <exception cref="StaleContextException">On a re-entry, what the validators read moved, or the permission set moved under a group they validated.</exception>
         private async ValueTask ComposePersistAsync(ConnectedUser user, IDataBatch batch)
         {
             // --- Every entry is abandoned unsent when a task composed after reading Persisted, a flow
@@ -193,18 +209,16 @@ namespace Tellma.Core.Crud.Actions
             // --- The action grant, decided for the connected user ---
             Composer = user;
             AccessDecision granted = Granted(user, _descriptor.Action);
+
+            // --- A re-entry for a moved permission set never commits groups validated under the old one ---
+            EnsureGroupsJudgedUnder(user, Enlistments);
             batch.Limits = QueryexProfiles.PipelineLimits;
             IReadOnlySet<TableName> callers = batch.CallerAuthority;
             DependOnServed(batch);
 
-            // --- The access guards' lock, when the stack writes a security table ---
-            bool guarded = !Services.Accessor.Current.IsSystem && StackTableSet.WritesSecurityTable(StackTables);
-            if (guarded)
-            {
-                Services.AccessGuards.ContributeLock(batch);
-            }
-
-            // --- The stack's own writes, under its authority: the emitter, the target ids, the updates ---
+            // --- The groups enlisted ahead of the action, then the stack's own writes, under its
+            // authority: the emitter, the target ids, the updates ---
+            await ComposeEnlistedAsync(batch, EnlistOrder.BeforeHost, first).ConfigureAwait(false);
             Authorize(batch, StackTables);
             SaveHandle? saved = _marked.Length > 0 ? batch.Save(_marked, ConcurrencyMode.Override) : null;
             _saved = saved;
@@ -228,12 +242,15 @@ namespace Tellma.Core.Crud.Actions
                 _participants!.Replay(batch);
             }
 
-            // --- The guards' invariants, after every contribution ---
+            // --- The groups enlisted after the action ---
+            await ComposeEnlistedAsync(batch, EnlistOrder.AfterHost, first).ConfigureAwait(false);
+
+            // --- The access guards' lock and invariants, after every contribution, when a write meets a
+            // security table: decided over the stack's tables and every statement's declared writes, a
+            // group's, a participant's or the caller's raw ones included (spec 0014 §8.3); the lock is
+            // a transaction-head statement, written first in the transaction ---
             Authorize(batch, callers);
-            if (guarded)
-            {
-                Services.AccessGuards.ContributeInvariants(batch);
-            }
+            _ = PersistGuards.Contribute(Services.AccessGuards, Services.Accessor.Current, batch, StackTables);
 
             // --- The post-check over the marked and the updated ids, when the action asks for it ---
             if (_descriptor.PostCheck && granted.Outcome == AccessOutcome.Filtered)
@@ -381,10 +398,20 @@ namespace Tellma.Core.Crud.Actions
             return OwnResult ? _result : answered && composition is not null ? composition.Complete() : IdsOnly();
         }
 
-        /// <summary>Runs the post-commit phase of a committed action.</summary>
+        /// <summary>Appends the groups of one order enlisted with the action, each with its own groups around it.</summary>
+        /// <param name="batch">The persist batch.</param>
+        /// <param name="order">The groups' order.</param>
+        /// <param name="first">Whether this is the batch's first composition.</param>
+        /// <returns>A task that completes when the groups are composed.</returns>
+        private ValueTask ComposeEnlistedAsync(IDataBatch batch, EnlistOrder order, bool first)
+        {
+            return Enlistments is null ? ValueTask.CompletedTask : _frame!.ComposeGroupsAsync(batch, order, first);
+        }
+
+        /// <summary>Runs the post-commit phase of a committed action, then its groups'.</summary>
         /// <param name="committed">The outcome of the batch that committed; null when none answered.</param>
         /// <returns>A task that completes when every participant returned.</returns>
-        private Task AfterPersistAsync(BatchOutcome? committed)
+        private async Task AfterPersistAsync(BatchOutcome? committed)
         {
             ActionPersistOutcome<TEntity, TKey> outcome = new()
             {
@@ -400,7 +427,13 @@ namespace Tellma.Core.Crud.Actions
                 Arguments = _arguments,
                 Ids = _ids,
             };
-            return AfterCommitAsync(_behavior, outcome);
+            await AfterCommitAsync(_behavior, outcome).ConfigureAwait(false);
+
+            // --- The groups' post-commit phase, in the order the batch composed them ---
+            if (Enlistments is not null)
+            {
+                await _frame!.AfterGroupsCommitAsync(committed).ConfigureAwait(false);
+            }
         }
 
         /// <summary>Refuses a recomposed persist whose batch-local names differ from those the participants hold.</summary>

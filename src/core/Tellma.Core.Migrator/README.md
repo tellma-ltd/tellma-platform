@@ -22,7 +22,7 @@ tenant-model migrations are scaffolded with.
 |---|---|
 | `emit-client-assets <dir>` | Realises the composition with no host or database, runs only the startup checks that read the composition alone, runs every `IClientAssetContributor`, and writes the client metadata and the string packs into the generated folder `<dir>`. |
 | `migrate [--catalog-only] [--tenant <id>]... [--all-tenants] [--parallelism <n>]` | Creates a missing catalog, migrates it (and the in-proc identity store), grants `tellma_app`, registers and provisions the `Tellma:Seed:Tenants`, then migrates every tenant in parallel and prints one line per tenant. |
-| `provision [--tenant <id>] [--name …] [--category Live\|Sandbox] [--live-tenant <id>] [--server …] [--database …] [--admin-email …] [--admin-subject …]` | Registers a tenant (or resumes a `Provisioning` one) and brings it to `Active`, printing `provision: registered tenant <id>` as soon as the row exists. A line with `--tenant` converges when rerun: an id the catalog holds with the same registration (servers compared canonically) is resumed, and an active tenant is reported `provisioned (already)`. A line without `--tenant` draws a new id from the sequence on every run, so it is not rerun: the resume is `provision --tenant <id>`, which a failed run prints. `--admin-subject` is accepted in Development only. |
+| `provision [--tenant <id>] [--name …] [--category Live\|Sandbox] [--live-tenant <id>] [--server …] [--database …] [--admin-email …] [--admin-subject …]` | Registers a tenant (or resumes a `Provisioning` one) and brings it to `Active`, printing `provision: registered tenant <id>` as soon as the row exists. A line with `--tenant` converges when rerun: an id the catalog holds with the same registration (servers compared canonically) is resumed, and an active tenant is reported `provisioned (already)`. On an `Active` or `ReadOnly` tenant, a line that names an administrator (`--admin-email`, or in Development the seeded address) runs the administrator bootstrap alone, whatever the tenant records, then the membership hint and the invitation, and reports `provisioned (already; 1 administrator step(s))`: that is how a tenant provisioned without an administrator, or left without one, gets one. A line without `--tenant` draws a new id from the sequence on every run, so it is not rerun: the resume is `provision --tenant <id>`, which a failed run prints. `--admin-subject` is accepted in Development only. |
 | `set-state --tenant <id> --state <state> [--reason …]` | Moves a tenant to another state, as the actor `migrator`. |
 | `status` | Prints the catalog's pending migrations, each tenant's state, recorded schema fingerprints against the model's and pending migrations, then the composition's problems. Writes nothing. |
 
@@ -50,7 +50,9 @@ when it needs it, because `migrate` may have to create the catalog first.
 4. Migrates every `Active`, `ReadOnly` and `Suspended` tenant (or the named ones) under its tenant
    lock, reading the row again once the lock is held: the role, `Migrate()`, the schema
    fingerprint row, the grants, the version-tag seed, the due provisioning steps and the drift
-   scan. A tenant whose database is ahead of this migrator is reported `ahead`; a `Suspended` one
+   scan. `migrate` names no administrator, so the administrator bootstrap (`core.bootstrap-administrator`)
+   neither runs nor is recorded on a migrated tenant; a tenant it never ran on logs
+   `ProvisioningAdministratorNotBootstrapped`. A tenant whose database is ahead of this migrator is reported `ahead`; a `Suspended` one
    stops after the version-tag seed (`suspended-steps-deferred`); a `Frozen` one is skipped
    (`frozen`), even when named or frozen while the run waited for its lock; a non-seed
    `Provisioning` row is left to `provision` (`provisioning`).

@@ -36,10 +36,18 @@ namespace Tellma.Core.Migrator
         ///     membership hint and invitation; then the state <see cref="TenantState.Active" />.
         /// </summary>
         /// <remarks>
-        ///     The row is read again once the tenant's lock is held, because an overlapping run may
-        ///     have provisioned the tenant, or an operator moved it, since the caller listed it: an
-        ///     active or read-only tenant is reported provisioned already, and any other state but
-        ///     provisioning is a failure.
+        ///     <para>
+        ///         The row is read again once the tenant's lock is held, because an overlapping run may
+        ///         have provisioned the tenant, or an operator moved it, since the caller listed it: an
+        ///         active or read-only tenant is reported provisioned already, and any other state but
+        ///         provisioning is a failure.
+        ///     </para>
+        ///     <para>
+        ///         A run that names an administrator of an active or read-only tenant bootstraps that
+        ///         administrator, then records the membership hint and sends the invitation as a
+        ///         provisioning does: that is how a tenant provisioned without an administrator, or
+        ///         left without one, gets one. The tenant's other steps are left to its migration.
+        ///     </para>
         /// </remarks>
         /// <param name="tenantId">The tenant.</param>
         /// <param name="administrator">The first administrator the run names.</param>
@@ -60,6 +68,8 @@ namespace Tellma.Core.Migrator
                     return tenant switch
                     {
                         null => TenantOutcome.Failure(tenantId, "the catalog holds no such tenant"),
+                        { Descriptor.State: TenantState.Active or TenantState.ReadOnly } when administrator.Email is { } email && !string.IsNullOrWhiteSpace(email)
+                            => await BootstrapProvisionedAsync(tenant, administrator, email, held, cancellationToken).ConfigureAwait(false),
                         { Descriptor.State: TenantState.Active or TenantState.ReadOnly } => TenantOutcome.AlreadyProvisioned(tenantId),
                         _ => TenantOutcome.Failure(tenantId, string.Create(CultureInfo.InvariantCulture, $"the tenant is {tenant.Descriptor.State}; only a provisioning tenant is provisioned")),
                     };
@@ -102,23 +112,7 @@ namespace Tellma.Core.Migrator
                 }
 
                 // --- The administrator: the membership hint when the subject is known, then the invitation ---
-                if (administrator.Subject is not null)
-                {
-                    await Services.GetRequiredService<TenantMembershipDirectory>().RecordAsync(
-                        [new TenantMembershipRecord { TenantId = tenant.Id, Subject = administrator.Subject, IsActive = true }],
-                        TenantMembershipWriteSource.Provision,
-                        cancellationToken).ConfigureAwait(false);
-                }
-
-                if (administrator.Email is not null && IsRegistered<ITenantAdministratorInviter>())
-                {
-                    await held.EnsureHeldAsync(cancellationToken).ConfigureAwait(false);
-                    await InSystemScopeAsync(tenant.Id, async scope =>
-                    {
-                        ITenantAdministratorInviter inviter = scope.GetRequiredService<ITenantAdministratorInviter>();
-                        await inviter.InviteAsync(new TenantProvisioningContext(tenant.Descriptor, scope, IsNew: true, administrator.Subject, administrator.Email), cancellationToken).ConfigureAwait(false);
-                    }, cancellationToken).ConfigureAwait(false);
-                }
+                await AdministerAsync(tenant, administrator, isNew: true, held, cancellationToken).ConfigureAwait(false);
 
                 // --- Active, only while this run still holds the lock ---
                 await held.EnsureHeldAsync(cancellationToken).ConfigureAwait(false);
@@ -220,6 +214,71 @@ namespace Tellma.Core.Migrator
 
         /// <summary>The SQL options in effect.</summary>
         private TellmaSqlOptions SqlOptions => Services.GetRequiredService<IOptionsMonitor<TellmaSqlOptions>>().CurrentValue;
+
+        /// <summary>
+        ///     Bootstraps the administrator a run names on a tenant that is already provisioned: the
+        ///     administrator bootstrap alone, whatever the tenant records, then the membership hint and
+        ///     the invitation. The database is neither migrated nor checked here: a database behind
+        ///     the model fails the bootstrap's first batch, and the tenant's migration is the remedy.
+        /// </summary>
+        /// <param name="tenant">The tenant, active or read-only, under its lock.</param>
+        /// <param name="administrator">The administrator the run names.</param>
+        /// <param name="email">The administrator's email address.</param>
+        /// <param name="held">The tenant's lock, confirmed before the step and the invitation.</param>
+        /// <param name="cancellationToken">Cancels between stages.</param>
+        /// <returns>The outcome: provisioned already, with the steps that ran.</returns>
+        private async Task<TenantOutcome> BootstrapProvisionedAsync(TenantInfo tenant, ProvisioningAdministrator administrator, string email, MigrationLock held, CancellationToken cancellationToken)
+        {
+            // --- The bootstrap, which changes the tenant, so the tags move after it, or on its failure ---
+            ITenantVersionTagSeeder? tags = Services.GetService<ITenantVersionTagSeeder>();
+            TagMove move = new();
+            IReadOnlyList<string> steps = await MovingTagsOnFailureAsync(tenant.Id, tags, move, async () =>
+            {
+                // Whether a failed step committed first is not known; moving the tags when it did not costs one reload.
+                move.Due = true;
+                IReadOnlyList<string> steps = await Services.GetRequiredService<ProvisioningStepRunner>()
+                    .BootstrapAsync(tenant.Descriptor, administrator.Subject, email, held.EnsureHeldAsync, cancellationToken)
+                    .ConfigureAwait(false);
+                move.Due = steps.Count > 0;
+                await MoveTagsAsync(tenant.Id, tags, move, cancellationToken).ConfigureAwait(false);
+                return steps;
+            }).ConfigureAwait(false);
+
+            // --- The membership hint and the invitation, as a provisioning sends them ---
+            await AdministerAsync(tenant, administrator, isNew: false, held, cancellationToken).ConfigureAwait(false);
+            return new TenantOutcome(tenant.Id, TenantOutcome.Provisioned, string.Create(CultureInfo.InvariantCulture, $"already; {steps.Count} administrator step(s)"), []);
+        }
+
+        /// <summary>
+        ///     Records the administrator's membership hint when the run knows the subject, then invites
+        ///     the administrator when the run names an email address and an inviter is registered.
+        /// </summary>
+        /// <param name="tenant">The tenant.</param>
+        /// <param name="administrator">The administrator the run names.</param>
+        /// <param name="isNew">Whether the tenant is being provisioned.</param>
+        /// <param name="held">The tenant's lock, confirmed before the invitation.</param>
+        /// <param name="cancellationToken">Cancels the work.</param>
+        /// <returns>A task that completes when both are done.</returns>
+        private async Task AdministerAsync(TenantInfo tenant, ProvisioningAdministrator administrator, bool isNew, MigrationLock held, CancellationToken cancellationToken)
+        {
+            if (administrator.Subject is not null)
+            {
+                await Services.GetRequiredService<TenantMembershipDirectory>().RecordAsync(
+                    [new TenantMembershipRecord { TenantId = tenant.Id, Subject = administrator.Subject, IsActive = true }],
+                    TenantMembershipWriteSource.Provision,
+                    cancellationToken).ConfigureAwait(false);
+            }
+
+            if (administrator.Email is not null && IsRegistered<ITenantAdministratorInviter>())
+            {
+                await held.EnsureHeldAsync(cancellationToken).ConfigureAwait(false);
+                await InSystemScopeAsync(tenant.Id, async scope =>
+                {
+                    ITenantAdministratorInviter inviter = scope.GetRequiredService<ITenantAdministratorInviter>();
+                    await inviter.InviteAsync(new TenantProvisioningContext(tenant.Descriptor, scope, isNew, administrator.Subject, administrator.Email), cancellationToken).ConfigureAwait(false);
+                }, cancellationToken).ConfigureAwait(false);
+            }
+        }
 
         /// <summary>The report's detail of what a run applied.</summary>
         /// <param name="migrations">How many migrations were applied.</param>

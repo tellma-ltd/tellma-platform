@@ -44,5 +44,14 @@ namespace Tellma.Core.Crud
 
         /// <summary>The rows of an Excel export.</summary>
         public const string ExcelRows = "excel_rows";
+
+        /// <summary>An API action invoked through the action invoker, which hosts the writes its method enlists.</summary>
+        public const string ApiAction = "api_action";
+
+        /// <summary>A job's handler, which hosts the writes it enlists.</summary>
+        public const string Job = "job";
+
+        /// <summary>A provisioning step, which hosts the writes it enlists.</summary>
+        public const string Provisioning = "provisioning";
     }
 }

@@ -160,7 +160,11 @@ namespace Tellma.Core.Api
             if (stack.Operations.HasFlag(StackOperations.Delete))
             {
                 yield return Standard.Write("delete", typeof(IdsRequest), typeof(AffectedResult), AccessActions.Delete);
-                yield return Standard.Write("delete-by-query", typeof(DeleteByQueryRequest), typeof(AffectedResult), AccessActions.Delete);
+                if (stack.Operations.HasFlag(StackOperations.DeleteByQuery))
+                {
+                    yield return Standard.Write("delete-by-query", typeof(DeleteByQueryRequest), typeof(AffectedResult), AccessActions.Delete);
+                }
+
                 if (tree)
                 {
                     yield return Standard.Write("delete-with-descendants", typeof(IdsRequest), typeof(AffectedResult), AccessActions.Delete);

@@ -8,12 +8,13 @@ using Tellma.Core.Abstractions.Access;
 
 namespace Tellma.Core.Access
 {
-    // The instruments are spec 0014 §13's decision, witness, set-build and connect rows.
+    // The instruments are spec 0014 §13's decision, witness, set-build, guard and connect rows.
     /// <summary>
     ///     The permission set's, the evaluator's and the user connection's instruments on the core
     ///     meter: the decisions taken and their outcomes, the responses that carried no access
     ///     witness, how long a build took, how many grants it produced, the stored permissions that
-    ///     grant nothing, each connect prologue's result and how long it took. No instrument carries a
+    ///     grant nothing, the security guards that refused a write, each connect prologue's result and
+    ///     how long it took. No instrument carries a
     ///     tenant, a user, a role or a permission; those are log properties.
     /// </summary>
     internal sealed class AccessMetrics
@@ -35,6 +36,9 @@ namespace Tellma.Core.Access
 
         /// <summary>The permissions found to grant nothing.</summary>
         private readonly Counter<long> _unresolved;
+
+        /// <summary>The security guards that refused a write, by guard.</summary>
+        private readonly Counter<long> _guards;
 
         /// <summary>The connect prologues' results.</summary>
         private readonly Counter<long> _connectResults;
@@ -74,6 +78,10 @@ namespace Tellma.Core.Access
                 AccessTelemetryNames.PermissionsUnresolved,
                 "{permission}",
                 "Stored permissions found to grant nothing, once per problem and version of the tenant's permissions, by problem.");
+            _guards = meter.CreateCounter<long>(
+                AccessTelemetryNames.GuardsTriggered,
+                "{guard}",
+                "Security guards that refused a write: an invariant of the security tables, the security lock, or a validator's self-protection or escalation rule, by guard.");
 
             _connectResults = meter.CreateCounter<long>(
                 AccessTelemetryNames.ConnectResults,
@@ -146,6 +154,13 @@ namespace Tellma.Core.Access
         public void CountUnresolved(AccessProblemCode code)
         {
             _unresolved.Add(1, new KeyValuePair<string, object?>(AccessTelemetryNames.ProblemTag, ProblemValue(code)));
+        }
+
+        /// <summary>Counts one security guard that refused a write.</summary>
+        /// <param name="guard">The guard's tag value, one of the <c>Guard…</c> values of <see cref="AccessTelemetryNames" />.</param>
+        public void CountGuard(string guard)
+        {
+            _guards.Add(1, new KeyValuePair<string, object?>(AccessTelemetryNames.GuardTag, guard));
         }
 
         /// <summary>Counts one connect result.</summary>

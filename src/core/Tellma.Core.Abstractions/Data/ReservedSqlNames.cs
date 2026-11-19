@@ -64,6 +64,9 @@ namespace Tellma.Core.Abstractions.Data
         /// <summary>The connect prologue's verdict, which guards the batch body.</summary>
         public const string Guard = "@tm_Guard";
 
+        /// <summary>The return code of the tenant's security lock, taken first in a security write's transaction.</summary>
+        public const string SecurityLock = "@tm_Lock";
+
         /// <summary>The version tags a persist batch expects, checked by the tag guard.</summary>
         public const string ExpectedTags = "@tm_expectedTags";
 

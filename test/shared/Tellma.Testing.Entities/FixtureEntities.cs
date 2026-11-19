@@ -6,6 +6,7 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using Tellma.Core.Abstractions.Api;
+using Tellma.Core.Abstractions.Crud;
 using Tellma.Core.Abstractions.Entities;
 
 namespace Tellma.Testing.Entities
@@ -182,9 +183,10 @@ namespace Tellma.Testing.Entities
         public int OtherNodeId { get; set; }
     }
 
-    /// <summary>A job entity with a <see cref="long" /> key.</summary>
+    /// <summary>A job entity with a <see cref="long" /> key, whose stack accepts enlisted writes.</summary>
     [Table("Shipments", Schema = FixtureSchema.Name)]
     [TableType]
+    [Stack(Operations = StackOperations.All | StackOperations.Enlist)]
     public class Shipment : TopLevelEntity<long>, IJobEntity
     {
         /// <summary>The state, <c>varchar(8)</c>.</summary>
@@ -238,10 +240,12 @@ namespace Tellma.Testing.Entities
 
     /// <summary>
     ///     An owner of blobs: two blob-reference columns of two kinds on one row, and a child table
-    ///     with a third, so the blob suites attach, replace and release on a root and on a child.
+    ///     with a third, so the blob suites attach, replace and release on a root and on a child. Its
+    ///     stack accepts enlisted writes, so the blob suites attach through another stack's save too.
     /// </summary>
     [Table("BlobOwners", Schema = FixtureSchema.Name)]
     [TableType]
+    [Stack(Operations = StackOperations.All | StackOperations.Enlist)]
     public class BlobOwner : TopLevelEntity
     {
         /// <summary>The owner's name.</summary>

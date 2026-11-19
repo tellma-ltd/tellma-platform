@@ -31,7 +31,7 @@ namespace Tellma.Core.Tests.Crud.Scripted
     ///         needs a failure throws it from its execution hook.
     ///     </para>
     /// </remarks>
-    internal sealed class ScriptedBatch : IDataBatch, IBatchKeyTables, IBatchNamedTables, IBatchAuthority, IBatchDependencies
+    internal sealed class ScriptedBatch : IDataBatch, IBatchKeyTables, IBatchNamedTables, IBatchAuthority, IBatchDependencies, IBatchOrdinals
     {
         /// <summary>The script that answers the statements.</summary>
         private readonly BatchScript _script;
@@ -202,6 +202,7 @@ namespace Tellma.Core.Tests.Crud.Scripted
             ArgumentNullException.ThrowIfNull(rows);
             BatchResult<SaveReceipt> receipt = new();
             ScriptedStatement statement = Append(ScriptedKind.Save, typeof(TEntity), rows, arguments: null, concurrency, name: null);
+            DeclareWrites(typeof(TEntity));
             Expect(statement, recorded => receipt.Complete(_script.Answer<SaveReceipt>(recorded)));
             string prefix = string.Create(CultureInfo.InvariantCulture, $"@save{statement.Ordinal}_");
             return new SaveHandle(receipt, new SqlIdentifier(prefix + "saved"), new SqlIdentifier(prefix + "new"), new SqlIdentifier(prefix + "touched"), []);
@@ -214,6 +215,7 @@ namespace Tellma.Core.Tests.Crud.Scripted
             ArgumentNullException.ThrowIfNull(spec);
             BatchResult<UpdateReceipt> result = new();
             ScriptedStatement statement = Append(ScriptedKind.Update, typeof(TEntity), spec, arguments: null, options: null, name: null);
+            DeclareWrites(typeof(TEntity));
             Expect(statement, recorded => result.Complete(_script.Answer<UpdateReceipt>(recorded)));
             return result;
         }
@@ -225,8 +227,19 @@ namespace Tellma.Core.Tests.Crud.Scripted
             ArgumentNullException.ThrowIfNull(spec);
             BatchResult<DeleteReceipt> receipt = new();
             ScriptedStatement statement = Append(ScriptedKind.Delete, typeof(TEntity), spec, arguments: null, options: null, name: null);
+            DeclareWrites(typeof(TEntity));
             Expect(statement, recorded => receipt.Complete(_script.Answer<DeleteReceipt>(recorded)));
             return new DeleteHandle(receipt, new SqlIdentifier(string.Create(CultureInfo.InvariantCulture, $"@delete{statement.Ordinal}_deleted")), []);
+        }
+
+        /// <summary>Records the tables the script says a typed write of an entity type declares, as the platform's batch records its own statements' writes.</summary>
+        /// <param name="entity">The entity type written.</param>
+        private void DeclareWrites(Type entity)
+        {
+            if (_script.Writes is { } writes)
+            {
+                _written.UnionWith(writes(entity));
+            }
         }
 
         /// <inheritdoc />
@@ -407,6 +420,14 @@ namespace Tellma.Core.Tests.Crud.Scripted
         {
             ArgumentNullException.ThrowIfNull(authority);
             CallerAuthority = authority;
+        }
+
+        /// <inheritdoc />
+        /// <remarks>The ordinal is the next call's position among the batch's calls, its <see cref="ScriptedStatement.Ordinal" />.</remarks>
+        public int NextOrdinal()
+        {
+            EnsureComposing();
+            return _statements.Count;
         }
 
         /// <summary>

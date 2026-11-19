@@ -30,9 +30,11 @@ namespace Tellma.Core.Abstractions.Crud
     public static class EnlistmentExtensions
     {
         /// <summary>
-        ///     Enlists a save of rows of the target stack. The target's shape checks, preprocessing, id
-        ///     assignment, before images and validators run as tasks on the host's validation scheduler;
-        ///     the returned task completes once they did, with the rows carrying their final ids.
+        ///     Enlists a save of rows of the target stack. The target's shape checks and preprocessing run
+        ///     at once; its ids are assigned from a warm buffer at once, or in the host's next validation
+        ///     round, which the returned task waits for; its before images, checks and validators then
+        ///     run as tasks of the host's rounds. The returned task completes once the rows carry their
+        ///     final ids, and the rows carry the batch's stamp once the host committed.
         /// </summary>
         /// <typeparam name="TTarget">The target stack's entity type.</typeparam>
         /// <param name="writer">The writer, which declares the pair.</param>
@@ -95,7 +97,7 @@ namespace Tellma.Core.Abstractions.Crud
         /// <param name="writer">The writer, which declares the pair.</param>
         /// <param name="rows">The rows to save.</param>
         /// <param name="options">How the save runs.</param>
-        /// <returns>The enlisted save, once the target's checks and validators completed.</returns>
+        /// <returns>The enlisted save, once its rows carry their final ids.</returns>
         Task<EnlistedSave<TTarget>> EnlistSaveAsync<TTarget>(IEnlists<TTarget> writer, IReadOnlyList<TTarget> rows, EnlistSaveOptions options);
 
         /// <summary>Enlists a delete with the frame.</summary>

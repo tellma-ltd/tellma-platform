@@ -3,6 +3,7 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+using System.Collections.Frozen;
 using System.Reflection;
 using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Composition;
@@ -10,6 +11,7 @@ using Tellma.Core.Abstractions.Crud;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Composition;
 using Tellma.Core.Composition.Checks;
+using Tellma.Core.Crud.Save;
 using Tellma.Core.Data.Metadata;
 
 namespace Tellma.Core.Crud
@@ -112,6 +114,24 @@ namespace Tellma.Core.Crud
             return _contents.Value.Methods.GetValueOrDefault(action);
         }
 
+        /// <summary>The stack a class of the composition is attached to: as the stack's service, a companion or a component.</summary>
+        /// <param name="writer">The class.</param>
+        /// <returns>The stack, or null for a class attached to none, such as a routed service or a job handler.</returns>
+        public StackDescriptor? StackOfWriter(Type writer)
+        {
+            ArgumentNullException.ThrowIfNull(writer);
+            return _contents.Value.WriterStacks.GetValueOrDefault(writer);
+        }
+
+        /// <summary>The classes attached to a stack, which take part in its writes: its service, companions and components.</summary>
+        /// <param name="resource">The stack's resource.</param>
+        /// <returns>The classes; empty for a resource no stack serves.</returns>
+        public IReadOnlySet<Type> ParticipantsOf(string resource)
+        {
+            ArgumentNullException.ThrowIfNull(resource);
+            return _contents.Value.Participants.GetValueOrDefault(resource) ?? FrozenSet<Type>.Empty;
+        }
+
         /// <summary>Builds the registry's contents.</summary>
         /// <param name="composition">The settled stacks.</param>
         /// <param name="source">The source of the entity metadata.</param>
@@ -144,7 +164,7 @@ namespace Tellma.Core.Crud
                 }
 
                 StackDescriptor stack = builder.Build(composed, metadata);
-                CheckOperations(stack, problems);
+                CheckOperations(stack, metadata, problems);
                 stacks.Add(stack);
                 byLeaf[composed.Leaf] = stack;
                 children.AddRange(builder.ChildQueries(stack, metadata));
@@ -177,6 +197,23 @@ namespace Tellma.Core.Crud
                 _ = childByResource.TryAdd(child.Resource, child);
             }
 
+            // --- The classes attached to each stack, which take part in its writes ---
+            Dictionary<Type, StackDescriptor> writerStacks = [];
+            Dictionary<string, HashSet<Type>> participants = new(StringComparer.Ordinal);
+            foreach ((Type writer, Type? leaf) in composition.Writers())
+            {
+                if (leaf is not null && byLeaf.TryGetValue(leaf, out StackDescriptor? owner))
+                {
+                    writerStacks[writer] = owner;
+                    if (!participants.TryGetValue(owner.Resource, out HashSet<Type>? attached))
+                    {
+                        participants[owner.Resource] = attached = [];
+                    }
+
+                    _ = attached.Add(writer);
+                }
+            }
+
             return new Contents(
                 Failed: false,
                 problems,
@@ -189,16 +226,20 @@ namespace Tellma.Core.Crud
                 byTable,
                 byLeaf,
                 builder.Methods,
-                [.. stacks.Select(static stack => new StackRoute(stack.ResourceSegment, stack.Operations))]);
+                [.. stacks.Select(static stack => new StackRoute(stack.ResourceSegment, stack.Operations))],
+                writerStacks,
+                participants.ToDictionary(static entry => entry.Key, static entry => (IReadOnlySet<Type>)entry.Value, StringComparer.Ordinal));
         }
 
         /// <summary>
         ///     Reports an operation set the pipeline cannot serve: a save without the details plan it
-        ///     reads back through, an import without what it reads and writes, an export without a query.
+        ///     reads back through, an import without what it reads and writes, an export without a query,
+        ///     a delete by query without the delete, or one over a security table.
         /// </summary>
         /// <param name="stack">The stack.</param>
+        /// <param name="metadata">The stack's entity, whose tables are judged.</param>
         /// <param name="problems">Receives the problems.</param>
-        private static void CheckOperations(StackDescriptor stack, List<CompositionProblem> problems)
+        private static void CheckOperations(StackDescriptor stack, EntityMetadata metadata, List<CompositionProblem> problems)
         {
             StackOperations operations = stack.Operations;
             if (operations.HasFlag(StackOperations.Save) && !operations.HasFlag(StackOperations.Details))
@@ -215,6 +256,18 @@ namespace Tellma.Core.Crud
             if (operations.HasFlag(StackOperations.Export) && !operations.HasFlag(StackOperations.Query))
             {
                 Report(stack, "keeps Export but omits Query; an export runs the stack's query.", "Add Query to the operations, or remove Export.");
+            }
+
+            if (operations.HasFlag(StackOperations.DeleteByQuery) && !operations.HasFlag(StackOperations.Delete))
+            {
+                Report(stack, "keeps DeleteByQuery but omits Delete; a delete by query is a delete, under its securable action.", "Add Delete to the operations, or remove DeleteByQuery.");
+            }
+
+            // A delete by query runs no validation hook, so a stack over a security table would let
+            // it delete past the rules that keep the tenant's administrators (spec 0014 §3.9).
+            if (operations.HasFlag(StackOperations.DeleteByQuery) && StackTableSet.WritesSecurityTable(StackTableSet.Of(metadata)))
+            {
+                Report(stack, "keeps DeleteByQuery over a security table; its rows are deleted by their ids, so each deletion meets the rules that keep the tenant's administrators.", "Remove DeleteByQuery from the operations.");
             }
 
             void Report(StackDescriptor stack, string problem, string fix)
@@ -331,7 +384,7 @@ namespace Tellma.Core.Crud
                 if (ActionMethods.Api(type, method, attribute, securable, problems) is ApiActionDescriptor action)
                 {
                     actions.Add(action);
-                    methods[action] = new ActionMethod(type, method);
+                    methods[action] = new ActionMethod(type, method, route.Route);
                 }
             }
 
@@ -559,6 +612,8 @@ namespace Tellma.Core.Crud
         /// <param name="ByLeaf">The stacks by leaf entity type.</param>
         /// <param name="Methods">The method behind each declared action, by descriptor instance.</param>
         /// <param name="Routes">Every stack's route.</param>
+        /// <param name="WriterStacks">The stack each attached class belongs to: its service, companions and components.</param>
+        /// <param name="Participants">The classes attached to each stack, by resource.</param>
         private sealed record Contents(
             bool Failed,
             IReadOnlyList<CompositionProblem> Problems,
@@ -571,14 +626,16 @@ namespace Tellma.Core.Crud
             Dictionary<(string Schema, string Name), StackDescriptor> ByTable,
             Dictionary<Type, StackDescriptor> ByLeaf,
             Dictionary<ActionDescriptor, ActionMethod> Methods,
-            IReadOnlyCollection<StackRoute> Routes)
+            IReadOnlyCollection<StackRoute> Routes,
+            Dictionary<Type, StackDescriptor> WriterStacks,
+            Dictionary<string, IReadOnlySet<Type>> Participants)
         {
             /// <summary>The contents of a registry whose tenant model failed.</summary>
             /// <param name="problems">The problems found before the model was needed.</param>
             /// <returns>The contents.</returns>
             public static Contents Empty(List<CompositionProblem> problems)
             {
-                return new Contents(true, problems, [], [], [], [], [], [], new(TableComparer.Instance), [], new(ReferenceEqualityComparer.Instance), []);
+                return new Contents(true, problems, [], [], [], [], [], [], new(TableComparer.Instance), [], new(ReferenceEqualityComparer.Instance), [], [], new(StringComparer.Ordinal));
             }
         }
     }

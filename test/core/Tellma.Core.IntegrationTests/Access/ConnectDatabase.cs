@@ -15,6 +15,7 @@ using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.Access;
 using Tellma.Core.Caching;
 using Tellma.Core.Composition;
+using Tellma.Core.Data.Conventions;
 using Tellma.Core.Queryex;
 using Tellma.Core.Tenancy;
 using Tellma.Testing.Entities;
@@ -35,8 +36,18 @@ namespace Tellma.Core.IntegrationTests.Access
         /// <summary>The second tenant, whose database reuses the first one's ids.</summary>
         public const int TenantB = 2;
 
-        /// <summary>The next user id a test seeds, above the reserved band; the two databases share the sequence.</summary>
-        private int _nextUserId = 1000;
+        /// <summary>
+        ///     The first id the users' sequence hands a save through the pipeline, far above every id a
+        ///     test seeds. Seeded rows then never stand above the sequence, so the id allocator never
+        ///     finds it behind its table and moves it onto the next seeded id.
+        /// </summary>
+        private const int FirstSequencedUserId = 1_000_000_000;
+
+        /// <summary>
+        ///     The next user id a test seeds, below the ids the users' sequence hands, so the two never
+        ///     meet; the two databases share the counter.
+        /// </summary>
+        private int _nextUserId = 1_000_000;
 
         /// <summary>The tenants, by id.</summary>
         private Dictionary<int, TenantInfo>? _tenants;
@@ -75,7 +86,7 @@ namespace Tellma.Core.IntegrationTests.Access
             _tenants = tenants;
             _provider = Compose(tenants);
 
-            // --- The databases: migrated, the settings completed and every registered tag seeded ---
+            // --- The databases: migrated, the settings completed, every registered tag seeded and the users' sequence above the seeded ids ---
             string fingerprint = _provider.GetRequiredService<IEntityMetadataProvider>().StorageFingerprint;
             string tags = string.Join(", ", _provider.GetRequiredService<IVersionTagRegistry>().Names.Select(static name => $"(N'{name}')"));
             foreach ((int tenantId, TenantInfo tenant) in tenants)
@@ -84,7 +95,8 @@ namespace Tellma.Core.IntegrationTests.Access
                 await SqlServerFixture.ExecuteAsync(
                     tenant.ConnectionString,
                     string.Create(CultureInfo.InvariantCulture, $"UPDATE [core].[Settings] SET [TenantId] = {tenantId}, [Name] = N'Tenant {tenantId}';"),
-                    $"INSERT INTO [core].[VersionTags] ([Name], [Tag]) SELECT n.[Name], NEWID() FROM (VALUES {tags}) AS n ([Name]) WHERE NOT EXISTS (SELECT 1 FROM [core].[VersionTags] AS t WHERE t.[Name] = n.[Name]);");
+                    $"INSERT INTO [core].[VersionTags] ([Name], [Tag]) SELECT n.[Name], NEWID() FROM (VALUES {tags}) AS n ([Name]) WHERE NOT EXISTS (SELECT 1 FROM [core].[VersionTags] AS t WHERE t.[Name] = n.[Name]);",
+                    string.Create(CultureInfo.InvariantCulture, $"ALTER SEQUENCE [core].[{ConstraintNames.Sequence("Users")}] RESTART WITH {FirstSequencedUserId};"));
             }
         }
 
@@ -117,6 +129,7 @@ namespace Tellma.Core.IntegrationTests.Access
         /// <param name="state">The state the request sees the tenant in.</param>
         /// <param name="background">Whether the request is a background one that stamps no activity.</param>
         /// <param name="services">The instance the scope is of; this fixture's own when null.</param>
+        /// <param name="assurance">How the caller's session was authenticated, which a sensitive securable's step-up bar reads; none when null.</param>
         /// <returns>The scope.</returns>
         public async Task<AsyncServiceScope> ScopeAsync(
             string? subject,
@@ -125,13 +138,14 @@ namespace Tellma.Core.IntegrationTests.Access
             int tenantId = TenantA,
             TenantState state = TenantState.Active,
             bool background = false,
-            IServiceProvider? services = null)
+            IServiceProvider? services = null,
+            AuthenticationAssurance? assurance = null)
         {
             AsyncServiceScope scope = (services ?? Services).CreateAsyncScope();
             try
             {
                 IRequestContextHolder holder = scope.ServiceProvider.GetRequiredService<IRequestContextHolder>();
-                RequestContext context = holder.Current with { Tenant = Descriptor(tenantId, state), Kind = kind, Subject = subject, UserId = userId };
+                RequestContext context = holder.Current with { Tenant = Descriptor(tenantId, state), Kind = kind, Subject = subject, UserId = userId, Assurance = assurance };
                 holder.Set(context);
                 _ = await RequestContextInitialization.RunAsync(
                     holder,

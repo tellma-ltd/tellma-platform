@@ -1,10 +1,10 @@
 stack core.User
   segment: users
   entity: Tellma.Core.Abstractions.Access.User
-  service: Tellma.Core.Crud.DefaultEntityService<Tellma.Core.Abstractions.Access.User, int>
+  service: Tellma.Core.Users.UserService<Tellma.Core.Abstractions.Access.User>
   key: int
   description: -
-  operations: All, Enlist
+  operations: Save, Delete, Import, Read, Enlist
   capabilities: activatable, temporal, multilingual, blobs, searchable, excel
   properties: Id:ServerOwned, CreatedAt:ServerOwned, CreatedById:ServerOwned, ModifiedAt:ServerOwned, ModifiedById:ServerOwned, Kind:WriteOnce, Subject:ServerOwned, Email:Editable, State:DatabaseOwned, InvitedAt:ServerOwned, InviteStatus:ServerOwned, LastInviteError:ServerOwned, JoinedAt:ServerOwned, Name:Editable, Name2:Editable, Name3:Editable, ImageId:Editable, SignatureId:Editable, PreferredLanguage:Editable, PreferredCalendar:Editable, PreferredTimeZone:Editable, PreferredRegion:Editable, PreferredDigits:Editable, Gender:Editable, ContactEmail:Editable, ContactMobile:Editable, IsActive:ServerOwned
   children: RoleMemberships(RoleMembership by UserId, max 10000)
@@ -25,10 +25,10 @@ stack core.User
 stack core.Role
   segment: roles
   entity: Tellma.Core.Abstractions.Access.Role
-  service: Tellma.Core.Crud.DefaultEntityService<Tellma.Core.Abstractions.Access.Role, int>
+  service: Tellma.Core.Users.RoleService<Tellma.Core.Abstractions.Access.Role>
   key: int
   description: -
-  operations: All
+  operations: Save, Delete, Import, Read
   capabilities: activatable, temporal, multilingual, searchable, excel
   properties: Id:ServerOwned, CreatedAt:ServerOwned, CreatedById:ServerOwned, ModifiedAt:ServerOwned, ModifiedById:ServerOwned, Name:Editable, Name2:Editable, Name3:Editable, Code:Editable, IsPublic:Editable, IsActive:ServerOwned
   children: Permissions(Permission by RoleId, max 10000)
@@ -190,7 +190,7 @@ stack fixture.Shipment
   service: Tellma.Core.Crud.DefaultEntityService<Tellma.Testing.Entities.Shipment, long>
   key: long
   description: -
-  operations: All
+  operations: Enlist, All
   capabilities: job-entity, excel
   properties: Id:ServerOwned, CreatedAt:ServerOwned, CreatedById:ServerOwned, ModifiedAt:ServerOwned, ModifiedById:ServerOwned, State:Editable, Payload:Editable, JobId:ServerOwned
   children: -
@@ -258,7 +258,7 @@ stack fixture.BlobOwner
   service: Tellma.Core.Crud.DefaultEntityService<Tellma.Testing.Entities.BlobOwner, int>
   key: int
   description: -
-  operations: All
+  operations: Enlist, All
   capabilities: blobs, excel
   properties: Id:ServerOwned, CreatedAt:ServerOwned, CreatedById:ServerOwned, ModifiedAt:ServerOwned, ModifiedById:ServerOwned, Name:Editable, FileId:Editable, PhotoId:Editable
   children: Files(BlobOwnerFile by BlobOwnerId, max 10000)
@@ -351,3 +351,4 @@ child fixture.Link
   exportable: yes
   limits: default
   mcp: Full
+enlistment Tellma.Core.Users.UserService<Tellma.Core.Abstractions.Access.User> -> core.User

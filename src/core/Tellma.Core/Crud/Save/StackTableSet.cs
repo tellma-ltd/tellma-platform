@@ -7,9 +7,9 @@ using Tellma.Core.Abstractions.Data;
 
 namespace Tellma.Core.Crud.Save
 {
-    // Spec 0015 §6.7 step 4: the access guards' lock and invariants join a persist whose declared
-    // writes meet a security table, which a stack writes when its root or any child collection at
-    // any depth maps to one.
+    // Spec 0015 §6.7 step 4 and spec 0014 §8.3: the access guards' lock and invariants join a
+    // persist whose stack or declared writes meet a security table; a stack writes one when its
+    // root or any child collection at any depth maps to one.
     /// <summary>The tables a stack's save writes, and whether any is a security table the access guards hold to their invariants.</summary>
     internal static class StackTableSet
     {

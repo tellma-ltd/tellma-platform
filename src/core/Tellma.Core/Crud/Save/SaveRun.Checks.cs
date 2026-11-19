@@ -58,6 +58,7 @@ namespace Tellma.Core.Crud.Save
                 IdReservation reservation = _reservation
                     ?? throw new InvalidOperationException("A deferred reservation rides round trip 1, which composed none.");
                 reservation.Assign(Payload);
+                PrimeNewRows();
             }
 
             // --- Step 1: existence, then the save grant's count ---

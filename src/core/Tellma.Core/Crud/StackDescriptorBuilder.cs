@@ -196,7 +196,8 @@ namespace Tellma.Core.Crud
 
             if (operations.HasFlag(StackOperations.Delete))
             {
-                segments.UnionWith(["delete", "delete-by-query"]);
+                segments.Add("delete");
+                AddIf(segments, operations.HasFlag(StackOperations.DeleteByQuery), "delete-by-query");
                 AddIf(segments, tree, "delete-with-descendants");
             }
 
@@ -306,7 +307,7 @@ namespace Tellma.Core.Crud
                 if (action is not null)
                 {
                     actions.Add(action);
-                    Methods[action] = new ActionMethod(service, method);
+                    Methods[action] = new ActionMethod(service, method, resource);
                 }
             }
 
@@ -350,7 +351,7 @@ namespace Tellma.Core.Crud
                     if (ActionMethods.Api(companion, method, apiAction, securable, problems) is ApiActionDescriptor action)
                     {
                         actions.Add(action);
-                        Methods[action] = new ActionMethod(companion, method);
+                        Methods[action] = new ActionMethod(companion, method, resource);
                     }
                 }
             }
@@ -736,7 +737,8 @@ namespace Tellma.Core.Crud
     /// <summary>The method behind a declared action, and the class it is reached through.</summary>
     /// <param name="Handler">The class the invoker resolves: the stack's service, the closed companion or the routed service.</param>
     /// <param name="Method">The method.</param>
-    internal sealed record ActionMethod(Type Handler, MethodInfo Method)
+    /// <param name="Owner">The resource the action is declared under: its stack's, or the routed service's route; an API action's frame is named after it.</param>
+    internal sealed record ActionMethod(Type Handler, MethodInfo Method, string Owner)
     {
         /// <summary>
         ///     Whether the method's last parameter is a <see cref="CancellationToken" />, which the

@@ -45,10 +45,7 @@ namespace Tellma.Core.Crud
             ArgumentNullException.ThrowIfNull(body);
 
             // --- The unit of work is the scope's first operation; one nested in it keeps its name ---
-            if (scope.Operation.Length == 0)
-            {
-                scope.Operation = $"{resource}:{operation}";
-            }
+            Name(resource, operation);
 
             long started = time.GetTimestamp();
             string outcome = CrudOutcomes.Ok;
@@ -66,6 +63,22 @@ namespace Tellma.Core.Crud
             finally
             {
                 metrics.RecordOperation(operation, outcome, source, lane, time.GetElapsedTime(started).TotalSeconds);
+            }
+        }
+
+        /// <summary>
+        ///     Names the scope's unit of work after an operation, unless an earlier operation of the
+        ///     scope named it: an API action's frame names it so, its nested operations keeping it.
+        /// </summary>
+        /// <param name="resource">The stack's, the surface's or the route's resource.</param>
+        /// <param name="operation">The operation's name.</param>
+        public void Name(string resource, string operation)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(resource);
+            ArgumentException.ThrowIfNullOrWhiteSpace(operation);
+            if (scope.Operation.Length == 0)
+            {
+                scope.Operation = $"{resource}:{operation}";
             }
         }
     }

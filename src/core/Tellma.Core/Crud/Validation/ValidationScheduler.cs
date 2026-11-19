@@ -14,7 +14,8 @@ namespace Tellma.Core.Crud.Validation
     // enlisted writes), and a validator awaiting anything other than LoadAsync is active, so the
     // dispatch waits for it. A task may leave the rounds while it still runs (an action's method
     // about to wait for its persist, §11.2); a later park of its flow is a stray. Exceeding
-    // MaxValidationRounds is an authoring bug.
+    // MaxValidationRounds is an authoring bug. The operation's own tasks carry a slot, the same on a
+    // re-run of them (§5.1), by which what the re-run does is matched to what the first run did.
     /// <summary>
     ///     Runs an operation's validators as concurrent tasks and dispatches their loads in shared
     ///     rounds: one dispatch each time every registered task has parked at the loader or completed.
@@ -130,6 +131,37 @@ namespace Tellma.Core.Crud.Validation
         /// <summary>Whether the current asynchronous flow runs as one of this scheduler's tasks.</summary>
         public bool IsInTask => CurrentParticipant.Value?.Scheduler == this;
 
+        /// <summary>
+        ///     The task the current asynchronous flow runs as, as an opaque token a caller compares by
+        ///     reference: a flow of one task always answers the same one; null outside every task of
+        ///     this scheduler.
+        /// </summary>
+        public object? CurrentTask => CurrentParticipant.Value is { } current && current.Scheduler == this ? current : null;
+
+        /// <summary>The slot the current flow's task was registered with; null outside every task of this scheduler, or for a task registered with none.</summary>
+        public int? CurrentSlot => CurrentParticipant.Value is { } current && current.Scheduler == this ? current.Slot : null;
+
+        /// <summary>
+        ///     Whether the current flow's task is parked at a load. The current flow runs, so another
+        ///     flow of the same task is parked, and what the current flow does now races that flow's
+        ///     resumption: a re-run, whose loads are answered at once, may do it in another order.
+        /// </summary>
+        public bool IsCurrentTaskParked
+        {
+            get
+            {
+                if (CurrentParticipant.Value is not { } current || current.Scheduler != this)
+                {
+                    return false;
+                }
+
+                lock (_gate)
+                {
+                    return current.State == ParticipantState.Parked;
+                }
+            }
+        }
+
         /// <summary>Whether the rounds run: started, and not over.</summary>
         public bool IsRunning
         {
@@ -165,12 +197,17 @@ namespace Tellma.Core.Crud.Validation
         /// </summary>
         /// <param name="name">The task's name, which the round-ceiling error names, such as the validator's class.</param>
         /// <param name="task">The task's body.</param>
+        /// <param name="slot">
+        ///     The task's place among the operation's own tasks, the same on every run of them, by which
+        ///     what a re-run does is matched to what the first run did; null for a task that is not the
+        ///     operation's own, such as an enlisted group's, or one a re-run never repeats.
+        /// </param>
         /// <exception cref="InvalidOperationException">The rounds are over.</exception>
-        public void Run(string name, Func<Task> task)
+        public void Run(string name, Func<Task> task, int? slot = null)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(name);
             ArgumentNullException.ThrowIfNull(task);
-            Participant participant = new(this, name);
+            Participant participant = new(this, name, slot);
             lock (_gate)
             {
                 if (_finished)
@@ -557,13 +594,17 @@ namespace Tellma.Core.Crud.Validation
         /// <summary>One registered task.</summary>
         /// <param name="scheduler">The scheduler it runs under.</param>
         /// <param name="name">Its name.</param>
-        private sealed class Participant(ValidationScheduler scheduler, string name)
+        /// <param name="slot">Its place among the operation's own tasks; null for none.</param>
+        private sealed class Participant(ValidationScheduler scheduler, string name, int? slot)
         {
             /// <summary>The scheduler it runs under.</summary>
             public ValidationScheduler Scheduler { get; } = scheduler;
 
             /// <summary>Its name.</summary>
             public string Name { get; } = name;
+
+            /// <summary>Its place among the operation's own tasks; null for none.</summary>
+            public int? Slot { get; } = slot;
 
             /// <summary>What it is doing; read and written under the scheduler's gate.</summary>
             public ParticipantState State { get; set; }

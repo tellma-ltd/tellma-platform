@@ -116,6 +116,71 @@ namespace Tellma.Core.Abstractions.Tests.Validation
             _ = Assert.Throws<ArgumentNullException>(() => errors.Add(null!, ValidationCodes.Required));
         }
 
+        // --- The re-homing view an enlisted stack writes to ---
+
+        [Fact]
+        public void An_enlisted_stacks_view_keeps_its_own_paths_and_lands_each_error_on_the_hosts_path_naming_the_stack()
+        {
+            ValidationErrors host = new();
+            ValidationErrors<Center> view = new(host, Under(ValidationPath.Root.Index(0).Property("Lines")), "gl.Center");
+
+            view.Add(1, x => x.Code, ValidationCodes.Required, new Dictionary<string, object?> { ["max"] = 5 });
+
+            // --- The view's own path for its participants; the host's for the caller ---
+            Assert.Equal("[1].Code", Assert.Single(view.Items).Path.ToString());
+            ValidationError rehomed = Assert.Single(host.Items);
+            Assert.Equal(("[0].Lines[1].Code", ValidationCodes.Required), (rehomed.Path.ToString(), rehomed.Code));
+            Assert.Equal(new Dictionary<string, object?> { ["max"] = 5, ["enlistedResource"] = "gl.Center" }, rehomed.Arguments);
+        }
+
+        [Fact]
+        public void Without_a_path_map_every_error_lands_on_the_hosts_root()
+        {
+            ValidationErrors host = new();
+            ValidationErrors view = new(host, map: null, "gl.Center");
+
+            view.Add(ValidationPath.Root.Index(3).Property("Code"), ValidationCodes.Required);
+
+            Assert.Equal(string.Empty, Assert.Single(host.Items).Path.ToString());
+        }
+
+        [Fact]
+        public void A_view_over_a_view_composes_the_maps_innermost_first_and_keeps_the_innermost_stacks_name()
+        {
+            ValidationErrors host = new();
+            ValidationErrors outer = new(host, Under(ValidationPath.Root.Index(0).Property("Notes")), "en.Note");
+            ValidationErrors inner = new(outer, Under(ValidationPath.Root.Property("Tags")), "en.Tag");
+
+            inner.Add(ValidationPath.Root.Index(2).Property("Label"), ValidationCodes.Required);
+
+            // --- Each list holds the error at its own paths; the host alone holds it once ---
+            Assert.Equal("[2].Label", Assert.Single(inner.Items).Path.ToString());
+            Assert.Empty(outer.Items);
+            ValidationError rehomed = Assert.Single(host.Items);
+            Assert.Equal(("[0].Notes.Tags[2].Label", "en.Tag"), (rehomed.Path.ToString(), rehomed.Arguments["enlistedResource"]));
+        }
+
+        [Fact]
+        public void A_path_map_that_answers_null_is_refused_and_leaves_both_lists_untouched()
+        {
+            ValidationErrors host = new();
+            ValidationErrors view = new(host, static _ => null!, "gl.Center");
+
+            InvalidOperationException refused = Assert.Throws<InvalidOperationException>(() => view.Add(ValidationPath.Root.Index(0), ValidationCodes.Required));
+
+            Assert.Contains("returned null", refused.Message, StringComparison.Ordinal);
+            Assert.False(view.HasErrors);
+            Assert.False(host.HasErrors);
+        }
+
+        /// <summary>A path map that prefixes every path of the enlisted payload.</summary>
+        /// <param name="prefix">The host's path the enlisted payload sits under.</param>
+        /// <returns>The map.</returns>
+        private static Func<ValidationPath, ValidationPath> Under(ValidationPath prefix)
+        {
+            return path => new ValidationPath([.. prefix.Segments, .. path.Segments]);
+        }
+
         /// <summary>A capability an entity declares through an interface.</summary>
         private interface IActivatable
         {

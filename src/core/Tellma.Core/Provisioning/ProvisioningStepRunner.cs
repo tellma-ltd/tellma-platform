@@ -11,6 +11,7 @@ using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Tenancy;
+using Tellma.Core.Access;
 using Tellma.Core.Composition;
 using Tellma.Core.Data.Batches;
 using Tellma.Core.Tenancy;
@@ -32,6 +33,13 @@ namespace Tellma.Core.Provisioning
     ///         own, so a crash or a lost connection between the two runs the step again next time.
     ///         That is safe because a step is idempotent: running it twice leaves what running it once
     ///         does.
+    ///     </para>
+    ///     <para>
+    ///         The administrator bootstrap is the one step the record does not schedule, because its
+    ///         work is the administrator a run names, not the tenant's schema: a run that names none
+    ///         neither runs nor records it, so it is never recorded as done when it made nobody an
+    ///         administrator, and a run that names one runs it whatever the tenant records, which is
+    ///         how a later run gives a provisioned tenant its administrator.
     ///     </para>
     ///     <para>
     ///         The tenant database must already list the running model's schema fingerprint, because
@@ -70,17 +78,23 @@ namespace Tellma.Core.Provisioning
             return new RequestContextSnapshot(tenantId, PrincipalKind.System, SystemSubject, WellKnownIds.SystemUserId, SystemClient, TraceParent: null);
         }
 
-        /// <summary>The steps due on a tenant: those with no record or a recorded version below their own, in order.</summary>
+        /// <summary>
+        ///     The steps a run that names no administrator, such as a migration, would run on a tenant:
+        ///     those with no record or a recorded version below their own, in order.
+        /// </summary>
         /// <param name="tenantId">The tenant.</param>
         /// <param name="cancellationToken">Cancels the read.</param>
         /// <returns>The due steps' names and versions, in the order they run.</returns>
         public async Task<IReadOnlyList<(string Name, int Version)>> DueAsync(int tenantId, CancellationToken cancellationToken)
         {
             IReadOnlyDictionary<string, int> recorded = await ReadRecordedAsync(tenantId, cancellationToken).ConfigureAwait(false);
-            return [.. Due(await DescribeAsync().ConfigureAwait(false), recorded).Select(static step => (step.Name, step.Version))];
+            return [.. Due(await DescribeAsync().ConfigureAwait(false), recorded, namesAdministrator: false).Select(static step => (step.Name, step.Version))];
         }
 
-        /// <summary>Runs every due step of a tenant, in order, and records each completion.</summary>
+        /// <summary>
+        ///     Runs every due step of a tenant, in order, and records each completion. The administrator
+        ///     bootstrap is due exactly when the run names an administrator.
+        /// </summary>
         /// <param name="tenant">The tenant, as the registry describes it.</param>
         /// <param name="isNew">Whether the tenant is being provisioned.</param>
         /// <param name="adminSubject">The first administrator's subject, in Development only.</param>
@@ -104,8 +118,66 @@ namespace Tellma.Core.Provisioning
 
             // --- What is due: the record first, then each step's own name, order and version ---
             IReadOnlyDictionary<string, int> recorded = await ReadRecordedAsync(tenant.Id, cancellationToken).ConfigureAwait(false);
+            List<StepDescription> steps = await DescribeAsync().ConfigureAwait(false);
+            bool namesAdministrator = !string.IsNullOrWhiteSpace(adminEmail);
+
+            // A tenant no run ever bootstrapped has no individual administrator; a run that cannot
+            // give it one says so, because nothing else would.
+            if (!namesAdministrator && steps.Any(step => step.ForAdministrator && !recorded.ContainsKey(step.Name)))
+            {
+                ProvisioningLog.AdministratorNotBootstrapped(logger, tenant.Id);
+            }
+
+            return await RunInOrderAsync(tenant, Due(steps, recorded, namesAdministrator), isNew, adminSubject, adminEmail, beforeEachStep, cancellationToken).ConfigureAwait(false);
+        }
+
+        /// <summary>
+        ///     Runs the administrator bootstrap alone on a tenant that is already provisioned, whatever
+        ///     the tenant records, and records its completion; the tenant's other steps are left to
+        ///     its migration.
+        /// </summary>
+        /// <param name="tenant">The tenant, as the registry describes it.</param>
+        /// <param name="adminSubject">The administrator's subject, in Development only.</param>
+        /// <param name="adminEmail">The administrator's email address.</param>
+        /// <param name="beforeEachStep">Runs before the step starts, and fails the run by throwing. Null for none.</param>
+        /// <param name="cancellationToken">Cancels before the step; a running step completes.</param>
+        /// <returns>The names of the steps that ran.</returns>
+        /// <exception cref="ArgumentException">The email address is blank.</exception>
+        /// <exception cref="Exception">The step failed, and nothing was recorded for it.</exception>
+        public async Task<IReadOnlyList<string>> BootstrapAsync(
+            TenantDescriptor tenant,
+            string? adminSubject,
+            string adminEmail,
+            Func<CancellationToken, Task>? beforeEachStep,
+            CancellationToken cancellationToken)
+        {
+            ArgumentNullException.ThrowIfNull(tenant);
+            ArgumentException.ThrowIfNullOrWhiteSpace(adminEmail);
+
+            IEnumerable<StepDescription> steps = Ordered((await DescribeAsync().ConfigureAwait(false)).Where(static step => step.ForAdministrator));
+            return await RunInOrderAsync(tenant, steps, isNew: false, adminSubject, adminEmail, beforeEachStep, cancellationToken).ConfigureAwait(false);
+        }
+
+        /// <summary>Runs the given steps of a tenant, in the order given, and records each completion.</summary>
+        /// <param name="tenant">The tenant.</param>
+        /// <param name="steps">The steps, in order.</param>
+        /// <param name="isNew">Whether the tenant is being provisioned.</param>
+        /// <param name="adminSubject">The first administrator's subject, or null.</param>
+        /// <param name="adminEmail">The first administrator's email address, or null.</param>
+        /// <param name="beforeEachStep">Runs before each step starts, and fails the run by throwing. Null for none.</param>
+        /// <param name="cancellationToken">Cancels between steps.</param>
+        /// <returns>The names of the steps that ran, in order.</returns>
+        private async Task<IReadOnlyList<string>> RunInOrderAsync(
+            TenantDescriptor tenant,
+            IEnumerable<StepDescription> steps,
+            bool isNew,
+            string? adminSubject,
+            string? adminEmail,
+            Func<CancellationToken, Task>? beforeEachStep,
+            CancellationToken cancellationToken)
+        {
             List<string> completed = [];
-            foreach (StepDescription step in Due(await DescribeAsync().ConfigureAwait(false), recorded))
+            foreach (StepDescription step in steps)
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 if (beforeEachStep is not null)
@@ -137,14 +209,28 @@ namespace Tellma.Core.Provisioning
             return completed;
         }
 
-        /// <summary>The due steps among those described, in order: by order, then by name.</summary>
+        /// <summary>
+        ///     The due steps among those described, in order: the administrator bootstrap when the run
+        ///     names an administrator, and every other step with no record or a recorded version below
+        ///     its own.
+        /// </summary>
         /// <param name="steps">Every contributed step.</param>
         /// <param name="recorded">The completed version of each recorded step.</param>
+        /// <param name="namesAdministrator">Whether the run names an administrator.</param>
         /// <returns>The due steps.</returns>
-        private static IEnumerable<StepDescription> Due(IEnumerable<StepDescription> steps, IReadOnlyDictionary<string, int> recorded)
+        private static IEnumerable<StepDescription> Due(IEnumerable<StepDescription> steps, IReadOnlyDictionary<string, int> recorded, bool namesAdministrator)
+        {
+            return Ordered(steps.Where(step => step.ForAdministrator
+                ? namesAdministrator
+                : !recorded.TryGetValue(step.Name, out int version) || step.Version > version));
+        }
+
+        /// <summary>Steps in the order they run: by order, then by name.</summary>
+        /// <param name="steps">The steps.</param>
+        /// <returns>The steps, ordered.</returns>
+        private static IEnumerable<StepDescription> Ordered(IEnumerable<StepDescription> steps)
         {
             return steps
-                .Where(step => !recorded.TryGetValue(step.Name, out int version) || step.Version > version)
                 .OrderBy(static step => step.Order)
                 .ThenBy(static step => step.Name, StringComparer.Ordinal);
         }
@@ -175,7 +261,7 @@ namespace Tellma.Core.Provisioning
                 return [.. record.ProvisioningSteps.Select(registration =>
                 {
                     ITenantProvisioningStep step = registration.Create(scope.ServiceProvider);
-                    return new StepDescription(registration, step.Name, step.Order, step.Version);
+                    return new StepDescription(registration, step.Name, step.Order, step.Version, step is BootstrapAdministratorStep);
                 })];
             }
         }
@@ -207,9 +293,13 @@ namespace Tellma.Core.Provisioning
                 TenantScope scope = await scopes.CreateScopeAsync(SystemSnapshot(tenant.Id), allowNonActive: true, cancellationToken).ConfigureAwait(false);
                 await using (scope.ConfigureAwait(false))
                 {
-                    scope.Services.GetService<IProvisioningFrameOpener>()?.Open(scope.Services, step.Name);
-                    ITenantProvisioningStep instance = step.Registration.Create(scope.Services);
-                    await instance.RunAsync(new TenantProvisioningContext(tenant, scope.Services, isNew, adminSubject, adminEmail)).ConfigureAwait(false);
+                    Task Run()
+                    {
+                        return step.Registration.Create(scope.Services).RunAsync(new TenantProvisioningContext(tenant, scope.Services, isNew, adminSubject, adminEmail));
+                    }
+
+                    IProvisioningFrameOpener? opener = scope.Services.GetService<IProvisioningFrameOpener>();
+                    await (opener is null ? Run() : opener.RunAsync(scope.Services, step.Name, step.Registration.StepType, Run, cancellationToken)).ConfigureAwait(false);
                 }
             }
             finally
@@ -223,6 +313,7 @@ namespace Tellma.Core.Provisioning
         /// <param name="Name">The step's name.</param>
         /// <param name="Order">The step's order.</param>
         /// <param name="Version">The step's version.</param>
-        private sealed record StepDescription(ProvisioningStepRegistration Registration, string Name, int Order, int Version);
+        /// <param name="ForAdministrator">Whether the step is the administrator bootstrap, which the run's administrator schedules rather than the record.</param>
+        private sealed record StepDescription(ProvisioningStepRegistration Registration, string Name, int Order, int Version, bool ForAdministrator);
     }
 }

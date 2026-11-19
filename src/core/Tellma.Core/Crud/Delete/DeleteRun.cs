@@ -14,6 +14,7 @@ using Tellma.Core.Abstractions.Entities;
 using Tellma.Core.Abstractions.Errors;
 using Tellma.Core.Abstractions.Settings;
 using Tellma.Core.Abstractions.Validation;
+using Tellma.Core.Crud.Enlistment;
 using Tellma.Core.Crud.Query;
 using Tellma.Core.Crud.Save;
 using Tellma.Core.Crud.Validation;
@@ -30,6 +31,8 @@ namespace Tellma.Core.Crud.Delete
     // by ids or with descendants whose service or a component validates deletes first runs round trip
     // 1, the same two stages in C#, and the validators' rounds (§10.1). A delete by query counts the
     // rows it matches beside its delete, so its cap and its count report the rows matched (§10.2).
+    // The same run serves a delete by ids enlisted with another operation's frame (§13.3): that mode
+    // is the enlisted part.
     /// <summary>One delete of one stack: by ids, by query or with descendants.</summary>
     /// <typeparam name="TEntity">The stack's entity type.</typeparam>
     /// <typeparam name="TKey">The stack's key type.</typeparam>
@@ -38,9 +41,15 @@ namespace Tellma.Core.Crud.Delete
     /// <param name="behavior">The service's hooks.</param>
     /// <param name="operationName">The <c>crud.operation</c> the delete runs as.</param>
     /// <param name="cancellationToken">Cancels the delete's validation rounds; a persist already sent completes regardless.</param>
+    /// <param name="site">The frame the delete is enlisted with and how; null for a delete of its own.</param>
     internal sealed partial class DeleteRun<TEntity, TKey>(
-        SaveOperation operation, StackDescriptor stack, IEntityBehavior<TEntity, TKey> behavior, string operationName, CancellationToken cancellationToken)
-        : WriteRun(operation, stack.Resource, operationName)
+        SaveOperation operation,
+        StackDescriptor stack,
+        IEntityBehavior<TEntity, TKey> behavior,
+        string operationName,
+        CancellationToken cancellationToken,
+        EnlistmentSite? site = null)
+        : WriteRun(operation, stack.Resource, operationName), IEnlistedDelete
         where TEntity : Entity<TKey>
         where TKey : struct, IBinaryInteger<TKey>
     {
@@ -65,8 +74,16 @@ namespace Tellma.Core.Crud.Delete
         /// <summary>The stack's root entity.</summary>
         private readonly EntityMetadata _root = operation.Metadata.Get(typeof(TEntity));
 
-        /// <summary>The delete's errors, the validators'.</summary>
-        private readonly ValidationErrors<TEntity> _errors = new();
+        /// <summary>The frame the delete is enlisted with and how; null for a delete of its own.</summary>
+        private readonly EnlistmentSite? _site = site;
+
+        /// <summary>The delete's errors, the validators': its own list, or the view that re-homes them into its host's.</summary>
+        private readonly ValidationErrors<TEntity> _errors = site is null
+            ? new()
+            : new ValidationErrors<TEntity>(site.Host.Errors, site.MapPath, stack.Resource);
+
+        /// <summary>The frame a hooked delete of its own runs its validators in; null until they run, and for an enlisted delete.</summary>
+        private PipelineFrame? _frame;
 
         /// <summary>The delete's shape.</summary>
         private DeleteShape _shape;
@@ -121,6 +138,9 @@ namespace Tellma.Core.Crud.Delete
 
         /// <summary>The tables of the stack: the root's and every child collection's, at every depth.</summary>
         private IReadOnlySet<TableName> StackTables => field ??= StackTableSet.Of(_root);
+
+        /// <summary>The rounds the groups enlisted with a delete of its own run in; null while none can have enlisted.</summary>
+        private EnlistmentRounds? Enlistments => _frame is { HasRounds: true } frame ? frame.Rounds : null;
 
         /// <summary>Deletes rows by their ids, all or nothing.</summary>
         /// <param name="ids">The ids.</param>
@@ -203,6 +223,7 @@ namespace Tellma.Core.Crud.Delete
             ArgumentNullException.ThrowIfNull(engine);
 
             // --- A blank filter is "delete all", never exposed; then the type-level grant ---
+            // A stack over a security table serves no delete by query: the startup gate refuses it.
             _shape = DeleteShape.ByQuery;
             if (string.IsNullOrWhiteSpace(request.Filter))
             {
@@ -238,11 +259,29 @@ namespace Tellma.Core.Crud.Delete
                 return await PersistAsync().ConfigureAwait(false);
             }
 
-            // --- Round trip 1 and the validators' rounds, then the outcome in the order a caller can act on ---
+            // --- Round trip 1 and the validators' rounds, the groups enlisted from them closed with
+            // them, then the outcome in the order a caller can act on ---
             using ConfirmationFrame frame = Services.Confirmations.Frame(Resource, OperationName);
-            await ValidateAsync(frame).ConfigureAwait(false);
-            ValidationOutcome.Raise(staleStamp: null, _errors, frame);
-            return await PersistAsync().ConfigureAwait(false);
+            try
+            {
+                await ValidateAsync(frame).ConfigureAwait(false);
+                _frame!.Close(complete: true);
+                ValidationOutcome.Raise(staleStamp: null, _errors, frame);
+                AffectedResult result = await PersistAsync().ConfigureAwait(false);
+                Enlistments?.Count(failure: null);
+                return result;
+            }
+            catch (Exception failure) when (failure is not OutOfMemoryException)
+            {
+                Enlistments?.Count(failure);
+                throw;
+            }
+            finally
+            {
+                // The groups enlisted with the delete return the ids they reserved and never sent.
+                _frame?.Close();
+                Enlistments?.Release();
+            }
         }
 
         /// <summary>The tenant's schema map, for the shape the tenant's settings configure.</summary>

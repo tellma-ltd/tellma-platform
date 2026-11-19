@@ -4,6 +4,7 @@
 // LICENSE file in the root directory of this source tree.
 
 using Microsoft.Extensions.DependencyInjection;
+using System.Reflection;
 using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.Abstractions.Crud;
@@ -69,15 +70,31 @@ namespace Tellma.Core.Tests.Crud
                 .AddFeature(new TestFeature<Tag.D>("sm", contribute: static contribution => contribution
                     .Add(new StackContributionItem(typeof(SmGadget), typeof(GadgetService<SmGadget>), StackOperations.Query | StackOperations.Save))
                     .Add(new StackContributionItem(typeof(SmGizmo), null, StackOperations.Details | StackOperations.Save | StackOperations.Import))
-                    .Add(new StackContributionItem(typeof(SmSprocket), null, StackOperations.Details | StackOperations.Export)))));
+                    .Add(new StackContributionItem(typeof(SmSprocket), null, StackOperations.Details | StackOperations.Export | StackOperations.DeleteByQuery)))));
 
             Assert.Equal(
                 [
                     "The stack of sm.SmGadget declares the operations Query, Save, which keeps Save but omits Details; a save reads its rows back through the details plan.",
                     "The stack of sm.SmGizmo declares the operations Details, Save, Import, which keeps Import without all of Query, Details and Save; an import reads the rows it matches and saves them.",
-                    "The stack of sm.SmSprocket declares the operations Details, Export, which keeps Export but omits Query; an export runs the stack's query.",
+                    "The stack of sm.SmSprocket declares the operations Details, Export, DeleteByQuery, which keeps Export but omits Query; an export runs the stack's query.",
+                    "The stack of sm.SmSprocket declares the operations Details, Export, DeleteByQuery, which keeps DeleteByQuery but omits Delete; a delete by query is a delete, under its securable action.",
                 ],
                 Problems(problems, CoreCheckNames.Stacks));
+        }
+
+        [Fact]
+        public async Task A_delete_by_query_over_a_security_table_fails_and_the_platform_s_own_stacks_serve_none()
+        {
+            // --- A distribution's role leaf that takes the operation back ---
+            IReadOnlyList<CompositionProblem> problems = await TestComposition.CheckAsync(static tellma => tellma.UseEntity<Role, SmEveryRole>());
+
+            Assert.Equal(
+                ["The stack of core.Role declares the operations All, which keeps DeleteByQuery over a security table; its rows are deleted by their ids, so each deletion meets the rules that keep the tenant's administrators."],
+                Problems(problems, CoreCheckNames.Stacks));
+
+            // --- The users' and the roles' own declarations leave it out ---
+            Assert.False(typeof(User).GetCustomAttribute<StackAttribute>(inherit: true)!.Operations.HasFlag(StackOperations.DeleteByQuery));
+            Assert.False(typeof(Role).GetCustomAttribute<StackAttribute>(inherit: true)!.Operations.HasFlag(StackOperations.DeleteByQuery));
         }
 
         [Fact]

@@ -1417,12 +1417,14 @@ pipeline drives them:
    provisioning step); an API action frame that does not admit it refuses whatever the nested
    operation allows.
 8. **The persist**, one guarded `Persist` batch under the pipeline's compilation limits, composed
-   between the executor's fixed prefix and suffix in this order: the access guards' lock when the
-   stack's root or a collection at any depth maps to `core.Users`, `Roles`, `RoleMemberships` or
-   `Permissions` and the context is not the system's; the emitter's save under the stack's authority; the service's
+   between the executor's fixed prefix and suffix in this order: the emitter's save under the stack's authority; the service's
    `ContributeAsync`, then each `IPersistEffect<T>` in registration order, through a
    `RecordingBatch`; the caller's `SaveOptions.OnPersist`, under the caller's own authority, so a
-   write to a table another stack owns is refused at append; the guards' invariants; under a
+   write to a table another stack owns is refused at append; the access guards, when the context is
+   not the system's and the batch writes `core.Users`, `Roles`, `RoleMemberships` or `Permissions`
+   (the stack's root or a collection at any depth, a group enlisted with it, or any statement's
+   declared writes): their lock, which the executor takes first in the transaction, and their
+   invariants; under a
    filtered `Save` grant, the post-check over the saved ids (`RowSecurity`, expecting every root);
    and, when asked for, the read-back over the saved ids in details shape. A participant only
    appends: a round trip of its own while it contributes (`ComposeFence`), executing the batch, or
@@ -1557,13 +1559,94 @@ no row and every id is not found.
   value of its own has none to give, so its failure is raised. Any other ambiguous end is `DependencyUnavailableException`
   (`database`, one second).
 
+### Write frames and enlisted writes
+
+Every write runs in a frame. Each save, delete and action runs in a pipeline frame (`IWriteHost`,
+handed to its hooks as `context.Host`); an `[ApiAction]` method, a job handler and a provisioning
+step run in an open frame, which the scoped `IOpenWriteHost` resolves to (the innermost open frame
+of the flow). A frame names its kind and its `Operation`: `<Resource>:<op>` (an entity action's
+or an API action's by the action's name, such as `gl.Invoice:post`), `job:<key>` or
+`provisioning:<step>`. A write nested in an open frame meets a read-only tenant's verdict as that
+frame's descriptor judges it: admitted in an API action that is no mutation or allows a read-only
+tenant, in a job that runs on one and in a provisioning step, refused in any other API action.
+
+- **Enlisting.** A writer that declares `IEnlists<TTarget>` adds a save (`EnlistSaveAsync`) or a
+  delete by ids (`EnlistDelete`) of the target's stack to a frame. The frame admits it only for a
+  pair the registry holds, from a participant of the frame (the host's service, companions and
+  components, a group's own participants, or the class an open frame was opened for), and only
+  while a pipeline frame validates or before an open frame's `PersistAsync`. A write to the
+  writer's own stack is admitted from the open frame of that stack's API action alone, and a root
+  id enlisted twice with one target in one frame is refused at the second. The injected
+  `IOpenWriteHost` enlists from the open frame's own work alone: code inside a pipeline's or a
+  group's frame nested in it (a hook of a front-door save the work called, an enlisted write's
+  participant) enlists with its context's `Host`. Each refusal is `InvalidOperationException`.
+- **A group** runs the target's own stages as tasks of the host's scheduler, on the host's rounds:
+  preprocessing, the before images of its updates read unfiltered (a missing row is
+  `Entity.NotFound` at the mapped path, with its ids), the server-owned members the writer names
+  re-applied, the ids (at once from a warm buffer, else reserved on the host's next round, which an
+  enlistment awaited after it then waits for), the validators and the components. The caller's
+  grants and reference visibility are not asked of it. An enlisted save overrides stamps by
+  default; under `Concurrency = Check` a default stamp is `Concurrency.StampRequired`. A delete
+  that nothing validates loads nothing and deletes by its ids alone.
+- **Errors** land in a re-homing view: each participant writes its own payload's paths, and the
+  host's list receives every error through the enlistment's `MapPath` (the host's root when none),
+  composed along the nesting, with `enlistedResource` naming the innermost target's entity.
+- **The persist** is the host's one batch. Each group's statements sit ahead of (`BeforeHost`) or
+  after (`AfterHost`, the default) its immediate host's own, so a group's own groups nest: B
+  enlisted ahead of A, with C after B, composes B, C, A. Each group appends under its target's
+  authority, the access guards join once every statement composed when the host's stack or any
+  statement's declared writes meet a security table (a group's save or delete declares its
+  target's tables, at any depth), and a failure is attributed by its
+  statement's ordinal to the group that raised it, translated by that group and re-rooted onto the
+  host's paths. After the commit the host's post-commit phase runs first, then each group's in
+  composition order. Each enlisted write is counted once (`tellma.crud.enlistments`) under the
+  host's operation (every kind of delete as `delete`) and outcome.
+- **A re-entry** re-runs the host's validators in memory, and each enlistment of the re-run is
+  answered from the group the same task (the hook, or one validator component) enlisted at the
+  same step of the first run, with that group's ids, whatever order the tasks ran in. A step the
+  first run had no such group for, or took while another flow of its task was parked at a load, or
+  a first-run enlistment the re-run never makes, is `StaleContextException`; the groups an entity
+  action's method enlisted are replayed as they are, since a re-run never invokes the method. A
+  group's own validators never run again, so a re-entry composed for another permission set than
+  the composition before it is `StaleContextException`, naming the permissions tag, whenever it
+  would replay a group whose target's validators judged its rows; a group nothing validated
+  replays.
+- **The front door.** A service's `SaveAsync`, `DeleteByIdsAsync`, `DeleteByQueryAsync`,
+  `ExecuteActionAsync`, `ActivateAsync`, `DeactivateAsync` or `DeleteWithDescendantsAsync` entered
+  while a pipeline frame of the flow composes is `InvalidOperationException`. From an open frame it
+  runs a pipeline frame of its own, and the open frame's `PersistAsync` is refused while it composes.
+- **Open frames** run their work as a task of their own rounds. `PersistAsync` is called once, from
+  the work itself: it waits for the groups' rounds, raises their errors and then their warnings,
+  and sends every group in one persist batch (none enlisted: no round trip). Every composition of
+  that batch decides an API action's securable again for the user it is composed for, so a
+  re-entry for a caller who lost it is `ForbiddenException` (`NoGrant`) and nothing commits. Its
+  outcome's stamp is the one the batch's saves stamped; a batch that saved no row, a commit whose
+  response was lost and a job's frame report the frame's clock instead, which no stored row
+  carries. Work that returns with groups it never persisted is `InvalidOperationException`, and
+  nothing is sent. A job's frame
+  appends its groups to the completion batch the worker composes, after the outcome statement, and
+  runs their post-commit phase once the worker reports the commit. A provisioning step runs inside
+  a frame of its own, opened by `IProvisioningFrameOpener` around the step's creation and run.
+- **`IApiActionInvoker`** accepts only the registry's own `ApiActionDescriptor` instance, resolves
+  the handler for each request, requires the action's securable (or, for a member-only action, a
+  connected member; the system scope passes), walks the body's annotations at the body's own member
+  paths (no body where one is declared is `BadRequestException`), names the scope's operation after
+  the action, and runs the method inside the action's open frame through every
+  `IApiActionInterceptor`, the first registered outermost.
+- **Stack table ownership.** `StackTableOwners` maps every root and child table of every stack to
+  it, for the batch's append-time check: a statement appended through `IDataBatch`'s public members
+  whose declared writes include a stack's table outside the appender's authority is
+  `InvalidOperationException`. The platform's own composers (the emitter, the access guards, the
+  job, notification and tree statements) append through the batch's internal channel.
+
 ## The route model
 
 `IRouteContracts`, a singleton `CoreFeature` registers, derives the web surface's routes once from
 the stack registry: one `RouteContract` per projected endpoint, in mapping order. Each stack
 projects its standard operations as its operations and capabilities imply them (`query`, and
 `get-by-parent-ids` for a tree; `get`, `get-by-ids`, and `all` for a cacheable entity; `save`;
-`delete`, `delete-by-query`, and `delete-with-descendants` for a tree), then every action, the
+`delete`, `delete-by-query` when the stack keeps `DeleteByQuery`, and `delete-with-descendants` for
+a tree), then every action, the
 built-in ones and its companions' included; each child query surface projects `query`, then its
 actions; each routed service its actions. A route's template is
 `POST /{tenantId}/api/web/<segment>/<operation>`. Each carries its body and result types, its
@@ -1773,14 +1856,180 @@ holds the scope's caller to `core.Role` × `Read` first.
 `IAdministratorDirectory` (`AdministratorDirectory`) reads, in one guarded round trip, the ids of at
 most 20 active individuals, invited or joined, with a current membership of the administrator role,
 lowest id first, for a tenant's administrative notices; it checks no permission of the caller.
-`IAccessGuards` is the persist pipeline's
-seat for the security tables' in-transaction invariants (the security lock, the last administrator,
-the public roles' members, the administrator role itself); `NullAccessGuards` holds it for now and
-contributes no lock and no assertion.
 
 `AccessOptions` binds from `Tellma:Access` and is judged by `core.options`: every count positive,
 `MaxFilterLength` within the 2048-character filter column, every span positive, `FastDenyWindow`
 within `PermissionsMaxAge`, and `ActivityStampInterval` at least 60 seconds.
+
+## The access write side
+
+Every path that writes the security tables keeps one thing true: the tenant has an active, invited
+or joined individual with a started, permanent membership of the administrator role. The users'
+and roles' stacks give a refused write its field-level message first; the guards hold the line
+inside the transaction whatever composed the write.
+
+### The guards
+
+`AccessGuards` (scoped `IAccessGuards`) joins a persist batch the tenant database created; any other
+batch, a `RecordingBatch` included, is an `ArgumentException`. Each call adds its text once per batch
+however often it is made:
+
+- `ContributeLock` puts the security lock at the transaction's head, ahead of the version-tag guard
+  and the caller re-check: `sp_getapplock 'tellma.access'`, exclusive, owned by the transaction,
+  waiting at most `AccessOptions.SecurityLockTimeout` (5 seconds by default, rounded up to whole
+  milliseconds). A deadlock victim (`Access.LockDeadlock`) and a timeout (`Access.LockTimeout`) are
+  `THROW 50503`, which the executor retries as transient.
+- `ContributeInvariants` appends three assertions after every write, each a `THROW 50422`:
+  `Access.LastAdministrator` (no active, invited or joined individual holds a started administrator
+  membership without an end), `Access.PublicRoleHasMembers` (a public role has a member) and
+  `Access.AdministratorRoleDamaged` (the administrator role is inactive or public, or lacks its
+  unfiltered `*` × `*` permission). A membership that ends later never stands in for a permanent
+  one, so ending the last permanent membership is refused even while a time-bounded one remains.
+
+The save, delete and action pipelines call both once every write is composed, when the stack's
+tables or any statement's declared writes (`IDataBatch.WrittenTables`: a participant's, the
+caller's `OnPersist`, an action's own) include `core.Users`, `Roles`, `RoleMemberships` or
+`Permissions`, unless the context is the system's; the lock still runs first, at the transaction's
+head. A guarded batch composed by hand that writes those tables calls them itself. Because every
+security write holds the lock, the assertions, which read under the transaction's snapshot, can never
+pass for two concurrent writes that together break them. A save's `50422` surfaces as a
+`ValidationException` carrying the code at the root; a hand-composed run's surfaces as
+`BatchAssertionFailedException` with the same `Code`.
+
+Each guard error of a failed attempt, a retried lock timeout included, is counted
+(`tellma.access.guards.triggered`, by `guard`: `last_administrator`, `public_role_members`,
+`administrator_damaged`, `lock_timeout`, `lock_deadlock`) and logged (`GuardTriggered`, 3103, at
+Warning, with the tenant, the user and the code). The guards see the errors through
+`DataBatch.OnServerErrors`, an observer the executor calls with each failed attempt's server errors.
+
+### The users' and roles' rules
+
+`CoreFeature` stacks `User` on `UserService<TUser>` and `Role` on `RoleService<TRole>`, the standard
+operations closed over the distribution's leaves. The users' service declares `IEnlists<TUser>`, for a
+user's self-service writes. The rules are separate components of the two stacks, `UserAccessRules<TUser>`
+and `RoleAccessRules<TRole>`, so a leaf's service cannot drop them; they validate deletes and the
+built-in actions as well as saves.
+
+| Code | The users' rules refuse |
+|---|---|
+| `Users.SystemUserImmutable` | a save, an action or a delete of the system user, row 1 |
+| `Users.KindNotAllowed` | a payload naming the system kind |
+| `Users.EmailNotAllowed` | an email on a user that is not an individual |
+| `Users.EmailLockedAfterInvite` | a changed email once the user was invited |
+| `RoleMemberships.EndsBeforeStart` | a membership ending at or before its start |
+| `RoleMemberships.EndsInPast` | a new membership, or one whose window changed, that ended already |
+| `RoleMemberships.Overlap` | two windows of one role that overlap; a permanent one overlaps every other |
+| `Users.TooManyRoles` | more memberships that have not ended than `MaxRolesPerUser` (`max`) |
+| `Users.CannotRemoveOwnAdministratorMembership` | the caller removing, ending or deferring their own current administrator membership |
+| `Users.CannotDeactivateSelf` / `Users.CannotDeleteSelf` | the caller deactivating or deleting their own user |
+| `Users.OnlyNewUsersDeletable` | a delete of a user past `New`, whom the audit columns may reference (it is deactivated instead) |
+| `Users.MembershipEscalation` | a new membership, or one moved to another role or widened, of a role holding a permission the caller does not hold unrestricted (`resource`, `action`) |
+
+| Code | The roles' rules refuse |
+|---|---|
+| `Permissions.UnknownSecurable` | a pair no securable registers; `(*, A)` when no resource registers `A` (`resource`, `action`) |
+| `Permissions.FilterNotSupported` | a filter on `*` or on a securable without a filter root |
+| `Permissions.FilterTooLong` | a filter beyond `MaxFilterLength` (`maxLength`) |
+| `Permissions.FilterVersionUnsupported` | an unchanged filter whose stored stamp this engine does not compile (`version`, `minimum`) |
+| `Permissions.FilterInvalid` | a blank filter, or one the engine does not validate against the tenant's current schema as a predicate over the root: one error per diagnostic, each with its `code` and arguments |
+| `Permissions.WildcardResourceOnPublicRole` | a permission on `*` of a public role |
+| `Roles.PublicRoleHasMembers` | a role saved as public that has members |
+| `Roles.AdministratorImmutable` | the administrator role made public, deactivated, deleted or stripped of its `*` × `*` grant |
+| `Roles.HasMembers` | a delete of a role that has members |
+| `Roles.TooManyPermissions` | more permissions than `MaxPermissionsPerRole` (`max`) |
+| `Permissions.EscalationBeyondSelf` | a new or changed permission the caller does not hold unrestricted; every permission of a role the save makes public |
+
+A filter's stamp follows its text: a new row, a changed text or a missing stamp takes the running
+language version, and unchanged text keeps the stamp it was affirmed under. The filter-root rule is
+the drift classifier's, so a permission the rules accept never drifts on the deployment that saved it.
+
+The escalation test (`AccessDelegation`) lets a caller hand out a pair only when their own set holds
+an unrestricted grant, current now, that covers it: the pair itself, the resource's `*` action, the
+action on `*`, or `*` × `*`; for `Read`, also any action on the resource, or any action on `*` the
+resource registers. A filtered grant never qualifies. The system set, and a caller holding `*` × `*`,
+are exempt. Self-protection refusals are counted with the guards (`self_deactivation`, `self_deletion`,
+`own_administrator_membership`) and logged as `GuardTriggered`; an escalation is counted as
+`escalation` and logged as `EscalationRejected` (3104, at Information, with the role and the pair).
+
+Saving a user or a role is a sensitive securable, so it asks for the step-up bar.
+
+`RoleService<TRole>`'s preprocessing collapses a role's exact duplicate permissions (the same
+resource, action and filter, compared ordinally) to one row before the rules count and stamp them,
+since no unique index can hold them apart: a stored row survives over a new one, and a stored
+duplicate is deleted by the save. A leaf that overrides `PreprocessAsync` calls the base to keep it.
+
+A delete by query runs no validation round, so the delete rules above would never see its targets:
+the users' and the roles' stacks leave `DeleteByQuery` out of their operations, so neither projects
+`delete-by-query` and their services refuse it before any round trip. Their rows are deleted by id.
+The startup gate refuses any stack over a security table that keeps it, such as a distribution's
+leaf that declares every operation again.
+
+A new user's email is where the invitation goes, so a save that changes it hands the user's
+memberships to whoever holds the new address: every membership that has not ended is then tested
+for escalation as if granted (`Users.MembershipEscalation`). A payload that omits the memberships
+keeps the stored ones, whose roles' pairs load in a second round, and the refusal is reported at
+`Email`.
+
+### Stamps and preferences
+
+`UserStampsCompanion<TUser>`, a persist effect of the users' stack, inserts the `core.UserStamps` row
+of every user a save inserts, in the save's transaction: both tags set to the batch's bump value, no
+activity and an empty inbox. A row already there is kept, so a re-run after a lost connection is safe.
+
+`UserPreferenceStatements` writes a user's preference bag (`core.UserPreferences`) over
+`UserPreferenceList` rows, each write one statement appended to a persist batch: `Set` updates changed
+values and inserts absent keys, `Delete` removes the named keys, and `Replace` deletes the keys the
+items do not name, then sets the rest. `Set` and `Replace` assert the key cap after their insert
+(`Users.TooManyPreferenceKeys`, a `50422`), and every write of one bag holds its owner's stamp row
+under an update lock to its commit, so two writes cannot pass the cap together. The caller's own bag
+is written against the connect prologue's user, whose re-check holds that row from the batch's head;
+another user's is locked on that user's row by the statement's first line and named in a one-row id
+list, so the epilogue moves that user's `PreferencesTag` either way. Keys compare as the database compares them, ignoring case; a value
+compares in binary, so a change of case alone is written. `Check` and `CheckKeys` judge the items in
+memory first: the key grammar (dotted segments, the first led by a lower-case letter, at most 128
+characters; `Users.PreferenceKeyInvalid`), a key named twice ignoring case
+(`Users.PreferenceKeyDuplicate`), and a value beyond `MaxPreferenceValueBytes` of UTF-8
+(`Users.PreferenceValueTooLarge`).
+
+### The first administrator
+
+`ITenantBootstrapper` (`TenantBootstrapper<TUser>`, scoped) makes a tenant's first individual
+administrator through the users' stack, in the platform's own scope of the tenant, so the audit stamps,
+the stamp row and the tag bumps come with it and the guards stand aside. A user scope is refused. The
+email address is trimmed and lower-cased, as the users' stack stores it.
+
+- **A new address** creates an individual with no invitation evidence, so its state reads `New` until
+  it is invited, and one permanent administrator membership.
+- **An existing user** keeps its state and its other roles, and gains the membership only when it
+  lacks a started, permanent one. Every administrator membership that has not ended is replaced by one
+  permanent row starting where the last ended one ended, so the windows never overlap. A deactivated
+  user is never reactivated: the bootstrap fails with an `InvalidOperationException` naming the user
+  and pointing to another address, whose administrator then decides whether its privileges come
+  back (no administrator may remain to reactivate it).
+- **A subject** is accepted in a Development environment only (`InvalidOperationException` before
+  anything is written otherwise). It rides the same save: `BootstrapSubjectEffect<TUser>`, a persist
+  effect of the users' stack, records it on the created user as an invitation would (the subject, the
+  invitation's instant, `InviteStatus.Invited`).
+
+The bootstrap is idempotent on the address. The `core.bootstrap-administrator` provisioning step
+(order 10, before `core.settings`) calls it with the administrator the run names, named by the address's
+local part and preferring the distribution's first offered language. The step runner schedules it by
+the run's administrator, not by the tenant's record: a run that names none, such as a migration,
+neither runs nor records it (and logs `ProvisioningAdministratorNotBootstrapped` while no run ever
+has), and a run that names one runs it whatever the tenant records. `provision --tenant <id>
+--admin-email <address>` on an active or read-only tenant runs it alone, which is how a tenant
+provisioned without an administrator, or left without one, gets one.
+
+### The drift scan
+
+`IPermissionDriftScanner` (`PermissionDriftScanner`, scoped, in the platform's own scope of the tenant)
+reads every stored permission with its role's code and visibility in one round trip, and classifies each
+with `PermissionClassifier`, the classifier the permission sets are built with, against the running
+deployment's securables and the tenant's current schema. It returns a `PermissionDriftItem` for every
+permission that grants nothing: the permission, the role and its code, the problem, and the engine's
+diagnostics. The same instance is the migrator's `ITenantDriftReport`, which prints one line per item
+after a tenant's migrations, such as
+`Permission 12 of role 4 (clerks) grants nothing: FilterInvalid; QX3001 property=Name2 entity=fx.Widget.`
 
 ## The identity-server client
 

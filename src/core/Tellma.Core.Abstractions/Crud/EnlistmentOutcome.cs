@@ -8,7 +8,13 @@ using Tellma.Core.Abstractions.Caching;
 namespace Tellma.Core.Abstractions.Crud
 {
     /// <summary>What persisting an open frame came to.</summary>
-    /// <param name="Stamp">The persist batch's stamp, which every row it wrote carries.</param>
+    /// <param name="Stamp">
+    ///     The persist batch's stamp, which every row it saved carries. A batch that saved no row
+    ///     (deletes alone, or nothing enlisted), a commit whose response the connection lost, and a
+    ///     job's frame, whose completion batch the worker sends later, report no such stamp: theirs is
+    ///     the frame's clock at the persist, which no stored row carries, so it is never a stamp to
+    ///     compare under <see cref="Data.ConcurrencyMode.Check" />.
+    /// </param>
     /// <param name="VersionTags">The tenant's version tags after the batch's bumps.</param>
     /// <param name="UserVersionTags">The caller's user-level version tags after the batch's bumps; <see langword="null" /> when the batch carried no connected user.</param>
     public sealed record EnlistmentOutcome(

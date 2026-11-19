@@ -200,6 +200,7 @@ namespace Tellma.Core.Tests.Crud
                 .BuildServiceProvider(validateScopes: true);
             StackRegistry registry = provider.GetRequiredService<StackRegistry>();
 
+            // The platform's own enlistments, the users' self-service one among them, are not this test's.
             Assert.Empty(registry.Problems);
             Assert.Equal(
                 [
@@ -207,7 +208,7 @@ namespace Tellma.Core.Tests.Crud
                     new EnlistmentDescriptor(typeof(SelfEnlistingGadgetService), TypeDisplay.Qualified(typeof(SelfEnlistingGadgetService)), StackModel.Gizmos),
                     new EnlistmentDescriptor(typeof(GizmoEffect), TypeDisplay.Qualified(typeof(GizmoEffect)), StackModel.Sprockets),
                 ],
-                registry.Enlistments);
+                registry.Enlistments.Where(static enlistment => !enlistment.TargetResource.StartsWith("core.", StringComparison.Ordinal)));
             ApiServiceDescriptor inbox = Assert.Single(registry.Services);
             Assert.Equal(("inbox", typeof(InboxService), "sm"), (inbox.Route, inbox.ServiceType, inbox.Feature));
             Assert.Equal([null, new SecurableRef("sm.Inbox", "Purge")], inbox.Actions.Select(static action => action.Securable));

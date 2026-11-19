@@ -45,7 +45,7 @@ namespace Tellma.Core.Data.Batches
     ///     </para>
     ///     <para>A batch is single-threaded: compose it, then execute it once.</para>
     /// </remarks>
-    internal sealed partial class DataBatch : IDataBatch, IBatchKeyTables, IBatchNamedTables, IBatchAuthority, IBatchDependencies
+    internal sealed partial class DataBatch : IDataBatch, IBatchKeyTables, IBatchNamedTables, IBatchAuthority, IBatchDependencies, IBatchOrdinals
     {
         /// <summary>The executor that runs the batch.</summary>
         private readonly DataExecutor _executor;
@@ -88,6 +88,9 @@ namespace Tellma.Core.Data.Batches
 
         /// <summary>The platform's completion steps, in registration order.</summary>
         private readonly List<Func<CancellationToken, Task>> _executed = [];
+
+        /// <summary>The observers of the server errors each failed attempt raises, in registration order.</summary>
+        private readonly List<Action<IReadOnlyList<SqlErrorInfo>>> _errorObservers = [];
 
         /// <summary>The id reservations whose rows a save of the batch inserts.</summary>
         private readonly HashSet<ReservationHold> _holds = [];
@@ -243,6 +246,9 @@ namespace Tellma.Core.Data.Batches
 
         /// <summary>The platform's completion steps, in registration order.</summary>
         internal IReadOnlyList<Func<CancellationToken, Task>> ExecutedSteps => _executed;
+
+        /// <summary>The observers of the server errors each failed attempt raises, in registration order.</summary>
+        internal IReadOnlyList<Action<IReadOnlyList<SqlErrorInfo>>> ErrorObservers => _errorObservers;
 
         /// <summary>The value the batch's tag bumps write, generated once per batch.</summary>
         internal Guid Tag { get; } = Guid.NewGuid();
@@ -699,6 +705,20 @@ namespace Tellma.Core.Data.Batches
             _open = null;
         }
 
+        /// <inheritdoc />
+        public int NextOrdinal()
+        {
+            EnsureComposing();
+            if (_open is not null)
+            {
+                throw new InvalidOperationException("A statement of the batch is being composed, so the next ordinal is not known yet. Append or discard it first.");
+            }
+
+            // The prologue stage takes the first ordinals: run it now, so no caller's mark covers it.
+            EnsurePrologue();
+            return _statements.Count;
+        }
+
         /// <summary>Abandons the statement a draft was composing; its ordinal is given to the next statement.</summary>
         /// <param name="draft">The draft.</param>
         internal void Discard(StatementDraft draft)
@@ -721,6 +741,20 @@ namespace Tellma.Core.Data.Batches
             ArgumentNullException.ThrowIfNull(step);
             EnsureComposing();
             _executed.Add(step);
+        }
+
+        /// <summary>
+        ///     Registers an observer of the server errors of each attempt that fails, retried or not,
+        ///     handed over once the attempt is classified and before it is retried or surfaced: what a
+        ///     platform guard counts when its own refusal reaches the client. An observer never
+        ///     throws, and its failure never replaces the batch's.
+        /// </summary>
+        /// <param name="observer">The observer, given the attempt's server errors, the primary first.</param>
+        internal void OnServerErrors(Action<IReadOnlyList<SqlErrorInfo>> observer)
+        {
+            ArgumentNullException.ThrowIfNull(observer);
+            EnsureComposing();
+            _errorObservers.Add(observer);
         }
 
         /// <summary>

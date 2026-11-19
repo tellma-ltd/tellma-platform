@@ -15,18 +15,21 @@ using Tellma.Core.Crud.Actions;
 using Tellma.Core.Crud.Checks;
 using Tellma.Core.Crud.Delete;
 using Tellma.Core.Crud.Details;
+using Tellma.Core.Crud.Enlistment;
 using Tellma.Core.Crud.Query;
 using Tellma.Core.Crud.Save;
 using Tellma.Core.Crud.Validation;
+using Tellma.Core.Data.Batches;
 using Tellma.Core.Data.Metadata;
+using Tellma.Core.Provisioning;
 
 namespace Tellma.Core.Crud
 {
     /// <summary>
     ///     Registers the stacks of a realised composition: each stack's service, companions and
     ///     components closed over its leaf, the routed services, the stack registry, its securables,
-    ///     the validation stage's services, the pipeline and its query path, and the startup checks
-    ///     that judge them.
+    ///     the validation stage's services, the pipeline and its query path, the write frames, and
+    ///     the startup checks that judge them.
     /// </summary>
     internal static class CrudComposition
     {
@@ -104,6 +107,14 @@ namespace Tellma.Core.Crud
             services.TryAddScoped<SaveOperation>();
             services.TryAddScoped<DeleteOperation>();
             services.TryAddScoped<ActionOperation>();
+
+            // --- The write frames: the API action invoker, the injected open frame, the provisioning
+            // steps' frame, and the stacks' tables as the executor's owners, in place of the data
+            // layer's placeholder that names none ---
+            services.TryAddScoped<IApiActionInvoker, ApiActionInvoker>();
+            services.TryAddScoped<IOpenWriteHost, OpenWriteHostProxy>();
+            services.TryAddSingleton<IProvisioningFrameOpener, ProvisioningFrameOpener>();
+            services.Replace(ServiceDescriptor.Singleton<IStackTableOwners>(static provider => new StackTableOwners(provider.GetRequiredService<StackRegistry>())));
 
             // --- The checks, in the order they report, after the built-in checks of the record ---
             IStartupCheck[] checks =

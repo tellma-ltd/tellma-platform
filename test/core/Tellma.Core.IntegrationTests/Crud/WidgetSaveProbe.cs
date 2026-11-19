@@ -68,8 +68,8 @@ namespace Tellma.Core.IntegrationTests.Crud
         /// <summary>What the validator does after its loads on each run, given the run's number from 1.</summary>
         public Func<int, Task> Validated { get; init; } = static _ => Task.CompletedTask;
 
-        /// <summary>The id of the job the effect's statement inserts into the persist; none when null.</summary>
-        public int? JobId { get; init; }
+        /// <summary>The id of the caller row the effect's statement inserts into the persist; none when null.</summary>
+        public int? RowId { get; init; }
 
         /// <summary>How many times the validator ran: once per validation, and once more per re-run in memory.</summary>
         public int Validations => Volatile.Read(ref _validations);
@@ -125,12 +125,12 @@ namespace Tellma.Core.IntegrationTests.Crud
         }
     }
 
-    /// <summary>The probe's persist effect: counts its calls and appends the job its arm names.</summary>
+    /// <summary>The probe's persist effect: counts its calls and appends the caller row its arm names.</summary>
     /// <param name="probe">The probe.</param>
     internal sealed class WidgetSaveProbeEffect(WidgetSaveProbe probe) : IPersistEffect<Widget>
     {
         /// <summary>The table the effect's statement writes: no stack owns it.</summary>
-        private static readonly HashSet<TableName> Jobs = [new("core", "Jobs")];
+        private static readonly HashSet<TableName> CallerRows = [DetailsPipelineDatabase.CallerRows];
 
         /// <inheritdoc />
         public Task ContributeAsync(PersistContext<Widget> context)
@@ -142,15 +142,11 @@ namespace Tellma.Core.IntegrationTests.Crud
             }
 
             arm.Contribute();
-            if (arm.JobId is int jobId)
+            if (arm.RowId is int rowId)
             {
-                // The job row stands for an effect's own statement, which commits or rolls back with
-                // the save: written from a class that owns no stack, deliberately.
-#pragma warning disable TELLMA0006
-                _ = context.Batch.Sql(
-                    $"INSERT INTO [core].[Jobs] ([Id], [HandlerKey], [Status], [DueAt], [RunAsUserId], [CreatedAt]) VALUES ({jobId}, N'fixture.probe', 'Pending', SYSUTCDATETIME(), 1, SYSUTCDATETIME());",
-                    new SqlOptions(writes: Jobs));
-#pragma warning restore TELLMA0006
+                // The row stands for an effect's own statement, which commits or rolls back with the
+                // save, into a table of its own that no stack owns.
+                _ = context.Batch.Sql($"INSERT INTO [dbo].[CallerRows] ([Id]) VALUES ({rowId});", new SqlOptions(writes: CallerRows));
             }
 
             return Task.CompletedTask;

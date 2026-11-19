@@ -1,10 +1,10 @@
 stack core.User
   segment: users
   entity: Tellma.Core.Abstractions.Access.User
-  service: Tellma.Core.Crud.DefaultEntityService<Tellma.Core.Abstractions.Access.User, int>
+  service: Tellma.Core.Users.UserService<Tellma.Core.Abstractions.Access.User>
   key: int
   description: -
-  operations: All, Enlist
+  operations: Save, Delete, Import, Read, Enlist
   capabilities: activatable, temporal, multilingual, blobs, searchable, excel
   properties: Id:ServerOwned, CreatedAt:ServerOwned, CreatedById:ServerOwned, ModifiedAt:ServerOwned, ModifiedById:ServerOwned, Kind:WriteOnce, Subject:ServerOwned, Email:Editable, State:DatabaseOwned, InvitedAt:ServerOwned, InviteStatus:ServerOwned, LastInviteError:ServerOwned, JoinedAt:ServerOwned, Name:Editable, Name2:Editable, Name3:Editable, ImageId:Editable, SignatureId:Editable, PreferredLanguage:Editable, PreferredCalendar:Editable, PreferredTimeZone:Editable, PreferredRegion:Editable, PreferredDigits:Editable, Gender:Editable, ContactEmail:Editable, ContactMobile:Editable, IsActive:ServerOwned
   children: RoleMemberships(RoleMembership by UserId, max 10000)
@@ -25,10 +25,10 @@ stack core.User
 stack core.Role
   segment: roles
   entity: Tellma.Core.Abstractions.Access.Role
-  service: Tellma.Core.Crud.DefaultEntityService<Tellma.Core.Abstractions.Access.Role, int>
+  service: Tellma.Core.Users.RoleService<Tellma.Core.Abstractions.Access.Role>
   key: int
   description: -
-  operations: All
+  operations: Save, Delete, Import, Read
   capabilities: activatable, temporal, multilingual, searchable, excel
   properties: Id:ServerOwned, CreatedAt:ServerOwned, CreatedById:ServerOwned, ModifiedAt:ServerOwned, ModifiedById:ServerOwned, Name:Editable, Name2:Editable, Name3:Editable, Code:Editable, IsPublic:Editable, IsActive:ServerOwned
   children: Permissions(Permission by RoleId, max 10000)
@@ -149,7 +149,7 @@ stack sm.SmGizmo
   service: Tellma.Core.Crud.DefaultEntityService<Tellma.Core.Tests.Crud.SmGizmo, int>
   key: int
   description: -
-  operations: All, Enlist
+  operations: Enlist, All
   capabilities: excel
   properties: Id:ServerOwned, CreatedAt:ServerOwned, CreatedById:ServerOwned, ModifiedAt:ServerOwned, ModifiedById:ServerOwned, Name:Editable
   children: -
@@ -171,7 +171,7 @@ stack sm.SmSprocket
   service: Tellma.Core.Crud.DefaultEntityService<Tellma.Core.Tests.Crud.SmSprocket, int>
   key: int
   description: -
-  operations: All, Enlist
+  operations: Enlist, All
   capabilities: excel
   properties: Id:ServerOwned, CreatedAt:ServerOwned, CreatedById:ServerOwned, ModifiedAt:ServerOwned, ModifiedById:ServerOwned, Name:Editable
   children: -
@@ -236,3 +236,4 @@ service inbox
   feature: sm
   action mark-read: api member-only body - handler InboxService; mutation; result void; mcp Full, revision 0; -
   action purge: api sm.Inbox:Purge body - handler InboxService; mutation, destructive; result int; mcp Full, revision 0; -
+enlistment Tellma.Core.Users.UserService<Tellma.Core.Abstractions.Access.User> -> core.User
