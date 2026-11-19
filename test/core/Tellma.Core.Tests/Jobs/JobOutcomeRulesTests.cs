@@ -288,6 +288,41 @@ namespace Tellma.Core.Tests.Jobs
         }
 
         [Fact]
+        public void A_batch_that_could_not_be_sent_after_the_handler_threw_maps_each_item_by_what_it_threw()
+        {
+            InvalidOperationException unfit = new("The batch could not be composed.");
+
+            // --- The stop: an untouched item is released and an observed one runs again at once ---
+            var stop = JobEnding.OfUnsent(JobEnding.Of(new OperationCanceledException(), cancelled: false, hostStopping: true), unfit);
+            Assert.Equal(JobOutcome.Released(), JobOutcomeRules.AfterFailedCompletion(Item(), stop, Policy, TraceId, new Random(1)));
+            Assert.Equal(JobOutcome.Retry(0, null, State), JobOutcomeRules.AfterFailedCompletion(Item(observed: true), stop, Policy, TraceId, new Random(1)));
+
+            // --- The handler's own error fails the item with it, its mark discarded with the work ---
+            var failed = JobEnding.OfUnsent(JobEnding.Of(new JobFailedException(new JobError("Acme.Closed")), cancelled: false, hostStopping: false), unfit);
+            Assert.Equal(
+                JobOutcome.Failed(new JobOutcomeError("Acme.Closed", null, TraceId), State),
+                JobOutcomeRules.AfterFailedCompletion(Item(mark: JobItemMark.Succeeded), failed, Policy, TraceId, new Random(1)));
+
+            // --- A validation fails it with its first error; anything else retries with the internal error ---
+            var invalid = JobEnding.OfUnsent(JobEnding.Of(Invalid("Acme.Negative"), cancelled: false, hostStopping: false), unfit);
+            Assert.Equal(JobOutcome.Failed(new JobOutcomeError("Acme.Negative", null, TraceId), State), JobOutcomeRules.AfterFailedCompletion(Item(), invalid, Policy, TraceId, new Random(1)));
+            var threw = JobEnding.OfUnsent(JobEnding.Of(new FormatException(), cancelled: false, hostStopping: false), unfit);
+            _ = Assert.IsType<FormatException>(threw.Exception);
+            Assert.Equal(JobErrorCodes.Internal, JobOutcomeRules.AfterFailedCompletion(Item(), threw, Policy, TraceId, new Random(1)).ErrorCode);
+        }
+
+        [Fact]
+        public void A_batch_that_could_not_be_sent_after_the_handler_returned_maps_each_item_by_what_left_it_unfit()
+        {
+            var unfit = JobEnding.OfUnsent(JobEnding.Returned, new InvalidOperationException("The batch could not be composed."));
+            JobOutcome retried = JobOutcomeRules.AfterFailedCompletion(Item(mark: JobItemMark.Succeeded), unfit, Policy, TraceId, new Random(1));
+            Assert.Equal((JobOutcomeKind.Retry, JobErrorCodes.Internal), (retried.Kind, retried.ErrorCode));
+
+            var refused = JobEnding.OfUnsent(JobEnding.Returned, Invalid("Fk.NotFound"));
+            Assert.Equal(JobOutcome.Failed(new JobOutcomeError("Fk.NotFound", null, TraceId), State), JobOutcomeRules.AfterFailedCompletion(Item(), refused, Policy, TraceId, new Random(1)));
+        }
+
+        [Fact]
         public void After_a_failed_guard_every_item_runs_again_at_once_unless_it_used_its_last_attempt()
         {
             Assert.Equal(JobOutcome.Retry(0, null, State), JobOutcomeRules.AfterGuardFailure(Item(mark: JobItemMark.Succeeded), Policy, TraceId));

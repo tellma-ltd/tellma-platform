@@ -4,12 +4,15 @@
 // LICENSE file in the root directory of this source tree.
 
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Diagnostics.Metrics.Testing;
 using Microsoft.Extensions.Logging.Testing;
 using System.Diagnostics;
+using System.Diagnostics.Metrics;
 using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using Tellma.Core.Abstractions.Access;
+using Tellma.Core.Abstractions.Caching;
 using Tellma.Core.Abstractions.Crud;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Jobs;
@@ -214,12 +217,42 @@ namespace Tellma.Core.IntegrationTests.Jobs
             int second = await fixture.InsertJobAsync(JobRunKeys.Probe, runAs: AdministratorId);
             int exhausted = await fixture.InsertJobAsync(JobRunKeys.Probe, attempts: 3);
             int fourth = await fixture.InsertJobAsync(JobRunKeys.Probe, runAs: ActiveUserId);
+            List<(int JobId, PrincipalKind Kind, int? ScopeUser)> ran = [];
+            fixture.Script.Probe = (batch, context) =>
+            {
+                RequestContext scope = context.Services.GetRequiredService<IRequestContextAccessor>().Current;
+                ran.AddRange(batch.Items.Select(item => (item.Job.Id, scope.Kind, scope.UserId)));
+                return Task.CompletedTask;
+            };
 
             IReadOnlyList<PolledJob> polled = await PollAsync(JobRunKeys.Probe);
 
             Assert.Equal(
                 [(first, JobStatus.Succeeded), (second, JobStatus.Succeeded), (exhausted, JobStatus.Failed), (fourth, JobStatus.Succeeded)],
                 polled.Select(static job => (job.JobId, job.Status)));
+
+            // --- Each partition ran in a scope of its own run-as user, in the order of its first row ---
+            Assert.Equal<(int, PrincipalKind, int?)>(
+                [(first, PrincipalKind.User, ActiveUserId), (fourth, PrincipalKind.User, ActiveUserId), (second, PrincipalKind.User, AdministratorId)],
+                ran);
+        }
+
+        [Fact]
+        public async Task Jobs_of_one_user_that_carry_different_consent_run_in_scopes_of_their_own()
+        {
+            int confirmed = await fixture.InsertJobAsync(JobRunKeys.Probe, confirmedKeys: JobRunKeys.Backdated);
+            int unconfirmed = await fixture.InsertJobAsync(JobRunKeys.Probe);
+            fixture.Script.Probe = static async (batch, context) =>
+            {
+                context.Host.Confirmations.Require(JobRunKeys.Backdated, [1]);
+                _ = await context.Host.PersistAsync(Token);
+            };
+
+            IReadOnlyList<PolledJob> polled = await PollAsync(JobRunKeys.Probe);
+
+            // --- The consent one job carries passes its warning and never covers its neighbour's ---
+            Assert.Equal([[confirmed], [unconfirmed]], fixture.Script.Invocations.Select(static invocation => invocation.JobIds));
+            Assert.Equal([(confirmed, JobStatus.Succeeded), (unconfirmed, JobStatus.PendingConfirmation)], polled.Select(static job => (job.JobId, job.Status)));
         }
 
         // --- The completion transaction ---
@@ -325,6 +358,80 @@ namespace Tellma.Core.IntegrationTests.Jobs
             Assert.Equal((1, null, null), (row.Attempts, row.ErrorCode, row.LeaseToken));
             Assert.InRange(row.DueAt, DateTimeOffset.UtcNow.AddMinutes(-1), DateTimeOffset.UtcNow.AddMinutes(1));
             Assert.Empty(await fixture.RunLogAsync());
+        }
+
+        [Fact]
+        public async Task A_tag_the_transactions_recheck_finds_moved_retries_every_item_at_once_without_the_handlers_statements()
+        {
+            int first = await fixture.InsertJobAsync(JobRunKeys.Probe);
+            int second = await fixture.InsertJobAsync(JobRunKeys.Probe);
+            fixture.Script.Probe = static (batch, context) =>
+            {
+                foreach (JobItem<Job> item in batch.Items)
+                {
+                    Note(batch.Batch, item.Job.Id, "probed");
+                }
+
+                // The work rests on a settings tag the tenant has moved since: the prologue's guard
+                // passes, and the transaction's re-check of the batch's dependencies refuses the persist.
+                batch.Batch.DependsOn([new VersionTagDependency(VersionTagNames.Settings, new VersionTag(Guid.NewGuid()), VersionTagMismatchPolicy.Rerun)]);
+                return Task.CompletedTask;
+            };
+            using MetricCollector<long> stale = new(fixture.Tenant.Services.GetRequiredService<IMeterFactory>(), CacheTelemetryNames.MeterName, CacheTelemetryNames.Stale);
+
+            IReadOnlyList<PolledJob> polled = await PollAsync(JobRunKeys.Probe);
+
+            Assert.Equal([(first, JobStatus.Pending, null), (second, JobStatus.Pending, null)], polled.Select(static job => (job.JobId, job.Status, job.ErrorCode)));
+            JobRow row = await fixture.JobAsync(first);
+            Assert.Equal((1, null, null), (row.Attempts, row.ErrorCode, row.LeaseToken));
+            Assert.InRange(row.DueAt, DateTimeOffset.UtcNow.AddMinutes(-1), DateTimeOffset.UtcNow.AddMinutes(1));
+            Assert.Empty(await fixture.RunLogAsync());
+
+            // --- The refusal came from the transaction's re-check, not from the prologue's guard ---
+            CollectedMeasurement<long> measured = Assert.Single(stale.GetMeasurementSnapshot());
+            Assert.Equal("write-guard", measured.Tags[CacheTelemetryNames.StalePhaseTag]);
+        }
+
+        [Fact]
+        public async Task A_completion_whose_fresh_batch_fails_too_records_nothing_and_leaves_the_lease_to_lapse()
+        {
+            int id = await fixture.InsertJobAsync(JobRunKeys.Probe);
+            fixture.Notices.Refuses = true;
+            fixture.Script.Probe = (batch, _) =>
+            {
+                Note(batch.Batch, id, "probed");
+                throw new JobFailedException(new JobError("Test.Broken"));
+            };
+
+            PolledJob polled = Assert.Single(await PollAsync(JobRunKeys.Probe));
+
+            // --- The failure's notice can be appended neither to the composed batch nor to the fresh one ---
+            Assert.Equal(new PolledJob(id, JobRunKeys.Probe, PolledJobEnd.Lapsed, null, null), polled);
+            JobRow row = await fixture.JobAsync(id);
+            Assert.Equal((nameof(JobStatus.Running), 1, null), (row.Status, row.Attempts, row.ErrorCode));
+            Assert.NotNull(row.LeaseToken);
+            Assert.Empty(await fixture.RunLogAsync());
+            Assert.Empty(fixture.Events.Published);
+            Assert.Equal(2, fixture.Log.GetSnapshot().Count(static record => record.Id.Name == "JobCompletionFailed"));
+        }
+
+        [Fact]
+        public async Task A_handler_that_executes_its_invocations_batch_is_refused_and_the_worker_sends_it_with_the_outcomes()
+        {
+            int id = await fixture.InsertJobAsync(JobRunKeys.Probe);
+            InvalidOperationException? refused = null;
+            fixture.Script.Probe = async (batch, _) =>
+            {
+                Note(batch.Batch, id, "probed");
+                refused = await Assert.ThrowsAsync<InvalidOperationException>(() => batch.Batch.ExecuteAsync(Token));
+            };
+
+            PolledJob polled = Assert.Single(await PollAsync(JobRunKeys.Probe));
+
+            Assert.NotNull(refused);
+            Assert.Contains("sent by the worker", refused.Message, StringComparison.Ordinal);
+            Assert.Equal(new PolledJob(id, JobRunKeys.Probe, PolledJobEnd.Completed, JobStatus.Succeeded, null), polled);
+            Assert.Equal(["probed"], await fixture.RunLogAsync());
         }
 
         [Fact]

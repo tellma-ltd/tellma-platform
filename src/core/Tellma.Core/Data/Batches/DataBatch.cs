@@ -119,6 +119,9 @@ namespace Tellma.Core.Data.Batches
         /// <summary>Whether a statement needs the batch's statements in one transaction, as a save does.</summary>
         private bool _needsTransaction;
 
+        /// <summary>Why the code the batch was handed to may not execute it; null when it may.</summary>
+        private string? _executionReserved;
+
         /// <summary>Creates a batch.</summary>
         /// <param name="executor">The executor that runs it.</param>
         /// <param name="connection">Where its round trip gets a connection.</param>
@@ -525,6 +528,12 @@ namespace Tellma.Core.Data.Batches
             if (_stage == Stage.Sealed)
             {
                 throw new InvalidOperationException("The batch already executed. A batch executes once; create a new batch for more work.");
+            }
+
+            // A batch its owner sends refuses the code it was handed to, before anything is sent.
+            if (_executionReserved is string reserved)
+            {
+                throw new InvalidOperationException(reserved);
             }
 
             if (_open is not null)
@@ -1023,6 +1032,24 @@ namespace Tellma.Core.Data.Batches
         {
             return new InvalidOperationException(
                 "A save of the batch holds ids whose reservation was disposed before the batch executed, so the ids went back to the buffer. Keep the reservation until the batch that saves its rows executes.");
+        }
+
+        /// <summary>
+        ///     Reserves the batch's execution to its owner, which hands the batch to code that only
+        ///     composes onto it: until <see cref="ReleaseExecution" />, <see cref="ExecuteAsync" />
+        ///     throws <see cref="InvalidOperationException" /> with the reason given.
+        /// </summary>
+        /// <param name="reason">Why the batch may not be executed, and what to do instead.</param>
+        internal void ReserveExecution(string reason)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(reason);
+            _executionReserved = reason;
+        }
+
+        /// <summary>Lifts a reservation of the batch's execution, so its owner can send it.</summary>
+        internal void ReleaseExecution()
+        {
+            _executionReserved = null;
         }
 
         /// <summary>Refuses an append once the batch is sealed or broken.</summary>

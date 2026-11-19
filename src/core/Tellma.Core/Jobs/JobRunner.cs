@@ -69,6 +69,10 @@ namespace Tellma.Core.Jobs
         /// <summary>What follows a failure of the post-commit work after a committed completion.</summary>
         private const string PostCommitNext = "the jobs completed, but the post-commit work of a write they enlisted did not finish.";
 
+        /// <summary>Why a handler may not execute its invocation's completion batch.</summary>
+        private const string CompletionBatchReserved =
+            "The job's batch is sent by the worker once the handler returned, after the statement that records the outcomes and only while the lease holds. Compose onto it, and execute only the batches the handler created itself.";
+
         /// <summary>The generic claim runner, closed per item type.</summary>
         private static readonly MethodInfo RunClaimMethod = typeof(JobRunner).GetMethod(nameof(RunClaimAsync), BindingFlags.NonPublic | BindingFlags.Instance)!;
 
@@ -146,24 +150,23 @@ namespace Tellma.Core.Jobs
             IJobEntityLoad? entities = handler.EntityType is Type leaf
                 ? (IJobEntityLoad)Activator.CreateInstance(typeof(JobEntityLoad<>).MakeGenericType(leaf), batch, claim.ClaimedTable)!
                 : null;
-            return new JobClaim(handler, token, claim.Rows, entities);
+            return new JobClaim(batch.Connection.TenantId, handler, token, claim.Rows, entities);
         }
 
         /// <summary>
         ///     Runs what a claim leased: completes the rows no handler may run, then invokes the handler
         ///     once per run-as partition and completes each.
         /// </summary>
-        /// <param name="tenantId">The tenant.</param>
-        /// <param name="claim">The claim, its batch executed.</param>
+        /// <param name="claim">The claim, its batch executed; its jobs run in the tenant it leased them from.</param>
         /// <param name="hostToken">The host's token: once cancelled, the items stop and partitions not started are released.</param>
         /// <returns>How each claimed job's attempt ended, in claim order.</returns>
-        public Task<IReadOnlyList<JobSettled>> RunAsync(int tenantId, JobClaim claim, CancellationToken hostToken)
+        public Task<IReadOnlyList<JobSettled>> RunAsync(JobClaim claim, CancellationToken hostToken)
         {
             ArgumentNullException.ThrowIfNull(claim);
             Func<JobRunner, int, JobClaim, CancellationToken, Task<IReadOnlyList<JobSettled>>> run = ClaimRunners.GetOrAdd(
                 claim.Handler.ItemType,
                 static type => RunClaimMethod.MakeGenericMethod(type).CreateDelegate<Func<JobRunner, int, JobClaim, CancellationToken, Task<IReadOnlyList<JobSettled>>>>());
-            return run(this, tenantId, claim, hostToken);
+            return run(this, claim.TenantId, claim, hostToken);
         }
 
         // Spec 0020 §3.5, with the consent the row carries as a second key: one scope's confirmations
@@ -427,6 +430,7 @@ namespace Tellma.Core.Jobs
             // completion statement, whose outcomes are bound once known. It is created before the scope
             // token becomes the scope's, so it executes uncancelled (§6.6) ---
             var batch = (DataBatch)services.GetRequiredService<ITenantDatabase>().CreateBatch(BatchPurpose.Persist);
+            batch.ReserveExecution(CompletionBatchReserved);
             ConnectedUser user = await connection.CurrentAsync(CancellationToken.None).ConfigureAwait(false);
             BatchResult<ConnectResult> prologue = connection.Contribute(batch, connection.PremisesFor(user));
             List<JobOutcomeList> bound = [];
@@ -505,7 +509,7 @@ namespace Tellma.Core.Jobs
 
             List<JobCompletion> completions = [.. partition.Jobs.Select((job, index) => new JobCompletion(job, outcomes[index]))];
             IReadOnlyList<IReadOnlyList<NotificationRequest>> successNotices = [.. items.Select(static item => item.SuccessNotifications)];
-            JobMainCompletion main = new(services, frame, batch, prologue, user, bound, facts, thrown);
+            JobMainCompletion main = new(services, frame, batch, prologue, user, bound, facts, thrown, ending);
             using Activity? settle = JobsActivities.StartSettle(handler.Key, partition.Jobs);
             (IReadOnlyList<JobSettled> settled, Exception? end) = await SendAsync(partition, main, completions, successNotices).ConfigureAwait(false);
             frame.EndCompletion(end);
@@ -549,10 +553,11 @@ namespace Tellma.Core.Jobs
             if (unsent is not null)
             {
                 JobsLog.JobCompletionFailed(_logger, unsent, handler.Key, FreshNext);
-                return (await FreshAsync(partition, services, Remap(partition, main.Facts, unsent)).ConfigureAwait(false), unsent);
+                return (await FreshAsync(partition, services, Remap(partition, main.Facts, JobEnding.OfUnsent(main.Ending, unsent))).ConfigureAwait(false), unsent);
             }
 
-            // --- The round trip, and each failure path of §5.6 ---
+            // --- The round trip, and each failure path of §5.6; only the worker sends the batch ---
+            main.Batch.ReleaseExecution();
             try
             {
                 BatchOutcome outcome = await main.Batch.ExecuteAsync(CancellationToken.None).ConfigureAwait(false);
@@ -623,20 +628,19 @@ namespace Tellma.Core.Jobs
                     ? main.Frame.TranslateCompletionFailure(data) ?? JobCompletionFailures.Translate(data) ?? failure
                     : failure;
                 JobsLog.JobCompletionFailed(_logger, failure, handler.Key, FreshNext);
-                return (await FreshAsync(partition, services, Remap(partition, main.Facts, translated)).ConfigureAwait(false), failure);
+                return (await FreshAsync(partition, services, Remap(partition, main.Facts, JobEnding.OfFailure(translated))).ConfigureAwait(false), failure);
             }
         }
 
-        /// <summary>The outcomes after the composed batch failed: the work was discarded, so each item follows the failure as an exception from the invocation.</summary>
+        /// <summary>The outcomes after the composed batch failed: the work was discarded, so each item follows the failure as an ending of the invocation.</summary>
         /// <param name="partition">The partition.</param>
         /// <param name="facts">The items' facts, in claim order.</param>
-        /// <param name="failure">The failure, translated where a constraint or invariant translation covers it.</param>
+        /// <param name="failure">The ending the failure stands for.</param>
         /// <returns>The completions.</returns>
-        private static List<JobCompletion> Remap(JobPartition partition, IReadOnlyList<JobItemFacts> facts, Exception failure)
+        private static List<JobCompletion> Remap(JobPartition partition, IReadOnlyList<JobItemFacts> facts, JobEnding failure)
         {
-            JobEnding ending = failure is ValidationException invalid ? JobEnding.Invalid(invalid) : JobEnding.Unexpected(failure);
             return [.. partition.Jobs.Select((job, index) => new JobCompletion(
-                job, JobOutcomeRules.AfterFailedCompletion(facts[index], ending, partition.Policy, partition.TraceId, Random.Shared)))];
+                job, JobOutcomeRules.AfterFailedCompletion(facts[index], failure, partition.Policy, partition.TraceId, Random.Shared)))];
         }
 
         /// <summary>Answers a failed guard: the work runs again at once under the fresh permissions, in a completion of the outcomes alone.</summary>
@@ -1009,6 +1013,7 @@ namespace Tellma.Core.Jobs
     /// <param name="Bound">The outcome rows the completion statement binds, filled once known.</param>
     /// <param name="Facts">The items' facts, in claim order.</param>
     /// <param name="Thrown">What the handler threw; null when it returned.</param>
+    /// <param name="Ending">How the invocation ended, as its outcomes were decided.</param>
     internal sealed record JobMainCompletion(
         IServiceProvider Services,
         OpenWriteFrame Frame,
@@ -1017,5 +1022,6 @@ namespace Tellma.Core.Jobs
         ConnectedUser User,
         List<JobOutcomeList> Bound,
         IReadOnlyList<JobItemFacts> Facts,
-        Exception? Thrown);
+        Exception? Thrown,
+        JobEnding Ending);
 }

@@ -96,7 +96,7 @@ namespace Tellma.Testing.Entities
             foreach (JobClaim claim in claims)
             {
                 var keyOf = claim.Rows.Value.ToDictionary(static row => row.Job.Id, static row => row.Job.HandlerKey);
-                foreach (JobSettled settled in await runner.RunAsync(tenantId, claim, hostToken).ConfigureAwait(false))
+                foreach (JobSettled settled in await runner.RunAsync(claim, hostToken).ConfigureAwait(false))
                 {
                     PolledJobEnd end = settled.Settlement switch
                     {

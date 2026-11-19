@@ -10,12 +10,13 @@ using Tellma.Core.Queryex;
 
 namespace Tellma.Core.Jobs
 {
-    /// <summary>A claim appended to a poll's batch: its handler, its token, and once the batch executed, its rows and their entities.</summary>
+    /// <summary>A claim appended to a poll's batch: its tenant, its handler, its token, and once the batch executed, its rows and their entities.</summary>
+    /// <param name="TenantId">The tenant whose database the batch leased the rows from, whose scopes run them.</param>
     /// <param name="Handler">The claim's handler.</param>
     /// <param name="Token">The claim's fencing token.</param>
     /// <param name="Rows">The rows leased under the token, in due order, once the batch executed.</param>
     /// <param name="Entities">The entity rows of an entity-backed handler's jobs, once the batch executed; null for a handler of the jobs themselves.</param>
-    internal sealed record JobClaim(JobHandlerRegistration Handler, Guid Token, BatchResult<IReadOnlyList<ClaimedJob>> Rows, IJobEntityLoad? Entities);
+    internal sealed record JobClaim(int TenantId, JobHandlerRegistration Handler, Guid Token, BatchResult<IReadOnlyList<ClaimedJob>> Rows, IJobEntityLoad? Entities);
 
     /// <summary>The entity rows of an entity-backed handler's claimed jobs.</summary>
     internal interface IJobEntityLoad

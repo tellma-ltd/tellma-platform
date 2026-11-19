@@ -2097,14 +2097,15 @@ declared as its one write, so no caller authority refuses it:
 - **The renewal** extends every lease of the tenant by token and writes the buffered progress; a
   row it does not return, or returns under another token, lost its claim, and the whole lease is
   lost. A returned row whose cancel was requested cancels its item alone. A row whose completion is
-  being sent is no longer judged, whichever path completes it.
+  being sent is no longer judged, whichever path completes it, and a lease whose rows are all
+  completing is left out, so the renewal never waits on a completion's locks.
 - **The append** writes a fenced checkpoint into a handler's own transaction.
 - **The completion** records each job's outcome under the claim's token.
 
 The append and the completion throw `50422` with `Job.LeaseLost` when a row is no longer leased
 under the token, rolling back whatever their transaction carries.
 
-`JobRunner` runs what a claim leased:
+`JobRunner` runs what a claim leased, in the tenant whose database the claim's batch leased it from:
 
 - **Completions without the handler.** The rows no handler may run complete at once in the system
   scope: a requested cancel (`Jobs.Cancelled`, unless the handler commits in steps and has its
@@ -2118,13 +2119,15 @@ under the token, rolling back whatever their transaction carries.
   completion statement, whose outcomes are bound once known. The handler's own statements follow it
   on `JobBatch.Batch`, and the groups of every write it enlisted with the job frame
   (`IOpenWriteHost`, persisted onto the same batch). Then come the notices, `job.changed` to each
-  requester and the nudge of a job queued again at once, all in one round trip.
+  requester and the nudge of a job queued again at once, all in one round trip. Only the worker
+  sends it: until then, executing `JobBatch.Batch` throws `InvalidOperationException`.
 - **Outcomes.** They follow the handler's marks, a requested cancel, then how the invocation
   ended; a retry at the last allowed attempt fails instead. A lost lease records nothing.
 - **Failures.** A failed guard retries every item at once in a completion of the outcomes alone.
   Any other failure discards the handler's work and records the outcomes the failure maps to, a
-  constraint an enlisted group breaks failing every item with its translated error. A failure that
-  cannot be recorded leaves the lease to lapse.
+  constraint an enlisted group breaks failing every item with its translated error. A batch that
+  could not be sent after the handler threw maps the items by what it threw (a stop, its own error,
+  a validation). A failure that cannot be recorded leaves the lease to lapse.
 - **Progress.** `IJobProgress.Report` buffers progress for the next renewal and makes the
   checkpoint current at once; `FlushAsync` runs that renewal now; `Append` writes a fenced
   checkpoint that counts only once its batch committed. `Append` refuses `JobBatch.Batch`: the

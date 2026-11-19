@@ -182,6 +182,23 @@ namespace Tellma.Core.Tests.Jobs
         // --- The renewal's verdicts ---
 
         [Fact]
+        public void A_renewal_carries_the_leases_with_a_row_left_to_judge_and_leaves_out_those_completing_or_lost()
+        {
+            using JobLease running = Track([Row(1)], Token);
+            using JobLease partly = Track([Row(2), Row(3)], Token);
+            using JobLease completing = Track([Row(4), Row(5)], Token);
+            using JobLease lost = Track([Row(6)], Token);
+
+            // --- One partition of a claim completing keeps its lease carried; a claim wholly completing does not ---
+            partly.Slot(2)!.BeginCompleting();
+            completing.Slot(4)!.BeginCompleting();
+            completing.Slot(5)!.BeginCompleting();
+            lost.Lose();
+
+            Assert.Equal([running, partly], JobRenewal.Carried(_leases.InFlight(TenantId)));
+        }
+
+        [Fact]
         public void A_renewal_that_returned_every_row_under_the_claims_token_keeps_the_lease()
         {
             using JobLease lease = Track([Row(1), Row(2)], Token);

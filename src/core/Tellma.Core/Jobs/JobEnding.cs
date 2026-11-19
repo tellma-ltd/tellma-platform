@@ -89,6 +89,30 @@ namespace Tellma.Core.Jobs
             return new(JobEndingKind.Invalid, error, null, invalid);
         }
 
+        /// <summary>The ending a completion's failure stands for: a validation's first error, else the internal error.</summary>
+        /// <param name="failure">The failure, translated where a constraint or invariant translation covers it.</param>
+        /// <returns>The ending.</returns>
+        public static JobEnding OfFailure(Exception failure)
+        {
+            ArgumentNullException.ThrowIfNull(failure);
+            return failure is ValidationException invalid ? Invalid(invalid) : Unexpected(failure);
+        }
+
+        // Spec 0020 §5.6: a completion batch that cannot be sent is discarded with the handler's
+        // work, and the items are mapped as a failure of the invocation. When the handler threw,
+        // that failure is what it threw, as already classified (a stop, its own error, a
+        // validation); only a handler that returned is mapped by the failure that left the batch unfit.
+        /// <summary>The ending a completion batch that could not be sent stands for.</summary>
+        /// <param name="invocation">How the invocation ended.</param>
+        /// <param name="failure">What left the batch unfit to send.</param>
+        /// <returns>The invocation's ending when the handler threw; otherwise the failure's.</returns>
+        public static JobEnding OfUnsent(JobEnding invocation, Exception failure)
+        {
+            ArgumentNullException.ThrowIfNull(invocation);
+            ArgumentNullException.ThrowIfNull(failure);
+            return invocation.Kind == JobEndingKind.Returned ? OfFailure(failure) : invocation;
+        }
+
         /// <summary>The ending of a failure that is neither a validation nor a cancellation: the items retry with the internal error.</summary>
         /// <param name="exception">The failure.</param>
         /// <returns>The ending.</returns>

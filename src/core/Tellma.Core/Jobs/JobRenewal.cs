@@ -14,7 +14,8 @@ using Tellma.Core.Data.Batches;
 namespace Tellma.Core.Jobs
 {
     // Spec 0020 §5.2: one renewal per tenant, carrying every lease the tenant's claims hold on this
-    // instance and every buffered progress row. A tracked row absent from what the renewal returned
+    // instance, but those whose rows are all completing, and their buffered progress rows. A tracked
+    // row absent from what the renewal returned
     // lost its claim's lease; a row whose cancel was requested cancels its item; the carried rows
     // leave the buffer, and job.changed follows for those with a requester. A renewal that fails
     // carries no verdict: its failure reaches the caller and the leases wait for the next one.
@@ -68,8 +69,8 @@ namespace Tellma.Core.Jobs
         /// <returns>A task that completes once the verdicts were applied.</returns>
         private async Task RenewOnceAsync(int tenantId, CancellationToken cancellationToken)
         {
-            // --- What the renewal carries: the live leases, and the buffered rows with the version each was taken at ---
-            List<JobLease> leases = [.. _leases.InFlight(tenantId).Where(static lease => !lease.IsLost)];
+            // --- What the renewal carries: the live leases with a row left to judge, and the buffered rows with the version each was taken at ---
+            IReadOnlyList<JobLease> leases = Carried(_leases.InFlight(tenantId));
             if (leases.Count == 0)
             {
                 return;
@@ -114,6 +115,19 @@ namespace Tellma.Core.Jobs
                     await publisher.PublishAsync(JobNotices.Changed(slot.JobId, requester)).ConfigureAwait(false);
                 }
             }
+        }
+
+        // Spec 0020 §5.2: a lease whose rows are all completing has nothing left to extend or judge,
+        // and its completion's transaction holds those rows' locks until the handler's statements and
+        // enlisted groups finish; carrying its token would make the renewal wait for them, and every
+        // lease behind it with it. A completion that fails is meant to leave its lease to lapse.
+        /// <summary>The leases a renewal carries: those not lost with a row whose completion is not being sent.</summary>
+        /// <param name="inFlight">The tenant's leases on this instance.</param>
+        /// <returns>The leases to renew.</returns>
+        internal static IReadOnlyList<JobLease> Carried(IEnumerable<JobLease> inFlight)
+        {
+            ArgumentNullException.ThrowIfNull(inFlight);
+            return [.. inFlight.Where(static lease => !lease.IsLost && lease.Slots.Any(static slot => !slot.Completing))];
         }
 
         // Spec 0020 §5.2: a judged row the renewal did not return, or returned under another token,

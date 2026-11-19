@@ -368,7 +368,10 @@ namespace Tellma.Core.IntegrationTests.Jobs
         }
     }
 
-    /// <summary>A notifier that records each request once its batch committed, and delivers nothing.</summary>
+    /// <summary>
+    ///     A notifier that records each request once its batch committed, and delivers nothing; a
+    ///     test may have it refuse every request, as a notifier whose statement cannot be composed would.
+    /// </summary>
     public sealed class CommittedNotices : INotifier
     {
         /// <summary>The requests, in the order recorded.</summary>
@@ -377,17 +380,27 @@ namespace Tellma.Core.IntegrationTests.Jobs
         /// <summary>The requests recorded since the last clear.</summary>
         public IReadOnlyList<NotificationRequest> Raised => [.. _requests];
 
-        /// <summary>Forgets every request.</summary>
+        /// <summary>Whether every request appended to a batch is refused with an exception; off again after each clear.</summary>
+        public bool Refuses { get; set; }
+
+        /// <summary>Forgets every request, and accepts requests again.</summary>
         public void Clear()
         {
             _requests.Clear();
+            Refuses = false;
         }
 
         /// <inheritdoc />
+        /// <exception cref="InvalidOperationException">The test set the notifier to refuse every request.</exception>
         public void Notify(IDataBatch batch, IReadOnlyList<NotificationRequest> requests)
         {
             ArgumentNullException.ThrowIfNull(batch);
             ArgumentNullException.ThrowIfNull(requests);
+            if (Refuses)
+            {
+                throw new InvalidOperationException("The test notifier refuses every request.");
+            }
+
             NotificationRequest[] raised = [.. requests];
             batch.OnCommitted(_ =>
             {
