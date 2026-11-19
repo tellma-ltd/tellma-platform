@@ -103,7 +103,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC | Slot | Branch | Step | Implementer agent (name / id) | Reviewer agent (name / id) | Started (UTC) |
 |---|---|---|---|---|---|---|
 | PC-084 | pc-2 | pc/PC-084 | fix1 | impl (Opus, high, launched 2026-11-18) | R1 done (0/2/4); fix1 resumed 2026-11-18 | 2026-11-18 |
-| PC-077 | pc-3 | pc/PC-077 | fix2+hold | impl (Opus, xhigh, launched 2026-11-18) | R2 xhigh done (0/1/3); fix2 then hold behind PC-078, resumed 2026-11-18 | 2026-11-18 |
+| PC-077 | pc-3 | pc/PC-077 | held | impl (Opus, xhigh, launched 2026-11-18) | fix2 d1d5a9d0, held behind PC-078 (merge-tree vs pc/PC-078 conflicts in 6 files; resolution in reviews/PC-077.md responses) | 2026-11-18 |
 | PC-078 | pc-1 | pc/PC-078 | fix2+integrate | impl (Opus, xhigh, launched 2026-11-18) | R2 fable done (0/2/3); fix2 + integrate resumed 2026-11-18 | 2026-11-18 |
 
 ## Fix items
@@ -362,7 +362,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-074 | 0015-g | 1 | done | 2f168363, f206fbc2, b1a5382f, 1cdc5f20, ba639bf1, 9b9e4db5; green 44274178855 | | |
 | PC-075 | 0025-a | 1 | done 3301fbb (CI 43512232701 green) | 61c750f, 8f00d42, 777eeba, 3301fbb (pc) |  |  |
 | PC-076 | 0015-h | 1 | done | 3ce126e3, ac365158, b665e864, 4c3a45c0; green 44320663740 | | |
-| PC-077 | 0015-i | 1 | fix2+hold | 6eada9d9, b5cf1ae7 | | carry from PC-062 (D-079): the invoker accepts only registry-owned ApiActionDescriptor instances, matched by reference; carry from PC-066 (D-095): the spec 0015 §7.3 error re-homing view (PC-066 deviation 15); carry from PC-074 (D-114): wire the real IStackTableOwners and the write-frames producer (a ReadOnly tenant refuses every save until then) and add the integration test for OnPersist's foreign-stack refusal |
+| PC-077 | 0015-i | 1 | held | 6eada9d9, b5cf1ae7, d1d5a9d0 | | carry from PC-062 (D-079): the invoker accepts only registry-owned ApiActionDescriptor instances, matched by reference; carry from PC-066 (D-095): the spec 0015 §7.3 error re-homing view (PC-066 deviation 15); carry from PC-074 (D-114): wire the real IStackTableOwners and the write-frames producer (a ReadOnly tenant refuses every save until then) and add the integration test for OnPersist's foreign-stack refusal |
 | PC-078 | 0014-f | 1 | fix2+integrate | 5b0b6328, 1a5de53e |  | carry: §3.7 rule 1 save check must refuse (*, A) when no resource registers A (PC-043 D5); delegation coverage of Read must follow D-073; carry from PC-141 (D-096): TenantStateTests' UserId-binding, Frozen-read and ReadOnly-activity rows run (conditional skips) and must pass; carry (D-120): if PC-083 lands first, MigratorTests.The_provisioning_record_holds_the_platform_steps_with_their_versions runs and must pass in your integration gate |
 | PC-079 | 0013-h | 1 | todo | | | carry from PC-049: spec 0013 §5.5 settings securables are yours (category Resource names already match); D-076: a language change moves only the settings tag, so bump entity tags or fold the shape into wire tags |
 | PC-080 | 0016-c | 1 | todo | | | carry from PC-099 r1: core.Notification has no access criteria until PC-146, so a member gets 403 on their own rows; no member-facing surface reads the stack before PC-146; carry from PC-064: the get-by-parent-ids RouteContract.ResponseType is RowPage, so the projector wraps the bare QueryRowSet as new RowPage(rows, null, null); child surfaces take the root stack's ContractRevision plus their own [ApiResource] revision |
