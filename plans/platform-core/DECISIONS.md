@@ -405,6 +405,12 @@ Format, one entry per ruling:
   - R2-1: the bootstrap step is no longer recorded as done when it bootstrapped nobody. A later run that names an administrator then performs it, including `provision --admin-email` on an Active tenant. **For Ahmad:** spec 0014 §8.3's recovery path depends on spec 0011's provisioning record. The two specs need one owner for that path.
   - R2-4: fail closed. Changing the email of a New user that has memberships needs the same rights as those memberships, or is refused. **For Ahmad:** spec 0014 needs a line on this escalation.
   - R2-5: DeleteByQuery is removed from the users' and roles' stack operations.
+- Fix 2 outcomes (4cfcd532), each **for Ahmad**:
+  - The bootstrap step runs only when the run names an administrator. A run that names none neither runs nor records it, and logs a warning. `provision --tenant N --admin-email` on an Active or ReadOnly tenant runs that step alone. Spec 0011 §6.1-§6.2 ("already provisioned") and spec 0014 §8.3's recovery path need aligning.
+  - Changing a New user's email tests every membership that has not ended as granted (Users.MembershipEscalation). Spec 0014 §8.4 names only added, moved or widened memberships.
+  - There is a new public `StackOperations.DeleteByQuery = 128`, part of All and requiring Delete. It is not in the enum of spec 0015 §2 or spec 0016 §4. User and Role omit it, and the startup gate refuses it over a security table. Spec 0018 §4 still projects delete-by-query on both stacks.
+  - Spec 0015 §6.7 step 4's "ahead of item 1" should read "a transaction-head statement".
+- A second block on PC-078: `powershell -NoProfile -Command "Get-Process testhost,dotnet,sqlservr ..."` was refused by the classifier. It was not needed, and Ahmad was notified.
 - Also: PC-078's implementer was blocked running `powershell.exe Get-CimInstance Win32_Process` (a check for lingering testhost processes). It did not retry, and the work completed. Ahmad was notified under §9.
 
 ### D-118 (orchestrator, 2026-11-18): PC-076 ActionContext.Persisted needs a custom awaitable; for Ahmad
