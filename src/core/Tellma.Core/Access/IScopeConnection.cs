@@ -26,6 +26,16 @@ namespace Tellma.Core.Access
         /// <exception cref="TenantNotFoundException">The scope's caller is not an active user of the tenant.</exception>
         Task<ConnectedUser> CurrentAsync(CancellationToken cancellationToken);
 
+        /// <summary>
+        ///     Whether a prologue for a connected user would do what an answer from the cached set
+        ///     cannot: confirm a set no prologue confirmed within the fast-deny window, reload a set
+        ///     past its maximum age, or stamp the caller's activity. A caller that runs no batch of its
+        ///     own runs a prologue-only one when this holds.
+        /// </summary>
+        /// <param name="user">The scope's connected user.</param>
+        /// <returns>True when a prologue is due.</returns>
+        bool IsPrologueDue(ConnectedUser user);
+
         /// <summary>The premises of the next batch composed for a connected user, by the way the scope connected.</summary>
         /// <param name="user">The connected user the batch is composed for.</param>
         /// <returns>The premises.</returns>

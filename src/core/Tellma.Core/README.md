@@ -1713,7 +1713,11 @@ runs before any I/O: a root the widest schema shape lacks is `NotFoundException`
 supported yet), a having clause without an aggregation, a confirmed parameter without a name, of a
 hierarchy or geography type or named twice, and for a permission filter more than one filter or any
 other clause or parameter, are each `BadRequestException`. The caller's set comes from the scope's
-connection, so a connected caller costs no round trip, and no statement ever runs.
+connection, and no statement ever runs. A cached caller costs no round trip while a prologue
+confirmed them within the fast-deny window and nothing else is due (`IScopeConnection.IsPrologueDue`);
+otherwise the guarded runner runs its prologue with no statement appended, which refuses a
+deactivated caller (`TenantNotFoundException`), reloads a set past its maximum age, stamps activity
+and hands back the confirmed set the paths are decided from.
 
 - **The query profile.** One `DiscoverQuery` over every clause, the filters as the query composes
   them (one leaf each, conjoined in request order), with the comparisons when asked for. Then
@@ -1725,7 +1729,8 @@ connection, so a connected caller costs no round trip, and no statement ever run
   refused path, and mark the path unreachable.
 - **The permission profile.** The one filter is judged by `PermissionFilterRules`, the rule the role
   save runs (the length, then the validation of a predicate over the root with a user and no
-  parameters under the stored filter's ceilings): `Permissions.FilterTooLong` at the part past the
+  parameters under the stored filter's ceilings) over the text trimmed as the save stores it, with
+  every span moved back into the text as sent: `Permissions.FilterTooLong` at the part past the
   maximum, else the engine's diagnostics at `filters[0]`, QX3007 kept. A stored filter is the
   platform's text when a query runs, so every path is reachable.
 - **The answer.** Each parameter with its sites, its confirmed type, else the type its uses agree

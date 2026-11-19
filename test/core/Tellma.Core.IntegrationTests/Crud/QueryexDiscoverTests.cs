@@ -4,12 +4,17 @@
 // LICENSE file in the root directory of this source tree.
 
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Time.Testing;
+using System.Globalization;
 using System.Text.Json;
 using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Api;
 using Tellma.Core.Abstractions.Crud;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Errors;
+using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.Abstractions.Validation;
 using Tellma.Core.Crud.Query;
 using Tellma.Core.IntegrationTests.Access;
@@ -24,8 +29,9 @@ namespace Tellma.Core.IntegrationTests.Crud
     ///     refused before any round trip; the diagnostics the query refuses the same clauses for; a
     ///     path a filtered grant refuses reported where it is written; an unconstrained parameter
     ///     untyped and unreported; a permission filter answered with what the role save refuses it
-    ///     for; the comparisons of two filters with their literals in the wire's encoding; and no
-    ///     round trip once the caller is connected.
+    ///     for; the comparisons of two filters with their literals in the wire's encoding; no round
+    ///     trip while a prologue confirmed the caller within the fast-deny window; and a deactivated
+    ///     caller refused once that window has passed.
     /// </summary>
     /// <param name="fixture">The seeded tenant databases.</param>
     [Trait("Category", "Integration")]
@@ -174,21 +180,22 @@ namespace Tellma.Core.IntegrationTests.Crud
             Assert.Equal(QueryexType.QxDate, result.Conjuncts![2].Type);
         }
 
-        // --- No round trip when warm ---
+        // --- The caller's confirmation ---
 
         [Fact]
-        public async Task A_discovery_makes_no_round_trip_once_the_caller_is_connected()
+        public async Task A_discovery_makes_no_round_trip_while_a_prologue_confirmed_the_caller_within_the_fast_deny_window()
         {
             (_, string subject) = await fixture.SeedCallerAsync((Widgets, AccessActions.Read, null));
             QueryexDiscoverRequest request = new(Widgets, "Id, Code, CreatedBy.Email", ["Nmae = @q"], Conjuncts: true);
+            await using ServiceProvider instance = Instance(out _);
 
-            // The first scope warms the caller's connection.
-            await using (AsyncServiceScope cold = await fixture.Connect.ScopeAsync(subject))
+            // The first scope connects the caller cold, which confirms and stamps them.
+            await using (AsyncServiceScope cold = await fixture.Connect.ScopeAsync(subject, services: instance))
             {
                 _ = await DiscoverAsync(cold, request);
             }
 
-            await using AsyncServiceScope scope = await fixture.Connect.ScopeAsync(subject);
+            await using AsyncServiceScope scope = await fixture.Connect.ScopeAsync(subject, services: instance);
             DataAccessScope access = scope.ServiceProvider.GetRequiredService<DataAccessScope>();
             int before = access.RoundTrips;
             QueryexDiscoverResult result = await DiscoverAsync(scope, request);
@@ -197,6 +204,41 @@ namespace Tellma.Core.IntegrationTests.Crud
             Assert.Equal(
                 [ValidationCodes.QueryPathNotReachable],
                 result.Diagnostics.Where(static diagnostic => diagnostic.Clause == "select").Select(static diagnostic => diagnostic.Code));
+        }
+
+        [Fact]
+        public async Task A_caller_deactivated_after_connecting_finds_no_tenant_once_the_fast_deny_window_has_passed()
+        {
+            (int userId, string subject) = await fixture.SeedCallerAsync((Widgets, AccessActions.Read, null));
+            QueryexDiscoverRequest request = new(Widgets, "Id, Code");
+            await using ServiceProvider instance = Instance(out FakeTimeProvider clock);
+
+            // --- Warm: the caller connected, then deactivated as another instance would commit it ---
+            await using (AsyncServiceScope warm = await fixture.Connect.ScopeAsync(subject, services: instance))
+            {
+                _ = await DiscoverAsync(warm, request);
+            }
+
+            await fixture.Connect.ExecuteAsync(ConnectDatabase.TenantA, string.Create(CultureInfo.InvariantCulture, $"UPDATE [core].[Users] SET [IsActive] = 0 WHERE [Id] = {userId};"));
+
+            // --- Past the fast-deny window: the cached caller is confirmed by a prologue, which refuses them ---
+            clock.Advance(instance.GetRequiredService<IOptions<AccessOptions>>().Value.FastDenyWindow + TimeSpan.FromSeconds(1));
+            await using AsyncServiceScope scope = await fixture.Connect.ScopeAsync(subject, services: instance);
+            DataAccessScope access = scope.ServiceProvider.GetRequiredService<DataAccessScope>();
+            int before = access.RoundTrips;
+
+            _ = await Assert.ThrowsAsync<TenantNotFoundException>(() => DiscoverAsync(scope, request));
+            Assert.Equal(1, access.RoundTrips - before);
+        }
+
+        /// <summary>Another instance over the fixture's databases whose clock stands still until a test moves it.</summary>
+        /// <param name="clock">The instance's clock.</param>
+        /// <returns>The instance; the caller disposes it.</returns>
+        private ServiceProvider Instance(out FakeTimeProvider clock)
+        {
+            FakeTimeProvider time = new(DateTimeOffset.UtcNow);
+            clock = time;
+            return fixture.Connect.CreateInstance(services => services.Replace(ServiceDescriptor.Singleton<TimeProvider>(time)));
         }
 
         /// <summary>Invokes the endpoint in a caller's scope, through the action invoker.</summary>

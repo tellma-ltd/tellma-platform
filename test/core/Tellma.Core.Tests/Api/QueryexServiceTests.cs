@@ -8,6 +8,7 @@ using System.Text.Json;
 using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Api;
 using Tellma.Core.Abstractions.Crud;
+using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Errors;
 using Tellma.Core.Abstractions.Validation;
 using Tellma.Core.Access;
@@ -246,6 +247,26 @@ namespace Tellma.Core.Tests.Api
         }
 
         [Fact]
+        public async Task A_permission_filter_is_judged_trimmed_as_the_role_save_stores_it_with_spans_in_the_text_as_sent()
+        {
+            // At the maximum once trimmed, and one character past it as sent.
+            const string AtMaximum = "Code != 'abcdefghijklmn'";
+            Assert.Equal(MaxFilterLength, AtMaximum.Length);
+            const string Broken = "Nmae = @x";
+            QueryexEngine engine = _rig.Services.GetRequiredService<QueryexEngine>();
+
+            QueryexDiscoverResult padded = await DiscoverAsync(new QueryexDiscoverRequest(QueryModel.Accounts, Filters: ["  " + AtMaximum + "\n"], Profile: QueryexProfile.Permission));
+            QueryexDiscoverResult indented = await DiscoverAsync(new QueryexDiscoverRequest(QueryModel.Accounts, Filters: ["  " + Broken + " "], Profile: QueryexProfile.Permission));
+
+            Assert.True(PermissionFilterRules.Check(AtMaximum, _rig.Schema.FindEntity(QueryModel.Accounts), _rig.Schema, QueryexLanguage.Version, MaxFilterLength, engine.Validate).Valid);
+            Assert.Empty(padded.Diagnostics);
+            PermissionFilterVerdict verdict = PermissionFilterRules.Check(Broken, _rig.Schema.FindEntity(QueryModel.Accounts), _rig.Schema, QueryexLanguage.Version, MaxFilterLength, engine.Validate);
+            Assert.Equal(
+                verdict.Diagnostics.Select(static diagnostic => (diagnostic.Code, diagnostic.Span.Start + 2, diagnostic.Span.Length)),
+                indented.Diagnostics.Select(static diagnostic => (diagnostic.Code, diagnostic.Start, diagnostic.Length)));
+        }
+
+        [Fact]
         public async Task A_valid_permission_filter_answers_no_diagnostic_and_no_filter_answers_nothing()
         {
             QueryexDiscoverResult valid = await DiscoverAsync(new QueryexDiscoverRequest(QueryModel.Accounts, Filters: ["CreatedBy.Id = me()"], Profile: QueryexProfile.Permission));
@@ -297,6 +318,23 @@ namespace Tellma.Core.Tests.Api
             _ = await DiscoverAsync(new QueryexDiscoverRequest(QueryModel.Tickets, "Id, Counter.Label", ["Nmae = 1"], Conjuncts: true));
 
             Assert.Empty(_rig.Script.Batches);
+        }
+
+        [Fact]
+        public async Task A_caller_the_cache_cannot_vouch_for_is_confirmed_by_one_prologue_only_batch_whose_set_decides()
+        {
+            _rig.Grant((QueryModel.Tickets, AccessActions.Read, null), (QueryModel.Counters, AccessActions.Read, "Number > 0"));
+            _rig.GrantOnRecompose((QueryModel.Tickets, AccessActions.Read, null), (QueryModel.Counters, AccessActions.Read, null));
+            _rig.PrologueDue = true;
+
+            QueryexDiscoverResult result = await DiscoverAsync(new QueryexDiscoverRequest(QueryModel.Tickets, "Id, Counter.Label"));
+
+            // The guard found the fresh set and the runner composed again: two batches with no statement,
+            // and the path the cached set refused is decided by the set the prologue confirmed.
+            Assert.Equal(2, _rig.Script.Batches.Count);
+            Assert.All(_rig.Script.Batches, static batch => Assert.Equal((BatchPurpose.Read, 0), (batch.Purpose, batch.Statements.Count)));
+            Assert.Empty(result.Diagnostics);
+            Assert.All(result.Paths, static path => Assert.True(path.Reachable));
         }
 
         /// <summary>Invokes the endpoint in a scope of the rig's caller, through the action invoker.</summary>

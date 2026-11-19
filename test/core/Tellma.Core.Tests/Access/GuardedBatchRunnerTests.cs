@@ -510,6 +510,12 @@ namespace Tellma.Core.Tests.Access
             }
 
             /// <inheritdoc />
+            public bool IsPrologueDue(ConnectedUser user)
+            {
+                throw new NotSupportedException("The runner composes a prologue on every call.");
+            }
+
+            /// <inheritdoc />
             public ConnectPremises PremisesFor(ConnectedUser user)
             {
                 Premised.Add(user);

@@ -26,12 +26,15 @@ namespace Tellma.Core.Api
     ///     The Queryex authoring endpoint: checks clauses being written in an editor as a query, or a
     ///     role save, would compile them, and reports every problem, every parameter with its type,
     ///     every path with whether the caller may read through it, and on request the filters'
-    ///     top-level comparisons. No SQL runs, and a warm call makes no round trip.
+    ///     top-level comparisons. No SQL runs. A call whose caller a prologue confirmed within the
+    ///     fast-deny window makes no round trip; otherwise one prologue-only round trip re-validates
+    ///     the caller, reloads an aged set and stamps activity, as any guarded batch does.
     /// </summary>
     /// <param name="engine">The query engine.</param>
     /// <param name="schemas">The query schemas, whose widest shape says which roots exist.</param>
     /// <param name="database">The tenant's database, whose schema the clauses compile against.</param>
     /// <param name="connection">The scope's connection, whose connected user's set decides each path.</param>
+    /// <param name="runner">Runs the prologue-only batch a caller the cache cannot vouch for is confirmed by.</param>
     /// <param name="evaluator">Decides a securable from the connected user's set.</param>
     /// <param name="securables">The registered securables.</param>
     /// <param name="traversal">The navigation-traversal rule.</param>
@@ -43,6 +46,7 @@ namespace Tellma.Core.Api
         IQueryexSchemaProvider schemas,
         ITenantDatabase database,
         IScopeConnection connection,
+        IGuardedBatchRunner runner,
         AccessEvaluator evaluator,
         ISecurableRegistry securables,
         QueryTraversalRule traversal,
@@ -79,8 +83,19 @@ namespace Tellma.Core.Api
             EntityDescriptor root = Root(request.Root, schema);
             var shape = DiscoverShape.Admit(request);
 
-            // --- The caller's set: from the connect cache when warm, else one prologue-only round trip ---
+            // --- The caller's set: from the connect cache when a prologue confirmed it within the
+            // fast-deny window and nothing is due; else the guarded runner's prologue with no statement
+            // appended, which refuses a deactivated caller, reloads an aged set and stamps activity ---
             ConnectedUser user = await connection.CurrentAsync(cancellationToken).ConfigureAwait(false);
+            if (connection.IsPrologueDue(user))
+            {
+                user = await runner.RunAsync(
+                    BatchPurpose.Read,
+                    static (_, _) => ValueTask.CompletedTask,
+                    static (confirmed, _) => confirmed,
+                    cancellationToken).ConfigureAwait(false);
+            }
+
             cancellationToken.ThrowIfCancellationRequested();
 
             return shape.Profile == QueryexProfile.Permission
@@ -207,8 +222,12 @@ namespace Tellma.Core.Api
                 new DiscoveryOptions { Schema = schema, Root = root, QueryexVersion = QueryexLanguage.Version, Limits = QueryexProfiles.AccessLimits });
 
             // --- Judge, as the role save does: the length, then the validation of a predicate over the root ---
+            // The role save stores the text trimmed, so the trimmed text is judged; every span is moved
+            // back past the leading whitespace, so it still indexes the editor's text.
             int maxLength = access.Value.MaxFilterLength;
-            PermissionFilterVerdict verdict = PermissionFilterRules.Check(filter, root, schema, QueryexLanguage.Version, maxLength, engine.Validate);
+            string stored = filter.Trim();
+            int leading = filter.Length - filter.TrimStart().Length;
+            PermissionFilterVerdict verdict = PermissionFilterRules.Check(stored, root, schema, QueryexLanguage.Version, maxLength, engine.Validate);
             string clause = QueryDiagnostics.UserFilter(0);
             List<QueryDiagnostic> diagnostics = [];
             if (verdict.MaxLengthExceeded is int exceeded)
@@ -217,14 +236,16 @@ namespace Tellma.Core.Api
                 diagnostics.Add(new QueryDiagnostic(
                     clause,
                     AccessCodes.FilterTooLong,
-                    exceeded,
-                    filter.Length - exceeded,
+                    leading + exceeded,
+                    stored.Length - exceeded,
                     Location: null,
                     new Dictionary<string, object?>(StringComparer.Ordinal) { ["maxLength"] = exceeded }));
             }
             else if (!verdict.Valid)
             {
-                diagnostics.AddRange(verdict.Diagnostics.Select(diagnostic => QueryWireDiagnostics.ToWire(diagnostic, map)));
+                diagnostics.AddRange(verdict.Diagnostics.Select(diagnostic => QueryWireDiagnostics.ToWire(
+                    diagnostic with { Span = new QueryexSpan(diagnostic.Span.Start + leading, diagnostic.Span.Length) },
+                    map)));
                 if (diagnostics.Count == 0)
                 {
                     // Refused with no diagnostic to show, as the role save refuses it.
