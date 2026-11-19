@@ -359,6 +359,11 @@ Format, one entry per ruling:
 - Also accepted: a readonly select never opens (a pre-existing bug, fixed) and exposes aria-readonly.
 - **Misalignment for Ahmad:** 0010 §B.4 names contentChildren(TmOptionGroup), which the design does not need. See also D-036's §B.4 note.
 
+### D-134 — PC-142 fix2 hand-offs (2026-11-19)
+
+- The D-132 gate is in: StackRegistry refuses at startup a stack that keeps DeleteByQuery while its service or a validator judges deletes (HookOverrides.ValidatesDeletes). No platform stack breaks; User and Role already omit DeleteByQuery.
+- Read D-131's §16.2 note together with D-132: Ahmad's choice there (a gate vs a judged delete by query) also decides whether delete rules apply to delete by query. **For Ahmad:** whichever option is chosen, 0015 §16.2's delete-by-query row and 0015's capability-table TopLevelEntity default need wording that matches it.
+
 ### D-133 — PC-081 hand-offs (2026-11-19)
 
 - The SPA `{*path}` fallback swallowed 405/415 as a 404 route-not-found. PC-081 changed SpaHosting (outside 0016's own files) so RouteMisses in the fallback answers 405 with Allow, or 415. Accepted, pending R1/R2.
