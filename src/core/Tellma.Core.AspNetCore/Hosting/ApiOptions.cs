@@ -25,6 +25,18 @@ namespace Tellma.Core.AspNetCore.Hosting
         /// <summary>The base every problem's <c>type</c> URI is formed from, ending in <c>/</c>.</summary>
         public string ProblemTypeBase { get; set; } = "https://tellma.com/problems/";
 
+        /// <summary>
+        ///     The largest JSON body a web endpoint reads, in bytes; 8 MB by default. A larger body is
+        ///     refused before it is read.
+        /// </summary>
+        public long MaxJsonBodyBytes { get; set; } = 8 * 1024 * 1024;
+
+        /// <summary>
+        ///     The most entities one web save carries; 1,000 by default. It lowers a stack's own save
+        ///     ceiling, the smaller of the two winning; a larger set goes through an import.
+        /// </summary>
+        public int MaxEntitiesPerSave { get; set; } = 1000;
+
         /// <inheritdoc />
         public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
         {
@@ -44,6 +56,21 @@ namespace Tellma.Core.AspNetCore.Hosting
                             [nameof(ClientNames)]);
                     }
                 }
+            }
+
+            // --- The body and save ceilings: positive, or nothing could be sent ---
+            if (MaxJsonBodyBytes <= 0)
+            {
+                yield return new ValidationResult(
+                    $"{SectionPath}:{nameof(MaxJsonBodyBytes)} is {MaxJsonBodyBytes}; it must be positive.",
+                    [nameof(MaxJsonBodyBytes)]);
+            }
+
+            if (MaxEntitiesPerSave <= 0)
+            {
+                yield return new ValidationResult(
+                    $"{SectionPath}:{nameof(MaxEntitiesPerSave)} is {MaxEntitiesPerSave}; it must be positive.",
+                    [nameof(MaxEntitiesPerSave)]);
             }
 
             // --- The problem type base: an absolute URI every code is appended to ---

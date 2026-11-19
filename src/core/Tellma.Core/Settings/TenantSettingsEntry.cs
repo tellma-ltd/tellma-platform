@@ -12,10 +12,11 @@ namespace Tellma.Core.Settings
     ///     once when the settings were loaded.
     /// </summary>
     /// <param name="Settings">The server's view.</param>
+    /// <param name="Client">The client's view, which a settings save answers with.</param>
     /// <param name="ClientJson">The client's view, <see cref="TenantSettingsForClient" />, as UTF-8 JSON; shared, never to be changed.</param>
     /// <param name="IsPlaceholder">
     ///     Whether the database holds the unprovisioned placeholder: such an entry is served only to
     ///     the platform's own work, and never stored.
     /// </param>
-    internal sealed record TenantSettingsEntry(TenantSettings Settings, byte[] ClientJson, bool IsPlaceholder);
+    internal sealed record TenantSettingsEntry(TenantSettings Settings, TenantSettingsForClient Client, byte[] ClientJson, bool IsPlaceholder);
 }

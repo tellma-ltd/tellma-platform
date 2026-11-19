@@ -10,12 +10,14 @@ using System.Text;
 using Tellma.Core.Abstractions.Blobs;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Data.Batches;
+using Tellma.Core.Data.Conventions;
 
 namespace Tellma.Core.Blobs
 {
     /// <summary>
-    ///     The blob machinery's fixed statements, each appended on the batch's internal channel with
-    ///     <c>core.Blobs</c> declared as the table it writes, so no caller authority check refuses it:
+    ///     The blob machinery's fixed statements, each appended on the batch's internal channel: the
+    ///     stage, the read a download resolves, and the reconcile of one kind. Those that write declare
+    ///     <c>core.Blobs</c> as the table they write, which no caller authority check refuses:
     ///     <c>core.Blobs</c> belongs to no stack.
     /// </summary>
     internal static class BlobStatements
@@ -120,6 +122,120 @@ namespace Tellma.Core.Blobs
                 throw;
             }
         }
+        // spec 0017 §5.1 step 3, statement 2: the blob row, by raw text, since its storage name lies
+        // outside the query language's schema.
+        /// <summary>
+        ///     Appends the read of the blob row a download may serve: the row of the id and kind when it
+        ///     is committed, or staged by the caller and not yet expired. A released or deleting row,
+        ///     another kind and another uploader's staged row read as no row.
+        /// </summary>
+        /// <param name="batch">The batch the statement rides.</param>
+        /// <param name="id">The blob's id.</param>
+        /// <param name="kind">The kind the download names.</param>
+        /// <param name="callerId">The caller, the only user a staged row is served to.</param>
+        /// <returns>The row, or null when none matches, once the batch executed.</returns>
+        public static BatchResult<ResolvedBlob?> Resolve(DataBatch batch, int id, string kind, int callerId)
+        {
+            ArgumentNullException.ThrowIfNull(batch);
+            ArgumentNullException.ThrowIfNull(kind);
+
+            BatchResult<ResolvedBlob?> result = new();
+            StatementDraft draft = batch.Begin();
+            try
+            {
+                // --- The parameters, in the spec's order ---
+                string idParameter = draft.Scalar(SqlDbType.Int, id);
+                string kindParameter = draft.Scalar(SqlDbType.NVarChar, kind, 40);
+                string caller = draft.Scalar(SqlDbType.Int, callerId);
+
+                string text = string.Create(CultureInfo.InvariantCulture, $"""
+                    SELECT [Id], [Kind], [State], [{BlobConfiguration.StorageKey}], [ContentType], [Size], [FileName], [Width], [Height], [Variants]
+                    FROM {Blobs.Delimited}
+                    WHERE [Id] = {idParameter} AND [Kind] = {kindParameter}
+                      AND ([State] = '{nameof(BlobState.Committed)}'
+                           OR ([State] = '{nameof(BlobState.Staged)}' AND [CreatedById] = {caller} AND [ExpiresAt] > SYSUTCDATETIME()));
+                    """);
+
+                // --- The reader: at most one row, the id being the key ---
+                int ordinal = draft.Ordinal;
+                batch.Append(draft, text, new HashSet<TableName>(), idempotent: true, reader: async (cursor, cancellationToken) =>
+                {
+                    DbDataReader set = await cursor.NextAsync(ordinal, cancellationToken).ConfigureAwait(false);
+                    ResolvedBlob? row = null;
+                    if (await set.ReadAsync(cancellationToken).ConfigureAwait(false))
+                    {
+                        row = new ResolvedBlob(
+                            set.GetInt32(0),
+                            set.GetString(1),
+                            Enum.Parse<BlobState>(set.GetString(2), ignoreCase: false),
+                            set.GetString(3),
+                            set.GetString(4),
+                            set.GetInt64(5),
+                            set.IsDBNull(6) ? null : set.GetString(6),
+                            set.IsDBNull(7) ? null : set.GetInt32(7),
+                            set.IsDBNull(8) ? null : set.GetInt32(8),
+                            set.GetString(9));
+                        cursor.CountRows(1);
+                    }
+
+                    cursor.Complete(result, row);
+                });
+                return result;
+            }
+            catch
+            {
+                batch.Discard(draft);
+                throw;
+            }
+        }
+
+        // spec 0017 §7.2: the reconcile of one kind, which the reconcile job runs once per kind on a
+        // maintenance batch; a day's grace keeps a blob committed by a transaction still in flight.
+        /// <summary>
+        ///     Appends the release of the kind's committed blobs that no owner row references and that
+        ///     were committed more than a day ago, returning how many it released. Running it twice
+        ///     releases nothing more.
+        /// </summary>
+        /// <param name="batch">The batch the statement rides.</param>
+        /// <param name="kind">The kind, with the table and column of its owner rows.</param>
+        /// <returns>The number of blobs released, once the batch executed.</returns>
+        public static BatchResult<int> Reconcile(DataBatch batch, BlobKindDescriptor kind)
+        {
+            ArgumentNullException.ThrowIfNull(batch);
+            ArgumentNullException.ThrowIfNull(kind);
+
+            BatchResult<int> result = new();
+            StatementDraft draft = batch.Begin();
+            try
+            {
+                string kindParameter = draft.Scalar(SqlDbType.NVarChar, kind.Kind, 40);
+                string text = string.Create(CultureInfo.InvariantCulture, $"""
+                    UPDATE b SET [State] = '{nameof(BlobState.Released)}', [ExpiresAt] = SYSUTCDATETIME()
+                    FROM {Blobs.Delimited} AS b
+                    WHERE b.[Kind] = {kindParameter} AND b.[State] = '{nameof(BlobState.Committed)}' AND b.[CommittedAt] < DATEADD(day, -1, SYSUTCDATETIME())
+                      AND NOT EXISTS (SELECT 1 FROM {kind.OwnerTable.Delimited} AS o WHERE o.{ConventionModel.Delimit(kind.OwnerColumn)} = b.[Id]);
+                    SELECT @@ROWCOUNT AS [Released];
+                    """);
+
+                // --- The reader: the one count ---
+                int ordinal = draft.Ordinal;
+                batch.Append(draft, text, new HashSet<TableName> { Blobs }, idempotent: true, reader: async (cursor, cancellationToken) =>
+                {
+                    DbDataReader set = await cursor.NextAsync(ordinal, cancellationToken).ConfigureAwait(false);
+                    int released = await set.ReadAsync(cancellationToken).ConfigureAwait(false)
+                        ? set.GetInt32(0)
+                        : throw new InvalidOperationException("The reconcile statement returned no count.");
+                    cursor.CountRows(1);
+                    cursor.Complete(result, released);
+                });
+                return result;
+            }
+            catch
+            {
+                batch.Discard(draft);
+                throw;
+            }
+        }
     }
 
     /// <summary>The values of one staged row, as the stage statement binds them.</summary>
@@ -156,4 +272,27 @@ namespace Tellma.Core.Blobs
     /// <param name="Id">The new row's id, from the blob sequence.</param>
     /// <param name="ExpiresAt">The row's staging deadline.</param>
     internal sealed record StagedBlob(int Id, DateTimeOffset ExpiresAt);
+
+    /// <summary>A blob row a download may serve, as the resolve statement reads it.</summary>
+    /// <param name="Id">The blob's id.</param>
+    /// <param name="Kind">The blob's kind.</param>
+    /// <param name="State">Committed, or staged by the caller and unexpired.</param>
+    /// <param name="StorageKey">The primary's full object name.</param>
+    /// <param name="ContentType">The stored primary's media type.</param>
+    /// <param name="Size">The stored primary's length in bytes.</param>
+    /// <param name="FileName">The sanitised original file name, or null.</param>
+    /// <param name="Width">An image's width in pixels, or null.</param>
+    /// <param name="Height">An image's height in pixels, or null.</param>
+    /// <param name="Variants">The comma-separated variants stored beside the primary; empty for none.</param>
+    internal sealed record ResolvedBlob(
+        int Id,
+        string Kind,
+        BlobState State,
+        string StorageKey,
+        string ContentType,
+        long Size,
+        string? FileName,
+        int? Width,
+        int? Height,
+        string Variants);
 }

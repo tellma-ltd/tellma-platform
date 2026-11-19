@@ -15,10 +15,13 @@ Windows runner).
 
 `AcmeHost` builds the web host call for call as `Program.cs` does, on a test server that also
 answers what the host reaches at its own public origin: the OpenID Connect handler's back channel
-and the engine's back-channel logout client. Its warnings and errors are kept for a failed
-assertion to report. `AcmeHostOptions` adds what a test needs beyond that: another environment, a
-further composition beside Acme's (one that changes no model), services, and the tenant probes
-(`TenantProbes`), a read that runs one batch against the tenant database and a mutation that
+and the engine's back-channel logout client. Starting it waits until its tenant snapshot is loaded,
+as a load balancer sends an instance nothing before it is ready, so a first catalog load that
+outlasts the host's startup bound on a loaded machine never races a test's first request; a test
+that starts a host not ready turns that off (`AwaitsCatalog`). Its warnings and errors are kept
+for a failed assertion to report. `AcmeHostOptions` adds what a test needs beyond that: another
+environment, a further composition beside Acme's (one that changes no model), services, and the
+tenant probes (`TenantProbes`), a read that runs one batch against the tenant database and a mutation that
 changes nothing and records that it ran, mapped onto the web group as a distribution maps its own
 endpoints. Two hosts of one test can share a browser's cookie jar (`CreateFlowClient(cookies)`,
 `CreateBrowser(cookies)`), as a load balancer sends one browser to every instance. The browser is

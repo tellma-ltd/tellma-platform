@@ -193,6 +193,25 @@ namespace Tellma.Core.Tests.Data.Metadata.Malformed
         public int OrphanageId { get; set; }
     }
 
+    /// <summary>A parent whose child's parent key gives no navigation.</summary>
+    [Table("Holders", Schema = "fixture")]
+    [TableType]
+    public class Holder : TopLevelEntity
+    {
+        [NotMapped]
+        public List<HeldPart>? Parts { get; set; }
+    }
+
+    /// <summary>A child with no query surface whose parent key does not end in Id.</summary>
+    [Table("HeldParts", Schema = "fixture")]
+    [TableType]
+    [ApiResource(Queryable = false)]
+    public class HeldPart : ChildEntity
+    {
+        [ParentKey]
+        public int HolderRef { get; set; }
+    }
+
     /// <summary>A top-level entity with a parent key.</summary>
     [Table("Misparented", Schema = "fixture")]
     [TableType]

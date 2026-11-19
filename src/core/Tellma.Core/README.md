@@ -96,7 +96,7 @@ client is registered: a client may add a logger of its own, which then decides w
 | `core.languages` | a declared code is malformed, names a language that is neither catalogued nor added, repeats a language, or names a region its language does not have; `Languages` was called with an empty list; an added language is malformed (code, regions, default region, native digits), already described, or shares a symbol; the `Tellma.Core` satellite assembly of an offered language other than English is not deployed | no |
 | `core.string-pack` | a shared `Strings` resource key is declared by two composed assemblies, so the merged string pack would hold two texts for one key | no |
 | `core.calendars` | a composed calendar system's code is not 1 to 16 lower-case ASCII letters and digits starting with a letter; two systems share a code, ignoring case; `gc`, `uq` or `et` is not composed | no |
-| `core.value-sets` | a value set is not named `<schema>.<PascalCase>`, repeats a value (ignoring case), gives a value both or neither of a label key and a label, or has an alias that is one of its values or maps to none; two sets share a name, ignoring case; a set has the name of one of the model's enums (`<entity schema>.<EnumType>`); a `[ValueSet]` property names a set no feature contributes | no |
+| `core.value-sets` | two C# enum types of one type name are carried under one schema, so they share a name or their values' label keys; a value set is not named `<schema>.<PascalCase>`, repeats a value (ignoring case), gives a value both or neither of a label key and a label, or has an alias that is one of its values or maps to none; two sets share a name, ignoring case; a set has the name of one of the model's enums (`<entity schema>.<EnumType>`); a `[ValueSet]` property names a set no feature contributes | no |
 | `core.time-zones` | never: it logs one warning (`TimeZoneUnresolvable`) per value of `core.TimeZone` the host cannot resolve as a tenant's zone (its time-zone data lacks the zone, or the pinned table maps it to no Windows name), the sign of an image with stale tzdata | yes |
 | `core.entity-metadata` | the tenant model cannot be built (the convention's message, naming the declaration), or an entity leaf in it breaks the entity contract (every problem at once, see [Entity metadata](#entity-metadata)); a referenced entity with no natural key is logged as a warning and never fails | no |
 | `core.version-tags` | an entity declares a tenant-level tag that is not a lower-case name (`^[a-z][a-z0-9.-]*`, at most 128 characters) or that starts with `entity:`; a cacheable entity's implied `entity:<schema>.<Class>` name is too long; a user-level tag names no mapped `int` property or is not `Permissions` or `Preferences`; two names differ in case alone | no |
@@ -604,6 +604,49 @@ tellma.Blobs(blobs => blobs
   `tellma.blobs.upload.duration` beside it, on the `Tellma.Core` meter (the store's instruments
   alone have the `Tellma.Blobs` meter); never a tenant, a user or a file name.
 
+## Blobs: attaching, releasing and downloading
+
+- **The pair.** Every stack whose aggregate carries a `[BlobReference]` column, on its root or on a
+  child at any depth, runs `BlobReferenceValidator<T>` and `BlobReferenceEffect<T>`, attached by
+  `core` ahead of every other validator and effect. Nothing registers them by hand.
+- **The attach rule.** A value is newly attached when it is non-null on an inserted row (a child
+  row whose key the stored collection lacks counts as inserted) or differs from the stored value
+  on an updated one. Each must name a `Staged`, unexpired blob of the column's kind that the saving
+  user uploaded, once in the whole payload; otherwise the row's property is refused with
+  `Blob.NotAttachable` and a `reason` argument (`missing`, `not-staged`, `kind`, `uploader`,
+  `expired`) or `Blob.DuplicateReference`. The blob rows load on the save's first round whenever it
+  runs one (update rows, references, uniqueness, a tree, or new ids a cold buffer cannot cover, in
+  which case the save requests every blob row of the payload on that round itself). The one shape
+  that pays a round for them is an insert-only save whose ids come from a warm buffer and that
+  needs no first round otherwise. A blob column is never checked as a reference or for uniqueness,
+  so attaching needs no grant on `core.Blob`.
+- **The persist.** For each column the effect releases the blobs the capture's old values name
+  where the value changed or was cleared (`Released`, due at once), then confirms the new ones
+  (`Committed`, no deadline) under the same conditions the validator checked, and throws
+  `Blob.NotAttachable` (reason `persist`) when any new value was not confirmed: a blob that expired,
+  was claimed or deleted, or was taken by another row after the validation round rolls the whole
+  save back, and a missing blob row's foreign key failure is reported the same way. A
+  delete of any shape releases its rows' blobs and their children's. The old values come from the
+  rows as written, so an override save releases what the row actually held.
+- **Downloading.** `IBlobService.ResolveAsync(kind, id, variant)` decides the caller's read of the
+  kind's owner resource, then reads, on one read round trip, the owner row holding the id under that
+  read (through the owner path for a child kind whose entity has no query surface) and the blob
+  row. A committed blob is served when the owner row is visible; a staged one to its uploader alone;
+  a variant only when the row lists it and the kind declares its format. Missing, hidden, released
+  and another kind's blobs are all `null`, logged at debug level as `BlobDownloadNotFound`; a
+  malformed variant is a `BadRequestException`.
+  - **Step-up.** When the owner's read is sensitive, a granted owner read asks for the step-up a
+    direct read asks for (`StepUpRequiredException`, or `IndividualRequiredException` for a service
+    account), whether or not the owner row was found. The uploader's own staged blob, a kind any
+    member reads, and the platform's own work are outside it.
+  - **Round trips.** A download takes one round trip. The exception is a caller denied the owner
+    read whose cached set is older than the fast-deny window: that caller first pays the evaluator's
+    prologue-only re-check, so the download takes two.
+- **The reconcile statement.** `BlobStatements.Reconcile` releases a kind's committed blobs that no
+  owner row references and that were committed more than a day ago, and returns how many.
+- **Telemetry.** `tellma.blobs.attach.rejected` counts each refused attach by kind and reason
+  (`duplicate` and `persist` beside the reasons above).
+
 ## Calendars
 
 `CoreFeature` registers the three calendar systems, in this order, and the `ICalendarRegistry` over
@@ -811,19 +854,29 @@ resource sets.
 
 `LabelProvider` (`ILabelProvider`) answers every label the server shows from the merged dictionaries,
 in the reader's language (the innermost `LocalizationScope`'s culture, else the thread's UI culture)
-and else English. Each label walks its key chain, the first declared key wins, then falls back to the
-humanized name (`P` is the entity's key prefix, `S` its schema's):
+and else English. Each label walks its key chain (`LabelChains`, which the client entity model and
+the conventional keys walk too), the first declared key wins, then falls back to the humanized name
+(`P` is the entity's key prefix, `S` a schema's):
 
 | Label | Keys, first declared wins |
 |---|---|
 | Entity | `P_Plural`, `P` (plural); `P` (singular); a missing plural reads the singular label |
-| Property | `P_<property>`, `<property>` |
-| Navigation | `P_<navigation>`, `P_<foreign key>`, `<foreign key>`, `<navigation>` |
+| Create | `P_New`, `Entity_New` |
+| Property | `P_<property>`, `<property>`; a multilingual twin reads its primary's |
+| Navigation | `P_<navigation>`, `P_<foreign key>`, `<foreign key>`, `<navigation>`; a sibling has no foreign key of its own |
 | Collection | `P_<collection>`, the child's `P_Plural`, the child's `P` |
 | Action | `P_Action_<Action>`, `Action_<Action>` |
-| Enum value | `S_<enum>_<value>` over the schemas of the entities carrying the enum |
+| Action field | `P_Action_<Action>_<field>`, `P_<field>`, `<field>`; an `[EntityRef]` field drops its `Id` (`AssigneeId` reads `Assignee`) |
+| Enum value | `S_<enum>_<value>` over every schema whose entities, setting keys or action arguments carry the enum, in that order |
 | Setting | the setting's label key |
 | Value-set value | the value's literal label, else its label key, else the value |
+
+`NamedEnums` names each C# enum once: `<schema>.<TypeName>` after its home schema, so
+`gl.CenterType`. The home schema is the ordinally smallest schema among the entities and action
+arguments declared in the enum's own assembly that carry it, else among every entity, setting key and
+action argument that carries it, so the order features compose in never renames an enum. Its values
+are labelled under every schema that carries it, the home schema's key first. The client metadata,
+the setting descriptors and the labels all use that name.
 
 A multilingual twin (`Name2`, `Name3`) reads its primary's label: alone when the tenant has one
 content language, followed by the language's symbol in parentheses (`Name (ع)`) when it has more,
@@ -839,6 +892,28 @@ it as the derived keys and fails a key no convention derives and no source liter
 collection has no bare key (its label falls back to its child entity's), an entity's securable reads
 the entity's own labels, and the shared member labels Core ships (`Name`, `Code`, `Parent`, …) are
 derived whichever entities a composition holds.
+
+### The client entity model
+
+`ClientEntityModel` (`IClientEntityModel`) describes every entity of the queryable model to the
+client: its summary (name, route segment, label keys, operations, capabilities,
+display-name rule, kind), its key, owner, properties, navigations, children, actions with their
+argument fields and JSON Schema, related select, default order, searchable and natural keys, extras
+and query limits, and every named enum: the C# enums with their wire names (a
+`[JsonStringEnumMemberName]` member travels by it) and the value sets with their aliases. It is built
+once from `QueryexSchemaProvider`'s full map, entities and enums in ordinal name order. A label
+resolves to the first key of its chain a neutral resource declares, else to the chain's first key
+with a humanized `labelFallback`. A `[BlobReference]` property carries its kind's policy,
+its size the kind's own `MaxSize` (a host whose `Tellma:Blobs:MaxUploadSize` is smaller does not
+start). Read-only roots, which have no CLR type, are
+server-owned with types from their store columns.
+
+`EntityClientAssetContributor` writes it into the client metadata: the summaries as the Core chunk's
+`entities`, the full metadata and the enums as the Entities chunk's `entities` and `enums`, and the
+typed declarations as `tellma-entities.d.ts` (`EntityTypesWriter`): one wire interface
+per entity (`<Schema><Entity>`, camelCase members, nullable members and twins optional), a literal
+union per C# enum, and the `TmEntityTypes` and `TmEntityShapes` augmentations of `@tellma/core`. Two
+declarations of one TypeScript name fail the emit.
 
 ### Value sets
 
@@ -1021,6 +1096,30 @@ the settings editor validates them. A row the step already completed is left alo
   never disagrees with `Now`.
 - **Client metadata.** The core chunk carries `languages` (each offered language with its direction,
   default region, regions and native digits), `calendars`, `settingKeys` and `settingCategories`.
+- **Securables.** `SettingsSecurableContributor` registers `core.Settings.General` (`Read`, and a
+  sensitive `Save`) and `core.Settings.<category>` (`Read`, `Save`) for every other category.
+- **The service.** `SettingsService` (route `settings`) serves five actions through the guarded
+  runner:
+  - `client` and `entity-tags` (any member): the client view's bytes and wire tag, and the
+    `entity:*` tags, after a read batch that keeps the snapshots current.
+  - `details` (any member holding `Read` on the typed row or a category, else forbidden): one read
+    batch with the typed row when held, the values of the held categories' non-secret keys (a
+    stored value only when it reads, else the default), the set keys and their stamps, and the
+    rows their reference keys point at (an id whose row is gone is left bare).
+  - `save` (`Save` on the resource of every listed field): a `TenantSettingsPatch` lists its
+    fields, typed members by name and entries as `entries.<key>`. One validate batch reads what
+    the patch lists (the typed row only when a typed member is listed); `SettingsPatchMerger`
+    applies the patch and reports every refusal at once, then the stamps under `Check` (a
+    conflict names who changed the row; a missing entry is a conflict of its own, id 0 when the
+    row was gone before the read). One persist batch writes the row, the entries (a reset is a
+    delete, an unchanged value is skipped) and the closing reads, and a language change also
+    bumps `permissions` and every `entity:*` tag. A concurrent first write of a key is a conflict,
+    not a unique violation. The answer carries the editor's view, the client view and the settings
+    wire tag; the store is offered the committed settings. A name change is mirrored into the
+    tenant catalog after commit; a failing mirror is logged (`SettingsNamesMirrorFailed`) and the
+    save stands.
+  - `refresh-caches` (`Save` on the typed row): one persist batch bumps every tenant tag and both
+    user tags of every user, and announces the preferences change.
 
 `core.CalendarMonths` holds every Umm al-Qura month of AH 1318 to 1500 as .NET computes it, keyed
 by calendar, year and month, with the month's first Gregorian day and the day after its last; the
@@ -2217,7 +2316,8 @@ are SpreadsheetML packages written with `DocumentFormat.OpenXml` (MIT), forward-
 | `Access/` | Internally: the access tables' configurations and seeds, the user stamp and preference rows, the securable registry with its name grammar and feature contributor, the securables section of the client metadata, the permission set build: the classifier, the builder, the interner and the access instruments and logs; and the user connection: the connect prologue, the connect, permissions and profile caches, the connector, the guarded runner and the connect initializer. |
 | `Identity/` | `IdentityServerClient`; internally its transport and token cache, the wire shapes and their source-generated JSON metadata, the options' settling and validator, the composition step that binds them and registers the named HTTP client, the instruments and the log events. |
 | `Notifications/` | `NotificationTypeRegistry`, `NotificationChannelRegistry`, `ClientEventRegistry`, `NotificationsClientAssetContributor`, `ClientEventPublisher`, `NullClientEventPublisher`, `NotificationConfiguration` and `NotificationDeliveryArguments`; internally the notifier, its statements and the delivering channels, the renderer, the preference row, the metrics, the name grammars, the hub-less real-time status, the composition step and the log events. |
-| `Localization/` | `LanguageCatalog`, `LanguageDeclaration`, `LocalizationNegotiator`, `ValueSetRegistry`, `IcuStringLocalizerFactory`, `ConventionalStringKeys`; internally the catalogue's data, the declaration's resolution, the `Accept-Language` reader, the negotiated cultures, the pinned culture data with its reader, writer and generator source, the localizer's resource reader, ICU renderer, calendar formatter, argument reader and missing-key telemetry, the string-pack composer with its resource sources and client-asset contributor, the label provider, the key conventions and the name humanizer. |
+| `Client/` | Internally: the client entity model, its data types, the action arguments' fields and schema, the declarations writer and the client-asset contributor. |
+| `Localization/` | `LanguageCatalog`, `LanguageDeclaration`, `LocalizationNegotiator`, `ValueSetRegistry`, `IcuStringLocalizerFactory`, `ConventionalStringKeys`; internally the catalogue's data, the declaration's resolution, the `Accept-Language` reader, the negotiated cultures, the pinned culture data with its reader, writer and generator source, the localizer's resource reader, ICU renderer, calendar formatter, argument reader and missing-key telemetry, the string-pack composer with its resource sources and client-asset contributor, the label provider, the label key chains, the named enums, the key conventions and the name humanizer. |
 | `Resources/` | `Strings.resx`, Core's shared resources (English), with its `ar` and `am` satellites and the `Strings` marker; `ServerStrings.resx`, the server-only resources, with its marker. |
 
 ## Tests

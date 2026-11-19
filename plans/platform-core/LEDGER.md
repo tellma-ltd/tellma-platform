@@ -102,8 +102,10 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 
 | PC | Slot | Branch | Step | Implementer agent (name / id) | Reviewer agent (name / id) | Started (UTC) |
 |---|---|---|---|---|---|---|
-| PC-084 | pc-2 | pc/PC-084 | held | impl (Opus, high, launched 2026-11-18) | fix2 575849a4, held behind PC-077 (merge-tree: README conflict only) | 2026-11-18 |
-| PC-077 | pc-3 | pc/PC-077 | CI | impl (Opus, xhigh, launched 2026-11-18) | integrated 392703f6 (merge 23730416 with D-121 reconciliation + plans re-merge); CI watch 2026-11-18 | 2026-11-18 |
+| PC-102 | pc-2 | pc/PC-102 | fix1 then hold (impl c586d072; R1 0/1/3) | impl (Opus, high, launched 2026-11-19) | 0029-f; R1 only | 2026-11-19 |
+| PC-081 | pc-3 | pc/PC-081 | R2 fable (impl 8c405881; fix1 7e6c3bba; R1 0/1/3 all fixed) | impl (Opus, high, launched 2026-11-19) | 0016-d; R1 then R2 fable (security-bound) | 2026-11-19 |
+| PC-142 | pc-1 | pc/PC-142 | held (e6f1d0b2; merge-tree clean; release after PC-098) | impl (Opus, high, launched 2026-11-19) | 0015-k (T2); R1 0B/4M/5m all fixed; R2 (escalated) 0B/2M/3m; then hold | 2026-11-19 |
+| PC-098 | pc-4 | pc/PC-098 | integrating (released after PC-F59 green 44617227800; held 10ac40b1) | impl (Opus, xhigh, launched 2026-11-19) | R1 0B/2M/5m (R1-4 deferred D-129); R2 (fable) 0B/0M/6m all fixed; merge-tree: README conflict (keep both); release after PC-F58 green and PC-086 | 2026-11-19 |
 
 ## Fix items
 
@@ -165,6 +167,8 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-F55 | CI red on a3fc777e (client, Linux PR-tier e2e chromium; client-windows green): chart-bidi.spec.ts :77 and :90 fail in open() :74, bidi-drawn stays "drawing" past 5 s on try and retry; deterministic on Linux. The test must still fail when runs are not drawn apart; line stopped (§8.3) | done (ae550897; CI 44100453494 green; line reopened) | 4c7e1259, 0818687f, e6d1955b, ae550897 (pc/PC-F55) | | from PC-194 integration (CI 44086742988) |
 | PC-F56 | CI red on 1e9332ad (integration-windows, LocalDB; ubuntu integration green; all-checks-passed green as it does not cover integration-windows): Tellma.Core.IntegrationTests passed 395/398 (3 ModelLock skips) then "[Test Assembly Cleanup Failure] Xunit.Sdk.TestPipelineException", exit 1; first Windows hit; PC-068 added integration fixtures (one-tick FastDenyWindow instance, GrantAsync). Find the cause, fix it; flake: next run 44113932638 on 05467a2f all green, so the line reopened (PC-F52 precedent) | done (6f6390ce; CI 44149790190 green, verbose test logs live) | fd88ced2, ce4a9384, be61035a, 6f6390ce (pc/PC-F56) | | from PC-068 integration (CI 44110298098) |
 | PC-F57 | CI red on b4849737 (integration, Linux SQL container; integration-windows green): Core MembershipDirectoryTests.Reconciliation_rebuilds_one_tenants_hints_and_leaves_every_other_tenants_alone expected 3 changes, got 1 (test file :125). Likely PC-B03's B03-2 `UpdatedAt < @readAt` predicate with @readAt rounded to datetimeoffset(3): hints written just before CatalogTimeAsync in the same millisecond are excluded, so the alice update and bob delete are skipped. | done (735456ab; green 44231237483) | 562077d8, d6c3a1a3, 66eb4ea8, 735456ab (pc/PC-F57) | | from PC-B03 integration (CI 44215268639) |
+| PC-F58 | CI red on fc1ad812 (integration-windows; ubuntu integration green): Acme TenantStateTests frozen-tenant test 503 catalog-unavailable; test-host readiness race (first catalog load over its 10 s bound on a loaded runner), not PC-080; AcmeHost now awaits the tenant snapshot | done (88555b3a; green 44554210017) | d430d6ae, 21d453d3, 88555b3a (pc/PC-F58) | | from PC-080 integration (CI 44526593455) |
+| PC-F59 | CI fix: TenantScopeTests missing-database open accepts SQL 233 on LocalDB (test-only) | done (679708c3; green 44617227800) | d83b9501, c3e507b2, 679708c3 (pc/PC-F59) | | from PC-086 (CI run 44571660410); D-135 |
 | PC-F02 | systemic e2e flakiness: CI 42456030333 red on 5250c6c (plans-only) with 4 NEW flaky tests | done (R1 1/1/2; CI 42471952389 green), pc-f free | 2c91df4, 4c36d45, 4c89ae1 | 11.32M | grid bundle at its 38 KB ceiling; picker same-frame Enter race open | root-cause all 9; un-quarantine the fixed PC-F01 five |
 
 ## Batch reviews (one per phase)
@@ -361,19 +365,19 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-074 | 0015-g | 1 | done | 2f168363, f206fbc2, b1a5382f, 1cdc5f20, ba639bf1, 9b9e4db5; green 44274178855 | | |
 | PC-075 | 0025-a | 1 | done 3301fbb (CI 43512232701 green) | 61c750f, 8f00d42, 777eeba, 3301fbb (pc) |  |  |
 | PC-076 | 0015-h | 1 | done | 3ce126e3, ac365158, b665e864, 4c3a45c0; green 44320663740 | | |
-| PC-077 | 0015-i | 1 | CI | 6eada9d9, b5cf1ae7, d1d5a9d0, 23730416, 392703f6 | | carry from PC-062 (D-079): the invoker accepts only registry-owned ApiActionDescriptor instances, matched by reference; carry from PC-066 (D-095): the spec 0015 §7.3 error re-homing view (PC-066 deviation 15); carry from PC-074 (D-114): wire the real IStackTableOwners and the write-frames producer (a ReadOnly tenant refuses every save until then) and add the integration test for OnPersist's foreign-stack refusal; carry from PC-078 (D-121): OpenWriteFrame decides guards over StackTables ∪ batch.WrittenTables; run both checkpoints' guard and enlistment tests together; add back a ReadOnly leg to MigratorTests.A_tenant_provisioned_without_an_administrator_records_no_bootstrap_and_a_later_provision_naming_one_bootstraps_it |
+| PC-077 | 0015-i | 1 | done | 6eada9d9, b5cf1ae7, d1d5a9d0, 23730416, 392703f6; green 44446698443 | | carry from PC-062 (D-079): the invoker accepts only registry-owned ApiActionDescriptor instances, matched by reference; carry from PC-066 (D-095): the spec 0015 §7.3 error re-homing view (PC-066 deviation 15); carry from PC-074 (D-114): wire the real IStackTableOwners and the write-frames producer (a ReadOnly tenant refuses every save until then) and add the integration test for OnPersist's foreign-stack refusal; carry from PC-078 (D-121): OpenWriteFrame decides guards over StackTables ∪ batch.WrittenTables; run both checkpoints' guard and enlistment tests together; add back a ReadOnly leg to MigratorTests.A_tenant_provisioned_without_an_administrator_records_no_bootstrap_and_a_later_provision_naming_one_bootstraps_it |
 | PC-078 | 0014-f | 1 | done | 5b0b6328, 1a5de53e, 4cfcd532, 2ac84a2a, bff6d356; green 44433481481 |  | carry: §3.7 rule 1 save check must refuse (*, A) when no resource registers A (PC-043 D5); delegation coverage of Read must follow D-073; carry from PC-141 (D-096): TenantStateTests' UserId-binding, Frozen-read and ReadOnly-activity rows run (conditional skips) and must pass; carry (D-120): if PC-083 lands first, MigratorTests.The_provisioning_record_holds_the_platform_steps_with_their_versions runs and must pass in your integration gate |
-| PC-079 | 0013-h | 1 | todo | | | carry from PC-049: spec 0013 §5.5 settings securables are yours (category Resource names already match); D-076: a language change moves only the settings tag, so bump entity tags or fold the shape into wire tags |
-| PC-080 | 0016-c | 1 | todo | | | carry from PC-099 r1: core.Notification has no access criteria until PC-146, so a member gets 403 on their own rows; no member-facing surface reads the stack before PC-146; carry from PC-064: the get-by-parent-ids RouteContract.ResponseType is RowPage, so the projector wraps the bare QueryRowSet as new RowPage(rows, null, null); child surfaces take the root stack's ContractRevision plus their own [ApiResource] revision |
-| PC-081 | 0016-d | 1 | todo | | | |
-| PC-082 | 0016-e | 1 | todo | | | |
+| PC-079 | 0013-h | 1 | done | 1d018296, 1f2290e8, 4e824224; green 44512159188 | | carry from PC-049: spec 0013 §5.5 settings securables are yours (category Resource names already match); D-076: a language change moves only the settings tag, so bump entity tags or fold the shape into wire tags |
+| PC-080 | 0016-c | 1 | done | 8774aebb, 10fe4959, ea5e6dee, 6ced2f4e, 7eb13769, fc1ad812; CI red 44526593455 (test-host race, PC-F58); green 44554210017 | | carry from PC-099 r1: core.Notification has no access criteria until PC-146, so a member gets 403 on their own rows; no member-facing surface reads the stack before PC-146; carry from PC-064: the get-by-parent-ids RouteContract.ResponseType is RowPage, so the projector wraps the bare QueryRowSet as new RowPage(rows, null, null); child surfaces take the root stack's ContractRevision plus their own [ApiResource] revision |
+| PC-081 | 0016-d | 1 | impl | | | carry from PC-080 (D-124): fold the early BadRequestException→400 and LimitExceededException→413 mapping in TellmaProblemExceptionHandler into the full mapping; carry from PC-080 R2-2 (D-127): the problem writer applies the request cultures itself (WireBinding's async finally does not persist them); carry from PC-080 integration (D-127): write the Tellma-Version-Tags header (BatchOutcome composite) on settings/client too, since PC-080's raw-bytes path drops the action's WireTag; Acme signed-in HTTP tests are still skipped (NeedsUserConnectionAndBootstrap) |
+| PC-082 | 0016-e | 1 | todo | | | carry from PC-080 (D-124): register the tellma-web/tellma-long timeout policies before installing the timeout middleware (WithRequestTimeout("tellma-long") metadata is inert until then); carry D-133: Tellma-Priority parsing and 429 Retry-After from the limiter OnRejected |
 | PC-083 | 0017-c1 | 1 | done | fe0edcc6, 6b4a02bf, 9d5dd16d; green 44392562042 | | |
-| PC-084 | 0017-c2 | 1 | held | 108e56b5, 46b70189, 575849a4 | | carry (D-123): at integration, PC-077's SaveRun.Enlisted.cs Translate calls TranslateFailure(failure) in place of PersistFailures.Translate(...) before the re-home; add one enlisted test (refusals counted once per value; round count of a cold enlisted attach) |
+| PC-084 | 0017-c2 | 1 | done | 108e56b5, 46b70189, 575849a4, 52e51448; green 44457610985 | | carry (D-123): at integration, PC-077's SaveRun.Enlisted.cs Translate calls TranslateFailure(failure) in place of PersistFailures.Translate(...) before the re-home; add one enlisted test (refusals counted once per value; round count of a cold enlisted attach) |
 | PC-085 | 0011-g | 1 | done (integrated db81630; CI 43479519320 red: Acme E2E csproj never committed (.gitignore *.e2e matches the folder case-insensitively), fixed by PC-F30, green at 9a1754d (CI 43488423725); integration-windows itself green; fix1 6ba59cb; R1-6 pushed back: AspNetCore→Webhooks edge would break ARCHITECTURE rule 6, IVT seam kept and documented; R1-4 compares runtime models only; new fix: RCSI ALTER WITH ROLLBACK IMMEDIATE (pooled catalog connection timed out Acme readiness); integration-windows non-gating) | a147a95, 6ba59cb, db81630 (pc) |  |  |
-| PC-086 | 0029-a | 1 | todo | | | |
+| PC-086 | 0029-a | 1 | done | ce581934, 7a5cdf53, 84278111, 22c362f7; green 44575091654 | | |
 | PC-087 | 0018-b | 1 | todo | | | |
 | PC-088 | 0018-c | 1 | todo | | | |
-| PC-089 | 0017-d | 1 | todo | | | carry: none from D-096 any more (D-120 moved §6.4 BlobContainerStep to PC-083 and the provisioning-record row to whichever of PC-078 and PC-083 lands last) |
+| PC-089 | 0017-d | 1 | todo | | | carry: none from D-096 any more (D-120 moved §6.4 BlobContainerStep to PC-083 and the provisioning-record row to whichever of PC-078 and PC-083 lands last); carry from PC-080 (D-124): blob endpoints must evaluate access or record the member witness, or the witness filter answers 500 (unstarted) or aborts the connection (started) |
 | PC-090 | 0018-d | 1 | todo | | | carry from PC-141 (D-096): TenantStateTests.An_action_allowed_when_read_only_succeeds_on_a_read_only_tenant runs and must pass |
 | PC-091 | 0018-e | 1 | todo | | | |
 | PC-092 | 0018-g | 1 | todo | | | carry from PC-094: extend the existing server AcmeFeature ("acme", empty); do not create another |
@@ -382,11 +386,11 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-095 | 0016-f | 1 | todo | | | |
 | PC-096 | 0025-b | 1 | todo | | | |
 | PC-097 | 0020-b | 1 | done a90b368 (CI 43515001627 green) | bf01975, fb0abb0, 262b849, a90b368 (pc) |  |  |
-| PC-098 | 0020-c | 1 | todo | | | |
+| PC-098 | 0020-c | 1 | held | 06ceb5dd, 46456458, 10ac40b1 | | |
 | PC-099 | 0021-b | 1 | done (integrated 183e772, CI 43618488320 green) | 2e7dfd1, 2de32d7, f5174b3, 11a57e0 (pc), 69c009b, 183e772 (pc) |  |  |
 | PC-100 | 0020-d | 1 | todo | | | carry from PC-141 (D-096): TenantStateTests.A_job_whose_handler_runs_when_read_only_succeeds_on_a_read_only_tenant runs and must pass |
 | PC-101 | 0010-f4 | 1 | done (450f7dd, CI 43164947502 green) | b11e206, c66a4a7, 450f7dd (pc) | 8.94M (impl+fix1+int 7.20, r1 1.74) | R1 0/1/5 all fixed; new deviations: null for an IsNotNull parameter is a caller error; printed text over a parse ceiling reports that ceiling's diagnostic |
-| PC-102 | 0029-f | 1 | todo | | | |
+| PC-102 | 0029-f | 1 | impl | | | |
 | PC-103 | 0024-g | 1 | todo | | | carry from PC-094: replace Acme's interim main.ts (bootstrapApplication) and AcmeApp with bootstrapTellma/TmApp |
 | PC-104 | 0024-h | 1 | todo | | | carry from PC-094: switch Acme to tmEnglish()/tmArabic() and cut angular.json styles to src/styles.css importing @tellma/core/styles.css and @tellma/locale-ar/styles.css |
 | PC-105 | 0029-b | 1 | todo | | | |
@@ -426,7 +430,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-139 | 0032-d | 1 | todo | | | carry from PC-056: composite cell editors (window, filter) must shield inner tm-* controls from TM_CELL_EDITOR_HOST's last-registration-wins rule, or use plain inputs; add a helper if needed |
 | PC-140 | MVP | 1 | todo | | | |
 | PC-141 | 0011-h | 2 | done (478b0ab0; CI 43879675326 green) | bb2a2d6, 15d1369 (pc/PC-141) | | |
-| PC-142 | 0015-k | 2 | todo | | | |
+| PC-142 | 0015-k | 2 | fix2 | e86138b6, 76ee772e | | |
 | PC-143 | 0018-f | 2 | todo | | | |
 | PC-144 | 0020-e | 2 | todo | | | |
 | PC-145 | 0020-f | 2 | todo | | | |
@@ -458,9 +462,9 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-171 | 0031-i | 2 | todo | | | |
 | PC-172 | 0032-h | 2 | todo | | | |
 | PC-173 | 0019-a | 3 | done (c316f5b4; CI 44034804023 green) | 8f3e494, 437a88f2, c316f5b4 (pc/PC-173) | | |
-| PC-174 | 0015-j | 3 | todo | | | |
+| PC-174 | 0015-j | 3 | todo | | | carry from PC-142 (D-131): extend StackConformanceTests with the excel_rows lane and its §16.2 budget rows |
 | PC-175 | 0019-b | 3 | todo | | | carry from PC-173: implement IExcelExporter over the internal WorkbookWriter (WriteAsync takes ExcelContext + CancellationToken), and bind Tellma:ScratchPath in C# (none exists yet; spec 0017 needs it too); WriteAsync (exporter and WorkbookWriter) takes a Func<Stream> openDestination, called once after the first page passes the cap |
-| PC-176 | 0019-c | 3 | todo | | | |
+| PC-176 | 0019-c | 3 | todo | | | carry from PC-142 (D-131): extend StackConformanceTests with export/import reachability and their budget rows (with PC-177) |
 | PC-177 | 0019-d | 3 | todo | | | |
 | PC-178 | 0019-e | 3 | todo | | | |
 | PC-179 | 0030-f2 | 3 | todo | | | |

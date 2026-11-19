@@ -60,4 +60,40 @@
   <data name="Setting_fixture_widgets_autoNumber" xml:space="preserve">
     <value>Number widgets automatically</value>
   </data>
+  <data name="Acme_Customer" xml:space="preserve">
+    <value>Customer</value>
+  </data>
+  <data name="Acme_Customer_Plural" xml:space="preserve">
+    <value>Customers</value>
+  </data>
+  <data name="Acme_Customer_New" xml:space="preserve">
+    <value>New customer</value>
+  </data>
+  <data name="Acme_Currency" xml:space="preserve">
+    <value>Currency</value>
+  </data>
+  <data name="Acme_Customer_CreditLimit" xml:space="preserve">
+    <value>Credit limit</value>
+  </data>
+  <data name="Acme_Customer_Action_SetCreditLimit" xml:space="preserve">
+    <value>Set the credit limit</value>
+  </data>
+  <data name="Acme_Customer_Action_SetCreditLimit_Comment" xml:space="preserve">
+    <value>Reason</value>
+  </data>
+  <data name="Acme_CustomerContact_Plural" xml:space="preserve">
+    <value>Contacts</value>
+  </data>
+  <data name="Gl_Center_ManagerId" xml:space="preserve">
+    <value>Manager</value>
+  </data>
+  <data name="Acme_CustomerType_Wholesale" xml:space="preserve">
+    <value>Wholesale</value>
+  </data>
+  <data name="Gl_CustomerType_Retail" xml:space="preserve">
+    <value>Retail</value>
+  </data>
+  <data name="Acme_Tier_Gold" xml:space="preserve">
+    <value>Gold</value>
+  </data>
 </root>

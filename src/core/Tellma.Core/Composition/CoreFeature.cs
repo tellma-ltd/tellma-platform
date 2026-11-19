@@ -22,6 +22,7 @@ using Tellma.Core.Api;
 using Tellma.Core.Blobs;
 using Tellma.Core.Caching;
 using Tellma.Core.Calendars;
+using Tellma.Core.Client;
 using Tellma.Core.Data;
 using Tellma.Core.Identity;
 using Tellma.Core.Jobs;
@@ -99,6 +100,11 @@ namespace Tellma.Core.Composition
                 .Singleton<IRouteContracts, RouteContracts>()
                 .Singleton<IClientAssetContributor, ContractsClientAssetContributor>();
 
+            // --- The client entity model: summaries, metadata, named enums and typed declarations (spec 0029 §2, §15) ---
+            _ = contribution
+                .Singleton<IClientEntityModel, ClientEntityModel>()
+                .Singleton<IClientAssetContributor, EntityClientAssetContributor>();
+
             // --- The platform's own tables in every tenant database, mapped for migrations only ---
             _ = contribution
                 .Model<TellmaSchemaRowConfiguration>()
@@ -158,10 +164,13 @@ namespace Tellma.Core.Composition
                 .Singleton<CacheableEntityStore, CacheableEntityStore>()
                 .Scoped<ICacheableEntities, CacheableEntities>();
 
-            // --- Tenant settings: the two tables, the store and the scope's view, the cold load and the negotiation ---
-            // spec 0013 §1.2 and §5. Settings and SettingEntry are mapped leaves, never stacks; the
+            // --- Tenant settings: the two tables, the store and the scope's view, the cold load, the
+            // negotiation, the securables and the routed service ---
+            // spec 0013 §1.2, §5 and §6. Settings and SettingEntry are mapped leaves, never stacks; the
             // cold load rides the settings store's own batch after the prelude (§5.7), and the
-            // initializer at 200 negotiates the locale once the user is connected (§9.3).
+            // initializer at 200 negotiates the locale once the user is connected (§9.3). The
+            // securables are Read and Save per settings resource (§5.5); the service is routed at
+            // settings (§6.1).
             _ = contribution
                 .Model<SettingsConfiguration>()
                 .Model<SettingEntryConfiguration>()
@@ -171,7 +180,10 @@ namespace Tellma.Core.Composition
                 .Scoped<IDataBatchContributor, SettingsColdLoadContributor>()
                 .Scoped<IRequestContextInitializer, LocaleNegotiationInitializer>()
                 .ProvisioningStep<SettingsProvisioningStep>()
-                .Singleton<IClientAssetContributor, SettingsClientAssetContributor>();
+                .Singleton<IClientAssetContributor, SettingsClientAssetContributor>()
+                .Singleton<ISecurableContributor, SettingsSecurableContributor>()
+                .Singleton<SettingsPatchMerger, SettingsPatchMerger>()
+                .ApiService<SettingsService>();
 
             // --- The Umm al-Qura month table the query language's calendar map reads (spec 0013 §8.2) ---
             _ = contribution.Model<CalendarMonthRowConfiguration>();

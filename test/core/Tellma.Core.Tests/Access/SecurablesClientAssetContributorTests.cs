@@ -38,7 +38,8 @@ namespace Tellma.Core.Tests.Access
 
             // Core declares the platform's actions, its entities' plural labels, the general settings
             // category, its own securables and its feature; a fixture's keys are declared nowhere. The
-            // core stacks register their own securables, a child query surface's read owned by its root.
+            // core stacks register their own securables, a child query surface's read owned by its root,
+            // and the settings register the typed row's read and save, which a fixture's own save joins.
             string expected = /*lang=json,strict*/ """
                 [
                 {"resource":"acme.CreditExposureReport","action":"Read","isSensitive":false,"feature":"fixture","resourceLabelKey":"Securable_acme_CreditExposureReport","resourceLabelFallback":"Credit exposure report","actionLabelKey":"Action_Read","featureLabelKey":"Feature_fixture","featureLabelFallback":"Fixture"},
@@ -54,7 +55,8 @@ namespace Tellma.Core.Tests.Access
                 {"resource":"core.Schedule","action":"Save","filterRoot":"core.Schedule","isSensitive":true,"feature":"core","resourceLabelKey":"Core_Schedule_Plural","actionLabelKey":"Action_Save","featureLabelKey":"Feature_core"},
                 {"resource":"core.Schedule","action":"Delete","filterRoot":"core.Schedule","isSensitive":true,"feature":"core","resourceLabelKey":"Core_Schedule_Plural","actionLabelKey":"Action_Delete","featureLabelKey":"Feature_core"},
                 {"resource":"core.Schedule","action":"Activate","filterRoot":"core.Schedule","isSensitive":true,"feature":"core","resourceLabelKey":"Core_Schedule_Plural","actionLabelKey":"Action_Activate","featureLabelKey":"Feature_core"},
-                {"resource":"core.Settings.General","action":"Save","isSensitive":true,"feature":"fixture","resourceLabelKey":"SettingCategory_general","actionLabelKey":"Action_Save","featureLabelKey":"Feature_fixture","featureLabelFallback":"Fixture"},
+                {"resource":"core.Settings.General","action":"Read","isSensitive":false,"feature":"core","resourceLabelKey":"SettingCategory_general","actionLabelKey":"Action_Read","featureLabelKey":"Feature_core"},
+                {"resource":"core.Settings.General","action":"Save","isSensitive":true,"feature":"core","resourceLabelKey":"SettingCategory_general","actionLabelKey":"Action_Save","featureLabelKey":"Feature_core"},
                 {"resource":"core.Settings.gl","action":"Read","isSensitive":false,"feature":"fixture","resourceLabelKey":"SettingCategory_gl","resourceLabelFallback":"Gl","actionLabelKey":"Action_Read","featureLabelKey":"Feature_fixture","featureLabelFallback":"Fixture"},
                 {"resource":"core.User","action":"Read","filterRoot":"core.User","isSensitive":false,"feature":"core","resourceLabelKey":"Core_User_Plural","actionLabelKey":"Action_Read","featureLabelKey":"Feature_core"},
                 {"resource":"core.User","action":"Save","filterRoot":"core.User","isSensitive":true,"feature":"core","resourceLabelKey":"Core_User_Plural","actionLabelKey":"Action_Save","featureLabelKey":"Feature_core"},

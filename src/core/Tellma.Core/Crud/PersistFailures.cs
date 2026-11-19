@@ -26,10 +26,10 @@ namespace Tellma.Core.Crud
         private const string ForbiddenCode = "forbidden";
 
         /// <summary>The problem code of a conflict on a row whose stamp moved.</summary>
-        private const string ConflictCode = "concurrency-conflict";
+        internal const string ConflictCode = "concurrency-conflict";
 
         /// <summary>The stamp's form on the wire: seven fractional digits and the offset, so it round-trips.</summary>
-        private const string StampFormat = "yyyy'-'MM'-'dd'T'HH':'mm':'ss'.'fffffffzzz";
+        internal const string StampFormat = "yyyy'-'MM'-'dd'T'HH':'mm':'ss'.'fffffffzzz";
 
         /// <summary>The unique index two batches race on when both open the first assignment of one target.</summary>
         private const string OpenAssignmentIndex = "UX_Assignments_OpenTarget";
@@ -222,7 +222,8 @@ namespace Tellma.Core.Crud
 
         /// <summary>
         ///     Translates a written reference that names no row: <c>Fk.NotFound</c> at the one payload row
-        ///     carrying a value, else at the root naming the property.
+        ///     carrying a value, else at the root naming the property; on a blob-reference column,
+        ///     <c>Blob.NotAttachable</c> with the persist reason instead.
         /// </summary>
         /// <param name="foreignKey">The violation.</param>
         /// <param name="context">What the operation knows.</param>
@@ -234,6 +235,15 @@ namespace Tellma.Core.Crud
                 if (Referencing(entity, foreignKey.ConstraintName) is not ReferenceMetadata reference)
                 {
                     continue;
+                }
+
+                // Spec 0017 §4.4: a blob column is never a reference the client can fix; a blob row gone
+                // since the validation round (expired, then swept) is a blob the save can no longer attach.
+                if (entity.BlobReferences.Any(blob => ReferenceEquals(blob.Property, reference.ForeignKey)))
+                {
+                    return OnlyCarrier(context, entity, reference.ForeignKey, out _) is ValidationPath carrier
+                        ? new ValidationException([new ValidationError(carrier, ValidationCodes.BlobNotAttachable, Arguments(("reason", PersistReason)))])
+                        : AtRoot(ValidationCodes.BlobNotAttachable, Arguments(("reason", PersistReason), ("property", reference.ForeignKey.Name)));
                 }
 
                 // The one row carrying a value names it, widened as the validators name it; several

@@ -7,12 +7,14 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Net.Http.Headers;
 using Serilog;
 using System.Diagnostics;
 using Tellma.Core.Abstractions.Api;
 using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.Abstractions.Hosting;
 using Tellma.Core.Abstractions.Tenancy;
+using Tellma.Core.AspNetCore.Api;
 using Tellma.Core.AspNetCore.Csrf;
 using Tellma.Core.AspNetCore.Hosting;
 using Tellma.Core.AspNetCore.Observability;
@@ -31,7 +33,8 @@ namespace Tellma.Core.AspNetCore
         ///     Installs the request pipeline in its fixed order and nothing else: the header stamp,
         ///     forwarded headers, request logging, the problem-details exception handler, HSTS and HTTPS
         ///     redirection outside Development, routing, authentication and authorization, the CSRF
-        ///     control and the tenant middleware. A distribution's own middleware goes between this call
+        ///     control, the web API's contract check and the tenant middleware. A distribution's own
+        ///     middleware goes between this call
         ///     and <c>MapTellma</c>.
         /// </summary>
         /// <param name="app">The application.</param>
@@ -59,6 +62,13 @@ namespace Tellma.Core.AspNetCore
                 {
                     context.Response.Headers[TellmaHeaders.TraceId] = traceId;
                     context.Response.Headers[TellmaHeaders.Build] = versions.DistributionVersion;
+
+                    // Tenant JSON is never stored by a cache; the blob surface states its own caching.
+                    if (TenantJson.Is(context) && !context.Response.Headers.ContainsKey(HeaderNames.CacheControl))
+                    {
+                        context.Response.Headers.CacheControl = TenantJson.NoStore;
+                    }
+
                     return Task.CompletedTask;
                 });
                 return next(context);
@@ -118,7 +128,9 @@ namespace Tellma.Core.AspNetCore
             // --- 13. CSRF, ahead of every tenant and every endpoint filter ---
             _ = app.UseMiddleware<TellmaCsrfMiddleware>();
 
-            // --- 14. The contract middleware: the web API's, when composed ---
+            // --- 14. The contract check, before the tenant is resolved or a body read ---
+            // It checks a projected endpoint alone, so a host without stacks passes every request through.
+            _ = app.UseMiddleware<TellmaContractMiddleware>();
 
             // --- 15. The tenant ---
             _ = app.UseMiddleware<TenantMiddleware>();

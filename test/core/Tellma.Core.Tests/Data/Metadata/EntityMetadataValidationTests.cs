@@ -281,6 +281,13 @@ namespace Tellma.Core.Tests.Data.Metadata
             Assert.Contains("Unnavigable.OwnerRef does not end in Id", MetadataModels.SingleProblem(typeof(Unnavigable), typeof(Tabled)), StringComparison.Ordinal);
         }
 
+        [Fact]
+        public void A_parent_key_whose_name_gives_no_navigation_is_refused_even_without_a_query_surface()
+        {
+            // Every child that builds can therefore name the navigation to its owner.
+            Assert.Contains("HeldPart.HolderRef does not end in Id", MetadataModels.SingleProblem(typeof(Holder)), StringComparison.Ordinal);
+        }
+
         // --- Shadow properties ---
 
         [Fact]

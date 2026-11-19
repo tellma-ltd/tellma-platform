@@ -12,11 +12,13 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 using System.Net;
+using Tellma.Core.Abstractions.Api;
 using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.Abstractions.Hosting;
 using Tellma.Core.Abstractions.Identity;
 using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.Access;
+using Tellma.Core.AspNetCore.Api;
 using Tellma.Core.AspNetCore.Authentication;
 using Tellma.Core.AspNetCore.Bff;
 using Tellma.Core.AspNetCore.Hosting;
@@ -115,6 +117,10 @@ namespace Tellma.Core.AspNetCore
             // --- Problems and the host's instruments ---
             _ = services.AddSingleton<HostMetrics>();
             _ = services.AddExceptionHandler<TellmaProblemExceptionHandler>();
+
+            // --- The web API: bodies read and results written under the platform's one set of JSON rules ---
+            _ = services.ConfigureHttpJsonOptions(static options => TellmaJson.Configure(options.SerializerOptions));
+            _ = services.AddSingleton<ApiMetrics>();
 
             // --- Routing: the audit over every mapped endpoint, the public API's version constraint ---
             _ = services.AddSingleton<MappedEndpoints>();

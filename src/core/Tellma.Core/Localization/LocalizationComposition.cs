@@ -6,7 +6,10 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Localization;
+using Tellma.Core.Abstractions.Crud;
+using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Localization;
+using Tellma.Core.Abstractions.Settings;
 
 namespace Tellma.Core.Localization
 {
@@ -43,6 +46,14 @@ namespace Tellma.Core.Localization
             services.TryAddSingleton<StringPackComposer>();
             services.TryAddSingleton<IStringPackProvider>(static provider => provider.GetRequiredService<StringPackComposer>());
             services.TryAddSingleton<INeutralStringKeys>(static provider => provider.GetRequiredService<StringPackComposer>());
+
+            // --- The composition's C# enums, each named once (spec 0029 §2.2) ---
+            // The labels and the client metadata name and label an enum alike. The setting keys and
+            // the stacks are optional, so a host that composes neither still labels its entities' enums.
+            services.TryAddSingleton(static provider => new NamedEnums(
+                provider.GetRequiredService<IEntityMetadataProvider>(),
+                provider.GetService<ISettingKeyRegistry>(),
+                provider.GetService<IStackRegistry>()));
 
             // --- Labels by convention, resolved against the merged resources (spec 0013 §7.6) ---
             services.TryAddSingleton<ILabelProvider, LabelProvider>();
