@@ -10,6 +10,7 @@ using System.Text.Json;
 using Tellma.Core.Abstractions.Api;
 using Tellma.Core.Abstractions.Caching;
 using Tellma.Core.Abstractions.Data;
+using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.AspNetCore.Tests.Infrastructure;
 using Tellma.Core.AspNetCore.Tests.Problems;
 
@@ -144,6 +145,34 @@ namespace Tellma.Core.AspNetCore.Tests.Api
         }
 
         [Fact]
+        public async Task A_member_refused_inside_the_handler_answers_exactly_what_a_missing_tenant_answers()
+        {
+            // Server timing on and a batch already run: every header the stage could add has a value.
+            await using TellmaTestHost host = await StartAsync(static options => options.Settings["Tellma:Api:ServerTiming"] = "true");
+            string cookie = host.Cookie();
+
+            // --- A member whose access ended after admission, refused by a batch in the handler ---
+            using HttpRequestMessage inside = TellmaTestHost.SpaRequest(HttpMethod.Get, "/1/api/web/tagged/gone", cookie);
+            inside.Headers.Add("Accept-Language", Arabic);
+            using HttpResponseMessage refused = await host.Client.SendAsync(inside, TestContext.Current.CancellationToken);
+
+            // --- A tenant that does not exist, refused by the guard ---
+            using HttpRequestMessage absent = TellmaTestHost.SpaRequest(HttpMethod.Get, "/99/api/web/tagged/gone", cookie);
+            absent.Headers.Add("Accept-Language", Arabic);
+            using HttpResponseMessage missing = await host.Client.SendAsync(absent, TestContext.Current.CancellationToken);
+
+            // --- The same status, headers and body, the trace aside ---
+            Assert.Equal(HttpStatusCode.NotFound, refused.StatusCode);
+            Assert.Equal(HttpStatusCode.NotFound, missing.StatusCode);
+            Assert.Empty(refused.Content.Headers.ContentLanguage);
+            Assert.False(refused.Headers.Contains(TellmaHeaders.Calendar));
+            Assert.False(refused.Headers.Contains(TellmaHeaders.VersionTags));
+            Assert.False(refused.Headers.Contains("Server-Timing"));
+            Assert.Equal(Headers(missing), Headers(refused));
+            Assert.Equal(WithoutInstance(await Problem.ReadAsync(missing)), WithoutInstance(await Problem.ReadAsync(refused)));
+        }
+
+        [Fact]
         public async Task The_version_tags_header_reports_the_last_batch_with_the_callers_tags_only_when_it_read_them()
         {
             await using TellmaTestHost host = await StartAsync();
@@ -206,7 +235,11 @@ namespace Tellma.Core.AspNetCore.Tests.Api
         }
 
         /// <summary>Leaves an executed batch's outcome on the request's counters, as the executor does.</summary>
-        /// <param name="shape">Whose tags the batch read: <c>user</c>, <c>tenant</c>, <c>other-user</c> or <c>other-tenant</c>.</param>
+        /// <param name="shape">
+        ///     Whose tags the batch read: <c>user</c>, <c>tenant</c>, <c>other-user</c> or
+        ///     <c>other-tenant</c>; <c>gone</c> runs one batch, then refuses the caller as the next
+        ///     batch's prologue does once the caller's membership has ended.
+        /// </param>
         /// <param name="access">The request's counters.</param>
         /// <returns>An empty answer.</returns>
         private static IResult RecordBatch(string shape, DataAccessScope access)
@@ -221,7 +254,7 @@ namespace Tellma.Core.AspNetCore.Tests.Api
             access.LastOutcome = new BatchOutcome(tenant, user, RoundTrips: 1);
             access.RoundTrips = 3;
             access.DatabaseTime = TimeSpan.FromMilliseconds(12.5);
-            return Results.NoContent();
+            return shape == "gone" ? throw new TenantNotFoundException(1) : Results.NoContent();
         }
 
         /// <summary>A user's tags in tenant 1.</summary>
@@ -247,6 +280,17 @@ namespace Tellma.Core.AspNetCore.Tests.Api
         private static HttpRequestMessage Tagged(string cookie, string shape)
         {
             return TellmaTestHost.SpaRequest(HttpMethod.Get, "/1/api/web/tagged/" + shape, cookie);
+        }
+
+        /// <summary>A response's headers, the per-request trace and date aside.</summary>
+        /// <param name="response">The response.</param>
+        /// <returns>Each header as <c>name: value</c>, in order.</returns>
+        private static string[] Headers(HttpResponseMessage response)
+        {
+            return [.. response.Headers.Concat(response.Content.Headers)
+                .Where(static header => header.Key is not TellmaHeaders.TraceId and not "Date")
+                .Select(static header => header.Key + ": " + string.Join(",", header.Value))
+                .Order(StringComparer.OrdinalIgnoreCase)];
         }
 
         /// <summary>A problem's body without its trace, which differs per request.</summary>

@@ -45,10 +45,15 @@ namespace Tellma.Core.AspNetCore.Tests.Problems
             ["individual"] = static () => new IndividualRequiredException(),
             ["tenant-suspended"] = static () => new TenantUnavailableException(1, TenantState.Suspended, TenantProblemCodes.Suspended, retryAfter: null),
             ["tenant-schema-behind"] = static () => new TenantUnavailableException(1, TenantState.Active, TenantProblemCodes.SchemaBehind, retryAfter: null),
+            ["tenant-read-only"] = static () => new TenantUnavailableException(1, TenantState.ReadOnly, TenantProblemCodes.ReadOnly, retryAfter: null),
+            ["tenant-frozen"] = static () => new TenantUnavailableException(1, TenantState.Frozen, TenantProblemCodes.Frozen, retryAfter: null),
+            ["catalog-unavailable"] = static () => new TenantUnavailableException(1, state: null, TenantProblemCodes.CatalogUnavailable, TimeSpan.FromSeconds(10)),
+            ["tenant-unavailable-gone"] = static () => new TenantUnavailableException(1, TenantState.Retired, TenantProblemCodes.NotFound, retryAfter: null),
+            ["tenant-not-found"] = static () => new TenantNotFoundException(1),
             ["tenant-state"] = static () => new TenantStateException(TenantProblemCodes.IllegalTransition, "The tenant cannot move from Active to Provisioning."),
             ["not-found"] = static () => new NotFoundException("gl.Center", ["3"]),
-            ["concurrency"] = static () => new ConcurrencyException("concurrency-conflict", [new ConcurrencyConflict(3, null, null, null, IsMissing: true)]),
-            ["confirmation"] = static () => new ConfirmationRequiredException([new ConfirmationRequest("Gl.Backdated", [1, 2], new Dictionary<string, object?>())]),
+            ["concurrency"] = static () => new ConcurrencyException("concurrency-conflict", [new ConcurrencyConflict(3, "2026-11-19T08:30:00.0000000Z", 7, "Jane Doe", IsMissing: false)]),
+            ["confirmation"] = static () => new ConfirmationRequiredException([new ConfirmationRequest("Gl.Backdated", [1, 2], new Dictionary<string, object?> { ["days"] = 3 })]),
             ["count-mismatch"] = static () => new CountMismatchException(2, 3),
             ["limit"] = static () => new LimitExceededException(LimitNames.MaxIds, 5, 3),
             ["validation"] = static () => new ValidationException([new ValidationError(ValidationPath.Root.Index(1).Property("Code"), "Validation.Required", new Dictionary<string, object?> { ["property"] = "Code" })]),
@@ -76,6 +81,11 @@ namespace Tellma.Core.AspNetCore.Tests.Problems
                 { "individual", 403, "individual-required" },
                 { "tenant-suspended", 403, "tenant-suspended" },
                 { "tenant-schema-behind", 503, "tenant-schema-behind" },
+                { "tenant-read-only", 403, "tenant-read-only" },
+                { "tenant-frozen", 403, "tenant-frozen" },
+                { "catalog-unavailable", 503, "catalog-unavailable" },
+                { "tenant-unavailable-gone", 404, "tenant-not-found" },
+                { "tenant-not-found", 404, "tenant-not-found" },
                 { "tenant-state", 409, "tenant-illegal-transition" },
                 { "not-found", 404, "not-found" },
                 { "concurrency", 409, "concurrency-conflict" },
@@ -115,6 +125,49 @@ namespace Tellma.Core.AspNetCore.Tests.Problems
             Assert.Equal(JsonValueKind.Array, body.GetProperty("errors").ValueKind);
             Assert.True(body.TryGetProperty("errorDetails", out _));
             Assert.All(body.EnumerateObject(), static member => Assert.Contains(member.Name, BodyMembers));
+        }
+
+        /// <summary>The members each row adds to the body, by the exception that raises it.</summary>
+        /// <returns>The exception's name, the member's path in the body and its value as text.</returns>
+        public static TheoryData<string, string, string> Members()
+        {
+            return new TheoryData<string, string, string>
+            {
+                { "count-mismatch", "arguments.expected", "2" },
+                { "count-mismatch", "arguments.actual", "3" },
+                { "limit", "arguments.limit", "MaxIds" },
+                { "limit", "arguments.actual", "5" },
+                { "limit", "arguments.maximum", "3" },
+                { "not-found", "arguments.resource", "gl.Center" },
+                { "not-found", "arguments.ids[0]", "3" },
+                { "concurrency", "errorDetails.conflicts[0].id", "3" },
+                { "concurrency", "errorDetails.conflicts[0].modifiedAt", "2026-11-19T08:30:00.0000000Z" },
+                { "concurrency", "errorDetails.conflicts[0].modifiedById", "7" },
+                { "concurrency", "errorDetails.conflicts[0].modifiedByName", "Jane Doe" },
+                { "concurrency", "errorDetails.conflicts[0].isMissing", "false" },
+                { "partial", "errorDetails.results[0]", "sent" },
+                { "partial", "errorDetails.failed[0]", "email" },
+                { "tenant-state", "detail", "The tenant cannot move from Active to Provisioning." },
+                { "confirmation", "errorDetails.confirmations[0].key", "Gl.Backdated" },
+                { "confirmation", "errorDetails.confirmations[0].ids[1]", "2" },
+                { "confirmation", "errorDetails.confirmations[0].arguments.days", "3" },
+                { "stale", "errorDetails.dependencies[0]", "settings" },
+                { "dependency", "arguments.dependency", "database" },
+                { "blob-too-large", "errors[0].code", "Blob.TooLarge" },
+                { "blob-too-large", "errors[0].arguments.maxBytes", "1024" },
+                { "bad-request", "detail", "The ids are not distinct." },
+            };
+        }
+
+        [Theory]
+        [MemberData(nameof(Members))]
+        public async Task Each_row_writes_the_members_it_adds(string name, string path, string value)
+        {
+            await using TellmaTestHost host = await StartAsync();
+
+            using JsonDocument body = await BodyAsync(host, name);
+
+            Assert.Equal(value, Text(At(body.RootElement, path)));
         }
 
         [Fact]
@@ -322,6 +375,36 @@ namespace Tellma.Core.AspNetCore.Tests.Problems
         {
             return captured.Message.Contains("was answered with the problem", StringComparison.Ordinal)
                 && captured.Members.GetValueOrDefault("Code") == code;
+        }
+
+        /// <summary>A member of a body by its dotted path, each list item by its bracketed index.</summary>
+        /// <param name="body">The body.</param>
+        /// <param name="path">The path, such as <c>errorDetails.conflicts[0].id</c>.</param>
+        /// <returns>The member.</returns>
+        private static JsonElement At(JsonElement body, string path)
+        {
+            JsonElement current = body;
+            foreach (string part in path.Split('.'))
+            {
+                // --- The member's name, then each index that follows it ---
+                int bracket = part.IndexOf('[', StringComparison.Ordinal);
+                current = current.GetProperty(bracket < 0 ? part : part[..bracket]);
+                for (int open = bracket; open >= 0; open = part.IndexOf('[', open + 1))
+                {
+                    int close = part.IndexOf(']', open);
+                    current = current[int.Parse(part[(open + 1)..close], System.Globalization.CultureInfo.InvariantCulture)];
+                }
+            }
+
+            return current;
+        }
+
+        /// <summary>A member's value as text: a string as it is, anything else as its JSON.</summary>
+        /// <param name="member">The member.</param>
+        /// <returns>The text.</returns>
+        private static string Text(JsonElement member)
+        {
+            return member.ValueKind == JsonValueKind.String ? member.GetString()! : member.GetRawText();
         }
 
         /// <summary>Starts a host whose web surface maps the throwing endpoint.</summary>

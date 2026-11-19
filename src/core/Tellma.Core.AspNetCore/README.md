@@ -151,7 +151,9 @@ stamps the answer, success or problem, with `Content-Language` (the resolved lan
 own `permissions` and `preferences` only when that batch read them) and, when
 `Tellma:Api:ServerTiming` is on (by default in Development alone),
 `Server-Timing: db;dur=<ms>;desc="<n> calls"`. A request refused before admission (CSRF, a stale
-contract, an absent tenant) carries none of these. Every `Web` endpoint runs one more filter after
+contract, an absent tenant) carries none of these, and neither does a `tenant-not-found` raised
+after admission (a member whose access ended since their connection was cached), so it answers
+exactly what a missing tenant answers. Every `Web` endpoint runs one more filter after
 the telemetry stage: it seeds the request's confirmations from `Tellma-Confirm` (at most 16 keys of 1 to 100
 visible ASCII characters each; more, or another character, answers `400 bad-request`; undeclared
 keys are dropped). A save holding more entities than the lower of `Tellma:Api:MaxEntitiesPerSave`
@@ -188,7 +190,9 @@ statuses. The SPA fallback claims every path and verb, so it tells its misses ap
 route serves under other verbs answers `405 method-not-allowed` with `Allow`, one a route serves
 under the verb but not the body's media type `415 unsupported-media`, and any other
 `404 route-not-found` under a tenant id (`not-found` elsewhere); each reads the path alone, never
-whether the tenant exists.
+whether the tenant exists, and tries only the routes of the path's segment count and last segment.
+A bare 404 from an endpoint that matched is `not-found`: `route-not-found` is reserved for a request
+no endpoint took, the SPA's sign of an outdated client.
 
 An endpoint on a tenant group carries exactly one of `RequireSecurable(resource, action)` and
 `AllowMember()`. Every `Web`, `Api` and `Blobs` endpoint states whether it changes data with

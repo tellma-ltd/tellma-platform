@@ -46,9 +46,9 @@ namespace Tellma.Core.AspNetCore.Tests.Problems
         [InlineData(StatusCodes.Status429TooManyRequests, true, "rate-limited")]
         [InlineData(StatusCodes.Status500InternalServerError, true, "internal")]
         [InlineData(StatusCodes.Status504GatewayTimeout, true, "timeout")]
-        public void A_bare_framework_status_maps_to_its_problem_code(int status, bool tenantPath, string code)
+        public void A_bare_framework_status_maps_to_its_problem_code(int status, bool routeMiss, string code)
         {
-            ProblemDescription problem = Assert.IsType<ProblemDescription>(ProblemMapper.ForStatus(status, tenantPath));
+            ProblemDescription problem = Assert.IsType<ProblemDescription>(ProblemMapper.ForStatus(status, routeMiss));
 
             Assert.Equal(status, problem.Status);
             Assert.Equal(code, problem.Code);
@@ -60,13 +60,13 @@ namespace Tellma.Core.AspNetCore.Tests.Problems
         [InlineData(StatusCodes.Status502BadGateway)]
         public void A_status_no_problem_code_names_is_left_alone(int status)
         {
-            Assert.Null(ProblemMapper.ForStatus(status, tenantPath: true));
+            Assert.Null(ProblemMapper.ForStatus(status, routeMiss: true));
         }
 
         [Fact]
         public void A_body_over_its_ceiling_names_the_body_limit_and_renders_no_detail()
         {
-            ProblemDescription bare = ProblemMapper.ForStatus(StatusCodes.Status413PayloadTooLarge, tenantPath: true)!;
+            ProblemDescription bare = ProblemMapper.ForStatus(StatusCodes.Status413PayloadTooLarge, routeMiss: true)!;
             ProblemDescription thrown = Map(new BadHttpRequestException("Request body too large.", StatusCodes.Status413PayloadTooLarge));
 
             Assert.All([bare, thrown], static problem =>

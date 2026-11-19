@@ -166,16 +166,16 @@ namespace Tellma.Core.AspNetCore.Problems
         ///     over its ceiling, a rate limit, a timeout.
         /// </summary>
         /// <param name="status">The status the framework set.</param>
-        /// <param name="tenantPath">Whether the request's path is under a tenant id.</param>
+        /// <param name="routeMiss">Whether no endpoint matched a path under a tenant id, so a 404 is a route miss rather than an entity miss.</param>
         /// <returns>The problem, or null for a status no problem code names.</returns>
-        public static ProblemDescription? ForStatus(int status, bool tenantPath)
+        public static ProblemDescription? ForStatus(int status, bool routeMiss)
         {
             string? code = status switch
             {
                 StatusCodes.Status400BadRequest => BadRequestCode,
                 StatusCodes.Status401Unauthorized => "unauthenticated",
                 StatusCodes.Status403Forbidden => "forbidden",
-                StatusCodes.Status404NotFound => tenantPath ? "route-not-found" : "not-found",
+                StatusCodes.Status404NotFound => routeMiss ? "route-not-found" : "not-found",
                 StatusCodes.Status405MethodNotAllowed => "method-not-allowed",
                 StatusCodes.Status413PayloadTooLarge => LimitExceededCode,
                 StatusCodes.Status415UnsupportedMediaType => UnsupportedMediaCode,
@@ -290,7 +290,7 @@ namespace Tellma.Core.AspNetCore.Problems
                     Arguments = new Dictionary<string, object?>(StringComparer.Ordinal) { ["reason"] = MalformedJsonReason },
                 },
                 // Another refusal of the request (a missing body, a read that timed out) keeps its own status.
-                int status when status is >= 400 and < 500 => ForStatus(status, tenantPath: false) ?? new ProblemDescription(status, BadRequestCode),
+                int status when status is >= 400 and < 500 => ForStatus(status, routeMiss: false) ?? new ProblemDescription(status, BadRequestCode),
                 _ => new ProblemDescription(StatusCodes.Status400BadRequest, BadRequestCode),
             };
         }

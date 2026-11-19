@@ -69,7 +69,7 @@ namespace Tellma.Core.AspNetCore.Tests.Problems
         [InlineData(405, "method-not-allowed")]
         [InlineData(429, "rate-limited")]
         [InlineData(504, "timeout")]
-        [InlineData(404, "route-not-found")]
+        [InlineData(404, "not-found")]
         public async Task A_bare_status_a_component_set_answers_its_problem(int status, string code)
         {
             await using TellmaTestHost host = await StartAsync();

@@ -312,14 +312,14 @@ namespace Tellma.Core.AspNetCore.Surfaces
             }
 
             // --- A route that serves the path under another verb or media type: 405 or 415 ---
-            string[] segments = Segments(context.Request.Path);
-            bool tenantPath = segments.Length > 0 && IsTenantId(segments[0]);
-            if (context.RequestServices.GetService<RouteMisses>()?.Classify(context, tenantPath) is ProblemDescription refused)
+            if (context.RequestServices.GetService<RouteMisses>()?.Classify(context) is ProblemDescription refused)
             {
                 return ProblemWriter.WriteAsync(context, refused);
             }
 
             // --- Under a tenant id, the path names a tenant route nothing matched ---
+            string[] segments = Segments(context.Request.Path);
+            bool tenantPath = segments.Length > 0 && IsTenantId(segments[0]);
             return ProblemWriter.WriteAsync(context, StatusCodes.Status404NotFound, tenantPath ? "route-not-found" : "not-found");
         }
 

@@ -31,6 +31,22 @@ namespace Tellma.Core.AspNetCore.Problems
         /// <summary>The neutral language every resource falls back to.</summary>
         private static readonly CultureInfo Neutral = CultureInfo.ReadOnly(CultureInfo.GetCultureInfo("en"));
 
+        /// <summary>The request item that marks a request answered with an absent tenant's problem.</summary>
+        private static readonly object TenantNotFoundKey = new();
+
+        /// <summary>
+        ///     Whether a request was answered with an absent tenant's problem, which carries no header
+        ///     an admitted request's answer adds: it must read the same whether the guard refused the
+        ///     request or a batch inside the handler did.
+        /// </summary>
+        /// <param name="context">The request.</param>
+        /// <returns>True when it was.</returns>
+        public static bool AnsweredTenantNotFound(HttpContext context)
+        {
+            ArgumentNullException.ThrowIfNull(context);
+            return context.Items.ContainsKey(TenantNotFoundKey);
+        }
+
         /// <summary>Writes a problem as the response, replacing its status.</summary>
         /// <param name="context">The request.</param>
         /// <param name="status">The status code.</param>
@@ -83,6 +99,13 @@ namespace Tellma.Core.AspNetCore.Problems
 
             response.StatusCode = problem.Status;
             response.ContentType = ContentType;
+
+            // An absent tenant's answer is marked before it starts, so the stamps that run as it
+            // starts leave it alone, wherever in the request it was raised.
+            if (string.Equals(problem.Code, TenantProblemCodes.NotFound, StringComparison.Ordinal))
+            {
+                context.Items[TenantNotFoundKey] = true;
+            }
 
             // --- Counted and logged once per problem written ---
             services.GetService<ApiMetrics>()?.RecordProblem(problem.Status, problem.Code);

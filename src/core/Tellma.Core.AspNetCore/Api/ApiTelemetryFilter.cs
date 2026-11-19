@@ -117,6 +117,13 @@ namespace Tellma.Core.AspNetCore.Api
         /// <param name="http">The request, as its response starts.</param>
         private static void Stamp(HttpContext http)
         {
+            // --- An absent tenant's answer: nothing of the admitted request, which would tell the
+            // refusal of a member whose access ended mid-request from a tenant that does not exist ---
+            if (Problems.ProblemWriter.AnsweredTenantNotFound(http))
+            {
+                return;
+            }
+
             IServiceProvider services = http.RequestServices;
             IHeaderDictionary headers = http.Response.Headers;
             RequestContext request = services.GetRequiredService<IRequestContextAccessor>().Current;

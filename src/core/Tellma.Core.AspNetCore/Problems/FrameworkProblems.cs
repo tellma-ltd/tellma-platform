@@ -34,7 +34,7 @@ namespace Tellma.Core.AspNetCore.Problems
         {
             ArgumentNullException.ThrowIfNull(context);
             HttpContext http = context.HttpContext;
-            return Answers(http) && ProblemMapper.ForStatus(http.Response.StatusCode, IsTenantPath(http.Request.Path)) is ProblemDescription problem
+            return Answers(http) && ProblemMapper.ForStatus(http.Response.StatusCode, IsRouteMiss(http)) is ProblemDescription problem
                 ? ProblemWriter.WriteAsync(http, problem)
                 : Task.CompletedTask;
         }
@@ -65,10 +65,23 @@ namespace Tellma.Core.AspNetCore.Problems
             int answered = status ?? http.Response.StatusCode;
             return !string.IsNullOrWhiteSpace(code)
                 ? new ProblemDescription(answered, code)
-                : ProblemMapper.ForStatus(answered, IsTenantPath(http.Request.Path))
+                : ProblemMapper.ForStatus(answered, IsRouteMiss(http))
                     ?? new ProblemDescription(
                         answered,
                         answered >= StatusCodes.Status500InternalServerError ? ProblemMapper.InternalCode : ProblemMapper.BadRequestCode);
+        }
+
+        /// <summary>
+        ///     Whether a request's 404 is a route miss under a tenant prefix: no endpoint matched it.
+        ///     An endpoint that matched and answered 404 itself names an entity miss, never an outdated
+        ///     client.
+        /// </summary>
+        /// <param name="http">The request.</param>
+        /// <returns>True when no endpoint matched a path under a tenant id.</returns>
+        public static bool IsRouteMiss(HttpContext http)
+        {
+            ArgumentNullException.ThrowIfNull(http);
+            return http.GetEndpoint() is null && IsTenantPath(http.Request.Path);
         }
 
         /// <summary>Whether a path is under a tenant id, its first segment a positive integer.</summary>
