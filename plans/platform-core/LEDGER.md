@@ -102,11 +102,10 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 
 | PC | Slot | Branch | Step | Implementer agent (name / id) | Reviewer agent (name / id) | Started (UTC) |
 |---|---|---|---|---|---|---|
-| PC-102 | pc-2 | pc/PC-102 | R1 (impl c586d072) | impl (Opus, high, launched 2026-11-19) | 0029-f; R1 only | 2026-11-19 |
-| PC-F59 | pc-f | pc/PC-F59 | fix1+integrate (impl d83b9501; R1 0/0/2) | fix agent (Opus, high, launched 2026-11-19) | integration-windows red on c54b24e6 (plans-only), run 44571660410: Core TenantScopeTests missing-database open got SQL 233 not 4060; line stopped; R1 only | 2026-11-19 |
-| PC-081 | pc-3 | pc/PC-081 | fix1 (impl 8c405881; R1 0/1/3) | impl (Opus, high, launched 2026-11-19) | 0016-d; R1 then R2 fable (security-bound) | 2026-11-19 |
+| PC-102 | pc-2 | pc/PC-102 | fix1 then hold (impl c586d072; R1 0/1/3) | impl (Opus, high, launched 2026-11-19) | 0029-f; R1 only | 2026-11-19 |
+| PC-081 | pc-3 | pc/PC-081 | R2 fable (impl 8c405881; fix1 7e6c3bba; R1 0/1/3 all fixed) | impl (Opus, high, launched 2026-11-19) | 0016-d; R1 then R2 fable (security-bound) | 2026-11-19 |
 | PC-142 | pc-1 | pc/PC-142 | held (e6f1d0b2; merge-tree clean; release after PC-098) | impl (Opus, high, launched 2026-11-19) | 0015-k (T2); R1 0B/4M/5m all fixed; R2 (escalated) 0B/2M/3m; then hold | 2026-11-19 |
-| PC-098 | pc-4 | pc/PC-098 | held (10ac40b1) | impl (Opus, xhigh, launched 2026-11-19) | R1 0B/2M/5m (R1-4 deferred D-129); R2 (fable) 0B/0M/6m all fixed; merge-tree: README conflict (keep both); release after PC-F58 green and PC-086 | 2026-11-19 |
+| PC-098 | pc-4 | pc/PC-098 | integrating (released after PC-F59 green 44617227800; held 10ac40b1) | impl (Opus, xhigh, launched 2026-11-19) | R1 0B/2M/5m (R1-4 deferred D-129); R2 (fable) 0B/0M/6m all fixed; merge-tree: README conflict (keep both); release after PC-F58 green and PC-086 | 2026-11-19 |
 
 ## Fix items
 
@@ -169,6 +168,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-F56 | CI red on 1e9332ad (integration-windows, LocalDB; ubuntu integration green; all-checks-passed green as it does not cover integration-windows): Tellma.Core.IntegrationTests passed 395/398 (3 ModelLock skips) then "[Test Assembly Cleanup Failure] Xunit.Sdk.TestPipelineException", exit 1; first Windows hit; PC-068 added integration fixtures (one-tick FastDenyWindow instance, GrantAsync). Find the cause, fix it; flake: next run 44113932638 on 05467a2f all green, so the line reopened (PC-F52 precedent) | done (6f6390ce; CI 44149790190 green, verbose test logs live) | fd88ced2, ce4a9384, be61035a, 6f6390ce (pc/PC-F56) | | from PC-068 integration (CI 44110298098) |
 | PC-F57 | CI red on b4849737 (integration, Linux SQL container; integration-windows green): Core MembershipDirectoryTests.Reconciliation_rebuilds_one_tenants_hints_and_leaves_every_other_tenants_alone expected 3 changes, got 1 (test file :125). Likely PC-B03's B03-2 `UpdatedAt < @readAt` predicate with @readAt rounded to datetimeoffset(3): hints written just before CatalogTimeAsync in the same millisecond are excluded, so the alice update and bob delete are skipped. | done (735456ab; green 44231237483) | 562077d8, d6c3a1a3, 66eb4ea8, 735456ab (pc/PC-F57) | | from PC-B03 integration (CI 44215268639) |
 | PC-F58 | CI red on fc1ad812 (integration-windows; ubuntu integration green): Acme TenantStateTests frozen-tenant test 503 catalog-unavailable; test-host readiness race (first catalog load over its 10 s bound on a loaded runner), not PC-080; AcmeHost now awaits the tenant snapshot | done (88555b3a; green 44554210017) | d430d6ae, 21d453d3, 88555b3a (pc/PC-F58) | | from PC-080 integration (CI 44526593455) |
+| PC-F59 | CI fix: TenantScopeTests missing-database open accepts SQL 233 on LocalDB (test-only) | done (679708c3; green 44617227800) | d83b9501, c3e507b2, 679708c3 (pc/PC-F59) | | from PC-086 (CI run 44571660410); D-135 |
 | PC-F02 | systemic e2e flakiness: CI 42456030333 red on 5250c6c (plans-only) with 4 NEW flaky tests | done (R1 1/1/2; CI 42471952389 green), pc-f free | 2c91df4, 4c36d45, 4c89ae1 | 11.32M | grid bundle at its 38 KB ceiling; picker same-frame Enter race open | root-cause all 9; un-quarantine the fixed PC-F01 five |
 
 ## Batch reviews (one per phase)
