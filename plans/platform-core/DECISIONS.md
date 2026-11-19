@@ -387,6 +387,9 @@ Format, one entry per ruling:
 - PC-078 fix 1 outcomes for D-119: users' and roles' delete-by-query is refused as a BadRequest naming the resource (spec 0018 §4 and spec 0015 §16.2 say otherwise). A deactivated existing administrator fails the bootstrap naming the user id; R1 preferred reactivating through the activate action. **Both are for Ahmad.**
 - PC-077 fix 1 (b5cf1ae7): PC-078's guard rule hooks into Crud/Save/PersistGuards.Contribute. That is called at all four persist sites, OpenWriteFrame.ComposeOntoAsync included, and whoever integrates second keeps those calls.
 - **For Ahmad (spec 0015 §5.1):** how re-run enlistments are answered. PC-077 matches them by task and step from the first run and treats divergence as stale (deviation 11). Also whether EnlistmentOutcome.Stamp should become nullable; today it falls back to the frame's clock (deviation 12).
+- Outcome (PC-077 integration 23730416/392703f6):
+  - One guard rule everywhere: StackTables ∪ batch.WrittenTables, decided at the invariants step. Save, delete and action pass StackTables. OpenWriteFrame passes none and relies on each group's save or delete declaring its target's tables in WrittenTables. GroupTables and ComposedTables are removed.
+  - With real stack-table ownership wired, PC-078's two AdministratorGuardTests for another stack's raw security write now hit the append refusal first. Each test asserts that refusal, then asserts the guards' Access.LastAdministrator refusal in an instance using NoStackTableOwners. Accepted: both layers stay pinned.
 - Also from PC-077 R1, for spec 0020: the job-frame seam overwrites the worker batch's Limits.
 
 ### D-120 (orchestrator, 2026-11-18): BlobContainerStep moves from PC-089 to PC-083; the provisioning-record row goes to the later of PC-078 and PC-083
