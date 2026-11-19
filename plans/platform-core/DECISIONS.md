@@ -364,7 +364,7 @@ Format, one entry per ruling:
 - PC-080 (in R1) must write SettingsService.ClientAsync's (byte[] Json, string WireTag) result as raw bytes at the edge, not serialize the tuple. Sent to PC-080 with its review-1 fix round.
 - A language change bumps every entity:* tag along with permissions (closes the D-076 carry).
 - A missing expected entry in a settings save is a ConcurrencyException conflict (IsMissing, Id 0), never NotFound.
-- For Ahmad: client and entity-tags keep the default Mcp=Full; details, save and refresh-caches are Hidden. Should client be Hidden too? R1 judges against spec 0013.
+- Settings MCP exposure: R1-4 found spec 0016 names only details, save and refresh-caches as never exposed, and client returns a byte[]/tag tuple that the invoker would answer as {}. Ruling: client is Hidden too, entity-tags stays Full. For Ahmad: add client to spec 0016's never-exposed list.
 
 ### D-124 PC-080 hand-offs and spec notes (2026-11-19)
 
