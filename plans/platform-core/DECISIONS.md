@@ -359,6 +359,12 @@ Format, one entry per ruling:
 - Also accepted: a readonly select never opens (a pre-existing bug, fixed) and exposes aria-readonly.
 - **Misalignment for Ahmad:** 0010 §B.4 names contentChildren(TmOptionGroup), which the design does not need. See also D-036's §B.4 note.
 
+### D-132 Delete-by-query bypasses delete validators: fail closed (2026-11-19)
+
+- Situation: PC-142 R2-1. DeleteRun never runs ValidateDeleteAsync on a delete by query (spec 0015 §10.2: one Persist round trip), and every TopLevelEntity stack serves DeleteByQuery by default. Only security tables are gated (D-119). So a stack whose deletes are judged can have its delete rules bypassed by query; e.g. spec 0020's ScheduleService refuses deleting built-in schedules, yet DeleteByQueryAsync("Id = <built-in>") would delete one.
+- Interim ruling (fail closed, as D-119): the stack registry refuses at startup a stack that validates deletes and still serves StackOperations.DeleteByQuery. Delete by query stays one round trip for stacks that do not judge deletes. Implemented in PC-142's last round, with a unit test and a conformance-base assertion.
+- For Ahmad: choose between (a) this gate, or (b) a judged delete by query running a validation round (2 round trips, changing spec 0015 §10.2 and §16.2). This supersedes D-131's "wording alignment" note on §16.2's delete-by-query row.
+
 ### D-131 PC-142 R1: escalation, spec item and carries (2026-11-19)
 
 - R1 found 4 majors (missing §16.2 budget rows, collections at depth, closers without actions/validators, untouched suites not run), so PC-142 gets a second review (PLAN §8.1), Opus inherit at high: it is not on the two-review list, so no fable.
