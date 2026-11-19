@@ -102,7 +102,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 
 | PC | Slot | Branch | Step | Implementer agent (name / id) | Reviewer agent (name / id) | Started (UTC) |
 |---|---|---|---|---|---|---|
-| PC-F58 | pc-f | pc/PC-F58 | fix1 + integrate | PC-080's implementer resumed (§8.3) | root cause: Acme test-host readiness race (first catalog load >10 s on loaded Windows runner), not PC-080; fix: AcmeHost awaits the snapshot; R1 0B/0M/1m; integrating after fix1 | 2026-11-19 |
+| PC-F58 | pc-f | pc/PC-F58 | CI (88555b3a) | PC-080's implementer resumed (§8.3) | root cause: Acme test-host readiness race (first catalog load >10 s on loaded Windows runner), not PC-080; fix: AcmeHost awaits the snapshot; R1 0B/0M/1m; integrating after fix1 | 2026-11-19 |
 | PC-142 | pc-1 | pc/PC-142 | fix1 | impl (Opus, high, launched 2026-11-19) | 0015-k (T2); R1 0B/4M/5m -> escalated: R2 (Opus inherit) after fix1 | 2026-11-19 |
 | PC-086 | pc-2 | pc/PC-086 | held (7a5cdf53) | impl (Opus, high, launched 2026-11-19) | R1 0B/0M/7m (6 fixed, R1-5 pushed back); merge-tree clean; release after PC-F58 green | 2026-11-19 |
 | PC-080 | pc-3 | pc/PC-080 | CI red (fc1ad812, 44526593455); fix PC-F58 | impl (Opus, high, launched 2026-11-19) | R1 0B/1M/2m, R2 (fable) 0B/1M/3m, all fixed; merge-tree clean; released 2026-11-19 after PC-079 green | 2026-11-19 |
