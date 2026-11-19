@@ -359,6 +359,13 @@ Format, one entry per ruling:
 - Also accepted: a readonly select never opens (a pre-existing bug, fixed) and exposes aria-readonly.
 - **Misalignment for Ahmad:** 0010 §B.4 names contentChildren(TmOptionGroup), which the design does not need. See also D-036's §B.4 note.
 
+### D-133 — PC-081 hand-offs (2026-11-19)
+
+- The SPA `{*path}` fallback swallowed 405/415 as a 404 route-not-found. PC-081 changed SpaHosting (outside 0016's own files) so RouteMisses in the fallback answers 405 with Allow, or 415. Accepted, pending R1/R2.
+- 0016 §10.2 (an infra/monitoring alert on `tellma.api.problems{status=500}`) is not in PC-081's sections and no checkpoint owns it yet. **For Ahmad:** place it (suggested: the observability/infra checkpoint that owns alert rules).
+- Tellma-Priority parsing stays with PC-082; the 429 Retry-After must come from PC-082's limiter OnRejected. Carried to PC-082.
+- Acme NeedsUserConnectionAndBootstrap tests stay skipped until the real user connection and admin bootstrap exist. ARCHITECTURE.md needed no change.
+
 ### D-132 Delete-by-query bypasses delete validators: fail closed (2026-11-19)
 
 - Situation: PC-142 R2-1. DeleteRun never runs ValidateDeleteAsync on a delete by query (spec 0015 §10.2: one Persist round trip), and every TopLevelEntity stack serves DeleteByQuery by default. Only security tables are gated (D-119). So a stack whose deletes are judged can have its delete rules bypassed by query; e.g. spec 0020's ScheduleService refuses deleting built-in schedules, yet DeleteByQueryAsync("Id = <built-in>") would delete one.
