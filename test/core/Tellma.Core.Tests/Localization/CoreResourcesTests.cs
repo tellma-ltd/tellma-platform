@@ -160,9 +160,16 @@ namespace Tellma.Core.Tests.Localization
             return new MessageFormatter(useCache: false, culture: culture, customValueFormatter: new CalendarValueFormatter());
         }
 
-        /// <summary>A key: words of letters and digits, joined by underscores.</summary>
+        // Spec 0013 §10.1: a key built from a notification type or job handler key keeps that key's
+        // hyphens (Notification_core_job_pending-confirmation); every other key is plain words.
+        /// <summary>
+        ///     A key: words of letters and digits, joined by underscores; under the families built from
+        ///     a dotted key, a word may join hyphenated parts.
+        /// </summary>
         /// <returns>The pattern.</returns>
-        [GeneratedRegex(@"^[A-Za-z0-9]+(_[A-Za-z0-9]+)*$", RegexOptions.CultureInvariant)]
+        [GeneratedRegex(
+            @"^(?:[A-Za-z0-9]+(?:_[A-Za-z0-9]+)*|(?:Notification|NotificationType|JobHandler)(?:_[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*)+)$",
+            RegexOptions.CultureInvariant)]
         private static partial Regex KeyGrammar();
 
         /// <summary>A placeholder formatted as a date or a time, capturing its argument's name.</summary>

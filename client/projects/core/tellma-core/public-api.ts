@@ -81,6 +81,7 @@ export { tmFeature, type TmFeature, type TmFeatureDefinition } from './src/decla
 export { tmOverride, type TmDeclarationPatch, type TmOverride } from './src/declarations/tm-override';
 export { tmPage, type TmPageDeclaration, type TmPageDefinition } from './src/declarations/tm-page';
 export { tmEntity, type TmEntityDeclaration, type TmEntityDeclarationInput } from './src/entity/tm-entity-declaration';
+export type { TmEntityShapes, TmEntityType, TmEntityTypes } from './src/entity/tm-entity-types';
 export {
   tmCodedReport,
   type TmCodedReportDeclaration,

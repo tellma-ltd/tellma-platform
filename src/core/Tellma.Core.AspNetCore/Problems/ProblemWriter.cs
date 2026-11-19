@@ -79,6 +79,8 @@ namespace Tellma.Core.AspNetCore.Problems
                 "unauthenticated" => "Authentication is required",
                 "forbidden" => "Access is denied",
                 "bad-request" => "The request is malformed",
+                "limit-exceeded" => "The request exceeds a limit",
+                "client-outdated" => "The client is outdated",
                 "not-found" => "Not found",
                 "route-not-found" => "No such route",
                 "provisioning-not-configured" => "Tenant provisioning is not available",

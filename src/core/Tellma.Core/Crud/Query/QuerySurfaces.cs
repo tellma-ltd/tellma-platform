@@ -118,7 +118,7 @@ namespace Tellma.Core.Crud.Query
         /// <summary>The search convention: the string properties named <c>Name</c>, <c>Name2</c>, <c>Name3</c> and <c>Code</c>, each by contains.</summary>
         /// <param name="entity">The entity.</param>
         /// <returns>The columns, in the convention's order.</returns>
-        private static List<(string Property, SearchKind Kind)> Convention(EntityMetadata entity)
+        internal static List<(string Property, SearchKind Kind)> Convention(EntityMetadata entity)
         {
             return [.. ConventionColumns
                 .Where(column => entity.Properties.Any(property => property.Name == column && property.ClrType == typeof(string)))

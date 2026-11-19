@@ -96,7 +96,7 @@ client is registered: a client may add a logger of its own, which then decides w
 | `core.languages` | a declared code is malformed, names a language that is neither catalogued nor added, repeats a language, or names a region its language does not have; `Languages` was called with an empty list; an added language is malformed (code, regions, default region, native digits), already described, or shares a symbol; the `Tellma.Core` satellite assembly of an offered language other than English is not deployed | no |
 | `core.string-pack` | a shared `Strings` resource key is declared by two composed assemblies, so the merged string pack would hold two texts for one key | no |
 | `core.calendars` | a composed calendar system's code is not 1 to 16 lower-case ASCII letters and digits starting with a letter; two systems share a code, ignoring case; `gc`, `uq` or `et` is not composed | no |
-| `core.value-sets` | a value set is not named `<schema>.<PascalCase>`, repeats a value (ignoring case), gives a value both or neither of a label key and a label, or has an alias that is one of its values or maps to none; two sets share a name, ignoring case; a set has the name of one of the model's enums (`<entity schema>.<EnumType>`); a `[ValueSet]` property names a set no feature contributes | no |
+| `core.value-sets` | two C# enum types of one type name are carried under one schema, so they share a name or their values' label keys; a value set is not named `<schema>.<PascalCase>`, repeats a value (ignoring case), gives a value both or neither of a label key and a label, or has an alias that is one of its values or maps to none; two sets share a name, ignoring case; a set has the name of one of the model's enums (`<entity schema>.<EnumType>`); a `[ValueSet]` property names a set no feature contributes | no |
 | `core.time-zones` | never: it logs one warning (`TimeZoneUnresolvable`) per value of `core.TimeZone` the host cannot resolve as a tenant's zone (its time-zone data lacks the zone, or the pinned table maps it to no Windows name), the sign of an image with stale tzdata | yes |
 | `core.entity-metadata` | the tenant model cannot be built (the convention's message, naming the declaration), or an entity leaf in it breaks the entity contract (every problem at once, see [Entity metadata](#entity-metadata)); a referenced entity with no natural key is logged as a warning and never fails | no |
 | `core.version-tags` | an entity declares a tenant-level tag that is not a lower-case name (`^[a-z][a-z0-9.-]*`, at most 128 characters) or that starts with `entity:`; a cacheable entity's implied `entity:<schema>.<Class>` name is too long; a user-level tag names no mapped `int` property or is not `Permissions` or `Preferences`; two names differ in case alone | no |
@@ -854,19 +854,29 @@ resource sets.
 
 `LabelProvider` (`ILabelProvider`) answers every label the server shows from the merged dictionaries,
 in the reader's language (the innermost `LocalizationScope`'s culture, else the thread's UI culture)
-and else English. Each label walks its key chain, the first declared key wins, then falls back to the
-humanized name (`P` is the entity's key prefix, `S` its schema's):
+and else English. Each label walks its key chain (`LabelChains`, which the client entity model and
+the conventional keys walk too), the first declared key wins, then falls back to the humanized name
+(`P` is the entity's key prefix, `S` a schema's):
 
 | Label | Keys, first declared wins |
 |---|---|
 | Entity | `P_Plural`, `P` (plural); `P` (singular); a missing plural reads the singular label |
-| Property | `P_<property>`, `<property>` |
-| Navigation | `P_<navigation>`, `P_<foreign key>`, `<foreign key>`, `<navigation>` |
+| Create | `P_New`, `Entity_New` |
+| Property | `P_<property>`, `<property>`; a multilingual twin reads its primary's |
+| Navigation | `P_<navigation>`, `P_<foreign key>`, `<foreign key>`, `<navigation>`; a sibling has no foreign key of its own |
 | Collection | `P_<collection>`, the child's `P_Plural`, the child's `P` |
 | Action | `P_Action_<Action>`, `Action_<Action>` |
-| Enum value | `S_<enum>_<value>` over the schemas of the entities carrying the enum |
+| Action field | `P_Action_<Action>_<field>`, `P_<field>`, `<field>`; an `[EntityRef]` field drops its `Id` (`AssigneeId` reads `Assignee`) |
+| Enum value | `S_<enum>_<value>` over every schema whose entities, setting keys or action arguments carry the enum, in that order |
 | Setting | the setting's label key |
 | Value-set value | the value's literal label, else its label key, else the value |
+
+`NamedEnums` names each C# enum once: `<schema>.<TypeName>` after its home schema, so
+`gl.CenterType`. The home schema is the ordinally smallest schema among the entities and action
+arguments declared in the enum's own assembly that carry it, else among every entity, setting key and
+action argument that carries it, so the order features compose in never renames an enum. Its values
+are labelled under every schema that carries it, the home schema's key first. The client metadata,
+the setting descriptors and the labels all use that name.
 
 A multilingual twin (`Name2`, `Name3`) reads its primary's label: alone when the tenant has one
 content language, followed by the language's symbol in parentheses (`Name (ع)`) when it has more,
@@ -882,6 +892,28 @@ it as the derived keys and fails a key no convention derives and no source liter
 collection has no bare key (its label falls back to its child entity's), an entity's securable reads
 the entity's own labels, and the shared member labels Core ships (`Name`, `Code`, `Parent`, …) are
 derived whichever entities a composition holds.
+
+### The client entity model
+
+`ClientEntityModel` (`IClientEntityModel`) describes every entity of the queryable model to the
+client: its summary (name, route segment, label keys, operations, capabilities,
+display-name rule, kind), its key, owner, properties, navigations, children, actions with their
+argument fields and JSON Schema, related select, default order, searchable and natural keys, extras
+and query limits, and every named enum: the C# enums with their wire names (a
+`[JsonStringEnumMemberName]` member travels by it) and the value sets with their aliases. It is built
+once from `QueryexSchemaProvider`'s full map, entities and enums in ordinal name order. A label
+resolves to the first key of its chain a neutral resource declares, else to the chain's first key
+with a humanized `labelFallback`. A `[BlobReference]` property carries its kind's policy,
+its size the kind's own `MaxSize` (a host whose `Tellma:Blobs:MaxUploadSize` is smaller does not
+start). Read-only roots, which have no CLR type, are
+server-owned with types from their store columns.
+
+`EntityClientAssetContributor` writes it into the client metadata: the summaries as the Core chunk's
+`entities`, the full metadata and the enums as the Entities chunk's `entities` and `enums`, and the
+typed declarations as `tellma-entities.d.ts` (`EntityTypesWriter`): one wire interface
+per entity (`<Schema><Entity>`, camelCase members, nullable members and twins optional), a literal
+union per C# enum, and the `TmEntityTypes` and `TmEntityShapes` augmentations of `@tellma/core`. Two
+declarations of one TypeScript name fail the emit.
 
 ### Value sets
 
@@ -2155,6 +2187,60 @@ commits, the in-memory rows take their job ids and this host's pollers for the t
 (`TenantPollerWake`); a batch that fails stores nothing and wakes nothing. `EnqueueAsync` does the
 same in a `Persist` batch of its own.
 
+### Leases, outcomes and the completion transaction
+
+`JobStatements` holds the lease statements, each on the batch's internal channel with `core.Jobs`
+declared as its one write, so no caller authority refuses it:
+
+- **The claim** collects the rows its token already leases (so a re-run returns them once), then
+  leases the room left of one key's due `Pending` or lapsed `Running` rows in `DueAt, Id` order
+  (`READPAST, UPDLOCK, ROWLOCK`, a seek of `IX_Jobs_Available`), counting an attempt, and returns
+  every row. An entity-backed handler's entity rows ride the same round trip.
+- **The renewal** extends every lease of the tenant by token and writes the buffered progress; a
+  row it does not return, or returns under another token, lost its claim, and the whole lease is
+  lost. A returned row whose cancel was requested cancels its item alone. A row whose completion is
+  being sent is no longer judged, whichever path completes it, and a lease whose rows are all
+  completing is left out, so the renewal never waits on a completion's locks.
+- **The append** writes a fenced checkpoint into a handler's own transaction.
+- **The completion** records each job's outcome under the claim's token.
+
+The append and the completion throw `50422` with `Job.LeaseLost` when a row is no longer leased
+under the token, rolling back whatever their transaction carries.
+
+`JobRunner` runs what a claim leased, in the tenant whose database the claim's batch leased it from:
+
+- **Completions without the handler.** The rows no handler may run complete at once in the system
+  scope: a requested cancel (`Jobs.Cancelled`, unless the handler commits in steps and has its
+  entity, which then runs with the item's token cancelled), an attempt past the last
+  (`Jobs.AttemptsExhausted`, or the earlier error), and a missing entity (`Jobs.EntityMissing`).
+- **Partitions.** The others are partitioned by run-as user and confirmed keys, in claim order.
+  Each partition runs under its own `process <key>` activity and log scope, in a job scope opened
+  by `ITenantScopeFactory`. A run-as user who is no longer active fails its jobs with
+  `Jobs.UserInactive`.
+- **The completion batch.** It is composed before the handler runs: the connect prologue, then the
+  completion statement, whose outcomes are bound once known. The handler's own statements follow it
+  on `JobBatch.Batch`, and the groups of every write it enlisted with the job frame
+  (`IOpenWriteHost`, persisted onto the same batch). Then come the notices, `job.changed` to each
+  requester and the nudge of a job queued again at once, all in one round trip. Only the worker
+  sends it: until then, executing `JobBatch.Batch` throws `InvalidOperationException`.
+- **Outcomes.** They follow the handler's marks, a requested cancel, then how the invocation
+  ended; a retry at the last allowed attempt fails instead. A lost lease records nothing.
+- **Failures.** A failed guard retries every item at once in a completion of the outcomes alone.
+  Any other failure discards the handler's work and records the outcomes the failure maps to, a
+  constraint an enlisted group breaks failing every item with its translated error. A batch that
+  could not be sent after the handler threw maps the items by what it threw (a stop, its own error,
+  a validation). A failure that cannot be recorded leaves the lease to lapse.
+- **Progress.** `IJobProgress.Report` buffers progress for the next renewal and makes the
+  checkpoint current at once; `FlushAsync` runs that renewal now; `Append` writes a fenced
+  checkpoint that counts only once its batch committed. `Append` refuses `JobBatch.Batch`: the
+  completion statement runs first in it and releases the lease, and records the reported
+  checkpoint itself.
+- **Order.** `RunAsync` returns how each claimed job ended in claim order, whichever completion
+  ended it.
+- **Notices.** A failure raises `core.job.failed` and a wait for confirmation
+  `core.job.pending-confirmation`, to the requester or else the tenant's administrators. A handler's
+  `NotifyOnSuccess` requests are raised only for a job that succeeded.
+
 ## Excel
 
 `Excel/` holds the workbook features' runtime contracts and the engine that writes them. Workbooks
@@ -2229,11 +2315,12 @@ are SpreadsheetML packages written with `DocumentFormat.OpenXml` (MIT), forward-
 | `Calendars/` | `GregorianCalendarSystem`, `UmAlQuraCalendarSystem`, `EthiopianCalendarSystem`, `CalendarRegistry`; internally the Ethiopian and the extended Umm al-Qura framework calendars, the shared renderer and reader, the culture data and the date-pattern reader. |
 | `Excel/` | `ExcelContext`, `ExcelColumnSpec`, `ExcelColumnRole`, `ExcelKeyKind`, `ExcelDateEncoding`, `ExcelSheetPlan`, `ExcelWorkbookPlan`, `ExcelTableSpec`, `ExcelTableRow`, `ExcelRowStyle`, `IExcelExporter`, `ImportCheckpointState`; internally the cell codec and its decoding records, the cell reader, the column encodings, the number formats, the stylesheet, the package, worksheet and workbook writers, the manifest's header block, the serial dates, the sheet and file names, the column letters, the XML escapes and the scratch files. |
 | `Caching/` | The versioned cache base, its keys and kinds; internally, the cacheable entities' store and façade, the version-tag registry, its table's row, the prelude and bump contributors, the bump plan, the snapshots, the mismatch policies, the migrator's seeder, the instruments and the log events. |
-| `Jobs/` | Internally: the job tables' configurations and seeds, the handler, built-in-schedule and retired-key realizers with their cross-feature checks, `JobHandlerRegistry`, the `jobs.handlers` and `jobs.schedules` checks, the queue and its enqueue statement, the poller wake, the composition step that binds the jobs' options, and the log events. |
+| `Jobs/` | Internally: the job tables' configurations and seeds, the handler, built-in-schedule and retired-key realizers with their cross-feature checks, `JobHandlerRegistry`, the `jobs.handlers` and `jobs.schedules` checks, the queue and its enqueue statement, the poller wake, the lease statements, the runner with its leases, renewal, progress, outcome rules, backoff, pending-confirmation record, notices and completion-failure translation, the job and system scopes, the `process` and `settle` activities and the log scope, the composition step that binds the jobs' options, and the log events. |
 | `Access/` | Internally: the access tables' configurations and seeds, the user stamp and preference rows, the securable registry with its name grammar and feature contributor, the securables section of the client metadata, the permission set build: the classifier, the builder, the interner and the access instruments and logs; and the user connection: the connect prologue, the connect, permissions and profile caches, the connector, the guarded runner and the connect initializer. |
 | `Identity/` | `IdentityServerClient`; internally its transport and token cache, the wire shapes and their source-generated JSON metadata, the options' settling and validator, the composition step that binds them and registers the named HTTP client, the instruments and the log events. |
 | `Notifications/` | `NotificationTypeRegistry`, `NotificationChannelRegistry`, `ClientEventRegistry`, `NotificationsClientAssetContributor`, `ClientEventPublisher`, `NullClientEventPublisher`, `NotificationConfiguration` and `NotificationDeliveryArguments`; internally the notifier, its statements and the delivering channels, the renderer, the preference row, the metrics, the name grammars, the hub-less real-time status, the composition step and the log events. |
-| `Localization/` | `LanguageCatalog`, `LanguageDeclaration`, `LocalizationNegotiator`, `ValueSetRegistry`, `IcuStringLocalizerFactory`, `ConventionalStringKeys`; internally the catalogue's data, the declaration's resolution, the `Accept-Language` reader, the negotiated cultures, the pinned culture data with its reader, writer and generator source, the localizer's resource reader, ICU renderer, calendar formatter, argument reader and missing-key telemetry, the string-pack composer with its resource sources and client-asset contributor, the label provider, the key conventions and the name humanizer. |
+| `Client/` | Internally: the client entity model, its data types, the action arguments' fields and schema, the declarations writer and the client-asset contributor. |
+| `Localization/` | `LanguageCatalog`, `LanguageDeclaration`, `LocalizationNegotiator`, `ValueSetRegistry`, `IcuStringLocalizerFactory`, `ConventionalStringKeys`; internally the catalogue's data, the declaration's resolution, the `Accept-Language` reader, the negotiated cultures, the pinned culture data with its reader, writer and generator source, the localizer's resource reader, ICU renderer, calendar formatter, argument reader and missing-key telemetry, the string-pack composer with its resource sources and client-asset contributor, the label provider, the label key chains, the named enums, the key conventions and the name humanizer. |
 | `Resources/` | `Strings.resx`, Core's shared resources (English), with its `ar` and `am` satellites and the `Strings` marker; `ServerStrings.resx`, the server-only resources, with its marker. |
 
 ## Tests
@@ -2242,7 +2329,8 @@ are SpreadsheetML packages written with `DocumentFormat.OpenXml` (MIT), forward-
 `test/core/Tellma.Core.IntegrationTests` (`Category=Integration`) runs the catalog migrations, the
 write side, the registry, the membership hints and the tenant scope factory against SQL Server, and
 runs batches against the data layer's fixture database (`test/shared/Tellma.Testing.Entities`), and
-holds the job tables and the queue's enqueue statement to SQL Server in `Jobs/`.
+holds the job tables, the queue's enqueue statement, the lease statements and jobs run end to end
+through `JobPollDriver` to SQL Server in `Jobs/`.
 `test/core/Tellma.Core.Tests/Excel` holds every workbook the writer produces to the Open XML SDK's
 Office 2019 schema validator.
 `test/core/Tellma.Core.Tests` also runs the resource audit over Core's own resources

@@ -252,19 +252,33 @@ namespace Tellma.Core.Crud.Enlistment
                 }
 
                 TResult result = await flow.ConfigureAwait(false);
-                Rounds.Count(failure: null);
+                if (!AppendedToCompletion)
+                {
+                    Rounds.Count(failure: null);
+                }
+
                 return result;
             }
             catch (Exception failure) when (failure is not OutOfMemoryException)
             {
-                _rounds?.Count(failure);
+                if (!AppendedToCompletion)
+                {
+                    _rounds?.Count(failure);
+                }
+
                 throw;
             }
             finally
             {
-                // A write never sent returns its ids; nothing enlists once the frame left.
+                // A write never sent returns its ids; nothing enlists once the frame left. Groups on a
+                // job's completion batch keep their ids until the worker sent or dropped the batch,
+                // which it reports through EndCompletion.
                 _rounds?.Close(complete: false);
-                _rounds?.Release();
+                if (!AppendedToCompletion)
+                {
+                    _rounds?.Release();
+                }
+
                 _cancellation.Dispose();
             }
         }

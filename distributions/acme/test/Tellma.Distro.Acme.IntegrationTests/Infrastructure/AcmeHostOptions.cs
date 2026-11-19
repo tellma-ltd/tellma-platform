@@ -25,5 +25,12 @@ namespace Tellma.Distro.Acme.IntegrationTests.Infrastructure
 
         /// <summary>Whether the host maps the tenant probes onto its web group, as a distribution maps its own endpoints.</summary>
         public bool MapsProbes { get; init; }
+
+        /// <summary>
+        ///     Whether starting the host waits until its tenant snapshot is loaded, as a load balancer
+        ///     sends an instance nothing before it is ready; on by default, off for a host that must
+        ///     start not ready.
+        /// </summary>
+        public bool AwaitsCatalog { get; init; } = true;
     }
 }

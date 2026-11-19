@@ -27,6 +27,7 @@ using Tellma.Core.AspNetCore.Hosting;
 using Tellma.Core.AspNetCore.Sessions;
 using Tellma.Core.AspNetCore.Surfaces;
 using Tellma.Core.AspNetCore.Tenancy;
+using Tellma.Core.Composition;
 using Tellma.Core.Tenancy;
 using Tellma.Core.Testing.Blobs;
 using Tellma.Core.Testing.Settings;
@@ -155,7 +156,7 @@ namespace Tellma.Core.AspNetCore.Tests.Infrastructure
             _ = builder.Services.AddScoped<IRequestContextInitializer, ConnectingInitializer>();
 
             // --- The composition under test ---
-            _ = builder.AddTellma(Slug, static _ => { });
+            _ = builder.AddTellma(Slug, options.Compose ?? (static _ => { }));
 
             // --- What stands in for the tenant database's settings, read by the locale negotiation ---
             _ = builder.Services.UseFixedTenantSettings();
@@ -433,6 +434,9 @@ namespace Tellma.Core.AspNetCore.Tests.Infrastructure
         /// <summary>Whether the probe endpoints are mapped.</summary>
         public bool MapProbes { get; set; } = true;
 
+        /// <summary>The distribution's composition: its features and entity leaves; none when null.</summary>
+        public Action<TellmaBuilder>? Compose { get; set; }
+
         /// <summary>The web root, for the SPA's files.</summary>
         public string? WebRoot { get; set; }
 
@@ -454,9 +458,10 @@ namespace Tellma.Core.AspNetCore.Tests.Infrastructure
 
     /// <summary>
     ///     The user connection: every subject but <see cref="TellmaTestHost.Stranger" /> is a member,
-    ///     bound to <see cref="TellmaTestHost.UserId" />.
+    ///     bound to <see cref="TellmaTestHost.UserId" />, and witnessed as one.
     /// </summary>
-    internal sealed class ConnectingInitializer : IRequestContextInitializer
+    /// <param name="witness">The request's authorization witness.</param>
+    internal sealed class ConnectingInitializer(AccessWitness witness) : IRequestContextInitializer
     {
         /// <inheritdoc />
         public int Order => 100;
@@ -465,9 +470,14 @@ namespace Tellma.Core.AspNetCore.Tests.Infrastructure
         public Task<RequestContext> InitializeAsync(RequestContext context, RequestContextInputs inputs, CancellationToken cancellationToken)
         {
             ArgumentNullException.ThrowIfNull(context);
-            return context.Subject == TellmaTestHost.Stranger
-                ? throw new TenantNotFoundException(context.RequireTenant().Id)
-                : Task.FromResult(context with { UserId = TellmaTestHost.UserId });
+            if (context.Subject == TellmaTestHost.Stranger)
+            {
+                throw new TenantNotFoundException(context.RequireTenant().Id);
+            }
+
+            // A connected member satisfies a member endpoint's witness, as the real connection records it.
+            witness.RecordMember();
+            return Task.FromResult(context with { UserId = TellmaTestHost.UserId });
         }
     }
 }

@@ -9,7 +9,9 @@ using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using Tellma.Core.Abstractions.Composition;
+using Tellma.Core.AspNetCore.Api;
 using Tellma.Core.AspNetCore.Bff;
 using Tellma.Core.AspNetCore.Hosting;
 using Tellma.Core.AspNetCore.Routing;
@@ -103,14 +105,21 @@ namespace Tellma.Core.AspNetCore
                 TenantGroup(app, "/blobs", TellmaGroup.Blobs, TenantSurface.Blobs, TellmaPolicies.Web, guarded: true),
                 app.MapGroup("/api").WithMetadata(new TellmaGroupMetadata(TellmaGroup.Tenantless)));
 
+            // --- The web API: every route the model derives from the stack registry, on the Web group ---
+            IReadOnlyList<CompositionProblem> projection = WebApiProjection.Map(app.Services, groups.Web);
+
             // --- The SPA, whose fallback answers every request nothing else matched ---
             SpaHosting.Map(app);
 
             // --- The audit of what the platform mapped ---
             IAuthorizationPolicyProvider policies = app.Services.GetRequiredService<IAuthorizationPolicyProvider>();
-            IReadOnlyList<CompositionProblem> problems = TellmaEndpointAudit.AuditAsync(mapped.Endpoints(), policies, app.Services.GetService<IStackRouteSource>()?.Routes)
-                .GetAwaiter()
-                .GetResult();
+            IReadOnlyList<CompositionProblem> problems =
+            [
+                .. projection,
+                .. TellmaEndpointAudit.AuditAsync(mapped.Endpoints(), policies, app.Services.GetService<IStackRouteSource>()?.Routes)
+                    .GetAwaiter()
+                    .GetResult(),
+            ];
             return problems.Count > 0 ? throw new TellmaCompositionException(problems) : groups;
         }
 
@@ -124,19 +133,43 @@ namespace Tellma.Core.AspNetCore
         /// <returns>The group.</returns>
         private static RouteGroupBuilder TenantGroup(WebApplication app, string suffix, TellmaGroup group, TenantSurface surface, string policy, bool guarded)
         {
+            // --- The group's policy, and API answers: a refused call is 401 or 403, never a redirect ---
             RouteGroupBuilder builder = app.MapGroup(TenantPrefix + suffix);
-            _ = builder.RequireAuthorization(policy).WithMetadata(new TellmaGroupMetadata(group));
+            _ = builder.RequireAuthorization(policy).WithMetadata(new TellmaGroupMetadata(group)).DisableCookieRedirect();
+
+            // --- The filter chain, outermost first: tenant, the web surface's request filter, then the witness ---
+            // Each refuses before the next runs; none evaluates a securable, the handler's service does.
             if (guarded)
             {
                 _ = builder.AddEndpointFilter<TenantAccessFilter>();
             }
 
+            if (group == TellmaGroup.Web)
+            {
+                _ = builder.AddEndpointFilter<WebRequestFilter>();
+            }
+
+            if (guarded)
+            {
+                // Last, so it sees the handler's result before anything is written.
+                _ = builder.AddEndpointFilter<AccessWitnessFilter>();
+            }
+
             // Runs after each endpoint's own conventions, so WithMutation's stamp is folded in.
             IEndpointConventionBuilder conventions = builder;
             conventions.Finally(endpoint => TenantGroupConventions.Complete(endpoint, surface));
+            if (group == TellmaGroup.Web)
+            {
+                // A JSON body's ceiling, enforced before the body is read; a binary or limited endpoint states its own.
+                long maxBytes = app.Services.GetRequiredService<IOptions<ApiOptions>>().Value.MaxJsonBodyBytes;
+                conventions.Finally(endpoint => JsonBodySizeMetadata.Apply(endpoint, maxBytes));
+            }
+
             if (guarded)
             {
-                // Endpoint filters reach route handlers alone; this reaches every endpoint of the group.
+                // Endpoint filters reach route handlers alone; these reach every endpoint of the group.
+                // The witness wraps first, so the guard's wrapper, which the audit checks, stays outermost.
+                conventions.Finally(AccessWitnessFilter.Wrap);
                 conventions.Finally(TenantAccessFilter.Wrap);
             }
 

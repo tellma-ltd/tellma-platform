@@ -73,13 +73,13 @@ namespace Tellma.Core.Abstractions.Tests.Data
         public void The_statement_names_are_spelled_as_the_statements_use_them()
         {
             Assert.Equal(
-                ["now", "keys", "ids", "new", "saved", "touched", "conflicts", "msg", "aff", "old", "paths", "anc", "first", "last", "claimed", "due", "fired", "jobIds", "n", "count", "bytes", "exp", "id"],
+                ["now", "keys", "ids", "new", "saved", "touched", "conflicts", "msg", "aff", "old", "paths", "anc", "first", "last", "claimed", "room", "due", "fired", "jobIds", "n", "count", "bytes", "exp", "id"],
                 [
                     ReservedSqlNames.StatementNames.Now, ReservedSqlNames.StatementNames.Keys, ReservedSqlNames.StatementNames.Ids,
                     ReservedSqlNames.StatementNames.New, ReservedSqlNames.StatementNames.Saved, ReservedSqlNames.StatementNames.Touched,
                     ReservedSqlNames.StatementNames.Conflicts, ReservedSqlNames.StatementNames.Message, ReservedSqlNames.StatementNames.Affected,
                     ReservedSqlNames.StatementNames.Old, ReservedSqlNames.StatementNames.Paths, ReservedSqlNames.StatementNames.Ancestors,
-                    ReservedSqlNames.StatementNames.First, ReservedSqlNames.StatementNames.Last, ReservedSqlNames.StatementNames.Claimed,
+                    ReservedSqlNames.StatementNames.First, ReservedSqlNames.StatementNames.Last, ReservedSqlNames.StatementNames.Claimed, ReservedSqlNames.StatementNames.Room,
                     ReservedSqlNames.StatementNames.Due, ReservedSqlNames.StatementNames.Fired, ReservedSqlNames.StatementNames.JobIds,
                     ReservedSqlNames.StatementNames.Count, ReservedSqlNames.StatementNames.StagedCount, ReservedSqlNames.StatementNames.StagedBytes,
                     ReservedSqlNames.StatementNames.Expiry, ReservedSqlNames.StatementNames.Id,

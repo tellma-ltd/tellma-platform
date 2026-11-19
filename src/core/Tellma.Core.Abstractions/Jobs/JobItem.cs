@@ -126,8 +126,8 @@ namespace Tellma.Core.Abstractions.Jobs
         /// <summary>
         ///     Reads the item's current checkpoint, under the same tolerant rules as
         ///     <see cref="Arguments{TArgs}" />: the one the claim returned, or the one the handler last
-        ///     wrote through <see cref="IJobProgress.Report" /> once a renewal or a flush carried it, or
-        ///     through <see cref="IJobProgress.Append" /> once its batch committed. Each call reads afresh.
+        ///     wrote through <see cref="IJobProgress.Report" />, at once, or through
+        ///     <see cref="IJobProgress.Append" /> once its batch committed. Each call reads afresh.
         /// </summary>
         /// <typeparam name="TState">The checkpoint's type.</typeparam>
         /// <returns>The checkpoint; the type's default when the job has none.</returns>

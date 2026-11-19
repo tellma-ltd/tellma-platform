@@ -60,7 +60,11 @@ namespace Tellma.Core.Abstractions.Jobs
 
         /// <summary>
         ///     A persist batch in the run-as user's scope whose statements execute in the completion
-        ///     transaction, after the outcomes are recorded and only if the lease still holds.
+        ///     transaction, after the outcomes are recorded and only if the lease still holds. A checkpoint
+        ///     cannot be appended to it with <see cref="IJobProgress.Append" />, since the outcomes'
+        ///     statement already released the lease; the completion records each item's reported checkpoint.
+        ///     The worker sends it once the handler returned: executing it from the handler throws
+        ///     <see cref="InvalidOperationException" />.
         /// </summary>
         public required IDataBatch Batch
         {

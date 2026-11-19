@@ -557,6 +557,37 @@
   <data name="Core_Job_ExportReport" xml:space="preserve">
     <value>تصدير {title}</value>
   </data>
+  <!-- Background jobs: the platform's error codes and the notices a completion raises -->
+  <data name="Jobs_Internal" xml:space="preserve">
+    <value>حدث خطأ غير متوقع أثناء تشغيل المهمة.</value>
+  </data>
+  <data name="Jobs_Cancelled" xml:space="preserve">
+    <value>أُلغيت المهمة.</value>
+  </data>
+  <data name="Jobs_EntityMissing" xml:space="preserve">
+    <value>لم يعد السجل الذي تعمل عليه المهمة موجودًا.</value>
+  </data>
+  <data name="Jobs_AttemptsExhausted" xml:space="preserve">
+    <value>فشلت المهمة بعد استنفاد كل محاولاتها.</value>
+  </data>
+  <data name="Jobs_UserInactive" xml:space="preserve">
+    <value>لم يعد المستخدم الذي تعمل المهمة باسمه عضوًا نشطًا.</value>
+  </data>
+  <data name="Jobs_TooManyConfirmations" xml:space="preserve">
+    <value>أثارت المهمة {count, plural, zero {# نوع من التحذيرات} one {نوعًا واحدًا من التحذيرات} two {نوعين من التحذيرات} few {# أنواع من التحذيرات} many {# نوعًا من التحذيرات} other {# نوع من التحذيرات}}، وهذا أكثر مما يمكن تأكيده دفعة واحدة.</value>
+  </data>
+  <data name="Jobs_HeldAfterGap" xml:space="preserve">
+    <value>أُوقفت المهمة مؤقتًا بعد انقطاع في الخدمة.</value>
+  </data>
+  <data name="Jobs_HandlerRetired" xml:space="preserve">
+    <value>أُوقفت المهمة لأن هذا النوع من المهام لم يعد متاحًا.</value>
+  </data>
+  <data name="Notification_core_job_failed" xml:space="preserve">
+    <value>فشلت المهمة {handlerKey}.</value>
+  </data>
+  <data name="Notification_core_job_pending-confirmation" xml:space="preserve">
+    <value>{count, plural, zero {مهمة بانتظار تأكيدك.} one {مهمة بانتظار تأكيدك لتحذير واحد.} two {مهمة بانتظار تأكيدك لتحذيرين.} few {مهمة بانتظار تأكيدك لـ# تحذيرات.} many {مهمة بانتظار تأكيدك لـ# تحذيرًا.} other {مهمة بانتظار تأكيدك لـ# تحذير.}}</value>
+  </data>
   <!-- Queryex diagnostics, with the arguments the engine gives each -->
   <data name="Queryex_QX1001" xml:space="preserve">
     <value>نص حرفي غير مغلق.</value>

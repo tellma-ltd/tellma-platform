@@ -4,7 +4,6 @@
 // LICENSE file in the root directory of this source tree.
 
 using Microsoft.Extensions.DependencyInjection;
-using System.Reflection;
 using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Calendars;
 using Tellma.Core.Abstractions.Crud;
@@ -14,6 +13,7 @@ using Tellma.Core.Abstractions.Localization;
 using Tellma.Core.Abstractions.Notifications;
 using Tellma.Core.Abstractions.Settings;
 using Tellma.Core.Access;
+using Tellma.Core.Client;
 using Tellma.Core.Jobs;
 using Tellma.Core.Settings;
 
@@ -35,8 +35,13 @@ namespace Tellma.Core.Localization
     ///             property's and navigation's shared <c>&lt;Member&gt;</c> (a collection's label
     ///             falls back to its child entity's, and a multilingual group's twins take their
     ///             primary's label, so neither has one); the shared member labels Core ships
-    ///             (<c>Name</c>, <c>Parent</c>, …) whichever entities are composed; each enum
-    ///             member's <c>&lt;Schema&gt;_&lt;Enum&gt;_&lt;Value&gt;</c>; and <c>Entity_New</c>;
+    ///             (<c>Name</c>, <c>Parent</c>, …) whichever entities are composed; and
+    ///             <c>Entity_New</c>;
+    ///         </item>
+    ///         <item>
+    ///             each C# enum member's <c>&lt;Schema&gt;_&lt;Enum&gt;_&lt;Value&gt;</c>, under the
+    ///             schema of every entity, setting key and stack whose properties or action
+    ///             arguments carry the enum;
     ///         </item>
     ///         <item>
     ///             each securable's resource label by the chain the client metadata looks it up by
@@ -47,9 +52,10 @@ namespace Tellma.Core.Localization
     ///             the platform's own actions, which any resource may register;
     ///         </item>
     ///         <item>
-    ///             with stacks composed, each stack action's keys and those of its argument fields,
-    ///             <c>&lt;Resource&gt;_Action_&lt;Name&gt;_&lt;Field&gt;</c>,
-    ///             <c>&lt;Resource&gt;_&lt;Field&gt;</c> and <c>&lt;Field&gt;</c>;
+    ///             with stacks composed, the keys of each action of a stack or a child query surface
+    ///             and those of its argument fields, <c>&lt;Resource&gt;_Action_&lt;Name&gt;_&lt;Field&gt;</c>,
+    ///             <c>&lt;Resource&gt;_&lt;Field&gt;</c> and <c>&lt;Field&gt;</c>, where a field is
+    ///             named by its C# property name, less the trailing <c>Id</c> of an entity reference;
     ///         </item>
     ///         <item>
     ///             with setting keys composed, each key's label and <c>…_Description</c>, its group's
@@ -98,10 +104,14 @@ namespace Tellma.Core.Localization
             ArgumentNullException.ThrowIfNull(services);
 
             HashSet<string> keys = new(StringComparer.Ordinal);
-            AddEntities(keys, services.GetRequiredService<IEntityMetadataProvider>());
-            AddSecurables(keys, services.GetRequiredService<ISecurableRegistry>(), services.GetRequiredService<IEntityMetadataProvider>());
-            AddStacks(keys, services.GetService<IStackRegistry>());
-            AddSettings(keys, services.GetService<ISettingKeyRegistry>());
+            IEntityMetadataProvider metadata = services.GetRequiredService<IEntityMetadataProvider>();
+            IStackRegistry? stacks = services.GetService<IStackRegistry>();
+            ISettingKeyRegistry? settings = services.GetService<ISettingKeyRegistry>();
+            AddEntities(keys, metadata);
+            AddEnums(keys, NamedEnums.Discover(metadata, settings?.Keys ?? [], stacks));
+            AddSecurables(keys, services.GetRequiredService<ISecurableRegistry>(), metadata);
+            AddStacks(keys, stacks);
+            AddSettings(keys, settings);
             AddNotifications(keys, services.GetRequiredService<INotificationTypeRegistry>(), services.GetRequiredService<INotificationChannelRegistry>());
             AddJobHandlers(keys, services.GetService<JobHandlerRegistry>());
             AddCalendars(keys, services.GetRequiredService<ICalendarRegistry>());
@@ -110,7 +120,7 @@ namespace Tellma.Core.Localization
             return keys;
         }
 
-        /// <summary>The entities' labels, their members' labels with the shared fallbacks, and their enums' values.</summary>
+        /// <summary>The entities' labels and their members' labels with the shared fallbacks.</summary>
         /// <param name="keys">The keys so far.</param>
         /// <param name="metadata">The model's entity metadata.</param>
         private static void AddEntities(HashSet<string> keys, IEntityMetadataProvider metadata)
@@ -121,7 +131,7 @@ namespace Tellma.Core.Localization
             {
                 // --- The entity: singular, plural, create ---
                 string prefix = StringKeyConventions.KeyPrefix(entity.Name);
-                keys.UnionWith([prefix, prefix + StringKeyConventions.PluralSuffix, prefix + StringKeyConventions.NewSuffix]);
+                keys.UnionWith([.. LabelChains.Entity(entity.Name), .. LabelChains.Plural(entity.Name), .. LabelChains.New(entity.Name)]);
 
                 // --- Its members: each with its own key; a property and a navigation also with the
                 // shared fallback, while a collection falls back to its child entity's labels ---
@@ -138,17 +148,17 @@ namespace Tellma.Core.Localization
                 }
 
                 keys.UnionWith(entity.Children.Select(child => $"{prefix}_{child.Property}"));
+            }
+        }
 
-                // --- Its enums' values, under the entity's schema ---
-                string schema = StringKeyConventions.SchemaPrefix(entity.Name);
-                foreach (PropertyMetadata property in entity.Properties)
-                {
-                    Type type = Nullable.GetUnderlyingType(property.ClrType) ?? property.ClrType;
-                    if (type.IsEnum)
-                    {
-                        keys.UnionWith(Enum.GetNames(type).Select(value => $"{schema}_{type.Name}_{value}"));
-                    }
-                }
+        /// <summary>The C# enums' values, under every schema that carries each enum.</summary>
+        /// <param name="keys">The keys so far.</param>
+        /// <param name="enums">The composition's C# enums.</param>
+        private static void AddEnums(HashSet<string> keys, IReadOnlyList<NamedEnum> enums)
+        {
+            foreach (NamedEnum named in enums)
+            {
+                keys.UnionWith(Enum.GetNames(named.Type).SelectMany(value => LabelChains.EnumValue(named.KeyPrefixes, named.Type.Name, value)));
             }
         }
 
@@ -173,7 +183,7 @@ namespace Tellma.Core.Localization
             }
         }
 
-        /// <summary>The stacks' and routed services' action labels and their argument fields' labels.</summary>
+        /// <summary>The action labels of the stacks and the child query surfaces, and their argument fields' labels.</summary>
         /// <param name="keys">The keys so far.</param>
         /// <param name="registry">The stack registry; null when no stack is composed.</param>
         private static void AddStacks(HashSet<string> keys, IStackRegistry? registry)
@@ -183,28 +193,19 @@ namespace Tellma.Core.Localization
                 return;
             }
 
-            foreach (StackDescriptor stack in registry.Stacks)
+            IEnumerable<(string Resource, ActionDescriptor Action)> actions = registry.Stacks
+                .SelectMany(static stack => stack.Actions.Select(action => (stack.Resource, action)))
+                .Concat(registry.ChildQueries.SelectMany(static child => child.Actions.Select(action => (child.Resource, (ActionDescriptor)action))));
+            foreach ((string resource, ActionDescriptor action) in actions)
             {
-                foreach (ActionDescriptor action in stack.Actions)
-                {
-                    keys.UnionWith(ActionKeys(stack.Resource, action.Name));
-                    Type? arguments = action switch
-                    {
-                        EntityActionDescriptor entityAction => entityAction.ArgumentsType,
-                        ApiActionDescriptor apiAction => apiAction.RequestType,
-                        _ => null,
-                    };
+                keys.UnionWith(ActionKeys(resource, action.Name));
 
-                    // An argument field: the action's own key, the resource's member key, the shared key.
-                    string prefix = StringKeyConventions.KeyPrefix(stack.Resource);
-                    foreach (PropertyInfo field in arguments?.GetProperties(BindingFlags.Public | BindingFlags.Instance) ?? [])
+                // An argument field: the action's own key, the resource's member key, the shared key.
+                if (ActionArguments.TypeOf(action) is Type arguments)
+                {
+                    foreach (ActionArguments.Member member in ActionArguments.Members(arguments))
                     {
-                        keys.UnionWith(
-                        [
-                            $"{prefix}{StringKeyConventions.ActionInfix}{StringKeyConventions.ActionSegment(action.Name)}_{field.Name}",
-                            $"{prefix}_{field.Name}",
-                            field.Name,
-                        ]);
+                        keys.UnionWith(LabelChains.ActionField(resource, action.Name, LabelChains.FieldName(member.Property)));
                     }
                 }
             }
@@ -286,8 +287,7 @@ namespace Tellma.Core.Localization
         /// <returns>The two keys.</returns>
         private static string[] ActionKeys(string resource, string action)
         {
-            string segment = StringKeyConventions.ActionSegment(action);
-            return [StringKeyConventions.KeyPrefix(resource) + StringKeyConventions.ActionInfix + segment, StringKeyConventions.ActionPrefix + segment];
+            return LabelChains.Action(resource, action);
         }
     }
 }
