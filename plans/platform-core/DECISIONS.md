@@ -359,6 +359,17 @@ Format, one entry per ruling:
 - Also accepted: a readonly select never opens (a pre-existing bug, fixed) and exposes aria-readonly.
 - **Misalignment for Ahmad:** 0010 §B.4 names contentChildren(TmOptionGroup), which the design does not need. See also D-036's §B.4 note.
 
+### D-138 — PC-102 fix1 hand-offs (2026-11-19)
+
+- R1-1 fixed: IScopeConnection gains IsPrologueDue (past the fast-deny window, permissions aged, or an activity stamp due). Discover then runs the guarded runner's statement-less Read prologue, so a deactivated caller gets tenant-not-found; otherwise it costs 0 round trips. Supersedes D-136's second bullet.
+- **For Ahmad:** 0029 §9 "Messages" omits Permissions.FilterTooLong and Permissions.FilterInvalid, which the permission profile answers.
+
+### D-137 — PC-081 Review 2 notes outside its diff (2026-11-19)
+
+- The telemetry stage wraps the Web group only; 0016 §5.1 puts the blob GET on the same chain. Carried to PC-089.
+- **For Ahmad:** TenantAccessGuard.EnsureStateServes runs before the membership check (0011's order), so any signed-in user learns a tenant exists when it is suspended, or read-only/frozen on a mutation. That is a tenant-existence oracle for authenticated non-members. Keep 0011's order, or check membership first so non-members always get tenant-not-found?
+- A non-JSON body to a route that declares its media types is diverted to the SPA fallback before CSRF sees it: it answers 415 unsupported-media, not 415 csrf-rejected, and tellma.auth.csrf_rejections does not count it. No handler runs, so nothing is exposed; recorded only.
+
 ### D-136 — PC-102 hand-offs (2026-11-19)
 
 - QueryWireDiagnostics (Tellma.Core/Crud/Query) is the one QueryexDiagnostic → QueryDiagnostic edge mapping. Whichever of PC-081 / PC-102 integrates second converges PC-081's InvalidQueryException mapping on it (named in that item's integration message).
