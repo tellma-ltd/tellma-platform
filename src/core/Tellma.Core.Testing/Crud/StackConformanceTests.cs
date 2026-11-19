@@ -467,6 +467,23 @@ namespace Tellma.Core.Testing.Crud
             return new QueryRequest { Select = Metadata.Key.Name, Filters = [$"{Metadata.Key.Name} = {Text(id)}"], IncludeInactive = includeInactive };
         }
 
+        /// <summary>The query that reads some rows' ids.</summary>
+        /// <param name="ids">The rows' ids.</param>
+        /// <returns>The request.</returns>
+        private QueryRequest ByIds(IEnumerable<TKey> ids)
+        {
+            string key = Metadata.Key.Name;
+            return new QueryRequest { Select = key, Filters = [string.Join(" or ", ids.Select(id => $"{key} = {Text(id)}"))] };
+        }
+
+        /// <summary>The read of the rows directly under some parents.</summary>
+        /// <param name="parents">The parents' ids.</param>
+        /// <returns>The request.</returns>
+        private ParentIdsRequest ByParents(IEnumerable<TKey> parents)
+        {
+            return new ParentIdsRequest([.. parents.Select(static parent => long.CreateChecked(parent))], Metadata.Key.Name, null, null);
+        }
+
         /// <summary>Whether the stack serves an operation, and has the capability it needs.</summary>
         /// <param name="operation">The operation.</param>
         /// <param name="capability">The capability; null when none is needed.</param>

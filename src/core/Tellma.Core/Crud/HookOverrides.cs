@@ -69,6 +69,35 @@ namespace Tellma.Core.Crud
             return Validates(behavior, validators, ValidateAction);
         }
 
+        /// <summary>
+        ///     Whether a stack's service class or any of its validator classes validates the stack's
+        ///     deletes, judged from the classes alone, before any is created: the registry's question
+        ///     at startup.
+        /// </summary>
+        /// <param name="service">The stack's service class.</param>
+        /// <param name="validators">The stack's validator classes, each closed over the entity it validates.</param>
+        /// <returns>True when a delete of the stack's rows is judged by a validator.</returns>
+        public static bool ValidatesDeletes(Type service, IEnumerable<Type> validators)
+        {
+            ArgumentNullException.ThrowIfNull(service);
+            ArgumentNullException.ThrowIfNull(validators);
+
+            // --- The service: its EntityService base names the entity and key the hook is declared over ---
+            Type? root = service;
+            while (root is not null && !(root.IsGenericType && root.GetGenericTypeDefinition() == typeof(EntityService<,>)))
+            {
+                root = root.BaseType;
+            }
+
+            bool judged = root is null
+                || Overrides.GetOrAdd((service, ValidateDelete), key => ServiceOverrides(key.Type, key.Hook, root.GenericTypeArguments[0], root.GenericTypeArguments[1]));
+
+            // --- Each validator, through every validator contract it implements ---
+            return judged || validators.Any(static validator => validator.GetInterfaces()
+                .Where(static contract => contract.IsGenericType && contract.GetGenericTypeDefinition() == typeof(IEntityValidator<>))
+                .Any(contract => ComponentOverrides(validator, ValidateDelete, contract.GenericTypeArguments[0])));
+        }
+
         /// <summary>Whether the service or any component overrides one validation hook.</summary>
         /// <typeparam name="TEntity">The stack's entity type.</typeparam>
         /// <typeparam name="TKey">The stack's key type.</typeparam>

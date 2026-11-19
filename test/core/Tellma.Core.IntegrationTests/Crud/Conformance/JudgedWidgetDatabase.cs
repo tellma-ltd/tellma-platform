@@ -18,7 +18,8 @@ namespace Tellma.Core.IntegrationTests.Crud.Conformance
     ///     The databases of <see cref="ConformanceDatabase" />, served by an instance whose widget
     ///     stack runs through <see cref="JudgedWidgetService" /> and <see cref="DependentLoadsValidator" />:
     ///     a stack with a custom entity action and an API action, whose deletes and actions are judged
-    ///     and whose saves load across three dependent validation rounds.
+    ///     (so it serves no delete by query) and whose saves load across three dependent validation
+    ///     rounds.
     /// </summary>
     /// <param name="sql">The SQL Server the databases are created on.</param>
     public sealed class JudgedWidgetDatabase(SqlServerFixture sql) : ConformanceDatabase(sql)
@@ -49,8 +50,11 @@ namespace Tellma.Core.IntegrationTests.Crud.Conformance
             public void Contribute(FeatureContribution contribution)
             {
                 ArgumentNullException.ThrowIfNull(contribution);
+
+                // The service judges deletes, so the stack omits DeleteByQuery: a delete by query
+                // names no ids its rules could see.
                 _ = contribution
-                    .Entity<Widget, JudgedWidgetService>()
+                    .Add(new StackContributionItem(typeof(Widget), typeof(JudgedWidgetService), StackOperations.Read | StackOperations.Save | StackOperations.Delete | StackOperations.Import))
                     .Validator<Widget, DependentLoadsValidator>();
             }
         }

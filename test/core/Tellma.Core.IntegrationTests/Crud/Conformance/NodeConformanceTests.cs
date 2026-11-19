@@ -28,7 +28,7 @@ namespace Tellma.Core.IntegrationTests.Crud.Conformance
             {
                 Code = Invariant($"NC-{ordinal}"),
                 Name = Invariant($"Node {ordinal}"),
-                Links = [new Link { OtherNodeId = ConformanceDatabase.AnchorNode }],
+                Links = [new Link { OtherNodeId = ConformanceDatabase.AnchorNode }, new Link { OtherNodeId = ConformanceDatabase.AnchorNode }],
             };
         }
 

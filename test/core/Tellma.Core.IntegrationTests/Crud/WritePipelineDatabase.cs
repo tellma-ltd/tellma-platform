@@ -139,7 +139,10 @@ namespace Tellma.Core.IntegrationTests.Crud
             public void Contribute(FeatureContribution contribution)
             {
                 ArgumentNullException.ThrowIfNull(contribution);
-                _ = contribution.Entity<Widget, WidgetService>();
+
+                // The service judges deletes, so the stack omits DeleteByQuery: a delete by query
+                // names no ids its rules could see.
+                _ = contribution.Add(new StackContributionItem(typeof(Widget), typeof(WidgetService), StackOperations.Read | StackOperations.Save | StackOperations.Delete | StackOperations.Import));
             }
         }
     }

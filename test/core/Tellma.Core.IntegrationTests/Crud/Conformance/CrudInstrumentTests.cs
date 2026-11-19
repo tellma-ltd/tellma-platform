@@ -130,14 +130,24 @@ namespace Tellma.Core.IntegrationTests.Crud.Conformance
                 new HashSet<string> { $"{ConformanceDatabase.ExportConfirmation} required", $"{ConformanceDatabase.ExportConfirmation} confirmed" },
                 Values(collector, CrudTelemetryNames.Confirmations, CrudTelemetryNames.KeyTag, CrudTelemetryNames.OutcomeTag));
 
-            // --- The lanes: a save counts its rows at every depth, and only more rows than the
-            // threshold are large. A widget with a part is two rows, with a note under the part three,
-            // though each is one root; a read by ids counts its ids ---
+            // --- The lanes: a save counts its rows at every depth, for its duration and its entities
+            // alike, and only more rows than the threshold are large. A widget with a part is two rows,
+            // with a note under the part three, though each is one root; a read by ids counts its ids ---
             Assert.Equal(["save small"], await LanesAsync(collector, "save", () => InScopeAsync(subject, scope => Service<Widget>(scope).SaveAsync([NewWidget(1, notes: false)], new SaveOptions { ReturnEntities = false }, Token))));
+            Assert.Equal(["web small"], Sorted(Values(collector, CrudTelemetryNames.SaveEntities, CrudTelemetryNames.SourceTag, CrudTelemetryNames.LaneTag)));
             Assert.Equal(["save large"], await LanesAsync(collector, "save", () => InScopeAsync(subject, scope => Service<Widget>(scope).SaveAsync([NewWidget(2, notes: true)], new SaveOptions { ReturnEntities = false }, Token))));
+            Assert.Equal(["web large"], Sorted(Values(collector, CrudTelemetryNames.SaveEntities, CrudTelemetryNames.SourceTag, CrudTelemetryNames.LaneTag)));
             Assert.Equal(["get_by_ids small"], await LanesAsync(collector, "get_by_ids", () => InScopeAsync(subject, scope => Service<Widget>(scope).GetByIdsAsync(MissingIds(InstrumentDatabase.LargeBatchThreshold), DetailsRequest.None, Token))));
             Assert.Equal(["get_by_ids large"], await LanesAsync(collector, "get_by_ids", () => InScopeAsync(subject, scope => Service<Widget>(scope).GetByIdsAsync(MissingIds(InstrumentDatabase.LargeBatchThreshold + 1), DetailsRequest.None, Token))));
             collector.AssertClosed();
+        }
+
+        /// <summary>A set of values in ordinal order.</summary>
+        /// <param name="values">The values.</param>
+        /// <returns>The values, sorted.</returns>
+        private static List<string> Sorted(HashSet<string> values)
+        {
+            return [.. values.Order(StringComparer.Ordinal)];
         }
 
         /// <summary>The lanes an operation's durations carried on one call, the collector cleared before it.</summary>

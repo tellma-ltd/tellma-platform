@@ -151,10 +151,11 @@ operations reachable, each answering as it should for a row that does not exist,
 ones refused; enlisted writes from a declared writer at no round
 trip of their own and an undeclared writer refused; the securables with their filter roots, and each
 child query surface's read through its owner; the round-trip budget of every read and write, held
-to the driver's own count when the harness observes it; a row the read grant hides answering as a
+to the driver's own count when the harness observes it and measured over two rows (and two child
+rows at every depth) so a statement per row shows; a row the read grant hides answering as a
 missing one on every operation that names ids; stamp conflicts, overrides and rows deleted since
 they were read; write-once and server-owned values; null and empty collections and foreign child
-ids at every depth; unique and natural-key values, and rows still referenced; the activatable, tree, cacheable and
+ids at every depth; a stack whose deletes are judged serving no delete by query; unique and natural-key values, and rows still referenced; the activatable, tree, cacheable and
 searchable recipes; and the instruments. A case that does not apply to the stack's declaration is
 skipped with its reason; one that needs what only the distribution can supply (a writer of the
 stack, a row of another entity that references it, the rows of a stack that saves none) fails,

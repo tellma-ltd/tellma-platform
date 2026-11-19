@@ -38,7 +38,21 @@ namespace Tellma.Core.IntegrationTests.Crud.Conformance
                 Name = Invariant($"Judged {ordinal}"),
                 Subject = Invariant($"wj-{ordinal}"),
                 Price = ordinal,
-                Parts = [new WidgetPart { Ordinal = 1, Notes = Invariant($"Part of {ordinal}"), PartNotes = [new WidgetPartNote { Text = Invariant($"Note of {ordinal}") }] }],
+                Parts = [Part(ordinal, 1), Part(ordinal, 2)],
+            };
+        }
+
+        /// <summary>A part of a new widget, holding two notes.</summary>
+        /// <param name="ordinal">The widget's ordinal.</param>
+        /// <param name="number">The part's ordinal within the widget.</param>
+        /// <returns>The part.</returns>
+        private static WidgetPart Part(int ordinal, int number)
+        {
+            return new WidgetPart
+            {
+                Ordinal = number,
+                Notes = Invariant($"Part {number} of {ordinal}"),
+                PartNotes = [new WidgetPartNote { Text = Invariant($"Note 1 of part {number} of {ordinal}") }, new WidgetPartNote { Text = Invariant($"Note 2 of part {number} of {ordinal}") }],
             };
         }
 

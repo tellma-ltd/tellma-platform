@@ -106,7 +106,7 @@ namespace Tellma.Core.Testing.Crud
             // --- The parent's children, and not their own ---
             if (Serves(StackOperations.Query))
             {
-                Assert.Equal([child.Id], Keys(await AsWriterAsync(service => service.Pipeline.GetByParentIdsAsync(ByParent(parent.Id), Token))));
+                Assert.Equal([child.Id], Keys(await AsWriterAsync(service => service.Pipeline.GetByParentIdsAsync(ByParents([parent.Id]), Token))));
             }
 
             // --- The parent under its own grandchild closes a cycle ---
@@ -162,7 +162,10 @@ namespace Tellma.Core.Testing.Crud
             AssertTrips(oversized == true ? 2 : 0, await CountedAsync(writer, scope => Service(scope).GetAllCachedAsync(DetailsRequest.None, Token)), "a cached list read");
         }
 
-        /// <summary>Each searchable property finds the row that holds the term, and a term no row holds finds nothing.</summary>
+        /// <summary>
+        ///     Each searchable property finds the row that holds the term, a fragment from inside its
+        ///     value finds the row only by a contains search, and a term no row holds finds nothing.
+        /// </summary>
         /// <returns>A task that completes when the case ran.</returns>
         [Fact]
         public async Task Each_searchable_property_finds_its_row_and_a_term_no_row_holds_finds_none()
@@ -171,18 +174,34 @@ namespace Tellma.Core.Testing.Crud
             Assert.SkipWhen(Stack.SearchableProperties.Count == 0, $"The stack {Stack.Resource} has no searchable properties.");
             TEntity stored = await CreateNewAsync();
 
+            // --- Every searchable value of the row, so a fragment's expected answer weighs each property's kind ---
+            List<(string Name, SearchKind Kind, string Value)> values = [];
             foreach ((string name, SearchKind kind) in Stack.SearchableProperties)
             {
-                string term = Property(name).Getter(stored) as string
-                    ?? throw new InvalidOperationException($"{nameof(NewValidEntity)} leaves the searchable {name} of {Stack.Resource} empty: give it a value.");
+                string value = Property(name).Getter(stored) as string ?? string.Empty;
+                Assert.True(value.Length >= 2, $"{nameof(NewValidEntity)} gives the searchable {name} of {Stack.Resource} the value '{value}': give it at least two characters, so a fragment from inside it tells a prefix search from a contains search.");
+                values.Add((name, kind, value));
+            }
 
-                // --- The row's own value, then one no row holds; the filter keeps the read to the row ---
+            foreach ((string name, SearchKind kind, string term) in values)
+            {
+                // --- The row's own value, a fragment from inside it, then a term no row holds; the
+                // filter keeps the read to the row ---
+                string fragment = term[1..];
+                bool fragmentFinds = values.Any(other => other.Kind == SearchKind.Prefix
+                    ? other.Value.StartsWith(fragment, StringComparison.OrdinalIgnoreCase)
+                    : other.Value.Contains(fragment, StringComparison.OrdinalIgnoreCase));
                 QueryRequest found = ById(stored.Id);
                 found.Search = term;
+                QueryRequest inside = ById(stored.Id);
+                inside.Search = fragment;
                 QueryRequest none = ById(stored.Id);
                 none.Search = "conformance-absent-" + Guid.NewGuid().ToString("N");
 
                 Assert.True((await AsWriterAsync(service => service.QueryAsync(found, Token))).Rows.RowCount == 1, $"{Stack.Resource}: a {kind} search of {name} for '{term}' missed its row.");
+                Assert.True(
+                    (await AsWriterAsync(service => service.QueryAsync(inside, Token))).Rows.RowCount == (fragmentFinds ? 1 : 0),
+                    $"{Stack.Resource}: a search for '{fragment}', from inside the {kind} {name} '{term}', {(fragmentFinds ? "missed" : "found")} the row.");
                 Assert.True((await AsWriterAsync(service => service.QueryAsync(none, Token))).Rows.RowCount == 0, $"{Stack.Resource}: a search for a term no row holds found the row.");
             }
         }

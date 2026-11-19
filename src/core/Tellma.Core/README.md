@@ -1539,7 +1539,9 @@ no row and every id is not found.
   `MaxDeleteByQueryRows` is `LimitExceededException` and another count than the caller confirmed
   `CountMismatchException`, both raised inside the transaction, so nothing is deleted. The count is
   capped as the delete is, reading one past the cap, so `StackLimits` refuses a cap of the largest
-  integer.
+  integer. Since it names no ids a delete validator could see, the startup gate refuses a stack that
+  keeps `DeleteByQuery` while its service or a validator judges its deletes; such a stack deletes by
+  ids alone.
 - **A row still referenced** (`ForeignKeyViolationException.Conflict` on the delete side) is
   `Fk.InUse` naming the referencing entity and property, at `Ids[0]` for one id, at `Ids` for several,
   and at the root by query.
@@ -1986,7 +1988,8 @@ A delete by query runs no validation round, so the delete rules above would neve
 the users' and the roles' stacks leave `DeleteByQuery` out of their operations, so neither projects
 `delete-by-query` and their services refuse it before any round trip. Their rows are deleted by id.
 The startup gate refuses any stack over a security table that keeps it, such as a distribution's
-leaf that declares every operation again.
+leaf that declares every operation again, and, on the same grounds, any stack whose service or a
+validator judges its deletes.
 
 A new user's email is where the invitation goes, so a save that changes it hands the user's
 memberships to whoever holds the new address: every membership that has not ended is then tested

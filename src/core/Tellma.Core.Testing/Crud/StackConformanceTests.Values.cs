@@ -162,8 +162,10 @@ namespace Tellma.Core.Testing.Crud
         }
 
         /// <summary>
-        ///     A unique or natural-key value another row holds is refused at its path, and so is a
-        ///     unique value of a collection's rows that another row of the payload repeats.
+        ///     A unique or natural-key value another row holds is refused at its path, on a create and
+        ///     on an update, while a row saved with its own value is no duplicate of itself; and a
+        ///     unique value of a collection's rows at any depth that another row of the collection
+        ///     repeats is refused at its path.
         /// </summary>
         /// <returns>A task that completes when the case ran.</returns>
         [Fact]
@@ -171,11 +173,11 @@ namespace Tellma.Core.Testing.Crud
         {
             Assert.SkipUnless(Serves(StackOperations.Save), $"The stack {Stack.Resource} serves no save.");
             List<PropertyMetadata> unique = Unique(Metadata);
-            List<(ChildCollectionMetadata Collection, PropertyMetadata Property)> childUnique = [.. Metadata.Children
-                .SelectMany(static collection => Unique(collection.Child).Select(property => (collection, property)))];
+            List<(ChildCollectionMetadata[] Path, PropertyMetadata Property)> childUnique = [.. CollectionPaths(Metadata)
+                .SelectMany(static path => Unique(path[^1].Child).Select(property => (path, property)))];
             Assert.SkipWhen(unique.Count == 0 && childUnique.Count == 0, $"The stack {Stack.Resource} has no unique values.");
 
-            // --- Each root value, taken from a stored row ---
+            // --- Each root value, taken from a stored row by a create ---
             TEntity stored = await CreateNewAsync();
             foreach (PropertyMetadata property in unique)
             {
@@ -185,16 +187,32 @@ namespace Tellma.Core.Testing.Crud
                 Assert.Contains($"[0].{property.Name} {ValidationCodes.Unique}", Lines(refused));
             }
 
-            // --- Each child value, repeated by a second row of the same collection ---
-            foreach ((ChildCollectionMetadata collection, PropertyMetadata property) in childUnique)
+            // --- Each root value an update may change, taken from the stored row by another; then the
+            // other saved with its own values, which is no duplicate ---
+            TEntity other = await CreateNewAsync();
+            foreach (PropertyMetadata property in unique.Where(static property => property.Ownership == PropertyOwnership.Editable))
+            {
+                TEntity taking = await LoadAsync(other.Id);
+                property.Setter(taking, property.Getter(stored));
+                ValidationException refused = await Assert.ThrowsAsync<ValidationException>(() => SaveAsync([taking]));
+                Assert.Contains($"[0].{property.Name} {ValidationCodes.Unique}", Lines(refused));
+            }
+
+            _ = await SaveAsync([await LoadAsync(other.Id)]);
+
+            // --- Each child value at every depth, repeated by a second row of the same collection ---
+            foreach ((ChildCollectionMetadata[] path, PropertyMetadata property) in childUnique)
             {
                 TEntity entity = NewValidEntity(NextOrdinal());
-                object first = collection.Getter(entity)![0];
-                object second = collection.Getter(NewValidEntity(NextOrdinal()))![0];
+                IReadOnlyList<object> rows = Rows(entity, path);
+                Assert.True(rows.Count > 0, $"{nameof(NewValidEntity)} gives the stack {Stack.Resource} no {Render(path)}: fill each collection with at least one row.");
+                object first = rows[0];
+                object second = rows.Count > 1 ? rows[1] : Rows(NewValidEntity(NextOrdinal()), path)[0];
                 property.Setter(second, property.Getter(first));
-                SetRows(entity, collection, [first, second]);
+                SetRows(Owner(entity, path), path[^1], [first, second]);
                 ValidationException refused = await Assert.ThrowsAsync<ValidationException>(() => SaveAsync([entity]));
-                Assert.Contains(refused.Errors, error => error.Code == ValidationCodes.Unique && error.Path.ToString().StartsWith($"[0].{collection.Property}[", StringComparison.Ordinal) && error.Path.ToString().EndsWith($".{property.Name}", StringComparison.Ordinal));
+                string at = $"[0].{Render(path)}[";
+                Assert.Contains(refused.Errors, error => error.Code == ValidationCodes.Unique && error.Path.ToString().StartsWith(at, StringComparison.Ordinal) && error.Path.ToString().EndsWith($".{property.Name}", StringComparison.Ordinal));
             }
         }
 

@@ -361,6 +361,61 @@ namespace Tellma.Core.Tests.Crud
         }
     }
 
+    /// <summary>A latch: a plain entity serving every operation, whose deletes a service or a validator may judge.</summary>
+    [Table("Latches", Schema = "sm")]
+    [TableType]
+    [Stack(Operations = StackOperations.All)]
+    public class SmLatch : TopLevelEntity
+    {
+        /// <summary>The name.</summary>
+        [MaxLength(255)]
+        public string Name { get; set; } = null!;
+    }
+
+    /// <summary>A latch service that judges deletes, which a stack serving a delete by query may not have.</summary>
+    /// <param name="factory">The pipeline factory.</param>
+    public sealed class JudgingLatchService(IEntityPipelineFactory factory) : EntityService<SmLatch>(factory)
+    {
+        /// <inheritdoc />
+        protected override Task ValidateDeleteAsync(DeleteContext<SmLatch, int> context)
+        {
+            return Task.CompletedTask;
+        }
+    }
+
+    /// <summary>
+    ///     A latch service that judges nothing, which the validator scenarios name so the judging
+    ///     service is never left without a stack to run it.
+    /// </summary>
+    /// <param name="factory">The pipeline factory.</param>
+    public sealed class PlainLatchService(IEntityPipelineFactory factory) : EntityService<SmLatch>(factory);
+
+    /// <summary>A latch validator that judges deletes, which a stack serving a delete by query may not have.</summary>
+    public sealed class LatchDeleteRules : IEntityValidator<SmLatch>
+    {
+        /// <inheritdoc />
+        public Task ValidateAsync(SaveContext<SmLatch> context)
+        {
+            return Task.CompletedTask;
+        }
+
+        /// <inheritdoc />
+        public Task ValidateDeleteAsync(DeleteContext<SmLatch> context)
+        {
+            return Task.CompletedTask;
+        }
+    }
+
+    /// <summary>A latch validator that judges saves alone, which leaves a delete by query nothing to skip.</summary>
+    public sealed class LatchSaveRules : IEntityValidator<SmLatch>
+    {
+        /// <inheritdoc />
+        public Task ValidateAsync(SaveContext<SmLatch> context)
+        {
+            return Task.CompletedTask;
+        }
+    }
+
     /// <summary>The gadget's service writing its own entity from an open frame: a self-pair.</summary>
     /// <param name="factory">The pipeline factory.</param>
     public sealed class SelfEnlistingGadgetService(IEntityPipelineFactory factory) : EntityService<SmGadget>(factory), IEnlists<SmGadget>, IEnlists<SmGizmo>;

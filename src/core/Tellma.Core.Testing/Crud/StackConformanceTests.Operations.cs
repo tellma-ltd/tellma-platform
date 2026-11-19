@@ -41,7 +41,7 @@ namespace Tellma.Core.Testing.Crud
                 ("save", Serves(StackOperations.Save), Reach.Answers, async (scope, _) => (await Service(scope).SaveAsync([NewValidEntity(NextOrdinal())], new SaveOptions { ReturnEntities = false }, Token)).Ids.Count),
                 ("delete", Serves(StackOperations.Delete), Reach.NotFound, async (scope, id) => (await Service(scope).DeleteByIdsAsync([id], null, Token)).Count),
                 ("delete_by_query", Serves(StackOperations.DeleteByQuery), Reach.AnswersNone, async (scope, id) => (await Service(scope).DeleteByQueryAsync(new DeleteByQueryRequest($"{Metadata.Key.Name} = {Text(id)}", null, 0), Token)).Count),
-                ("get_by_parent_ids", Serves(StackOperations.Query, Tree), Reach.AnswersNone, async (scope, id) => (await Service(scope).Pipeline.GetByParentIdsAsync(ByParent(id), Token)).RowCount),
+                ("get_by_parent_ids", Serves(StackOperations.Query, Tree), Reach.AnswersNone, async (scope, id) => (await Service(scope).Pipeline.GetByParentIdsAsync(ByParents([id]), Token)).RowCount),
                 ("delete_with_descendants", Serves(StackOperations.Delete, Tree), Reach.NotFound, async (scope, id) => (await Service(scope).Pipeline.DeleteWithDescendantsAsync([id], Token)).Count),
                 ("activate", ServesActivation(), Reach.NotFound, (scope, id) => ActAsync(scope, ActivateAction, id, null)),
                 ("deactivate", ServesActivation(), Reach.NotFound, (scope, id) => ActAsync(scope, DeactivateAction, id, null)),
@@ -201,12 +201,16 @@ namespace Tellma.Core.Testing.Crud
             return null;
         }
 
-        /// <summary>The read of the rows directly under a parent.</summary>
-        /// <param name="parent">The parent's id.</param>
-        /// <returns>The request.</returns>
-        private ParentIdsRequest ByParent(TKey parent)
+        /// <summary>
+        ///     A stack whose deletes are judged serves no delete by query, which names no ids its
+        ///     rules could see and so would delete past them.
+        /// </summary>
+        [Fact]
+        public void A_stack_whose_deletes_are_judged_serves_no_delete_by_query()
         {
-            return new ParentIdsRequest([long.CreateChecked(parent)], Metadata.Key.Name, null, null);
+            Assert.False(
+                ValidatesDeletes && Serves(StackOperations.DeleteByQuery),
+                $"The stack {Stack.Resource} judges its deletes yet serves a delete by query, which names no ids those rules could see: omit DeleteByQuery from its operations.");
         }
 
         /// <summary>
