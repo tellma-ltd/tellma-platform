@@ -4,6 +4,7 @@
 // LICENSE file in the root directory of this source tree.
 
 using Microsoft.Extensions.DependencyInjection;
+using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Crud;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Settings;
@@ -13,12 +14,12 @@ namespace Tellma.Core.Tests.Client
 {
     /// <summary>
     ///     The C# enums a composition names, over the client entity model's test model: each named once
-    ///     by the schema that carries it first, and labelled by every schema that carries it.
+    ///     by its home schema, and labelled by every schema that carries it.
     /// </summary>
     public sealed class NamedEnumsTests(ClientEntityModelComposition composition) : IClassFixture<ClientEntityModelComposition>
     {
         [Fact]
-        public void Each_enum_is_named_by_its_first_site_and_keyed_by_every_sites_schema()
+        public void Each_enum_is_named_by_its_home_schema_and_keyed_by_every_sites_schema()
         {
             NamedEnums enums = composition.Services.GetRequiredService<NamedEnums>();
 
@@ -27,6 +28,28 @@ namespace Tellma.Core.Tests.Client
             Assert.Equal("acme.Priority: Acme", Describe(enums.Find(typeof(Priority?))));
             Assert.Null(enums.Find(typeof(DayOfWeek)));
             Assert.Equal([("Retail", "Retail"), ("Wholesale", "wholesale-trade")], enums.Find(typeof(CustomerType))!.Members());
+        }
+
+        [Fact]
+        public void An_enum_is_named_by_the_schema_of_its_own_assembly_before_any_other()
+        {
+            // An acme entity carries the platform's Gender, and acme sorts before core.
+            NamedEnums enums = composition.Services.GetRequiredService<NamedEnums>();
+
+            Assert.Equal("core.Gender: Core Acme", Describe(enums.Find(typeof(Gender))));
+        }
+
+        [Fact]
+        public async Task The_order_features_compose_in_changes_no_enums_name_or_keys()
+        {
+            await using ServiceProvider swapped = ClientModel.Compose(glFirst: true).BuildServiceProvider(validateScopes: true);
+
+            Assert.Equal(Sorted(composition.Services), Sorted(swapped));
+
+            static IEnumerable<string> Sorted(IServiceProvider services)
+            {
+                return services.GetRequiredService<NamedEnums>().All.Select(Describe).Order(StringComparer.Ordinal);
+            }
         }
 
         [Fact]

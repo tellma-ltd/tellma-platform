@@ -8,6 +8,7 @@ using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Schema;
+using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
 using Tellma.Core.Abstractions.Api;
 using Tellma.Core.Abstractions.Client;
@@ -76,13 +77,19 @@ namespace Tellma.Core.Client
             return new NullabilityInfoContext().Create(property).ReadState == NullabilityState.Nullable;
         }
 
-        /// <summary>Whether a member must be given: its value may not be empty, or it is marked <see cref="RequiredAttribute" />.</summary>
-        /// <param name="property">The member's property.</param>
+        /// <summary>
+        ///     Whether a member must be given: the platform's JSON rules refuse a body without it (a C#
+        ///     <see langword="required" /> member, or one marked <see cref="JsonRequiredAttribute" />),
+        ///     its value may not be empty, or it is marked <see cref="RequiredAttribute" />.
+        /// </summary>
+        /// <param name="member">The member.</param>
         /// <returns>True when it must be given.</returns>
-        public static bool IsRequired(PropertyInfo property)
+        public static bool IsRequired(Member member)
         {
-            ArgumentNullException.ThrowIfNull(property);
-            return !IsNullable(property) || property.GetCustomAttribute<RequiredAttribute>(inherit: true) is not null;
+            ArgumentNullException.ThrowIfNull(member);
+            return member.Json.IsRequired
+                || !IsNullable(member.Property)
+                || member.Property.GetCustomAttribute<RequiredAttribute>(inherit: true) is not null;
         }
 
         /// <summary>
@@ -165,15 +172,20 @@ namespace Tellma.Core.Client
                 return node;
             }
 
-            // --- An object: every member that must be given is required ---
+            // --- An object: every member that must be given is required, and nothing else ---
+            // The list replaces the exporter's own, so the schema and the fields agree on every member.
             if (context.TypeInfo.Kind == JsonTypeInfoKind.Object && schema["properties"] is JsonObject)
             {
                 string[] required = [.. Members(type)
-                    .Where(static member => IsRequired(member.Property))
+                    .Where(IsRequired)
                     .Select(static member => member.Json.Name)];
                 if (required.Length > 0)
                 {
                     schema["required"] = new JsonArray([.. required.Select(static name => (JsonNode)JsonValue.Create(name))]);
+                }
+                else
+                {
+                    _ = schema.Remove("required");
                 }
             }
 

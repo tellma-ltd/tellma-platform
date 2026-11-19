@@ -9,8 +9,8 @@ namespace Tellma.Core.Abstractions.Client
 {
     /// <summary>
     ///     A named enum, written once and named by every property, action field and setting key that
-    ///     takes its values: a C# enum, named by the schema of the first entity, setting key or action
-    ///     that carries it and its type's name (<c>gl.CenterType</c>), or a value set
+    ///     takes its values: a C# enum, named by the schema of the feature that declares it and its
+    ///     type's name (<c>gl.CenterType</c>), or a value set
     ///     (<see cref="ValueSetDescriptor" />), named by its set (<c>core.TimeZone</c>).
     /// </summary>
     /// <param name="Name">The enum's name.</param>

@@ -243,6 +243,22 @@ namespace Tellma.Core.Tests.Composition.Checks
         }
 
         [Fact]
+        public async Task Two_enum_types_of_one_name_whose_label_keys_meet_under_one_schema_are_reported()
+        {
+            // Dark.Shade is alpha.Shade and Light.Shade is beta.Shade, but beta carries both, so
+            // Beta_Shade_<Member> would label the values of each.
+            IReadOnlyList<CompositionProblem> problems = await TestComposition.CheckAsync(static tellma => tellma
+                .AddFeature(new TestFeature<Tag.A>("alpha", contribute: static contribution => contribution.Entity<AlphaShadedItem>()))
+                .AddFeature(new TestFeature<Tag.B>("beta", contribute: static contribution => contribution.Entity<BetaShadedItem>())));
+
+            CompositionProblem problem = Assert.Single(problems.From(Check));
+            Assert.Equal(
+                "The enums Tellma.Core.Tests.Composition.Checks.Dark.Shade and Tellma.Core.Tests.Composition.Checks.Light.Shade are carried under one schema, so the label keys Beta_Shade_<Member> would name the values of each.",
+                problem.Problem);
+            Assert.StartsWith("Rename one of the enum types", problem.Fix, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public async Task A_property_that_draws_from_a_set_no_feature_contributes_is_reported()
         {
             IReadOnlyList<CompositionProblem> problems = await TestComposition.CheckAsync(static tellma => Graded(tellma, set: null));
@@ -328,6 +344,31 @@ namespace Tellma.Core.Tests.Composition.Checks
         [MaxLength(16)]
         public Dark.Shade? DarkShade { get; set; }
     }
+
+    /// <summary>An entity of one schema that carries one of two enum types of one name.</summary>
+    [Table("ShadedItems", Schema = "alpha")]
+    [TableType]
+    public class AlphaShadedItem : TopLevelEntity
+    {
+        /// <summary>The dark shade.</summary>
+        [MaxLength(16)]
+        public Dark.Shade? DarkShade { get; set; }
+    }
+
+    /// <summary>An entity of another schema that carries both enum types of one name.</summary>
+    [Table("ShadedItems", Schema = "beta")]
+    [TableType]
+    public class BetaShadedItem : TopLevelEntity
+    {
+        /// <summary>The light shade.</summary>
+        [MaxLength(16)]
+        public Light.Shade? LightShade { get; set; }
+
+        /// <summary>The dark shade.</summary>
+        [MaxLength(16)]
+        public Dark.Shade? DarkShade { get; set; }
+    }
+
     /// <summary>The light shades.</summary>
     public static class Light
     {

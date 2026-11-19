@@ -15,7 +15,7 @@ namespace Tellma.Core.Abstractions.Client
     /// </summary>
     /// <param name="Kind">The blob kind, such as <c>customer-image</c>.</param>
     /// <param name="Accept">The content types the kind accepts, for the file picker's <c>accept</c>.</param>
-    /// <param name="MaxSize">The largest file accepted, in bytes: the kind's own limit, capped by the deployment's upload limit.</param>
+    /// <param name="MaxSize">The largest file accepted, in bytes: the kind's own limit, which every deployment's upload limit admits.</param>
     /// <param name="Image">How images are re-encoded; null, written as such, when the kind keeps files as they are.</param>
     /// <param name="Thumbnail">Whether the kind renders a thumbnail variant.</param>
     /// <param name="ReadAccess">Who may read a blob of the kind.</param>

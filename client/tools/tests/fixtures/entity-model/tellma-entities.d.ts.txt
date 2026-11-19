@@ -95,6 +95,8 @@ export interface AcmeCustomer {
   creditLimit: TmDecimal;
   /** The property `CurrencyId`. */
   currencyId?: number | null;
+  /** The property `ContactGender`. */
+  contactGender?: CoreGender | null;
   /** The property `TimeZone`. */
   timeZone?: string | null;
   /** The property `Tier`. */
@@ -559,7 +561,7 @@ declare module '@tellma/core' {
     };
     /** The path shape of the entity `acme.Customer`. */
     'acme.Customer': {
-      scalars: 'Id' | 'CreatedAt' | 'CreatedById' | 'ModifiedAt' | 'ModifiedById' | 'Code' | 'Name' | 'Name2' | 'Name3' | 'CustomerType' | 'CreditLimit' | 'CurrencyId' | 'TimeZone' | 'Tier' | 'Rank' | 'ExternalReference' | 'ImageId' | 'IsActive';
+      scalars: 'Id' | 'CreatedAt' | 'CreatedById' | 'ModifiedAt' | 'ModifiedById' | 'Code' | 'Name' | 'Name2' | 'Name3' | 'CustomerType' | 'CreditLimit' | 'CurrencyId' | 'ContactGender' | 'TimeZone' | 'Tier' | 'Rank' | 'ExternalReference' | 'ImageId' | 'IsActive';
       groups: 'Name';
       navigations: { CreatedBy: 'core.User'; ModifiedBy: 'core.User'; Currency: 'acme.Currency'; Image: 'core.Blob'; Extra: 'acme.CustomerExtra' };
       children: { Contacts: 'acme.CustomerContact' };

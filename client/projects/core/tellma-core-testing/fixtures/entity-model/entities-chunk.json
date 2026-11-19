@@ -353,6 +353,18 @@
           "foreignKeyOf": "Currency"
         },
         {
+          "name": "ContactGender",
+          "json": "contactGender",
+          "type": "enum",
+          "queryable": true,
+          "nullable": true,
+          "labelKey": "Acme_Customer_ContactGender",
+          "labelFallback": "Contact gender",
+          "excel": true,
+          "ownership": "editable",
+          "enum": "core.Gender"
+        },
+        {
           "name": "TimeZone",
           "json": "timeZone",
           "type": "enum",
@@ -726,10 +738,24 @@
                   "string",
                   "null"
                 ]
+              },
+              "layout": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "channel": {
+                "type": [
+                  "string",
+                  "null"
+                ]
               }
             },
             "required": [
-              "language"
+              "language",
+              "layout",
+              "channel"
             ]
           },
           "fields": [
@@ -737,6 +763,26 @@
               "name": "language",
               "labelKey": "Acme_Customer_Action_Statement_Language",
               "labelFallback": "Language",
+              "required": true,
+              "value": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            {
+              "name": "layout",
+              "labelKey": "Acme_Customer_Action_Statement_Layout",
+              "labelFallback": "Layout",
+              "required": true,
+              "value": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            {
+              "name": "channel",
+              "labelKey": "Acme_Customer_Action_Statement_Channel",
+              "labelFallback": "Channel",
               "required": true,
               "value": {
                 "type": "string",

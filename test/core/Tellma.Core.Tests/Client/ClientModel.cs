@@ -50,21 +50,23 @@ namespace Tellma.Core.Tests.Client
 
         /// <summary>Composes the model with the platform.</summary>
         /// <param name="configuration">The configuration; the test composition's sound one when null.</param>
+        /// <param name="glFirst">Whether the gl feature is added before the acme feature, rather than after it.</param>
         /// <returns>The services.</returns>
-        public static IServiceCollection Compose(IReadOnlyDictionary<string, string?>? configuration = null)
+        public static IServiceCollection Compose(IReadOnlyDictionary<string, string?>? configuration = null, bool glFirst = false)
         {
+            TestFeature<Tag.A> acme = new("acme", contribute: static contribution => contribution
+                .Entity<Customer, CustomerService<Customer>>()
+                .Entity<CustomerExtra>()
+                .Entity<Currency>()
+                .ValueSet(new ValueSetDescriptor(
+                    Tiers,
+                    [new ValueSetEntry("gold", "Acme_Tier_Gold", null), new ValueSetEntry("silver", "Acme_Tier_Silver", null), new ValueSetEntry("VIP", null, "VIP")])));
+            TestFeature<Tag.B> gl = new("gl", contribute: static contribution => contribution.Entity<Center>());
+
             return TestComposition.Compose(
-                static tellma => tellma
-                    .Languages(Languages)
-                    .AddFeature(new TestFeature<Tag.A>("acme", contribute: static contribution => contribution
-                        .Entity<Customer, CustomerService<Customer>>()
-                        .Entity<CustomerExtra>()
-                        .Entity<Currency>()
-                        .ValueSet(new ValueSetDescriptor(
-                            Tiers,
-                            [new ValueSetEntry("gold", "Acme_Tier_Gold", null), new ValueSetEntry("silver", "Acme_Tier_Silver", null), new ValueSetEntry("VIP", null, "VIP")]))))
-                    .AddFeature(new TestFeature<Tag.B>("gl", contribute: static contribution => contribution
-                        .Entity<Center>())),
+                tellma => _ = glFirst
+                    ? tellma.Languages(Languages).AddFeature(gl).AddFeature(acme)
+                    : tellma.Languages(Languages).AddFeature(acme).AddFeature(gl),
                 configuration: TestComposition.Configuration(configuration));
         }
     }
@@ -137,6 +139,9 @@ namespace Tellma.Core.Tests.Client
         /// <summary>The currency the limit is in.</summary>
         [References(typeof(Currency))]
         public int? CurrencyId { get; set; }
+
+        /// <summary>The grammatical gender of the customer's contact: an enum of the platform's own assembly.</summary>
+        public Gender? ContactGender { get; set; }
 
         /// <summary>The customer's time zone.</summary>
         [MaxLength(64)]
@@ -243,7 +248,7 @@ namespace Tellma.Core.Tests.Client
         [MaxLength(16)]
         public CenterType CenterType { get; set; }
 
-        /// <summary>The kind of customer the center serves: an enum another schema names first.</summary>
+        /// <summary>The kind of customer the center serves: an enum another schema names.</summary>
         [MaxLength(16)]
         public CustomerType? ServedCustomerType { get; set; }
 
@@ -271,9 +276,17 @@ namespace Tellma.Core.Tests.Client
         [property: EntityRef("core.User")] IReadOnlyList<int>? Reviewers,
         IReadOnlyList<string>? Tags);
 
-    /// <summary>The body of the statement action.</summary>
-    /// <param name="Language">The statement's language.</param>
-    public sealed record StatementRequest([property: Required] string? Language);
+    /// <summary>The body of the statement action: a nullable member of each kind a body must carry.</summary>
+    /// <param name="Language">The statement's language, required by its annotation.</param>
+    public sealed record StatementRequest([property: Required] string? Language)
+    {
+        /// <summary>The statement's layout, which a body must carry because the member is required.</summary>
+        public required string? Layout { get; init; }
+
+        /// <summary>The statement's channel, which a body must carry because the JSON rules require it.</summary>
+        [JsonRequired]
+        public string? Channel { get; init; }
+    }
 
     /// <summary>The customer stack's service: one entity action with arguments, one API action with a body, one without a result.</summary>
     /// <typeparam name="TCustomer">The customer leaf.</typeparam>

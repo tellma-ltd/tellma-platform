@@ -16,14 +16,15 @@ namespace Tellma.Core.Localization
 {
     // Spec 0029 §2.2 and spec 0013 §7.7: a C# enum and a value set are one kind, a named enum, written
     // once and named by every property, setting key and action field that takes its values. A C# enum
-    // is named by a schema and its type's name (gl.CenterType), the namespace value sets live in.
+    // is named by a schema and its type's name (gl.CenterType), the namespace value sets live in; the
+    // schema is the declaring feature's, so the name does not move with the order features compose in.
     /// <summary>
     ///     One C# enum of the composition: its name on every surface, and the schemas whose keys label
     ///     its values.
     /// </summary>
     /// <param name="Type">The enum type.</param>
-    /// <param name="Name">The enum's name, <c>&lt;schema&gt;.&lt;TypeName&gt;</c> by the first schema that carries it.</param>
-    /// <param name="KeyPrefixes">The key spellings of every schema that carries it, in the order they carry it, such as <c>Gl</c>.</param>
+    /// <param name="Name">The enum's name, <c>&lt;schema&gt;.&lt;TypeName&gt;</c> by its home schema.</param>
+    /// <param name="KeyPrefixes">The key spellings of every schema that carries it, such as <c>Gl</c>: its home schema's first, then the others in ordinal order.</param>
     internal sealed record NamedEnum(Type Type, string Name, IReadOnlyList<string> KeyPrefixes)
     {
         /// <summary>The enum's members in value order: each member's name, which its label keys use, and its wire name.</summary>
@@ -37,9 +38,11 @@ namespace Tellma.Core.Localization
     /// <summary>
     ///     The C# enums the composition names: those of the entities' properties in model order, then
     ///     those of the setting keys in registry order, then those of the stacks' action arguments in
-    ///     stack order. Each enum is named once, by the schema of the first entity, setting key or stack
-    ///     that carries it, and its values are labelled by the keys of every schema that carries it.
-    ///     The platform registers it as a singleton, built on first use.
+    ///     stack order. Each enum is named once, by its home schema, and its values are labelled by the
+    ///     keys of every schema that carries it. The home schema is the ordinally smallest schema among
+    ///     the entities and action arguments declared in the enum's own assembly that carry it, else
+    ///     among everything that carries it, so the order features compose in never changes it. The
+    ///     platform registers it as a singleton, built on first use.
     /// </summary>
     /// <param name="metadata">The model's entity metadata.</param>
     /// <param name="settings">The setting keys; null in a composition without them.</param>
@@ -76,7 +79,9 @@ namespace Tellma.Core.Localization
             ArgumentNullException.ThrowIfNull(settingKeys);
 
             // --- The sites that carry an enum, in order: entity properties, setting keys, action arguments ---
-            List<(string Owner, Type Type)> sites = [];
+            // Each site notes the assembly that declares it, when it has one: an entity's class, an
+            // action's arguments type. A setting key's declaring type is not known here, so it has none.
+            List<(string Owner, Type Type, Assembly? Declarer)> sites = [];
             if (metadata is not null)
             {
                 foreach (EntityMetadata entity in metadata.All)
@@ -84,7 +89,7 @@ namespace Tellma.Core.Localization
                     sites.AddRange(entity.Properties
                         .Select(static property => Unwrap(property.ClrType))
                         .OfType<Type>()
-                        .Select(type => (entity.Name, type)));
+                        .Select(type => (entity.Name, type, (Assembly?)entity.ClrType.Assembly)));
                 }
             }
 
@@ -92,7 +97,7 @@ namespace Tellma.Core.Localization
             {
                 if (!key.HasOwnContract && SettingValueShape.TryRead(key.ValueType, out SettingValueShape shape) && shape.ScalarType.IsEnum)
                 {
-                    sites.Add((key.Name, shape.ScalarType));
+                    sites.Add((key.Name, shape.ScalarType, null));
                 }
             }
 
@@ -101,26 +106,34 @@ namespace Tellma.Core.Localization
                 sites.AddRange(ActionSites(stacks));
             }
 
-            // --- One enum per type: named by its first site's schema, labelled by every site's ---
-            Dictionary<Type, (string Name, List<string> Prefixes)> found = [];
-            List<Type> order = [];
-            foreach ((string owner, Type type) in sites)
+            // --- One enum per type, in discovery order: named by its home schema, labelled by every site's ---
+            List<NamedEnum> found = [];
+            foreach (IGrouping<Type, (string Owner, Type Type, Assembly? Declarer)> carried in sites.GroupBy(static site => site.Type))
             {
-                string prefix = StringKeyConventions.SchemaPrefix(owner);
-                if (!found.TryGetValue(type, out (string Name, List<string> Prefixes) entry))
-                {
-                    entry = (NameOf(owner, type), []);
-                    found[type] = entry;
-                    order.Add(type);
-                }
-
-                if (!entry.Prefixes.Contains(prefix, StringComparer.Ordinal))
-                {
-                    entry.Prefixes.Add(prefix);
-                }
+                Type type = carried.Key;
+                string[] home = [.. carried.Where(site => site.Declarer == type.Assembly).Select(static site => site.Owner)];
+                string owner = (home.Length > 0 ? home : carried.Select(static site => site.Owner))
+                    .OrderBy(SchemaOf, StringComparer.Ordinal)
+                    .First();
+                string first = StringKeyConventions.SchemaPrefix(owner);
+                IEnumerable<string> others = carried
+                    .Select(static site => StringKeyConventions.SchemaPrefix(site.Owner))
+                    .Where(prefix => !string.Equals(prefix, first, StringComparison.Ordinal))
+                    .Distinct(StringComparer.Ordinal)
+                    .Order(StringComparer.Ordinal);
+                found.Add(new NamedEnum(type, NameOf(owner, type), [first, .. others]));
             }
 
-            return [.. order.Select(type => new NamedEnum(type, found[type].Name, found[type].Prefixes.AsReadOnly()))];
+            return found.AsReadOnly();
+        }
+
+        /// <summary>The schema of a qualified name: the text before its first dot.</summary>
+        /// <param name="owner">The qualified name, such as <c>gl.Center</c>.</param>
+        /// <returns>The schema, such as <c>gl</c>.</returns>
+        private static string SchemaOf(string owner)
+        {
+            int dot = owner.IndexOf('.', StringComparison.Ordinal);
+            return dot < 0 ? owner : owner[..dot];
         }
 
         /// <summary>The name of an enum a site carries: the site's schema, a dot and the type's name.</summary>
@@ -131,8 +144,7 @@ namespace Tellma.Core.Localization
         {
             ArgumentNullException.ThrowIfNull(owner);
             ArgumentNullException.ThrowIfNull(type);
-            int dot = owner.IndexOf('.', StringComparison.Ordinal);
-            return $"{(dot < 0 ? owner : owner[..dot])}.{type.Name}";
+            return $"{SchemaOf(owner)}.{type.Name}";
         }
 
         /// <summary>
@@ -161,12 +173,13 @@ namespace Tellma.Core.Localization
         }
 
         /// <summary>
-        ///     The enums the stacks' action arguments carry, each under the resource it belongs to: a
-        ///     stack's actions, then its child query surfaces' actions.
+        ///     The enums the stacks' action arguments carry, each under the resource it belongs to and
+        ///     with the assembly that declares the arguments type: a stack's actions, then its child
+        ///     query surfaces' actions.
         /// </summary>
         /// <param name="stacks">The stacks.</param>
         /// <returns>The sites, in stack order.</returns>
-        private static IEnumerable<(string Owner, Type Type)> ActionSites(IStackRegistry stacks)
+        private static IEnumerable<(string Owner, Type Type, Assembly? Declarer)> ActionSites(IStackRegistry stacks)
         {
             IEnumerable<(string Resource, ActionDescriptor Action)> actions = stacks.Stacks
                 .SelectMany(static stack => stack.Actions.Select(action => (stack.Resource, action)))
@@ -182,7 +195,7 @@ namespace Tellma.Core.Localization
                 {
                     if (Unwrap(member.Json.PropertyType) is Type type)
                     {
-                        yield return (resource, type);
+                        yield return (resource, type, arguments.Assembly);
                     }
                 }
             }

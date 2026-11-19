@@ -257,8 +257,10 @@ namespace Tellma.Core.Tests.Client
         }
 
         [Fact]
-        public async Task A_blob_policys_size_is_capped_by_the_largest_upload()
+        public async Task A_blob_policys_size_is_its_kinds_whatever_the_emitting_hosts_upload_limit()
         {
+            // The chunk is built once and served by every host; each host's startup gate already keeps
+            // every kind's size within its own upload limit.
             await using ServiceProvider capped = ClientModel.Compose(new Dictionary<string, string?> { ["Tellma:Blobs:MaxUploadSize"] = "1000000" })
                 .BuildServiceProvider(validateScopes: true);
             ClientAssetContext context = ClientEntityModelComposition.Contribute(capped);
@@ -266,7 +268,7 @@ namespace Tellma.Core.Tests.Client
 
             JsonElement customer = entities.RootElement.EnumerateArray().Single(static entity => entity.GetProperty("name").GetString() == ClientModel.Customers);
             JsonElement image = ClientEntityModelComposition.Member(customer, "properties", "ImageId");
-            Assert.Equal(1000000, image.GetProperty("blob").GetProperty("maxSize").GetInt64());
+            Assert.Equal(10 * 1024 * 1024, image.GetProperty("blob").GetProperty("maxSize").GetInt64());
         }
 
         [Theory]
@@ -339,15 +341,18 @@ namespace Tellma.Core.Tests.Client
                 return ClientEntityModelComposition.Member(customer, "actions", name);
             }
 
-            // A body: its required member is required whatever its nullability.
+            // A body: a member it must carry is required whatever its nullability, by annotation, by
+            // the C# required modifier or by the JSON rules, in the schema and the fields alike.
             JsonElement statement = Action("statement");
             Assert.Equal(("api", "Read", "own", false), (
                 statement.GetProperty("kind").GetString(),
                 statement.GetProperty("action").GetString(),
                 statement.GetProperty("result").GetString(),
                 statement.GetProperty("mutation").GetBoolean()));
-            Assert.Equal(["language"], Strings(statement.GetProperty("arguments").GetProperty("required")));
-            Assert.True(ClientEntityModelComposition.Member(statement, "fields", "language").GetProperty("required").GetBoolean());
+            Assert.Equal(["language", "layout", "channel"], Strings(statement.GetProperty("arguments").GetProperty("required")));
+            Assert.All(
+                ["language", "layout", "channel"],
+                field => Assert.True(ClientEntityModelComposition.Member(statement, "fields", field).GetProperty("required").GetBoolean()));
 
             // A member-only action names no permission action, and the null is written.
             JsonElement ping = Action("ping");
@@ -380,7 +385,7 @@ namespace Tellma.Core.Tests.Client
         [Fact]
         public void A_csharp_enum_carries_its_wire_names_and_a_key_by_member_name_from_every_schema_that_carries_it()
         {
-            // The type's first site names it; every site's schema adds a key, so gl's declared key wins.
+            // The home schema names it; every site's schema adds a key, so gl's declared key wins.
             AssertJson(
                 """{"name":"acme.CustomerType","values":[{"value":"Retail","labelKey":"Gl_CustomerType_Retail"},{"value":"wholesale-trade","labelKey":"Acme_CustomerType_Wholesale"}]}""",
                 composition.Enum("acme.CustomerType"));

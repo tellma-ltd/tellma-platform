@@ -3,7 +3,6 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-using Microsoft.Extensions.Options;
 using System.Collections.Frozen;
 using System.Reflection;
 using System.Text.Json;
@@ -16,7 +15,6 @@ using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Entities;
 using Tellma.Core.Abstractions.Localization;
 using Tellma.Core.Abstractions.Settings;
-using Tellma.Core.Blobs;
 using Tellma.Core.Crud;
 using Tellma.Core.Crud.Query;
 using Tellma.Core.Data;
@@ -41,7 +39,6 @@ namespace Tellma.Core.Client
     /// <param name="valueSets">The composed value sets.</param>
     /// <param name="enums">The composition's C# enums.</param>
     /// <param name="blobKinds">The blob kinds, whose policies a blob reference carries.</param>
-    /// <param name="blobOptions">The blob options, whose upload limit caps every kind's size.</param>
     internal sealed class ClientEntityModel(
         QueryexSchemaProvider schemas,
         IEntityMetadataProvider metadata,
@@ -49,8 +46,7 @@ namespace Tellma.Core.Client
         INeutralStringKeys strings,
         IValueSetRegistry valueSets,
         NamedEnums enums,
-        IBlobKindRegistry blobKinds,
-        IOptions<BlobOptions> blobOptions) : IClientEntityModel
+        IBlobKindRegistry blobKinds) : IClientEntityModel
     {
         /// <summary>The operations an API can offer, in the order the client metadata lists them.</summary>
         private static readonly (StackOperations Flag, ClientEntityOperation Operation)[] OperationOrder =
@@ -65,7 +61,7 @@ namespace Tellma.Core.Client
 
         /// <summary>The model, built on first use.</summary>
         private readonly Lazy<Contents> _contents = new(
-            () => Build(schemas, metadata, stacks, strings, valueSets, enums, blobKinds, blobOptions.Value),
+            () => Build(schemas, metadata, stacks, strings, valueSets, enums, blobKinds),
             LazyThreadSafetyMode.ExecutionAndPublication);
 
         /// <inheritdoc />
@@ -89,7 +85,6 @@ namespace Tellma.Core.Client
         /// <param name="valueSets">The composed value sets.</param>
         /// <param name="enums">The composition's C# enums.</param>
         /// <param name="blobKinds">The blob kinds.</param>
-        /// <param name="blobOptions">The blob options.</param>
         /// <returns>The model.</returns>
         private static Contents Build(
             QueryexSchemaProvider schemas,
@@ -98,12 +93,11 @@ namespace Tellma.Core.Client
             INeutralStringKeys strings,
             IValueSetRegistry valueSets,
             NamedEnums enums,
-            IBlobKindRegistry blobKinds,
-            BlobOptions blobOptions)
+            IBlobKindRegistry blobKinds)
         {
             // --- Every root of the widest shape: an entity of the model by its metadata, a read-only root by its descriptor ---
             QueryexSchemaMap map = schemas.Map(MultilingualShape.All);
-            Builder builder = new(map, metadata, stacks, strings, enums, blobKinds, blobOptions);
+            Builder builder = new(map, metadata, stacks, strings, enums, blobKinds);
             ClientEntityMetadata[] entities = [.. map.Schema.Entities
                 .Select(descriptor => map.ClrType(descriptor) is null ? builder.ReadOnlyRoot(descriptor) : builder.Entity(map.Metadata(descriptor)))
                 .OrderBy(static entity => entity.Name, StringComparer.Ordinal)];
@@ -135,15 +129,13 @@ namespace Tellma.Core.Client
         /// <param name="strings">The keys the neutral resources declare.</param>
         /// <param name="enums">The composition's C# enums.</param>
         /// <param name="blobKinds">The blob kinds.</param>
-        /// <param name="blobOptions">The blob options.</param>
         private sealed class Builder(
             QueryexSchemaMap map,
             IEntityMetadataProvider metadata,
             IStackRegistry stacks,
             INeutralStringKeys strings,
             NamedEnums enums,
-            IBlobKindRegistry blobKinds,
-            BlobOptions blobOptions)
+            IBlobKindRegistry blobKinds)
         {
             /// <summary>Each child entity's owner and the collection that holds it, by the child's metadata.</summary>
             private readonly Dictionary<EntityMetadata, (EntityMetadata Owner, ChildCollectionMetadata Collection)> _owners = Owners(metadata);
@@ -178,6 +170,8 @@ namespace Tellma.Core.Client
                 string? ownerKey = null;
                 if (_owners.TryGetValue(entity, out (EntityMetadata Owner, ChildCollectionMetadata Collection) parent))
                 {
+                    // The parent key is always a foreign key with a navigation: the metadata builder
+                    // refuses one that does not end in Id, so no model that builds lacks it.
                     ownerKey = parent.Collection.ParentKey.Name;
                     string navigation = entity.References.First(reference => reference.ForeignKey.Name == ownerKey).Navigation;
                     owner = new ClientEntityOwner(parent.Owner.Name, navigation, parent.Collection.Property);
@@ -423,7 +417,7 @@ namespace Tellma.Core.Client
 
                 (string labelKey, string? labelFallback) = LabelChains.Resolve(strings, LabelChains.Property(entity.Name, labelSource), NameHumanizer.Humanize(labelSource));
 
-                // --- A blob reference: its kind's policy, as registered, its size capped by the upload limit ---
+                // --- A blob reference: its kind's policy, as registered ---
                 ClientBlobKindPolicy? blob = null;
                 if (entity.BlobReferences.FirstOrDefault(reference => ReferenceEquals(reference.Property, property)) is BlobReferenceMetadata reference)
                 {
@@ -614,7 +608,7 @@ namespace Tellma.Core.Client
                     member.Json.Name,
                     labelKey,
                     labelFallback,
-                    ActionArguments.IsRequired(member.Property),
+                    ActionArguments.IsRequired(member),
                     ActionArguments.Value(member, enums));
             }
 
@@ -622,7 +616,7 @@ namespace Tellma.Core.Client
             /// <param name="kind">The kind.</param>
             /// <param name="policy">The kind's policy.</param>
             /// <returns>The client's policy.</returns>
-            private ClientBlobKindPolicy Blob(string kind, BlobKindPolicy policy)
+            private static ClientBlobKindPolicy Blob(string kind, BlobKindPolicy policy)
             {
                 ClientImagePolicy? image = policy.Image is ImagePolicy declared
                     ? new ClientImagePolicy(
@@ -644,7 +638,7 @@ namespace Tellma.Core.Client
                 return new ClientBlobKindPolicy(
                     kind,
                     [.. policy.AllowedContentTypes],
-                    Math.Min(policy.MaxSize, blobOptions.MaxUploadSize),
+                    policy.MaxSize,
                     image,
                     policy.Thumbnail is not null,
                     policy.ReadAccess == BlobReadAccess.AnyMember ? ClientBlobReadAccess.AnyMember : ClientBlobReadAccess.OwnerRead);

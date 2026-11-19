@@ -29,8 +29,10 @@ namespace Tellma.Core.Composition.Checks
     ///         them, without regard to case.
     ///     </para>
     ///     <para>
-    ///         A C# enum is named by the schema of the first entity, setting key or stack whose
-    ///         properties or action arguments carry it, and its type's name (<c>gl.CenterType</c>).
+    ///         A C# enum is named by its home schema, that of the entities and action arguments of
+    ///         its own assembly that carry it, and its type's name (<c>gl.CenterType</c>). Its values
+    ///         are labelled by <c>&lt;Schema&gt;_&lt;TypeName&gt;_&lt;Member&gt;</c> under every schema
+    ///         that carries it, so no two enum types of one name may be carried under one schema.
     ///     </para>
     ///     <para>
     ///         Reads the composition alone. The registry keeps the first set of a name and drops a
@@ -202,17 +204,29 @@ namespace Tellma.Core.Composition.Checks
         /// <param name="problems">Receives the problems.</param>
         private void CheckModel(IEntityMetadataProvider metadata, IReadOnlyList<NamedEnum> enums, List<(ValueSetDescriptor Set, string Owner)> sets, List<CompositionProblem> problems)
         {
-            // --- No two C# enums share a name, without regard to case ---
-            // A C# enum is named on every surface by a schema and its type name (gl.CenterType), so
-            // two types of one name under one schema would be one enum to the client (spec 0029 §2.2).
-            foreach (IGrouping<string, NamedEnum> clash in enums
-                .GroupBy(static named => named.Name, StringComparer.OrdinalIgnoreCase)
-                .Where(static group => group.Count() > 1))
+            // --- No two C# enum types share a name or a label key, without regard to case ---
+            // A C# enum is named on every surface by a schema and its type name (gl.CenterType), and
+            // its values are labelled <Schema>_<Type>_<Member> under every schema that carries it
+            // (spec 0029 §2.2, §2.4). Two types of one name carried under one schema would be one enum
+            // to the client, or would read each other's labels.
+            HashSet<string> reported = new(StringComparer.Ordinal);
+            foreach (IGrouping<string, NamedEnum> shared in enums
+                .SelectMany(static named => named.KeyPrefixes.Select(prefix => (Key: $"{prefix}_{named.Type.Name}", Named: named)))
+                .GroupBy(static item => item.Key, static item => item.Named, StringComparer.OrdinalIgnoreCase))
             {
+                NamedEnum[] clash = [.. shared.DistinctBy(static named => named.Type)];
                 string types = string.Join(" and ", clash.Select(static named => TypeDisplay.Qualified(named.Type)));
+                if (clash.Length < 2 || !reported.Add(types))
+                {
+                    continue;
+                }
+
+                string problem = clash.All(named => string.Equals(named.Name, clash[0].Name, StringComparison.OrdinalIgnoreCase))
+                    ? $"The enums {types} are both named '{clash[0].Name}'."
+                    : $"The enums {types} are carried under one schema, so the label keys {shared.Key}_<Member> would name the values of each.";
                 problems.Add(new CompositionProblem(
                     Name,
-                    $"The enums {types} are both named '{clash.Key}'.",
+                    problem,
                     "Rename one of the enum types: every enum the entities, setting keys and action arguments of one schema carry needs a distinct type name."));
             }
 

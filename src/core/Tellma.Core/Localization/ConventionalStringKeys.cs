@@ -55,7 +55,7 @@ namespace Tellma.Core.Localization
     ///             with stacks composed, the keys of each action of a stack or a child query surface
     ///             and those of its argument fields, <c>&lt;Resource&gt;_Action_&lt;Name&gt;_&lt;Field&gt;</c>,
     ///             <c>&lt;Resource&gt;_&lt;Field&gt;</c> and <c>&lt;Field&gt;</c>, where a field is
-    ///             named as the wire carries it less the trailing <c>Id</c> of an entity reference;
+    ///             named by its C# property name, less the trailing <c>Id</c> of an entity reference;
     ///         </item>
     ///         <item>
     ///             with setting keys composed, each key's label and <c>…_Description</c>, its group's

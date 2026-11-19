@@ -96,7 +96,7 @@ client is registered: a client may add a logger of its own, which then decides w
 | `core.languages` | a declared code is malformed, names a language that is neither catalogued nor added, repeats a language, or names a region its language does not have; `Languages` was called with an empty list; an added language is malformed (code, regions, default region, native digits), already described, or shares a symbol; the `Tellma.Core` satellite assembly of an offered language other than English is not deployed | no |
 | `core.string-pack` | a shared `Strings` resource key is declared by two composed assemblies, so the merged string pack would hold two texts for one key | no |
 | `core.calendars` | a composed calendar system's code is not 1 to 16 lower-case ASCII letters and digits starting with a letter; two systems share a code, ignoring case; `gc`, `uq` or `et` is not composed | no |
-| `core.value-sets` | two C# enums of one type name are carried under one schema; a value set is not named `<schema>.<PascalCase>`, repeats a value (ignoring case), gives a value both or neither of a label key and a label, or has an alias that is one of its values or maps to none; two sets share a name, ignoring case; a set has the name of one of the model's enums (`<entity schema>.<EnumType>`); a `[ValueSet]` property names a set no feature contributes | no |
+| `core.value-sets` | two C# enum types of one type name are carried under one schema, so they share a name or their values' label keys; a value set is not named `<schema>.<PascalCase>`, repeats a value (ignoring case), gives a value both or neither of a label key and a label, or has an alias that is one of its values or maps to none; two sets share a name, ignoring case; a set has the name of one of the model's enums (`<entity schema>.<EnumType>`); a `[ValueSet]` property names a set no feature contributes | no |
 | `core.time-zones` | never: it logs one warning (`TimeZoneUnresolvable`) per value of `core.TimeZone` the host cannot resolve as a tenant's zone (its time-zone data lacks the zone, or the pinned table maps it to no Windows name), the sign of an image with stale tzdata | yes |
 | `core.entity-metadata` | the tenant model cannot be built (the convention's message, naming the declaration), or an entity leaf in it breaks the entity contract (every problem at once, see [Entity metadata](#entity-metadata)); a referenced entity with no natural key is logged as a warning and never fails | no |
 | `core.version-tags` | an entity declares a tenant-level tag that is not a lower-case name (`^[a-z][a-z0-9.-]*`, at most 128 characters) or that starts with `entity:`; a cacheable entity's implied `entity:<schema>.<Class>` name is too long; a user-level tag names no mapped `int` property or is not `Permissions` or `Preferences`; two names differ in case alone | no |
@@ -871,9 +871,12 @@ the conventional keys walk too), the first declared key wins, then falls back to
 | Setting | the setting's label key |
 | Value-set value | the value's literal label, else its label key, else the value |
 
-`NamedEnums` names each C# enum once: `<schema>.<TypeName>` after the schema of the first site that
-carries it (entity properties in model order, then setting keys, then action arguments), so
-`gl.CenterType`. The client metadata, the setting descriptors and the labels all use that name.
+`NamedEnums` names each C# enum once: `<schema>.<TypeName>` after its home schema, so
+`gl.CenterType`. The home schema is the ordinally smallest schema among the entities and action
+arguments declared in the enum's own assembly that carry it, else among every entity, setting key and
+action argument that carries it, so the order features compose in never renames an enum. Its values
+are labelled under every schema that carries it, the home schema's key first. The client metadata,
+the setting descriptors and the labels all use that name.
 
 A multilingual twin (`Name2`, `Name3`) reads its primary's label: alone when the tenant has one
 content language, followed by the language's symbol in parentheses (`Name (ع)`) when it has more,
@@ -901,7 +904,8 @@ and query limits, and every named enum: the C# enums with their wire names (a
 once from `QueryexSchemaProvider`'s full map, entities and enums in ordinal name order. A label
 resolves to the first key of its chain a neutral resource declares, else to the chain's first key
 with a humanized `labelFallback`. A `[BlobReference]` property carries its kind's policy,
-its size capped by `Tellma:Blobs:MaxUploadSize`. Read-only roots, which have no CLR type, are
+its size the kind's own `MaxSize` (a host whose `Tellma:Blobs:MaxUploadSize` is smaller does not
+start). Read-only roots, which have no CLR type, are
 server-owned with types from their store columns.
 
 `EntityClientAssetContributor` writes it into the client metadata: the summaries as the Core chunk's
