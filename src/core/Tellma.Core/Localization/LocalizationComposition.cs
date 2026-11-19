@@ -46,6 +46,9 @@ namespace Tellma.Core.Localization
 
             // --- Labels by convention, resolved against the merged resources (spec 0013 §7.6) ---
             services.TryAddSingleton<ILabelProvider, LabelProvider>();
+
+            // --- Any shared resource by its key, through its owner's localizer: what a response renders for readers without a pack ---
+            services.TryAddSingleton<ResourceTexts>();
         }
     }
 }

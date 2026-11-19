@@ -37,6 +37,13 @@ namespace Tellma.Core.AspNetCore.Hosting
         /// </summary>
         public int MaxEntitiesPerSave { get; set; } = 1000;
 
+        /// <summary>
+        ///     Whether a web API response carries <c>Server-Timing: db;dur=&lt;ms&gt;;desc="&lt;n&gt; calls"</c>,
+        ///     the database's share of the request; on by default in Development alone, since it tells a
+        ///     caller how long the server spent in the database.
+        /// </summary>
+        public bool ServerTiming { get; set; }
+
         /// <inheritdoc />
         public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
         {

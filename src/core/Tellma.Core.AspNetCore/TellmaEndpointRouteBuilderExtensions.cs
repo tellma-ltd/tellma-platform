@@ -137,8 +137,9 @@ namespace Tellma.Core.AspNetCore
             RouteGroupBuilder builder = app.MapGroup(TenantPrefix + suffix);
             _ = builder.RequireAuthorization(policy).WithMetadata(new TellmaGroupMetadata(group)).DisableCookieRedirect();
 
-            // --- The filter chain, outermost first: tenant, the web surface's request filter, then the witness ---
+            // --- The filter chain, outermost first: tenant, telemetry, the web surface's request filter, then the witness ---
             // Each refuses before the next runs; none evaluates a securable, the handler's service does.
+            // The telemetry stage wraps each endpoint's delegate below, between the guard and the witness.
             if (guarded)
             {
                 _ = builder.AddEndpointFilter<TenantAccessFilter>();
@@ -168,8 +169,14 @@ namespace Tellma.Core.AspNetCore
             if (guarded)
             {
                 // Endpoint filters reach route handlers alone; these reach every endpoint of the group.
-                // The witness wraps first, so the guard's wrapper, which the audit checks, stays outermost.
+                // The witness wraps first and the guard last, so the guard's wrapper, which the audit
+                // checks, stays outermost; the web surface's telemetry runs between the two.
                 conventions.Finally(AccessWitnessFilter.Wrap);
+                if (group == TellmaGroup.Web)
+                {
+                    conventions.Finally(ApiTelemetryFilter.Wrap);
+                }
+
                 conventions.Finally(TenantAccessFilter.Wrap);
             }
 

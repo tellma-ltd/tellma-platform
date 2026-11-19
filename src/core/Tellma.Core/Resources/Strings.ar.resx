@@ -395,6 +395,9 @@
   <data name="Problem_timeout_Detail" xml:space="preserve">
     <value>حاول مرة أخرى.</value>
   </data>
+  <data name="Problem_provisioning_not_configured" xml:space="preserve">
+    <value>لا يمكن إنشاء المنشآت هنا</value>
+  </data>
   <!-- Validation codes of the settings service -->
   <data name="Settings_FieldUnknown" xml:space="preserve">
     <value>لا يوجد إعداد بهذا الاسم.</value>

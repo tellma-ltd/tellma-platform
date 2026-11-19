@@ -389,6 +389,41 @@ namespace Tellma.Core.AspNetCore.Tests.Api
             Activity activity = Assert.Single(started);
             Assert.Equal(resource, activity.GetTagItem(ApiTelemetryNames.ResourceTag));
             Assert.Equal(operation, activity.GetTagItem(ApiTelemetryNames.OperationTag));
+            Assert.Equal("web", activity.GetTagItem(ApiTelemetryNames.ClientTag));
+        }
+
+        [Fact]
+        public async Task A_projected_operation_is_timed_and_logged_under_its_resource_operation_and_client()
+        {
+            CapturingLoggerProvider logs = new();
+            await using TellmaTestHost host = await StartAsync(options => Capture(options, logs));
+            using MetricCollector<double> durations = new(
+                host.Services.GetRequiredService<IMeterFactory>(), ApiTelemetryNames.MeterName, ApiTelemetryNames.OperationDuration);
+            string cookie = host.Cookie();
+
+            // --- An answer and a problem are both timed, by the closed sets alone ---
+            await PostAsync(host, cookie, "centers/query", "{}", HttpStatusCode.OK);
+            using HttpResponseMessage refused = await SendAsync(host, cookie, "centers/delete", /*lang=json,strict*/ """{"ids":[3000000000]}""");
+            Assert.Equal(HttpStatusCode.BadRequest, refused.StatusCode);
+            IReadOnlyList<CollectedMeasurement<double>> measured = durations.GetMeasurementSnapshot();
+            Assert.Equal(2, measured.Count);
+            Assert.Equal(["query", "delete"], [.. measured.Select(static measurement => measurement.Tags[ApiTelemetryNames.OperationTag])]);
+            Assert.All(measured, static measurement =>
+            {
+                Assert.Equal("pj.PjCenter", measurement.Tags[ApiTelemetryNames.ResourceTag]);
+                Assert.Equal("web", measurement.Tags[ApiTelemetryNames.ClientTag]);
+                Assert.Equal(3, measurement.Tags.Count);
+            });
+
+            // --- The problem's line and the request's completion both carry the scope's members ---
+            CapturedEvent problem = Assert.Single(logs.Events, static captured => Problems.ProblemMappingTests.Answered(captured, "bad-request"));
+            CapturedEvent completed = Assert.Single(logs.Events, static captured => captured.Message.Contains("/api/web/centers/delete\" responded 400", StringComparison.Ordinal));
+            Assert.All([problem, completed], static captured =>
+            {
+                Assert.Equal("web", captured.Members["Client"]);
+                Assert.Equal("pj.PjCenter", captured.Members["Resource"]);
+                Assert.Equal("delete", captured.Members["Operation"]);
+            });
         }
 
         [Fact]

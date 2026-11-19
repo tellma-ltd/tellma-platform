@@ -105,6 +105,15 @@ namespace Tellma.Core.Localization
             return key is not null && English.ContainsKey(key);
         }
 
+        /// <summary>The resources that own a key: the first source in composition order whose neutral set declares it.</summary>
+        /// <param name="key">The key.</param>
+        /// <returns>The owning source, or null when no neutral set declares the key.</returns>
+        public StringResourceSource? OwnerOf(string key)
+        {
+            ArgumentNullException.ThrowIfNull(key);
+            return _composition.Value.Owners.GetValueOrDefault(key);
+        }
+
         /// <summary>Merges the sources for each language and serializes each merged dictionary.</summary>
         /// <param name="sources">The sources, in composition order.</param>
         /// <param name="languages">The languages, English first.</param>
@@ -119,7 +128,7 @@ namespace Tellma.Core.Localization
 
             // The owner of each key: the first source whose neutral (English) set declares it. The
             // English pass fills it; every other language's pass only reads it.
-            Dictionary<string, string> owners = new(StringComparer.Ordinal);
+            Dictionary<string, StringResourceSource> owners = new(StringComparer.Ordinal);
 
             foreach (string language in languages)
             {
@@ -132,19 +141,20 @@ namespace Tellma.Core.Localization
                     IReadOnlyDictionary<string, string>? entries = culture is null ? null : source.Read(culture);
                     foreach ((string key, string value) in entries ?? FrozenDictionary<string, string>.Empty)
                     {
-                        if (neutral && owners.TryAdd(key, source.Name))
+                        if (neutral && owners.TryAdd(key, source))
                         {
                             merged[key] = value;
                             continue;
                         }
 
-                        if (!owners.TryGetValue(key, out string? owner))
+                        if (!owners.TryGetValue(key, out StringResourceSource? ownerSource))
                         {
                             // A translation of a key no neutral set declares: no label reads it, so
                             // it stays out of the pack (a feature's resource audit names it).
                             continue;
                         }
 
+                        string owner = ownerSource.Name;
                         if (string.Equals(owner, source.Name, StringComparison.Ordinal))
                         {
                             merged[key] = value;
@@ -170,6 +180,7 @@ namespace Tellma.Core.Localization
                 packs,
                 packs.ToFrozenDictionary(static pack => pack.Language, StringComparer.OrdinalIgnoreCase),
                 dictionaries.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase),
+                owners.ToFrozenDictionary(StringComparer.Ordinal),
                 conflicts);
         }
 
@@ -218,11 +229,13 @@ namespace Tellma.Core.Localization
         /// <param name="Packs">The packs, English first.</param>
         /// <param name="PacksByLanguage">The packs by language, compared without regard to case.</param>
         /// <param name="Dictionaries">The merged dictionaries by language, compared without regard to case.</param>
+        /// <param name="Owners">The source that owns each key, by key.</param>
         /// <param name="Conflicts">The conflicting keys.</param>
         private sealed record ComposedPacks(
             IReadOnlyList<StringPack> Packs,
             FrozenDictionary<string, StringPack> PacksByLanguage,
             FrozenDictionary<string, FrozenDictionary<string, string>> Dictionaries,
+            FrozenDictionary<string, StringResourceSource> Owners,
             IReadOnlyList<StringKeyConflict> Conflicts);
     }
 

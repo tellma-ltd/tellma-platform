@@ -31,11 +31,10 @@ namespace Tellma.Core.AspNetCore
 
         /// <summary>
         ///     Installs the request pipeline in its fixed order and nothing else: the header stamp,
-        ///     forwarded headers, request logging, the problem-details exception handler, HSTS and HTTPS
-        ///     redirection outside Development, routing, authentication and authorization, the CSRF
-        ///     control, the web API's contract check and the tenant middleware. A distribution's own
-        ///     middleware goes between this call
-        ///     and <c>MapTellma</c>.
+        ///     forwarded headers, request logging, the problem-details exception handler and status-code
+        ///     pages, HSTS and HTTPS redirection outside Development, routing, authentication and
+        ///     authorization, the CSRF control, the web API's contract check and the tenant middleware. A
+        ///     distribution's own middleware goes between this call and <c>MapTellma</c>.
         /// </summary>
         /// <param name="app">The application.</param>
         /// <returns>The application, for chaining.</returns>
@@ -87,19 +86,23 @@ namespace Tellma.Core.AspNetCore
             {
                 options.Logger = app.Services.GetRequiredService<ILogger>();
                 options.EnrichDiagnosticContext = static (diagnostics, context) =>
+                {
                     TenantLogScope.Enrich(diagnostics, context.RequestServices.GetService<IRequestContextAccessor>());
+                    ApiLogScope.Enrich(diagnostics, context);
+                };
             });
 
-            // --- 4. Exceptions as problem details ---
+            // --- 4. Exceptions as problem details, and the framework's empty refusals as the same bodies ---
             _ = app.UseExceptionHandler(new ExceptionHandlerOptions
             {
                 // The registered handler answers every exception; this only satisfies the middleware.
-                ExceptionHandler = static context => ProblemWriter.WriteAsync(context, StatusCodes.Status500InternalServerError, "internal"),
+                ExceptionHandler = static context => ProblemWriter.WriteAsync(context, StatusCodes.Status500InternalServerError, ProblemMapper.InternalCode),
 
-                // A mapped refusal is an expected answer, not an error to log; everything else is.
-                SuppressDiagnosticsCallback = static context => TellmaProblemExceptionHandler.IsMapped(context.Exception)
-                    || (context.Exception is OperationCanceledException && context.HttpContext.RequestAborted.IsCancellationRequested),
+                // The handler logs what is an error (the backstop, with its exception) and nothing a
+                // mapped refusal or an abandoned request answers, so the middleware logs nothing itself.
+                SuppressDiagnosticsCallback = static _ => true,
             });
+            _ = app.UseStatusCodePages(FrameworkProblems.HandleStatusAsync);
 
             // --- 5. Transport security, outside Development ---
             if (!app.Environment.IsDevelopment())

@@ -77,8 +77,11 @@ Installs the pipeline in this order and nothing else:
 1. the header stamp (`Tellma-Trace-Id`, `Tellma-Build`) on every response;
 2. forwarded headers, when enabled;
 3. Serilog request logging, whose completion event of a tenant request carries `TenantId`,
-   `TenantCategory`, `Subject` and `UserId`;
-4. the exception handler, answering RFC 9457 problems;
+   `TenantCategory`, `Subject` and `UserId`, and of a web API request `Client`, `Resource` and
+   `Operation`;
+4. the exception handler, answering RFC 9457 problems, then the status-code pages, which answer a
+   bodiless refusal (a route miss, a verb the route lacks, a rate limit, a timeout) with the problem
+   of its status;
 5. HSTS and HTTPS redirection, outside Development;
 6. routing;
 7. the in-proc identity engine's middleware, in in-proc mode;
@@ -141,7 +144,15 @@ securable, or member access for a member-only action), the route's contract fing
 the session's step-up bar for a sensitive securable, and the problems it may answer.
 
 The tenant filter applies the request's cultures before the handler runs. Every `Web` endpoint
-runs one more filter after the tenant's: it seeds the request's confirmations from `Tellma-Confirm` (at most 16 keys of 1 to 100
+then runs the telemetry stage, which adds `Client`, `Resource` and `Operation` to the request's
+logger scope and activity, times a projected operation on `tellma.api.operation.duration`, and
+stamps the answer, success or problem, with `Content-Language` (the resolved language),
+`Tellma-Calendar`, `Tellma-Version-Tags` (the tags after the request's last batch, the caller's
+own `permissions` and `preferences` only when that batch read them) and, when
+`Tellma:Api:ServerTiming` is on (by default in Development alone),
+`Server-Timing: db;dur=<ms>;desc="<n> calls"`. A request refused before admission (CSRF, a stale
+contract, an absent tenant) carries none of these. Every `Web` endpoint runs one more filter after
+the telemetry stage: it seeds the request's confirmations from `Tellma-Confirm` (at most 16 keys of 1 to 100
 visible ASCII characters each; more, or another character, answers `400 bad-request`; undeclared
 keys are dropped). A save holding more entities than the lower of `Tellma:Api:MaxEntitiesPerSave`
 and the stack's own limit answers `413 limit-exceeded` before the service runs. A JSON body above
@@ -149,6 +160,35 @@ and the stack's own limit answers `413 limit-exceeded` before the service runs. 
 binary bodies. A success on a guarded group (`Web`, `Api`, `Blobs`) without a recorded access check
 answers `500 internal`, whether the endpoint is a route handler or a plain request delegate; one
 that already started writing its body loses its connection before its status line leaves.
+
+### Problems
+
+Every refusal answers `application/problem+json`: `type` (`Tellma:Api:ProblemTypeBase` plus the
+code), `title` and `detail` rendered in the request's language from `Problem_<code>` and
+`Problem_<code>_Detail`, `status`, `instance` (the trace id), `code`, `errors` (each with its
+`path` or import cell, `code`, rendered `message` and raw `arguments`), `errorDetails` (always
+present, null when the problem has none) and `arguments` when it has some. The mapping is by
+exception type: `BadRequestException`, `InvalidQueryException` and a malformed JSON body
+(`arguments.reason = malformed-json`) answer 400; `StepUpRequiredException` 401 with its
+`WWW-Authenticate` challenge; `ForbiddenException` and `IndividualRequiredException` 403; not found
+404; concurrency, confirmations, tenant states and count mismatches 409; limits and bodies over
+their ceiling 413; validation and imports 422; refused uploads by their blob code; partial failures
+502; stale contexts, unavailable dependencies (a busy image processor as `imaging`) and a tenant
+catalog or schema that is not ready 503 with `Retry-After`. Validation paths are camelCase
+(`entities[3].roleMemberships[1].roleId`, `ids[2]`, `id`, `arguments.postingDate`, `body`).
+
+Anything else answers `500 internal` with the trace id alone; in Development `arguments.exception`
+names the exception's type and message, never its stack. A missing tenant and a tenant the caller
+is no member of answer the same `404 tenant-not-found` body, always in English. A bearer token on
+the cookie surfaces answers `401 unsupported-credential`, a missing session `401 unauthenticated`.
+Each problem counts on `tellma.api.problems{status, code}` and logs `ApiProblem` (Information for
+4xx, Warning for 5xx); an unhandled exception also logs `ApiUnhandledException` at Error. The
+in-process identity server's paths and the platform's own tenantless endpoints keep their bare
+statuses. The SPA fallback claims every path and verb, so it tells its misses apart itself: a path a
+route serves under other verbs answers `405 method-not-allowed` with `Allow`, one a route serves
+under the verb but not the body's media type `415 unsupported-media`, and any other
+`404 route-not-found` under a tenant id (`not-found` elsewhere); each reads the path alone, never
+whether the tenant exists.
 
 An endpoint on a tenant group carries exactly one of `RequireSecurable(resource, action)` and
 `AllowMember()`. Every `Web`, `Api` and `Blobs` endpoint states whether it changes data with

@@ -36,5 +36,25 @@ namespace Tellma.Core.AspNetCore.Api
             Level = LogLevel.Information,
             Message = "The web surface projects {Count} child query surfaces: {Surfaces}.")]
         public static partial void ChildSurfacesProjected(ILogger logger, int count, string surfaces);
+
+        /// <summary>A request was answered with a problem: at Information for a 4xx status, at Warning for a 5xx.</summary>
+        /// <param name="logger">The logger.</param>
+        /// <param name="level">The level, by the status's class.</param>
+        /// <param name="status">The status.</param>
+        /// <param name="code">The problem code.</param>
+        [LoggerMessage(
+            EventName = "ApiProblem",
+            Message = "The request was answered with the problem {Code} ({Status}).")]
+        public static partial void Problem(ILogger logger, LogLevel level, int status, string code);
+
+        /// <summary>An exception outside the mapped set reached the web edge and was answered with the internal problem.</summary>
+        /// <param name="logger">The logger.</param>
+        /// <param name="exception">The exception.</param>
+        /// <param name="traceId">The request's trace id, which the problem body carries as its instance.</param>
+        [LoggerMessage(
+            EventName = "ApiUnhandledException",
+            Level = LogLevel.Error,
+            Message = "An unhandled exception was answered with the internal problem under trace {TraceId}.")]
+        public static partial void UnhandledException(ILogger logger, Exception exception, string traceId);
     }
 }
