@@ -105,7 +105,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-142 | pc-1 | pc/PC-142 | impl | impl (Opus, high, launched 2026-11-19) | 0015-k (T2); R1 only | 2026-11-19 |
 | PC-086 | pc-2 | pc/PC-086 | fix1 | impl (Opus, high, launched 2026-11-19) | R1 0B/0M/7m; R1 only | 2026-11-19 |
 | PC-080 | pc-3 | pc/PC-080 | integrate | impl (Opus, high, launched 2026-11-19) | R1 0B/1M/2m, R2 (fable) 0B/1M/3m, all fixed; merge-tree clean; released 2026-11-19 after PC-079 green | 2026-11-19 |
-| PC-098 | pc-4 | pc/PC-098 | R2 | impl (Opus, xhigh, launched 2026-11-19) | R1 0B/2M/5m (R1-4 deferred D-129); R2 (fable) | 2026-11-19 |
+| PC-098 | pc-4 | pc/PC-098 | fix2 | impl (Opus, xhigh, launched 2026-11-19) | R1 0B/2M/5m (R1-4 deferred D-129); R2 (fable) 0B/0M/6m; then hold | 2026-11-19 |
 
 ## Fix items
 
@@ -384,7 +384,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-095 | 0016-f | 1 | todo | | | |
 | PC-096 | 0025-b | 1 | todo | | | |
 | PC-097 | 0020-b | 1 | done a90b368 (CI 43515001627 green) | bf01975, fb0abb0, 262b849, a90b368 (pc) |  |  |
-| PC-098 | 0020-c | 1 | R2 | 06ceb5dd, 46456458 | | |
+| PC-098 | 0020-c | 1 | fix2 | 06ceb5dd, 46456458 | | |
 | PC-099 | 0021-b | 1 | done (integrated 183e772, CI 43618488320 green) | 2e7dfd1, 2de32d7, f5174b3, 11a57e0 (pc), 69c009b, 183e772 (pc) |  |  |
 | PC-100 | 0020-d | 1 | todo | | | carry from PC-141 (D-096): TenantStateTests.A_job_whose_handler_runs_when_read_only_succeeds_on_a_read_only_tenant runs and must pass |
 | PC-101 | 0010-f4 | 1 | done (450f7dd, CI 43164947502 green) | b11e206, c66a4a7, 450f7dd (pc) | 8.94M (impl+fix1+int 7.20, r1 1.74) | R1 0/1/5 all fixed; new deviations: null for an IsNotNull parameter is a caller error; printed text over a parse ceiling reports that ceiling's diagnostic |
