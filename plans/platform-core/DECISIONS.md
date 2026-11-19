@@ -359,6 +359,13 @@ Format, one entry per ruling:
 - Also accepted: a readonly select never opens (a pre-existing bug, fixed) and exposes aria-readonly.
 - **Misalignment for Ahmad:** 0010 §B.4 names contentChildren(TmOptionGroup), which the design does not need. See also D-036's §B.4 note.
 
+### D-125 PC-079 hand-offs (2026-11-19)
+
+- PC-080 (in R1) must write SettingsService.ClientAsync's (byte[] Json, string WireTag) result as raw bytes at the edge, not serialize the tuple. Sent to PC-080 with its review-1 fix round.
+- A language change bumps every entity:* tag along with permissions (closes the D-076 carry).
+- A missing expected entry in a settings save is a ConcurrencyException conflict (IsMissing, Id 0), never NotFound.
+- For Ahmad: client and entity-tags keep the default Mcp=Full; details, save and refresh-caches are Hidden. Should client be Hidden too? R1 judges against spec 0013.
+
 ### D-124 PC-080 hand-offs and spec notes (2026-11-19)
 
 - For Ahmad: spec 0016 §3.1's JsonIgnore gate fails only Editable/WriteOnce properties; Derived and DatabaseOwned pass beside ServerOwned. Align the wording ("that a save writes").
