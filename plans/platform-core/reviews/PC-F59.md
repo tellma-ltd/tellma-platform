@@ -126,3 +126,130 @@ lists 233 as a lost connection, which before the send is re-run like 4060.
   - Testcontainers: 3 runs, 21 of 21 passed.
 - the mutation check above.
 - nightly-tier: none.
+
+## Review 1
+
+Scope: commit d83b9501 only. I built `test/core/Tellma.Core.IntegrationTests` (Build succeeded,
+0 errors) and ran `Tenancy.TenantScopeTests` on LocalDB with the PR-tier filter: 7 of 7 passed.
+I also ran a standalone probe against LocalDB with SqlClient 6.1.6 (outside the repo; log
+`PC-F59-r1-probe.log`), which supports R1-1.
+
+### Findings
+
+**R1-1 (minor). The 10 s bound misses the connect-retry regression whenever the first login takes
+more than 5 s. The old 5 s bound caught it in that case too.**
+`test/core/Tellma.Core.IntegrationTests/Tenancy/TenantScopeTests.cs:228-232, 251`
+
+- **Why.** SqlClient 6.1.6 retries a login only when enough connect timeout remains. The
+  `SqlInternalConnectionTds` constructor rethrows without sleeping when
+  `_timeout.MillisecondsRemaining < ConnectRetryInterval * 1000`.
+- **The profile here.** The test's profile has no `Connect Timeout`: it is the fixture's master
+  string, from the CI `TELLMA_TEST_SQL` or the Testcontainers string. So the timeout is the
+  default 15 s, and the retry the pin guards against happens only when the first refused login
+  returns within 5 s (15 − 10).
+- **Probe result.** An absent database with SqlClient's default retry (count 1, interval 10):
+  - `Connect Timeout=15` took 10251 ms, so it retried.
+  - `Connect Timeout=12` took 10259 ms, so it retried.
+  - `Connect Timeout=10` took 32 ms, so the retry was skipped.
+- **Failure scenario.** `ConnectRetryCount = 0` is removed from `TenantConnectionStrings.Compose`,
+  and the first login takes 5-10 s on a loaded CI host. That is the load the implementer measured
+  (up to 4986 ms, and about 13.8 s in one burst).
+  - SqlClient skips the retry.
+  - The open fails in under 10 s, and the test passes.
+  - Under the old 5 s bound, the same run failed either way: by the retry, or by the slow login.
+- **Inaccurate claims.**
+  - The comment says "the bound is the widest that still tells the two apart". That holds only
+    for logins shorter than Connect Timeout − interval.
+  - The notes say "A retried open cannot finish within that interval". That is true, but it
+    leaves out that a slow login is never retried at all.
+- **Why only minor.** The unit theory
+  `ConnectionCompositionTests.The_client_library_s_own_connect_retry_is_off_whatever_the_profile_says`
+  still pins the keyword deterministically.
+- **Suggested fix.**
+  - Give this test's profile an explicit `Connect Timeout` well above the interval. For example,
+    pass a `configure` callback to `CatalogHost.CreateAsync` that rewrites
+    `Tellma:Sql:Profiles:default` as
+    `new SqlConnectionStringBuilder(values[...]) { ConnectTimeout = 60 }.ConnectionString`.
+    Without the pin, the retry then always runs unless the first login exceeds 50 s.
+  - Say in the comment why the timeout is set. Read the interval from that same builder rather
+    than from a bare `new SqlConnectionStringBuilder()`.
+  - Then redo the mutation check.
+
+**R1-2 (minor). The `master` check is tautological. The comment, the README row and the notes say
+it verifies more than it can.**
+`test/core/Tellma.Core.IntegrationTests/Tenancy/TenantScopeTests.cs:248-249, 310-321`;
+`test/core/Tellma.Core.IntegrationTests/README.md:53`
+
+- **Why it cannot fail.** `absent` is a fresh `NewDatabaseName` that nothing ever creates, so
+  `DB_ID(@database)` is NULL whatever ended the login. The check fails only if the server cannot be
+  reached afterwards.
+- **No permission guard either.** The helper uses bare `DB_ID`, without the `HAS_PERMS_BY_NAME`
+  guard of `CatalogStatements.DatabaseExists`. A `TELLMA_TEST_SQL` principal without
+  `VIEW ANY DATABASE` would also get NULL.
+- **What the claims say.**
+  - The comment says the server "confirms the database is absent".
+  - The README row says "the database confirmed absent through `master`".
+  - The notes say the check "would catch" a 233 caused by the server ending the session for
+    another reason. It would not: if the server cut the login for another cause and stayed up,
+    the test still passes.
+- **Masking risk is low.** The sibling tests open composed tenant strings over the same
+  transport, so a composition regression that turns every open into 233 still fails the suite.
+  The problem is the overstated claims, not the logic.
+- **Suggested fix.**
+  - Reword the comment and the README row to what the check shows: the server still answers a new
+    login, so the lone 233 was a cut-off refusal and not an outage.
+  - Optionally, use `CatalogStatements.DatabaseExists` and assert `0`, not NULL. That also proves
+    the principal can see every database.
+
+**Checked, no finding:**
+
+- **Production classification (the orchestrator's question).** The tenant open fails inside
+  `AcquireAsync` with the phase still `Unsent`, so `Classify(sent: false, …)` applies
+  (`DataExecutor.cs:649-654`).
+  - `[233]`: `DataErrors.Classify` finds no transient primary, then 233 in `AmbiguousNumbers`, so
+    it returns `Ambiguous`, which maps to `Reported`.
+  - `[4060, 18456]`: the primary is 4060 (class 11), which is in `ReportedTransientNumbers`, so it
+    returns `Reported`.
+  - So both forms get the same re-run budget and the same exhaustion outcome. That matches the
+    0012 §6.3 table, and spec 0011 defines no separate missing-database outcome for a tenant open.
+  - No error observer and no other tenant-side code reads 4060; `git grep` finds only the
+    catalog's own reader. The only tenant-side 233 path that needs the `master` question is the
+    catalog login (PC-F36).
+  - One latent gap is outside this commit: an error list ordered `[18456, 4060]` would take 18456
+    as primary and classify `Final`. Every observed refusal, here and on CI, is ordered
+    `[4060, 18456]`.
+- **SqlClient's retry set.** The source confirms the implementer's claim:
+  - `s_transientErrors` = {4060, 10928, 10929, 40197, 40501, 40613, 42108, 42109}, with no 233.
+  - `_applyTransientFaultHandling` turns on for `ConnectRetryCount > 0` on any server, not only
+    Azure.
+- **Form assertion.** It still fails on anything other than a list containing 4060 or exactly
+  `[233]`, and the failure message lists every number.
+- **Bound and false reds.** A pinned open that stalls past the 15 s connect timeout fails with
+  `-2` on the form assertion, not the bound. So the only false-red window the bound adds is a
+  single login of 10-15 s. That is wider margin than before and consistent with D-011.
+- **AGENTS.md and PLAN §7.1.**
+  - The new helper has XML docs.
+  - No spec or PC references appear in docs or test names.
+  - The README row was updated.
+  - The touched suite was run, and the commit lists the suites.
+
+### Responses
+
+- R1-1: fixed in the review 1 fixes commit.
+  - The test's profile now sets `Connect Timeout=60`, through `CatalogHost.CreateAsync`'s
+    `configure` rewriting `Tellma:Sql:Profiles:default`. Without the pin, SqlClient then retries
+    unless the first login exceeds 50 s. A comment states why.
+  - The test asserts that the tenant's composed string carries the 60 s timeout. It reads the
+    retry interval from that same composed string rather than from a bare builder.
+  - The overstated comment is reworded.
+  - Mutation check redone: with the `ConnectRetryCount = 0` pin removed, the test fails with
+    "The open failed after 00:00:10.4488201, at least SqlClient's connect retry interval of
+    00:00:10". The pin was restored, and `src/` has no diff.
+- R1-2: fixed in the review 1 fixes commit.
+  - The helper now runs `CatalogStatements.DatabaseExists` and the test asserts 0, not NULL. That
+    shows the principal sees every database and the server still answers a new login.
+  - The comment and the README row now say exactly that: a lone 233 was a cut-off refusal, not an
+    outage. They no longer claim the server confirms the database's absence.
+  - The Implementer notes' "would catch" claim is superseded by this response.
+- Latent `[18456, 4060]` ordering (checked, no finding): outside this item by the orchestrator's
+  instruction, and recorded separately. No production code was changed.

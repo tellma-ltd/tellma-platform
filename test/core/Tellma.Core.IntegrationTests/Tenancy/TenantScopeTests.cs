@@ -24,6 +24,9 @@ namespace Tellma.Core.IntegrationTests.Tenancy
         /// <summary>The id the stand-in for the user connection binds for the platform's own principal.</summary>
         private const int SystemUserId = 1;
 
+        /// <summary>The configuration key of the credential profile every tenant here names.</summary>
+        private const string DefaultProfile = "Tellma:Sql:Profiles:default";
+
         private static CancellationToken Token => TestContext.Current.CancellationToken;
 
         [Fact]
@@ -215,7 +218,12 @@ namespace Tellma.Core.IntegrationTests.Tenancy
         [Fact]
         public async Task A_tenant_whose_database_is_missing_fails_its_open_at_once_rather_than_after_a_connect_retry_wait()
         {
-            await using CatalogHost host = await CatalogHost.CreateAsync(sql, "scope_missing");
+            // SqlClient retries a refused login only while the connect timeout still has a whole retry
+            // interval left. Under the default 15 s timeout and 10 s interval, a first login slower
+            // than 5 s is never retried, so a lost pin would pass unseen on a loaded host. The
+            // profile's long timeout leaves room for the retry whenever the pin is missing.
+            await using CatalogHost host = await CatalogHost.CreateAsync(sql, "scope_missing", configure: static values =>
+                values[DefaultProfile] = new SqlConnectionStringBuilder(values[DefaultProfile]) { ConnectTimeout = 60 }.ConnectionString);
 
             // Registered on a database nobody created: every login to it is refused.
             string absent = sql.NewDatabaseName("scope_absent");
@@ -227,9 +235,11 @@ namespace Tellma.Core.IntegrationTests.Tenancy
 
             // SqlClient's own connect retry would sleep a whole retry interval (10 s by default) before
             // its second login; the data executor owns retry, so the open fails as soon as the server
-            // answers. A retried open cannot finish within that interval, while a single login, even a
-            // slow one under load, does: the bound is the widest that still tells the two apart.
-            var retryInterval = TimeSpan.FromSeconds(new SqlConnectionStringBuilder().ConnectRetryInterval);
+            // answers. A retried open cannot finish within that interval, so the bound is the widest
+            // that still catches the retry. It is read from the tenant's own composed string.
+            SqlConnectionStringBuilder composed = new(scope.Services.GetRequiredService<ITenantConnectionProvider>().Tenant.ConnectionString);
+            Assert.Equal(60, composed.ConnectTimeout);
+            var retryInterval = TimeSpan.FromSeconds(composed.ConnectRetryInterval);
             var elapsed = Stopwatch.StartNew();
             SqlException refused = await Assert.ThrowsAsync<SqlException>(() => DatabaseOfAsync(scope));
             elapsed.Stop();
@@ -245,8 +255,9 @@ namespace Tellma.Core.IntegrationTests.Tenancy
                 numbers.Contains(CatalogStatements.CannotOpenDatabase) || numbers is [CatalogStatements.LoginInterrupted],
                 $"The open failed with errors {string.Join(", ", numbers)}, not the refusal of a missing database.");
 
-            // A cut-off login proves nothing by itself: the server, still up, confirms the database is absent.
-            Assert.False(await DatabaseExistsAsync(absent));
+            // The server still answers a new login, so a lone 233 was a cut-off refusal and not an
+            // outage. Its answer of 0 rather than NULL also shows the principal sees every database.
+            Assert.Equal(0, await DatabaseExistsAsync(absent));
 
             Assert.True(elapsed.Elapsed < retryInterval, $"The open failed after {elapsed.Elapsed}, at least SqlClient's connect retry interval of {retryInterval}.");
         }
@@ -307,17 +318,20 @@ namespace Tellma.Core.IntegrationTests.Tenancy
             return await command.ExecuteScalarAsync(Token) as string ?? throw new InvalidOperationException("The server named no database.");
         }
 
-        /// <summary>Whether a database exists on the test server, asked of <c>master</c>.</summary>
+        /// <summary>Asks the test server, through a new login to <c>master</c>, whether a database exists.</summary>
         /// <param name="database">The database's name.</param>
-        /// <returns>True when the server knows the database.</returns>
-        private async Task<bool> DatabaseExistsAsync(string database)
+        /// <returns>
+        ///     1 when the server knows the database; 0 when the principal may see every database and
+        ///     this one is not among them; <see langword="null" /> when the principal may not see every database.
+        /// </returns>
+        private async Task<int?> DatabaseExistsAsync(string database)
         {
             await using SqlConnection connection = new(sql.MasterConnectionString);
             await connection.OpenAsync(Token);
             await using SqlCommand command = connection.CreateCommand();
-            command.CommandText = "SELECT DB_ID(@database);";
+            command.CommandText = CatalogStatements.DatabaseExists;
             _ = command.Parameters.Add(new SqlParameter("@database", System.Data.SqlDbType.NVarChar, 128) { Value = database });
-            return await command.ExecuteScalarAsync(Token) is not (null or DBNull);
+            return await command.ExecuteScalarAsync(Token) as int?;
         }
 
         /// <summary>The server session of a connection of the scope's, which goes back to the pool when this returns.</summary>
