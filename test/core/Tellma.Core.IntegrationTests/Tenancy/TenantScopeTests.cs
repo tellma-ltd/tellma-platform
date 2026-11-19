@@ -217,21 +217,38 @@ namespace Tellma.Core.IntegrationTests.Tenancy
         {
             await using CatalogHost host = await CatalogHost.CreateAsync(sql, "scope_missing");
 
-            // Registered on a database nobody created: every login to it fails with 4060.
+            // Registered on a database nobody created: every login to it is refused.
+            string absent = sql.NewDatabaseName("scope_absent");
             TenantDescriptor tenant = await host.Catalog.RegisterAsync(
-                new TenantRegistration("Acme", TenantCategory.Live, null, new TenantLocation(sql.Server, sql.NewDatabaseName("scope_absent"), "default")), "migrator", cancellationToken: Token);
+                new TenantRegistration("Acme", TenantCategory.Live, null, new TenantLocation(sql.Server, absent, "default")), "migrator", cancellationToken: Token);
             _ = await host.Catalog.SetStateAsync(tenant.Id, TenantState.Active, null, "migrator", Token);
             await using TenantScope scope = await host.Scopes.CreateScopeAsync(
                 new RequestContextSnapshot(tenant.Id, PrincipalKind.User, "sub-1", 5, "worker", null), cancellationToken: Token);
 
-            // SqlClient's own connect retry would sleep its 10 s interval before failing; the data
-            // executor owns retry, so the open fails as soon as the server answers.
+            // SqlClient's own connect retry would sleep a whole retry interval (10 s by default) before
+            // its second login; the data executor owns retry, so the open fails as soon as the server
+            // answers. A retried open cannot finish within that interval, while a single login, even a
+            // slow one under load, does: the bound is the widest that still tells the two apart.
+            var retryInterval = TimeSpan.FromSeconds(new SqlConnectionStringBuilder().ConnectRetryInterval);
             var elapsed = Stopwatch.StartNew();
             SqlException refused = await Assert.ThrowsAsync<SqlException>(() => DatabaseOfAsync(scope));
             elapsed.Stop();
 
-            Assert.Equal(4060, refused.Number);
-            Assert.True(elapsed.Elapsed < TimeSpan.FromSeconds(5), $"The open failed after {elapsed.Elapsed}.");
+            // --- The refusal, in either of the two forms it reaches the client in ---
+            // Over TCP the server's account arrives whole: 4060, then the login failure 18456. Over
+            // named pipes and shared memory, LocalDB's only transports, the server sometimes ends the
+            // session before the client reads that account, and the same refusal arrives as the
+            // client's 233 ("no process is on the other end of the pipe") alone. The executor treats
+            // both alike: a failure before the send, which a re-run may cure.
+            int[] numbers = [.. refused.Errors.Cast<SqlError>().Select(static error => error.Number)];
+            Assert.True(
+                numbers.Contains(CatalogStatements.CannotOpenDatabase) || numbers is [CatalogStatements.LoginInterrupted],
+                $"The open failed with errors {string.Join(", ", numbers)}, not the refusal of a missing database.");
+
+            // A cut-off login proves nothing by itself: the server, still up, confirms the database is absent.
+            Assert.False(await DatabaseExistsAsync(absent));
+
+            Assert.True(elapsed.Elapsed < retryInterval, $"The open failed after {elapsed.Elapsed}, at least SqlClient's connect retry interval of {retryInterval}.");
         }
 
         [Fact]
@@ -288,6 +305,19 @@ namespace Tellma.Core.IntegrationTests.Tenancy
             await using SqlCommand command = connection.CreateCommand();
             command.CommandText = "SELECT DB_NAME();";
             return await command.ExecuteScalarAsync(Token) as string ?? throw new InvalidOperationException("The server named no database.");
+        }
+
+        /// <summary>Whether a database exists on the test server, asked of <c>master</c>.</summary>
+        /// <param name="database">The database's name.</param>
+        /// <returns>True when the server knows the database.</returns>
+        private async Task<bool> DatabaseExistsAsync(string database)
+        {
+            await using SqlConnection connection = new(sql.MasterConnectionString);
+            await connection.OpenAsync(Token);
+            await using SqlCommand command = connection.CreateCommand();
+            command.CommandText = "SELECT DB_ID(@database);";
+            _ = command.Parameters.Add(new SqlParameter("@database", System.Data.SqlDbType.NVarChar, 128) { Value = database });
+            return await command.ExecuteScalarAsync(Token) is not (null or DBNull);
         }
 
         /// <summary>The server session of a connection of the scope's, which goes back to the pool when this returns.</summary>
