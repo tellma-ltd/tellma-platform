@@ -34,14 +34,19 @@ namespace Tellma.Distro.Acme.IntegrationTests.Infrastructure
     {
         private readonly WebApplication _app;
 
+        /// <summary>Whether starting the host waits until its tenant snapshot is loaded.</summary>
+        private readonly bool _awaitsCatalog;
+
         /// <summary>Initializes a host over a built application.</summary>
         /// <param name="app">The application.</param>
+        /// <param name="awaitsCatalog">Whether starting the host waits until its tenant snapshot is loaded.</param>
         /// <param name="emails">The capturing transport.</param>
         /// <param name="warnings">The host's warnings and errors.</param>
         /// <param name="probes">What the tenant probes record; null when the host maps none.</param>
-        private AcmeHost(WebApplication app, CapturingEmailSender emails, WarningLog warnings, TenantProbeLog? probes)
+        private AcmeHost(WebApplication app, bool awaitsCatalog, CapturingEmailSender emails, WarningLog warnings, TenantProbeLog? probes)
         {
             _app = app;
+            _awaitsCatalog = awaitsCatalog;
             Emails = emails;
             Warnings = warnings;
             Probes = probes;
@@ -84,19 +89,10 @@ namespace Tellma.Distro.Acme.IntegrationTests.Infrastructure
         /// <returns>The started host.</returns>
         public static async Task<AcmeHost> StartAsync(IReadOnlyDictionary<string, string?> values, AcmeHostOptions? options = null)
         {
-            options ??= new AcmeHostOptions();
             AcmeHost host = Build(values, options);
             try
             {
-                await host._app.StartAsync(TestContext.Current.CancellationToken);
-
-                // A host whose first catalog load outlasts its startup bound starts not ready, and a
-                // load balancer sends it nothing until readiness turns: wait for the snapshot the same
-                // way, joining the load still in flight, rather than racing it with the first request.
-                if (options.AwaitsCatalog)
-                {
-                    await host.AwaitCatalogAsync();
-                }
+                await host.StartAsync();
             }
             catch
             {
@@ -176,15 +172,26 @@ namespace Tellma.Distro.Acme.IntegrationTests.Infrastructure
                 TenantProbes.Map(groups);
             }
 
-            host = new AcmeHost(app, emails, warnings, probes);
+            host = new AcmeHost(app, options.AwaitsCatalog, emails, warnings, probes);
             return host;
         }
 
-        /// <summary>Starts a built host.</summary>
-        /// <returns>A task that completes when the host started.</returns>
-        public Task StartAsync()
+        /// <summary>
+        ///     Starts a built host and, unless its <see cref="AcmeHostOptions.AwaitsCatalog" /> was off,
+        ///     waits until its tenant snapshot is loaded.
+        /// </summary>
+        /// <returns>A task that completes when the host started and, when it waits, its snapshot is available.</returns>
+        public async Task StartAsync()
         {
-            return _app.StartAsync(TestContext.Current.CancellationToken);
+            await _app.StartAsync(TestContext.Current.CancellationToken);
+
+            // A host whose first catalog load outlasts its startup bound starts not ready, and a
+            // load balancer sends it nothing until readiness turns: wait for the snapshot the same
+            // way, joining the load still in flight, rather than racing it with the first request.
+            if (_awaitsCatalog)
+            {
+                await AwaitCatalogAsync();
+            }
         }
 
         /// <summary>
