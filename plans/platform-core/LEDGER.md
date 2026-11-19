@@ -102,7 +102,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 
 | PC | Slot | Branch | Step | Implementer agent (name / id) | Reviewer agent (name / id) | Started (UTC) |
 |---|---|---|---|---|---|---|
-| PC-084 | pc-2 | pc/PC-084 | fix1 | impl (Opus, high, launched 2026-11-18) | R1 done (0/2/4); fix1 resumed 2026-11-18 | 2026-11-18 |
+| PC-084 | pc-2 | pc/PC-084 | R2 | impl (Opus, high, launched 2026-11-18) | R2 (fable, launched 2026-11-18) | 2026-11-18 |
 | PC-077 | pc-3 | pc/PC-077 | held | impl (Opus, xhigh, launched 2026-11-18) | fix2 d1d5a9d0, held behind PC-078 (merge-tree vs pc/PC-078 conflicts in 6 files; resolution in reviews/PC-077.md responses) | 2026-11-18 |
 | PC-078 | pc-1 | pc/PC-078 | CI | impl (Opus, xhigh, launched 2026-11-18) | fix2 4cfcd532; integrated bff6d356 (merge 2ac84a2a + plans re-merge); CI watch 2026-11-18 | 2026-11-18 |
 
@@ -369,7 +369,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-081 | 0016-d | 1 | todo | | | |
 | PC-082 | 0016-e | 1 | todo | | | |
 | PC-083 | 0017-c1 | 1 | done | fe0edcc6, 6b4a02bf, 9d5dd16d; green 44392562042 | | |
-| PC-084 | 0017-c2 | 1 | fix1 | 108e56b5 | | |
+| PC-084 | 0017-c2 | 1 | R2 | 108e56b5, 46b70189 | | |
 | PC-085 | 0011-g | 1 | done (integrated db81630; CI 43479519320 red: Acme E2E csproj never committed (.gitignore *.e2e matches the folder case-insensitively), fixed by PC-F30, green at 9a1754d (CI 43488423725); integration-windows itself green; fix1 6ba59cb; R1-6 pushed back: AspNetCore→Webhooks edge would break ARCHITECTURE rule 6, IVT seam kept and documented; R1-4 compares runtime models only; new fix: RCSI ALTER WITH ROLLBACK IMMEDIATE (pooled catalog connection timed out Acme readiness); integration-windows non-gating) | a147a95, 6ba59cb, db81630 (pc) |  |  |
 | PC-086 | 0029-a | 1 | todo | | | |
 | PC-087 | 0018-b | 1 | todo | | | |
