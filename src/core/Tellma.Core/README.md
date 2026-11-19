@@ -2085,6 +2085,51 @@ commits, the in-memory rows take their job ids and this host's pollers for the t
 (`TenantPollerWake`); a batch that fails stores nothing and wakes nothing. `EnqueueAsync` does the
 same in a `Persist` batch of its own.
 
+### Leases, outcomes and the completion transaction
+
+`JobStatements` holds the lease statements, each on the batch's internal channel with `core.Jobs`
+declared as its one write, so no caller authority refuses it:
+
+- **The claim** collects the rows its token already leases (so a re-run returns them once), then
+  leases the room left of one key's due `Pending` or lapsed `Running` rows in `DueAt, Id` order
+  (`READPAST, UPDLOCK, ROWLOCK`, a seek of `IX_Jobs_Available`), counting an attempt, and returns
+  every row. An entity-backed handler's entity rows ride the same round trip.
+- **The renewal** extends every lease of the tenant by token and writes the buffered progress; a
+  row it does not return lost its claim.
+- **The append** writes a fenced checkpoint into a handler's own transaction.
+- **The completion** records each job's outcome under the claim's token.
+
+The append and the completion throw `50422` with `Job.LeaseLost` when a row is no longer leased
+under the token, rolling back whatever their transaction carries.
+
+`JobRunner` runs what a claim leased:
+
+- **Completions without the handler.** The rows no handler may run complete at once in the system
+  scope: a requested cancel (`Jobs.Cancelled`, unless the handler commits in steps and has its
+  entity, which then runs with the item's token cancelled), an attempt past the last
+  (`Jobs.AttemptsExhausted`, or the earlier error), and a missing entity (`Jobs.EntityMissing`).
+- **Partitions.** The others are partitioned by run-as user and confirmed keys, in claim order.
+  Each partition runs under its own `process <key>` activity and log scope, in a job scope opened
+  by `ITenantScopeFactory`. A run-as user who is no longer active fails its jobs with
+  `Jobs.UserInactive`.
+- **The completion batch.** It is composed before the handler runs: the connect prologue, then the
+  completion statement, whose outcomes are bound once known. The handler's own statements follow it
+  on `JobBatch.Batch`, and the groups of every write it enlisted with the job frame
+  (`IOpenWriteHost`, persisted onto the same batch). Then come the notices, `job.changed` to each
+  requester and the nudge of a job queued again at once, all in one round trip.
+- **Outcomes.** They follow the handler's marks, a requested cancel, then how the invocation
+  ended; a retry at the last allowed attempt fails instead. A lost lease records nothing.
+- **Failures.** A failed guard retries every item at once in a completion of the outcomes alone.
+  Any other failure discards the handler's work and records the outcomes the failure maps to, a
+  constraint an enlisted group breaks failing every item with its translated error. A failure that
+  cannot be recorded leaves the lease to lapse.
+- **Progress.** `IJobProgress.Report` buffers progress for the next renewal and makes the
+  checkpoint current at once; `FlushAsync` runs that renewal now; `Append` writes a fenced
+  checkpoint that counts only once its batch committed.
+- **Notices.** A failure raises `core.job.failed` and a wait for confirmation
+  `core.job.pending-confirmation`, to the requester or else the tenant's administrators. A handler's
+  `NotifyOnSuccess` requests are raised only for a job that succeeded.
+
 ## Excel
 
 `Excel/` holds the workbook features' runtime contracts and the engine that writes them. Workbooks
@@ -2159,7 +2204,7 @@ are SpreadsheetML packages written with `DocumentFormat.OpenXml` (MIT), forward-
 | `Calendars/` | `GregorianCalendarSystem`, `UmAlQuraCalendarSystem`, `EthiopianCalendarSystem`, `CalendarRegistry`; internally the Ethiopian and the extended Umm al-Qura framework calendars, the shared renderer and reader, the culture data and the date-pattern reader. |
 | `Excel/` | `ExcelContext`, `ExcelColumnSpec`, `ExcelColumnRole`, `ExcelKeyKind`, `ExcelDateEncoding`, `ExcelSheetPlan`, `ExcelWorkbookPlan`, `ExcelTableSpec`, `ExcelTableRow`, `ExcelRowStyle`, `IExcelExporter`, `ImportCheckpointState`; internally the cell codec and its decoding records, the cell reader, the column encodings, the number formats, the stylesheet, the package, worksheet and workbook writers, the manifest's header block, the serial dates, the sheet and file names, the column letters, the XML escapes and the scratch files. |
 | `Caching/` | The versioned cache base, its keys and kinds; internally, the cacheable entities' store and façade, the version-tag registry, its table's row, the prelude and bump contributors, the bump plan, the snapshots, the mismatch policies, the migrator's seeder, the instruments and the log events. |
-| `Jobs/` | Internally: the job tables' configurations and seeds, the handler, built-in-schedule and retired-key realizers with their cross-feature checks, `JobHandlerRegistry`, the `jobs.handlers` and `jobs.schedules` checks, the queue and its enqueue statement, the poller wake, the composition step that binds the jobs' options, and the log events. |
+| `Jobs/` | Internally: the job tables' configurations and seeds, the handler, built-in-schedule and retired-key realizers with their cross-feature checks, `JobHandlerRegistry`, the `jobs.handlers` and `jobs.schedules` checks, the queue and its enqueue statement, the poller wake, the lease statements, the runner with its leases, renewal, progress, outcome rules, backoff, pending-confirmation record, notices and completion-failure translation, the job and system scopes, the `process` and `settle` activities and the log scope, the composition step that binds the jobs' options, and the log events. |
 | `Access/` | Internally: the access tables' configurations and seeds, the user stamp and preference rows, the securable registry with its name grammar and feature contributor, the securables section of the client metadata, the permission set build: the classifier, the builder, the interner and the access instruments and logs; and the user connection: the connect prologue, the connect, permissions and profile caches, the connector, the guarded runner and the connect initializer. |
 | `Identity/` | `IdentityServerClient`; internally its transport and token cache, the wire shapes and their source-generated JSON metadata, the options' settling and validator, the composition step that binds them and registers the named HTTP client, the instruments and the log events. |
 | `Notifications/` | `NotificationTypeRegistry`, `NotificationChannelRegistry`, `ClientEventRegistry`, `NotificationsClientAssetContributor`, `ClientEventPublisher`, `NullClientEventPublisher`, `NotificationConfiguration` and `NotificationDeliveryArguments`; internally the notifier, its statements and the delivering channels, the renderer, the preference row, the metrics, the name grammars, the hub-less real-time status, the composition step and the log events. |
@@ -2172,7 +2217,8 @@ are SpreadsheetML packages written with `DocumentFormat.OpenXml` (MIT), forward-
 `test/core/Tellma.Core.IntegrationTests` (`Category=Integration`) runs the catalog migrations, the
 write side, the registry, the membership hints and the tenant scope factory against SQL Server, and
 runs batches against the data layer's fixture database (`test/shared/Tellma.Testing.Entities`), and
-holds the job tables and the queue's enqueue statement to SQL Server in `Jobs/`.
+holds the job tables, the queue's enqueue statement, the lease statements and jobs run end to end
+through `JobPollDriver` to SQL Server in `Jobs/`.
 `test/core/Tellma.Core.Tests/Excel` holds every workbook the writer produces to the Open XML SDK's
 Office 2019 schema validator.
 `test/core/Tellma.Core.Tests` also runs the resource audit over Core's own resources

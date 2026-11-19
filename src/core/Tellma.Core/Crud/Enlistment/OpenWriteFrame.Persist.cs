@@ -12,6 +12,7 @@ using Tellma.Core.Abstractions.Errors;
 using Tellma.Core.Crud.Save;
 using Tellma.Core.Crud.Validation;
 using Tellma.Core.Data;
+using Tellma.Core.Queryex;
 
 namespace Tellma.Core.Crud.Enlistment
 {
@@ -24,7 +25,8 @@ namespace Tellma.Core.Crud.Enlistment
     // user every composition is for. A failure the executor attributes to a group's statement is
     // translated against that group and re-homed. Once committed, each group's post-commit phase runs
     // in the order the batch composed them. A job's frame appends its groups to the job's completion
-    // batch instead, which the worker sends.
+    // batch instead, which the worker sends; the worker then reports how the batch ended, which counts
+    // the enlistments and ends their reservations.
     /// <summary>The frame of an API action, a job's handler or a provisioning step: its persist.</summary>
     internal sealed partial class OpenWriteFrame
     {
@@ -45,6 +47,9 @@ namespace Tellma.Core.Crud.Enlistment
 
         /// <summary>The times the runner entered the persist's compose.</summary>
         private int _entries;
+
+        /// <summary>Whether composing the groups onto the job's completion batch failed part way, leaving the batch unfit to send.</summary>
+        private volatile bool _completionBroken;
 
         /// <inheritdoc />
         /// <exception cref="InvalidOperationException">
@@ -92,6 +97,37 @@ namespace Tellma.Core.Crud.Enlistment
                 : _completion is IDataBatch completion
                     ? await AppendAsync(completion).ConfigureAwait(false)
                     : await SendAsync().ConfigureAwait(false);
+        }
+
+        /// <summary>Whether the frame appended groups to the job's completion batch, so the worker reports how the batch ended.</summary>
+        public bool AppendedToCompletion => _completion is not null && Volatile.Read(ref _entries) > 0;
+
+        /// <summary>Whether composing the groups onto the job's completion batch failed part way, so the worker sends a fresh batch instead.</summary>
+        public bool CompletionBroken => _completionBroken;
+
+        // Spec 0015 §13.3 and spec 0020 §5.6: a failure of the completion batch that the executor
+        // attributes to a group's statement is translated against that group, in the job scope's
+        // cultures; any other is the worker's to translate.
+        /// <summary>Translates a failure of the job's completion batch that one of the frame's groups raised.</summary>
+        /// <param name="failure">The completion batch's failure.</param>
+        /// <returns>The group's translated failure; null when no group raised it.</returns>
+        public Exception? TranslateCompletionFailure(DataAccessException failure)
+        {
+            ArgumentNullException.ThrowIfNull(failure);
+            _services.Accessor.Current.ApplyCultures();
+            return _rounds?.Translate(failure);
+        }
+
+        /// <summary>
+        ///     Ends a job frame's hold on its completion batch once the worker sent or dropped it: the
+        ///     enlistments are counted with how the batch ended, and the groups' reservations end, so a
+        ///     batch never sent gives its ids back.
+        /// </summary>
+        /// <param name="failure">How the batch failed; null when it committed.</param>
+        public void EndCompletion(Exception? failure)
+        {
+            _rounds?.Count(failure);
+            _rounds?.Release();
         }
 
         /// <summary>Runs the post-commit phase of a job frame's groups, once the worker committed the completion batch.</summary>
@@ -164,7 +200,23 @@ namespace Tellma.Core.Crud.Enlistment
         private async Task<EnlistmentOutcome> AppendAsync(IDataBatch completion)
         {
             // The worker composes the batch for the run-as user; the groups ask no grant of their own.
-            await ComposeOntoAsync(user: null, completion).ConfigureAwait(false);
+            // The batch's query limits are the worker's: the groups compose under the pipeline's,
+            // and the batch gets its own back for whatever the handler appends next.
+            QueryexLimits limits = completion.Limits;
+            try
+            {
+                await ComposeOntoAsync(user: null, completion).ConfigureAwait(false);
+            }
+            catch
+            {
+                _completionBroken = true;
+                throw;
+            }
+            finally
+            {
+                completion.Limits = limits;
+            }
+
             return new EnlistmentOutcome(_services.Time.GetUtcNow(), _run.Tags(committed: null), UserVersionTags: null);
         }
 

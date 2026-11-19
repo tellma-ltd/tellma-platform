@@ -97,13 +97,14 @@ namespace Tellma.Core.Data.Batches
     /// <summary>A table-valued parameter: rows of a table type, streamed through the binder on every attempt.</summary>
     /// <param name="name">The parameter name.</param>
     /// <param name="rows">The row list, by reference.</param>
-    /// <param name="rowCount">How many rows the list holds.</param>
+    /// <param name="rowCount">How many rows the list held when it was bound; a list that is a collection reports its count when read.</param>
     /// <param name="factory">Creates the bound parameter; it enumerates the rows anew each time it is sent.</param>
     internal sealed class TableParameter(string name, object rows, int rowCount, Func<string, SqlParameter> factory)
         : BatchParameter(name)
     {
         /// <inheritdoc />
-        public override int Rows => rowCount;
+        /// <remarks>A list filled after it was bound, such as a job's outcomes, counts the rows it holds when it is sent.</remarks>
+        public override int Rows => rows is System.Collections.ICollection collection ? collection.Count : rowCount;
 
         /// <inheritdoc />
         public override SqlParameter Create()

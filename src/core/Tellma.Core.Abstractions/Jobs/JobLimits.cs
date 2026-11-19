@@ -47,6 +47,29 @@ namespace Tellma.Core.Abstractions.Jobs
         /// <summary>The highest progress a job reports, in percent.</summary>
         public const byte MaxProgressPercent = 100;
 
+        /// <summary>
+        ///     The most bytes, counted as UTF-8, the warnings a job waits to have confirmed are kept in
+        ///     once serialised: 64 KB. Past it, warnings are dropped from the end, but never the first of
+        ///     a key, so the record names every key.
+        /// </summary>
+        public const int MaxPendingConfirmationsBytes = 65_536;
+
+        /// <summary>The most row ids each recorded warning of a job waiting for confirmation keeps.</summary>
+        public const int MaxPendingConfirmationIds = 100;
+
+        /// <summary>
+        ///     The most distinct warning keys one confirmation covers. A job that raises more fails
+        ///     with <see cref="JobErrorCodes.TooManyConfirmations" /> instead of waiting.
+        /// </summary>
+        public const int MaxConfirmationKeys = 16;
+
+        /// <summary>
+        ///     The most characters a job's confirmed keys may take, comma-separated: the width of their
+        ///     column. A job whose keys would take more fails with
+        ///     <see cref="JobErrorCodes.TooManyConfirmations" /> instead of waiting.
+        /// </summary>
+        public const int MaxConfirmedKeysLength = 2000;
+
         /// <summary>The longest delay an explicit retry may ask for; a longer delay is shortened to it.</summary>
         public static readonly TimeSpan MaxRetryDelay = TimeSpan.FromDays(30);
     }

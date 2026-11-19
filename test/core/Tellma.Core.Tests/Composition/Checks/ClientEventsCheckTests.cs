@@ -16,7 +16,7 @@ namespace Tellma.Core.Tests.Composition.Checks
         [Fact]
         public async Task The_core_events_and_a_features_own_pass()
         {
-            IReadOnlyList<CompositionProblem> problems = await CheckAsync("job.changed", "assignments.changed", "acme.document-state.changed");
+            IReadOnlyList<CompositionProblem> problems = await CheckAsync("widgets.changed", "assignments.changed", "acme.document-state.changed");
 
             Assert.Empty(problems.From(Check));
         }

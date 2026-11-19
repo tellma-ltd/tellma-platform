@@ -20,8 +20,9 @@ namespace Tellma.Testing.Entities
         public const string Export = "fixture.export";
     }
 
-    // The fixture's handlers give the queue registered keys to enqueue under. The suites write and
-    // read job rows; none of them runs a job, so each handler completes without doing anything.
+    // The fixture's handlers give the queue registered keys to enqueue under. A suite that runs a
+    // job does so through JobPollDriver, and each handler completes without doing anything, so its
+    // jobs succeed.
 
     /// <summary>An arguments-only handler, which processes no rows.</summary>
     [JobHandler(FixtureJobKeys.Probe, Schedulable = true)]

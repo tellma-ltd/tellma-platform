@@ -29,8 +29,8 @@ namespace Tellma.Core.Abstractions.Jobs
     {
         /// <summary>
         ///     Buffers the item's progress. The next lease renewal writes it, or an immediate one when the
-        ///     percent jumped; a later report replaces an unwritten one. The state becomes current once
-        ///     written.
+        ///     percent jumped; a later report replaces an unwritten one. The state is current at once, so
+        ///     the completion records it whether or not a renewal wrote it first.
         /// </summary>
         /// <param name="percent">The progress in percent; null to keep the current one.</param>
         /// <param name="message">The progress message; null to keep the current one.</param>
