@@ -222,7 +222,8 @@ namespace Tellma.Core.Crud
 
         /// <summary>
         ///     Translates a written reference that names no row: <c>Fk.NotFound</c> at the one payload row
-        ///     carrying a value, else at the root naming the property.
+        ///     carrying a value, else at the root naming the property; on a blob-reference column,
+        ///     <c>Blob.NotAttachable</c> with the persist reason instead.
         /// </summary>
         /// <param name="foreignKey">The violation.</param>
         /// <param name="context">What the operation knows.</param>
@@ -234,6 +235,15 @@ namespace Tellma.Core.Crud
                 if (Referencing(entity, foreignKey.ConstraintName) is not ReferenceMetadata reference)
                 {
                     continue;
+                }
+
+                // Spec 0017 §4.4: a blob column is never a reference the client can fix; a blob row gone
+                // since the validation round (expired, then swept) is a blob the save can no longer attach.
+                if (entity.BlobReferences.Any(blob => ReferenceEquals(blob.Property, reference.ForeignKey)))
+                {
+                    return OnlyCarrier(context, entity, reference.ForeignKey, out _) is ValidationPath carrier
+                        ? new ValidationException([new ValidationError(carrier, ValidationCodes.BlobNotAttachable, Arguments(("reason", PersistReason)))])
+                        : AtRoot(ValidationCodes.BlobNotAttachable, Arguments(("reason", PersistReason), ("property", reference.ForeignKey.Name)));
                 }
 
                 // The one row carrying a value names it, widened as the validators name it; several

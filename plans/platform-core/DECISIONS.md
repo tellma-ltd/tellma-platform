@@ -359,6 +359,34 @@ Format, one entry per ruling:
 - Also accepted: a readonly select never opens (a pre-existing bug, fixed) and exposes aria-readonly.
 - **Misalignment for Ahmad:** 0010 §B.4 names contentChildren(TmOptionGroup), which the design does not need. See also D-036's §B.4 note.
 
+### D-127 PC-080 R2 rulings (2026-11-19)
+
+- R2-3: the raw-bytes answer for actions returning (byte[] Json, string WireTag) applies only to actions declared in a platform (Tellma.Core*) assembly; an audit row fails startup when any other action returns that shape. The shape stays, so PC-079's SettingsService.ClientAsync is unchanged.
+- R2-2: WireBinding.SettledAsync cannot re-apply cultures from an async finally. The problem writer applying cultures itself is carried to PC-081.
+- R2-1 (major): the JSON contract gate must neither pass members that throw only on write (Type, delegates, IntPtr, multi-dimensional arrays) nor fail on [JsonIgnore] members.
+- PC-080 holds after fix2 to serialize with PC-079's integration; it is released at once if nothing is integrating.
+
+### D-126 PC-080 fix1 outcomes (2026-11-19)
+
+- R1-1: AccessWitnessFilter.Wrap now runs on every Web, Api and Blobs endpoint, RequestDelegate ones included. An unwitnessed 2xx that has started is aborted in OnStarting; one that has not is answered 500. PC-089's carry is updated.
+- The D-125 raw-bytes hand-off is closed in PC-080: ActionAnswers.Of writes an action declared as (byte[] Json, string WireTag) as its Json bytes, application/json, and the tag travels in the version-tags header. SettingsService.ClientAsync needs no edge work.
+- Agents share the scratchpad across slots; briefs now ask for checkpoint-prefixed log names.
+
+### D-125 PC-079 hand-offs (2026-11-19)
+
+- PC-080 (in R1) must write SettingsService.ClientAsync's (byte[] Json, string WireTag) result as raw bytes at the edge, not serialize the tuple. Sent to PC-080 with its review-1 fix round.
+- A language change bumps every entity:* tag along with permissions (closes the D-076 carry).
+- A missing expected entry in a settings save is a ConcurrencyException conflict (IsMissing, Id 0), never NotFound.
+- Settings MCP exposure: R1-4 found spec 0016 names only details, save and refresh-caches as never exposed, and client returns a byte[]/tag tuple that the invoker would answer as {}. Ruling: client is Hidden too, entity-tags stays Full. For Ahmad: add client to spec 0016's never-exposed list.
+
+### D-124 PC-080 hand-offs and spec notes (2026-11-19)
+
+- For Ahmad: spec 0016 §3.1's JsonIgnore gate fails only Editable/WriteOnce properties; Derived and DatabaseOwned pass beside ServerOwned. Align the wording ("that a save writes").
+- For Ahmad: spec 0016 §4.6. SignalR MapHub stamps DisableRequestTimeout on the hub connection endpoint, so Hub-group hub endpoints are exempt from that rule; the spec should say so.
+- The witness filter covers the Web, Api and Blobs groups. A guarded endpoint that neither evaluates access nor records the member witness turns its successes into 500. PC-083/PC-084 blob endpoints are already on platform-core: R1 checks them, and PC-080's integration gate must cover them. PC-089's blob endpoints must comply (carry).
+- Carry to PC-082: WithRequestTimeout("tellma-long") metadata is inert until PC-082 registers the tellma-web/tellma-long policies; register them before installing the timeout middleware.
+- Carry to PC-081: BadRequestException→400 and LimitExceededException→413 are mapped early in TellmaProblemExceptionHandler; fold them into the full mapping.
+
 ### D-123 (orchestrator, 2026-11-18): PC-084 round-trip budget and carries; for Ahmad
 
 - Spec 0017 §10.1 ("a save adds none") and the checkpoint's done-criterion conflict with §4.2's mandated blob load. A warm-buffer, insert-only save that attaches a blob needs one extra round trip, and the code cannot avoid it. Interim: accepted as a PC-084 deviation. On a cold buffer the load folds into round 1 (R1-1), so no other save shape pays. **For Ahmad:** amend §10.1 or the budget.
