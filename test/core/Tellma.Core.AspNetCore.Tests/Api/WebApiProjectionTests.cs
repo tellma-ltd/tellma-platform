@@ -34,6 +34,7 @@ using Tellma.Core.Api;
 using Tellma.Core.AspNetCore.Api;
 using Tellma.Core.AspNetCore.Routing;
 using Tellma.Core.AspNetCore.Tests.Infrastructure;
+using Tellma.Core.Crud;
 
 namespace Tellma.Core.AspNetCore.Tests.Api
 {
@@ -287,6 +288,50 @@ namespace Tellma.Core.AspNetCore.Tests.Api
             Assert.Equal(HttpStatusCode.OK, response.StatusCode);
             Assert.Equal("application/json", response.Content.Headers.ContentType?.MediaType);
             Assert.Equal(PipelineLog.Document.ToArray(), await response.Content.ReadAsByteArrayAsync(TestContext.Current.CancellationToken));
+        }
+
+        [Fact]
+        public async Task The_settings_client_document_is_written_as_its_bytes()
+        {
+            await using TellmaTestHost host = await StartAsync();
+
+            // --- The platform's own action: a member route on the settings service, declared in Tellma.Core ---
+            RouteEndpoint endpoint = Assert.Single(Projected(host), static endpoint => endpoint.RoutePattern.RawText!.EndsWith("/api/web/settings/client", StringComparison.Ordinal));
+            ProjectedRouteMetadata projected = endpoint.Metadata.GetRequiredMetadata<ProjectedRouteMetadata>();
+            Assert.Equal(ProjectedRouteKind.Service, projected.Kind);
+            Assert.NotNull(endpoint.Metadata.GetMetadata<MemberEndpointMetadata>());
+            ActionDescriptor action = Assert.IsAssignableFrom<ActionDescriptor>(projected.Route.Action);
+            Assert.Equal("Tellma.Core", host.Services.GetRequiredService<StackRegistry>().MethodOf(action)!.Method.DeclaringType!.Assembly.GetName().Name);
+
+            // --- Its bytes as they are, with their length: never re-serialized as a tuple ---
+            using HttpResponseMessage response = await SendAsync(host, host.Cookie(), "settings/client", null);
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            Assert.Equal("application/json", response.Content.Headers.ContentType?.MediaType);
+            Assert.Equal(PipelineLog.Document.Length, response.Content.Headers.ContentLength);
+            Assert.Equal(PipelineLog.Document.ToArray(), await response.Content.ReadAsByteArrayAsync(TestContext.Current.CancellationToken));
+            Assert.Equal("api:client", Assert.Single(host.Services.GetRequiredService<PipelineLog>().Calls).Operation);
+        }
+
+        [Theory]
+        [InlineData("settings/client", HttpStatusCode.OK, false)]
+        [InlineData("settings/entity-tags", HttpStatusCode.OK, false)]
+        [InlineData("settings/details", HttpStatusCode.OK, false)]
+        [InlineData("settings/refresh-caches", HttpStatusCode.NoContent, true)]
+        public async Task Each_settings_route_answers_through_the_witness(string relative, HttpStatusCode status, bool stepUp)
+        {
+            await using TellmaTestHost host = await StartAsync();
+            PipelineLog log = host.Services.GetRequiredService<PipelineLog>();
+            string cookie = host.Cookie();
+
+            // A member route is witnessed by the connection; a secured one by its service's evaluation.
+            // The general settings are sensitive, so their refresh asks for a stepped-up session.
+            await PostAsync(host, cookie, relative, null, status, stepUp: stepUp);
+            log.SkipWitness = true;
+            using HttpResponseMessage unwitnessed = await SendAsync(host, cookie, relative, null, stepUp: stepUp);
+
+            bool member = Projected(host).Single(endpoint => endpoint.RoutePattern.RawText!.EndsWith("/api/web/" + relative, StringComparison.Ordinal))
+                .Metadata.GetMetadata<MemberEndpointMetadata>() is not null;
+            Assert.Equal(member ? status : HttpStatusCode.InternalServerError, unwitnessed.StatusCode);
         }
 
         [Fact]
