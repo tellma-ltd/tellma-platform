@@ -614,14 +614,18 @@ tellma.Blobs(blobs => blobs
   on an updated one. Each must name a `Staged`, unexpired blob of the column's kind that the saving
   user uploaded, once in the whole payload; otherwise the row's property is refused with
   `Blob.NotAttachable` and a `reason` argument (`missing`, `not-staged`, `kind`, `uploader`,
-  `expired`) or `Blob.DuplicateReference`. The blob rows load on the validation round the save
-  runs for its update rows anyway; an insert-only save that attaches loads them on a round of its
-  own. A blob column is never checked as a reference, so attaching needs no grant on `core.Blob`.
+  `expired`) or `Blob.DuplicateReference`. The blob rows load on the save's first round whenever it
+  runs one (update rows, references, uniqueness, a tree, or new ids a cold buffer cannot cover, in
+  which case the save requests every blob row of the payload on that round itself). The one shape
+  that pays a round for them is an insert-only save whose ids come from a warm buffer and that
+  needs no first round otherwise. A blob column is never checked as a reference or for uniqueness,
+  so attaching needs no grant on `core.Blob`.
 - **The persist.** For each column the effect releases the blobs the capture's old values name
   where the value changed or was cleared (`Released`, due at once), then confirms the new ones
   (`Committed`, no deadline) under the same conditions the validator checked, and throws
   `Blob.NotAttachable` (reason `persist`) when any new value was not confirmed: a blob that expired,
-  was claimed or was taken by another row after the validation round rolls the whole save back. A
+  was claimed or deleted, or was taken by another row after the validation round rolls the whole
+  save back, and a missing blob row's foreign key failure is reported the same way. A
   delete of any shape releases its rows' blobs and their children's. The old values come from the
   rows as written, so an override save releases what the row actually held.
 - **Downloading.** `IBlobService.ResolveAsync(kind, id, variant)` decides the caller's read of the

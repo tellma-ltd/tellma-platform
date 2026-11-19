@@ -12,6 +12,7 @@ using Tellma.Core.Abstractions.Blobs;
 using Tellma.Core.Abstractions.Crud;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Errors;
+using Tellma.Core.Data.Ids;
 using Tellma.Core.IntegrationTests.Access;
 using Tellma.Core.IntegrationTests.Data;
 using Tellma.Testing.Entities;
@@ -26,7 +27,8 @@ namespace Tellma.Core.IntegrationTests.Blobs
     ///     committed, foreign, expired or repeated blob at its path and counts each refusal; the
     ///     persist refuses a blob that stopped being attachable after the validation round, or that a
     ///     second owner took, rolling the save back; a blob column is never read as a reference; and
-    ///     a save adds no round trip for the blobs it replaces or clears.
+    ///     a save adds no round trip for the blobs it attaches, replaces or clears whenever it runs a
+    ///     first round, a cold id buffer included, while a warm-buffer insert that runs none takes one.
     /// </summary>
     /// <param name="fixture">The tenant databases and the seeding helpers.</param>
     [Trait("Category", "Integration")]
@@ -336,9 +338,41 @@ namespace Tellma.Core.IntegrationTests.Blobs
             Assert.Equal((1, 2), (plainTrips, renameTrips));
             Assert.Equal((renameTrips, renameTrips), (replaceTrips, clearTrips));
 
-            // An insert that attaches loads the blob rows it attaches on a validation round of its own.
+            // A warm-buffer insert that runs no first round loads the blob rows it attaches on a
+            // validation round of its own: the one shape that pays for the attach rule's load.
             Assert.Equal(plainTrips + 1, attachTrips);
             Assert.Equal(("Released|c|e", "Released|c|e"), (await fixture.StateAsync(first), await fixture.StateAsync(second)));
+        }
+
+        [Fact]
+        public async Task With_a_cold_id_buffer_an_insert_or_an_update_adding_a_child_takes_no_round_trip_for_the_blobs_it_attaches()
+        {
+            (int userId, string subject) = await CallerAsync();
+            _ = await SaveAsync(subject, new BlobOwner { Name = "warm" });
+
+            // --- An insert: the ids and the blob rows ride one round trip, with or without a blob ---
+            (_, int plainTrips) = await ColdAsync(subject, new BlobOwner { Name = "cold plain" });
+            int file = await fixture.StageAsync(userId, BlobReferenceDatabase.FileKind);
+            (BlobOwner owner, int attachTrips) = await ColdAsync(subject, new BlobOwner { Name = "cold attach", FileId = file });
+            Assert.Equal((2, 2), (plainTrips, attachTrips));
+
+            // --- An update adding a child row: the before images, the ids and the blob rows ride one round trip ---
+            BlobOwner bare = await SaveAsync(subject, new BlobOwner { Name = "cold children" });
+            bare = await DetailsAsync(subject, bare.Id);
+            bare.Files = [new BlobOwnerFile()];
+            (_, int childTrips) = await ColdAsync(subject, bare);
+
+            int childFile = await fixture.StageAsync(userId, BlobReferenceDatabase.ChildFileKind);
+            int replacement = await fixture.StageAsync(userId, BlobReferenceDatabase.FileKind);
+            owner = await DetailsAsync(subject, owner.Id);
+            owner.FileId = replacement;
+            owner.Files = [new BlobOwnerFile { FileId = childFile }];
+            (_, int childFileTrips) = await ColdAsync(subject, owner);
+            Assert.Equal((2, 2), (childTrips, childFileTrips));
+
+            Assert.Equal(
+                ("Released|c|e", "Committed|c|-", "Committed|c|-"),
+                (await fixture.StateAsync(file), await fixture.StateAsync(replacement), await fixture.StateAsync(childFile)));
         }
 
         /// <summary>Seeds a caller of the first tenant who reads and saves blob owners, with any further permissions.</summary>
@@ -369,6 +403,17 @@ namespace Tellma.Core.IntegrationTests.Blobs
             int before = access.RoundTrips;
             EntitiesResult<BlobOwner> saved = await Service(scope).SaveAsync([owner], new SaveOptions(), Token);
             return (Assert.Single(saved.Entities), access.RoundTrips - before);
+        }
+
+        /// <summary>Saves one owner with the tenant's id buffers dropped first, counting the round trips the save took.</summary>
+        /// <param name="subject">The caller's subject.</param>
+        /// <param name="owner">The owner.</param>
+        /// <returns>The committed row, with its files, and the round trips.</returns>
+        private Task<(BlobOwner Saved, int Trips)> ColdAsync(string subject, BlobOwner owner)
+        {
+            // Every new row's id then rides round trip 1, and the validators start after it.
+            fixture.Instance.GetRequiredService<IdAllocator>().ForgetTenant(ConnectDatabase.TenantA);
+            return CountedSaveAsync(subject, owner);
         }
 
         /// <summary>Reads an owner in details shape, with its files.</summary>

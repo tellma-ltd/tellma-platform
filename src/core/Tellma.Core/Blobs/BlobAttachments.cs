@@ -23,6 +23,9 @@ namespace Tellma.Core.Blobs
         /// <summary>The argument of <see cref="ValidationCodes.BlobNotAttachable" /> naming why the blob cannot be attached.</summary>
         public const string ReasonArgument = "reason";
 
+        /// <summary>The blob row's columns the attach rule reads.</summary>
+        public const string Select = "Id,State,Kind,CreatedById,ExpiresAt";
+
         /// <summary>Each aggregate's columns, walked once per root: the metadata lives as long as the process's model.</summary>
         private static readonly ConditionalWeakTable<EntityMetadata, IReadOnlyList<BlobColumn>> ColumnsByRoot = [];
 
@@ -94,6 +97,38 @@ namespace Tellma.Core.Blobs
                     object? match = stored.GetValueOrDefault(PayloadRows.KeyOf(collection.Child, child));
                     NewlyAttached(collection.Child, child, match, collectionPath.Index(index), into);
                 }
+            }
+        }
+
+        // spec 0017 §4.2: when the ids ride round trip 1 the validators start after it, so the blob
+        // rows the attach rule reads load on that round instead, under the rule's select; the
+        // validator's exact request is then answered from the loader's cache.
+        /// <summary>
+        ///     Requests the blob row of every non-null blob-reference value of the payload's rows, at any
+        ///     depth, on the loader's next round: a superset of what the payload newly attaches.
+        /// </summary>
+        /// <param name="loader">The save's context loader.</param>
+        /// <param name="rows">The payload's rows at every depth, each with its entity.</param>
+        public static void Prefetch(IContextLoader loader, IEnumerable<(EntityMetadata Entity, object Row)> rows)
+        {
+            ArgumentNullException.ThrowIfNull(loader);
+            ArgumentNullException.ThrowIfNull(rows);
+
+            HashSet<int> ids = [];
+            foreach ((EntityMetadata entity, object row) in rows)
+            {
+                foreach (BlobReferenceMetadata reference in entity.BlobReferences)
+                {
+                    if (reference.Property.Getter(row) is int id)
+                    {
+                        _ = ids.Add(id);
+                    }
+                }
+            }
+
+            if (ids.Count > 0)
+            {
+                _ = loader.ByIds<Blob, int>([.. ids], Select);
             }
         }
 

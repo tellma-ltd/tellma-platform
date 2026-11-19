@@ -7,9 +7,11 @@ using Microsoft.Extensions.DependencyInjection;
 using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Blobs;
 using Tellma.Core.Abstractions.Data;
+using Tellma.Core.Abstractions.Entities;
 using Tellma.Core.Abstractions.Errors;
 using Tellma.Core.IntegrationTests.Access;
 using Tellma.Core.IntegrationTests.Data;
+using Tellma.Core.Testing.Blobs;
 
 namespace Tellma.Core.IntegrationTests.Blobs
 {
@@ -17,7 +19,9 @@ namespace Tellma.Core.IntegrationTests.Blobs
     ///     Download resolution against a real tenant database, on one read round trip: a committed
     ///     blob is served through a filtered read of its owner and hidden when the filter leaves the
     ///     owner out, a child's blob through the parent's filtered read; a staged blob is served to its
-    ///     uploader alone; an unrestricted read serves every owner's blob and no read serves none; and
+    ///     uploader alone; an unrestricted read serves every owner's blob and no read serves none; a kind
+    ///     any member reads is served without a read of its owner, its staged blobs still to their
+    ///     uploaders alone; and
     ///     another kind, an unknown kind and a malformed variant are refused before anything is read.
     /// </summary>
     /// <param name="fixture">The tenant databases and the seeding helpers.</param>
@@ -99,6 +103,29 @@ namespace Tellma.Core.IntegrationTests.Blobs
         }
 
         [Fact]
+        public async Task A_kind_any_member_reads_is_served_without_a_read_of_its_owner_on_one_round_trip()
+        {
+            // --- An instance whose file kind any member reads, and a member with no grant on any owner ---
+            await using ServiceProvider instance = fixture.Connect.CreateInstance(
+                configure: static services => services.AddInMemoryBlobs(),
+                compose: static tellma => tellma.Blobs(static blobs => blobs.Kind(BlobReferenceDatabase.FileKind, static policy => policy with { ReadAccess = BlobReadAccess.AnyMember })));
+            (int memberId, string member) = await fixture.SeedCallerAsync(ConnectDatabase.TenantA, ("fixture.Lookup", AccessActions.Read, null));
+            (int otherId, _) = await fixture.SeedCallerAsync(ConnectDatabase.TenantA, ("fixture.Lookup", AccessActions.Read, null));
+            (_, int hidden, _, _) = await SeedOwnersAsync();
+            int mine = await fixture.StageAsync(memberId, BlobReferenceDatabase.FileKind);
+            int theirs = await fixture.StageAsync(otherId, BlobReferenceDatabase.FileKind);
+
+            // --- A committed blob under an owner the member cannot read, on one round trip once warm ---
+            _ = await ResolveAsync(member, BlobReferenceDatabase.FileKind, hidden, services: instance);
+            (BlobDownload? served, int trips) = await CountedResolveAsync(member, BlobReferenceDatabase.FileKind, hidden, instance);
+            Assert.Equal((hidden, BlobState.Committed, 1), (Assert.IsType<BlobDownload>(served).Id, served.State, trips));
+
+            // --- Staged blobs: the member's own served, another user's still not ---
+            Assert.NotNull(await ResolveAsync(member, BlobReferenceDatabase.FileKind, mine, services: instance));
+            Assert.Null(await ResolveAsync(member, BlobReferenceDatabase.FileKind, theirs, services: instance));
+        }
+
+        [Fact]
         public async Task Another_kind_or_an_unknown_one_is_not_found_and_a_malformed_variant_is_a_bad_request()
         {
             (_, string subject) = await fixture.SeedCallerAsync(ConnectDatabase.TenantA, (Owners, AccessActions.Read, null));
@@ -137,10 +164,11 @@ namespace Tellma.Core.IntegrationTests.Blobs
         /// <param name="kind">The kind.</param>
         /// <param name="id">The blob's id.</param>
         /// <param name="variant">The variant; null for the primary.</param>
+        /// <param name="services">The instance; the fixture's when null.</param>
         /// <returns>The download; null when nothing is served.</returns>
-        private async Task<BlobDownload?> ResolveAsync(string subject, string kind, int id, string? variant = null)
+        private async Task<BlobDownload?> ResolveAsync(string subject, string kind, int id, string? variant = null, IServiceProvider? services = null)
         {
-            await using AsyncServiceScope scope = await fixture.ScopeAsync(subject);
+            await using AsyncServiceScope scope = await fixture.Connect.ScopeAsync(subject, services: services ?? fixture.Instance);
             return await scope.ServiceProvider.GetRequiredService<IBlobService>().ResolveAsync(kind, id, variant, Token);
         }
 
@@ -148,10 +176,11 @@ namespace Tellma.Core.IntegrationTests.Blobs
         /// <param name="subject">The caller's subject.</param>
         /// <param name="kind">The kind.</param>
         /// <param name="id">The blob's id.</param>
+        /// <param name="services">The instance; the fixture's when null.</param>
         /// <returns>The download, null when nothing is served, and the round trips.</returns>
-        private async Task<(BlobDownload? Download, int Trips)> CountedResolveAsync(string subject, string kind, int id)
+        private async Task<(BlobDownload? Download, int Trips)> CountedResolveAsync(string subject, string kind, int id, IServiceProvider? services = null)
         {
-            await using AsyncServiceScope scope = await fixture.ScopeAsync(subject);
+            await using AsyncServiceScope scope = await fixture.Connect.ScopeAsync(subject, services: services ?? fixture.Instance);
             DataAccessScope access = scope.ServiceProvider.GetRequiredService<DataAccessScope>();
             int before = access.RoundTrips;
             BlobDownload? download = await scope.ServiceProvider.GetRequiredService<IBlobService>().ResolveAsync(kind, id, null, Token);

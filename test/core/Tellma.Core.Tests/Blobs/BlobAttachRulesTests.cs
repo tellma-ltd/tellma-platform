@@ -6,11 +6,14 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.Metrics.Testing;
 using System.Diagnostics.Metrics;
+using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Blobs;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Errors;
 using Tellma.Core.Abstractions.Validation;
 using Tellma.Core.Blobs;
+using Tellma.Core.Crud;
+using Tellma.Core.Data;
 using Tellma.Core.Tests.Infrastructure;
 
 namespace Tellma.Core.Tests.Blobs
@@ -18,8 +21,8 @@ namespace Tellma.Core.Tests.Blobs
     /// <summary>
     ///     The attach rule's pure parts: the refusal of one blob row in its order of checks, the
     ///     aggregate's columns at every depth, the values a payload newly attaches on inserted and
-    ///     updated rows and their children, the refusal instrument, and the persist's refusal
-    ///     counted once per attached value.
+    ///     updated rows and their children, the refusal instrument, the persist's refusal counted
+    ///     once per attached value, and a blob row gone before the persist refused as not attachable.
     /// </summary>
     public sealed class BlobAttachRulesTests : IAsyncDisposable
     {
@@ -152,6 +155,30 @@ namespace Tellma.Core.Tests.Blobs
                 rejected.GetMeasurementSnapshot().Select(static measurement => $"{measurement.Tags[BlobTelemetryNames.KindTag]} {measurement.Tags[BlobTelemetryNames.ReasonTag]}"));
         }
 
+        [Fact]
+        public void A_blob_row_gone_before_the_persist_is_not_attachable_never_a_missing_reference()
+        {
+            // The write names a blob row that the sweep deleted after the validation round.
+            BmAlbum album = new() { Name = "A", CoverId = 5 };
+            BmAlbum other = new() { Name = "B", CoverId = 6 };
+            CrudMetrics metrics = _model.GetRequiredService<CrudMetrics>();
+
+            // --- One row carries a value: the refusal is at its property ---
+            foreach (ForeignKeyConflict conflict in new[] { ForeignKeyConflict.MissingTarget, ForeignKeyConflict.Unknown })
+            {
+                Exception? one = PersistFailures.Translate(new ForeignKeyViolationException("FK_Albums_CoverId", statementOrdinal: 1) { Conflict = conflict }, Context(album), metrics);
+                ValidationError error = Assert.Single(Assert.IsType<ValidationException>(one).Errors);
+                Assert.Equal(("[0].CoverId", ValidationCodes.BlobNotAttachable, (object?)BlobTelemetryTagValues.AttachPersist), (error.Path.ToString(), error.Code, error.Arguments[BlobAttachments.ReasonArgument]));
+            }
+
+            // --- Several rows carry one: the refusal is at the root, naming the property ---
+            Exception? several = PersistFailures.Translate(new ForeignKeyViolationException("FK_Albums_CoverId", statementOrdinal: 1) { Conflict = ForeignKeyConflict.MissingTarget }, Context(album, other), metrics);
+            ValidationError root = Assert.Single(Assert.IsType<ValidationException>(several).Errors);
+            Assert.Equal(
+                (string.Empty, ValidationCodes.BlobNotAttachable, (object?)BlobTelemetryTagValues.AttachPersist, (object?)nameof(BmAlbum.CoverId)),
+                (root.Path.ToString(), root.Code, root.Arguments[BlobAttachments.ReasonArgument], root.Arguments["property"]));
+        }
+
         /// <summary>The refusal of a blob row for the cover kind, for the uploader, now.</summary>
         /// <param name="blob">The row.</param>
         /// <returns>The reason; null when attachable.</returns>
@@ -198,6 +225,15 @@ namespace Tellma.Core.Tests.Blobs
             List<BlobAttach> attached = [];
             BlobAttachments.NewlyAttached(Metadata<BmAlbum>(), album, before, ValidationPath.Root.Index(0), attached);
             return [.. attached.Select(static attach => $"{attach.Path} {attach.Id}")];
+        }
+
+        /// <summary>What a save of albums knows about its persist.</summary>
+        /// <param name="albums">The payload's albums, the only rows.</param>
+        /// <returns>The context.</returns>
+        private PersistFailureContext Context(params BmAlbum[] albums)
+        {
+            EntityMetadata root = Metadata<BmAlbum>();
+            return new PersistFailureContext(BlobModel.Albums, AccessActions.Save, root, [.. albums.Select((album, index) => new PersistRow(root, album, ValidationPath.Root.Index(index)))], LanguageIndex: 1);
         }
 
         /// <summary>An entity's metadata in the composed model.</summary>

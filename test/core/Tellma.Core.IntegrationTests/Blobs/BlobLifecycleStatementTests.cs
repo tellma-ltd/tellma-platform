@@ -97,6 +97,9 @@ namespace Tellma.Core.IntegrationTests.Blobs
             // --- The claim, on a second connection, sees the row due in its snapshot and blocks on the confirm's lock ---
             await using SqlConnection sweeper = await OpenAsync(Tenant);
             int spid = await ScalarAsync(sweeper, "SELECT @@SPID;");
+
+            // The property is the one under read-committed snapshot, where the claim's read sees the row as it was before the confirm.
+            Assert.Equal(1, await ScalarAsync(sweeper, "SELECT CAST([is_read_committed_snapshot_on] AS int) FROM sys.databases WHERE [name] = DB_NAME();"));
             Task<List<int>> claiming = ClaimAsync(sweeper);
             await WaitUntilAsync(Tenant, FormattableString.Invariant($"SELECT COUNT(*) FROM sys.dm_exec_requests WHERE [session_id] = {spid} AND [wait_type] LIKE N'LCK_M_%' AND [blocking_session_id] <> 0;"), claiming);
             Assert.False(claiming.IsCompleted, "The claim did not wait for the confirm's lock.");

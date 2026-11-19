@@ -17,6 +17,7 @@ using Tellma.Core.Abstractions.Localization;
 using Tellma.Core.Abstractions.Settings;
 using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.Abstractions.Validation;
+using Tellma.Core.Blobs;
 using Tellma.Core.Crud.Details;
 using Tellma.Core.Crud.Validation;
 using Tellma.Core.Data.Ids;
@@ -162,6 +163,12 @@ namespace Tellma.Core.Crud.Save
 
                 // --- Step 4: the ids, at once from a warm buffer, else riding round trip 1 ---
                 ReserveIds();
+
+                // --- The blob rows the attach rule reads ride round trip 1 when the validators start after it (spec 0017 §4.2) ---
+                if (_deferred)
+                {
+                    BlobAttachments.Prefetch(_loader, _rows.Select(static row => (row.Entity, row.Row)));
+                }
 
                 // --- Steps 5 and 6: round trip 1, the ordered checks, the validators and their rounds ---
                 if (NeedsFirstRound())

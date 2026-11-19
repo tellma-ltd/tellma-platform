@@ -19,10 +19,20 @@ namespace Tellma.Core.Blobs
     ///     nothing: releasing a blob needs no check.
     /// </summary>
     /// <remarks>
-    ///     Before the first round the before images of the update rows are not yet loaded, so every
-    ///     non-null value of an update row is loaded as a candidate and the attach rule is applied
-    ///     once the round ran; an unchanged value is then left alone. The load rides a round the save
-    ///     runs anyway for its update rows, and an insert-only payload loads exactly what it attaches.
+    ///     <para>
+    ///         When the validator starts before the first round, the before images of the update rows
+    ///         are not yet loaded, so every non-null value of an update row loads as a candidate and the
+    ///         attach rule is applied once the round ran; an unchanged value is then left alone. When
+    ///         the ids ride the first round the validator starts after it and the save has already
+    ///         requested every blob row of the payload on that round, so the validator's exact request
+    ///         is answered without a round of its own.
+    ///     </para>
+    ///     <para>
+    ///         The load therefore costs no round trip whenever the save runs a first round: for update
+    ///         rows, references, uniqueness, a tree or a cold id buffer. An insert-only save whose ids
+    ///         come from a warm buffer and that otherwise runs no first round takes one validation round
+    ///         for the blob rows it attaches.
+    ///     </para>
     /// </remarks>
     /// <typeparam name="TEntity">The stack's leaf.</typeparam>
     /// <param name="metadata">The entity metadata.</param>
@@ -30,9 +40,6 @@ namespace Tellma.Core.Blobs
     internal sealed class BlobReferenceValidator<TEntity>(IEntityMetadataProvider metadata, BlobAttachMetrics metrics) : IEntityValidator<TEntity>
         where TEntity : class
     {
-        /// <summary>The blob row's columns the rule reads.</summary>
-        public const string Select = "Id,State,Kind,CreatedById,ExpiresAt";
-
         /// <inheritdoc />
         public async Task ValidateAsync(SaveContext<TEntity> context)
         {
@@ -52,7 +59,7 @@ namespace Tellma.Core.Blobs
             }
 
             // --- One load of every candidate's row, on the round's batch ---
-            ContextRef<IReadOnlyDictionary<int, Blob>> blobs = context.Loader.ByIds<Blob, int>([.. candidates.Select(static attach => attach.Id).Distinct()], Select);
+            ContextRef<IReadOnlyDictionary<int, Blob>> blobs = context.Loader.ByIds<Blob, int>([.. candidates.Select(static attach => attach.Id).Distinct()], BlobAttachments.Select);
             await context.Loader.LoadAsync().ConfigureAwait(false);
 
             // --- The attach rule, once the before images are loaded ---
