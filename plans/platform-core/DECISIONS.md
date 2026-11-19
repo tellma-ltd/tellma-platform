@@ -376,6 +376,7 @@ Format, one entry per ruling:
 - R2-2: WireBinding.SettledAsync cannot re-apply cultures from an async finally. The problem writer applying cultures itself is carried to PC-081.
 - R2-1 (major): the JSON contract gate must neither pass members that throw only on write (Type, delegates, IntPtr, multi-dimensional arrays) nor fail on [JsonIgnore] members.
 - PC-080 holds after fix2 to serialize with PC-079's integration; it is released at once if nothing is integrating.
+- Outcome: "platform" means an assembly named Tellma.Core or Tellma.Core.* (so Tellma.Core.AspNetCore.Tests qualifies). A name test, not a trust boundary; distributions own their assembly names. WireBinding.SettledAsync was removed; endpoints call services directly.
 
 ### D-126 PC-080 fix1 outcomes (2026-11-19)
 
