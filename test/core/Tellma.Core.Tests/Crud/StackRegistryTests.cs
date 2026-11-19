@@ -209,7 +209,8 @@ namespace Tellma.Core.Tests.Crud
                     new EnlistmentDescriptor(typeof(GizmoEffect), TypeDisplay.Qualified(typeof(GizmoEffect)), StackModel.Sprockets),
                 ],
                 registry.Enlistments.Where(static enlistment => !enlistment.TargetResource.StartsWith("core.", StringComparison.Ordinal)));
-            ApiServiceDescriptor inbox = Assert.Single(registry.Services);
+            // The platform's own routed services, the settings among them, are not this test's.
+            ApiServiceDescriptor inbox = Assert.Single(registry.Services, static service => service.Feature != "core");
             Assert.Equal(("inbox", typeof(InboxService), "sm"), (inbox.Route, inbox.ServiceType, inbox.Feature));
             Assert.Equal([null, new SecurableRef("sm.Inbox", "Purge")], inbox.Actions.Select(static action => action.Securable));
         }

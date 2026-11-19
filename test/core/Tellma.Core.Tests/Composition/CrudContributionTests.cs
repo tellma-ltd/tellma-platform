@@ -72,13 +72,13 @@ namespace Tellma.Core.Tests.Composition
             TellmaCompositionRecord record = provider.GetRequiredService<TellmaCompositionRecord>();
 
             // --- One companion and one component per entity, class and kind; the first feature keeps them.
-            // The platform's own components, the access rules among them, are not this test's ---
+            // The platform's own components and routed services, the access rules and the settings among them, are not this test's ---
             ContributedCompanion companion = Assert.Single(record.Companions);
             Assert.Equal((typeof(SmGadget), typeof(GadgetOperations<SmGadget>), "first"), (companion.EntityType, companion.CompanionType, companion.Owner.Name));
             Assert.Equal(
                 [(typeof(GadgetRules<>), ComponentKind.Validator, "first"), (typeof(GadgetRules<>), ComponentKind.PersistEffect, "first")],
                 record.Components.Where(static component => component.EntityType == typeof(SmGadget)).Select(static component => (component.ComponentType, component.Kind, component.Owner.Name)));
-            Assert.Equal("first", Assert.Single(record.ApiServices).Owner.Name);
+            Assert.Equal("first", Assert.Single(record.ApiServices, static service => service.ServiceType == typeof(InboxService)).Owner.Name);
 
             // --- A confirmation declared twice is recorded twice, for the startup gate to judge ---
             Assert.Equal([("Gadget.Recost", "first"), ("Gadget.Recost", "second")], record.Confirmations.Select(static confirmation => (confirmation.Key, confirmation.Owner.Name)));

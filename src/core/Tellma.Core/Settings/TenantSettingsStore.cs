@@ -196,7 +196,8 @@ namespace Tellma.Core.Settings
                 ReportProblem = (key, problem) => Report(key, problem, tenantId),
             };
 
-            return new TenantSettingsEntry(settings, SerializeForClient(settings), isPlaceholder);
+            TenantSettingsForClient client = ForClient(settings);
+            return new TenantSettingsEntry(settings, client, JsonSerializer.SerializeToUtf8Bytes(client, TellmaJson.Options), isPlaceholder);
         }
 
         /// <summary>Logs a routing mismatch, critical, and creates the exception that fails the work closed.</summary>
@@ -460,10 +461,10 @@ namespace Tellma.Core.Settings
             return entries;
         }
 
-        /// <summary>The client's view as UTF-8 JSON: every client-visible key, stored or default, and nothing else.</summary>
+        /// <summary>The client's view: every client-visible key, stored or default, and nothing else.</summary>
         /// <param name="settings">The server's view.</param>
-        /// <returns>The bytes.</returns>
-        private byte[] SerializeForClient(TenantSettings settings)
+        /// <returns>The view, which the entry also holds serialized.</returns>
+        private TenantSettingsForClient ForClient(TenantSettings settings)
         {
             Dictionary<string, JsonElement> visible = new(StringComparer.Ordinal);
             foreach (SettingKey key in _keys.Keys.Where(static key => key.Visibility == SettingVisibility.Client))
@@ -471,7 +472,7 @@ namespace Tellma.Core.Settings
                 visible[key.Name] = settings.Entries.TryGetValue(key.Name, out JsonElement stored) ? stored : key.DefaultJson;
             }
 
-            TenantSettingsForClient client = new(
+            return new TenantSettingsForClient(
                 settings.TenantId,
                 settings.Names,
                 settings.Languages,
@@ -479,8 +480,7 @@ namespace Tellma.Core.Settings
                 settings.TimeZone.Id,
                 settings.Region,
                 settings.Digits,
-                visible);
-            return JsonSerializer.SerializeToUtf8Bytes(client, TellmaJson.Options);
+                visible.ToFrozenDictionary(StringComparer.Ordinal));
         }
 
         /// <summary>Logs and counts a stored setting read as its default.</summary>

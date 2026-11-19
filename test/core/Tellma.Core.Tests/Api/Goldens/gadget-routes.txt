@@ -55,5 +55,10 @@ POST /{tenantId}/api/web/role-memberships/query | query | core.RoleMembership | 
 POST /{tenantId}/api/web/permissions/query | query | core.Permission | - | QueryRequest | RowPage | core.Permission:Read | idempotent | PqV1-faRenCx
 POST /{tenantId}/api/web/gadget-parts/query | query | sm.SmGadgetPart | - | QueryRequest | RowPage | sm.SmGadgetPart:Read | idempotent | PqV1-faRenCx
 POST /{tenantId}/api/web/part-notes/query | query | sm.SmGadgetPartNote | - | QueryRequest | RowPage | sm.SmGadgetPartNote:Read | idempotent | PqV1-faRenCx
+POST /{tenantId}/api/web/settings/client | client | - | api | - | ValueTuple<byte[], string> | member-only | idempotent | JjXeFFL8XHtK
+POST /{tenantId}/api/web/settings/entity-tags | entity-tags | - | api | - | IReadOnlyDictionary<string, string> | member-only | idempotent | mtZdmhBQ5vWx
+POST /{tenantId}/api/web/settings/details | details | - | api | - | TenantSettingsDetails | member-only | idempotent | Ue6a3BcH7zii
+POST /{tenantId}/api/web/settings/refresh-caches | refresh-caches | - | api | - | void | core.Settings.General:Save | mutation, idempotent | lYZxNIK2Qbw7
+POST /{tenantId}/api/web/settings/save | save | - | api | TenantSettingsPatch | SettingsSaveResult | member-only | mutation | 2FgBFQi1n4Jw
 POST /{tenantId}/api/web/inbox/mark-read | mark-read | - | api | - | void | member-only | mutation | lYZxNIK2Qbw7
 POST /{tenantId}/api/web/inbox/purge | purge | - | api | - | int | sm.Inbox:Purge | mutation | O-8g6frL8YBY

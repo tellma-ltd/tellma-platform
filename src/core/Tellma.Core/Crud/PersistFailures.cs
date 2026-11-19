@@ -26,10 +26,10 @@ namespace Tellma.Core.Crud
         private const string ForbiddenCode = "forbidden";
 
         /// <summary>The problem code of a conflict on a row whose stamp moved.</summary>
-        private const string ConflictCode = "concurrency-conflict";
+        internal const string ConflictCode = "concurrency-conflict";
 
         /// <summary>The stamp's form on the wire: seven fractional digits and the offset, so it round-trips.</summary>
-        private const string StampFormat = "yyyy'-'MM'-'dd'T'HH':'mm':'ss'.'fffffffzzz";
+        internal const string StampFormat = "yyyy'-'MM'-'dd'T'HH':'mm':'ss'.'fffffffzzz";
 
         /// <summary>The unique index two batches race on when both open the first assignment of one target.</summary>
         private const string OpenAssignmentIndex = "UX_Assignments_OpenTarget";
