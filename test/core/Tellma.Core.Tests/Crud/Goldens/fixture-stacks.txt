@@ -310,7 +310,7 @@ child fixture.Link
 service settings
   class: Tellma.Core.Settings.SettingsService
   feature: core
-  action client: api member-only body - handler SettingsService; idempotent; result ValueTuple<byte[], string>; mcp Full, revision 0; -
+  action client: api member-only body - handler SettingsService; idempotent; result ValueTuple<byte[], string>; mcp Hidden, revision 0; -
   action entity-tags: api member-only body - handler SettingsService; idempotent; result IReadOnlyDictionary<string, string>; mcp Full, revision 0; -
   action details: api member-only body - handler SettingsService; idempotent; result TenantSettingsDetails; mcp Hidden, revision 0; -
   action refresh-caches: api core.Settings.General:Save body - handler SettingsService; mutation, idempotent; result void; mcp Hidden, revision 0; -

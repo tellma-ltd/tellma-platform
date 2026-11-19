@@ -79,11 +79,12 @@ namespace Tellma.Core.Settings
 
         /// <summary>
         ///     The client's view of the tenant's settings, pre-serialized, and its wire tag. Every
-        ///     member reads it: it carries only the keys visible to the client.
+        ///     member reads it: it carries only the keys visible to the client. Not offered to MCP,
+        ///     whose tools serialize the result and cannot pass pre-serialized bytes through.
         /// </summary>
         /// <param name="cancellationToken">Cancels the prologue.</param>
         /// <returns>The view's bytes and wire tag.</returns>
-        [ApiAction("client", MemberOnly = true, Idempotent = true, Mutation = false)]
+        [ApiAction("client", MemberOnly = true, Idempotent = true, Mutation = false, Mcp = McpExposure.Hidden)]
         public async Task<(byte[] Json, string WireTag)> ClientAsync(CancellationToken cancellationToken = default)
         {
             // The prologue keeps the snapshot current; a warm instance adds no statement to it.
@@ -186,8 +187,7 @@ namespace Tellma.Core.Settings
         /// <returns>The categories held.</returns>
         private async Task<HeldCategories> HeldAsync(CancellationToken cancellationToken)
         {
-            List<string> resources = [CoreResources.SettingsGeneral, .. keys.Categories.Select(static category => category.Resource)];
-            SecurableRef[] securables = [.. resources.Distinct(StringComparer.OrdinalIgnoreCase).Select(static resource => new SecurableRef(resource, AccessActions.Read))];
+            SecurableRef[] securables = [.. Resources().Select(static resource => new SecurableRef(resource, AccessActions.Read))];
             IReadOnlyList<AccessDecision> decisions = await evaluator.EvaluateAsync(securables, cancellationToken).ConfigureAwait(false);
             HashSet<string> allowed = new(decisions.Where(static decision => decision.IsAllowed).Select(static decision => decision.Resource), StringComparer.OrdinalIgnoreCase);
             return new HeldCategories(

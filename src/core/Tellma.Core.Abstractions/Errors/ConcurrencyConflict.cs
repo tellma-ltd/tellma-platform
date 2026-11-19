@@ -24,7 +24,9 @@ namespace Tellma.Core.Abstractions.Errors
     ///     True for a row deleted under the caller. A save of entities reports it only beside a row
     ///     that conflicts by stamp: when every row is missing, the outcome is a not-found instead. A
     ///     settings save reports it on its own, since the editor read the entry it expects; its id is
-    ///     then 0 when the entry's row was gone before the save read it.
+    ///     then 0 when the entry's row was gone before the save read it. A settings save also reports
+    ///     id 0 with this false and no stamp or modifier when another save inserted the entry first:
+    ///     the row exists, but its stamp and author are not read once the save rolled back.
     /// </param>
     public sealed record ConcurrencyConflict(
         [property: JsonConverter(typeof(DisplayIdJsonConverter))] long Id, string? ModifiedAt, int? ModifiedById, string? ModifiedByName, bool IsMissing);

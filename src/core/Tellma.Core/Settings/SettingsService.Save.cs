@@ -40,7 +40,7 @@ namespace Tellma.Core.Settings
         /// <param name="patch">The patch: the members and entries it lists, their values, and the stamps it expects.</param>
         /// <param name="cancellationToken">Cancels the save before its persist is sent.</param>
         /// <returns>The editor's view, the client's view and the client view's new wire tag.</returns>
-        /// <exception cref="ForbiddenException">The caller may not save a listed member's category.</exception>
+        /// <exception cref="ForbiddenException">The caller may not save a listed member's category, or, for a patch that names none, any category.</exception>
         /// <exception cref="ValidationException">The patch names something unknown, or a value it sets is refused.</exception>
         /// <exception cref="ConcurrencyException">A row's stamp is not the one the patch expects.</exception>
         /// <exception cref="TenantUnavailableException">The tenant's state admits no persist.</exception>
@@ -91,7 +91,8 @@ namespace Tellma.Core.Settings
         /// <summary>
         ///     Requires the save grant of every resource the patch touches: the typed row's when it
         ///     lists a typed member, and each listed declared key's category's, the general category
-        ///     sharing the typed row's. An undeclared key is refused by the merge, not here.
+        ///     sharing the typed row's. An undeclared key is refused by the merge, not here; a mask
+        ///     that names no typed member and no declared key needs any one settings save grant.
         /// </summary>
         /// <param name="fields">The sorted field mask.</param>
         /// <param name="cancellationToken">Cancels the evaluation.</param>
@@ -114,10 +115,32 @@ namespace Tellma.Core.Settings
                 }
             }
 
+            // --- A mask that names no resource still needs a settings save grant: any one will do ---
+            if (resources.Count == 0)
+            {
+                SecurableRef[] securables = [.. Resources().Select(static resource => new SecurableRef(resource, AccessActions.Save))];
+                IReadOnlyList<AccessDecision> decisions = await evaluator.EvaluateAsync(securables, cancellationToken).ConfigureAwait(false);
+                if (!decisions.Any(static decision => decision.IsAllowed))
+                {
+                    throw new ForbiddenException(ForbiddenCode, CoreResources.SettingsGeneral, AccessActions.Save, ForbiddenReason.NoGrant);
+                }
+
+                return;
+            }
+
             foreach (string resource in resources.Distinct(StringComparer.OrdinalIgnoreCase))
             {
                 _ = await evaluator.RequireAsync(resource, AccessActions.Save, cancellationToken).ConfigureAwait(false);
             }
+        }
+
+        /// <summary>The typed row's resource and every category's, each once.</summary>
+        /// <returns>The resources.</returns>
+        private IEnumerable<string> Resources()
+        {
+            return new[] { CoreResources.SettingsGeneral }
+                .Concat(keys.Categories.Select(static category => category.Resource))
+                .Distinct(StringComparer.OrdinalIgnoreCase);
         }
 
         /// <summary>

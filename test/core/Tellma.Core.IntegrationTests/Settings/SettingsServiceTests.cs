@@ -85,6 +85,76 @@ namespace Tellma.Core.IntegrationTests.Settings
         }
 
         [Fact]
+        public async Task A_typed_row_changed_between_the_read_and_the_persist_is_a_conflict_naming_its_modifier()
+        {
+            string admin = await AdminAsync();
+            (int saraId, _) = await fixture.Connect.SeedCallerAsync("Sara");
+            TenantSettingsDetails details = await InvokeAsync<TenantSettingsDetails>(admin, "details");
+
+            // --- Another save of the row, uncommitted until this save's persist waits on the row's lock ---
+            IReadOnlyList<Task> work = await fixture.Connect.HoldWhileAsync(
+                string.Create(CultureInfo.InvariantCulture, $"UPDATE [core].[Settings] SET [Name] = N'Raced', [ModifiedAt] = DATEADD(SECOND, 5, [ModifiedAt]), [ModifiedById] = {saraId};"),
+                waiters: 1,
+                resourceType: "KEY",
+                () => [InvokeAsync<SettingsSaveResult>(admin, "save", Typed(["Name"]) with { Name = "Acme", ExpectedModifiedAt = details.General!.ModifiedAt })]);
+
+            ConcurrencyException conflict = await Assert.ThrowsAsync<ConcurrencyException>(() => work[0]);
+
+            ConcurrencyConflict row = Assert.Single(conflict.Conflicts);
+            Assert.Equal((Abstractions.Settings.Settings.SingleRowId, false, saraId, "Sara"), (row.Id, row.IsMissing, row.ModifiedById, row.ModifiedByName));
+            Assert.NotNull(row.ModifiedAt);
+            Assert.Equal("Raced", await fixture.Connect.ScalarAsync<string>(ConnectDatabase.TenantA, "SELECT [Name] FROM [core].[Settings];"));
+        }
+
+        [Fact]
+        public async Task An_entry_changed_between_the_read_and_the_persist_is_a_conflict_naming_its_modifier()
+        {
+            string admin = await AdminAsync();
+            (int saraId, _) = await fixture.Connect.SeedCallerAsync("Sara");
+            SettingsSaveResult first = await InvokeAsync<SettingsSaveResult>(admin, "save", Entries((SettingsSuiteKeys.Width.Name, "8", null)));
+            long id = await EntryIdAsync(SettingsSuiteKeys.Width.Name);
+
+            // --- Another save of the entry, uncommitted until this save's persist waits on the row's lock ---
+            IReadOnlyList<Task> work = await fixture.Connect.HoldWhileAsync(
+                string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"UPDATE [core].[SettingEntries] SET [Value] = N'7', [ModifiedAt] = DATEADD(SECOND, 5, [ModifiedAt]), [ModifiedById] = {saraId} WHERE [Id] = {id};"),
+                waiters: 1,
+                resourceType: "KEY",
+                () => [InvokeAsync<SettingsSaveResult>(admin, "save", Entries((SettingsSuiteKeys.Width.Name, "9", first.Details.EntryStamps[SettingsSuiteKeys.Width.Name])))]);
+
+            ConcurrencyException conflict = await Assert.ThrowsAsync<ConcurrencyException>(() => work[0]);
+
+            ConcurrencyConflict row = Assert.Single(conflict.Conflicts);
+            Assert.Equal((id, false, saraId, "Sara"), (row.Id, row.IsMissing, row.ModifiedById, row.ModifiedByName));
+            Assert.NotNull(row.ModifiedAt);
+            Assert.Equal("7", await StoredAsync(SettingsSuiteKeys.Width.Name));
+        }
+
+        [Theory]
+        [InlineData("9")]
+        [InlineData(null)]
+        public async Task An_entry_deleted_between_the_read_and_the_persist_is_a_missing_conflict_never_a_not_found(string? value)
+        {
+            string admin = await AdminAsync();
+            SettingsSaveResult first = await InvokeAsync<SettingsSaveResult>(admin, "save", Entries((SettingsSuiteKeys.Width.Name, "8", null)));
+            long id = await EntryIdAsync(SettingsSuiteKeys.Width.Name);
+
+            // --- Another save's reset of the entry, uncommitted until this save's persist waits on the row's lock ---
+            IReadOnlyList<Task> work = await fixture.Connect.HoldWhileAsync(
+                string.Create(CultureInfo.InvariantCulture, $"DELETE FROM [core].[SettingEntries] WHERE [Id] = {id};"),
+                waiters: 1,
+                resourceType: "KEY",
+                () => [InvokeAsync<SettingsSaveResult>(admin, "save", Entries((SettingsSuiteKeys.Width.Name, value, first.Details.EntryStamps[SettingsSuiteKeys.Width.Name])))]);
+
+            ConcurrencyException conflict = await Assert.ThrowsAsync<ConcurrencyException>(() => work[0]);
+
+            ConcurrencyConflict row = Assert.Single(conflict.Conflicts);
+            Assert.Equal((id, true, null, null, null), (row.Id, row.IsMissing, row.ModifiedAt, row.ModifiedById, row.ModifiedByName));
+            Assert.Null(await StoredAsync(SettingsSuiteKeys.Width.Name));
+        }
+
+        [Fact]
         public async Task An_entries_only_save_neither_reads_nor_checks_the_typed_row()
         {
             string admin = await AdminAsync();
@@ -242,7 +312,11 @@ namespace Tellma.Core.IntegrationTests.Settings
                 SELECT COUNT(*) FROM [core].[UserStamps] AS s CROSS JOIN (SELECT TOP (1) [Tag] FROM [core].[VersionTags]) AS t
                 WHERE s.[PermissionsTag] IS NULL OR s.[PreferencesTag] IS NULL OR s.[PermissionsTag] <> t.[Tag] OR s.[PreferencesTag] <> t.[Tag];
                 """));
-            Assert.Contains(fixture.Events.Published, static published => published.Name == VersionTagBumpContributor.CacheChangedEvent);
+            Assert.Contains(
+                fixture.Events.Published,
+                static published => published.Name == VersionTagBumpContributor.CacheChangedEvent
+                    && published.UserIds.Count == 0
+                    && Equals(published.Payload, new CacheChangedPayload(VersionTagWire.PreferencesItem, null)));
         }
 
         // --- Grants ---
@@ -255,7 +329,22 @@ namespace Tellma.Core.IntegrationTests.Settings
             _ = await Assert.ThrowsAsync<ForbiddenException>(() => InvokeAsync<TenantSettingsDetails>(member, "details"));
             _ = await Assert.ThrowsAsync<ForbiddenException>(() => InvokeAsync<SettingsSaveResult>(member, "save", Entries((SettingsSuiteKeys.Width.Name, "8", null))));
             _ = await Assert.ThrowsAsync<ForbiddenException>(() => InvokeAsync<SettingsSaveResult>(member, "save", Typed(["Name"]) with { Name = "Acme", Concurrency = ConcurrencyMode.Override }));
+
+            // --- A mask that names nothing, or nothing declared, is refused before any batch ---
+            _ = await Assert.ThrowsAsync<ForbiddenException>(() => InvokeAsync<SettingsSaveResult>(member, "save", Typed([])));
+            _ = await Assert.ThrowsAsync<ForbiddenException>(() => InvokeAsync<SettingsSaveResult>(member, "save", Typed(["Bogus", Entry("fx.nowhere")])));
             Assert.Null(await StoredAsync(SettingsSuiteKeys.Width.Name));
+        }
+
+        [Fact]
+        public async Task A_save_that_names_nothing_needs_one_settings_save_grant()
+        {
+            (_, string clerk) = await fixture.SeedCallerAsync("Clerk", (OpsResource, AccessActions.Save));
+
+            SettingsSaveResult saved = await InvokeAsync<SettingsSaveResult>(clerk, "save", Typed([]));
+
+            Assert.Null(saved.Details.General);
+            Assert.Equal([SettingsSuiteKeys.Shelf.Name], saved.Details.Values.Keys);
         }
 
         [Fact]
@@ -336,6 +425,27 @@ namespace Tellma.Core.IntegrationTests.Settings
         }
 
         // --- The cached views ---
+
+        [Fact]
+        public async Task Client_and_entity_tags_answer_the_caches_views_in_one_round_trip_each()
+        {
+            (_, string member) = await fixture.SeedCallerAsync("Member");
+            _ = await InvokeAsync<(byte[], string)>(member, "client");
+            _ = await InvokeAsync<IReadOnlyDictionary<string, string>>(member, "entity-tags");
+
+            ((byte[] Json, string WireTag) client, long clientTrips) = await CountedAsync<(byte[], string)>(member, "client");
+            (IReadOnlyDictionary<string, string> tags, long tagTrips) = await CountedAsync<IReadOnlyDictionary<string, string>>(member, "entity-tags");
+
+            // --- The prologue's round trip each, and the caches' own answers ---
+            Assert.Equal((1L, 1L), (clientTrips, tagTrips));
+            await using AsyncServiceScope scope = await fixture.ScopeAsync(member);
+            (byte[] json, string wireTag) = await scope.ServiceProvider.GetRequiredService<ITenantSettingsCache>().GetForClientAsync();
+            Assert.Equal(wireTag, client.WireTag);
+            Assert.Equal(json, client.Json);
+            IReadOnlyDictionary<string, string> expected = await scope.ServiceProvider.GetRequiredService<ICacheableEntities>().GetWireTagsAsync();
+            Assert.NotEmpty(tags);
+            Assert.Equal(expected.OrderBy(static tag => tag.Key, StringComparer.Ordinal), tags.OrderBy(static tag => tag.Key, StringComparer.Ordinal));
+        }
 
         [Fact]
         public async Task The_cached_views_after_a_save_equal_a_cold_load()
@@ -482,6 +592,14 @@ namespace Tellma.Core.IntegrationTests.Settings
         private Task<string?> StoredAsync(string key)
         {
             return fixture.Connect.ScalarAsync<string>(ConnectDatabase.TenantA, $"SELECT [Value] FROM [core].[SettingEntries] WHERE [Key] = N'{key}';");
+        }
+
+        /// <summary>The id of a key's row.</summary>
+        /// <param name="key">The key.</param>
+        /// <returns>The id.</returns>
+        private Task<long> EntryIdAsync(string key)
+        {
+            return fixture.Connect.ScalarAsync<long>(ConnectDatabase.TenantA, $"SELECT CAST([Id] AS bigint) FROM [core].[SettingEntries] WHERE [Key] = N'{key}';");
         }
 
         /// <summary>A stored version tag.</summary>
