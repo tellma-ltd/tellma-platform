@@ -278,6 +278,34 @@ namespace Tellma.Core.IntegrationTests.Blobs
             Assert.Equal(0, await fixture.Connect.ScalarAsync<int>(ConnectDatabase.TenantA, "SELECT COUNT(*) FROM [fixture].[BlobOwners] WHERE [Name] = N'late';"));
         }
 
+        [Theory]
+        [InlineData(false)]
+        [InlineData(true)]
+        public async Task A_blob_handed_to_another_uploader_or_kind_after_the_validation_round_is_refused_by_the_persist_and_stays_staged(bool kind)
+        {
+            (int userId, string subject) = await CallerAsync();
+            (int otherId, _) = await CallerAsync();
+            int file = await fixture.StageAsync(userId, BlobReferenceDatabase.FileKind);
+            using MetricCollector<long> rejected = Collector();
+
+            // --- On another connection, between the validation round and the persist, the staged row
+            // changes uploader or kind: the validator passed it, so only the confirm's own conditions can refuse it ---
+            string change = kind ? Invariant($"[Kind] = N'{BlobReferenceDatabase.PhotoKind}'") : Invariant($"[CreatedById] = {otherId}");
+            SaveOptions options = new() { OnPersist = Meanwhile(Invariant($"UPDATE [core].[Blobs] SET {change} WHERE [Id] = {file};")) };
+            ValidationException refused;
+            await using (AsyncServiceScope scope = await fixture.ScopeAsync(subject))
+            {
+                refused = await Assert.ThrowsAsync<ValidationException>(() => Service(scope).SaveAsync([new BlobOwner { Name = "handed", FileId = file }], options, Token));
+            }
+
+            Assert.Equal([" Blob.NotAttachable persist"], Lines(refused));
+            Assert.Equal(["fixture-file persist"], Counted(rejected));
+
+            // --- Nothing was confirmed and no owner row was written ---
+            Assert.Equal("Staged|-|e", await fixture.StateAsync(file));
+            Assert.Equal(0, await fixture.Connect.ScalarAsync<int>(ConnectDatabase.TenantA, "SELECT COUNT(*) FROM [fixture].[BlobOwners] WHERE [Name] = N'handed';"));
+        }
+
         [Fact]
         public async Task A_blob_a_second_owner_takes_before_the_commit_is_refused_by_the_unique_index_as_not_attachable()
         {

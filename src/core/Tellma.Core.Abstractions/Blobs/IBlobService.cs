@@ -40,7 +40,11 @@ namespace Tellma.Core.Abstractions.Blobs
         /// </summary>
         /// <remarks>
         ///     A missing blob, a hidden owner, a blob of another kind, a released one and a variant the
-        ///     blob does not carry all resolve to null alike, so a caller cannot tell them apart.
+        ///     blob does not carry all resolve to null alike, so a caller cannot tell them apart. The
+        ///     download usually takes one round trip; a caller denied the owner read whose cached
+        ///     permissions are older than the fast-deny window pays a re-check first. When the owner's
+        ///     read is sensitive, a caller granted it is held to the same step-up a direct read is,
+        ///     found or not; only the caller's own staged blob is served without it.
         /// </remarks>
         /// <param name="kind">The kind the request names.</param>
         /// <param name="id">The blob's id.</param>
@@ -49,6 +53,8 @@ namespace Tellma.Core.Abstractions.Blobs
         /// <returns>The blob to serve, or null when there is nothing the caller may download.</returns>
         /// <exception cref="ArgumentNullException"><paramref name="kind" /> is null.</exception>
         /// <exception cref="Errors.BadRequestException"><paramref name="variant" /> is not a well-formed variant name.</exception>
+        /// <exception cref="Tenancy.StepUpRequiredException">The owner's read is sensitive and the caller's sign-in is below the step-up bar.</exception>
+        /// <exception cref="Errors.IndividualRequiredException">The owner's read is sensitive and the caller is a service account.</exception>
         Task<BlobDownload?> ResolveAsync(string kind, int id, string? variant, CancellationToken cancellationToken = default);
     }
 }

@@ -635,6 +635,13 @@ tellma.Blobs(blobs => blobs
   a variant only when the row lists it and the kind declares its format. Missing, hidden, released
   and another kind's blobs are all `null`, logged at debug level as `BlobDownloadNotFound`; a
   malformed variant is a `BadRequestException`.
+  - **Step-up.** When the owner's read is sensitive, a granted owner read asks for the step-up a
+    direct read asks for (`StepUpRequiredException`, or `IndividualRequiredException` for a service
+    account), whether or not the owner row was found. The uploader's own staged blob, a kind any
+    member reads, and the platform's own work are outside it.
+  - **Round trips.** A download takes one round trip. The exception is a caller denied the owner
+    read whose cached set is older than the fast-deny window: that caller first pays the evaluator's
+    prologue-only re-check, so the download takes two.
 - **The reconcile statement.** `BlobStatements.Reconcile` releases a kind's committed blobs that no
   owner row references and that were committed more than a day ago, and returns how many.
 - **Telemetry.** `tellma.blobs.attach.rejected` counts each refused attach by kind and reason

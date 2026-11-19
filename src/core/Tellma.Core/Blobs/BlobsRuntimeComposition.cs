@@ -72,6 +72,7 @@ namespace Tellma.Core.Blobs
                 provider.GetRequiredService<IRequestContextAccessor>(),
                 provider.GetRequiredService<IQueryexSchemaProvider>(),
                 provider.GetRequiredService<IEntityMetadataProvider>(),
+                provider.GetRequiredService<StepUpBar>(),
                 provider.GetRequiredService<TimeProvider>(),
                 provider.GetRequiredService<ILogger<BlobResolver>>()));
             services.TryAddScoped<IBlobService>(static provider => new BlobService(

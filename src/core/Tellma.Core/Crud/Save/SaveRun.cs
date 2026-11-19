@@ -161,14 +161,8 @@ namespace Tellma.Core.Crud.Save
                 RequestUniqueness();
                 RequestTree();
 
-                // --- Step 4: the ids, at once from a warm buffer, else riding round trip 1 ---
+                // --- Step 4: the ids, at once from a warm buffer, else riding round trip 1 with the blob rows ---
                 ReserveIds();
-
-                // --- The blob rows the attach rule reads ride round trip 1 when the validators start after it (spec 0017 §4.2) ---
-                if (_deferred)
-                {
-                    BlobAttachments.Prefetch(_loader, _rows.Select(static row => (row.Entity, row.Row)));
-                }
 
                 // --- Steps 5 and 6: round trip 1, the ordered checks, the validators and their rounds ---
                 if (NeedsFirstRound())
@@ -466,8 +460,13 @@ namespace Tellma.Core.Crud.Save
 
         // Spec 0015 §6.4: a warm buffer covers the payload's new rows at once, and the validators
         // start before round trip 1 with the final ids; otherwise the reservation statement rides
-        // round trip 1 and the ids are assigned after it.
-        /// <summary>Reserves the ids of the payload's new rows, assigning them at once when the buffer covers them.</summary>
+        // round trip 1 and the ids are assigned after it. Spec 0017 §4.2: the validators then start
+        // after round trip 1, so the blob rows the attach rule reads ride it too, and the rule's
+        // load is answered from the loader's cache. Every save, hosted or enlisted, reserves here.
+        /// <summary>
+        ///     Reserves the ids of the payload's new rows, assigning them at once when the buffer covers
+        ///     them; otherwise defers them to round trip 1 and loads the payload's blob rows on it.
+        /// </summary>
         private void ReserveIds()
         {
             if (_rows.TrueForAll(static row => !row.IsNew))
@@ -480,6 +479,7 @@ namespace Tellma.Core.Crud.Save
             if (_reservation is null)
             {
                 _deferred = true;
+                BlobAttachments.Prefetch(_loader, _rows.Select(static row => (row.Entity, row.Row)));
                 return;
             }
 

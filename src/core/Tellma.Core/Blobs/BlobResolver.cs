@@ -15,6 +15,7 @@ using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.Access;
 using Tellma.Core.Data.Batches;
 using Tellma.Core.Queryex;
+using Tellma.Core.Tenancy;
 
 namespace Tellma.Core.Blobs
 {
@@ -23,7 +24,8 @@ namespace Tellma.Core.Blobs
     ///     Resolves the blob a download may serve: the caller's read of the owner, decided once per
     ///     composition, then one read batch carrying the owner row's existence under that read and
     ///     the blob row, combined in memory. "If you can read the owner you can read its blobs";
-    ///     a staged blob is served to its uploader alone, owner or not.
+    ///     a staged blob is served to its uploader alone, owner or not. A blob served through a
+    ///     sensitive owner read asks for the step-up a direct read of the owner asks for.
     /// </summary>
     /// <param name="kinds">The kind registry.</param>
     /// <param name="evaluator">Decides the caller's read of the owner.</param>
@@ -32,6 +34,7 @@ namespace Tellma.Core.Blobs
     /// <param name="context">The scope's request context, whose tenant settings shape the schema.</param>
     /// <param name="schemas">The query schemas the owner read is compiled against.</param>
     /// <param name="metadata">The entity metadata, which names the owner column's property.</param>
+    /// <param name="stepUp">The assurance bar of the sensitive securables.</param>
     /// <param name="time">The clock a decision is made at.</param>
     /// <param name="logger">The logger.</param>
     internal sealed class BlobResolver(
@@ -42,6 +45,7 @@ namespace Tellma.Core.Blobs
         IRequestContextAccessor context,
         IQueryexSchemaProvider schemas,
         IEntityMetadataProvider metadata,
+        StepUpBar stepUp,
         TimeProvider time,
         ILogger<BlobResolver> logger)
     {
@@ -66,7 +70,8 @@ namespace Tellma.Core.Blobs
 
             // --- 2. The caller's read of the owner, unless any member reads the kind ---
             // The decision is taken, recorded and counted here; a recomposition decides it again from
-            // the fresh set, so a stale filter never reads the owner.
+            // the fresh set, so a stale filter never reads the owner. A denial from a set older than
+            // the fast-deny window is re-checked first, on a prologue-only round trip of its own.
             bool anyMember = descriptor.Policy.ReadAccess == BlobReadAccess.AnyMember;
             if (!anyMember)
             {
@@ -76,12 +81,13 @@ namespace Tellma.Core.Blobs
             // --- 3. One read batch: the owner row under the read (skipped when denied), and the blob row ---
             BatchResult<RowPage>? owner = null;
             BatchResult<ResolvedBlob?>? blob = null;
+            AccessDecision? read = null;
             await runner.RunAsync(
                 BatchPurpose.Read,
                 (user, batch) =>
                 {
                     batch.Limits = QueryexProfiles.PipelineLimits;
-                    AccessDecision? read = anyMember ? null : Decide(user, descriptor.OwnerResource);
+                    read = anyMember ? null : Decide(user, descriptor.OwnerResource);
                     owner = read is { Outcome: AccessOutcome.Denied } ? null : batch.Rows(OwnerRead(descriptor, read?.Filter), new QueryArguments().Add(IdParameter, (decimal)id), null);
                     DataBatch data = batch as DataBatch
                         ?? throw new InvalidOperationException("The guarded runner composed a batch that no tenant database created.");
@@ -93,6 +99,20 @@ namespace Tellma.Core.Blobs
 
             // --- 4. The combination ---
             BlobDownload? download = Combine(descriptor, variant, blob!.Value, owner is { Value.Rows.RowCount: > 0 });
+
+            // --- 5. The step-up a direct read of a sensitive owner asks for ---
+            // Asked whenever the owner read was granted, found or not, so the answer tells nothing of
+            // what the read found; only the uploader's own staged blob, served without the owner, is
+            // outside it, as is the platform's own work.
+            RequestContext current = context.Current;
+            if (read is { Outcome: not AccessOutcome.Denied }
+                && download is not { State: BlobState.Staged }
+                && !current.IsSystem
+                && securables.Find(descriptor.OwnerResource, AccessActions.Read) is { IsSensitive: true })
+            {
+                AssuranceCheck.Ensure(current, stepUp.Requirement, time.GetUtcNow());
+            }
+
             if (download is null)
             {
                 BlobServiceLog.DownloadNotFound(logger, descriptor.Kind, id);

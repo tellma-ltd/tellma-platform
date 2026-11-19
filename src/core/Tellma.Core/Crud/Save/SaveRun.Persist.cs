@@ -84,11 +84,8 @@ namespace Tellma.Core.Crud.Save
                 // The runner may have refreshed the context in its own frame: the conflict names its
                 // modifier in the culture of the context the batch was composed under.
                 _operation.Accessor.Current.ApplyCultures();
-                if (PersistFailures.Translate(failure, FailureContext(), _operation.Metrics) is Exception translated)
+                if (TranslateFailure(failure) is Exception translated)
                 {
-                    // A blob the persist refused refuses every attach of the save with it (spec 0017 §10.1).
-                    BlobAttachments.CountPersistRefusal(
-                        translated, _roots.Select(static root => (root.Entity, root.Row, root.Before, root.Path)), _operation.Services.GetService<BlobAttachMetrics>());
                     throw translated;
                 }
 
@@ -395,6 +392,26 @@ namespace Tellma.Core.Crud.Save
                 throw new InvalidOperationException(
                     $"The recomposed persist batch named the saved ids '{handle.SavedIds.Name}' where its first entry named '{first.SavedIds.Name}', so the participants' recorded statements would address the wrong tables. A persist's compose appends the same statements in the same order on every entry.");
             }
+        }
+
+        // Spec 0015 §13.3 and spec 0017 §10.1: one translation of a failure against this save's rows,
+        // hosted or enlisted; a blob the persist refused refuses every attach of the save with it.
+        /// <summary>
+        ///     Translates a persist failure against this save's rows and resource, and counts the blob
+        ///     attaches it refused.
+        /// </summary>
+        /// <param name="failure">The failure.</param>
+        /// <returns>The translated exception; null when the failure is not one the save translates.</returns>
+        private Exception? TranslateFailure(DataAccessException failure)
+        {
+            if (PersistFailures.Translate(failure, FailureContext(), _operation.Metrics) is not Exception translated)
+            {
+                return null;
+            }
+
+            BlobAttachments.CountPersistRefusal(
+                translated, _roots.Select(static root => (root.Entity, root.Row, root.Before, root.Path)), _operation.Services.GetService<BlobAttachMetrics>());
+            return translated;
         }
 
         /// <summary>What the operation knows about its persist, for the translation of its failures.</summary>

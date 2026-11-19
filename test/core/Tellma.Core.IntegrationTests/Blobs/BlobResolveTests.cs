@@ -9,8 +9,11 @@ using Tellma.Core.Abstractions.Blobs;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Entities;
 using Tellma.Core.Abstractions.Errors;
+using Tellma.Core.Abstractions.Tenancy;
+using Tellma.Core.Access;
 using Tellma.Core.IntegrationTests.Access;
 using Tellma.Core.IntegrationTests.Data;
+using Tellma.Core.Tenancy;
 using Tellma.Core.Testing.Blobs;
 
 namespace Tellma.Core.IntegrationTests.Blobs
@@ -21,8 +24,9 @@ namespace Tellma.Core.IntegrationTests.Blobs
     ///     owner out, a child's blob through the parent's filtered read; a staged blob is served to its
     ///     uploader alone; an unrestricted read serves every owner's blob and no read serves none; a kind
     ///     any member reads is served without a read of its owner, its staged blobs still to their
-    ///     uploaders alone; and
-    ///     another kind, an unknown kind and a malformed variant are refused before anything is read.
+    ///     uploaders alone; a sensitive owner read asks for the step-up a direct read asks for, of every
+    ///     download but the uploader's own staged blob; a stale denial is re-checked on a round trip
+    ///     of its own; and another kind, an unknown kind and a malformed variant are refused before anything is read.
     /// </summary>
     /// <param name="fixture">The tenant databases and the seeding helpers.</param>
     [Trait("Category", "Integration")]
@@ -126,6 +130,63 @@ namespace Tellma.Core.IntegrationTests.Blobs
         }
 
         [Fact]
+        public async Task A_sensitive_owner_read_asks_a_download_for_the_step_up_a_direct_read_asks_for()
+        {
+            // --- An instance whose owners' read is sensitive, a reader of every owner and a caller with no read ---
+            await using ServiceProvider instance = fixture.Connect.CreateInstance(
+                configure: static services =>
+                {
+                    _ = services.AddInMemoryBlobs();
+                    _ = services.AddSingleton<ISecurableContributor>(new SensitiveOwners());
+                });
+            (int readerId, string reader) = await fixture.SeedCallerAsync(ConnectDatabase.TenantA, (Owners, AccessActions.Read, null));
+            (_, string denied) = await fixture.SeedCallerAsync(ConnectDatabase.TenantA, ("fixture.Lookup", AccessActions.Read, null));
+            (int shown, _, int shownChild, _) = await SeedOwnersAsync();
+            int mine = await fixture.StageAsync(readerId, BlobReferenceDatabase.FileKind);
+            const int Missing = int.MaxValue;
+
+            // --- Without a recent strong sign-in: a committed blob, a child's and a missing one all ask for
+            // the step-up, so the answer tells nothing of what the read found; the reader's own staged blob is served ---
+            _ = await Assert.ThrowsAsync<StepUpRequiredException>(() => ResolveAsync(reader, BlobReferenceDatabase.FileKind, shown, services: instance));
+            _ = await Assert.ThrowsAsync<StepUpRequiredException>(() => ResolveAsync(reader, BlobReferenceDatabase.ChildFileKind, shownChild, services: instance));
+            _ = await Assert.ThrowsAsync<StepUpRequiredException>(() => ResolveAsync(reader, BlobReferenceDatabase.FileKind, Missing, services: instance));
+            Assert.Equal(BlobState.Staged, Assert.IsType<BlobDownload>(await ResolveAsync(reader, BlobReferenceDatabase.FileKind, mine, services: instance)).State);
+
+            // --- A caller denied the read is not found, never asked to step up ---
+            Assert.Null(await ResolveAsync(denied, BlobReferenceDatabase.FileKind, shown, services: instance));
+
+            // --- Stepped up: the committed blobs are served ---
+            Assert.Equal(shown, Assert.IsType<BlobDownload>(await ResolveAsync(reader, BlobReferenceDatabase.FileKind, shown, services: instance, steppedUp: true)).Id);
+            Assert.NotNull(await ResolveAsync(reader, BlobReferenceDatabase.ChildFileKind, shownChild, services: instance, steppedUp: true));
+            Assert.Null(await ResolveAsync(reader, BlobReferenceDatabase.FileKind, Missing, services: instance, steppedUp: true));
+        }
+
+        [Fact]
+        public async Task A_denial_from_a_set_older_than_the_fast_deny_window_is_re_checked_on_a_round_trip_before_the_download()
+        {
+            // --- An instance whose every cached denial is stale, a filtered reader and a caller with no read ---
+            await using ServiceProvider instance = fixture.Connect.CreateInstance(
+                configure: static services =>
+                {
+                    _ = services.AddInMemoryBlobs();
+                    _ = services.PostConfigure<AccessOptions>(static options => options.FastDenyWindow = TimeSpan.FromTicks(1));
+                });
+            (_, string filtered) = await fixture.SeedCallerAsync(ConnectDatabase.TenantA, (Owners, AccessActions.Read, ShownOnly));
+            (_, string denied) = await fixture.SeedCallerAsync(ConnectDatabase.TenantA, ("fixture.Lookup", AccessActions.Read, null));
+            (int shown, _, _, _) = await SeedOwnersAsync();
+
+            // --- Warm both callers; the filtered reader is still served on one round trip ---
+            _ = await ResolveAsync(filtered, BlobReferenceDatabase.FileKind, shown, services: instance);
+            _ = await ResolveAsync(denied, BlobReferenceDatabase.FileKind, shown, services: instance);
+            (BlobDownload? served, int servedTrips) = await CountedResolveAsync(filtered, BlobReferenceDatabase.FileKind, shown, instance);
+            Assert.Equal((shown, 1), (Assert.IsType<BlobDownload>(served).Id, servedTrips));
+
+            // --- The denied caller pays the prologue-only re-check of the stale denial, then the read batch ---
+            (BlobDownload? none, int deniedTrips) = await CountedResolveAsync(denied, BlobReferenceDatabase.FileKind, shown, instance);
+            Assert.Equal((null, 2), (none, deniedTrips));
+        }
+
+        [Fact]
         public async Task Another_kind_or_an_unknown_one_is_not_found_and_a_malformed_variant_is_a_bad_request()
         {
             (_, string subject) = await fixture.SeedCallerAsync(ConnectDatabase.TenantA, (Owners, AccessActions.Read, null));
@@ -165,10 +226,19 @@ namespace Tellma.Core.IntegrationTests.Blobs
         /// <param name="id">The blob's id.</param>
         /// <param name="variant">The variant; null for the primary.</param>
         /// <param name="services">The instance; the fixture's when null.</param>
+        /// <param name="steppedUp">Whether the caller's sign-in reached the step-up bar a moment ago.</param>
         /// <returns>The download; null when nothing is served.</returns>
-        private async Task<BlobDownload?> ResolveAsync(string subject, string kind, int id, string? variant = null, IServiceProvider? services = null)
+        private async Task<BlobDownload?> ResolveAsync(string subject, string kind, int id, string? variant = null, IServiceProvider? services = null, bool steppedUp = false)
         {
             await using AsyncServiceScope scope = await fixture.Connect.ScopeAsync(subject, services: services ?? fixture.Instance);
+            if (steppedUp)
+            {
+                // The sign-in reached the bar's class now, as a fresh step-up leaves the session.
+                IRequestContextHolder holder = scope.ServiceProvider.GetRequiredService<IRequestContextHolder>();
+                DateTimeOffset now = scope.ServiceProvider.GetRequiredService<TimeProvider>().GetUtcNow();
+                holder.Set(holder.Current with { Assurance = new AuthenticationAssurance(StepUpBar.DefaultAcr, now, now) });
+            }
+
             return await scope.ServiceProvider.GetRequiredService<IBlobService>().ResolveAsync(kind, id, variant, Token);
         }
 
@@ -193,6 +263,17 @@ namespace Tellma.Core.IntegrationTests.Blobs
         private Task<string?> StorageKeyAsync(int id)
         {
             return fixture.Connect.ScalarAsync<string>(ConnectDatabase.TenantA, Invariant($"SELECT [StorageKey] FROM [core].[Blobs] WHERE [Id] = {id};"));
+        }
+
+        /// <summary>The test's own mark: the blob owners' read is sensitive.</summary>
+        private sealed class SensitiveOwners : ISecurableContributor
+        {
+            /// <inheritdoc />
+            public void Contribute(SecurableRegistryBuilder builder)
+            {
+                ArgumentNullException.ThrowIfNull(builder);
+                _ = builder.MarkSensitive(Owners, AccessActions.Read);
+            }
         }
 
         /// <summary>Formats text in the invariant culture.</summary>
