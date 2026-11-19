@@ -359,4 +359,8 @@ service settings
   action details: api member-only body - handler SettingsService; idempotent; result TenantSettingsDetails; mcp Hidden, revision 0; -
   action refresh-caches: api core.Settings.General:Save body - handler SettingsService; mutation, idempotent; result void; mcp Hidden, revision 0; -
   action save: api member-only body TenantSettingsPatch handler SettingsService; mutation; result SettingsSaveResult; mcp Hidden, revision 0; -
+service queryex
+  class: Tellma.Core.Api.QueryexService
+  feature: core
+  action discover: api member-only body QueryexDiscoverRequest handler QueryexService; idempotent; result QueryexDiscoverResult; mcp Hidden, revision 0; -
 enlistment Tellma.Core.Users.UserService<Tellma.Core.Abstractions.Access.User> -> core.User

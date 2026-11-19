@@ -47,6 +47,10 @@ namespace Tellma.Core.Abstractions.Api
     ///             for the wire never starts with a digit or a sign.
     ///         </item>
     ///         <item>
+    ///             A Queryex type is the name the language gives it, without the <c>Qx</c> prefix of its
+    ///             member (<c>Date</c>), as every row set's columns name it.
+    ///         </item>
+    ///         <item>
     ///             Text in any script of the basic plane (Arabic, Amharic) is written as itself, not
     ///             as <c>\uXXXX</c> escapes, so a response, a stored column or an agent's result is not
     ///             six times longer for a non-Latin tenant. The characters HTML gives meaning to
@@ -111,6 +115,7 @@ namespace Tellma.Core.Abstractions.Api
             // --- The converters, ahead of any the host added ---
             JsonConverter[] converters =
             [
+                new QueryexTypeJsonConverter(),
                 new StrictEnumJsonConverter(),
                 new Int64JsonConverter(),
                 new DecimalJsonConverter(),

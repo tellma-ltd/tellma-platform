@@ -18,6 +18,7 @@ using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Composition;
 using Tellma.Core.Crud;
 using Tellma.Core.Data;
+using Tellma.Core.Queryex;
 
 namespace Tellma.Core.Api
 {
@@ -303,9 +304,12 @@ namespace Tellma.Core.Api
         /// <param name="type">The enum.</param>
         private static void WriteEnum(Utf8JsonWriter writer, Type type)
         {
-            IEnumerable<string> names = type.GetFields(BindingFlags.Public | BindingFlags.Static)
-                .Select(static field => field.GetCustomAttribute<JsonStringEnumMemberNameAttribute>()?.Name ?? field.Name)
-                .Order(StringComparer.Ordinal);
+            // A Queryex type travels as the language's name for it, which its own converter writes.
+            IEnumerable<string> names = type == typeof(QueryexType)
+                ? QueryexTypeJsonConverter.Names
+                : type.GetFields(BindingFlags.Public | BindingFlags.Static)
+                    .Select(static field => field.GetCustomAttribute<JsonStringEnumMemberNameAttribute>()?.Name ?? field.Name)
+                    .Order(StringComparer.Ordinal);
 
             writer.WriteStartObject();
             writer.WriteStartArray("enum");

@@ -1365,6 +1365,15 @@ position is held to the same rule (refused as `<navigations>.Node`). When no pat
 rule itself asks for the step-up of each sensitive entity a path reads beyond its projection, as a
 direct `Read` of it asks (`StepUpRequiredException`, or `IndividualRequiredException` for a service
 account), never for the platform's own work, so no consumer of the public contract can skip it.
+Its `Refusals` walks the same paths without the step-up, for an authoring tool: a step-up is the
+session's to satisfy, not the text's to fix.
+
+`QueryWireDiagnostics` carries a located diagnostic, or a located discovery site, to the wire's
+`QueryDiagnostic` and `QueryexSite`: the request clause (`select`, `filters[i]`, `namedFilters[i]`,
+`orderBy`, `having`, `measures`) and the item within it, a list clause's item as the engine names
+it (`Select[2]`), a filter's path below its root (`Or[1]`), and nothing for a single expression. A
+location the engine gave no clause, such as a ceiling the whole query exceeds, is placed where a
+ceiling in the platform's text is placed.
 
 ### The validation stage
 
@@ -1694,6 +1703,36 @@ tenant, in a job that runs on one and in a provisioning step, refused in any oth
   whose declared writes include a stack's table outside the appender's authority is
   `InvalidOperationException`. The platform's own composers (the emitter, the access guards, the
   job, notification and tree statements) append through the batch's internal channel.
+
+## Queryex discovery
+
+`QueryexService` (route `queryex`, registered by `CoreFeature`) serves `discover`, a member-only,
+idempotent read hidden from the agents, for the editors: it checks clauses being written as `query`
+or a role save would compile them and answers `200` with every problem. Admission (`DiscoverShape`)
+runs before any I/O: a root the widest schema shape lacks is `NotFoundException`; measures (not
+supported yet), a having clause without an aggregation, a confirmed parameter without a name, of a
+hierarchy or geography type or named twice, and for a permission filter more than one filter or any
+other clause or parameter, are each `BadRequestException`. The caller's set comes from the scope's
+connection, so a connected caller costs no round trip, and no statement ever runs.
+
+- **The query profile.** One `DiscoverQuery` over every clause, the filters as the query composes
+  them (one leaf each, conjoined in request order), with the comparisons when asked for. Then
+  `CompileQuery` under the pipeline's ceilings, the select defaulting to the key, with the confirmed
+  types plus the agreed inferred ones as nullable declarations; its SQL is discarded, its
+  diagnostics are located as the query locates them, and the undeclared-parameter report (QX3007) is
+  dropped, since the parameters' answer says the type is unknown. The traversal rule's `Refusals`
+  under the connected user's decisions add one `Query.PathNotReachable { entity, path }` at each
+  refused path, and mark the path unreachable.
+- **The permission profile.** The one filter is judged by `PermissionFilterRules`, the rule the role
+  save runs (the length, then the validation of a predicate over the root with a user and no
+  parameters under the stored filter's ceilings): `Permissions.FilterTooLong` at the part past the
+  maximum, else the engine's diagnostics at `filters[0]`, QX3007 kept. A stored filter is the
+  platform's text when a query runs, so every path is reachable.
+- **The answer.** Each parameter with its sites, its confirmed type, else the type its uses agree
+  on (null when nothing constrains it or they conflict), its conflicting types, the path it is
+  compared with and the entity a key or foreign key at that path's end identifies; each path with
+  the entity its last segment is read on; and the comparisons with their filter's index, dotted
+  path or canonical expression, operator and literal in the wire's scalar encoding.
 
 ## The route model
 
@@ -2237,10 +2276,10 @@ are SpreadsheetML packages written with `DocumentFormat.OpenXml` (MIT), forward-
 | `Composition/Realizers/` | One realizer per item kind the platform understands: services, standalone table types, shape requirements, Core's model configurations, calendar systems, value sets, notification types and channels, client events, securables, entities, stack companions, stack components, routed API services, confirmations and provisioning steps. Each spec that adds an item kind adds its realizer to `ContributionRealizerSet.CreateBuiltIn`. |
 | `Composition/Checks/` | The built-in startup checks above. |
 | `Crud/` | Internally: the stack composition (each stack with its service, companions and components, closed over its leaf), the descriptor builder, `StackRegistry` (`IStackRegistry` and `IStackRouteSource`), the stacks' securable contributor, the platform's default service, the registrations `CrudComposition` makes, the action-method reader, and the entity pipeline with its factory, its operation frame and its instruments. |
-| `Crud/Query/` | Internally: the query path of [Entity stacks](#the-entity-pipeline-and-the-query-path): the surfaces, the admission, the planner, the search, the argument discovery and binding, the diagnostics' locations, the traversal rule, the query operation (with the rows of a tree by parent) and the child query service. |
+| `Crud/Query/` | Internally: the query path of [Entity stacks](#the-entity-pipeline-and-the-query-path): the surfaces, the admission, the planner, the search, the argument discovery and binding, the diagnostics' locations and their wire form, the traversal rule, the query operation (with the rows of a tree by parent) and the child query service. |
 | `Crud/Details/` | Internally: the details reads of [Entity stacks](#the-entity-pipeline-and-the-query-path): the projections, the planner and its composition with the extras' name rules and the record permissions, and the details operation with the cached list. |
 | `Crud/Checks/` | The stack checks of [Entity stacks](#entity-stacks). |
-| `Api/` | `IRouteContracts` and `RouteContract`; internally the route model, the contract describer and fingerprint, and the contracts chunk's client-asset contributor ([The route model](#the-route-model)). |
+| `Api/` | `IRouteContracts` and `RouteContract`; internally the route model, the contract describer and fingerprint, and the contracts chunk's client-asset contributor ([The route model](#the-route-model)), and the Queryex discovery service with its admission ([Queryex discovery](#queryex-discovery)). |
 | `Crud/Validation/` | Internally: the validation stage of [Entity stacks](#the-validation-stage): the context loader, the scheduler, the confirmations, the attribute walker, the save shape and their instruments. |
 | `Crud/Save/` | Internally: [the save pipeline](#the-save-pipeline) up to its persist step: the operation, one save's run (its steps, its rounds and its ordered checks), the per-entity row rules, the payload's rows, the uniqueness probes the write host, and the run every write shares. |
 | `Crud/Delete/` | Internally: [the deletes](#the-delete-and-action-pipelines): the operation and one delete's run (its round trip 1, its rounds and its persist). |
@@ -2259,7 +2298,7 @@ are SpreadsheetML packages written with `DocumentFormat.OpenXml` (MIT), forward-
 | `Excel/` | `ExcelContext`, `ExcelColumnSpec`, `ExcelColumnRole`, `ExcelKeyKind`, `ExcelDateEncoding`, `ExcelSheetPlan`, `ExcelWorkbookPlan`, `ExcelTableSpec`, `ExcelTableRow`, `ExcelRowStyle`, `IExcelExporter`, `ImportCheckpointState`; internally the cell codec and its decoding records, the cell reader, the column encodings, the number formats, the stylesheet, the package, worksheet and workbook writers, the manifest's header block, the serial dates, the sheet and file names, the column letters, the XML escapes and the scratch files. |
 | `Caching/` | The versioned cache base, its keys and kinds; internally, the cacheable entities' store and façade, the version-tag registry, its table's row, the prelude and bump contributors, the bump plan, the snapshots, the mismatch policies, the migrator's seeder, the instruments and the log events. |
 | `Jobs/` | Internally: the job tables' configurations and seeds, the handler, built-in-schedule and retired-key realizers with their cross-feature checks, `JobHandlerRegistry`, the `jobs.handlers` and `jobs.schedules` checks, the queue and its enqueue statement, the poller wake, the composition step that binds the jobs' options, and the log events. |
-| `Access/` | Internally: the access tables' configurations and seeds, the user stamp and preference rows, the securable registry with its name grammar and feature contributor, the securables section of the client metadata, the permission set build: the classifier, the builder, the interner and the access instruments and logs; and the user connection: the connect prologue, the connect, permissions and profile caches, the connector, the guarded runner and the connect initializer. |
+| `Access/` | Internally: the access tables' configurations and seeds, the user stamp and preference rows, the securable registry with its name grammar and feature contributor, the securables section of the client metadata, the permission set build: the classifier, the builder, the interner and the access instruments and logs; and the user connection: the connect prologue, the connect, permissions and profile caches, the connector, the guarded runner and the connect initializer; and the permission filter rules the role save and the Queryex discovery share. |
 | `Identity/` | `IdentityServerClient`; internally its transport and token cache, the wire shapes and their source-generated JSON metadata, the options' settling and validator, the composition step that binds them and registers the named HTTP client, the instruments and the log events. |
 | `Notifications/` | `NotificationTypeRegistry`, `NotificationChannelRegistry`, `ClientEventRegistry`, `NotificationsClientAssetContributor`, `ClientEventPublisher`, `NullClientEventPublisher`, `NotificationConfiguration` and `NotificationDeliveryArguments`; internally the notifier, its statements and the delivering channels, the renderer, the preference row, the metrics, the name grammars, the hub-less real-time status, the composition step and the log events. |
 | `Client/` | Internally: the client entity model, its data types, the action arguments' fields and schema, the declarations writer and the client-asset contributor. |

@@ -4,7 +4,9 @@
 // LICENSE file in the root directory of this source tree.
 
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Tellma.Core.Abstractions.Api;
+using Tellma.Core.Queryex;
 
 namespace Tellma.Core.Abstractions.Tests.Api
 {
@@ -172,6 +174,51 @@ namespace Tellma.Core.Abstractions.Tests.Api
             Assert.Equal(
                 /*lang=json,strict*/ """{"clause":"filters[1]","code":"QX3001","start":4,"length":6,"arguments":{"property":"Nmae"}}""",
                 Write(diagnostic));
+        }
+
+        [Fact]
+        public void A_discovery_request_binds_the_body_an_editor_sends_and_takes_its_defaults()
+        {
+            const string Body = /*lang=json,strict*/ """
+                { "root": "acme.SalesInvoiceLine", "filters": ["Invoice.PostingDate >= @From"],
+                  "parameters": [ { "name": "From", "type": "Date" } ], "conjuncts": true }
+                """;
+
+            QueryexDiscoverRequest request = Read<QueryexDiscoverRequest>(Body);
+
+            Assert.Equal("acme.SalesInvoiceLine", request.Root);
+            Assert.Equal(["Invoice.PostingDate >= @From"], request.Filters!);
+            Assert.Equal(new QueryexParameterInput("From", QueryexType.QxDate), Assert.Single(request.Parameters!));
+            Assert.True(request.Conjuncts);
+            Assert.Equal((QueryexProfile.Query, false), (request.Profile, request.Aggregate));
+            Assert.Null(request.Select ?? request.Having ?? request.OrderBy ?? request.Measures);
+            Assert.Equal(QueryexProfile.Permission, Read<QueryexDiscoverRequest>(/*lang=json,strict*/ """{ "root": "gl.Center", "profile": "Permission" }""").Profile);
+        }
+
+        [Fact]
+        public void A_discovery_result_writes_types_without_their_prefix_and_omits_what_is_absent()
+        {
+            QueryexSite site = new("filters[0]", null, 23, 5);
+            QueryexDiscoverResult result = new(
+                [],
+                [new QueryexParameterInfo("From", [site], QueryexType.QxDate, [], ["Invoice", "PostingDate"], null)],
+                [new QueryexPathInfo(["Invoice", "PostingDate"], new QueryexSite("filters[0]", null, 0, 19), "acme.SalesInvoice", true)],
+                UsesAggregation: false,
+                Conjuncts: null);
+
+            Assert.Equal(
+                /*lang=json,strict*/ """{"diagnostics":[],"parameters":[{"name":"From","sites":[{"clause":"filters[0]","start":23,"length":5}],"type":"Date","conflicts":[],"comparedWith":["Invoice","PostingDate"]}],"paths":[{"segments":["Invoice","PostingDate"],"site":{"clause":"filters[0]","start":0,"length":19},"entity":"acme.SalesInvoice","reachable":true}],"usesAggregation":false}""",
+                Write(result));
+        }
+
+        [Fact]
+        public void A_conjunct_carries_its_literal_in_the_wires_scalar_encoding()
+        {
+            QueryexConjunct conjunct = new(1, "Price", null, ">=", JsonSerializer.SerializeToElement(10.50m, TellmaJson.Options), QueryexType.QxNumeric);
+
+            // Compared as JSON: the platform's encoder escapes the operator's angle bracket.
+            JsonNode expected = JsonNode.Parse(/*lang=json,strict*/ """{"filter":1,"path":"Price","op":">=","value":"10.50","type":"Numeric"}""")!;
+            Assert.True(JsonNode.DeepEquals(expected, JsonNode.Parse(Write(conjunct))), Write(conjunct));
         }
 
         /// <summary>Serializes a value with the platform's options.</summary>

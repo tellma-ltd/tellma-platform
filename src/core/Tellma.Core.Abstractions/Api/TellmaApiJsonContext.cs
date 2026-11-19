@@ -46,12 +46,14 @@ namespace Tellma.Core.Abstractions.Api
     [JsonSerializable(typeof(InspectImportRequest))]
     [JsonSerializable(typeof(ImportRequest))]
     [JsonSerializable(typeof(StartImportRequest))]
+    [JsonSerializable(typeof(QueryexDiscoverRequest))]
 
     // --- Result records ---
     [JsonSerializable(typeof(AffectedResult))]
     [JsonSerializable(typeof(JobAccepted))]
     [JsonSerializable(typeof(SecurableSummary))]
     [JsonSerializable(typeof(QueryDiagnostic))]
+    [JsonSerializable(typeof(QueryexDiscoverResult))]
     [JsonSerializable(typeof(AccessGrant))]
     [JsonSerializable(typeof(ImportPlan))]
     [JsonSerializable(typeof(ImportOutcome))]
