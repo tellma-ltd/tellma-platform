@@ -14,8 +14,12 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Diagnostics.Metrics.Testing;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Diagnostics.Metrics;
 using System.Net;
+using System.Reflection;
+using System.Reflection.Emit;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Tellma.Core.Abstractions.Access;
@@ -286,6 +290,63 @@ namespace Tellma.Core.AspNetCore.Tests.Api
         }
 
         [Fact]
+        public async Task A_workbook_streams_as_an_attachment_and_is_disposed()
+        {
+            await using TellmaTestHost host = await StartAsync();
+
+            using HttpResponseMessage response = await SendAsync(host, host.Cookie(), "inbox/export", null);
+
+            // --- The workbook's media type, its file name in ASCII and in UTF-8, and no length ---
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            Assert.Equal(ActionAnswers.WorkbookContentType, response.Content.Headers.ContentType?.MediaType);
+            System.Net.Http.Headers.ContentDispositionHeaderValue disposition = Assert.IsType<System.Net.Http.Headers.ContentDispositionHeaderValue>(response.Content.Headers.ContentDisposition);
+            Assert.Equal("attachment", disposition.DispositionType);
+            Assert.Equal("R_sum_-2026.xlsx", disposition.FileName?.Trim('"'));
+            Assert.Equal(PipelineLog.WorkbookName, disposition.FileNameStar);
+            Assert.False(response.Content.Headers.NonValidated.Contains("Content-Length"));
+
+            // --- The bytes, then the outcome disposed once the response completed ---
+            Assert.Equal(PipelineLog.WorkbookBytes.ToArray(), await response.Content.ReadAsByteArrayAsync(TestContext.Current.CancellationToken));
+            ObservedStream workbook = Assert.Single(host.Services.GetRequiredService<PipelineLog>().Workbooks);
+            await workbook.Disposed.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+        }
+
+        [Theory]
+        [InlineData("centers/query", "pj.PjCenter", "query")]
+        [InlineData("centers/count-lines", "pj.PjCenter", "count-lines")]
+        [InlineData("inbox/summary", "inbox", "summary")]
+        public async Task A_projected_request_tags_its_activity_with_its_resource_and_operation(string relative, string resource, string operation)
+        {
+            // Requests of other suites running alongside carry other trace ids.
+            var trace = ActivityTraceId.CreateRandom();
+            ConcurrentQueue<Activity> started = new();
+            using ActivityListener listener = new()
+            {
+                ShouldListenTo = static source => source.Name == "Microsoft.AspNetCore",
+                Sample = static (ref _) => ActivitySamplingResult.AllDataAndRecorded,
+                ActivityStarted = activity =>
+                {
+                    if (activity.TraceId == trace)
+                    {
+                        started.Enqueue(activity);
+                    }
+                },
+            };
+            ActivitySource.AddActivityListener(listener);
+            await using TellmaTestHost host = await StartAsync();
+
+            using HttpRequestMessage request = Request(relative, relative.StartsWith("inbox", StringComparison.Ordinal) ? null : /*lang=json,strict*/ """{"ids":[1]}""", host.Cookie());
+            request.Headers.Add("traceparent", $"00-{trace.ToHexString()}-{ActivitySpanId.CreateRandom().ToHexString()}-01");
+            using HttpResponseMessage response = await host.Client.SendAsync(request, TestContext.Current.CancellationToken);
+
+            // A stack route tags its stack's resource; a routed service without one falls back to its route.
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            Activity activity = Assert.Single(started);
+            Assert.Equal(resource, activity.GetTagItem(ApiTelemetryNames.ResourceTag));
+            Assert.Equal(operation, activity.GetTagItem(ApiTelemetryNames.OperationTag));
+        }
+
+        [Fact]
         public async Task Tenant_JSON_answers_carry_no_store()
         {
             await using TellmaTestHost host = await StartAsync();
@@ -522,6 +583,93 @@ namespace Tellma.Core.AspNetCore.Tests.Api
                 CompositionProblem problem = Assert.Single(exception.Problems, static problem => problem.Problem.Contains("JSON contract", StringComparison.Ordinal));
                 Assert.StartsWith("The web surface's type PjInboxSummary has no JSON contract", problem.Problem, StringComparison.Ordinal);
             }
+        }
+
+        [Fact]
+        public async Task A_result_member_JSON_never_writes_fails_the_realised_gate()
+        {
+            (WebApplication app, _, _) = TellmaTestHost.Build(static options =>
+            {
+                options.Compose = static tellma => tellma.AddFeature(ProjectionModel.Feature(static contribution => contribution.ApiService<PjOddsService>()));
+                options.ConfigureServices = StandIns;
+            });
+            await using (app)
+            {
+                TellmaCompositionException exception = await Assert.ThrowsAsync<TellmaCompositionException>(() => app.StartAsync(TestContext.Current.CancellationToken));
+
+                // A multi-dimensional array, a type and a delegate: each resolves a contract that writes no value.
+                List<CompositionProblem> problems = [.. exception.Problems.Where(static problem => problem.Problem.Contains("has no JSON contract", StringComparison.Ordinal))];
+                Assert.Equal(3, problems.Count);
+                Assert.All(problems, static problem => Assert.Equal(TellmaEndpointAudit.CheckName, problem.Source));
+                Assert.Contains(problems, static problem => problem.Problem.Contains("[,]", StringComparison.Ordinal));
+                Assert.Contains(problems, static problem => problem.Problem.Contains("type Type ", StringComparison.Ordinal));
+                Assert.Contains(problems, static problem => problem.Problem.Contains("Func<", StringComparison.Ordinal));
+            }
+        }
+
+        [Fact]
+        public async Task A_member_JSON_ignores_needs_no_contract()
+        {
+            await using TellmaTestHost host = await TellmaTestHost.StartAsync(static options =>
+            {
+                options.Compose = static tellma => tellma.AddFeature(ProjectionModel.Feature(static contribution => contribution.Entity<PjArchive>()));
+                options.ConfigureServices = StandIns;
+            });
+
+            // The ignored member's type really has no contract, yet the host started and maps the archive.
+            JsonSerializerOptions options = host.Services.GetRequiredService<IOptions<JsonOptions>>().Value.SerializerOptions;
+            _ = Assert.Throws<InvalidOperationException>(() => options.GetTypeInfo(typeof(PjLegacy)));
+            Assert.Contains(Projected(host), static endpoint => endpoint.RoutePattern.RawText!.EndsWith("/api/web/archives/save", StringComparison.Ordinal));
+        }
+
+        [Fact]
+        public void A_pre_serialized_document_outside_the_platform_fails_startup()
+        {
+            Type foreign = ForeignService();
+
+            TellmaCompositionException exception = Assert.Throws<TellmaCompositionException>(() => TellmaTestHost.Build(options =>
+            {
+                options.Compose = tellma => tellma.AddFeature(ProjectionModel.Feature(contribution =>
+                    typeof(FeatureContribution).GetMethod(nameof(FeatureContribution.ApiService))!.MakeGenericMethod(foreign).Invoke(contribution, null)));
+                options.ConfigureServices = StandIns;
+            }));
+
+            CompositionProblem problem = Assert.Single(exception.Problems);
+            Assert.Equal(TellmaEndpointAudit.CheckName, problem.Source);
+            Assert.Contains("foreign/document", problem.Problem, StringComparison.Ordinal);
+            Assert.Contains("declared in Acme.Foreign, outside the platform", problem.Problem, StringComparison.Ordinal);
+        }
+
+        /// <summary>
+        ///     A routed service from an assembly outside the platform whose one action answers the
+        ///     platform's pre-serialized document shape, <c>(byte[] Json, string WireTag)</c>.
+        /// </summary>
+        /// <returns>The service type.</returns>
+        private static Type ForeignService()
+        {
+            // --- An assembly whose name no platform assembly carries ---
+            var assembly = AssemblyBuilder.DefineDynamicAssembly(new AssemblyName("Acme.Foreign"), AssemblyBuilderAccess.Run);
+            ModuleBuilder module = assembly.DefineDynamicModule("Acme.Foreign");
+            TypeBuilder service = module.DefineType("Acme.Foreign.DocumentService", TypeAttributes.Public | TypeAttributes.Sealed | TypeAttributes.Class);
+            service.SetCustomAttribute(new CustomAttributeBuilder(typeof(ApiRouteAttribute).GetConstructor([typeof(string)])!, ["foreign"]));
+            _ = service.DefineDefaultConstructor(MethodAttributes.Public);
+
+            // --- [ApiAction("document", MemberOnly = true, Mutation = false, Idempotent = true)], answering null ---
+            MethodBuilder method = service.DefineMethod("DocumentAsync", MethodAttributes.Public, typeof(Task<(byte[] Json, string WireTag)>), Type.EmptyTypes);
+            method.SetCustomAttribute(new CustomAttributeBuilder(
+                typeof(ApiActionAttribute).GetConstructor([typeof(string)])!,
+                ["document"],
+                [
+                    typeof(ApiActionAttribute).GetProperty(nameof(ApiActionAttribute.MemberOnly))!,
+                    typeof(ApiActionAttribute).GetProperty(nameof(ApiActionAttribute.Mutation))!,
+                    typeof(ApiActionAttribute).GetProperty(nameof(ApiActionAttribute.Idempotent))!,
+                ],
+                [true, false, true]));
+            ILGenerator il = method.GetILGenerator();
+            il.Emit(OpCodes.Ldnull);
+            il.Emit(OpCodes.Ret);
+
+            return service.CreateType();
         }
 
         /// <summary>Starts a host composing the suite's model over the recording stand-ins.</summary>

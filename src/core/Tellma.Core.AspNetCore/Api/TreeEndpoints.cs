@@ -9,7 +9,6 @@ using Tellma.Core.Abstractions.Api;
 using Tellma.Core.Abstractions.Crud;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Entities;
-using Tellma.Core.Abstractions.Tenancy;
 
 namespace Tellma.Core.AspNetCore.Api
 {
@@ -30,17 +29,15 @@ namespace Tellma.Core.AspNetCore.Api
         /// <summary>The stack's <c>get-by-parent-ids</c>: the children of the parents, the roots, or both.</summary>
         /// <param name="request">The parents and the clauses.</param>
         /// <param name="service">The stack's service.</param>
-        /// <param name="context">The request's context.</param>
         /// <param name="cancellationToken">The request's cancellation.</param>
         /// <returns>A page of the rows alone: no count and no ancestors.</returns>
         public static async Task<RowPage> GetByParentIdsAsync(
             [FromBody] ParentIdsRequest request,
             [FromServices] EntityService<TEntity, TKey> service,
-            [FromServices] IRequestContextAccessor context,
             CancellationToken cancellationToken)
         {
             ArgumentNullException.ThrowIfNull(service);
-            QueryRowSet rows = await WireBinding.SettledAsync(context, () => service.GetByParentIdsAsync(request, cancellationToken)).ConfigureAwait(false);
+            QueryRowSet rows = await service.GetByParentIdsAsync(request, cancellationToken).ConfigureAwait(false);
 
             // The service answers a bare row set; the wire's result is a page of rows alone.
             return new RowPage(rows, Count: null, Ancestors: null, CountCap: null);
@@ -49,19 +46,17 @@ namespace Tellma.Core.AspNetCore.Api
         /// <summary>The stack's <c>delete-with-descendants</c>: the rows and every row below them, deleted.</summary>
         /// <param name="request">The ids.</param>
         /// <param name="service">The stack's service.</param>
-        /// <param name="context">The request's context.</param>
         /// <param name="cancellationToken">The request's cancellation.</param>
         /// <returns>How many rows were deleted, descendants included.</returns>
         public static Task<AffectedResult> DeleteWithDescendantsAsync(
             [FromBody] IdsRequest request,
             [FromServices] EntityService<TEntity, TKey> service,
-            [FromServices] IRequestContextAccessor context,
             CancellationToken cancellationToken)
         {
             ArgumentNullException.ThrowIfNull(request);
             ArgumentNullException.ThrowIfNull(service);
             IReadOnlyList<TKey> ids = WireIds.ToKeys<TKey>(request.Ids, IdsPath);
-            return WireBinding.SettledAsync(context, () => service.DeleteWithDescendantsAsync(ids, cancellationToken));
+            return service.DeleteWithDescendantsAsync(ids, cancellationToken);
         }
     }
 }

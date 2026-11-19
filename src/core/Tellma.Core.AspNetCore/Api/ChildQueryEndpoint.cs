@@ -7,7 +7,6 @@ using Microsoft.AspNetCore.Mvc;
 using Tellma.Core.Abstractions.Api;
 using Tellma.Core.Abstractions.Crud;
 using Tellma.Core.Abstractions.Data;
-using Tellma.Core.Abstractions.Tenancy;
 
 namespace Tellma.Core.AspNetCore.Api
 {
@@ -26,17 +25,15 @@ namespace Tellma.Core.AspNetCore.Api
         /// <summary>The surface's <c>query</c>: one page of child rows.</summary>
         /// <param name="request">The query.</param>
         /// <param name="service">The child query service.</param>
-        /// <param name="context">The request's context.</param>
         /// <param name="cancellationToken">The request's cancellation.</param>
         /// <returns>The page.</returns>
         public Task<RowPage> QueryAsync(
             [FromBody] QueryRequest request,
             [FromServices] IChildQueryService service,
-            [FromServices] IRequestContextAccessor context,
             CancellationToken cancellationToken)
         {
             ArgumentNullException.ThrowIfNull(service);
-            return WireBinding.SettledAsync(context, () => service.QueryAsync(Resource, request, cancellationToken));
+            return service.QueryAsync(Resource, request, cancellationToken);
         }
     }
 }

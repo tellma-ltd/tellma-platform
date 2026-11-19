@@ -11,6 +11,7 @@ using Tellma.Core.Abstractions.Api;
 using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.Abstractions.Crud;
 using Tellma.Core.Abstractions.Entities;
+using Tellma.Core.Abstractions.Excel;
 using Tellma.Core.Abstractions.Validation;
 using Tellma.Core.Composition;
 using Tellma.Core.Tests.Infrastructure;
@@ -268,6 +269,14 @@ namespace Tellma.Core.AspNetCore.Tests.Api
             return Task.FromResult((Array.Empty<byte>(), string.Empty));
         }
 
+        /// <summary>Exports the caller's inbox: a workbook streamed as an attachment.</summary>
+        /// <returns>The workbook.</returns>
+        [ApiAction("export", Mutation = false, Idempotent = true, MemberOnly = true)]
+        public Task<ExportOutcome> ExportAsync()
+        {
+            return Task.FromResult(new ExportOutcome(Stream.Null, "inbox.xlsx", 0));
+        }
+
         /// <summary>Purges every inbox: a secured action.</summary>
         /// <returns>How many items were purged.</returns>
         [ApiAction("purge", Resource = ProjectionModel.Inbox, Destructive = true)]
@@ -307,5 +316,75 @@ namespace Tellma.Core.AspNetCore.Tests.Api
         /// <summary>The children.</summary>
         [NotMapped]
         public List<PjReservedChild>? Children { get; set; }
+    }
+
+    /// <summary>A grid whose cells System.Text.Json never writes: a multi-dimensional array.</summary>
+    /// <param name="Cells">The cells.</param>
+    [SuppressMessage("Performance", "CA1814:Prefer jagged arrays over multidimensional", Justification = "The multi-dimensional array is what the contract audit must refuse.")]
+    public sealed record PjGrid(object[,] Cells);
+
+    /// <summary>A result naming a CLR type, which System.Text.Json never writes.</summary>
+    /// <param name="Kind">The type.</param>
+    public sealed record PjKind(Type Kind);
+
+    /// <summary>A result carrying a delegate, which System.Text.Json never writes.</summary>
+    /// <param name="Next">The delegate.</param>
+    public sealed record PjCallback(Func<int> Next);
+
+    /// <summary>A routed service whose results System.Text.Json resolves but never writes, which the contract audit refuses.</summary>
+    [ApiRoute("odds")]
+    [SuppressMessage("Performance", "CA1822:Mark members as static", Justification = "An action is an instance method by contract; the registry refuses a static one.")]
+    public sealed class PjOddsService
+    {
+        /// <summary>A grid.</summary>
+        /// <returns>The grid.</returns>
+        [ApiAction("grid", Mutation = false, Idempotent = true, MemberOnly = true)]
+        public Task<PjGrid> GridAsync()
+        {
+            return Task.FromResult(new PjGrid(new object[0, 0]));
+        }
+
+        /// <summary>A type.</summary>
+        /// <returns>The type.</returns>
+        [ApiAction("kind", Mutation = false, Idempotent = true, MemberOnly = true)]
+        public Task<PjKind> KindAsync()
+        {
+            return Task.FromResult(new PjKind(typeof(int)));
+        }
+
+        /// <summary>A delegate.</summary>
+        /// <returns>The delegate.</returns>
+        [ApiAction("callback", Mutation = false, Idempotent = true, MemberOnly = true)]
+        public Task<PjCallback> CallbackAsync()
+        {
+            return Task.FromResult(new PjCallback(static () => 0));
+        }
+    }
+
+    /// <summary>A legacy shape with no JSON contract: two members take one JSON name.</summary>
+    public sealed class PjLegacy
+    {
+        /// <summary>The old code.</summary>
+        [JsonPropertyName("code")]
+        public string? OldCode { get; set; }
+
+        /// <summary>The new code, under the same JSON name.</summary>
+        [JsonPropertyName("code")]
+        public string? NewCode { get; set; }
+    }
+
+    /// <summary>An archive whose legacy shape never crosses the wire, so its missing contract is harmless.</summary>
+    [Table("Archives", Schema = "pj")]
+    [TableType]
+    public class PjArchive : TopLevelEntity
+    {
+        /// <summary>The name.</summary>
+        [MaxLength(255)]
+        public string Name { get; set; } = null!;
+
+        /// <summary>The legacy shape, ignored by JSON and kept off the table.</summary>
+        [NotMapped]
+        [JsonIgnore]
+        public PjLegacy? Legacy { get; set; }
     }
 }

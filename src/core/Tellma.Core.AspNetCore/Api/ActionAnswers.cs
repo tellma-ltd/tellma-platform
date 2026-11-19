@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Http.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Microsoft.Net.Http.Headers;
+using System.Reflection;
 using Tellma.Core.Abstractions.Api;
 using Tellma.Core.Abstractions.Excel;
 
@@ -25,6 +26,9 @@ namespace Tellma.Core.AspNetCore.Api
         /// <summary>The media type of a JSON answer.</summary>
         public const string JsonContentType = "application/json; charset=utf-8";
 
+        /// <summary>The name of the platform's runtime assembly, which prefixes every platform assembly's name.</summary>
+        private const string PlatformAssembly = "Tellma.Core";
+
         /// <summary>The status an action's result answers with, by its declared type.</summary>
         /// <param name="declared">The action's declared result type.</param>
         /// <returns>202 for a job hand-off, 204 for an action without a result, else 200.</returns>
@@ -39,8 +43,12 @@ namespace Tellma.Core.AspNetCore.Api
         /// <summary>The answer to an action's result.</summary>
         /// <param name="result">The result; null for an action without one.</param>
         /// <param name="declared">The action's declared result type.</param>
+        /// <param name="preSerialized">
+        ///     Whether the result is a platform action's pre-serialized JSON document, written as its
+        ///     bytes; the projection allows it for a platform action alone.
+        /// </param>
         /// <returns>The endpoint's result.</returns>
-        public static IResult Of(object? result, Type declared)
+        public static IResult Of(object? result, Type declared, bool preSerialized)
         {
             ArgumentNullException.ThrowIfNull(declared);
             return result switch
@@ -48,20 +56,33 @@ namespace Tellma.Core.AspNetCore.Api
                 _ when declared == typeof(void) => TypedResults.NoContent(),
                 ExportOutcome workbook => new WorkbookResult(workbook),
 
-                // A document the service serialized once and caches (the client settings): its
+                // A document the platform serialized once and caches (the client settings): its
                 // bytes are the body as they are; the tag travels in the version-tags header.
-                ValueTuple<byte[], string> document when declared == typeof(ValueTuple<byte[], string>)
+                ValueTuple<byte[], string> document when preSerialized
                     => new Utf8JsonResult(document.Item1 ?? throw new InvalidOperationException("A pre-serialized JSON result carries no bytes.")),
                 _ => new ContractJsonResult(result, declared, StatusOf(declared)),
             };
         }
 
-        /// <summary>Whether a declared result type is a pre-serialized JSON document, written as its bytes.</summary>
+        /// <summary>Whether a declared result type is a pre-serialized JSON document's shape.</summary>
         /// <param name="declared">The action's declared result type.</param>
         /// <returns>True for <c>(byte[] Json, string WireTag)</c>.</returns>
         public static bool IsPreSerialized(Type declared)
         {
             return declared == typeof(ValueTuple<byte[], string>);
+        }
+
+        /// <summary>
+        ///     Whether an assembly is one of the platform's own (<c>Tellma.Core</c> and the
+        ///     <c>Tellma.Core.*</c> assemblies), whose actions alone may answer pre-serialized JSON.
+        /// </summary>
+        /// <param name="assembly">The assembly that declares the action's method.</param>
+        /// <returns>True for a platform assembly.</returns>
+        public static bool IsPlatform(Assembly assembly)
+        {
+            ArgumentNullException.ThrowIfNull(assembly);
+            string? name = assembly.GetName().Name;
+            return name is not null && (name == PlatformAssembly || name.StartsWith(PlatformAssembly + ".", StringComparison.Ordinal));
         }
 
         /// <summary>A JSON document already serialized as UTF-8, written as it is.</summary>

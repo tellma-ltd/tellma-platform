@@ -157,6 +157,17 @@ namespace Tellma.Core.AspNetCore.Api
                 return;
             }
 
+            // --- A pre-serialized document leaves as its bytes, unchecked: only the platform's own actions may answer one ---
+            if (route.Action is ActionDescriptor raw && ActionAnswers.IsPreSerialized(raw.ResultType) && !owners.PreSerialized(raw))
+            {
+                Assembly? declaring = owners.DeclaringAssembly(raw);
+                problems.Add(Problem(
+                    route,
+                    $"answers (byte[] Json, string WireTag), the platform's pre-serialized JSON document, but its method is declared in {declaring?.GetName().Name ?? "no assembly"}, outside the platform.",
+                    "Return a result record the host's JSON options serialize; only the platform's own actions answer bytes as JSON."));
+                return;
+            }
+
             // --- The body the delegate reads is the body the route's contract describes ---
             Type? body = handler.Method.GetParameters().FirstOrDefault(static parameter => parameter.GetCustomAttribute<FromBodyAttribute>() is not null)?.ParameterType;
             if (body != route.RequestType)
@@ -282,6 +293,25 @@ namespace Tellma.Core.AspNetCore.Api
                 }
             }
 
+            /// <summary>The assembly that declares an action's method; null for a built-in action.</summary>
+            /// <param name="action">The action, as the registry described it.</param>
+            /// <returns>The assembly, or null.</returns>
+            public Assembly? DeclaringAssembly(ActionDescriptor action)
+            {
+                return _registry.MethodOf(action)?.Method.DeclaringType?.Assembly;
+            }
+
+            /// <summary>
+            ///     Whether an action answers a pre-serialized JSON document as its bytes: its declared
+            ///     result has the document's shape and a platform assembly declares its method.
+            /// </summary>
+            /// <param name="action">The action.</param>
+            /// <returns>True when its result is written as its bytes.</returns>
+            public bool PreSerialized(ActionDescriptor action)
+            {
+                return ActionAnswers.IsPreSerialized(action.ResultType) && DeclaringAssembly(action) is Assembly declaring && ActionAnswers.IsPlatform(declaring);
+            }
+
             /// <summary>The delegate a route takes, with what it is mapped under.</summary>
             /// <param name="route">The route.</param>
             /// <returns>The delegate, null when nothing serves the route; its kind; and its segment.</returns>
@@ -297,10 +327,10 @@ namespace Tellma.Core.AspNetCore.Api
 
                     return (owner, action) switch
                     {
-                        ({ Stack: StackDescriptor stack }, EntityActionDescriptor entity) => (EntityAction(stack, entity), ProjectedRouteKind.Stack, stack.ResourceSegment),
-                        ({ Stack: StackDescriptor stack }, ApiActionDescriptor api) => (ApiAction(api), ProjectedRouteKind.Stack, stack.ResourceSegment),
-                        ({ Child: ChildQueryDescriptor child }, ApiActionDescriptor api) => (ApiAction(api), ProjectedRouteKind.ChildQuery, child.ResourceSegment),
-                        ({ Service: ApiServiceDescriptor service }, ApiActionDescriptor api) => (ApiAction(api), ProjectedRouteKind.Service, service.Route),
+                        ({ Stack: StackDescriptor stack }, EntityActionDescriptor entity) => (EntityAction(stack, entity, PreSerialized(entity)), ProjectedRouteKind.Stack, stack.ResourceSegment),
+                        ({ Stack: StackDescriptor stack }, ApiActionDescriptor api) => (ApiAction(api, PreSerialized(api)), ProjectedRouteKind.Stack, stack.ResourceSegment),
+                        ({ Child: ChildQueryDescriptor child }, ApiActionDescriptor api) => (ApiAction(api, PreSerialized(api)), ProjectedRouteKind.ChildQuery, child.ResourceSegment),
+                        ({ Service: ApiServiceDescriptor service }, ApiActionDescriptor api) => (ApiAction(api, PreSerialized(api)), ProjectedRouteKind.Service, service.Route),
                         _ => (null, ProjectedRouteKind.Stack, string.Empty),
                     };
                 }
@@ -341,11 +371,12 @@ namespace Tellma.Core.AspNetCore.Api
             /// <summary>An entity action's delegate: its body follows its result, its target and its arguments.</summary>
             /// <param name="stack">The stack.</param>
             /// <param name="action">The action.</param>
+            /// <param name="preSerialized">Whether the action answers a pre-serialized JSON document as its bytes.</param>
             /// <returns>The delegate.</returns>
-            private static Delegate EntityAction(StackDescriptor stack, EntityActionDescriptor action)
+            private static Delegate EntityAction(StackDescriptor stack, EntityActionDescriptor action, bool preSerialized)
             {
                 Type closed = typeof(EntityActionEndpoints<,>).MakeGenericType(stack.EntityType, stack.KeyType);
-                object target = Activator.CreateInstance(closed, action)!;
+                object target = Activator.CreateInstance(closed, action, preSerialized)!;
                 bool entities = action.ResultType == typeof(EntitiesResult<>).MakeGenericType(stack.EntityType);
                 Type? arguments = action.ArgumentsType;
 
@@ -364,10 +395,11 @@ namespace Tellma.Core.AspNetCore.Api
 
             /// <summary>An API action's delegate: its request type, or no body.</summary>
             /// <param name="action">The action.</param>
+            /// <param name="preSerialized">Whether the action answers a pre-serialized JSON document as its bytes.</param>
             /// <returns>The delegate.</returns>
-            private static Delegate ApiAction(ApiActionDescriptor action)
+            private static Delegate ApiAction(ApiActionDescriptor action, bool preSerialized)
             {
-                ApiActionEndpoint target = new(action);
+                ApiActionEndpoint target = new(action, preSerialized);
                 MethodInfo method = action.RequestType is Type request
                     ? MethodOf(typeof(ApiActionEndpoint), nameof(ApiActionEndpoint.InvokeAsync)).MakeGenericMethod(request)
                     : MethodOf(typeof(ApiActionEndpoint), nameof(ApiActionEndpoint.InvokeWithoutBodyAsync));

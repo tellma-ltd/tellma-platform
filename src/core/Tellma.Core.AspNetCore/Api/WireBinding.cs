@@ -4,11 +4,10 @@
 // LICENSE file in the root directory of this source tree.
 
 using Tellma.Core.Abstractions.Crud;
-using Tellma.Core.Abstractions.Tenancy;
 
 namespace Tellma.Core.AspNetCore.Api
 {
-    /// <summary>What every projected endpoint does around its service call.</summary>
+    /// <summary>How a projected endpoint turns a request body into its service call's inputs.</summary>
     internal static class WireBinding
     {
         /// <summary>The details a request's <c>include</c> names.</summary>
@@ -17,29 +16,6 @@ namespace Tellma.Core.AspNetCore.Api
         public static DetailsRequest Details(IReadOnlyList<string>? include)
         {
             return include is { Count: > 0 } ? new DetailsRequest { Include = include } : DetailsRequest.None;
-        }
-
-        /// <summary>
-        ///     Runs a service call, then re-applies the request's cultures, whether the call answered
-        ///     or threw: a call that re-composed the request context cannot change its caller's
-        ///     cultures from inside, and the answer, a problem included, is written in them.
-        /// </summary>
-        /// <typeparam name="TResult">The call's result type.</typeparam>
-        /// <param name="context">The request's context.</param>
-        /// <param name="call">The service call.</param>
-        /// <returns>The call's result.</returns>
-        public static async Task<TResult> SettledAsync<TResult>(IRequestContextAccessor context, Func<Task<TResult>> call)
-        {
-            ArgumentNullException.ThrowIfNull(context);
-            ArgumentNullException.ThrowIfNull(call);
-            try
-            {
-                return await call().ConfigureAwait(false);
-            }
-            finally
-            {
-                context.Current.ApplyCultures();
-            }
         }
     }
 }

@@ -11,7 +11,6 @@ using Tellma.Core.Abstractions.Crud;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Entities;
 using Tellma.Core.Abstractions.Errors;
-using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.AspNetCore.Hosting;
 
 namespace Tellma.Core.AspNetCore.Api
@@ -37,70 +36,62 @@ namespace Tellma.Core.AspNetCore.Api
         /// <summary>The stack's <c>query</c>: one page of rows.</summary>
         /// <param name="request">The query.</param>
         /// <param name="service">The stack's service.</param>
-        /// <param name="context">The request's context.</param>
         /// <param name="cancellationToken">The request's cancellation.</param>
         /// <returns>The page.</returns>
         public static Task<RowPage> QueryAsync(
             [FromBody] QueryRequest request,
             [FromServices] EntityService<TEntity, TKey> service,
-            [FromServices] IRequestContextAccessor context,
             CancellationToken cancellationToken)
         {
             ArgumentNullException.ThrowIfNull(service);
-            return WireBinding.SettledAsync(context, () => service.QueryAsync(request, cancellationToken));
+            return service.QueryAsync(request, cancellationToken);
         }
 
         /// <summary>The stack's <c>get</c>: one entity by id, 404 when absent or invisible.</summary>
         /// <param name="request">The id and the extras.</param>
         /// <param name="service">The stack's service.</param>
-        /// <param name="context">The request's context.</param>
         /// <param name="cancellationToken">The request's cancellation.</param>
         /// <returns>The entity's envelope.</returns>
         public static Task<EntitiesResult<TEntity>> GetAsync(
             [FromBody] GetRequest request,
             [FromServices] EntityService<TEntity, TKey> service,
-            [FromServices] IRequestContextAccessor context,
             CancellationToken cancellationToken)
         {
             ArgumentNullException.ThrowIfNull(request);
             ArgumentNullException.ThrowIfNull(service);
             TKey id = WireIds.ToKey<TKey>(request.Id, IdPath);
-            return WireBinding.SettledAsync(context, () => service.GetByIdAsync(id, WireBinding.Details(request.Include), cancellationToken));
+            return service.GetByIdAsync(id, WireBinding.Details(request.Include), cancellationToken);
         }
 
         /// <summary>The stack's <c>get-by-ids</c>: the entities found, in the requested order.</summary>
         /// <param name="request">The ids and the extras.</param>
         /// <param name="service">The stack's service.</param>
-        /// <param name="context">The request's context.</param>
         /// <param name="cancellationToken">The request's cancellation.</param>
         /// <returns>The entities' envelope.</returns>
         public static Task<EntitiesResult<TEntity>> GetByIdsAsync(
             [FromBody] GetByIdsRequest request,
             [FromServices] EntityService<TEntity, TKey> service,
-            [FromServices] IRequestContextAccessor context,
             CancellationToken cancellationToken)
         {
             ArgumentNullException.ThrowIfNull(request);
             ArgumentNullException.ThrowIfNull(service);
             IReadOnlyList<TKey> ids = WireIds.ToKeys<TKey>(request.Ids, IdsPath);
-            return WireBinding.SettledAsync(context, () => service.GetByIdsAsync(ids, WireBinding.Details(request.Include), cancellationToken));
+            return service.GetByIdsAsync(ids, WireBinding.Details(request.Include), cancellationToken);
         }
 
         /// <summary>The stack's <c>all</c>: every entity of a cacheable stack, from the cache.</summary>
         /// <param name="request">The extras.</param>
         /// <param name="service">The stack's service.</param>
-        /// <param name="context">The request's context.</param>
         /// <param name="cancellationToken">The request's cancellation.</param>
         /// <returns>The entities' envelope.</returns>
         public static Task<EntitiesResult<TEntity>> AllAsync(
             [FromBody] AllRequest request,
             [FromServices] EntityService<TEntity, TKey> service,
-            [FromServices] IRequestContextAccessor context,
             CancellationToken cancellationToken)
         {
             ArgumentNullException.ThrowIfNull(request);
             ArgumentNullException.ThrowIfNull(service);
-            return WireBinding.SettledAsync(context, () => service.GetAllCachedAsync(WireBinding.Details(request.Include), cancellationToken));
+            return service.GetAllCachedAsync(WireBinding.Details(request.Include), cancellationToken);
         }
 
         /// <summary>
@@ -111,7 +102,6 @@ namespace Tellma.Core.AspNetCore.Api
         /// <param name="request">The entities and the save's options.</param>
         /// <param name="service">The stack's service.</param>
         /// <param name="api">The web API's options.</param>
-        /// <param name="context">The request's context.</param>
         /// <param name="cancellationToken">The request's cancellation.</param>
         /// <returns>The saved entities' envelope.</returns>
         /// <exception cref="LimitExceededException">The request carries more entities than one web save takes.</exception>
@@ -119,7 +109,6 @@ namespace Tellma.Core.AspNetCore.Api
             [FromBody] SaveRequest<TEntity> request,
             [FromServices] EntityService<TEntity, TKey> service,
             [FromServices] IOptions<ApiOptions> api,
-            [FromServices] IRequestContextAccessor context,
             CancellationToken cancellationToken)
         {
             ArgumentNullException.ThrowIfNull(request);
@@ -141,19 +130,17 @@ namespace Tellma.Core.AspNetCore.Api
                 Concurrency = request.Concurrency,
                 Source = SaveSource.Web,
             };
-            return WireBinding.SettledAsync(context, () => service.SaveAsync(request.Entities, options, cancellationToken));
+            return service.SaveAsync(request.Entities, options, cancellationToken);
         }
 
         /// <summary>The stack's <c>delete</c>: the entities with the ids, deleted.</summary>
         /// <param name="request">The ids.</param>
         /// <param name="service">The stack's service.</param>
-        /// <param name="context">The request's context.</param>
         /// <param name="cancellationToken">The request's cancellation.</param>
         /// <returns>How many rows were deleted.</returns>
         public static Task<AffectedResult> DeleteAsync(
             [FromBody] IdsRequest request,
             [FromServices] EntityService<TEntity, TKey> service,
-            [FromServices] IRequestContextAccessor context,
             CancellationToken cancellationToken)
         {
             ArgumentNullException.ThrowIfNull(request);
@@ -161,23 +148,21 @@ namespace Tellma.Core.AspNetCore.Api
 
             // The web surface carries no stamps on a delete: it is a command over ids.
             IReadOnlyList<TKey> ids = WireIds.ToKeys<TKey>(request.Ids, IdsPath);
-            return WireBinding.SettledAsync(context, () => service.DeleteByIdsAsync(ids, expectedStamps: null, cancellationToken));
+            return service.DeleteByIdsAsync(ids, expectedStamps: null, cancellationToken);
         }
 
         /// <summary>The stack's <c>delete-by-query</c>: the rows a filter matches, deleted when they are as many as expected.</summary>
         /// <param name="request">The filter and the expected count.</param>
         /// <param name="service">The stack's service.</param>
-        /// <param name="context">The request's context.</param>
         /// <param name="cancellationToken">The request's cancellation.</param>
         /// <returns>How many rows were deleted.</returns>
         public static Task<AffectedResult> DeleteByQueryAsync(
             [FromBody] DeleteByQueryRequest request,
             [FromServices] EntityService<TEntity, TKey> service,
-            [FromServices] IRequestContextAccessor context,
             CancellationToken cancellationToken)
         {
             ArgumentNullException.ThrowIfNull(service);
-            return WireBinding.SettledAsync(context, () => service.DeleteByQueryAsync(request, cancellationToken));
+            return service.DeleteByQueryAsync(request, cancellationToken);
         }
     }
 }

@@ -6,7 +6,6 @@
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Tellma.Core.Abstractions.Crud;
-using Tellma.Core.Abstractions.Tenancy;
 
 namespace Tellma.Core.AspNetCore.Api
 {
@@ -17,51 +16,50 @@ namespace Tellma.Core.AspNetCore.Api
 
     /// <summary>The web endpoint of one API action, on a stack, a child query surface or a routed service.</summary>
     /// <param name="action">The action, as the registry described it.</param>
-    internal sealed class ApiActionEndpoint(ApiActionDescriptor action)
+    /// <param name="preSerialized">Whether the action is a platform action whose result is a pre-serialized JSON document, written as its bytes.</param>
+    internal sealed class ApiActionEndpoint(ApiActionDescriptor action, bool preSerialized)
     {
         /// <summary>The action, as the registry described it.</summary>
         public ApiActionDescriptor Action { get; } = action ?? throw new ArgumentNullException(nameof(action));
+
+        /// <summary>Whether the action's result is a pre-serialized JSON document, written as its bytes.</summary>
+        public bool PreSerialized { get; } = preSerialized;
 
         /// <summary>An action whose method takes a body.</summary>
         /// <typeparam name="TRequest">The body's type.</typeparam>
         /// <param name="request">The body.</param>
         /// <param name="invoker">The action invoker.</param>
-        /// <param name="context">The request's context.</param>
         /// <param name="cancellationToken">The request's cancellation.</param>
         /// <returns>The action's result, answered under its declared type.</returns>
         public Task<IResult> InvokeAsync<TRequest>(
             [FromBody] TRequest request,
             [FromServices] IApiActionInvoker invoker,
-            [FromServices] IRequestContextAccessor context,
             CancellationToken cancellationToken)
         {
-            return Invoke(request, invoker, context, cancellationToken);
+            return Invoke(request, invoker, cancellationToken);
         }
 
         /// <summary>An action whose method takes no body.</summary>
         /// <param name="invoker">The action invoker.</param>
-        /// <param name="context">The request's context.</param>
         /// <param name="cancellationToken">The request's cancellation.</param>
         /// <returns>The action's result, answered under its declared type.</returns>
         public Task<IResult> InvokeWithoutBodyAsync(
             [FromServices] IApiActionInvoker invoker,
-            [FromServices] IRequestContextAccessor context,
             CancellationToken cancellationToken)
         {
-            return Invoke(body: null, invoker, context, cancellationToken);
+            return Invoke(body: null, invoker, cancellationToken);
         }
 
         /// <summary>Invokes the action and answers its result.</summary>
         /// <param name="body">The body; null for a method that takes none.</param>
         /// <param name="invoker">The action invoker.</param>
-        /// <param name="context">The request's context.</param>
         /// <param name="cancellationToken">The request's cancellation.</param>
         /// <returns>The action's result, answered under its declared type.</returns>
-        private async Task<IResult> Invoke(object? body, IApiActionInvoker invoker, IRequestContextAccessor context, CancellationToken cancellationToken)
+        private async Task<IResult> Invoke(object? body, IApiActionInvoker invoker, CancellationToken cancellationToken)
         {
             ArgumentNullException.ThrowIfNull(invoker);
-            object? result = await WireBinding.SettledAsync(context, () => invoker.InvokeAsync(Action, body, cancellationToken)).ConfigureAwait(false);
-            return ActionAnswers.Of(result, Action.ResultType);
+            object? result = await invoker.InvokeAsync(Action, body, cancellationToken).ConfigureAwait(false);
+            return ActionAnswers.Of(result, Action.ResultType, PreSerialized);
         }
     }
 }

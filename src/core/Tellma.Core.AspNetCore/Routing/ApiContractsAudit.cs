@@ -14,7 +14,6 @@ using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Excel;
 using Tellma.Core.Api;
-using Tellma.Core.AspNetCore.Api;
 using Tellma.Core.Composition;
 using Tellma.Core.Crud;
 
@@ -32,6 +31,9 @@ namespace Tellma.Core.AspNetCore.Routing
     /// </summary>
     internal static class ApiContractsAudit
     {
+        /// <summary>The name System.Text.Json gives its converter for a type it refuses to read or write.</summary>
+        private const string UnsupportedConverterName = "UnsupportedTypeConverter";
+
         /// <summary>Audits the composed web surface's contracts.</summary>
         /// <param name="services">The application's services.</param>
         /// <returns>One problem per unresolvable type and per ignored writable property.</returns>
@@ -174,13 +176,11 @@ namespace Tellma.Core.AspNetCore.Routing
         /// <param name="problems">Receives the problems.</param>
         private static void Resolve(Type type, JsonSerializerOptions options, HashSet<Type> resolved, List<CompositionProblem> problems)
         {
-            // A route without a body, a streamed workbook, a pre-serialized document and an untyped value
-            // have no contract to resolve.
+            // A route without a body, a streamed workbook and an untyped value have no contract to resolve.
             Stack<Type> pending = new([type]);
             while (pending.TryPop(out Type? current))
             {
-                if (current == typeof(void) || current == typeof(object) || current == typeof(ExportOutcome) || ActionAnswers.IsPreSerialized(current)
-                    || current.IsGenericParameter || !resolved.Add(current))
+                if (current == typeof(void) || current == typeof(object) || current == typeof(ExportOutcome) || current.IsGenericParameter || !resolved.Add(current))
                 {
                     continue;
                 }
@@ -199,12 +199,28 @@ namespace Tellma.Core.AspNetCore.Routing
                     continue;
                 }
 
+                // --- A contract that resolves but writes nothing: System.Text.Json refuses the value only when it meets one ---
+                if (IsUnsupported(current, info))
+                {
+                    problems.Add(new CompositionProblem(
+                        TellmaEndpointAudit.CheckName,
+                        $"The web surface's type {TypeDisplay.Short(current)} has no JSON contract under the host's JSON options: System.Text.Json reads and writes no value of it, so the first request that carries one fails.",
+                        "Replace the member with a serializable type (a jagged array for a multi-dimensional one, a name for a type), or register a converter for it."));
+                    continue;
+                }
+
                 // --- What the contract serializes in turn: its members, its elements and its keys ---
                 switch (info.Kind)
                 {
                     case JsonTypeInfoKind.Object:
                         foreach (JsonPropertyInfo property in info.Properties)
                         {
+                            // An ignored member is never read or written, so its type needs no contract.
+                            if (property.Get is null && property.Set is null)
+                            {
+                                continue;
+                            }
+
                             pending.Push(property.PropertyType);
                         }
 
@@ -230,6 +246,31 @@ namespace Tellma.Core.AspNetCore.Routing
                         break;
                 }
             }
+        }
+
+        /// <summary>
+        ///     Whether a resolved contract is System.Text.Json's refusal rather than a converter: the
+        ///     serializer's own unsupported-type converter, or its built-in converter for a kind it
+        ///     never writes (a delegate, a <see cref="Type" />, a pointer, a native-sized integer, an
+        ///     array of rank above one, a by-ref-like type).
+        /// </summary>
+        /// <param name="type">The type.</param>
+        /// <param name="info">Its resolved contract.</param>
+        /// <returns>True when no value of the type can be written.</returns>
+        private static bool IsUnsupported(Type type, JsonTypeInfo info)
+        {
+            // A converter the host registered owns its type, whatever the kind.
+            Type converter = info.Converter.GetType();
+            return info.Kind == JsonTypeInfoKind.None
+                && converter.Assembly == typeof(JsonSerializer).Assembly
+                && (converter.Name.StartsWith(UnsupportedConverterName, StringComparison.Ordinal)
+                    || typeof(Delegate).IsAssignableFrom(type)
+                    || typeof(Type).IsAssignableFrom(type)
+                    || type.IsPointer
+                    || type == typeof(IntPtr)
+                    || type == typeof(UIntPtr)
+                    || (type.IsArray && type.GetArrayRank() > 1)
+                    || type.IsByRefLike);
         }
     }
 }

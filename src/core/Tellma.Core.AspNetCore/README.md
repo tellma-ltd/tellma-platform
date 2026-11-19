@@ -140,9 +140,8 @@ securable, or member access for a member-only action), the route's contract fing
 `tellma-long` timeout policy for a long action, no activity stamp for the client's polling routes,
 the session's step-up bar for a sensitive securable, and the problems it may answer.
 
-The tenant filter applies the request's cultures before the handler runs, and a projected endpoint
-applies them again after its service call. Every `Web` endpoint runs one more filter after the
-tenant's: it seeds the request's confirmations from `Tellma-Confirm` (at most 16 keys of 1 to 100
+The tenant filter applies the request's cultures before the handler runs. Every `Web` endpoint
+runs one more filter after the tenant's: it seeds the request's confirmations from `Tellma-Confirm` (at most 16 keys of 1 to 100
 visible ASCII characters each; more, or another character, answers `400 bad-request`; undeclared
 keys are dropped). A save holding more entities than the lower of `Tellma:Api:MaxEntitiesPerSave`
 and the stack's own limit answers `413 limit-exceeded` before the service runs. A JSON body above
@@ -175,9 +174,13 @@ reached through without the platform's controls:
 - two tenant endpoints on one method and route.
 
 It also fails startup for a distribution route, or a stack's or child query surface's resource
-segment, that takes a word the platform or the SPA owns under `/{tenantId}`. In the realised gate it
-fails for a type the web API reads or writes that has no JSON contract under the host's JSON
-options, for an editable or write-once mapped property that is `[JsonIgnore]`, and for any endpoint whose
+segment, that takes a word the platform or the SPA owns under `/{tenantId}`, and for an action
+outside the platform's own assemblies (`Tellma.Core` and `Tellma.Core.*`) that answers
+`(byte[] Json, string WireTag)`: only a platform action's bytes are written as they are, as JSON. In
+the realised gate it fails for a type the web API reads or writes that has no JSON contract under
+the host's JSON options, or whose contract writes no value (a delegate, a `Type`, a native-sized
+integer, a multi-dimensional array; a member JSON ignores is never judged), for an editable or
+write-once mapped property that is `[JsonIgnore]`, and for any endpoint whose
 `RequireSecurable(resource, action)` names a pair no feature registers in the securable registry
 (compared ignoring case), or names it only through a renamed resource's alias; `MapTellma`'s own
 run leaves the pairs to the gate. When the securable registry did not compose, the gate's audit

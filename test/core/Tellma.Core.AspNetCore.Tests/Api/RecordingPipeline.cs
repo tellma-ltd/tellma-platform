@@ -34,6 +34,10 @@ namespace Tellma.Core.AspNetCore.Tests.Api
     internal sealed class PipelineLog
     {
         private readonly ConcurrentQueue<PipelineCall> _calls = new();
+        private readonly ConcurrentQueue<ObservedStream> _workbooks = new();
+
+        /// <summary>The non-ASCII file name of the workbook the inbox's export answers.</summary>
+        public const string WorkbookName = "Résumé-2026.xlsx";
 
         /// <summary>The calls, in arrival order.</summary>
         public IReadOnlyList<PipelineCall> Calls => [.. _calls];
@@ -44,6 +48,12 @@ namespace Tellma.Core.AspNetCore.Tests.Api
         /// </summary>
         public static ReadOnlySpan<byte> Document => /*lang=json,strict*/ """{"Unread":3}"""u8;
 
+        /// <summary>The bytes of the workbook the inbox's export answers.</summary>
+        public static ReadOnlySpan<byte> WorkbookBytes => "PK workbook bytes"u8;
+
+        /// <summary>The workbook streams the export answered, in order.</summary>
+        public IReadOnlyList<ObservedStream> Workbooks => [.. _workbooks];
+
         /// <summary>Whether the stand-ins skip the witness, as a handler that evaluated nothing would.</summary>
         public bool SkipWitness { get; set; }
 
@@ -52,6 +62,15 @@ namespace Tellma.Core.AspNetCore.Tests.Api
         public void Add(PipelineCall call)
         {
             _calls.Enqueue(call);
+        }
+
+        /// <summary>A new workbook over <see cref="WorkbookBytes" />, whose stream the log keeps to observe its disposal.</summary>
+        /// <returns>The workbook.</returns>
+        public ExportOutcome Workbook()
+        {
+            ObservedStream stream = new(WorkbookBytes.ToArray());
+            _workbooks.Enqueue(stream);
+            return new ExportOutcome(stream, WorkbookName, Rows: 1);
         }
 
         /// <summary>The canned result of an operation answering its own result.</summary>
@@ -237,7 +256,9 @@ namespace Tellma.Core.AspNetCore.Tests.Api
 
             // A member-only action's witness is the connection's, which already ran.
             RecordingCalls.Record(services, "api:" + action.Name, action.Securable?.Resource, action.Securable?.Action, [], body, null);
-            return Task.FromResult(PipelineLog.Result(action.ResultType));
+            return Task.FromResult(action.ResultType == typeof(ExportOutcome)
+                ? services.GetRequiredService<PipelineLog>().Workbook()
+                : PipelineLog.Result(action.ResultType));
         }
     }
 
@@ -256,6 +277,23 @@ namespace Tellma.Core.AspNetCore.Tests.Api
         public IExcelRowSource ExcelRowSource(string resource, ExportSource source)
         {
             throw new NotSupportedException("The projection suite exports nothing.");
+        }
+    }
+
+    /// <summary>A read-only stream over fixed bytes that signals its disposal.</summary>
+    /// <param name="content">The bytes.</param>
+    internal sealed class ObservedStream(byte[] content) : MemoryStream(content, writable: false)
+    {
+        private readonly TaskCompletionSource _disposed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        /// <summary>Completes once the stream is disposed.</summary>
+        public Task Disposed => _disposed.Task;
+
+        /// <inheritdoc />
+        protected override void Dispose(bool disposing)
+        {
+            _ = _disposed.TrySetResult();
+            base.Dispose(disposing);
         }
     }
 
