@@ -18,7 +18,9 @@ namespace Tellma.Core.Jobs
     // buffered one and a null keeping it, and makes its checkpoint the item's at once; Flush runs a
     // renewal now, carrying every buffered row of the tenant's in-flight jobs on this instance;
     // Append writes a fenced checkpoint inside the caller's transaction, whose checkpoint becomes
-    // the item's only once that transaction committed, with job.changed riding the same commit.
+    // the item's only once that transaction committed, with job.changed riding the same commit. The
+    // completion batch is refused: its completion statement runs first and releases the lease, so a
+    // fenced append behind it could only fail, and the completion records the item's checkpoint itself.
     /// <summary>The progress of one claimed item, as its handler reports it.</summary>
     internal sealed class JobItemProgress : IJobProgress
     {
@@ -27,6 +29,9 @@ namespace Tellma.Core.Jobs
 
         /// <summary>The item's slot, which holds its buffer.</summary>
         private readonly JobSlot _slot;
+
+        /// <summary>The batch that completes the item, which an append refuses.</summary>
+        private readonly IDataBatch _completion;
 
         /// <summary>Sets the item's checkpoint.</summary>
         private readonly Action<string> _setState;
@@ -46,16 +51,18 @@ namespace Tellma.Core.Jobs
         /// <summary>Creates the progress of one item.</summary>
         /// <param name="lease">The claim's lease.</param>
         /// <param name="slot">The item's slot.</param>
+        /// <param name="completion">The batch that completes the item, which an append refuses.</param>
         /// <param name="setState">Sets the item's checkpoint.</param>
         /// <param name="renewal">Runs the renewal a flush asks for.</param>
         /// <param name="publisher">The job scope's publisher.</param>
         /// <param name="text">Renders a progress message for the log.</param>
         /// <param name="logger">The job machinery's logger.</param>
         public JobItemProgress(
-            JobLease lease, JobSlot slot, Action<string> setState, JobRenewal renewal, IClientEventPublisher publisher, JobLogText text, ILogger logger)
+            JobLease lease, JobSlot slot, IDataBatch completion, Action<string> setState, JobRenewal renewal, IClientEventPublisher publisher, JobLogText text, ILogger logger)
         {
             ArgumentNullException.ThrowIfNull(lease);
             ArgumentNullException.ThrowIfNull(slot);
+            ArgumentNullException.ThrowIfNull(completion);
             ArgumentNullException.ThrowIfNull(setState);
             ArgumentNullException.ThrowIfNull(renewal);
             ArgumentNullException.ThrowIfNull(publisher);
@@ -63,6 +70,7 @@ namespace Tellma.Core.Jobs
             ArgumentNullException.ThrowIfNull(logger);
             _lease = lease;
             _slot = slot;
+            _completion = completion;
             _setState = setState;
             _renewal = renewal;
             _publisher = publisher;
@@ -99,8 +107,9 @@ namespace Tellma.Core.Jobs
         /// <inheritdoc />
         /// <exception cref="ArgumentOutOfRangeException">The percent exceeds 100.</exception>
         /// <exception cref="ArgumentException">
-        ///     The batch commits each statement on its own, so the checkpoint could not commit with the
-        ///     caller's work; or the message or checkpoint does not fit the job table.
+        ///     The batch is the one that completes the item; or it commits each statement on its own, so
+        ///     the checkpoint could not commit with the caller's work; or the message or checkpoint does
+        ///     not fit the job table.
         /// </exception>
         public void Append(IDataBatch batch, byte? percent, JobMessage? message, object? state)
         {
@@ -111,6 +120,14 @@ namespace Tellma.Core.Jobs
             {
                 recording.Record(inner => Append(inner, percent, message, state));
                 return;
+            }
+
+            // --- The completion batch releases the lease before anything behind it runs, so it is refused ---
+            if (ReferenceEquals(batch, _completion))
+            {
+                throw new ArgumentException(
+                    "The checkpoint cannot be appended to the batch that completes the job: its completion releases the lease first and records the item's checkpoint itself. Report the checkpoint, or append it to a batch of the handler's own.",
+                    nameof(batch));
             }
 
             DataBatch data = batch as DataBatch

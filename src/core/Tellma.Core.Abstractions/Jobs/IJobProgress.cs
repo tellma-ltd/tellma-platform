@@ -49,6 +49,8 @@ namespace Tellma.Core.Abstractions.Jobs
         ///     Appends the item's progress and checkpoint to a batch the handler owns, such as one chunk's
         ///     persist batch, fenced by the job's lease: it commits with the chunk or not at all, and a
         ///     lost lease rolls the chunk back. The state becomes current only once that batch commits.
+        ///     The invocation's own <see cref="JobBatch{TItem}.Batch" /> is refused: the job's completion
+        ///     runs first in it and records the checkpoint itself, so a final checkpoint is reported instead.
         /// </summary>
         /// <param name="batch">The handler's batch; it must still be composing.</param>
         /// <param name="percent">The progress in percent; null to keep the current one.</param>

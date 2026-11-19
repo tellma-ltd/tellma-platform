@@ -4,6 +4,7 @@
 // LICENSE file in the root directory of this source tree.
 
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Testing;
 using System.Diagnostics;
 using System.Globalization;
 using System.Text;
@@ -26,9 +27,9 @@ namespace Tellma.Core.IntegrationTests.Jobs
     ///     Jobs run end to end against a fixture database, one poll at a time through the test-only
     ///     poll driver: the outcomes each handler ending records, the completion transaction that
     ///     carries the handler's statements and enlisted writes with the outcomes or loses them all,
-    ///     the completions no handler runs, the checkpoints, the warnings a job waits on, and the
-    ///     notices and change events that follow a commit. The tests run once with read-committed
-    ///     snapshot on and once with it off.
+    ///     the completions no handler runs, the stops, the verdicts a flush's renewal reaches, the
+    ///     checkpoints, the warnings a job waits on, and the notices and change events that follow a
+    ///     commit. The tests run once with read-committed snapshot on and once with it off.
     /// </summary>
     /// <param name="fixture">The class's database, reset before each test.</param>
     public abstract partial class JobRunTests(JobRunDatabase fixture) : IAsyncLifetime
@@ -164,6 +165,10 @@ namespace Tellma.Core.IntegrationTests.Jobs
             Assert.Equal((1, JobErrorCodes.Internal, traceId), (row.Attempts, row.ErrorCode, row.ErrorTraceId));
             Assert.Null(row.CompletedAt);
             Assert.Empty(fixture.Notices.Raised);
+
+            // --- The failure's log record carries the trace the row names ---
+            FakeLogRecord failed = Assert.Single(fixture.Log.GetSnapshot(), static record => record.Id.Name == "JobHandlerFailed");
+            Assert.Equal(row.ErrorTraceId, TraceIdOf(failed));
         }
 
         // --- The completions no handler runs ---
@@ -199,6 +204,22 @@ namespace Tellma.Core.IntegrationTests.Jobs
             Assert.Equal(
                 [exhausted, exhaustedWithError, inactive],
                 fixture.Notices.Raised.Where(static notice => notice.Type == JobNotices.FailedType).Select(static notice => (int)notice.TargetId!.Value).Order());
+        }
+
+        [Fact]
+        public async Task A_claim_reports_its_jobs_in_claim_order_whichever_completion_ended_them()
+        {
+            // Two run-as users interleaved, and a row past its last attempt between them.
+            int first = await fixture.InsertJobAsync(JobRunKeys.Probe, runAs: ActiveUserId);
+            int second = await fixture.InsertJobAsync(JobRunKeys.Probe, runAs: AdministratorId);
+            int exhausted = await fixture.InsertJobAsync(JobRunKeys.Probe, attempts: 3);
+            int fourth = await fixture.InsertJobAsync(JobRunKeys.Probe, runAs: ActiveUserId);
+
+            IReadOnlyList<PolledJob> polled = await PollAsync(JobRunKeys.Probe);
+
+            Assert.Equal(
+                [(first, JobStatus.Succeeded), (second, JobStatus.Succeeded), (exhausted, JobStatus.Failed), (fourth, JobStatus.Succeeded)],
+                polled.Select(static job => (job.JobId, job.Status)));
         }
 
         // --- The completion transaction ---
@@ -330,6 +351,53 @@ namespace Tellma.Core.IntegrationTests.Jobs
             Assert.Equal(JobStatus.Succeeded, polled.Status);
         }
 
+        [Fact]
+        public async Task A_run_as_user_deactivated_while_the_handler_runs_fails_the_jobs_as_inactive_without_the_work_and_keeps_the_checkpoint()
+        {
+            int id = await fixture.InsertJobAsync(JobRunKeys.Probe, runAs: DeactivatedUserId);
+            fixture.Script.Probe = async (batch, _) =>
+            {
+                JobItem<Job> item = batch.Single;
+                item.Progress.Report(30, null, new Checkpoint(3));
+                Note(batch.Batch, id, "probed");
+
+                // The user leaves the tenant while the handler runs; the completion's connect finds them inactive.
+                await SqlServerFixture.ExecuteAsync(fixture.ConnectionString, Invariant($"UPDATE [core].[Users] SET [IsActive] = 0 WHERE [Id] = {DeactivatedUserId};"));
+            };
+
+            PolledJob polled = Assert.Single(await PollAsync(JobRunKeys.Probe));
+
+            _ = Assert.Single(fixture.Script.Invocations);
+            Assert.Equal(new PolledJob(id, JobRunKeys.Probe, PolledJobEnd.Completed, JobStatus.Failed, JobErrorCodes.UserInactive), polled);
+            JobRow row = await fixture.JobAsync(id);
+            Assert.Equal((nameof(JobStatus.Failed), JobErrorCodes.UserInactive, /*lang=json,strict*/ """{"page":3}""", null), (row.Status, row.ErrorCode, row.StateJson, row.LeaseToken));
+            Assert.Empty(await fixture.RunLogAsync());
+            Assert.Equal(
+                [(JobNotices.FailedType, ActiveUserId)],
+                fixture.Notices.Raised.Select(static notice => (notice.Type, Assert.Single(notice.RecipientIds))));
+        }
+
+        [Fact]
+        public async Task A_handler_statement_failing_with_no_translation_retries_with_the_internal_code_and_writes_nothing()
+        {
+            int id = await fixture.InsertJobAsync(JobRunKeys.Probe);
+            fixture.Script.Probe = (batch, context) =>
+            {
+                Note(batch.Batch, id, "probed");
+                _ = batch.Batch.Sql($"DECLARE @zero int = 0, @broken int; SET @broken = 1 / @zero;", SqlOptions.None);
+                return Task.CompletedTask;
+            };
+
+            PolledJob polled = Assert.Single(await PollAsync(JobRunKeys.Probe));
+
+            // --- The work is gone, and the outcomes alone record a retry of the unexpected failure ---
+            Assert.Equal((PolledJobEnd.Completed, JobStatus.Pending, JobErrorCodes.Internal), (polled.End, polled.Status, polled.ErrorCode));
+            JobRow row = await fixture.JobAsync(id);
+            Assert.Equal((nameof(JobStatus.Pending), 1, JobErrorCodes.Internal, null), (row.Status, row.Attempts, row.ErrorCode, row.LeaseToken));
+            Assert.Empty(await fixture.RunLogAsync());
+            Assert.Contains(fixture.Log.GetSnapshot(), static record => record.Id.Name == "JobCompletionFailed");
+        }
+
         // --- Releases and stops ---
 
         [Fact]
@@ -368,6 +436,71 @@ namespace Tellma.Core.IntegrationTests.Jobs
             JobRow retried = await fixture.JobAsync(observed);
             Assert.Equal((1, /*lang=json,strict*/ """{"page":1}""", null), (retried.Attempts, retried.StateJson, retried.ErrorCode));
             Assert.Equal(0, (await fixture.JobAsync(untouched)).Attempts);
+        }
+
+        // --- Renewals ---
+
+        [Fact]
+        public async Task A_flush_that_finds_the_row_claimed_elsewhere_stops_the_item_and_the_scope_and_records_nothing()
+        {
+            int id = await fixture.InsertJobAsync(JobRunKeys.Probe);
+            (bool Cancelled, JobCancellationReason Reason)? seen = null;
+            Exception? scopeStatement = null;
+            fixture.Script.Probe = async (batch, context) =>
+            {
+                JobItem<Job> item = batch.Single;
+                Note(batch.Batch, id, "probed");
+
+                // Another instance takes the row once this one's lease lapsed; the flush's renewal finds it gone.
+                await SqlServerFixture.ExecuteAsync(fixture.ConnectionString, Invariant($"UPDATE [core].[Jobs] SET [LeaseToken] = NEWID() WHERE [Id] = {id};"));
+                await item.Progress.FlushAsync(Token);
+                seen = (item.CancellationToken.IsCancellationRequested, item.CancellationReason);
+
+                // The scope stops with the lease: its next statement is cancelled before it is sent.
+                IDataBatch chunk = context.Services.GetRequiredService<ITenantDatabase>().CreateBatch(BatchPurpose.Persist);
+                Note(chunk, id, "chunk");
+                scopeStatement = await Record.ExceptionAsync(() => chunk.ExecuteAsync(Token));
+            };
+
+            PolledJob polled = Assert.Single(await PollAsync(JobRunKeys.Probe));
+
+            Assert.Equal((true, JobCancellationReason.LeaseLost), seen);
+            _ = Assert.IsAssignableFrom<OperationCanceledException>(scopeStatement);
+            Assert.Equal(new PolledJob(id, JobRunKeys.Probe, PolledJobEnd.LostLease, null, null), polled);
+            JobRow row = await fixture.JobAsync(id);
+            Assert.Equal((nameof(JobStatus.Running), 1, null), (row.Status, row.Attempts, row.ErrorCode));
+            Assert.Empty(await fixture.RunLogAsync());
+            Assert.Empty(fixture.Events.Published);
+            Assert.Contains(fixture.Log.GetSnapshot(), static record => record.Id.Name == "JobLeaseLost");
+        }
+
+        [Fact]
+        public async Task A_flush_that_finds_a_cancel_requested_stops_the_item_alone_and_the_job_ends_cancelled()
+        {
+            int id = await fixture.InsertJobAsync(JobRunKeys.Probe);
+            (bool Cancelled, JobCancellationReason Reason)? seen = null;
+            fixture.Script.Probe = async (batch, context) =>
+            {
+                JobItem<Job> item = batch.Single;
+                await SqlServerFixture.ExecuteAsync(fixture.ConnectionString, Invariant($"UPDATE [core].[Jobs] SET [CancelRequestedAt] = SYSUTCDATETIME() WHERE [Id] = {id};"));
+                await item.Progress.FlushAsync(Token);
+                seen = (item.CancellationToken.IsCancellationRequested, item.CancellationReason);
+
+                // The scope still runs: the handler's own chunk commits before it honours the stop.
+                IDataBatch chunk = context.Services.GetRequiredService<ITenantDatabase>().CreateBatch(BatchPurpose.Persist);
+                Note(chunk, id, "chunk");
+                _ = await chunk.ExecuteAsync(Token);
+                item.CancellationToken.ThrowIfCancellationRequested();
+            };
+
+            PolledJob polled = Assert.Single(await PollAsync(JobRunKeys.Probe));
+
+            Assert.Equal((true, JobCancellationReason.CancelRequested), seen);
+            Assert.Equal(["chunk"], await fixture.RunLogAsync());
+            Assert.Equal((PolledJobEnd.Completed, JobStatus.Cancelled, JobErrorCodes.Cancelled), (polled.End, polled.Status, polled.ErrorCode));
+            JobRow row = await fixture.JobAsync(id);
+            Assert.Equal((nameof(JobStatus.Cancelled), null), (row.Status, row.LeaseToken));
+            Assert.Empty(fixture.Notices.Raised);
         }
 
         // --- Checkpoints ---
@@ -451,6 +584,32 @@ namespace Tellma.Core.IntegrationTests.Jobs
             Assert.Empty(await fixture.RunLogAsync());
             Assert.Empty(fixture.Events.Published);
             Assert.Null((await fixture.JobAsync(id)).StateJson);
+        }
+
+        [Fact]
+        public async Task A_checkpoint_appended_to_the_completion_batch_is_refused_and_a_reported_one_completes_with_the_job()
+        {
+            int id = await fixture.InsertJobAsync(JobRunKeys.Probe);
+            ArgumentException? refused = null;
+            fixture.Script.Probe = (batch, _) =>
+            {
+                JobItem<Job> item = batch.Single;
+                Note(batch.Batch, id, "probed");
+                refused = Assert.Throws<ArgumentException>(() => item.Progress.Append(batch.Batch, 100, null, new Checkpoint(4)));
+
+                // The final checkpoint is reported instead; the completion records it.
+                item.Progress.Report(100, null, new Checkpoint(4));
+                return Task.CompletedTask;
+            };
+
+            PolledJob polled = Assert.Single(await PollAsync(JobRunKeys.Probe));
+
+            Assert.NotNull(refused);
+            Assert.Equal("batch", refused.ParamName);
+            Assert.Equal(new PolledJob(id, JobRunKeys.Probe, PolledJobEnd.Completed, JobStatus.Succeeded, null), polled);
+            JobRow row = await fixture.JobAsync(id);
+            Assert.Equal((nameof(JobStatus.Succeeded), /*lang=json,strict*/ """{"page":4}"""), (row.Status, row.StateJson));
+            Assert.Equal(["probed"], await fixture.RunLogAsync());
         }
 
         // --- Warnings ---
@@ -687,6 +846,19 @@ namespace Tellma.Core.IntegrationTests.Jobs
                 Assert.Equal((JobNotices.ChangedEvent, ActiveUserId), (published.Name, Assert.Single(published.UserIds)));
                 return Assert.IsType<JobChangedPayload>(published.Payload).JobId;
             })];
+        }
+
+        /// <summary>The trace id a log record's scopes carry, as the logger factory adds it from the current activity.</summary>
+        /// <param name="record">The record.</param>
+        /// <returns>The trace id; null when the record was logged outside any activity.</returns>
+        private static string? TraceIdOf(FakeLogRecord record)
+        {
+            return record.Scopes
+                .OfType<IEnumerable<KeyValuePair<string, object?>>>()
+                .SelectMany(static scope => scope)
+                .Where(static pair => pair.Key == "TraceId")
+                .Select(static pair => pair.Value?.ToString())
+                .FirstOrDefault();
         }
 
         /// <summary>Formats a string with the invariant culture.</summary>

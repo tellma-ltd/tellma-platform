@@ -94,30 +94,17 @@ namespace Tellma.Core.Jobs
             BatchResult<IReadOnlyList<RenewedJob>> renewed = JobStatements.Renew(batch, tokens, rows);
             _ = await batch.ExecuteAsync(cancellationToken).ConfigureAwait(false);
 
-            // --- The verdicts: an absent row loses its claim's lease, a requested cancel stops its item.
-            // A row whose completion is being sent may already be done, so it is no longer judged ---
-            var extended = renewed.Value.ToDictionary(static row => row.Id);
-            foreach (JobLease lease in leases)
+            // --- The verdicts; each lease lost is logged with the jobs it held ---
+            foreach (JobLease lost in Judge(leases, renewed.Value))
             {
-                List<JobSlot> judged = [.. lease.Slots.Where(static slot => !slot.Completing)];
-                if (judged.Any(slot => !extended.TryGetValue(slot.JobId, out RenewedJob? row) || row.LeaseToken != lease.Token))
+                using (_logger.BeginScope(new JobLogScope(tenantId, userId: null, lost.Slots.Select(static slot => slot.JobId), originTraceParent: null)))
                 {
-                    lease.Lose();
-                    using (_logger.BeginScope(new JobLogScope(tenantId, userId: null, judged.Select(static slot => slot.JobId), originTraceParent: null)))
-                    {
-                        JobsLog.JobLeaseLost(_logger, lease.Handler.Key);
-                    }
-
-                    continue;
-                }
-
-                foreach (JobSlot slot in judged.Where(slot => extended[slot.JobId].CancelRequestedAt is not null))
-                {
-                    lease.RequestCancel(slot.JobId);
+                    JobsLog.JobLeaseLost(_logger, lost.Handler.Key);
                 }
             }
 
-            // --- The carried rows leave the buffer; their requesters learn of the change ---
+            // --- The carried rows leave the buffer, each only as far as the version it was taken at;
+            // their requesters learn of the change ---
             IClientEventPublisher publisher = scope.Services.GetRequiredService<IClientEventPublisher>();
             foreach ((JobSlot slot, long version) in carried)
             {
@@ -127,6 +114,39 @@ namespace Tellma.Core.Jobs
                     await publisher.PublishAsync(JobNotices.Changed(slot.JobId, requester)).ConfigureAwait(false);
                 }
             }
+        }
+
+        // Spec 0020 §5.2: a judged row the renewal did not return, or returned under another token,
+        // was lost by its claim, so the whole lease is lost; a returned row whose cancel was requested
+        // cancels its item alone. A row whose completion is being sent may already be done, so it is
+        // no longer judged.
+        /// <summary>Applies a renewal's verdicts to the leases it carried.</summary>
+        /// <param name="leases">The leases the renewal carried.</param>
+        /// <param name="renewed">The rows the renewal extended.</param>
+        /// <returns>The leases found lost.</returns>
+        internal static IReadOnlyList<JobLease> Judge(IReadOnlyList<JobLease> leases, IReadOnlyList<RenewedJob> renewed)
+        {
+            ArgumentNullException.ThrowIfNull(leases);
+            ArgumentNullException.ThrowIfNull(renewed);
+            var extended = renewed.ToDictionary(static row => row.Id);
+            List<JobLease> lost = [];
+            foreach (JobLease lease in leases)
+            {
+                List<JobSlot> judged = [.. lease.Slots.Where(static slot => !slot.Completing)];
+                if (judged.Any(slot => !extended.TryGetValue(slot.JobId, out RenewedJob? row) || row.LeaseToken != lease.Token))
+                {
+                    lease.Lose();
+                    lost.Add(lease);
+                    continue;
+                }
+
+                foreach (JobSlot slot in judged.Where(slot => extended[slot.JobId].CancelRequestedAt is not null))
+                {
+                    lease.RequestCancel(slot.JobId);
+                }
+            }
+
+            return lost;
         }
     }
 }

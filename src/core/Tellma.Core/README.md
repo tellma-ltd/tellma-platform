@@ -2095,7 +2095,9 @@ declared as its one write, so no caller authority refuses it:
   (`READPAST, UPDLOCK, ROWLOCK`, a seek of `IX_Jobs_Available`), counting an attempt, and returns
   every row. An entity-backed handler's entity rows ride the same round trip.
 - **The renewal** extends every lease of the tenant by token and writes the buffered progress; a
-  row it does not return lost its claim.
+  row it does not return, or returns under another token, lost its claim, and the whole lease is
+  lost. A returned row whose cancel was requested cancels its item alone. A row whose completion is
+  being sent is no longer judged, whichever path completes it.
 - **The append** writes a fenced checkpoint into a handler's own transaction.
 - **The completion** records each job's outcome under the claim's token.
 
@@ -2125,7 +2127,11 @@ under the token, rolling back whatever their transaction carries.
   cannot be recorded leaves the lease to lapse.
 - **Progress.** `IJobProgress.Report` buffers progress for the next renewal and makes the
   checkpoint current at once; `FlushAsync` runs that renewal now; `Append` writes a fenced
-  checkpoint that counts only once its batch committed.
+  checkpoint that counts only once its batch committed. `Append` refuses `JobBatch.Batch`: the
+  completion statement runs first in it and releases the lease, and records the reported
+  checkpoint itself.
+- **Order.** `RunAsync` returns how each claimed job ended in claim order, whichever completion
+  ended it.
 - **Notices.** A failure raises `core.job.failed` and a wait for confirmation
   `core.job.pending-confirmation`, to the requester or else the tenant's administrators. A handler's
   `NotifyOnSuccess` requests are raised only for a job that succeeded.

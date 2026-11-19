@@ -6,6 +6,7 @@
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Testing;
 using System.Collections.Concurrent;
 using System.Globalization;
@@ -37,6 +38,9 @@ namespace Tellma.Core.IntegrationTests.Jobs
 
         /// <summary>The tenant's administrator, who receives the notices of jobs without a requester.</summary>
         public const int AdministratorId = 111;
+
+        /// <summary>An active user a test deactivates while a job runs as them; active again after every reset.</summary>
+        public const int DeactivatedUserId = 121;
 
         /// <summary>A user who is no longer an active member.</summary>
         public const int InactiveUserId = 151;
@@ -110,6 +114,9 @@ namespace Tellma.Core.IntegrationTests.Jobs
                     _ = services.Replace(ServiceDescriptor.Scoped<IAdministratorDirectory>(static _ => new FixedAdministrators()));
                     _ = services.AddFakeLogging();
 
+                    // Each record carries the trace of the activity it was logged under, as an exporter reads it.
+                    _ = services.Configure<LoggerFactoryOptions>(static options => options.ActivityTrackingOptions = ActivityTrackingOptions.TraceId);
+
                     // --- The stacks' tables are theirs again, as in production: a caller's raw write to one is refused ---
                     _ = services.Replace(ServiceDescriptor.Singleton<IStackTableOwners>(static provider => new StackTableOwners(provider.GetRequiredService<StackRegistry>())));
                 },
@@ -125,16 +132,20 @@ namespace Tellma.Core.IntegrationTests.Jobs
                 $"INSERT INTO [core].[VersionTags] ([Name], [Tag]) SELECT n.[Name], NEWID() FROM (VALUES {tags}) AS n ([Name]) WHERE NOT EXISTS (SELECT 1 FROM [core].[VersionTags] AS t WHERE t.[Name] = n.[Name]);",
                 UserInsert(ActiveUserId, active: true),
                 UserInsert(AdministratorId, active: true),
+                UserInsert(DeactivatedUserId, active: true),
                 UserInsert(InactiveUserId, active: false),
                 "CREATE SCHEMA [test];",
                 $"CREATE TABLE {RawTable} ([Id] int IDENTITY PRIMARY KEY, [JobId] int NOT NULL, [Note] nvarchar(100) NOT NULL);");
         }
 
-        /// <summary>Deletes every row a test may have written, and clears the script, the notices, the events and the log.</summary>
+        /// <summary>Deletes every row a test may have written, reactivates the user a test deactivates, and clears the script, the notices, the events and the log.</summary>
         /// <returns>A task that completes when the database is reset.</returns>
         public async Task ResetAsync()
         {
-            await SqlServerFixture.ExecuteAsync(ConnectionString, ResetText);
+            await SqlServerFixture.ExecuteAsync(
+                ConnectionString,
+                ResetText,
+                string.Create(CultureInfo.InvariantCulture, $"UPDATE [core].[Users] SET [IsActive] = 1 WHERE [Id] = {DeactivatedUserId};"));
             Script.Reset();
             Notices.Clear();
             Events.Clear();

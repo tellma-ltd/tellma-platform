@@ -128,6 +128,11 @@ namespace Tellma.Core.Jobs
         {
             ArgumentNullException.ThrowIfNull(item);
             ArgumentNullException.ThrowIfNull(policy);
+
+            // Spec 0020 §3.4 fails every retry at the last allowed attempt, this one included: a guard
+            // that fails on that attempt (any permissions change, a role save among them) fails the
+            // job with Jobs.AttemptsExhausted, as a stop after progress on it does. Read literally
+            // until the spec says otherwise.
             return Exhausted(JobOutcome.Retry(0, null, item.StateJson), item, policy, traceId);
         }
 

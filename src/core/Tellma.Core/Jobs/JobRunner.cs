@@ -269,7 +269,7 @@ namespace Tellma.Core.Jobs
 
             if (invoked.Count == 0)
             {
-                return settled;
+                return InClaimOrder(rows, settled);
             }
 
             // --- §3.5: the rows the handler runs, tracked under the claim's lease and run one partition after another ---
@@ -284,7 +284,22 @@ namespace Tellma.Core.Jobs
                 settled.AddRange(await RunPartitionAsync<TItem>(tenantId, lease, partition, entities, claimedAt, hostToken).ConfigureAwait(false));
             }
 
-            return settled;
+            return InClaimOrder(rows, settled);
+        }
+
+        /// <summary>Orders how the claimed jobs ended as the claim returned their rows.</summary>
+        /// <param name="rows">The claim's rows, in claim order.</param>
+        /// <param name="settled">How each job ended: the rows completed without the handler first, then each partition's.</param>
+        /// <returns>How each job ended, in claim order.</returns>
+        private static IReadOnlyList<JobSettled> InClaimOrder(IReadOnlyList<ClaimedJob> rows, List<JobSettled> settled)
+        {
+            Dictionary<int, int> positions = new(rows.Count);
+            for (int index = 0; index < rows.Count; index++)
+            {
+                positions[rows[index].Job.Id] = index;
+            }
+
+            return [.. settled.OrderBy(job => positions.GetValueOrDefault(job.JobId, int.MaxValue))];
         }
 
         /// <summary>Runs one partition: unless the lease was lost or the host stopped first, under its own <c>process</c> root and log scope.</summary>
@@ -314,6 +329,7 @@ namespace Tellma.Core.Jobs
 
                 if (hostToken.IsCancellationRequested)
                 {
+                    BeginCompleting(lease, jobs);
                     return await CompleteAsSystemAsync(tenantId, handler, lease.Token, [.. jobs.Select(static job => new JobCompletion(job, JobOutcome.Released()))], claimedAt)
                         .ConfigureAwait(false);
                 }
@@ -364,10 +380,14 @@ namespace Tellma.Core.Jobs
             }
             catch (OperationCanceledException) when (lease.ScopeToken.IsCancellationRequested)
             {
-                return lease.IsLost
-                    ? Settled(partition.Jobs, JobSettlement.LostLease)
-                    : await CompleteAsSystemAsync(partition.TenantId, lease.Handler, lease.Token, [.. partition.Jobs.Select(static job => new JobCompletion(job, JobOutcome.Released()))], partition.ClaimedAt)
-                        .ConfigureAwait(false);
+                if (lease.IsLost)
+                {
+                    return Settled(partition.Jobs, JobSettlement.LostLease);
+                }
+
+                BeginCompleting(lease, partition.Jobs);
+                return await CompleteAsSystemAsync(partition.TenantId, lease.Handler, lease.Token, [.. partition.Jobs.Select(static job => new JobCompletion(job, JobOutcome.Released()))], partition.ClaimedAt)
+                    .ConfigureAwait(false);
             }
             catch (Exception refused) when (refused is not OutOfMemoryException)
             {
@@ -424,7 +444,7 @@ namespace Tellma.Core.Jobs
                     Job = row.Job,
                     Item = (TItem)(entities.TryGetValue(row.Job.Id, out object? entity) ? entity : row.Job),
                     CancellationToken = slot.Token,
-                    Progress = new JobItemProgress(lease, slot, state => item!.StateJson = state, _renewal, publisher, _text, _logger),
+                    Progress = new JobItemProgress(lease, slot, batch, state => item!.StateJson = state, _renewal, publisher, _text, _logger),
                     StateJson = row.StateJson,
                 };
                 slot.Bind(item.TrySetCancellationReason);
@@ -669,7 +689,22 @@ namespace Tellma.Core.Jobs
         {
             JobOutcomeError error = new(JobErrorCodes.UserInactive, null, partition.TraceId);
             List<JobCompletion> failed = [.. partition.Jobs.Select((job, index) => new JobCompletion(job, JobOutcome.Failed(error, facts?[index].StateJson)))];
+            BeginCompleting(partition.Lease, partition.Jobs);
             return CompleteAsSystemAsync(partition.TenantId, partition.Lease.Handler, partition.Lease.Token, failed, partition.ClaimedAt);
+        }
+
+        // Spec 0020 §5.2: a renewal no longer judges a row whose completion is being sent, which may
+        // already have ended it; every completion of a tracked partition marks its slots first, so a
+        // renewal racing it does not take the row's absence for a lost lease.
+        /// <summary>Marks the jobs' slots as completing, so no renewal judges a row its completion may already have ended.</summary>
+        /// <param name="lease">The claim's lease.</param>
+        /// <param name="jobs">The jobs being completed.</param>
+        private static void BeginCompleting(JobLease lease, IEnumerable<Job> jobs)
+        {
+            foreach (Job job in jobs)
+            {
+                lease.Slot(job.Id)?.BeginCompleting();
+            }
         }
 
         /// <summary>

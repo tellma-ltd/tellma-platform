@@ -13,8 +13,8 @@ namespace Tellma.Core.Tests.Jobs
     /// <summary>
     ///     The leases an instance holds, with no database: the tokens of a claim (item, batch and
     ///     scope) and the reasons each cancellation gives, the stop of a lost lease and of the host,
-    ///     the rows leaving their lease, the progress buffer a renewal carries, and the partitions of
-    ///     a claim by run-as user and consent.
+    ///     the rows leaving their lease, the progress buffer a renewal carries, the verdicts a renewal
+    ///     reaches on the leases it carried, and the partitions of a claim by run-as user and consent.
     /// </summary>
     public sealed class JobLeasesTests : IDisposable
     {
@@ -179,6 +179,93 @@ namespace Tellma.Core.Tests.Jobs
             Assert.Null(slot.Buffered());
         }
 
+        // --- The renewal's verdicts ---
+
+        [Fact]
+        public void A_renewal_that_returned_every_row_under_the_claims_token_keeps_the_lease()
+        {
+            using JobLease lease = Track([Row(1), Row(2)], Token);
+            JobItem<Job> item = Bound(lease, 1);
+
+            IReadOnlyList<JobLease> lost = JobRenewal.Judge([lease], Renewed(lease, 1, 2));
+
+            Assert.Empty(lost);
+            Assert.False(lease.IsLost);
+            Assert.False(lease.ScopeToken.IsCancellationRequested);
+            Assert.False(item.CancellationToken.IsCancellationRequested);
+        }
+
+        [Fact]
+        public void A_row_the_renewal_did_not_return_loses_its_claims_whole_lease_and_no_other()
+        {
+            using JobLease lease = Track([Row(1), Row(2)], Token);
+            using JobLease other = Track([Row(3)], Token);
+            JobItem<Job> first = Bound(lease, 1);
+            JobItem<Job> second = Bound(lease, 2);
+
+            IReadOnlyList<JobLease> lost = JobRenewal.Judge([lease, other], [.. Renewed(lease, 2), .. Renewed(other, 3)]);
+
+            Assert.Same(lease, Assert.Single(lost));
+            Assert.True(lease.IsLost);
+            Assert.True(lease.ScopeToken.IsCancellationRequested);
+            Assert.Equal([JobCancellationReason.LeaseLost, JobCancellationReason.LeaseLost], new[] { first, second }.Select(static item => item.CancellationReason));
+            Assert.False(other.IsLost);
+            Assert.False(other.ScopeToken.IsCancellationRequested);
+        }
+
+        [Fact]
+        public void A_row_the_renewal_returned_under_another_token_loses_the_lease()
+        {
+            using JobLease lease = Track([Row(1), Row(2)], Token);
+            JobItem<Job> item = Bound(lease, 2);
+
+            // The row was claimed again elsewhere, so the renewal reads it under the new claim's token.
+            IReadOnlyList<JobLease> lost = JobRenewal.Judge([lease], [new RenewedJob(1, lease.Token, null), new RenewedJob(2, Guid.NewGuid(), null)]);
+
+            Assert.Same(lease, Assert.Single(lost));
+            Assert.True(lease.ScopeToken.IsCancellationRequested);
+            Assert.Equal(JobCancellationReason.LeaseLost, item.CancellationReason);
+        }
+
+        [Fact]
+        public void A_cancel_the_renewal_returned_stops_its_item_alone_and_never_the_scope()
+        {
+            using JobLease lease = Track([Row(1), Row(2)], Token);
+            JobItem<Job> first = Bound(lease, 1);
+            JobItem<Job> second = Bound(lease, 2);
+
+            IReadOnlyList<JobLease> lost = JobRenewal.Judge([lease], [new RenewedJob(1, lease.Token, DateTimeOffset.UtcNow), new RenewedJob(2, lease.Token, null)]);
+
+            Assert.Empty(lost);
+            Assert.False(lease.IsLost);
+            Assert.True(first.CancellationToken.IsCancellationRequested);
+            Assert.Equal(JobCancellationReason.CancelRequested, first.CancellationReason);
+            Assert.False(second.CancellationToken.IsCancellationRequested);
+            Assert.False(lease.ScopeToken.IsCancellationRequested);
+        }
+
+        [Fact]
+        public void A_row_whose_completion_is_being_sent_is_not_judged()
+        {
+            using JobLease lease = Track([Row(1), Row(2)], Token);
+            using JobLease completing = Track([Row(3)], Token);
+            JobItem<Job> second = Bound(lease, 2);
+
+            // --- One partition's rows are completing and already ended; another partition still runs ---
+            lease.Slot(1)!.BeginCompleting();
+            completing.Slot(3)!.BeginCompleting();
+            IReadOnlyList<JobLease> lost = JobRenewal.Judge([lease, completing], Renewed(lease, 2));
+
+            Assert.Empty(lost);
+            Assert.False(lease.IsLost);
+            Assert.False(completing.IsLost);
+            Assert.False(second.CancellationToken.IsCancellationRequested);
+
+            // --- A cancel requested of a completing row stops nothing: its completion already decided it ---
+            _ = JobRenewal.Judge([lease], [new RenewedJob(1, lease.Token, DateTimeOffset.UtcNow), .. Renewed(lease, 2)]);
+            Assert.False(lease.Slot(1)!.Token.IsCancellationRequested);
+        }
+
         // --- Partitions ---
 
         [Fact]
@@ -226,6 +313,15 @@ namespace Tellma.Core.Tests.Jobs
         private JobLease Track(IReadOnlyList<ClaimedJob> rows, CancellationToken host)
         {
             return _leases.Track(TenantId, Handler, Guid.NewGuid(), rows, host);
+        }
+
+        /// <summary>The rows a renewal returned for a lease, under its token and with no cancel requested.</summary>
+        /// <param name="lease">The lease.</param>
+        /// <param name="ids">The jobs returned.</param>
+        /// <returns>The rows.</returns>
+        private static RenewedJob[] Renewed(JobLease lease, params int[] ids)
+        {
+            return [.. ids.Select(id => new RenewedJob(id, lease.Token, null))];
         }
 
         /// <summary>An item bound to its slot, as the runner binds it before invoking the handler.</summary>
