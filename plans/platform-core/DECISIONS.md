@@ -359,6 +359,12 @@ Format, one entry per ruling:
 - Also accepted: a readonly select never opens (a pre-existing bug, fixed) and exposes aria-readonly.
 - **Misalignment for Ahmad:** 0010 §B.4 names contentChildren(TmOptionGroup), which the design does not need. See also D-036's §B.4 note.
 
+### D-136 — PC-102 hand-offs (2026-11-19)
+
+- QueryWireDiagnostics (Tellma.Core/Crud/Query) is the one QueryexDiagnostic → QueryDiagnostic edge mapping. Whichever of PC-081 / PC-102 integrates second converges PC-081's InvalidQueryException mapping on it (named in that item's integration message).
+- Discovery runs without the guarded runner: it reads IScopeConnection.CurrentAsync (0 round trips warm, 1 cold) with no fast-deny re-check. Pending R1.
+- QueryexType serializes without the Qx prefix platform-wide through one TellmaJson converter shared by row sets and contract fingerprints. PermissionFilterRules is extracted from RoleAccessRules so role save and discovery share one judge.
+
 ### D-135 — PC-F59 root cause and an open classification gap (2026-11-19)
 
 - Root cause of the TenantScopeTests red (run 44571660410): over LocalDB named pipes, about 0.5-0.9% of refused logins to a missing database arrive as SQL 233 alone instead of [4060, 18456]. Production classification is correct: a failed open is unsent; 233 is Ambiguous, which reports before the send, and 4060 is reported-transient, so both get the same re-run budget. The fix is test-only.
