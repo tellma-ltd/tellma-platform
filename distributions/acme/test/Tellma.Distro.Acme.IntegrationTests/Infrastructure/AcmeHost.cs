@@ -14,6 +14,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using System.Net;
 using Tellma.Core.AspNetCore;
+using Tellma.Core.Tenancy;
 using Tellma.Core.Testing.Blobs;
 using Tellma.Core.Testing.Email;
 using Tellma.Distro.Acme.Web;
@@ -74,14 +75,35 @@ namespace Tellma.Distro.Acme.IntegrationTests.Infrastructure
         /// </summary>
         public HttpMessageHandler? BackchannelLogoutSink { get; set; }
 
-        /// <summary>Builds and starts a host.</summary>
+        /// <summary>
+        ///     Builds and starts a host and, unless <see cref="AcmeHostOptions.AwaitsCatalog" /> is
+        ///     off, waits until its tenant snapshot is loaded.
+        /// </summary>
         /// <param name="values">The deployment's settings, over Acme's configuration files.</param>
         /// <param name="options">What the test adds to the host; null for nothing.</param>
         /// <returns>The started host.</returns>
         public static async Task<AcmeHost> StartAsync(IReadOnlyDictionary<string, string?> values, AcmeHostOptions? options = null)
         {
+            options ??= new AcmeHostOptions();
             AcmeHost host = Build(values, options);
-            await host._app.StartAsync(TestContext.Current.CancellationToken);
+            try
+            {
+                await host._app.StartAsync(TestContext.Current.CancellationToken);
+
+                // A host whose first catalog load outlasts its startup bound starts not ready, and a
+                // load balancer sends it nothing until readiness turns: wait for the snapshot the same
+                // way, joining the load still in flight, rather than racing it with the first request.
+                if (options.AwaitsCatalog)
+                {
+                    await host.AwaitCatalogAsync();
+                }
+            }
+            catch
+            {
+                await host.DisposeAsync();
+                throw;
+            }
+
             return host;
         }
 
@@ -163,6 +185,22 @@ namespace Tellma.Distro.Acme.IntegrationTests.Infrastructure
         public Task StartAsync()
         {
             return _app.StartAsync(TestContext.Current.CancellationToken);
+        }
+
+        /// <summary>
+        ///     Waits until the host's tenant snapshot may be served: at once when it is, else for the
+        ///     refresh in flight, or one started now when none is.
+        /// </summary>
+        /// <returns>A task that completes when the snapshot is available, failing as the refresh failed.</returns>
+        public async Task AwaitCatalogAsync()
+        {
+            ITenantRegistry registry = Services.GetRequiredService<ITenantRegistry>();
+            if (!registry.IsAvailable)
+            {
+                await registry.RefreshAsync(force: false, TestContext.Current.CancellationToken);
+            }
+
+            Assert.True(registry.IsAvailable, "The host's tenant snapshot is not available after a successful refresh.");
         }
 
         /// <summary>

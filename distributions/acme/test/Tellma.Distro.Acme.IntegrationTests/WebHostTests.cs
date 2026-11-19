@@ -142,6 +142,7 @@ namespace Tellma.Distro.Acme.IntegrationTests
                 await using AcmeHost host = await AcmeHost.StartAsync(values, new AcmeHostOptions
                 {
                     Environment = "Production",
+                    AwaitsCatalog = false,
                     Services = static services =>
                     {
                         _ = services.Configure<JwtBearerOptions>(
