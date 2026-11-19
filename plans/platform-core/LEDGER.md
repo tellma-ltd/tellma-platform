@@ -102,7 +102,8 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 
 | PC | Slot | Branch | Step | Implementer agent (name / id) | Reviewer agent (name / id) | Started (UTC) |
 |---|---|---|---|---|---|---|
-| PC-142 | pc-1 | pc/PC-142 | fix1 | impl (Opus, high, launched 2026-11-19) | 0015-k (T2); R1 0B/4M/5m -> escalated: R2 (Opus inherit) after fix1 | 2026-11-19 |
+| PC-081 | pc-3 | pc/PC-081 | impl | impl (Opus, high, launched 2026-11-19) | 0016-d; R1 then R2 fable (security-bound) | 2026-11-19 |
+| PC-142 | pc-1 | pc/PC-142 | fix2 | impl (Opus, high, launched 2026-11-19) | 0015-k (T2); R1 0B/4M/5m all fixed; R2 (escalated) 0B/2M/3m; then hold | 2026-11-19 |
 | PC-086 | pc-2 | pc/PC-086 | integrate | impl (Opus, high, launched 2026-11-19) | R1 0B/0M/7m (6 fixed, R1-5 pushed back); merge-tree clean; released 2026-11-19 after PC-F58 green | 2026-11-19 |
 | PC-098 | pc-4 | pc/PC-098 | held (10ac40b1) | impl (Opus, xhigh, launched 2026-11-19) | R1 0B/2M/5m (R1-4 deferred D-129); R2 (fable) 0B/0M/6m all fixed; merge-tree: README conflict (keep both); release after PC-F58 green and PC-086 | 2026-11-19 |
 
@@ -367,7 +368,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-078 | 0014-f | 1 | done | 5b0b6328, 1a5de53e, 4cfcd532, 2ac84a2a, bff6d356; green 44433481481 |  | carry: §3.7 rule 1 save check must refuse (*, A) when no resource registers A (PC-043 D5); delegation coverage of Read must follow D-073; carry from PC-141 (D-096): TenantStateTests' UserId-binding, Frozen-read and ReadOnly-activity rows run (conditional skips) and must pass; carry (D-120): if PC-083 lands first, MigratorTests.The_provisioning_record_holds_the_platform_steps_with_their_versions runs and must pass in your integration gate |
 | PC-079 | 0013-h | 1 | done | 1d018296, 1f2290e8, 4e824224; green 44512159188 | | carry from PC-049: spec 0013 §5.5 settings securables are yours (category Resource names already match); D-076: a language change moves only the settings tag, so bump entity tags or fold the shape into wire tags |
 | PC-080 | 0016-c | 1 | done | 8774aebb, 10fe4959, ea5e6dee, 6ced2f4e, 7eb13769, fc1ad812; CI red 44526593455 (test-host race, PC-F58); green 44554210017 | | carry from PC-099 r1: core.Notification has no access criteria until PC-146, so a member gets 403 on their own rows; no member-facing surface reads the stack before PC-146; carry from PC-064: the get-by-parent-ids RouteContract.ResponseType is RowPage, so the projector wraps the bare QueryRowSet as new RowPage(rows, null, null); child surfaces take the root stack's ContractRevision plus their own [ApiResource] revision |
-| PC-081 | 0016-d | 1 | todo | | | carry from PC-080 (D-124): fold the early BadRequestException→400 and LimitExceededException→413 mapping in TellmaProblemExceptionHandler into the full mapping; carry from PC-080 R2-2 (D-127): the problem writer applies the request cultures itself (WireBinding's async finally does not persist them); carry from PC-080 integration (D-127): write the Tellma-Version-Tags header (BatchOutcome composite) on settings/client too, since PC-080's raw-bytes path drops the action's WireTag; Acme signed-in HTTP tests are still skipped (NeedsUserConnectionAndBootstrap) |
+| PC-081 | 0016-d | 1 | impl | | | carry from PC-080 (D-124): fold the early BadRequestException→400 and LimitExceededException→413 mapping in TellmaProblemExceptionHandler into the full mapping; carry from PC-080 R2-2 (D-127): the problem writer applies the request cultures itself (WireBinding's async finally does not persist them); carry from PC-080 integration (D-127): write the Tellma-Version-Tags header (BatchOutcome composite) on settings/client too, since PC-080's raw-bytes path drops the action's WireTag; Acme signed-in HTTP tests are still skipped (NeedsUserConnectionAndBootstrap) |
 | PC-082 | 0016-e | 1 | todo | | | carry from PC-080 (D-124): register the tellma-web/tellma-long timeout policies before installing the timeout middleware (WithRequestTimeout("tellma-long") metadata is inert until then) |
 | PC-083 | 0017-c1 | 1 | done | fe0edcc6, 6b4a02bf, 9d5dd16d; green 44392562042 | | |
 | PC-084 | 0017-c2 | 1 | done | 108e56b5, 46b70189, 575849a4, 52e51448; green 44457610985 | | carry (D-123): at integration, PC-077's SaveRun.Enlisted.cs Translate calls TranslateFailure(failure) in place of PersistFailures.Translate(...) before the re-home; add one enlisted test (refusals counted once per value; round count of a cold enlisted attach) |
@@ -428,7 +429,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-139 | 0032-d | 1 | todo | | | carry from PC-056: composite cell editors (window, filter) must shield inner tm-* controls from TM_CELL_EDITOR_HOST's last-registration-wins rule, or use plain inputs; add a helper if needed |
 | PC-140 | MVP | 1 | todo | | | |
 | PC-141 | 0011-h | 2 | done (478b0ab0; CI 43879675326 green) | bb2a2d6, 15d1369 (pc/PC-141) | | |
-| PC-142 | 0015-k | 2 | fix1 | e86138b6 | | |
+| PC-142 | 0015-k | 2 | fix2 | e86138b6, 76ee772e | | |
 | PC-143 | 0018-f | 2 | todo | | | |
 | PC-144 | 0020-e | 2 | todo | | | |
 | PC-145 | 0020-f | 2 | todo | | | |
