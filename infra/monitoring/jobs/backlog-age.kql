@@ -1,0 +1,10 @@
+// The age of each handler's oldest queued job, per instance.
+// Backs the "a queue is starving" alert: every poll of a tenant samples, once a minute, how long
+// each key's oldest claimable job has been past its due time. Ten minutes means jobs of the key are
+// not being claimed fast enough: its concurrency is saturated, its handler is slower than its
+// arrivals, or the instance's batch slots are taken by other keys.
+customMetrics
+| where name == "tellma.jobs.backlog.age"
+| extend handler = tostring(customDimensions["handler"])
+| summarize age = max(valueMax) by handler, cloud_RoleInstance, bin(timestamp, 5m)
+| where age > 600

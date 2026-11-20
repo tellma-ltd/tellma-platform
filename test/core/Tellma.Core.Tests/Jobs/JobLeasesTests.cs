@@ -4,6 +4,7 @@
 // LICENSE file in the root directory of this source tree.
 
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Time.Testing;
 using Tellma.Core.Abstractions.Jobs;
 using Tellma.Core.Jobs;
 using Tellma.Core.Tests.Data.Batches;
@@ -24,8 +25,17 @@ namespace Tellma.Core.Tests.Jobs
         /// <summary>The job tests' model and handlers.</summary>
         private readonly BatchHarness _harness = new(compose: JobTestModel.Compose);
 
+        /// <summary>The clock the leases stamp their claims and renewals with.</summary>
+        private readonly FakeTimeProvider _time = new(new DateTimeOffset(2026, 3, 2, 8, 0, 0, TimeSpan.Zero));
+
         /// <summary>The leases under test.</summary>
-        private readonly JobLeases _leases = new();
+        private readonly JobLeases _leases;
+
+        /// <summary>Creates the leases on the fake clock.</summary>
+        public JobLeasesTests()
+        {
+            _leases = new JobLeases(_time);
+        }
 
         /// <summary>The running test's token, standing in for the host's.</summary>
         private static CancellationToken Token => TestContext.Current.CancellationToken;
@@ -171,12 +181,87 @@ namespace Tellma.Core.Tests.Jobs
 
             // --- A later report keeps the buffer for the next renewal ---
             slot.Buffer(30, null, null, null);
-            slot.Carried(taken);
+            slot.Carried(taken, 20, _time.GetUtcNow());
             Assert.Equal((byte)30, slot.Buffered()!.Value.Row.ProgressPercent);
 
             // --- Carried at its version, it empties ---
-            slot.Carried(slot.Buffered()!.Value.Version);
+            slot.Carried(slot.Buffered()!.Value.Version, 30, _time.GetUtcNow());
             Assert.Null(slot.Buffered());
+        }
+
+        // --- The renewal schedule, the jumps and the abandonment ---
+
+        [Fact]
+        public void A_lease_is_due_a_renewal_a_fifth_of_its_length_after_its_claim_and_after_each_renewal()
+        {
+            using JobLease lease = Track([Row(1)], Token);
+            DateTimeOffset claimed = _time.GetUtcNow();
+
+            // The default lease is 300 s, so a renewal is due every 60 s.
+            Assert.Equal(TimeSpan.FromSeconds(60), lease.RenewalInterval);
+            Assert.Equal(claimed.AddSeconds(60), lease.RenewalDueAt);
+
+            // --- A renewal counts from when it was sent; an older one never moves the schedule back ---
+            lease.Renewed(claimed.AddSeconds(45));
+            Assert.Equal(claimed.AddSeconds(105), lease.RenewalDueAt);
+            lease.Renewed(claimed.AddSeconds(30));
+            Assert.Equal(claimed.AddSeconds(105), lease.RenewalDueAt);
+        }
+
+        [Fact]
+        public void A_jump_of_five_points_from_the_carried_percent_renews_at_most_once_every_five_seconds()
+        {
+            using JobLease lease = Track([Row(1)], Token);
+            JobSlot slot = lease.Slot(1)!;
+
+            // --- Four points is no jump; five is ---
+            Assert.False(slot.TryJump(4, _time.GetUtcNow()));
+            Assert.True(slot.TryJump(5, _time.GetUtcNow()));
+
+            // --- Another jump within five seconds waits, however far the percent moved ---
+            _time.Advance(TimeSpan.FromSeconds(4.9));
+            Assert.False(slot.TryJump(60, _time.GetUtcNow()));
+            _time.Advance(TimeSpan.FromSeconds(0.1));
+            Assert.True(slot.TryJump(60, _time.GetUtcNow()));
+
+            // --- A renewal that carried a percent moves both the base and the clock of the next jump ---
+            _time.Advance(TimeSpan.FromSeconds(10));
+            slot.Carried(slot.BufferVersion, 60, _time.GetUtcNow());
+            _time.Advance(TimeSpan.FromSeconds(5));
+            Assert.False(slot.TryJump(64, _time.GetUtcNow()));
+            Assert.True(slot.TryJump(65, _time.GetUtcNow()));
+        }
+
+        [Fact]
+        public void A_requested_cancel_is_stamped_once_and_an_abandoned_lease_is_no_longer_carried()
+        {
+            using JobLease lease = Track([Row(1), Row(2)], Token);
+            Assert.Null(lease.CancelledAt);
+
+            // --- The first cancel stamps the lease; a later one keeps the first stamp ---
+            DateTimeOffset first = _time.GetUtcNow();
+            lease.RequestCancel(1);
+            _time.Advance(TimeSpan.FromSeconds(30));
+            lease.RequestCancel(2);
+            Assert.Equal(first, lease.CancelledAt);
+
+            // --- Abandoned once, and left out of every renewal from then on ---
+            Assert.True(lease.Abandon());
+            Assert.False(lease.Abandon());
+            Assert.True(lease.IsAbandoned);
+            Assert.Empty(JobRenewal.Carried(_leases.InFlight(TenantId)));
+        }
+
+        [Fact]
+        public void A_lost_lease_is_reported_once_and_the_instance_lists_its_leases_by_tenant()
+        {
+            using JobLease mine = Track([Row(1)], Token);
+            using JobLease other = _leases.Track(TenantId + 1, Handler, Guid.NewGuid(), [Row(2)], Token);
+
+            Assert.True(mine.TryReportLoss());
+            Assert.False(mine.TryReportLoss());
+            Assert.Equal([TenantId, TenantId + 1], _leases.Tenants().Order());
+            Assert.Equal(2, _leases.All().Count);
         }
 
         // --- The renewal's verdicts ---

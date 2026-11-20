@@ -13,9 +13,12 @@ namespace Tellma.Core.Jobs
     // and whose answers cancel the items: a row absent from a renewal loses the whole claim's lease,
     // a row whose cancel was requested cancels that item alone, and the host's stop cancels every
     // claim. A row leaves its lease once its completion was attempted, whatever the attempt's end, so
-    // a renewal never extends a row nobody runs.
+    // a renewal never extends a row nobody runs. Each lease records when it was last renewed, which
+    // schedules the next renewal, and when a cancel first reached it, after which a handler that
+    // ignores it is abandoned.
     /// <summary>The claims this instance holds a lease on, per tenant.</summary>
-    internal sealed class JobLeases
+    /// <param name="time">The clock the leases' renewals and cancels are timed by.</param>
+    internal sealed class JobLeases(TimeProvider time)
     {
         /// <summary>Guards the per-tenant lists.</summary>
         private readonly Lock _gate = new();
@@ -25,6 +28,9 @@ namespace Tellma.Core.Jobs
 
         /// <summary>Serialises the renewals of each tenant, so two never interleave their verdicts.</summary>
         private readonly ConcurrentDictionary<int, SemaphoreSlim> _renewals = new();
+
+        /// <summary>The clock the leases' renewals and cancels are timed by.</summary>
+        public TimeProvider Time { get; } = time ?? throw new ArgumentNullException(nameof(time));
 
         /// <summary>Starts tracking a claim's rows that go to the handler.</summary>
         /// <param name="tenantId">The tenant.</param>
@@ -37,7 +43,7 @@ namespace Tellma.Core.Jobs
         {
             ArgumentNullException.ThrowIfNull(handler);
             ArgumentNullException.ThrowIfNull(rows);
-            JobLease lease = new(this, tenantId, handler, token, rows);
+            JobLease lease = new(this, tenantId, handler, token, rows, Time.GetUtcNow());
             lock (_gate)
             {
                 if (!_tenants.TryGetValue(tenantId, out List<JobLease>? leases))
@@ -62,6 +68,26 @@ namespace Tellma.Core.Jobs
             lock (_gate)
             {
                 return _tenants.TryGetValue(tenantId, out List<JobLease>? leases) ? [.. leases] : [];
+            }
+        }
+
+        /// <summary>The tenants with claims in flight on this instance.</summary>
+        /// <returns>The tenants' ids.</returns>
+        public IReadOnlyList<int> Tenants()
+        {
+            lock (_gate)
+            {
+                return [.. _tenants.Keys];
+            }
+        }
+
+        /// <summary>Every claim in flight on this instance.</summary>
+        /// <returns>The claims.</returns>
+        public IReadOnlyList<JobLease> All()
+        {
+            lock (_gate)
+            {
+                return [.. _tenants.Values.SelectMany(static leases => leases)];
             }
         }
 
@@ -121,18 +147,32 @@ namespace Tellma.Core.Jobs
         /// <summary>1 once disposed.</summary>
         private int _disposed;
 
+        /// <summary>1 once the loss was reported to the log and the instruments.</summary>
+        private int _lossReported;
+
+        /// <summary>1 once the lease was abandoned: renewals no longer carry it.</summary>
+        private int _abandoned;
+
+        /// <summary>When a renewal last extended the lease; the claim's time until the first.</summary>
+        private DateTimeOffset _renewedAt;
+
+        /// <summary>When a cancel first reached one of the lease's items; null until one did.</summary>
+        private DateTimeOffset? _cancelledAt;
+
         /// <summary>Creates the lease.</summary>
         /// <param name="owner">The registry that tracks it.</param>
         /// <param name="tenantId">The tenant.</param>
         /// <param name="handler">The claim's handler.</param>
         /// <param name="token">The claim's fencing token.</param>
         /// <param name="rows">The rows, in claim order.</param>
-        internal JobLease(JobLeases owner, int tenantId, JobHandlerRegistration handler, Guid token, IReadOnlyList<ClaimedJob> rows)
+        /// <param name="claimedAt">When the claim took the lease.</param>
+        internal JobLease(JobLeases owner, int tenantId, JobHandlerRegistration handler, Guid token, IReadOnlyList<ClaimedJob> rows, DateTimeOffset claimedAt)
         {
             _owner = owner;
             TenantId = tenantId;
             Handler = handler;
             Token = token;
+            _renewedAt = claimedAt;
             _slots = rows.ToDictionary(static row => row.Job.Id, row => new JobSlot(row, _batch.Token));
         }
 
@@ -156,6 +196,38 @@ namespace Tellma.Core.Jobs
 
         /// <summary>Whether the host stopped while the lease was held.</summary>
         public bool IsStopping => Volatile.Read(ref _stopping) == 1;
+
+        /// <summary>Whether the lease was abandoned: its handler ignored a cancel, or outlived the host's drain.</summary>
+        public bool IsAbandoned => Volatile.Read(ref _abandoned) == 1;
+
+        // Spec 0020 §5.2: the renewal interval is the lease's fifth; a longer lease renewed more often
+        // with its tenant's shorter ones is harmless.
+        /// <summary>The longest a renewal may wait after the last one: a fifth of the lease.</summary>
+        public TimeSpan RenewalInterval => TimeSpan.FromSeconds(LeaseSeconds / 5.0);
+
+        /// <summary>When the lease is next due a renewal.</summary>
+        public DateTimeOffset RenewalDueAt
+        {
+            get
+            {
+                lock (_gate)
+                {
+                    return _renewedAt + RenewalInterval;
+                }
+            }
+        }
+
+        /// <summary>When a cancel first reached one of the lease's items; null until one did.</summary>
+        public DateTimeOffset? CancelledAt
+        {
+            get
+            {
+                lock (_gate)
+                {
+                    return _cancelledAt;
+                }
+            }
+        }
 
         /// <summary>The rows still tracked.</summary>
         public IReadOnlyList<JobSlot> Slots
@@ -189,6 +261,11 @@ namespace Tellma.Core.Jobs
                 return;
             }
 
+            lock (_gate)
+            {
+                _cancelledAt ??= _owner.Time.GetUtcNow();
+            }
+
             slot.Cancel(JobCancellationReason.CancelRequested);
             if (Slots.All(static each => each.Token.IsCancellationRequested))
             {
@@ -205,6 +282,30 @@ namespace Tellma.Core.Jobs
             }
 
             Stop(JobCancellationReason.LeaseLost);
+        }
+
+        /// <summary>Records that a renewal extended the lease.</summary>
+        /// <param name="at">When the renewal ran.</param>
+        public void Renewed(DateTimeOffset at)
+        {
+            lock (_gate)
+            {
+                _renewedAt = at > _renewedAt ? at : _renewedAt;
+            }
+        }
+
+        /// <summary>Claims the one report of the lease's loss, so the log and the count name each lost lease once.</summary>
+        /// <returns>True for the first caller only.</returns>
+        public bool TryReportLoss()
+        {
+            return Interlocked.Exchange(ref _lossReported, 1) == 0;
+        }
+
+        /// <summary>Abandons the lease: no renewal carries it again, so it lapses and its rows are claimed again once it did.</summary>
+        /// <returns>True for the first caller only.</returns>
+        public bool Abandon()
+        {
+            return Interlocked.Exchange(ref _abandoned, 1) == 0;
         }
 
         /// <summary>Removes rows whose completion was attempted; once none remain, the lease leaves the registry and is disposed.</summary>
@@ -304,6 +405,12 @@ namespace Tellma.Core.Jobs
     /// </summary>
     internal sealed class JobSlot : IDisposable
     {
+        /// <summary>The points a reported percent must move from the carried one to renew at once.</summary>
+        public const int JumpPoints = 5;
+
+        /// <summary>The least time between two renewals a jump asks for.</summary>
+        public static readonly TimeSpan JumpInterval = TimeSpan.FromSeconds(5);
+
         /// <summary>Guards the reason and the buffer.</summary>
         private readonly Lock _gate = new();
 
@@ -340,6 +447,12 @@ namespace Tellma.Core.Jobs
         /// <summary>Whether the row's completion is being sent, so a renewal no longer judges the row.</summary>
         private volatile bool _completing;
 
+        /// <summary>The percent the database last held for the row: the claimed one, then each one a renewal carried.</summary>
+        private byte _carriedPercent;
+
+        /// <summary>When a renewal last carried the row's progress, or a jump last asked for one; null until either.</summary>
+        private DateTimeOffset? _progressRenewedAt;
+
         /// <summary>Creates the slot.</summary>
         /// <param name="row">The claimed row.</param>
         /// <param name="batchToken">The claim's batch token.</param>
@@ -347,6 +460,7 @@ namespace Tellma.Core.Jobs
         {
             ArgumentNullException.ThrowIfNull(row);
             Row = row;
+            _carriedPercent = row.Job.ProgressPercent ?? 0;
             _item = CancellationTokenSource.CreateLinkedTokenSource(batchToken);
             Token = _item.Token;
         }
@@ -482,11 +596,40 @@ namespace Tellma.Core.Jobs
             }
         }
 
-        /// <summary>Clears the buffer a renewal carried, unless progress was reported since it was taken.</summary>
+        /// <summary>Clears the buffer a renewal carried, unless progress was reported since it was taken, and records what it carried.</summary>
         /// <param name="version">The version the carried row was taken at.</param>
-        public void Carried(long version)
+        /// <param name="percent">The percent the carried row wrote; null when it kept the stored one.</param>
+        /// <param name="at">When the renewal ran.</param>
+        public void Carried(long version, byte? percent, DateTimeOffset at)
         {
+            lock (_gate)
+            {
+                _carriedPercent = percent ?? _carriedPercent;
+                _progressRenewedAt = at;
+            }
+
             Clear(version, percent: true, message: true, state: true);
+        }
+
+        // Spec 0020 §5.2: a report whose percent is at least 5 points from the last carried percent
+        // renews at once, but at most once per job per 5 s, counted from the last progress-carrying
+        // renewal or the last jump that asked for one, so a burst of reports asks once.
+        /// <summary>Whether a reported percent is a jump that renews at once; when it is, the jump is recorded.</summary>
+        /// <param name="percent">The percent reported.</param>
+        /// <param name="now">The clock's time.</param>
+        /// <returns>True when the report should renew now.</returns>
+        public bool TryJump(byte percent, DateTimeOffset now)
+        {
+            lock (_gate)
+            {
+                if (Math.Abs(percent - _carriedPercent) < JumpPoints || (_progressRenewedAt is DateTimeOffset last && now - last < JumpInterval))
+                {
+                    return false;
+                }
+
+                _progressRenewedAt = now;
+                return true;
+            }
         }
 
         /// <summary>Clears what a committed append wrote, unless progress was reported since it was appended.</summary>

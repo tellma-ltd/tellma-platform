@@ -53,6 +53,7 @@ namespace Tellma.Core.IntegrationTests.Jobs
             DELETE FROM [test].[RunLog];
             DELETE FROM [fixture].[Shipments];
             DELETE FROM [core].[Jobs];
+            UPDATE [core].[JobWorkerState] SET [LastTickAt] = NULL, [LastTickOwner] = NULL;
             """;
 
         /// <summary>The suite's server.</summary>
@@ -159,7 +160,7 @@ namespace Tellma.Core.IntegrationTests.Jobs
             return _tenant?.DisposeAsync() ?? ValueTask.CompletedTask;
         }
 
-        /// <summary>Stores a job due five seconds ago and not leased, as an enqueue or a completion leaves one.</summary>
+        /// <summary>Stores a job not leased, as an enqueue or a completion leaves one, due five seconds ago unless told otherwise.</summary>
         /// <param name="key">The handler key.</param>
         /// <param name="runAs">The run-as user.</param>
         /// <param name="requestedBy">The requester; null for none.</param>
@@ -168,7 +169,7 @@ namespace Tellma.Core.IntegrationTests.Jobs
         /// <param name="confirmedKeys">The confirmed warning keys as stored; null for none.</param>
         /// <param name="cancelRequested">Whether a cancel was requested.</param>
         /// <param name="errorCode">The error an earlier attempt recorded; null for none.</param>
-        /// <param name="dueSecondsAgo">How long ago the job became due.</param>
+        /// <param name="dueSecondsAgo">How long ago the job became due; negative for a job due later.</param>
         /// <returns>The job's id.</returns>
         public async Task<int> InsertJobAsync(
             string key,
@@ -190,7 +191,7 @@ namespace Tellma.Core.IntegrationTests.Jobs
                     $"""
                     DECLARE @id int = NEXT VALUE FOR [core].[sq_Jobs];
                     INSERT INTO [core].[Jobs] ([Id], [HandlerKey], [Status], [DueAt], [Attempts], [StateJson], [ConfirmedKeys], [CancelRequestedAt], [ErrorCode], [RunAsUserId], [RequestedById], [CreatedAt])
-                    VALUES (@id, N'{key}', 'Pending', DATEADD(second, -{dueSecondsAgo}, SYSUTCDATETIME()), {attempts}, {Literal(stateJson)}, {Literal(confirmedKeys)}, {cancel}, {Literal(errorCode)}, {runAs}, {requester}, SYSUTCDATETIME());
+                    VALUES (@id, N'{key}', 'Pending', DATEADD(second, -({dueSecondsAgo}), SYSUTCDATETIME()), {attempts}, {Literal(stateJson)}, {Literal(confirmedKeys)}, {cancel}, {Literal(errorCode)}, {runAs}, {requester}, SYSUTCDATETIME());
                     SELECT @id;
                     """));
         }
@@ -369,16 +370,23 @@ namespace Tellma.Core.IntegrationTests.Jobs
     }
 
     /// <summary>
-    ///     A notifier that records each request once its batch committed, and delivers nothing; a
-    ///     test may have it refuse every request, as a notifier whose statement cannot be composed would.
+    ///     A notifier that records each request once its batch committed and each withdrawal sent on
+    ///     its own, and delivers nothing; a test may have it refuse every request, as a notifier whose
+    ///     statement cannot be composed would.
     /// </summary>
     public sealed class CommittedNotices : INotifier
     {
         /// <summary>The requests, in the order recorded.</summary>
         private readonly ConcurrentQueue<NotificationRequest> _requests = new();
 
+        /// <summary>The withdrawals, in the order recorded.</summary>
+        private readonly ConcurrentQueue<WithdrawRequest> _withdrawals = new();
+
         /// <summary>The requests recorded since the last clear.</summary>
         public IReadOnlyList<NotificationRequest> Raised => [.. _requests];
+
+        /// <summary>The withdrawals sent on their own since the last clear.</summary>
+        public IReadOnlyList<WithdrawRequest> Withdrawn => [.. _withdrawals];
 
         /// <summary>Whether every request appended to a batch is refused with an exception; off again after each clear.</summary>
         public bool Refuses { get; set; }
@@ -387,6 +395,7 @@ namespace Tellma.Core.IntegrationTests.Jobs
         public void Clear()
         {
             _requests.Clear();
+            _withdrawals.Clear();
             Refuses = false;
         }
 
@@ -432,7 +441,13 @@ namespace Tellma.Core.IntegrationTests.Jobs
         /// <inheritdoc />
         public Task WithdrawAsync(IReadOnlyList<WithdrawRequest> requests, CancellationToken cancellationToken = default)
         {
-            throw new NotSupportedException("No job completion withdraws a notification.");
+            ArgumentNullException.ThrowIfNull(requests);
+            foreach (WithdrawRequest request in requests)
+            {
+                _withdrawals.Enqueue(request);
+            }
+
+            return Task.CompletedTask;
         }
     }
 
@@ -450,6 +465,9 @@ namespace Tellma.Core.IntegrationTests.Jobs
 
         /// <summary>The handler of one attempt whose failure notices stay in the inbox.</summary>
         public const string Inbox = "test.inbox";
+
+        /// <summary>A key the feature retired: its jobs are cancelled by the hourly sweep.</summary>
+        public const string Retired = "test.retired";
 
         /// <summary>A warning the handlers raise, which a job's initiator may confirm.</summary>
         public const string Backdated = "Test.Backdated";
@@ -528,6 +546,7 @@ namespace Tellma.Core.IntegrationTests.Jobs
                 .JobHandler<RunShipHandler>()
                 .JobHandler<RunStepsHandler>()
                 .JobHandler<RunInboxHandler>()
+                .RetiredJobKey(JobRunKeys.Retired)
                 .Confirmation(JobRunKeys.Backdated)
                 .Confirmation(JobRunKeys.Negative);
             foreach (string key in JobRunKeys.Numbered)

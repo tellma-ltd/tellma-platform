@@ -2238,6 +2238,45 @@ under the token, rolling back whatever their transaction carries.
   `core.job.pending-confirmation`, to the requester or else the tenant's administrators. A handler's
   `NotifyOnSuccess` requests are raised only for a job that succeeded.
 
+### The worker
+
+`JobWorker` is the host's one hosted service for jobs, composed unless `Tellma:Jobs:Enabled` is
+configured `false` (the migrator always turns it off). It is also an `ITenantStateListener`, so it
+follows the registry's snapshot on the catalog's refresh interval and at once on every state change:
+one `TenantPoller` per `Active` or `ReadOnly` tenant, retired after its current poll when the tenant
+leaves those states (logged as `JobPollerRetired`, its orphan sample dropped). The startup gate holds
+`DrainTimeout` below the host's `HostOptions.ShutdownTimeout`.
+
+- **The poll.** `JobPoll` sends one `Maintenance` round trip in the system scope, each statement
+  committing on its own and the whole re-runnable: the gap check and hold, one claim per key with a
+  free slot (on a read-only tenant only the keys whose handler `RunsWhenReadOnly`), tick step 1
+  through `IScheduleTick` when the scheduler composes one, the backlog sample once a minute, the
+  orphan sample and the retired-key cancel once an hour, and the heartbeat stamp last. The poll is
+  one activity and each claim a `receive <key>` span under it. After it come `job.changed` to each
+  claimed row's requester, the gap notices (`core.scheduler.gap` to the administrators,
+  `core.job.held` to each requester of a held row) in persist batches of their own, the withdrawal of
+  the retired rows' confirmation notices, and tick step 2.
+- **The interval.** A full claim or a full tick polls again at once; something short of that waits
+  `MinPollInterval`; nothing doubles the wait up to `MaxPollInterval`; a failed poll is logged
+  (`JobPollFailed`, the tenant in the log scope) and waits the maximum. An enqueue on this instance
+  nudges the poller through `TenantPollerWake`, coalesced to one wake.
+- **The slots.** `JobConcurrency` bounds the instance to `MaxParallelBatches` batches and each
+  tenant's key to its `MaxConcurrency`; a key with no free slot is left out of the poll, and the
+  release of a slot wakes the tenants refused one. `JobDispatcher` runs each claim that leased rows
+  on the thread pool, counting its rows on `tellma.jobs.in_flight`.
+- **The renewals.** `JobRenewalScheduler` renews each tenant's leases once its earliest is due, a
+  fifth of the lease after its last renewal; a failed renewal is logged and waits an interval. A
+  report whose percent jumped five points renews at once, at most once per job every five seconds.
+  A handler still running a lease length after its cancel was requested is abandoned
+  (`JobHandlerAbandoned`): its lease is no longer renewed and lapses.
+- **The drain.** `StoppingAsync` stops the pollers, cancels the host token, and waits up to
+  `DrainTimeout` for the polls in flight and every batch. The handlers still running then keep their
+  lease: the renewals stop, one final renewal per tenant binds every such lease to the host's
+  shutdown timeout, and each handler is abandoned (`WorkerDrainTimedOut`).
+- **Telemetry.** Every `tellma.jobs.*` instrument and `tellma.schedules.gap_detected` are recorded
+  on the `Tellma.Core` meter; `JobWorkerHeartbeat` is logged whenever a poll stamps a tenant, at most
+  once a minute, for the log-based staleness alert under `infra/monitoring/jobs/`.
+
 ## Excel
 
 `Excel/` holds the workbook features' runtime contracts and the engine that writes them. Workbooks

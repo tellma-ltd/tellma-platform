@@ -4,7 +4,6 @@
 // LICENSE file in the root directory of this source tree.
 
 using Microsoft.Extensions.DependencyInjection;
-using System.Globalization;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Jobs;
 using Tellma.Core.Abstractions.Tenancy;
@@ -75,7 +74,7 @@ namespace Tellma.Testing.Entities
 
             // --- The poll's round trip: every claim in one maintenance batch of the system scope,
             // each statement committing on its own, each claim under a fresh token ---
-            string owner = string.Create(CultureInfo.InvariantCulture, $"{Environment.MachineName}/{Environment.ProcessId}");
+            string owner = JobLeaseOwner.Current;
             List<JobClaim> claims = [];
             TenantScope scope = await services.GetRequiredService<ITenantScopeFactory>()
                 .CreateScopeAsync(JobScopes.System(tenantId), cancellationToken: cancellationToken).ConfigureAwait(false);

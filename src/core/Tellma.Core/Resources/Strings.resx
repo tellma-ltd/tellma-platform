@@ -588,6 +588,12 @@
   <data name="Notification_core_job_pending-confirmation" xml:space="preserve">
     <value>{count, plural, one {A job is waiting for you to confirm a warning.} other {A job is waiting for you to confirm # warnings.}}</value>
   </data>
+  <data name="Notification_core_job_held" xml:space="preserve">
+    <value>{count, plural, one {A job you started is paused after a service interruption. An administrator can resume it; you can stop it.} other {# jobs you started are paused after a service interruption. An administrator can resume them; you can stop them.}}</value>
+  </data>
+  <data name="Notification_core_scheduler_gap" xml:space="preserve">
+    <value>Background jobs did not run from {previousTickAt, date, medium} {previousTickAt, time, short} until {now, date, medium} {now, time, short}. {heldCount, plural, =0 {No overdue job was paused.} one {# overdue job is paused until an administrator resumes or stops it.} other {# overdue jobs are paused until an administrator resumes or stops them.}}</value>
+  </data>
   <!-- Queryex diagnostics, with the arguments the engine gives each -->
   <data name="Queryex_QX1001" xml:space="preserve">
     <value>Unterminated text literal.</value>
