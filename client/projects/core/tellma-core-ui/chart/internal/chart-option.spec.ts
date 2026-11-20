@@ -21,6 +21,8 @@ import {
 const LRM = '\u200E';
 /** RIGHT-TO-LEFT MARK. */
 const RLM = '\u200F';
+/** ARABIC LETTER MARK, which closes an Arabic word. */
+const ALM = '\u061C';
 
 /** A theme with a distinct, recognisable colour per role. */
 const THEME: ɵTmChartTheme = {
@@ -387,7 +389,7 @@ describe('ɵtmBuildChartOption', () => {
       const arabic = build(twoSeries('column'), { locale: 'ar-EG', direction: 'rtl' });
       const tick = arabic['yAxis'].axisLabel.formatter(100000);
       expect(tick).toMatch(/[٠-٩]/);
-      expect(tick.replace(/[\u200E\u200F]/g, '')).toBe(
+      expect(tick.replace(/[\u061C\u200E\u200F]/g, '')).toBe(
         new Intl.NumberFormat('ar-EG', { notation: 'compact' })
           .format(100000)
           .replace(/[\u061C\u200E\u200F]/g, ''),
@@ -407,7 +409,7 @@ describe('ɵtmBuildChartOption', () => {
       };
       const option = build(spec, { direction: 'rtl' });
       expect(option['xAxis'].axisLabel.formatter('c0')).toBe(
-        `${RLM}${LRM}1100${LRM}${RLM} - النقدية`,
+        `${RLM}${LRM}1100${LRM}${RLM} - النقدية${ALM}`,
       );
       expect(option['xAxis'].axisLabel.formatter('c1')).toBe(`${RLM}${LRM}Cash${LRM}${RLM}`);
       expect(option['legend'][0].formatter('s0')).toBe(`${RLM}${LRM}A${LRM}${RLM}`);
