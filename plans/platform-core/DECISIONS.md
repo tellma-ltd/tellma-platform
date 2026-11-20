@@ -359,6 +359,38 @@ Format, one entry per ruling:
 - Also accepted: a readonly select never opens (a pre-existing bug, fixed) and exposes aria-readonly.
 - **Misalignment for Ahmad:** 0010 §B.4 names contentChildren(TmOptionGroup), which the design does not need. See also D-036's §B.4 note.
 
+### D-154 (Ahmad, 2026-11-20): a green pc push run makes an item done; PR #18's run no longer gates it
+
+- Ahmad: "Don't gate done on the `pull_request` run if the push run is green. Everything else in the process stays the same."
+- Context: since D-144 each integrated commit gets two runs on PR #18's checks list, CI (push) on pc/{PC} (the gate) and CI (pull_request) once the same sha is PR #18's head. While main does not move they test the same tree.
+- From now on an item is done when its green pc/{PC} commit is on platform-core. The orchestrator no longer watches the PR run to mark done. A red PR run on platform-core, seen in the §5.3 run list, still stops the line (§8.3). PROCESS.md §4 diagram, §5.3 and §11 updated (D-088).
+- Applied first to PC-144 (711641ab; pc 44771340622 green; its PR run 44774613660 had also finished green).
+
+### D-153 (orchestrator, 2026-11-20): PC-146 Review 2 rulings; PC-F64 Review 1 rulings
+
+- PC-146 Review 2 (inherit xhigh, 5efa9448..261870b7): 1 blocking, 0 major, 2 minor. R2-1: the new NotificationAccessCriteria makes core.Notification × Read Filtered for a caller with no grants, failing AccessEvaluationTests' "every decision Denied" assertion deterministically; the product is right (0021 §8), so the test is rewritten to list the self-scoped securables, which PC-145's core.Job self-scope then extends. R1-1 is confirmed closed in all four unit projects that compose CoreFeature. The AspNetCore RequestTimeoutTests failure in fix 1 is an unrelated load flake (839/839 on rerun); recorded as a flake candidate. PC-146 holds after fix 2 behind PC-F64 (D-087).
+- For Ahmad: 0021 §4.3 says preference-save errors sit at `[i].type`, but the 0016 §7.3 edge (PC-081, pinned in ValidationPathsTests) renders `body[i].type`. The code follows 0016; 0021 §4.3 should say `body[i].type` for a JSON-array body.
+- PC-F64 Review 1 (6952a9d3): 0 blocking, 0 major, 1 minor (an ARCHITECTURE.md sentence overstated the five-minute bound). Root cause confirmed from the nightly log: the test failed in setup (CatalogHost.MigrateAsync on EF's 30 s default) during a two-minute LocalDB stall; the product's suspension refresh is correct; the longer bound is test-helper only. No stall lever now; moving LocalDB data off C: and the design-time-factory test's 30 s default are on WATCHLIST 0011 for a recurrence. The implementer's identity-store "inconsistency" is not real (the migrator hands the store a connection string with Command Timeout = MigrationCommandTimeout, already pinned). PC-F64 integrates after fix 1.
+
+### D-152 (Ahmad, 2026-11-20): PC-144 platform-core push approved after a permission block
+
+- PC-144's agent had its fast-forward `git push origin HEAD:platform-core` of the green 711641ab (pc run 44771340622) denied by the auto-mode permission classifier; it did not retry. Ahmad was notified (push and email) and approved the push in chat. The orchestrator verified HEAD = 711641ab and that origin/platform-core was its ancestor, then pushed 3bbbac07..711641ab from pc-3. The approval covers that push only.
+
+### D-151 (orchestrator, 2026-11-20): nightly 44745573605 after PC-F61; PC-146 escalated; touched tests include shared compositions
+
+- Nightly 44745573605 on 007f0ff0 (dispatched to verify PC-F61): the OS dependencies installed for chromium, firefox and webkit in client-e2e and client-e2e-quarantine, so PC-F61 is verified. New reds, each a fix item (D-144, not a line stop): client-e2e, 3 WebKit chart-bidi canvas tests (397 passed) → PC-F63 in pc-f; integration-windows, TenantScopeTests.A_suspension_another_instance_wrote_refuses_the_next_scope_after_a_refresh after 1 min 5 s (775 passed; the job passed in 44701549452) → PC-F64 in pc-f2. The nightly dotnet job ended "OS dependencies: unavailable" after two attempts; PC-F63 checks whether that is a mirror stall or a missed caller.
+- PC-146 (0021-c) Review 1 at 5efa9448: 1 blocking, 1 major, 3 minor. R1-1: InboxService at the "inbox" route collides with two existing test models, failing about 79 unit tests in Tellma.Core.Tests and Tellma.Core.AspNetCore.Tests that the implementer's filtered run missed (pc run 44743945020 was skipped, as designed for a non-integration commit). Escalated to Review 2 (inherit, xhigh, §4.4).
+- Reading of D-144's "touched tests": a change to a shared composition (CoreFeature, route segments, stack or service registrations) touches every unit project that composes it, so that project runs in full once (still with the unit filter, never an unfiltered dotnet test Tellma.slnx). Added to the brief additions.
+- Carry to PC-148: EnlistmentFrame.Admit must admit EmailOutbox (0015 §13.3 admits it in every frame; not yet implemented), and 0021 §12's "enlisted rows committed with the completion" e2e test lands there. The job frame stays as built.
+- For Ahmad: 0021 §4.4 says any row-writing channel enlists with host, but 0015 §13.3's participant list does not admit channel senders. Either 0015 admits registered senders in the core.notification-delivery frame, or 0021 restricts row-writing channels to writers admitted in every frame. Interim: no change; a refused enlistment throws before the group is recorded, so nothing half-commits and the item fails visibly at MaxAttempts. Caveat: an API-sending channel registered before a refused one re-sends on every attempt.
+
+### D-150 (orchestrator, 2026-11-20): PC-144 Review 1 rulings; PC-F62 queued for undeclared cascade writes
+
+- PC-144 (0020-e) Review 1 at 7d470e81: 0 blocking, 2 major, 4 minor; no escalation. R1-1: DeletePlan.Writes declares only registered model siblings, so the tables written by FK ON DELETE CASCADE / SET NULL from other tables go undeclared, in every module (a Schedule delete writes core.Jobs through FK_Jobs_ScheduleId SET NULL). R1-2: most validator codes untested, including ReplayAllRequiresAllow (§16 pin).
+- Ruling: PC-144 does not change shared delete-plan code. Its fix 1 declares the core.Jobs write beside the existing core.ScheduleStates DELETE as an interim and pins it with a test. The general fix is a new fix item, PC-F62 (0015/0012): DeletePlan declares the tables of every Cascade/SetNull referencing FK, exempt from authority as siblings are, and the per-service workarounds are removed. PC-F62 starts after PC-144 lands, so it removes the workaround in one place.
+- The implementer's "double fire on an ambiguous step-2 commit" open risk is wrong per the reviewer (job insert and state advance are atomic; the fence plus UPDLOCK/READPAST block a re-fire), so it is not the D-146 gap. The pause event rename (0020 §9 SchedulePaused → SchedulerSchedulePaused) must be reverted or listed as a deviation.
+- PC-144 holds after fix 1 behind PC-087 (D-087).
+
 ### D-149 (orchestrator, 2026-11-20): PC-B04 results; Tier 3 still waits
 
 - PC-B04 (Phase 4, PC-062…PC-084): 8 findings (0 blocking, 6 major, 2 minor), all fixed in 27f8bb6a; parts pushed back (Amharic keys, the ProblemMapper backstop per D-108, blob pre-validation, a client build check). The fixer self-watched pc run 44730508322 (green) and fast-forwarded platform-core to f8806aa8 (D-147). Its local run had one load flake that passed on a local rerun; the workflow did not name the test, so it is unidentified. CI was not re-run.

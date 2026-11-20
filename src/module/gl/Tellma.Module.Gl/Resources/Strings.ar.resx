@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <!-- The feature, as a securable's feature label shows it -->
+  <data name="Feature_gl" xml:space="preserve">
+    <value>دفتر الأستاذ العام</value>
+  </data>
+  <!-- The launcher section the GL screens sit under -->
+  <data name="Gl_Nav_Financials" xml:space="preserve">
+    <value>المالية</value>
+  </data>
+  <!-- Centers: the entity, its members and the Code field's hint -->
+  <data name="Gl_Center" xml:space="preserve">
+    <value>مركز</value>
+  </data>
+  <data name="Gl_Center_Plural" xml:space="preserve">
+    <value>المراكز</value>
+  </data>
+  <data name="Gl_Center_Name" xml:space="preserve">
+    <value>الاسم</value>
+  </data>
+  <data name="Gl_Center_Code" xml:space="preserve">
+    <value>الرمز</value>
+  </data>
+  <data name="Gl_Center_CenterType" xml:space="preserve">
+    <value>النوع</value>
+  </data>
+  <data name="Gl_Center_ParentId" xml:space="preserve">
+    <value>المركز الأعلى</value>
+  </data>
+  <data name="Gl_Center_IsActive" xml:space="preserve">
+    <value>نشط</value>
+  </data>
+  <data name="Gl_Center_CodeHint" xml:space="preserve">
+    <value>رمز قصير لا يتكرر بين المراكز، مثل BU-TRD.</value>
+  </data>
+  <!-- Center types -->
+  <data name="Gl_CenterType_Abstract" xml:space="preserve">
+    <value>تجميعي</value>
+  </data>
+  <data name="Gl_CenterType_BusinessUnit" xml:space="preserve">
+    <value>وحدة أعمال</value>
+  </data>
+  <data name="Gl_CenterType_Service" xml:space="preserve">
+    <value>خدمات</value>
+  </data>
+  <data name="Gl_CenterType_Operation" xml:space="preserve">
+    <value>تشغيل</value>
+  </data>
+  <data name="Gl_CenterType_Sale" xml:space="preserve">
+    <value>مبيعات</value>
+  </data>
+  <!-- Validation: the centers' tree rules -->
+  <data name="Gl_Centers_ParentMustBeGrouping" xml:space="preserve">
+    <value>لا تندرج المراكز إلا تحت مركز تجميعي أو وحدة أعمال.</value>
+  </data>
+  <data name="Gl_Centers_HasChildren" xml:space="preserve">
+    <value>لهذا المركز مراكز تابعة. احذفها معه، أو انقلها أولًا.</value>
+  </data>
+</root>

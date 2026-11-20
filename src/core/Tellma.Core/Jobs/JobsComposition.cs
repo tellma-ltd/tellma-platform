@@ -18,12 +18,12 @@ namespace Tellma.Core.Jobs
     ///     Registers what background jobs need beyond <see cref="CoreFeature" />'s contribution: the
     ///     options, validated by the startup gate; the handler registry built from what the realizers
     ///     recorded; the seam through which an enqueue wakes this instance's poller; the scoped job
-    ///     queue; the machinery that runs what a claim leased; and, unless
+    ///     queue; the machinery that runs what a claim leased, and the scheduler's tick; and, unless
     ///     <see cref="JobsOptions.Enabled" /> is configured off, the worker that polls the tenants.
     /// </summary>
     internal static class JobsComposition
     {
-        /// <summary>Registers the options, the registry, the wake seam, the queue, the execution machinery and the worker.</summary>
+        /// <summary>Registers the options, the registry, the wake seam, the queue, the execution machinery, the tick and the worker.</summary>
         /// <param name="services">The composition's services.</param>
         /// <param name="record">The realised composition, whose job contributions the registry reads.</param>
         /// <param name="options">The options registrar, whose bindings the startup gate validates.</param>
@@ -46,7 +46,8 @@ namespace Tellma.Core.Jobs
 
             // --- The execution machinery, one per process: the instruments, the leases this
             // instance holds, their renewal, the English rendering of keys for the log, the runner of
-            // claims, the batch slots, the poll round trip, the renewal schedule and the dispatcher ---
+            // claims, the batch slots, the scheduler's tick, the poll round trip that carries it, the
+            // renewal schedule and the dispatcher ---
             services.TryAddSingleton(TimeProvider.System);
             _ = services.AddSingleton<JobsMetrics>();
             _ = services.AddSingleton<JobLeases>();
@@ -56,6 +57,7 @@ namespace Tellma.Core.Jobs
             _ = services.AddSingleton<JobRunner>();
             _ = services.AddSingleton<IJobClaimRunner>(static provider => provider.GetRequiredService<JobRunner>());
             _ = services.AddSingleton<JobConcurrency>();
+            _ = services.AddSingleton<IScheduleTick, ScheduleTick>();
             _ = services.AddSingleton<JobPoll>();
             _ = services.AddSingleton<IJobPoll>(static provider => provider.GetRequiredService<JobPoll>());
             _ = services.AddSingleton<JobRenewalScheduler>();

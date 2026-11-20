@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <!-- The feature, as a securable's feature label shows it -->
+  <data name="Feature_gl" xml:space="preserve">
+    <value>General ledger</value>
+  </data>
+  <!-- The launcher section the GL screens sit under -->
+  <data name="Gl_Nav_Financials" xml:space="preserve">
+    <value>Financials</value>
+  </data>
+  <!-- Centers: the entity, its members and the Code field's hint -->
+  <data name="Gl_Center" xml:space="preserve">
+    <value>Center</value>
+  </data>
+  <data name="Gl_Center_Plural" xml:space="preserve">
+    <value>Centers</value>
+  </data>
+  <data name="Gl_Center_Name" xml:space="preserve">
+    <value>Name</value>
+  </data>
+  <data name="Gl_Center_Code" xml:space="preserve">
+    <value>Code</value>
+  </data>
+  <data name="Gl_Center_CenterType" xml:space="preserve">
+    <value>Type</value>
+  </data>
+  <data name="Gl_Center_ParentId" xml:space="preserve">
+    <value>Parent center</value>
+  </data>
+  <data name="Gl_Center_IsActive" xml:space="preserve">
+    <value>Active</value>
+  </data>
+  <data name="Gl_Center_CodeHint" xml:space="preserve">
+    <value>A short code, unique among the centers, such as BU-TRD.</value>
+  </data>
+  <!-- Center types -->
+  <data name="Gl_CenterType_Abstract" xml:space="preserve">
+    <value>Abstract</value>
+  </data>
+  <data name="Gl_CenterType_BusinessUnit" xml:space="preserve">
+    <value>Business unit</value>
+  </data>
+  <data name="Gl_CenterType_Service" xml:space="preserve">
+    <value>Service</value>
+  </data>
+  <data name="Gl_CenterType_Operation" xml:space="preserve">
+    <value>Operation</value>
+  </data>
+  <data name="Gl_CenterType_Sale" xml:space="preserve">
+    <value>Sales</value>
+  </data>
+  <!-- Validation: the centers' tree rules -->
+  <data name="Gl_Centers_ParentMustBeGrouping" xml:space="preserve">
+    <value>Only an abstract center or a business unit can have centers under it.</value>
+  </data>
+  <data name="Gl_Centers_HasChildren" xml:space="preserve">
+    <value>This center has centers under it. Delete them with it, or move them first.</value>
+  </data>
+</root>
