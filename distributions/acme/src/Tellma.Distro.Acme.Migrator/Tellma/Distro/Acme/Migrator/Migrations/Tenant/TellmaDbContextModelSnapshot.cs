@@ -19530,6 +19530,14 @@ namespace Tellma.Distro.Acme.Migrator.Migrations.Tenant
                 .HasKey("Id")
                 .HasGrants("tellma_app"));
 
+            modelBuilder.HasTableTypeDefinition("UserInvitationOutcomeList", "dbo", type => type
+                .Column(name: "UserId", storeType: "int")
+                .Column(name: "Subject", storeType: "varchar(255)", nullable: true, collation: "Latin1_General_100_BIN2")
+                .Column(name: "InviteStatus", storeType: "varchar(9)", nullable: true)
+                .Column(name: "LastInviteError", storeType: "nvarchar(1024)", nullable: true, maxLength: 1024)
+                .HasKey("UserId")
+                .HasGrants("tellma_app"));
+
             modelBuilder.HasTableTypeDefinition("UserPreferenceList", "dbo", type => type
                 .Column(name: "Key", storeType: "varchar(128)")
                 .Column(name: "Value", storeType: "nvarchar(max)")

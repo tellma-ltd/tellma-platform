@@ -84,7 +84,7 @@ namespace Tellma.Core.Tests.Data
                 .ToDictionary(static type => type.Name);
 
             Assert.Equal(
-                ["BigIdList", "CollatedKeyList", "DateList", "GuidList", "IdList", "IdStampList", "JobLeaseList", "JobOutcomeList", "JobProgressList", "JobRequestList", "NotificationPreferenceList", "NotificationRowList", "NotificationSliceList", "ScheduleNextList", "StringList", "UserPreferenceList", "VersionTagList"],
+                ["BigIdList", "CollatedKeyList", "DateList", "GuidList", "IdList", "IdStampList", "JobLeaseList", "JobOutcomeList", "JobProgressList", "JobRequestList", "NotificationPreferenceList", "NotificationRowList", "NotificationSliceList", "ScheduleNextList", "StringList", "UserInvitationOutcomeList", "UserPreferenceList", "VersionTagList"],
                 standalone.Keys.Order(StringComparer.Ordinal));
             Assert.All(standalone.Values, static type => Assert.Equal(("dbo", "tellma_app"), (type.Schema, Assert.Single(type.Grants))));
             Assert.Equal("date", standalone[nameof(DateList)].Columns.Single().StoreType);

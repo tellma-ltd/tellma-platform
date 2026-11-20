@@ -3697,6 +3697,22 @@ namespace Tellma.Distro.Acme.Migrator.Migrations.Tenant
                 grants: new[] { "tellma_app" });
 
             migrationBuilder.CreateTableType(
+                name: "UserInvitationOutcomeList",
+                physicalName: "UserInvitationOutcomeList_42e4ff20",
+                schema: "dbo",
+                scope: "tellma.tenant",
+                definitionHash: "42e4ff20982e570124e756ad0ad32e5820034997c3a19d499a4aa6c2c6fb5120",
+                columns: new[]
+                {
+                    new TableTypeColumnDefinition { Name = "UserId", StoreType = "int" },
+                    new TableTypeColumnDefinition { Name = "Subject", StoreType = "varchar(255)", IsNullable = true, Collation = "Latin1_General_100_BIN2" },
+                    new TableTypeColumnDefinition { Name = "InviteStatus", StoreType = "varchar(9)", IsNullable = true },
+                    new TableTypeColumnDefinition { Name = "LastInviteError", StoreType = "nvarchar(1024)", IsNullable = true, MaxLength = 1024 },
+                },
+                primaryKey: new[] { "UserId" },
+                grants: new[] { "tellma_app" });
+
+            migrationBuilder.CreateTableType(
                 name: "UserPreferenceList",
                 physicalName: "UserPreferenceList_8b1ed724",
                 schema: "dbo",
@@ -3725,7 +3741,7 @@ namespace Tellma.Distro.Acme.Migrator.Migrations.Tenant
                 primaryKey: new[] { "Name" },
                 grants: new[] { "tellma_app" });
 
-            migrationBuilder.CleanupTableTypes(scope: "tellma.tenant", keepList: new[] { "JobsList_a90a5696", "NotificationsList_45bbd83e", "PermissionsList_c3b8a544", "RoleMembershipsList_fd20e92d", "RolesList_77bed563", "SchedulesList_5acfe7bf", "SettingEntriesList_609d1ba0", "SettingsList_254adc5a", "UsersList_860a025a", "BigIdList_7629c0a3", "DateList_566fd984", "GuidList_922aa933", "IdList_9b0dfe3c", "IdStampList_36427f71", "JobLeaseList_17bf60e1", "JobOutcomeList_6165fff7", "JobProgressList_33eeb232", "JobRequestList_f3ef6d1d", "NotificationPreferenceList_61bf7917", "NotificationRowList_2c2b24d8", "NotificationSliceList_29aa6852", "ScheduleNextList_e422990c", "StringList_bb8903a2", "UserPreferenceList_8b1ed724", "VersionTagList_e552f6b8" });
+            migrationBuilder.CleanupTableTypes(scope: "tellma.tenant", keepList: new[] { "JobsList_a90a5696", "NotificationsList_45bbd83e", "PermissionsList_c3b8a544", "RoleMembershipsList_fd20e92d", "RolesList_77bed563", "SchedulesList_5acfe7bf", "SettingEntriesList_609d1ba0", "SettingsList_254adc5a", "UsersList_860a025a", "BigIdList_7629c0a3", "DateList_566fd984", "GuidList_922aa933", "IdList_9b0dfe3c", "IdStampList_36427f71", "JobLeaseList_17bf60e1", "JobOutcomeList_6165fff7", "JobProgressList_33eeb232", "JobRequestList_f3ef6d1d", "NotificationPreferenceList_61bf7917", "NotificationRowList_2c2b24d8", "NotificationSliceList_29aa6852", "ScheduleNextList_e422990c", "StringList_bb8903a2", "UserInvitationOutcomeList_42e4ff20", "UserPreferenceList_8b1ed724", "VersionTagList_e552f6b8" });
         }
 
         /// <inheritdoc />

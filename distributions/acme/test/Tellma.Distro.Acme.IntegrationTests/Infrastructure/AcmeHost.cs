@@ -3,6 +3,7 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -14,6 +15,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using System.Net;
 using Tellma.Core.AspNetCore;
+using Tellma.Core.Identity;
 using Tellma.Core.Tenancy;
 using Tellma.Core.Testing.Blobs;
 using Tellma.Core.Testing.Email;
@@ -147,8 +149,14 @@ namespace Tellma.Distro.Acme.IntegrationTests.Infrastructure
             AcmeHost? host = null;
             _ = builder.Services.Configure<OpenIdConnectOptions>(
                 TellmaAuthentication.OidcScheme, oidc => oidc.BackchannelHttpHandler = new ServerHandler(() => host!.Server.CreateHandler()));
+            _ = builder.Services.Configure<JwtBearerOptions>(
+                TellmaAuthentication.BearerScheme, bearer => bearer.BackchannelHttpHandler = new ServerHandler(() => host!.Server.CreateHandler()));
             _ = builder.Services.AddHttpClient(BackchannelLogoutService.HttpClientName)
                 .ConfigurePrimaryHttpMessageHandler(() => new ServerHandler(() => host!.BackchannelLogoutSink ?? host.Server.CreateHandler()));
+
+            // The platform's identity-server client reaches the in-proc engine at the public origin too.
+            _ = builder.Services.AddHttpClient(IdentityServerClient.HttpClientName)
+                .ConfigurePrimaryHttpMessageHandler(() => new ServerHandler(() => host!.Server.CreateHandler()));
 
             // --- Blobs in memory, so a suite never writes under the developer's application data ---
             _ = builder.Services.AddInMemoryBlobs();
@@ -171,6 +179,8 @@ namespace Tellma.Distro.Acme.IntegrationTests.Infrastructure
             {
                 TenantProbes.Map(groups);
             }
+
+            options.Map?.Invoke(groups);
 
             host = new AcmeHost(app, options.AwaitsCatalog, emails, warnings, probes);
             return host;

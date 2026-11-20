@@ -22,6 +22,9 @@ stack core.User
   feature: core
   action activate: entity Activate built-in filtered args -; mutation, idempotent; result EntitiesResult<User>; mcp Full, revision 0; -
   action deactivate: entity Activate built-in filtered args -; mutation, idempotent; result EntitiesResult<User>; mcp Full, revision 0; -
+  action issue-credentials: entity Credentials filtered single args -; mutation; result CredentialsResult; mcp Full, revision 0; Issue or rotate a service account's client credentials
+  action invite: entity Invite filtered args -; mutation; result IReadOnlyList<InviteResult>; mcp Full, revision 0; Invite users through the identity server
+  action invitation-status: api core.User:Read body IdsRequest handler UserService<User>; idempotent; result IReadOnlyList<InvitationStatus>; mcp Full, revision 0; -
 stack core.Role
   segment: roles
   entity: Tellma.Core.Abstractions.Access.Role

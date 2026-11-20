@@ -56,6 +56,8 @@ namespace Tellma.Core.Tests.Composition.Checks
                     new SecurableDescriptor("core.User", "Save", "core.User", true, "core", null),
                     new SecurableDescriptor("core.User", "Delete", "core.User", true, "core", null),
                     new SecurableDescriptor("core.User", "Activate", "core.User", true, "core", null),
+                    new SecurableDescriptor("core.User", "Invite", "core.User", true, "core", null),
+                    new SecurableDescriptor("core.User", "Credentials", "core.User", true, "core", null),
                     new SecurableDescriptor("core.UserStamp", "Read", "core.UserStamp", false, "core", new SecurableOwner("core.User", "User")),
                 ],
                 registry.All);

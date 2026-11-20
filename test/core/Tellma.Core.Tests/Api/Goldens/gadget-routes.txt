@@ -5,6 +5,9 @@ POST /{tenantId}/api/web/users/save | save | core.User | - | SaveRequest<User> |
 POST /{tenantId}/api/web/users/delete | delete | core.User | - | IdsRequest | AffectedResult | core.User:Delete | mutation | lisU15N3Oj5S
 POST /{tenantId}/api/web/users/activate | activate | core.User | entity | EntityActionRequest | EntitiesResult<User> | core.User:Activate | mutation, idempotent | pc2DaU7k4Sg0
 POST /{tenantId}/api/web/users/deactivate | deactivate | core.User | entity | EntityActionRequest | EntitiesResult<User> | core.User:Activate | mutation, idempotent | pc2DaU7k4Sg0
+POST /{tenantId}/api/web/users/issue-credentials | issue-credentials | core.User | entity | IdRequest | CredentialsResult | core.User:Credentials | mutation | XNBArSvfta01
+POST /{tenantId}/api/web/users/invite | invite | core.User | entity | IdsRequest | IReadOnlyList<InviteResult> | core.User:Invite | mutation | PgGi61D6gu1m
+POST /{tenantId}/api/web/users/invitation-status | invitation-status | core.User | api | IdsRequest | IReadOnlyList<InvitationStatus> | core.User:Read | idempotent | jS2fYFZnaXBe
 POST /{tenantId}/api/web/roles/query | query | core.Role | - | QueryRequest | RowPage | core.Role:Read | idempotent | PqV1-faRenCx
 POST /{tenantId}/api/web/roles/get | get | core.Role | - | GetRequest | EntitiesResult<Role> | core.Role:Read | idempotent | UrE0C_S3Q0wA
 POST /{tenantId}/api/web/roles/get-by-ids | get-by-ids | core.Role | - | GetByIdsRequest | EntitiesResult<Role> | core.Role:Read | idempotent | _R-z6oPzKA_H

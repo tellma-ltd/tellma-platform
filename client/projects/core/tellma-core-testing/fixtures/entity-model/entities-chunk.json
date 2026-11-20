@@ -3588,6 +3588,67 @@
           "singleTarget": false,
           "supportsFilter": true,
           "result": "entities"
+        },
+        {
+          "name": "issue-credentials",
+          "kind": "entity",
+          "builtIn": false,
+          "action": "Credentials",
+          "labelKey": "Core_User_Action_IssueCredentials",
+          "mutation": true,
+          "idempotent": false,
+          "destructive": false,
+          "singleTarget": true,
+          "supportsFilter": true,
+          "result": "own"
+        },
+        {
+          "name": "invite",
+          "kind": "entity",
+          "builtIn": false,
+          "action": "Invite",
+          "labelKey": "Core_User_Action_Invite",
+          "mutation": true,
+          "idempotent": false,
+          "destructive": false,
+          "singleTarget": false,
+          "supportsFilter": true,
+          "result": "own"
+        },
+        {
+          "name": "invitation-status",
+          "kind": "api",
+          "builtIn": false,
+          "action": "Read",
+          "labelKey": "Core_User_Action_InvitationStatus",
+          "mutation": false,
+          "idempotent": true,
+          "destructive": false,
+          "singleTarget": false,
+          "supportsFilter": false,
+          "result": "own",
+          "arguments": {
+            "type": "object",
+            "properties": {
+              "ids": {
+                "type": "array"
+              }
+            },
+            "required": [
+              "ids"
+            ]
+          },
+          "fields": [
+            {
+              "name": "ids",
+              "labelKey": "Core_User_Action_InvitationStatus_Ids",
+              "required": true,
+              "value": {
+                "type": "json",
+                "nullable": false
+              }
+            }
+          ]
         }
       ],
       "relatedSelect": [

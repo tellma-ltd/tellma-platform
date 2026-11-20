@@ -23,7 +23,10 @@ namespace Tellma.Core.Crud.Actions
     // Spec 0015 §11.2 steps 2 and 3: round trip 1 carries the targets under the caller's Read filter,
     // with every child collection when the action loads children, and their count under the action's
     // grant, beside every load the hook, the components and the method request before their first
-    // await. The three run as tasks of the validation rounds over one ActionContext. The method
+    // await. The three run as tasks of the validation rounds over one ActionContext. A task that must
+    // know every validator's verdict before it acts, such as a method calling an identity server
+    // between the round trips (spec 0018 §3.3), awaits the context's ValidatedAsync: the scheduler
+    // resumes it at the quiet point that would end the rounds, at no round trip. The method
     // composes before the persist batch exists: its Batch is a deferred recording replayed onto the
     // persist, and a task that reads Persisted leaves the rounds once the flow that read it stops
     // running on its thread, so the persist it waits for runs once every other task completed or
@@ -179,6 +182,7 @@ namespace Tellma.Core.Crud.Actions
                 AssignmentsService = Services.Services.GetService<IAssignments>(),
                 PersistedRead = () => ReadPersisted(scheduler, late),
                 ComposeGuard = PersistGate.EnsureComposing,
+                Settle = scheduler.SettleAsync,
             };
         }
 

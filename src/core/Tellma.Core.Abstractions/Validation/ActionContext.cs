@@ -148,6 +148,38 @@ namespace Tellma.Core.Abstractions.Validation
         }
 
         /// <summary>
+        ///     Waits until the action's validation has settled: every other task of the validation
+        ///     rounds (the hook, the components and the stack's validators) has completed or waits here
+        ///     too, and no load is pending. <see cref="Errors" /> then holds every error those tasks
+        ///     reported, so a method that calls another system before it composes, such as an identity
+        ///     server, awaits this and makes the call only while <see cref="Errors" /> holds none.
+        /// </summary>
+        /// <remarks>
+        ///     <para>
+        ///         The wait costs no round trip: it resumes at the quiet point where the rounds would
+        ///         otherwise end. A task that awaits it may load again afterwards, and the rounds go on;
+        ///         another task that awaited it too resumes at the same point, so an error it reports
+        ///         after resuming can follow the check. Await it after the first
+        ///         <see cref="IContextLoader.LoadAsync" />, so the targets are loaded, and before reading
+        ///         <see cref="Persisted" />.
+        ///     </para>
+        ///     <para>
+        ///         It faults when the rounds stop early, as a parked load does. A context the pipeline
+        ///         did not create, such as one a unit test builds, has no rounds to wait for, and the
+        ///         wait completes at once.
+        ///     </para>
+        /// </remarks>
+        /// <returns>A task that completes once the validation settled.</returns>
+        /// <exception cref="InvalidOperationException">
+        ///     The calling flow is no task of the rounds, its task already read <see cref="Persisted" />,
+        ///     or another of its flows is parked at a load.
+        /// </exception>
+        public Task ValidatedAsync()
+        {
+            return Settle?.Invoke() ?? Task.CompletedTask;
+        }
+
+        /// <summary>
         ///     The assignments of rows of the stack, appended to <see cref="Batch" />.
         /// </summary>
         /// <exception cref="NotSupportedException">The host registers no assignments service.</exception>
@@ -167,6 +199,9 @@ namespace Tellma.Core.Abstractions.Validation
 
         /// <summary>Refuses a save or an update from a flow that may compose no more; set by the pipeline.</summary>
         internal Action? ComposeGuard { get; init; }
+
+        /// <summary>Waits until the validation rounds settled, for <see cref="ValidatedAsync" />; set by the pipeline, null outside it.</summary>
+        internal Func<Task>? Settle { get; init; }
 
         /// <summary>The source the pipeline completes or faults <see cref="Persisted" /> through: once the persist committed, or with what ended the action.</summary>
         private TaskCompletionSource PersistedSource { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);

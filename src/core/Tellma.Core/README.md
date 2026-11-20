@@ -2058,6 +2058,60 @@ are exempt. Self-protection refusals are counted with the guards (`self_deactiva
 
 Saving a user or a role is a sensitive securable, so it asks for the step-up bar.
 
+### The users' service and its identity actions
+
+`UserService<TUser>` takes its platform collaborators as one `UserServiceDependencies` bundle (the
+identity-server client, the membership directory, the links, the language catalogue, the value sets,
+the guarded batch runner, the securables, the evaluator, the clock, the users' instruments and the
+logger factory), which `UsersRuntimeComposition` registers per scope, so a leaf's service derives with a
+two-argument constructor. A save lower-cases the emails, trims the names and the mobile, and puts the
+locale members in their canonical case; it then checks each new or changed locale member against what
+the deployment offers and each new or changed contact detail against its format, so a stored value the
+deployment no longer offers stays until it changes.
+
+| Code | The users' service refuses |
+|---|---|
+| `Users.LanguageNotOffered` / `Users.RegionNotOffered` | a language or a region the catalogue does not offer |
+| `Users.CalendarUnknown` / `Users.TimeZoneUnknown` | a calendar or a time zone outside its value set |
+| `Users.ContactEmailInvalid` / `Users.MobileInvalid` | a contact email that is not one plain address, a mobile that is not E.164 |
+| `Users.NotIndividual` / `Users.AlreadyJoined` / `Required` | an `invite` target that is not an individual, has joined, or has no email |
+| `Users.NotService` | an `issue-credentials` target that is not a service account |
+| `Users.Inactive` | an inactive target of either action |
+
+The two identity actions call the identity server between the action's round trips, with no
+transaction open, once every validator has spoken (`ActionContext.ValidatedAsync`, which resumes the
+method at the validation's quiet point without a round trip of its own):
+
+- **`invite`** sends one invitation per target in request order (the user's language or the tenant's
+  first, the name in that language's content slot, the tenant's link, and a lookup only on a sandbox),
+  then appends one write-back statement to the persist batch: each answered user's account linked
+  unless it holds another, `InvitedAt` and `InviteStatus` written on success, `LastInviteError`
+  replaced, the row stamped, and every answered user's preferences tag moved. Users whose stored
+  account differs from the one answered come back as `Users.SubjectMismatch`, untouched; a sandbox's
+  unknown address or credential-less account is `Users.SandboxRequiresExistingIdentity`. Once the
+  action committed, the users who gained an account are recorded in the membership directory. A
+  prefix the identity server answered is recorded and raised as `partial-failure` with the ids never
+  attempted. A recompose of the persist replays the write-back and never calls the identity server
+  again.
+- **`issue-credentials`** (single target) creates a client, updates the account to name it (joining
+  it on its first credentials), and answers the client id and its one-time secret, which no log or
+  rendering carries. Once the action committed, the client is recorded and the previous one deleted;
+  a persist that never commits deletes the new one instead.
+- **`invitation-status`** reads the requested users under the caller's read decision in one round
+  trip, omitting the users the caller cannot read, then asks the identity server for the delivery of
+  the invitations it emailed.
+
+After a committed `deactivate`, every session listener is told of each linked user, the membership
+hints turn inactive and a service account's client is deleted; after `activate`, the hints turn
+active. These effects, like the actions' own, run outside any transaction and log a failure
+(`ServiceAccountDeleteFailed`, `UserAccessRevocationFailed`, `UserMembershipHintFailed`) rather than
+throw. `UserAccessCriteria` grants every member `Read` of their own user row (`Id = me()`). Invites
+are counted on `tellma.users.invites` (meter `Tellma.Core`, tag `outcome`: `Invited`, `Reinvited`,
+`Active`, `SubjectMismatch`, `Error`, `NotAttempted`) and logged as `UsersInvited` or
+`UsersInvitePartial`. A user delete's preferences, stamps and notification preferences leave by their
+keys' cascade; the delete's persist appends one statement that declares those three tables among the
+batch's writes, so its change tracking and version tags see them.
+
 `RoleService<TRole>`'s preprocessing collapses a role's exact duplicate permissions (the same
 resource, action and filter, compared ordinally) to one row before the rules count and stamp them,
 since no unique index can hold them apart: a stored row survives over a new one, and a stored

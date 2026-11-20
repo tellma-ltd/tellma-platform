@@ -62,6 +62,8 @@ namespace Tellma.Core.Tests.Access
                 {"resource":"core.User","action":"Save","filterRoot":"core.User","isSensitive":true,"feature":"core","resourceLabelKey":"Core_User_Plural","actionLabelKey":"Action_Save","featureLabelKey":"Feature_core"},
                 {"resource":"core.User","action":"Delete","filterRoot":"core.User","isSensitive":true,"feature":"core","resourceLabelKey":"Core_User_Plural","actionLabelKey":"Action_Delete","featureLabelKey":"Feature_core"},
                 {"resource":"core.User","action":"Activate","filterRoot":"core.User","isSensitive":true,"feature":"core","resourceLabelKey":"Core_User_Plural","actionLabelKey":"Action_Activate","featureLabelKey":"Feature_core"},
+                {"resource":"core.User","action":"Invite","filterRoot":"core.User","isSensitive":true,"feature":"core","resourceLabelKey":"Core_User_Plural","actionLabelKey":"Core_User_Action_Invite","featureLabelKey":"Feature_core"},
+                {"resource":"core.User","action":"Credentials","filterRoot":"core.User","isSensitive":true,"feature":"core","resourceLabelKey":"Core_User_Plural","actionLabelKey":"Action_Credentials","featureLabelKey":"Feature_core"},
                 {"resource":"core.UserStamp","action":"Read","filterRoot":"core.UserStamp","isSensitive":false,"feature":"core","owner":{"resource":"core.User","navigation":"User"},"resourceLabelKey":"Securable_core_UserStamp","actionLabelKey":"Action_Read","featureLabelKey":"Feature_core"}
                 ]
                 """;
