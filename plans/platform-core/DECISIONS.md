@@ -359,6 +359,12 @@ Format, one entry per ruling:
 - Also accepted: a readonly select never opens (a pre-existing bug, fixed) and exposes aria-readonly.
 - **Misalignment for Ahmad:** 0010 §B.4 names contentChildren(TmOptionGroup), which the design does not need. See also D-036's §B.4 note.
 
+### D-142 — PC-100 Review 1 rulings (2026-11-20)
+
+- Escalated to Review 2 (inherit, xhigh) under §4.4: R1 had 2 blocking findings (back-to-back polling when a refused tenant is woken by any release; one item's cancel abandoning the whole lease and double-running the rest).
+- Deviation D-5 (wake tenants refused a slot) stays only in R1-1's narrowed form: a release must not make a refused tenant poll again at once while the refusing key is still at its MaxConcurrency.
+- Deviation D-12 accepted (DrainAsync bounded by the host token): the token fires only at ShutdownTimeout, so no work is lost or doubled; a long lease is just not shortened.
+
 ### D-141 — PC-100 hand-offs (2026-11-20)
 
 - Composed hosts run the job worker unless Tellma:Jobs:Enabled=false; the shared unit-test compositions (Core.Tests TestComposition, AspNetCore TellmaTestHost) set it off because their fake tenants have no databases. Later hosts and test compositions must decide this explicitly.

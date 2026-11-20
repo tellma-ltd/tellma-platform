@@ -103,7 +103,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC | Slot | Branch | Step | Implementer agent (name / id) | Reviewer agent (name / id) | Started (UTC) |
 |---|---|---|---|---|---|---|
 | PC-082 | pc-1 | pc/PC-082 | impl | impl (Opus, high, launched 2026-11-20) | 0016-e; R1 only | 2026-11-20 |
-| PC-100 | pc-4 | pc/PC-100 | R1 (impl 22360494) | impl (Opus, high, launched 2026-11-19) | 0020-d; R1 only | 2026-11-19 |
+| PC-100 | pc-4 | pc/PC-100 | fix1 (impl 22360494; R1 2B/1M/3m) | impl (Opus, high, launched 2026-11-19) | 0020-d; R1 2 blocking: escalated to R2 (inherit, xhigh, §4.4) | 2026-11-19 |
 
 ## Fix items
 
