@@ -274,7 +274,7 @@ different free slot, which it first switches with `cd {slot} && git switch -q -C
 
 ```
 Integrate {PC}: run `cd {slot} && git fetch origin`. If origin/platform-core is not an ancestor of
-HEAD, run `cd {slot} && git merge origin/platform-core -m "{PC}: integrate (merge platform-core)"`,
+HEAD, run `cd {slot} && git merge --no-ff origin/platform-core -m "{PC}: integrate (merge platform-core)"`,
 resolving conflicts by regenerating lockfiles, API goldens, EF snapshots and serialized migrations
 rather than hand-merging them. If it already is an ancestor, run
 `cd {slot} && git commit --allow-empty -m "{PC}: integrate"`. Either way HEAD is now an integration
@@ -297,7 +297,7 @@ never forced) and `cd {slot} && git push origin pc/{PC}`. If the platform-core p
 `cd {slot} && git fetch origin` and `cd {slot} && git diff --name-only HEAD...origin/platform-core`.
 If the new commits touch only plans/, merge origin/platform-core with
 `-m "{PC}: merge platform-core"` and push both again without a new CI wait. Otherwise merge it with
-`-m "{PC}: integrate (merge platform-core)"` (same rules), build and format, push only pc/{PC}, and
+`git merge --no-ff origin/platform-core -m "{PC}: integrate (merge platform-core)"` (same rules), build and format, push only pc/{PC}, and
 return status=ci-pending with the new sha. Return the §4.7 summary with the sha you pushed to
 platform-core.
 ```

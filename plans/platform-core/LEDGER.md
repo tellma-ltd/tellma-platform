@@ -102,7 +102,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 
 | PC | Slot | Branch | Step | Implementer agent (name / id) | Reviewer agent (name / id) | Started (UTC) |
 |---|---|---|---|---|---|---|
-| PC-F60 | pc-f | pc/PC-F60 | R1 (cdb4bca8, cf37c45a, 73403de8; gated pc pushes skipped: runs 44694269933, 44694363809) | fix agent (Opus, high, launched 2026-11-20) | D-144: ci.yml push on pc/**; integration-windows to nightly-tier.yml; CONTRIBUTING tiers; R1 only; integrates first, CI on both sides | 2026-11-20 |
+| PC-F60 | pc-f | pc/PC-F60 | fix1+integrate (new flow; R1 0/0/1) | fix agent (Opus, high, launched 2026-11-20) | D-144: ci.yml push on pc/**; integration-windows to nightly-tier.yml; CONTRIBUTING tiers; R1 only; integrates first, CI on both sides | 2026-11-20 |
 | PC-082 | pc-1 | pc/PC-082 | fix1 then hold (impl 7b5075e7; R1 0/2/3) | impl (Opus, high, launched 2026-11-20) | 0016-e; R1 only | 2026-11-20 |
 | PC-100 | pc-4 | pc/PC-100 | fix2 then hold (fix1 eafc689a; R2 0/2/4) | impl (Opus, high, launched 2026-11-19) | 0020-d; R1 2 blocking: escalated to R2 (inherit, xhigh, §4.4) | 2026-11-19 |
 
