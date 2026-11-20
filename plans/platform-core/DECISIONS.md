@@ -359,6 +359,11 @@ Format, one entry per ruling:
 - Also accepted: a readonly select never opens (a pre-existing bug, fixed) and exposes aria-readonly.
 - **Misalignment for Ahmad:** 0010 §B.4 names contentChildren(TmOptionGroup), which the design does not need. See also D-036's §B.4 note.
 
+### D-145 (orchestrator, 2026-11-20): PC-082 Review 1 rulings
+
+- R1-1, interim: spec 0016's order is kept (the rate limiter runs before tenant membership is known), plus a per-user (sub) cross-tenant cap that bounds one account's total rate and partition memory. **For Ahmad:** any signed-in user of the distribution can still drain another tenant's 64 concurrent tellma-tenant permits, so its members get 429. That also works as a load oracle: a busy real tenant refuses a stranger's concurrent requests, a missing one never does. The alternative is to take the tellma-tenant and tellma-user permits inside the access guard after membership is confirmed (a 0016 §8.2 / 0011 §5.1 order change). Same family as D-137's state-before-membership question.
+- R1-5: the tellma-web timeout on the Blobs group aborts any blob download still streaming at 30 s. Carried to PC-089 (DisableRequestTimeout or a time-to-first-byte policy on the blob GET). **For Ahmad:** 0016 §8.3 should say which timeout applies to blob downloads.
+
 ### D-144 (Ahmad, 2026-11-20): integration gates move to GitHub CI; integration-windows moves to the nightly tier
 
 - Situation: a local integration gate took about 45-100 min (PC-142 ~50, PC-098 ~55, PC-102 ~100) on a host shared by 4-6 slots, against about 17 min for CI, and the D-087 release queue serialised that cost.
