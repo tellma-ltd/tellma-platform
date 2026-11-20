@@ -44,6 +44,9 @@ namespace Tellma.Core.Jobs
             // --- The queue, per scope: it reads the scope's user and confirmations ---
             _ = services.AddScoped<IJobQueue, JobQueue>();
 
+            // --- A job's label in its reader's language, for the server's readers ---
+            _ = services.AddSingleton<JobLabels>();
+
             // --- The execution machinery, one per process: the instruments, the leases this
             // instance holds, their renewal, the English rendering of keys for the log, the runner of
             // claims, the batch slots, the scheduler's tick, the poll round trip that carries it, the

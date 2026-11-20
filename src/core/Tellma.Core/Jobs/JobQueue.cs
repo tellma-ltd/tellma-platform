@@ -219,6 +219,27 @@ namespace Tellma.Core.Jobs
             return result;
         }
 
+        // Spec 0020 §11.1: retry, resume and confirm make jobs due now; this instance's poller claims
+        // them once the action commits, as it does an enqueue's (§4.4).
+        /// <summary>Wakes this instance's poller once an action's persist batch commits.</summary>
+        /// <param name="batch">The action's persist batch, or a persist participant's recording view of it.</param>
+        /// <exception cref="ArgumentException">The batch is not one a tenant database created.</exception>
+        internal void Nudge(IDataBatch batch)
+        {
+            ArgumentNullException.ThrowIfNull(batch);
+
+            // --- A persist participant's recording view: recorded, so a recomposed persist registers it again ---
+            if (batch is RecordingBatch recording)
+            {
+                recording.Record(Nudge);
+                return;
+            }
+
+            DataBatch data = batch as DataBatch
+                ?? throw new ArgumentException("The batch is not one a tenant database created, so the poller cannot be woken when it commits.", nameof(batch));
+            data.OnCommitted(_ => _wake.Wake(data.Connection.TenantId));
+        }
+
         /// <summary>The handler a request names, which must be registered on this instance.</summary>
         /// <param name="key">The request's handler key.</param>
         /// <returns>The handler's registration.</returns>

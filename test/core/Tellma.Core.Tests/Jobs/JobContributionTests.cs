@@ -35,7 +35,8 @@ namespace Tellma.Core.Tests.Jobs
             using ServiceProvider provider = services.BuildServiceProvider();
             JobHandlerRegistry registry = provider.GetRequiredService<JobHandlerRegistry>();
 
-            Assert.Equal(["acme.recompute-balances", "acme.ship"], registry.Handlers.Select(static handler => handler.Key));
+            // The platform's own handlers and built-ins come with every composition; the feature's are its own.
+            Assert.Equal(["acme.recompute-balances", "acme.ship"], registry.Handlers.Select(static handler => handler.Key).Where(static key => key.StartsWith("acme.", StringComparison.Ordinal)));
             Assert.True(registry.TryFind("acme.ship", out JobHandlerRegistration? ship));
             Assert.Equal((typeof(ShipHandler), typeof(Shipment)), (ship.HandlerType, ship.EntityType));
             Assert.True(registry.TryFind("acme.recompute-balances", out JobHandlerRegistration? recompute));
@@ -51,7 +52,7 @@ namespace Tellma.Core.Tests.Jobs
                     new BuiltInScheduleSeed(500, "acme.recompute-balances", "0 1 * * *", /*lang=json,strict*/ """{"depth":2}""", "Asia/Kolkata"),
                     new BuiltInScheduleSeed(100, "acme.elsewhere", "@daily", null, null),
                 ],
-                registry.BuiltInSchedules);
+                registry.BuiltInSchedules.Where(static seed => seed.HandlerKey.StartsWith("acme.", StringComparison.Ordinal)));
 
             // Each handler resolves per invocation from the job's scope.
             Assert.Equal(ServiceLifetime.Scoped, services.Single(static descriptor => descriptor.ServiceType == typeof(ShipHandler)).Lifetime);
@@ -74,7 +75,7 @@ namespace Tellma.Core.Tests.Jobs
                 .BuiltInSchedule(500, "acme.recompute-balances", "0 1 * * *", new { Depth = 2 }, "Asia/Kolkata"))));
 
             // --- The schedule, authored by the system user, its key standing in for its code and name ---
-            IDictionary<string, object?> schedule = Assert.Single(model.Table("Schedules").GetSeedData());
+            IDictionary<string, object?> schedule = Assert.Single(model.Table("Schedules").GetSeedData(), static row => Equals(row["Id"], 500));
             Assert.Equal(500, schedule["Id"]);
             Assert.Equal(("acme.recompute-balances", "acme.recompute-balances", "acme.recompute-balances"), (schedule["HandlerKey"], schedule["Code"], schedule["Name"]));
             Assert.Equal(("0 1 * * *", "Asia/Kolkata", /*lang=json,strict*/ """{"depth":2}"""), (schedule["CronExpression"], schedule["TimeZoneId"], schedule["ArgumentsJson"]));
@@ -83,7 +84,7 @@ namespace Tellma.Core.Tests.Jobs
             Assert.Equal((WellKnownIds.SystemUserId, WellKnownIds.SystemUserId), (schedule["CreatedById"], schedule["ModifiedById"]));
 
             // --- Its state, with nothing scheduled until the first tick ---
-            IDictionary<string, object?> state = Assert.Single(model.Table("ScheduleStates").GetSeedData());
+            IDictionary<string, object?> state = Assert.Single(model.Table("ScheduleStates").GetSeedData(), static row => Equals(row["ScheduleId"], 500));
             Assert.Equal(500, state["ScheduleId"]);
             Assert.Null(state["NextDueAt"]);
             Assert.Null(state["LastJobId"]);

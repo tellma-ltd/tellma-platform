@@ -151,6 +151,15 @@
   <data name="Action_Transfer" xml:space="preserve">
     <value>Transfer ownership</value>
   </data>
+  <data name="Action_Retry" xml:space="preserve">
+    <value>Retry</value>
+  </data>
+  <data name="Action_Cancel" xml:space="preserve">
+    <value>Stop</value>
+  </data>
+  <data name="Action_Resume" xml:space="preserve">
+    <value>Resume</value>
+  </data>
   <!-- Entities: the create label and the display name of a record without one -->
   <data name="Entity_New" xml:space="preserve">
     <value>New</value>
@@ -179,6 +188,12 @@
   </data>
   <data name="Core_Job_Plural" xml:space="preserve">
     <value>Jobs</value>
+  </data>
+  <data name="Core_Job_Action_Confirm" xml:space="preserve">
+    <value>Confirm and continue</value>
+  </data>
+  <data name="Core_Job_Action_Confirm_Keys" xml:space="preserve">
+    <value>Warnings confirmed</value>
   </data>
   <data name="Core_Schedule_Plural" xml:space="preserve">
     <value>Schedules</value>
@@ -690,6 +705,33 @@
   </data>
   <data name="Jobs_HandlerRetired" xml:space="preserve">
     <value>The job was stopped because this kind of job is no longer offered.</value>
+  </data>
+  <data name="Jobs_NotRetryable" xml:space="preserve">
+    <value>Only a failed job can be run again.</value>
+  </data>
+  <data name="Jobs_NotCancellable" xml:space="preserve">
+    <value>The job has already ended.</value>
+  </data>
+  <data name="Jobs_NotHeld" xml:space="preserve">
+    <value>The job is not paused.</value>
+  </data>
+  <data name="Jobs_NotPendingConfirmation" xml:space="preserve">
+    <value>The job is not waiting for these warnings to be confirmed.</value>
+  </data>
+  <data name="Jobs_NotInitiator" xml:space="preserve">
+    <value>Only the user who started the job can confirm its warnings.</value>
+  </data>
+  <data name="Jobs_RetentionProgress" xml:space="preserve">
+    <value>{stopped, plural, one {# job stopped} other {# jobs stopped}}, {succeeded, plural, one {# succeeded job} other {# succeeded jobs}} and {ended, plural, one {# failed or cancelled job} other {# failed or cancelled jobs}} deleted.</value>
+  </data>
+  <data name="Jobs_TreeVerifyProgress" xml:space="preserve">
+    <value>{verified} of {total} trees checked, {repaired, plural, one {# row} other {# rows}} repaired.</value>
+  </data>
+  <data name="JobHandler_core_job-retention" xml:space="preserve">
+    <value>Clean up old jobs</value>
+  </data>
+  <data name="JobHandler_core_tree-verify" xml:space="preserve">
+    <value>Check the trees</value>
   </data>
   <data name="Notification_core_job_failed" xml:space="preserve">
     <value>The job {handlerKey} failed.</value>

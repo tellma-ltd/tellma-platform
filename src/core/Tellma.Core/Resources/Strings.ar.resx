@@ -151,6 +151,15 @@
   <data name="Action_Transfer" xml:space="preserve">
     <value>نقل الملكية</value>
   </data>
+  <data name="Action_Retry" xml:space="preserve">
+    <value>إعادة المحاولة</value>
+  </data>
+  <data name="Action_Cancel" xml:space="preserve">
+    <value>إيقاف</value>
+  </data>
+  <data name="Action_Resume" xml:space="preserve">
+    <value>استئناف</value>
+  </data>
   <!-- Entities: the create label and the display name of a record without one -->
   <data name="Entity_New" xml:space="preserve">
     <value>جديد</value>
@@ -179,6 +188,12 @@
   </data>
   <data name="Core_Job_Plural" xml:space="preserve">
     <value>المهام</value>
+  </data>
+  <data name="Core_Job_Action_Confirm" xml:space="preserve">
+    <value>التأكيد والمتابعة</value>
+  </data>
+  <data name="Core_Job_Action_Confirm_Keys" xml:space="preserve">
+    <value>التحذيرات المؤكدة</value>
   </data>
   <data name="Core_Schedule_Plural" xml:space="preserve">
     <value>الجداول الزمنية</value>
@@ -690,6 +705,33 @@
   </data>
   <data name="Jobs_HandlerRetired" xml:space="preserve">
     <value>أُوقفت المهمة لأن هذا النوع من المهام لم يعد متاحًا.</value>
+  </data>
+  <data name="Jobs_NotRetryable" xml:space="preserve">
+    <value>لا يمكن إعادة تشغيل إلا المهمة الفاشلة.</value>
+  </data>
+  <data name="Jobs_NotCancellable" xml:space="preserve">
+    <value>انتهت المهمة بالفعل.</value>
+  </data>
+  <data name="Jobs_NotHeld" xml:space="preserve">
+    <value>المهمة ليست متوقفة مؤقتًا.</value>
+  </data>
+  <data name="Jobs_NotPendingConfirmation" xml:space="preserve">
+    <value>المهمة لا تنتظر تأكيد هذه التحذيرات.</value>
+  </data>
+  <data name="Jobs_NotInitiator" xml:space="preserve">
+    <value>لا يؤكد تحذيرات المهمة إلا المستخدم الذي بدأها.</value>
+  </data>
+  <data name="Jobs_RetentionProgress" xml:space="preserve">
+    <value>أُوقفت {stopped, plural, zero {# مهمة} one {مهمة واحدة} two {مهمتان} few {# مهام} many {# مهمة} other {# مهمة}}، وحُذفت {succeeded, plural, zero {# مهمة ناجحة} one {مهمة ناجحة واحدة} two {مهمتان ناجحتان} few {# مهام ناجحة} many {# مهمة ناجحة} other {# مهمة ناجحة}} و{ended, plural, zero {# مهمة فاشلة أو ملغاة} one {مهمة واحدة فاشلة أو ملغاة} two {مهمتان فاشلتان أو ملغاتان} few {# مهام فاشلة أو ملغاة} many {# مهمة فاشلة أو ملغاة} other {# مهمة فاشلة أو ملغاة}}.</value>
+  </data>
+  <data name="Jobs_TreeVerifyProgress" xml:space="preserve">
+    <value>فُحصت {verified} من {total} من الأشجار، وأُصلح {repaired, plural, zero {# صف} one {صف واحد} two {صفان} few {# صفوف} many {# صفًا} other {# صف}}.</value>
+  </data>
+  <data name="JobHandler_core_job-retention" xml:space="preserve">
+    <value>تنظيف المهام القديمة</value>
+  </data>
+  <data name="JobHandler_core_tree-verify" xml:space="preserve">
+    <value>فحص الأشجار</value>
   </data>
   <data name="Notification_core_job_failed" xml:space="preserve">
     <value>فشلت المهمة {handlerKey}.</value>

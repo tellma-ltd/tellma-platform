@@ -71,7 +71,7 @@ stack core.Notification
 stack core.Job
   segment: jobs
   entity: Tellma.Core.Abstractions.Jobs.Job
-  service: Tellma.Core.Crud.DefaultEntityService<Tellma.Core.Abstractions.Jobs.Job, int>
+  service: Tellma.Core.Jobs.JobService
   key: int
   description: -
   operations: Query, Details
@@ -85,11 +85,15 @@ stack core.Job
   details-expand: RunAsUser, RequestedBy, Schedule
   default-order-by: -
   display-name: Id group - prefix -
-  extras: -
+  extras: permissions
   named-filters: -
   limits: default
   mcp: Full, revision 0
   feature: core
+  action retry: entity Retry filtered args -; mutation; result EntitiesResult<Job>; mcp Full, revision 0; Runs each failed job again, from its first attempt.
+  action cancel: entity Cancel filtered args -; mutation, read-only-ok, destructive; result EntitiesResult<Job>; mcp Full, revision 0; Stops each job that has not ended.
+  action resume: entity Resume filtered args -; mutation; result EntitiesResult<Job>; mcp Full, revision 0; Lets each paused job run.
+  action confirm: entity Confirm filtered args ConfirmJobArguments; mutation; result EntitiesResult<Job>; mcp Hidden, revision 0; Confirms the warnings each job waits on, so it runs on.
 stack core.Schedule
   segment: schedules
   entity: Tellma.Core.Abstractions.Jobs.Schedule

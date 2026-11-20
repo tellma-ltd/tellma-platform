@@ -96,4 +96,13 @@
   <data name="Acme_Tier_Gold" xml:space="preserve">
     <value>Gold</value>
   </data>
+  <data name="Jobs_Shipment_Plural" xml:space="preserve">
+    <value>Shipments</value>
+  </data>
+  <data name="JobHandler_acme_recompute-balances" xml:space="preserve">
+    <value>Recompute the balances</value>
+  </data>
+  <data name="Acme_Job_Exporting" xml:space="preserve">
+    <value>Exporting {entity} for {customer}</value>
+  </data>
 </root>

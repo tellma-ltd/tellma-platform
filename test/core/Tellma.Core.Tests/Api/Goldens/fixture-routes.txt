@@ -18,6 +18,10 @@ POST /{tenantId}/api/web/notifications/get-by-ids | get-by-ids | core.Notificati
 POST /{tenantId}/api/web/jobs/query | query | core.Job | - | QueryRequest | RowPage | core.Job:Read | idempotent | PqV1-faRenCx
 POST /{tenantId}/api/web/jobs/get | get | core.Job | - | GetRequest | EntitiesResult<Job> | core.Job:Read | idempotent | -MjFr5wa1iWK
 POST /{tenantId}/api/web/jobs/get-by-ids | get-by-ids | core.Job | - | GetByIdsRequest | EntitiesResult<Job> | core.Job:Read | idempotent | BX5mwxCckWCS
+POST /{tenantId}/api/web/jobs/retry | retry | core.Job | entity | EntityActionRequest | EntitiesResult<Job> | core.Job:Retry | mutation | VJh7iQbqT19B
+POST /{tenantId}/api/web/jobs/cancel | cancel | core.Job | entity | EntityActionRequest | EntitiesResult<Job> | core.Job:Cancel | mutation, read-only | VJh7iQbqT19B
+POST /{tenantId}/api/web/jobs/resume | resume | core.Job | entity | EntityActionRequest | EntitiesResult<Job> | core.Job:Resume | mutation | VJh7iQbqT19B
+POST /{tenantId}/api/web/jobs/confirm | confirm | core.Job | entity | EntityActionRequest<ConfirmJobArguments> | EntitiesResult<Job> | core.Job:Confirm | mutation | wflrl-DymBMr
 POST /{tenantId}/api/web/schedules/query | query | core.Schedule | - | QueryRequest | RowPage | core.Schedule:Read | idempotent | PqV1-faRenCx
 POST /{tenantId}/api/web/schedules/get | get | core.Schedule | - | GetRequest | EntitiesResult<Schedule> | core.Schedule:Read | idempotent | KfYa4FX3b7MQ
 POST /{tenantId}/api/web/schedules/get-by-ids | get-by-ids | core.Schedule | - | GetByIdsRequest | EntitiesResult<Schedule> | core.Schedule:Read | idempotent | C4X4fvQar2bZ

@@ -14,6 +14,7 @@ using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.Access;
 using Tellma.Core.Caching;
+using Tellma.Core.Jobs;
 using Tellma.Core.Localization;
 
 namespace Tellma.Core.IntegrationTests.Access
@@ -33,6 +34,12 @@ namespace Tellma.Core.IntegrationTests.Access
     [Trait("Category", "Integration")]
     public sealed class AccessEvaluationTests(ConnectDatabase fixture) : IClassFixture<ConnectDatabase>, IDisposable
     {
+        /// <summary>
+        ///     The securables every member holds through a bespoke self-scope criterion alone, so a
+        ///     caller with no grants is filtered on them, never denied; ordinal order.
+        /// </summary>
+        private static readonly (string Resource, string Action)[] SelfScoped = [(CoreResources.Job, AccessActions.Cancel), (CoreResources.Job, JobService.Confirm), (CoreResources.Job, AccessActions.Read)];
+
         /// <summary>The prologue round trips of the fixture's instance, one measurement each, tagged by variant.</summary>
         private readonly MetricCollector<double> _prologues = Prologues(fixture.Services);
 
@@ -156,7 +163,13 @@ namespace Tellma.Core.IntegrationTests.Access
             IReadOnlyList<AccessDecision> summary = await evaluator.EvaluateAllAsync(Token);
 
             Assert.Equal(AccessOutcome.Denied, second.Outcome);
-            Assert.All(summary, static decision => Assert.Equal(AccessOutcome.Denied, decision.Outcome));
+            // With no role grants, the self-scoped securables are filtered by their bespoke criteria alone and every other is denied.
+            Assert.Equal(
+                SelfScoped,
+                summary.Where(static decision => decision.Outcome != AccessOutcome.Denied).Select(static decision => (decision.Resource, decision.Action)).Order());
+            Assert.All(
+                summary.Where(static decision => decision.Outcome != AccessOutcome.Denied),
+                static decision => Assert.Equal((AccessOutcome.Filtered, true, true), (decision.Outcome, decision.Filter is not null, decision.Grants.All(static grant => grant is BespokeAccessGrant))));
             _ = Assert.Single(Variants(prologues).Skip(before));
         }
 

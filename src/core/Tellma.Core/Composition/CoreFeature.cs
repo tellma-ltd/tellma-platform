@@ -224,12 +224,20 @@ namespace Tellma.Core.Composition
 
             // --- Background jobs: the job and schedule tables, their machinery's tables and table types,
             // and the notices and client event a completion raises ---
-            // spec 0020 §2, §7, §10, §15. Job is an entity without a service until its service lands;
-            // Schedule's service and rules are closed over the leaf, like the users' and roles'. The
-            // schedule state and the worker heartbeat are platform tables, never stacks. The handlers
-            // and built-in schedules Core owns are contributed with their handlers.
+            // spec 0020 §2, §7, §10, §11, §14.4, §14.5, §15. Job's service serves the reads and the four
+            // job actions, and its self-scope lets every member read, cancel and confirm the jobs they
+            // requested; Schedule's service and rules are closed over the leaf, like the users' and
+            // roles'. The schedule state and the worker heartbeat are platform tables, never stacks.
+            // The handlers Core owns come with their built-in schedules, retention at 03:00 ahead of
+            // the other nightly retentions, and the client metadata lists every registered handler.
             _ = contribution
-                .Entity<Job>()
+                .Entity<Job, JobService>()
+                .Singleton<IAccessCriteriaProvider, JobAccessCriteria>()
+                .Singleton<IClientAssetContributor, JobHandlersClientAssetContributor>()
+                .JobHandler<JobRetentionHandler>()
+                .BuiltInSchedule(JobRetentionHandler.ScheduleId, JobRetentionHandler.Key, JobRetentionHandler.Cron)
+                .JobHandler<TreeVerifyHandler>()
+                .BuiltInSchedule(TreeVerifyHandler.ScheduleId, TreeVerifyHandler.Key, TreeVerifyHandler.Cron)
                 .Entity<Schedule, ScheduleService<Schedule>>()
                 .Validator<Schedule, ScheduleRules<Schedule>>()
                 .Model<JobConfiguration>()

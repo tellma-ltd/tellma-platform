@@ -964,6 +964,40 @@ namespace Tellma.Testing.Entities.Migrations
                     b.HasData(
                         new
                         {
+                            Id = 1,
+                            CatchUpWindowMinutes = 1440,
+                            Code = "core.job-retention",
+                            CreatedAt = new DateTimeOffset(new DateTime(2000, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            CreatedById = 1,
+                            CronExpression = "0 3 * * *",
+                            HandlerKey = "core.job-retention",
+                            IsActive = true,
+                            MissedPolicy = "Coalesce",
+                            ModifiedAt = new DateTimeOffset(new DateTime(2000, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            ModifiedById = 1,
+                            Name = "core.job-retention",
+                            OverlapPolicy = "Skip",
+                            RunAsUserId = 1
+                        },
+                        new
+                        {
+                            Id = 6,
+                            CatchUpWindowMinutes = 1440,
+                            Code = "core.tree-verify",
+                            CreatedAt = new DateTimeOffset(new DateTime(2000, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            CreatedById = 1,
+                            CronExpression = "0 1 * * 6",
+                            HandlerKey = "core.tree-verify",
+                            IsActive = true,
+                            MissedPolicy = "Coalesce",
+                            ModifiedAt = new DateTimeOffset(new DateTime(2000, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            ModifiedById = 1,
+                            Name = "core.tree-verify",
+                            OverlapPolicy = "Skip",
+                            RunAsUserId = 1
+                        },
+                        new
+                        {
                             Id = 500,
                             CatchUpWindowMinutes = 1440,
                             Code = "fixture.probe",
@@ -19061,6 +19095,14 @@ namespace Tellma.Testing.Entities.Migrations
                     b.ToTable("ScheduleStates", "core");
 
                     b.HasData(
+                        new
+                        {
+                            ScheduleId = 1
+                        },
+                        new
+                        {
+                            ScheduleId = 6
+                        },
                         new
                         {
                             ScheduleId = 500

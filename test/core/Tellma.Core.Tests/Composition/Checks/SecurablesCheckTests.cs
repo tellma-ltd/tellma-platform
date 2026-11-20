@@ -39,6 +39,10 @@ namespace Tellma.Core.Tests.Composition.Checks
             Assert.Equal(
                 [
                     new SecurableDescriptor("core.Job", "Read", "core.Job", false, "core", null),
+                    new SecurableDescriptor("core.Job", "Retry", "core.Job", false, "core", null),
+                    new SecurableDescriptor("core.Job", "Cancel", "core.Job", false, "core", null),
+                    new SecurableDescriptor("core.Job", "Resume", "core.Job", false, "core", null),
+                    new SecurableDescriptor("core.Job", "Confirm", "core.Job", false, "core", null),
                     new SecurableDescriptor("core.Notification", "Read", "core.Notification", false, "core", null),
                     new SecurableDescriptor("core.Permission", "Read", "core.Permission", false, "core", new SecurableOwner("core.Role", "Role")),
                     new SecurableDescriptor("core.Role", "Read", "core.Role", false, "core", null),
