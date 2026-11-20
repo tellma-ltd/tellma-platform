@@ -266,3 +266,18 @@ Rulings on the implementer's points:
 Not verified here: Linux runner WebKit (the next nightly) and real Safari (CoreText).
 
 ### Responses
+
+- R1-1: fixed in 3f9e52c2. The `./chart` note now gives the 6.868 measure, names the ALM closing
+  and the run-direction / RTL letter-class compaction that paid for part of it, and states the
+  ~0.002 KB headroom (any addition needs a D-031 raise).
+- R1-2: fixed in 3f9e52c2 (documented, not the real fix). The real fix, an ALM-prefixed
+  `ellipsis` on both truncating text styles, is cheap: it fits the chart-engine chunk (measured
+  200.12/200.15). It also fixes a cut Arabic word in WebKit with 0 differing pixels in Chromium and
+  Firefox on every Arabic or wrapped case tried. It fails the pixels-agree condition, though. On a
+  plain Latin label (`abcdef...` ltr) it changes 25/119 pixels at 12/48 px in Chromium, 19/87 in
+  Firefox and 20/83 in WebKit, because the ALM splits the label and its ellipsis into separate
+  bidi runs that lose their kerning. Latin labels are the common truncated case, so the engine's
+  plain ellipsis is kept, and the limitation is in the chart-text.ts header comment and the Open
+  risks.
+- R1-3: fixed in 3f9e52c2. The Deviations entry cites spec 0034 decision 26 alongside §7.4, §14
+  and spec 0024 §7.9. The orchestrator flag should use the reviewer's wording.
