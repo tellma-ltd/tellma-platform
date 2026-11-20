@@ -352,6 +352,63 @@ namespace Tellma.Core.Jobs
             }
         }
 
+        // A save that changes what a schedule runs (its arguments, policies or handler) without moving
+        // its next due time, and a take-over, release a tick's lease of the row, so a tick that read
+        // the schedule before the change fails its fence instead of firing the old values or the old
+        // owner. The next due time is left as it was, so a due occurrence stays due.
+        /// <summary>Appends the release of any tick's lease of schedules, their next due times left alone.</summary>
+        /// <param name="batch">The save's or the action's persist batch.</param>
+        /// <param name="scheduleIds">The schedules.</param>
+        public static void ReleaseTickLeases(DataBatch batch, IReadOnlyList<int> scheduleIds)
+        {
+            ArgumentNullException.ThrowIfNull(batch);
+            ArgumentNullException.ThrowIfNull(scheduleIds);
+
+            StatementDraft draft = batch.Begin();
+            try
+            {
+                string ids = draft.Table(Ids(scheduleIds));
+                string text = string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"UPDATE [st] SET [LeaseToken] = NULL, [LeaseExpiresAt] = NULL FROM {ScheduleStates.Delimited} AS [st] INNER JOIN {ids} AS [k] ON [k].[Id] = [st].[ScheduleId] WHERE [st].[LeaseToken] IS NOT NULL;");
+                batch.Append(draft, text, ScheduleStateWrites, idempotent: false);
+            }
+            catch
+            {
+                batch.Discard(draft);
+                throw;
+            }
+        }
+
+        // The keys of a schedule's dependants act on its delete: its state's key cascades, and its
+        // jobs' key sets their schedule to null (spec 0020 §2.1 and §7.2). The delete plan
+        // declares only the model's siblings, so this statement, run after the delete, declares both
+        // writes: it matches nothing the keys' actions left, and makes the batch's change tracking and
+        // version tags see the tables they wrote. It runs on the platform's own channel, which the
+        // jobs' stack authority does not gate.
+        /// <summary>Appends the declaration of what a schedule delete's keys wrote: the deleted schedules' states and their jobs' schedule.</summary>
+        /// <param name="batch">The delete's persist batch.</param>
+        /// <param name="deletedIds">The table of the deleted schedules' ids, as the delete declared it.</param>
+        public static void DeclareScheduleDelete(DataBatch batch, SqlIdentifier deletedIds)
+        {
+            ArgumentNullException.ThrowIfNull(batch);
+            ArgumentNullException.ThrowIfNull(deletedIds);
+
+            StatementDraft draft = batch.Begin();
+            try
+            {
+                StringBuilder text = new();
+                _ = text.Append(CultureInfo.InvariantCulture, $"DELETE [st] FROM {ScheduleStates.Delimited} AS [st] INNER JOIN {deletedIds.Name} AS [k] ON [k].[Id] = [st].[ScheduleId];\n")
+                    .Append(CultureInfo.InvariantCulture, $"UPDATE [j] SET [ScheduleId] = NULL FROM {Jobs.Delimited} AS [j] INNER JOIN {deletedIds.Name} AS [k] ON [k].[Id] = [j].[ScheduleId];");
+                batch.Append(draft, text.ToString(), TickWrites, idempotent: false);
+            }
+            catch
+            {
+                batch.Discard(draft);
+                throw;
+            }
+        }
+
         // Spec 0020 §7.8: one job of the schedule, now, its id from the sequence; the cron's own state
         // is left alone, so the next due time and the last fired job stay the cron's.
         /// <summary>Appends the run-now insert: one job of the schedule, due now, with no scheduled occurrence.</summary>

@@ -30,10 +30,12 @@ namespace Tellma.Core.IntegrationTests.Jobs
     ///     polls: an uninitialised built-in takes its next due time without firing and then fires as
     ///     the platform, a stopped schedule is never leased, the overlap rule and the skip stamp, the
     ///     pauses with their one write and their notice, several schedules and a replay in one tick,
-    ///     a read-only tenant's tick, the lease fence, and the plan of the lease. The stack, through a
-    ///     stepped-up user's scope: the rules a save and an activation check, the take-over and the
-    ///     activation that withdraws the paused notice, the delete that withdraws it, the run-now
-    ///     action, and the state and permissions extras.
+    ///     a read-only tenant's tick, the lease fence, a lease lost before step 2, the parking of a
+    ///     schedule the host cannot evaluate, and the plan of the lease. The stack, through a
+    ///     stepped-up user's scope: the rules a save and an activation check, the lease a take-over
+    ///     and a save release, the take-over and the activation that withdraws the paused notice, the
+    ///     delete that detaches the jobs and withdraws the notice, the run-now action, and the state
+    ///     and permissions extras.
     /// </summary>
     /// <param name="fixture">The class's database, reset before each test.</param>
     [Trait("Category", "Integration")]
@@ -47,6 +49,9 @@ namespace Tellma.Core.IntegrationTests.Jobs
 
         /// <summary>An expression that occurs every minute, in every zone alike.</summary>
         private const string EveryMinute = "* * * * *";
+
+        /// <summary>The zone of a schedule pinned to minutes in UTC.</summary>
+        private const string Utc = "Etc/UTC";
 
         /// <summary>The test's cancellation.</summary>
         private static CancellationToken Token => TestContext.Current.CancellationToken;
@@ -78,11 +83,11 @@ namespace Tellma.Core.IntegrationTests.Jobs
             Assert.Equal(expected, state.Get<DateTimeOffset>("NextDueAt"));
             Assert.Equal((null, null, null, null), (state["LeaseToken"], state["LastFiredAt"], state["LastScheduledFor"], state["LastSkippedAt"]));
 
-            // --- Once its expression is due every minute and its state is behind, the next tick fires it as the platform ---
-            DateTimeOffset minute = await QuietMinuteAsync();
+            // --- Once its expression names the last three minutes and its state is behind, the next tick fires it as the platform ---
+            (DateTimeOffset minute, string cron, DateTimeOffset next) = await PinnedMinutesAsync();
             await SqlServerFixture.ExecuteAsync(
                 fixture.ConnectionString,
-                Sql($"UPDATE [core].[Schedules] SET [CronExpression] = N'{EveryMinute}' WHERE [Id] = {FixtureFeature.ProbeScheduleId};"),
+                Sql($"UPDATE [core].[Schedules] SET [CronExpression] = N'{cron}', [TimeZoneId] = N'{Utc}' WHERE [Id] = {FixtureFeature.ProbeScheduleId};"),
                 Sql($"UPDATE [core].[ScheduleStates] SET [NextDueAt] = {Literal(minute.AddMinutes(-2))} WHERE [ScheduleId] = {FixtureFeature.ProbeScheduleId};"));
             _ = await TickAsync();
 
@@ -91,7 +96,7 @@ namespace Tellma.Core.IntegrationTests.Jobs
                 (FixtureJobKeys.Probe, nameof(JobStatus.Pending), WellKnownIds.SystemUserId, null, minute),
                 (job.Get<string>("HandlerKey"), job.Get<string>("Status"), job.Get<int>("RunAsUserId"), job["RequestedById"], job.Get<DateTimeOffset>("ScheduledFor")));
             state = await StateAsync(FixtureFeature.ProbeScheduleId);
-            Assert.Equal((minute, minute.AddMinutes(1), job.Get<int>("Id")), (state.Get<DateTimeOffset>("LastScheduledFor"), state.Get<DateTimeOffset>("NextDueAt"), state.Get<int>("LastJobId")));
+            Assert.Equal((minute, next, job.Get<int>("Id")), (state.Get<DateTimeOffset>("LastScheduledFor"), state.Get<DateTimeOffset>("NextDueAt"), state.Get<int>("LastJobId")));
             Assert.Null(state["LeaseToken"]);
         }
 
@@ -124,12 +129,12 @@ namespace Tellma.Core.IntegrationTests.Jobs
         [Fact]
         public async Task A_skip_schedule_whose_job_is_held_or_waits_on_a_confirmation_fires_nothing_and_alone_has_its_skip_stamped()
         {
-            DateTimeOffset minute = await QuietMinuteAsync();
+            (DateTimeOffset minute, string cron, DateTimeOffset next) = await PinnedMinutesAsync();
             DateTimeOffset due = minute.AddMinutes(-1);
-            int held = await InsertScheduleAsync(FixtureJobKeys.Probe, nextDueAt: due);
-            int waiting = await InsertScheduleAsync(FixtureJobKeys.Probe, nextDueAt: due);
-            int allowed = await InsertScheduleAsync(FixtureJobKeys.Probe, overlap: OverlapPolicy.Allow, nextDueAt: due);
-            int ended = await InsertScheduleAsync(FixtureJobKeys.Probe, nextDueAt: due);
+            int held = await InsertScheduleAsync(FixtureJobKeys.Probe, cron: cron, zone: Utc, nextDueAt: due);
+            int waiting = await InsertScheduleAsync(FixtureJobKeys.Probe, cron: cron, zone: Utc, nextDueAt: due);
+            int allowed = await InsertScheduleAsync(FixtureJobKeys.Probe, cron: cron, zone: Utc, overlap: OverlapPolicy.Allow, nextDueAt: due);
+            int ended = await InsertScheduleAsync(FixtureJobKeys.Probe, cron: cron, zone: Utc, nextDueAt: due);
             await InsertScheduleJobAsync(held, JobStatus.Held);
             await InsertScheduleJobAsync(waiting, JobStatus.PendingConfirmation);
             await InsertScheduleJobAsync(allowed, JobStatus.Pending);
@@ -138,7 +143,7 @@ namespace Tellma.Core.IntegrationTests.Jobs
             // A skip-missed schedule whose one occurrence is too old to fire: leased, fires nothing, and no overlap skipped it.
             DateTimeOffset stale = minute.AddMinutes(-10);
             int late = await InsertScheduleAsync(
-                FixtureJobKeys.Probe, cron: string.Create(CultureInfo.InvariantCulture, $"{stale.Minute} {stale.Hour} * * *"), zone: "Etc/UTC", missed: MissedPolicy.Skip, nextDueAt: stale);
+                FixtureJobKeys.Probe, cron: string.Create(CultureInfo.InvariantCulture, $"{stale.Minute} {stale.Hour} * * *"), zone: Utc, missed: MissedPolicy.Skip, nextDueAt: stale);
 
             _ = await TickAsync();
 
@@ -148,7 +153,7 @@ namespace Tellma.Core.IntegrationTests.Jobs
                 Assert.Single(await JobsOfAsync(id));
                 Row state = await StateAsync(id);
                 Assert.NotNull(state["LastSkippedAt"]);
-                Assert.Equal((null, null, minute.AddMinutes(1)), (state["LastFiredAt"], state["LastJobId"], state.Get<DateTimeOffset>("NextDueAt")));
+                Assert.Equal((null, null, next), (state["LastFiredAt"], state["LastJobId"], state.Get<DateTimeOffset>("NextDueAt")));
             }
 
             // --- The allowing schedule and the one whose job ended fire, unstamped ---
@@ -196,7 +201,7 @@ namespace Tellma.Core.IntegrationTests.Jobs
             Assert.Equal([AdministratorId], notice.RecipientIds);
             SchedulePausedArguments arguments = Assert.IsType<SchedulePausedArguments>(notice.Arguments);
             Assert.Equal((id, "Nightly", nameof(SchedulePausedReason.OwnerInactive)), (arguments.ScheduleId, arguments.Name.Text, arguments.Reason));
-            Assert.Contains(fixture.Log.GetSnapshot(), static record => record.Id.Name == "SchedulerSchedulePaused");
+            Assert.Contains(fixture.Log.GetSnapshot(), static record => record.Id.Name == "SchedulePaused");
         }
 
         [Fact]
@@ -219,9 +224,9 @@ namespace Tellma.Core.IntegrationTests.Jobs
         [Fact]
         public async Task One_tick_fires_two_schedules_one_replaying_three_occurrences_with_ids_from_one_range_in_schedule_then_occurrence_order()
         {
-            DateTimeOffset minute = await QuietMinuteAsync();
-            int coalesced = await InsertScheduleAsync(FixtureJobKeys.Probe, nextDueAt: minute.AddMinutes(-1));
-            int replayed = await InsertScheduleAsync(FixtureJobKeys.Probe, missed: MissedPolicy.ReplayAll, overlap: OverlapPolicy.Allow, catchUpWindowMinutes: 60, nextDueAt: minute.AddMinutes(-2));
+            (DateTimeOffset minute, string cron, DateTimeOffset next) = await PinnedMinutesAsync();
+            int coalesced = await InsertScheduleAsync(FixtureJobKeys.Probe, cron: cron, zone: Utc, nextDueAt: minute.AddMinutes(-1));
+            int replayed = await InsertScheduleAsync(FixtureJobKeys.Probe, cron: cron, zone: Utc, missed: MissedPolicy.ReplayAll, overlap: OverlapPolicy.Allow, catchUpWindowMinutes: 60, nextDueAt: minute.AddMinutes(-2));
 
             JobPollResult result = await TickAsync();
 
@@ -237,12 +242,12 @@ namespace Tellma.Core.IntegrationTests.Jobs
             int first = single.Get<int>("Id");
             Assert.Equal([first + 1, first + 2, first + 3], replays.Select(static job => job.Get<int>("Id")));
 
-            // --- Each job is the owner's own request; each state points at its last job and is due next minute ---
+            // --- Each job is the owner's own request; each state points at its last job and is due at the expression's next occurrence ---
             Assert.All(replays.Append(single), static job => Assert.Equal((ActiveUserId, ActiveUserId, nameof(JobStatus.Pending)), (job.Get<int>("RunAsUserId"), job.Get<int>("RequestedById"), job.Get<string>("Status"))));
             Row coalescedState = await StateAsync(coalesced);
             Row replayedState = await StateAsync(replayed);
-            Assert.Equal((first, minute, minute.AddMinutes(1)), (coalescedState.Get<int>("LastJobId"), coalescedState.Get<DateTimeOffset>("LastScheduledFor"), coalescedState.Get<DateTimeOffset>("NextDueAt")));
-            Assert.Equal((first + 3, minute, minute.AddMinutes(1)), (replayedState.Get<int>("LastJobId"), replayedState.Get<DateTimeOffset>("LastScheduledFor"), replayedState.Get<DateTimeOffset>("NextDueAt")));
+            Assert.Equal((first, minute, next), (coalescedState.Get<int>("LastJobId"), coalescedState.Get<DateTimeOffset>("LastScheduledFor"), coalescedState.Get<DateTimeOffset>("NextDueAt")));
+            Assert.Equal((first + 3, minute, next), (replayedState.Get<int>("LastJobId"), replayedState.Get<DateTimeOffset>("LastScheduledFor"), replayedState.Get<DateTimeOffset>("NextDueAt")));
         }
 
         [Fact]
@@ -294,6 +299,63 @@ namespace Tellma.Core.IntegrationTests.Jobs
             Assert.Empty(await JobsOfAsync(id));
             Row state = await StateAsync(id);
             Assert.Equal((saved, null, null), (state.Get<DateTimeOffset>("NextDueAt"), state["LastFiredAt"], state["LeaseToken"]));
+        }
+
+        [Fact]
+        public async Task A_tick_whose_lease_a_save_released_before_step_two_fires_nothing_logs_the_lost_lease_and_returns()
+        {
+            int id = await InsertScheduleAsync(FixtureJobKeys.Probe, nextDueAt: (await DatabaseNowAsync()).AddMinutes(-1));
+            IScheduleTick tick = fixture.Tenant.Services.GetRequiredService<IScheduleTick>();
+
+            DataBatch batch = Batch(BatchPurpose.Maintenance, out AsyncServiceScope scope);
+            await using (scope)
+            {
+                // --- Step 1 leases the schedule and the uninitialised seeded built-in ---
+                batch.TransactionMode = TransactionMode.None;
+                IScheduleTickRound round = tick.Append(batch, new ScheduleTickContext(FixtureTenant.TenantId, ReadOnly: false, []));
+                _ = await batch.ExecuteAsync(Token);
+                Assert.Equal(2, round.Leased);
+
+                // --- A save releases the schedule's lease between the steps; step 2 then ends without throwing ---
+                await PersistAsync(append => JobStatements.ReleaseTickLeases(append, [id]));
+                await round.RunStep2Async(scope.ServiceProvider, Token);
+            }
+
+            // --- The fence rolled the whole step back: nothing fired, the built-in is still uninitialised ---
+            Assert.Empty(await JobsOfAsync(id));
+            Assert.Null((await StateAsync(FixtureFeature.ProbeScheduleId))["NextDueAt"]);
+            IReadOnlyList<string> events = [.. fixture.Log.GetSnapshot().Select(static record => record.Id.Name ?? string.Empty)];
+            Assert.Contains("SchedulerTickLeaseLost", events);
+            Assert.DoesNotContain("SchedulerTickFailed", events);
+        }
+
+        [Fact]
+        public async Task A_schedule_this_host_cannot_evaluate_fires_nothing_and_is_looked_at_again_an_hour_later_with_its_lease_released()
+        {
+            // --- Stored behind the rules' back: an expression that does not parse, and a zone no host resolves ---
+            DateTimeOffset before = await DatabaseNowAsync();
+            int badCron = await InsertScheduleAsync(FixtureJobKeys.Probe, cron: "every minute", nextDueAt: before.AddMinutes(-1));
+            int badZone = await InsertScheduleAsync(FixtureJobKeys.Probe, zone: "Mars/Olympus_Mons", nextDueAt: before.AddMinutes(-1));
+
+            _ = await TickAsync();
+            DateTimeOffset after = await DatabaseNowAsync();
+
+            // --- Each fires nothing and is parked for an hour from the tick, its lease released and nothing stamped ---
+            foreach (int id in new[] { badCron, badZone })
+            {
+                Assert.Empty(await JobsOfAsync(id));
+                Row state = await StateAsync(id);
+                DateTimeOffset next = state.Get<DateTimeOffset>("NextDueAt");
+                Assert.InRange(next, before.AddHours(1), after.AddHours(1));
+                Assert.Equal((null, null, null), (state["LeaseToken"], state["LeaseExpiresAt"], state["LastScheduledFor"]));
+                Assert.True((await ScheduleAsync(id)).Get<bool>("IsActive"));
+            }
+
+            // --- Each is logged once, by its id ---
+            IReadOnlyList<string> unusable = [.. fixture.Log.GetSnapshot().Where(static record => record.Id.Name == "SchedulerScheduleUnusable").Select(static record => record.Message)];
+            Assert.Equal(2, unusable.Count);
+            Assert.Contains(unusable, message => message.StartsWith($"The schedule {badCron} cannot", StringComparison.Ordinal));
+            Assert.Contains(unusable, message => message.StartsWith($"The schedule {badZone} cannot", StringComparison.Ordinal));
         }
 
         [Fact]
@@ -385,6 +447,48 @@ namespace Tellma.Core.IntegrationTests.Jobs
         // --- The stack: the take-over, the activation and the delete ---
 
         [Fact]
+        public async Task A_take_over_and_a_save_that_moves_no_due_time_release_a_ticks_lease_and_leave_the_next_due_time_alone()
+        {
+            DateTimeOffset due = await DatabaseNowAsync();
+            int taken = await InsertScheduleAsync(FixtureJobKeys.Probe, runAs: AdministratorId, nextDueAt: due.AddMinutes(-1));
+            int edited = await InsertScheduleAsync(FixtureJobKeys.Probe, nextDueAt: due.AddMinutes(-1));
+
+            // --- A tick's step 1 leases both ---
+            var token = Guid.NewGuid();
+            _ = await MaintenanceAsync(batch => JobStatements.TickStep1(batch, token, readOnlyKeys: null));
+            foreach (int id in new[] { taken, edited })
+            {
+                Assert.Equal(token, (await StateAsync(id)).Get<Guid>("LeaseToken"));
+            }
+
+            // --- A take-over, and a save that changes a policy alone ---
+            await using (AsyncServiceScope scope = await fixture.UserScopeAsync(ActiveUserId))
+            {
+                EntityService<Schedule, int> schedules = Schedules(scope);
+                _ = await schedules.ExecuteActionAsync(ScheduleService<Schedule>.TakeOverAction, [taken], null, new ActionOptions(), Token);
+                Schedule update = new()
+                {
+                    Id = edited,
+                    Name = "Scheduled",
+                    HandlerKey = FixtureJobKeys.Probe,
+                    CronExpression = EveryMinute,
+                    OverlapPolicy = OverlapPolicy.Allow,
+                    ModifiedAt = (await ScheduleAsync(edited)).Get<DateTimeOffset>("ModifiedAt"),
+                };
+                _ = await schedules.SaveAsync([update], new SaveOptions(), Token);
+            }
+
+            // --- Both leases are released, so the tick's step 2 would fail its fence; both stay due as they were ---
+            foreach (int id in new[] { taken, edited })
+            {
+                Row state = await StateAsync(id);
+                Assert.Equal((null, null, due.AddMinutes(-1)), (state["LeaseToken"], state["LeaseExpiresAt"], state.Get<DateTimeOffset>("NextDueAt")));
+            }
+
+            Assert.Equal((ActiveUserId, nameof(OverlapPolicy.Allow)), ((await ScheduleAsync(taken)).Get<int>("RunAsUserId"), (await ScheduleAsync(edited)).Get<string>("OverlapPolicy")));
+        }
+
+        [Fact]
         public async Task A_schedule_paused_for_its_inactive_owner_is_taken_over_then_activated_and_its_notice_withdrawn_with_the_commit()
         {
             int id = await InsertScheduleAsync(FixtureJobKeys.Probe, runAs: DeactivatedUserId, nextDueAt: (await DatabaseNowAsync()).AddMinutes(-1));
@@ -414,16 +518,22 @@ namespace Tellma.Core.IntegrationTests.Jobs
         }
 
         [Fact]
-        public async Task A_delete_withdraws_the_paused_notice_of_each_schedule_it_removed_after_it_committed()
+        public async Task A_delete_removes_each_schedules_state_detaches_its_jobs_and_withdraws_its_paused_notice_after_it_committed()
         {
+            // --- The first schedule fired a job; the fixture's audit refuses a batch that writes a table it did not declare ---
             int first = await InsertScheduleAsync(FixtureJobKeys.Probe);
             int second = await InsertScheduleAsync(FixtureJobKeys.Probe);
+            await InsertScheduleJobAsync(first, JobStatus.Succeeded);
             await using AsyncServiceScope scope = await fixture.UserScopeAsync(ActiveUserId);
 
             AffectedResult deleted = await Schedules(scope).DeleteByIdsAsync([first, second], null, Token);
 
+            // --- The states are gone, and the job stays, no longer of a schedule ---
             Assert.Equal(2, deleted.Count);
             Assert.Equal(0, await SqlServerFixture.ScalarAsync<int>(fixture.ConnectionString, Sql($"SELECT COUNT(*) FROM [core].[ScheduleStates] WHERE [ScheduleId] IN ({first}, {second});")));
+            Assert.Equal((1, 0), (
+                await SqlServerFixture.ScalarAsync<int>(fixture.ConnectionString, "SELECT COUNT(*) FROM [core].[Jobs] WHERE [ScheduleId] IS NULL;"),
+                await SqlServerFixture.ScalarAsync<int>(fixture.ConnectionString, "SELECT COUNT(*) FROM [core].[Jobs] WHERE [ScheduleId] IS NOT NULL;")));
             Assert.Equal(
                 [JobNotices.SchedulePausedKey(first), JobNotices.SchedulePausedKey(second)],
                 fixture.Notices.Withdrawn.Select(static withdrawal => withdrawal.DedupKey).Order(StringComparer.Ordinal));
@@ -727,21 +837,25 @@ namespace Tellma.Core.IntegrationTests.Jobs
             return await SqlServerFixture.ScalarAsync<DateTimeOffset>(fixture.ConnectionString, "SELECT CAST(SYSUTCDATETIME() AS datetimeoffset(3));");
         }
 
+        // The expression names the current minute and the two before it by their minutes and hours,
+        // so it may match other minutes too; none lies between the earliest of the three and the
+        // expression's next occurrence after the current one, which is most of an hour away, so a tick
+        // that runs into a later minute still fires exactly the pinned occurrences.
         /// <summary>
-        ///     The database's current minute, at least ten seconds before the next, so a tick the test
-        ///     runs at once still sees the same minute's occurrences.
+        ///     The database's current minute, an expression in UTC naming it and the two minutes before
+        ///     it, and the expression's next occurrence after it.
         /// </summary>
-        /// <returns>The minute's start, in UTC.</returns>
-        private async Task<DateTimeOffset> QuietMinuteAsync()
+        /// <returns>The minute's start, the expression and its next occurrence, in UTC.</returns>
+        private async Task<(DateTimeOffset Minute, string Cron, DateTimeOffset Next)> PinnedMinutesAsync()
         {
             DateTimeOffset now = await DatabaseNowAsync();
-            if (now.Second >= 45)
-            {
-                await Task.Delay(TimeSpan.FromSeconds(61 - now.Second), Token);
-                now = await DatabaseNowAsync();
-            }
-
-            return new DateTimeOffset(now.Year, now.Month, now.Day, now.Hour, now.Minute, 0, TimeSpan.Zero);
+            DateTimeOffset minute = new(now.Year, now.Month, now.Day, now.Hour, now.Minute, 0, TimeSpan.Zero);
+            DateTimeOffset[] pinned = [minute.AddMinutes(-2), minute.AddMinutes(-1), minute];
+            string cron = string.Create(
+                CultureInfo.InvariantCulture,
+                $"{string.Join(',', pinned.Select(static at => at.Minute).Distinct())} {string.Join(',', pinned.Select(static at => at.Hour).Distinct())} * * *");
+            DateTimeOffset next = Cronos.CronExpression.Parse(cron).GetNextOccurrence(minute, TimeZoneInfo.Utc)!.Value;
+            return (minute, cron, next);
         }
 
         /// <summary>The zone the tenant's settings name, which a schedule without its own follows.</summary>

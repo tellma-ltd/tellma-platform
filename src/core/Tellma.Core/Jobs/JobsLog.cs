@@ -281,10 +281,10 @@ namespace Tellma.Core.Jobs
         /// <param name="scheduleId">The schedule.</param>
         /// <param name="reason">Why it paused.</param>
         [LoggerMessage(
-            EventName = "SchedulerSchedulePaused",
+            EventName = "SchedulePaused",
             Level = LogLevel.Warning,
             Message = "The schedule {ScheduleId} was paused: {Reason}. It fires nothing until it is activated again.")]
-        public static partial void SchedulerSchedulePaused(ILogger logger, int scheduleId, SchedulePausedReason reason);
+        public static partial void SchedulePaused(ILogger logger, int scheduleId, SchedulePausedReason reason);
 
         /// <summary>
         ///     A schedule the tick leased has an expression or a zone this host cannot evaluate, so it

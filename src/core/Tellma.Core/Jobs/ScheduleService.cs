@@ -64,9 +64,6 @@ namespace Tellma.Core.Jobs
         /// <summary>The most withdrawals one batch carries after a delete.</summary>
         private const int WithdrawalsPerBatch = 100;
 
-        /// <summary>The writes of the delete's statement over the schedules' states.</summary>
-        private static readonly IReadOnlySet<TableName> StateWrites = new HashSet<TableName> { JobStatements.ScheduleStates };
-
         /// <summary>
         ///     Makes the caller the user each target runs as, the explicit way to run another user's
         ///     schedule as oneself. It changes the owner alone: a paused schedule stays paused.
@@ -141,8 +138,14 @@ namespace Tellma.Core.Jobs
         // next due time of each schedule it brings back, from now, so a paused period is never caught
         // up, and clears the paused reason and withdraws its notice; a deactivation nulls it. The
         // upsert releases any tick's lease of the row, so a tick that read the schedule before the
-        // change fails its fence instead of advancing it from what it read.
-        /// <summary>Appends the schedules' state upsert, and on an activation the paused reasons' clear and their notices' withdrawal.</summary>
+        // change fails its fence instead of advancing it from what it read; every other updated row and
+        // every take-over target has its lease released alone, so a tick never fires the arguments,
+        // policies or owner it read before the change.
+        /// <summary>
+        ///     Appends the schedules' state upsert, the release of a tick's lease of every other updated
+        ///     or taken-over schedule, on an activation the paused reasons' clear and their notices'
+        ///     withdrawal, and on a delete the declaration of what its keys wrote.
+        /// </summary>
         /// <param name="context">The persist context, of the operation's kind.</param>
         /// <returns>A task that completes when the statements are appended.</returns>
         protected override async Task ContributeAsync(PersistContext<TSchedule> context)
@@ -153,6 +156,7 @@ namespace Tellma.Core.Jobs
             TimeZoneInfo tenantZone = ScheduleCron.TenantZone(context.Context);
             DateTimeOffset now = context.Context.Now;
             List<ScheduleNextList> states = [];
+            List<int> released = [];
             switch (context)
             {
                 // --- A save: new schedules, and those whose expression or zone changed ---
@@ -163,6 +167,10 @@ namespace Tellma.Core.Jobs
                         if (save.Before(index) is not TSchedule before || before.CronExpression != row.CronExpression || before.TimeZoneId != row.TimeZoneId)
                         {
                             states.Add(new ScheduleNextList { ScheduleId = row.Id, NextDueAt = row.IsActive ? Next(row, now, tenantZone) : null });
+                        }
+                        else
+                        {
+                            released.Add(row.Id);
                         }
                     }
 
@@ -191,17 +199,22 @@ namespace Tellma.Core.Jobs
 
                     break;
 
+                // --- A take-over: a tick in flight must not fire as the previous owner ---
+                case ActionPersistContext<TSchedule> { Action: TakeOverAction } takeOver:
+                    released.AddRange(takeOver.Entities.Select(static row => row.Id));
+                    break;
+
                 // --- A deactivation: nothing is scheduled for the schedules it stops ---
                 case ActionPersistContext<TSchedule> { Action: Deactivate } deactivation:
                     states.AddRange(deactivation.Entities.Where(static row => row.IsActive).Select(static row => new ScheduleNextList { ScheduleId = row.Id, NextDueAt = null }));
                     break;
 
-                // --- A delete: the states leave with their schedules by their key's cascade, which this
-                // statement declares among the batch's writes, so its change tracking and tags see it ---
+                // --- A delete: the states leave with their schedules by their key's cascade and the jobs
+                // lose their schedule by theirs; this statement declares both among the batch's writes,
+                // so its change tracking and tags see them ---
                 case DeletePersistContext<TSchedule> deletion:
-                    _ = deletion.Batch.Sql(
-                        $"DELETE [st] FROM [core].[ScheduleStates] AS [st] INNER JOIN {deletion.AffectedIds} AS [k] ON [k].[Id] = [st].[ScheduleId];",
-                        new SqlOptions(writes: StateWrites));
+                    SqlIdentifier deleted = deletion.AffectedIds;
+                    Append(deletion.Batch, data => JobStatements.DeclareScheduleDelete(data, deleted));
                     break;
 
                 default:
@@ -211,6 +224,11 @@ namespace Tellma.Core.Jobs
             if (states.Count > 0)
             {
                 Append(context.Batch, data => JobStatements.UpsertScheduleStates(data, states));
+            }
+
+            if (released.Count > 0)
+            {
+                Append(context.Batch, data => JobStatements.ReleaseTickLeases(data, released));
             }
         }
 

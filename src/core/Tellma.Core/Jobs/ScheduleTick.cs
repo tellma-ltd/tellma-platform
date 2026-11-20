@@ -277,7 +277,7 @@ namespace Tellma.Core.Jobs
 
                 if (firing.Pause is SchedulePausedReason reason)
                 {
-                    JobsLog.SchedulerSchedulePaused(_logger, row.Id, reason);
+                    JobsLog.SchedulePaused(_logger, row.Id, reason);
                 }
             }
         }

@@ -251,6 +251,42 @@ namespace Tellma.Core.Tests.Jobs
             Assert.Equal([new TableName("core", "Schedules")], statement.Writes);
         }
 
+        // --- The lease release and the delete's declaration ---
+
+        [Fact]
+        public void The_lease_release_nulls_only_a_held_lease_and_leaves_the_next_due_time_alone()
+        {
+            DataBatch batch = _harness.Batch(BatchPurpose.Persist);
+
+            JobStatements.ReleaseTickLeases(batch, [1000, 1000, 1001]);
+
+            BatchStatement statement = Assert.Single(batch.Statements);
+            Assert.Equal(
+                "UPDATE [st] SET [LeaseToken] = NULL, [LeaseExpiresAt] = NULL FROM [core].[ScheduleStates] AS [st] INNER JOIN @tb0_t0 AS [k] ON [k].[Id] = [st].[ScheduleId] WHERE [st].[LeaseToken] IS NOT NULL;",
+                statement.Text);
+            Assert.Equal([new TableName("core", "ScheduleStates")], statement.Writes);
+            Assert.False(statement.MayRunTwice);
+        }
+
+        [Fact]
+        public void The_delete_declaration_writes_the_states_and_the_jobs_over_the_deleted_ids()
+        {
+            DataBatch batch = _harness.Batch(BatchPurpose.Persist);
+
+            JobStatements.DeclareScheduleDelete(batch, new SqlIdentifier("@deleted"));
+
+            BatchStatement statement = Assert.Single(batch.Statements);
+            Assert.Equal(
+                """
+                DELETE [st] FROM [core].[ScheduleStates] AS [st] INNER JOIN @deleted AS [k] ON [k].[Id] = [st].[ScheduleId];
+                UPDATE [j] SET [ScheduleId] = NULL FROM [core].[Jobs] AS [j] INNER JOIN @deleted AS [k] ON [k].[Id] = [j].[ScheduleId];
+                """,
+                statement.Text,
+                ignoreLineEndingDifferences: true);
+            Assert.Equal([new TableName("core", "Jobs"), new TableName("core", "ScheduleStates")], statement.Writes.OrderBy(static table => table.Name, StringComparer.Ordinal));
+            Assert.Empty(statement.Parameters);
+        }
+
         // --- Run-now ---
 
         [Fact]
