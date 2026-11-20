@@ -9,7 +9,9 @@ using System.Diagnostics;
 namespace Tellma.Core.Jobs
 {
     // Spec 0020 §6.5–§6.7: each claim that leased rows runs on the thread pool in the slot reserved for
-    // it, under the host token, and in_flight counts its rows while it runs. The drain cancels the
+    // it, under the host token, and in_flight counts its rows while it runs. A claim the instance had
+    // no slot for is released uncounted on the pool instead, as a drain releases a partition no
+    // handler started, and the drain waits for those releases too. The drain cancels the
     // host token (each lease's items stop with HostStopping; partitions not started are released by
     // their runner), waits up to DrainTimeout for the batches, and leaves the handlers still running
     // leased: one final renewal per tenant binds their leases to the host's ShutdownTimeout, the
@@ -86,42 +88,14 @@ namespace Tellma.Core.Jobs
         public void Start(JobPolledClaim polled)
         {
             ArgumentNullException.ThrowIfNull(polled);
-            JobClaim claim = polled.Claim;
-            int rows = claim.Rows.Value.Count;
-            _metrics.AddInFlight(claim.Handler.Key, rows);
+            Track(() => RunAsync(polled));
+        }
 
-            // The batch runs under no ambient activity: each invocation starts its own root.
-            Task batch;
-            Activity? ambient = Activity.Current;
-            Activity.Current = null;
-            try
-            {
-                batch = Task.Run(() => RunAsync(polled, rows));
-            }
-            finally
-            {
-                Activity.Current = ambient;
-            }
-
-            lock (_gate)
-            {
-                if (!batch.IsCompleted)
-                {
-                    _ = _running.Add(batch);
-                }
-            }
-
-            _ = batch.ContinueWith(
-                ended =>
-                {
-                    lock (_gate)
-                    {
-                        _ = _running.Remove(ended);
-                    }
-                },
-                CancellationToken.None,
-                TaskContinuationOptions.ExecuteSynchronously,
-                TaskScheduler.Default);
+        /// <inheritdoc />
+        public void Release(JobPolledClaim polled)
+        {
+            ArgumentNullException.ThrowIfNull(polled);
+            Track(() => ReleaseAsync(polled));
         }
 
         /// <summary>
@@ -225,25 +199,111 @@ namespace Tellma.Core.Jobs
             JobsLog.WorkerDrainTimedOut(_logger, drainTimeout, running.Count);
         }
 
-        /// <summary>Runs one claim's batch; its rows leave in_flight and its slot is released once it ended.</summary>
-        /// <param name="polled">The claim and its slot.</param>
-        /// <param name="rows">The claim's rows.</param>
-        /// <returns>A task that completes once the batch ended; it never throws.</returns>
-        private async Task RunAsync(JobPolledClaim polled, int rows)
+        /// <summary>Runs one batch on the thread pool, under no ambient activity, among those the drain waits for.</summary>
+        /// <param name="run">The batch; its task never throws.</param>
+        private void Track(Func<Task> run)
         {
+            // The batch runs under no ambient activity: each invocation starts its own root.
+            Task batch;
+            Activity? ambient = Activity.Current;
+            Activity.Current = null;
             try
             {
+                batch = Task.Run(run);
+            }
+            finally
+            {
+                Activity.Current = ambient;
+            }
+
+            lock (_gate)
+            {
+                if (!batch.IsCompleted)
+                {
+                    _ = _running.Add(batch);
+                }
+            }
+
+            _ = batch.ContinueWith(
+                ended =>
+                {
+                    lock (_gate)
+                    {
+                        _ = _running.Remove(ended);
+                    }
+                },
+                CancellationToken.None,
+                TaskContinuationOptions.ExecuteSynchronously,
+                TaskScheduler.Default);
+        }
+
+        /// <summary>Runs one claim's batch; its rows are in in_flight while it runs, and its slot is released once it ended.</summary>
+        /// <param name="polled">The claim and its slot.</param>
+        /// <returns>A task that completes once the batch ended; it never throws.</returns>
+        private async Task RunAsync(JobPolledClaim polled)
+        {
+            string key = polled.Claim.Handler.Key;
+            int rows = polled.Claim.Rows.Value.Count;
+            bool counted = false;
+            try
+            {
+                _metrics.AddInFlight(key, rows);
+                counted = true;
                 _ = await _runner.RunAsync(polled.Claim, _host.Token).ConfigureAwait(false);
             }
             catch (Exception failure) when (failure is not OutOfMemoryException)
             {
-                using IDisposable? scope = _logger.BeginScope(new JobLogScope(polled.Claim.TenantId, userId: null, polled.Claim.Rows.Value.Select(static row => row.Job.Id), originTraceParent: null));
-                JobsLog.JobBatchFailed(_logger, failure, polled.Claim.Handler.Key);
+                ReportBatchFailure(polled, failure);
             }
             finally
             {
-                _metrics.AddInFlight(polled.Claim.Handler.Key, -rows);
+                // The slot is released even when the instrument throws, so no key stays at its limit.
+                try
+                {
+                    if (counted)
+                    {
+                        _metrics.AddInFlight(key, -rows);
+                    }
+                }
+                finally
+                {
+                    polled.Reservation?.Dispose();
+                }
+            }
+        }
+
+        /// <summary>Releases one claim's rows uncounted; its slot is released once they were.</summary>
+        /// <param name="polled">The claim and its slot.</param>
+        /// <returns>A task that completes once the release ended; it never throws.</returns>
+        private async Task ReleaseAsync(JobPolledClaim polled)
+        {
+            try
+            {
+                _ = await _runner.ReleaseAsync(polled.Claim).ConfigureAwait(false);
+            }
+            catch (Exception failure) when (failure is not OutOfMemoryException)
+            {
+                ReportBatchFailure(polled, failure);
+            }
+            finally
+            {
                 polled.Reservation?.Dispose();
+            }
+        }
+
+        /// <summary>Logs a batch that failed unexpectedly; a log that fails too is dropped.</summary>
+        /// <param name="polled">The batch's claim.</param>
+        /// <param name="failure">What it threw.</param>
+        private void ReportBatchFailure(JobPolledClaim polled, Exception failure)
+        {
+            try
+            {
+                using IDisposable? scope = _logger.BeginScope(new JobLogScope(polled.Claim.TenantId, userId: null, polled.Claim.Rows.Value.Select(static row => row.Job.Id), originTraceParent: null));
+                JobsLog.JobBatchFailed(_logger, failure, polled.Claim.Handler.Key);
+            }
+            catch (Exception logFailure) when (logFailure is not OutOfMemoryException)
+            {
+                // The logger is what failed: the slot is released all the same.
             }
         }
     }

@@ -217,6 +217,24 @@ namespace Tellma.Core.Tests.Jobs
         }
 
         [Fact]
+        public void Once_the_final_renewal_bound_a_lease_a_renewal_extends_it_only_to_the_end_that_renewal_set()
+        {
+            using JobLease lease = Track([Row(1)], Token);
+            Assert.Equal(lease.LeaseSeconds, lease.RenewalSeconds);
+
+            // --- Bound to thirty seconds: a renewal ten seconds on extends the lease by the twenty left ---
+            lease.BindToStop(_time.GetTimestamp(), leaseSeconds: 30);
+            Assert.Equal(30, lease.RenewalSeconds);
+            _time.Advance(TimeSpan.FromSeconds(10));
+            Assert.Equal(20, lease.RenewalSeconds);
+
+            // --- A second binding changes nothing, and past the end a renewal extends it by a second ---
+            lease.BindToStop(_time.GetTimestamp(), leaseSeconds: 300);
+            _time.Advance(TimeSpan.FromSeconds(25));
+            Assert.Equal(1, lease.RenewalSeconds);
+        }
+
+        [Fact]
         public void A_jump_of_five_points_from_the_carried_percent_renews_at_most_once_every_five_seconds()
         {
             using JobLease lease = Track([Row(1)], Token);

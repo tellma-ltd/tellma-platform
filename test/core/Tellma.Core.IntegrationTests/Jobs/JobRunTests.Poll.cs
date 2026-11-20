@@ -4,12 +4,14 @@
 // LICENSE file in the root directory of this source tree.
 
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Diagnostics.Metrics.Testing;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Testing;
 using Microsoft.Extensions.Options;
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Diagnostics.Metrics;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Jobs;
 using Tellma.Core.Abstractions.Notifications;
@@ -23,7 +25,8 @@ namespace Tellma.Core.IntegrationTests.Jobs
 {
     // The worker's poll against the database: the gap check and its hold with the notices that
     // follow, the heartbeat stamp and its throttle, the samples, the retired-key cancel, a poll that
-    // re-runs after a transient failure, and the worker itself polling, claiming, retiring a
+    // re-runs after a transient failure, a poll whose instruments throw, the instruments each of
+    // them records, and the worker itself polling, claiming, running two batches at once, retiring a
     // tenant's poller and draining its batches at shutdown.
     public abstract partial class JobRunTests
     {
@@ -45,6 +48,7 @@ namespace Tellma.Core.IntegrationTests.Jobs
             int lapsed = await LeaseAsync(await fixture.InsertJobAsync(JobRunKeys.Steps, dueSecondsAgo: GapSeconds), leaseSeconds: -60);
             int leased = await LeaseAsync(await fixture.InsertJobAsync(JobRunKeys.Probe, dueSecondsAgo: GapSeconds), leaseSeconds: 300);
             int recent = await fixture.InsertJobAsync(JobRunKeys.Probe, dueSecondsAgo: 60);
+            using JobInstruments instruments = new(fixture);
 
             JobPollResult result = await PollAsync(Plan(claims: [JobRunKeys.Probe]));
 
@@ -76,6 +80,7 @@ namespace Tellma.Core.IntegrationTests.Jobs
                 NoticeComparer.Instance);
             FakeLogRecord detected = Assert.Single(fixture.Log.GetSnapshot(), static record => record.Id.Name == "SchedulerGapDetected");
             Assert.Equal(LogLevel.Warning, detected.Level);
+            Assert.Equal(1L, Assert.Single(instruments.GapDetected.GetMeasurementSnapshot()).Value);
 
             // --- The heartbeat closed the gap: the next poll holds nothing and tells no one ---
             Assert.NotNull(result.Stamped);
@@ -89,13 +94,55 @@ namespace Tellma.Core.IntegrationTests.Jobs
         public async Task A_tenant_never_polled_has_no_gap_so_its_overdue_jobs_are_claimed()
         {
             int overdue = await fixture.InsertJobAsync(JobRunKeys.Probe, dueSecondsAgo: GapSeconds * 2);
+            using JobInstruments instruments = new(fixture);
 
-            JobPollResult result = await PollAsync(Plan(claims: [JobRunKeys.Probe]));
+            JobPollResult result = await PollAsync(Plan(claims: [JobRunKeys.Probe, JobRunKeys.Inbox]));
 
             Assert.False(result.Gap.GapDetected);
             Assert.Null(result.Gap.PreviousTickAt);
-            Assert.Equal([overdue], Assert.Single(result.Claims).Claim.Rows.Value.Select(static row => row.Job.Id));
+            Assert.Equal([overdue], result.Claims.Single(static polled => polled.Claim.Handler.Key == JobRunKeys.Probe).Claim.Rows.Value.Select(static row => row.Job.Id));
             Assert.Empty(fixture.Notices.Raised);
+            Assert.Empty(instruments.GapDetected.GetMeasurementSnapshot());
+
+            // --- The claim that leased a row is counted, its fill and its first claim's wait recorded;
+            // the inbox claim that leased nothing records nothing; the round trip is timed once ---
+            Assert.Equal([(JobRunKeys.Probe, 1L)], JobInstruments.ByHandler(instruments.Claimed));
+            Assert.Equal([(JobRunKeys.Probe, 0.1)], JobInstruments.ByHandler(instruments.BatchFill));
+            (string? latencyKey, double latency) = Assert.Single(JobInstruments.ByHandler(instruments.QueueLatency));
+            Assert.Equal(JobRunKeys.Probe, latencyKey);
+            Assert.InRange(latency, (GapSeconds * 2) - 5, (GapSeconds * 2) + 60);
+            CollectedMeasurement<double> duration = Assert.Single(instruments.PollDuration.GetMeasurementSnapshot());
+            Assert.True(duration.Value > 0);
+            Assert.Empty(duration.Tags);
+        }
+
+        [Fact]
+        public async Task A_poll_whose_instruments_throw_still_hands_its_claims_over_and_logs_the_failure()
+        {
+            int id = await fixture.InsertJobAsync(JobRunKeys.Probe);
+
+            // --- An exporter of this host's claim counter that throws on every measurement ---
+            IMeterFactory meters = fixture.Tenant.Services.GetRequiredService<IMeterFactory>();
+            using MeterListener listener = new();
+            listener.InstrumentPublished = (instrument, subscriber) =>
+            {
+                if (ReferenceEquals(instrument.Meter.Scope, meters) && instrument.Name == JobsTelemetryNames.Claimed)
+                {
+                    subscriber.EnableMeasurementEvents(instrument);
+                }
+            };
+            listener.SetMeasurementEventCallback<long>(static (_, _, _, _) => throw new InvalidOperationException("The exporter broke."));
+            listener.Start();
+
+            JobPollResult? handed = null;
+            JobPollResult result = await fixture.Tenant.Services.GetRequiredService<IJobPoll>().PollAsync(Plan(claims: [JobRunKeys.Probe]), polled => handed = polled, Token);
+
+            // --- The claims were handed over before the instruments ran, and the poll ended as usual ---
+            Assert.Same(result, handed);
+            Assert.Equal([id], Assert.Single(result.Claims).Claim.Rows.Value.Select(static row => row.Job.Id));
+            FakeLogRecord failed = Assert.Single(fixture.Log.GetSnapshot(), static record => record.Id.Name == "JobPollNoticesFailed");
+            Assert.Equal(LogLevel.Warning, failed.Level);
+            Assert.IsType<InvalidOperationException>(failed.Exception);
         }
 
         // --- The heartbeat stamp ---
@@ -223,6 +270,7 @@ namespace Tellma.Core.IntegrationTests.Jobs
             _ = await LeaseAsync(await fixture.InsertJobAsync(JobRunKeys.Probe, dueSecondsAgo: 3600), leaseSeconds: 300);
             _ = await LeaseAsync(await fixture.InsertJobAsync(JobRunKeys.Ship, dueSecondsAgo: 300), leaseSeconds: -1);
             _ = await LeaseAsync(await fixture.InsertJobAsync(JobRunKeys.Steps, dueSecondsAgo: 300), leaseSeconds: 300);
+            using JobInstruments instruments = new(fixture);
 
             JobPollResult result = await PollAsync(Plan(sampleBacklog: true));
 
@@ -233,6 +281,11 @@ namespace Tellma.Core.IntegrationTests.Jobs
             Assert.InRange(backlog.Single(static sample => sample.HandlerKey == JobRunKeys.Probe).Age, TimeSpan.FromSeconds(118), TimeSpan.FromSeconds(180));
             Assert.InRange(backlog.Single(static sample => sample.HandlerKey == JobRunKeys.Ship).Age, TimeSpan.FromSeconds(298), TimeSpan.FromSeconds(360));
             Assert.Null(result.Orphaned);
+
+            // --- Each key's age is recorded under its handler, in seconds ---
+            Assert.Equal(
+                [(JobRunKeys.Probe, backlog.Single(static sample => sample.HandlerKey == JobRunKeys.Probe).Age.TotalSeconds), (JobRunKeys.Ship, backlog.Single(static sample => sample.HandlerKey == JobRunKeys.Ship).Age.TotalSeconds)],
+                JobInstruments.ByHandler(instruments.BacklogAge).OrderBy(static sample => sample.Handler, StringComparer.Ordinal));
         }
 
         [Fact]
@@ -247,6 +300,7 @@ namespace Tellma.Core.IntegrationTests.Jobs
             int registered = await fixture.InsertJobAsync(JobRunKeys.Probe, dueSecondsAgo: 7200);
             _ = await fixture.InsertJobAsync(UnknownKey, dueSecondsAgo: 7200);
             _ = await fixture.InsertJobAsync(UnknownKey, dueSecondsAgo: 600);
+            using JobInstruments instruments = new(fixture);
 
             JobPollResult result = await PollAsync(Plan(sampleOrphans: true));
 
@@ -268,6 +322,7 @@ namespace Tellma.Core.IntegrationTests.Jobs
             // --- The confirmation notice of the row that waited for one is withdrawn; the orphans are the unknown key's hour-overdue rows ---
             Assert.Equal([new WithdrawRequest(JobNotices.PendingConfirmationKey(waiting))], fixture.Notices.Withdrawn);
             Assert.Equal(1, result.Orphaned);
+            Assert.Equal(1L, instruments.OrphanedNow());
             Assert.Contains(fixture.Log.GetSnapshot(), static record => record.Id.Name == "JobRetiredKeysCancelled");
 
             // --- Once its lease lapsed, the next sweep cancels the last row too ---
@@ -315,23 +370,31 @@ namespace Tellma.Core.IntegrationTests.Jobs
         // --- The worker ---
 
         [Fact]
-        public async Task The_worker_polls_an_active_tenant_runs_its_jobs_and_stops_polling_it_once_frozen()
+        public async Task The_worker_polls_an_active_tenant_runs_two_batches_at_once_and_stops_polling_it_once_frozen()
         {
+            // --- Two keys due before the worker starts, and an orphan its first poll samples. The
+            // probe's handler returns only once the inbox's began, so both batches run at once ---
             int id = await fixture.InsertJobAsync(JobRunKeys.Probe);
-            fixture.Script.Inbox = static (_, _) => throw new InvalidOperationException("The test handler breaks.");
+            int failing = await fixture.InsertJobAsync(JobRunKeys.Inbox);
+            _ = await fixture.InsertJobAsync(UnknownKey, dueSecondsAgo: 7200);
+            TaskCompletionSource inboxBegan = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            fixture.Script.Probe = (_, _) => inboxBegan.Task.WaitAsync(TimeSpan.FromSeconds(30), Token);
+            fixture.Script.Inbox = (_, _) =>
+            {
+                inboxBegan.TrySetResult();
+                throw new InvalidOperationException("The test handler breaks.");
+            };
+            using JobInstruments instruments = new(fixture);
             await using var worker = Worker.Create(fixture, TenantState.Active);
 
             await worker.StartAsync();
 
-            // --- The polls claim each job, the dispatch runs it, and the heartbeat names this instance.
-            // The second job is enqueued once the first ended: the fixture's change-tracking audit is
-            // exact only while one batch at a time writes the database, and two batches at once would
-            // each see the other's writes as undeclared ---
-            await EventuallyAsync(async () => (await fixture.JobAsync(id)).Status == nameof(JobStatus.Succeeded));
-            int failing = await fixture.InsertJobAsync(JobRunKeys.Inbox);
-            await EventuallyAsync(async () => (await fixture.JobAsync(failing)).Status == nameof(JobStatus.Failed)
+            // --- One poll claimed both keys, the dispatch ran both batches, and the heartbeat names this instance ---
+            await EventuallyAsync(async () => (await fixture.JobAsync(id)).Status == nameof(JobStatus.Succeeded)
+                && (await fixture.JobAsync(failing)).Status == nameof(JobStatus.Failed)
                 && fixture.Events.Published.Count == 4
                 && fixture.Notices.Raised.Count == 1);
+            Assert.Contains(worker.Polls.Results, static result => result.Claims.Count(static polled => polled.Claim.Rows.Value.Count > 0) == 2);
             Assert.Equal([FixtureTenantId], worker.Instance.Polled);
             Assert.Equal(JobLeaseOwner.Current, (await WorkerStateAsync()).Owner);
 
@@ -340,10 +403,26 @@ namespace Tellma.Core.IntegrationTests.Jobs
             NotificationRequest failed = Assert.Single(fixture.Notices.Raised);
             Assert.Equal((JobNotices.FailedType, ActiveUserId, true), (failed.Type, Assert.Single(failed.RecipientIds), failed.InboxOnly));
 
-            // --- Frozen: the poller is retired, and a job enqueued afterwards waits ---
+            // --- The instruments: each job claimed, run, timed and completed under its handler and outcome ---
+            await EventuallyAsync(() => Task.FromResult(worker.Dispatcher.Running == 0));
+            Assert.Equal([(JobRunKeys.Inbox, 1L), (JobRunKeys.Probe, 1L)], JobInstruments.ByHandler(instruments.Claimed).Order());
+            Assert.Equal([(JobRunKeys.Inbox, 0.1), (JobRunKeys.Probe, 0.1)], JobInstruments.ByHandler(instruments.BatchFill).Order());
+            Assert.Equal([JobRunKeys.Inbox, JobRunKeys.Probe], JobInstruments.ByHandler(instruments.QueueLatency).Select(static measurement => measurement.Handler).Order(StringComparer.Ordinal));
+            Assert.Equal([(JobRunKeys.Inbox, -1L), (JobRunKeys.Inbox, 1L), (JobRunKeys.Probe, -1L), (JobRunKeys.Probe, 1L)], JobInstruments.ByHandler(instruments.InFlight).Order());
+            Assert.Equal([JobRunKeys.Inbox, JobRunKeys.Probe], JobInstruments.ByHandler(instruments.Duration).Select(static measurement => measurement.Handler).Order(StringComparer.Ordinal));
+            Assert.Equal(
+                [(JobRunKeys.Inbox, JobsMetrics.Failed, 1L), (JobRunKeys.Probe, JobsMetrics.Succeeded, 1L)],
+                instruments.Completed.GetMeasurementSnapshot()
+                    .Select(static measurement => ((string?)measurement.Tags[JobsTelemetryNames.HandlerTag], (string?)measurement.Tags[JobsTelemetryNames.OutcomeTag], measurement.Value))
+                    .Order());
+            Assert.NotEmpty(instruments.PollDuration.GetMeasurementSnapshot());
+            Assert.Equal(1L, instruments.OrphanedNow());
+
+            // --- Frozen: the poller is retired, its orphan sample dropped once it ended, and a job enqueued afterwards waits ---
             await worker.Instance.OnStateChangedAsync(worker.Registry.Set(TenantState.Frozen), TenantState.Active);
             Assert.Empty(worker.Instance.Polled);
             Assert.Contains(fixture.Log.GetSnapshot(), static record => record.Id.Name == "JobPollerRetired");
+            await EventuallyAsync(() => Task.FromResult(instruments.OrphanedNow() == 0));
             int later = await fixture.InsertJobAsync(JobRunKeys.Probe);
             await Task.Delay(TimeSpan.FromSeconds(2), Token);
             JobRow waiting = await fixture.JobAsync(later);
@@ -392,7 +471,8 @@ namespace Tellma.Core.IntegrationTests.Jobs
                 started.TrySetResult();
                 await Task.Delay(Timeout.InfiniteTimeSpan, batch.Items[0].CancellationToken);
             };
-            // A drain long enough for a poll in flight on a loaded server: the handler returns at the host token.
+            // A drain long enough for the batch's own end on a loaded server, its release completion
+            // included: the handler returns at the host token, and the test waits no longer than that.
             await using var worker = Worker.Create(fixture, TenantState.Active, drainTimeout: TimeSpan.FromSeconds(20));
             await worker.StartAsync();
             await started.Task.WaitAsync(TimeSpan.FromSeconds(30), Token);
@@ -689,29 +769,37 @@ namespace Tellma.Core.IntegrationTests.Jobs
 
         /// <summary>
         ///     A worker of its own over the fixture host's job machinery: its own dispatch, renewal
-        ///     schedule and registry, a one-second drain (or a longer one a test asks for) and a shutdown
-        ///     timeout three seconds past the drain. It is
-        ///     stopped as the host would stop it, once, when the test stops it or disposes it.
+        ///     schedule, registry and recorded poll, a one-second drain (or a longer one a test asks
+        ///     for) and a shutdown timeout three seconds past the drain. The fixture's audit is
+        ///     suspended while it runs, since its batches run side by side. It is stopped as the host
+        ///     would stop it, once, when the test stops it or disposes it.
         /// </summary>
         private sealed class Worker : IAsyncDisposable
         {
             /// <summary>The host's shutdown timeout the worker is given.</summary>
             public static readonly TimeSpan ShutdownTimeout = TimeSpan.FromSeconds(3);
 
+            /// <summary>The class's database, whose audit is suspended while the worker runs.</summary>
+            private readonly JobRunDatabase _fixture;
+
             /// <summary>Whether the worker was stopped.</summary>
             private bool _stopped;
 
             /// <summary>Wraps a composed worker.</summary>
+            /// <param name="fixture">The class's database.</param>
             /// <param name="instance">The worker.</param>
             /// <param name="registry">Its registry.</param>
             /// <param name="dispatcher">Its dispatch.</param>
             /// <param name="renewals">Its renewal schedule.</param>
-            private Worker(JobWorker instance, StateRegistry registry, JobDispatcher dispatcher, JobRenewalScheduler renewals)
+            /// <param name="polls">Its poll, recorded.</param>
+            private Worker(JobRunDatabase fixture, JobWorker instance, StateRegistry registry, JobDispatcher dispatcher, JobRenewalScheduler renewals, RecordedPoll polls)
             {
+                _fixture = fixture;
                 Instance = instance;
                 Registry = registry;
                 Dispatcher = dispatcher;
                 Renewals = renewals;
+                Polls = polls;
             }
 
             /// <summary>The worker.</summary>
@@ -722,6 +810,9 @@ namespace Tellma.Core.IntegrationTests.Jobs
 
             /// <summary>The worker's dispatch.</summary>
             public JobDispatcher Dispatcher { get; }
+
+            /// <summary>The worker's poll, which records what each round trip returned.</summary>
+            public RecordedPoll Polls { get; }
 
             /// <summary>The worker's renewal schedule.</summary>
             private JobRenewalScheduler Renewals { get; }
@@ -737,6 +828,7 @@ namespace Tellma.Core.IntegrationTests.Jobs
                 StateRegistry registry = new(services.GetRequiredService<ITenantRegistry>(), state);
                 JobDispatcher dispatcher = ActivatorUtilities.CreateInstance<JobDispatcher>(services);
                 JobRenewalScheduler renewals = ActivatorUtilities.CreateInstance<JobRenewalScheduler>(services);
+                RecordedPoll polls = new(services.GetRequiredService<IJobPoll>());
                 JobsOptions options = services.GetRequiredService<IOptions<JobsOptions>>().Value;
                 options = new JobsOptions
                 {
@@ -752,15 +844,17 @@ namespace Tellma.Core.IntegrationTests.Jobs
                     registry,
                     dispatcher,
                     renewals,
+                    polls,
                     Options.Create(options),
                     Options.Create(new HostOptions { ShutdownTimeout = drainTimeout is TimeSpan drain ? drain + ShutdownTimeout : ShutdownTimeout }));
-                return new Worker(worker, registry, dispatcher, renewals);
+                return new Worker(fixture, worker, registry, dispatcher, renewals, polls);
             }
 
-            /// <summary>Starts the worker as the host starts a hosted service.</summary>
+            /// <summary>Starts the worker as the host starts a hosted service, the fixture's audit suspended.</summary>
             /// <returns>A task that completes once the worker started.</returns>
             public async Task StartAsync()
             {
+                _fixture.Audit.Suspended = true;
                 await Instance.StartingAsync(Token);
                 await Instance.StartAsync(Token);
                 await Instance.StartedAsync(Token);
@@ -788,6 +882,116 @@ namespace Tellma.Core.IntegrationTests.Jobs
                 Instance.Dispose();
                 Dispatcher.Dispose();
                 Renewals.Dispose();
+            }
+        }
+
+        /// <summary>A poll that records what each round trip returned, before the worker takes its claims.</summary>
+        /// <param name="inner">The host's poll.</param>
+        private sealed class RecordedPoll(IJobPoll inner) : IJobPoll
+        {
+            /// <summary>What each round trip returned, in order.</summary>
+            public ConcurrentQueue<JobPollResult> Results { get; } = new();
+
+            /// <inheritdoc />
+            public Task<JobPollResult> PollAsync(JobPollPlan plan, Action<JobPollResult> onExecuted, CancellationToken cancellationToken)
+            {
+                return inner.PollAsync(
+                    plan,
+                    result =>
+                    {
+                        Results.Enqueue(result);
+                        onExecuted(result);
+                    },
+                    cancellationToken);
+            }
+        }
+
+        /// <summary>Collects every job instrument the fixture host records while a test runs.</summary>
+        private sealed class JobInstruments : IDisposable
+        {
+            /// <summary>Starts collecting from the fixture host's meters.</summary>
+            /// <param name="fixture">The class's database.</param>
+            public JobInstruments(JobRunDatabase fixture)
+            {
+                IMeterFactory meters = fixture.Tenant.Services.GetRequiredService<IMeterFactory>();
+                Claimed = new(meters, JobsTelemetryNames.MeterName, JobsTelemetryNames.Claimed);
+                Completed = new(meters, JobsTelemetryNames.MeterName, JobsTelemetryNames.Completed);
+                Duration = new(meters, JobsTelemetryNames.MeterName, JobsTelemetryNames.Duration);
+                QueueLatency = new(meters, JobsTelemetryNames.MeterName, JobsTelemetryNames.QueueLatency);
+                BatchFill = new(meters, JobsTelemetryNames.MeterName, JobsTelemetryNames.BatchFill);
+                InFlight = new(meters, JobsTelemetryNames.MeterName, JobsTelemetryNames.InFlight);
+                LeaseLost = new(meters, JobsTelemetryNames.MeterName, JobsTelemetryNames.LeaseLost);
+                BacklogAge = new(meters, JobsTelemetryNames.MeterName, JobsTelemetryNames.BacklogAge);
+                PollDuration = new(meters, JobsTelemetryNames.MeterName, JobsTelemetryNames.PollDuration);
+                Orphaned = new(meters, JobsTelemetryNames.MeterName, JobsTelemetryNames.Orphaned);
+                GapDetected = new(meters, JobsTelemetryNames.MeterName, JobsTelemetryNames.SchedulesGapDetected);
+            }
+
+            /// <summary>Jobs claimed.</summary>
+            public MetricCollector<long> Claimed { get; }
+
+            /// <summary>Jobs completed.</summary>
+            public MetricCollector<long> Completed { get; }
+
+            /// <summary>Handler invocations' durations.</summary>
+            public MetricCollector<double> Duration { get; }
+
+            /// <summary>The waits from due to first claim.</summary>
+            public MetricCollector<double> QueueLatency { get; }
+
+            /// <summary>The claims' fill.</summary>
+            public MetricCollector<double> BatchFill { get; }
+
+            /// <summary>The jobs in flight.</summary>
+            public MetricCollector<long> InFlight { get; }
+
+            /// <summary>The batches whose lease was lost.</summary>
+            public MetricCollector<long> LeaseLost { get; }
+
+            /// <summary>The keys' backlog ages.</summary>
+            public MetricCollector<double> BacklogAge { get; }
+
+            /// <summary>The poll round trips' durations.</summary>
+            public MetricCollector<double> PollDuration { get; }
+
+            /// <summary>The orphaned jobs.</summary>
+            public MetricCollector<long> Orphaned { get; }
+
+            /// <summary>The polls that found a gap.</summary>
+            public MetricCollector<long> GapDetected { get; }
+
+            /// <summary>A collector's measurements as their handler tag and value, in the order recorded.</summary>
+            /// <typeparam name="T">The measurements' type.</typeparam>
+            /// <param name="collector">The collector.</param>
+            /// <returns>The handler tag, null when absent, and the value of each measurement.</returns>
+            public static IReadOnlyList<(string? Handler, T Value)> ByHandler<T>(MetricCollector<T> collector)
+                where T : struct
+            {
+                return [.. collector.GetMeasurementSnapshot().Select(static measurement => (measurement.Tags.TryGetValue(JobsTelemetryNames.HandlerTag, out object? handler) ? handler as string : null, measurement.Value))];
+            }
+
+            /// <summary>The orphan gauge's value now.</summary>
+            /// <returns>The value.</returns>
+            public long OrphanedNow()
+            {
+                Orphaned.RecordObservableInstruments();
+                return Orphaned.LastMeasurement?.Value ?? throw new InvalidOperationException("The orphan gauge reported no value.");
+            }
+
+            /// <inheritdoc />
+            public void Dispose()
+            {
+                Claimed.Dispose();
+                Completed.Dispose();
+                Duration.Dispose();
+                QueueLatency.Dispose();
+                BatchFill.Dispose();
+                InFlight.Dispose();
+                LeaseLost.Dispose();
+                BacklogAge.Dispose();
+                PollDuration.Dispose();
+                Orphaned.Dispose();
+                GapDetected.Dispose();
             }
         }
     }

@@ -10,14 +10,20 @@ using Tellma.Core.Abstractions.Jobs;
 namespace Tellma.Core.Jobs
 {
     // Spec 0020 §6.2–§6.5: one poller per served tenant. It reserves a slot per key it may claim (on
-    // a read-only tenant only the keys whose handler runs then), polls, hands the claims that leased
-    // rows to the dispatcher and frees the others' slots, then waits on whichever fires first of a
+    // a read-only tenant only the keys whose handler runs then), polls, starts each claim that leased
+    // rows in a free instance slot, has the dispatcher release uncounted a claim that found none, and
+    // frees the slots of the claims that leased nothing. It then waits on whichever fires first of a
     // PeriodicTimer over the adaptive interval and a coalescing wake-up channel (capacity 1,
     // DropWrite). A full claim or full tick polls again at once; something short of that resets the
     // interval to the minimum; nothing doubles it up to the maximum; a nudge resets it to the minimum
     // and wakes the channel; a failed poll is logged and waits the maximum (§6.1). The backlog sample
     // rides one poll a minute and the orphan sample one an hour, from the first poll on. A stop takes
     // effect after the current poll; only the worker's abort cancels a poll in flight.
+    //
+    // Pollers the worker starts together would otherwise poll in lock-step for as long as they idle,
+    // the same intervals from the same instant: the first poll waits a random part of the shortest
+    // interval, and every wait is lengthened by a random part of a fifth of itself. A nudge cuts
+    // either short.
     /// <summary>Polls one tenant's jobs on this instance.</summary>
     internal sealed class TenantPoller : IDisposable
     {
@@ -26,6 +32,9 @@ namespace Tellma.Core.Jobs
 
         /// <summary>How often a poll carries the orphan sample and the retired-key cancel.</summary>
         internal static readonly TimeSpan OrphansEvery = TimeSpan.FromHours(1);
+
+        /// <summary>The most a wait is lengthened by, as a part of itself.</summary>
+        internal const double JitterFraction = 0.2;
 
         /// <summary>Runs each poll's round trip.</summary>
         private readonly IJobPoll _poll;
@@ -47,6 +56,9 @@ namespace Tellma.Core.Jobs
 
         /// <summary>The clock the waits and the sample cadences run on.</summary>
         private readonly TimeProvider _time;
+
+        /// <summary>Draws the random part of the first poll's delay and of each wait's lengthening.</summary>
+        private readonly Func<double> _jitter;
 
         /// <summary>The job machinery's logger.</summary>
         private readonly ILogger _logger;
@@ -97,6 +109,7 @@ namespace Tellma.Core.Jobs
             _wake = services.Wake;
             _options = services.Options;
             _time = services.Time;
+            _jitter = services.Jitter;
             _logger = services.Logger;
             _owner = services.Owner;
         }
@@ -142,6 +155,15 @@ namespace Tellma.Core.Jobs
             };
         }
 
+        /// <summary>A wait lengthened by its jitter.</summary>
+        /// <param name="wait">The wait.</param>
+        /// <param name="sample">The random part, from zero up to one.</param>
+        /// <returns>The wait, lengthened by up to <see cref="JitterFraction" /> of itself.</returns>
+        internal static TimeSpan Jittered(TimeSpan wait, double sample)
+        {
+            return wait + (wait * (JitterFraction * Math.Clamp(sample, 0, 1)));
+        }
+
         /// <summary>Starts polling; starting twice does nothing.</summary>
         public void Start()
         {
@@ -182,11 +204,20 @@ namespace Tellma.Core.Jobs
         private async Task RunAsync()
         {
             using IDisposable subscription = _wake.Subscribe(TenantId, Nudge);
+
+            // --- The first poll waits a random part of the shortest interval, so pollers started
+            // together spread out; a timer runs on whole milliseconds, so a shorter part polls at once ---
+            TimeSpan stagger = _options.MinPollInterval * Math.Clamp(_jitter(), 0, 1);
+            if (stagger >= TimeSpan.FromMilliseconds(1))
+            {
+                _ = await WaitAsync(stagger).ConfigureAwait(false);
+            }
+
             TimeSpan interval = _options.MinPollInterval;
             while (!_stop.IsCancellationRequested)
             {
                 interval = Next(interval, await PollOnceAsync().ConfigureAwait(false), _options.MinPollInterval, _options.MaxPollInterval);
-                if (interval > TimeSpan.Zero && await WaitAsync(interval).ConfigureAwait(false))
+                if (interval > TimeSpan.Zero && await WaitAsync(Jittered(interval, _jitter())).ConfigureAwait(false))
                 {
                     // A nudge woke the poller: the poll that follows starts from the minimum.
                     interval = _options.MinPollInterval;
@@ -251,20 +282,42 @@ namespace Tellma.Core.Jobs
             }
         }
 
-        /// <summary>Starts the claims that leased rows, each taking an instance slot, and frees the slots of those that leased none.</summary>
+        /// <summary>
+        ///     Starts the claims that leased rows, each in a free instance slot, has the dispatcher
+        ///     release those that found none, and frees the slots of those that leased nothing.
+        /// </summary>
         /// <param name="result">What the round trip returned.</param>
         private void Dispatch(JobPollResult result)
         {
-            foreach (JobPolledClaim polled in result.Claims)
+            IReadOnlyList<JobPolledClaim> claims = result.Claims;
+            int next = 0;
+            try
             {
-                if (polled.Claim.Rows.Value.Count > 0)
+                for (; next < claims.Count; next++)
                 {
-                    polled.Reservation?.Start();
-                    _dispatch.Start(polled);
+                    JobPolledClaim polled = claims[next];
+                    if (polled.Claim.Rows.Value.Count == 0)
+                    {
+                        polled.Reservation?.Dispose();
+                    }
+                    else if (polled.Reservation?.TryStart() ?? true)
+                    {
+                        _dispatch.Start(polled);
+                    }
+                    else
+                    {
+                        // No instance slot is left: the rows go back uncounted, and the tenant waits for a freed slot.
+                        _dispatch.Release(polled);
+                    }
                 }
-                else
+            }
+            finally
+            {
+                // A throw part-way leaves no slot reserved for a claim the dispatcher never took, so no
+                // key stays at its limit; the claim's rows wait for their lease to lapse.
+                for (; next < claims.Count; next++)
                 {
-                    polled.Reservation?.Dispose();
+                    claims[next].Reservation?.Dispose();
                 }
             }
         }
@@ -293,9 +346,13 @@ namespace Tellma.Core.Jobs
     /// <summary>Starts the batches of the claims a poll leased; the poller's seam over <see cref="JobDispatcher" />.</summary>
     internal interface IJobDispatch
     {
-        /// <summary>Starts one claim's batch on the thread pool; its slot is released once it ended.</summary>
-        /// <param name="polled">The claim, with rows leased, and its slot.</param>
+        /// <summary>Starts one claim's batch on the thread pool; its slot is released once it ended. It throws only before the batch started.</summary>
+        /// <param name="polled">The claim, with rows leased, and its slot, started.</param>
         void Start(JobPolledClaim polled);
+
+        /// <summary>Releases one claim's rows uncounted on the thread pool, the instance having no slot to run them in; its slot is released once they were. It throws only before the release started.</summary>
+        /// <param name="polled">The claim, with rows leased, and its slot, not started.</param>
+        void Release(JobPolledClaim polled);
     }
 
     /// <summary>What a tenant poller polls with.</summary>
@@ -308,6 +365,7 @@ namespace Tellma.Core.Jobs
     /// <param name="Time">The clock.</param>
     /// <param name="Logger">The job machinery's logger.</param>
     /// <param name="Owner">The lease owner the claims and the stamp name.</param>
+    /// <param name="Jitter">Draws a random part, from zero up to one, of the first poll's delay and of each wait's lengthening.</param>
     internal sealed record TenantPollerServices(
         IJobPoll Poll,
         JobConcurrency Concurrency,
@@ -317,5 +375,6 @@ namespace Tellma.Core.Jobs
         JobsOptions Options,
         TimeProvider Time,
         ILogger Logger,
-        string Owner);
+        string Owner,
+        Func<double> Jitter);
 }

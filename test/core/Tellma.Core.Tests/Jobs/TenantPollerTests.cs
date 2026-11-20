@@ -17,8 +17,9 @@ namespace Tellma.Core.Tests.Jobs
     ///     and resetting, the immediate re-poll after a full claim, nudges coalescing into one wake,
     ///     the keys a read-only tenant claims, the slots freed by claims that leased nothing and by a
     ///     poll that failed, a key at its limit that neither wakes its tenant nor stops it backing off,
-    ///     two tenants claiming at once, the sample cadences, and a stop that lets the poll in flight
-    ///     finish.
+    ///     two tenants claiming at once, pollers started together never running past the instance's
+    ///     bound, the first poll's stagger and each wait's jitter, the sample cadences, and a stop that
+    ///     lets the poll in flight finish.
     /// </summary>
     public sealed class TenantPollerTests : IDisposable
     {
@@ -264,6 +265,96 @@ namespace Tellma.Core.Tests.Jobs
         }
 
         [Fact]
+        public async Task Pollers_started_together_with_work_on_every_key_never_run_more_batches_than_the_instance_allows()
+        {
+            // --- Six tenants plan at once, before any round trip returns, and every claim leases a row ---
+            const int Tenants = 6;
+            TaskCompletionSource all = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            _poll.Answer = async (plan, number) =>
+            {
+                if (number == Tenants)
+                {
+                    all.TrySetResult();
+                }
+
+                if (number <= Tenants)
+                {
+                    await all.Task.ConfigureAwait(false);
+                }
+
+                return FakeJobPoll.Result(plan, _ => number <= Tenants ? 1 : 0);
+            };
+            for (int tenant = 1; tenant <= Tenants; tenant++)
+            {
+                _ = Start(tenantId: tenant);
+            }
+
+            await _poll.PolledAsync(Tenants);
+            Assert.All(_poll.Plans, static plan => Assert.Equal(2, plan.Claims.Count));
+
+            // --- Two batches start, the instance's bound; the other ten claims are released, freeing their keys ---
+            await WaitUntilAsync(() => _dispatch.Started.Count + _dispatch.Released.Count == Tenants * 2);
+            Assert.Equal(2, _dispatch.Started.Count);
+            Assert.Equal((2, 0), (_concurrency.Started, _concurrency.Free));
+            foreach (JobPolledClaim polled in _dispatch.Released)
+            {
+                (int tenant, string key) = (polled.Claim.TenantId, polled.Claim.Handler.Key);
+                Assert.Equal(_dispatch.Started.Count(started => started.Claim.TenantId == tenant && started.Claim.Handler.Key == key), _concurrency.Running(tenant, key));
+            }
+
+            // --- A batch ending frees one slot and wakes one tenant whose claim was released ---
+            Assert.True(_dispatch.Started.TryPeek(out JobPolledClaim? running));
+            running.Reservation!.Dispose();
+            await _poll.PolledAsync(Tenants + 1);
+            Assert.Contains(Plan(Tenants + 1).TenantId, _dispatch.Released.Select(static polled => polled.Claim.TenantId));
+            Assert.True(_concurrency.Started <= _concurrency.MaxParallelBatches);
+        }
+
+        [Fact]
+        public async Task A_dispatch_that_throws_part_way_frees_the_slot_of_every_claim_it_did_not_take()
+        {
+            // --- Both keys lease a row; the dispatcher throws at the first ---
+            _dispatch.StartFailure = new InvalidOperationException("The dispatcher broke.");
+            _poll.Answer = (plan, number) => Task.FromResult(FakeJobPoll.Result(plan, _ => number == 1 ? 1 : 0));
+            Start();
+            await _poll.PolledAsync(1);
+            await _time.TimerCreatedAsync();
+
+            // --- The poll is logged as failed, and neither key nor the instance keeps a slot ---
+            Assert.Single(_logs.Collector.GetSnapshot(), static record => record.Id.Name == "JobPollFailed");
+            Assert.Equal(
+                (0, 0, 0, 2),
+                (_concurrency.Running(TenantId, WorkerTestModel.AuditKey), _concurrency.Running(TenantId, WorkerTestModel.RecomputeKey), _concurrency.Started, _concurrency.Free));
+        }
+
+        [Fact]
+        public async Task The_first_poll_waits_its_stagger_and_each_wait_is_lengthened_by_its_jitter()
+        {
+            // --- Half the shortest interval before the first poll ---
+            Start(jitter: static () => 0.5);
+            await AdvanceAsync(TimeSpan.FromSeconds(0.4));
+            Assert.Empty(_poll.Plans);
+            _time.Advance(TimeSpan.FromSeconds(0.1));
+            await _poll.PolledAsync(1);
+
+            // --- The two seconds that follow nothing, lengthened by a tenth: 2.2 seconds ---
+            await AdvanceAsync(TimeSpan.FromSeconds(2.1));
+            Assert.Single(_poll.Plans);
+            _time.Advance(TimeSpan.FromSeconds(0.1));
+            await _poll.PolledAsync(2);
+        }
+
+        [Theory]
+        [InlineData(30, 0, 30)]
+        [InlineData(30, 0.5, 33)]
+        [InlineData(30, 1, 36)]
+        [InlineData(10, 2, 12)]
+        public void A_wait_is_lengthened_by_at_most_a_fifth_of_itself(int seconds, double sample, int jittered)
+        {
+            Assert.Equal(TimeSpan.FromSeconds(jittered), TenantPoller.Jittered(TimeSpan.FromSeconds(seconds), sample));
+        }
+
+        [Fact]
         public async Task A_failed_poll_is_logged_frees_every_slot_and_waits_the_longest_interval()
         {
             _poll.Answer = (plan, number) => number == 1 ? throw new InvalidOperationException("The tenant's database is unreachable.") : Task.FromResult(FakeJobPoll.Result(plan, static _ => 0));
@@ -384,8 +475,9 @@ namespace Tellma.Core.Tests.Jobs
         /// <summary>Starts a poller of a tenant.</summary>
         /// <param name="readOnly">Whether the tenant is read-only.</param>
         /// <param name="tenantId">The tenant.</param>
+        /// <param name="jitter">Draws the stagger's and the jitter's random part; zero by default, so the first poll comes at once and each wait is its interval.</param>
         /// <returns>The poller.</returns>
-        private TenantPoller Start(bool readOnly = false, int tenantId = TenantId)
+        private TenantPoller Start(bool readOnly = false, int tenantId = TenantId, Func<double>? jitter = null)
         {
             TenantPollerServices services = new(
                 _poll,
@@ -396,7 +488,8 @@ namespace Tellma.Core.Tests.Jobs
                 Options,
                 _time,
                 _loggers.CreateLogger(JobsLog.Category),
-                "host-a/41");
+                "host-a/41",
+                jitter ?? (static () => 0));
             TenantPoller poller = new(tenantId, readOnly, services);
             _pollers.Add(poller);
             poller.Start();

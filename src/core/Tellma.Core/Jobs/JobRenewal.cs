@@ -39,7 +39,8 @@ namespace Tellma.Core.Jobs
     // row whose cancel was requested cancels its item; the carried rows leave the buffer, and
     // job.changed follows for those with a requester. A renewal that fails carries no verdict: its
     // failure reaches the caller and the leases wait for the next one. The final renewal of §6.7
-    // binds every lease to the host's shutdown timeout instead of its own length.
+    // binds every lease to the host's shutdown timeout instead of its own length, and from then on a
+    // renewal a running handler's flush or jump asks for extends the lease only to that end.
     /// <summary>Renews the leases a tenant's claims hold on this instance, carrying their buffered progress.</summary>
     internal sealed class JobRenewal : IJobRenewal
     {
@@ -165,7 +166,18 @@ namespace Tellma.Core.Jobs
                 return [];
             }
 
-            List<JobLeaseList> tokens = [.. leases.Select(lease => new JobLeaseList { Id = lease.Token, LeaseSeconds = leaseSeconds ?? lease.LeaseSeconds })];
+            // --- The final renewal binds each lease first, so a later renewal, or this one failing, never
+            // lengthens it past the end the host's stop sets ---
+            long sentAt = _leases.Time.GetTimestamp();
+            if (leaseSeconds is int final)
+            {
+                foreach (JobLease lease in leases)
+                {
+                    lease.BindToStop(sentAt, final);
+                }
+            }
+
+            List<JobLeaseList> tokens = [.. leases.Select(static lease => new JobLeaseList { Id = lease.Token, LeaseSeconds = lease.RenewalSeconds })];
             List<JobProgressList> rows = [];
             List<(JobSlot Slot, long Version, byte? Percent)> carried = [];
             foreach (JobSlot slot in leases.SelectMany(static lease => lease.Slots))
@@ -179,7 +191,6 @@ namespace Tellma.Core.Jobs
 
             // --- The round trip, in the system scope, committing each statement on its own; a lease
             // extended counts from before it was sent, so the next renewal is never late ---
-            long sentAt = _leases.Time.GetTimestamp();
             await using TenantScope scope = await _scopes.CreateScopeAsync(JobScopes.System(tenantId), cancellationToken: cancellationToken).ConfigureAwait(false);
             var batch = (DataBatch)scope.Services.GetRequiredService<ITenantDatabase>().CreateBatch(BatchPurpose.Maintenance);
             batch.TransactionMode = TransactionMode.None;

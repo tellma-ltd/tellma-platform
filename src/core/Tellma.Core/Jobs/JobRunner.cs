@@ -53,6 +53,11 @@ namespace Tellma.Core.Jobs
         /// <param name="hostToken">The host's token: once cancelled, the items stop and partitions not started are released.</param>
         /// <returns>How each claimed job's attempt ended, in claim order.</returns>
         Task<IReadOnlyList<JobSettled>> RunAsync(JobClaim claim, CancellationToken hostToken);
+
+        /// <summary>Releases what a claim leased uncounted, no handler having run: every job queued again with its attempt given back.</summary>
+        /// <param name="claim">The claim, its batch executed.</param>
+        /// <returns>How each claimed job ended, in claim order.</returns>
+        Task<IReadOnlyList<JobSettled>> ReleaseAsync(JobClaim claim);
     }
 
     /// <summary>One job and the outcome a completion records on it.</summary>
@@ -183,6 +188,30 @@ namespace Tellma.Core.Jobs
                 claim.Handler.ItemType,
                 static type => RunClaimMethod.MakeGenericMethod(type).CreateDelegate<Func<JobRunner, int, JobClaim, CancellationToken, Task<IReadOnlyList<JobSettled>>>>());
             return run(this, claim.TenantId, claim, hostToken);
+        }
+
+        // Spec 0020 §6.5 and §6.7: a claim the instance had no slot to run in goes back as a drain
+        // sends back a partition no handler started, in one completion in the system scope; a failure
+        // leaves the lease to lapse.
+        /// <summary>Releases what a claim leased uncounted, no handler having run: every job queued again with its attempt given back.</summary>
+        /// <param name="claim">The claim, its batch executed.</param>
+        /// <returns>How each claimed job ended, in claim order.</returns>
+        public async Task<IReadOnlyList<JobSettled>> ReleaseAsync(JobClaim claim)
+        {
+            ArgumentNullException.ThrowIfNull(claim);
+            IReadOnlyList<ClaimedJob> rows = claim.Rows.Value;
+            if (rows.Count == 0)
+            {
+                return [];
+            }
+
+            using (_logger.BeginScope(new JobLogScope(claim.TenantId, userId: null, rows.Select(static row => row.Job.Id), originTraceParent: null)))
+            {
+                JobsLog.JobClaimReleased(_logger, claim.Handler.Key, rows.Count);
+            }
+
+            JobCompletion[] released = [.. rows.Select(static row => new JobCompletion(row.Job, JobOutcome.Released()))];
+            return await CompleteAsSystemAsync(claim.TenantId, claim.Handler, claim.Token, lease: null, released, _time.GetTimestamp()).ConfigureAwait(false);
         }
 
         // Spec 0020 §3.5, with the consent the row carries as a second key: one scope's confirmations

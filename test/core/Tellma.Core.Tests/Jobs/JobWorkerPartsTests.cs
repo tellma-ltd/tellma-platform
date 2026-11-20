@@ -5,13 +5,18 @@
 
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Diagnostics.Metrics.Testing;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Logging.Testing;
 using Microsoft.Extensions.Options;
+using System.Diagnostics.Metrics;
 using Tellma.Core.Abstractions.Jobs;
 using Tellma.Core.Abstractions.Notifications;
 using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.Jobs;
+using Tellma.Core.Tenancy;
 using Tellma.Core.Tests.Data.Batches;
 using Tellma.Core.Tests.Infrastructure;
 
@@ -20,7 +25,8 @@ namespace Tellma.Core.Tests.Jobs
     /// <summary>
     ///     The worker's smaller parts with no database: the batch slots and the wake of tenants refused
     ///     one, the lease owner's text, the drain held below the host's shutdown timeout, the gap
-    ///     notices, what a poll found, the queue latency of a first claim, and the composition of the
+    ///     notices, what a poll found, the queue latency of a first claim, the instruments an empty
+    ///     claim and a lost lease record, a synchronisation that throws, and the composition of the
     ///     worker by its option.
     /// </summary>
     public sealed class JobWorkerPartsTests : IDisposable
@@ -50,17 +56,17 @@ namespace Tellma.Core.Tests.Jobs
             Assert.Equal(3, slots.Free);
 
             // --- Three started batches fill the instance: no key of any tenant is reserved then ---
-            first!.Start();
-            second!.Start();
+            Assert.True(first!.TryStart());
+            Assert.True(second!.TryStart());
             using JobSlotReservation? other = slots.TryReserve(2, recompute);
-            other!.Start();
+            Assert.True(other!.TryStart());
             Assert.Equal(0, slots.Free);
             Assert.Null(slots.TryReserve(3, recompute));
 
             // --- A release frees both slots once, however often it is disposed; a start after it takes nothing ---
             first.Dispose();
             first.Dispose();
-            first.Start();
+            Assert.False(first.TryStart());
             Assert.Equal(1, slots.Free);
             Assert.Equal(1, slots.Running(1, WorkerTestModel.AuditKey));
 
@@ -82,13 +88,13 @@ namespace Tellma.Core.Tests.Jobs
 
             // --- Tenant 1's recompute batch runs; its next poll is refused the key ---
             JobSlotReservation held = slots.TryReserve(1, recompute)!;
-            held.Start();
+            Assert.True(held.TryStart());
             Assert.Null(slots.TryReserve(1, recompute));
 
             // --- Neither its own empty claim nor another tenant's batch ending wakes it ---
             slots.TryReserve(1, audit)!.Dispose();
             JobSlotReservation another = slots.TryReserve(2, recompute)!;
-            another.Start();
+            Assert.True(another.TryStart());
             another.Dispose();
             Assert.Equal(0, woken);
 
@@ -96,7 +102,7 @@ namespace Tellma.Core.Tests.Jobs
             held.Dispose();
             Assert.Equal(1, woken);
             JobSlotReservation again = slots.TryReserve(1, recompute)!;
-            again.Start();
+            Assert.True(again.TryStart());
             again.Dispose();
             Assert.Equal(1, woken);
         }
@@ -114,7 +120,7 @@ namespace Tellma.Core.Tests.Jobs
 
             // --- The instance's one slot is taken; tenant 1 is refused twice, then tenant 2 ---
             JobSlotReservation held = slots.TryReserve(3, recompute)!;
-            held.Start();
+            Assert.True(held.TryStart());
             Assert.Null(slots.TryReserve(1, audit));
             Assert.Null(slots.TryReserve(1, recompute));
             Assert.Null(slots.TryReserve(2, audit));
@@ -123,40 +129,40 @@ namespace Tellma.Core.Tests.Jobs
             held.Dispose();
             Assert.Equal((1, 0), (woken1, woken2));
             JobSlotReservation next = slots.TryReserve(1, audit)!;
-            next.Start();
+            Assert.True(next.TryStart());
             next.Dispose();
             Assert.Equal((1, 1), (woken1, woken2));
 
             // --- A release with no refusal since wakes nobody ---
             JobSlotReservation last = slots.TryReserve(3, recompute)!;
-            last.Start();
+            Assert.True(last.TryStart());
             last.Dispose();
             Assert.Equal((1, 1), (woken1, woken2));
         }
 
         [Fact]
-        public void Polls_planned_in_one_instant_may_overshoot_the_bound_and_no_slot_is_free_until_they_fall_below_it()
+        public void Claims_planned_in_one_instant_start_only_while_a_slot_is_free_and_a_tenant_refused_at_its_start_is_woken_once_one_frees()
         {
             TenantPollerWake wake = new(NullLoggerFactory.Instance);
             JobConcurrency slots = new(maxParallelBatches: 1, wake);
             int woken = 0;
-            using IDisposable subscription = wake.Subscribe(3, () => woken++);
+            using IDisposable subscription = wake.Subscribe(2, () => woken++);
             JobHandlerRegistration audit = Handler(WorkerTestModel.AuditKey);
 
-            // --- Two tenants planned while the slot was free; both claims leased rows and start ---
+            // --- Two tenants planned while the slot was free and both claims leased rows: one starts ---
             JobSlotReservation first = slots.TryReserve(1, audit)!;
             JobSlotReservation second = slots.TryReserve(2, audit)!;
-            first.Start();
-            second.Start();
-            Assert.Equal((2, 0), (slots.Started, slots.Free));
-            Assert.Null(slots.TryReserve(3, audit));
+            Assert.True(first.TryStart());
+            Assert.False(second.TryStart());
+            Assert.Equal((1, 0), (slots.Started, slots.Free));
 
-            // --- The first to end leaves the instance at its bound: no slot is free, nobody is woken ---
-            first.Dispose();
-            Assert.Equal((0, 0), (slots.Free, woken));
-
-            // --- The second frees the slot and wakes the tenant refused ---
+            // --- The refused claim is released: its key's slot is free, and its release wakes nobody ---
             second.Dispose();
+            Assert.False(second.TryStart());
+            Assert.Equal((0, 0, 1), (slots.Running(2, WorkerTestModel.AuditKey), woken, slots.Started));
+
+            // --- The batch's end frees the slot and wakes the tenant refused at its start ---
+            first.Dispose();
             Assert.Equal((1, 1), (slots.Free, woken));
         }
 
@@ -274,6 +280,67 @@ namespace Tellma.Core.Tests.Jobs
             Assert.Null(JobsMetrics.QueueLatency(new Job { DueAt = now.AddSeconds(-90), StartedAt = now.AddSeconds(-400), LeaseExpiresAt = now.AddSeconds(300) }, 300));
         }
 
+        // --- The instruments ---
+
+        [Fact]
+        public void A_claim_that_leased_nothing_records_no_instrument_and_one_that_leased_rows_records_its_count_fill_and_latency()
+        {
+            IMeterFactory meters = _harness.Services.GetRequiredService<IMeterFactory>();
+            using MetricCollector<long> claimed = new(meters, JobsTelemetryNames.MeterName, JobsTelemetryNames.Claimed);
+            using MetricCollector<double> fill = new(meters, JobsTelemetryNames.MeterName, JobsTelemetryNames.BatchFill);
+            using MetricCollector<double> latency = new(meters, JobsTelemetryNames.MeterName, JobsTelemetryNames.QueueLatency);
+            JobsMetrics metrics = _harness.Services.GetRequiredService<JobsMetrics>();
+            JobHandlerRegistration audit = Handler(WorkerTestModel.AuditKey);
+            DateTimeOffset now = new(2026, 3, 2, 8, 0, 0, TimeSpan.Zero);
+
+            // --- An idle poll's empty claim: nothing, so it never drags the fill down ---
+            metrics.RecordClaim(audit, []);
+            Assert.Empty(claimed.GetMeasurementSnapshot());
+            Assert.Empty(fill.GetMeasurementSnapshot());
+
+            // --- One row of two, claimed for the first time after waiting a minute ---
+            Job job = new() { Id = 1, HandlerKey = audit.Key, DueAt = now.AddSeconds(-60), StartedAt = now, LeaseExpiresAt = now.AddSeconds(audit.Options.LeaseSeconds) };
+            metrics.RecordClaim(audit, [new ClaimedJob(job, null, null, Guid.Empty)]);
+            Assert.Equal((1L, WorkerTestModel.AuditKey), (claimed.LastMeasurement!.Value, claimed.LastMeasurement.Tags[JobsTelemetryNames.HandlerTag]));
+            Assert.Equal((0.5, WorkerTestModel.AuditKey), (fill.LastMeasurement!.Value, fill.LastMeasurement.Tags[JobsTelemetryNames.HandlerTag]));
+            Assert.Equal((60.0, WorkerTestModel.AuditKey), (latency.LastMeasurement!.Value, latency.LastMeasurement.Tags[JobsTelemetryNames.HandlerTag]));
+        }
+
+        [Fact]
+        public void A_lost_lease_is_counted_once_under_its_handler_however_many_paths_find_it_lost()
+        {
+            using MetricCollector<long> lost = new(_harness.Services.GetRequiredService<IMeterFactory>(), JobsTelemetryNames.MeterName, JobsTelemetryNames.LeaseLost);
+            JobsMetrics metrics = _harness.Services.GetRequiredService<JobsMetrics>();
+            JobHandlerRegistration audit = Handler(WorkerTestModel.AuditKey);
+            JobLeases leases = new(TimeProvider.System);
+            using JobLease lease = leases.Track(1, audit, Guid.NewGuid(), [new ClaimedJob(new Job { Id = 1, HandlerKey = audit.Key, RunAsUserId = 7, Attempts = 1 }, null, null, Guid.Empty)], TestContext.Current.CancellationToken);
+
+            // --- The renewal and the completion both find it lost ---
+            JobRenewal.ReportLoss(NullLogger.Instance, metrics, 1, lease);
+            JobRenewal.ReportLoss(NullLogger.Instance, metrics, 1, lease);
+
+            CollectedMeasurement<long> counted = Assert.Single(lost.GetMeasurementSnapshot());
+            Assert.Equal((1L, WorkerTestModel.AuditKey), (counted.Value, counted.Tags[JobsTelemetryNames.HandlerTag]));
+        }
+
+        // --- A synchronisation that throws ---
+
+        [Fact]
+        public void A_synchronisation_that_throws_is_logged_and_never_escapes_the_worker()
+        {
+            using ServiceProvider services = TestComposition.Compose(WorkerTestModel.Compose, TestComposition.Configuration(TestComposition.Sound(("Tellma:Jobs:Enabled", "true"))))
+                .BuildServiceProvider();
+            using FakeLoggerProvider logs = new();
+            using LoggerFactory loggers = new([logs]);
+            using JobWorker worker = ActivatorUtilities.CreateInstance<JobWorker>(services, new UnreadableRegistry(), loggers);
+
+            worker.TrySynchronise();
+
+            FakeLogRecord failed = Assert.Single(logs.Collector.GetSnapshot(), static record => record.Id.Name == "JobSynchroniseFailed");
+            Assert.Equal(LogLevel.Error, failed.Level);
+            Assert.IsType<InvalidOperationException>(failed.Exception);
+        }
+
         // --- The composition ---
 
         [Theory]
@@ -311,6 +378,40 @@ namespace Tellma.Core.Tests.Jobs
         private JobHandlerRegistration Handler(string key)
         {
             return Registry.TryFind(key, out JobHandlerRegistration? handler) ? handler : throw new InvalidOperationException($"No handler {key}.");
+        }
+
+        /// <summary>A tenant registry whose snapshot cannot be read.</summary>
+        private sealed class UnreadableRegistry : ITenantRegistry
+        {
+            /// <inheritdoc />
+            public IReadOnlyList<TenantInfo> Tenants => throw new InvalidOperationException("The snapshot cannot be read.");
+
+            /// <inheritdoc />
+            public Guid SnapshotVersion => Guid.Empty;
+
+            /// <inheritdoc />
+            public DateTimeOffset? SnapshotLoadedAt => null;
+
+            /// <inheritdoc />
+            public bool IsAvailable => false;
+
+            /// <inheritdoc />
+            public TenantInfo? Find(int tenantId)
+            {
+                throw new InvalidOperationException("The snapshot cannot be read.");
+            }
+
+            /// <inheritdoc />
+            public TenantInfo Get(int tenantId)
+            {
+                throw new InvalidOperationException("The snapshot cannot be read.");
+            }
+
+            /// <inheritdoc />
+            public Task RefreshAsync(bool force, CancellationToken cancellationToken = default)
+            {
+                return Task.CompletedTask;
+            }
         }
 
         /// <summary>A tick's round, as a poll reads it.</summary>

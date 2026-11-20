@@ -164,6 +164,9 @@ namespace Tellma.Core.Jobs
         /// <summary>Whether a cancel was requested for one of the lease's items.</summary>
         private bool _cancelRequested;
 
+        /// <summary>The clock's timestamp and the length of the final renewal that bound the lease to the host's stop; null until one did.</summary>
+        private (long At, int Seconds)? _boundToStop;
+
         /// <summary>Creates the lease.</summary>
         /// <param name="owner">The registry that tracks it.</param>
         /// <param name="tenantId">The tenant.</param>
@@ -192,6 +195,30 @@ namespace Tellma.Core.Jobs
 
         /// <summary>The length a renewal extends the lease by, in seconds.</summary>
         public int LeaseSeconds => Handler.Options.LeaseSeconds;
+
+        // Spec 0020 §6.7: the final renewal binds the lease to the host's shutdown timeout. A handler
+        // still running may flush or jump after it, and its renewal must not undo the shortening, so
+        // once bound every renewal extends the lease only to the end the final one set.
+        /// <summary>
+        ///     The length a renewal sent now extends the lease by, in seconds: its own, or, once the
+        ///     final renewal bound it, what is left until the end that renewal set, at least a second.
+        /// </summary>
+        public int RenewalSeconds
+        {
+            get
+            {
+                lock (_gate)
+                {
+                    if (_boundToStop is not (long at, int seconds))
+                    {
+                        return LeaseSeconds;
+                    }
+
+                    double left = seconds - _owner.Time.GetElapsedTime(at).TotalSeconds;
+                    return Math.Max(1, (int)Math.Ceiling(left));
+                }
+            }
+        }
 
         /// <summary>The scope token: cancelled when the lease is lost or the host stops, never for a requested cancel.</summary>
         public CancellationToken ScopeToken => _scope.Token;
@@ -296,6 +323,18 @@ namespace Tellma.Core.Jobs
             lock (_gate)
             {
                 _renewedAt = at > _renewedAt ? at : _renewedAt;
+            }
+        }
+
+        /// <summary>Binds the lease to end where the host's final renewal ends it; a second binding changes nothing.</summary>
+        /// <param name="at">The clock's timestamp when the final renewal was sent.</param>
+        /// <param name="leaseSeconds">The length the final renewal sets, in seconds.</param>
+        public void BindToStop(long at, int leaseSeconds)
+        {
+            ArgumentOutOfRangeException.ThrowIfLessThan(leaseSeconds, 1);
+            lock (_gate)
+            {
+                _boundToStop ??= (at, leaseSeconds);
             }
         }
 

@@ -29,7 +29,9 @@ namespace Tellma.Core.IntegrationTests.Jobs
     ///     scripted handlers, the tables its stacks own refused to a caller's raw writes as in
     ///     production, the tenant's administrators fixed, and the notices and client events recorded
     ///     once their batch committed. A raw table no stack owns takes the handlers' own statements.
-    ///     Created once per test class and reset before each test; a class's tests run one at a time.
+    ///     The change-tracking audit checks every batch but while a test suspends it to run batches
+    ///     side by side. Created once per test class and reset before each test; a class's tests run
+    ///     one at a time.
     /// </summary>
     public class JobRunDatabase : IAsyncLifetime
     {
@@ -100,6 +102,9 @@ namespace Tellma.Core.IntegrationTests.Jobs
         /// <summary>The host's log.</summary>
         public FakeLogCollector Log => Tenant.Services.GetFakeLogCollector();
 
+        /// <summary>The audit of every batch's writes, which a test suspends while batches run side by side.</summary>
+        internal SuspendableAudit Audit { get; } = new();
+
         /// <inheritdoc />
         public async ValueTask InitializeAsync()
         {
@@ -120,6 +125,10 @@ namespace Tellma.Core.IntegrationTests.Jobs
 
                     // --- The stacks' tables are theirs again, as in production: a caller's raw write to one is refused ---
                     _ = services.Replace(ServiceDescriptor.Singleton<IStackTableOwners>(static provider => new StackTableOwners(provider.GetRequiredService<StackRegistry>())));
+
+                    // --- The fixture's audit, behind a switch a test turns off while batches overlap ---
+                    Audit.Inner = services.LastOrDefault(static service => service.ServiceType == typeof(IDataBatchAudit))?.ImplementationInstance as IDataBatchAudit;
+                    _ = services.Replace(ServiceDescriptor.Singleton<IDataBatchAudit>(Audit));
                 },
                 readCommittedSnapshot: ReadCommittedSnapshot,
                 compose: static tellma => tellma.AddFeature(new JobRunFeature()),
@@ -139,10 +148,11 @@ namespace Tellma.Core.IntegrationTests.Jobs
                 $"CREATE TABLE {RawTable} ([Id] int IDENTITY PRIMARY KEY, [JobId] int NOT NULL, [Note] nvarchar(100) NOT NULL);");
         }
 
-        /// <summary>Deletes every row a test may have written, reactivates the user a test deactivates, and clears the script, the notices, the events and the log.</summary>
+        /// <summary>Deletes every row a test may have written, reactivates the user a test deactivates, resumes the audit, and clears the script, the notices, the events and the log.</summary>
         /// <returns>A task that completes when the database is reset.</returns>
         public async Task ResetAsync()
         {
+            Audit.Suspended = false;
             await SqlServerFixture.ExecuteAsync(
                 ConnectionString,
                 ResetText,
@@ -288,6 +298,48 @@ namespace Tellma.Core.IntegrationTests.Jobs
     /// <summary>The job-running database with read-committed snapshot off, where readers take shared locks.</summary>
     /// <param name="sql">The suite's server.</param>
     public sealed class LockingJobRunDatabase(SqlServerFixture sql) : JobRunDatabase(sql, readCommittedSnapshot: false);
+
+    /// <summary>
+    ///     The fixture's change-tracking audit behind a switch. The audit attributes every change in a
+    ///     batch's window to that batch, which holds only while one batch at a time writes, so a test
+    ///     that runs batches side by side suspends it; a batch begun while it was suspended is not
+    ///     checked when it ends.
+    /// </summary>
+    internal sealed class SuspendableAudit : IDataBatchAudit
+    {
+        /// <summary>What a batch begun while the audit was suspended carries to its end.</summary>
+        private static readonly object Unchecked = new();
+
+        /// <summary>Whether the audit is suspended.</summary>
+        private volatile bool _suspended;
+
+        /// <summary>The fixture's audit; null when the host has none.</summary>
+        public IDataBatchAudit? Inner { get; set; }
+
+        /// <summary>Whether the audit is suspended: batches begun now are not checked.</summary>
+        public bool Suspended
+        {
+            get => _suspended;
+            set => _suspended = value;
+        }
+
+        /// <inheritdoc />
+        public async ValueTask<object?> BeforeAsync(CancellationToken cancellationToken)
+        {
+            return _suspended || Inner is not IDataBatchAudit inner ? Unchecked : await inner.BeforeAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        /// <inheritdoc />
+        public async ValueTask AfterAsync(object? state, IReadOnlySet<TableName> writtenTables, CancellationToken cancellationToken)
+        {
+            if (ReferenceEquals(state, Unchecked) || Inner is not IDataBatchAudit inner)
+            {
+                return;
+            }
+
+            await inner.AfterAsync(state, writtenTables, cancellationToken).ConfigureAwait(false);
+        }
+    }
 
     /// <summary>A job's stored row, every column by name.</summary>
     /// <param name="Columns">The columns.</param>

@@ -20,7 +20,8 @@ namespace Tellma.Core.Jobs
     // cancels the host token, waits up to DrainTimeout for the polls in flight and the batches they
     // started, then stops the renewals, issues the final renewal bound to the host's ShutdownTimeout
     // and abandons the handlers still running. Nothing escapes ExecuteAsync: the host's default
-    // BackgroundServiceExceptionBehavior would stop the process.
+    // BackgroundServiceExceptionBehavior would stop the process, so a synchronisation that throws is
+    // logged and the next one follows on the cadence.
     /// <summary>Runs the tenants' job pollers on this instance, and drains them when the host stops.</summary>
     internal sealed class JobWorker : BackgroundService, IHostedLifecycleService, ITenantStateListener
     {
@@ -254,7 +255,7 @@ namespace Tellma.Core.Jobs
             // --- The pollers' services, then the renewals, which run while the worker does ---
             lock (_gate)
             {
-                _services = new TenantPollerServices(_poll, _concurrency, _handlers, _dispatcher, _wake, options, _time, _logger, JobLeaseOwner.Current);
+                _services = new TenantPollerServices(_poll, _concurrency, _handlers, _dispatcher, _wake, options, _time, _logger, JobLeaseOwner.Current, Random.Shared.NextDouble);
                 _running = true;
             }
 
@@ -266,13 +267,33 @@ namespace Tellma.Core.Jobs
             {
                 do
                 {
-                    Synchronise();
+                    TrySynchronise();
                 }
                 while (await timer.WaitForNextTickAsync(stoppingToken).ConfigureAwait(false));
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
                 // The host stopped; StoppingAsync drained the pollers.
+            }
+        }
+
+        /// <summary>Synchronises the pollers; a failure is logged, and the next synchronisation follows on the cadence.</summary>
+        internal void TrySynchronise()
+        {
+            try
+            {
+                Synchronise();
+            }
+            catch (Exception failure) when (failure is not OutOfMemoryException)
+            {
+                try
+                {
+                    JobsLog.JobSynchroniseFailed(_logger, failure, _catalog.Value.RefreshInterval);
+                }
+                catch (Exception logFailure) when (logFailure is not OutOfMemoryException)
+                {
+                    // A log that fails too leaves nothing to report it to; the next synchronisation follows all the same.
+                }
             }
         }
 
@@ -340,17 +361,16 @@ namespace Tellma.Core.Jobs
                 return;
             }
 
-            // --- A tenant that left the served states: its poller stops after the current poll ---
+            // --- A tenant that left the served states: its poller stops after the current poll, and
+            // the drain waits for it, before anything that may throw ---
             _ = _pollers.Remove(tenantId);
             poller!.Stop();
+            _ = _retiring.Add(RetireAsync(poller));
             string now = state is TenantState left ? left.ToString() : "removed from the catalog";
             using (_logger.BeginScope(new JobLogScope(tenantId, userId: null, [], originTraceParent: null)))
             {
                 JobsLog.JobPollerRetired(_logger, now);
             }
-
-            Task retiring = RetireAsync(poller);
-            _ = _retiring.Add(retiring);
         }
 
         /// <summary>Waits for a retired poller to end, then drops its tenant's orphan sample unless a new poller took the tenant.</summary>

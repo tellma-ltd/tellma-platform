@@ -142,16 +142,38 @@ namespace Tellma.Core.Tests.Jobs
         }
     }
 
-    /// <summary>A dispatcher that records the claims it was given; their slots stay reserved until the test disposes them.</summary>
+    /// <summary>
+    ///     A dispatcher that records the claims it was given: the slots of those started stay taken
+    ///     until the test disposes them, and those released free theirs at once, as a release that
+    ///     committed.
+    /// </summary>
     internal sealed class FakeDispatch : IJobDispatch
     {
         /// <summary>The claims started, in order.</summary>
         public ConcurrentQueue<JobPolledClaim> Started { get; } = new();
 
+        /// <summary>The claims released for want of an instance slot, in order.</summary>
+        public ConcurrentQueue<JobPolledClaim> Released { get; } = new();
+
+        /// <summary>What a start throws before it takes the claim; null for a start that succeeds.</summary>
+        public Exception? StartFailure { get; set; }
+
         /// <inheritdoc />
         public void Start(JobPolledClaim polled)
         {
+            if (StartFailure is Exception failure)
+            {
+                throw failure;
+            }
+
             Started.Enqueue(polled);
+        }
+
+        /// <inheritdoc />
+        public void Release(JobPolledClaim polled)
+        {
+            Released.Enqueue(polled);
+            polled.Reservation?.Dispose();
         }
     }
 
@@ -189,6 +211,12 @@ namespace Tellma.Core.Tests.Jobs
         /// <summary>The host tokens each run was given.</summary>
         public ConcurrentQueue<CancellationToken> HostTokens { get; } = new();
 
+        /// <summary>The claims released uncounted, in order.</summary>
+        public ConcurrentQueue<JobClaim> Released { get; } = new();
+
+        /// <summary>What each release does; by default it returns at once.</summary>
+        public Func<JobClaim, Task> Release { get; set; } = static _ => Task.CompletedTask;
+
         /// <summary>What each run does once its lease is tracked; by default it returns at once.</summary>
         public Func<JobLease, CancellationToken, Task> Run { get; set; } = static (_, _) => Task.CompletedTask;
 
@@ -207,6 +235,14 @@ namespace Tellma.Core.Tests.Jobs
                 // Every row leaves, as once completed, so the lease stops being tracked.
                 lease.Leave([.. lease.Slots.Select(static slot => slot.JobId)]);
             }
+        }
+
+        /// <inheritdoc />
+        public async Task<IReadOnlyList<JobSettled>> ReleaseAsync(JobClaim claim)
+        {
+            Released.Enqueue(claim);
+            await Release(claim).ConfigureAwait(false);
+            return [];
         }
     }
 }

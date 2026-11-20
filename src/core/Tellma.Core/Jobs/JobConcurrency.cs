@@ -12,19 +12,21 @@ namespace Tellma.Core.Jobs
     // per-(tenant, key) counter enforcing the handler's MaxConcurrency; a key with no free slot is
     // omitted from the poll's claims.
     //
-    // The two bounds are held differently, so an idle poll never starves another tenant:
+    // The two bounds are held differently, so an idle poll never starves another tenant and the
+    // instance never runs more than MaxParallelBatches batches:
     // - A key's own slot is reserved before its claim is appended, and released once the claim's
     //   batch ended, or at once when the claim leased nothing. It is the tenant's alone.
-    // - An instance slot is taken only when a claim that leased rows is started. A poll plans its
-    //   keys while a slot is free, so the polls planned in the same instant may start a batch per
-    //   key past the bound; the overshoot ends with those batches, and no poll plans while the
-    //   instance is at or over its bound.
+    // - An instance slot is taken only when a claim that leased rows starts, and only while one is
+    //   free. A poll plans its keys while a slot is free, so the polls planned in the same instant
+    //   may lease more batches than the free slots; a claim that finds none left is released
+    //   uncounted by its dispatcher, and its tenant waits for a freed slot.
     //
-    // A poll that had to omit a key would otherwise back off with work waiting, so:
+    // A poll that had to omit a key, or to release a claim, would otherwise back off with work
+    // waiting, so:
     // - a key refused at its MaxConcurrency wakes its tenant once one of its own batches ended, and
     //   never earlier, so the tenant does not poll back to back while the key is still at its limit;
-    // - a tenant refused for want of an instance slot is woken when a started batch frees one, one
-    //   tenant per freed slot, first refused first.
+    // - a tenant refused an instance slot, at its plan or at its start, is woken when a started batch
+    //   frees one, one tenant per freed slot, first refused first.
     //
     // The bound is read on first use, not when the host creates the worker, which it does before the
     // startup gate reports any invalid option.
@@ -78,14 +80,14 @@ namespace Tellma.Core.Jobs
         /// <summary>The most batches the instance runs at once.</summary>
         public int MaxParallelBatches => _maxParallelBatches.Value;
 
-        /// <summary>The instance's slots free now; zero while the started batches reach or pass the bound.</summary>
+        /// <summary>The instance's slots free now; zero while the started batches reach the bound.</summary>
         public int Free
         {
             get
             {
                 lock (_gate)
                 {
-                    return Math.Max(0, MaxParallelBatches - _started);
+                    return MaxParallelBatches - _started;
                 }
             }
         }
@@ -136,11 +138,7 @@ namespace Tellma.Core.Jobs
                 // --- The instance's bound: the tenant waits its turn for a freed slot ---
                 if (_started >= MaxParallelBatches)
                 {
-                    if (_instanceRefusedSet.Add(tenantId))
-                    {
-                        _instanceRefused.Enqueue(tenantId);
-                    }
-
+                    QueueInstanceRefused(tenantId);
                     return null;
                 }
 
@@ -150,12 +148,27 @@ namespace Tellma.Core.Jobs
             }
         }
 
-        /// <summary>Takes an instance slot for a reservation whose claim leased rows and starts now; past the bound when the polls of one instant overshot it.</summary>
-        internal void Start()
+        /// <summary>Takes an instance slot for a reservation whose claim leased rows, when one is free; its tenant waits for a freed slot otherwise.</summary>
+        /// <param name="reservation">The reservation, still reserved.</param>
+        /// <returns>True when the slot was taken and the batch may start; false when no slot is free or the reservation was released.</returns>
+        internal bool TryStart(JobSlotReservation reservation)
         {
             lock (_gate)
             {
+                if (_started >= MaxParallelBatches)
+                {
+                    QueueInstanceRefused(reservation.TenantId);
+                    return false;
+                }
+
+                // The reservation moves to running under the gate, so the count and its state agree.
+                if (!reservation.TryMarkRunning())
+                {
+                    return false;
+                }
+
                 _started++;
+                return true;
             }
         }
 
@@ -208,6 +221,16 @@ namespace Tellma.Core.Jobs
                 _wake.Wake(tenant);
             }
         }
+
+        /// <summary>Queues a tenant refused an instance slot, once however often it is refused before it is woken; the caller holds the gate.</summary>
+        /// <param name="tenantId">The tenant.</param>
+        private void QueueInstanceRefused(int tenantId)
+        {
+            if (_instanceRefusedSet.Add(tenantId))
+            {
+                _instanceRefused.Enqueue(tenantId);
+            }
+        }
     }
 
     // A reservation moves once from reserved to started and once to released; a start after the
@@ -247,13 +270,18 @@ namespace Tellma.Core.Jobs
         /// <summary>The key.</summary>
         public string HandlerKey { get; }
 
-        /// <summary>Takes an instance slot for the claim's batch, which starts now; once, and never after the release.</summary>
-        public void Start()
+        /// <summary>Takes an instance slot for the claim's batch, when one is free; once, and never after the release.</summary>
+        /// <returns>True when the batch may start; false when the instance has no free slot, so the claim is to be released.</returns>
+        public bool TryStart()
         {
-            if (Interlocked.CompareExchange(ref _state, Running, Reserved) == Reserved)
-            {
-                _owner.Start();
-            }
+            return Volatile.Read(ref _state) == Reserved && _owner.TryStart(this);
+        }
+
+        /// <summary>Moves the reservation from reserved to running; the slots' gate is held.</summary>
+        /// <returns>True when it was still reserved.</returns>
+        internal bool TryMarkRunning()
+        {
+            return Interlocked.CompareExchange(ref _state, Running, Reserved) == Reserved;
         }
 
         /// <summary>Releases the slots.</summary>

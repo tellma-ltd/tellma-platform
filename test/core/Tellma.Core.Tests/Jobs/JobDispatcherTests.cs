@@ -91,6 +91,28 @@ namespace Tellma.Core.Tests.Jobs
         }
 
         [Fact]
+        public async Task A_claim_the_instance_had_no_slot_for_is_released_through_the_runner_outside_in_flight_and_frees_its_key()
+        {
+            using MetricCollector<long> inFlight = new(_harness.Services.GetRequiredService<IMeterFactory>(), JobsTelemetryNames.MeterName, JobsTelemetryNames.InFlight);
+            TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            _runner.Release = _ => release.Task;
+
+            // --- The release runs among the batches the drain waits for, its key's slot still reserved ---
+            JobPolledClaim polled = Claim(tenantId: 1, rows: 2);
+            _dispatcher.Release(polled);
+            Assert.Equal(1, _dispatcher.Running);
+            Assert.Equal(1, _concurrency.Running(1, WorkerTestModel.AuditKey));
+
+            // --- Released: no handler ran, nothing was in flight, and the key's slot is free ---
+            release.SetResult();
+            await WaitUntilAsync(() => _dispatcher.Running == 0 && _concurrency.Running(1, WorkerTestModel.AuditKey) == 0);
+            Assert.Same(polled.Claim, Assert.Single(_runner.Released));
+            Assert.Empty(_runner.HostTokens);
+            Assert.Empty(inFlight.GetMeasurementSnapshot());
+            Assert.Equal(_concurrency.MaxParallelBatches, _concurrency.Free);
+        }
+
+        [Fact]
         public async Task A_batch_that_fails_unexpectedly_is_logged_and_still_releases_its_slot()
         {
             _runner.Run = static (_, _) => throw new InvalidOperationException("The runner broke.");

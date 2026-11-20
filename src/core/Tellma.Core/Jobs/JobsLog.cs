@@ -209,15 +209,35 @@ namespace Tellma.Core.Jobs
             Message = "Cancelled {Count} job(s) of retired handler keys.")]
         public static partial void JobRetiredKeysCancelled(ILogger logger, int count);
 
-        /// <summary>The notices a poll raises or withdraws after its round trip failed; the poll's own work stands.</summary>
+        /// <summary>Work that follows a poll's round trip failed: the notices it raises or withdraws, or its instruments and log lines; the poll's own work stands.</summary>
         /// <param name="logger">The logger.</param>
         /// <param name="exception">The failure.</param>
-        /// <param name="what">Which notices.</param>
+        /// <param name="what">Which work.</param>
         [LoggerMessage(
             EventName = "JobPollNoticesFailed",
             Level = LogLevel.Warning,
             Message = "The {What} that follow a poll of the tenant failed; the poll's own work stands.")]
         public static partial void JobPollNoticesFailed(ILogger logger, Exception exception, string what);
+
+        /// <summary>Bringing the pollers in line with the tenants' snapshot failed; the next attempt follows on the catalog's refresh cadence.</summary>
+        /// <param name="logger">The logger.</param>
+        /// <param name="exception">The failure.</param>
+        /// <param name="retryAfter">When the next attempt follows.</param>
+        [LoggerMessage(
+            EventName = "JobSynchroniseFailed",
+            Level = LogLevel.Error,
+            Message = "Bringing the job pollers in line with the tenants failed; they are brought in line again in {RetryAfter}.")]
+        public static partial void JobSynchroniseFailed(ILogger logger, Exception exception, TimeSpan retryAfter);
+
+        /// <summary>A claim's rows were released uncounted, the instance having no free slot to run them in; its tenant polls again once a slot is freed.</summary>
+        /// <param name="logger">The logger.</param>
+        /// <param name="handlerKey">The handler key.</param>
+        /// <param name="count">The jobs released.</param>
+        [LoggerMessage(
+            EventName = "JobClaimReleased",
+            Level = LogLevel.Debug,
+            Message = "Released {Count} claimed job(s) of {HandlerKey} uncounted: the instance had no free slot to run them.")]
+        public static partial void JobClaimReleased(ILogger logger, string handlerKey, int count);
 
         /// <summary>A claim's batch ended in a failure its runner did not answer; its leases are left to lapse.</summary>
         /// <param name="logger">The logger.</param>

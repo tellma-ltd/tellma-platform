@@ -130,8 +130,10 @@ namespace Tellma.Core.Jobs
                 {
                     IServiceProvider services = scope.Services;
                     JobPollResult result = await RoundTripAsync(plan, services, cancellationToken).ConfigureAwait(false);
-                    Observe(plan.TenantId, result);
+
+                    // The claims start before anything else may throw, so no row is leased and untracked.
                     onExecuted(result);
+                    TryObserve(plan.TenantId, result);
                     await FollowUpAsync(plan.TenantId, result, services, cancellationToken).ConfigureAwait(false);
                     return result;
                 }
@@ -232,6 +234,29 @@ namespace Tellma.Core.Jobs
                 orphans?.Value,
                 retired?.Value ?? [],
                 stamp.Value);
+        }
+
+        /// <summary>Records what the round trip found on the instruments and in the log; a failure is logged and leaves the poll's work standing.</summary>
+        /// <param name="tenantId">The tenant.</param>
+        /// <param name="result">What the round trip returned.</param>
+        private void TryObserve(int tenantId, JobPollResult result)
+        {
+            try
+            {
+                Observe(tenantId, result);
+            }
+            catch (Exception failure) when (failure is not OutOfMemoryException)
+            {
+                try
+                {
+                    using IDisposable? scope = _logger.BeginScope(new JobLogScope(tenantId, userId: null, [], originTraceParent: null));
+                    JobsLog.JobPollNoticesFailed(_logger, failure, "instruments and log lines");
+                }
+                catch (Exception logFailure) when (logFailure is not OutOfMemoryException)
+                {
+                    // The logger is what failed: the poll's follow-ups run all the same.
+                }
+            }
         }
 
         /// <summary>Records what the round trip found on the instruments and in the log.</summary>
