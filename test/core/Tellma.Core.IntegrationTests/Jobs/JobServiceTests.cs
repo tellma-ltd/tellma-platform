@@ -17,6 +17,7 @@ using Tellma.Core.Abstractions.Notifications;
 using Tellma.Core.Abstractions.Realtime;
 using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.Abstractions.Validation;
+using Tellma.Core.Data.Batches;
 using Tellma.Core.Jobs;
 using Tellma.Testing.Entities;
 using static Tellma.Core.IntegrationTests.Jobs.JobRunDatabase;
@@ -31,10 +32,10 @@ namespace Tellma.Core.IntegrationTests.Jobs
     ///     requester and keys, the self-scope of a member without a grant, a read-only tenant, and
     ///     a job's projection read from the row that owns it. The handlers, through real polls: the
     ///     retention's pages, its stop and the keys that lose a deleted job, and the tree verify.
+    ///     The tests run once with read-committed snapshot on and once with it off.
     /// </summary>
     /// <param name="fixture">The class's database, reset before each test.</param>
-    [Trait("Category", "Integration")]
-    public sealed class JobServiceTests(JobRunDatabase fixture) : IClassFixture<JobRunDatabase>, IAsyncLifetime
+    public abstract class JobServiceTests(JobRunDatabase fixture) : IAsyncLifetime
     {
         /// <summary>The test's cancellation.</summary>
         private static CancellationToken Token => TestContext.Current.CancellationToken;
@@ -48,6 +49,7 @@ namespace Tellma.Core.IntegrationTests.Jobs
         /// <inheritdoc />
         public ValueTask DisposeAsync()
         {
+            GC.SuppressFinalize(this);
             return ValueTask.CompletedTask;
         }
 
@@ -66,6 +68,7 @@ namespace Tellma.Core.IntegrationTests.Jobs
             Assert.Equal((nameof(JobStatus.Pending), 0, null, null, null), (row.Status, row.Attempts, row.ErrorCode, row.ErrorTraceId, row.CompletedAt));
             Assert.InRange(row.DueAt, DateTimeOffset.UtcNow.AddMinutes(-1), DateTimeOffset.UtcNow.AddMinutes(1));
             Assert.Equal([Changed(failed, ActiveUserId)], Events());
+            Assert.Equal(1, fixture.Wakes);
 
             // --- The repeat finds a job that has not failed ---
             ValidationException refused = await Assert.ThrowsAsync<ValidationException>(() => ActAsync(AdministratorId, JobService.RetryAction, [failed]));
@@ -119,6 +122,14 @@ namespace Tellma.Core.IntegrationTests.Jobs
                 fixture.Notices.Withdrawn,
                 WithdrawalComparer.Instance);
             Assert.Equal(6, Events().Count);
+            Assert.Equal(0, fixture.Wakes);
+
+            // --- A second cancel of a re-queued job before its claim only flags it again: it stays queued ---
+            JobRow before = await fixture.JobAsync(checkpointed);
+            await ActAsync(AdministratorId, JobService.CancelAction, [checkpointed]);
+            JobRow again = await fixture.JobAsync(checkpointed);
+            Assert.Equal((nameof(JobStatus.Pending), before.DueAt, /*lang=json,strict*/ """{"page":2}"""), (again.Status, again.DueAt, again.StateJson));
+            Assert.True((DateTimeOffset)again.Columns["CancelRequestedAt"]! >= (DateTimeOffset)before.Columns["CancelRequestedAt"]!);
 
             // --- The re-queued jobs' next claim records the stop: the handler never runs ---
             IReadOnlyList<PolledJob> polled = await PollAsync(JobRunKeys.Probe);
@@ -167,6 +178,7 @@ namespace Tellma.Core.IntegrationTests.Jobs
             Assert.Equal((nameof(JobStatus.Pending), null), (resumed.Status, resumed.ErrorCode));
             Assert.Empty(fixture.Notices.Withdrawn);
             Assert.Equal([Changed(first, ActiveUserId)], Events());
+            Assert.Equal(1, fixture.Wakes);
 
             // --- Their last: their notice goes; another requester's and an unrequested job stay held ---
             await ActAsync(AdministratorId, JobService.ResumeAction, [second]);
@@ -204,6 +216,7 @@ namespace Tellma.Core.IntegrationTests.Jobs
             Assert.InRange(row.DueAt, DateTimeOffset.UtcNow.AddMinutes(-1), DateTimeOffset.UtcNow.AddMinutes(1));
             Assert.Equal([new WithdrawRequest(JobNotices.PendingConfirmationKey(waiting))], fixture.Notices.Withdrawn);
             Assert.Equal([Changed(waiting, ActiveUserId)], Events());
+            Assert.Equal(1, fixture.Wakes);
 
             // --- The repeat finds a job that waits on nothing ---
             ValidationException refused = await Assert.ThrowsAsync<ValidationException>(
@@ -331,6 +344,9 @@ namespace Tellma.Core.IntegrationTests.Jobs
 
             // --- The run succeeded and left the jobs within their periods, the unended one and itself ---
             Assert.Equal([(retention, JobStatus.Succeeded)], polled.Select(static job => (job.JobId, job.Status)));
+
+            // --- One progress report per page: the empty stop, the succeeded band's full and short pages, the failed band's one ---
+            Assert.Equal(4, fixture.Log.GetSnapshot().Count(static record => record.Id.Name == "JobProgress"));
             Assert.Equal(
                 [recentSucceeded, recentFailed, old, retention],
                 await IdsAsync("SELECT [Id] FROM [core].[Jobs] ORDER BY [Id];"));
@@ -349,6 +365,8 @@ namespace Tellma.Core.IntegrationTests.Jobs
             await fixture.SetJobAsync(stale, $"[Status] = 'PendingConfirmation', [PendingConfirmationsJson] = {Literal(Record(JobRunKeys.Backdated))}, [DueAt] = DATEADD(day, -181, SYSUTCDATETIME())");
             int fresh = await InsertJobAsync(JobRunKeys.Probe);
             await fixture.SetJobAsync(fresh, $"[Status] = 'PendingConfirmation', [PendingConfirmationsJson] = {Literal(Record(JobRunKeys.Backdated))}, [DueAt] = DATEADD(day, -179, SYSUTCDATETIME())");
+            int held = await InsertJobAsync(JobRunKeys.Probe);
+            await fixture.SetJobAsync(held, "[Status] = 'Held', [DueAt] = DATEADD(day, -181, SYSUTCDATETIME())");
 
             _ = await InsertJobAsync(JobRetentionHandler.Key, runAs: WellKnownIds.SystemUserId, requestedBy: null);
             _ = await PollAsync(JobRetentionHandler.Key);
@@ -356,11 +374,105 @@ namespace Tellma.Core.IntegrationTests.Jobs
             // --- The stale job is queued flagged, so its next claim records the stop; the fresh one still waits ---
             JobRow stopped = await fixture.JobAsync(stale);
             Assert.Equal((nameof(JobStatus.Pending), true, null), (stopped.Status, stopped.Columns["CancelRequestedAt"] is not null, stopped.PendingConfirmationsJson));
-            Assert.Equal(nameof(JobStatus.PendingConfirmation), (await fixture.JobAsync(fresh)).Status);
+            Assert.Equal((nameof(JobStatus.PendingConfirmation), nameof(JobStatus.Held)), ((await fixture.JobAsync(fresh)).Status, (await fixture.JobAsync(held)).Status));
             Assert.Equal([new WithdrawRequest(JobNotices.PendingConfirmationKey(stale))], fixture.Notices.Withdrawn);
 
             IReadOnlyList<PolledJob> polled = await PollAsync(JobRunKeys.Probe);
             Assert.Equal([(stale, JobStatus.Cancelled)], polled.Select(static job => (job.JobId, job.Status)));
+        }
+
+        [Fact]
+        public async Task A_stop_cancelled_while_its_notices_go_still_withdraws_every_stopped_jobs_notice_and_runs_no_later_page()
+        {
+            // --- 101 jobs waiting past the failed period, two withdrawal calls' worth, and an old succeeded job ---
+            List<int> stale = await IdsAsync(string.Create(
+                CultureInfo.InvariantCulture,
+                $"""
+                DECLARE @due datetimeoffset(3) = DATEADD(day, -181, SYSUTCDATETIME());
+                INSERT INTO [core].[Jobs] ([Id], [HandlerKey], [Status], [DueAt], [Attempts], [RunAsUserId], [RequestedById], [CreatedAt], [PendingConfirmationsJson])
+                OUTPUT [inserted].[Id]
+                SELECT NEXT VALUE FOR [core].[sq_Jobs], N'{JobRunKeys.Probe}', 'PendingConfirmation', @due, 0, {ActiveUserId}, {ActiveUserId}, @due, {Literal(Record(JobRunKeys.Backdated))}
+                FROM (SELECT TOP (101) 1 AS [n] FROM sys.all_columns) AS [numbers];
+                """));
+            int succeeded = await InsertEndedAsync(nameof(JobStatus.Succeeded), 1, daysAgo: 31);
+
+            // --- The host stops as the first withdrawal arrives, which cancels the item's token ---
+            using CancellationTokenSource host = new();
+            fixture.Notices.Withdrawing = host.Cancel;
+            int retention = await InsertJobAsync(JobRetentionHandler.Key, runAs: WellKnownIds.SystemUserId, requestedBy: null);
+            IReadOnlyList<PolledJob> polled = await JobPollDriver.PollOnceAsync(fixture.Tenant, [JobRetentionHandler.Key], host.Token, Token);
+
+            // --- The committed page's notices all went; the cancel stopped the run before the next page, and queued it again ---
+            Assert.Equal(
+                [.. stale.Select(static id => JobNotices.PendingConfirmationKey(id)).Order(StringComparer.Ordinal)],
+                fixture.Notices.Withdrawn.Select(static request => request.DedupKey).Order(StringComparer.Ordinal));
+            Assert.Equal([(retention, JobStatus.Pending)], polled.Select(static job => (job.JobId, job.Status)));
+            Assert.Equal(nameof(JobStatus.Succeeded), (await fixture.JobAsync(succeeded)).Status);
+        }
+
+        // --- The statements' repeats ---
+
+        [Fact]
+        public async Task Each_actions_statement_run_again_matches_no_row_but_a_running_jobs_cancel_which_flags_it_again()
+        {
+            int failed = await InsertJobAsync(JobRunKeys.Probe, attempts: 3);
+            await fixture.SetJobAsync(failed, "[Status] = 'Failed', [CompletedAt] = SYSUTCDATETIME(), [ErrorCode] = N'Jobs.Internal'");
+            int held = await InsertJobAsync(JobRunKeys.Probe);
+            await fixture.SetJobAsync(held, "[Status] = 'Held'");
+            int pending = await InsertJobAsync(JobRunKeys.Probe);
+            int running = await InsertJobAsync(JobRunKeys.Probe);
+            await fixture.SetJobAsync(running, "[Status] = 'Running', [LeaseToken] = NEWID(), [LeaseExpiresAt] = DATEADD(minute, 5, SYSUTCDATETIME()), [LeaseOwner] = 'elsewhere'");
+            int waiting = await InsertJobAsync(JobRunKeys.Probe, attempts: 2);
+            await fixture.SetJobAsync(waiting, $"[Status] = 'PendingConfirmation', [PendingConfirmationsJson] = {Literal(Record(JobRunKeys.Backdated))}");
+
+            void Append(DataBatch batch)
+            {
+                JobStatements.Retry(batch, [failed]);
+                JobStatements.Resume(batch, [held]);
+                JobStatements.Cancel(batch, [pending, running]);
+                JobStatements.Confirm(batch, [waiting], [JobRunKeys.Backdated], ActiveUserId);
+            }
+
+            // --- The first run matches each row; then each row carries a value its statement's repeat would overwrite ---
+            await StatementsAsync(Append);
+            Assert.Equal(
+                [nameof(JobStatus.Pending), nameof(JobStatus.Pending), nameof(JobStatus.Cancelled), nameof(JobStatus.Running), nameof(JobStatus.Pending)],
+                [(await fixture.JobAsync(failed)).Status, (await fixture.JobAsync(held)).Status, (await fixture.JobAsync(pending)).Status, (await fixture.JobAsync(running)).Status, (await fixture.JobAsync(waiting)).Status]);
+            await fixture.SetJobAsync(failed, "[Attempts] = 2");
+            await fixture.SetJobAsync(held, "[ErrorCode] = N'Test.Mark'");
+            await fixture.SetJobAsync(pending, "[CompletedAt] = DATEADD(day, -1, SYSUTCDATETIME())");
+            await fixture.SetJobAsync(running, "[CancelRequestedAt] = DATEADD(day, -1, SYSUTCDATETIME())");
+            await fixture.SetJobAsync(waiting, "[Attempts] = 2");
+
+            // --- The repeat leaves every mark, but sets the running job's cancel flag again ---
+            await StatementsAsync(Append);
+            DateTimeOffset dayAgo = DateTimeOffset.UtcNow.AddHours(-23);
+            Assert.Equal(2, (await fixture.JobAsync(failed)).Attempts);
+            Assert.Equal("Test.Mark", (await fixture.JobAsync(held)).ErrorCode);
+            Assert.True((await fixture.JobAsync(pending)).CompletedAt < dayAgo);
+            Assert.True((DateTimeOffset)(await fixture.JobAsync(running)).Columns["CancelRequestedAt"]! > dayAgo);
+            Assert.Equal(2, (await fixture.JobAsync(waiting)).Attempts);
+        }
+
+        [Fact]
+        public async Task The_confirm_statement_matches_no_job_another_user_requested_nor_one_a_recorded_key_of_which_was_not_confirmed()
+        {
+            int partial = await InsertJobAsync(JobRunKeys.Probe);
+            await fixture.SetJobAsync(partial, $"[Status] = 'PendingConfirmation', [PendingConfirmationsJson] = {Literal(Record(JobRunKeys.Backdated, JobRunKeys.Negative))}");
+            int others = await InsertJobAsync(JobRunKeys.Probe);
+            await fixture.SetJobAsync(others, $"[Status] = 'PendingConfirmation', [PendingConfirmationsJson] = {Literal(Record(JobRunKeys.Backdated))}");
+
+            await StatementsAsync(batch =>
+            {
+                JobStatements.Confirm(batch, [partial], [JobRunKeys.Backdated], ActiveUserId);
+                JobStatements.Confirm(batch, [others], [JobRunKeys.Backdated], ViewerUserId);
+            });
+
+            foreach (int id in new[] { partial, others })
+            {
+                JobRow row = await fixture.JobAsync(id);
+                Assert.Equal((nameof(JobStatus.PendingConfirmation), null), (row.Status, row.ConfirmedKeys));
+            }
         }
 
         // --- The tree verify ---
@@ -436,6 +548,17 @@ namespace Tellma.Core.IntegrationTests.Jobs
         private Task<IReadOnlyList<PolledJob>> PollAsync(params string[] keys)
         {
             return JobPollDriver.PollOnceAsync(fixture.Tenant, keys, cancellationToken: Token);
+        }
+
+        /// <summary>Runs statements in one transaction of a maintenance batch of the system scope, outside any stack.</summary>
+        /// <param name="append">Appends the statements.</param>
+        /// <returns>A task that completes when the batch committed.</returns>
+        private async Task StatementsAsync(Action<DataBatch> append)
+        {
+            await using AsyncServiceScope scope = fixture.Tenant.CreateScope(WellKnownIds.SystemUserId);
+            var batch = (DataBatch)scope.ServiceProvider.GetRequiredService<ITenantDatabase>().CreateBatch(BatchPurpose.Maintenance);
+            append(batch);
+            _ = await batch.ExecuteAsync(Token);
         }
 
         /// <summary>Runs one of the jobs' actions as a user, through a stepped-up scope of theirs.</summary>
@@ -543,4 +666,14 @@ namespace Tellma.Core.IntegrationTests.Jobs
             }
         }
     }
+
+    /// <summary>The jobs' stack and the platform's maintenance handlers with read-committed snapshot on, as provisioning creates a tenant database.</summary>
+    /// <param name="fixture">The class's database.</param>
+    [Trait("Category", "Integration")]
+    public sealed class JobServiceSnapshotTests(JobRunDatabase fixture) : JobServiceTests(fixture), IClassFixture<JobRunDatabase>;
+
+    /// <summary>The jobs' stack and the platform's maintenance handlers with read-committed snapshot off, where readers take shared locks.</summary>
+    /// <param name="fixture">The class's database.</param>
+    [Trait("Category", "Integration")]
+    public sealed class JobServiceLockingTests(LockingJobRunDatabase fixture) : JobServiceTests(fixture), IClassFixture<LockingJobRunDatabase>;
 }

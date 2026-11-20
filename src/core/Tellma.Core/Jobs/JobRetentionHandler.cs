@@ -93,9 +93,13 @@ namespace Tellma.Core.Jobs
                 _ = await page.ExecuteAsync(item.CancellationToken).ConfigureAwait(false);
 
                 // --- The stopped jobs' notices; a page re-run after an ambiguous failure outputs none, and those age out ---
+                // The page committed, and its rows left the stop's predicate, so no later run finds them
+                // again: their withdrawals ignore a requested cancel (spec 0020 §6.6 cancels the item
+                // token so a handler can finish what it committed), and the scope's token still guards
+                // each round trip. The cancel is honoured at the next page.
                 foreach (StoppedJob[] chunk in stopped.Value.Chunk(WithdrawalsPerCall))
                 {
-                    await notifier.WithdrawAsync([.. chunk.Select(static job => new WithdrawRequest(JobNotices.PendingConfirmationKey(job.Id)))], item.CancellationToken).ConfigureAwait(false);
+                    await notifier.WithdrawAsync([.. chunk.Select(static job => new WithdrawRequest(JobNotices.PendingConfirmationKey(job.Id)))], CancellationToken.None).ConfigureAwait(false);
                 }
 
                 counts.Stopped += stopped.Value.Count;

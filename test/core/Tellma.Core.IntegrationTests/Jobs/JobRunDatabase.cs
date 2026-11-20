@@ -93,6 +93,12 @@ namespace Tellma.Core.IntegrationTests.Jobs
         /// <summary>The host, once created.</summary>
         private FixtureTenant? _tenant;
 
+        /// <summary>The subscription that counts the wakes of the fixture tenant's pollers.</summary>
+        private IDisposable? _wakeSubscription;
+
+        /// <summary>The wakes since the last reset.</summary>
+        private int _wakes;
+
         /// <summary>Creates the database with read-committed snapshot on, as provisioning creates a tenant database.</summary>
         /// <param name="sql">The suite's server.</param>
         public JobRunDatabase(SqlServerFixture sql)
@@ -128,6 +134,9 @@ namespace Tellma.Core.IntegrationTests.Jobs
         /// <summary>The notifications raised, each once its batch committed.</summary>
         public CommittedNotices Notices { get; } = new();
 
+        /// <summary>How many times the host woke the fixture tenant's pollers since the last reset.</summary>
+        public int Wakes => Volatile.Read(ref _wakes);
+
         /// <summary>The host's log.</summary>
         public FakeLogCollector Log => Tenant.Services.GetFakeLogCollector();
 
@@ -148,6 +157,9 @@ namespace Tellma.Core.IntegrationTests.Jobs
                     _ = services.AddScoped<IClientEventPublisher>(_ => Events);
                     _ = services.Replace(ServiceDescriptor.Scoped<IAdministratorDirectory>(static _ => new FixedAdministrators()));
                     _ = services.AddFakeLogging();
+
+                    // The jobs' debug records too, so a test sees each progress report a handler made.
+                    _ = services.AddLogging(static builder => builder.AddFilter(JobsLog.Category, LogLevel.Debug));
 
                     // Each record carries the trace of the activity it was logged under, as an exporter reads it.
                     _ = services.Configure<LoggerFactoryOptions>(static options => options.ActivityTrackingOptions = ActivityTrackingOptions.TraceId);
@@ -180,9 +192,13 @@ namespace Tellma.Core.IntegrationTests.Jobs
                 RoleInsert("Shipment readers", [ActiveUserId], [AccessActions.Read], filter: null, ShipmentResource),
                 "CREATE SCHEMA [test];",
                 $"CREATE TABLE {RawTable} ([Id] int IDENTITY PRIMARY KEY, [JobId] int NOT NULL, [Note] nvarchar(100) NOT NULL);");
+
+            // --- The wakes stand in for the poller a running host has: each one counts ---
+            _wakeSubscription = Tenant.Services.GetRequiredService<TenantPollerWake>()
+                .Subscribe(FixtureTenant.TenantId, () => Interlocked.Increment(ref _wakes));
         }
 
-        /// <summary>Deletes every row a test may have written, reactivates the user a test deactivates, resumes the audit, and clears the script, the notices, the events and the log.</summary>
+        /// <summary>Deletes every row a test may have written, reactivates the user a test deactivates, resumes the audit, and clears the script, the notices, the events, the wakes and the log.</summary>
         /// <returns>A task that completes when the database is reset.</returns>
         public async Task ResetAsync()
         {
@@ -194,6 +210,7 @@ namespace Tellma.Core.IntegrationTests.Jobs
             Script.Reset();
             Notices.Clear();
             Events.Clear();
+            _ = Interlocked.Exchange(ref _wakes, 0);
             Log.Clear();
         }
 
@@ -201,6 +218,7 @@ namespace Tellma.Core.IntegrationTests.Jobs
         public ValueTask DisposeAsync()
         {
             GC.SuppressFinalize(this);
+            _wakeSubscription?.Dispose();
             return _tenant?.DisposeAsync() ?? ValueTask.CompletedTask;
         }
 
@@ -577,12 +595,19 @@ namespace Tellma.Core.IntegrationTests.Jobs
         /// <summary>Whether every request appended to a batch is refused with an exception; off again after each clear.</summary>
         public bool Refuses { get; set; }
 
-        /// <summary>Forgets every request, and accepts requests again.</summary>
+        /// <summary>
+        ///     Runs as each withdrawal sent on its own arrives, before its token is checked, as a test
+        ///     arranges something to happen while one is in flight; none again after each clear.
+        /// </summary>
+        public Action? Withdrawing { get; set; }
+
+        /// <summary>Forgets every request, accepts requests again, and runs nothing as a withdrawal arrives.</summary>
         public void Clear()
         {
             _requests.Clear();
             _withdrawals.Clear();
             Refuses = false;
+            Withdrawing = null;
         }
 
         /// <inheritdoc />
@@ -637,6 +662,10 @@ namespace Tellma.Core.IntegrationTests.Jobs
         public Task WithdrawAsync(IReadOnlyList<WithdrawRequest> requests, CancellationToken cancellationToken = default)
         {
             ArgumentNullException.ThrowIfNull(requests);
+
+            // --- What the test arranged, then the token, as a notifier's round trip honours it ---
+            Withdrawing?.Invoke();
+            cancellationToken.ThrowIfCancellationRequested();
             foreach (WithdrawRequest request in requests)
             {
                 _withdrawals.Enqueue(request);
