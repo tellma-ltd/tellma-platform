@@ -282,3 +282,47 @@ Rulings 1-3 accepted. The identity-store bullet is removed from "Residual exposu
 migrator hands the store a connection string bounded by `MigrationCommandTimeout`. The stall lever
 and the design-time-factory test stay as they are until a recurrence. The notes' "13:43:22" now
 reads 13:43:24, the last completion before the gap.
+
+## Integration CI fix (run 44785071160)
+
+build-test (windows-latest) failed one unit test that the item does not touch:
+`SmtpProtocolTests.Sends_a_full_feature_message_as_correct_mime`. It threw a `TimeoutException`
+from MailKit's `SocketUtils.ConnectAsync` after 10 s, which is the sender's whole connection budget
+(`TimeoutSeconds = 10`, covering name resolution and every address attempt). ubuntu passed the same
+run.
+
+Cause, in the test infrastructure. `SmtpSenderFactory.Options` pointed every sender at
+`"localhost"`, but `InProcessSmtpServer` bound by port alone, which SmtpServer turns into
+`0.0.0.0:port`, so it listens on IPv4 only. On Windows `localhost` resolves to `::1` first. Nothing
+listens on `[::1]:port`, so Windows refuses the connection only after retrying the SYN, and MailKit
+then falls back to 127.0.0.1. Measured with a scratch probe on this machine:
+
+- a refused `[::1]` connection took 2.1 to 2.4 s;
+- a MailKit connect and greeting through `localhost` took 2.5 to 5.1 s;
+- through `127.0.0.1` it took 12 to 19 ms.
+
+Every connecting SMTP test on Windows paid that penalty, once per connection:
+- Windows CI: 2 to 12 s per test;
+- ubuntu CI, where `localhost` is 127.0.0.1: 6 to 700 ms;
+- local Windows baseline: 2 to 6 s, 26 s for the class.
+
+On a loaded runner the refused-SYN retries stretch, and this run used up the 10 s budget. The
+adapter is not at fault. The configured host is the operator's choice, and the budget covering
+every address is MailKit's documented behaviour.
+
+Fix:
+- `InProcessSmtpServer.Address` (IPv4 loopback) is now the one address the server binds
+  (`Endpoint(new IPEndPoint(Address, port))`), probes its port on, and checks readiness on.
+- `SmtpSenderFactory.Options` connects to that address by number.
+- The project README says so.
+
+Nothing is retried, and no bound changes. Binding an explicit address also means another process
+listening on `[::1]` at the same port can no longer receive the sender's connection.
+
+Local verification (Windows, Debug):
+- the SMTP test project 5 times alone: 18 passed and 2 skipped each run, and the failing test took
+  69 to 793 ms;
+- 3 more runs while Tellma.Core.Tests and Tellma.Core.AspNetCore.Tests ran in parallel: all green,
+  and the failing test took 70 ms to 1 s.
+- One reconnect test took 6 s once during the loaded runs, at cold start, while the two load
+  processes were starting. It is not the address penalty, which slowed every connecting test.
