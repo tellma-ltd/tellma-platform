@@ -17,6 +17,7 @@ using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.AspNetCore.Api;
 using Tellma.Core.AspNetCore.Csrf;
 using Tellma.Core.AspNetCore.Hosting;
+using Tellma.Core.AspNetCore.Limits;
 using Tellma.Core.AspNetCore.Observability;
 using Tellma.Core.AspNetCore.Problems;
 using Tellma.Core.AspNetCore.Tenancy;
@@ -32,8 +33,9 @@ namespace Tellma.Core.AspNetCore
         /// <summary>
         ///     Installs the request pipeline in its fixed order and nothing else: the header stamp,
         ///     forwarded headers, request logging, the problem-details exception handler and status-code
-        ///     pages, HSTS and HTTPS redirection outside Development, routing, authentication and
-        ///     authorization, the CSRF control, the web API's contract check and the tenant middleware. A
+        ///     pages, HSTS and HTTPS redirection outside Development, response compression, routing,
+        ///     authentication and authorization, the rate limiter, the request timeouts, output caching,
+        ///     the CSRF control, the web API's contract check and the tenant middleware. A
         ///     distribution's own middleware goes between this call and <c>MapTellma</c>.
         /// </summary>
         /// <param name="app">The application.</param>
@@ -111,7 +113,8 @@ namespace Tellma.Core.AspNetCore
                 _ = app.UseHttpsRedirection();
             }
 
-            // --- 6. Response compression: the web API's, when composed ---
+            // --- 6. Response compression of JSON, unless configured off ---
+            LimitsComposition.UseCompression(app);
 
             // --- 7. Routing ---
             _ = app.UseRouting();
@@ -126,7 +129,10 @@ namespace Tellma.Core.AspNetCore
             _ = app.UseAuthentication();
             _ = app.UseAuthorization();
 
-            // --- 10-12. The rate limiter, request timeouts and output caching: the web API's, when composed ---
+            // --- 10-12. The rate limiter, request timeouts and output caching ---
+            // After authentication, so a partition is the principal's; before the tenant, so a
+            // refusal reads the same for a tenant that does not exist and one the caller may not open.
+            LimitsComposition.UseLimits(app);
 
             // --- 13. CSRF, ahead of every tenant and every endpoint filter ---
             _ = app.UseMiddleware<TellmaCsrfMiddleware>();

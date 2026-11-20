@@ -15,6 +15,9 @@ namespace Tellma.Core.AspNetCore.Api
         /// <summary>The rejection reason of a request whose contract fingerprint is not the endpoint's.</summary>
         public const string ClientOutdatedReason = "client_outdated";
 
+        /// <summary>The rejection reason of a request a rate or concurrency policy refused.</summary>
+        public const string RateLimitedReason = "rate_limited";
+
         /// <summary>The tag key of a problem's status.</summary>
         public const string StatusTag = "status";
 
@@ -24,6 +27,7 @@ namespace Tellma.Core.AspNetCore.Api
         private readonly Counter<long> _requestsRejected;
         private readonly Counter<long> _problems;
         private readonly Histogram<double> _operationDuration;
+        private readonly Counter<long> _unknownMembers;
 
         /// <summary>Creates the instruments.</summary>
         /// <param name="meterFactory">The meter factory.</param>
@@ -41,13 +45,34 @@ namespace Tellma.Core.AspNetCore.Api
                 ApiTelemetryNames.OperationDuration,
                 unit: "s",
                 description: "How long a web API operation took from admission to its answer, by resource, operation and client.");
+            _unknownMembers = meter.CreateCounter<long>(
+                ApiTelemetryNames.UnknownMembers,
+                description: "Request body members no property of their type declares, skipped, by type.");
         }
 
         /// <summary>Counts a request refused before its endpoint ran.</summary>
         /// <param name="reason">Why it was refused.</param>
-        public void RecordRejection(string reason)
+        /// <param name="lane">The report lane it was refused on; null off the report lanes.</param>
+        public void RecordRejection(string reason, string? lane = null)
         {
-            _requestsRejected.Add(1, new KeyValuePair<string, object?>(ApiTelemetryNames.ReasonTag, reason));
+            if (lane is null)
+            {
+                _requestsRejected.Add(1, new KeyValuePair<string, object?>(ApiTelemetryNames.ReasonTag, reason));
+            }
+            else
+            {
+                _requestsRejected.Add(
+                    1,
+                    new KeyValuePair<string, object?>(ApiTelemetryNames.ReasonTag, reason),
+                    new KeyValuePair<string, object?>(ApiTelemetryNames.LaneTag, lane));
+            }
+        }
+
+        /// <summary>Counts a request body member no property of its type declares, which was skipped.</summary>
+        /// <param name="type">The type's display name: a closed set, the types the wire carries.</param>
+        public void RecordUnknownMember(string type)
+        {
+            _unknownMembers.Add(1, new KeyValuePair<string, object?>(ApiTelemetryNames.TypeTag, type));
         }
 
         /// <summary>Counts a problem response.</summary>

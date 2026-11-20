@@ -114,7 +114,8 @@ namespace Tellma.Core.AspNetCore.Tests.Api
             // --- The contract, the kind, the timeout, the activity stamp and the step-up ---
             Assert.Equal(projected.Route.Fingerprint, metadata.GetRequiredMetadata<ContractMetadata>().Fingerprint);
             Assert.Equal(kind, projected.Kind.ToString());
-            Assert.Equal(isLong ? TellmaRequestTimeouts.Long : null, metadata.GetMetadata<RequestTimeoutAttribute>()?.PolicyName);
+            // The group's web timeout, which a long action's own policy overrides.
+            Assert.Equal(isLong ? TellmaRequestTimeouts.Long : TellmaRequestTimeouts.Web, metadata.GetMetadata<RequestTimeoutAttribute>()?.PolicyName);
             Assert.Equal(polling, metadata.GetMetadata<NoActivityStampMetadata>() is not null);
             Assert.Equal(stepUp, metadata.GetMetadata<RequireAssuranceMetadata>() is not null);
 

@@ -49,6 +49,12 @@ namespace Tellma.Core.AspNetCore.Problems
         /// <summary>The problem code of a request over a limit.</summary>
         public const string LimitExceededCode = "limit-exceeded";
 
+        /// <summary>The problem code of a request a rate or concurrency policy refused.</summary>
+        public const string RateLimitedCode = "rate-limited";
+
+        /// <summary>The problem code of a request that ran past its timeout before anything was written.</summary>
+        public const string TimeoutCode = "timeout";
+
         /// <summary>The problem code of an unsupported media type.</summary>
         public const string UnsupportedMediaCode = "unsupported-media";
 
@@ -193,9 +199,9 @@ namespace Tellma.Core.AspNetCore.Problems
                 StatusCodes.Status405MethodNotAllowed => "method-not-allowed",
                 StatusCodes.Status413PayloadTooLarge => LimitExceededCode,
                 StatusCodes.Status415UnsupportedMediaType => UnsupportedMediaCode,
-                StatusCodes.Status429TooManyRequests => "rate-limited",
+                StatusCodes.Status429TooManyRequests => RateLimitedCode,
                 StatusCodes.Status500InternalServerError => InternalCode,
-                StatusCodes.Status504GatewayTimeout => "timeout",
+                StatusCodes.Status504GatewayTimeout => TimeoutCode,
                 _ => null,
             };
 

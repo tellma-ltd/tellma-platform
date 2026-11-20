@@ -83,21 +83,30 @@ Installs the pipeline in this order and nothing else:
    bodiless refusal (a route miss, a verb the route lacks, a rate limit, a timeout) with the problem
    of its status;
 5. HSTS and HTTPS redirection, outside Development;
-6. routing;
-7. the in-proc identity engine's middleware, in in-proc mode;
-8. authentication, then authorization;
-9. the CSRF control;
-10. the contract check: a request to a projected web endpoint whose `Tellma-Contract` header names
+6. response compression (Brotli, then Gzip, at the fastest level) of JSON and problem bodies alone,
+   never a declared body under a kilobyte or a blob surface response, unless
+   `Tellma:Api:EnableCompression` is false;
+7. routing;
+8. the in-proc identity engine's middleware, in in-proc mode;
+9. authentication, then authorization;
+10. the rate limiter (see [Limits](#limits)), after authentication so a partition is the
+    principal's and before the tenant so a refusal reads the same for a missing tenant and a
+    refused one;
+11. the request timeouts: `504 timeout` when nothing was written, otherwise the connection is
+    aborted;
+12. output caching, which only the tenant-independent public documents name;
+13. the CSRF control;
+14. the contract check: a request to a projected web endpoint whose `Tellma-Contract` header names
     another fingerprint than the route's answers `412 client-outdated` before the tenant is resolved
     or the body read; a request without the header passes;
-11. the tenant middleware, which binds a tenant request's tenant and principal and hands the
-    request's aborted token to the scope's `DataCancellation`, so a client that goes away cancels
-    its reads, validations and retry waits.
+15. the tenant middleware, which binds a tenant request's tenant and principal and hands the
+    request's aborted token (linked to its timeout) to the scope's `DataCancellation`, so a client
+    that goes away, or a request that outlives its timeout, cancels its reads, validations and retry
+    waits.
 
 Every answer of a `Web`, `Api` or MCP endpoint that states no caching of its own carries
-`Cache-Control: no-store`, refusals included. The web API's compression, rate limiting, timeouts
-and output caching take their places in this order when those features are composed. A
-distribution's own middleware goes between `UseTellma` and `MapTellma`.
+`Cache-Control: no-store`, refusals included. A distribution's own middleware goes between
+`UseTellma` and `MapTellma`.
 
 ## `MapTellma`
 
@@ -105,10 +114,11 @@ Maps the tenantless platform routes and returns the tenant route groups:
 
 | Route | Access |
 |---|---|
-| `GET /api/distribution-info` | anonymous; the information document |
+| `GET /api/distribution-info` | anonymous; the information document, output-cached one minute |
 | `GET /health/live`, `GET /health/ready` | anonymous |
 | `/api/admin/v1/...` | `Tellma.ControlPlane`; when `Tellma:Admin:Enabled` (default: standalone identity) |
-| `GET /.well-known/oauth-protected-resource/{tenantId}/mcp` | anonymous; RFC 9728 metadata |
+| `GET /.well-known/oauth-protected-resource/{tenantId}/mcp` | anonymous; RFC 9728 metadata, output-cached five minutes |
+| `GET /openapi/web.json` | anonymous; the web surface's OpenAPI 3.1 document, in Development alone, output-cached five minutes |
 | `GET /bff/login` | anonymous; the sign-in challenge |
 | `POST /bff/logout` | `Tellma.Web`; the sign-out, `global` or `local` |
 | `GET /bff/user` | `Tellma.Web`; the user and the tenants the membership hints list |
@@ -122,13 +132,17 @@ seam: `MapTellma` maps each source's endpoints anonymous and tenantless, stamped
 so they may sit under the `api` words the audit reserves. A build's static web assets also map a
 development endpoint that serves files from disk; it is stamped like the published files.
 
-| Group | Route | Policy | Guard |
-|---|---|---|---|
-| `Web` | `/{tenantId}/api/web` | `Tellma.Web` | the access filter |
-| `Api` | `/{tenantId}/api/v{version}` | `Tellma.Api` | the access filter |
-| `Hub` | `/{tenantId}/hub` | `Tellma.Web` | the tenant middleware |
-| `Blobs` | `/{tenantId}/blobs` | `Tellma.Web` | the access filter |
-| `Tenantless` | `/api` | each endpoint's own | none; each calls `AsTenantlessEndpoint` |
+| Group | Route | Policy | Guard | Rate policies | Timeout |
+|---|---|---|---|---|---|
+| `Web` | `/{tenantId}/api/web` | `Tellma.Web` | the access filter | `tellma-user`, `tellma-tenant` | `tellma-web` |
+| `Api` | `/{tenantId}/api/v{version}` | `Tellma.Api` | the access filter | none here | none here |
+| `Hub` | `/{tenantId}/hub` | `Tellma.Web` | the tenant middleware | none | `tellma-web` |
+| `Blobs` | `/{tenantId}/blobs` | `Tellma.Web` | the access filter | `tellma-user`, `tellma-tenant` | `tellma-web` |
+| `Tenantless` | `/api` | each endpoint's own | none; each calls `AsTenantlessEndpoint` | each endpoint's own | none |
+
+The anonymous platform routes (the information document, the health probes, the protected-resource
+metadata, the OpenAPI document and the sign-in challenge) take `tellma-anonymous`. The identity
+server's back-channel logout takes none: its caller is one server, never a browser.
 
 ### The web API
 
@@ -162,6 +176,43 @@ and the stack's own limit answers `413 limit-exceeded` before the service runs. 
 binary bodies. A success on a guarded group (`Web`, `Api`, `Blobs`) without a recorded access check
 answers `500 internal`, whether the endpoint is a route handler or a plain request delegate; one
 that already started writing its body loses its connection before its status line leaves.
+
+### Limits
+
+Every limit is per instance, in memory: no partition is shared across instances. The rate limiter's
+one global limiter runs, per endpoint, the chain of the policies its metadata names
+(`IRatePolicyMetadata`, which `RequireRatePolicy(policy)` and `[RatePolicy(policy)]` on an action's
+method add): the route's own policy first, then `tellma-user`, then `tellma-tenant`, so a request
+queued on its route policy holds no tenant permit, and a later refusal releases the permits taken
+before it. `tellma-blobs`, `tellma-telemetry`, `tellma-anonymous` and `tellma-mcp` stand alone:
+an endpoint under one runs under neither `tellma-user` nor `tellma-tenant`.
+
+| Policy | Partition | Limit (`Tellma:Api`, `Tellma:Mcp`) |
+|---|---|---|
+| `tellma-user` | tenant and caller | `RequestsPerMinutePerUser` 600, sliding minute of 6 segments |
+| `tellma-tenant` | tenant | `ConcurrentRequestsPerTenant` 64 concurrent |
+| `tellma-anonymous` | client address (IPv6 by its /64) | `AnonymousRequestsPerMinutePerIp` 60, fixed minute |
+| `tellma-export`, `tellma-import` | tenant and caller | `ConcurrentExportsPerUser` 2, `ConcurrentImportsPerUser` 1 concurrent |
+| `tellma-reports` | tenant, caller and lane | interactive `ConcurrentReportsPerUser` 4, queue `ReportQueuePerUser` 8; batch `ConcurrentBatchReportsPerUser` 6, queue `BatchReportQueuePerUser` 24 |
+| `tellma-telemetry` | caller | `TelemetryBatchesPerMinutePerUser` 60, sliding minute |
+| `tellma-blobs` | tenant | `ConcurrentBlobReadsPerTenant` 32, queue `BlobReadQueuePerTenant` 256 |
+| `tellma-mcp` | tenant and caller | `Tellma:Mcp:ToolCallsPerMinutePerUser` 120, sliding minute |
+
+A caller is a person by subject or a service account by client, each in its own namespace. A report
+endpoint that honors the priority (`RequireRatePolicy(TellmaRatePolicies.Reports, honorsPriority:
+true)`) takes the batch lane for a request carrying exactly one `Tellma-Priority: low`; every other
+request takes the interactive lane. Queues serve the oldest waiter first. A refusal answers
+`429 rate-limited` with `Retry-After` (the window's own wait, or a second for a concurrency limit),
+counts on `tellma.api.requests.rejected{reason = rate_limited}` (with `lane` on the report policy)
+and logs `ApiRequestRateLimited`. It is decided before the tenant is resolved, so it reads the same
+for a tenant that does not exist and one the caller may not open.
+
+The timeout policies are `tellma-web` (`RequestTimeout` 30 s), `tellma-long` (`LongRequestTimeout`
+5 min, on every long action) and `tellma-mcp` (`Tellma:Mcp:ToolTimeout` 60 s). A request past its
+timeout answers `504 timeout` when nothing was written; a response already started loses its
+connection, and `ApiResponseAbortedOnTimeout` is logged. The request's data access is cancelled with
+it. A request body member no property of its type declares is skipped and counted on
+`tellma.api.unknown_members{type}`.
 
 ### Problems
 
@@ -238,7 +289,10 @@ write-once mapped property that is `[JsonIgnore]`, and for any endpoint whose
 run leaves the pairs to the gate. When the securable registry did not compose, the gate's audit
 skips the pairs and says so in one line, leaving the cause to `core.securables`.
 
-- a distribution endpoint under a policy that names no authentication scheme.
+- a distribution endpoint under a policy that names no authentication scheme;
+- an endpoint naming a rate policy that does not exist, more than one route policy, a tenant- or
+  caller-within-tenant policy on a route that names no tenant, or a priority on a policy without
+  lanes.
 
 ## Sessions
 

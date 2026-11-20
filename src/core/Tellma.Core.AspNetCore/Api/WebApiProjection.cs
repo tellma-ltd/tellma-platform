@@ -223,6 +223,17 @@ namespace Tellma.Core.AspNetCore.Api
             {
                 _ = endpoint.WithRequestTimeout(TellmaRequestTimeouts.Long);
             }
+
+            // --- A rate policy the action's method declares chains ahead of the group's own ---
+            // Read from the method's attributes, so a later surface's attribute that names a policy
+            // (an export's, a report's) reaches its endpoint with no change here.
+            if (route.Action is ActionDescriptor declared && owners.DeclaredMethod(declared) is MethodInfo method)
+            {
+                foreach (IRatePolicyMetadata policy in method.GetCustomAttributes(inherit: true).OfType<IRatePolicyMetadata>())
+                {
+                    _ = endpoint.WithMetadata(policy);
+                }
+            }
         }
 
         /// <summary>A problem naming a route.</summary>
@@ -293,12 +304,20 @@ namespace Tellma.Core.AspNetCore.Api
                 }
             }
 
+            /// <summary>An action's method; null for a built-in action.</summary>
+            /// <param name="action">The action, as the registry described it.</param>
+            /// <returns>The method, or null.</returns>
+            public MethodInfo? DeclaredMethod(ActionDescriptor action)
+            {
+                return _registry.MethodOf(action)?.Method;
+            }
+
             /// <summary>The assembly that declares an action's method; null for a built-in action.</summary>
             /// <param name="action">The action, as the registry described it.</param>
             /// <returns>The assembly, or null.</returns>
             public Assembly? DeclaringAssembly(ActionDescriptor action)
             {
-                return _registry.MethodOf(action)?.Method.DeclaringType?.Assembly;
+                return DeclaredMethod(action)?.DeclaringType?.Assembly;
             }
 
             /// <summary>
