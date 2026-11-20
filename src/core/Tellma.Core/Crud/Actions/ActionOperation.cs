@@ -9,6 +9,7 @@ using Tellma.Core.Abstractions.Api;
 using Tellma.Core.Abstractions.Crud;
 using Tellma.Core.Abstractions.Entities;
 using Tellma.Core.Crud.Save;
+using Tellma.Core.Data;
 
 namespace Tellma.Core.Crud.Actions
 {
@@ -152,7 +153,7 @@ namespace Tellma.Core.Crud.Actions
         private Task<TResult> Run<TResult>(StackDescriptor stack, int targets, Func<Task<TResult>> steps, CancellationToken cancellationToken)
         {
             string lane = CrudMetrics.Lane(targets, writes.LargeBatchThreshold);
-            return operations.RunAsync(stack.Resource, CrudOperationNames.Action, source: null, lane, () => SaveOperation.TranslatedAsync(steps), cancellationToken);
+            return operations.RunAsync(stack.Resource, CrudOperationNames.Action, source: null, lane, () => DataAccessTranslation.RunAsync(steps), cancellationToken);
         }
     }
 }

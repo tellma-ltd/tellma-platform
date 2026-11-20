@@ -4,6 +4,7 @@
 // LICENSE file in the root directory of this source tree.
 
 using Tellma.Core.Abstractions.Tenancy;
+using Tellma.Core.Data;
 
 namespace Tellma.Core.Tenancy
 {
@@ -65,6 +66,13 @@ namespace Tellma.Core.Tenancy
             {
                 metrics.RecordResolution(TenantResolutionOutcome.CatalogUnavailable);
                 throw;
+            }
+            catch (DataAccessException failure) when (failure is DataAccessAmbiguousException || DataAccessTranslation.Translate(failure) is not null)
+            {
+                // Spec 0015 §14.2: a cold connect's round trip runs before any operation that would
+                // translate it, so an outage it outlasted is answered here as a retryable 503. Its one
+                // write is the activity stamp, so a stamp that committed unseen is retried harmlessly.
+                throw DataAccessTranslation.Unavailable(failure);
             }
 
             if (context.UserId is null)

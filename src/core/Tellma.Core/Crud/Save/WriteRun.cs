@@ -42,12 +42,6 @@ namespace Tellma.Core.Crud.Save
         /// <summary>The code the post-check throws with, which the executor raises as a row-security failure.</summary>
         protected const string RowSecurityCode = "RowSecurity";
 
-        /// <summary>The dependency a data-access failure names.</summary>
-        protected const string DatabaseDependency = "database";
-
-        /// <summary>The wait a caller is told before reloading after a commit the database could not confirm.</summary>
-        protected static readonly TimeSpan DatabaseRetryAfter = TimeSpan.FromSeconds(1);
-
         /// <summary>The <c>entity:*</c> dependencies the validation rounds were served under, by name, each as first served.</summary>
         private readonly Dictionary<string, VersionTagDependency> _served = new(StringComparer.Ordinal);
 

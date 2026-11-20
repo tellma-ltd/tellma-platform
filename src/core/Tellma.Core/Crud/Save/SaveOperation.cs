@@ -11,7 +11,6 @@ using Tellma.Core.Abstractions.Api;
 using Tellma.Core.Abstractions.Crud;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Entities;
-using Tellma.Core.Abstractions.Errors;
 using Tellma.Core.Abstractions.Localization;
 using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.Access;
@@ -79,12 +78,6 @@ namespace Tellma.Core.Crud.Save
         StackRegistry registry,
         ILogger<SaveOperation> logger)
     {
-        /// <summary>The dependency a data-access failure names.</summary>
-        private const string DatabaseDependency = "database";
-
-        /// <summary>The wait a caller is told before retrying a write the database could not serve.</summary>
-        private static readonly TimeSpan DatabaseRetryAfter = TimeSpan.FromSeconds(1);
-
         /// <summary>The owner of each child entity, by the child's name; built on first use.</summary>
         private Dictionary<string, EntityOwner>? _owners;
 
@@ -191,25 +184,8 @@ namespace Tellma.Core.Crud.Save
                 CrudOperationNames.Save,
                 CrudMetrics.Source(options.Source),
                 lane,
-                () => TranslatedAsync(() => new SaveRun<TEntity, TKey>(this, stack, behavior, entities, options, cancellationToken).RunAsync()),
+                () => DataAccessTranslation.RunAsync(() => new SaveRun<TEntity, TKey>(this, stack, behavior, entities, options, cancellationToken).RunAsync()),
                 cancellationToken);
-        }
-
-        /// <summary>Runs a write's steps with an exhausted retry translated into what the caller can act on.</summary>
-        /// <typeparam name="TResult">What the write returns.</typeparam>
-        /// <param name="steps">The write's steps.</param>
-        /// <returns>What the write returned.</returns>
-        internal static async Task<TResult> TranslatedAsync<TResult>(Func<Task<TResult>> steps)
-        {
-            try
-            {
-                return await steps().ConfigureAwait(false);
-            }
-            catch (DataAccessRetryExhaustedException failure)
-            {
-                // Deadlocks and transient failures outlasted the executor's retries: worth a retry soon.
-                throw new DependencyUnavailableException(DatabaseDependency, DatabaseRetryAfter, failure);
-            }
         }
 
         /// <summary>Maps every child entity to the entity whose collection holds it.</summary>

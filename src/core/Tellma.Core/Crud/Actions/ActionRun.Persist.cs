@@ -47,8 +47,8 @@ namespace Tellma.Core.Crud.Actions
         /// <summary>The times the runner entered the persist's compose.</summary>
         private int _entries;
 
-        /// <summary>The names the first entry declared, which the participants hold: the emitter's saved ids and the target ids' table.</summary>
-        private (SqlIdentifier? Saved, SqlIdentifier Affected)? _firstNames;
+        /// <summary>The names the first entry declared, which the participants hold: the emitter's saved ids and captures, and the target ids' table.</summary>
+        private (SqlIdentifier? Saved, IReadOnlyList<ColumnCapture> Captures, SqlIdentifier Affected)? _firstNames;
 
         /// <summary>The recording of the participants' appends.</summary>
         private RecordingBatch? _participants;
@@ -106,7 +106,7 @@ namespace Tellma.Core.Crud.Actions
             catch (DataAccessAmbiguousException ambiguous)
             {
                 // An update cannot be probed: the caller reloads to learn whether it committed.
-                throw new DependencyUnavailableException(DatabaseDependency, DatabaseRetryAfter, ambiguous);
+                throw DataAccessTranslation.Unavailable(ambiguous);
             }
             catch (DataAccessException failure)
             {
@@ -231,14 +231,17 @@ namespace Tellma.Core.Crud.Actions
             // --- The participants: called on the first entry, replayed on a re-entry ---
             if (first)
             {
-                _firstNames = (saved?.SavedIds, affected);
+                // The emitter's captures of the marked rows reach the participants, so a blob column an
+                // action writes is released and confirmed as a save's is (spec 0017 §4.1).
+                IReadOnlyList<ColumnCapture> captures = saved?.Captures ?? [];
+                _firstNames = (saved?.SavedIds, captures, affected);
                 _participants = new RecordingBatch(batch, CallbackFailed);
-                await ContributeAsync(_behavior, PersistContext(_participants, affected, _targets)).ConfigureAwait(false);
+                await ContributeAsync(_behavior, PersistContext(_participants, affected, _targets, captures)).ConfigureAwait(false);
                 _participants.Seal();
             }
             else
             {
-                EnsureSameNames(saved?.SavedIds, affected);
+                EnsureSameNames(saved, affected);
                 _participants!.Replay(batch);
             }
 
@@ -437,13 +440,14 @@ namespace Tellma.Core.Crud.Actions
         }
 
         /// <summary>Refuses a recomposed persist whose batch-local names differ from those the participants hold.</summary>
-        /// <param name="saved">The recomposed emitter's saved ids; null when no row was marked.</param>
+        /// <param name="saved">The recomposed emitter's handle; null when no row was marked.</param>
         /// <param name="affected">The recomposed target ids' table.</param>
         /// <exception cref="InvalidOperationException">A name differs.</exception>
-        private void EnsureSameNames(SqlIdentifier? saved, SqlIdentifier affected)
+        private void EnsureSameNames(SaveHandle? saved, SqlIdentifier affected)
         {
-            (SqlIdentifier? firstSaved, SqlIdentifier firstAffected) = _firstNames ?? throw new InvalidOperationException("A re-entered persist follows a first entry that composed the action.");
-            if (firstSaved != saved || firstAffected != affected)
+            (SqlIdentifier? firstSaved, IReadOnlyList<ColumnCapture> firstCaptures, SqlIdentifier firstAffected) = _firstNames
+                ?? throw new InvalidOperationException("A re-entered persist follows a first entry that composed the action.");
+            if (firstSaved != saved?.SavedIds || !firstCaptures.SequenceEqual(saved?.Captures ?? []) || firstAffected != affected)
             {
                 throw new InvalidOperationException(
                     $"The recomposed persist batch named the target ids '{affected.Name}' where its first entry named '{firstAffected.Name}', so the participants' recorded statements would address the wrong tables. A persist's compose appends the same statements in the same order on every entry.");

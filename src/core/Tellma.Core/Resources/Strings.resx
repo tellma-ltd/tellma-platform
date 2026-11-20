@@ -429,6 +429,106 @@
   <data name="Settings_EntryTypeMismatch" xml:space="preserve">
     <value>This value has the wrong type for the setting.</value>
   </data>
+  <!-- Validation and guard codes of users, roles, memberships and permissions -->
+  <data name="Users_SystemUserImmutable" xml:space="preserve">
+    <value>The system user can’t be changed.</value>
+  </data>
+  <data name="Users_CannotDeactivateSelf" xml:space="preserve">
+    <value>You can’t deactivate yourself.</value>
+  </data>
+  <data name="Users_CannotDeleteSelf" xml:space="preserve">
+    <value>You can’t delete yourself.</value>
+  </data>
+  <data name="Users_CannotRemoveOwnAdministratorMembership" xml:space="preserve">
+    <value>You can’t remove or limit your own administrator role.</value>
+  </data>
+  <data name="Users_EmailLockedAfterInvite" xml:space="preserve">
+    <value>The email can’t be changed once the user is invited.</value>
+  </data>
+  <data name="Users_OnlyNewUsersDeletable" xml:space="preserve">
+    <value>Only users who haven’t been invited can be deleted. Deactivate this user instead.</value>
+  </data>
+  <data name="Users_KindNotAllowed" xml:space="preserve">
+    <value>This kind of user can’t be used here.</value>
+  </data>
+  <data name="Users_EmailNotAllowed" xml:space="preserve">
+    <value>Only individuals can have an email.</value>
+  </data>
+  <data name="Users_TooManyRoles" xml:space="preserve">
+    <value>A user can have at most {max, plural, one {# role} other {# roles}}.</value>
+  </data>
+  <data name="Users_MembershipEscalation" xml:space="preserve">
+    <value>You can’t grant this role: it includes “{resource}: {action}”, which you don’t hold without restriction.</value>
+  </data>
+  <data name="Users_TooManyPreferenceKeys" xml:space="preserve">
+    <value>There are too many saved preferences.</value>
+  </data>
+  <data name="Users_PreferenceValueTooLarge" xml:space="preserve">
+    <value>This preference is too large. The most allowed is {maxBytes, number} bytes.</value>
+  </data>
+  <data name="Users_PreferenceKeyInvalid" xml:space="preserve">
+    <value>This preference name isn’t valid.</value>
+  </data>
+  <data name="Users_PreferenceKeyDuplicate" xml:space="preserve">
+    <value>This preference appears more than once.</value>
+  </data>
+  <data name="RoleMemberships_Overlap" xml:space="preserve">
+    <value>This membership overlaps another membership of the same role.</value>
+  </data>
+  <data name="RoleMemberships_EndsBeforeStart" xml:space="preserve">
+    <value>The end must be after the start.</value>
+  </data>
+  <data name="RoleMemberships_EndsInPast" xml:space="preserve">
+    <value>The end has already passed.</value>
+  </data>
+  <data name="Roles_PublicRoleHasMembers" xml:space="preserve">
+    <value>A public role can’t have members. Remove its members first.</value>
+  </data>
+  <data name="Roles_AdministratorImmutable" xml:space="preserve">
+    <value>The administrator role can’t be made public, deactivated, deleted or restricted.</value>
+  </data>
+  <data name="Roles_HasMembers" xml:space="preserve">
+    <value>A role with members can’t be deleted. Remove its members first.</value>
+  </data>
+  <data name="Roles_TooManyPermissions" xml:space="preserve">
+    <value>A role can have at most {max, plural, one {# permission} other {# permissions}}.</value>
+  </data>
+  <data name="Permissions_UnknownSecurable" xml:space="preserve">
+    <value>“{resource}: {action}” isn’t a permission that exists.</value>
+  </data>
+  <data name="Permissions_FilterNotSupported" xml:space="preserve">
+    <value>This permission can’t have a filter.</value>
+  </data>
+  <data name="Permissions_FilterInvalid" xml:space="preserve">
+    <value>This filter isn’t valid.</value>
+  </data>
+  <data name="Permissions_FilterTooLong" xml:space="preserve">
+    <value>Enter at most {maxLength, plural, one {# character} other {# characters}}.</value>
+  </data>
+  <data name="Permissions_FilterVersionUnsupported" xml:space="preserve">
+    <value>This filter was written for an older version. Enter it again.</value>
+  </data>
+  <data name="Permissions_WildcardResourceOnPublicRole" xml:space="preserve">
+    <value>A public role can’t have a permission on everything.</value>
+  </data>
+  <data name="Permissions_EscalationBeyondSelf" xml:space="preserve">
+    <value>You can’t grant “{resource}: {action}” because you don’t hold it without restriction.</value>
+  </data>
+  <data name="Access_LastAdministrator" xml:space="preserve">
+    <value>At least one active user must remain an administrator.</value>
+  </data>
+  <data name="Access_PublicRoleHasMembers" xml:space="preserve">
+    <value>A public role can’t have members.</value>
+  </data>
+  <data name="Access_AdministratorRoleDamaged" xml:space="preserve">
+    <value>The administrator role must stay active, private and unrestricted.</value>
+  </data>
+  <data name="Access_LockTimeout" xml:space="preserve">
+    <value>Someone else is changing security settings. Try again.</value>
+  </data>
+  <data name="Access_LockDeadlock" xml:space="preserve">
+    <value>Someone else is changing security settings. Try again.</value>
+  </data>
   <!-- Validation codes of the save and query pipeline -->
   <data name="Required" xml:space="preserve">
     <value>Enter a value.</value>

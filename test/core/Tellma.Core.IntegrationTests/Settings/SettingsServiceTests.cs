@@ -359,6 +359,58 @@ namespace Tellma.Core.IntegrationTests.Settings
             Assert.Null(saved.Details.General);
         }
 
+        [Fact]
+        public async Task A_save_by_a_caller_whose_grant_was_revoked_since_the_instance_cached_it_is_forbidden_and_writes_nothing()
+        {
+            (int adminId, string admin) = await AdminWithIdAsync();
+            _ = await InvokeAsync<TenantSettingsDetails>(admin, "details");
+
+            // --- Revoked on another instance: this one still answers the grant from its cached set ---
+            await RevokeAsync(adminId);
+
+            _ = await Assert.ThrowsAsync<ForbiddenException>(
+                () => InvokeAsync<SettingsSaveResult>(admin, "save", Entries((SettingsSuiteKeys.Width.Name, "8", null))));
+            _ = await Assert.ThrowsAsync<ForbiddenException>(
+                () => InvokeAsync<SettingsSaveResult>(admin, "save", Typed(["Name"]) with { Name = "Revoked", Concurrency = ConcurrencyMode.Override }));
+            Assert.Null(await StoredAsync(SettingsSuiteKeys.Width.Name));
+            Assert.Equal("Tenant 1", await fixture.Connect.ScalarAsync<string>(ConnectDatabase.TenantA, "SELECT [Name] FROM [core].[Settings];"));
+        }
+
+        [Fact]
+        public async Task Refresh_caches_by_a_caller_whose_grant_was_revoked_since_the_instance_cached_it_is_forbidden_and_moves_nothing()
+        {
+            (int adminId, string admin) = await AdminWithIdAsync();
+            _ = await InvokeAsync<TenantSettingsDetails>(admin, "details");
+            await RevokeAsync(adminId);
+            Dictionary<string, Guid> before = await TagsAsync();
+
+            _ = await Assert.ThrowsAsync<ForbiddenException>(() => InvokeAsync<object?>(admin, "refresh-caches"));
+
+            Assert.Equal(before, await TagsAsync());
+        }
+
+        [Fact]
+        public async Task Details_by_a_caller_who_lost_a_category_since_the_instance_cached_the_grant_omits_it()
+        {
+            (int adminId, string admin) = await AdminWithIdAsync();
+            TenantSettingsDetails warm = await InvokeAsync<TenantSettingsDetails>(admin, "details");
+            Assert.Contains(SettingsSuiteKeys.Shelf.Name, warm.Values.Keys);
+
+            // --- The ops category is revoked on another instance ---
+            await fixture.Connect.ExecuteAsync(
+                ConnectDatabase.TenantA,
+                string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"DELETE p FROM [core].[Permissions] AS p INNER JOIN [core].[RoleMemberships] AS m ON m.[RoleId] = p.[RoleId] WHERE m.[UserId] = {adminId} AND p.[Resource] = N'{OpsResource}';"));
+            await fixture.Connect.BumpPermissionsAsync(adminId);
+
+            TenantSettingsDetails details = await InvokeAsync<TenantSettingsDetails>(admin, "details");
+
+            Assert.NotNull(details.General);
+            Assert.DoesNotContain(SettingsSuiteKeys.Shelf.Name, details.Values.Keys);
+            Assert.Contains(SettingsSuiteKeys.Width.Name, details.Values.Keys);
+        }
+
         // --- The editor's view ---
 
         [Fact]
@@ -577,6 +629,26 @@ namespace Tellma.Core.IntegrationTests.Settings
                 (FxResource, AccessActions.Save),
                 (OpsResource, AccessActions.Save));
             return subject;
+        }
+
+        /// <summary>Seeds a caller who may save the typed row and both categories, with the caller's id.</summary>
+        /// <returns>The caller's id and subject.</returns>
+        private Task<(int UserId, string Subject)> AdminWithIdAsync()
+        {
+            return fixture.SeedCallerAsync(
+                "Admin",
+                (CoreResources.SettingsGeneral, AccessActions.Save),
+                (FxResource, AccessActions.Save),
+                (OpsResource, AccessActions.Save));
+        }
+
+        /// <summary>Ends every membership of a user out of band and moves the permissions tags, as a save on another instance would.</summary>
+        /// <param name="userId">The user.</param>
+        /// <returns>A task that completes when the grants are gone.</returns>
+        private async Task RevokeAsync(int userId)
+        {
+            await fixture.Connect.ExecuteAsync(ConnectDatabase.TenantA, string.Create(CultureInfo.InvariantCulture, $"DELETE FROM [core].[RoleMemberships] WHERE [UserId] = {userId};"));
+            await fixture.Connect.BumpPermissionsAsync(userId);
         }
 
         /// <summary>Moves the typed row's stamp out of band, as another request's save would.</summary>
