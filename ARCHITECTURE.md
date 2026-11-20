@@ -376,7 +376,7 @@ Package names follow the pattern below. Square brackets denote optional segments
 
 **Registry rules.** Two name registries are maintained at the platform level in `taxonomy.json` (which also carries `reservedSlugs` and the `distributions` the repo hosts — see [Naming Conventions](#naming-conventions)); each lists only what exists:
 
-- **Modules registry.** Enumerated list of `<m>` values (empty until the GL module ships and adds `Gl`; Sales, Procurement, Inventory, HR, Manufacturing are the expected next entries), stored in the exact PascalCase segment form used in package names. New modules require a platform-repo PR.
+- **Modules registry.** Enumerated list of `<m>` values (`Gl` is the first entry, added with the GL module; Sales, Procurement, Inventory, HR, Manufacturing are the expected next entries), stored in the exact PascalCase segment form used in package names. New modules require a platform-repo PR.
 - **Compliance registry.** Enumerated list of `<c>` values (currently empty; `Sa`, `Et`, `Ifrs`, `UsGaap` are the expected shape), stored in the exact PascalCase segment form used in package names. New compliance codes require a platform-repo PR.
 - **Industry names are ad-hoc.** No central registry; distributions and platform packs introduce industry names as needed. New industries are introduced through [Feature promotion](#feature-promotion), not by upfront registration.
 - **Cross-registry uniqueness is enforced at PR time.** A name in the Modules or Compliance registry cannot collide with each other, nor with any industry name in active use across the platform and any distribution. An analyzer rejects collisions when a registry is updated or when a new industry-scoped package is introduced.

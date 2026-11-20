@@ -59,6 +59,7 @@ namespace Tellma.Core.Crud.Delete
                 Loader = _loader,
                 Errors = _errors,
                 Host = _frame,
+                WithDescendants = _shape == DeleteShape.WithDescendants,
                 CancellationToken = _cancellationToken,
             };
 

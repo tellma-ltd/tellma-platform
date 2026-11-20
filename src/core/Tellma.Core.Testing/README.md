@@ -169,6 +169,13 @@ instrument's closed tag set: the tags it must carry, the ones it may, and the va
 may take. `AssertClosed` fails with every measurement that leaves its shape. It listens through
 `MetricCollector`, which is why the package references `Microsoft.Extensions.Diagnostics.Testing`.
 
+**[ValidationContexts](Crud/ValidationContexts.cs)** builds the contexts a stack service's
+validation hooks see after the pipeline's first round: a save's payload with which rows are new and
+their before images, and a delete's ids, loaded targets and whether it removes their descendants.
+The pipeline sets those parts itself and keeps their setters internal, so a module's unit tests,
+which never see the pipeline, drive their rules through these with a scripted `IContextLoader` and
+no database. The contexts' write host refuses confirmations, which a rule under test does not raise.
+
 ## Rules this package lives by
 
 - **It takes an xunit dependency, and nothing else does.** Shipping the conformance suites is the

@@ -37,6 +37,9 @@ namespace Tellma.Core.Abstractions.Hosting
         // this assembly is a pure contract surface and carries no package references at all.
         private const string ProductionEnvironmentName = "Production";
 
+        // The same spelling, for the same reason: Microsoft.Extensions.Hosting's Environments.Development.
+        private const string DevelopmentEnvironmentName = "Development";
+
         /// <inheritdoc cref="DeploymentIdentity(string, string)" />
         public string Application { get; } = ValidateApplication(Application);
 
@@ -50,6 +53,14 @@ namespace Tellma.Core.Abstractions.Hosting
         ///     and file names; validated in the constructor.
         /// </summary>
         public string DeploymentId { get; } = ComposeDeploymentId(Application, EnvironmentName);
+
+        /// <summary>
+        ///     Whether the deployment runs in the Development environment, compared as
+        ///     <c>IHostEnvironment.IsDevelopment()</c> compares it, ignoring case. A feature that
+        ///     references only the contract reads it to keep development conveniences, such as sample
+        ///     data, out of every other environment.
+        /// </summary>
+        public bool IsDevelopment => string.Equals(EnvironmentName, DevelopmentEnvironmentName, StringComparison.OrdinalIgnoreCase);
 
         private static string ValidateApplication(string application)
         {

@@ -296,6 +296,30 @@ stack fixture.BlobFolder
   limits: default
   mcp: Full, revision 0
   feature: fixture
+stack gl.Center
+  segment: centers
+  entity: Tellma.Module.Gl.Center
+  service: Tellma.Module.Gl.CenterService<Tellma.Module.Gl.Center>
+  key: int
+  description: Responsibility centers
+  operations: Save, Delete, Import, Read
+  capabilities: activatable, tree, multilingual, searchable, excel
+  properties: Id:ServerOwned, CreatedAt:ServerOwned, CreatedById:ServerOwned, ModifiedAt:ServerOwned, ModifiedById:ServerOwned, ParentId:Editable, SubtreeCount:ServerOwned, IsActive:ServerOwned, ActiveSubtreeCount:ServerOwned, CenterType:Editable, Name:Editable, Name2:Editable, Name3:Editable, Code:Editable
+  children: -
+  searchable: Name:Contains, Code:Prefix
+  natural-keys: Code
+  default-select: Id, Code, Name, Name2, Name3, IsActive, CreatedAt, CreatedById, ModifiedAt, ModifiedById
+  related-select: Id, Name, Name2, Name3, Code
+  details-expand: CreatedBy, ModifiedBy, Parent
+  default-order-by: -
+  display-name: Name group Name prefix -
+  extras: permissions
+  named-filters: -
+  limits: default
+  mcp: Full, revision 0
+  feature: gl
+  action activate: entity Activate built-in filtered args -; mutation, idempotent; result EntitiesResult<Center>; mcp Full, revision 0; -
+  action deactivate: entity Activate built-in filtered args -; mutation, idempotent; result EntitiesResult<Center>; mcp Full, revision 0; -
 child core.RoleMembership
   segment: role-memberships
   entity: Tellma.Core.Abstractions.Access.RoleMembership
