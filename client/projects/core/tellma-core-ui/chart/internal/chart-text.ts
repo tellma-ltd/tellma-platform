@@ -40,6 +40,12 @@ import { tmStripBidiControls } from '@tellma/core-ui/l10n';
 // string, so a word split across two pieces is closed only at its end.
 // Hebrew and the other R-class scripts are left as they are: no face the
 // platform ships draws them, and their mark (RLM) is drawn by the Latin face.
+// A label the engine truncates (the side legend, a horizontal bar chart's
+// category axis) loses its closing mark with the text it cuts, so in WebKit
+// a cut Arabic word and the ellipsis after it can still sit off the line.
+// An ALM at the start of the ellipsis would close the cut word, but it also
+// parts a Latin label from its ellipsis, which then lose their kerning in
+// every engine, so the engine's plain ellipsis is kept.
 
 /** A text direction. */
 export type ɵTmTextDirection = 'ltr' | 'rtl';
