@@ -14,7 +14,9 @@ namespace Tellma.Core.Jobs
 {
     // Spec 0020 §10: a completion that ends a job Failed raises core.job.failed, and one that ends it
     // PendingConfirmation raises core.job.pending-confirmation, each to the requester, else to the
-    // tenant's administrators; job.changed goes to the requester alone, never to administrators.
+    // tenant's administrators; job.changed goes to the requester alone, never to administrators. The
+    // gap hold of §6.10 raises core.scheduler.gap to the administrators and core.job.held to each
+    // requester of a held row, neither with a target.
     /// <summary>The notifications and client events a completion raises.</summary>
     internal static class JobNotices
     {
@@ -27,6 +29,12 @@ namespace Tellma.Core.Jobs
         /// <summary>The notification of a job waiting for its initiator to confirm warnings.</summary>
         public const string PendingConfirmationType = "core.job.pending-confirmation";
 
+        /// <summary>The notification of a requester's jobs held after a gap in the worker's polls.</summary>
+        public const string HeldType = "core.job.held";
+
+        /// <summary>The notification of a gap in the worker's polls.</summary>
+        public const string GapType = "core.scheduler.gap";
+
         /// <summary>The client event of a job whose row changed.</summary>
         public const string ChangedEvent = "job.changed";
 
@@ -37,6 +45,57 @@ namespace Tellma.Core.Jobs
         /// <summary>The descriptor of <see cref="PendingConfirmationType" />.</summary>
         public static NotificationTypeDescriptor PendingConfirmationDescriptor { get; } = new(
             PendingConfirmationType, Category, Mutable: false, TargetResource: CoreResources.Job, Severity: NotificationSeverity.Warning, Toast: true);
+
+        /// <summary>The descriptor of <see cref="HeldType" />.</summary>
+        public static NotificationTypeDescriptor HeldDescriptor { get; } = new(
+            HeldType, Category, Mutable: false, TargetResource: null, Severity: NotificationSeverity.Warning, Toast: true);
+
+        /// <summary>The descriptor of <see cref="GapType" />.</summary>
+        public static NotificationTypeDescriptor GapDescriptor { get; } = new(
+            GapType, Category, Mutable: false, TargetResource: null, Severity: NotificationSeverity.Warning, Toast: true);
+
+        /// <summary>The dedup key of a job's confirmation notice, which its withdrawal names.</summary>
+        /// <param name="jobId">The job.</param>
+        /// <returns>The key.</returns>
+        public static string PendingConfirmationKey(int jobId)
+        {
+            return string.Create(CultureInfo.InvariantCulture, $"{PendingConfirmationType}:{jobId}");
+        }
+
+        // Spec 0020 §6.10: one core.scheduler.gap to the administrators, split so no request names more
+        // recipients than the notifier takes, with the sum of every held row's count; one core.job.held
+        // to each requester with their own count. Both dedup on their type, so a repeat while the first
+        // is unread adds nothing.
+        /// <summary>The notices a gap hold raises.</summary>
+        /// <param name="gap">What the gap check found.</param>
+        /// <param name="administrators">The tenant's administrators.</param>
+        /// <param name="maxRecipientsPerRequest">The most recipients one request may name.</param>
+        /// <returns>The requests: the gap notice's first, then one per requester.</returns>
+        public static IEnumerable<NotificationRequest> Gap(JobGapCheck gap, IReadOnlyList<int> administrators, int maxRecipientsPerRequest)
+        {
+            ArgumentNullException.ThrowIfNull(gap);
+            ArgumentNullException.ThrowIfNull(administrators);
+            ArgumentOutOfRangeException.ThrowIfLessThan(maxRecipientsPerRequest, 1);
+            if (gap.PreviousTickAt is not DateTimeOffset previousTickAt)
+            {
+                yield break;
+            }
+
+            SchedulerGapArguments arguments = new(previousTickAt, gap.Now, gap.HeldCount);
+            foreach (int[] recipients in administrators.Distinct().Chunk(maxRecipientsPerRequest))
+            {
+                yield return new NotificationRequest(GapType, recipients, arguments, TargetResource: null, TargetId: null, ActorUserId: null, DedupKey: GapType);
+            }
+
+            foreach (JobHeldCount held in gap.Held)
+            {
+                if (held.RequestedById is int requester && held.Count > 0)
+                {
+                    yield return new NotificationRequest(
+                        HeldType, [requester], new JobHeldArguments(held.Count), TargetResource: null, TargetId: null, ActorUserId: null, DedupKey: HeldType);
+                }
+            }
+        }
 
         /// <summary>The event telling the requester a job changed.</summary>
         /// <param name="jobId">The job.</param>
@@ -87,7 +146,7 @@ namespace Tellma.Core.Jobs
                     CoreResources.Job,
                     job.Id,
                     ActorUserId: null,
-                    DedupKey: string.Create(CultureInfo.InvariantCulture, $"{PendingConfirmationType}:{job.Id}")),
+                    DedupKey: PendingConfirmationKey(job.Id)),
                 JobOutcomeKind.Succeeded or JobOutcomeKind.Retry or JobOutcomeKind.Released or JobOutcomeKind.Cancelled => null,
                 _ => throw new InvalidOperationException($"The outcome kind {outcome.Kind} is not defined."),
             };
@@ -116,4 +175,14 @@ namespace Tellma.Core.Jobs
     /// <param name="HandlerKey">The job's handler key.</param>
     /// <param name="Count">The warnings raised.</param>
     internal sealed record JobPendingConfirmationArguments(string HandlerKey, int Count);
+
+    /// <summary>The arguments of <c>core.job.held</c>.</summary>
+    /// <param name="Count">The requester's held jobs.</param>
+    internal sealed record JobHeldArguments(int Count);
+
+    /// <summary>The arguments of <c>core.scheduler.gap</c>.</summary>
+    /// <param name="PreviousTickAt">The last poll before the gap.</param>
+    /// <param name="Now">The poll that found the gap.</param>
+    /// <param name="HeldCount">Every held job, whoever requested it.</param>
+    internal sealed record SchedulerGapArguments(DateTimeOffset PreviousTickAt, DateTimeOffset Now, int HeldCount);
 }

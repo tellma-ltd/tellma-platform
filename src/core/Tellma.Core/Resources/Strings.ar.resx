@@ -691,6 +691,12 @@
   <data name="Notification_core_job_pending-confirmation" xml:space="preserve">
     <value>{count, plural, zero {مهمة بانتظار تأكيدك.} one {مهمة بانتظار تأكيدك لتحذير واحد.} two {مهمة بانتظار تأكيدك لتحذيرين.} few {مهمة بانتظار تأكيدك لـ# تحذيرات.} many {مهمة بانتظار تأكيدك لـ# تحذيرًا.} other {مهمة بانتظار تأكيدك لـ# تحذير.}}</value>
   </data>
+  <data name="Notification_core_job_held" xml:space="preserve">
+    <value>{count, plural, zero {لا توجد مهام بدأتها متوقفة مؤقتًا.} one {أُوقفت مهمة بدأتها مؤقتًا بعد انقطاع في الخدمة. يمكن للمسؤول استئنافها، ويمكنك إيقافها.} two {أُوقفت مهمتان بدأتهما مؤقتًا بعد انقطاع في الخدمة. يمكن للمسؤول استئنافهما، ويمكنك إيقافهما.} few {أُوقفت # مهام بدأتها مؤقتًا بعد انقطاع في الخدمة. يمكن للمسؤول استئنافها، ويمكنك إيقافها.} many {أُوقفت # مهمة بدأتها مؤقتًا بعد انقطاع في الخدمة. يمكن للمسؤول استئنافها، ويمكنك إيقافها.} other {أُوقفت # مهمة بدأتها مؤقتًا بعد انقطاع في الخدمة. يمكن للمسؤول استئنافها، ويمكنك إيقافها.}}</value>
+  </data>
+  <data name="Notification_core_scheduler_gap" xml:space="preserve">
+    <value>لم تعمل المهام في الخلفية من {previousTickAt, date, medium} {previousTickAt, time, short} حتى {now, date, medium} {now, time, short}. {heldCount, plural, =0 {لم تُوقف أي مهمة متأخرة.} one {أُوقفت مهمة متأخرة واحدة مؤقتًا حتى يستأنفها المسؤول أو يوقفها.} two {أُوقفت مهمتان متأخرتان مؤقتًا حتى يستأنفهما المسؤول أو يوقفهما.} few {أُوقفت # مهام متأخرة مؤقتًا حتى يستأنفها المسؤول أو يوقفها.} many {أُوقفت # مهمة متأخرة مؤقتًا حتى يستأنفها المسؤول أو يوقفها.} other {أُوقفت # مهمة متأخرة مؤقتًا حتى يستأنفها المسؤول أو يوقفها.}}</value>
+  </data>
   <!-- Queryex diagnostics, with the arguments the engine gives each -->
   <data name="Queryex_QX1001" xml:space="preserve">
     <value>نص حرفي غير مغلق.</value>

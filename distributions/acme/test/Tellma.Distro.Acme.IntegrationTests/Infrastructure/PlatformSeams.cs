@@ -4,7 +4,6 @@
 // LICENSE file in the root directory of this source tree.
 
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
 using Tellma.Core.Abstractions.Tenancy;
 
 namespace Tellma.Distro.Acme.IntegrationTests.Infrastructure
@@ -48,9 +47,6 @@ namespace Tellma.Distro.Acme.IntegrationTests.Infrastructure
         /// <summary>Whether the users stack's own-locale action is projected onto the web API, for a served administrator.</summary>
         public static bool ServesTheLocaleAction => ServesTheAdministrator && Composed.Value.UserLocaleAction;
 
-        /// <summary>Whether a background worker claims and runs the tenants' jobs.</summary>
-        public static bool RunsJobs => Composed.Value.JobWorker;
-
         /// <summary>Whether every one of the platform's provisioning steps is composed.</summary>
         public static bool ComposesPlatformSteps => PlatformSteps.All(Composed.Value.Steps.Contains);
 
@@ -84,8 +80,7 @@ namespace Tellma.Distro.Acme.IntegrationTests.Infrastructure
                 return new Composition(
                     UserConnection: ComposesUserConnection(scope.ServiceProvider),
                     Steps: StepNames(descriptors, scope.ServiceProvider),
-                    UserLocaleAction: routes.Any(static pattern => pattern.EndsWith(UserLocaleRoute, StringComparison.OrdinalIgnoreCase)),
-                    JobWorker: descriptors.Any(static descriptor => descriptor.ServiceType == typeof(IHostedService) && IsJobWorker(descriptor)));
+                    UserLocaleAction: routes.Any(static pattern => pattern.EndsWith(UserLocaleRoute, StringComparison.OrdinalIgnoreCase)));
             }
             finally
             {
@@ -139,22 +134,10 @@ namespace Tellma.Distro.Acme.IntegrationTests.Infrastructure
             return names;
         }
 
-        /// <summary>Whether a hosted service's registration is the jobs worker's.</summary>
-        /// <param name="descriptor">The registration.</param>
-        /// <returns>True when the class it registers is the worker's.</returns>
-        private static bool IsJobWorker(ServiceDescriptor descriptor)
-        {
-            Type? type = descriptor.IsKeyedService
-                ? descriptor.KeyedImplementationType ?? descriptor.KeyedImplementationInstance?.GetType()
-                : descriptor.ImplementationType ?? descriptor.ImplementationInstance?.GetType();
-            return type is { Name: "JobWorker", Namespace: "Tellma.Core.Jobs" };
-        }
-
         /// <summary>What Acme's composition holds.</summary>
         /// <param name="UserConnection">Whether an initializer binds a tenant request to its tenant user.</param>
         /// <param name="Steps">The composed provisioning steps' names.</param>
         /// <param name="UserLocaleAction">Whether the users stack's own-locale action is projected.</param>
-        /// <param name="JobWorker">Whether the jobs worker is hosted.</param>
-        private sealed record Composition(bool UserConnection, IReadOnlySet<string> Steps, bool UserLocaleAction, bool JobWorker);
+        private sealed record Composition(bool UserConnection, IReadOnlySet<string> Steps, bool UserLocaleAction);
     }
 }

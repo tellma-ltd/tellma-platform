@@ -14,13 +14,16 @@ namespace Tellma.Testing.Support.Observability
     public sealed record AlertQuery(string FileName, string Body);
 
     /// <summary>
-    ///     Cross-checks checked-in alert queries (Kusto, over Application Insights' <c>customMetrics</c>)
-    ///     against the instruments, tags and tag values the code can emit, so a telemetry rename
-    ///     fails a suite instead of leaving an alert that reports zero forever. Each suite says what
-    ///     its code emits; the reading of the queries is shared.
+    ///     Cross-checks checked-in alert queries (Kusto, over Application Insights' <c>customMetrics</c>
+    ///     and <c>traces</c>) against the instruments, tags, tag values and log events the code can
+    ///     emit, so a telemetry rename fails a suite instead of leaving an alert that reports zero
+    ///     forever. Each suite says what its code emits; the reading of the queries is shared.
     /// </summary>
     public static partial class AlertQueries
     {
+        /// <summary>The full name of the attribute a source-generated log method carries.</summary>
+        private const string LoggerMessageAttribute = "Microsoft.Extensions.Logging.LoggerMessageAttribute";
+
         /// <summary>Reads every <c>.kql</c> file of a folder, comment lines dropped.</summary>
         /// <remarks>
         ///     Comment lines are dropped because an instrument merely mentioned in the prose above a
@@ -135,6 +138,33 @@ namespace Tellma.Testing.Support.Observability
             }
 
             return values;
+        }
+
+        /// <summary>
+        ///     The event names a source-generated log class declares, from the <c>EventName</c> of each
+        ///     of its <c>[LoggerMessage]</c> methods, which a log-based query compares against.
+        /// </summary>
+        /// <remarks>
+        ///     The attribute is read by its full name, so a suite needs no logging reference to check
+        ///     its queries. A method without an explicit event name logs under its own name, which the
+        ///     generator uses instead; so does this.
+        /// </remarks>
+        /// <param name="logClass">The log class.</param>
+        /// <returns>The event names.</returns>
+        public static HashSet<string> LogEventNames(Type logClass)
+        {
+            ArgumentNullException.ThrowIfNull(logClass);
+            HashSet<string> names = new(StringComparer.Ordinal);
+            foreach (MethodInfo method in logClass.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static))
+            {
+                foreach (CustomAttributeData attribute in method.CustomAttributes.Where(static attribute => attribute.AttributeType.FullName == LoggerMessageAttribute))
+                {
+                    CustomAttributeNamedArgument eventName = attribute.NamedArguments.FirstOrDefault(static argument => argument.MemberName == "EventName");
+                    _ = names.Add(eventName.TypedValue.Value as string ?? method.Name);
+                }
+            }
+
+            return names;
         }
 
         /// <summary>A query's text without its comment lines.</summary>

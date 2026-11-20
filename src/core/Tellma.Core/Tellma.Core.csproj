@@ -20,6 +20,9 @@
     <!-- IHostEnvironment, IHostedLifecycleService (the startup gate) and HostDefaults; brings the
          dependency-injection, configuration, file-provider and logging abstractions with it. -->
     <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" />
+    <!-- HostOptions, whose ShutdownTimeout the job worker binds its final lease renewal to and holds
+         its drain below; the options type lives in the hosting implementation package. -->
+    <PackageReference Include="Microsoft.Extensions.Hosting" />
     <!-- AddMetrics(), which registers the IMeterFactory the runtime's instruments (the blob store's
          among them) are created from. -->
     <PackageReference Include="Microsoft.Extensions.Diagnostics" />

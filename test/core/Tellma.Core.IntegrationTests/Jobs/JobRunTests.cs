@@ -121,6 +121,29 @@ namespace Tellma.Core.IntegrationTests.Jobs
         }
 
         [Fact]
+        public async Task A_flush_after_the_final_renewal_extends_the_lease_only_to_the_end_that_renewal_set()
+        {
+            int id = await fixture.InsertJobAsync(JobRunKeys.Probe);
+            int? remaining = null;
+            fixture.Script.Probe = async (batch, context) =>
+            {
+                // --- The host's final renewal binds the lease to five seconds; the handler then reports and flushes ---
+                _ = await context.Services.GetRequiredService<IJobRenewal>().RenewFinalAsync(FixtureTenantId, leaseSeconds: 5, Token);
+                batch.Single.Progress.Report(50, null, null);
+                await batch.Single.Progress.FlushAsync(Token);
+                remaining = await SqlServerFixture.ScalarAsync<int>(
+                    fixture.ConnectionString, Invariant($"SELECT DATEDIFF(millisecond, SYSUTCDATETIME(), [LeaseExpiresAt]) FROM [core].[Jobs] WHERE [Id] = {id};"));
+            };
+
+            PolledJob polled = Assert.Single(await PollAsync(JobRunKeys.Probe));
+
+            // --- The flush carried the report but left the lease ending within the five seconds, not its own five minutes ---
+            Assert.InRange(Assert.NotNull(remaining), 1, 5_000);
+            Assert.Equal(JobStatus.Succeeded, polled.Status);
+            Assert.Equal((byte?)100, (await fixture.JobAsync(id)).ProgressPercent);
+        }
+
+        [Fact]
         public async Task A_last_attempt_that_throws_fails_its_jobs_and_raises_the_failure_notice_in_the_inbox_alone()
         {
             int requested = await fixture.InsertJobAsync(JobRunKeys.Inbox);
@@ -297,6 +320,7 @@ namespace Tellma.Core.IntegrationTests.Jobs
                 // Another instance takes the row once this one's lease lapsed.
                 await SqlServerFixture.ExecuteAsync(fixture.ConnectionString, Invariant($"UPDATE [core].[Jobs] SET [LeaseToken] = '{other}' WHERE [Id] = {id};"));
             };
+            using JobInstruments instruments = new(fixture);
 
             PolledJob polled = Assert.Single(await PollAsync(JobRunKeys.Ship));
 
@@ -307,6 +331,10 @@ namespace Tellma.Core.IntegrationTests.Jobs
             Assert.Empty(await fixture.RunLogAsync());
             Assert.Empty(fixture.Events.Published);
             Assert.Contains(fixture.Log.GetSnapshot(), static record => record.Id.Name == "JobLeaseLost");
+
+            // --- The lost batch is counted once, under its handler; nothing completed ---
+            Assert.Equal([(JobRunKeys.Ship, 1L)], JobInstruments.ByHandler(instruments.LeaseLost));
+            Assert.Empty(instruments.Completed.GetMeasurementSnapshot());
         }
 
         [Fact]
