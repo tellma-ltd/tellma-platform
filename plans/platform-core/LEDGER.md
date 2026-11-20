@@ -105,9 +105,9 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-145 | pc-3 | pc/PC-145 | impl | impl (Opus, high, launched 2026-11-20) | 0020-f; R1 only | 2026-11-20 |
 | PC-F62 | pc-2 | pc/PC-F62 | impl | impl (Opus, high, launched 2026-11-20) | DeletePlan Cascade/SetNull declared writes; R1 only | 2026-11-20 |
 | PC-088 | pc-1 | pc/PC-088 | impl | impl (Opus, high, launched 2026-11-20) | 0018-c; two reviews (R2 fable, security-bound) | 2026-11-20 |
-| PC-F63 | pc-f | pc/PC-F63 | impl | impl (Opus, high, launched 2026-11-20) | nightly client-e2e WebKit chart-bidi; R1 only | 2026-11-20 |
-| PC-F64 | pc-f2 | pc/PC-F64 | fix1 | R1 0/0/1 (6952a9d3; root cause confirmed, product correct); fix1 then integrate | nightly integration-windows TenantScopeTests suspension refresh; R1 only | 2026-11-20 |
-| PC-146 | pc-4 | pc/PC-146 | fix2 | R2 1/0/2 (261870b7; AccessEvaluationTests all-Denied assertion vs self-scope); fix2 then hold behind PC-F64; D-153 | 0021-c; R1 only | 2026-11-20 |
+| PC-F63 | pc-f | pc/PC-F63 | held | held (aa763156; R1-1..3 fixed, R1-2 documented not fixed: ALM-prefixed ellipsis broke Latin kerning; merge-tree clean); released after PC-146; D-155 | nightly client-e2e WebKit chart-bidi; R1 only | 2026-11-20 |
+| PC-F64 | pc-f2 | pc/PC-F64 | ci-pending | ci-pending (bdf3e354 CI fixes: SMTP tests bound localhost vs 0.0.0.0; pc run 44798852215 red on ubuntu: RequestTimeoutTests 504-vs-abort, 2nd occurrence after PC-146 fix 1, root-causing as CI fixes 2) | nightly integration-windows TenantScopeTests suspension refresh; R1 only | 2026-11-20 |
+| PC-146 | pc-4 | pc/PC-146 | held | held (33c39b3f; R2-1..3 fixed; merge-tree: resx content + fixture Initial rename/rename vs PC-144; regenerate all migration sets at integration); released after PC-F64 | 0021-c; R1 only | 2026-11-20 |
 
 ## Fix items
 
