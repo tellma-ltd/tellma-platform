@@ -274,10 +274,13 @@ different free slot, which it first switches with `cd {slot} && git switch -q -C
 
 ```
 Integrate {PC}: run `cd {slot} && git fetch origin`. If origin/platform-core is not an ancestor of
-HEAD, run `cd {slot} && git merge origin/platform-core -m "{PC}: merge platform-core"`, resolving
-conflicts by regenerating lockfiles, API goldens, EF snapshots and serialized migrations rather
-than hand-merging them. Build and format locally (PLAN.md §7.1 items 2-3) and run the tests the
-merge resolution touched. Then push only your branch with `cd {slot} && git push origin pc/{PC}`.
+HEAD, run `cd {slot} && git merge origin/platform-core -m "{PC}: integrate (merge platform-core)"`,
+resolving conflicts by regenerating lockfiles, API goldens, EF snapshots and serialized migrations
+rather than hand-merging them. If it already is an ancestor, run
+`cd {slot} && git commit --allow-empty -m "{PC}: integrate"`. Either way HEAD is now an integration
+commit, the only kind that starts a CI run on a pc branch. Build and format locally (PLAN.md §7.1
+items 2-3) and run the tests the merge resolution touched. Then push only your branch with
+`cd {slot} && git push origin pc/{PC}`.
 Do not push platform-core: CI on that commit is the gate. Return the §4.7 summary with
 status=ci-pending and sha set to the output of `cd {slot} && git rev-parse HEAD`.
 ```
@@ -292,9 +295,10 @@ CI run <url> on pc/{PC} is green for <sha>. Run `cd {slot} && git rev-parse HEAD
 prints <sha>. Then push with `cd {slot} && git push origin HEAD:platform-core` (fast-forward only,
 never forced) and `cd {slot} && git push origin pc/{PC}`. If the platform-core push is rejected, run
 `cd {slot} && git fetch origin` and `cd {slot} && git diff --name-only HEAD...origin/platform-core`.
-If the new commits touch only plans/, merge origin/platform-core and push both again without a new
-CI wait. Otherwise merge it (same rules), build and format, push only pc/{PC}, and return
-status=ci-pending with the new sha. Return the §4.7 summary with the sha you pushed to
+If the new commits touch only plans/, merge origin/platform-core with
+`-m "{PC}: merge platform-core"` and push both again without a new CI wait. Otherwise merge it with
+`-m "{PC}: integrate (merge platform-core)"` (same rules), build and format, push only pc/{PC}, and
+return status=ci-pending with the new sha. Return the §4.7 summary with the sha you pushed to
 platform-core.
 ```
 
@@ -302,7 +306,8 @@ CI red:
 
 ```
 CI run <url> on pc/{PC} is red for <sha>. Read `cd {slot} && gh run view <id> --log-failed`, find
-the root cause (reproduce locally as needed), fix it, commit as "{PC}: CI fixes" (format §4.6),
+the root cause (reproduce locally as needed), fix it, commit as "{PC}: integrate (CI fixes)"
+(format §4.6; the marker starts the next run),
 build and format, push only pc/{PC}, and return status=ci-pending with the new sha. Never re-run a
 CI run to turn it green: a flaky test is root-caused (D-011, D-113).
 ```
@@ -349,8 +354,11 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 ```
 
 Fix commits are titled `PC-042: review 1 fixes` or `PC-042: review 2 fixes`; their bodies list the
-fixed and pushed-back finding ids and any new deviations. The other prefixes are
-`PC-042: merge platform-core`, `PC-B03: batch review fixes (PC-015…PC-031)`, `PC-F07: <what> (PC-042)`
+fixed and pushed-back finding ids and any new deviations. Integration commits carry ": integrate",
+the marker that makes ci.yml run on a pc/** push (D-144): `PC-042: integrate (merge platform-core)`,
+`PC-042: integrate` (empty, when platform-core is already an ancestor) and
+`PC-042: integrate (CI fixes)`. No other commit may contain ": integrate". The other prefixes are
+`PC-042: merge platform-core` (a plans-only re-merge, §4.3), `PC-B03: batch review fixes (PC-015…PC-031)`, `PC-F07: <what> (PC-042)`
 and `PC-LEDGER: snapshot <date>`. Each message ends with the Co-Authored-By line of the model that
 wrote it.
 
@@ -661,7 +669,8 @@ goes to LEDGER.md and DECISIONS.md.
   on Firefox/WebKit only nightly). Once 0024-a moves the pnpm workspace to the repo root, run them
   there.
 - **Integration gate (D-144, replacing D-105).** CI on the pc/{PC} commit is the gate: it runs the
-  whole PR tier (ci.yml triggers on push to `pc/**`). Locally, integration only merges, builds and
+  whole PR tier (ci.yml runs on a `pc/**` push only when the head commit message contains
+": integrate", §4.6). Locally, integration only merges, builds and
   formats, and runs the tests the merge resolution touched (§4.3). PR #18's run on the
   platform-core push re-confirms it, and a red there stops the line (§8.3).
   - `integration-windows` (LocalDB, Core and Acme) runs in the nightly tier, not before a merge.
