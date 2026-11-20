@@ -85,6 +85,7 @@ namespace Tellma.Core.Composition
             services.AddSingleton(_record);
             RegisterDeploymentIdentity(problems);
             services.TryAddSingleton(DeploymentVersionsReader.Read(compose));
+            CheckDistributionVersion(problems);
 
             _ = _features.Add(new CoreFeature());
             _builder = new TellmaBuilder(services, configuration, environment, _features);
@@ -233,6 +234,25 @@ namespace Tellma.Core.Composition
             // TryAdd, so an identity a host registered earlier survives and core.deployment-identity
             // reports it when it names another application.
             services.TryAddSingleton(identity);
+        }
+
+        /// <summary>
+        ///     Refuses a distribution version the web client cannot state in its <c>Tellma-Client</c>
+        ///     header, which would otherwise refuse every cookie-authenticated write of the client
+        ///     after sign-in. The version checked is the one registered: a web host registers the
+        ///     version of the composition it wraps before this pipeline runs.
+        /// </summary>
+        /// <param name="problems">The problems found so far.</param>
+        private void CheckDistributionVersion(List<CompositionProblem> problems)
+        {
+            if (services.FirstOrDefault(static descriptor => descriptor.ServiceType == typeof(DeploymentVersions))?.ImplementationInstance is DeploymentVersions versions
+                && !DeploymentVersions.IsClientVersion(versions.DistributionVersion))
+            {
+                problems.Add(new CompositionProblem(
+                    CompositionNames.Source,
+                    $"The distribution version '{versions.DistributionVersion}' is not 1 to {DeploymentVersions.MaxClientVersionLength} visible ASCII characters, so the web client cannot state it in its Tellma-Client header.",
+                    $"Version the distribution's composition library with an informational version of at most {DeploymentVersions.MaxClientVersionLength} characters and no spaces, such as '1.4.0-rc.1+<sha>'."));
+            }
         }
 
         /// <summary>Declares and collects the contribution of every feature, adding the nested features each contributes until none is new.</summary>

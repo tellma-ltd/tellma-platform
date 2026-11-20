@@ -13,6 +13,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\..\src\core\Tellma.Core\Tellma.Core.csproj" />
+    <!-- The GL module the fixture composes, so its gl.Centers table is in every fixture database. -->
+    <ProjectReference Include="..\..\..\src\module\gl\Tellma.Module.Gl\Tellma.Module.Gl.csproj" />
     <!-- The table-type operations' C# generator and design-time services, which dotnet-ef needs to
          scaffold the fixture's table types. The repository's Directory.Build.targets injects the
          DesignTimeServicesReference into this assembly, as the package's build targets do for a

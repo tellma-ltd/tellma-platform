@@ -66,6 +66,13 @@ namespace Tellma.Core.Abstractions.Validation
             init => field = value ?? throw new ArgumentNullException(nameof(Host));
         }
 
+        /// <summary>
+        ///     Whether the delete removes each target's descendants with it: a tree's delete with
+        ///     descendants, whose targets are the roots of the subtrees it removes. False for a delete by
+        ///     ids, which removes the targets alone.
+        /// </summary>
+        public bool WithDescendants { get; init; }
+
         /// <summary>The declared pair this delete was enlisted under; null for a delete that came through the front door.</summary>
         public EnlistmentDescriptor? Enlistment { get; init; }
 

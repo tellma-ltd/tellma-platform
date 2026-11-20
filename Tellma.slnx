@@ -45,6 +45,10 @@
     <Project Path="src/connector/sendgrid/Tellma.Connector.SendGrid.Adapter/Tellma.Connector.SendGrid.Adapter.csproj" />
     <Project Path="src/connector/smtp/Tellma.Connector.Smtp.Adapter/Tellma.Connector.Smtp.Adapter.csproj" />
   </Folder>
+  <Folder Name="/src/module/gl/">
+    <Project Path="src/module/gl/Tellma.Module.Gl.Abstractions/Tellma.Module.Gl.Abstractions.csproj" />
+    <Project Path="src/module/gl/Tellma.Module.Gl/Tellma.Module.Gl.csproj" />
+  </Folder>
   <Folder Name="/src/defaults/">
     <Project Path="src/defaults/Tellma.Defaults.Azure/Tellma.Defaults.Azure.csproj" />
     <Project Path="src/defaults/Tellma.Defaults.Azure.AspNetCore/Tellma.Defaults.Azure.AspNetCore.csproj" />
@@ -97,6 +101,9 @@
   </Folder>
   <Folder Name="/test/defaults/">
     <Project Path="test/defaults/Tellma.Defaults.Azure.Tests/Tellma.Defaults.Azure.Tests.csproj" />
+  </Folder>
+  <Folder Name="/test/module/gl/">
+    <Project Path="test/module/gl/Tellma.Module.Gl.Tests/Tellma.Module.Gl.Tests.csproj" />
   </Folder>
   <Folder Name="/test/shared/">
     <Project Path="test/shared/Tellma.Queryex.Testing/Tellma.Queryex.Testing.csproj" />

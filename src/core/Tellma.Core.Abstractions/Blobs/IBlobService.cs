@@ -31,6 +31,7 @@ namespace Tellma.Core.Abstractions.Blobs
         /// <exception cref="BlobRejectedException">The upload was refused; its code says why.</exception>
         /// <exception cref="ImageProcessingBusyException">The image processor had no free slot in time; the caller may retry.</exception>
         /// <exception cref="BlobStoreException">The store failed to write the objects.</exception>
+        /// <exception cref="Errors.DependencyUnavailableException">The database stayed unavailable through the executor's retries; the caller may retry.</exception>
         Task<BlobDescriptor> StageAsync(BlobStageRequest request, CancellationToken cancellationToken = default);
 
         /// <summary>
@@ -55,6 +56,7 @@ namespace Tellma.Core.Abstractions.Blobs
         /// <exception cref="Errors.BadRequestException"><paramref name="variant" /> is not a well-formed variant name.</exception>
         /// <exception cref="Tenancy.StepUpRequiredException">The owner's read is sensitive and the caller's sign-in is below the step-up bar.</exception>
         /// <exception cref="Errors.IndividualRequiredException">The owner's read is sensitive and the caller is a service account.</exception>
+        /// <exception cref="Errors.DependencyUnavailableException">The database stayed unavailable through the executor's retries; the caller may retry.</exception>
         Task<BlobDownload?> ResolveAsync(string kind, int id, string? variant, CancellationToken cancellationToken = default);
     }
 }

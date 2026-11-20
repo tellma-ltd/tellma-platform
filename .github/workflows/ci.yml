@@ -232,9 +232,11 @@ jobs:
       - run: pnpm install --frozen-lockfile
       # The unit suites (vitest browser mode) and the PR-tier e2e both run on Chromium alone. The
       # script survives an apt-mirror outage as long as Chromium still launches (see identity-e2e).
+      # The CLI is the package's bin shim and not `pnpm exec`, because the script runs it as root to
+      # install the OS packages (eng/playwright-browsers/README.md).
       - name: Install Chromium
         timeout-minutes: 15
-        run: bash eng/playwright-browsers/install-browsers.sh chromium -- pnpm --dir client exec playwright
+        run: bash eng/playwright-browsers/install-browsers.sh chromium -- client/node_modules/.bin/playwright
       - run: pnpm run lint
       - run: pnpm run typecheck
       - run: pnpm run lint:test
@@ -316,10 +318,11 @@ jobs:
       - run: pnpm install --frozen-lockfile
       # The app's unit tests run in real Chromium (vitest browser mode); on Linux the script also
       # installs the OS packages Chromium needs, surviving an apt-mirror outage (see identity-e2e).
+      # The CLI is the package's bin shim, as in the client job.
       - name: Install Chromium (Linux)
         if: runner.os == 'Linux'
         timeout-minutes: 15
-        run: bash eng/playwright-browsers/install-browsers.sh chromium -- pnpm --dir distributions/acme/src/Tellma.Distro.Acme.Client exec playwright
+        run: bash eng/playwright-browsers/install-browsers.sh chromium -- distributions/acme/src/Tellma.Distro.Acme.Client/node_modules/.bin/playwright
       - name: Install Chromium (Windows)
         if: runner.os == 'Windows'
         timeout-minutes: 15

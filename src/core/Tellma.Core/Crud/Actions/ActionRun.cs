@@ -228,8 +228,9 @@ namespace Tellma.Core.Crud.Actions
         /// <param name="batch">The participants' recording view.</param>
         /// <param name="affected">The batch-local table of the target ids.</param>
         /// <param name="targets">The target rows; empty on the one-round-trip path.</param>
+        /// <param name="captures">The emitter's column captures of the marked rows; empty when no row was marked.</param>
         /// <returns>The context.</returns>
-        private ActionPersistContext<TEntity> PersistContext(IDataBatch batch, SqlIdentifier affected, IReadOnlyList<TEntity> targets)
+        private ActionPersistContext<TEntity> PersistContext(IDataBatch batch, SqlIdentifier affected, IReadOnlyList<TEntity> targets, IReadOnlyList<ColumnCapture> captures)
         {
             return new ActionPersistContext<TEntity>
             {
@@ -237,7 +238,7 @@ namespace Tellma.Core.Crud.Actions
                 Context = Services.Accessor.Current,
                 Batch = batch,
                 AffectedIds = affected,
-                Captures = [],
+                Captures = captures,
                 Action = _descriptor.Name,
                 Arguments = _arguments,
                 Resource = Resource,

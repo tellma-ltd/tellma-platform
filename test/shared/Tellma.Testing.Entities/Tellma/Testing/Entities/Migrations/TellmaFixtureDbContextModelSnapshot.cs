@@ -38,6 +38,9 @@ namespace Tellma.Testing.Entities.Migrations
             modelBuilder.HasSequence<int>("sq_Blobs", "core")
                 .StartsAt(1000L);
 
+            modelBuilder.HasSequence<int>("sq_Centers", "gl")
+                .StartsAt(1000L);
+
             modelBuilder.HasSequence<int>("sq_Exports", "fixture")
                 .StartsAt(1000L);
 
@@ -19087,6 +19090,99 @@ namespace Tellma.Testing.Entities.Migrations
                     b.ToTable("NotificationPreferences", "core");
                 });
 
+            modelBuilder.Entity("Tellma.Module.Gl.Center", b =>
+                {
+                    b.Property<int>("Id")
+                        .HasColumnType("int");
+
+                    b.Property<int>("ActiveSubtreeCount")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(1, "DF_Centers_ActiveSubtreeCount");
+
+                    b.Property<string>("CenterType")
+                        .IsRequired()
+                        .HasMaxLength(12)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(12)");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasPrecision(7)
+                        .HasColumnType("datetimeoffset(7)");
+
+                    b.Property<int>("CreatedById")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(true, "DF_Centers_IsActive");
+
+                    b.Property<DateTimeOffset>("ModifiedAt")
+                        .HasPrecision(7)
+                        .HasColumnType("datetimeoffset(7)");
+
+                    b.Property<int>("ModifiedById")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
+
+                    b.Property<string>("Name2")
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
+
+                    b.Property<string>("Name3")
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
+
+                    b.Property<SqlHierarchyId>("Node")
+                        .HasColumnType("hierarchyid")
+                        .HasAnnotation("Tellma:TableType:Excluded", true);
+
+                    b.Property<int?>("ParentId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("SubtreeCount")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(1, "DF_Centers_SubtreeCount");
+
+                    b.HasKey("Id")
+                        .HasName("PK_Centers");
+
+                    b.HasIndex("Code")
+                        .IsUnique()
+                        .HasDatabaseName("UX_Centers_Code");
+
+                    b.HasIndex("Node")
+                        .IsUnique()
+                        .HasDatabaseName("UX_Centers_Node");
+
+                    b.HasIndex("ParentId")
+                        .HasDatabaseName("IX_Centers_ParentId");
+
+                    b.HasIndex("IsActive", "Name")
+                        .HasDatabaseName("IX_Centers_IsActive_Name");
+
+                    b.ToTable("Centers", "gl", t =>
+                        {
+                            t.HasCheckConstraint("CK_Centers_Id", "[Id] > 0");
+                        });
+
+                    b
+                        .HasAnnotation("Tellma:TableType:Enabled", true)
+                        .HasAnnotation("Tellma:TableType:Grants", "[\"tellma_app\"]")
+                        .HasAnnotation("Tellma:Tree:MaxDepth", 32);
+                });
+
             modelBuilder.Entity("Tellma.Testing.Entities.BlobFolder", b =>
                 {
                     b.Property<int>("Id")
@@ -19971,6 +20067,29 @@ namespace Tellma.Testing.Entities.Migrations
                         .HasConstraintName("FK_NotificationPreferences_UserId");
                 });
 
+            modelBuilder.Entity("Tellma.Module.Gl.Center", b =>
+                {
+                    b.HasOne("Tellma.Core.Abstractions.Access.User", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("FK_Centers_CreatedById");
+
+                    b.HasOne("Tellma.Core.Abstractions.Access.User", null)
+                        .WithMany()
+                        .HasForeignKey("ModifiedById")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("FK_Centers_ModifiedById");
+
+                    b.HasOne("Tellma.Module.Gl.Center", null)
+                        .WithMany()
+                        .HasForeignKey("ParentId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("FK_Centers_ParentId");
+                });
+
             modelBuilder.Entity("Tellma.Testing.Entities.BlobFolder", b =>
                 {
                     b.HasOne("Tellma.Core.Abstractions.Access.User", null)
@@ -20632,6 +20751,25 @@ namespace Tellma.Testing.Entities.Migrations
                 .Column(name: "CreatedById", storeType: "int")
                 .Column(name: "ModifiedAt", storeType: "datetimeoffset(7)", precision: 7)
                 .Column(name: "ModifiedById", storeType: "int")
+                .HasKey("Id")
+                .HasGrants("tellma_app"));
+
+            modelBuilder.HasTableTypeDefinition("CentersList", "gl", type => type
+                .ForTable("Centers", "gl")
+                .Column(name: "Id", storeType: "int")
+                .Column(name: "CenterType", storeType: "varchar(12)", maxLength: 12)
+                .Column(name: "Name", storeType: "nvarchar(255)", maxLength: 255)
+                .Column(name: "Name2", storeType: "nvarchar(255)", nullable: true, maxLength: 255)
+                .Column(name: "Name3", storeType: "nvarchar(255)", nullable: true, maxLength: 255)
+                .Column(name: "Code", storeType: "nvarchar(50)", maxLength: 50)
+                .Column(name: "CreatedAt", storeType: "datetimeoffset(7)", precision: 7)
+                .Column(name: "CreatedById", storeType: "int")
+                .Column(name: "ModifiedAt", storeType: "datetimeoffset(7)", precision: 7)
+                .Column(name: "ModifiedById", storeType: "int")
+                .Column(name: "ParentId", storeType: "int", nullable: true)
+                .Column(name: "SubtreeCount", storeType: "int")
+                .Column(name: "IsActive", storeType: "bit")
+                .Column(name: "ActiveSubtreeCount", storeType: "int")
                 .HasKey("Id")
                 .HasGrants("tellma_app"));
 #pragma warning restore 612, 618

@@ -214,8 +214,11 @@ for a tenant that does not exist and one the caller may not open.
 
 The timeout policies are `tellma-web` (`RequestTimeout` 30 s), `tellma-long` (`LongRequestTimeout`
 5 min, on every long action) and `tellma-mcp` (`Tellma:Mcp:ToolTimeout` 60 s). A request past its
-timeout answers `504 timeout` when nothing was written; a response already started loses its
-connection, and `ApiResponseAbortedOnTimeout` is logged. The request's data access is cancelled with
+timeout answers `504 timeout` when nothing was written. Otherwise it loses its connection, and
+`ApiResponseAbortedOnTimeout` is logged with its reason: its response had started (`started`), it
+had sent a persist, whose write runs to its end and may have committed (`persist`), or its body
+writer had begun (`body`). A write's answer is never a 504, a 500 or a body cut short: its client
+sees the connection fail and the outcome as unknown. The request's data access is cancelled with
 it. A request body member no property of its type declares is skipped and counted on
 `tellma.api.unknown_members{type}`.
 
@@ -361,8 +364,9 @@ second one over unchanged users changes no row.
 
 Every cookie-authenticated request runs through one control after authorization. A request that
 may change data must come from the distribution's own origin (`Sec-Fetch-Site`, `Origin` or
-`Referer`), carry `Tellma-Client: <name>/<version>` with a configured name, and send JSON unless the
-endpoint accepts binary bodies. Safe methods and the hub's negotiate answer to the origin rules
+`Referer`), carry `Tellma-Client: <name>/<version>` with a configured name and a version of 1 to
+128 visible ASCII characters (the bound the composition holds the distribution version to), and
+send JSON unless the endpoint accepts binary bodies. Safe methods and the hub's negotiate answer to the origin rules
 alone. Bearer and anonymous endpoints are exempt, and so is the in-proc identity engine, whose
 forms carry its own antiforgery token.
 

@@ -23,7 +23,8 @@ namespace Tellma.Core.IntegrationTests.Blobs
     ///     The blob-reference rule and its statements against a real tenant database: a save confirms
     ///     the staged blobs it attaches and releases the ones it replaces or clears, on the root and on
     ///     child rows, an override save releasing what the row actually held; every shape of delete
-    ///     releases its rows' blobs, the children's with the root's; the validator refuses a missing,
+    ///     releases its rows' blobs, the children's with the root's; an action's marked rows confirm,
+    ///     release and refuse as a save's do; the validator refuses a missing,
     ///     committed, foreign, expired or repeated blob at its path and counts each refusal; the
     ///     persist refuses a blob that stopped being attachable after the validation round, or that a
     ///     second owner took, rolling the save back; a blob column is never read as a reference; and
@@ -328,6 +329,59 @@ namespace Tellma.Core.IntegrationTests.Blobs
         }
 
         [Fact]
+        public async Task An_action_writing_a_blob_column_through_the_rows_it_marks_confirms_releases_and_clears_as_a_save_does()
+        {
+            (int userId, string subject) = await ActionCallerAsync();
+            BlobOwner owner = await SaveAsync(subject, new BlobOwner { Name = "acted" });
+
+            // --- Set: the staged blob is confirmed ---
+            int first = await fixture.StageAsync(userId, BlobReferenceDatabase.FileKind);
+            await ActAsync(subject, BlobOwnerService.SetFile, owner.Id, new BlobOwnerSetFile { FileId = first });
+            Assert.Equal("Committed|c|-", await fixture.StateAsync(first));
+            Assert.Equal(first, await FileIdAsync(owner.Id));
+
+            // --- Replace: the new one confirmed, the old one released for the sweep ---
+            int second = await fixture.StageAsync(userId, BlobReferenceDatabase.FileKind);
+            await ActAsync(subject, BlobOwnerService.SetFile, owner.Id, new BlobOwnerSetFile { FileId = second });
+            Assert.Equal(("Released|c|e", "Committed|c|-"), (await fixture.StateAsync(first), await fixture.StateAsync(second)));
+
+            // --- Clear: released ---
+            await ActAsync(subject, BlobOwnerService.SetFile, owner.Id, new BlobOwnerSetFile { FileId = null });
+            Assert.Equal("Released|c|e", await fixture.StateAsync(second));
+            Assert.Null(await FileIdAsync(owner.Id));
+        }
+
+        [Fact]
+        public async Task An_action_dropping_a_child_row_through_the_rows_it_marks_releases_the_childs_blob()
+        {
+            (int userId, string subject) = await ActionCallerAsync();
+            int file = await fixture.StageAsync(userId, BlobReferenceDatabase.ChildFileKind);
+            BlobOwner owner = await SaveAsync(subject, new BlobOwner { Name = "dropped", Files = [new BlobOwnerFile { FileId = file }] });
+            Assert.Equal("Committed|c|-", await fixture.StateAsync(file));
+
+            await ActAsync(subject, BlobOwnerService.DropFiles, owner.Id, arguments: null);
+
+            Assert.Equal("Released|c|e", await fixture.StateAsync(file));
+            Assert.Equal(0, await fixture.Connect.ScalarAsync<int>(ConnectDatabase.TenantA, Invariant($"SELECT COUNT(*) FROM [fixture].[BlobOwnerFiles] WHERE [BlobOwnerId] = {owner.Id};")));
+        }
+
+        [Fact]
+        public async Task An_action_attaching_another_users_staged_blob_is_refused_by_the_persist_and_writes_nothing()
+        {
+            (_, string subject) = await ActionCallerAsync();
+            (int otherId, _) = await CallerAsync();
+            int theirs = await fixture.StageAsync(otherId, BlobReferenceDatabase.FileKind);
+            BlobOwner owner = await SaveAsync(subject, new BlobOwner { Name = "foreign" });
+
+            ValidationException refused = await Assert.ThrowsAsync<ValidationException>(
+                () => ActAsync(subject, BlobOwnerService.SetFile, owner.Id, new BlobOwnerSetFile { FileId = theirs }));
+
+            Assert.Equal([" Blob.NotAttachable persist"], Lines(refused));
+            Assert.Equal("Staged|-|e", await fixture.StateAsync(theirs));
+            Assert.Null(await FileIdAsync(owner.Id));
+        }
+
+        [Fact]
         public async Task A_blob_column_is_never_read_as_a_reference_so_a_caller_with_no_grant_on_blobs_attaches_one()
         {
             // The caller holds no grant at all on core.Blob: a reference check would refuse every attach.
@@ -409,6 +463,26 @@ namespace Tellma.Core.IntegrationTests.Blobs
         private Task<(int UserId, string Subject)> CallerAsync(params (string Resource, string Action, string? Filter)[] more)
         {
             return fixture.SeedCallerAsync(ConnectDatabase.TenantA, [(Owners, AccessActions.Read, null), (Owners, AccessActions.Save, null), .. more]);
+        }
+
+        /// <summary>Seeds a caller who reads and saves owners and runs both of the owner service's actions.</summary>
+        /// <returns>The caller's id and subject.</returns>
+        private Task<(int UserId, string Subject)> ActionCallerAsync()
+        {
+            // The securable actions are the PascalCase forms of the actions' names.
+            return CallerAsync((Owners, "SetFile", null), (Owners, "DropFiles", null));
+        }
+
+        /// <summary>Runs an action of the owner service on one owner in a scope of its own.</summary>
+        /// <param name="subject">The caller's subject.</param>
+        /// <param name="action">The action's name.</param>
+        /// <param name="id">The owner's id.</param>
+        /// <param name="arguments">The action's arguments; null for none.</param>
+        /// <returns>A task that completes when the action committed.</returns>
+        private async Task ActAsync(string subject, string action, int id, object? arguments)
+        {
+            await using AsyncServiceScope scope = await fixture.ScopeAsync(subject);
+            _ = await Service(scope).ExecuteActionAsync(action, [id], arguments, new ActionOptions(), Token);
         }
 
         /// <summary>Saves one owner in a scope of its own and returns the row it committed.</summary>

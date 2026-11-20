@@ -8,6 +8,7 @@ using Tellma.Core.Abstractions.Api;
 using Tellma.Core.Abstractions.Crud;
 using Tellma.Core.Abstractions.Entities;
 using Tellma.Core.Crud.Save;
+using Tellma.Core.Data;
 using Tellma.Core.Queryex;
 
 namespace Tellma.Core.Crud.Delete
@@ -106,7 +107,7 @@ namespace Tellma.Core.Crud.Delete
         private Task<AffectedResult> Run(StackDescriptor stack, string operation, int rows, Func<Task<AffectedResult>> steps, CancellationToken cancellationToken)
         {
             string lane = CrudMetrics.Lane(rows, writes.LargeBatchThreshold);
-            return operations.RunAsync(stack.Resource, operation, source: null, lane, () => SaveOperation.TranslatedAsync(steps), cancellationToken);
+            return operations.RunAsync(stack.Resource, operation, source: null, lane, () => DataAccessTranslation.RunAsync(steps), cancellationToken);
         }
     }
 }

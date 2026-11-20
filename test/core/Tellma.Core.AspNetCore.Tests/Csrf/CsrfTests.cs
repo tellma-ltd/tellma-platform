@@ -6,6 +6,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.Metrics.Testing;
 using System.Diagnostics.Metrics;
+using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.AspNetCore.Csrf;
 using Tellma.Core.AspNetCore.Tests.Infrastructure;
@@ -18,6 +19,9 @@ namespace Tellma.Core.AspNetCore.Tests.Csrf
     /// </summary>
     public sealed class CsrfTests(CsrfTests.Host fixture) : IClassFixture<CsrfTests.Host>
     {
+        /// <summary>A full commit sha, as source link appends to an informational version.</summary>
+        private const string Sha = "0123456789abcdef0123456789abcdef01234567";
+
         /// <summary>
         ///     A write's variations: the header to change (removed when the value is null), and the
         ///     status and rule expected; no rule for a request the control passes.
@@ -44,7 +48,21 @@ namespace Tellma.Core.AspNetCore.Tests.Csrf
                 { "Tellma-Client", "Web/1.0", 403, CsrfRules.Header },
                 { "Tellma-Client", "web/1.0 beta", 403, CsrfRules.Header },
                 { "Tellma-Client", "web/2.3.4-rc.1+build", 200, null },
+
+                // Versions past 64 characters with a full commit sha, which a distribution emits.
+                { "Tellma-Client", "web/1.12.0-preview.20261120.12+" + Sha, 200, null },
+                { "Tellma-Client", "web/1.4.0+Branch.develop.Sha." + Sha, 200, null },
+                { "Tellma-Client", "web/" + new string('1', CsrfRules.MaxVersionLength + 1), 403, CsrfRules.Header },
             };
+        }
+
+        [Fact]
+        public void The_version_the_composition_reads_for_the_web_client_passes_the_header_rule()
+        {
+            // The deployment's own versions, read from its assemblies as every host reads them.
+            DeploymentVersions versions = fixture.Services.GetRequiredService<DeploymentVersions>();
+
+            Assert.Equal("web", CsrfRules.ClientName("web/" + versions.DistributionVersion, new HashSet<string>(StringComparer.Ordinal) { "web" }));
         }
 
         [Theory]
