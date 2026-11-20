@@ -7,6 +7,7 @@ using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Identity;
 using Tellma.Core.Abstractions.Validation;
+using Tellma.Core.Data;
 using Tellma.Core.Tests.Access;
 
 namespace Tellma.Core.Tests.Users
@@ -97,6 +98,39 @@ namespace Tellma.Core.Tests.Users
             string created = Assert.Single(_kit.Identity.Created).Account.ClientId;
             Assert.Equal([created], _kit.Identity.Deleted);
             Assert.Empty(_kit.Memberships.Recorded);
+        }
+
+        [Fact]
+        public async Task A_persist_whose_commit_is_unknown_keeps_the_new_client_and_logs_it()
+        {
+            User robot = UsersKit.ServiceAccount(3, "svc-old");
+            ActionContext<User, int> context = Context(robot);
+            Exception ended = DataAccessTranslation.Unavailable(new DataAccessAmbiguousException(new TimeoutException("The connection was lost."), CommitVerdict.Unknown));
+
+            Task<CredentialsResult> running = _kit.Service.RunIssueCredentialsAsync(context);
+            Assert.True(context.FaultPersisted(ended));
+
+            Assert.Same(ended, await Assert.ThrowsAnyAsync<Exception>(() => running));
+            _ = Assert.Single(_kit.Identity.Created);
+            Assert.Empty(_kit.Identity.Deleted);
+            Assert.Empty(_kit.Memberships.Recorded);
+            Assert.Single(_kit.Logs.Entries, static entry => entry.EventId.Name == "ServiceAccountClientKept");
+        }
+
+        [Fact]
+        public async Task A_persist_the_probe_proved_rolled_back_deletes_the_new_client()
+        {
+            User robot = UsersKit.ServiceAccount(3, "svc-old");
+            ActionContext<User, int> context = Context(robot);
+            Exception ended = DataAccessTranslation.Unavailable(new DataAccessAmbiguousException(new TimeoutException("The connection was lost."), CommitVerdict.NotCommitted));
+
+            Task<CredentialsResult> running = _kit.Service.RunIssueCredentialsAsync(context);
+            Assert.True(context.FaultPersisted(ended));
+
+            Assert.Same(ended, await Assert.ThrowsAnyAsync<Exception>(() => running));
+            string created = Assert.Single(_kit.Identity.Created).Account.ClientId;
+            Assert.Equal([created], _kit.Identity.Deleted);
+            Assert.DoesNotContain(_kit.Logs.Entries, static entry => entry.EventId.Name == "ServiceAccountClientKept");
         }
 
         [Fact]

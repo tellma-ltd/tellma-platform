@@ -8,6 +8,7 @@ using Tellma.Core.Abstractions.Crud;
 using Tellma.Core.Abstractions.Identity;
 using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.Abstractions.Validation;
+using Tellma.Core.Data;
 
 namespace Tellma.Core.Users
 {
@@ -15,8 +16,8 @@ namespace Tellma.Core.Users
     // during the remote call, as for invite. The client is created between the round trips; the row
     // takes its id through context.Update, which a recompose of round trip 2 replays without a second
     // create. The new client is recorded and the previous one deleted once the action committed, so
-    // a failure between the two leaves working credentials; a persist that never commits deletes the
-    // new client instead.
+    // a failure between the two leaves working credentials; a persist that provably never committed
+    // deletes the new client instead, and one whose commit is unknown keeps it and logs.
     public partial class UserService<TUser>
     {
         /// <summary>
@@ -64,11 +65,22 @@ namespace Tellma.Core.Users
                 context.Update(assignments);
                 await context.Persisted.ConfigureAwait(false);
             }
-            catch (Exception)
+            catch (Exception failure)
             {
-                // Nothing committed: the new client is an orphan, deleted best effort; an orphan the
-                // delete misses is harmless, since no row names it.
-                await DeleteServiceAccountQuietlyAsync(client.ClientId, account.Id).ConfigureAwait(false);
+                // A persist that provably did not commit leaves the new client an orphan, deleted best
+                // effort; an orphan the delete misses is harmless, since no row names it. One whose
+                // commit is unknown (an update cannot be probed after a lost connection) may have
+                // linked the account to it, so the client is kept: deleting it could leave the account
+                // naming a client that no longer exists, while a kept orphan only lingers.
+                if (CommitUnknown(failure))
+                {
+                    UsersLog.ServiceAccountClientKept(_dependencies.Logger, failure, account.Id);
+                }
+                else
+                {
+                    await DeleteServiceAccountQuietlyAsync(client.ClientId, account.Id).ConfigureAwait(false);
+                }
+
                 throw;
             }
 
@@ -80,6 +92,26 @@ namespace Tellma.Core.Users
             }
 
             return new CredentialsResult(account.Id, client.ClientId, client.ClientSecret);
+        }
+
+        /// <summary>
+        ///     Whether a persist failure leaves its commit unknown: a round trip that may have committed
+        ///     with nothing to tell, anywhere in the failure's chain of causes.
+        /// </summary>
+        /// <param name="failure">The persist's failure.</param>
+        /// <returns>True when the persist may have committed.</returns>
+        internal static bool CommitUnknown(Exception failure)
+        {
+            ArgumentNullException.ThrowIfNull(failure);
+            for (Exception? cause = failure; cause is not null; cause = cause.InnerException)
+            {
+                if (cause is DataAccessAmbiguousException { Verdict: not CommitVerdict.NotCommitted })
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
     }
 }

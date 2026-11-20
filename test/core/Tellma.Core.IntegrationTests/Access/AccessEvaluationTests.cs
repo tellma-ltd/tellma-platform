@@ -40,6 +40,18 @@ namespace Tellma.Core.IntegrationTests.Access
         private readonly MetricCollector<long> _results = new(
             fixture.Services.GetRequiredService<IMeterFactory>(), AccessTelemetryNames.MeterName, AccessTelemetryNames.ConnectResults);
 
+        /// <summary>
+        ///     The securables every member reads in part without a grant, in ordinal order: their own
+        ///     user row, and the memberships and stamp it owns. The criteria of other stacks that scope a read to
+        ///     its caller join this list.
+        /// </summary>
+        private static readonly (string Resource, string Action)[] SelfScoped =
+        [
+            ("core.RoleMembership", AccessActions.Read),
+            (CoreResources.User, AccessActions.Read),
+            ("core.UserStamp", AccessActions.Read),
+        ];
+
         /// <summary>The test's cancellation.</summary>
         private static CancellationToken Token => TestContext.Current.CancellationToken;
 
@@ -155,8 +167,15 @@ namespace Tellma.Core.IntegrationTests.Access
             AccessDecision second = await evaluator.EvaluateAsync(CoreResources.Role, AccessActions.Save, Token);
             IReadOnlyList<AccessDecision> summary = await evaluator.EvaluateAllAsync(Token);
 
+            // A caller without grants still reads their own user row, and its owned memberships and
+            // stamp follow their owner; every other securable is denied.
             Assert.Equal(AccessOutcome.Denied, second.Outcome);
-            Assert.All(summary, static decision => Assert.Equal(AccessOutcome.Denied, decision.Outcome));
+            Assert.Equal(
+                SelfScoped,
+                summary.Where(static decision => decision.Outcome == AccessOutcome.Filtered).Select(static decision => (decision.Resource, decision.Action)).OrderBy(static pair => pair.Resource, StringComparer.Ordinal));
+            Assert.All(
+                summary.Where(static decision => !SelfScoped.Contains((decision.Resource, decision.Action))),
+                static decision => Assert.Equal(AccessOutcome.Denied, decision.Outcome));
             _ = Assert.Single(Variants(prologues).Skip(before));
         }
 

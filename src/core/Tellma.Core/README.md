@@ -2096,7 +2096,8 @@ method at the validation's quiet point without a round trip of its own):
 - **`issue-credentials`** (single target) creates a client, updates the account to name it (joining
   it on its first credentials), and answers the client id and its one-time secret, which no log or
   rendering carries. Once the action committed, the client is recorded and the previous one deleted;
-  a persist that never commits deletes the new one instead.
+  a persist that provably never committed deletes the new one instead, and one whose commit is
+  unknown (a lost connection around the commit) keeps it and logs `ServiceAccountClientKept`.
 - **`invitation-status`** reads the requested users under the caller's read decision in one round
   trip, omitting the users the caller cannot read, then asks the identity server for the delivery of
   the invitations it emailed.
@@ -2104,7 +2105,7 @@ method at the validation's quiet point without a round trip of its own):
 After a committed `deactivate`, every session listener is told of each linked user, the membership
 hints turn inactive and a service account's client is deleted; after `activate`, the hints turn
 active. These effects, like the actions' own, run outside any transaction and log a failure
-(`ServiceAccountDeleteFailed`, `UserAccessRevocationFailed`, `UserMembershipHintFailed`) rather than
+(`ServiceAccountDeleteFailed`, `ServiceAccountClientKept`, `UserAccessRevocationFailed`, `UserMembershipHintFailed`) rather than
 throw. `UserAccessCriteria` grants every member `Read` of their own user row (`Id = me()`). Invites
 are counted on `tellma.users.invites` (meter `Tellma.Core`, tag `outcome`: `Invited`, `Reinvited`,
 `Active`, `SubjectMismatch`, `Error`, `NotAttempted`) and logged as `UsersInvited` or

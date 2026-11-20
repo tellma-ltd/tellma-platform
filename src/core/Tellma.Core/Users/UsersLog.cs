@@ -52,6 +52,20 @@ namespace Tellma.Core.Users
             Message = "The identity client of service account {UserId} could not be deleted.")]
         public static partial void ServiceAccountDeleteFailed(ILogger logger, Exception exception, int userId);
 
+        /// <summary>
+        ///     A service account's new client was kept although the persist that links it failed,
+        ///     because the database could not tell whether that persist committed: deleting it could
+        ///     leave the account linked to a client that no longer exists.
+        /// </summary>
+        /// <param name="logger">The logger.</param>
+        /// <param name="exception">The persist's failure.</param>
+        /// <param name="userId">The service account's user id.</param>
+        [LoggerMessage(
+            EventName = "ServiceAccountClientKept",
+            Level = LogLevel.Warning,
+            Message = "The new identity client of service account {UserId} was kept: whether its link committed is unknown. Reload the account, and issue its credentials again if it does not authenticate.")]
+        public static partial void ServiceAccountClientKept(ILogger logger, Exception exception, int userId);
+
         /// <summary>A deactivated user's access to the tenant was revoked: the session listeners were told.</summary>
         /// <param name="logger">The logger.</param>
         /// <param name="userId">The user's id.</param>

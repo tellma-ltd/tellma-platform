@@ -24,9 +24,10 @@ namespace Tellma.Core.IntegrationTests.Users
     /// <summary>
     ///     The users' identity actions against a real tenant database and a scripted identity server:
     ///     the invite's write-back and its transitions, the invitation status under the caller's read
-    ///     decision, service credentials issued, rotated and revoked, a recomposed persist that calls
-    ///     the identity server once, the round-trip budgets, no transaction open while the identity
-    ///     server is called, and a user delete that takes the rows its keys cascade to.
+    ///     decision, service credentials issued, rotated and revoked, an invite answered in part, a
+    ///     recomposed persist that calls the identity server once, the round-trip budgets of the users' writes,
+    ///     no transaction open while the identity server is called, and a user delete that takes the rows
+    ///     its keys cascade to.
     /// </summary>
     /// <param name="fixture">The two tenant databases and their composition.</param>
     [Trait("Category", "Integration")]
@@ -147,7 +148,10 @@ namespace Tellma.Core.IntegrationTests.Users
 
             ValidationException refused = await Assert.ThrowsAsync<ValidationException>(() => InviteAsync(admin, twin));
 
-            Assert.Equal([ValidationCodes.Unique], refused.Codes());
+            // An action carries no payload row, so the duplicate is reported on the whole payload, naming the property.
+            ValidationError error = Assert.Single(refused.Errors);
+            Assert.Equal((ValidationPath.Root, ValidationCodes.Unique), (error.Path, error.Code));
+            Assert.Equal(nameof(User.Subject), error.Arguments["property"]);
             Assert.Null((await RowAsync(twin)).Subject);
         }
 
@@ -209,6 +213,42 @@ namespace Tellma.Core.IntegrationTests.Users
             Assert.Single(_identity.Invites);
             Assert.Equal("Invited", (await RowAsync(ada)).State);
             Assert.Single(_memberships.Hints());
+        }
+
+        [Fact]
+        public async Task An_invite_the_identity_server_answered_in_part_commits_the_prefix_and_raises_the_rest_in_two_round_trips()
+        {
+            (_, string admin) = await fixture.SeedAdministratorAsync("Ann");
+            int ada = await SeedNewAsync("Ada");
+            int bob = await SeedNewAsync("Bob");
+            await WarmAsync(admin);
+            ConcurrentQueue<int> open = new();
+            _identity.OnInvite = async (invitations, cancellationToken) =>
+            {
+                // The identity server answers the first invitation only, as when it stops part way.
+                open.Enqueue(await OpenTransactionsAsync(cancellationToken));
+                return [new IdentityInvitationResult(invitations[0].Email, ScriptedIdentityClient.SubjectOf(invitations[0].Email), InviteStatus.Invited, null)];
+            };
+
+            await using AsyncServiceScope scope = await fixture.SteppedUpScopeAsync(admin, Instance);
+            DataAccessScope access = scope.ServiceProvider.GetRequiredService<DataAccessScope>();
+            int start = access.RoundTrips;
+            PartialFailureException partial = await Assert.ThrowsAsync<PartialFailureException>(
+                () => scope.Users().ExecuteActionAsync<IReadOnlyList<InviteResult>>("invite", [ada, bob], null, new ActionOptions(), Token));
+
+            Assert.Equal(2, access.RoundTrips - start);
+            Assert.Equal([0], open);
+            Assert.Equal([new InviteResult(ada, InviteStatus.Invited, null)], Assert.IsAssignableFrom<IReadOnlyList<InviteResult>>(partial.Results));
+            Assert.Equal([bob.ToString(CultureInfo.InvariantCulture)], partial.Failed);
+
+            // --- The answered prefix committed; the user never attempted is untouched ---
+            UserRow invited = await RowAsync(ada);
+            Assert.Equal((ScriptedIdentityClient.SubjectOf(Email(ada)), "Invited"), (invited.Subject, invited.State));
+            UserRow untouched = await RowAsync(bob);
+            Assert.Null(untouched.Subject);
+            Assert.Null(untouched.InvitedAt);
+            Assert.Equal("New", untouched.State);
+            Assert.Equal([(ConnectDatabase.TenantA, ScriptedIdentityClient.SubjectOf(Email(ada)))], _memberships.Hints());
         }
 
         // --- The invitation status ---
@@ -311,6 +351,97 @@ namespace Tellma.Core.IntegrationTests.Users
         }
 
         [Fact]
+        public async Task Credentials_hold_no_transaction_while_the_client_is_created()
+        {
+            (_, string admin) = await fixture.SeedAdministratorAsync("Ann");
+            int robot = await SeedServiceAsync();
+            ConcurrentQueue<int> open = new();
+            _identity.BeforeCreate = async (_, cancellationToken) => open.Enqueue(await OpenTransactionsAsync(cancellationToken));
+
+            _ = await IssueAsync(admin, robot);
+
+            Assert.Equal([0], open);
+        }
+
+        [Fact]
+        public async Task A_credentials_persist_recomposed_after_the_client_was_created_creates_one_and_records_it_once()
+        {
+            (int ann, string admin) = await fixture.SeedAdministratorAsync("Ann");
+            int robot = await SeedServiceAsync();
+            await WarmAsync(admin);
+
+            // The caller's permissions move while the identity server creates the client, so the persist's guard refuses the first send.
+            _identity.BeforeCreate = (_, _) => fixture.BumpPermissionsAsync(ann);
+            CredentialsResult first;
+            await using (AsyncServiceScope scope = await fixture.SteppedUpScopeAsync(admin, Instance))
+            {
+                DataAccessScope access = scope.ServiceProvider.GetRequiredService<DataAccessScope>();
+                int start = access.RoundTrips;
+                first = await scope.Users().ExecuteActionAsync<CredentialsResult>("issue-credentials", [robot], null, new ActionOptions(), Token);
+                Assert.Equal(3, access.RoundTrips - start);
+            }
+
+            Assert.Equal(first.ClientId, Assert.Single(_identity.Created).Account.ClientId);
+            Assert.Equal(first.ClientId, (await RowAsync(robot)).Subject);
+            Assert.Equal([(ConnectDatabase.TenantA, first.ClientId, true)], _memberships.Records());
+            Assert.Empty(_identity.Deleted);
+
+            // --- A recomposed rotation deletes the previous client once, and never the new one ---
+            CredentialsResult second = await IssueAsync(admin, robot);
+
+            Assert.Equal(2, _identity.Created.Count);
+            Assert.Equal(second.ClientId, (await RowAsync(robot)).Subject);
+            Assert.Equal([first.ClientId], _identity.Deleted);
+            Assert.Equal([(ConnectDatabase.TenantA, first.ClientId, true), (ConnectDatabase.TenantA, second.ClientId, true)], _memberships.Records());
+        }
+
+        // --- The budgets of the users' other writes ---
+
+        [Fact]
+        public async Task An_admin_save_that_changes_a_locale_member_takes_two_round_trips()
+        {
+            (_, string admin) = await fixture.SeedAdministratorAsync("Ann");
+            int ada = await SeedNewAsync("Ada");
+            await WarmAsync(admin);
+
+            await using AsyncServiceScope scope = await fixture.SteppedUpScopeAsync(admin, Instance);
+            User row = await scope.LoadUserAsync(ada);
+            row.PreferredTimeZone = "Asia/Riyadh";
+            row.RoleMemberships = null;
+            DataAccessScope access = scope.ServiceProvider.GetRequiredService<DataAccessScope>();
+            int start = access.RoundTrips;
+            _ = await scope.SaveUsersAsync(row);
+
+            Assert.Equal(2, access.RoundTrips - start);
+        }
+
+        [Fact]
+        public async Task A_deactivation_and_an_activation_take_two_round_trips_each()
+        {
+            (_, string admin) = await fixture.SeedAdministratorAsync("Ann");
+            int ada = await SeedNewAsync("Ada");
+            await WarmAsync(admin);
+
+            Assert.Equal(2, await ActionRoundTripsAsync(admin, "deactivate", ada));
+            Assert.Equal(2, await ActionRoundTripsAsync(admin, "activate", ada));
+        }
+
+        [Fact]
+        public async Task A_user_delete_takes_two_round_trips()
+        {
+            (_, string admin) = await fixture.SeedAdministratorAsync("Ann");
+            int ada = await SeedNewAsync("Ada");
+            await WarmAsync(admin);
+
+            await using AsyncServiceScope scope = await fixture.SteppedUpScopeAsync(admin, Instance);
+            DataAccessScope access = scope.ServiceProvider.GetRequiredService<DataAccessScope>();
+            int start = access.RoundTrips;
+            _ = await scope.Users().DeleteByIdsAsync([ada], cancellationToken: Token);
+
+            Assert.Equal(2, access.RoundTrips - start);
+        }
+
+        [Fact]
         public async Task A_user_s_kind_is_written_once()
         {
             (_, string admin) = await fixture.SeedAdministratorAsync("Ann");
@@ -373,6 +504,20 @@ namespace Tellma.Core.IntegrationTests.Users
         {
             await using AsyncServiceScope scope = await fixture.SteppedUpScopeAsync(subject, Instance);
             return await scope.Users().ExecuteActionAsync<CredentialsResult>("issue-credentials", [id], null, new ActionOptions(), Token);
+        }
+
+        /// <summary>Runs a built-in action over one user in a stepped-up scope of the caller and counts its round trips.</summary>
+        /// <param name="subject">The caller.</param>
+        /// <param name="action">The action.</param>
+        /// <param name="id">The user.</param>
+        /// <returns>The action's round trips.</returns>
+        private async Task<int> ActionRoundTripsAsync(string subject, string action, int id)
+        {
+            await using AsyncServiceScope scope = await fixture.SteppedUpScopeAsync(subject, Instance);
+            DataAccessScope access = scope.ServiceProvider.GetRequiredService<DataAccessScope>();
+            int start = access.RoundTrips;
+            _ = await scope.Users().ExecuteActionAsync(action, [id], null, new ActionOptions(), Token);
+            return access.RoundTrips - start;
         }
 
         /// <summary>Reads the invitation status through the action invoker.</summary>
