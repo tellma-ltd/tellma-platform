@@ -102,11 +102,11 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 
 | PC | Slot | Branch | Step | Implementer agent (name / id) | Reviewer agent (name / id) | Started (UTC) |
 |---|---|---|---|---|---|---|
+| PC-088 | pc-1 | pc/PC-088 | impl | impl (Opus, high, launched 2026-11-20) | 0018-c; two reviews (R2 fable, security-bound) | 2026-11-20 |
 | PC-F63 | pc-f | pc/PC-F63 | impl | impl (Opus, high, launched 2026-11-20) | nightly client-e2e WebKit chart-bidi; R1 only | 2026-11-20 |
 | PC-F64 | pc-f2 | pc/PC-F64 | impl | impl (Opus, high, launched 2026-11-20) | nightly integration-windows TenantScopeTests suspension refresh; R1 only | 2026-11-20 |
 | PC-144 | pc-3 | pc/PC-144 | fix1 | R1 0/2/4 (7d470e81; D-150: interim declared core.Jobs write, PC-F62 general fix); fix1 then hold behind PC-087 | 0020-e; R1 only | 2026-11-20 |
 | PC-146 | pc-4 | pc/PC-146 | fix1 | R1 1/1/3 (5efa9448; inbox route collides with test models, ~79 unit fails); escalated to R2 (inherit xhigh, §4.4); D-151 | 0021-c; R1 only | 2026-11-20 |
-| PC-087 | pc-1 | pc/PC-087 | integrate | released after PC-F61 (0d6e317a); integrating | 0018-b; R1 only | 2026-11-20 |
 
 ## Fix items
 
@@ -382,8 +382,8 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-084 | 0017-c2 | 1 | done | 108e56b5, 46b70189, 575849a4, 52e51448; green 44457610985 | | carry (D-123): at integration, PC-077's SaveRun.Enlisted.cs Translate calls TranslateFailure(failure) in place of PersistFailures.Translate(...) before the re-home; add one enlisted test (refusals counted once per value; round count of a cold enlisted attach) |
 | PC-085 | 0011-g | 1 | done (integrated db81630; CI 43479519320 red: Acme E2E csproj never committed (.gitignore *.e2e matches the folder case-insensitively), fixed by PC-F30, green at 9a1754d (CI 43488423725); integration-windows itself green; fix1 6ba59cb; R1-6 pushed back: AspNetCore→Webhooks edge would break ARCHITECTURE rule 6, IVT seam kept and documented; R1-4 compares runtime models only; new fix: RCSI ALTER WITH ROLLBACK IMMEDIATE (pooled catalog connection timed out Acme readiness); integration-windows non-gating) | a147a95, 6ba59cb, db81630 (pc) |  |  |
 | PC-086 | 0029-a | 1 | done | ce581934, 7a5cdf53, 84278111, 22c362f7; green 44575091654 | | |
-| PC-087 | 0018-b | 1 | in progress | | | |
-| PC-088 | 0018-c | 1 | todo | | | |
+| PC-087 | 0018-b | 1 | done (f75366c4; pc 44748673481 green, PR 44752134569 green) | e2ed8550, 0d6e317a, 01533a52, f75366c4 | | D-148 |
+| PC-088 | 0018-c | 1 | in progress | | | |
 | PC-089 | 0017-d | 1 | todo | | | carry: none from D-096 any more (D-120 moved §6.4 BlobContainerStep to PC-083 and the provisioning-record row to whichever of PC-078 and PC-083 lands last); carry from PC-080 (D-124): blob endpoints must evaluate access or record the member witness, or the witness filter answers 500 (unstarted) or aborts the connection (started); carry D-137: wrap the blob GET in the telemetry stage (0016 §5.1 chain); carry D-145: map the blob GET with DisableRequestTimeout or a time-to-first-byte policy (tellma-web cuts downloads at 30 s) |
 | PC-090 | 0018-d | 1 | todo | | | carry from PC-141 (D-096): TenantStateTests.An_action_allowed_when_read_only_succeeds_on_a_read_only_tenant runs and must pass |
 | PC-091 | 0018-e | 1 | todo | | | |
