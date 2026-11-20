@@ -203,3 +203,48 @@ R1-1: fixed in the review 1 fixes commit. Checked against run 44699551746's `cli
 which lists the same nine packages with no emoji font. The PR-tier bullet in the implementer
 notes now names them: the CJK (IPA Gothic, WenQuanYi Zen Hei), Thai (TLWG Loma), GNU FreeFont,
 Unifont and X11 font packages.
+
+## Integration CI fixes
+
+Run 44723555424 (366d0ceb) was red in `acme-client (ubuntu-latest)` alone.
+
+- **What failed.** The OS dependencies installed on attempt 1 (9 font packages, 21.9 MB). The
+  launch probe then printed `Navigating to about:blank` at 10:58:24.295, `Capturing screenshot` at
+  .338 and, at .398,
+  `Error: Protocol error (Page.captureScreenshot): Unable to capture screenshot`. The browser had
+  launched and loaded the page. Only the capture failed. Chromium sends that error from
+  `PageHandler::ScreenshotCaptured` when the snapshot of the page's compositing surface comes back
+  empty, which happens when no frame from the page is there to copy. The CLI's `screenshot`
+  command captures as soon as the page has loaded, and for `about:blank` that was 43 ms after the
+  navigation started, which can come before the page's first frame. The client and identity-e2e
+  probes ran the same sequence with the same timing (fontconfig trigger, then launch about 1.5 s
+  later, then capture 40 to 60 ms after navigation) and passed. So this is a race in the probe,
+  not a launch failure or a library problem. The alternatives the orchestrator listed do not fit
+  the log: no browsers path or cache difference (`/home/runner/.cache/ms-playwright` in every
+  job, and the browser launched), no sandbox error, and no install still settling (dpkg and the
+  fontconfig trigger had finished).
+- **Fix.** The probe opens a small `data:` page that sets `body[data-painted]` from a second
+  `requestAnimationFrame` callback, which runs only once a frame has been produced. It passes
+  `--wait-for-selector 'body[data-painted]'`, so the capture is ordered after the page's first
+  frame instead of racing it. No retry was added. Also:
+  - A probe now runs with `DEBUG=pw:browser`, and its output goes to a file. The file is printed
+    only on failure, so a recurrence shows the browser process's own log (stderr, how it
+    exited). A pass prints one line.
+  - The error now says "failed the launch probe" instead of "failed to launch", because a probe
+    can fail after a successful launch.
+  - README step 3 describes all of this.
+- **Not reproduced locally.** The race did not reproduce: about:blank failed 0 of 60 times on
+  Windows, 0 of 150 on ubuntu:26.04, and 0 of 60 on ubuntu:26.04 with both CPUs saturated
+  (PC-F61-repro3.log, PC-F61-repro4.log). The fix rests on the Chromium code path and the CI
+  timing, not on a local reproduction. Under the same load the new probe passed 60 of 60 for
+  Chromium. Firefox had 2 failures in 60, and both printed no error: they hit the harness's own
+  60 s cap. Single Firefox probes under that load took 23 to 56 s, against about 6 s on a hosted
+  runner and the script's 120 s cap. WebKit's count is in PC-F61-repro4.log. The fixed script passes for
+  chromium, firefox and webkit under Git Bash with the bin shim, and for chromium through
+  `pwsh .../playwright.ps1`, so the `data:` URL survives the .NET wrapper intact. A future
+  failure prints the browser log.
+- **Why client needed a second attempt.** Mirror slowness, handled as designed. Attempt 1
+  stalled on the Azure mirror: fonts-ipafont-gothic took 50 s and fonts-freefont-ttf 77 s. It hit
+  the 150 s per-attempt limit (07:59.77 to 10:29.80) and was killed. Attempt 2 found the partial
+  archives cached ("Need to get 12.4 MB/21.9 MB"), finished in about 6 s and reported
+  "(OS dependencies: installed)". identity-e2e and acme-client did not stall.

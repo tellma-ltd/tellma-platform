@@ -48,8 +48,15 @@ leaves the decision to the launch probe. To install them on such a machine, run 
    does not find the apt lock still held. When every attempt fails, or root is not available
    without a password, the script emits a `::warning::` that names the packages still missing,
    and carries on to the probe instead of failing.
-3. **Probe each browser**: launch it headlessly through the same CLI and screenshot a blank page.
-   A browser that cannot launch fails the step, whatever happened in step 2.
+3. **Probe each browser**: launch it headlessly through the same CLI, open a small `data:` page and
+   screenshot it once the page has rendered a frame. A browser that cannot launch fails the step,
+   whatever happened in step 2. The probe waits for the frame because the CLI otherwise takes the
+   screenshot as soon as the page has loaded, which for `about:blank` can come before the page's
+   first frame. Chromium then fails the capture ("Unable to capture screenshot") although the
+   browser launched. The page marks itself from a second `requestAnimationFrame` callback, which
+   runs only after a frame has been produced, and the CLI's `--wait-for-selector` waits for that
+   mark. A passing probe prints one line. A failing one prints the CLI's output together with the
+   browser process's own log (Playwright's `pw:browser` debug channel).
 
 ## Outcomes
 

@@ -142,32 +142,50 @@ if [[ $(uname -s) == Linux ]]; then
 fi
 
 # --- 3. The launch probe ------------------------------------------------------------------------
-# Each browser opens a blank page headlessly and saves a screenshot of it, through the same CLI and
+# Each browser opens a small page headlessly and saves a screenshot of it, through the same CLI and
 # so the same Playwright version the tests use. A missing shared library makes the launch fail here,
 # with Playwright's own list of what is missing, rather than in the middle of a test run.
+#
+# The screenshot waits for the page to render a frame. A screenshot copies the frame the browser
+# last received from the page, and the CLI takes it as soon as the page has loaded: for
+# about:blank that can be before the first frame exists, and Chromium then fails the capture with
+# "Unable to capture screenshot" although the browser launched and loaded the page. The probe
+# page marks its body from a second animation-frame callback, which runs only after the frame
+# that the first callback preceded has been produced, and the CLI waits for that mark before
+# capturing. The page has no spaces, quotes or `#`, so it passes intact through every CLI
+# wrapper and stays a single data: URL.
+readonly probe_page='data:text/html,<p>probe</p><script>requestAnimationFrame(()=>requestAnimationFrame(()=>document.body.dataset.painted=1))</script>'
+readonly probe_painted_selector='body[data-painted]'
 probe_dir=$(mktemp -d)
 trap 'rm -rf "$probe_dir"' EXIT
 failed_browsers=()
 for browser in "${browsers[@]}"; do
   echo "==> Launching $browser"
   screenshot="$probe_dir/$browser.png"
-  if timeout --kill-after=15 "$probe_timeout_seconds" "${cli[@]}" screenshot --browser "$browser" about:blank "$screenshot" &&
-    [[ -s $screenshot ]]; then
+  probe_log="$probe_dir/$browser.log"
+  # Playwright's pw:browser debug channel adds the browser process's own output (its launch line,
+  # anything it writes to stderr, how it exited) to the CLI's. The log is printed only when the
+  # probe fails, so a failure can be diagnosed from the run log and a pass stays one line.
+  if DEBUG=pw:browser timeout --kill-after=15 "$probe_timeout_seconds" "${cli[@]}" screenshot \
+    --browser "$browser" --wait-for-selector "$probe_painted_selector" "$probe_page" "$screenshot" \
+    >"$probe_log" 2>&1 && [[ -s $screenshot ]]; then
     echo "$browser launched."
   else
+    cat "$probe_log"
     failed_browsers+=("$browser")
   fi
 done
 
-# A browser that cannot launch fails the step whatever happened before: when the dependencies
-# could not be installed, the outage is a real problem for this run after all.
+# A browser that fails the probe (it cannot launch, load the page or render it) fails the step
+# whatever happened before: when the dependencies could not be installed, the outage is a real
+# problem for this run after all.
 if ((${#failed_browsers[@]} > 0)); then
   case $deps_status in
     unavailable) reason="and the OS dependencies they need could not be installed (see the warning above)" ;;
     not-applicable) reason="see the Playwright error above" ;;
     *) reason="although their OS dependencies are $deps_status" ;;
   esac
-  echo "::error title=Playwright browsers::${failed_browsers[*]} failed to launch, $reason." >&2
+  echo "::error title=Playwright browsers::${failed_browsers[*]} failed the launch probe, $reason." >&2
   exit 1
 fi
 
