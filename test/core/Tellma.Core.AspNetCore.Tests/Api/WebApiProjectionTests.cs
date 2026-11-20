@@ -33,6 +33,7 @@ using Tellma.Core.Abstractions.Validation;
 using Tellma.Core.Access;
 using Tellma.Core.Api;
 using Tellma.Core.AspNetCore.Api;
+using Tellma.Core.AspNetCore.Limits;
 using Tellma.Core.AspNetCore.Routing;
 using Tellma.Core.AspNetCore.Tests.Infrastructure;
 using Tellma.Core.Crud;
@@ -68,6 +69,37 @@ namespace Tellma.Core.AspNetCore.Tests.Api
             Assert.Contains(routes, static route => route.Template == RouteContracts.TemplatePrefix + "center-notes/query");
             Assert.Contains(routes, static route => route.Template == RouteContracts.TemplatePrefix + "currencies/all");
             Assert.Contains(routes, static route => route.Template == RouteContracts.TemplatePrefix + "inbox/summary");
+        }
+
+        [Fact]
+        public async Task A_rate_policy_an_action_method_declares_reaches_its_endpoint_ahead_of_the_groups()
+        {
+            await using TellmaTestHost host = await StartAsync();
+            List<RouteEndpoint> projected = Projected(host);
+
+            // --- The export's and the report's own policies, chained ahead of the web group's; the report's lane by priority ---
+            RateChainSpec export = RatePolicies.Resolve(Endpoint(projected, "inbox/export").Metadata);
+            RateChainSpec report = RatePolicies.Resolve(Endpoint(projected, "inbox/report").Metadata);
+            RateChainSpec summary = RatePolicies.Resolve(Endpoint(projected, "inbox/summary").Metadata);
+            RateChainSpec builtIn = RatePolicies.Resolve(Endpoint(projected, "centers/get-by-parent-ids").Metadata);
+
+            Assert.Equal([TellmaRatePolicies.Export, RatePolicies.UserAcrossTenants, TellmaRatePolicies.User, TellmaRatePolicies.Tenant], export.Policies.Select(static policy => policy.Name));
+            Assert.False(export.HonorsPriority);
+            Assert.Equal([TellmaRatePolicies.Reports, RatePolicies.UserAcrossTenants, TellmaRatePolicies.User, TellmaRatePolicies.Tenant], report.Policies.Select(static policy => policy.Name));
+            Assert.True(report.HonorsPriority);
+
+            // --- An action that names none, a built-in action and a standard operation take the group's alone ---
+            Assert.Equal([RatePolicies.UserAcrossTenants, TellmaRatePolicies.User, TellmaRatePolicies.Tenant], summary.Policies.Select(static policy => policy.Name));
+            Assert.Equal(summary.Signature, builtIn.Signature);
+            Assert.All(
+                projected.Where(static endpoint => endpoint.Metadata.GetRequiredMetadata<ProjectedRouteMetadata>().Route.Action is null),
+                static endpoint => Assert.Equal([TellmaRatePolicies.User, TellmaRatePolicies.Tenant], endpoint.Metadata.GetOrderedMetadata<IRatePolicyMetadata>().Select(static policy => policy.Policy)));
+
+            // The projected endpoint whose route ends in a relative path.
+            static RouteEndpoint Endpoint(List<RouteEndpoint> projected, string relative)
+            {
+                return Assert.Single(projected, endpoint => endpoint.RoutePattern.RawText!.EndsWith("/api/web/" + relative, StringComparison.Ordinal));
+            }
         }
 
         /// <summary>The projection table: each route kind's grant, tenant facts, contract, timeout, polling and step-up metadata.</summary>
@@ -114,7 +146,8 @@ namespace Tellma.Core.AspNetCore.Tests.Api
             // --- The contract, the kind, the timeout, the activity stamp and the step-up ---
             Assert.Equal(projected.Route.Fingerprint, metadata.GetRequiredMetadata<ContractMetadata>().Fingerprint);
             Assert.Equal(kind, projected.Kind.ToString());
-            Assert.Equal(isLong ? TellmaRequestTimeouts.Long : null, metadata.GetMetadata<RequestTimeoutAttribute>()?.PolicyName);
+            // The group's web timeout, which a long action's own policy overrides.
+            Assert.Equal(isLong ? TellmaRequestTimeouts.Long : TellmaRequestTimeouts.Web, metadata.GetMetadata<RequestTimeoutAttribute>()?.PolicyName);
             Assert.Equal(polling, metadata.GetMetadata<NoActivityStampMetadata>() is not null);
             Assert.Equal(stepUp, metadata.GetMetadata<RequireAssuranceMetadata>() is not null);
 

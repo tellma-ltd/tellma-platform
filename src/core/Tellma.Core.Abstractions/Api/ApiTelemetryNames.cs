@@ -31,7 +31,7 @@ namespace Tellma.Core.Abstractions.Api
         /// </summary>
         public const string OperationDuration = "tellma.api.operation.duration";
 
-        /// <summary>Counter of request members skipped as unknown. Tag: <c>type</c>, the CLR type name.</summary>
+        /// <summary>Counter of request members skipped as unknown. Tag: <see cref="TypeTag" />.</summary>
         public const string UnknownMembers = "tellma.api.unknown_members";
 
         /// <summary>Counter of real-time events pushed to clients. Tag: <see cref="EventTag" />.</summary>
@@ -51,6 +51,9 @@ namespace Tellma.Core.Abstractions.Api
 
         /// <summary>Tag key: the report lane a request was refused on.</summary>
         public const string LaneTag = "lane";
+
+        /// <summary>Tag key: the CLR type whose unknown member a request body carried.</summary>
+        public const string TypeTag = "type";
 
         /// <summary>Tag key: the real-time event's name.</summary>
         public const string EventTag = "event";

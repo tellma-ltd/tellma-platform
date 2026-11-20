@@ -5,6 +5,7 @@
 
 using Microsoft.AspNetCore.Builder;
 using Tellma.Core.Abstractions.Access;
+using Tellma.Core.Abstractions.Api;
 using Tellma.Core.AspNetCore.Routing;
 
 namespace Tellma.Core.AspNetCore
@@ -77,6 +78,28 @@ namespace Tellma.Core.AspNetCore
         {
             ArgumentNullException.ThrowIfNull(builder);
             MemberEndpointMetadata metadata = new();
+            builder.Add(endpoint => endpoint.Metadata.Add(metadata));
+            return builder;
+        }
+
+        /// <summary>
+        ///     Puts a hand-mapped endpoint under one of the <see cref="TellmaRatePolicies" />. On the web
+        ///     and blob groups it chains ahead of the group's per-user and per-tenant policies;
+        ///     <see cref="TellmaRatePolicies.Blobs" />, <see cref="TellmaRatePolicies.Telemetry" />,
+        ///     <see cref="TellmaRatePolicies.Anonymous" /> and <see cref="TellmaRatePolicies.Mcp" />
+        ///     stand alone in their place.
+        /// </summary>
+        /// <typeparam name="TBuilder">The convention builder's type.</typeparam>
+        /// <param name="builder">The endpoint.</param>
+        /// <param name="policy">The policy's name, one of <see cref="TellmaRatePolicies" />.</param>
+        /// <param name="honorsPriority">Whether <c>Tellma-Priority: low</c> takes the batch lane; on <see cref="TellmaRatePolicies.Reports" /> alone.</param>
+        /// <returns>The builder, for chaining.</returns>
+        public static TBuilder RequireRatePolicy<TBuilder>(this TBuilder builder, string policy, bool honorsPriority = false)
+            where TBuilder : IEndpointConventionBuilder
+        {
+            ArgumentNullException.ThrowIfNull(builder);
+            ArgumentException.ThrowIfNullOrWhiteSpace(policy);
+            RatePolicyAttribute metadata = new(policy) { HonorsPriority = honorsPriority };
             builder.Add(endpoint => endpoint.Metadata.Add(metadata));
             return builder;
         }

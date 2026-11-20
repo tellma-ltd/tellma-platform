@@ -23,5 +23,8 @@ namespace Tellma.Core.AspNetCore
             "CA1720:Identifier contains type name",
             Justification = "Long is the contract's established name, shared with the action descriptors and the client's contracts metadata.")]
         public const string Long = "tellma-long";
+
+        /// <summary>The policy of the agent tool endpoint, one tool call per request.</summary>
+        public const string Mcp = "tellma-mcp";
     }
 }

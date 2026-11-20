@@ -21,6 +21,8 @@ namespace Tellma.Core.Jobs
     // the item's only once that transaction committed, with job.changed riding the same commit. The
     // completion batch is refused: its completion statement runs first and releases the lease, so a
     // fenced append behind it could only fail, and the completion records the item's checkpoint itself.
+    // Spec 0020 §5.2: a report whose percent jumped renews at once, in the background, so the
+    // requester sees it without waiting for the interval; Report itself never waits for a round trip.
     /// <summary>The progress of one claimed item, as its handler reports it.</summary>
     internal sealed class JobItemProgress : IJobProgress
     {
@@ -36,8 +38,11 @@ namespace Tellma.Core.Jobs
         /// <summary>Sets the item's checkpoint.</summary>
         private readonly Action<string> _setState;
 
-        /// <summary>Runs the renewal a flush asks for.</summary>
-        private readonly JobRenewal _renewal;
+        /// <summary>Runs the renewal a flush or a jump asks for.</summary>
+        private readonly IJobRenewal _renewal;
+
+        /// <summary>The clock a jump is timed by.</summary>
+        private readonly TimeProvider _time;
 
         /// <summary>The job scope's publisher, which an append's job.changed rides.</summary>
         private readonly IClientEventPublisher _publisher;
@@ -53,18 +58,20 @@ namespace Tellma.Core.Jobs
         /// <param name="slot">The item's slot.</param>
         /// <param name="completion">The batch that completes the item, which an append refuses.</param>
         /// <param name="setState">Sets the item's checkpoint.</param>
-        /// <param name="renewal">Runs the renewal a flush asks for.</param>
+        /// <param name="renewal">Runs the renewal a flush or a jump asks for.</param>
+        /// <param name="time">The clock a jump is timed by.</param>
         /// <param name="publisher">The job scope's publisher.</param>
         /// <param name="text">Renders a progress message for the log.</param>
         /// <param name="logger">The job machinery's logger.</param>
         public JobItemProgress(
-            JobLease lease, JobSlot slot, IDataBatch completion, Action<string> setState, JobRenewal renewal, IClientEventPublisher publisher, JobLogText text, ILogger logger)
+            JobLease lease, JobSlot slot, IDataBatch completion, Action<string> setState, IJobRenewal renewal, TimeProvider time, IClientEventPublisher publisher, JobLogText text, ILogger logger)
         {
             ArgumentNullException.ThrowIfNull(lease);
             ArgumentNullException.ThrowIfNull(slot);
             ArgumentNullException.ThrowIfNull(completion);
             ArgumentNullException.ThrowIfNull(setState);
             ArgumentNullException.ThrowIfNull(renewal);
+            ArgumentNullException.ThrowIfNull(time);
             ArgumentNullException.ThrowIfNull(publisher);
             ArgumentNullException.ThrowIfNull(text);
             ArgumentNullException.ThrowIfNull(logger);
@@ -73,6 +80,7 @@ namespace Tellma.Core.Jobs
             _completion = completion;
             _setState = setState;
             _renewal = renewal;
+            _time = time;
             _publisher = publisher;
             _text = text;
             _logger = logger;
@@ -95,6 +103,12 @@ namespace Tellma.Core.Jobs
             }
 
             Log(percent, message);
+
+            // --- A jump in percent renews at once, at most once per job per interval ---
+            if (percent is byte reported && _slot.TryJump(reported, _time))
+            {
+                _ = RenewForJumpAsync();
+            }
         }
 
         /// <inheritdoc />
@@ -174,6 +188,26 @@ namespace Tellma.Core.Jobs
             }
 
             Log(percent, message);
+        }
+
+        /// <summary>Runs the renewal a jump asked for; its failure is logged, and the next renewal carries the report.</summary>
+        /// <returns>A task that completes when the renewal ended.</returns>
+        private async Task RenewForJumpAsync()
+        {
+            try
+            {
+                // Yielding first keeps the report synchronous: the renewal's work starts on the pool.
+                await Task.Yield();
+                await _renewal.RenewAsync(_lease.TenantId, _lease.ScopeToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (_lease.ScopeToken.IsCancellationRequested)
+            {
+                // The lease was lost or the host is stopping: nothing is left to renew.
+            }
+            catch (Exception failure) when (failure is not OutOfMemoryException)
+            {
+                JobsLog.JobRenewalFailed(_logger, failure);
+            }
         }
 
         /// <summary>Checks and serialises what a report or an append writes.</summary>

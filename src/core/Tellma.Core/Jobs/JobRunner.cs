@@ -45,6 +45,21 @@ namespace Tellma.Core.Jobs
     /// <param name="Outcome">The outcome recorded; null unless completed.</param>
     internal sealed record JobSettled(int JobId, JobSettlement Settlement, JobOutcome? Outcome);
 
+    /// <summary>Runs what a claim leased; the worker's seam over <see cref="JobRunner" />.</summary>
+    internal interface IJobClaimRunner
+    {
+        /// <summary>Runs what a claim leased, completing each of its jobs.</summary>
+        /// <param name="claim">The claim, its batch executed.</param>
+        /// <param name="hostToken">The host's token: once cancelled, the items stop and partitions not started are released.</param>
+        /// <returns>How each claimed job's attempt ended, in claim order.</returns>
+        Task<IReadOnlyList<JobSettled>> RunAsync(JobClaim claim, CancellationToken hostToken);
+
+        /// <summary>Releases what a claim leased uncounted, no handler having run: every job queued again with its attempt given back.</summary>
+        /// <param name="claim">The claim, its batch executed.</param>
+        /// <returns>How each claimed job ended, in claim order.</returns>
+        Task<IReadOnlyList<JobSettled>> ReleaseAsync(JobClaim claim);
+    }
+
     /// <summary>One job and the outcome a completion records on it.</summary>
     /// <param name="Job">The job, as its claim returned it.</param>
     /// <param name="Outcome">The outcome.</param>
@@ -58,7 +73,7 @@ namespace Tellma.Core.Jobs
     // follow the completion statement, and the worker's notices follow them. The batch is then sent,
     // with every failure path of §5.6 answered.
     /// <summary>Claims jobs into a poll's batch and runs what a claim leased.</summary>
-    internal sealed class JobRunner
+    internal sealed class JobRunner : IJobClaimRunner
     {
         /// <summary>What follows a completion failure answered by a completion of the outcomes alone.</summary>
         private const string FreshNext = "the handler's statements and enlisted writes are discarded and the outcomes are recorded alone.";
@@ -91,8 +106,8 @@ namespace Tellma.Core.Jobs
         /// <summary>The leases this instance holds.</summary>
         private readonly JobLeases _leases;
 
-        /// <summary>Runs the renewal a handler's flush asks for.</summary>
-        private readonly JobRenewal _renewal;
+        /// <summary>Runs the renewal a handler's flush or jump asks for.</summary>
+        private readonly IJobRenewal _renewal;
 
         /// <summary>Renders progress and error keys for the log.</summary>
         private readonly JobLogText _text;
@@ -103,19 +118,23 @@ namespace Tellma.Core.Jobs
         /// <summary>Times each attempt from its claim to its completion.</summary>
         private readonly TimeProvider _time;
 
+        /// <summary>The job instruments: completions, invocation durations and lost leases.</summary>
+        private readonly JobsMetrics _metrics;
+
         /// <summary>The job machinery's logger.</summary>
         private readonly ILogger _logger;
 
         /// <summary>Creates the runner.</summary>
         /// <param name="scopes">Opens the job and system scopes.</param>
         /// <param name="leases">The leases this instance holds.</param>
-        /// <param name="renewal">Runs the renewal a handler's flush asks for.</param>
+        /// <param name="renewal">Runs the renewal a handler's flush or jump asks for.</param>
         /// <param name="text">Renders progress and error keys for the log.</param>
         /// <param name="wake">Wakes this instance's pollers.</param>
         /// <param name="time">The clock.</param>
+        /// <param name="metrics">The job instruments.</param>
         /// <param name="loggers">Creates the job machinery's logger.</param>
         public JobRunner(
-            ITenantScopeFactory scopes, JobLeases leases, JobRenewal renewal, JobLogText text, TenantPollerWake wake, TimeProvider time, ILoggerFactory loggers)
+            ITenantScopeFactory scopes, JobLeases leases, IJobRenewal renewal, JobLogText text, TenantPollerWake wake, TimeProvider time, JobsMetrics metrics, ILoggerFactory loggers)
         {
             ArgumentNullException.ThrowIfNull(scopes);
             ArgumentNullException.ThrowIfNull(leases);
@@ -123,6 +142,7 @@ namespace Tellma.Core.Jobs
             ArgumentNullException.ThrowIfNull(text);
             ArgumentNullException.ThrowIfNull(wake);
             ArgumentNullException.ThrowIfNull(time);
+            ArgumentNullException.ThrowIfNull(metrics);
             ArgumentNullException.ThrowIfNull(loggers);
             _scopes = scopes;
             _leases = leases;
@@ -130,6 +150,7 @@ namespace Tellma.Core.Jobs
             _text = text;
             _wake = wake;
             _time = time;
+            _metrics = metrics;
             _logger = loggers.CreateLogger(JobsLog.Category);
         }
 
@@ -167,6 +188,30 @@ namespace Tellma.Core.Jobs
                 claim.Handler.ItemType,
                 static type => RunClaimMethod.MakeGenericMethod(type).CreateDelegate<Func<JobRunner, int, JobClaim, CancellationToken, Task<IReadOnlyList<JobSettled>>>>());
             return run(this, claim.TenantId, claim, hostToken);
+        }
+
+        // Spec 0020 §6.5 and §6.7: a claim the instance had no slot to run in goes back as a drain
+        // sends back a partition no handler started, in one completion in the system scope; a failure
+        // leaves the lease to lapse.
+        /// <summary>Releases what a claim leased uncounted, no handler having run: every job queued again with its attempt given back.</summary>
+        /// <param name="claim">The claim, its batch executed.</param>
+        /// <returns>How each claimed job ended, in claim order.</returns>
+        public async Task<IReadOnlyList<JobSettled>> ReleaseAsync(JobClaim claim)
+        {
+            ArgumentNullException.ThrowIfNull(claim);
+            IReadOnlyList<ClaimedJob> rows = claim.Rows.Value;
+            if (rows.Count == 0)
+            {
+                return [];
+            }
+
+            using (_logger.BeginScope(new JobLogScope(claim.TenantId, userId: null, rows.Select(static row => row.Job.Id), originTraceParent: null)))
+            {
+                JobsLog.JobClaimReleased(_logger, claim.Handler.Key, rows.Count);
+            }
+
+            JobCompletion[] released = [.. rows.Select(static row => new JobCompletion(row.Job, JobOutcome.Released()))];
+            return await CompleteAsSystemAsync(claim.TenantId, claim.Handler, claim.Token, lease: null, released, _time.GetTimestamp()).ConfigureAwait(false);
         }
 
         // Spec 0020 §3.5, with the consent the row carries as a second key: one scope's confirmations
@@ -267,7 +312,7 @@ namespace Tellma.Core.Jobs
             List<JobSettled> settled = [];
             if (withoutHandler.Count > 0)
             {
-                settled.AddRange(await CompleteAsSystemAsync(tenantId, handler, claim.Token, withoutHandler, claimedAt).ConfigureAwait(false));
+                settled.AddRange(await CompleteAsSystemAsync(tenantId, handler, claim.Token, lease: null, withoutHandler, claimedAt).ConfigureAwait(false));
             }
 
             if (invoked.Count == 0)
@@ -333,7 +378,7 @@ namespace Tellma.Core.Jobs
                 if (hostToken.IsCancellationRequested)
                 {
                     BeginCompleting(lease, jobs);
-                    return await CompleteAsSystemAsync(tenantId, handler, lease.Token, [.. jobs.Select(static job => new JobCompletion(job, JobOutcome.Released()))], claimedAt)
+                    return await CompleteAsSystemAsync(tenantId, handler, lease.Token, lease, [.. jobs.Select(static job => new JobCompletion(job, JobOutcome.Released()))], claimedAt)
                         .ConfigureAwait(false);
                 }
 
@@ -389,7 +434,7 @@ namespace Tellma.Core.Jobs
                 }
 
                 BeginCompleting(lease, partition.Jobs);
-                return await CompleteAsSystemAsync(partition.TenantId, lease.Handler, lease.Token, [.. partition.Jobs.Select(static job => new JobCompletion(job, JobOutcome.Released()))], partition.ClaimedAt)
+                return await CompleteAsSystemAsync(partition.TenantId, lease.Handler, lease.Token, lease, [.. partition.Jobs.Select(static job => new JobCompletion(job, JobOutcome.Released()))], partition.ClaimedAt)
                     .ConfigureAwait(false);
             }
             catch (Exception refused) when (refused is not OutOfMemoryException)
@@ -448,7 +493,7 @@ namespace Tellma.Core.Jobs
                     Job = row.Job,
                     Item = (TItem)(entities.TryGetValue(row.Job.Id, out object? entity) ? entity : row.Job),
                     CancellationToken = slot.Token,
-                    Progress = new JobItemProgress(lease, slot, batch, state => item!.StateJson = state, _renewal, publisher, _text, _logger),
+                    Progress = new JobItemProgress(lease, slot, batch, state => item!.StateJson = state, _renewal, _time, publisher, _text, _logger),
                     StateJson = row.StateJson,
                 };
                 slot.Bind(item.TrySetCancellationReason);
@@ -464,6 +509,7 @@ namespace Tellma.Core.Jobs
             JobBatch<TItem> jobBatch = new() { Items = items, Batch = batch };
             Exception? thrown = null;
             cancellation.Token = lease.ScopeToken;
+            long invokedAt = _time.GetTimestamp();
             try
             {
                 object instance = services.GetRequiredService(handler.HandlerType);
@@ -481,6 +527,7 @@ namespace Tellma.Core.Jobs
             {
                 cancellation.Token = CancellationToken.None;
                 services.GetRequiredService<IRequestContextAccessor>().Current.ApplyCultures();
+                _metrics.RecordDuration(handler.Key, _time.GetElapsedTime(invokedAt));
             }
 
             // --- §3.4: the ending, then each item's outcome ---
@@ -497,7 +544,7 @@ namespace Tellma.Core.Jobs
             if (outcomes is null)
             {
                 frame.EndCompletion(new OperationCanceledException("The job's lease was lost.", thrown));
-                JobsLog.JobLeaseLost(_logger, handler.Key);
+                LeaseLost(partition.TenantId, handler, lease);
                 return Settled(partition.Jobs, JobSettlement.LostLease);
             }
 
@@ -568,7 +615,7 @@ namespace Tellma.Core.Jobs
                 if (result.GuardPassed)
                 {
                     await AfterCommitAsync(main.Frame, outcome, handler).ConfigureAwait(false);
-                    LogCompleted(partition.TenantId, handler, completions, partition.ClaimedAt);
+                    Completed(partition.TenantId, handler, completions, partition.ClaimedAt);
                     return (Settled(completions), null);
                 }
 
@@ -581,7 +628,7 @@ namespace Tellma.Core.Jobs
             }
             catch (BatchAssertionFailedException lost) when (JobCompletionFailures.IsLeaseLost(lost))
             {
-                JobsLog.JobLeaseLost(_logger, handler.Key);
+                LeaseLost(partition.TenantId, handler, partition.Lease);
                 return (Settled(partition.Jobs, JobSettlement.LostLease), lost);
             }
             catch (BatchAssertionFailedException refused) when (refused.Number == TellmaSqlErrors.CallerInvalid)
@@ -612,7 +659,7 @@ namespace Tellma.Core.Jobs
             {
                 // The probe found the batch committed; its response was lost with the connection.
                 await AfterCommitAsync(main.Frame, committed: null, handler).ConfigureAwait(false);
-                LogCompleted(partition.TenantId, handler, completions, partition.ClaimedAt);
+                Completed(partition.TenantId, handler, completions, partition.ClaimedAt);
                 return (Settled(completions), null);
             }
             catch (DataAccessAmbiguousException ambiguous)
@@ -677,7 +724,7 @@ namespace Tellma.Core.Jobs
             }
             catch (Exception failure) when (failure is not OutOfMemoryException)
             {
-                return Unsettled(handler, partition.Jobs, failure);
+                return Unsettled(partition.TenantId, handler, partition.Lease, partition.Jobs, failure);
             }
         }
 
@@ -694,7 +741,7 @@ namespace Tellma.Core.Jobs
             JobOutcomeError error = new(JobErrorCodes.UserInactive, null, partition.TraceId);
             List<JobCompletion> failed = [.. partition.Jobs.Select((job, index) => new JobCompletion(job, JobOutcome.Failed(error, facts?[index].StateJson)))];
             BeginCompleting(partition.Lease, partition.Jobs);
-            return CompleteAsSystemAsync(partition.TenantId, partition.Lease.Handler, partition.Lease.Token, failed, partition.ClaimedAt);
+            return CompleteAsSystemAsync(partition.TenantId, partition.Lease.Handler, partition.Lease.Token, partition.Lease, failed, partition.ClaimedAt);
         }
 
         // Spec 0020 §5.2: a renewal no longer judges a row whose completion is being sent, which may
@@ -719,11 +766,12 @@ namespace Tellma.Core.Jobs
         /// <param name="tenantId">The tenant.</param>
         /// <param name="handler">The jobs' handler.</param>
         /// <param name="token">The claim's token.</param>
+        /// <param name="lease">The claim's lease; null for rows no handler ran, which were never tracked.</param>
         /// <param name="completions">The outcomes, in claim order.</param>
         /// <param name="claimedAt">When the claim's rows arrived.</param>
         /// <returns>How each job ended.</returns>
         private async Task<IReadOnlyList<JobSettled>> CompleteAsSystemAsync(
-            int tenantId, JobHandlerRegistration handler, Guid token, IReadOnlyList<JobCompletion> completions, long claimedAt)
+            int tenantId, JobHandlerRegistration handler, Guid token, JobLease? lease, IReadOnlyList<JobCompletion> completions, long claimedAt)
         {
             Job[] jobs = [.. completions.Select(static completion => completion.Job)];
             using Activity? settle = JobsActivities.StartSettle(handler.Key, jobs);
@@ -739,7 +787,7 @@ namespace Tellma.Core.Jobs
             }
             catch (Exception failure) when (failure is not OutOfMemoryException)
             {
-                return Unsettled(handler, jobs, failure);
+                return Unsettled(tenantId, handler, lease, jobs, failure);
             }
         }
 
@@ -780,7 +828,7 @@ namespace Tellma.Core.Jobs
                 // The probe found the batch committed; its response was lost with the connection.
             }
 
-            LogCompleted(tenantId, handler, completions, claimedAt);
+            Completed(tenantId, handler, completions, claimedAt);
             return Settled(completions);
         }
 
@@ -889,13 +937,14 @@ namespace Tellma.Core.Jobs
             }
         }
 
-        /// <summary>Logs each completed job's outcome in its own scope, its error rendered in English.</summary>
+        /// <summary>Counts a committed completion's outcomes, and logs each in its own scope, its error rendered in English.</summary>
         /// <param name="tenantId">The tenant.</param>
         /// <param name="handler">The jobs' handler.</param>
         /// <param name="completions">The outcomes.</param>
         /// <param name="claimedAt">When the claim's rows arrived.</param>
-        private void LogCompleted(int tenantId, JobHandlerRegistration handler, IReadOnlyList<JobCompletion> completions, long claimedAt)
+        private void Completed(int tenantId, JobHandlerRegistration handler, IReadOnlyList<JobCompletion> completions, long claimedAt)
         {
+            _metrics.RecordCompleted(handler.Key, completions.Select(static completion => completion.Outcome.Kind));
             if (!_logger.IsEnabled(LogLevel.Information))
             {
                 return;
@@ -917,20 +966,38 @@ namespace Tellma.Core.Jobs
         }
 
         /// <summary>The end of a completion that recorded nothing: a lost lease, else a lapse, each logged.</summary>
+        /// <param name="tenantId">The tenant.</param>
         /// <param name="handler">The jobs' handler.</param>
+        /// <param name="lease">The claim's lease; null for rows that were never tracked.</param>
         /// <param name="jobs">The jobs.</param>
         /// <param name="failure">The failure.</param>
         /// <returns>How each job ended.</returns>
-        private List<JobSettled> Unsettled(JobHandlerRegistration handler, IReadOnlyList<Job> jobs, Exception failure)
+        private List<JobSettled> Unsettled(int tenantId, JobHandlerRegistration handler, JobLease? lease, IReadOnlyList<Job> jobs, Exception failure)
         {
             if (JobCompletionFailures.IsLeaseLost(failure))
             {
-                JobsLog.JobLeaseLost(_logger, handler.Key);
+                LeaseLost(tenantId, handler, lease);
                 return Settled(jobs, JobSettlement.LostLease);
             }
 
             JobsLog.JobCompletionFailed(_logger, failure, handler.Key, LapseNext);
             return Settled(jobs, JobSettlement.Lapsed);
+        }
+
+        /// <summary>Logs and counts a lost lease, once per lease however many paths find it lost; an untracked claim's loss each time.</summary>
+        /// <param name="tenantId">The tenant.</param>
+        /// <param name="handler">The jobs' handler.</param>
+        /// <param name="lease">The claim's lease; null for rows that were never tracked.</param>
+        private void LeaseLost(int tenantId, JobHandlerRegistration handler, JobLease? lease)
+        {
+            if (lease is not null)
+            {
+                JobRenewal.ReportLoss(_logger, _metrics, tenantId, lease);
+                return;
+            }
+
+            _metrics.RecordLeaseLost(handler.Key);
+            JobsLog.JobLeaseLost(_logger, handler.Key);
         }
 
         /// <summary>The completion statement's rows.</summary>

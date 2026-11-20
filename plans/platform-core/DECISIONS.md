@@ -359,6 +359,11 @@ Format, one entry per ruling:
 - Also accepted: a readonly select never opens (a pre-existing bug, fixed) and exposes aria-readonly.
 - **Misalignment for Ahmad:** 0010 §B.4 names contentChildren(TmOptionGroup), which the design does not need. See also D-036's §B.4 note.
 
+### D-147 (orchestrator, 2026-11-20): batch-review fixers integrate under D-144 by watching their own pc CI run
+
+- A workflow agent cannot be resumed by the orchestrator, so the §13 batch fixer pushes its integration commit to pc/PC-Bnn, watches that run itself, and follows §4.3's green or red message until the commit is on platform-core. PROCESS.md §13's fixer prompt says so. The orchestrator still watches PR #18's run on the result.
+- PC-B04 (Phase 4, PC-062…PC-084) launched in pc-2 at 36827fe1 once PC-082 went green (pc 44703261531, PR 44705432684). Weekly usage 59% with 4 d 10 h left; Fable 23%, so finders run on Fable.
+
 ### D-146 (orchestrator, 2026-11-20): PC-100 Review 2 rulings
 
 - Deviation D-15 rejected: MaxParallelBatches must hold, including at boot when every poller plans at once; polls get stagger/jitter, and a test pins that N pollers starting together never exceed the bound.
@@ -384,7 +389,7 @@ Format, one entry per ruling:
   - integration-windows moves unchanged from ci.yml to nightly-tier.yml (LocalDB, Core and Acme, filter "Category=Integration&Category!=Nightly&Live!=true"), guarded to platform-core like the other nightly jobs. A red nightly is a PC-Fnn fix item, root-caused (D-011, D-113), and does not stop the line. The TenantScope LocalDB case (PC-F59, D-135) is now covered nightly.
   - The Windows CI job otherwise stays: unit tests still run on both OSes in build-test. Consequence: the Identity, EF Core and Queryex integration suites no longer run on Windows before a merge (CI's Windows integration job only ever ran Core and Acme, and those two now run on Windows nightly only).
 - Rollout: the workflow changes go through fix item PC-F60 (pc-f): one R1, then integrate with CI on both sides (its pc/PC-F60 push, then PR #18's run). Items in flight that have not reached integration (PC-082, PC-100) integrate under the new flow; from the snapshot that lands PC-F60 onward every integration uses it.
-- Evidence (filled in as it lands): the pc/** trigger fired on PC-F60's first, ungated push (run 44693894569); gated non-integrate pushes concluded skipped (runs 44694269933, 44694363809); the first ": integrate" run 44697079750 on pc/PC-F60 (a96be78b, green, full tier without integration-windows) confirms the pc/** trigger; PR #18 re-confirmed it in run 44699551746. PC-F60 landed at a96be78b; nightly tier started by hand after PC-F60 with `gh workflow run nightly-tier.yml --ref platform-core`: run 44701549452 (result pending). This snapshot is the switch-over: every integration from here uses the new flow.
+- Evidence (filled in as it lands): the pc/** trigger fired on PC-F60's first, ungated push (run 44693894569); gated non-integrate pushes concluded skipped (runs 44694269933, 44694363809); the first ": integrate" run 44697079750 on pc/PC-F60 (a96be78b, green, full tier without integration-windows) confirms the pc/** trigger; PR #18 re-confirmed it in run 44699551746. PC-F60 landed at a96be78b; nightly tier started by hand after PC-F60 with `gh workflow run nightly-tier.yml --ref platform-core`: run 44701549452: integration-windows ran there and passed, as did dotnet and dotnet-windows; client-e2e and client-e2e-quarantine failed on the known Playwright OS-dependency install (also red in the previous nightly), now fix item PC-F61. This snapshot is the switch-over: every integration from here uses the new flow.
 
 ### D-143 — PC-082 hand-offs (2026-11-20)
 

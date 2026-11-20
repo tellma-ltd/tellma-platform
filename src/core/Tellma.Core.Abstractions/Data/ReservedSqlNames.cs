@@ -254,8 +254,11 @@ namespace Tellma.Core.Abstractions.Data
             /// <summary>The first id of a reserved range.</summary>
             public const string First = "first";
 
-            /// <summary>The last id of a reserved range.</summary>
+            /// <summary>The last id of a reserved range, or the last stamp a statement read.</summary>
             public const string Last = "last";
+
+            /// <summary>Whether a statement found the job worker away past the gap threshold.</summary>
+            public const string Gap = "gap";
 
             /// <summary>The jobs a claim statement claimed.</summary>
             public const string Claimed = "claimed";

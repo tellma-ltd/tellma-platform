@@ -124,6 +124,10 @@ namespace Tellma.Core.AspNetCore.Tests.Infrastructure
                 ["Tellma:Identity:ClientSecret"] = ClientSecret,
                 ["Tellma:Identity:ServiceClientSecret"] = "test-service-client-secret",
                 ["Tellma:DataProtection:KeyRingPath"] = Path.Combine(Path.GetTempPath(), "tellma-aspnetcore-tests-keys"),
+
+                // The tenants these hosts serve have no databases, so the job worker stays off; the
+                // jobs suites run it against a database of their own.
+                ["Tellma:Jobs:Enabled"] = "false",
             };
         }
 

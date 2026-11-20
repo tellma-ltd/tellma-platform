@@ -24,8 +24,8 @@ namespace Tellma.Core.Abstractions.Jobs
     ///     </para>
     ///     <para>
     ///         <see cref="DrainTimeout" /> must also stay below the host's shutdown timeout, which bounds
-    ///         the final lease renewal at shutdown; the worker's host holds it to that, since only the
-    ///         host knows its own timeout.
+    ///         the final lease renewal at shutdown; the startup gate holds it to that whenever the worker
+    ///         is enabled, reading the timeout from the host's options.
     ///     </para>
     /// </remarks>
     public sealed class JobsOptions : IValidatableObject

@@ -118,7 +118,12 @@ namespace Tellma.Core.AspNetCore.Problems
                 }
             }
 
-            return JsonSerializer.SerializeAsync(response.Body, document, TellmaJson.Options, context.RequestAborted);
+            // --- The body, buffered: its length is declared, so a small one is not compressed ---
+            // Written without the request's token: a timed-out request's token is already cancelled
+            // when its 504 is written, and a body this small never waits on a client that went away.
+            byte[] body = JsonSerializer.SerializeToUtf8Bytes(document, TellmaJson.Options);
+            response.ContentLength = body.Length;
+            return response.Body.WriteAsync(body, CancellationToken.None).AsTask();
         }
 
         /// <summary>

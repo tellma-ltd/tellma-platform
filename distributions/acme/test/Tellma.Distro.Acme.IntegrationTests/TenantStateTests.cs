@@ -44,10 +44,6 @@ namespace Tellma.Distro.Acme.IntegrationTests
             + "the user connection initializer, which binds the request to its tenant user, and the administrator bootstrap "
             + "provisioning step, which makes the seeded administrator a user of the seed tenants.";
 
-        /// <summary>Why a job cannot run on a read-only tenant yet.</summary>
-        private const string NeedsJobWorker =
-            "Needs the background job worker, which claims a read-only tenant's jobs only for handlers that run when read-only.";
-
         /// <summary>The tenant every test moves: Acme's live seed tenant.</summary>
         private const int Tenant = 1;
 
@@ -216,7 +212,7 @@ namespace Tellma.Distro.Acme.IntegrationTests
                 string.Create(CultureInfo.InvariantCulture, $"SELECT [PreferredLanguage] FROM [core].[Users] WHERE [Id] = {administrator};")));
         }
 
-        [Fact(Skip = NeedsJobWorker, SkipUnless = nameof(PlatformSeams.RunsJobs), SkipType = typeof(PlatformSeams))]
+        [Fact]
         public async Task A_job_whose_handler_runs_when_read_only_succeeds_on_a_read_only_tenant()
         {
             AcmeMigrator acme = new(sql, "acme_readonly_job");

@@ -11,6 +11,7 @@ Windows runner).
 |---|---|
 | `MigratorTests` | `migrate` from an empty server creating the catalog, the identity engine's schema at its last migration and the two seed tenants, active, each with its settings completed from the seed (English then Arabic, Gregorian then Umm al-Qura); every database in the platform collation; a second `migrate` applying no identity migration; `provision` drawing 1000 from the sequence and refusing a requested id in the sequence's band, taken or free, as `tenant-registration-refused`; `provision` into an existing database in another collation failing without migrating it; the provisioning record holding a step's version and a bumped step running again on every tenant, a `ReadOnly` one included, which stays `ReadOnly`. |
 | `WebHostTests` | A sign-in through the BFF with the engine in process (`/bff/login`, the engine's email-code sign-in, the callback, `/bff/user`); a global sign-out at the engine ending the host's session over the back channel; a refresh the engine rejects ending the session; a host whose identity store lacks the engine's last migration failing startup with the `migrate` command; a host started before its catalog exists turning ready once the catalog is migrated (standalone identity mode, the identity server's metadata standing in as already read). |
+| `LimitsTests` | The limits lowered through configuration: a signed-in user past `Tellma:Api:RequestsPerMinutePerUser` refused as `429 rate-limited` with `Retry-After`; a read whose batch waits a minute on the server answering `504 timeout` at `Tellma:Api:RequestTimeout`, its batch cancelled long before its minute; the Development host serving `/openapi/web.json` (OpenAPI 3.1, the web surface's paths alone) over Acme's composition, a second request answered from the cached copy. |
 | `TenantStateTests` | The state verdicts on tenant data for a signed-in session: a `Frozen` tenant whose database is set `READ_ONLY` refusing a mutation as `403 tenant-frozen` before the endpoint runs; a `ReadOnly` tenant refusing one as `403 tenant-read-only`; a suspension refusing the next request on the host that received it, by the write's own refresh (that host's interval is the option's one-hour maximum), and the same session on a second host (one key ring, configured client secrets, a one-second catalog refresh, asserted as resolved and as the cadence its snapshot is confirmed on) within five seconds of the write, a third of the default interval. |
 
 `AcmeHost` builds the web host call for call as `Program.cs` does, on a test server that also
@@ -21,9 +22,9 @@ outlasts the host's startup bound on a loaded machine never races a test's first
 that starts a host not ready turns that off (`AwaitsCatalog`). Its warnings and errors are kept
 for a failed assertion to report. `AcmeHostOptions` adds what a test needs beyond that: another
 environment, a further composition beside Acme's (one that changes no model), services, and the
-tenant probes (`TenantProbes`), a read that runs one batch against the tenant database and a mutation that
-changes nothing and records that it ran, mapped onto the web group as a distribution maps its own
-endpoints. Two hosts of one test can share a browser's cookie jar (`CreateFlowClient(cookies)`,
+tenant probes (`TenantProbes`), a read that runs one batch against the tenant database, a read whose
+batch waits a minute on the server, and a mutation that changes nothing and records that it ran,
+mapped onto the web group as a distribution maps its own endpoints. Two hosts of one test can share a browser's cookie jar (`CreateFlowClient(cookies)`,
 `CreateBrowser(cookies)`), as a load balancer sends one browser to every instance. The browser is
 the identity suite's `OidcFlowClient` (`test/apps/Tellma.Identity.TestSupport`), signed in by
 `AcmeSignIn`.

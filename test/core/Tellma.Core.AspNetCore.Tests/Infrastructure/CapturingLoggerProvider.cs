@@ -9,8 +9,9 @@ using System.Collections.Concurrent;
 namespace Tellma.Core.AspNetCore.Tests.Infrastructure
 {
     /// <summary>
-    ///     A logger provider that keeps every event it receives: its level, its rendered message and
-    ///     its structured members (for an event Serilog forwards, the event's properties).
+    ///     A logger provider that keeps every event it receives: its level, its rendered message, its
+    ///     structured members (for an event Serilog forwards, the event's properties, its scopes'
+    ///     members among them) and its event name.
     /// </summary>
     internal sealed class CapturingLoggerProvider : ILoggerProvider
     {
@@ -71,7 +72,7 @@ namespace Tellma.Core.AspNetCore.Tests.Infrastructure
                     }
                 }
 
-                events.Enqueue(new CapturedEvent(logLevel, formatter(state, exception), members));
+                events.Enqueue(new CapturedEvent(logLevel, formatter(state, exception), members, eventId.Name));
             }
         }
     }
@@ -80,5 +81,6 @@ namespace Tellma.Core.AspNetCore.Tests.Infrastructure
     /// <param name="Level">Its level.</param>
     /// <param name="Message">Its rendered message.</param>
     /// <param name="Members">Its structured members, each rendered as text.</param>
-    internal sealed record CapturedEvent(LogLevel Level, string Message, IReadOnlyDictionary<string, string?> Members);
+    /// <param name="EventName">Its event's name; null when it has none.</param>
+    internal sealed record CapturedEvent(LogLevel Level, string Message, IReadOnlyDictionary<string, string?> Members, string? EventName = null);
 }

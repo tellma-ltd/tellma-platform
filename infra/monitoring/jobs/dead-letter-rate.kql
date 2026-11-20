@@ -1,0 +1,15 @@
+// Jobs that ended Failed, per handler.
+// Backs the "jobs are dead-lettering" alert: a job ends Failed when its handler reports a failure
+// that retrying cannot mend or when its last attempt failed, and its requester (else the tenant's
+// administrators) is notified. A handful is normal; a rising share on one handler is a defect or an
+// outage of what it depends on. Above 5% of a handler's completions, or more than 20, is a starting
+// point.
+customMetrics
+| where name == "tellma.jobs.completed"
+| extend outcome = tostring(customDimensions["outcome"])
+| extend handler = tostring(customDimensions["handler"])
+| summarize
+    failed = sumif(valueSum, outcome == "failed"),
+    total = sum(valueSum)
+    by handler, bin(timestamp, 15m)
+| where failed > 20 or (failed > 0 and failed * 20 > total)

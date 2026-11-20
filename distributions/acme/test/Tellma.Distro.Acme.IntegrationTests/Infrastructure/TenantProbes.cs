@@ -15,15 +15,19 @@ using Tellma.Core.AspNetCore;
 namespace Tellma.Distro.Acme.IntegrationTests.Infrastructure
 {
     /// <summary>
-    ///     Two tenant endpoints a test maps onto the web group, as a distribution maps its own: a read
-    ///     that runs one batch against the tenant's database and answers the tenant and the user the
-    ///     request was bound to, and a mutation that changes nothing and records that it ran. A
-    ///     state's refusal is decided before either runs, so a refused mutation leaves no record.
+    ///     Three tenant endpoints a test maps onto the web group, as a distribution maps its own: a
+    ///     read that runs one batch against the tenant's database and answers the tenant and the user
+    ///     the request was bound to, a read whose batch waits on the server for a minute, and a
+    ///     mutation that changes nothing and records that it ran. A state's refusal is decided before
+    ///     any runs, so a refused mutation leaves no record.
     /// </summary>
     internal static class TenantProbes
     {
         /// <summary>The probes' route under the web group.</summary>
         private const string Route = "/probe";
+
+        /// <summary>The slow read probe's route under the web group.</summary>
+        private const string SlowRoute = "/probe/slow";
 
         /// <summary>The <c>Tellma-Client</c> value the SPA sends, which a cookie-authenticated mutation needs.</summary>
         private const string ClientHeaderValue = "web/1.0";
@@ -35,6 +39,17 @@ namespace Tellma.Distro.Acme.IntegrationTests.Infrastructure
             ArgumentNullException.ThrowIfNull(endpoints);
             _ = endpoints.Web.MapGet(Route, ServeReadAsync).WithMutation(false).AllowMember();
             _ = endpoints.Web.MapPost(Route, ServeWrite).WithMutation(true).AllowMember();
+            _ = endpoints.Web.MapGet(SlowRoute, ServeSlowReadAsync).WithMutation(false).AllowMember();
+        }
+
+        /// <summary>Reads through the slow read probe of a tenant.</summary>
+        /// <param name="browser">A browser holding a session.</param>
+        /// <param name="tenantId">The tenant.</param>
+        /// <returns>The response; the caller disposes it.</returns>
+        public static Task<HttpResponseMessage> SlowReadAsync(HttpClient browser, int tenantId)
+        {
+            ArgumentNullException.ThrowIfNull(browser);
+            return browser.GetAsync(Uri(tenantId, SlowRoute), TestContext.Current.CancellationToken);
         }
 
         /// <summary>Reads through the read probe of a tenant.</summary>
@@ -44,7 +59,7 @@ namespace Tellma.Distro.Acme.IntegrationTests.Infrastructure
         public static Task<HttpResponseMessage> ReadAsync(HttpClient browser, int tenantId)
         {
             ArgumentNullException.ThrowIfNull(browser);
-            return browser.GetAsync(Uri(tenantId), TestContext.Current.CancellationToken);
+            return browser.GetAsync(Uri(tenantId, Route), TestContext.Current.CancellationToken);
         }
 
         /// <summary>Posts to the mutation probe of a tenant, with the client header the SPA sends.</summary>
@@ -54,7 +69,7 @@ namespace Tellma.Distro.Acme.IntegrationTests.Infrastructure
         public static async Task<HttpResponseMessage> WriteAsync(HttpClient browser, int tenantId)
         {
             ArgumentNullException.ThrowIfNull(browser);
-            using HttpRequestMessage request = new(HttpMethod.Post, Uri(tenantId));
+            using HttpRequestMessage request = new(HttpMethod.Post, Uri(tenantId, Route));
             _ = request.Headers.TryAddWithoutValidation(TellmaAuthentication.CsrfHeaderName, ClientHeaderValue);
             return await browser.SendAsync(request, TestContext.Current.CancellationToken);
         }
@@ -90,12 +105,13 @@ namespace Tellma.Distro.Acme.IntegrationTests.Infrastructure
             }
         }
 
-        /// <summary>The probes' address in a tenant.</summary>
+        /// <summary>A probe's address in a tenant.</summary>
         /// <param name="tenantId">The tenant.</param>
+        /// <param name="route">The probe's route under the web group.</param>
         /// <returns>The relative address.</returns>
-        private static Uri Uri(int tenantId)
+        private static Uri Uri(int tenantId, string route)
         {
-            return new Uri(string.Create(CultureInfo.InvariantCulture, $"/{tenantId}/api/web{Route}"), UriKind.Relative);
+            return new Uri(string.Create(CultureInfo.InvariantCulture, $"/{tenantId}/api/web{route}"), UriKind.Relative);
         }
 
         /// <summary>
@@ -115,6 +131,21 @@ namespace Tellma.Distro.Acme.IntegrationTests.Infrastructure
             RequestContext context = accessor.Current;
             int count = Convert.ToInt32(users.Value.ResultSets[0].GetBuffer(0).GetValue(0), CultureInfo.InvariantCulture);
             return Results.Json(new TenantProbeResult(context.RequireTenant().Id, context.UserId, count));
+        }
+
+        /// <summary>
+        ///     The slow read probe: one read batch that waits a minute on the server, so only the
+        ///     request's cancellation (its client going away, or its timeout) ends it sooner.
+        /// </summary>
+        /// <param name="database">The request's tenant database.</param>
+        /// <param name="cancellationToken">The request's cancellation.</param>
+        /// <returns>No content, a minute later.</returns>
+        private static async Task<IResult> ServeSlowReadAsync(ITenantDatabase database, CancellationToken cancellationToken)
+        {
+            IDataBatch batch = database.CreateBatch(BatchPurpose.Read);
+            _ = batch.Sql($"WAITFOR DELAY '00:01:00';", SqlOptions.None);
+            _ = await batch.ExecuteAsync(cancellationToken);
+            return Results.NoContent();
         }
 
         /// <summary>The mutation probe: changes nothing and records that it ran.</summary>

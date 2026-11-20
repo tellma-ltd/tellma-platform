@@ -20,7 +20,7 @@ namespace Tellma.Core.Jobs
     ///     tables it writes declared, so no caller authority check refuses it whichever stack owns the
     ///     table it writes.
     /// </summary>
-    internal static class JobStatements
+    internal static partial class JobStatements
     {
         /// <summary>The job table.</summary>
         public static TableName Jobs { get; } = new("core", "Jobs");

@@ -23,7 +23,9 @@ using Tellma.Core.AspNetCore.Api;
 using Tellma.Core.AspNetCore.Authentication;
 using Tellma.Core.AspNetCore.Bff;
 using Tellma.Core.AspNetCore.Hosting;
+using Tellma.Core.AspNetCore.Limits;
 using Tellma.Core.AspNetCore.Observability;
+using Tellma.Core.AspNetCore.OpenApi;
 using Tellma.Core.AspNetCore.Problems;
 using Tellma.Core.AspNetCore.Routing;
 using Tellma.Core.AspNetCore.Sessions;
@@ -102,6 +104,7 @@ namespace Tellma.Core.AspNetCore
             bool development = environment.IsDevelopment();
             _ = services.Configure<ApiOptions>(options => options.ServerTiming = development);
             _ = HostOptionsBinding.Bind<ApiOptions>(services, ApiOptions.SectionPath, OptionsOwner);
+            _ = HostOptionsBinding.Bind<McpLimitOptions>(services, McpLimitOptions.SectionPath, OptionsOwner);
             _ = services.AddSingleton<IValidateOptions<IdentityHostOptions>, IdentityHostOptionsValidator>();
             _ = services.AddSingleton<IValidateOptions<TellmaSessionOptions>, TellmaSessionOptionsValidator>();
             _ = services.AddSingleton<IValidateOptions<DistributionLinksOptions>, DistributionLinksOptionsValidator>();
@@ -143,6 +146,14 @@ namespace Tellma.Core.AspNetCore
             // --- The web API: bodies read and results written under the platform's one set of JSON rules ---
             _ = services.ConfigureHttpJsonOptions(static options => TellmaJson.Configure(options.SerializerOptions));
             _ = services.AddSingleton<ApiMetrics>();
+            UnknownMembers.Register(services);
+
+            // --- Limits: the rate and timeout policies, compression and output caching; the OpenAPI document in Development ---
+            LimitsComposition.Register(services);
+            if (development)
+            {
+                WebOpenApi.Register(services);
+            }
 
             // --- Routing: the audit over every mapped endpoint, the public API's version constraint ---
             _ = services.AddSingleton<MappedEndpoints>();

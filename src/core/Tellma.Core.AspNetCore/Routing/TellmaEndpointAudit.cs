@@ -17,6 +17,7 @@ using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.Access;
 using Tellma.Core.AspNetCore.Api;
+using Tellma.Core.AspNetCore.Limits;
 using Tellma.Core.Composition;
 using Tellma.Core.Composition.Checks;
 
@@ -210,6 +211,9 @@ namespace Tellma.Core.AspNetCore.Routing
                 {
                     problems.Add(Problem(where, "sits on the Tenantless group without TenantlessEndpointMetadata.", "Call AsTenantlessEndpoint(reason) on every endpoint of the Tenantless group."));
                 }
+
+                // --- The rate policies it names: known, one route policy, lanes and tenants where they apply ---
+                RatePolicies.Audit(endpoint, where, problems);
 
                 // --- A distribution's route words ---
                 if (!platform)

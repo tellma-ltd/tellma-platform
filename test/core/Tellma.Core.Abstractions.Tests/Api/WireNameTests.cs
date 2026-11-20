@@ -51,9 +51,29 @@ namespace Tellma.Core.Abstractions.Tests.Api
                     [nameof(ApiTelemetryNames.ClientTag)] = "tellma.client",
                     [nameof(ApiTelemetryNames.ReasonTag)] = "reason",
                     [nameof(ApiTelemetryNames.LaneTag)] = "lane",
+                    [nameof(ApiTelemetryNames.TypeTag)] = "type",
                     [nameof(ApiTelemetryNames.EventTag)] = "event",
                 },
                 Constants(typeof(ApiTelemetryNames)));
+        }
+
+        [Fact]
+        public void The_rate_policy_names_are_pinned()
+        {
+            Assert.Equal(
+                new Dictionary<string, string>
+                {
+                    [nameof(TellmaRatePolicies.User)] = "tellma-user",
+                    [nameof(TellmaRatePolicies.Tenant)] = "tellma-tenant",
+                    [nameof(TellmaRatePolicies.Anonymous)] = "tellma-anonymous",
+                    [nameof(TellmaRatePolicies.Export)] = "tellma-export",
+                    [nameof(TellmaRatePolicies.Import)] = "tellma-import",
+                    [nameof(TellmaRatePolicies.Reports)] = "tellma-reports",
+                    [nameof(TellmaRatePolicies.Telemetry)] = "tellma-telemetry",
+                    [nameof(TellmaRatePolicies.Blobs)] = "tellma-blobs",
+                    [nameof(TellmaRatePolicies.Mcp)] = "tellma-mcp",
+                },
+                Constants(typeof(TellmaRatePolicies)));
         }
 
         [Fact]
