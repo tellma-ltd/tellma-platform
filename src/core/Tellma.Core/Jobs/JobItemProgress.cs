@@ -105,7 +105,7 @@ namespace Tellma.Core.Jobs
             Log(percent, message);
 
             // --- A jump in percent renews at once, at most once per job per interval ---
-            if (percent is byte reported && _slot.TryJump(reported, _time.GetUtcNow()))
+            if (percent is byte reported && _slot.TryJump(reported, _time))
             {
                 _ = RenewForJumpAsync();
             }

@@ -8,43 +8,61 @@ using Tellma.Core.Abstractions.Jobs;
 
 namespace Tellma.Core.Jobs
 {
-    // Spec 0020 §6.5: claimed batches run under a per-instance SemaphoreSlim(MaxParallelBatches) and
-    // a per-(tenant, key) counter enforcing the handler's MaxConcurrency; a key with no free slot is
-    // omitted from the poll's claims. A slot is reserved before its claim is appended and released
-    // once the claim's batch ended, or at once when the claim leased nothing. A poll that had to omit
-    // a key would otherwise back off to the longest interval with work waiting, so the release of any
-    // slot wakes every tenant refused one since. The slots are sized on first use, not when the host
-    // creates the worker, which it does before the startup gate reports any invalid option.
+    // Spec 0020 §6.5: claimed batches run under a per-instance bound of MaxParallelBatches and a
+    // per-(tenant, key) counter enforcing the handler's MaxConcurrency; a key with no free slot is
+    // omitted from the poll's claims.
+    //
+    // The two bounds are held differently, so an idle poll never starves another tenant:
+    // - A key's own slot is reserved before its claim is appended, and released once the claim's
+    //   batch ended, or at once when the claim leased nothing. It is the tenant's alone.
+    // - An instance slot is taken only when a claim that leased rows is started. A poll plans its
+    //   keys while a slot is free, so the polls planned in the same instant may start a batch per
+    //   key past the bound; the overshoot ends with those batches, and no poll plans while the
+    //   instance is at or over its bound.
+    //
+    // A poll that had to omit a key would otherwise back off with work waiting, so:
+    // - a key refused at its MaxConcurrency wakes its tenant once one of its own batches ended, and
+    //   never earlier, so the tenant does not poll back to back while the key is still at its limit;
+    // - a tenant refused for want of an instance slot is woken when a started batch frees one, one
+    //   tenant per freed slot, first refused first.
+    //
+    // The bound is read on first use, not when the host creates the worker, which it does before the
+    // startup gate reports any invalid option.
     /// <summary>The slots claimed batches run in on this instance.</summary>
-    internal sealed class JobConcurrency : IDisposable
+    internal sealed class JobConcurrency
     {
-        /// <summary>The instance's batch slots, sized on first use.</summary>
-        private readonly Lazy<SemaphoreSlim> _slots;
-
         /// <summary>The most batches the instance runs at once, read on first use.</summary>
         private readonly Lazy<int> _maxParallelBatches;
 
         /// <summary>Wakes the pollers of tenants refused a slot.</summary>
         private readonly TenantPollerWake _wake;
 
-        /// <summary>Guards the counters and the refused tenants.</summary>
+        /// <summary>Guards the counters and the refusals.</summary>
         private readonly Lock _gate = new();
 
-        /// <summary>The batches running per tenant and key.</summary>
+        /// <summary>The slots reserved per tenant and key: the batches planned or running.</summary>
         private readonly Dictionary<(int TenantId, string Key), int> _running = [];
 
-        /// <summary>The tenants refused a slot since the last release.</summary>
-        private readonly HashSet<int> _refused = [];
+        /// <summary>The tenants' keys refused at their own limit, each waiting for one of its batches to end.</summary>
+        private readonly HashSet<(int TenantId, string Key)> _keyRefused = [];
+
+        /// <summary>The tenants refused an instance slot, first refused first.</summary>
+        private readonly Queue<int> _instanceRefused = [];
+
+        /// <summary>The tenants in <see cref="_instanceRefused" />, so each waits there once.</summary>
+        private readonly HashSet<int> _instanceRefusedSet = [];
+
+        /// <summary>The batches started and not yet ended: the instance slots taken.</summary>
+        private int _started;
 
         /// <summary>Creates the slots from the options.</summary>
-        /// <param name="options">The job options, whose <see cref="JobsOptions.MaxParallelBatches" /> sizes the instance's slots.</param>
+        /// <param name="options">The job options, whose <see cref="JobsOptions.MaxParallelBatches" /> bounds the instance.</param>
         /// <param name="wake">Wakes the pollers of tenants refused a slot.</param>
         public JobConcurrency(IOptions<JobsOptions> options, TenantPollerWake wake)
         {
             ArgumentNullException.ThrowIfNull(options);
             ArgumentNullException.ThrowIfNull(wake);
             _maxParallelBatches = new Lazy<int>(() => options.Value.MaxParallelBatches);
-            _slots = new Lazy<SemaphoreSlim>(() => new SemaphoreSlim(MaxParallelBatches, MaxParallelBatches));
             _wake = wake;
         }
 
@@ -60,13 +78,31 @@ namespace Tellma.Core.Jobs
         /// <summary>The most batches the instance runs at once.</summary>
         public int MaxParallelBatches => _maxParallelBatches.Value;
 
-        /// <summary>The instance's slots free now.</summary>
-        public int Free => Batches.CurrentCount;
+        /// <summary>The instance's slots free now; zero while the started batches reach or pass the bound.</summary>
+        public int Free
+        {
+            get
+            {
+                lock (_gate)
+                {
+                    return Math.Max(0, MaxParallelBatches - _started);
+                }
+            }
+        }
 
-        /// <summary>The instance's batch slots.</summary>
-        private SemaphoreSlim Batches => _slots.Value;
+        /// <summary>The batches started and not yet ended on this instance.</summary>
+        public int Started
+        {
+            get
+            {
+                lock (_gate)
+                {
+                    return _started;
+                }
+            }
+        }
 
-        /// <summary>The batches of a tenant's key running now.</summary>
+        /// <summary>The slots of a tenant's key reserved now: its batches planned or running.</summary>
         /// <param name="tenantId">The tenant.</param>
         /// <param name="handlerKey">The key.</param>
         /// <returns>The count.</returns>
@@ -78,10 +114,10 @@ namespace Tellma.Core.Jobs
             }
         }
 
-        /// <summary>Reserves a slot for one claim of a tenant's key, when the key and the instance both have one free.</summary>
+        /// <summary>Reserves a slot of a tenant's key for one claim, when the key has one free and the instance a slot to start it in.</summary>
         /// <param name="tenantId">The tenant.</param>
         /// <param name="handler">The key's handler, whose <see cref="JobHandlerAttribute.MaxConcurrency" /> bounds the key.</param>
-        /// <returns>The reservation; null when no slot is free.</returns>
+        /// <returns>The reservation; null when the key is at its limit or the instance has no free slot.</returns>
         public JobSlotReservation? TryReserve(int tenantId, JobHandlerRegistration handler)
         {
             ArgumentNullException.ThrowIfNull(handler);
@@ -89,34 +125,50 @@ namespace Tellma.Core.Jobs
             {
                 (int, string) key = (tenantId, handler.Key);
                 int running = _running.GetValueOrDefault(key);
-                if (running >= handler.Options.MaxConcurrency || !Batches.Wait(0))
+
+                // --- The key's own limit: the tenant is woken once one of the key's batches ended ---
+                if (running >= handler.Options.MaxConcurrency)
                 {
-                    _ = _refused.Add(tenantId);
+                    _ = _keyRefused.Add(key);
                     return null;
                 }
 
+                // --- The instance's bound: the tenant waits its turn for a freed slot ---
+                if (_started >= MaxParallelBatches)
+                {
+                    if (_instanceRefusedSet.Add(tenantId))
+                    {
+                        _instanceRefused.Enqueue(tenantId);
+                    }
+
+                    return null;
+                }
+
+                _ = _keyRefused.Remove(key);
                 _running[key] = running + 1;
                 return new JobSlotReservation(this, tenantId, handler.Key);
             }
         }
 
-        /// <inheritdoc />
-        public void Dispose()
+        /// <summary>Takes an instance slot for a reservation whose claim leased rows and starts now; past the bound when the polls of one instant overshot it.</summary>
+        internal void Start()
         {
-            if (_slots.IsValueCreated)
+            lock (_gate)
             {
-                _slots.Value.Dispose();
+                _started++;
             }
         }
 
-        /// <summary>Frees a reserved slot and wakes the tenants refused one since the last release.</summary>
+        /// <summary>Frees a reservation's slots and wakes the tenants its end lets claim again.</summary>
         /// <param name="tenantId">The reservation's tenant.</param>
         /// <param name="handlerKey">The reservation's key.</param>
-        internal void Release(int tenantId, string handlerKey)
+        /// <param name="started">Whether its batch started, so it held an instance slot too.</param>
+        internal void Release(int tenantId, string handlerKey, bool started)
         {
-            int[] refused;
+            List<int> woken = [];
             lock (_gate)
             {
+                // --- The key's slot ---
                 (int, string) key = (tenantId, handlerKey);
                 int running = _running.GetValueOrDefault(key) - 1;
                 if (running > 0)
@@ -128,35 +180,55 @@ namespace Tellma.Core.Jobs
                     _ = _running.Remove(key);
                 }
 
-                try
+                // A claim that leased nothing ended no batch: it frees its key's slot and wakes nobody.
+                if (started)
                 {
-                    _ = Batches.Release();
-                }
-                catch (ObjectDisposedException)
-                {
-                    // The host disposed the slots after its drain: a batch that outlived it frees nothing.
-                }
+                    // --- The tenant whose key waited for one of its batches to end ---
+                    _started--;
+                    if (_keyRefused.Remove(key))
+                    {
+                        woken.Add(tenantId);
+                    }
 
-                refused = [.. _refused];
-                _refused.Clear();
+                    // --- One tenant refused an instance slot, once a slot is actually free ---
+                    if (_started < MaxParallelBatches && _instanceRefused.TryDequeue(out int next))
+                    {
+                        _ = _instanceRefusedSet.Remove(next);
+                        if (!woken.Contains(next))
+                        {
+                            woken.Add(next);
+                        }
+                    }
+                }
             }
 
             // Outside the lock: a wake runs the poller's subscription.
-            foreach (int tenant in refused)
+            foreach (int tenant in woken)
             {
                 _wake.Wake(tenant);
             }
         }
     }
 
+    // A reservation moves once from reserved to started and once to released; a start after the
+    // release does nothing, so a claim's batch never takes an instance slot it would not give back.
     /// <summary>One claim's reserved slot, released once, however many times it is disposed.</summary>
     internal sealed class JobSlotReservation : IDisposable
     {
+        /// <summary>The state: reserved.</summary>
+        private const int Reserved = 0;
+
+        /// <summary>The state: its batch started, holding an instance slot.</summary>
+        private const int Running = 1;
+
+        /// <summary>The state: released.</summary>
+        private const int Released = 2;
+
         /// <summary>The slots the reservation came from.</summary>
         private readonly JobConcurrency _owner;
 
-        /// <summary>1 once released.</summary>
-        private int _released;
+        /// <summary>The state: <see cref="Reserved" />, <see cref="Running" /> or <see cref="Released" />.</summary>
+        private int _state;
 
         /// <summary>Creates the reservation.</summary>
         /// <param name="owner">The slots it came from.</param>
@@ -175,12 +247,22 @@ namespace Tellma.Core.Jobs
         /// <summary>The key.</summary>
         public string HandlerKey { get; }
 
-        /// <summary>Releases the slot.</summary>
+        /// <summary>Takes an instance slot for the claim's batch, which starts now; once, and never after the release.</summary>
+        public void Start()
+        {
+            if (Interlocked.CompareExchange(ref _state, Running, Reserved) == Reserved)
+            {
+                _owner.Start();
+            }
+        }
+
+        /// <summary>Releases the slots.</summary>
         public void Dispose()
         {
-            if (Interlocked.Exchange(ref _released, 1) == 0)
+            int previous = Interlocked.Exchange(ref _state, Released);
+            if (previous != Released)
             {
-                _owner.Release(TenantId, HandlerKey);
+                _owner.Release(TenantId, HandlerKey, started: previous == Running);
             }
         }
     }

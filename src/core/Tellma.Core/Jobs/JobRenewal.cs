@@ -179,7 +179,7 @@ namespace Tellma.Core.Jobs
 
             // --- The round trip, in the system scope, committing each statement on its own; a lease
             // extended counts from before it was sent, so the next renewal is never late ---
-            DateTimeOffset sentAt = _leases.Time.GetUtcNow();
+            long sentAt = _leases.Time.GetTimestamp();
             await using TenantScope scope = await _scopes.CreateScopeAsync(JobScopes.System(tenantId), cancellationToken: cancellationToken).ConfigureAwait(false);
             var batch = (DataBatch)scope.Services.GetRequiredService<ITenantDatabase>().CreateBatch(BatchPurpose.Maintenance);
             batch.TransactionMode = TransactionMode.None;

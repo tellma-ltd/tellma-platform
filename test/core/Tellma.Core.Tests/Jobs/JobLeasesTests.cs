@@ -181,11 +181,11 @@ namespace Tellma.Core.Tests.Jobs
 
             // --- A later report keeps the buffer for the next renewal ---
             slot.Buffer(30, null, null, null);
-            slot.Carried(taken, 20, _time.GetUtcNow());
+            slot.Carried(taken, 20, _time.GetTimestamp());
             Assert.Equal((byte)30, slot.Buffered()!.Value.Row.ProgressPercent);
 
             // --- Carried at its version, it empties ---
-            slot.Carried(slot.Buffered()!.Value.Version, 30, _time.GetUtcNow());
+            slot.Carried(slot.Buffered()!.Value.Version, 30, _time.GetTimestamp());
             Assert.Null(slot.Buffered());
         }
 
@@ -195,17 +195,25 @@ namespace Tellma.Core.Tests.Jobs
         public void A_lease_is_due_a_renewal_a_fifth_of_its_length_after_its_claim_and_after_each_renewal()
         {
             using JobLease lease = Track([Row(1)], Token);
-            DateTimeOffset claimed = _time.GetUtcNow();
+            long claimed = _time.GetTimestamp();
 
             // The default lease is 300 s, so a renewal is due every 60 s.
             Assert.Equal(TimeSpan.FromSeconds(60), lease.RenewalInterval);
-            Assert.Equal(claimed.AddSeconds(60), lease.RenewalDueAt);
+            _time.Advance(TimeSpan.FromSeconds(59));
+            Assert.False(lease.IsRenewalDue);
+            _time.Advance(TimeSpan.FromSeconds(1));
+            Assert.True(lease.IsRenewalDue);
 
             // --- A renewal counts from when it was sent; an older one never moves the schedule back ---
-            lease.Renewed(claimed.AddSeconds(45));
-            Assert.Equal(claimed.AddSeconds(105), lease.RenewalDueAt);
-            lease.Renewed(claimed.AddSeconds(30));
-            Assert.Equal(claimed.AddSeconds(105), lease.RenewalDueAt);
+            long sent = _time.GetTimestamp();
+            _time.Advance(TimeSpan.FromSeconds(10));
+            lease.Renewed(sent);
+            lease.Renewed(claimed);
+            Assert.Equal(TimeSpan.FromSeconds(10), lease.SinceRenewal);
+            _time.Advance(TimeSpan.FromSeconds(49));
+            Assert.False(lease.IsRenewalDue);
+            _time.Advance(TimeSpan.FromSeconds(1));
+            Assert.True(lease.IsRenewalDue);
         }
 
         [Fact]
@@ -215,41 +223,61 @@ namespace Tellma.Core.Tests.Jobs
             JobSlot slot = lease.Slot(1)!;
 
             // --- Four points is no jump; five is ---
-            Assert.False(slot.TryJump(4, _time.GetUtcNow()));
-            Assert.True(slot.TryJump(5, _time.GetUtcNow()));
+            Assert.False(slot.TryJump(4, _time));
+            Assert.True(slot.TryJump(5, _time));
 
             // --- Another jump within five seconds waits, however far the percent moved ---
             _time.Advance(TimeSpan.FromSeconds(4.9));
-            Assert.False(slot.TryJump(60, _time.GetUtcNow()));
+            Assert.False(slot.TryJump(60, _time));
             _time.Advance(TimeSpan.FromSeconds(0.1));
-            Assert.True(slot.TryJump(60, _time.GetUtcNow()));
+            Assert.True(slot.TryJump(60, _time));
 
             // --- A renewal that carried a percent moves both the base and the clock of the next jump ---
             _time.Advance(TimeSpan.FromSeconds(10));
-            slot.Carried(slot.BufferVersion, 60, _time.GetUtcNow());
+            slot.Carried(slot.BufferVersion, 60, _time.GetTimestamp());
             _time.Advance(TimeSpan.FromSeconds(5));
-            Assert.False(slot.TryJump(64, _time.GetUtcNow()));
-            Assert.True(slot.TryJump(65, _time.GetUtcNow()));
+            Assert.False(slot.TryJump(64, _time));
+            Assert.True(slot.TryJump(65, _time));
         }
 
         [Fact]
-        public void A_requested_cancel_is_stamped_once_and_an_abandoned_lease_is_no_longer_carried()
+        public void The_cancel_clock_starts_once_every_item_had_its_cancel_requested_and_an_abandoned_lease_is_no_longer_carried()
         {
             using JobLease lease = Track([Row(1), Row(2)], Token);
-            Assert.Null(lease.CancelledAt);
+            Assert.Null(lease.SinceCancelled);
 
-            // --- The first cancel stamps the lease; a later one keeps the first stamp ---
-            DateTimeOffset first = _time.GetUtcNow();
+            // --- One item's cancel leaves the other running: no clock, and the batch token stands ---
             lease.RequestCancel(1);
+            Assert.Null(lease.SinceCancelled);
+            Assert.True(lease.Slot(1)!.Token.IsCancellationRequested);
+            Assert.False(lease.Slot(2)!.Token.IsCancellationRequested);
+
+            // --- The last item's cancel starts it; it counts from then ---
             _time.Advance(TimeSpan.FromSeconds(30));
             lease.RequestCancel(2);
-            Assert.Equal(first, lease.CancelledAt);
+            _time.Advance(TimeSpan.FromSeconds(5));
+            Assert.Equal(TimeSpan.FromSeconds(5), lease.SinceCancelled);
+            lease.RequestCancel(2);
+            Assert.Equal(TimeSpan.FromSeconds(5), lease.SinceCancelled);
 
             // --- Abandoned once, and left out of every renewal from then on ---
             Assert.True(lease.Abandon());
             Assert.False(lease.Abandon());
             Assert.True(lease.IsAbandoned);
             Assert.Empty(JobRenewal.Carried(_leases.InFlight(TenantId)));
+        }
+
+        [Fact]
+        public void The_cancel_clock_starts_when_the_last_item_whose_cancel_was_not_requested_leaves_the_lease()
+        {
+            using JobLease lease = Track([Row(1), Row(2), Row(3)], Token);
+            lease.RequestCancel(1);
+            lease.Leave([2]);
+            Assert.Null(lease.SinceCancelled);
+
+            // --- Item 3 completes: only the cancelled item is left, so the handler has nothing more to run ---
+            lease.Leave([3]);
+            Assert.Equal(TimeSpan.Zero, lease.SinceCancelled);
         }
 
         [Fact]

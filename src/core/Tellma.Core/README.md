@@ -2260,15 +2260,21 @@ leaves those states (logged as `JobPollerRetired`, its orphan sample dropped). T
   `MinPollInterval`; nothing doubles the wait up to `MaxPollInterval`; a failed poll is logged
   (`JobPollFailed`, the tenant in the log scope) and waits the maximum. An enqueue on this instance
   nudges the poller through `TenantPollerWake`, coalesced to one wake.
-- **The slots.** `JobConcurrency` bounds the instance to `MaxParallelBatches` batches and each
-  tenant's key to its `MaxConcurrency`; a key with no free slot is left out of the poll, and the
-  release of a slot wakes the tenants refused one. `JobDispatcher` runs each claim that leased rows
-  on the thread pool, counting its rows on `tellma.jobs.in_flight`.
+- **The slots.** `JobConcurrency` bounds each tenant's key to its `MaxConcurrency` and the
+  instance to `MaxParallelBatches` batches; a key with no free slot is left out of the poll. A
+  poll reserves only its keys' own slots: an instance slot is taken when a claim that leased rows
+  starts, so an idle poll never holds one, and the polls planned in one instant may overshoot the
+  bound until their batches end. A key refused at its limit wakes its tenant when one of its own
+  batches ends; a tenant refused an instance slot is woken when a batch frees one, one tenant per
+  slot, first refused first. `JobDispatcher` runs each claim that leased rows on the thread pool,
+  counting its rows on `tellma.jobs.in_flight`.
 - **The renewals.** `JobRenewalScheduler` renews each tenant's leases once its earliest is due, a
   fifth of the lease after its last renewal; a failed renewal is logged and waits an interval. A
   report whose percent jumped five points renews at once, at most once per job every five seconds.
-  A handler still running a lease length after its cancel was requested is abandoned
-  (`JobHandlerAbandoned`): its lease is no longer renewed and lapses.
+  A handler still running a lease length after every item it still holds had its cancel requested
+  is abandoned (`JobHandlerAbandoned`): its lease is no longer renewed and lapses. The schedule runs
+  on the clock's monotonic timestamp, so a step of the wall clock never delays a renewal, and a
+  check that throws is logged (`JobRenewalFailed`) and the next one runs.
 - **The drain.** `StoppingAsync` stops the pollers, cancels the host token, and waits up to
   `DrainTimeout` for the polls in flight and every batch. The handlers still running then keep their
   lease: the renewals stop, one final renewal per tenant binds every such lease to the host's

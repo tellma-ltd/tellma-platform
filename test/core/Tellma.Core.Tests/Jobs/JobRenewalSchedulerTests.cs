@@ -15,8 +15,9 @@ namespace Tellma.Core.Tests.Jobs
     /// <summary>
     ///     The renewal schedule under a fake clock with no database: one renewal per tenant once its
     ///     earliest carried lease is due, none while one is in flight, a failed renewal logged and
-    ///     backed off by the interval, and a handler that ignores a requested cancel abandoned a lease
-    ///     length later.
+    ///     backed off by the interval, a handler that ignores a requested cancel abandoned a lease
+    ///     length later, one that stopped one item of several still renewed, and a check that throws
+    ///     leaving the schedule running.
     /// </summary>
     public sealed class JobRenewalSchedulerTests : IAsyncDisposable
     {
@@ -53,7 +54,7 @@ namespace Tellma.Core.Tests.Jobs
             {
                 foreach (JobLease lease in _leases.InFlight(tenantId))
                 {
-                    lease.Renewed(_time.GetUtcNow());
+                    lease.Renewed(_time.GetTimestamp());
                 }
 
                 return Task.CompletedTask;
@@ -151,6 +152,53 @@ namespace Tellma.Core.Tests.Jobs
         }
 
         [Fact]
+        public async Task A_cancel_of_one_item_keeps_the_lease_renewed_until_every_item_was_cancelled()
+        {
+            using JobLease lease = Track(tenantId: 1, jobs: [1, 2]);
+            lease.RequestCancel(1);
+
+            // --- A lease length later the handler runs on with item 2: the lease is still renewed ---
+            _time.Advance(TimeSpan.FromSeconds(300));
+            await _scheduler.CheckAsync();
+            Assert.False(lease.IsAbandoned);
+            Assert.Equal([1], _renewal.Renewed);
+
+            // --- Item 2's cancel starts the clock: abandoned a lease length after it, not before ---
+            lease.RequestCancel(2);
+            _time.Advance(TimeSpan.FromSeconds(299));
+            await _scheduler.CheckAsync();
+            Assert.False(lease.IsAbandoned);
+            _time.Advance(TimeSpan.FromSeconds(1));
+            await _scheduler.CheckAsync();
+            Assert.True(lease.IsAbandoned);
+        }
+
+        [Fact]
+        public async Task A_check_that_throws_is_logged_and_the_next_check_renews_all_the_same()
+        {
+            // --- A logger that fails the abandonment's warning, under a scheduler of its own ---
+            using FakeLoggerProvider logs = new();
+            using LoggerFactory loggers = new([logs, new FailingLoggerProvider("JobHandlerAbandoned")]);
+            using JobRenewalScheduler scheduler = new(_renewal, _leases, _time, loggers);
+            using JobLease ignoring = Track(tenantId: 1, jobs: [1]);
+            using JobLease running = Track(tenantId: 2, jobs: [2]);
+            ignoring.RequestCancel(1);
+            _time.Advance(TimeSpan.FromSeconds(300));
+
+            // --- The first check throws at the abandonment, before any renewal; it is logged ---
+            scheduler.Start();
+            await _time.TimerCreatedAsync();
+            _time.Advance(JobRenewalScheduler.CheckEvery);
+            await WaitUntilAsync(() => logs.Collector.GetSnapshot().Any(static record => record.Id.Name == "JobRenewalFailed"));
+            Assert.Empty(_renewal.Renewed);
+
+            // --- The next check renews tenant 2's lease ---
+            _time.Advance(JobRenewalScheduler.CheckEvery);
+            await WaitUntilAsync(() => _renewal.Renewed.Contains(2));
+            await scheduler.StopAsync();
+        }
+
+        [Fact]
         public async Task A_started_schedule_checks_every_second_and_stops_with_its_renewals()
         {
             TaskCompletionSource<CancellationToken> renewing = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -203,8 +251,60 @@ namespace Tellma.Core.Tests.Jobs
         /// <returns>The lease.</returns>
         private JobLease Track(int tenantId, int jobId)
         {
-            ClaimedJob row = new(new Job { Id = jobId, HandlerKey = WorkerTestModel.AuditKey, RunAsUserId = 7, Attempts = 1 }, null, null, Guid.Empty);
-            return _leases.Track(tenantId, Audit, Guid.NewGuid(), [row], TestContext.Current.CancellationToken);
+            return Track(tenantId, [jobId]);
+        }
+
+        /// <summary>Tracks a claim of audit rows.</summary>
+        /// <param name="tenantId">The tenant.</param>
+        /// <param name="jobs">The jobs, in claim order.</param>
+        /// <returns>The lease.</returns>
+        private JobLease Track(int tenantId, int[] jobs)
+        {
+            ClaimedJob[] rows = [.. jobs.Select(static jobId => new ClaimedJob(new Job { Id = jobId, HandlerKey = WorkerTestModel.AuditKey, RunAsUserId = 7, Attempts = 1 }, null, null, Guid.Empty))];
+            return _leases.Track(tenantId, Audit, Guid.NewGuid(), rows, TestContext.Current.CancellationToken);
+        }
+
+        /// <summary>A logger provider whose loggers throw on one event, as a faulty logging provider would.</summary>
+        /// <param name="eventName">The event that throws.</param>
+        private sealed class FailingLoggerProvider(string eventName) : ILoggerProvider
+        {
+            /// <inheritdoc />
+            public ILogger CreateLogger(string categoryName)
+            {
+                return new FailingLogger(eventName);
+            }
+
+            /// <inheritdoc />
+            public void Dispose()
+            {
+            }
+        }
+
+        /// <summary>A logger that throws on one event.</summary>
+        /// <param name="eventName">The event that throws.</param>
+        private sealed class FailingLogger(string eventName) : ILogger
+        {
+            /// <inheritdoc />
+            public IDisposable? BeginScope<TState>(TState state)
+                where TState : notnull
+            {
+                return null;
+            }
+
+            /// <inheritdoc />
+            public bool IsEnabled(LogLevel logLevel)
+            {
+                return true;
+            }
+
+            /// <inheritdoc />
+            public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+            {
+                if (eventId.Name == eventName)
+                {
+                    throw new InvalidOperationException("The logging provider failed.");
+                }
+            }
         }
     }
 }

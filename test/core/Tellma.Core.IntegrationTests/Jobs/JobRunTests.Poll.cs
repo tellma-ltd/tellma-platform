@@ -318,15 +318,18 @@ namespace Tellma.Core.IntegrationTests.Jobs
         public async Task The_worker_polls_an_active_tenant_runs_its_jobs_and_stops_polling_it_once_frozen()
         {
             int id = await fixture.InsertJobAsync(JobRunKeys.Probe);
-            int failing = await fixture.InsertJobAsync(JobRunKeys.Inbox);
             fixture.Script.Inbox = static (_, _) => throw new InvalidOperationException("The test handler breaks.");
             await using var worker = Worker.Create(fixture, TenantState.Active);
 
             await worker.StartAsync();
 
-            // --- The polls claimed both jobs, the dispatch ran them, and the heartbeat names this instance ---
-            await EventuallyAsync(async () => (await fixture.JobAsync(id)).Status == nameof(JobStatus.Succeeded)
-                && (await fixture.JobAsync(failing)).Status == nameof(JobStatus.Failed)
+            // --- The polls claim each job, the dispatch runs it, and the heartbeat names this instance.
+            // The second job is enqueued once the first ended: the fixture's change-tracking audit is
+            // exact only while one batch at a time writes the database, and two batches at once would
+            // each see the other's writes as undeclared ---
+            await EventuallyAsync(async () => (await fixture.JobAsync(id)).Status == nameof(JobStatus.Succeeded));
+            int failing = await fixture.InsertJobAsync(JobRunKeys.Inbox);
+            await EventuallyAsync(async () => (await fixture.JobAsync(failing)).Status == nameof(JobStatus.Failed)
                 && fixture.Events.Published.Count == 4
                 && fixture.Notices.Raised.Count == 1);
             Assert.Equal([FixtureTenantId], worker.Instance.Polled);
@@ -389,7 +392,8 @@ namespace Tellma.Core.IntegrationTests.Jobs
                 started.TrySetResult();
                 await Task.Delay(Timeout.InfiniteTimeSpan, batch.Items[0].CancellationToken);
             };
-            await using var worker = Worker.Create(fixture, TenantState.Active);
+            // A drain long enough for a poll in flight on a loaded server: the handler returns at the host token.
+            await using var worker = Worker.Create(fixture, TenantState.Active, drainTimeout: TimeSpan.FromSeconds(20));
             await worker.StartAsync();
             await started.Task.WaitAsync(TimeSpan.FromSeconds(30), Token);
 
@@ -685,7 +689,8 @@ namespace Tellma.Core.IntegrationTests.Jobs
 
         /// <summary>
         ///     A worker of its own over the fixture host's job machinery: its own dispatch, renewal
-        ///     schedule and registry, a one-second drain and a three-second shutdown timeout. It is
+        ///     schedule and registry, a one-second drain (or a longer one a test asks for) and a shutdown
+        ///     timeout three seconds past the drain. It is
         ///     stopped as the host would stop it, once, when the test stops it or disposes it.
         /// </summary>
         private sealed class Worker : IAsyncDisposable
@@ -724,8 +729,9 @@ namespace Tellma.Core.IntegrationTests.Jobs
             /// <summary>Composes a worker over the fixture host.</summary>
             /// <param name="fixture">The class's database.</param>
             /// <param name="state">The tenant's state at first.</param>
+            /// <param name="drainTimeout">How long the drain waits; one second when null.</param>
             /// <returns>The worker, not started.</returns>
-            public static Worker Create(JobRunDatabase fixture, TenantState state)
+            public static Worker Create(JobRunDatabase fixture, TenantState state, TimeSpan? drainTimeout = null)
             {
                 IServiceProvider services = fixture.Tenant.Services;
                 StateRegistry registry = new(services.GetRequiredService<ITenantRegistry>(), state);
@@ -738,7 +744,7 @@ namespace Tellma.Core.IntegrationTests.Jobs
                     MinPollInterval = options.MinPollInterval,
                     MaxPollInterval = TimeSpan.FromSeconds(1),
                     MaxParallelBatches = options.MaxParallelBatches,
-                    DrainTimeout = TimeSpan.FromSeconds(1),
+                    DrainTimeout = drainTimeout ?? TimeSpan.FromSeconds(1),
                     GapThreshold = options.GapThreshold,
                 };
                 JobWorker worker = ActivatorUtilities.CreateInstance<JobWorker>(
@@ -747,7 +753,7 @@ namespace Tellma.Core.IntegrationTests.Jobs
                     dispatcher,
                     renewals,
                     Options.Create(options),
-                    Options.Create(new HostOptions { ShutdownTimeout = ShutdownTimeout }));
+                    Options.Create(new HostOptions { ShutdownTimeout = drainTimeout is TimeSpan drain ? drain + ShutdownTimeout : ShutdownTimeout }));
                 return new Worker(worker, registry, dispatcher, renewals);
             }
 

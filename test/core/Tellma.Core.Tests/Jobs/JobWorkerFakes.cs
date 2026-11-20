@@ -83,6 +83,9 @@ namespace Tellma.Core.Tests.Jobs
         /// <summary>Released once per poll begun.</summary>
         private readonly SemaphoreSlim _polled = new(0);
 
+        /// <summary>The polls begun, so each concurrent poll draws a number of its own.</summary>
+        private int _begun;
+
         /// <summary>The plans, in poll order.</summary>
         public ConcurrentQueue<JobPollPlan> Plans { get; } = new();
 
@@ -129,9 +132,9 @@ namespace Tellma.Core.Tests.Jobs
         /// <inheritdoc />
         public async Task<JobPollResult> PollAsync(JobPollPlan plan, Action<JobPollResult> onExecuted, CancellationToken cancellationToken)
         {
+            int number = Interlocked.Increment(ref _begun);
             Plans.Enqueue(plan);
             Tokens.Enqueue(cancellationToken);
-            int number = Plans.Count;
             _ = _polled.Release();
             JobPollResult result = await Answer(plan, number).ConfigureAwait(false);
             onExecuted(result);

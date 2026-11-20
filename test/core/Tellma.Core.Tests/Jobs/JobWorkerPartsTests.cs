@@ -34,54 +34,130 @@ namespace Tellma.Core.Tests.Jobs
         // --- The batch slots ---
 
         [Fact]
-        public void A_key_runs_at_most_its_concurrency_per_tenant_and_the_instance_at_most_its_slots()
+        public void A_key_runs_at_most_its_concurrency_per_tenant_and_only_started_batches_take_the_instances_slots()
         {
             TenantPollerWake wake = new(NullLoggerFactory.Instance);
-            using JobConcurrency slots = new(maxParallelBatches: 3, wake);
+            JobConcurrency slots = new(maxParallelBatches: 3, wake);
             JobHandlerRegistration audit = Handler(WorkerTestModel.AuditKey);
             JobHandlerRegistration recompute = Handler(WorkerTestModel.RecomputeKey);
 
-            // --- The audit key runs two at once per tenant; recompute one ---
+            // --- The audit key runs two at once per tenant; a reservation not started holds no instance slot ---
             using JobSlotReservation? first = slots.TryReserve(1, audit);
             using JobSlotReservation? second = slots.TryReserve(1, audit);
             Assert.NotNull(first);
             Assert.NotNull(second);
             Assert.Null(slots.TryReserve(1, audit));
+            Assert.Equal(3, slots.Free);
 
-            // --- Another tenant's key has its own count, but the instance has one slot left ---
+            // --- Three started batches fill the instance: no key of any tenant is reserved then ---
+            first!.Start();
+            second!.Start();
             using JobSlotReservation? other = slots.TryReserve(2, recompute);
-            Assert.NotNull(other);
-            Assert.Null(slots.TryReserve(3, recompute));
+            other!.Start();
             Assert.Equal(0, slots.Free);
+            Assert.Null(slots.TryReserve(3, recompute));
 
-            // --- A release frees one slot, once however often it is disposed ---
-            first!.Dispose();
+            // --- A release frees both slots once, however often it is disposed; a start after it takes nothing ---
             first.Dispose();
+            first.Dispose();
+            first.Start();
             Assert.Equal(1, slots.Free);
             Assert.Equal(1, slots.Running(1, WorkerTestModel.AuditKey));
+
+            // --- A claim that leased nothing frees its key's slot, never an instance slot ---
+            using JobSlotReservation? empty = slots.TryReserve(3, recompute);
+            empty!.Dispose();
+            Assert.Equal((1, 0), (slots.Free, slots.Running(3, WorkerTestModel.RecomputeKey)));
         }
 
         [Fact]
-        public void A_released_slot_wakes_each_tenant_refused_one_since_the_last_release_once()
+        public void A_key_refused_at_its_limit_wakes_its_tenant_only_once_one_of_its_own_batches_ended()
         {
             TenantPollerWake wake = new(NullLoggerFactory.Instance);
-            using JobConcurrency slots = new(maxParallelBatches: 1, wake);
+            JobConcurrency slots = new(maxParallelBatches: 4, wake);
+            int woken = 0;
+            using IDisposable subscription = wake.Subscribe(1, () => woken++);
+            JobHandlerRegistration audit = Handler(WorkerTestModel.AuditKey);
+            JobHandlerRegistration recompute = Handler(WorkerTestModel.RecomputeKey);
+
+            // --- Tenant 1's recompute batch runs; its next poll is refused the key ---
+            JobSlotReservation held = slots.TryReserve(1, recompute)!;
+            held.Start();
+            Assert.Null(slots.TryReserve(1, recompute));
+
+            // --- Neither its own empty claim nor another tenant's batch ending wakes it ---
+            slots.TryReserve(1, audit)!.Dispose();
+            JobSlotReservation another = slots.TryReserve(2, recompute)!;
+            another.Start();
+            another.Dispose();
+            Assert.Equal(0, woken);
+
+            // --- Its recompute batch ending does, once ---
+            held.Dispose();
+            Assert.Equal(1, woken);
+            JobSlotReservation again = slots.TryReserve(1, recompute)!;
+            again.Start();
+            again.Dispose();
+            Assert.Equal(1, woken);
+        }
+
+        [Fact]
+        public void A_tenant_refused_an_instance_slot_is_woken_one_per_freed_slot_first_refused_first()
+        {
+            TenantPollerWake wake = new(NullLoggerFactory.Instance);
+            JobConcurrency slots = new(maxParallelBatches: 1, wake);
             int woken1 = 0, woken2 = 0;
             using IDisposable one = wake.Subscribe(1, () => woken1++);
             using IDisposable two = wake.Subscribe(2, () => woken2++);
+            JobHandlerRegistration audit = Handler(WorkerTestModel.AuditKey);
             JobHandlerRegistration recompute = Handler(WorkerTestModel.RecomputeKey);
 
-            JobSlotReservation? held = slots.TryReserve(3, recompute);
+            // --- The instance's one slot is taken; tenant 1 is refused twice, then tenant 2 ---
+            JobSlotReservation held = slots.TryReserve(3, recompute)!;
+            held.Start();
+            Assert.Null(slots.TryReserve(1, audit));
             Assert.Null(slots.TryReserve(1, recompute));
-            Assert.Null(slots.TryReserve(1, recompute));
-            Assert.Null(slots.TryReserve(2, recompute));
+            Assert.Null(slots.TryReserve(2, audit));
 
-            held!.Dispose();
+            // --- Each freed slot wakes the tenant refused first, once ---
+            held.Dispose();
+            Assert.Equal((1, 0), (woken1, woken2));
+            JobSlotReservation next = slots.TryReserve(1, audit)!;
+            next.Start();
+            next.Dispose();
             Assert.Equal((1, 1), (woken1, woken2));
 
             // --- A release with no refusal since wakes nobody ---
-            slots.TryReserve(3, recompute)!.Dispose();
+            JobSlotReservation last = slots.TryReserve(3, recompute)!;
+            last.Start();
+            last.Dispose();
             Assert.Equal((1, 1), (woken1, woken2));
+        }
+
+        [Fact]
+        public void Polls_planned_in_one_instant_may_overshoot_the_bound_and_no_slot_is_free_until_they_fall_below_it()
+        {
+            TenantPollerWake wake = new(NullLoggerFactory.Instance);
+            JobConcurrency slots = new(maxParallelBatches: 1, wake);
+            int woken = 0;
+            using IDisposable subscription = wake.Subscribe(3, () => woken++);
+            JobHandlerRegistration audit = Handler(WorkerTestModel.AuditKey);
+
+            // --- Two tenants planned while the slot was free; both claims leased rows and start ---
+            JobSlotReservation first = slots.TryReserve(1, audit)!;
+            JobSlotReservation second = slots.TryReserve(2, audit)!;
+            first.Start();
+            second.Start();
+            Assert.Equal((2, 0), (slots.Started, slots.Free));
+            Assert.Null(slots.TryReserve(3, audit));
+
+            // --- The first to end leaves the instance at its bound: no slot is free, nobody is woken ---
+            first.Dispose();
+            Assert.Equal((0, 0), (slots.Free, woken));
+
+            // --- The second frees the slot and wakes the tenant refused ---
+            second.Dispose();
+            Assert.Equal((1, 1), (slots.Free, woken));
         }
 
         // --- The lease owner ---

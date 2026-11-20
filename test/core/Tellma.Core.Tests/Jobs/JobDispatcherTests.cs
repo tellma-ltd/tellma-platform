@@ -227,7 +227,6 @@ namespace Tellma.Core.Tests.Jobs
         public void Dispose()
         {
             _dispatcher.Dispose();
-            _concurrency.Dispose();
             _time.Dispose();
             _loggers.Dispose();
             _logs.Dispose();

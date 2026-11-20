@@ -16,12 +16,17 @@ namespace Tellma.Core.Tests.Jobs
     ///     One tenant's poller under a fake clock, with no database: the adaptive interval doubling
     ///     and resetting, the immediate re-poll after a full claim, nudges coalescing into one wake,
     ///     the keys a read-only tenant claims, the slots freed by claims that leased nothing and by a
-    ///     poll that failed, the sample cadences, and a stop that lets the poll in flight finish.
+    ///     poll that failed, a key at its limit that neither wakes its tenant nor stops it backing off,
+    ///     two tenants claiming at once, the sample cadences, and a stop that lets the poll in flight
+    ///     finish.
     /// </summary>
     public sealed class TenantPollerTests : IDisposable
     {
         /// <summary>The tenant polled.</summary>
         private const int TenantId = 4;
+
+        /// <summary>A second tenant, polled alongside the first.</summary>
+        private const int OtherTenantId = 5;
 
         /// <summary>The worker tests' handlers.</summary>
         private readonly BatchHarness _harness = new(compose: WorkerTestModel.Compose);
@@ -186,11 +191,76 @@ namespace Tellma.Core.Tests.Jobs
             Assert.Equal(0, _concurrency.Running(TenantId, WorkerTestModel.AuditKey));
             Assert.Equal(1, _concurrency.Free);
 
-            // --- The batch ends: its slot is free, and the tenant refused one is woken at once ---
+            // --- The audit claim that leased nothing woke nobody: the poller waits on its timer ---
+            await Task.Delay(TimeSpan.FromMilliseconds(100), TestContext.Current.CancellationToken);
+            Assert.Equal(2, _poll.Plans.Count);
+
+            // --- The batch ends: its slot is free, and the tenant whose key waited for it is woken at once ---
             Assert.True(_dispatch.Started.TryPeek(out JobPolledClaim? running));
             running.Reservation!.Dispose();
             await _poll.PolledAsync(3);
             Assert.Equal([WorkerTestModel.AuditKey, WorkerTestModel.RecomputeKey], Plan(3).Claims.Select(static claim => claim.Handler.Key));
+            Assert.Equal(2, _concurrency.Free);
+        }
+
+        [Fact]
+        public async Task A_tenant_whose_key_is_at_its_limit_backs_off_while_that_keys_batch_runs()
+        {
+            // --- Poll 1 fills the recompute key's batch of one; every later poll finds nothing ---
+            _poll.Answer = (plan, number) => Task.FromResult(FakeJobPoll.Result(plan, handler => number == 1 && handler.Key == WorkerTestModel.RecomputeKey ? 1 : 0));
+            Start();
+            await _poll.PolledAsync(2);
+
+            // --- One second, two, then four: the busy key's refusal and the idle key's empty claims wake nothing ---
+            foreach ((int number, double seconds) in new[] { (3, 1.0), (4, 2.0), (5, 4.0) })
+            {
+                await AdvanceAsync(TimeSpan.FromSeconds(seconds - 0.1));
+                Assert.Equal(number - 1, _poll.Plans.Count);
+                _time.Advance(TimeSpan.FromSeconds(0.1));
+                await _poll.PolledAsync(number);
+                Assert.Equal([WorkerTestModel.AuditKey], Plan(number).Claims.Select(static claim => claim.Handler.Key));
+            }
+
+            // --- Only the batch's end wakes the tenant ---
+            await _time.TimerCreatedAsync();
+            Assert.True(_dispatch.Started.TryPeek(out JobPolledClaim? running));
+            running.Reservation!.Dispose();
+            await _poll.PolledAsync(6);
+            Assert.Equal([WorkerTestModel.AuditKey, WorkerTestModel.RecomputeKey], Plan(6).Claims.Select(static claim => claim.Handler.Key));
+        }
+
+        [Fact]
+        public async Task Two_tenants_polling_at_once_each_claim_a_due_key()
+        {
+            // --- The first poll waits for the second, so both plan before either round trip returns ---
+            TaskCompletionSource both = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            _poll.Answer = async (plan, number) =>
+            {
+                if (number == 2)
+                {
+                    both.TrySetResult();
+                }
+
+                if (number <= 2)
+                {
+                    await both.Task.ConfigureAwait(false);
+                }
+
+                return FakeJobPoll.Result(plan, handler => number <= 2 && handler.Key == WorkerTestModel.AuditKey ? 1 : 0);
+            };
+            _ = Start(tenantId: TenantId);
+            _ = Start(tenantId: OtherTenantId);
+            await _poll.PolledAsync(2);
+
+            // --- Neither poll held the instance's slots for its empty keys: both planned every key ---
+            Assert.Equal([TenantId, OtherTenantId], new[] { Plan(1).TenantId, Plan(2).TenantId }.Order());
+            Assert.All([Plan(1), Plan(2)], static plan => Assert.Equal([WorkerTestModel.AuditKey, WorkerTestModel.RecomputeKey], plan.Claims.Select(static claim => claim.Handler.Key)));
+
+            // --- Both tenants' audit claims started, one instance slot each ---
+            await WaitUntilAsync(() => _dispatch.Started.Count == 2);
+            Assert.Equal([TenantId, OtherTenantId], _dispatch.Started.Select(static polled => polled.Claim.TenantId).Order());
+            Assert.Equal(2, _concurrency.Started);
+            Assert.Equal(0, _concurrency.Free);
         }
 
         [Fact]
@@ -291,7 +361,6 @@ namespace Tellma.Core.Tests.Jobs
                 poller.Dispose();
             }
 
-            _concurrency.Dispose();
             _poll.Dispose();
             _time.Dispose();
             _loggers.Dispose();
@@ -299,10 +368,24 @@ namespace Tellma.Core.Tests.Jobs
             _harness.Dispose();
         }
 
-        /// <summary>Starts a poller of the tenant.</summary>
+        /// <summary>Waits until a condition holds.</summary>
+        /// <param name="condition">The condition.</param>
+        /// <returns>A task that completes once it held.</returns>
+        private static async Task WaitUntilAsync(Func<bool> condition)
+        {
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+            timeout.CancelAfter(TimeSpan.FromSeconds(10));
+            while (!condition())
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(10), timeout.Token);
+            }
+        }
+
+        /// <summary>Starts a poller of a tenant.</summary>
         /// <param name="readOnly">Whether the tenant is read-only.</param>
+        /// <param name="tenantId">The tenant.</param>
         /// <returns>The poller.</returns>
-        private TenantPoller Start(bool readOnly = false)
+        private TenantPoller Start(bool readOnly = false, int tenantId = TenantId)
         {
             TenantPollerServices services = new(
                 _poll,
@@ -314,7 +397,7 @@ namespace Tellma.Core.Tests.Jobs
                 _time,
                 _loggers.CreateLogger(JobsLog.Category),
                 "host-a/41");
-            TenantPoller poller = new(TenantId, readOnly, services);
+            TenantPoller poller = new(tenantId, readOnly, services);
             _pollers.Add(poller);
             poller.Start();
             return poller;

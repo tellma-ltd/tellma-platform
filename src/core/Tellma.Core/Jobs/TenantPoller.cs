@@ -251,7 +251,7 @@ namespace Tellma.Core.Jobs
             }
         }
 
-        /// <summary>Starts the claims that leased rows and frees the slots of those that leased none.</summary>
+        /// <summary>Starts the claims that leased rows, each taking an instance slot, and frees the slots of those that leased none.</summary>
         /// <param name="result">What the round trip returned.</param>
         private void Dispatch(JobPollResult result)
         {
@@ -259,6 +259,7 @@ namespace Tellma.Core.Jobs
             {
                 if (polled.Claim.Rows.Value.Count > 0)
                 {
+                    polled.Reservation?.Start();
                     _dispatch.Start(polled);
                 }
                 else

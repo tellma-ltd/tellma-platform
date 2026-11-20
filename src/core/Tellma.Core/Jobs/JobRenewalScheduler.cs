@@ -11,8 +11,11 @@ namespace Tellma.Core.Jobs
     // a fifth of that lease after its last renewal; a renewal that fails carries no verdict, and the
     // tenant's leases wait for the next interval. A handler that ignores a requested cancel for one
     // further lease length is abandoned: its task keeps running with a logged warning, no renewal
-    // carries its lease again, and its rows are claimed again once the lease lapsed. The scheduler
-    // checks once a second; the worker stops it before the final renewal of §6.7.
+    // carries its lease again, and its rows are claimed again once the lease lapsed. The clock starts
+    // once every item the lease still tracks had its cancel requested, so a handler that stopped one
+    // item and runs on with the others keeps its lease. The scheduler checks once a second, on the
+    // clock's monotonic timestamp, and a check that throws is logged and the next one runs; the worker
+    // stops it before the final renewal of §6.7.
     /// <summary>Renews this instance's leases when they are due, and abandons handlers that ignore a cancel.</summary>
     internal sealed class JobRenewalScheduler : IDisposable
     {
@@ -40,8 +43,8 @@ namespace Tellma.Core.Jobs
         /// <summary>The renewal in flight per tenant.</summary>
         private readonly Dictionary<int, Task> _renewing = [];
 
-        /// <summary>Until when a tenant whose renewal failed waits.</summary>
-        private readonly Dictionary<int, DateTimeOffset> _backOff = [];
+        /// <summary>A tenant whose renewal failed: the clock's timestamp of the failure, and how long the tenant waits after it.</summary>
+        private readonly Dictionary<int, (long FailedAt, TimeSpan Wait)> _backOff = [];
 
         /// <summary>The checking loop; null until started.</summary>
         private Task? _run;
@@ -117,12 +120,10 @@ namespace Tellma.Core.Jobs
         /// <returns>A task that completes once the renewals this check started ended.</returns>
         internal Task CheckAsync()
         {
-            DateTimeOffset now = _time.GetUtcNow();
-
-            // --- The handlers still running a further lease length after a requested cancel ---
+            // --- The handlers still running a further lease length after every item's cancel was requested ---
             foreach (JobLease lease in JobRenewal.Carried(_leases.All()))
             {
-                if (lease.CancelledAt is DateTimeOffset cancelledAt && cancelledAt + TimeSpan.FromSeconds(lease.LeaseSeconds) <= now && lease.Abandon())
+                if (lease.SinceCancelled is TimeSpan since && since >= TimeSpan.FromSeconds(lease.LeaseSeconds) && lease.Abandon())
                 {
                     using IDisposable? scope = _logger.BeginScope(new JobLogScope(lease.TenantId, userId: null, lease.Slots.Select(static slot => slot.JobId), originTraceParent: null));
                     JobsLog.JobHandlerAbandoned(_logger, lease.Handler.Key, "it kept running a lease length after its cancel was requested.");
@@ -141,8 +142,8 @@ namespace Tellma.Core.Jobs
                 foreach (int tenantId in _leases.Tenants())
                 {
                     IReadOnlyList<JobLease> carried = JobRenewal.Carried(_leases.InFlight(tenantId));
-                    bool due = carried.Count > 0 && carried.Min(static lease => lease.RenewalDueAt) <= now;
-                    bool backingOff = _backOff.TryGetValue(tenantId, out DateTimeOffset until) && until > now;
+                    bool due = carried.Any(static lease => lease.IsRenewalDue);
+                    bool backingOff = _backOff.TryGetValue(tenantId, out (long FailedAt, TimeSpan Wait) backOff) && _time.GetElapsedTime(backOff.FailedAt) < backOff.Wait;
                     if (due && !backingOff && !_renewing.ContainsKey(tenantId))
                     {
                         TimeSpan retryAfter = carried.Min(static lease => lease.RenewalInterval);
@@ -165,13 +166,35 @@ namespace Tellma.Core.Jobs
             {
                 while (await timer.WaitForNextTickAsync(_stop.Token).ConfigureAwait(false))
                 {
-                    // The renewals run on; the next check skips a tenant whose renewal is in flight.
-                    _ = CheckAsync();
+                    // The renewals run on; the next check skips a tenant whose renewal is in flight. A
+                    // check that throws before them never ends the schedule: every lease would lapse.
+                    try
+                    {
+                        _ = CheckAsync();
+                    }
+                    catch (Exception failure) when (failure is not OutOfMemoryException)
+                    {
+                        ReportCheckFailure(failure);
+                    }
                 }
             }
             catch (OperationCanceledException) when (_stop.IsCancellationRequested)
             {
                 // Stopped.
+            }
+        }
+
+        /// <summary>Logs a check that failed; a log that fails too is dropped, so the schedule runs on regardless.</summary>
+        /// <param name="failure">What the check threw.</param>
+        private void ReportCheckFailure(Exception failure)
+        {
+            try
+            {
+                JobsLog.JobRenewalFailed(_logger, failure);
+            }
+            catch (Exception logFailure) when (logFailure is not OutOfMemoryException)
+            {
+                // The logger is what failed: the next check runs all the same.
             }
         }
 
@@ -198,7 +221,7 @@ namespace Tellma.Core.Jobs
             {
                 lock (_gate)
                 {
-                    _backOff[tenantId] = _time.GetUtcNow() + retryAfter;
+                    _backOff[tenantId] = (_time.GetTimestamp(), retryAfter);
                 }
 
                 using IDisposable? scope = _logger.BeginScope(new JobLogScope(tenantId, userId: null, [], originTraceParent: null));

@@ -279,9 +279,12 @@ namespace Tellma.Core.Jobs
         /// <summary>Starts a poller for each served tenant without one, updates each poller's read-only state, and retires the rest.</summary>
         internal void Synchronise()
         {
-            var states = _registry.Tenants.ToDictionary(static tenant => tenant.Id, static tenant => tenant.Descriptor.State);
             lock (_gate)
             {
+                // The snapshot is read under the gate: the registry publishes it before it tells the
+                // listeners, so whichever of this and a listener's call takes the gate second applies
+                // the newer state, and a stale snapshot never restarts a tenant a listener retired.
+                var states = _registry.Tenants.ToDictionary(static tenant => tenant.Id, static tenant => tenant.Descriptor.State);
                 foreach ((int tenantId, TenantState state) in states)
                 {
                     ApplyLocked(tenantId, state);
