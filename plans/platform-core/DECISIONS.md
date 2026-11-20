@@ -359,6 +359,12 @@ Format, one entry per ruling:
 - Also accepted: a readonly select never opens (a pre-existing bug, fixed) and exposes aria-readonly.
 - **Misalignment for Ahmad:** 0010 §B.4 names contentChildren(TmOptionGroup), which the design does not need. See also D-036's §B.4 note.
 
+### D-141 — PC-100 hand-offs (2026-11-20)
+
+- Composed hosts run the job worker unless Tellma:Jobs:Enabled=false; the shared unit-test compositions (Core.Tests TestComposition, AspNetCore TellmaTestHost) set it off because their fake tenants have no databases. Later hosts and test compositions must decide this explicitly.
+- Rule for later checkpoints: hosted job services must not read IOptions.Value in their constructors (the host builds them before the startup gate runs); JobWorker, JobPoll and JobConcurrency read options lazily.
+- JobDispatcher.DrainAsync is also bounded by StoppingAsync's host token, so the final renewal is skipped once that token is cancelled. Pending R1.
+
 ### D-140 — PC-174 (T3) not started early (2026-11-20)
 
 - After PC-142 went green, the only ready checkpoint was PC-174 (Tier 3). PLAN §4 lets a lower tier start only when no higher tier is ready, a slot would idle, *and* the window would otherwise expire unused. The weekly window was 54% used with 4 d 19 h left (about 31% elapsed), so it will not expire unused; PC-174 waits for Tier 1/2 work to run out or the pacing to change.
