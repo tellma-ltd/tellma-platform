@@ -1,17 +1,22 @@
 name: CI
 
+# A push to main or to a `pc/**` working branch runs the whole PR tier on the pushed commit, so a
+# working branch is verified before it merges onward. A push event carries no pull request, so the
+# draft guards below let every push run through.
 on:
   push:
-    branches: [main]
+    branches: [main, 'pc/**']
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
 
-# One group per commit, never cancelled: every push to a pull request gets its own verdict, even
-# when a later push lands while it is still running. Only a second run of the same commit (a
-# reopen, or ready-for-review) waits for the first. The event name keeps a push to main and a pull
-# request at the same commit from queueing behind each other.
+# One group per branch or pull request and commit, never cancelled: every push gets its own
+# verdict, even when a later push to the same branch or pull request lands while it is still
+# running, and a run on one branch never waits behind or replaces a run on another, even at the
+# same commit. Only a second run of the same commit for the same ref (a reopen, or
+# ready-for-review) waits for the first. The event name keeps a push and a pull request at the
+# same commit from queueing behind each other.
 concurrency:
-  group: ci-${{ github.event_name }}-${{ github.event.pull_request.head.sha || github.sha }}
+  group: ci-${{ github.event_name }}-${{ github.ref }}-${{ github.event.pull_request.head.sha || github.sha }}
   cancel-in-progress: false
 
 # This file is the PR tier. Every job below excludes the nightly tier: dotnet tests carrying
@@ -75,7 +80,9 @@ jobs:
   # third-party credentials. Solution-wide rather than path-scoped, so a suite added later is gated
   # rather than silently never run. Suites marked Live=true talk to real external APIs and run in
   # the nightly workflow instead — they would put a third-party service on the merge path, and fork
-  # PRs cannot read the secrets they need anyway.
+  # PRs cannot read the secrets they need anyway. The PR tier runs the integration suites on Linux
+  # only: nightly-tier.yml runs the platform's and the reference distribution's suites on Windows
+  # too, against LocalDB.
   integration:
     if: ${{ !github.event.pull_request.draft }}
     timeout-minutes: 45
@@ -87,63 +94,6 @@ jobs:
           global-json-file: global.json
       # Normal verbosity and xUnit's diagnostic messages: see build-test.
       - run: dotnet test Tellma.slnx -c Release --filter "Category=Integration&Category!=Nightly&Live!=true" --logger "console;verbosity=normal" -- xUnit.DiagnosticMessages=true
-
-  # The distribution host's two integration suites on Windows, against LocalDB rather than a
-  # container (the Windows runners have no Linux containers): the platform's catalog and migrator
-  # suite and the reference distribution's. LocalDB is installed when the image lacks it. The other
-  # integration suites need nothing Windows-specific and run in the job above.
-  integration-windows:
-    if: ${{ !github.event.pull_request.draft }}
-    timeout-minutes: 45
-    runs-on: windows-latest
-    env:
-      TELLMA_TEST_SQL: 'Server=(localdb)\MSSQLLocalDB;Integrated Security=True;TrustServerCertificate=True'
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-dotnet@v5
-        with:
-          global-json-file: global.json
-      - name: Start LocalDB
-        shell: pwsh
-        run: |
-          # The installer's PATH change does not reach this shell, and its folder names the SQL
-          # Server version, so the tool is located rather than assumed and its folder is added for
-          # this step and the later ones.
-          if (-not (Get-Command sqllocaldb -ErrorAction SilentlyContinue)) {
-            choco install sqllocaldb --no-progress -y
-            $tool = Get-ChildItem "$env:ProgramFiles\Microsoft SQL Server\*\Tools\Binn\SqlLocalDB.exe" | Select-Object -First 1
-            if (-not $tool) { throw 'SqlLocalDB.exe was not found after its install.' }
-            $env:PATH += ";$($tool.DirectoryName)"
-            Add-Content -Path $env:GITHUB_PATH -Value $tool.DirectoryName
-          }
-          if (-not (sqllocaldb info | Where-Object { $_.Trim() -eq 'MSSQLLocalDB' })) {
-            sqllocaldb create MSSQLLocalDB
-          }
-          sqllocaldb start MSSQLLocalDB
-      - run: dotnet build test/core/Tellma.Core.IntegrationTests -c Release
-      - run: dotnet build distributions/acme/test/Tellma.Distro.Acme.IntegrationTests -c Release
-      # The instance's first logins can fail while it warms up, and a suite's first catalog load
-      # would then classify that error instead of the one under test. A query against master,
-      # retried until it answers, leaves the instance warm. The instance's pipe name serves either
-      # sqlcmd (the ODBC one or the Go one).
-      - name: Warm LocalDB
-        shell: pwsh
-        run: |
-          if (-not (Get-Command sqlcmd -ErrorAction SilentlyContinue)) {
-            choco install sqlcmd --no-progress -y
-          }
-          sqllocaldb start MSSQLLocalDB
-          $pipe = (sqllocaldb info MSSQLLocalDB | Select-String 'np:\S+').Matches[0].Value
-          for ($attempt = 1; $attempt -le 5; $attempt++) {
-            sqlcmd -S $pipe -E -d master -l 30 -b -Q 'SELECT 1'
-            if ($LASTEXITCODE -eq 0) { exit 0 }
-            Start-Sleep -Seconds 5
-          }
-          throw 'LocalDB did not answer a query against master.'
-      # Normal verbosity and xUnit's diagnostic messages: see build-test. Here they show what the
-      # end-of-suite drops on LocalDB retried, and every database a failed cleanup left behind.
-      - run: dotnet test test/core/Tellma.Core.IntegrationTests -c Release --no-build --filter "Category=Integration&Category!=Nightly&Live!=true" --logger "console;verbosity=normal" -- xUnit.DiagnosticMessages=true
-      - run: dotnet test distributions/acme/test/Tellma.Distro.Acme.IntegrationTests -c Release --no-build --filter "Category=Integration&Category!=Nightly&Live!=true" --logger "console;verbosity=normal" -- xUnit.DiagnosticMessages=true
 
   # Real `dotnet ef` end to end, in both DesignTimeServicesReference discovery flows:
   #   1. ProjectReference flow (Phase-1 in-repo): regenerate the MigrationsHost migration and
@@ -396,10 +346,8 @@ jobs:
   # branch protection to job names / the OS matrix).
   all-checks-passed:
     if: ${{ !cancelled() && !github.event.pull_request.draft }}
-    # Include all required job in this list — a job missing here is NOT gated.
+    # Include every required job in this list — a job missing here is NOT gated.
     # Branch protection must require THIS job only.
-    # `integration-windows` runs with the other jobs but does not gate yet: it joins this list
-    # once it has run green on platform-core.
     needs: [build-test, format, integration, design-e2e, client, client-windows, identity-e2e, acme-client]
     timeout-minutes: 5
     runs-on: ubuntu-latest
