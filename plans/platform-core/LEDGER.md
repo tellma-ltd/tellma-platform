@@ -102,12 +102,11 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 
 | PC | Slot | Branch | Step | Implementer agent (name / id) | Reviewer agent (name / id) | Started (UTC) |
 |---|---|---|---|---|---|---|
-| PC-145 | pc-3 | pc/PC-145 | impl | impl (Opus, high, launched 2026-11-20) | 0020-f; R1 only | 2026-11-20 |
-| PC-F62 | pc-2 | pc/PC-F62 | impl | impl (Opus, high, launched 2026-11-20) | DeletePlan Cascade/SetNull declared writes; R1 only | 2026-11-20 |
-| PC-088 | pc-1 | pc/PC-088 | impl | impl (Opus, high, launched 2026-11-20) | 0018-c; two reviews (R2 fable, security-bound) | 2026-11-20 |
+| PC-145 | pc-3 | pc/PC-145 | fix1 | R1 0/0/3 (1226a7c1); fix1 then hold behind PC-F62; D-158 | 0020-f; R1 only | 2026-11-20 |
+| PC-F62 | pc-2 | pc/PC-F62 | fix1 | R1 0/0/3 (7a58ce3f); fix1 then hold behind PC-F63; D-156 | DeletePlan Cascade/SetNull declared writes; R1 only | 2026-11-20 |
+| PC-088 | pc-1 | pc/PC-088 | fix1 | R1 1/2/4 (ed00f3de); fix1 then R2 (fable, security-bound); D-157 | 0018-c; two reviews (R2 fable, security-bound) | 2026-11-20 |
 | PC-F63 | pc-f | pc/PC-F63 | held | held (aa763156; R1-1..3 fixed, R1-2 documented not fixed: ALM-prefixed ellipsis broke Latin kerning; merge-tree clean); released after PC-146; D-155 | nightly client-e2e WebKit chart-bidi; R1 only | 2026-11-20 |
-| PC-F64 | pc-f2 | pc/PC-F64 | ci-pending | ci-pending (bdf3e354 CI fixes: SMTP tests bound localhost vs 0.0.0.0; pc run 44798852215 red on ubuntu: RequestTimeoutTests 504-vs-abort, 2nd occurrence after PC-146 fix 1, root-causing as CI fixes 2) | nightly integration-windows TenantScopeTests suspension refresh; R1 only | 2026-11-20 |
-| PC-146 | pc-4 | pc/PC-146 | held | held (33c39b3f; R2-1..3 fixed; merge-tree: resx content + fixture Initial rename/rename vs PC-144; regenerate all migration sets at integration); released after PC-F64 | 0021-c; R1 only | 2026-11-20 |
+| PC-146 | pc-4 | pc/PC-146 | integrating | released 2026-11-20 after PC-F64 (held 33c39b3f); regenerate fixture, migrator test distribution and Acme migrations; merge resx; full CoreFeature unit projects | 0021-c; R1 only | 2026-11-20 |
 
 ## Fix items
 
@@ -175,7 +174,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-F61 | Playwright OS deps: callers pass the bin shim (pnpm exec under sudo aborted before apt); script refuses package-manager launchers; launch probe waits for a rendered frame | done (007f0ff0; pc 44742811597 green, PR 44745457790 green; nightly 44745573605 dispatched to verify) | b4a628df, 000ced1d, 366d0ceb, 5d493f9b, 007f0ff0 | R1 0/0/1; CI fixes: probe raced the first frame (acme-client) |
 | PC-F62 | DeletePlan declares the tables of Cascade/SetNull referencing FKs (undeclared writes, every module); remove per-service workarounds (ScheduleService) | in progress (pc-2; D-150) | | |
 | PC-F63 | Nightly client-e2e: 3 WebKit chart-bidi canvas tests fail; dotnet job OS deps unavailable (nightly 44745573605) | in progress (D-151) | | |
-| PC-F64 | Nightly integration-windows: TenantScopeTests cross-instance suspension refresh failed (nightly 44745573605) | in progress (D-151) | | |
+| PC-F64 | Nightly integration-windows: TenantScopeTests cross-instance suspension refresh failed (nightly 44745573605) | done (97475bd4; pc 44823811836 green; root causes: TenantScopeTests 30 s setup bound under a LocalDB CREATE DATABASE convoy, SMTP tests localhost vs 0.0.0.0, RequestTimeoutTests timer firing before the access guard; D-151, D-155) | | |
 | PC-F02 | systemic e2e flakiness: CI 42456030333 red on 5250c6c (plans-only) with 4 NEW flaky tests | done (R1 1/1/2; CI 42471952389 green), pc-f free | 2c91df4, 4c36d45, 4c89ae1 | 11.32M | grid bundle at its 38 KB ceiling; picker same-frame Enter race open | root-cause all 9; un-quarantine the fixed PC-F01 five |
 
 ## Batch reviews (one per phase)
@@ -384,7 +383,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-085 | 0011-g | 1 | done (integrated db81630; CI 43479519320 red: Acme E2E csproj never committed (.gitignore *.e2e matches the folder case-insensitively), fixed by PC-F30, green at 9a1754d (CI 43488423725); integration-windows itself green; fix1 6ba59cb; R1-6 pushed back: AspNetCore→Webhooks edge would break ARCHITECTURE rule 6, IVT seam kept and documented; R1-4 compares runtime models only; new fix: RCSI ALTER WITH ROLLBACK IMMEDIATE (pooled catalog connection timed out Acme readiness); integration-windows non-gating) | a147a95, 6ba59cb, db81630 (pc) |  |  |
 | PC-086 | 0029-a | 1 | done | ce581934, 7a5cdf53, 84278111, 22c362f7; green 44575091654 | | |
 | PC-087 | 0018-b | 1 | done (f75366c4; pc 44748673481 green, PR 44752134569 green) | e2ed8550, 0d6e317a, 01533a52, f75366c4 | | D-148 |
-| PC-088 | 0018-c | 1 | in progress | | | |
+| PC-088 | 0018-c | 1 | in progress | | | carry (D-156): whichever of PC-088 and PC-F62 lands second removes UserService.Delete.cs's local cascade declaration (UserPreferences, UserStamps, NotificationPreferences); PC-F62 declares it generally |
 | PC-089 | 0017-d | 1 | todo | | | carry: none from D-096 any more (D-120 moved §6.4 BlobContainerStep to PC-083 and the provisioning-record row to whichever of PC-078 and PC-083 lands last); carry from PC-080 (D-124): blob endpoints must evaluate access or record the member witness, or the witness filter answers 500 (unstarted) or aborts the connection (started); carry D-137: wrap the blob GET in the telemetry stage (0016 §5.1 chain); carry D-145: map the blob GET with DisableRequestTimeout or a time-to-first-byte policy (tellma-web cuts downloads at 30 s) |
 | PC-090 | 0018-d | 1 | todo | | | carry from PC-141 (D-096): TenantStateTests.An_action_allowed_when_read_only_succeeds_on_a_read_only_tenant runs and must pass |
 | PC-091 | 0018-e | 1 | todo | | | |
@@ -441,7 +440,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-142 | 0015-k | 2 | done (eba471bf; green 44642487470) | e86138b6, 76ee772e, e6f1d0b2, 3083d411, eba471bf | | D-131, D-132, D-134 |
 | PC-143 | 0018-f | 2 | todo | | | |
 | PC-144 | 0020-e | 2 | done (711641ab; pc 44771340622 green; PR 44774613660 green) | 7d470e81, 8e457c6b, 711641ab | | D-150, D-152, D-154 |
-| PC-145 | 0020-f | 2 | in progress | | | carry (D-153): add core.Job to AccessEvaluationTests' list of self-scoped securables (Filtered with no grants) |
+| PC-145 | 0020-f | 2 | in progress | | | carry (D-153): add core.Job to AccessEvaluationTests' list of self-scoped securables (Filtered with no grants); carry (D-156): the core.job-retention and core.file-retention DELETE of core.Jobs must declare core.ScheduleStates (FK_ScheduleStates_LastJobId SET NULL) and every IJobEntity table (FK_<Table>_JobId SET NULL), from ForeignKeyActions.WrittenByDeleting once PC-F62 is on platform-core (whichever of PC-145 and PC-F62 lands second wires it) |
 | PC-146 | 0021-c | 2 | in progress | | | carry from PC-099 r1: the Notification stack fails closed (no criteria) until this lands; add the self-scope |
 | PC-147 | 0021-d | 2 | todo | | | |
 | PC-148 | 0022-a | 2 | todo | | | carry (D-151): EnlistmentFrame.Admit admits EmailOutbox (0015 §13.3); 0021 §12 enlisted-rows-committed-with-the-completion e2e test lands here |
