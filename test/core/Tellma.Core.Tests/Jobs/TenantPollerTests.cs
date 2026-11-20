@@ -7,6 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Testing;
 using Tellma.Core.Abstractions.Jobs;
+using Tellma.Core.Composition;
 using Tellma.Core.Jobs;
 using Tellma.Core.Tests.Data.Batches;
 
@@ -166,14 +167,14 @@ namespace Tellma.Core.Tests.Jobs
         {
             TenantPoller poller = Start(readOnly: true);
             await _poll.PolledAsync(1);
-            Assert.Equal([WorkerTestModel.AuditKey], Plan(1).Claims.Select(static claim => claim.Handler.Key));
+            Assert.Equal([WorkerTestModel.AuditKey], Keys(Plan(1)));
             Assert.True(Plan(1).ReadOnly);
 
             // --- Back to active, every key is claimed again ---
             poller.ReadOnly = false;
             await AdvanceAsync(TimeSpan.FromSeconds(2));
             await _poll.PolledAsync(2);
-            Assert.Equal([WorkerTestModel.AuditKey, WorkerTestModel.RecomputeKey], Plan(2).Claims.Select(static claim => claim.Handler.Key));
+            Assert.Equal([WorkerTestModel.AuditKey, WorkerTestModel.RecomputeKey], Keys(Plan(2)));
             Assert.False(Plan(2).ReadOnly);
         }
 
@@ -186,7 +187,7 @@ namespace Tellma.Core.Tests.Jobs
 
             // --- Poll 2 follows at once and leaves the busy key out: its one batch at a time is running ---
             await _poll.PolledAsync(2);
-            Assert.Equal([WorkerTestModel.AuditKey], Plan(2).Claims.Select(static claim => claim.Handler.Key));
+            Assert.Equal([WorkerTestModel.AuditKey], Keys(Plan(2)));
             await _time.TimerCreatedAsync();
             Assert.Equal(1, _concurrency.Running(TenantId, WorkerTestModel.RecomputeKey));
             Assert.Equal(0, _concurrency.Running(TenantId, WorkerTestModel.AuditKey));
@@ -200,7 +201,7 @@ namespace Tellma.Core.Tests.Jobs
             Assert.True(_dispatch.Started.TryPeek(out JobPolledClaim? running));
             running.Reservation!.Dispose();
             await _poll.PolledAsync(3);
-            Assert.Equal([WorkerTestModel.AuditKey, WorkerTestModel.RecomputeKey], Plan(3).Claims.Select(static claim => claim.Handler.Key));
+            Assert.Equal([WorkerTestModel.AuditKey, WorkerTestModel.RecomputeKey], Keys(Plan(3)));
             Assert.Equal(2, _concurrency.Free);
         }
 
@@ -219,7 +220,7 @@ namespace Tellma.Core.Tests.Jobs
                 Assert.Equal(number - 1, _poll.Plans.Count);
                 _time.Advance(TimeSpan.FromSeconds(0.1));
                 await _poll.PolledAsync(number);
-                Assert.Equal([WorkerTestModel.AuditKey], Plan(number).Claims.Select(static claim => claim.Handler.Key));
+                Assert.Equal([WorkerTestModel.AuditKey], Keys(Plan(number)));
             }
 
             // --- Only the batch's end wakes the tenant ---
@@ -227,7 +228,7 @@ namespace Tellma.Core.Tests.Jobs
             Assert.True(_dispatch.Started.TryPeek(out JobPolledClaim? running));
             running.Reservation!.Dispose();
             await _poll.PolledAsync(6);
-            Assert.Equal([WorkerTestModel.AuditKey, WorkerTestModel.RecomputeKey], Plan(6).Claims.Select(static claim => claim.Handler.Key));
+            Assert.Equal([WorkerTestModel.AuditKey, WorkerTestModel.RecomputeKey], Keys(Plan(6)));
         }
 
         [Fact]
@@ -255,7 +256,7 @@ namespace Tellma.Core.Tests.Jobs
 
             // --- Neither poll held the instance's slots for its empty keys: both planned every key ---
             Assert.Equal([TenantId, OtherTenantId], new[] { Plan(1).TenantId, Plan(2).TenantId }.Order());
-            Assert.All([Plan(1), Plan(2)], static plan => Assert.Equal([WorkerTestModel.AuditKey, WorkerTestModel.RecomputeKey], plan.Claims.Select(static claim => claim.Handler.Key)));
+            Assert.All([Plan(1), Plan(2)], static plan => Assert.Equal([WorkerTestModel.AuditKey, WorkerTestModel.RecomputeKey], Keys(plan)));
 
             // --- Both tenants' audit claims started, one instance slot each ---
             await WaitUntilAsync(() => _dispatch.Started.Count == 2);
@@ -282,7 +283,7 @@ namespace Tellma.Core.Tests.Jobs
                     await all.Task.ConfigureAwait(false);
                 }
 
-                return FakeJobPoll.Result(plan, _ => number <= Tenants ? 1 : 0);
+                return FakeJobPoll.Result(plan, handler => number <= Tenants && Modelled(handler.Key) ? 1 : 0);
             };
             for (int tenant = 1; tenant <= Tenants; tenant++)
             {
@@ -290,7 +291,7 @@ namespace Tellma.Core.Tests.Jobs
             }
 
             await _poll.PolledAsync(Tenants);
-            Assert.All(_poll.Plans.Take(Tenants), static plan => Assert.Equal(2, plan.Claims.Count));
+            Assert.All(_poll.Plans.Take(Tenants), static plan => Assert.Equal(2, Keys(plan).Length));
 
             // --- Two batches start, the instance's bound; the other ten claims are released, freeing their keys ---
             await WaitUntilAsync(() => _dispatch.Started.Count + _dispatch.Released.Count == Tenants * 2);
@@ -499,6 +500,22 @@ namespace Tellma.Core.Tests.Jobs
             _pollers.Add(poller);
             poller.Start();
             return poller;
+        }
+
+        /// <summary>Whether a key is one of the worker model's handlers rather than one the platform itself contributes.</summary>
+        /// <param name="key">The handler's key.</param>
+        /// <returns>True for a handler of the worker model.</returns>
+        private static bool Modelled(string key)
+        {
+            return !key.StartsWith(CoreFeature.FeatureName + ".", StringComparison.Ordinal);
+        }
+
+        /// <summary>The keys a plan claims among the worker model's handlers, in claim order; the platform's own handlers are left out.</summary>
+        /// <param name="plan">The plan.</param>
+        /// <returns>The keys.</returns>
+        private static string[] Keys(JobPollPlan plan)
+        {
+            return [.. plan.Claims.Select(static claim => claim.Handler.Key).Where(Modelled)];
         }
 
         /// <summary>A poll's plan, by its number from 1.</summary>

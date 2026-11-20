@@ -597,6 +597,28 @@
   <data name="Notification_core_scheduler_gap" xml:space="preserve">
     <value>لم تعمل المهام في الخلفية من {previousTickAt, date, medium} {previousTickAt, time, short} حتى {now, date, medium} {now, time, short}. {heldCount, plural, =0 {لم تُوقف أي مهمة متأخرة.} one {أُوقفت مهمة متأخرة واحدة مؤقتًا حتى يستأنفها المسؤول أو يوقفها.} two {أُوقفت مهمتان متأخرتان مؤقتًا حتى يستأنفهما المسؤول أو يوقفهما.} few {أُوقفت # مهام متأخرة مؤقتًا حتى يستأنفها المسؤول أو يوقفها.} many {أُوقفت # مهمة متأخرة مؤقتًا حتى يستأنفها المسؤول أو يوقفها.} other {أُوقفت # مهمة متأخرة مؤقتًا حتى يستأنفها المسؤول أو يوقفها.}}</value>
   </data>
+  <!-- Notifications: the preference save's validation codes, retention's progress, and the handlers' labels -->
+  <data name="Notifications_UnknownType" xml:space="preserve">
+    <value>لا يوجد نوع إشعار بهذا الاسم.</value>
+  </data>
+  <data name="Notifications_UnknownChannel" xml:space="preserve">
+    <value>لا توجد قناة توصيل بهذا الاسم.</value>
+  </data>
+  <data name="Notifications_DuplicatePreference" xml:space="preserve">
+    <value>هذا النوع من الإشعارات مع هذه القناة مُدرج أكثر من مرة.</value>
+  </data>
+  <data name="Notifications_CannotMute" xml:space="preserve">
+    <value>لا يمكن إيقاف إشعارات هذا النوع في صندوق الوارد.</value>
+  </data>
+  <data name="Notifications_RetentionProgress" xml:space="preserve">
+    <value>حُذفت إشعارات مقروءة: {read}، وغير مقروءة: {unread}.</value>
+  </data>
+  <data name="JobHandler_core_notification-delivery" xml:space="preserve">
+    <value>توصيل الإشعارات</value>
+  </data>
+  <data name="JobHandler_core_notification-retention" xml:space="preserve">
+    <value>حذف الإشعارات القديمة</value>
+  </data>
   <!-- Queryex diagnostics, with the arguments the engine gives each -->
   <data name="Queryex_QX1001" xml:space="preserve">
     <value>نص حرفي غير مغلق.</value>
