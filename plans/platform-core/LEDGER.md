@@ -103,9 +103,8 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC | Slot | Branch | Step | Implementer agent (name / id) | Reviewer agent (name / id) | Started (UTC) |
 |---|---|---|---|---|---|---|
 | PC-100 | pc-4 | pc/PC-100 | impl | impl (Opus, high, launched 2026-11-19) | 0020-d; R1 only | 2026-11-19 |
-| PC-102 | pc-2 | pc/PC-102 | held (2187f29c; merge-tree clean; release after PC-142) | impl (Opus, high, launched 2026-11-19) | 0029-f; R1 only | 2026-11-19 |
+| PC-102 | pc-2 | pc/PC-102 | integrating (released after PC-142 green 44642487470; held 2187f29c) | impl (Opus, high, launched 2026-11-19) | 0029-f; R1 only | 2026-11-19 |
 | PC-081 | pc-3 | pc/PC-081 | held (b6da8f64; merge-tree clean; release after PC-102) | impl (Opus, high, launched 2026-11-19) | 0016-d; R1 then R2 fable (security-bound) | 2026-11-19 |
-| PC-142 | pc-1 | pc/PC-142 | integrating (released after PC-098 green 44632808005; held e6f1d0b2) | impl (Opus, high, launched 2026-11-19) | 0015-k (T2); R1 0B/4M/5m all fixed; R2 (escalated) 0B/2M/3m; then hold | 2026-11-19 |
 
 ## Fix items
 
@@ -430,7 +429,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-139 | 0032-d | 1 | todo | | | carry from PC-056: composite cell editors (window, filter) must shield inner tm-* controls from TM_CELL_EDITOR_HOST's last-registration-wins rule, or use plain inputs; add a helper if needed |
 | PC-140 | MVP | 1 | todo | | | |
 | PC-141 | 0011-h | 2 | done (478b0ab0; CI 43879675326 green) | bb2a2d6, 15d1369 (pc/PC-141) | | |
-| PC-142 | 0015-k | 2 | fix2 | e86138b6, 76ee772e | | |
+| PC-142 | 0015-k | 2 | done (eba471bf; green 44642487470) | e86138b6, 76ee772e, e6f1d0b2, 3083d411, eba471bf | | D-131, D-132, D-134 |
 | PC-143 | 0018-f | 2 | todo | | | |
 | PC-144 | 0020-e | 2 | todo | | | |
 | PC-145 | 0020-f | 2 | todo | | | |
