@@ -109,6 +109,9 @@ namespace Tellma.Core.Tests.Crud.Query
         /// <summary>What connecting the caller throws, as a connect that failed would; null while it connects.</summary>
         public Exception? ConnectFailure { get; set; }
 
+        /// <summary>Whether the scopes' connections report a prologue due for the cached caller; false by default.</summary>
+        public bool PrologueDue { get; set; }
+
         /// <summary>What a re-check throws, as a revalidation that failed would; null while it finds a set.</summary>
         public Exception? RevalidateFailure { get; set; }
 
@@ -356,6 +359,12 @@ namespace Tellma.Core.Tests.Crud.Query
 
                 rig.User = rig.Revalidated ?? rig.User;
                 return Task.FromResult(rig.User);
+            }
+
+            /// <inheritdoc />
+            public bool IsPrologueDue(ConnectedUser user)
+            {
+                return rig.PrologueDue;
             }
 
             /// <inheritdoc />

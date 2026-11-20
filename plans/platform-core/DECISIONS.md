@@ -359,10 +359,59 @@ Format, one entry per ruling:
 - Also accepted: a readonly select never opens (a pre-existing bug, fixed) and exposes aria-readonly.
 - **Misalignment for Ahmad:** 0010 §B.4 names contentChildren(TmOptionGroup), which the design does not need. See also D-036's §B.4 note.
 
+### D-140 — PC-174 (T3) not started early (2026-11-20)
+
+- After PC-142 went green, the only ready checkpoint was PC-174 (Tier 3). PLAN §4 lets a lower tier start only when no higher tier is ready, a slot would idle, *and* the window would otherwise expire unused. The weekly window was 54% used with 4 d 19 h left (about 31% elapsed), so it will not expire unused; PC-174 waits for Tier 1/2 work to run out or the pacing to change.
+
+### D-139 — New flake candidate from PC-098's gate (2026-11-19)
+
+- BlobLifecycleStatementTests.The_sweeps_claim_blocks_on_a_row_a_save_is_confirming_and_skips_it_once_the_save_commits (from PC-084) failed once in PC-098's local integration gate: "No request waited for the lock within 30 seconds" on a loaded host; the class passed 2/2 in two reruns alone, and PC-098 does not touch it. Under D-011/D-113 it is not quarantined: if it recurs (locally or on CI) it becomes a PC-Fnn fix item and is root-caused. Briefs list it as a known candidate meanwhile.
+
+### D-138 — PC-102 fix1 hand-offs (2026-11-19)
+
+- R1-1 fixed: IScopeConnection gains IsPrologueDue (past the fast-deny window, permissions aged, or an activity stamp due). Discover then runs the guarded runner's statement-less Read prologue, so a deactivated caller gets tenant-not-found; otherwise it costs 0 round trips. Supersedes D-136's second bullet.
+- **For Ahmad:** 0029 §9 "Messages" omits Permissions.FilterTooLong and Permissions.FilterInvalid, which the permission profile answers.
+
+### D-137 — PC-081 Review 2 notes outside its diff (2026-11-19)
+
+- The telemetry stage wraps the Web group only; 0016 §5.1 puts the blob GET on the same chain. Carried to PC-089.
+- **For Ahmad:** TenantAccessGuard.EnsureStateServes runs before the membership check (0011's order), so any signed-in user learns a tenant exists when it is suspended, or read-only/frozen on a mutation. That is a tenant-existence oracle for authenticated non-members. Keep 0011's order, or check membership first so non-members always get tenant-not-found?
+- A non-JSON body to a route that declares its media types is diverted to the SPA fallback before CSRF sees it: it answers 415 unsupported-media, not 415 csrf-rejected, and tellma.auth.csrf_rejections does not count it. No handler runs, so nothing is exposed; recorded only.
+
+### D-136 — PC-102 hand-offs (2026-11-19)
+
+- QueryWireDiagnostics (Tellma.Core/Crud/Query) is the one QueryexDiagnostic → QueryDiagnostic edge mapping. Whichever of PC-081 / PC-102 integrates second converges PC-081's InvalidQueryException mapping on it (named in that item's integration message).
+- Discovery runs without the guarded runner: it reads IScopeConnection.CurrentAsync (0 round trips warm, 1 cold) with no fast-deny re-check. Pending R1.
+- QueryexType serializes without the Qx prefix platform-wide through one TellmaJson converter shared by row sets and contract fingerprints. PermissionFilterRules is extracted from RoleAccessRules so role save and discovery share one judge.
+
+### D-135 — PC-F59 root cause and an open classification gap (2026-11-19)
+
+- Root cause of the TenantScopeTests red (run 44571660410): over LocalDB named pipes, about 0.5-0.9% of refused logins to a missing database arrive as SQL 233 alone instead of [4060, 18456]. Production classification is correct: a failed open is unsent; 233 is Ambiguous, which reports before the send, and 4060 is reported-transient, so both get the same re-run budget. The fix is test-only.
+- Open gap, not seen locally or on CI: an error list ordered [18456, 4060] would classify as Final, because the classifier keys on the primary error. Carried to the next checkpoint that touches the SQL error classifier (0012 §6.3); no action until then.
+
+### D-134 — PC-142 fix2 hand-offs (2026-11-19)
+
+- The D-132 gate is in: StackRegistry refuses at startup a stack that keeps DeleteByQuery while its service or a validator judges deletes (HookOverrides.ValidatesDeletes). No platform stack breaks; User and Role already omit DeleteByQuery.
+- Read D-131's §16.2 note together with D-132: Ahmad's choice there (a gate vs a judged delete by query) also decides whether delete rules apply to delete by query. **For Ahmad:** whichever option is chosen, 0015 §16.2's delete-by-query row and 0015's capability-table TopLevelEntity default need wording that matches it.
+
+### D-133 — PC-081 hand-offs (2026-11-19)
+
+- The SPA `{*path}` fallback swallowed 405/415 as a 404 route-not-found. PC-081 changed SpaHosting (outside 0016's own files) so RouteMisses in the fallback answers 405 with Allow, or 415. Accepted, pending R1/R2.
+- 0016 §10.2 (an infra/monitoring alert on `tellma.api.problems{status=500}`) is not in PC-081's sections and no checkpoint owns it yet. **For Ahmad:** place it (suggested: the observability/infra checkpoint that owns alert rules).
+- Tellma-Priority parsing stays with PC-082; the 429 Retry-After must come from PC-082's limiter OnRejected. Carried to PC-082.
+- Acme NeedsUserConnectionAndBootstrap tests stay skipped until the real user connection and admin bootstrap exist. ARCHITECTURE.md needed no change.
+
+### D-132 Delete-by-query bypasses delete validators: fail closed (2026-11-19)
+
+- Situation: PC-142 R2-1. DeleteRun never runs ValidateDeleteAsync on a delete by query (spec 0015 §10.2: one Persist round trip), and every TopLevelEntity stack serves DeleteByQuery by default. Only security tables are gated (D-119). So a stack whose deletes are judged can have its delete rules bypassed by query; e.g. spec 0020's ScheduleService refuses deleting built-in schedules, yet DeleteByQueryAsync("Id = <built-in>") would delete one.
+- Interim ruling (fail closed, as D-119): the stack registry refuses at startup a stack that validates deletes and still serves StackOperations.DeleteByQuery. Delete by query stays one round trip for stacks that do not judge deletes. Implemented in PC-142's last round, with a unit test and a conformance-base assertion.
+- For Ahmad: choose between (a) this gate, or (b) a judged delete by query running a validation round (2 round trips, changing spec 0015 §10.2 and §16.2). This supersedes D-131's "wording alignment" note on §16.2's delete-by-query row.
+
 ### D-131 PC-142 R1: escalation, spec item and carries (2026-11-19)
 
 - R1 found 4 majors (missing §16.2 budget rows, collections at depth, closers without actions/validators, untouched suites not run), so PC-142 gets a second review (PLAN §8.1), Opus inherit at high: it is not on the two-review list, so no fable.
 - For Ahmad: spec 0015 §16.1's tellma.crud.validation.rounds row should list the open frame's hosts (api_action, job, provisioning) as crud.operation values, as the enlistments row already does. Interim: the collector admits operations ∪ hosts.
+- For Ahmad: spec 0015 §16.2's delete-by-query row says a judged delete takes 2 round trips, but §10.2 and DeleteRun say a delete by query is always 1 (it never runs delete validators); the base asserts 1. Align §16.2 to §10.2's wording.
 - Carries: the conformance base's Excel rows lane goes to PC-174, and export/import reachability with their budget rows to PC-176/PC-177.
 
 ### D-130 PC-086 R1 rulings (2026-11-19)

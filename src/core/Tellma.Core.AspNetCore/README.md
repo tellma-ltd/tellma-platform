@@ -170,7 +170,8 @@ code), `title` and `detail` rendered in the request's language from `Problem_<co
 `Problem_<code>_Detail`, `status`, `instance` (the trace id), `code`, `errors` (each with its
 `path` or import cell, `code`, rendered `message` and raw `arguments`), `errorDetails` (always
 present, null when the problem has none) and `arguments` when it has some. The mapping is by
-exception type: `BadRequestException`, `InvalidQueryException` and a malformed JSON body
+exception type: `BadRequestException`, `InvalidQueryException` (each diagnostic as query discovery
+answers it, keyed in `errors` by its clause) and a malformed JSON body
 (`arguments.reason = malformed-json`) answer 400; `StepUpRequiredException` 401 with its
 `WWW-Authenticate` challenge; `ForbiddenException` and `IndividualRequiredException` 403; not found
 404; concurrency, confirmations, tenant states and count mismatches 409; limits and bodies over

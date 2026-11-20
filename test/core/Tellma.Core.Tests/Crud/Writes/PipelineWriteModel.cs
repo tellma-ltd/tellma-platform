@@ -59,7 +59,8 @@ namespace Tellma.Core.Tests.Crud.Writes
     /// <summary>The model's ticket, activatable, whose service validates deletes and actions.</summary>
     [Table("Tickets", Schema = "pw")]
     [TableType]
-    [Stack(MaxIds = 5, MaxDeleteByQueryRows = 10)]
+    // Its service judges deletes, so it omits DeleteByQuery: a delete by query names no ids its rules could see.
+    [Stack(MaxIds = 5, Operations = StackOperations.Read | StackOperations.Save | StackOperations.Delete | StackOperations.Import)]
     public class PwTicket : TopLevelEntity, IActivatable
     {
         /// <summary>The name.</summary>
@@ -74,9 +75,10 @@ namespace Tellma.Core.Tests.Crud.Writes
         public bool IsActive { get; set; } = true;
     }
 
-    /// <summary>The model's label, activatable, whose service validates nothing.</summary>
+    /// <summary>The model's label, activatable, whose service validates nothing and whose delete by query is capped at ten rows.</summary>
     [Table("Labels", Schema = "pw")]
     [TableType]
+    [Stack(MaxDeleteByQueryRows = 10)]
     public class PwLabel : TopLevelEntity, IActivatable
     {
         /// <summary>The name.</summary>

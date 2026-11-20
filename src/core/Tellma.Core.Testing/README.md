@@ -1,6 +1,6 @@
 # Tellma.Core.Testing
 
-Test doubles, executable conformance suites (email senders, blob stores) and the job item probe for the
+Test doubles, executable conformance suites (email senders, blob stores, entity stacks) and the job item probe for the
 `Tellma.Core.Abstractions` contracts — the
 C# sibling of `@tellma/core-ui-testing` — and the pins every EF migrations assembly is held to.
 Referenced by test projects, so distribution and platform suites stop hand-rolling their own email
@@ -142,6 +142,32 @@ the settings from the scope's tenant descriptor (its declared languages, the pla
 calendar, UTC, no stored entries) and serves them as a hit under one fixed tag.
 `UseFixedTenantSettings(configure)` replaces the composed cache after the composition; `configure`
 reshapes the settings, such as a zone or a region a test needs.
+
+**[StackConformanceTests<TEntity, TKey>](Crud/StackConformanceTests.cs)** is the executable form
+of an entity stack's contract. A distribution closes it once per stack, over a
+[IStackConformanceHarness](Crud/IStackConformanceHarness.cs) on its own tenant database and a
+`NewValidEntity(ordinal)`, and every case reads the rest from the stack's descriptor: the declared
+operations reachable, each answering as it should for a row that does not exist, and the absent
+ones refused; enlisted writes from a declared writer at no round
+trip of their own and an undeclared writer refused; the securables with their filter roots, and each
+child query surface's read through its owner; the round-trip budget of every read and write, held
+to the driver's own count when the harness observes it and measured over two rows (and two child
+rows at every depth) so a statement per row shows; a row the read grant hides answering as a
+missing one on every operation that names ids; stamp conflicts, overrides and rows deleted since
+they were read; write-once and server-owned values; null and empty collections and foreign child
+ids at every depth; a stack whose deletes are judged serving no delete by query; unique and natural-key values, and rows still referenced; the activatable, tree, cacheable and
+searchable recipes; and the instruments. A case that does not apply to the stack's declaration is
+skipped with its reason; one that needs what only the distribution can supply (a writer of the
+stack, a row of another entity that references it, the rows of a stack that saves none) fails,
+naming the member to override. What no descriptor says is the closing class's to state: what the
+stack's validators load and in how many dependent rounds, the arguments of its entity actions and
+the bodies of its API actions, and which references to the stack the in-use case exercises.
+
+**[CrudInstrumentCollector](Crud/CrudInstrumentCollector.cs)** collects every measurement of the
+pipeline's `tellma.crud.*` instruments on one host's meter factory and holds each to its
+instrument's closed tag set: the tags it must carry, the ones it may, and the values each closed tag
+may take. `AssertClosed` fails with every measurement that leaves its shape. It listens through
+`MetricCollector`, which is why the package references `Microsoft.Extensions.Diagnostics.Testing`.
 
 ## Rules this package lives by
 

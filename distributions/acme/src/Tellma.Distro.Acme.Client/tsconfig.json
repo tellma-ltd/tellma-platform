@@ -28,5 +28,6 @@
       "@tellma/locale-ar": ["../../../../client/projects/locale/tellma-locale-ar/public-api.ts"]
     }
   },
-  "include": ["src/**/*.ts"]
+  /* The emitted entity types (generated/tellma-entities.d.ts) type the declarations' rows and paths. */
+  "include": ["src/**/*.ts", "generated/*.d.ts"]
 }

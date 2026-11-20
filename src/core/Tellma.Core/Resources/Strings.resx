@@ -560,6 +560,37 @@
   <data name="Core_Job_ExportReport" xml:space="preserve">
     <value>Exporting {title}</value>
   </data>
+  <!-- Background jobs: the platform's error codes and the notices a completion raises -->
+  <data name="Jobs_Internal" xml:space="preserve">
+    <value>An unexpected error occurred while running the job.</value>
+  </data>
+  <data name="Jobs_Cancelled" xml:space="preserve">
+    <value>The job was cancelled.</value>
+  </data>
+  <data name="Jobs_EntityMissing" xml:space="preserve">
+    <value>The record the job works on no longer exists.</value>
+  </data>
+  <data name="Jobs_AttemptsExhausted" xml:space="preserve">
+    <value>The job failed after using all its attempts.</value>
+  </data>
+  <data name="Jobs_UserInactive" xml:space="preserve">
+    <value>The user the job runs as is no longer an active member.</value>
+  </data>
+  <data name="Jobs_TooManyConfirmations" xml:space="preserve">
+    <value>The job raised {count, plural, one {# kind of warning} other {# kinds of warning}}, more than can be confirmed at once.</value>
+  </data>
+  <data name="Jobs_HeldAfterGap" xml:space="preserve">
+    <value>The job was paused after a service interruption.</value>
+  </data>
+  <data name="Jobs_HandlerRetired" xml:space="preserve">
+    <value>The job was stopped because this kind of job is no longer offered.</value>
+  </data>
+  <data name="Notification_core_job_failed" xml:space="preserve">
+    <value>The job {handlerKey} failed.</value>
+  </data>
+  <data name="Notification_core_job_pending-confirmation" xml:space="preserve">
+    <value>{count, plural, one {A job is waiting for you to confirm a warning.} other {A job is waiting for you to confirm # warnings.}}</value>
+  </data>
   <!-- Queryex diagnostics, with the arguments the engine gives each -->
   <data name="Queryex_QX1001" xml:space="preserve">
     <value>Unterminated text literal.</value>

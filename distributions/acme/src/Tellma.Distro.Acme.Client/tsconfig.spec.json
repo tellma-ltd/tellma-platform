@@ -5,5 +5,5 @@
     "noEmit": false,
     "outDir": "./out-tsc/spec"
   },
-  "include": ["src/**/*.spec.ts"]
+  "include": ["src/**/*.spec.ts", "generated/*.d.ts"]
 }

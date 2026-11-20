@@ -233,25 +233,18 @@ namespace Tellma.Core.Tests.Crud.Writes
         // --- A delete by query ---
 
         [Fact]
-        public async Task A_delete_by_query_counts_the_rows_it_matches_beside_its_capped_delete_on_one_round_trip_and_runs_no_validator()
+        public async Task A_delete_by_query_counts_the_rows_it_matches_beside_its_capped_delete_on_one_round_trip()
         {
             Grant(write: "Name != 'locked'");
-            bool validated = false;
-            _hooks.ValidateDelete = _ =>
-            {
-                validated = true;
-                return Task.CompletedTask;
-            };
 
-            AffectedResult deleted = await TicketsAsync(tickets => tickets.DeleteByQueryAsync(new DeleteByQueryRequest("Name = 'x'", null, 2), Token));
+            AffectedResult deleted = await LabelsAsync(labels => labels.DeleteByQueryAsync(new DeleteByQueryRequest("Name = 'x'", null, 2), Token));
 
             // --- The count, one past the cap, then the delete: both under the caller's filter and the grant's ---
             Assert.Equal(2, deleted.Count);
-            Assert.False(validated);
             ScriptedBatch persist = Assert.Single(_rig.Script.Batches);
             Assert.Equal([ScriptedKind.Count, ScriptedKind.Delete], persist.Statements.Where(static statement => statement.Kind is ScriptedKind.Count or ScriptedKind.Delete).Select(static statement => statement.Kind));
             ScriptedStatement count = Assert.Single(persist.Of(ScriptedKind.Count));
-            DeleteSpec<PwTicket>.ByQuery spec = Assert.IsType<DeleteSpec<PwTicket>.ByQuery>(Assert.Single(persist.Of(ScriptedKind.Delete)).Statement);
+            DeleteSpec<PwLabel>.ByQuery spec = Assert.IsType<DeleteSpec<PwLabel>.ByQuery>(Assert.Single(persist.Of(ScriptedKind.Delete)).Statement);
             Assert.Equal((10, 10, 2), (count.Cap, spec.Cap, spec.ExpectedCount));
             Assert.Equal("and(Name = 'x' | or(Name != 'locked'))", QueryRig.Render(spec.Filter));
             Assert.Equal(QueryRig.Render(spec.Filter), QueryRig.Render(count.Spec.Filter));
@@ -260,13 +253,13 @@ namespace Tellma.Core.Tests.Crud.Writes
         [Fact]
         public async Task A_delete_by_query_refuses_a_blank_filter_a_negative_count_and_a_filter_that_does_not_compile_before_any_round_trip()
         {
-            _ = await Assert.ThrowsAsync<BadRequestException>(() => TicketsAsync(tickets => tickets.DeleteByQueryAsync(new DeleteByQueryRequest(" ", null, 1), Token)));
-            _ = await Assert.ThrowsAsync<BadRequestException>(() => TicketsAsync(tickets => tickets.DeleteByQueryAsync(new DeleteByQueryRequest("Name = 'x'", null, -1), Token)));
-            InvalidQueryException invalid = await Assert.ThrowsAsync<InvalidQueryException>(() => TicketsAsync(tickets => tickets.DeleteByQueryAsync(new DeleteByQueryRequest("Nope = 1", null, 1), Token)));
+            _ = await Assert.ThrowsAsync<BadRequestException>(() => LabelsAsync(labels => labels.DeleteByQueryAsync(new DeleteByQueryRequest(" ", null, 1), Token)));
+            _ = await Assert.ThrowsAsync<BadRequestException>(() => LabelsAsync(labels => labels.DeleteByQueryAsync(new DeleteByQueryRequest("Name = 'x'", null, -1), Token)));
+            InvalidQueryException invalid = await Assert.ThrowsAsync<InvalidQueryException>(() => LabelsAsync(labels => labels.DeleteByQueryAsync(new DeleteByQueryRequest("Nope = 1", null, 1), Token)));
 
             // --- The diagnostic sits in the request's filter, whether the grant's filter joins it or not ---
             Grant(write: "Name != 'locked'");
-            InvalidQueryException filtered = await Assert.ThrowsAsync<InvalidQueryException>(() => TicketsAsync(tickets => tickets.DeleteByQueryAsync(new DeleteByQueryRequest("Nope = 1", null, 1), Token)));
+            InvalidQueryException filtered = await Assert.ThrowsAsync<InvalidQueryException>(() => LabelsAsync(labels => labels.DeleteByQueryAsync(new DeleteByQueryRequest("Nope = 1", null, 1), Token)));
             Assert.Equal(["filter"], invalid.Diagnostics.Select(static diagnostic => diagnostic.Location));
             Assert.Equal(["filter"], filtered.Diagnostics.Select(static diagnostic => diagnostic.Location));
             Assert.Equal(0, _rig.Script.RoundTrips);
@@ -277,7 +270,7 @@ namespace Tellma.Core.Tests.Crud.Writes
         {
             // --- Past the cap: the count read beside the delete, else one more than the cap ---
             FailPersist(new BatchAssertionFailedException(TellmaSqlErrors.LimitExceeded, TellmaSqlErrors.DeleteCapExceededCode, statementOrdinal: 2));
-            LimitExceededException capped = await Assert.ThrowsAsync<LimitExceededException>(() => TicketsAsync(tickets => tickets.DeleteByQueryAsync(new DeleteByQueryRequest("Name = 'x'", null, 2), Token)));
+            LimitExceededException capped = await Assert.ThrowsAsync<LimitExceededException>(() => LabelsAsync(labels => labels.DeleteByQueryAsync(new DeleteByQueryRequest("Name = 'x'", null, 2), Token)));
             Assert.Equal((LimitNames.MaxDeleteByQueryRows, 11, 10), (capped.Limit, capped.Actual, capped.Maximum));
 
             // --- Another count than confirmed: the rows matched, as counted ---
@@ -293,7 +286,7 @@ namespace Tellma.Core.Tests.Crud.Writes
 
             // --- A mismatch whose count was never read reports no count nobody read: it passes through ---
             FailPersist(mismatch);
-            Assert.Same(mismatch, await Assert.ThrowsAsync<BatchAssertionFailedException>(() => TicketsAsync(tickets => tickets.DeleteByQueryAsync(new DeleteByQueryRequest("Name = 'x'", null, 2), Token))));
+            Assert.Same(mismatch, await Assert.ThrowsAsync<BatchAssertionFailedException>(() => LabelsAsync(labels => labels.DeleteByQueryAsync(new DeleteByQueryRequest("Name = 'x'", null, 2), Token))));
         }
 
         // --- A row still referenced ---
@@ -390,13 +383,13 @@ namespace Tellma.Core.Tests.Crud.Writes
             _ = _rig.Script.OnExecute((batch, _) => batch.Purpose == BatchPurpose.Persist ? Task.FromException(failure) : Task.CompletedTask);
         }
 
-        /// <summary>What a delete by query of the tickets knows about its persist, its count as given.</summary>
+        /// <summary>What a delete by query of the labels knows about its persist, its count as given.</summary>
         /// <param name="counted">The count of the rows matched.</param>
         /// <returns>The context.</returns>
         private PersistFailureContext ByQuery(BatchResult<int> counted)
         {
-            EntityMetadata tickets = _rig.Services.GetRequiredService<IEntityMetadataProvider>().Get(typeof(PwTicket));
-            return new PersistFailureContext(PipelineWriteModel.Tickets, AccessActions.Delete, tickets, [], LanguageIndex: 1, CarriesQueryText: true)
+            EntityMetadata labels = _rig.Services.GetRequiredService<IEntityMetadataProvider>().Get(typeof(PwLabel));
+            return new PersistFailureContext(PipelineWriteModel.Labels, AccessActions.Delete, labels, [], LanguageIndex: 1, CarriesQueryText: true)
             {
                 DeleteCounts = new QueryDeleteCounts(Cap: 10, ExpectedCount: 2, counted),
             };

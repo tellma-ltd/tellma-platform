@@ -39,7 +39,7 @@ namespace Tellma.Core.Jobs
         public const string ConfirmedKeys = "ConfirmedKeys";
 
         /// <summary>The most characters <see cref="ConfirmedKeys" /> holds.</summary>
-        public const int ConfirmedKeysLength = 2000;
+        public const int ConfirmedKeysLength = JobLimits.MaxConfirmedKeysLength;
 
         /// <summary>The characters of a W3C <c>traceparent</c>, the width of <see cref="Job.TraceParent" />.</summary>
         public const int TraceParentLength = 55;

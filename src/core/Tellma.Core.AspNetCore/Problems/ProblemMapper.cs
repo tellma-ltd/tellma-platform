@@ -11,6 +11,7 @@ using Tellma.Core.Abstractions.Blobs;
 using Tellma.Core.Abstractions.Errors;
 using Tellma.Core.Abstractions.Excel;
 using Tellma.Core.Abstractions.Tenancy;
+using Tellma.Core.Crud.Query;
 using Tellma.Core.Queryex;
 
 namespace Tellma.Core.AspNetCore.Problems
@@ -232,29 +233,6 @@ namespace Tellma.Core.AspNetCore.Problems
             return code.Replace('.', '_');
         }
 
-        /// <summary>The wire clause a located query diagnostic concerns: <c>select</c>, <c>filters[i]</c>, <c>namedFilters[i]</c>, <c>orderBy</c>, <c>having</c>, …</summary>
-        /// <param name="location">The diagnostic's location, as the pipeline located it.</param>
-        /// <returns>The clause; <c>body</c> for a diagnostic without a location.</returns>
-        public static string Clause(string? location)
-        {
-            if (string.IsNullOrEmpty(location))
-            {
-                return ValidationPaths.BodyPath;
-            }
-
-            // --- A request list's item keeps its index: filters[1], namedFilters[0] ---
-            int end = location.IndexOfAny(['.', '[']);
-            if (end > 0 && location[end] == '[' && location.IndexOf(']', end) is int close and > 0
-                && char.IsLower(location[0]))
-            {
-                return location[..(close + 1)];
-            }
-
-            // --- An engine clause (Select[2], OrderBy, Having.Or[1]): its name, camelCased ---
-            string head = end < 0 ? location : location[..end];
-            return JsonNamingPolicy.CamelCase.ConvertName(head);
-        }
-
         /// <summary>The wire form of a refusal's reason, the other branch when it names no action to render.</summary>
         /// <param name="forbidden">The refusal.</param>
         /// <returns>The reason the detail is rendered for.</returns>
@@ -268,7 +246,7 @@ namespace Tellma.Core.AspNetCore.Problems
                     : forbidden.Reason == ForbiddenReason.OutsideFilter ? "outside-filter" : "no-grant";
         }
 
-        /// <summary>A query's diagnostics: one item per diagnostic, keyed by its clause, and the diagnostics verbatim for editors.</summary>
+        /// <summary>A query's diagnostics: one item per diagnostic, keyed by its clause, and the diagnostics as discovery answers them, for editors.</summary>
         /// <param name="query">The exception.</param>
         /// <returns>The problem.</returns>
         private static ProblemDescription Query(InvalidQueryException query)
@@ -277,19 +255,13 @@ namespace Tellma.Core.AspNetCore.Problems
             List<QueryDiagnostic> diagnostics = [];
             foreach (QueryexDiagnostic diagnostic in query.Diagnostics)
             {
-                // A repeated argument name keeps its last value, as the engine's own rendering does.
-                Dictionary<string, object?> arguments = new(StringComparer.Ordinal);
-                foreach ((string name, string value) in diagnostic.Arguments)
-                {
-                    arguments[name] = value;
-                }
-
-                string clause = Clause(diagnostic.Location);
+                // One mapping to the wire, the discovery endpoint's: the clause, the item within it, the arguments.
+                QueryDiagnostic wire = QueryWireDiagnostics.ToWire(diagnostic);
                 string key = diagnostic.Code.StartsWith(QueryexCodePrefix, StringComparison.Ordinal)
                     ? QueryexKeyPrefix + diagnostic.Code
                     : MessageKey(diagnostic.Code);
-                errors.Add(new ProblemError(diagnostic.Code, key, arguments) { Path = clause });
-                diagnostics.Add(new QueryDiagnostic(clause, diagnostic.Code, diagnostic.Span.Start, diagnostic.Span.Length, diagnostic.Location, arguments));
+                errors.Add(new ProblemError(diagnostic.Code, key, wire.Arguments) { Path = wire.Clause });
+                diagnostics.Add(wire);
             }
 
             return new ProblemDescription(StatusCodes.Status400BadRequest, query.Code)

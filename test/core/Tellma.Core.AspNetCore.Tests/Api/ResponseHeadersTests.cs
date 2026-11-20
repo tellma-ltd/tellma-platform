@@ -64,6 +64,23 @@ namespace Tellma.Core.AspNetCore.Tests.Api
         }
 
         [Fact]
+        public async Task A_routed_platform_service_refused_for_its_body_answers_the_mapped_problem_with_the_same_headers()
+        {
+            await using TellmaTestHost host = await StartAsync();
+
+            // The query discovery action, its request refused for a missing body before the service runs.
+            using HttpRequestMessage request = TellmaTestHost.SpaRequest(HttpMethod.Post, "/1/api/web/queryex/discover", host.Cookie(), "null");
+            using HttpResponseMessage response = await host.Client.SendAsync(request, TestContext.Current.CancellationToken);
+
+            Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+            Problem problem = await Problem.ReadAsync(response);
+            Assert.Equal("bad-request", problem.Code);
+            Assert.StartsWith("The action 'discover' takes a body", problem.Document.GetProperty("detail").GetString(), StringComparison.Ordinal);
+            Assert.Equal(["en"], response.Content.Headers.ContentLanguage);
+            Assert.True(response.Headers.Contains(TellmaHeaders.Calendar));
+        }
+
+        [Fact]
         public async Task A_refusal_before_admission_carries_none_of_them()
         {
             await using TellmaTestHost host = await StartAsync();

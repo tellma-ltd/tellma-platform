@@ -89,11 +89,8 @@ namespace Tellma.Core.Crud.Query
             string? location = diagnostic.Location;
 
             // --- A conjunct of the composed filter: the caller's leaf, a named filter, or the platform's ---
-            if (location is not null && location.StartsWith(ConjunctPrefix, StringComparison.Ordinal))
+            if (SplitConjunct(location) is (int conjunct, string rest))
             {
-                int close = location.IndexOf(']', ConjunctPrefix.Length);
-                int conjunct = int.Parse(location.AsSpan(ConjunctPrefix.Length, close - ConjunctPrefix.Length), NumberStyles.None, CultureInfo.InvariantCulture);
-                string rest = location[(close + 1)..];
                 Conjunct origin = map.Conjuncts[conjunct];
                 return origin.Kind switch
                 {
@@ -124,6 +121,48 @@ namespace Tellma.Core.Crud.Query
         }
 
         /// <summary>
+        ///     Locates a site discovery reported in the composed query in the clauses the caller wrote:
+        ///     a filter leaf at its index in the request, a named filter at its index; the select, the
+        ///     ordering and the having clause are where the engine says. Discovery reads only the
+        ///     caller's text, so a site in the platform's own text is a defect.
+        /// </summary>
+        /// <param name="location">The site's location, as discovery reported it.</param>
+        /// <param name="map">Where the composed query's parts came from.</param>
+        /// <returns>The located location.</returns>
+        /// <exception cref="InvalidOperationException">The site is in a conjunct of the platform's.</exception>
+        public static string? LocateSite(string? location, CompositionMap map)
+        {
+            ArgumentNullException.ThrowIfNull(map);
+            if (SplitConjunct(location) is not (int conjunct, string rest))
+            {
+                return location;
+            }
+
+            Conjunct origin = map.Conjuncts[conjunct];
+            return origin.Kind switch
+            {
+                ConjunctKind.UserFilter => UserFilter(origin.Index) + rest,
+                ConjunctKind.NamedFilter => NamedFilter(origin.Index) + rest,
+                ConjunctKind.Platform or _ => throw new InvalidOperationException($"Discovery reported a site at {location}, in the platform's own filter text, which it never reads."),
+            };
+        }
+
+        /// <summary>A location in the composed filter's conjuncts, split into the conjunct's position and the rest.</summary>
+        /// <param name="location">The location.</param>
+        /// <returns>The conjunct's position and the location below it (<c>.Or[1]</c>, or empty); null when the location is not in a conjunct.</returns>
+        private static (int Conjunct, string Below)? SplitConjunct(string? location)
+        {
+            if (location is null || !location.StartsWith(ConjunctPrefix, StringComparison.Ordinal))
+            {
+                return null;
+            }
+
+            int close = location.IndexOf(']', ConjunctPrefix.Length);
+            int conjunct = int.Parse(location.AsSpan(ConjunctPrefix.Length, close - ConjunctPrefix.Length), NumberStyles.None, CultureInfo.InvariantCulture);
+            return (conjunct, location[(close + 1)..]);
+        }
+
+        /// <summary>
         ///     The clause the caller wrote that a ceiling the platform's own filter text reached is
         ///     reported at: the last filter the request sent, else the last named filter it asked
         ///     for, else the select, since a ceiling counts the whole query and these are the
@@ -131,7 +170,7 @@ namespace Tellma.Core.Crud.Query
         /// </summary>
         /// <param name="map">Where the composed query's parts came from.</param>
         /// <returns>The clause's location.</returns>
-        private static string CallerFilterClause(CompositionMap map)
+        public static string CallerFilterClause(CompositionMap map)
         {
             Conjunct? filter = null;
             Conjunct? named = null;

@@ -8,6 +8,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Tenancy;
+using Tellma.Core.Composition;
 using Tellma.Core.Data.Batches;
 using Tellma.Core.Tenancy;
 
@@ -17,9 +18,10 @@ namespace Tellma.Testing.Entities
     ///     A fixture host bound to one fixture database as tenant <see cref="TenantId" />: the fixture
     ///     composition with the tenant connection seams pointed at the database, and scopes whose
     ///     request context binds the tenant for the platform's own principal, so a scope's
-    ///     <see cref="ITenantDatabase" /> runs batches against the fixture database. The host maps no
-    ///     table to a stack, so a batch writes every table through its public members as the table's
-    ///     own stack would.
+    ///     <see cref="ITenantDatabase" /> runs batches against the fixture database. Its tenant
+    ///     registry holds the fixture tenant alone, so the tenant scope factory opens background scopes
+    ///     over it. The host maps no table to a stack, so a batch writes every table through its public
+    ///     members as the table's own stack would.
     /// </summary>
     public sealed class FixtureTenant : IAsyncDisposable
     {
@@ -59,6 +61,10 @@ namespace Tellma.Testing.Entities
         /// <param name="configureServices">Adds services after the composition, such as batch contributors.</param>
         /// <param name="audit">Whether every batch's writes are checked against change tracking.</param>
         /// <param name="readCommittedSnapshot">Whether the database reads committed rows from row versions, as provisioning sets it.</param>
+        /// <param name="compose">
+        ///     Adds features to the fixture's composition, such as job handlers a suite runs; a feature
+        ///     added here must leave the model as the fixture migrations built it.
+        /// </param>
         /// <param name="cancellationToken">Cancels the creation.</param>
         /// <returns>The host.</returns>
         public static async Task<FixtureTenant> CreateAsync(
@@ -67,6 +73,7 @@ namespace Tellma.Testing.Entities
             Action<IServiceCollection>? configureServices = null,
             bool audit = true,
             bool readCommittedSnapshot = true,
+            Action<TellmaBuilder>? compose = null,
             CancellationToken cancellationToken = default)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(masterConnectionString);
@@ -84,9 +91,13 @@ namespace Tellma.Testing.Entities
             // --- The composition, with the tenant connection seams on the fixture database ---
             ServiceCollection services = [];
             _ = services.AddLogging();
-            _ = FixtureComposition.Compose(services);
+            _ = FixtureComposition.Compose(services, compose: compose);
             _ = services.Replace(ServiceDescriptor.Singleton<ITenantConnectionFactory>(new FixtureConnectionFactory(info)));
             _ = services.Replace(ServiceDescriptor.Scoped<ITenantConnectionProvider>(_ => new FixtureConnectionProvider(info)));
+
+            // The registry holds the fixture tenant alone, so the tenant scope factory opens the
+            // background scopes the job machinery runs in without a catalog.
+            _ = services.Replace(ServiceDescriptor.Singleton<ITenantRegistry>(new FixtureTenantRegistry(info)));
 
             // The data layer's suites append every statement the way a stack's own pipeline does, so
             // no stack owns a table here; the refusal of a write to a stack's table from outside it
@@ -168,6 +179,44 @@ namespace Tellma.Testing.Entities
             public Task<SqlConnection> OpenCatalogAsync(CancellationToken cancellationToken = default)
             {
                 throw new NotSupportedException("A fixture host has no catalog.");
+            }
+        }
+
+        /// <summary>A tenant registry that holds the fixture tenant alone, loaded once and never stale.</summary>
+        /// <param name="info">The tenant.</param>
+        private sealed class FixtureTenantRegistry(TenantInfo info) : ITenantRegistry
+        {
+            /// <summary>When the snapshot was loaded: when the host was composed.</summary>
+            private readonly DateTimeOffset _loadedAt = DateTimeOffset.UtcNow;
+
+            /// <inheritdoc />
+            public IReadOnlyList<TenantInfo> Tenants => [info];
+
+            /// <inheritdoc />
+            public Guid SnapshotVersion => info.Version;
+
+            /// <inheritdoc />
+            public DateTimeOffset? SnapshotLoadedAt => _loadedAt;
+
+            /// <inheritdoc />
+            public bool IsAvailable => true;
+
+            /// <inheritdoc />
+            public TenantInfo? Find(int tenantId)
+            {
+                return tenantId == info.Id ? info : null;
+            }
+
+            /// <inheritdoc />
+            public TenantInfo Get(int tenantId)
+            {
+                return Find(tenantId) ?? throw new TenantNotFoundException(tenantId);
+            }
+
+            /// <inheritdoc />
+            public Task RefreshAsync(bool force, CancellationToken cancellationToken = default)
+            {
+                return Task.CompletedTask;
             }
         }
 

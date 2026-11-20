@@ -3,7 +3,6 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-using System.Collections.Frozen;
 using System.Globalization;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Localization;
@@ -11,7 +10,8 @@ using Tellma.Core.Abstractions.Settings;
 
 namespace Tellma.Core.Localization
 {
-    // The chains are spec 0013 §7.6's, keyed as §10.1 spells keys; the setting chain is §5.4's.
+    // The chains are spec 0013 §7.6's, keyed as §10.1 spells keys, which the client metadata resolves
+    // through too; the setting chain is §5.4's.
     /// <summary>
     ///     Resolves labels by convention against the merged shared string resources of every composed
     ///     feature: each call walks its chain of keys, takes the first key the English (neutral)
@@ -34,18 +34,14 @@ namespace Tellma.Core.Localization
     /// <param name="strings">The merged shared string resources.</param>
     /// <param name="metadata">The model's entity metadata.</param>
     /// <param name="valueSets">The composed value sets.</param>
-    internal sealed class LabelProvider(StringPackComposer strings, IEntityMetadataProvider metadata, IValueSetRegistry valueSets) : ILabelProvider
+    /// <param name="enums">The composition's C# enums, whose carrying schemas key their values' labels.</param>
+    internal sealed class LabelProvider(StringPackComposer strings, IEntityMetadataProvider metadata, IValueSetRegistry valueSets, NamedEnums enums) : ILabelProvider
     {
-        /// <summary>The schemas of the entities that carry each enum, in model order; built on first use.</summary>
-        private readonly Lazy<FrozenDictionary<Type, string[]>> _enumSchemas = new(
-            () => EnumSchemas(metadata),
-            LazyThreadSafetyMode.ExecutionAndPublication);
-
         /// <inheritdoc />
         public string EntityLabel(Type entityType, bool plural = false)
         {
             EntityMetadata entity = Entity(entityType);
-            return Render(EntityChain(entity, plural), EntityFallback(entity));
+            return Render(EntityChain(entity, plural), LabelChains.EntityFallback(entity.Name));
         }
 
         /// <inheritdoc />
@@ -57,7 +53,7 @@ namespace Tellma.Core.Localization
             // --- A property outside every multilingual group: its own chain ---
             if (Twin(entity, propertyName) is not (MultilingualGroup group, int position))
             {
-                return Render(PropertyChain(entity, propertyName), NameHumanizer.Humanize(propertyName));
+                return Render(LabelChains.Property(entity.Name, propertyName), NameHumanizer.Humanize(propertyName));
             }
 
             // --- A multilingual column: the primary's label, suffixed with its language's symbol ---
@@ -69,7 +65,7 @@ namespace Tellma.Core.Localization
                 return NameHumanizer.Humanize(propertyName);
             }
 
-            string primary = Render(PropertyChain(entity, group.Primary.Name), NameHumanizer.Humanize(group.Primary.Name));
+            string primary = Render(LabelChains.Property(entity.Name, group.Primary.Name), NameHumanizer.Humanize(group.Primary.Name));
             return languages.Count < 2 ? primary : $"{primary} ({languages[position - 1].Symbol})";
         }
 
@@ -87,7 +83,7 @@ namespace Tellma.Core.Localization
             ArgumentNullException.ThrowIfNull(collection);
             EntityMetadata entity = Entity(entityType);
             EntityMetadata? child = Child(entity, collection);
-            return Render(CollectionChain(entity, collection, child), child is null ? NameHumanizer.Humanize(collection) : EntityFallback(child));
+            return Render(LabelChains.Collection(entity.Name, collection, child?.Name), child is null ? NameHumanizer.Humanize(collection) : LabelChains.EntityFallback(child.Name));
         }
 
         /// <inheritdoc />
@@ -96,7 +92,7 @@ namespace Tellma.Core.Localization
             ArgumentNullException.ThrowIfNull(action);
             EntityMetadata entity = Entity(entityType);
             // The humanized name reads the action's segment, so 'preferences/set' reads "Preferences set".
-            return Render(ActionChain(entity, action), NameHumanizer.Humanize(StringKeyConventions.ActionSegment(action)));
+            return Render(LabelChains.Action(entity.Name, action), LabelChains.ActionFallback(action));
         }
 
         /// <inheritdoc />
@@ -143,7 +139,7 @@ namespace Tellma.Core.Localization
 
             // A multilingual column resolves through its primary's key, whatever the tenant's languages.
             string resolved = Twin(entity, propertyName) is (MultilingualGroup group, _) ? group.Primary.Name : propertyName;
-            return FirstDeclared(PropertyChain(entity, resolved));
+            return FirstDeclared(LabelChains.Property(entity.Name, resolved));
         }
 
         /// <inheritdoc />
@@ -158,14 +154,14 @@ namespace Tellma.Core.Localization
         {
             ArgumentNullException.ThrowIfNull(collection);
             EntityMetadata entity = Entity(entityType);
-            return FirstDeclared(CollectionChain(entity, collection, Child(entity, collection)));
+            return FirstDeclared(LabelChains.Collection(entity.Name, collection, Child(entity, collection)?.Name));
         }
 
         /// <inheritdoc />
         public string? ActionLabelKey(Type entityType, string action)
         {
             ArgumentNullException.ThrowIfNull(action);
-            return FirstDeclared(ActionChain(Entity(entityType), action));
+            return FirstDeclared(LabelChains.Action(Entity(entityType).Name, action));
         }
 
         /// <inheritdoc />
@@ -192,66 +188,23 @@ namespace Tellma.Core.Localization
             return Entry(set, value) is { Label: null, LabelKey: { } key } && strings.Declares(key) ? key : null;
         }
 
-        /// <summary>An entity's chain: <c>&lt;Prefix&gt;_Plural</c> for the plural, then <c>&lt;Prefix&gt;</c>.</summary>
+        /// <summary>An entity's chain: the plural's when the plural is wanted, else the singular's.</summary>
         /// <param name="entity">The entity.</param>
         /// <param name="plural">Whether the plural label is wanted.</param>
         /// <returns>The keys, most specific first.</returns>
         private static string[] EntityChain(EntityMetadata entity, bool plural)
         {
-            string prefix = StringKeyConventions.KeyPrefix(entity.Name);
-            return plural ? [prefix + StringKeyConventions.PluralSuffix, prefix] : [prefix];
+            return plural ? LabelChains.Plural(entity.Name) : LabelChains.Entity(entity.Name);
         }
 
-        /// <summary>
-        ///     A property's chain: the entity's key, then the shared key, which Core ships for the
-        ///     members in <see cref="StringKeyConventions.SharedMemberLabels" />.
-        /// </summary>
-        /// <param name="entity">The entity.</param>
-        /// <param name="property">The property's name.</param>
-        /// <returns>The keys, most specific first.</returns>
-        private static string[] PropertyChain(EntityMetadata entity, string property)
-        {
-            return [$"{StringKeyConventions.KeyPrefix(entity.Name)}_{property}", property];
-        }
-
-        /// <summary>A navigation's chain: the entity's key, its foreign key's chain when the model knows it, then the shared key.</summary>
+        /// <summary>A navigation's chain, with its foreign key's chain when the model knows the navigation's foreign key.</summary>
         /// <param name="entity">The entity.</param>
         /// <param name="navigation">The navigation's name.</param>
         /// <returns>The keys, most specific first.</returns>
         private static string[] NavigationChain(EntityMetadata entity, string navigation)
         {
             ReferenceMetadata? reference = entity.References.FirstOrDefault(candidate => string.Equals(candidate.Navigation, navigation, StringComparison.Ordinal));
-            string[] foreignKey = reference is null ? [] : PropertyChain(entity, reference.ForeignKey.Name);
-            return [$"{StringKeyConventions.KeyPrefix(entity.Name)}_{navigation}", .. foreignKey, navigation];
-        }
-
-        /// <summary>A collection's chain: the entity's key, then the child entity's plural chain when the model knows it.</summary>
-        /// <param name="entity">The entity.</param>
-        /// <param name="collection">The collection's name.</param>
-        /// <param name="child">The collection's child entity, or null when the model has no such collection.</param>
-        /// <returns>The keys, most specific first.</returns>
-        private static string[] CollectionChain(EntityMetadata entity, string collection, EntityMetadata? child)
-        {
-            string[] plural = child is null ? [] : EntityChain(child, plural: true);
-            return [$"{StringKeyConventions.KeyPrefix(entity.Name)}_{collection}", .. plural];
-        }
-
-        /// <summary>An action's chain: the entity's key, then the shared <c>Action_</c> key.</summary>
-        /// <param name="entity">The entity.</param>
-        /// <param name="action">The action's name.</param>
-        /// <returns>The keys, most specific first.</returns>
-        private static string[] ActionChain(EntityMetadata entity, string action)
-        {
-            string segment = StringKeyConventions.ActionSegment(action);
-            return [StringKeyConventions.KeyPrefix(entity.Name) + StringKeyConventions.ActionInfix + segment, StringKeyConventions.ActionPrefix + segment];
-        }
-
-        /// <summary>An entity's last resort: its humanized name, the last segment of its qualified name.</summary>
-        /// <param name="entity">The entity.</param>
-        /// <returns>The label.</returns>
-        private static string EntityFallback(EntityMetadata entity)
-        {
-            return NameHumanizer.Humanize(StringKeyConventions.LastSegment(entity.Name));
+            return LabelChains.Navigation(entity.Name, navigation, reference?.ForeignKey.Name);
         }
 
         /// <summary>The multilingual group a property is a column of, and its position in it.</summary>
@@ -290,39 +243,6 @@ namespace Tellma.Core.Localization
             return entity.Children.FirstOrDefault(candidate => string.Equals(candidate.Property, collection, StringComparison.Ordinal))?.Child;
         }
 
-        /// <summary>The schemas of the entities that carry each enum, in model order.</summary>
-        /// <param name="metadata">The model's entity metadata.</param>
-        /// <returns>The schemas' key spellings by enum type.</returns>
-        private static FrozenDictionary<Type, string[]> EnumSchemas(IEntityMetadataProvider metadata)
-        {
-            Dictionary<Type, List<string>> schemas = [];
-            foreach (EntityMetadata entity in metadata.All)
-            {
-                foreach (PropertyMetadata property in entity.Properties)
-                {
-                    Type type = Nullable.GetUnderlyingType(property.ClrType) ?? property.ClrType;
-                    if (!type.IsEnum)
-                    {
-                        continue;
-                    }
-
-                    string schema = StringKeyConventions.SchemaPrefix(entity.Name);
-                    if (!schemas.TryGetValue(type, out List<string>? list))
-                    {
-                        list = [];
-                        schemas[type] = list;
-                    }
-
-                    if (!list.Contains(schema, StringComparer.Ordinal))
-                    {
-                        list.Add(schema);
-                    }
-                }
-            }
-
-            return schemas.ToFrozenDictionary(static entry => entry.Key, static entry => entry.Value.ToArray());
-        }
-
         /// <summary>The tenant's content languages on this flow: the entered scope's, else the request's; none outside a tenant.</summary>
         /// <returns>The languages, in position order.</returns>
         private static IReadOnlyList<LanguageInfo> ContentLanguages()
@@ -356,10 +276,13 @@ namespace Tellma.Core.Localization
             return metadata.Get(entityType);
         }
 
-        /// <summary>An enum member's chain: one key per schema of the entities that carry the enum, in model order.</summary>
+        /// <summary>
+        ///     An enum member's chain: one key per schema that carries the enum, in the order the
+        ///     entities, setting keys and stack actions carry it.
+        /// </summary>
         /// <param name="enumType">The enum, or a nullable of it.</param>
         /// <param name="value">The member's name.</param>
-        /// <returns>The keys; none when no entity carries the enum.</returns>
+        /// <returns>The keys; none when nothing in the composition carries the enum.</returns>
         /// <exception cref="ArgumentException"><paramref name="enumType" /> is not an enum.</exception>
         private string[] EnumChain(Type enumType, string value)
         {
@@ -367,8 +290,8 @@ namespace Tellma.Core.Localization
             Type type = Nullable.GetUnderlyingType(enumType) ?? enumType;
             return !type.IsEnum
                 ? throw new ArgumentException($"An enum value's label needs an enum type; received '{enumType}'.", nameof(enumType))
-                : _enumSchemas.Value.TryGetValue(type, out string[]? schemas)
-                    ? [.. schemas.Select(schema => $"{schema}_{type.Name}_{value}")]
+                : enums.Find(type) is NamedEnum named
+                    ? LabelChains.EnumValue(named.KeyPrefixes, type.Name, value)
                     : [];
         }
 
@@ -386,7 +309,7 @@ namespace Tellma.Core.Localization
         /// <returns>The key, or null when none is declared.</returns>
         private string? FirstDeclared(IEnumerable<string> chain)
         {
-            return chain.FirstOrDefault(strings.Declares);
+            return LabelChains.FirstDeclared(strings, chain);
         }
 
         /// <summary>A chain's label: its first declared key's text, else the fallback.</summary>

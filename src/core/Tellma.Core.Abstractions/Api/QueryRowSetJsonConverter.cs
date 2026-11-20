@@ -6,7 +6,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Tellma.Core.Abstractions.Data;
-using Tellma.Core.Queryex;
 
 namespace Tellma.Core.Abstractions.Api
 {
@@ -33,10 +32,6 @@ namespace Tellma.Core.Abstractions.Api
     /// </remarks>
     internal sealed class QueryRowSetJsonConverter : JsonConverter<QueryRowSet>
     {
-        /// <summary>The wire name of each query type: the member name without its <c>Qx</c> prefix.</summary>
-        private static readonly Dictionary<QueryexType, string> TypeNames = Enum.GetValues<QueryexType>()
-            .ToDictionary(static type => type, static type => type.ToString()[2..]);
-
         /// <summary>Writes one non-null cell of a column's buffer.</summary>
         /// <param name="writer">The writer.</param>
         /// <param name="row">The row's position.</param>
@@ -104,8 +99,8 @@ namespace Tellma.Core.Abstractions.Api
         {
             writer.WriteStartObject();
             writer.WriteString("name", column.Name);
-            writer.WriteString("type", TypeNames.TryGetValue(column.Type, out string? type)
-                ? type
+            writer.WriteString("type", Enum.IsDefined(column.Type)
+                ? QueryexTypeJsonConverter.NameOf(column.Type)
                 : throw new JsonException($"The column '{column.Name}' has the query type {(int)column.Type}, which the language does not define."));
             if (column.Scale is int scale)
             {

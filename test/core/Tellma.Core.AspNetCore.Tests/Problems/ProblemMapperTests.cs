@@ -21,20 +21,6 @@ namespace Tellma.Core.AspNetCore.Tests.Problems
     public sealed class ProblemMapperTests
     {
         [Theory]
-        [InlineData(null, "body")]
-        [InlineData("", "body")]
-        [InlineData("Select[2]", "select")]
-        [InlineData("OrderBy", "orderBy")]
-        [InlineData("Filter.Or[1]", "filter")]
-        [InlineData("Having", "having")]
-        [InlineData("filters[1]", "filters[1]")]
-        [InlineData("namedFilters[0].value", "namedFilters[0]")]
-        public void A_query_diagnostic_is_keyed_by_its_clause(string? location, string clause)
-        {
-            Assert.Equal(clause, ProblemMapper.Clause(location));
-        }
-
-        [Theory]
         [InlineData(StatusCodes.Status400BadRequest, false, "bad-request")]
         [InlineData(StatusCodes.Status401Unauthorized, false, "unauthenticated")]
         [InlineData(StatusCodes.Status403Forbidden, false, "forbidden")]

@@ -5,6 +5,7 @@
 
 using System.Text.Json.Serialization;
 using Tellma.Core.Abstractions.Access;
+using Tellma.Core.Abstractions.Client;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Errors;
 using Tellma.Core.Abstractions.Excel;
@@ -13,8 +14,8 @@ namespace Tellma.Core.Abstractions.Api
 {
     /// <summary>
     ///     The source-generated serialization metadata of the platform's wire records: the request
-    ///     and result records, the rows envelopes, the records a problem body's details carry, and
-    ///     the scalar types.
+    ///     and result records, the rows envelopes, the records a problem body's details carry, the
+    ///     client entity model, and the scalar types.
     ///     <see cref="TellmaJson" /> puts it first in its resolver chain, ahead of reflection, which
     ///     resolves entity, child and operation body types.
     /// </summary>
@@ -45,12 +46,14 @@ namespace Tellma.Core.Abstractions.Api
     [JsonSerializable(typeof(InspectImportRequest))]
     [JsonSerializable(typeof(ImportRequest))]
     [JsonSerializable(typeof(StartImportRequest))]
+    [JsonSerializable(typeof(QueryexDiscoverRequest))]
 
     // --- Result records ---
     [JsonSerializable(typeof(AffectedResult))]
     [JsonSerializable(typeof(JobAccepted))]
     [JsonSerializable(typeof(SecurableSummary))]
     [JsonSerializable(typeof(QueryDiagnostic))]
+    [JsonSerializable(typeof(QueryexDiscoverResult))]
     [JsonSerializable(typeof(AccessGrant))]
     [JsonSerializable(typeof(ImportPlan))]
     [JsonSerializable(typeof(ImportOutcome))]
@@ -65,6 +68,11 @@ namespace Tellma.Core.Abstractions.Api
     [JsonSerializable(typeof(ConfirmationRequest))]
     [JsonSerializable(typeof(ImportError))]
     [JsonSerializable(typeof(RowRange))]
+
+    // --- The client entity model: the Core chunk's summaries, the Entities chunk's entities and enums ---
+    [JsonSerializable(typeof(IReadOnlyList<ClientEntitySummary>))]
+    [JsonSerializable(typeof(IReadOnlyList<ClientEntityMetadata>))]
+    [JsonSerializable(typeof(IReadOnlyList<ClientEnumMetadata>))]
 
     // --- The scalar types ---
     [JsonSerializable(typeof(bool))]

@@ -64,6 +64,50 @@ namespace Tellma.Core.Crud.Query
         /// <exception cref="Abstractions.Errors.IndividualRequiredException">The same, for a service account, which cannot step up.</exception>
         internal IReadOnlyList<TraversalRefusal> Check(QueryexSchema schema, string root, DiscoveryResult discovery, Func<string, AccessDecision> decisions)
         {
+            (List<TraversalRefusal> refusals, HashSet<string> fullReads) = Walk(schema, root, discovery, decisions);
+
+            // --- The step-up, as a direct read asks for it: only once nothing is refused, and never of the platform's own work ---
+            RequestContext context = accessor.Current;
+            if (refusals.Count == 0 && !context.IsSystem)
+            {
+                foreach (string read in fullReads)
+                {
+                    if (securables.Find(read, AccessActions.Read) is { IsSensitive: true })
+                    {
+                        AssuranceCheck.Ensure(context, stepUp.Requirement, time.GetUtcNow());
+                    }
+                }
+            }
+
+            return refusals;
+        }
+
+        /// <summary>
+        ///     The paths a query's text traverses that the decisions do not admit, in a given schema,
+        ///     with no step-up asked for: what an authoring tool reports while the text is written,
+        ///     since a step-up is the session's to satisfy, not the text's to fix.
+        /// </summary>
+        /// <param name="schema">The schema the paths resolve in.</param>
+        /// <param name="root">The query's root entity name.</param>
+        /// <param name="discovery">What discovering the query's text found.</param>
+        /// <param name="decisions">The caller's read decision per entity name.</param>
+        /// <returns>One refusal per path the decisions do not admit, in discovery order.</returns>
+        /// <exception cref="ArgumentException">The schema has no entity named <paramref name="root" />.</exception>
+        internal IReadOnlyList<TraversalRefusal> Refusals(QueryexSchema schema, string root, DiscoveryResult discovery, Func<string, AccessDecision> decisions)
+        {
+            return Walk(schema, root, discovery, decisions).Refusals;
+        }
+
+        /// <summary>Walks every path a query's text traverses.</summary>
+        /// <param name="schema">The schema the paths resolve in.</param>
+        /// <param name="root">The query's root entity name.</param>
+        /// <param name="discovery">What discovering the query's text found.</param>
+        /// <param name="decisions">The caller's read decision per entity name.</param>
+        /// <returns>The refusals, in discovery order, and every entity past the root a passing path reads beyond its projection.</returns>
+        /// <exception cref="ArgumentException">The schema has no entity named <paramref name="root" />.</exception>
+        private (List<TraversalRefusal> Refusals, HashSet<string> FullReads) Walk(
+            QueryexSchema schema, string root, DiscoveryResult discovery, Func<string, AccessDecision> decisions)
+        {
             ArgumentNullException.ThrowIfNull(schema);
             ArgumentException.ThrowIfNullOrWhiteSpace(root);
             ArgumentNullException.ThrowIfNull(discovery);
@@ -82,20 +126,7 @@ namespace Tellma.Core.Crud.Query
                 }
             }
 
-            // --- The step-up, as a direct read asks for it: only once nothing is refused, and never of the platform's own work ---
-            RequestContext context = accessor.Current;
-            if (refusals.Count == 0 && !context.IsSystem)
-            {
-                foreach (string read in fullReads)
-                {
-                    if (securables.Find(read, AccessActions.Read) is { IsSensitive: true })
-                    {
-                        AssuranceCheck.Ensure(context, stepUp.Requirement, time.GetUtcNow());
-                    }
-                }
-            }
-
-            return refusals;
+            return (refusals, fullReads);
         }
 
         /// <summary>

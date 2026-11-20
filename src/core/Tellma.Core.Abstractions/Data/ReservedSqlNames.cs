@@ -260,6 +260,9 @@ namespace Tellma.Core.Abstractions.Data
             /// <summary>The jobs a claim statement claimed.</summary>
             public const string Claimed = "claimed";
 
+            /// <summary>How many more jobs a claim statement may lease, beyond those an earlier attempt leased.</summary>
+            public const string Room = "room";
+
             /// <summary>The schedules a scheduler statement found due.</summary>
             public const string Due = "due";
 

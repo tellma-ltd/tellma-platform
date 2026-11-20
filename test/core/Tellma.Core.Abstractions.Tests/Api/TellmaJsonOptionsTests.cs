@@ -60,6 +60,7 @@ namespace Tellma.Core.Abstractions.Tests.Api
 
             Assert.Equal(
                 [
+                    "QueryexTypeJsonConverter",
                     "StrictEnumJsonConverter",
                     "Int64JsonConverter",
                     "DecimalJsonConverter",
@@ -86,6 +87,8 @@ namespace Tellma.Core.Abstractions.Tests.Api
         [InlineData(typeof(JobAccepted))]
         [InlineData(typeof(SecurableSummary))]
         [InlineData(typeof(QueryDiagnostic))]
+        [InlineData(typeof(QueryexDiscoverRequest))]
+        [InlineData(typeof(QueryexDiscoverResult))]
         [InlineData(typeof(RowPage))]
         [InlineData(typeof(QueryRowSet))]
         [InlineData(typeof(RelatedEntities))]

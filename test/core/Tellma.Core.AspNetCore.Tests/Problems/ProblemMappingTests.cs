@@ -20,6 +20,7 @@ using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.Abstractions.Validation;
 using Tellma.Core.AspNetCore.Api;
 using Tellma.Core.AspNetCore.Tests.Infrastructure;
+using Tellma.Core.Crud.Query;
 using Tellma.Core.Queryex;
 
 namespace Tellma.Core.AspNetCore.Tests.Problems
@@ -34,11 +35,18 @@ namespace Tellma.Core.AspNetCore.Tests.Problems
         /// <summary>The members a problem body may carry; anything else would be a leak.</summary>
         private static readonly string[] BodyMembers = ["type", "title", "status", "detail", "instance", "code", "errors", "errorDetails", "arguments"];
 
+        /// <summary>The diagnostics the query-invalid row raises: a select item, and a filter's branch with a repeated argument.</summary>
+        private static readonly QueryexDiagnostic[] RaisedDiagnostics =
+        [
+            new("QX3001", new QueryexSpan(0, 4), "Select[0]", [new("property", "Nme")]),
+            new("QX3002", new QueryexSpan(2, 3), "filters[1].Or[0]", [new("value", "first"), new("value", "second")]),
+        ];
+
         /// <summary>The exceptions the throwing endpoint raises, by name.</summary>
         private static readonly Dictionary<string, Func<Exception>> Exceptions = new(StringComparer.Ordinal)
         {
             ["bad-request"] = static () => new BadRequestException("The ids are not distinct."),
-            ["query-invalid"] = static () => new InvalidQueryException([new QueryexDiagnostic("QX3001", new QueryexSpan(0, 4), "Select[0]", [new("property", "Nme")])]),
+            ["query-invalid"] = static () => new InvalidQueryException(RaisedDiagnostics),
             ["step-up"] = static () => new StepUpRequiredException(ProbeEndpoints.StepUpAcr, TimeSpan.FromMinutes(15)),
             ["forbidden"] = static () => new ForbiddenException("forbidden", "gl.Center", "Save", ForbiddenReason.OutsideFilter),
             ["forbidden-path"] = static () => new ForbiddenException("forbidden", "gl.Center", "Read", ForbiddenReason.RestrictedPath, "Manager.Salary"),
@@ -237,18 +245,30 @@ namespace Tellma.Core.AspNetCore.Tests.Problems
         }
 
         [Fact]
-        public async Task A_query_problem_keys_each_diagnostic_by_its_clause()
+        public async Task A_query_problem_carries_each_diagnostic_as_discovery_answers_it()
         {
             await using TellmaTestHost host = await StartAsync();
 
             using JsonDocument body = await BodyAsync(host, "query-invalid");
 
-            JsonElement error = Assert.Single(body.RootElement.GetProperty("errors").EnumerateArray());
-            Assert.Equal("select", error.GetProperty("path").GetString());
-            Assert.Equal("QX3001", error.GetProperty("code").GetString());
-            Assert.Equal("Nme", error.GetProperty("arguments").GetProperty("property").GetString());
-            JsonElement diagnostic = Assert.Single(body.RootElement.GetProperty("errorDetails").GetProperty("diagnostics").EnumerateArray());
-            Assert.Equal("Select[0]", diagnostic.GetProperty("location").GetString());
+            // --- Each item keyed by its clause, its arguments the wire diagnostic's ---
+            JsonElement[] errors = [.. body.RootElement.GetProperty("errors").EnumerateArray()];
+            JsonElement[] diagnostics = [.. body.RootElement.GetProperty("errorDetails").GetProperty("diagnostics").EnumerateArray()];
+            Assert.Equal(RaisedDiagnostics.Length, errors.Length);
+            Assert.Equal(RaisedDiagnostics.Length, diagnostics.Length);
+            for (int i = 0; i < RaisedDiagnostics.Length; i++)
+            {
+                QueryDiagnostic wire = QueryWireDiagnostics.ToWire(RaisedDiagnostics[i]);
+                Assert.Equal(wire.Clause, errors[i].GetProperty("path").GetString());
+                Assert.Equal(wire.Code, errors[i].GetProperty("code").GetString());
+                Assert.Equal(JsonSerializer.Serialize(wire, TellmaJson.Options), diagnostics[i].GetRawText());
+            }
+
+            // --- The wire's own rule: a list clause keeps its item, a filter its path below the root, a repeated argument its first value ---
+            Assert.Equal(("select", "Select[0]"), (diagnostics[0].GetProperty("clause").GetString(), diagnostics[0].GetProperty("location").GetString()));
+            Assert.Equal(("filters[1]", "Or[0]"), (diagnostics[1].GetProperty("clause").GetString(), diagnostics[1].GetProperty("location").GetString()));
+            Assert.Equal("Nme", errors[0].GetProperty("arguments").GetProperty("property").GetString());
+            Assert.Equal("first", errors[1].GetProperty("arguments").GetProperty("value").GetString());
         }
 
         [Fact]

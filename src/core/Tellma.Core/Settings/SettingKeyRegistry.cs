@@ -166,13 +166,17 @@ namespace Tellma.Core.Settings
         /// <returns>The descriptors.</returns>
         private IReadOnlyList<SettingKeyDescriptor> Build()
         {
-            return [.. _declared.Select(Describe)];
+            // An enum is named as the client metadata names it: by the entity that carries it, else by
+            // the first key that does. The actions, discovered last, never rename one a key carries.
+            IReadOnlyList<NamedEnum> enums = NamedEnums.Discover(_metadata, Keys, stacks: null);
+            return [.. _declared.Select(declared => Describe(declared, enums))];
         }
 
         /// <summary>A key as the settings editor needs it.</summary>
         /// <param name="declared">The key's declaration.</param>
+        /// <param name="enums">The composition's named enums, which name a key's enum.</param>
         /// <returns>The descriptor.</returns>
-        private SettingKeyDescriptor Describe(DeclaredSettingKey declared)
+        private SettingKeyDescriptor Describe(DeclaredSettingKey declared, IReadOnlyList<NamedEnum> enums)
         {
             SettingKey key = declared.Key!;
 
@@ -187,7 +191,7 @@ namespace Tellma.Core.Settings
                 isArray = shape.IsArray;
                 if (shape.ValueType == SettingValueType.Enum)
                 {
-                    enumType = shape.ScalarType.Name;
+                    enumType = enums.First(named => named.Type == shape.ScalarType).Name;
                     enumValues = EnumMembers(shape.ScalarType);
                 }
             }

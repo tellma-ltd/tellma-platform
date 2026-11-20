@@ -18,7 +18,7 @@ namespace Tellma.Core.Abstractions.Settings
     /// <param name="ValueType">The kind of value; <see cref="SettingValueType.Json" /> for a key with its own serialization contract.</param>
     /// <param name="IsNullable">Whether the value may be null.</param>
     /// <param name="IsArray">Whether the value is an array (an <c>ImmutableArray</c>) of <paramref name="ValueType" />.</param>
-    /// <param name="EnumType">The enum's name, for <see cref="SettingValueType.Enum" />; else null.</param>
+    /// <param name="EnumType">The name of the named enum the client metadata describes, such as <c>acme.Cadence</c>, for <see cref="SettingValueType.Enum" />; else null.</param>
     /// <param name="EnumValues">The enum's member names in declaration order, for <see cref="SettingValueType.Enum" />; else null.</param>
     /// <param name="References">The qualified name of the entity an id value points at; else null.</param>
     /// <param name="DefaultJson">The code default, serialized; JSON null for a secret key.</param>

@@ -164,7 +164,7 @@ namespace Tellma.Core.Crud
                 }
 
                 StackDescriptor stack = builder.Build(composed, metadata);
-                CheckOperations(stack, metadata, problems);
+                CheckOperations(stack, composed, metadata, problems);
                 stacks.Add(stack);
                 byLeaf[composed.Leaf] = stack;
                 children.AddRange(builder.ChildQueries(stack, metadata));
@@ -234,12 +234,14 @@ namespace Tellma.Core.Crud
         /// <summary>
         ///     Reports an operation set the pipeline cannot serve: a save without the details plan it
         ///     reads back through, an import without what it reads and writes, an export without a query,
-        ///     a delete by query without the delete, or one over a security table.
+        ///     a delete by query without the delete, over a security table, or on a stack whose deletes
+        ///     are judged.
         /// </summary>
         /// <param name="stack">The stack.</param>
+        /// <param name="composed">The stack as composed, whose service and validators are judged.</param>
         /// <param name="metadata">The stack's entity, whose tables are judged.</param>
         /// <param name="problems">Receives the problems.</param>
-        private static void CheckOperations(StackDescriptor stack, EntityMetadata metadata, List<CompositionProblem> problems)
+        private static void CheckOperations(StackDescriptor stack, ComposedStack composed, EntityMetadata metadata, List<CompositionProblem> problems)
         {
             StackOperations operations = stack.Operations;
             if (operations.HasFlag(StackOperations.Save) && !operations.HasFlag(StackOperations.Details))
@@ -268,6 +270,15 @@ namespace Tellma.Core.Crud
             if (operations.HasFlag(StackOperations.DeleteByQuery) && StackTableSet.WritesSecurityTable(StackTableSet.Of(metadata)))
             {
                 Report(stack, "keeps DeleteByQuery over a security table; its rows are deleted by their ids, so each deletion meets the rules that keep the tenant's administrators.", "Remove DeleteByQuery from the operations.");
+            }
+
+            // A delete by query names no ids a validator could see, so it runs no delete validation;
+            // a stack whose deletes are judged would let it delete past its own rules. Until the
+            // pipeline judges a delete by query, such a stack omits it.
+            else if (operations.HasFlag(StackOperations.DeleteByQuery) && composed.ServiceType is Type service
+                && HookOverrides.ValidatesDeletes(service, composed.Components.Where(static component => component.Kind == ComponentKind.Validator).Select(static component => component.ComponentType)))
+            {
+                Report(stack, "keeps DeleteByQuery while its service or a validator judges its deletes; a delete by query names no ids those rules could see, so it would delete past them.", "Remove DeleteByQuery from the operations, so every delete of the stack's rows is by ids and meets its rules.");
             }
 
             void Report(StackDescriptor stack, string problem, string fix)
