@@ -326,3 +326,77 @@ Local verification (Windows, Debug):
   and the failing test took 70 ms to 1 s.
 - One reconnect test took 6 s once during the loaded runs, at cold start, while the two load
   processes were starting. It is not the address penalty, which slowed every connecting test.
+
+## Integration CI fix 2 (run 44798852215)
+
+build-test (ubuntu-latest) failed
+`RequestTimeoutTests.A_read_whose_answer_began_after_its_timeout_loses_its_connection_rather_than_answering_a_500`
+with "The request answered 504 rather than losing its connection". It is the second occurrence: the
+same test failed once locally under PC-146 and passed on rerun.
+
+Cause: a timing assumption in the test, not a product defect.
+- The class lowers the web timeout to 300 ms, and the framework starts that timer at the timeout
+  stage (pipeline step 11). That is ahead of the tenant front door and the access guard. The guard's
+  `RequestContextInitialization.RunAsync` calls `ThrowIfCancellationRequested()` on the request's
+  token before each initializer.
+- Each test sends the first request through a freshly started host, and that request runs the
+  whole stretch cold: JIT, and the first resolution of the scoped services.
+- When the stretch outlasts 300 ms and the timer fires before or between the initializers, the
+  guard throws before the endpoint runs and before anything of the answer exists. The framework then
+  answers 504 `timeout`. That is what spec 0016 §8.3 asks of a request that ran past its timeout
+  with nothing written, and it is what `TimeoutAbortMiddleware` must leave alone (no response
+  started, no persist sent, no body writer began).
+- So the test never reached the scenario it pins: an answer that begins after the timeout. The
+  product's 504 was correct.
+
+Measured with a temporary probe (not committed): a fresh host per round, the 300 ms policy, and the
+handler recording whether the request's timeout token had already fired when it was entered.
+
+| Condition | Cold first request | Warmed second request |
+|---|---|---|
+| Idle | late in 1 of 20 | late in 0 of 20 |
+| 20 CPU burners on 20 cores | late in 1 of 8 | late in 0 of 8 |
+
+Send-to-handler time without a timeout was 0.7 to 4 s cold and 20 to 250 ms warm. Part of that is
+spent before the timeout stage, so it is an upper bound on the window that counts. In those late
+entries the timer happened to fire after the initializers had run, so they answered normally; one
+that fires before them answers 504, as in CI.
+
+A warm-up request is not enough. A first attempt sent one through the same endpoint before the
+measured request. In 10 idle local runs of the class it failed 3 times:
+- twice the warm-up itself answered 504, which reproduces the mechanism;
+- once the measured request answered 504 even after a successful warm-up.
+
+On a busy machine a warm stretch of tens to hundreds of milliseconds leaves no safe margin against
+300 ms.
+
+Fix, in the test, deterministic:
+- The tests whose endpoint must be running when the timeout fires no longer lower the timer. They
+  run under the web policy's default of 30 s, which never fires by itself within a test.
+- The endpoint fires the request's own timeout at the moment the scenario names: after the persist
+  is marked, or after the stream's first bytes are flushed. It does this by cancelling the source the
+  framework's timeout stage created for the request (`FireTimeout`).
+- Everything downstream is the real pipeline:
+  - the framework's feature and its linked `RequestAborted`;
+  - `TimeoutAbortMiddleware`'s verdict;
+  - the framework stage's 504 path.
+- This covers the three connection-loss tests and the cut-short response test, which had the same
+  exposure (a 504 where it asserts a 200).
+- `A_request_past_its_timeout_answers_504_and_cancels_its_data_access` keeps its real 300 ms timer,
+  because it answers 504 wherever the timer fires.
+
+The framework offers no public way to fire a timeout early. `CancellationTokenLinker` and
+`HttpRequestTimeoutFeature` are internal, there is no `TimeProvider`, and the public feature exposes
+only `RequestTimeoutToken` and `DisableTimeout()`. So `FireTimeout` reads the feature's private
+`_timeoutCancellationTokenSource`. It throws, naming the field, if a framework update renames it, and
+it checks that cancelling actually fired both the feature's token and `RequestAborted`. The test
+fails loudly on such a change, never by timing. Nothing is retried, and no product code changes.
+
+Local verification (Windows, Debug):
+- the class 10 times idle: 7/7 each run (the warm-up attempt had failed 3 of 10);
+- mutation check: with `TimeoutAbortMiddleware.BodyBegun` forced to false, the read test fails with
+  "The request answered 504 rather than losing its connection", the CI symptom, so the test still
+  pins the abort;
+- under 12 CPU burners on 20 cores:
+  - the full Tellma.Core.AspNetCore.Tests unit run (unit filter): 845/845 in 33 min 48 s;
+  - 3 more runs of the class: 7/7 each.

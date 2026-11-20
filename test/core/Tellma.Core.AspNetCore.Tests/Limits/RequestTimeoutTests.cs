@@ -5,8 +5,10 @@
 
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http.Timeouts;
 using Microsoft.Extensions.DependencyInjection;
 using System.Net;
+using System.Reflection;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.AspNetCore.Api;
 using Tellma.Core.AspNetCore.Tests.Infrastructure;
@@ -15,7 +17,8 @@ using Tellma.Core.Data;
 namespace Tellma.Core.AspNetCore.Tests.Limits
 {
     /// <summary>
-    ///     The request timeouts through the real pipeline, lowered through configuration: a request
+    ///     The request timeouts through the real pipeline, lowered through configuration or fired
+    ///     while the endpoint runs: a request
     ///     that outlives its policy answers 504 <c>timeout</c> when nothing was written, its data access
     ///     is cancelled with it, a long endpoint's own policy outlasts its group's, and a response the
     ///     timeout cuts short is aborted rather than ended as though it were whole. A write sent
@@ -89,13 +92,15 @@ namespace Tellma.Core.AspNetCore.Tests.Limits
         {
             await using TellmaTestHost host = await TellmaTestHost.StartAsync(static options =>
             {
-                options.Settings["Tellma:Api:RequestTimeout"] = "00:00:00.300";
                 options.Map = static (_, endpoints) => endpoints.Web.MapGet("/partial", static async context =>
                 {
                     // A stream that has begun: its status and first bytes are on the wire.
                     context.Response.ContentType = "application/json";
                     await context.Response.WriteAsync("[1,", context.RequestAborted);
                     await context.Response.Body.FlushAsync(context.RequestAborted);
+
+                    // Its timeout fires only now, with the stream begun.
+                    FireTimeout(context);
                     await Task.Delay(Timeout.InfiniteTimeSpan, context.RequestAborted);
                 })
                 .WithMutation(false)
@@ -162,8 +167,8 @@ namespace Tellma.Core.AspNetCore.Tests.Limits
         }
 
         /// <summary>
-        ///     Starts a host with a lowered timeout and one endpoint that answers only after its
-        ///     timeout fired, as a request whose round trip straddles its timeout does.
+        ///     Starts a host with one endpoint whose timeout fires while it runs and which answers only
+        ///     after that, as a request whose round trip straddles its timeout does.
         /// </summary>
         /// <param name="path">The endpoint's path under the web surface.</param>
         /// <param name="method">The endpoint's method; a POST is a mutation.</param>
@@ -175,7 +180,6 @@ namespace Tellma.Core.AspNetCore.Tests.Limits
         {
             return TellmaTestHost.StartAsync(options =>
             {
-                options.Settings["Tellma:Api:RequestTimeout"] = "00:00:00.300";
                 options.Map = (app, endpoints) =>
                 {
                     async Task<IResult> Handle(HttpContext context)
@@ -186,6 +190,8 @@ namespace Tellma.Core.AspNetCore.Tests.Limits
                             context.RequestServices.GetRequiredService<DataAccessScope>().PersistSent = true;
                         }
 
+                        // The timeout fires while the work runs, after the request passed the tenant front door.
+                        FireTimeout(context);
                         try
                         {
                             await Task.Delay(Timeout.InfiniteTimeSpan, context.RequestAborted);
@@ -226,6 +232,36 @@ namespace Tellma.Core.AspNetCore.Tests.Limits
 
             Assert.NotNull(failure);
             Assert.IsNotType<TimeoutException>(failure);
+        }
+
+        /// <summary>
+        ///     Fires the request's own timeout now, through the source the framework's timeout stage
+        ///     created for it, so that the timeout fires while the endpoint runs.
+        /// </summary>
+        /// <param name="context">The request, under the web policy's default timeout, which does not fire by itself during a test.</param>
+        /// <exception cref="InvalidOperationException">The timeout stage did not run, or the framework no longer holds its source where this reads it.</exception>
+        private static void FireTimeout(HttpContext context)
+        {
+            // A lowered timer starts at the timeout stage, ahead of the tenant front door and the
+            // access guard, whose request-context initializers throw on a cancelled token. On a loaded
+            // runner a timer of a few hundred milliseconds can fire there, before the endpoint
+            // runs, and the request then answers 504, as a request with nothing written must, so a
+            // test that needs its endpoint running when the timeout fires would never reach what it
+            // pins. The framework offers no public way to fire a timeout early, so this cancels the
+            // feature's own source. A framework that renames the field fails here, loudly, rather
+            // than by timing.
+            IHttpRequestTimeoutFeature feature = context.Features.Get<IHttpRequestTimeoutFeature>()
+                ?? throw new InvalidOperationException("The request carries no timeout feature: the timeout stage did not run for it.");
+            FieldInfo field = feature.GetType().GetField("_timeoutCancellationTokenSource", BindingFlags.Instance | BindingFlags.NonPublic)
+                ?? throw new InvalidOperationException($"{feature.GetType().FullName} no longer holds its source in _timeoutCancellationTokenSource.");
+            CancellationTokenSource source = field.GetValue(feature) as CancellationTokenSource
+                ?? throw new InvalidOperationException($"{feature.GetType().FullName}._timeoutCancellationTokenSource holds no source.");
+            source.Cancel();
+
+            if (!feature.RequestTimeoutToken.IsCancellationRequested || !context.RequestAborted.IsCancellationRequested)
+            {
+                throw new InvalidOperationException("Cancelling the timeout source did not fire the request's timeout.");
+            }
         }
 
         /// <summary>A read-back larger than the serializer's first flush.</summary>
