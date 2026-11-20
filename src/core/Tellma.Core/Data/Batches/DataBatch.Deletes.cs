@@ -31,9 +31,12 @@ namespace Tellma.Core.Data.Batches
             (EntityMetadata metadata, EntityDescriptor root) = WriteTarget<TEntity>(nameof(Delete));
 
             // --- The plan, and the authority over the tables its statements name ---
-            // A sibling's rows leave by the cascade its owning feature declared, so the caller needs no
-            // authority over a sibling's table; the sibling still counts among the writes, for tags.
-            var plan = DeletePlan.For(metadata, _executor.Queries.Metadata, _executor.VersionTags);
+            // A sibling's rows leave by the cascade its owning feature declared, and a referencing
+            // key's cascade or SET NULL is the database's own consequence of the delete, so the caller
+            // needs no authority over those tables; they still count among the writes, for tags,
+            // guards and change tracking. The exemption lasts for this statement only: CallerAuthority
+            // is unchanged, so the caller's own statements still may not write those tables.
+            var plan = DeletePlan.For(metadata, _executor.Queries.Metadata, _executor.VersionTags, _executor.ForeignKeys);
             CheckAuthority(plan.Aggregate);
 
             // --- The statements: the keys and their checks, then the deletes ---
@@ -104,6 +107,11 @@ namespace Tellma.Core.Data.Batches
                         _ = draft.Name(node.UserIdWord);
                     }
 
+                    foreach (DeleteConsequence consequence in plan.ConsequenceUserIdCaptures)
+                    {
+                        _ = draft.Name(consequence.Word);
+                    }
+
                     Engine(draft, slots);
                 },
                 planned.Parameters + slots.Count,
@@ -127,10 +135,18 @@ namespace Tellma.Core.Data.Batches
 
             AppendWrites(statements);
 
-            // --- The users the deleted rows name, which the bump epilogue reads ---
+            // --- The users the deleted rows and the keys' reached rows name, which the bump epilogue reads ---
             foreach (DeleteNode node in plan.UserIdCaptures)
             {
                 foreach (UserIdSource source in UserIdCapture.Sources(node.Entity.Table, node.UserIdColumns, ReservedSqlNames.Statement(ordinal, node.UserIdWord)))
+                {
+                    AddUserIdSource(source);
+                }
+            }
+
+            foreach (DeleteConsequence consequence in plan.ConsequenceUserIdCaptures)
+            {
+                foreach (UserIdSource source in UserIdCapture.Sources(consequence.Table, consequence.UserIdColumns, ReservedSqlNames.Statement(ordinal, consequence.Word)))
                 {
                     AddUserIdSource(source);
                 }

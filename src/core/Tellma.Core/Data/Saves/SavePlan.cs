@@ -8,6 +8,7 @@ using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Entities;
 using Tellma.Core.Data.Batches;
 using Tellma.Core.Data.TableTypes;
+using Tellma.Core.Data.Writes;
 using Tellma.Core.EntityFrameworkCore.TableTypes;
 
 namespace Tellma.Core.Data.Saves
@@ -15,8 +16,9 @@ namespace Tellma.Core.Data.Saves
     /// <summary>
     ///     What a save of one root entity writes, fixed by its metadata: the root and every child
     ///     collection, recursively, each with its table-valued parameters, its columns, its blob
-    ///     captures and the user-id columns its user-level version tag rules name. The emitter's text
-    ///     is cached on the plan.
+    ///     captures and the user-id columns its user-level version tag rules name; and the tables the
+    ///     database writes when the save deletes child rows, by the keys referencing a child table
+    ///     with an <c>ON DELETE</c> action. The emitter's text is cached on the plan.
     /// </summary>
     internal sealed class SavePlan
     {
@@ -26,14 +28,16 @@ namespace Tellma.Core.Data.Saves
         /// <summary>Builds the plan of a root entity.</summary>
         /// <param name="root">The root entity, top-level.</param>
         /// <param name="binder">The table-type binder, whose definitions give each table's columns.</param>
+        /// <param name="foreignKeys">The model's foreign keys whose delete actions write their tables.</param>
         /// <param name="userIdColumns">
         ///     The user-id columns of a table's user-level version tag rules, whose values the save
         ///     captures for the bump; none when null.
         /// </param>
-        public SavePlan(EntityMetadata root, TableTypeBinder binder, Func<TableName, IReadOnlyList<string>>? userIdColumns = null)
+        public SavePlan(EntityMetadata root, TableTypeBinder binder, ForeignKeyActions foreignKeys, Func<TableName, IReadOnlyList<string>>? userIdColumns = null)
         {
             ArgumentNullException.ThrowIfNull(root);
             ArgumentNullException.ThrowIfNull(binder);
+            ArgumentNullException.ThrowIfNull(foreignKeys);
             userIdColumns ??= static _ => [];
 
             // --- The nodes, in pre-order, numbering the table-valued parameters as they are bound ---
@@ -43,8 +47,23 @@ namespace Tellma.Core.Data.Saves
             Nodes = nodes;
             TableCount = tables;
 
-            // --- What the save declares: every table of the aggregate, and every blob column's capture ---
-            Writes = nodes.Select(static node => node.Entity.Table).ToFrozenSet();
+            // --- What the save declares: every table of the aggregate, what deleting child rows makes the
+            // database write, and every blob column's capture ---
+            // A save deletes the child rows a supplied collection no longer carries, never a root, so
+            // only the keys referencing a child table act; the caller needs no authority over the
+            // tables they write, as for a delete's.
+            Aggregate = nodes.Select(static node => node.Entity.Table).ToFrozenSet();
+            IReadOnlySet<TableName> consequences = foreignKeys.WrittenByDeleting(nodes.Skip(1).Select(static node => node.Entity.Table));
+            Writes = Aggregate.Concat(consequences).ToFrozenSet();
+
+            // A key's action reports no rows, so a save cannot tell the users a consequence's rows name;
+            // a delete captures them by selection, but a save's removed child rows are known only as it runs.
+            if (consequences.Where(table => !Aggregate.Contains(table)).OrderBy(static table => table.Schema, StringComparer.Ordinal).ThenBy(static table => table.Name, StringComparer.Ordinal).FirstOrDefault(table => userIdColumns(table).Count > 0) is TableName named)
+            {
+                throw new InvalidOperationException(
+                    $"Saving {root.Name} deletes child rows whose referencing keys write {named}, which has a user-level version tag rule; a save cannot tell which users those rows name.");
+            }
+
             Captures = [.. nodes.SelectMany(static node => node.BlobColumns.Select(column => new SaveCapture(node, column)))];
             UserIdCaptures = [.. nodes.Where(static node => node.UserIdColumns.Count > 0)];
         }
@@ -55,7 +74,16 @@ namespace Tellma.Core.Data.Saves
         /// <summary>Every node, the root first, in pre-order.</summary>
         public IReadOnlyList<SaveNode> Nodes { get; }
 
-        /// <summary>The tables the save writes: the aggregate's, whichever collections a payload supplies.</summary>
+        /// <summary>
+        ///     The aggregate's tables, whichever collections a payload supplies: the ones the save's
+        ///     caller needs the authority to write.
+        /// </summary>
+        public IReadOnlySet<TableName> Aggregate { get; }
+
+        /// <summary>
+        ///     The tables the save writes, for its tags, its guards and change tracking: the aggregate's,
+        ///     and every table a key referencing a child table writes when the save deletes child rows.
+        /// </summary>
         public IReadOnlySet<TableName> Writes { get; }
 
         /// <summary>The blob captures, one per blob column of every table, in node order.</summary>

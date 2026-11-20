@@ -17,6 +17,7 @@ using Tellma.Core.Data.Ids;
 using Tellma.Core.Data.Queries;
 using Tellma.Core.Data.Saves;
 using Tellma.Core.Data.TableTypes;
+using Tellma.Core.Data.Writes;
 using Tellma.Core.Tests.Infrastructure;
 
 namespace Tellma.Core.Tests.Data.Batches
@@ -55,6 +56,7 @@ namespace Tellma.Core.Tests.Data.Batches
                 _root.GetRequiredService<QueryServices>(),
                 _root.GetRequiredService<IdAllocator>(),
                 _root.GetRequiredService<SaveEmitter>(),
+                _root.GetRequiredService<ForeignKeyActions>(),
                 _root);
         }
 

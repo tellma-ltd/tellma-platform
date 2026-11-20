@@ -395,9 +395,19 @@ digits than its column holds, and stamps
 activatable tree's `IsActive` recounts the rows' ancestors.
 
 `IDataBatch.Delete` deletes a root's collections deepest first in explicit statements, then the
-roots, whose ids are the receipt; a sibling row goes by its cascade, so the delete declares its
-table among its writes but needs no authority over it, except that a sibling holding a blob
-reference is deleted explicitly before its owner, so its blobs are captured too. By ids it captures the existing rows under U locks and the read filter, selects the rest
+roots, whose ids are the receipt; a sibling row goes by its cascade, except that a sibling holding
+a blob reference is deleted explicitly before its owner, so its blobs are captured too. Every
+table the database writes by the `ON DELETE` action of a key referencing a deleted table (a
+sibling's cascade, `core.ScheduleStates` cascading and `core.Jobs.ScheduleId` set to null with a
+schedule, a user's stamp and preference rows cascading with the user), and transitively the
+tables a cascaded table's own keys write, is read from the relational model (`ForeignKeyActions`)
+and declared among the delete's writes, for tags, guards and change tracking; the caller needs
+no authority over those tables, and gains none for its own statements. A key's action reports no
+rows, so when such a table has a user-level version tag rule (the preference tables do) the
+delete first reads the users its reached rows name, by the keys from every table that loses rows,
+into a capture the bump epilogue reads. A save that deletes child rows declares the same
+consequences of their deletion, and its plan is refused when one of them has a user-level rule,
+since a save cannot tell which rows its deletes reach. By ids it captures the existing rows under U locks and the read filter, selects the rest
 and throws `50404` with them, throws `50403` unless every captured row passes the grant filter,
 and with the stamps the rows were read with throws `50409` with the conflict rows the save's guard
 reports. By query it caps and counts its keys as an update does. `WithDescendants` deletes tree

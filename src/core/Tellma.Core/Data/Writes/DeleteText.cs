@@ -74,6 +74,11 @@ namespace Tellma.Core.Data.Writes
             {
                 Line(UserIdCapture.Declaration(Local(node.UserIdWord), node.KeyType, node.UserIdColumns));
             }
+
+            foreach (DeleteConsequence consequence in _plan.ConsequenceUserIdCaptures)
+            {
+                Line(UserIdCapture.ImageDeclaration(Local(consequence.Word), consequence.UserIdColumns));
+            }
         }
 
         /// <summary>
@@ -113,6 +118,9 @@ namespace Tellma.Core.Data.Writes
             DeleteNode root = _plan.Root;
             TreeText? tree = root.Entity.Tree is null ? null : new TreeText(_text, TreeShape.Of(root.Entity), _prefix, Recompile);
 
+            // --- The users the keys' actions will reach, before any row leaves ---
+            WriteConsequenceCaptures();
+
             // --- A tree's old nodes, before the rows leave: their ancestors lose descendants ---
             tree?.CaptureOld(_keys);
 
@@ -132,6 +140,74 @@ namespace Tellma.Core.Data.Writes
 
             // --- A tree's recount over the old nodes' ancestors ---
             tree?.Recount(affected: null);
+        }
+
+        /// <summary>
+        ///     Writes, for each consequence table with a user-level rule, the capture of the users named
+        ///     by the rows the keys' actions will reach: the rows whose key references a row the delete
+        ///     removes, explicitly or by a cascade. The rows still exist, so each user is its before image.
+        /// </summary>
+        private void WriteConsequenceCaptures()
+        {
+            if (_plan.ConsequenceUserIdCaptures.Count == 0)
+            {
+                return;
+            }
+
+            // --- The rows each node removes, by its owners' ---
+            Dictionary<DeleteNode, string> scopes = [];
+            Scope(_plan.Root, $"SELECT [Id] FROM {_keys}", scopes);
+
+            // --- One capture per table: its rows that any key reaches ---
+            foreach (DeleteConsequence consequence in _plan.ConsequenceUserIdCaptures)
+            {
+                int aliases = 0;
+                string images = string.Join(", ", consequence.UserIdColumns.Select(static column => $"d.{SqlNames.Quote(column)}, NULL"));
+                Line($"INSERT INTO {Local(consequence.Word)} ({string.Join(", ", consequence.UserIdColumns.SelectMany(static column => new[] { SqlNames.Quote(UserIdCapture.Old(column)), SqlNames.Quote(UserIdCapture.New(column)) }))})");
+                Statement($"SELECT {images} FROM {consequence.Table.Delimited} AS d WHERE {Reached("d", consequence.Reaches, scopes, ref aliases)}");
+            }
+        }
+
+        /// <summary>Records the query of the ids each node removes: the root's keys, and each collection's rows under its owners.</summary>
+        /// <param name="node">The node.</param>
+        /// <param name="scope">A query of the node's removed ids.</param>
+        /// <param name="scopes">The queries, by node.</param>
+        private static void Scope(DeleteNode node, string scope, Dictionary<DeleteNode, string> scopes)
+        {
+            scopes[node] = scope;
+            foreach (DeleteNode child in node.Children)
+            {
+                Scope(child, $"SELECT x.[Id] FROM {child.Table} AS x WHERE x.{SqlNames.Quote(child.ParentKey!)} IN ({scope})", scopes);
+            }
+        }
+
+        /// <summary>
+        ///     The condition that a row is reached by one of the keys: it references, by the key's
+        ///     columns, a row that one of the delete's nodes removes or that a cascade removes in turn.
+        /// </summary>
+        /// <param name="alias">The row's alias.</param>
+        /// <param name="reaches">The keys.</param>
+        /// <param name="scopes">The queries of the ids each node removes.</param>
+        /// <param name="aliases">The aliases taken so far, for a fresh one per referenced table.</param>
+        /// <returns>The condition, parenthesised.</returns>
+        private static string Reached(string alias, IReadOnlyList<DeleteReach> reaches, Dictionary<DeleteNode, string> scopes, ref int aliases)
+        {
+            List<string> conditions = [];
+            foreach (DeleteReach reach in reaches)
+            {
+                // --- The referenced rows: removed by a node, or by a cascade of their own ---
+                string principal = string.Create(CultureInfo.InvariantCulture, $"r{aliases++}");
+                List<string> removed = [.. reach.Nodes.Select(node => $"{principal}.[Id] IN ({scopes[node]})")];
+                if (reach.Removals.Count > 0)
+                {
+                    removed.Add(Reached(principal, reach.Removals, scopes, ref aliases));
+                }
+
+                string match = string.Join(" AND ", reach.Key.Columns.Zip(reach.Key.PrincipalColumns, (column, referenced) => $"{principal}.{SqlNames.Quote(referenced)} = {alias}.{SqlNames.Quote(column)}"));
+                conditions.Add($"EXISTS (SELECT 1 FROM {reach.Key.Principal.Delimited} AS {principal} WHERE {match} AND ({string.Join(" OR ", removed)}))");
+            }
+
+            return $"({string.Join(" OR ", conditions)})";
         }
 
         /// <summary>Writes the delete of a collection's rows under the owning rows, its own collections first.</summary>
