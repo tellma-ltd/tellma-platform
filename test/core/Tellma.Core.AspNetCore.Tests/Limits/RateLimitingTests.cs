@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.Metrics.Testing;
+using Microsoft.Extensions.Logging;
 using System.Diagnostics.Metrics;
 using System.Net;
 using System.Text.Json;
@@ -20,16 +21,22 @@ namespace Tellma.Core.AspNetCore.Tests.Limits
     ///     The rate and concurrency policies through the real pipeline, their limits lowered through
     ///     configuration: a refusal is 429 <c>rate-limited</c> with <c>Retry-After</c>, counted by
     ///     reason and lane, and tells a missing tenant from a refused one no better than the answer
-    ///     it replaces; a later surface's endpoint takes a policy through its metadata alone.
+    ///     it replaces; one account's rate is capped across tenant ids; a later surface's endpoint
+    ///     takes a policy through its metadata alone.
     /// </summary>
     public sealed class RateLimitingTests
     {
         private static CancellationToken Token => TestContext.Current.CancellationToken;
 
         [Fact]
-        public async Task A_user_past_the_rate_is_refused_with_retry_after()
+        public async Task A_user_past_the_rate_is_refused_with_retry_after_and_logged_as_a_rejection()
         {
-            await using TellmaTestHost host = await TellmaTestHost.StartAsync(static options => options.Settings["Tellma:Api:RequestsPerMinutePerUser"] = "1");
+            CapturingLoggerProvider logs = new();
+            await using TellmaTestHost host = await TellmaTestHost.StartAsync(options =>
+            {
+                options.Settings["Tellma:Api:RequestsPerMinutePerUser"] = "1";
+                options.ConfigureServices = services => services.AddSingleton<ILoggerProvider>(logs);
+            });
             string cookie = host.Cookie();
 
             using HttpResponseMessage first = await host.Client.SendAsync(TellmaTestHost.SpaRequest(HttpMethod.Get, "/1/api/web/probe", cookie), Token);
@@ -40,6 +47,38 @@ namespace Tellma.Core.AspNetCore.Tests.Limits
             Assert.Equal("rate-limited", (await Problem.ReadAsync(second)).Code);
             TimeSpan retryAfter = Assert.IsType<TimeSpan>(second.Headers.RetryAfter?.Delta);
             Assert.InRange(retryAfter, TimeSpan.FromSeconds(1), TimeSpan.FromMinutes(1));
+
+            // --- The refusal's log line is the rejection event every refusal before the endpoint shares ---
+            CapturedEvent logged = Assert.Single(logs.Events, static captured => captured.EventName == "ApiRequestRejected");
+            Assert.Equal(LogLevel.Information, logged.Level);
+            Assert.Equal("rate_limited", logged.Members["Reason"]);
+            Assert.Equal(TellmaRatePolicies.User, logged.Members["RatePolicy"]);
+            Assert.Equal("none", logged.Members["RateLane"]);
+        }
+
+        [Fact]
+        public async Task One_account_spread_over_many_tenant_ids_is_capped_across_them()
+        {
+            await using TellmaTestHost host = await TellmaTestHost.StartAsync(static options =>
+            {
+                options.Settings["Tellma:Api:RequestsPerMinutePerUser"] = "2";
+                options.Settings["Tellma:Api:RequestsPerMinutePerUserAcrossTenants"] = "3";
+            });
+            string stranger = host.Cookie(TellmaTestHost.Stranger);
+
+            // --- Each tenant id would grant a fresh per-tenant window; the account's own cap stops the walk ---
+            var statuses = new HttpStatusCode[4];
+            for (int i = 0; i < statuses.Length; i++)
+            {
+                using HttpResponseMessage response = await host.Client.SendAsync(TellmaTestHost.SpaRequest(HttpMethod.Get, $"/{100 + i}/api/web/probe", stranger), Token);
+                statuses[i] = response.StatusCode;
+            }
+
+            Assert.Equal([HttpStatusCode.NotFound, HttpStatusCode.NotFound, HttpStatusCode.NotFound, HttpStatusCode.TooManyRequests], statuses);
+
+            // --- Another account is untouched ---
+            using HttpResponseMessage other = await host.Client.SendAsync(TellmaTestHost.SpaRequest(HttpMethod.Get, "/1/api/web/probe", host.Cookie()), Token);
+            Assert.Equal(HttpStatusCode.OK, other.StatusCode);
         }
 
         [Fact]

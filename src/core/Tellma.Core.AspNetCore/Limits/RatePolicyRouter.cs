@@ -48,7 +48,7 @@ namespace Tellma.Core.AspNetCore.Limits
             ArgumentNullException.ThrowIfNull(mcp);
             _api = api;
             _mcp = mcp;
-            foreach (RatePolicyDefinition policy in RatePolicies.All.Values)
+            foreach (RatePolicyDefinition policy in RatePolicies.Running)
             {
                 _stores[policy.Name] = PartitionedRateLimiter.Create<RatePartition, RatePartition>(partition => Partition(policy.Name, partition));
             }
@@ -130,7 +130,7 @@ namespace Tellma.Core.AspNetCore.Limits
         /// <returns>The wait, or null.</returns>
         internal static TimeSpan? RetryAfterOf(string policy)
         {
-            return policy is TellmaRatePolicies.User or TellmaRatePolicies.Telemetry or TellmaRatePolicies.Mcp
+            return policy is TellmaRatePolicies.User or RatePolicies.UserAcrossTenants or TellmaRatePolicies.Telemetry or TellmaRatePolicies.Mcp
                 ? Window / SlidingSegments
                 : null;
         }
@@ -146,6 +146,7 @@ namespace Tellma.Core.AspNetCore.Limits
             return policy switch
             {
                 TellmaRatePolicies.User => Sliding(partition, api.RequestsPerMinutePerUser),
+                RatePolicies.UserAcrossTenants => Sliding(partition, api.RequestsPerMinutePerUserAcrossTenants),
                 TellmaRatePolicies.Tenant => Concurrency(partition, api.ConcurrentRequestsPerTenant, queue: 0),
                 TellmaRatePolicies.Anonymous => RateLimitPartition.GetFixedWindowLimiter(partition, _ => new FixedWindowRateLimiterOptions
                 {

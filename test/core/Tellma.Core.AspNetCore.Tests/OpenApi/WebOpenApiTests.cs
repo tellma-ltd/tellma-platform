@@ -102,7 +102,7 @@ namespace Tellma.Core.AspNetCore.Tests.OpenApi
         }
 
         [Fact]
-        public async Task An_entity_schema_marks_what_a_save_never_takes_and_encodes_its_long_key()
+        public async Task An_entity_schema_marks_what_a_save_never_takes_and_encodes_its_long_key_and_decimals()
         {
             await using TellmaTestHost host = await StartAsync("Development");
 
@@ -119,6 +119,31 @@ namespace Tellma.Core.AspNetCore.Tests.OpenApi
             Assert.True(properties.GetProperty("createdAt").GetProperty("readOnly").GetBoolean());
             Assert.True(properties.GetProperty("modifiedById").GetProperty("readOnly").GetBoolean());
             Assert.False(properties.GetProperty("name").TryGetProperty("readOnly", out _));
+
+            // --- A write-once and a derived member: read-only, each with its flag ---
+            JsonElement code = properties.GetProperty("code");
+            Assert.True(code.GetProperty("readOnly").GetBoolean());
+            Assert.True(code.GetProperty(WebOpenApi.WriteOnceExtension).GetBoolean());
+            Assert.False(code.TryGetProperty(WebOpenApi.DerivedExtension, out _));
+            JsonElement balance = properties.GetProperty("balance");
+            Assert.True(balance.GetProperty("readOnly").GetBoolean());
+            Assert.True(balance.GetProperty(WebOpenApi.DerivedExtension).GetBoolean());
+
+            // --- A decimal, through the generator: a string or a number of format decimal ---
+            foreach (JsonElement amount in (JsonElement[])[balance, properties.GetProperty("creditLimit")])
+            {
+                Assert.Equal(["number", "string"], amount.GetProperty("type").EnumerateArray().Select(static type => type.GetString()).Order(StringComparer.Ordinal));
+                Assert.Equal("decimal", amount.GetProperty("format").GetString());
+            }
+
+            Assert.False(properties.GetProperty("creditLimit").TryGetProperty("readOnly", out _));
+
+            // --- A server-owned enum: a reference, read-only beside its $ref, its shared component untouched ---
+            JsonElement state = properties.GetProperty("state");
+            string reference = state.GetProperty("$ref").GetString()!;
+            Assert.True(state.GetProperty("readOnly").GetBoolean());
+            JsonElement component = document.GetProperty("components").GetProperty("schemas").GetProperty(reference[(reference.LastIndexOf('/') + 1)..]);
+            Assert.False(component.TryGetProperty("readOnly", out _));
 
             // --- What a navigation's related entity carries, and no trace of the unknown-member count ---
             Assert.Equal(["id", "name", "name2", "name3", "imageId"], ledger.GetProperty(WebOpenApi.RelatedSelectExtension).GetProperty("createdBy").EnumerateArray().Select(static name => name.GetString()));

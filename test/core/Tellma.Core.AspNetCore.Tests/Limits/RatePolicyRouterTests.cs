@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.AspNetCore.Routing.Patterns;
 using Microsoft.Extensions.Options;
+using System.ComponentModel.DataAnnotations;
 using System.Threading.RateLimiting;
 using Tellma.Core.Abstractions.Api;
 using Tellma.Core.Abstractions.Composition;
@@ -17,9 +18,9 @@ namespace Tellma.Core.AspNetCore.Tests.Limits
 {
     /// <summary>
     ///     The policies an endpoint chains and the router that runs the chain: a fixed order, the
-    ///     per-user and per-tenant policies dropped under a policy that stands alone, a refusal that
-    ///     releases what earlier links granted, lanes kept apart, and a startup audit that refuses a
-    ///     policy no limiter would run.
+    ///     per-user and per-tenant policies dropped under a policy that stands alone, one account's
+    ///     cap across tenant ids, a refusal that releases what earlier links granted, lanes kept
+    ///     apart, and a startup audit that refuses a policy no limiter would run.
     /// </summary>
     public sealed class RatePolicyRouterTests
     {
@@ -30,11 +31,13 @@ namespace Tellma.Core.AspNetCore.Tests.Limits
         }
 
         [Fact]
-        public void A_chain_runs_the_route_policy_first_then_the_user_then_the_tenant()
+        public void A_chain_runs_the_route_policy_first_then_the_account_then_the_user_then_the_tenant()
         {
             RateChainSpec spec = RatePolicies.Resolve(Metadata(TellmaRatePolicies.Tenant, TellmaRatePolicies.User, TellmaRatePolicies.Export));
 
-            Assert.Equal([TellmaRatePolicies.Export, TellmaRatePolicies.User, TellmaRatePolicies.Tenant], spec.Policies.Select(static policy => policy.Name));
+            Assert.Equal(
+                [TellmaRatePolicies.Export, RatePolicies.UserAcrossTenants, TellmaRatePolicies.User, TellmaRatePolicies.Tenant],
+                spec.Policies.Select(static policy => policy.Name));
         }
 
         [Fact]
@@ -42,7 +45,52 @@ namespace Tellma.Core.AspNetCore.Tests.Limits
         {
             RateChainSpec spec = RatePolicies.Resolve(Metadata(TellmaRatePolicies.User, TellmaRatePolicies.User));
 
-            Assert.Equal([TellmaRatePolicies.User], spec.Policies.Select(static policy => policy.Name));
+            Assert.Equal([RatePolicies.UserAcrossTenants, TellmaRatePolicies.User], spec.Policies.Select(static policy => policy.Name));
+        }
+
+        [Fact]
+        public void The_cap_across_tenants_runs_only_where_the_users_rate_does()
+        {
+            Assert.Equal([TellmaRatePolicies.Tenant], RatePolicies.Resolve(Metadata(TellmaRatePolicies.Tenant)).Policies.Select(static policy => policy.Name));
+            Assert.DoesNotContain(RatePolicies.UserAcrossTenants, RatePolicies.All.Keys);
+        }
+
+        [Fact]
+        public async Task One_account_walking_tenant_ids_is_refused_by_its_cap_across_them()
+        {
+            using RatePolicyRouter router = Router(static api =>
+            {
+                api.RequestsPerMinutePerUser = 1;
+                api.RequestsPerMinutePerUserAcrossTenants = 2;
+            });
+            CancellationToken cancellation = TestContext.Current.CancellationToken;
+            string[] chain = [TellmaRatePolicies.User, TellmaRatePolicies.Tenant];
+
+            // --- Two tenant ids spend the account's cap, each with a window of its own to spare ---
+            using RateLimitLease first = await router.AcquireAsync(ContextOf("1", "sub-1", chain), cancellationToken: cancellation);
+            using RateLimitLease second = await router.AcquireAsync(ContextOf("2", "sub-1", chain), cancellationToken: cancellation);
+            using RateLimitLease third = await router.AcquireAsync(ContextOf("3", "sub-1", chain), cancellationToken: cancellation);
+
+            Assert.True(first.IsAcquired);
+            Assert.True(second.IsAcquired);
+            RefusedLease refused = Assert.IsType<RefusedLease>(third);
+            Assert.Equal(RatePolicies.UserAcrossTenants, refused.Policy);
+            Assert.True(refused.TryGetMetadata(MetadataName.RetryAfter, out TimeSpan retryAfter));
+            Assert.Equal(TimeSpan.FromSeconds(10), retryAfter);
+
+            // --- The cap is the account's own: another account reaches tenant 3 ---
+            using RateLimitLease other = await router.AcquireAsync(ContextOf("3", "sub-2", chain), cancellationToken: cancellation);
+            Assert.True(other.IsAcquired);
+        }
+
+        [Fact]
+        public void A_cap_across_tenants_below_one_tenants_rate_is_refused_by_the_options()
+        {
+            ApiOptions api = new() { RequestsPerMinutePerUser = 600, RequestsPerMinutePerUserAcrossTenants = 599 };
+
+            ValidationResult result = Assert.Single(api.Validate(new ValidationContext(api)));
+
+            Assert.Equal("Tellma:Api:RequestsPerMinutePerUserAcrossTenants is 599; it must be at least RequestsPerMinutePerUser, 600.", result.ErrorMessage);
         }
 
         [Theory]

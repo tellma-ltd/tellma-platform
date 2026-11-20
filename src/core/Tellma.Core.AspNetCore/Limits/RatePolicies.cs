@@ -14,7 +14,10 @@ namespace Tellma.Core.AspNetCore.Limits
     // Spec 0016 §8.2: the policies, their partitions and the one chain an endpoint takes. ASP.NET
     // Core applies one limiter per endpoint, so every policy an endpoint's metadata names is chained
     // into one, in a fixed order: the route's own policy first (so a request queued there holds no
-    // tenant permit), then tellma-user, then tellma-tenant.
+    // tenant permit), then tellma-user, then tellma-tenant. Wherever tellma-user runs, an implied
+    // per-account cap across tenants runs just ahead of it: tellma-user and tellma-tenant are keyed by
+    // the route's tenant id before membership is known, so without it one account walking tenant ids
+    // would get a fresh bucket, and fresh partitions, per id.
 
     /// <summary>What a policy partitions its callers by.</summary>
     internal enum RatePartitionKind
@@ -44,7 +47,7 @@ namespace Tellma.Core.AspNetCore.Limits
         public bool NeedsTenant => Partition is RatePartitionKind.TenantSubject or RatePartitionKind.Tenant;
 
         /// <summary>Whether it is a route's own policy rather than one the tenant groups stamp on every endpoint.</summary>
-        public bool IsRoutePolicy => Name is not (TellmaRatePolicies.User or TellmaRatePolicies.Tenant);
+        public bool IsRoutePolicy => Name is not (TellmaRatePolicies.User or TellmaRatePolicies.Tenant or RatePolicies.UserAcrossTenants);
     }
 
     /// <summary>The policies one endpoint chains, in order, and whether its report lane follows the priority.</summary>
@@ -62,6 +65,15 @@ namespace Tellma.Core.AspNetCore.Limits
     /// <summary>The policies, and how an endpoint's metadata selects and orders them.</summary>
     internal static class RatePolicies
     {
+        /// <summary>
+        ///     The name of the implied cap on one account's requests to every tenant together, which
+        ///     runs wherever <c>tellma-user</c> does and which no endpoint names.
+        /// </summary>
+        public const string UserAcrossTenants = "tellma-user-across-tenants";
+
+        /// <summary>The implied cap across tenants, ahead of the per-tenant user rate so a refusal there creates no per-tenant partition.</summary>
+        public static readonly RatePolicyDefinition AcrossTenants = new(UserAcrossTenants, 9, RatePartitionKind.Subject, HasLanes: false, ReplacesUserAndTenant: false);
+
         /// <summary>Every policy, by name.</summary>
         public static readonly IReadOnlyDictionary<string, RatePolicyDefinition> All = new RatePolicyDefinition[]
         {
@@ -79,9 +91,13 @@ namespace Tellma.Core.AspNetCore.Limits
             new(TellmaRatePolicies.Tenant, 11, RatePartitionKind.Tenant, HasLanes: false, ReplacesUserAndTenant: false),
         }.ToDictionary(static policy => policy.Name, StringComparer.Ordinal);
 
+        /// <summary>Every policy the limiter runs: those an endpoint names, and the implied cap across tenants.</summary>
+        public static IEnumerable<RatePolicyDefinition> Running => All.Values.Append(AcrossTenants);
+
         /// <summary>
         ///     The chain an endpoint's metadata selects: each policy it names once, the per-user and
-        ///     per-tenant ones dropped under a route policy that replaces them, in chain order.
+        ///     per-tenant ones dropped under a route policy that replaces them, the cap across tenants
+        ///     added wherever the per-user one stays, in chain order.
         /// </summary>
         /// <param name="metadata">The endpoint's metadata.</param>
         /// <returns>The chain; <see cref="RateChainSpec.None" /> when the endpoint names no policy.</returns>
@@ -111,6 +127,12 @@ namespace Tellma.Core.AspNetCore.Limits
             {
                 _ = policies.Remove(TellmaRatePolicies.User);
                 _ = policies.Remove(TellmaRatePolicies.Tenant);
+            }
+
+            // --- The per-tenant user rate brings the account's cap across tenants with it ---
+            if (policies.ContainsKey(TellmaRatePolicies.User))
+            {
+                policies[UserAcrossTenants] = AcrossTenants;
             }
 
             return new RateChainSpec([.. policies.Values.OrderBy(static policy => policy.Order)], honorsPriority);

@@ -44,6 +44,13 @@ namespace Tellma.Core.AspNetCore.Hosting
         public int RequestsPerMinutePerUser { get; set; } = 600;
 
         /// <summary>
+        ///     The requests one user makes to every tenant together per minute, on each instance; 1,200
+        ///     by default. It bounds the rate, and the limiter state, of one account that spreads its
+        ///     requests over many tenant ids; at least <see cref="RequestsPerMinutePerUser" />.
+        /// </summary>
+        public int RequestsPerMinutePerUserAcrossTenants { get; set; } = 1200;
+
+        /// <summary>
         ///     The requests one tenant runs at once on each instance; 64 by default. A burst on one
         ///     tenant cannot exhaust the instance for the others, and the tenant's connection pool waits
         ///     stay bounded.
@@ -152,6 +159,14 @@ namespace Tellma.Core.AspNetCore.Hosting
                 }
             }
 
+            // --- The cap across tenants: no lower than one tenant's, which it would otherwise undercut ---
+            if (RequestsPerMinutePerUserAcrossTenants < RequestsPerMinutePerUser)
+            {
+                yield return new ValidationResult(
+                    $"{SectionPath}:{nameof(RequestsPerMinutePerUserAcrossTenants)} is {RequestsPerMinutePerUserAcrossTenants}; it must be at least {nameof(RequestsPerMinutePerUser)}, {RequestsPerMinutePerUser}.",
+                    [nameof(RequestsPerMinutePerUserAcrossTenants)]);
+            }
+
             // --- The timeouts: positive, bounded, and the long one no shorter than the ordinary one ---
             if (RequestTimeout <= TimeSpan.Zero)
             {
@@ -187,6 +202,7 @@ namespace Tellma.Core.AspNetCore.Hosting
             return
             [
                 (nameof(RequestsPerMinutePerUser), RequestsPerMinutePerUser),
+                (nameof(RequestsPerMinutePerUserAcrossTenants), RequestsPerMinutePerUserAcrossTenants),
                 (nameof(ConcurrentRequestsPerTenant), ConcurrentRequestsPerTenant),
                 (nameof(AnonymousRequestsPerMinutePerIp), AnonymousRequestsPerMinutePerIp),
                 (nameof(ConcurrentExportsPerUser), ConcurrentExportsPerUser),

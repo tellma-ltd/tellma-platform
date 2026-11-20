@@ -185,10 +185,14 @@ one global limiter runs, per endpoint, the chain of the policies its metadata na
 method add): the route's own policy first, then `tellma-user`, then `tellma-tenant`, so a request
 queued on its route policy holds no tenant permit, and a later refusal releases the permits taken
 before it. `tellma-blobs`, `tellma-telemetry`, `tellma-anonymous` and `tellma-mcp` stand alone:
-an endpoint under one runs under neither `tellma-user` nor `tellma-tenant`.
+an endpoint under one runs under neither `tellma-user` nor `tellma-tenant`. Wherever `tellma-user`
+runs, an implied `tellma-user-across-tenants` runs just ahead of it, which no endpoint names: both
+per-tenant policies are keyed by the route's tenant id before membership is known, so the cap keeps
+one account that walks tenant ids to a bounded rate and a bounded number of partitions.
 
 | Policy | Partition | Limit (`Tellma:Api`, `Tellma:Mcp`) |
 |---|---|---|
+| `tellma-user-across-tenants` (implied) | caller | `RequestsPerMinutePerUserAcrossTenants` 1,200 (at least `RequestsPerMinutePerUser`), sliding minute |
 | `tellma-user` | tenant and caller | `RequestsPerMinutePerUser` 600, sliding minute of 6 segments |
 | `tellma-tenant` | tenant | `ConcurrentRequestsPerTenant` 64 concurrent |
 | `tellma-anonymous` | client address (IPv6 by its /64) | `AnonymousRequestsPerMinutePerIp` 60, fixed minute |
@@ -204,7 +208,8 @@ true)`) takes the batch lane for a request carrying exactly one `Tellma-Priority
 request takes the interactive lane. Queues serve the oldest waiter first. A refusal answers
 `429 rate-limited` with `Retry-After` (the window's own wait, or a second for a concurrency limit),
 counts on `tellma.api.requests.rejected{reason = rate_limited}` (with `lane` on the report policy)
-and logs `ApiRequestRateLimited`. It is decided before the tenant is resolved, so it reads the same
+and logs `ApiRequestRejected` with reason `rate_limited`, the policy and lane in its scope
+(`RatePolicy`, `RateLane`). It is decided before the tenant is resolved, so it reads the same
 for a tenant that does not exist and one the caller may not open.
 
 The timeout policies are `tellma-web` (`RequestTimeout` 30 s), `tellma-long` (`LongRequestTimeout`

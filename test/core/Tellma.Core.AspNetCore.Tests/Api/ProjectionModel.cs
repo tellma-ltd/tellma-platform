@@ -19,7 +19,8 @@ using Tellma.Core.Tests.Infrastructure;
 namespace Tellma.Core.AspNetCore.Tests.Api
 {
     // The projection suite's model: an activatable tree with a child collection and an action of
-    // every shape, a stack keyed by long, a cacheable stack, and a routed service. Its services run on the
+    // every shape, a stack keyed by long with a member of every ownership, a cacheable stack, and a routed service whose export and
+    // report actions name their rate policies. Its services run on the
     // recording pipeline, so a request reaches the platform's binding and nothing behind it.
 
     /// <summary>Composes the projection suite's model.</summary>
@@ -117,6 +118,32 @@ namespace Tellma.Core.AspNetCore.Tests.Api
         /// <summary>The name.</summary>
         [MaxLength(255)]
         public string Name { get; set; } = null!;
+
+        /// <summary>The code, which only an insert writes.</summary>
+        [MaxLength(50)]
+        [WriteOnce]
+        public string? Code { get; set; }
+
+        /// <summary>The balance, which the service derives from the payload.</summary>
+        [Derived]
+        public decimal Balance { get; set; }
+
+        /// <summary>The credit limit, the caller's.</summary>
+        public decimal CreditLimit { get; set; }
+
+        /// <summary>The state, the server's: an enum, which the document describes by reference.</summary>
+        [ServerOwned]
+        public PjLedgerState State { get; set; }
+    }
+
+    /// <summary>The states of a ledger.</summary>
+    public enum PjLedgerState
+    {
+        /// <summary>Open for posting.</summary>
+        Open,
+
+        /// <summary>Closed to posting.</summary>
+        Closed,
     }
 
     /// <summary>A currency: a cacheable list.</summary>
@@ -269,12 +296,22 @@ namespace Tellma.Core.AspNetCore.Tests.Api
             return Task.FromResult((Array.Empty<byte>(), string.Empty));
         }
 
-        /// <summary>Exports the caller's inbox: a workbook streamed as an attachment.</summary>
+        /// <summary>Exports the caller's inbox: a workbook streamed as an attachment, under the export policy its attribute names.</summary>
         /// <returns>The workbook.</returns>
         [ApiAction("export", Mutation = false, Idempotent = true, MemberOnly = true)]
+        [RatePolicy(TellmaRatePolicies.Export)]
         public Task<ExportOutcome> ExportAsync()
         {
             return Task.FromResult(new ExportOutcome(Stream.Null, "inbox.xlsx", 0));
+        }
+
+        /// <summary>Reports on the caller's inbox, under the report policy, whose lane the caller's priority chooses.</summary>
+        /// <returns>The summary.</returns>
+        [ApiAction("report", Mutation = false, Idempotent = true, MemberOnly = true)]
+        [RatePolicy(TellmaRatePolicies.Reports, HonorsPriority = true)]
+        public Task<PjInboxSummary> ReportAsync()
+        {
+            return Task.FromResult(new PjInboxSummary(0));
         }
 
         /// <summary>Purges every inbox: a secured action.</summary>
