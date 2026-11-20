@@ -351,6 +351,13 @@ namespace Tellma.Core.Blobs
                     BlobTelemetryTagValues.UploadQuota,
                     [new(BlobRejectedException.MaxCountArgument, options.MaxStagedPerUser), new(BlobRejectedException.MaxBytesArgument, options.MaxStagedBytesPerUser)]);
             }
+            catch (DataAccessException failure) when (failure is DataAccessAmbiguousException || DataAccessTranslation.Translate(failure) is not null)
+            {
+                // Spec 0015 §14.2: the stage runs outside the stack operations, so it translates its own
+                // availability failures. A row whose insert committed unseen has no objects and no
+                // owner, and the staging sweep claims it at its deadline: the upload is simply retried.
+                throw Failed(kind, DataAccessTranslation.Unavailable(failure));
+            }
             catch (Exception exception) when (exception is not OperationCanceledException and not BlobRejectedException)
             {
                 throw Failed(kind, exception);

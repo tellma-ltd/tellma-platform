@@ -5,7 +5,10 @@
 
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.DependencyInjection;
 using System.Net;
+using Tellma.Core.Abstractions.Data;
+using Tellma.Core.AspNetCore.Api;
 using Tellma.Core.AspNetCore.Tests.Infrastructure;
 using Tellma.Core.Data;
 
@@ -15,7 +18,9 @@ namespace Tellma.Core.AspNetCore.Tests.Limits
     ///     The request timeouts through the real pipeline, lowered through configuration: a request
     ///     that outlives its policy answers 504 <c>timeout</c> when nothing was written, its data access
     ///     is cancelled with it, a long endpoint's own policy outlasts its group's, and a response the
-    ///     timeout cuts short is aborted rather than ended as though it were whole.
+    ///     timeout cuts short is aborted rather than ended as though it were whole. A write sent
+    ///     before its timeout, which runs to its end and may commit, and an answer whose body writer
+    ///     began after it, lose their connection rather than answer a 504, a 500 or a whole 200.
     /// </summary>
     public sealed class RequestTimeoutTests
     {
@@ -105,6 +110,37 @@ namespace Tellma.Core.AspNetCore.Tests.Limits
         }
 
         [Fact]
+        public async Task A_write_sent_before_its_timeout_whose_action_answer_comes_after_it_loses_its_connection()
+        {
+            TaskCompletionSource<bool> committed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            await using TellmaTestHost host = await StartAsync("/act", HttpMethod.Post, persists: true, committed, static () => ActionAnswers.Of(new Dictionary<string, int> { ["id"] = 1 }, typeof(Dictionary<string, int>), preSerialized: false));
+
+            await AssertConnectionFailsAsync(host, HttpMethod.Post, "/act");
+
+            Assert.True(await committed.Task.WaitAsync(TimeSpan.FromSeconds(10), Token));
+        }
+
+        [Fact]
+        public async Task A_write_sent_before_its_timeout_whose_large_answer_comes_after_it_loses_its_connection()
+        {
+            TaskCompletionSource<bool> committed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            await using TellmaTestHost host = await StartAsync("/save", HttpMethod.Post, persists: true, committed, static () => Results.Ok(LargeReadBack()));
+
+            await AssertConnectionFailsAsync(host, HttpMethod.Post, "/save");
+
+            Assert.True(await committed.Task.WaitAsync(TimeSpan.FromSeconds(10), Token));
+        }
+
+        [Fact]
+        public async Task A_read_whose_answer_began_after_its_timeout_loses_its_connection_rather_than_answering_a_500()
+        {
+            TaskCompletionSource<bool> answered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            await using TellmaTestHost host = await StartAsync("/read", HttpMethod.Get, persists: false, answered, static () => ActionAnswers.Of(LargeReadBack(), typeof(List<ReadBackRow>), preSerialized: false));
+
+            await AssertConnectionFailsAsync(host, HttpMethod.Get, "/read");
+        }
+
+        [Fact]
         public async Task A_long_timeout_shorter_than_the_web_timeout_fails_startup()
         {
             // The options are judged where the host first reads them, mapping or the startup gate.
@@ -124,5 +160,84 @@ namespace Tellma.Core.AspNetCore.Tests.Limits
             Assert.NotNull(error);
             Assert.Contains("Tellma:Api:LongRequestTimeout is 00:00:30; it must be at least RequestTimeout", error.Message, StringComparison.Ordinal);
         }
+
+        /// <summary>
+        ///     Starts a host with a lowered timeout and one endpoint that answers only after its
+        ///     timeout fired, as a request whose round trip straddles its timeout does.
+        /// </summary>
+        /// <param name="path">The endpoint's path under the web surface.</param>
+        /// <param name="method">The endpoint's method; a POST is a mutation.</param>
+        /// <param name="persists">Whether the endpoint sends a persist before its timeout, which then runs to its end.</param>
+        /// <param name="finished">Completed once the endpoint's work finished past the timeout.</param>
+        /// <param name="answer">The endpoint's answer, written after its timeout fired.</param>
+        /// <returns>The started host.</returns>
+        private static Task<TellmaTestHost> StartAsync(string path, HttpMethod method, bool persists, TaskCompletionSource<bool> finished, Func<IResult> answer)
+        {
+            return TellmaTestHost.StartAsync(options =>
+            {
+                options.Settings["Tellma:Api:RequestTimeout"] = "00:00:00.300";
+                options.Map = (app, endpoints) =>
+                {
+                    async Task<IResult> Handle(HttpContext context)
+                    {
+                        // A sent persist: it completes whatever cancels the request, as the executor's does.
+                        if (persists)
+                        {
+                            context.RequestServices.GetRequiredService<DataAccessScope>().PersistSent = true;
+                        }
+
+                        try
+                        {
+                            await Task.Delay(Timeout.InfiniteTimeSpan, context.RequestAborted);
+                        }
+                        catch (OperationCanceledException)
+                        {
+                            // The work outlives the cancellation and returns its answer.
+                        }
+
+                        _ = finished.TrySetResult(true);
+                        return answer();
+                    }
+
+                    // Cast to a route handler, whose answer is written to the response.
+                    Delegate handler = Handle;
+                    _ = (method == HttpMethod.Post ? endpoints.Web.MapPost(path, handler) : endpoints.Web.MapGet(path, handler))
+                        .WithMutation(method == HttpMethod.Post)
+                        .AllowMember();
+                };
+            });
+        }
+
+        /// <summary>Asserts a request's connection fails: no status, neither a 504, a 500 nor a 200, reaches its client.</summary>
+        /// <param name="host">The host.</param>
+        /// <param name="method">The method.</param>
+        /// <param name="path">The endpoint's path under the web surface.</param>
+        /// <returns>A task that completes when the assertion holds.</returns>
+        private static async Task AssertConnectionFailsAsync(TellmaTestHost host, HttpMethod method, string path)
+        {
+            using HttpRequestMessage request = TellmaTestHost.SpaRequest(method, "/1/api/web" + path, host.Cookie());
+            HttpResponseMessage? response = null;
+            Exception? failure = await Record.ExceptionAsync(async () => response = await host.Client.SendAsync(request, Token).WaitAsync(TimeSpan.FromSeconds(10), Token));
+
+            using (response)
+            {
+                Assert.True(response is null, $"The request answered {(int?)response?.StatusCode} rather than losing its connection.");
+            }
+
+            Assert.NotNull(failure);
+            Assert.IsNotType<TimeoutException>(failure);
+        }
+
+        /// <summary>A read-back larger than the serializer's first flush.</summary>
+        /// <returns>The rows.</returns>
+        private static List<ReadBackRow> LargeReadBack()
+        {
+            return [.. Enumerable.Range(0, 5_000).Select(static id => new ReadBackRow(id, "a row of the read-back"))];
+        }
+
+        /// <summary>A row of a large read-back.</summary>
+        /// <param name="Id">The row's id.</param>
+        /// <param name="Name">The row's name.</param>
+        public sealed record ReadBackRow(int Id, string Name);
     }
 }

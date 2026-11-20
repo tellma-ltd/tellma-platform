@@ -10,7 +10,11 @@ using System.Globalization;
 using System.Reflection;
 using System.Resources;
 using System.Text.RegularExpressions;
+using Tellma.Core.Abstractions.Access;
+using Tellma.Core.Abstractions.Blobs;
 using Tellma.Core.Abstractions.Errors;
+using Tellma.Core.Abstractions.Settings;
+using Tellma.Core.Abstractions.Validation;
 using Tellma.Core.Composition.Checks;
 using Tellma.Core.Localization;
 using Tellma.Core.Resources;
@@ -20,7 +24,8 @@ namespace Tellma.Core.Tests.Localization
     /// <summary>
     ///     Core's shared resources: the key grammar, every value a well-formed ICU message, the Arabic
     ///     satellite complete, the region names generated for exactly the catalogued regions, a
-    ///     title for every problem code and a message for every query diagnostic, and the empty
+    ///     title for every problem code, a message for every validation and refusal code and for every
+    ///     query diagnostic, and the empty
     ///     server-only resources.
     /// </summary>
     public sealed partial class CoreResourcesTests
@@ -116,6 +121,31 @@ namespace Tellma.Core.Tests.Localization
                 string key = "Problem_" + code.Replace('-', '_');
                 Assert.Contains(key, neutral.Keys);
                 Assert.Contains(key + "_Detail", neutral.Keys);
+            });
+        }
+
+        [Fact]
+        public void Every_validation_and_refusal_code_the_platform_raises_has_a_message()
+        {
+            // The audit above fails only on keys nothing uses; this is its inverse: a code the
+            // pipeline raises is rendered from the key its dots make, so a missing key would put the
+            // bare code on the wire. Every public constant of the code catalogues counts; the blob
+            // refusals' catalogue also names its arguments, which are not codes.
+            Type[] catalogues = [typeof(ValidationCodes), typeof(SettingsValidationCodes), typeof(AccessCodes), typeof(BlobRejectedException)];
+            string[] codes = [.. catalogues
+                .SelectMany(static type => type.GetFields(BindingFlags.Public | BindingFlags.Static))
+                .Where(static field => field.IsLiteral && field.FieldType == typeof(string) && !field.Name.EndsWith("Argument", StringComparison.Ordinal))
+                .Select(static field => (string)field.GetRawConstantValue()!)
+                .Distinct(StringComparer.Ordinal)];
+            Dictionary<string, string> neutral = Entries(string.Empty);
+            Dictionary<string, string> arabic = Entries("ar");
+
+            Assert.Contains(AccessCodes.CannotDeleteSelf, codes);
+            Assert.All(codes, code =>
+            {
+                string key = code.Replace('.', '_');
+                Assert.True(neutral.ContainsKey(key), $"'{code}' has no message: the neutral resources declare no '{key}'.");
+                Assert.True(arabic.ContainsKey(key), $"'{code}' has no Arabic message: the Arabic resources declare no '{key}'.");
             });
         }
 

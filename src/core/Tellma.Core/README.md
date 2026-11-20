@@ -30,8 +30,9 @@ English.
 
 `AddTellma` runs four steps, then installs the second of two gates:
 
-1. **Collect.** Registers `DeploymentIdentity(slug, environment)` and `DeploymentVersions`, adds
-   `CoreFeature` (`core`) first, and runs the composition method. Selection is explicit: there is no
+1. **Collect.** Registers `DeploymentIdentity(slug, environment)` and `DeploymentVersions` (a
+   distribution version the web client cannot state in its `Tellma-Client` header, more than 128
+   characters or not visible ASCII, is a problem), adds `CoreFeature` (`core`) first, and runs the composition method. Selection is explicit: there is no
    assembly scanning. Before any of it, the HTTP client factory's default loggers are removed from
    every client as a default (see [Outbound HTTP logging](#outbound-http-logging)).
 2. **Declare.** Each feature's `Declare` records its `Requires` edges and options bindings, and its

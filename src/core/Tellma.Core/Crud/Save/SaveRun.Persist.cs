@@ -85,7 +85,7 @@ namespace Tellma.Core.Crud.Save
             catch (DataAccessAmbiguousException ambiguous)
             {
                 // An update-only save cannot be probed: the caller reloads to learn whether it committed.
-                throw new DependencyUnavailableException(DatabaseDependency, DatabaseRetryAfter, ambiguous);
+                throw DataAccessTranslation.Unavailable(ambiguous);
             }
             catch (DataAccessException failure)
             {

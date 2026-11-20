@@ -51,14 +51,8 @@ namespace Tellma.Core.Crud.Query
         /// <summary>The problem code of a refused securable.</summary>
         private const string ForbiddenCode = "forbidden";
 
-        /// <summary>The dependency a data-access failure names.</summary>
-        private const string DatabaseDependency = "database";
-
         /// <summary>The path a tree read's out-of-range parent id is reported at.</summary>
         private const string ParentIdsPath = "parentIds";
-
-        /// <summary>The wait a caller is told before retrying a read the database could not serve.</summary>
-        private static readonly TimeSpan DatabaseRetryAfter = TimeSpan.FromSeconds(1);
 
         /// <summary>Runs one query.</summary>
         /// <param name="surface">The surface it runs on.</param>
@@ -115,7 +109,7 @@ namespace Tellma.Core.Crud.Query
         {
             try
             {
-                return await steps().ConfigureAwait(false);
+                return await DataAccessTranslation.RunAsync(steps).ConfigureAwait(false);
             }
             catch (ArithmeticFailureException failure)
             {
@@ -127,11 +121,6 @@ namespace Tellma.Core.Crud.Query
                         ValidationCodes.QueryArithmeticFailed,
                         new Dictionary<string, object?>(StringComparer.Ordinal) { ["reason"] = failure.Reason }),
                 ]);
-            }
-            catch (DataAccessRetryExhaustedException failure)
-            {
-                // Deadlocks and transient failures outlasted the executor's retries: worth a retry soon.
-                throw new DependencyUnavailableException(DatabaseDependency, DatabaseRetryAfter, failure);
             }
         }
 

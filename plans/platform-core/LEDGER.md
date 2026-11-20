@@ -102,10 +102,10 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 
 | PC | Slot | Branch | Step | Implementer agent (name / id) | Reviewer agent (name / id) | Started (UTC) |
 |---|---|---|---|---|---|---|
-| PC-087 | pc-1 | pc/PC-087 | impl | impl (Opus, high, launched 2026-11-20) | 0018-b; R1 only | 2026-11-20 |
-| PC-B04 | pc-2 | pc/PC-B04 | batch | workflow (Fable finders xhigh, Opus fixer high), launched 2026-11-20 | Phase 4: PC-062…PC-084; D-147 | 2026-11-20 |
-| PC-F61 | pc-f | pc/PC-F61 | impl | fix agent (Opus, high, launched 2026-11-20) | nightly client-e2e/quarantine: Playwright OS deps install fails, webkit cannot launch (nightly 44701549452, 44506202284; first 43403796974); not a line stop; R1 only | 2026-11-20 |
-| PC-100 | pc-4 | pc/PC-100 | integrating, new flow (released after PC-082 push 3f166bd1; held 610f7af1) | impl (Opus, high, launched 2026-11-19) | 0020-d; R1 2 blocking: escalated to R2 (inherit, xhigh, §4.4) | 2026-11-19 |
+| PC-144 | pc-3 | pc/PC-144 | impl | impl (Opus, high, launched 2026-11-20) | 0020-e; R1 only | 2026-11-20 |
+| PC-146 | pc-4 | pc/PC-146 | impl | impl (Opus, high, launched 2026-11-20) | 0021-c; R1 only | 2026-11-20 |
+| PC-087 | pc-1 | pc/PC-087 | held | held (0d6e317a; R1-1..6 fixed; merge-tree clean); released after PC-F61 | 0018-b; R1 only | 2026-11-20 |
+| PC-F61 | pc-f | pc/PC-F61 | ci-fix | CI red 44723555424 on 366d0ceb (acme-client ubuntu: chromium launch failed after deps installed; client needed attempt 2); CI fixes in progress | nightly client-e2e/quarantine: Playwright OS deps install fails, webkit cannot launch (nightly 44701549452, 44506202284; first 43403796974); not a line stop; R1 only | 2026-11-20 |
 
 ## Fix items
 
@@ -179,6 +179,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-B01 | 1 (PC-000…PC-014 at 7db93ca) | done (7e13990, CI 43142784871 green) | a31a1a5, 7e13990 (pc) | 0/2/2 all fixed (identity API audience/kind policy; CLI audience; file-preview download anchor; …); D-055; one finder returned none; 553k subagent tokens |
 | PC-B02 | 2 (PC-015…PC-031) | done (5 findings 0/3/2: 5 fixed, 1 sub-point pushed back; fixes c771eead; integrated 65057698; green 44208803444) | | |
 | PC-B03 | 3 (PC-032…PC-061) | done (6 findings 0/3/3: 6 fixed; fixes 3adc83da; integrated b4849737; CI 44215268639 red → PC-F57; green 44231237483 on 735456ab) | | |
+| PC-B04 | 4 (PC-062…PC-084) | done (8 findings 0/6/2: 8 fixed, parts pushed back; fixes 27f8bb6a; integrated f8806aa8; pc 44730508322 green; PR 44733161670 green) | 27f8bb6a, 14dad323, f8806aa8 | D-147, D-149; 4 agents, 857k subagent tokens |
 
 ## Merge-time tasks (before platform-core merges into main)
 
@@ -389,7 +390,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-097 | 0020-b | 1 | done a90b368 (CI 43515001627 green) | bf01975, fb0abb0, 262b849, a90b368 (pc) |  |  |
 | PC-098 | 0020-c | 1 | done (92307211; green 44632808005) | 06ceb5dd, 46456458, 10ac40b1, 15f0e6a7, 92307211 | | D-128, D-129 (R1-4 for Ahmad), D-139 |
 | PC-099 | 0021-b | 1 | done (integrated 183e772, CI 43618488320 green) | 2e7dfd1, 2de32d7, f5174b3, 11a57e0 (pc), 69c009b, 183e772 (pc) |  |  |
-| PC-100 | 0020-d | 1 | in progress | | | carry from PC-141 (D-096): TenantStateTests.A_job_whose_handler_runs_when_read_only_succeeds_on_a_read_only_tenant runs and must pass |
+| PC-100 | 0020-d | 1 | done (f4e6120b; pc 44718230236 green after CI fix, PR 44721068450 green) | 22360494, eafc689a, 610f7af1, 796b6dc7, 44867684, f4e6120b | | carry from PC-141 (D-096): TenantStateTests.A_job_whose_handler_runs_when_read_only_succeeds_on_a_read_only_tenant runs and must pass ; D-141, D-142, D-146 |
 | PC-101 | 0010-f4 | 1 | done (450f7dd, CI 43164947502 green) | b11e206, c66a4a7, 450f7dd (pc) | 8.94M (impl+fix1+int 7.20, r1 1.74) | R1 0/1/5 all fixed; new deviations: null for an IsNotNull parameter is a caller error; printed text over a parse ceiling reports that ceiling's diagnostic |
 | PC-102 | 0029-f | 1 | done (1b83923c; green 44655600178) | c586d072, 2187f29c, 1b83923c | | D-136, D-138 |
 | PC-103 | 0024-g | 1 | todo | | | carry from PC-094: replace Acme's interim main.ts (bootstrapApplication) and AcmeApp with bootstrapTellma/TmApp |
@@ -433,9 +434,9 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-141 | 0011-h | 2 | done (478b0ab0; CI 43879675326 green) | bb2a2d6, 15d1369 (pc/PC-141) | | |
 | PC-142 | 0015-k | 2 | done (eba471bf; green 44642487470) | e86138b6, 76ee772e, e6f1d0b2, 3083d411, eba471bf | | D-131, D-132, D-134 |
 | PC-143 | 0018-f | 2 | todo | | | |
-| PC-144 | 0020-e | 2 | todo | | | |
+| PC-144 | 0020-e | 2 | in progress | | | |
 | PC-145 | 0020-f | 2 | todo | | | |
-| PC-146 | 0021-c | 2 | todo | | | carry from PC-099 r1: the Notification stack fails closed (no criteria) until this lands; add the self-scope |
+| PC-146 | 0021-c | 2 | in progress | | | carry from PC-099 r1: the Notification stack fails closed (no criteria) until this lands; add the self-scope |
 | PC-147 | 0021-d | 2 | todo | | | |
 | PC-148 | 0022-a | 2 | todo | | | |
 | PC-149 | 0022-b | 2 | todo | | | |

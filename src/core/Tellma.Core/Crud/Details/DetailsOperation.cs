@@ -48,12 +48,6 @@ namespace Tellma.Core.Crud.Details
         IRequestContextAccessor accessor,
         IOptions<DataOptions> data)
     {
-        /// <summary>The dependency a data-access failure names.</summary>
-        private const string DatabaseDependency = "database";
-
-        /// <summary>The wait a caller is told before retrying a read the database could not serve.</summary>
-        private static readonly TimeSpan DatabaseRetryAfter = TimeSpan.FromSeconds(1);
-
         /// <summary>Reads one row by id: missing and invisible alike are not found.</summary>
         /// <typeparam name="TEntity">The stack's entity type.</typeparam>
         /// <typeparam name="TKey">The stack's key type.</typeparam>
@@ -148,17 +142,9 @@ namespace Tellma.Core.Crud.Details
         /// <typeparam name="TResult">What the read returns.</typeparam>
         /// <param name="steps">The read's steps.</param>
         /// <returns>What the read returned.</returns>
-        private static async Task<TResult> TranslatedAsync<TResult>(Func<Task<TResult>> steps)
+        private static Task<TResult> TranslatedAsync<TResult>(Func<Task<TResult>> steps)
         {
-            try
-            {
-                return await steps().ConfigureAwait(false);
-            }
-            catch (DataAccessRetryExhaustedException failure)
-            {
-                // Deadlocks and transient failures outlasted the executor's retries: worth a retry soon.
-                throw new DependencyUnavailableException(DatabaseDependency, DatabaseRetryAfter, failure);
-            }
+            return DataAccessTranslation.RunAsync(steps);
         }
 
         /// <summary>The steps of a read by ids: the check, the ceilings, then the plan's one round trip.</summary>

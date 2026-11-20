@@ -741,6 +741,14 @@ namespace Tellma.Core.Data.Batches
 
                 phase = AttemptPhase.Sent;
                 batch.Access.RoundTrips++;
+
+                // From here a persist completes whatever cancels its caller, so the unit of work's
+                // answer can no longer say the write did not happen.
+                if (batch.Purpose == BatchPurpose.Persist)
+                {
+                    batch.Access.PersistSent = true;
+                }
+
                 SqlDataReader reader;
                 try
                 {
