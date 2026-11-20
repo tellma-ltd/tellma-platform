@@ -102,9 +102,8 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 
 | PC | Slot | Branch | Step | Implementer agent (name / id) | Reviewer agent (name / id) | Started (UTC) |
 |---|---|---|---|---|---|---|
-| PC-F60 | pc-f | pc/PC-F60 | fix1+integrate (new flow; R1 0/0/1) | fix agent (Opus, high, launched 2026-11-20) | D-144: ci.yml push on pc/**; integration-windows to nightly-tier.yml; CONTRIBUTING tiers; R1 only; integrates first, CI on both sides | 2026-11-20 |
-| PC-082 | pc-1 | pc/PC-082 | fix1 then hold (impl 7b5075e7; R1 0/2/3) | impl (Opus, high, launched 2026-11-20) | 0016-e; R1 only | 2026-11-20 |
-| PC-100 | pc-4 | pc/PC-100 | fix2 then hold (fix1 eafc689a; R2 0/2/4) | impl (Opus, high, launched 2026-11-19) | 0020-d; R1 2 blocking: escalated to R2 (inherit, xhigh, §4.4) | 2026-11-19 |
+| PC-082 | pc-1 | pc/PC-082 | integrating, new flow (released after PC-F60 green 44699551746; held 92b24e59) | impl (Opus, high, launched 2026-11-20) | 0016-e; R1 only | 2026-11-20 |
+| PC-100 | pc-4 | pc/PC-100 | held (610f7af1; merge-tree clean; release after PC-082) | impl (Opus, high, launched 2026-11-19) | 0020-d; R1 2 blocking: escalated to R2 (inherit, xhigh, §4.4) | 2026-11-19 |
 
 ## Fix items
 
@@ -168,6 +167,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-F57 | CI red on b4849737 (integration, Linux SQL container; integration-windows green): Core MembershipDirectoryTests.Reconciliation_rebuilds_one_tenants_hints_and_leaves_every_other_tenants_alone expected 3 changes, got 1 (test file :125). Likely PC-B03's B03-2 `UpdatedAt < @readAt` predicate with @readAt rounded to datetimeoffset(3): hints written just before CatalogTimeAsync in the same millisecond are excluded, so the alice update and bob delete are skipped. | done (735456ab; green 44231237483) | 562077d8, d6c3a1a3, 66eb4ea8, 735456ab (pc/PC-F57) | | from PC-B03 integration (CI 44215268639) |
 | PC-F58 | CI red on fc1ad812 (integration-windows; ubuntu integration green): Acme TenantStateTests frozen-tenant test 503 catalog-unavailable; test-host readiness race (first catalog load over its 10 s bound on a loaded runner), not PC-080; AcmeHost now awaits the tenant snapshot | done (88555b3a; green 44554210017) | d430d6ae, 21d453d3, 88555b3a (pc/PC-F58) | | from PC-080 integration (CI 44526593455) |
 | PC-F59 | CI fix: TenantScopeTests missing-database open accepts SQL 233 on LocalDB (test-only) | done (679708c3; green 44617227800) | d83b9501, c3e507b2, 679708c3 (pc/PC-F59) | | from PC-086 (CI run 44571660410); D-135 |
+| PC-F60 | D-144: ci.yml runs on pc/** pushes only for ": integrate" commits; integration-windows moved to nightly-tier.yml; CONTRIBUTING tiers | done (a96be78b; pc run 44697079750 green, PR run 44699551746 green) | cdb4bca8, cf37c45a, 73403de8, fedca842, a96be78b (pc/PC-F60) | | from Ahmad's ruling D-144; nightly by hand 44701549452 |
 | PC-F02 | systemic e2e flakiness: CI 42456030333 red on 5250c6c (plans-only) with 4 NEW flaky tests | done (R1 1/1/2; CI 42471952389 green), pc-f free | 2c91df4, 4c36d45, 4c89ae1 | 11.32M | grid bundle at its 38 KB ceiling; picker same-frame Enter race open | root-cause all 9; un-quarantine the fixed PC-F01 five |
 
 ## Batch reviews (one per phase)
