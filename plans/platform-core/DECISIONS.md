@@ -359,6 +359,11 @@ Format, one entry per ruling:
 - Also accepted: a readonly select never opens (a pre-existing bug, fixed) and exposes aria-readonly.
 - **Misalignment for Ahmad:** 0010 §B.4 names contentChildren(TmOptionGroup), which the design does not need. See also D-036's §B.4 note.
 
+### D-146 (orchestrator, 2026-11-20): PC-100 Review 2 rulings
+
+- Deviation D-15 rejected: MaxParallelBatches must hold, including at boot when every poller plans at once; polls get stagger/jitter, and a test pins that N pollers starting together never exceed the bound.
+- R2-6, interim: renewing a lease the instance already holds uses the tenant's last-known registry entry when the snapshot is older than MaxStaleness; every other path keeps the stale-snapshot refusal. Otherwise a catalog outage longer than 5 min lapses every lease and runs jobs twice (0020 §6.7). **For Ahmad:** 0011 (registry staleness) and 0020 (renewal) should state the same rule.
+
 ### D-145 (orchestrator, 2026-11-20): PC-082 Review 1 rulings
 
 - R1-1, interim: spec 0016's order is kept (the rate limiter runs before tenant membership is known), plus a per-user (sub) cross-tenant cap that bounds one account's total rate and partition memory. **For Ahmad:** any signed-in user of the distribution can still drain another tenant's 64 concurrent tellma-tenant permits, so its members get 429. That also works as a load oracle: a busy real tenant refuses a stranger's concurrent requests, a missing one never does. The alternative is to take the tellma-tenant and tellma-user permits inside the access guard after membership is confirmed (a 0016 §8.2 / 0011 §5.1 order change). Same family as D-137's state-before-membership question.
