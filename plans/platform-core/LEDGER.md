@@ -102,8 +102,9 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 
 | PC | Slot | Branch | Step | Implementer agent (name / id) | Reviewer agent (name / id) | Started (UTC) |
 |---|---|---|---|---|---|---|
-| PC-082 | pc-1 | pc/PC-082 | integrating, new flow (released after PC-F60 green 44699551746; held 92b24e59) | impl (Opus, high, launched 2026-11-20) | 0016-e; R1 only | 2026-11-20 |
-| PC-100 | pc-4 | pc/PC-100 | held (610f7af1; merge-tree clean; release after PC-082) | impl (Opus, high, launched 2026-11-19) | 0020-d; R1 2 blocking: escalated to R2 (inherit, xhigh, §4.4) | 2026-11-19 |
+| PC-F61 | pc-f | pc/PC-F61 | impl | fix agent (Opus, high, launched 2026-11-20) | nightly client-e2e/quarantine: Playwright OS deps install fails, webkit cannot launch (nightly 44701549452, 44506202284; first 43403796974); not a line stop; R1 only | 2026-11-20 |
+| PC-082 | pc-1 | pc/PC-082 | integrated (3f166bd1; pc run 44703261531 green; PR run pending) | impl (Opus, high, launched 2026-11-20) | 0016-e; R1 only | 2026-11-20 |
+| PC-100 | pc-4 | pc/PC-100 | integrating, new flow (released after PC-082 push 3f166bd1; held 610f7af1) | impl (Opus, high, launched 2026-11-19) | 0020-d; R1 2 blocking: escalated to R2 (inherit, xhigh, §4.4) | 2026-11-19 |
 
 ## Fix items
 
@@ -221,7 +222,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | client core-ui tm-grid-lazy-editing.spec.ts "a failed load leaves the draft whole while every key asks again, and reports once" (failed once locally under load in the PC-058 integration; passed alone 25/25 and on the full re-run) | 2026-11-14 | watch |
 | client core-ui tm-grid-header-nav.spec.ts "tm-grid row-end column takes a right-click or a long-press …" (both variants; expected false to be true; CI 43491332443 on 3077eb7, green on the next two runs) | 2026-11-13 | PC-F33 (second CI sighting: run 43546459441 on a2ebe0a) |
 | dotnet Tellma.Core.IntegrationTests RegistryCatalogTests missing-catalog test (failed once under load on LocalDB, PC-085 impl) | 2026-11-13 | watch; root-cause per D-018 if it recurs |
-| CI client-e2e-quarantine/client-e2e: playwright OS deps install failed (apt mirror), webkit failed to launch (run 43403796974 at 5c3674f) | 2026-11-13 | infra; watch |
+| CI client-e2e-quarantine/client-e2e: playwright OS deps install failed (apt mirror), webkit failed to launch (run 43403796974 at 5c3674f) | 2026-11-13 | infra; recurring every nightly → PC-F61 |
 | dotnet Tellma.Imaging HostileDocumentTests memory-growth floor (119 MiB under the 128 MiB floor under parallel load; passes alone; PC-047 merge) | 2026-11-13 | watch |
 | dotnet Tellma.Core.IntegrationTests DataBatchTests cancellation wall-clock assertion (failed once under load; 28/28 alone; PC-047 merge) | 2026-11-13 | watch |
 | dotnet Tellma.Core.IntegrationTests SqlQueryTextTests.A_commands_span_carries_no_query_text (captures other classes' fixture ALTER DATABASE spans running at the same time; passes alone; seen by PC-033 integrate and PC-038 R2) | 2026-11-13 | fixed by PC-F31 (a0e7adc); remove if quiet for a week |
