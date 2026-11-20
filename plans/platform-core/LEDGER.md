@@ -102,8 +102,9 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 
 | PC | Slot | Branch | Step | Implementer agent (name / id) | Reviewer agent (name / id) | Started (UTC) |
 |---|---|---|---|---|---|---|
-| PC-082 | pc-1 | pc/PC-082 | R1 (impl 7b5075e7) | impl (Opus, high, launched 2026-11-20) | 0016-e; R1 only | 2026-11-20 |
-| PC-100 | pc-4 | pc/PC-100 | fix1 (impl 22360494; R1 2B/1M/3m) | impl (Opus, high, launched 2026-11-19) | 0020-d; R1 2 blocking: escalated to R2 (inherit, xhigh, §4.4) | 2026-11-19 |
+| PC-F60 | pc-f | pc/PC-F60 | fix1+integrate (new flow; R1 0/0/1) | fix agent (Opus, high, launched 2026-11-20) | D-144: ci.yml push on pc/**; integration-windows to nightly-tier.yml; CONTRIBUTING tiers; R1 only; integrates first, CI on both sides | 2026-11-20 |
+| PC-082 | pc-1 | pc/PC-082 | fix1 then hold (impl 7b5075e7; R1 0/2/3) | impl (Opus, high, launched 2026-11-20) | 0016-e; R1 only | 2026-11-20 |
+| PC-100 | pc-4 | pc/PC-100 | fix2 then hold (fix1 eafc689a; R2 0/2/4) | impl (Opus, high, launched 2026-11-19) | 0020-d; R1 2 blocking: escalated to R2 (inherit, xhigh, §4.4) | 2026-11-19 |
 
 ## Fix items
 
@@ -375,7 +376,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-086 | 0029-a | 1 | done | ce581934, 7a5cdf53, 84278111, 22c362f7; green 44575091654 | | |
 | PC-087 | 0018-b | 1 | todo | | | |
 | PC-088 | 0018-c | 1 | todo | | | |
-| PC-089 | 0017-d | 1 | todo | | | carry: none from D-096 any more (D-120 moved §6.4 BlobContainerStep to PC-083 and the provisioning-record row to whichever of PC-078 and PC-083 lands last); carry from PC-080 (D-124): blob endpoints must evaluate access or record the member witness, or the witness filter answers 500 (unstarted) or aborts the connection (started); carry D-137: wrap the blob GET in the telemetry stage (0016 §5.1 chain) |
+| PC-089 | 0017-d | 1 | todo | | | carry: none from D-096 any more (D-120 moved §6.4 BlobContainerStep to PC-083 and the provisioning-record row to whichever of PC-078 and PC-083 lands last); carry from PC-080 (D-124): blob endpoints must evaluate access or record the member witness, or the witness filter answers 500 (unstarted) or aborts the connection (started); carry D-137: wrap the blob GET in the telemetry stage (0016 §5.1 chain); carry D-145: map the blob GET with DisableRequestTimeout or a time-to-first-byte policy (tellma-web cuts downloads at 30 s) |
 | PC-090 | 0018-d | 1 | todo | | | carry from PC-141 (D-096): TenantStateTests.An_action_allowed_when_read_only_succeeds_on_a_read_only_tenant runs and must pass |
 | PC-091 | 0018-e | 1 | todo | | | |
 | PC-092 | 0018-g | 1 | todo | | | carry from PC-094: extend the existing server AcmeFeature ("acme", empty); do not create another |

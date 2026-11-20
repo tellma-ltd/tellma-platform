@@ -114,8 +114,10 @@ orchestrator: assign slot, create pc/PC-nnn, LEDGER row → impl
     Implementer (resumed) ── fix or push back ── commit 3 "PC-nnn: review 2 fixes" ── push
     others ahead in the release queue (§5.1, D-087) only:                           → held
     Implementer (resumed) ── merge-tree conflict check ── push branch only, no merge or gates
-  Implementer (resumed) ── integrate into platform-core ── push                     → integrated
-  CI green for that sha                                                             → done
+  Implementer (resumed) ── merge platform-core, build, format ── push pc/{PC} only    → ci-pending
+    CI on that pc/{PC} commit red: implementer fixes it in this step (§4.3)         → ci-pending
+  CI on that pc/{PC} commit green ── implementer pushes it to platform-core         → integrated
+  CI green for that sha on platform-core (PR #18)                                   → done
 ```
 
 A checkpoint off the two-review list has two commits; one on it has three. Fix commits are made
@@ -124,9 +126,9 @@ PC-000 and `PC-Fnn` fixes take Review 1 only.
 
 An item holds (D-087) when, after its last fix round, other items are ahead of it in the release
 queue (§5.1). A held item does not merge platform-core or re-run the gates. It checks for
-conflicts with `git merge-tree`, reports them and pushes only its branch. It merges and runs
-PLAN.md §7.1 items 2-4 once, when the orchestrator releases it with the integration message
-(§4.3).
+conflicts with `git merge-tree`, reports them and pushes only its branch. It merges once, when the
+orchestrator releases it with the integration message (§4.3), and CI on its pc/{PC} commit is the
+gate (D-144).
 
 ### 4.1 Implementer brief (orchestrator fills `{}`)
 
@@ -176,8 +178,12 @@ Rules of conduct:
    under Deviations.
 5. If ARCHITECTURE.md disagrees with what you build, update it in this checkpoint and report it.
    Never edit LEDGER.md, DECISIONS.md, DEPS.md, PLAN.md, PROCESS.md or CHECKPOINTS.md.
-6. PR-tier tests only (PLAN.md §6; commands in PROCESS.md §11). Tag nightly-tier tests and do not
-   wait on them. Run commands that may exceed 10 minutes with run_in_background, wait for them to
+6. Keep the local loop fast (PLAN.md §7.1 items 2-4; commands in PROCESS.md §11). Build the
+   touched projects in the inner loop and the whole solution once at the end. Run only the unit
+   and integration tests your change touches: never the full unit filter, the full integration
+   suites or the full client e2e, and never an unfiltered `dotnet test Tellma.slnx`. GitHub CI
+   runs the whole PR tier on your pc/{PC} commit at integration, and that run is the gate. Tag
+   nightly-tier tests and do not wait on them. Run commands that may exceed 10 minutes with run_in_background, wait for them to
    exit, and read their output before continuing. Never commit or return while a command you
    started is still running.
 7. If the permission system blocks a command, do not retry variants. Note the exact command and
@@ -193,7 +199,7 @@ Done means PLAN.md §7.1 items 1-6. Then:
 
 You will be resumed twice with review findings. Then you are either asked to integrate, or told
 to hold and later released to integrate (D-087): a hold is only a conflict check and a branch
-push, so the merge and the gates run once, at integration.
+push, so the merge runs once, at integration, where CI on your pc/{PC} commit is the gate (§4.3).
 ```
 
 ### 4.2 Reviewer briefs
@@ -218,9 +224,9 @@ the live C:/Users/ahmad/workspace/tellma/tellma-platform/plans/platform-core/DEC
 
 Review adversarially for: (a) spec conformance, every requirement in scope item by item, with each
 deviation justified; (b) correctness bugs, edge cases, error paths; (c) test adequacy: does each
-spec rule have a test that would fail if the rule broke? and were the touched suites (PLAN.md §7.1
-item 4) actually run? (d) the AGENTS.md rules and PLAN.md §7.1. Build and run the touched tests
-yourself when a claim depends on it. Report only real issues, each with file:line, the failure
+spec rule have a test that would fail if the rule broke? and were the tests the change touches
+(PLAN.md §7.1 item 4) actually run? (d) the AGENTS.md rules and PLAN.md §7.1. Build and run the
+tests you need yourself when a claim depends on it; you may also cite the pc/{PC} branch's CI run. Report only real issues, each with file:line, the failure
 scenario and a suggested fix, ranked blocking / major / minor. No style nits the build does not
 enforce.
 
@@ -263,18 +269,51 @@ the §4.7 summary with status=held and the pushed sha.
 ```
 
 Integration (after the last fix round, or at release of a held item; D-087 makes this the item's
-only merge and gate run. A released item may be pointed at a different free slot, which it first
-switches with `cd {slot} && git switch -q -C pc/{PC} origin/pc/{PC}`):
+only merge. CI on the pc/{PC} commit is the gate (§11, D-144). A released item may be pointed at a
+different free slot, which it first switches with `cd {slot} && git switch -q -C pc/{PC} origin/pc/{PC}`):
 
 ```
 Integrate {PC}: run `cd {slot} && git fetch origin`. If origin/platform-core is not an ancestor of
-HEAD, run `cd {slot} && git merge origin/platform-core -m "{PC}: merge platform-core"`, resolving
-conflicts by regenerating lockfiles, API goldens, EF snapshots and serialized migrations rather
-than hand-merging them, and run the integration gate (§11, D-105) for the item's scope. Then push with
-`cd {slot} && git push origin HEAD:platform-core` and `cd {slot} && git push origin pc/{PC}`. If the
-platform-core push is rejected, repeat from the fetch. Return the §4.7 summary with the sha you
-pushed to platform-core.
+HEAD, run `cd {slot} && git merge --no-ff origin/platform-core -m "{PC}: integrate (merge platform-core)"`,
+resolving conflicts by regenerating lockfiles, API goldens, EF snapshots and serialized migrations
+rather than hand-merging them. If it already is an ancestor, run
+`cd {slot} && git commit --allow-empty -m "{PC}: integrate"`. Either way HEAD is now an integration
+commit, the only kind that starts a CI run on a pc branch. Build and format locally (PLAN.md §7.1
+items 2-3) and run the tests the merge resolution touched. Then push only your branch with
+`cd {slot} && git push origin pc/{PC}`.
+Do not push platform-core: CI on that commit is the gate. Return the §4.7 summary with
+status=ci-pending and sha set to the output of `cd {slot} && git rev-parse HEAD`.
 ```
+
+The orchestrator watches that commit's run in the background (§5.3) and resumes the agent with one
+of these two messages.
+
+CI green:
+
+```
+CI run <url> on pc/{PC} is green for <sha>. Run `cd {slot} && git rev-parse HEAD` and confirm it
+prints <sha>. Then push with `cd {slot} && git push origin HEAD:platform-core` (fast-forward only,
+never forced) and `cd {slot} && git push origin pc/{PC}`. If the platform-core push is rejected, run
+`cd {slot} && git fetch origin` and `cd {slot} && git diff --name-only HEAD...origin/platform-core`.
+If the new commits touch only plans/, merge origin/platform-core with
+`-m "{PC}: merge platform-core"` and push both again without a new CI wait. Otherwise merge it with
+`git merge --no-ff origin/platform-core -m "{PC}: integrate (merge platform-core)"` (same rules), build and format, push only pc/{PC}, and
+return status=ci-pending with the new sha. Return the §4.7 summary with the sha you pushed to
+platform-core.
+```
+
+CI red:
+
+```
+CI run <url> on pc/{PC} is red for <sha>. Read `cd {slot} && gh run view <id> --log-failed`, find
+the root cause (reproduce locally as needed), fix it, commit as "{PC}: integrate (CI fixes)"
+(format §4.6; the marker starts the next run),
+build and format, push only pc/{PC}, and return status=ci-pending with the new sha. Never re-run a
+CI run to turn it green: a flaky test is root-caused (D-011, D-113).
+```
+
+A red run on a pc/** branch does not stop the line; only a red on platform-core does (§8.3).
+Fixing it is part of the integration step and is not a fourth implementer round (§4.4).
 
 ### 4.4 Escalation and verification
 
@@ -285,7 +324,7 @@ pushed to platform-core.
   the orchestrator doubts a pushback on a blocking finding, it may run **one** targeted verification
   agent on the disputed points before integration, and log it in LEDGER.md.
 - There is never a fourth implementer round. Anything still unresolved goes to DECISIONS.md, and the
-  checkpoint integrates.
+  checkpoint integrates. Fixing a red pc/{PC} CI run during integration (§4.3) is not a round.
 
 ### 4.5 Review file
 
@@ -315,15 +354,18 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 ```
 
 Fix commits are titled `PC-042: review 1 fixes` or `PC-042: review 2 fixes`; their bodies list the
-fixed and pushed-back finding ids and any new deviations. The other prefixes are
-`PC-042: merge platform-core`, `PC-B03: batch review fixes (PC-015…PC-031)`, `PC-F07: <what> (PC-042)`
+fixed and pushed-back finding ids and any new deviations. Integration commits carry ": integrate",
+the marker that makes ci.yml run on a pc/** push (D-144): `PC-042: integrate (merge platform-core)`,
+`PC-042: integrate` (empty, when platform-core is already an ancestor) and
+`PC-042: integrate (CI fixes)`. No other commit may contain ": integrate". The other prefixes are
+`PC-042: merge platform-core` (a plans-only re-merge, §4.3), `PC-B03: batch review fixes (PC-015…PC-031)`, `PC-F07: <what> (PC-042)`
 and `PC-LEDGER: snapshot <date>`. Each message ends with the Co-Authored-By line of the model that
 wrote it.
 
 ### 4.7 Agent return value (short; details live in files)
 
 ```
-{PC} {step}: status=done|blocked|failed; sha=<sha or ->; findings=<blocking/major/minor or ->;
+{PC} {step}: status=done|held|ci-pending|blocked|failed; sha=<sha or ->; findings=<blocking/major/minor or ->;
 deviations=<n>; blocks=<n>; decisions_for_orchestrator=<one line each, or none>; note=<≤ 60 words>
 ```
 
@@ -344,7 +386,8 @@ deviations=<n>; blocks=<n>; decisions_for_orchestrator=<one line each, or none>;
   build output is warm.
 - **Release queue (D-087).** Items that finish their last fix round while another integration is
   in progress or queued hold (§4). Release held items one at a time, in the order they held, each
-  right after the previous integration's push, and watch each CI run. A held item is not merged
+  right after the previous integration's platform-core push, and watch each CI run. Each release
+  waits on its pc/{PC} CI run (about 17 minutes, D-144) before it can push platform-core. A held item is not merged
   into platform-core, so it still counts as in flight for exclusive resources and the serialized
   migrations until it integrates. Its branch is pushed, so its slot is free for reuse.
 - **Exclusive resources.** Two in-flight checkpoints must not own the same entry point, project
@@ -372,8 +415,14 @@ commit integrates like any checkpoint.
   one stops the line (§8.3). A pending run never blocks other integrations. A checkpoint's slot is
   freed when the checkpoint reaches `integrated`, or earlier when it holds (D-087: its branch is
   pushed and it is not yet merged, so the slot holds nothing it needs).
+- **pc/** runs (D-144).** For every `ci-pending` item, watch the run on its returned sha in the
+  background (the usual watch command with `--branch pc/{PC}`), then resume the agent with the §4.3
+  green or red message. A red pc run is the item's own to fix and never stops the line.
+  A pc push whose head commit lacks ": integrate" still creates a run, concluded `skipped` with every job skipped: that means no gate ran, never green. The marker is matched anywhere in the message, case-insensitively, so no implementation or fix commit may carry ": integrate" even in its body (§4.6).
 - On each wake (at least daily), read the latest `nightly-tier` run on `platform-core` and turn each
-  new failure into a `PC-Fnn` item, prioritised by the tier of the code it covers.
+  new failure into a `PC-Fnn` item, prioritised by the tier of the code it covers. This includes
+  `integration-windows` (LocalDB, Core and Acme), which runs nightly since D-144. A red nightly is
+  root-caused (D-011, D-113) and does not stop the line.
 - A flaky test is never retried into green silently (CI fails a run when a test passes only on
   retry). Quarantine it with `@quarantine` (or a trait for dotnet), record it under LEDGER.md
   "Flaky", and queue a fix. Quarantined tests run nightly in their own non-blocking job: read that
@@ -554,7 +603,8 @@ CI run <url> is red after your integration of {PC}. Work only in {fslot} on bran
 `cd {fslot} && git push -u origin pc/PC-Fnn`, and return the §4.7 summary.
 ```
 
-The fix gets one review (the Reviewer 1 brief) and then integrates per §4.3.
+The fix gets one review (the Reviewer 1 brief) and then integrates per §4.3. A red run on a
+pc/** branch is not a line stop: the item fixes it inside its integration step (§4.3).
 Other lanes finish their current step but do not integrate until a green run exists on a sha that
 contains the fix.
 
@@ -601,14 +651,16 @@ goes to LEDGER.md and DECISIONS.md.
 
 ## 11. Repo facts every agent must know
 
-- **Full gate (exact).**
+- **Commands (exact).** CI runs all four on every pc/{PC} and platform-core push. Locally, run
+  1-2 in full and only the parts of 3-4 the change touches (PLAN.md §7.1 item 4).
   1. `cd <slot> && dotnet build Tellma.slnx`, and read "Build succeeded": a failed build leaves
      `dotnet test` running stale DLLs.
   2. `cd <slot> && dotnet format Tellma.slnx --verify-no-changes`, and grep its output rather than
      trusting the exit code.
   3. `cd <slot> && dotnet test Tellma.slnx --no-build --filter "Category!=Integration&Category!=E2E&Category!=Nightly&Live!=true"`.
-  4. Integration suites one at a time:
-     `cd <slot> && dotnet test <test project> --no-build --filter "Category=Integration&Category!=Nightly&Live!=true"`.
+  4. An integration suite:
+     `cd <slot> && dotnet test <test project> --no-build --filter "Category=Integration&Category!=Nightly&Live!=true"`,
+     narrowed further with `&FullyQualifiedName~<class>` to the tests the change touches.
 
   Never run an unfiltered `dotnet test Tellma.slnx`.
 - **Client PR tier.** `cd <slot>/client && pnpm run <gate>` for lint, typecheck, lint:test,
@@ -617,34 +669,15 @@ goes to LEDGER.md and DECISIONS.md.
   (the CONTRIBUTING.md PR-tier command; `@cross-engine` tests run on Chromium in the PR tier and
   on Firefox/WebKit only nightly). Once 0024-a moves the pnpm workspace to the repo root, run them
   there.
-- **Integration gate (D-105).** The gate run at integration (§4.3). Implementation and fix rounds
-  still run PLAN.md §7.1 items 2-4 in full; CI still runs the whole PR tier on every integration
-  push, and a red CI still stops the line (§8.3).
-  - **Scope** is the item's own change set, without what the merge brings in (that already passed
-    CI): `git diff --name-only $(git merge-base origin/platform-core origin/pc/{PC}) origin/pc/{PC}`
-    taken before the merge, plus every file the merge's conflict resolution touched. Files under
-    `plans/` and `docs/` do not count.
-  - **Client scope** (files under `client/`): lint, typecheck, lint:test, tokens:check, build,
-    test, api:check, docs:build and size:check. The e2e runs only the spec files the scope changed
-    and the specs that cover a touched component or entry point:
-    `cd <slot>/client && node scripts/e2e.mjs --project=chromium --project=touch --grep-invert "@nightly|@perf|@quarantine" <spec files>`.
-    The `=` form matters: `--project chromium` with a space swallows the spec paths that follow.
-    No .NET step.
-  - **Server scope** (any other file): `dotnet build` (0 warnings), `dotnet format`, the unit
-    filter, and only the integration suites whose ProjectReference closure includes a changed
-    project. No client step.
-  - **Shared triggers** widen the gate on their own side:
-    - .NET-wide files run every .NET integration suite: `Directory.*`, `Tellma.slnx`,
-      `global.json`, `Tellma.Core.Abstractions` and `test/shared/*`.
-    - Client-wide files run the client gates above: `package.json`, `pnpm-lock.yaml` and the
-      workspace config.
-    - `.github/` runs both.
-    - The e2e stays targeted.
-  - A scope with both kinds of file runs both halves.
-  - The §4.7 note states the scope, and the suites and spec files run.
-  - If the platform-core push is rejected and the commits that landed in between touch only
-    `plans/` (`git diff --name-only HEAD...origin/platform-core`), re-merge and push without
-    re-running the gate. Otherwise re-run the gate for the scope.
+- **Integration gate (D-144, replacing D-105).** CI on the pc/{PC} commit is the gate: it runs the
+  whole PR tier (ci.yml runs on a `pc/**` push only when the head commit message contains
+": integrate", §4.6). Locally, integration only merges, builds and
+  formats, and runs the tests the merge resolution touched (§4.3). PR #18's run on the
+  platform-core push re-confirms it, and a red there stops the line (§8.3).
+  - `integration-windows` (LocalDB, Core and Acme) runs in the nightly tier, not before a merge.
+    The Identity, EF Core and Queryex integration suites never run on Windows before a merge;
+    unit tests still run on both OSes in build-test.
+  - The §4.7 note states the tests run locally and the pc CI run id.
 - Write files as UTF-8 without BOM; `dotnet format` fails on BOMs and charset. Write scripts with
   the Write tool: Bash heredocs can halve backslashes (use `chr(92)` in Python).
 - The first full Debug build in a slot takes about 6 minutes, a no-op rebuild 68 s. Build the
