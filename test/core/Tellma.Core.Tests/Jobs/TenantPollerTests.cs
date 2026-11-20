@@ -290,7 +290,7 @@ namespace Tellma.Core.Tests.Jobs
             }
 
             await _poll.PolledAsync(Tenants);
-            Assert.All(_poll.Plans, static plan => Assert.Equal(2, plan.Claims.Count));
+            Assert.All(_poll.Plans.Take(Tenants), static plan => Assert.Equal(2, plan.Claims.Count));
 
             // --- Two batches start, the instance's bound; the other ten claims are released, freeing their keys ---
             await WaitUntilAsync(() => _dispatch.Started.Count + _dispatch.Released.Count == Tenants * 2);
@@ -302,11 +302,16 @@ namespace Tellma.Core.Tests.Jobs
                 Assert.Equal(_dispatch.Started.Count(started => started.Claim.TenantId == tenant && started.Claim.Handler.Key == key), _concurrency.Running(tenant, key));
             }
 
-            // --- A batch ending frees one slot and wakes one tenant whose claim was released ---
+            // --- Each tenant's one-row recompute claim filled its batch, so each polls again at once; the instance is full, so none reserves a key ---
+            await _poll.PolledAsync(Tenants * 2);
+            Assert.All(_poll.Plans.Skip(Tenants), static plan => Assert.Empty(plan.Claims));
+            Assert.Equal((2, 2), (_dispatch.Started.Count, _concurrency.Started));
+
+            // --- A batch ending frees one slot and wakes one refused tenant, which reserves its keys in it ---
             Assert.True(_dispatch.Started.TryPeek(out JobPolledClaim? running));
             running.Reservation!.Dispose();
-            await _poll.PolledAsync(Tenants + 1);
-            Assert.Contains(Plan(Tenants + 1).TenantId, _dispatch.Released.Select(static polled => polled.Claim.TenantId));
+            await _poll.PolledAsync((Tenants * 2) + 1);
+            Assert.NotEmpty(Plan((Tenants * 2) + 1).Claims);
             Assert.True(_concurrency.Started <= _concurrency.MaxParallelBatches);
         }
 
