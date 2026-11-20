@@ -418,6 +418,7 @@ commit integrates like any checkpoint.
 - **pc/** runs (D-144).** For every `ci-pending` item, watch the run on its returned sha in the
   background (the usual watch command with `--branch pc/{PC}`), then resume the agent with the §4.3
   green or red message. A red pc run is the item's own to fix and never stops the line.
+  A pc push whose head commit lacks ": integrate" still creates a run, concluded `skipped` with every job skipped: that means no gate ran, never green. The marker is matched anywhere in the message, case-insensitively, so no implementation or fix commit may carry ": integrate" even in its body (§4.6).
 - On each wake (at least daily), read the latest `nightly-tier` run on `platform-core` and turn each
   new failure into a `PC-Fnn` item, prioritised by the tier of the code it covers. This includes
   `integration-windows` (LocalDB, Core and Acme), which runs nightly since D-144. A red nightly is
