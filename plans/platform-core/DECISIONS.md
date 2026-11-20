@@ -359,6 +359,15 @@ Format, one entry per ruling:
 - Also accepted: a readonly select never opens (a pre-existing bug, fixed) and exposes aria-readonly.
 - **Misalignment for Ahmad:** 0010 §B.4 names contentChildren(TmOptionGroup), which the design does not need. See also D-036's §B.4 note.
 
+### D-155 (orchestrator, 2026-11-20): PC-F63 and PC-F64 root causes; one permission block notified
+
+- PC-F63 (nightly WebKit chart-bidi): WebKit's GraphicsContext::drawBidiText carries a right-to-left run's leftmost glyph's GPOS y-offset (cursive Arabic finals) onto the baseline of that run and every later run; confirmed in WebKit source and reproduced on Windows WebKit. Fix b4b8f762 closes every Arabic-script word with a zero-width ALM (U+061C) in the chart's canvas text only; Chromium and Firefox pixel-identical. Review 1: 0/0/3. The ALM never leaves the ECharts option (no accessible name or tooltip gets it). Hebrew/R-class needs no closing (no cursive attachment). The ./chart budget is at 6.868 of 6.87 KB; the next addition needs a D-031-style budget ruling. The nightly dotnet job's "OS dependencies: unavailable" was a slow apt mirror, no change. PC-F63 holds behind PC-146.
+- For Ahmad: ALM departs from spec 0034 §7.4, §14 and decision 26 and spec 0024 §7.9 ("LRM and RLM only"). The reviewer judges it the right fix and proposes wording in reviews/PC-F63.md.
+- PC-F63 hit one permission block: a host-side TCP proxy into its Linux Docker container was denied; it did not retry and served a static showcase build inside the container instead. Ahmad notified (push and email); no action needed for the item.
+- PC-F64 integration CI red 44785071160 (Windows build-test, SmtpProtocolTests full-feature MIME after 10 s, unrelated to PC-F64): the SMTP tests' sender connected to "localhost" while the in-process server bound 0.0.0.0 only; Windows tries ::1 first and each refused attempt cost ~2 s, so a loaded runner hit MailKit's 10 s connect budget. Fixed test-side with one explicit 127.0.0.1 (bdf3e354).
+- PC-F63 fix 1 (aa763156) closed R1-1..R1-3. R1-2 (a label cut with an ellipsis loses its closing ALM, so WebKit shifts it again) is documented, not fixed: an ALM before the ellipsis fixes WebKit but splits a Latin label from its ellipsis and loses kerning, changing its pixels in all three engines (pixels-agree rule). Accepted as a known limitation. merge-tree with platform-core clean; holds behind PC-146.
+- PC-F64 CI-fix run 44798852215 red on ubuntu build-test only: AspNetCore RequestTimeoutTests (a read whose answer began after its timeout answered 504 rather than losing its connection). Second occurrence after PC-146 fix 1 (D-153 flake candidate), so it is root-caused in PC-F64 as CI fixes 2 (D-011, D-113), not re-run.
+
 ### D-154 (Ahmad, 2026-11-20): a green pc push run makes an item done; PR #18's run no longer gates it
 
 - Ahmad: "Don't gate done on the `pull_request` run if the push run is green. Everything else in the process stays the same."
