@@ -3,11 +3,7 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.FileProviders;
-using Microsoft.Extensions.Hosting;
-using Tellma.Core.Composition;
 using Tellma.Core.Localization;
 using Tellma.Testing.Resources;
 
@@ -34,7 +30,7 @@ namespace Tellma.Module.Gl.Tests.Localization
         [Fact]
         public async Task Every_gl_resource_key_is_derived_from_the_model_spelled_in_the_source_or_pending()
         {
-            await using ServiceProvider provider = Compose();
+            await using ServiceProvider provider = GlComposition.Build();
 
             IReadOnlyList<ResourceAuditFinding> findings = ResourceAudit.Run(new ResourceAuditRequest
             {
@@ -66,40 +62,6 @@ namespace Tellma.Module.Gl.Tests.Localization
                 RepositoryRoot.Combine("src", "module", "gl"),
                 RepositoryRoot.Combine("client", "projects", "module", "tellma-module-gl"),
             }.Where(Directory.Exists)];
-        }
-
-        /// <summary>A composition of the platform with the GL feature, never started.</summary>
-        /// <returns>The realised services.</returns>
-        private static ServiceProvider Compose()
-        {
-            IConfiguration configuration = new ConfigurationBuilder()
-                .AddInMemoryCollection(new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase)
-                {
-                    ["Tellma:PublicOrigin"] = "https://localhost:4200",
-                    ["Tellma:Catalog:ConnectionString"] = "Server=(localdb)\\MSSQLLocalDB;Database=TellmaGlCatalog;Trusted_Connection=True;TrustServerCertificate=True",
-                    ["Tellma:Sql:Profiles:default"] = "Trusted_Connection=True;TrustServerCertificate=True",
-                })
-                .Build();
-
-            ServiceCollection services = [];
-            _ = services.AddTellma("acme", configuration, new DevelopmentEnvironment(), static tellma => tellma.AddFeature<GlFeature>());
-            return services.BuildServiceProvider();
-        }
-
-        /// <summary>The host environment the composition runs under: Development.</summary>
-        private sealed class DevelopmentEnvironment : IHostEnvironment
-        {
-            /// <inheritdoc />
-            public string EnvironmentName { get; set; } = Environments.Development;
-
-            /// <inheritdoc />
-            public string ApplicationName { get; set; } = "Tellma.Module.Gl.Tests";
-
-            /// <inheritdoc />
-            public string ContentRootPath { get; set; } = AppContext.BaseDirectory;
-
-            /// <inheritdoc />
-            public IFileProvider ContentRootFileProvider { get; set; } = new NullFileProvider();
         }
     }
 }

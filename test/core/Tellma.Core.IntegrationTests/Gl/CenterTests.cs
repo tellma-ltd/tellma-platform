@@ -19,8 +19,9 @@ using static System.FormattableString;
 namespace Tellma.Core.IntegrationTests.Gl
 {
     /// <summary>
-    ///     The GL module's centers over a fixture tenant: a save resolves parents the payload holds in
-    ///     two round trips, a center's parent must group, both when it is placed and when the parent's
+    ///     The GL module's centers over a fixture tenant: a save resolves parents the payload holds, and
+    ///     loads a stored parent, in two round trips, a parent the caller cannot read answers as
+    ///     missing, a center's parent must group, both when it is placed and when the parent's
     ///     type changes, a center with children is deleted only with them, the built-in actions recount
     ///     the active subtrees in one round trip, and the sample-centers step writes its tree in three
     ///     round trips and rewrites it in place.
@@ -80,9 +81,35 @@ namespace Tellma.Core.IntegrationTests.Gl
                 () => SaveAsync(caller, [New(-1, null, CenterType.Sale, p + "S2"), New(-2, -1, CenterType.Sale, p + "S3")]));
             Assert.Equal(["[1].ParentId Gl.Centers.ParentMustBeGrouping"], Lines(inPayload));
 
-            // --- A grouping parent accepts the same center ---
-            _ = await CreateAsync(caller, New(0, unit, CenterType.Sale, p + "S4"));
+            // --- A grouping parent accepts the same center: the stored parent's load rides the
+            // first round trip beside the code's, so the save still takes two ---
+            Assert.Equal(2, await SaveAsync(caller, [New(0, unit, CenterType.Sale, p + "S4")]));
             Assert.Equal(p + "BU", await ParentCodeAsync(p + "S4"));
+        }
+
+        [Fact]
+        public async Task A_parent_the_callers_read_grant_hides_is_refused_as_missing_and_its_type_is_never_judged()
+        {
+            string p = Prefix();
+            StackConformanceCaller caller = await CallerAsync();
+            int unit = await CreateAsync(caller, New(0, null, CenterType.BusinessUnit, p + "BU"));
+            int hidden = await CreateAsync(caller, New(0, unit, CenterType.Service, p + "SV"));
+
+            // --- A caller who reads and saves every center except the service: both grants take the
+            // filter, since a grant of an action implies reading what it reaches ---
+            string filter = Invariant($"Id != {hidden}");
+            StackConformanceCaller filtered = await CallerAsync(
+                new StackGrant(GlResources.Center, AccessActions.Read, filter),
+                new StackGrant(GlResources.Center, AccessActions.Save, filter));
+
+            // --- A center under the hidden service answers as one under a missing id: the
+            // reference refusal alone, never the parent rule that would reveal the service's type ---
+            ValidationException underHidden = await Assert.ThrowsAsync<ValidationException>(
+                () => SaveAsync(filtered, [New(0, hidden, CenterType.Sale, p + "S1")]));
+            ValidationException underMissing = await Assert.ThrowsAsync<ValidationException>(
+                () => SaveAsync(filtered, [New(0, 2_000_000_000, CenterType.Sale, p + "S2")]));
+            Assert.Equal(["[0].ParentId Fk.NotFound"], Lines(underHidden));
+            Assert.Equal(Lines(underMissing), Lines(underHidden));
         }
 
         [Fact]
@@ -102,7 +129,7 @@ namespace Tellma.Core.IntegrationTests.Gl
             // --- The same change, with the child moved to the root in the same payload ---
             Center moving = await LoadAsync(caller, child);
             moving.ParentId = null;
-            _ = await SaveAsync(caller, [changed, moving]);
+            Assert.Equal(2, await SaveAsync(caller, [changed, moving]));
             Assert.Equal("Service", await ScalarAsync<string>(Invariant($"SELECT [CenterType] FROM [gl].[Centers] WHERE [Id] = {unit}")));
             Assert.Null(await ParentCodeAsync(p + "OP"));
         }
@@ -186,10 +213,27 @@ namespace Tellma.Core.IntegrationTests.Gl
             Assert.Equal(SampleCodes.Length, await CountOfAsync("HQ", "SubtreeCount"));
             long ids = await ScalarAsync<long>($"SELECT SUM(CAST([Id] AS bigint)) FROM [gl].[Centers] WHERE [Code] IN ({sampled})");
 
-            // --- The re-run: the read finds all eight, the save updates them under the same ids ---
+            // --- One sample center edited away from the list: renamed, retyped and moved under a
+            // unit, through the stack so the tree's counts stay true ---
+            StackConformanceCaller caller = await CallerAsync();
+            int it = await ScalarAsync<int>("SELECT [Id] FROM [gl].[Centers] WHERE [Code] = N'SV-IT'");
+            Center edited = await LoadAsync(caller, it);
+            edited.Name = "Edited";
+            edited.CenterType = CenterType.Operation;
+            edited.ParentId = await ScalarAsync<int>("SELECT [Id] FROM [gl].[Centers] WHERE [Code] = N'BU-TRD'");
+            _ = await SaveAsync(caller, [edited]);
+            Assert.Equal("BU-TRD", await ParentCodeAsync("SV-IT"));
+
+            // --- The re-run: the read finds all eight, the save puts the list's values back under the same ids ---
             Assert.Equal(3, await RunSampleCentersAsync());
             Assert.Equal(SampleCodes.Length, await ScalarAsync<int>(stored));
             Assert.Equal(ids, await ScalarAsync<long>($"SELECT SUM(CAST([Id] AS bigint)) FROM [gl].[Centers] WHERE [Code] IN ({sampled})"));
+            Assert.Equal(it, await ScalarAsync<int>("SELECT [Id] FROM [gl].[Centers] WHERE [Code] = N'SV-IT'"));
+            Assert.Equal(
+                ("Information Technology", "Service"),
+                (await ScalarAsync<string>("SELECT [Name] FROM [gl].[Centers] WHERE [Code] = N'SV-IT'"), await ScalarAsync<string>("SELECT [CenterType] FROM [gl].[Centers] WHERE [Code] = N'SV-IT'")));
+            Assert.Equal("HQ", await ParentCodeAsync("SV-IT"));
+            Assert.Equal(3, await CountOfAsync("BU-TRD", "SubtreeCount"));
         }
 
         /// <summary>A new center's values.</summary>
@@ -227,15 +271,17 @@ namespace Tellma.Core.IntegrationTests.Gl
         }
 
         /// <summary>
-        ///     Seeds a caller holding every securable of the centers, and warms its caches with a read,
-        ///     so the calls a case counts run on the warm path.
+        ///     Seeds a caller holding some grants, by default every securable of the centers unfiltered,
+        ///     and warms its caches with a read, so the calls a case counts run on the warm path.
         /// </summary>
+        /// <param name="grants">The caller's grants; every securable of the centers when none are given.</param>
         /// <returns>The caller.</returns>
-        private async Task<StackConformanceCaller> CallerAsync()
+        private async Task<StackConformanceCaller> CallerAsync(params StackGrant[] grants)
         {
-            StackConformanceCaller caller = await fixture.SeedCallerAsync(
-                [.. new[] { AccessActions.Read, AccessActions.Save, AccessActions.Delete, AccessActions.Activate }.Select(static action => new StackGrant(GlResources.Center, action))],
-                Token);
+            StackGrant[] held = grants.Length > 0
+                ? grants
+                : [.. new[] { AccessActions.Read, AccessActions.Save, AccessActions.Delete, AccessActions.Activate }.Select(static action => new StackGrant(GlResources.Center, action))];
+            StackConformanceCaller caller = await fixture.SeedCallerAsync(held, Token);
             _ = await CountedAsync(caller, static service => service.QueryAsync(new QueryRequest { Select = "Id", Take = 1 }, Token));
             return caller;
         }
