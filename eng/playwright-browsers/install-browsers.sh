@@ -8,8 +8,8 @@
 #   install-browsers.sh <browser>... -- <playwright CLI command>...
 #
 # <browser> is chromium, firefox or webkit. The words after `--` invoke the Playwright CLI whose
-# version the caller pins, for example:
-#   install-browsers.sh chromium -- pnpm --dir client exec playwright
+# version the caller pins, directly and not through a package manager (see step 2), for example:
+#   install-browsers.sh chromium -- client/node_modules/.bin/playwright
 #   install-browsers.sh chromium -- pwsh test/apps/Tellma.Identity.E2E/bin/Release/net10.0/playwright.ps1
 
 set -euo pipefail
@@ -49,6 +49,22 @@ fi
 shift # the `--`
 cli=("$@")
 
+# The CLI must not be started through a package manager, because step 2 runs it as root. sudo
+# resets the environment (HOME, CI and the package manager's own variables), so a package manager
+# run as root sees another configuration and another store than the install that built
+# node_modules. pnpm 11, for one, checks the install before every `exec` and, finding it out of
+# date for root, tries to remove node_modules and reinstall it: without a terminal it aborts, and
+# with CI=true passed through it would rebuild the workspace as root. The workspace's own bin shim
+# (node_modules/.bin/playwright) runs the same pinned CLI with node alone.
+launcher=${cli[0]##*/}
+launcher=$(printf '%s' "${launcher%.*}" | tr '[:upper:]' '[:lower:]')
+case $launcher in
+  pnpm | pnpx | npm | npx | yarn | corepack | bun | bunx)
+    echo "::error::The Playwright CLI command starts with the package manager '${cli[0]}', which the OS-dependency step would run as root. Pass the CLI itself, such as the package's node_modules/.bin/playwright." >&2
+    exit 2
+    ;;
+esac
+
 # --- 1. The browser builds ----------------------------------------------------------------------
 # Downloaded without `--with-deps`, so the download, which comes from Playwright's CDN and not from
 # the apt mirrors, succeeds or fails on its own.
@@ -86,7 +102,8 @@ if [[ $(uname -s) == Linux ]]; then
     # `timeout` owns the whole tree: the CLI, seeing uid 0, runs apt directly, in the process group
     # that `timeout` signals and then kills. `sudo -n` never prompts: where sudo needs a password,
     # as on a developer's machine, it fails at once instead of hanging on a prompt it cannot show.
-    # `env PATH=...` keeps the CLI's tools (pnpm, node, pwsh) resolvable past sudo's reset PATH.
+    # `env PATH=...` keeps the CLI's runtime (node, pwsh) resolvable past sudo's reset PATH; the
+    # rest of the environment stays reset, which is why the CLI is never a package manager (above).
     if (($(id -u) == 0)); then
       as_root=()
     elif command -v sudo >/dev/null && sudo -n true 2>/dev/null; then
@@ -118,7 +135,7 @@ if [[ $(uname -s) == Linux ]]; then
       # browsers link against, and what apt could not add is often only fonts. The launch probe
       # below decides; the warning keeps the degraded install visible on the run's summary page.
       if [[ $deps_status == unavailable ]]; then
-        echo "::warning title=Playwright OS dependencies::Could not install the OS dependencies of ${browsers[*]} after $deps_attempts attempts; is the apt mirror reachable? Still missing: ${missing_packages:-see the log}. Continuing only if every browser launches without them; a test that needs one of them (a font, for instance) can still fail."
+        echo "::warning title=Playwright OS dependencies::Could not install the OS dependencies of ${browsers[*]} after $deps_attempts attempts (each attempt's output is in the log; an unreachable apt mirror is the usual cause). Still missing: ${missing_packages:-see the log}. Continuing only if every browser launches without them; a test that needs one of them (a font, for instance) can still fail."
       fi
     fi
   fi
