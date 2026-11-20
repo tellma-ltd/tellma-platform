@@ -359,6 +359,23 @@ Format, one entry per ruling:
 - Also accepted: a readonly select never opens (a pre-existing bug, fixed) and exposes aria-readonly.
 - **Misalignment for Ahmad:** 0010 §B.4 names contentChildren(TmOptionGroup), which the design does not need. See also D-036's §B.4 note.
 
+### D-144 (Ahmad, 2026-11-20): integration gates move to GitHub CI; integration-windows moves to the nightly tier
+
+- Situation: a local integration gate took about 45-100 min (PC-142 ~50, PC-098 ~55, PC-102 ~100) on a host shared by 4-6 slots, against about 17 min for CI, and the D-087 release queue serialised that cost.
+- Ruling: this replaces D-105's local integration gate and closes D-105's open item "CI on pc/** branches". D-105's other open items (docs:build to nightly, profiling slow .NET tests, pipelined or batched integrations) stay open.
+  - ci.yml runs on push to main and `pc/**`. CI on the pc/{PC} commit is the gate. PR #18's run on every platform-core push is the re-confirmation, and a red there still stops the line (PROCESS.md §8.3).
+  - Implementation and fix rounds: build the touched projects in the inner loop and the whole solution once at the end (0 warnings, "Build succeeded"), run `dotnet format --verify-no-changes`, and run only the unit and integration tests the change touches. No full unit filter, no full integration suites, no full client e2e, and never an unfiltered `dotnet test Tellma.slnx` (PLAN.md §7.1 items 2-4).
+  - Integration: fetch, merge origin/platform-core (regenerate lockfiles, goldens, snapshots and migrations, never hand-merge), build and format locally, push only pc/{PC}, and return status=ci-pending with `git rev-parse HEAD`. The orchestrator watches that run and resumes the agent.
+    - Green: the agent confirms HEAD still equals the green commit and pushes `HEAD:platform-core` (fast-forward only). If rejected, it fetches; plans-only commits in between are re-merged and pushed without a new CI wait; anything else is re-merged, pushed to pc/{PC} and waits for CI again.
+    - Red: the agent fixes it within the same integration step from `gh run view <id> --log-failed`, reproducing locally as needed. A red pc run does not stop the line, and this fixing is not a fourth implementer round.
+    - A CI run is never re-run to turn it green; flakes are root-caused (D-011, D-113).
+  - The D-087 one-at-a-time release queue stays; each release now waits on about 17 min of CI instead of an hour of local gate.
+  - Reviewers still build and run the tests they need to check a claim, and may cite the pc branch's CI run.
+  - integration-windows moves unchanged from ci.yml to nightly-tier.yml (LocalDB, Core and Acme, filter "Category=Integration&Category!=Nightly&Live!=true"), guarded to platform-core like the other nightly jobs. A red nightly is a PC-Fnn fix item, root-caused (D-011, D-113), and does not stop the line. The TenantScope LocalDB case (PC-F59, D-135) is now covered nightly.
+  - The Windows CI job otherwise stays: unit tests still run on both OSes in build-test. Consequence: the Identity, EF Core and Queryex integration suites no longer run on Windows before a merge (CI's Windows integration job only ever ran Core and Acme, and those two now run on Windows nightly only).
+- Rollout: the workflow changes go through fix item PC-F60 (pc-f): one R1, then integrate with CI on both sides (its pc/PC-F60 push, then PR #18's run). Items in flight that have not reached integration (PC-082, PC-100) integrate under the new flow; from the snapshot that lands PC-F60 onward every integration uses it.
+- Evidence (filled in as it lands): pc/** trigger confirmed by run (pending, first integration after PC-F60); nightly tier started by hand after PC-F60, run (pending).
+
 ### D-143 — PC-082 hand-offs (2026-11-20)
 
 - Interim internal McpLimitOptions binds Tellma:Mcp (ToolCallsPerMinutePerUser 120, ToolTimeout 60 s) for the tellma-mcp policy until Tellma.Core.Mcp owns McpOptions; that checkpoint absorbs it.
