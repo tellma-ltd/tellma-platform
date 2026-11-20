@@ -405,9 +405,11 @@ and declared among the delete's writes, for tags, guards and change tracking; th
 no authority over those tables, and gains none for its own statements. A key's action reports no
 rows, so when such a table has a user-level version tag rule (the preference tables do) the
 delete first reads the users its reached rows name, by the keys from every table that loses rows,
-into a capture the bump epilogue reads. A save that deletes child rows declares the same
-consequences of their deletion, and its plan is refused when one of them has a user-level rule,
-since a save cannot tell which rows its deletes reach. By ids it captures the existing rows under U locks and the read filter, selects the rest
+into a capture the bump epilogue reads; the capture reads under update and range locks, so no
+row the keys will reach is added after it. A save that deletes child rows declares the same
+consequences of their deletion. A model where one of them has a user-level rule (a save cannot
+tell which rows its deletes reach), or where a `SET DEFAULT` key writes a rule's user column,
+fails the `core.version-tags` startup check. By ids it captures the existing rows under U locks and the read filter, selects the rest
 and throws `50404` with them, throws `50403` unless every captured row passes the grant filter,
 and with the stamps the rows were read with throws `50409` with the conflict rows the save's guard
 reports. By query it caps and counts its keys as an update does. `WithDescendants` deletes tree

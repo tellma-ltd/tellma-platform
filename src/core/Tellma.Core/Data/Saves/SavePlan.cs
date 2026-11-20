@@ -53,15 +53,14 @@ namespace Tellma.Core.Data.Saves
             // only the keys referencing a child table act; the caller needs no authority over the
             // tables they write, as for a delete's.
             Aggregate = nodes.Select(static node => node.Entity.Table).ToFrozenSet();
-            IReadOnlySet<TableName> consequences = foreignKeys.WrittenByDeleting(nodes.Skip(1).Select(static node => node.Entity.Table));
-            Writes = Aggregate.Concat(consequences).ToFrozenSet();
+            Writes = Aggregate.Concat(foreignKeys.WrittenByDeleting(nodes.Skip(1).Select(static node => node.Entity.Table))).ToFrozenSet();
 
             // A key's action reports no rows, so a save cannot tell the users a consequence's rows name;
-            // a delete captures them by selection, but a save's removed child rows are known only as it runs.
-            if (consequences.Where(table => !Aggregate.Contains(table)).OrderBy(static table => table.Schema, StringComparer.Ordinal).ThenBy(static table => table.Name, StringComparer.Ordinal).FirstOrDefault(table => userIdColumns(table).Count > 0) is TableName named)
+            // a delete captures them by selection, but a save's removed child rows are known only as it
+            // runs. The startup check of the version tags refuses such a model; this is its backstop.
+            if (foreignKeys.SaveConsequenceNamingUsers(root, userIdColumns) is TableName named)
             {
-                throw new InvalidOperationException(
-                    $"Saving {root.Name} deletes child rows whose referencing keys write {named}, which has a user-level version tag rule; a save cannot tell which users those rows name.");
+                throw new InvalidOperationException(ForeignKeyActions.SaveMessage(root, named));
             }
 
             Captures = [.. nodes.SelectMany(static node => node.BlobColumns.Select(column => new SaveCapture(node, column)))];

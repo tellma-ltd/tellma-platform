@@ -147,10 +147,10 @@ namespace Tellma.Core.Data.Writes
             foreach (ForeignKeyAction key in foreignKeys.HeldBy(table).Where(key => removed.Contains(key.Principal)))
             {
                 // A SET DEFAULT names a user the capture cannot know, so a rule's column never takes one.
+                // The startup check of the version tags refuses such a model; this is its backstop.
                 if (key.OnDelete == ReferentialAction.SetDefault && key.Columns.Intersect(userIdColumns, StringComparer.Ordinal).Any())
                 {
-                    throw new InvalidOperationException(
-                        $"The key {key.Constraint} sets a default user in {table} when a row of {key.Principal} is deleted; a user-level version tag cannot tell which user it names.");
+                    throw new InvalidOperationException(ForeignKeyActions.DefaultUserMessage(key));
                 }
 
                 reaches.Add(new DeleteReach(key, [.. Nodes.Where(node => node.Entity.Table == key.Principal)], Removals(key.Principal, removed, foreignKeys, path)));
@@ -167,7 +167,8 @@ namespace Tellma.Core.Data.Writes
         /// <returns>The reaches, in key order.</returns>
         private List<DeleteReach> Removals(TableName table, IReadOnlySet<TableName> removed, ForeignKeyActions foreignKeys, HashSet<TableName> path)
         {
-            // The database refuses a cycle of cascades, so a model that declares one is refused here too.
+            // The database refuses a cycle of cascades, so its migration never applies; a model that
+            // declares one anyway is refused here, as a backstop.
             if (!path.Add(table))
             {
                 throw new InvalidOperationException($"The cascading keys of {table} form a cycle, which the database refuses.");

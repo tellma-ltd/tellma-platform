@@ -27,6 +27,14 @@ namespace Tellma.Core.Data.Writes
         /// <summary>The plan.</summary>
         private readonly DeletePlan _plan;
 
+        /// <summary>
+        ///     The hints of a consequence capture's reads. Under read-committed snapshot a plain read
+        ///     takes no lock, so a row inserted after it, under a referenced row the delete has not
+        ///     locked, would leave by the key's action uncaptured. The update locks admit no second
+        ///     writer, and the range locks keep the reached key ranges closed until the commit.
+        /// </summary>
+        private const string Locks = "WITH (UPDLOCK, HOLDLOCK)";
+
         /// <summary>The statement-local prefix, <c>@tb{b}_</c>.</summary>
         private readonly string _prefix;
 
@@ -146,6 +154,8 @@ namespace Tellma.Core.Data.Writes
         ///     Writes, for each consequence table with a user-level rule, the capture of the users named
         ///     by the rows the keys' actions will reach: the rows whose key references a row the delete
         ///     removes, explicitly or by a cascade. The rows still exist, so each user is its before image.
+        ///     Each reached and referenced table is read under update and range locks held to the
+        ///     commit, so no row a key's action later reaches is inserted after the capture.
         /// </summary>
         private void WriteConsequenceCaptures()
         {
@@ -164,7 +174,7 @@ namespace Tellma.Core.Data.Writes
                 int aliases = 0;
                 string images = string.Join(", ", consequence.UserIdColumns.Select(static column => $"d.{SqlNames.Quote(column)}, NULL"));
                 Line($"INSERT INTO {Local(consequence.Word)} ({string.Join(", ", consequence.UserIdColumns.SelectMany(static column => new[] { SqlNames.Quote(UserIdCapture.Old(column)), SqlNames.Quote(UserIdCapture.New(column)) }))})");
-                Statement($"SELECT {images} FROM {consequence.Table.Delimited} AS d WHERE {Reached("d", consequence.Reaches, scopes, ref aliases)}");
+                Statement($"SELECT {images} FROM {consequence.Table.Delimited} AS d {Locks} WHERE {Reached("d", consequence.Reaches, scopes, ref aliases)}");
             }
         }
 
@@ -204,7 +214,7 @@ namespace Tellma.Core.Data.Writes
                 }
 
                 string match = string.Join(" AND ", reach.Key.Columns.Zip(reach.Key.PrincipalColumns, (column, referenced) => $"{principal}.{SqlNames.Quote(referenced)} = {alias}.{SqlNames.Quote(column)}"));
-                conditions.Add($"EXISTS (SELECT 1 FROM {reach.Key.Principal.Delimited} AS {principal} WHERE {match} AND ({string.Join(" OR ", removed)}))");
+                conditions.Add($"EXISTS (SELECT 1 FROM {reach.Key.Principal.Delimited} AS {principal} {Locks} WHERE {match} AND ({string.Join(" OR ", removed)}))");
             }
 
             return $"({string.Join(" OR ", conditions)})";

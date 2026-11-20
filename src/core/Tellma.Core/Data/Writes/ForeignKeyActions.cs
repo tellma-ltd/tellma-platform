@@ -7,7 +7,11 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.EntityFrameworkCore.Migrations;
 using System.Collections.Frozen;
+using Tellma.Core.Abstractions.Caching;
+using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.Abstractions.Data;
+using Tellma.Core.Composition.Checks;
+using Tellma.Core.Data.Batches;
 
 namespace Tellma.Core.Data.Writes
 {
@@ -136,6 +140,106 @@ namespace Tellma.Core.Data.Writes
         {
             ArgumentNullException.ThrowIfNull(deleted);
             return Walk(deleted).Removed;
+        }
+
+        /// <summary>
+        ///     The first table, in table order, outside a root's aggregate that a key's action writes when
+        ///     a save deletes the root's child rows and that has a user-level version tag rule; null when
+        ///     there is none. A key's action reports no rows, so a save cannot tell which users such a
+        ///     table's reached rows name.
+        /// </summary>
+        /// <param name="root">The top-level entity.</param>
+        /// <param name="userIdColumns">The user-id columns of a table's user-level version tag rules.</param>
+        /// <returns>The table, or null.</returns>
+        public TableName? SaveConsequenceNamingUsers(EntityMetadata root, Func<TableName, IReadOnlyList<string>> userIdColumns)
+        {
+            ArgumentNullException.ThrowIfNull(root);
+            ArgumentNullException.ThrowIfNull(userIdColumns);
+
+            // --- The aggregate's child tables, recursively; a save never deletes the root ---
+            List<TableName> children = [];
+            Stack<EntityMetadata> pending = new([root]);
+            while (pending.TryPop(out EntityMetadata? entity))
+            {
+                foreach (ChildCollectionMetadata collection in entity.Children)
+                {
+                    children.Add(collection.Child.Table);
+                    pending.Push(collection.Child);
+                }
+            }
+
+            HashSet<TableName> aggregate = [root.Table, .. children];
+            return WrittenByDeleting(children)
+                .Where(table => !aggregate.Contains(table))
+                .OrderBy(static table => table.Schema, StringComparer.Ordinal)
+                .ThenBy(static table => table.Name, StringComparer.Ordinal)
+                .FirstOrDefault(table => userIdColumns(table).Count > 0);
+        }
+
+        /// <summary>
+        ///     The keys' shapes a user-level version tag cannot follow, each a problem of
+        ///     <c>core.version-tags</c>: a <c>SET DEFAULT</c> key on a rule's user-id column, whose new
+        ///     user no capture can know, and a top-level entity whose save deletes child rows that a
+        ///     key's action carries to a table with a rule. Found at startup, so no first save or
+        ///     delete of such an entity fails at run time.
+        /// </summary>
+        /// <param name="metadata">The running model's metadata.</param>
+        /// <param name="registry">The version tag registry, whose user-level rules name the user-id columns.</param>
+        /// <returns>The problems, in key order and then in entity order; empty for a sound model.</returns>
+        public IReadOnlyList<CompositionProblem> UserTagProblems(IEntityMetadataProvider metadata, IVersionTagRegistry registry)
+        {
+            ArgumentNullException.ThrowIfNull(metadata);
+            ArgumentNullException.ThrowIfNull(registry);
+            List<CompositionProblem> problems = [];
+
+            // --- A SET DEFAULT key on a user-id column ---
+            foreach (ForeignKeyAction key in _byPrincipal.Values
+                .SelectMany(static keys => keys)
+                .Where(static key => key.OnDelete == ReferentialAction.SetDefault)
+                .OrderBy(static key => key.Constraint, StringComparer.Ordinal))
+            {
+                if (key.Columns.Intersect(UserIdCapture.Columns(registry, key.Dependent), StringComparer.Ordinal).Any())
+                {
+                    problems.Add(new CompositionProblem(
+                        CoreCheckNames.VersionTags,
+                        DefaultUserMessage(key),
+                        "Declare the key ON DELETE CASCADE, SET NULL or NO ACTION, so the users it reaches can be captured."));
+                }
+            }
+
+            // --- A save whose child deletes reach a table naming users ---
+            foreach (EntityMetadata root in metadata.All.Where(static entity => entity.IsTopLevel).OrderBy(static entity => entity.Name, StringComparer.Ordinal))
+            {
+                if (SaveConsequenceNamingUsers(root, table => UserIdCapture.Columns(registry, table)) is TableName named)
+                {
+                    problems.Add(new CompositionProblem(
+                        CoreCheckNames.VersionTags,
+                        SaveMessage(root, named),
+                        "Declare the key to the child table without an ON DELETE action, or keep the user-level rule off the referencing table."));
+                }
+            }
+
+            return problems;
+        }
+
+        /// <summary>The refusal of a <c>SET DEFAULT</c> key on a user-level rule's user-id column.</summary>
+        /// <param name="key">The key.</param>
+        /// <returns>The message.</returns>
+        public static string DefaultUserMessage(ForeignKeyAction key)
+        {
+            ArgumentNullException.ThrowIfNull(key);
+            return $"The key {key.Constraint} sets a default user in {key.Dependent} when a row of {key.Principal} is deleted, so a user-level version tag cannot tell which user it names.";
+        }
+
+        /// <summary>The refusal of a save whose child deletes reach a table with a user-level rule.</summary>
+        /// <param name="root">The saved entity.</param>
+        /// <param name="named">The reached table.</param>
+        /// <returns>The message.</returns>
+        public static string SaveMessage(EntityMetadata root, TableName named)
+        {
+            ArgumentNullException.ThrowIfNull(root);
+            ArgumentNullException.ThrowIfNull(named);
+            return $"Saving {root.Name} deletes child rows whose referencing keys write {named}, which has a user-level version tag rule, so a save cannot tell which users those rows name.";
         }
 
         /// <summary>The walk over the keys' actions from the deleted tables.</summary>

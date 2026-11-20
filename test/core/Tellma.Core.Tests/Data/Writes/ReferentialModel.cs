@@ -7,6 +7,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using System.ComponentModel.DataAnnotations.Schema;
 using Tellma.Core.Abstractions.Caching;
+using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.Abstractions.Entities;
 using Tellma.Core.Composition;
 using Tellma.Core.Tests.Infrastructure;
@@ -18,6 +19,8 @@ namespace Tellma.Core.Tests.Data.Writes
     // key to their rim cascades, which a hub's delete never reaches, since a rim it touches only loses
     // a reference, never its row; and seats whose key to their spoke cascades and whose rider is a
     // user with a user-level version tag, which a hub's delete reaches through the spokes' cascade.
+    // A variant adds lamps, whose key to a bay sets null and whose keeper is such a user: a hub's
+    // delete reaches them through its child collection, and a hub's save cannot tell their users.
 
     /// <summary>Composes the referential model into a composition.</summary>
     internal static class ReferentialModel
@@ -26,7 +29,24 @@ namespace Tellma.Core.Tests.Data.Writes
         /// <param name="tellma">The composition's builder.</param>
         public static void Compose(TellmaBuilder tellma)
         {
-            _ = tellma.AddFeature(new TestFeature<Tag.D>("referential", contribute: static contribution => contribution
+            _ = tellma.AddFeature(new TestFeature<Tag.D>("referential", contribute: static contribution => Contribute(contribution)));
+        }
+
+        /// <summary>Adds the referential model's feature with the lamps.</summary>
+        /// <param name="tellma">The composition's builder.</param>
+        public static void ComposeWithLamps(TellmaBuilder tellma)
+        {
+            _ = tellma.AddFeature(new TestFeature<Tag.D>("referential", contribute: static contribution => Contribute(contribution)
+                .Entity<Lamp>()
+                .Model<LampConfiguration>()));
+        }
+
+        /// <summary>Contributes the referential model's entities and keys.</summary>
+        /// <param name="contribution">The feature's contribution.</param>
+        /// <returns>The contribution.</returns>
+        private static FeatureContribution Contribute(FeatureContribution contribution)
+        {
+            return contribution
                 .Entity<Hub>()
                 .Entity<Spoke>()
                 .Entity<Rim>()
@@ -35,7 +55,7 @@ namespace Tellma.Core.Tests.Data.Writes
                 .Model<SpokeConfiguration>()
                 .Model<RimConfiguration>()
                 .Model<TreadConfiguration>()
-                .Model<SeatConfiguration>()));
+                .Model<SeatConfiguration>();
         }
     }
 
@@ -105,6 +125,19 @@ namespace Tellma.Core.Tests.Data.Writes
         public int RiderId { get; set; }
     }
 
+    /// <summary>A row whose key to a bay sets null, naming a user whose preferences tag it bumps.</summary>
+    [Table("Lamps", Schema = "rf")]
+    [TableType]
+    [BumpsUserVersionTag(UserVersionTagNames.Preferences, nameof(KeeperId))]
+    public class Lamp : TopLevelEntity
+    {
+        /// <summary>The bay; deleting it clears the reference.</summary>
+        public int? BayId { get; set; }
+
+        /// <summary>The user who keeps the lamp.</summary>
+        public int KeeperId { get; set; }
+    }
+
     /// <summary>The spokes' key to their hub, <c>ON DELETE CASCADE</c>.</summary>
     public sealed class SpokeConfiguration : IEntityTypeConfiguration<Spoke>
     {
@@ -133,6 +166,16 @@ namespace Tellma.Core.Tests.Data.Writes
         public void Configure(EntityTypeBuilder<Tread> builder)
         {
             _ = builder.HasOne<Rim>().WithMany().HasForeignKey(static tread => tread.RimId).OnDelete(DeleteBehavior.Cascade);
+        }
+    }
+
+    /// <summary>The lamps' key to their bay, <c>ON DELETE SET NULL</c>.</summary>
+    public sealed class LampConfiguration : IEntityTypeConfiguration<Lamp>
+    {
+        /// <inheritdoc />
+        public void Configure(EntityTypeBuilder<Lamp> builder)
+        {
+            _ = builder.HasOne<Bay>().WithMany().HasForeignKey(static lamp => lamp.BayId).OnDelete(DeleteBehavior.SetNull);
         }
     }
 

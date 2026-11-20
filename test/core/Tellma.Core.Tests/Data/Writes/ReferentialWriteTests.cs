@@ -6,8 +6,10 @@
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.Extensions.DependencyInjection;
 using Tellma.Core.Abstractions.Access;
+using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Jobs;
+using Tellma.Core.Composition.Checks;
 using Tellma.Core.Data.Batches;
 using Tellma.Core.Data.Saves;
 using Tellma.Core.Data.TableTypes;
@@ -40,6 +42,9 @@ namespace Tellma.Core.Tests.Data.Writes
 
         /// <summary>The seats' table, whose key to a spoke cascades and whose rows name users.</summary>
         private static readonly TableName Seats = new("rf", "Seats");
+
+        /// <summary>The lamps' table, in the variant model, whose key to a bay sets null and whose rows name users.</summary>
+        private static readonly TableName Lamps = new("rf", "Lamps");
 
         /// <summary>The composition over the referential model.</summary>
         private readonly BatchHarness _harness = new(compose: ReferentialModel.Compose);
@@ -118,7 +123,7 @@ namespace Tellma.Core.Tests.Data.Writes
             Assert.True(insert >= 0, text);
             Assert.Contains($"DECLARE {capture} TABLE ([Old_RiderId] int NULL, [New_RiderId] int NULL);", text, StringComparison.Ordinal);
             Assert.Contains(
-                "SELECT d.[RiderId], NULL FROM [rf].[Seats] AS d WHERE (EXISTS (SELECT 1 FROM [rf].[Spokes] AS r0 WHERE r0.[Id] = d.[SpokeId] AND ((EXISTS (SELECT 1 FROM [rf].[Hubs] AS r1 WHERE r1.[Id] = r0.[HubId] AND (r1.[Id] IN (SELECT [Id] FROM ",
+                "SELECT d.[RiderId], NULL FROM [rf].[Seats] AS d WITH (UPDLOCK, HOLDLOCK) WHERE (EXISTS (SELECT 1 FROM [rf].[Spokes] AS r0 WITH (UPDLOCK, HOLDLOCK) WHERE r0.[Id] = d.[SpokeId] AND ((EXISTS (SELECT 1 FROM [rf].[Hubs] AS r1 WITH (UPDLOCK, HOLDLOCK) WHERE r1.[Id] = r0.[HubId] AND (r1.[Id] IN (SELECT [Id] FROM ",
                 text,
                 StringComparison.Ordinal);
             Assert.True(insert < text.IndexOf("DELETE", StringComparison.Ordinal), text);
@@ -127,6 +132,31 @@ namespace Tellma.Core.Tests.Data.Writes
             UserIdSource source = Assert.Single(batch.UserIdSources, static source => source.Tables.Contains(Seats));
             Assert.Equal(("RiderId", capture), (source.Column, source.Identifier.Name));
             Assert.Equal(["Old_RiderId", "New_RiderId"], source.ReadColumns);
+        }
+
+        [Fact]
+        public void A_delete_captures_the_users_named_by_the_rows_a_key_to_its_child_rows_reaches()
+        {
+            using BatchHarness lamps = new(compose: ReferentialModel.ComposeWithLamps);
+            DataBatch batch = lamps.Batch(BatchPurpose.Persist);
+
+            _ = batch.Delete(new DeleteSpec<Hub>.ByIds([1], null, null));
+
+            // The lamps' key to a bay sets null, so the delete reads their keepers first: the lamps
+            // whose bay belongs to a deleted hub, by the bays' parent key over the keys the statement
+            // before it captured.
+            BatchStatement delete = batch.Statements[^1];
+            string capture = ReservedSqlNames.Statement(delete.Ordinal, UserIdCapture.ConsequenceWord(Lamps));
+            string keys = ReservedSqlNames.Statement(batch.Statements[^2].Ordinal, ReservedSqlNames.StatementNames.Keys);
+            string expected =
+                $"INSERT INTO {capture} ([Old_KeeperId], [New_KeeperId])\n"
+                + "SELECT d.[KeeperId], NULL FROM [rf].[Lamps] AS d WITH (UPDLOCK, HOLDLOCK) WHERE "
+                + "(EXISTS (SELECT 1 FROM [rf].[Bays] AS r0 WITH (UPDLOCK, HOLDLOCK) WHERE r0.[Id] = d.[BayId] AND "
+                + $"(r0.[Id] IN (SELECT x.[Id] FROM [rf].[Bays] AS x WHERE x.[HubId] IN (SELECT [Id] FROM {keys})))));\n";
+            Assert.True(delete.Text.Contains(expected, StringComparison.Ordinal), delete.Text);
+            Assert.True(delete.Text.IndexOf(capture + " (", StringComparison.Ordinal) < delete.Text.IndexOf("DELETE", StringComparison.Ordinal), delete.Text);
+            UserIdSource source = Assert.Single(batch.UserIdSources, static source => source.Tables.Contains(Lamps));
+            Assert.Equal(("KeeperId", capture), (source.Column, source.Identifier.Name));
         }
 
         [Fact]
@@ -173,6 +203,22 @@ namespace Tellma.Core.Tests.Data.Writes
         }
 
         // --- A save ---
+
+        [Fact]
+        public async Task A_model_whose_save_would_reach_a_table_naming_users_fails_the_version_tags_check()
+        {
+            // The sound model passes; the lamps' key to a bay carries a hub's child deletes to their keepers.
+            Assert.Empty(await new VersionTagsCheck().CheckAsync(_harness.Services, TestContext.Current.CancellationToken));
+            using BatchHarness lamps = new(compose: ReferentialModel.ComposeWithLamps);
+
+            IReadOnlyList<CompositionProblem> problems = await new VersionTagsCheck().CheckAsync(lamps.Services, TestContext.Current.CancellationToken);
+
+            CompositionProblem problem = Assert.Single(problems);
+            Assert.Equal("core.version-tags", problem.Source);
+            Assert.Contains("Saving ", problem.Problem, StringComparison.Ordinal);
+            Assert.Contains("rf.Lamps", problem.Problem, StringComparison.Ordinal);
+            Assert.False(string.IsNullOrEmpty(problem.Fix));
+        }
 
         [Fact]
         public void A_save_whose_deleted_child_rows_reach_a_table_naming_users_is_refused_when_planned()
