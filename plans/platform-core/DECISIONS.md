@@ -359,6 +359,13 @@ Format, one entry per ruling:
 - Also accepted: a readonly select never opens (a pre-existing bug, fixed) and exposes aria-readonly.
 - **Misalignment for Ahmad:** 0010 §B.4 names contentChildren(TmOptionGroup), which the design does not need. See also D-036's §B.4 note.
 
+### D-143 — PC-082 hand-offs (2026-11-20)
+
+- Interim internal McpLimitOptions binds Tellma:Mcp (ToolCallsPerMinutePerUser 120, ToolTimeout 60 s) for the tellma-mcp policy until Tellma.Core.Mcp owns McpOptions; that checkpoint absorbs it.
+- ARCHITECTURE.md (framework line) now lists the rate limiter, request timeouts, response compression, output caching and Microsoft.AspNetCore.OpenApi (Development document).
+- Pre-existing: MapTellma reads IOptions<ApiOptions>.Value eagerly while mapping, so an invalid Tellma:Api surfaces as an OptionsValidationException from MapTellma, not the startup gate. Left as is; a candidate for a later cleanup.
+- New flake candidate: Core JobRunLockingTests claim seek failed once under load in PC-082's gate and passed alone. Same treatment as D-139: if it recurs it becomes a PC-Fnn item.
+
 ### D-142 — PC-100 Review 1 rulings (2026-11-20)
 
 - Escalated to Review 2 (inherit, xhigh) under §4.4: R1 had 2 blocking findings (back-to-back polling when a refused tenant is woken by any release; one item's cancel abandoning the whole lease and double-running the rest).
