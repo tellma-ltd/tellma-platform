@@ -756,7 +756,9 @@ const out = await agent(
   `${A.slot}/plans/platform-core/PROCESS.md §2 and §4.1. Verify each finding below against the code before acting: fix the ` +
   `real ones and push back on the wrong ones, recording every verdict in ${A.slot}/plans/platform-core/reviews/${A.batch}.md. ` +
   `Run the PR-tier gates (PLAN.md §7.1), commit "${A.batch}: batch review fixes (${A.members[0]}…${A.members[A.members.length - 1]})", ` +
-  `push, and integrate per PROCESS.md §4.3. Return the §4.7 summary.\n\nFindings:\n${JSON.stringify(all, null, 1)}`,
+  `push, and integrate per PROCESS.md §4.3 (D-144). No one resumes you inside the workflow, so play both sides of §4.3 yourself: ` +
+  `after pushing the integration commit to pc/${A.batch}, watch its CI run in the background (gh run watch <id> --exit-status), then follow ` +
+  `the §4.3 CI-green or CI-red message yourself until the commit is on platform-core. Return the §4.7 summary.\n\nFindings:\n${JSON.stringify(all, null, 1)}`,
   { label: 'fix', phase: 'Fix', effort: 'high' })
 return { batch: A.batch, findings: all.length, result: out }
 ```
