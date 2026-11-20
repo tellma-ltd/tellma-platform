@@ -8,8 +8,18 @@ Scope is D-144's workflow half, all under `.github/` and `CONTRIBUTING.md`. No p
 code, docs/ or ARCHITECTURE.md change.
 
 - `.github/workflows/ci.yml`
-  - `on.push.branches` is `[main, 'pc/**']`. A new comment above `on:` says what the push trigger
-    is for and that the draft guards let push runs through.
+  - `on.push.branches` is `[main, 'pc/**']`. Under the scope amendment (commit 2), every job's
+    `if:` adds the integration-push gate to its draft guard:
+    `(github.event_name != 'push' || github.ref == 'refs/heads/main' || contains(github.event.head_commit.message, ': integrate'))`.
+    On all-checks-passed the gate sits beside `!cancelled()` and the draft guard. A pc push whose
+    head commit does not carry ": integrate" therefore skips every job.
+  - The nine gated `if:` values are double-quoted YAML scalars. The phrase's colon followed by a
+    space is a mapping indicator in a plain scalar, and the plain form failed to parse ("mapping
+    values are not allowed here"); GitHub would have rejected the file.
+  - The comment above `on:` covers the trigger, the gate, the three integration titles, that a
+    skipped push still creates an all-skipped run, and that `contains` ignores case and reads the
+    whole message (body included), plus the quoting. The all-checks-passed comment says it skips
+    with the others on such pushes.
   - The `integration-windows` job and its comment are removed. Nothing else in the file named it
     except the `all-checks-passed` comment ("joins this list once it has run green"), which is
     removed too. The `needs:` list was already without it and is unchanged.
@@ -33,8 +43,9 @@ code, docs/ or ARCHITECTURE.md change.
     integration and E2E tests stay on the Linux job above", because Windows integration now runs
     in this file.
 - `CONTRIBUTING.md`
-  - "Test tiers" intro: the PR tier also runs on every push to `main` or a `pc/**` branch. The
-    nightly tier also runs two integration suites on Windows.
+  - "Test tiers" intro: the PR tier also runs on every push to `main`, and on a `pc/**` push
+    whose head commit is an integration commit (message contains `: integrate`); any other `pc/**`
+    push skips every job. The nightly tier also runs two integration suites on Windows.
   - "PR tier": integration suites run on Linux only. The sentence about a non-gating Windows
     LocalDB job is gone.
   - "Nightly tier": a new paragraph covers the Windows LocalDB run, with the `TELLMA_TEST_SQL`
@@ -43,12 +54,35 @@ code, docs/ or ARCHITECTURE.md change.
 
 ### Checks (orchestrator items 1a, 1b)
 
-(a) Draft guards on push events. Every job's `if:` is `${{ !github.event.pull_request.draft }}`, or
-`${{ !cancelled() && !github.event.pull_request.draft }}` on all-checks-passed. A push event's
-payload has no `pull_request`. Dereferencing a missing property in a GitHub expression yields
-null, null is falsy, and `!null` is true, so every job runs on a push. Evidence: push run
-42447411093 on main (2026-11-08, same guards) ran every job, all-checks-passed included, with no
-job skipped.
+(a) Draft guards on push events. A push event's payload has no `pull_request`. Dereferencing a
+missing property in a GitHub expression yields null, null is falsy, and `!null` is true, so the
+draft guard passes every push. Evidence: push run 42447411093 on main (2026-11-08, same draft
+guards) ran every job, all-checks-passed included, with no job skipped.
+
+(a2) The integration-push gate (scope amendment). Truth table of the full guard, evaluated with
+GitHub's expression rules: a missing property is null, `contains` ignores case and is false on
+null.
+
+| Event | Result |
+|---|---|
+| pull_request, PR #18 ready | runs (event is not push) |
+| pull_request, draft | skipped (draft guard, as before) |
+| push to main, any message | runs (ref is main) |
+| pc push, `PC-042: integrate` / `: integrate (merge platform-core)` / `: integrate (CI fixes)` | runs |
+| pc push, implementation, `review n fixes` or old-style `merge platform-core` commit | every job skipped |
+| pc push with no head_commit | every job skipped |
+
+Pull requests and pushes to main are unaffected: the gate's first two disjuncts are true for
+them, so their guards reduce to the old ones. On a skipped pc push, all-checks-passed is skipped
+too (its `if:` is false), so the run has no failing step and no waiting job. GitHub still creates
+the run and completes it with every job skipped; it is neither red nor hanging. Observed on this
+branch's second push: see Local checks.
+
+(b2) Concurrency under the gate. Each integration push is a new commit (a merge, an integrate
+commit or a CI-fix commit), so its sha is new and its group `ci-push-refs/heads/pc/<id>-<sha>` is
+its own. An earlier all-skipped run on the same branch has another sha, so another group, and it
+finishes in seconds anyway. A re-push of an unchanged sha creates no push event. So each
+integration push still gets its own run, never queued behind or cancelled by another.
 
 (b) Concurrency. Before this change the group was
 `ci-<event>-<pull_request.head.sha || sha>`, which on a push is `ci-push-<sha>`.
@@ -77,6 +111,10 @@ job skipped.
   - The text diff is that `if:` line plus the one re-pointed comment (two lines became three).
 - actionlint is not on PATH, so it was not run.
 - `git diff --check` is clean, and the files are LF and UTF-8 without BOM.
+- After the amendment, ci.yml still parses and every job's parsed `if` is the gated expression
+  (nine of nine). The first plain-scalar attempt failed PyYAML, which is how the quoting
+  requirement was found.
+- The gate's truth table above was evaluated with a scripted model of the expression.
 - `dotnet build Tellma.slnx` printed "Build succeeded" with 0 warnings and 0 errors.
   `dotnet format Tellma.slnx --verify-no-changes` exited 0 and reported no file changes (only
   the usual workspace-load notice).
@@ -106,11 +144,20 @@ The untracked `.tmp/` copies (gitignored) were ignored.
 
 ### Open risks
 
-- From now on, any push to a pc/** branch runs the full PR tier, about 17 min and 11 jobs. That
-  includes a branch push with no new commits and a hold push (D-087). Runner minutes grow with
-  the number of pc pushes. This is intended by D-144.
-- Branch deletions: deleting a pc branch should not start a run. GitHub does not run push
-  workflows for branch deletions, but this is not verified here.
+- Every pc/** push still creates a run, but a run that is not an integration push has every job
+  skipped. Only integration pushes run the full PR tier (about 17 min, 11 jobs).
+- The gate is a substring match over the whole commit message, ignoring case. Any commit whose
+  title or body contains ": integrate" starts a full run, for example a fix-round body line such
+  as "R1-2: integrate the probe". That is a false positive: it costs CI minutes and breaks nothing.
+  The false negative matters more. An integration commit titled any other way starts no real run:
+  the old `{PC}: merge platform-core` title is skipped (truth table above). PROCESS.md §4.3's
+  integration and green-path merge messages must therefore use the `: integrate` titles. That
+  includes the plans-only re-merge before the fast-forward, which then starts a run nobody waits
+  for.
+- A hold push (D-087) pushes the last fix-round commit, so it is skipped, as intended.
+- Branch deletions: deleting a pc branch should not start a real run. Its push has no
+  head_commit, so the gate skips every job even if GitHub creates a run. GitHub does not usually
+  run workflows for deletions, but that is not verified here.
 - The moved job's first nightly run is the first time it runs under workflow_dispatch from the
   trampoline. Its steps are unchanged, so only the guard is new, and that guard is the same
   expression the other four nightly jobs use. D-144's evidence line expects a hand-started
@@ -118,6 +165,8 @@ The untracked `.tmp/` copies (gitignored) were ignored.
 
 ### What reviewers should examine hardest
 
+- The gate truth table (a2), the double-quoting of the nine `if:` values, and that pull_request
+  and main-push runs are unaffected.
 - Item 1(b), and whether adding `github.ref` to the concurrency group changes any pull_request
   behaviour PROCESS relies on: §5.3 watches PR #18 runs by head sha, which is unaffected.
 - That the moved job is byte-for-byte the original apart from `if:` and the one comment.

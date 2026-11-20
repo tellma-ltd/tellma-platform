@@ -2,13 +2,14 @@
 
 ## Test tiers
 
-Tests run in two tiers. The **PR tier** gates every pull request and every push to one, and also
-runs on every push to `main` or to a `pc/**` working branch (`.github/workflows/ci.yml`). The
-**nightly tier** holds what is too slow, too broad or too timing-sensitive for that: full viewport
-and language matrices, Firefox and WebKit, performance budgets, soaks and long waits
-(`.github/workflows/nightly-tier.yml`). It also runs two integration suites on Windows, which the
-PR tier runs on Linux only. Tests reach the nightly tier only through the tags below; everything
-untagged is PR tier.
+Tests run in two tiers. The **PR tier** gates every pull request and every push to one
+(`.github/workflows/ci.yml`). It also runs on every push to `main`, and on a push to a `pc/**`
+working branch whose head commit is an integration commit (its message contains `: integrate`);
+any other push to a `pc/**` branch skips every job. The **nightly tier** holds what is too slow,
+too broad or too timing-sensitive for that: full viewport and language matrices, Firefox and
+WebKit, performance budgets, soaks and long waits (`.github/workflows/nightly-tier.yml`). It also
+runs two integration suites on Windows, which the PR tier runs on Linux only. Tests reach the
+nightly tier only through the tags below; everything untagged is PR tier.
 
 Before tagging a slow test nightly, try to make it fast: a wall-clock wait (a watchdog, a poll
 interval, an expiry) is driven by a fake clock or a test `TimeProvider` wherever that is possible.

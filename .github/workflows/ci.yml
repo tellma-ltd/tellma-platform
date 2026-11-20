@@ -1,8 +1,17 @@
 name: CI
 
-# A push to main or to a `pc/**` working branch runs the whole PR tier on the pushed commit, so a
-# working branch is verified before it merges onward. A push event carries no pull request, so the
-# draft guards below let every push run through.
+# Pull requests and pushes to main run the whole PR tier. A push to a `pc/**` working branch runs
+# it only when the branch's head commit is an integration commit, so the branch is verified once,
+# just before it merges onward, rather than on every implementation or fix-round push.
+# Integration commits are titled `<id>: integrate`, `<id>: integrate (merge platform-core)` or
+# `<id>: integrate (CI fixes)`.
+#
+# Every job's `if:` below carries that push gate beside its draft guard. For any other push to a
+# `pc/**` branch, GitHub still creates a run, but every job in it is skipped. The gate's
+# `contains` ignores case and reads the whole message, body included, so other commits keep that
+# phrase out of their messages. A push event carries no pull request, so the draft guards let
+# every push through. The gate lets every pull request and every push to main through. The gated
+# `if:` values are double-quoted because a plain YAML scalar cannot hold the phrase's colon and space.
 on:
   push:
     branches: [main, 'pc/**']
@@ -26,7 +35,7 @@ concurrency:
 jobs:
   # Build everything and run the unit suites (integration excluded) on both OSes.
   build-test:
-    if: ${{ !github.event.pull_request.draft }}
+    if: "${{ !github.event.pull_request.draft && (github.event_name != 'push' || github.ref == 'refs/heads/main' || contains(github.event.head_commit.message, ': integrate')) }}"
     timeout-minutes: 20
     strategy:
       fail-fast: false
@@ -64,7 +73,7 @@ jobs:
   # .editorconfig the IDE uses — no per-rule enumeration. A dedicated job so a style failure reads
   # as a style failure, not an OS-specific one.
   format:
-    if: ${{ !github.event.pull_request.draft }}
+    if: "${{ !github.event.pull_request.draft && (github.event_name != 'push' || github.ref == 'refs/heads/main' || contains(github.event.head_commit.message, ': integrate')) }}"
     timeout-minutes: 15
     runs-on: ubuntu-latest
     steps:
@@ -84,7 +93,7 @@ jobs:
   # only: nightly-tier.yml runs the platform's and the reference distribution's suites on Windows
   # too, against LocalDB.
   integration:
-    if: ${{ !github.event.pull_request.draft }}
+    if: "${{ !github.event.pull_request.draft && (github.event_name != 'push' || github.ref == 'refs/heads/main' || contains(github.event.head_commit.message, ': integrate')) }}"
     timeout-minutes: 45
     runs-on: ubuntu-latest
     steps:
@@ -101,7 +110,7 @@ jobs:
   #   2. Package flow: pack both libraries to a local feed and repeat against the
   #      PackageReference variant of the host.
   design-e2e:
-    if: ${{ !github.event.pull_request.draft }}
+    if: "${{ !github.event.pull_request.draft && (github.event_name != 'push' || github.ref == 'refs/heads/main' || contains(github.event.head_commit.message, ': integrate')) }}"
     timeout-minutes: 25
     runs-on: ubuntu-latest
     env:
@@ -171,7 +180,7 @@ jobs:
   # Browser end-to-end scenarios (Playwright + Chromium) for the identity UI, including passkeys
   # via the CDP virtual authenticator. The browser download is cached on the package version.
   identity-e2e:
-    if: ${{ !github.event.pull_request.draft }}
+    if: "${{ !github.event.pull_request.draft && (github.event_name != 'push' || github.ref == 'refs/heads/main' || contains(github.event.head_commit.message, ': integrate')) }}"
     timeout-minutes: 20
     runs-on: ubuntu-latest
     steps:
@@ -210,7 +219,7 @@ jobs:
   # only: the desktop battery and the touch battery. Firefox and WebKit, and
   # tests tagged @nightly, @perf or @quarantine, run in nightly-tier.yml.
   client:
-    if: ${{ !github.event.pull_request.draft }}
+    if: "${{ !github.event.pull_request.draft && (github.event_name != 'push' || github.ref == 'refs/heads/main' || contains(github.event.head_commit.message, ': integrate')) }}"
     timeout-minutes: 45
     runs-on: ubuntu-latest
     steps:
@@ -256,7 +265,7 @@ jobs:
   # every gate of the job above except the e2e suite, whose Linux run covers the browser
   # behaviour. Path separators, line endings and shell differences surface here first.
   client-windows:
-    if: ${{ !github.event.pull_request.draft }}
+    if: "${{ !github.event.pull_request.draft && (github.event_name != 'push' || github.ref == 'refs/heads/main' || contains(github.event.head_commit.message, ': integrate')) }}"
     timeout-minutes: 45
     runs-on: windows-latest
     steps:
@@ -287,7 +296,7 @@ jobs:
   # source checks, ng build, the worker and the output checks; any problem fails it) and copies the
   # app into wwwroot. The served output must hold the hashed bundle and the worker.
   acme-client:
-    if: ${{ !github.event.pull_request.draft }}
+    if: "${{ !github.event.pull_request.draft && (github.event_name != 'push' || github.ref == 'refs/heads/main' || contains(github.event.head_commit.message, ': integrate')) }}"
     timeout-minutes: 45
     strategy:
       fail-fast: false
@@ -343,9 +352,10 @@ jobs:
 
   # PR merge gate: the single status check required by branch protection. It fails if any job
   # below did not succeed, without making any individual job a required check (which would couple
-  # branch protection to job names / the OS matrix).
+  # branch protection to job names / the OS matrix). It skips with the others on a `pc/**` push
+  # that is not an integration push; nothing requires it there.
   all-checks-passed:
-    if: ${{ !cancelled() && !github.event.pull_request.draft }}
+    if: "${{ !cancelled() && !github.event.pull_request.draft && (github.event_name != 'push' || github.ref == 'refs/heads/main' || contains(github.event.head_commit.message, ': integrate')) }}"
     # Include every required job in this list — a job missing here is NOT gated.
     # Branch protection must require THIS job only.
     needs: [build-test, format, integration, design-e2e, client, client-windows, identity-e2e, acme-client]
