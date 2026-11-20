@@ -104,9 +104,8 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 |---|---|---|---|---|---|---|
 | PC-144 | pc-3 | pc/PC-144 | impl | impl (Opus, high, launched 2026-11-20) | 0020-e; R1 only | 2026-11-20 |
 | PC-146 | pc-4 | pc/PC-146 | impl | impl (Opus, high, launched 2026-11-20) | 0021-c; R1 only | 2026-11-20 |
-| PC-087 | pc-1 | pc/PC-087 | impl | impl (Opus, high, launched 2026-11-20) | 0018-b; R1 only | 2026-11-20 |
-| PC-B04 | pc-2 | pc/PC-B04 | batch | workflow (Fable finders xhigh, Opus fixer high), launched 2026-11-20 | Phase 4: PC-062…PC-084; D-147 | 2026-11-20 |
-| PC-F61 | pc-f | pc/PC-F61 | ci-pending | ci-pending (366d0ceb; pc run 44723555424) | nightly client-e2e/quarantine: Playwright OS deps install fails, webkit cannot launch (nightly 44701549452, 44506202284; first 43403796974); not a line stop; R1 only | 2026-11-20 |
+| PC-087 | pc-1 | pc/PC-087 | held | held (0d6e317a; R1-1..6 fixed; merge-tree clean); released after PC-F61 | 0018-b; R1 only | 2026-11-20 |
+| PC-F61 | pc-f | pc/PC-F61 | ci-fix | CI red 44723555424 on 366d0ceb (acme-client ubuntu: chromium launch failed after deps installed; client needed attempt 2); CI fixes in progress | nightly client-e2e/quarantine: Playwright OS deps install fails, webkit cannot launch (nightly 44701549452, 44506202284; first 43403796974); not a line stop; R1 only | 2026-11-20 |
 
 ## Fix items
 
@@ -180,6 +179,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-B01 | 1 (PC-000…PC-014 at 7db93ca) | done (7e13990, CI 43142784871 green) | a31a1a5, 7e13990 (pc) | 0/2/2 all fixed (identity API audience/kind policy; CLI audience; file-preview download anchor; …); D-055; one finder returned none; 553k subagent tokens |
 | PC-B02 | 2 (PC-015…PC-031) | done (5 findings 0/3/2: 5 fixed, 1 sub-point pushed back; fixes c771eead; integrated 65057698; green 44208803444) | | |
 | PC-B03 | 3 (PC-032…PC-061) | done (6 findings 0/3/3: 6 fixed; fixes 3adc83da; integrated b4849737; CI 44215268639 red → PC-F57; green 44231237483 on 735456ab) | | |
+| PC-B04 | 4 (PC-062…PC-084) | done (8 findings 0/6/2: 8 fixed, parts pushed back; fixes 27f8bb6a; integrated f8806aa8; pc 44730508322 green; PR 44733161670 green) | 27f8bb6a, 14dad323, f8806aa8 | D-147, D-149; 4 agents, 857k subagent tokens |
 
 ## Merge-time tasks (before platform-core merges into main)
 
