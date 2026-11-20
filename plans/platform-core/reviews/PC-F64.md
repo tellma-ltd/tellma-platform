@@ -39,7 +39,7 @@ measured from the console's completion timestamps:
 | `MigratorTests.Rerunning_a_line_that_spells_its_server_with_a_protocol_prefix_resumes_the_row` | ~10 s | 30 s |
 | Shipment conformance fixture (4th thread) | seconds | ~1 min 45 s before its first test |
 
-All four threads stalled together, and no test completed between 13:43:22 and 13:44:25. The
+All four threads stalled together, and no test completed between 13:43:24 and 13:44:25. The
 other three threads' statements ran under long bounds (the migrator's statement bounds, the
 fixtures' five-minute creation and migration bounds), or each individually stayed under 30 s, so
 they passed slowly. The one fixture statement on a 30-second bound was this catalog migration, and
@@ -146,10 +146,6 @@ fits the same convoy at a smaller scale.
   migrates through the design-time factory under EF's default bound and lets EF create the
   database (no 1807 retry). It emulates `dotnet ef database update` as an operator runs it. A bound
   would change what it emulates, so it is left alone. It is the next candidate if the stall recurs.
-- `TellmaIdentityStore.MigrateAsync` (product, Tellma.Identity.Migrations) migrates the in-proc
-  identity store under EF's 30-second default, while the migrator that calls it bounds the catalog
-  and tenant migrations by `MigrationCommandTimeout`. That is a product inconsistency (spec 0003 /
-  0011 §6.1), reported to the orchestrator and not changed in this test-only fix.
 
 ### What reviewers should examine hardest
 
@@ -161,3 +157,128 @@ fits the same convoy at a smaller scale.
   because nothing else refreshes the worker. Any future test that adds a hosted refresh loop to a
   CatalogHost and then relies on `RefreshAsync(force: false)` to observe its own earlier write
   could join a run that began before that write.
+
+## Review 1
+
+Scope: commit 6952a9d3 (CatalogHost.MigrateAsync bound, ARCHITECTURE.md paragraph, review file).
+
+What I checked:
+
+- **Root cause, from the nightly log.** The integration-windows log of 44745573605 (fetched read-only
+  with `gh run view --log`) shows the failure at 13:44:25 after 1 min 5 s. The stack ends in
+  `HistoryRepository.CreateIfNotExistsAsync` ← `Migrator.MigrateAsync` ← `CatalogHost.MigrateAsync`
+  (CatalogHost.cs:145 at 007f0ff0) ← `CatalogHost.CreateAsync` ← TenantScopeTests.cs:145. That is
+  the test's first line, before any registration, refresh or scope. The SqlClient frames
+  (`EndExecuteNonQueryAsync` → `PutStateObject` → `ProcessPendingAck` → `ProcessAttention`) are the
+  path where a command timeout's attention goes unacknowledged. The stall is in the log as stated.
+  No test completed from 13:43:24.4 to 13:44:25.2. Two slow tests then finished:
+  `MigratorTests.Migrate_grants_the_role…` (1 m 31 s) and `MembershipDirectoryTests.A_hint_written…`
+  (1 m 32 s). `TenantScopeTests.A_scopes_own_connection…` took 54 s and finished at 13:45:19.
+  `MigratorTests.Rerunning_a_line…` took 30 s. The notes say 13:43:22, but the last completion
+  before the gap was at 13:43:24. That does not affect the conclusion. The implementer's probe
+  logs (PC-F64-probe-base.log, PC-F64-probe-fix.log) back the mechanism: with the lock held 40 s,
+  the baseline failed with "Execution Timeout Expired" after 34.2 s and the fixed code passed in
+  45 s.
+- **The product's cross-instance refresh is correct** (0011 §3.4, §3.7).
+  - Every transition in `CatalogStatements` (lines 107, 120, 133, 145) bumps
+    `CatalogState.Version = NEWID()` in the same batch.
+  - `TenantRegistry.RefreshAsync(force: false)` (TenantRegistry.cs:144-180) starts a new run when
+    none is running or pending. That run probes the version and reloads when it differs (lines
+    360-373).
+  - `CatalogHost` composes without hosted services, so the worker's only runs are the test's own
+    awaited calls. The refresh at line 157 therefore starts after the suspension committed, and
+    the scope factory refuses the tenant from the refreshed snapshot.
+- **The bound sits only in test setup.** It is set on the context of the test helper
+  (`CatalogHost.MigrateAsync`), and only `CatalogHost.CreateAsync` and direct test calls reach that
+  helper. No product path changes. The registry's first load (`InitializeAsync`, still under its
+  1-minute `FirstLoadTimeout`), the catalog writes and the scope factory keep their own bounds.
+  The bound matches the migrator's practice, since MigrateCommand.cs:171 sets
+  `MigrationCommandTimeout` on the same `CatalogDbContext`. No test depends on
+  `CatalogHost.MigrateAsync` failing fast:
+  - `CatalogMigrationTests.Without_the_role…` expects a permission `SqlException`, not a timeout.
+  - No test holds `__EFMigrationsLock`.
+- **Build and tests.**
+  - `dotnet build` of Tellma.Core.IntegrationTests at 6952a9d3: Build succeeded, 0 warnings
+    (PC-F64-r1-build.log).
+  - The six classes that use the helper (CatalogMigrationTests, MembershipDirectoryTests,
+    RegistryCatalogTests, SessionStoreTests, TenantCatalogTests, TenantScopeTests) on LocalDB,
+    with the integration filter: 51/51 passed in 2 m 16 s (PC-F64-r1-six-classes.log). This covers
+    every touched test the commit's list reaches only through the load runs.
+  - The implementer's solution build log shows 0 warnings and the format log is clean.
+  - The changed .cs file has no BOM.
+- **AGENTS.md / PLAN §7.1.** The XML doc is updated. The inline comment explains the bound and
+  cites no PC id, decision or `docs/` path. ARCHITECTURE.md is updated in the same change (item 6).
+
+### Findings
+
+R1-1 (minor). ARCHITECTURE.md:1231 states a rule broader than the code delivers.
+- **What the sentence claims.** "The fixtures that then migrate such a database (the catalog a Core
+  suite composes its tenancy runtime over, the data layer's fixture schema) run the migrations
+  under the same five-minute bound … never the client's 30-second default." Read as a rule, that
+  covers every test that migrates a database `SqlDatabaseCreation` created.
+- **Where it does not hold.** These tests still migrate under EF's 30-second default:
+  - test/core/Tellma.Core.EntityFrameworkCore.IntegrationTests/ColumnCollationTests.cs:90-95, a
+    helper documented as "Creates a fresh database and applies the MigrationsHost's migrations",
+    with the database from `SqlServerFixture.CreateDatabaseAsync` → `SqlDatabaseCreation.CreateAsync`.
+  - DropGuardTests.cs:36-38 in the same project.
+  - test/apps/Tellma.Identity.IntegrationTests/StoreCheckTests.cs:101, 122, 159, 169, 182, through
+    `TellmaIdentityStore.MigrateAsync` with no `Command Timeout` in the string.
+- **Failure scenario.** The next fix item for a stall in one of those suites (they run on Linux CI
+  today, and would join a Windows LocalDB job if D-144's split changes) reads ARCHITECTURE.md as
+  saying it is already covered.
+- **Suggested fix.** Either narrow the sentence to what it covers ("The Core suite's catalog
+  fixture and the data layer's fixture schema migrate under the same bound …"), or add that suites
+  whose migrations are themselves under test (the EF Core suite's migration tests, and the identity
+  store's own `MigrateAsync`) leave the bound to EF or the product. No code change is needed.
+
+### Rulings on the implementer's open points
+
+1. **The stall lever (option a or b): neither now; wait for a recurrence.**
+   - The fix removes the only 30-second bound in the Core fixtures' setup path. Integration-windows
+     is nightly, and a red there is a fix item, not a line stop (D-144).
+   - Option (a) is not worth its cost. It undoes what
+     `SqlDatabaseCreationServerTests.Creations_blocked_on_the_model_lock_are_retried_and_all_exist_once_it_is_free`
+     exists to prove. It leaves the migrator's creations and EF's own creation (the design-time test
+     and the identity engine's tests) ungated. It also serialises every suite's setup in-process.
+   - Option (b) is the better lever if the stall recurs, but it is unproven. LocalDB places
+     databases without explicit file paths under the instance owner's profile. Moving them needs
+     either explicit `FILENAME`s from an environment variable in `SqlDatabaseCreation`, or an
+     instance whose profile is on D:. Neither is a one-line workflow change, and only nightlies can
+     verify it.
+   - Recommendation: record (b) on the watchlist as the next step if integration-windows goes red
+     again with a setup-path timeout or a connect timeout during a creation convoy.
+2. **`TellmaIdentityStore.MigrateAsync` under EF's 30 s default: the claim is incorrect for the
+   migrator path, so no fix item.**
+   - MigrateCommand.cs:186 hands the store `bounds.MigrationConnectionString(catalog.ConnectionString)`.
+     That string sets SqlClient's `Command Timeout` to `MigrationCommandTimeout`
+     (MigratorOptions.cs:121-125, added by PC-F48).
+   - `TellmaIdentityStore.CreateContext` sets no EF command timeout. EF therefore leaves each
+     command's timeout at the connection's default, which is the migration bound.
+   - Two tests pin this. `MigratorOptionsTests.The_migration_connection_string_gives_every_command_on_it_the_migration_bound`
+     shows that a command on that connection inherits 5400 s. The Acme
+     `MigratorTests.The_identity_store_migrates_under_the_configured_migration_bound` shows that the
+     migrator hands the store that string.
+   - The engine's own startup migration (`IdentityStoreCheck`, standalone mode) uses the engine's
+     own composition. That is the engine's runtime path, and this item did not touch it.
+   - The "Residual exposure" bullet in the implementer notes should not be carried into DECISIONS
+     as a product inconsistency.
+3. **The design-time-factory test keeping EF's default: agreed.**
+   - `A_database_update_through_the_design_time_factory_creates_the_database_and_the_role_first`
+     pins what an operator's `dotnet ef database update` does. A bound set by the test would no
+     longer emulate that, and the factory sets none.
+   - It is the most exposed remaining statement in the suite, since EF's own `CREATE DATABASE`
+     runs under 30 s with no 1807 retry. Note it on the watchlist next to (b) and act only on a
+     recurrence. If it does recur, the right change is in the factory (a bound an operator would
+     also get), not in the test.
+
+### Responses
+
+R1-1: fixed in the "PC-F64: review 1 fixes" commit. The ARCHITECTURE.md sentence now names the two
+fixtures it covers (the Core suite's catalog and the data layer's fixture schema), and says that
+tests whose migrations are themselves under test (the EF Core suite's migration tests, the identity
+store's own migration) leave the bound to EF or the product. No code change.
+
+Rulings 1-3 accepted. The identity-store bullet is removed from "Residual exposure", because the
+migrator hands the store a connection string bounded by `MigrationCommandTimeout`. The stall lever
+and the design-time-factory test stay as they are until a recurrence. The notes' "13:43:22" now
+reads 13:43:24, the last completion before the gap.
