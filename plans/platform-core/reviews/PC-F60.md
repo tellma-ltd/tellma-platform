@@ -115,6 +115,11 @@ integration push still gets its own run, never queued behind or cancelled by ano
   (nine of nine). The first plain-scalar attempt failed PyYAML, which is how the quoting
   requirement was found.
 - The gate's truth table above was evaluated with a scripted model of the expression.
+- Observed on GitHub: the push of cf37c45a, a commit without the gate phrase, created run
+  44694269933. It completed within seconds with conclusion `skipped`, and all nine jobs were
+  skipped, all-checks-passed included. It was neither red nor hanging. A watcher must read
+  `skipped` as "no gate ran", not as green. Run 44693894569 is the full run on cdb4bca8, started
+  under commit 1's ungated trigger.
 - `dotnet build Tellma.slnx` printed "Build succeeded" with 0 warnings and 0 errors.
   `dotnet format Tellma.slnx --verify-no-changes` exited 0 and reported no file changes (only
   the usual workspace-load notice).
