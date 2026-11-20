@@ -38,8 +38,9 @@ Evidence:
 - **The PR tier has the same bug, hidden.** In PR #18's run 44699551746, the `client` and
   `acme-client` jobs (`pnpm --dir ... exec playwright`) fail both install-deps attempts with the
   same pnpm error. They pass only because Chromium launches without the missing packages, so the
-  only sign is the "OS dependencies: unavailable" warning, and the CJK, Thai and emoji fonts the
-  script means to install are missing in those jobs. `identity-e2e`, whose CLI is
+  only sign is the "OS dependencies: unavailable" warning. The nine packages the script means to
+  install are missing in those jobs: the CJK (IPA Gothic, WenQuanYi Zen Hei), Thai (TLWG Loma),
+  GNU FreeFont, Unifont and X11 font packages. `identity-e2e`, whose CLI is
   `pwsh .../playwright.ps1` (no package manager), installs them: "OS dependencies: installed".
 - Reproduced locally in an `ubuntu:26.04` container (the runner's image) with a `runner` user that
   has passwordless sudo, `CI=true`, Node 24 and pnpm 11.9.0, on a minimal workspace (root plus
@@ -129,3 +130,76 @@ unchanged.
 - Pre-existing, not changed: when a per-attempt `timeout` kills apt during dpkg, the retry may
   find dpkg interrupted. A hosted runner's install takes about 35 s against the 150 s limit, so
   this was left alone.
+
+## Review 1
+
+Scope: commit 1 (b4a628df). Fix item, so no spec sections; reviewed against the failing runs,
+PLAN.md §6-§7 and AGENTS.md.
+
+What was checked, and holds:
+
+- Root cause. Nightly 44701549452, client-e2e "Install browsers": both attempts print
+  `Scope: all 5 workspace projects`, then `ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY`, with the
+  stack running through `runDepsStatusCheck` → `runPnpmCli ... pnpm.mjs install`. apt never runs;
+  Chromium and Firefox launch, WebKit fails on libgtk-4 and GStreamer. That is pnpm 11's
+  verify-deps-before-run install, run as root by `sudo -n env PATH=...` with CI and HOME reset,
+  exactly as the notes say. The same error is in the first red nightly 43196029407 (4 hits), and
+  every platform-core nightly since (11-13 through 11-20) is red, while the 19f54b37 runs
+  (main trampoline, no client jobs) are green.
+- PR tier. Run 44699551746: `client` and `acme-client (ubuntu-latest)` hit the same error on both
+  attempts and finish "(OS dependencies: unavailable)"; `identity-e2e` (pwsh) reaches apt and
+  finishes "(OS dependencies: installed)". The claim holds, except for the emoji part (R1-1).
+- No test relied on the missing fonts. The client has no screenshot goldens (`toHaveScreenshot`,
+  `toMatchSnapshot` and the like appear nowhere in client/ or distributions/), and the tests that
+  use CJK text assert text or values, not rendering (avatar.spec.ts asserts fixed 72 px boxes, not
+  glyph widths). The PR tier also ran with these fonts until 11-11 (`--with-deps`).
+- Every caller. Parsing both workflows lists six `install-browsers.sh` callers: identity-e2e and
+  nightly dotnet (pwsh, unchanged), client and acme-client Linux (repo-root paths, working
+  directory `.`), client-e2e and client-e2e-quarantine (`node_modules/.bin/playwright`, working
+  directory `client`). Each path resolves from its job's working directory; under sudo the cwd is
+  kept and `timeout` execs the relative path. No other tracked script or doc calls the script with
+  a package manager (CONTRIBUTING.md's `pnpm --dir client exec playwright install` lines are
+  developer installs that never reach sudo).
+- The shim. Both packages list `@playwright/test` directly, so `pnpm install` links
+  `node_modules/.bin/playwright` (present locally beside `.CMD`/`.ps1`). It is a sh script that
+  needs only `node`, which the passed-through PATH keeps. Ran here under Git Bash:
+  `client/node_modules/.bin/playwright --version`, the acme one and `node_modules/.bin/playwright`
+  from client/ all print 1.61.1.
+- The guard, exercised under Git Bash with fake CLIs (log-free, scratch folder
+  PC-F61-r1-fake): `./pnpm`, `./npx`, `./pnpm.CMD`, `./Yarn.ps1`, `/usr/bin/corepack`, `./bunx`
+  and `PNPM` all exit 2 with the `::error::`; `./node`, `./playwright`, `./pwsh` and
+  `./npm-run-all` pass the guard and reach step 1. No false positive. A backslash Windows path
+  (`C:\x\pnpm.cmd`) slips through, but it can only occur on Windows, where step 2 never runs, so
+  it does not matter.
+- Root-owned files and sudo-rs. PC-F61-repro2.log (ubuntu:26.04, sudo-rs 0.2.13, pnpm 11.9.0):
+  the fixed script installs and launches all three engines, the committed script then reports
+  "present", and `find ~/ws -user root` counts 0. install-deps as root writes nothing under the
+  runner's home either (HOME is /root under sudo).
+- Windows: the Windows steps do not call the script and are unchanged. The guard runs on every
+  OS, but no Windows caller passes a package manager.
+- AGENTS.md / PLAN.md §7.1: the script stays LF and executable (100755), `bash -n` passes, no
+  PC ids, `plans/` paths or spec references in comments or messages, README updated. No .NET or
+  client source changed, so no unit or e2e test is touched; the shell guard has no automated test,
+  as the script never had one, and a regression fails loudly (exit 2) on the next CI run. The
+  PR-tier effect shows on the integration CI run; the nightly effect needs a dispatch, as the
+  notes say.
+
+### Findings
+
+**R1-1 (minor): the implementer notes misstate which fonts the PR tier lacks.**
+- Where: plans/platform-core/reviews/PC-F61.md:41 ("the CJK, Thai and emoji fonts the script means
+  to install are missing").
+- Scenario: run 44699551746's dry run for `client`, `acme-client` and `identity-e2e` lists nine
+  missing packages: fonts-freefont-ttf, fonts-ipafont-gothic, fonts-tlwg-loma-otf, fonts-unifont,
+  fonts-wqy-zenhei, xfonts-cyrillic, xfonts-encodings, xfonts-scalable and xfonts-utils. No emoji
+  font is among them (the runner image already carries one, or Playwright does not ask for it).
+  Someone triaging an emoji-rendering difference from these notes would chase the wrong cause.
+- Fix: say "the CJK (IPA Gothic, WenQuanYi Zen Hei), Thai (TLWG Loma), GNU FreeFont, Unifont and
+  X11 font packages".
+
+### Responses
+
+R1-1: fixed in the review 1 fixes commit. Checked against run 44699551746's `client` warning,
+which lists the same nine packages with no emoji font. The PR-tier bullet in the implementer
+notes now names them: the CJK (IPA Gothic, WenQuanYi Zen Hei), Thai (TLWG Loma), GNU FreeFont,
+Unifont and X11 font packages.
