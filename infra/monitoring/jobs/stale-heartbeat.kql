@@ -1,0 +1,13 @@
+// Tenants whose job heartbeat stopped, from the log.
+// Backs the "no instance is polling a tenant" alert: some instance stamps each served tenant's
+// heartbeat at most once a minute and logs it, so a tenant whose latest heartbeat is older than two
+// minutes is not being polled anywhere: its jobs and schedules have stopped. A tenant whose poller
+// retired because the tenant left the served states (frozen, suspended, retired) logs that last and
+// is not reported. Tenant ids reach the log through the job machinery's log scope.
+traces
+| where timestamp > ago(1d)
+| extend event = tostring(customDimensions["EventName"])
+| extend tenant = tostring(customDimensions["TenantId"])
+| where event in ("JobWorkerHeartbeat", "JobPollerRetired") and isnotempty(tenant)
+| summarize arg_max(timestamp, event) by tenant
+| where event == "JobWorkerHeartbeat" and timestamp < ago(2m)

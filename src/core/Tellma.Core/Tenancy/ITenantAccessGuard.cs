@@ -62,6 +62,7 @@ namespace Tellma.Core.Tenancy
         /// <exception cref="TenantUnavailableException">The tenant's state refuses the request: <c>tenant-suspended</c>, <c>tenant-frozen</c> or <c>tenant-read-only</c>.</exception>
         /// <exception cref="IndividualRequiredException">The endpoint sets an assurance bar and the caller is a service account.</exception>
         /// <exception cref="StepUpRequiredException">The caller's session is below the endpoint's assurance bar.</exception>
+        /// <exception cref="DependencyUnavailableException">The connect's round trip exhausted its retries, or may have committed its activity stamp without a way to tell.</exception>
         /// <exception cref="InvalidOperationException">
         ///     The front door bound no tenant before calling or bound the platform's own principal,
         ///     or no initializer bound the caller's user: a defect of the host's wiring, never a

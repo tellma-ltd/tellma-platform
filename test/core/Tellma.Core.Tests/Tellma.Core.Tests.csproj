@@ -44,6 +44,10 @@
     <None Include="../../../client/projects/core/tellma-core/src/launch/launch-landing-vectors.json" Link="Tenancy\launch-landing-vectors.json" CopyToOutputDirectory="PreserveNewest" />
     <!-- The display-name golden the client's renderer reads too: one rule, one file. -->
     <None Include="../../../client/projects/core/tellma-core/src/entity/display-name-golden.json" Link="Data\Queries\display-name-golden.json" CopyToOutputDirectory="PreserveNewest" />
+    <!-- The job alert queries are read at runtime and cross-checked against the instruments, tags
+         and log events the job machinery emits, so a telemetry rename turns an alert query red at
+         PR time. -->
+    <Content Include="..\..\..\infra\monitoring\jobs\*.kql" Link="JobAlertQueries/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

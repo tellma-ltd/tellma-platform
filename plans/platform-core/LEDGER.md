@@ -102,9 +102,10 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 
 | PC | Slot | Branch | Step | Implementer agent (name / id) | Reviewer agent (name / id) | Started (UTC) |
 |---|---|---|---|---|---|---|
-| PC-F61 | pc-f | pc/PC-F61 | impl | fix agent (Opus, high, launched 2026-11-20) | nightly client-e2e/quarantine: Playwright OS deps install fails, webkit cannot launch (nightly 44701549452, 44506202284; first 43403796974); not a line stop; R1 only | 2026-11-20 |
-| PC-082 | pc-1 | pc/PC-082 | integrated (3f166bd1; pc run 44703261531 green; PR run pending) | impl (Opus, high, launched 2026-11-20) | 0016-e; R1 only | 2026-11-20 |
-| PC-100 | pc-4 | pc/PC-100 | integrating, new flow (released after PC-082 push 3f166bd1; held 610f7af1) | impl (Opus, high, launched 2026-11-19) | 0020-d; R1 2 blocking: escalated to R2 (inherit, xhigh, §4.4) | 2026-11-19 |
+| PC-144 | pc-3 | pc/PC-144 | impl | impl (Opus, high, launched 2026-11-20) | 0020-e; R1 only | 2026-11-20 |
+| PC-146 | pc-4 | pc/PC-146 | impl | impl (Opus, high, launched 2026-11-20) | 0021-c; R1 only | 2026-11-20 |
+| PC-087 | pc-1 | pc/PC-087 | held | held (0d6e317a; R1-1..6 fixed; merge-tree clean); released after PC-F61 | 0018-b; R1 only | 2026-11-20 |
+| PC-F61 | pc-f | pc/PC-F61 | ci-fix | CI red 44723555424 on 366d0ceb (acme-client ubuntu: chromium launch failed after deps installed; client needed attempt 2); CI fixes in progress | nightly client-e2e/quarantine: Playwright OS deps install fails, webkit cannot launch (nightly 44701549452, 44506202284; first 43403796974); not a line stop; R1 only | 2026-11-20 |
 
 ## Fix items
 
@@ -178,6 +179,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-B01 | 1 (PC-000…PC-014 at 7db93ca) | done (7e13990, CI 43142784871 green) | a31a1a5, 7e13990 (pc) | 0/2/2 all fixed (identity API audience/kind policy; CLI audience; file-preview download anchor; …); D-055; one finder returned none; 553k subagent tokens |
 | PC-B02 | 2 (PC-015…PC-031) | done (5 findings 0/3/2: 5 fixed, 1 sub-point pushed back; fixes c771eead; integrated 65057698; green 44208803444) | | |
 | PC-B03 | 3 (PC-032…PC-061) | done (6 findings 0/3/3: 6 fixed; fixes 3adc83da; integrated b4849737; CI 44215268639 red → PC-F57; green 44231237483 on 735456ab) | | |
+| PC-B04 | 4 (PC-062…PC-084) | done (8 findings 0/6/2: 8 fixed, parts pushed back; fixes 27f8bb6a; integrated f8806aa8; pc 44730508322 green; PR 44733161670 green) | 27f8bb6a, 14dad323, f8806aa8 | D-147, D-149; 4 agents, 857k subagent tokens |
 
 ## Merge-time tasks (before platform-core merges into main)
 
@@ -370,12 +372,12 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-079 | 0013-h | 1 | done | 1d018296, 1f2290e8, 4e824224; green 44512159188 | | carry from PC-049: spec 0013 §5.5 settings securables are yours (category Resource names already match); D-076: a language change moves only the settings tag, so bump entity tags or fold the shape into wire tags |
 | PC-080 | 0016-c | 1 | done | 8774aebb, 10fe4959, ea5e6dee, 6ced2f4e, 7eb13769, fc1ad812; CI red 44526593455 (test-host race, PC-F58); green 44554210017 | | carry from PC-099 r1: core.Notification has no access criteria until PC-146, so a member gets 403 on their own rows; no member-facing surface reads the stack before PC-146; carry from PC-064: the get-by-parent-ids RouteContract.ResponseType is RowPage, so the projector wraps the bare QueryRowSet as new RowPage(rows, null, null); child surfaces take the root stack's ContractRevision plus their own [ApiResource] revision |
 | PC-081 | 0016-d | 1 | done (93637714; green 44667247860) | 8c405881, 7e6c3bba, b6da8f64, 93637714 | | carry from PC-080 (D-124): fold the early BadRequestException→400 and LimitExceededException→413 mapping in TellmaProblemExceptionHandler into the full mapping; carry from PC-080 R2-2 (D-127): the problem writer applies the request cultures itself (WireBinding's async finally does not persist them); carry from PC-080 integration (D-127): write the Tellma-Version-Tags header (BatchOutcome composite) on settings/client too, since PC-080's raw-bytes path drops the action's WireTag; Acme signed-in HTTP tests are still skipped (NeedsUserConnectionAndBootstrap); done: D-133, D-136 converged, D-137 |
-| PC-082 | 0016-e | 1 | in progress | | | carry from PC-080 (D-124): register the tellma-web/tellma-long timeout policies before installing the timeout middleware (WithRequestTimeout("tellma-long") metadata is inert until then); carry D-133: Tellma-Priority parsing and 429 Retry-After from the limiter OnRejected |
+| PC-082 | 0016-e | 1 | done (3f166bd1; pc 44703261531 green, PR 44705432684 green) | 7b5075e7, 92b24e59, 3f166bd1 | | first integration under D-144; D-143, D-145 |
 | PC-083 | 0017-c1 | 1 | done | fe0edcc6, 6b4a02bf, 9d5dd16d; green 44392562042 | | |
 | PC-084 | 0017-c2 | 1 | done | 108e56b5, 46b70189, 575849a4, 52e51448; green 44457610985 | | carry (D-123): at integration, PC-077's SaveRun.Enlisted.cs Translate calls TranslateFailure(failure) in place of PersistFailures.Translate(...) before the re-home; add one enlisted test (refusals counted once per value; round count of a cold enlisted attach) |
 | PC-085 | 0011-g | 1 | done (integrated db81630; CI 43479519320 red: Acme E2E csproj never committed (.gitignore *.e2e matches the folder case-insensitively), fixed by PC-F30, green at 9a1754d (CI 43488423725); integration-windows itself green; fix1 6ba59cb; R1-6 pushed back: AspNetCore→Webhooks edge would break ARCHITECTURE rule 6, IVT seam kept and documented; R1-4 compares runtime models only; new fix: RCSI ALTER WITH ROLLBACK IMMEDIATE (pooled catalog connection timed out Acme readiness); integration-windows non-gating) | a147a95, 6ba59cb, db81630 (pc) |  |  |
 | PC-086 | 0029-a | 1 | done | ce581934, 7a5cdf53, 84278111, 22c362f7; green 44575091654 | | |
-| PC-087 | 0018-b | 1 | todo | | | |
+| PC-087 | 0018-b | 1 | in progress | | | |
 | PC-088 | 0018-c | 1 | todo | | | |
 | PC-089 | 0017-d | 1 | todo | | | carry: none from D-096 any more (D-120 moved §6.4 BlobContainerStep to PC-083 and the provisioning-record row to whichever of PC-078 and PC-083 lands last); carry from PC-080 (D-124): blob endpoints must evaluate access or record the member witness, or the witness filter answers 500 (unstarted) or aborts the connection (started); carry D-137: wrap the blob GET in the telemetry stage (0016 §5.1 chain); carry D-145: map the blob GET with DisableRequestTimeout or a time-to-first-byte policy (tellma-web cuts downloads at 30 s) |
 | PC-090 | 0018-d | 1 | todo | | | carry from PC-141 (D-096): TenantStateTests.An_action_allowed_when_read_only_succeeds_on_a_read_only_tenant runs and must pass |
@@ -388,7 +390,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-097 | 0020-b | 1 | done a90b368 (CI 43515001627 green) | bf01975, fb0abb0, 262b849, a90b368 (pc) |  |  |
 | PC-098 | 0020-c | 1 | done (92307211; green 44632808005) | 06ceb5dd, 46456458, 10ac40b1, 15f0e6a7, 92307211 | | D-128, D-129 (R1-4 for Ahmad), D-139 |
 | PC-099 | 0021-b | 1 | done (integrated 183e772, CI 43618488320 green) | 2e7dfd1, 2de32d7, f5174b3, 11a57e0 (pc), 69c009b, 183e772 (pc) |  |  |
-| PC-100 | 0020-d | 1 | in progress | | | carry from PC-141 (D-096): TenantStateTests.A_job_whose_handler_runs_when_read_only_succeeds_on_a_read_only_tenant runs and must pass |
+| PC-100 | 0020-d | 1 | done (f4e6120b; pc 44718230236 green after CI fix, PR 44721068450 green) | 22360494, eafc689a, 610f7af1, 796b6dc7, 44867684, f4e6120b | | carry from PC-141 (D-096): TenantStateTests.A_job_whose_handler_runs_when_read_only_succeeds_on_a_read_only_tenant runs and must pass ; D-141, D-142, D-146 |
 | PC-101 | 0010-f4 | 1 | done (450f7dd, CI 43164947502 green) | b11e206, c66a4a7, 450f7dd (pc) | 8.94M (impl+fix1+int 7.20, r1 1.74) | R1 0/1/5 all fixed; new deviations: null for an IsNotNull parameter is a caller error; printed text over a parse ceiling reports that ceiling's diagnostic |
 | PC-102 | 0029-f | 1 | done (1b83923c; green 44655600178) | c586d072, 2187f29c, 1b83923c | | D-136, D-138 |
 | PC-103 | 0024-g | 1 | todo | | | carry from PC-094: replace Acme's interim main.ts (bootstrapApplication) and AcmeApp with bootstrapTellma/TmApp |
@@ -432,9 +434,9 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-141 | 0011-h | 2 | done (478b0ab0; CI 43879675326 green) | bb2a2d6, 15d1369 (pc/PC-141) | | |
 | PC-142 | 0015-k | 2 | done (eba471bf; green 44642487470) | e86138b6, 76ee772e, e6f1d0b2, 3083d411, eba471bf | | D-131, D-132, D-134 |
 | PC-143 | 0018-f | 2 | todo | | | |
-| PC-144 | 0020-e | 2 | todo | | | |
+| PC-144 | 0020-e | 2 | in progress | | | |
 | PC-145 | 0020-f | 2 | todo | | | |
-| PC-146 | 0021-c | 2 | todo | | | carry from PC-099 r1: the Notification stack fails closed (no criteria) until this lands; add the self-scope |
+| PC-146 | 0021-c | 2 | in progress | | | carry from PC-099 r1: the Notification stack fails closed (no criteria) until this lands; add the self-scope |
 | PC-147 | 0021-d | 2 | todo | | | |
 | PC-148 | 0022-a | 2 | todo | | | |
 | PC-149 | 0022-b | 2 | todo | | | |

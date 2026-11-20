@@ -53,7 +53,7 @@ namespace Tellma.Core.Settings
         IRequestContextAccessor accessor,
         ITenantSettingsCache settingsCache,
         ICacheableEntities cacheable,
-        IAccessEvaluator evaluator,
+        AccessEvaluator evaluator,
         ISettingKeyRegistry keys,
         SettingsPatchMerger merger,
         IQueryexSchemaProvider schemas,
@@ -120,12 +120,20 @@ namespace Tellma.Core.Settings
                 throw new ForbiddenException(ForbiddenCode, CoreResources.SettingsGeneral, AccessActions.Read, ForbiddenReason.NoGrant);
             }
 
-            // --- One Read batch: the rows themselves and the related reads of the cached values ---
+            // --- One Read batch: the rows themselves and the related reads of the cached values. The
+            // categories are decided again for the user each composition is for, so a batch recomposed
+            // under a fresh set reads only what that set still grants (spec 0015 §5.1) ---
             EditorReads? reads = null;
             return await runner.RunAsync(
                 BatchPurpose.Read,
                 (user, batch) =>
                 {
+                    held = HeldBy(user);
+                    if (!held.Any)
+                    {
+                        throw new ForbiddenException(ForbiddenCode, CoreResources.SettingsGeneral, AccessActions.Read, ForbiddenReason.NoGrant);
+                    }
+
                     reads = ComposeEditorReads(batch, held, typed: held.General, overlay: null);
                     return ValueTask.CompletedTask;
                 },
@@ -187,8 +195,29 @@ namespace Tellma.Core.Settings
         /// <returns>The categories held.</returns>
         private async Task<HeldCategories> HeldAsync(CancellationToken cancellationToken)
         {
-            SecurableRef[] securables = [.. Resources().Select(static resource => new SecurableRef(resource, AccessActions.Read))];
-            IReadOnlyList<AccessDecision> decisions = await evaluator.EvaluateAsync(securables, cancellationToken).ConfigureAwait(false);
+            return Held(await evaluator.EvaluateAsync(ReadPairs(), cancellationToken).ConfigureAwait(false));
+        }
+
+        /// <summary>The categories a connected user's set grants <c>Read</c> on, decided without recording, for a batch composed for that user.</summary>
+        /// <param name="user">The connected user a batch is composed for.</param>
+        /// <returns>The categories held.</returns>
+        private HeldCategories HeldBy(ConnectedUser user)
+        {
+            return Held(evaluator.DecideFor(user.Access, ReadPairs()));
+        }
+
+        /// <summary>The <c>Read</c> pair of the typed row's resource and of every category's.</summary>
+        /// <returns>The pairs.</returns>
+        private SecurableRef[] ReadPairs()
+        {
+            return [.. Resources().Select(static resource => new SecurableRef(resource, AccessActions.Read))];
+        }
+
+        /// <summary>The categories the decisions on <see cref="ReadPairs" /> allow.</summary>
+        /// <param name="decisions">The decisions.</param>
+        /// <returns>The categories held.</returns>
+        private HeldCategories Held(IEnumerable<AccessDecision> decisions)
+        {
             HashSet<string> allowed = new(decisions.Where(static decision => decision.IsAllowed).Select(static decision => decision.Resource), StringComparer.OrdinalIgnoreCase);
             return new HeldCategories(
                 allowed.Contains(CoreResources.SettingsGeneral),

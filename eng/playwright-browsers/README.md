@@ -10,22 +10,32 @@ only a few optional fonts were missing.
 
 Pass the browsers, then `--`, then the command that runs the Playwright CLI. The caller picks the
 CLI, so the browser builds always match the Playwright version the tests run with: the .NET one from
-the E2E project's build output, or the Node one from the pnpm lockfile.
+the E2E project's build output, or the Node one that `pnpm install` linked into the package's
+`node_modules/.bin`.
 
 ```bash
 # From the repository root, on Linux or on Windows under Git Bash:
-bash eng/playwright-browsers/install-browsers.sh chromium -- pnpm --dir client exec playwright
+bash eng/playwright-browsers/install-browsers.sh chromium -- client/node_modules/.bin/playwright
 bash eng/playwright-browsers/install-browsers.sh chromium -- pwsh test/apps/Tellma.Identity.E2E/bin/Release/net10.0/playwright.ps1
 ```
 
 The browsers are `chromium`, `firefox` and `webkit`.
+
+The command must run the CLI itself, not through a package manager: the script refuses one that
+starts with `pnpm`, `npm`, `npx`, `yarn`, `corepack` or `bun`. The OS-dependency step runs the CLI
+as root, and sudo resets the environment, so a package manager run there sees another
+configuration and another store than the install that built `node_modules`. pnpm 11 checks the
+install before every `exec`; as root it finds it out of date and tries to remove and reinstall
+`node_modules`, which fails without a terminal (`ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY`) and,
+with `CI=true`, would rebuild the workspace as root. The bin shim runs the same pinned CLI with
+`node` alone.
 
 The apt step is meant for CI. It runs Playwright's `install-deps` as root, through `sudo -n`, which
 a hosted runner allows without a password. Where sudo asks for a password, as on most developer
 machines, the script does not prompt: it warns that it cannot install the OS dependencies and
 leaves the decision to the launch probe. To install them on such a machine, run the CLI's
 `install-deps` under sudo by hand, for example
-`sudo env "PATH=$PATH" pnpm --dir client exec playwright install-deps chromium`.
+`sudo env "PATH=$PATH" client/node_modules/.bin/playwright install-deps chromium`.
 
 ## What it does
 
@@ -38,8 +48,15 @@ leaves the decision to the launch probe. To install them on such a machine, run 
    does not find the apt lock still held. When every attempt fails, or root is not available
    without a password, the script emits a `::warning::` that names the packages still missing,
    and carries on to the probe instead of failing.
-3. **Probe each browser**: launch it headlessly through the same CLI and screenshot a blank page.
-   A browser that cannot launch fails the step, whatever happened in step 2.
+3. **Probe each browser**: launch it headlessly through the same CLI, open a small `data:` page and
+   screenshot it once the page has rendered a frame. A browser that cannot launch fails the step,
+   whatever happened in step 2. The probe waits for the frame because the CLI otherwise takes the
+   screenshot as soon as the page has loaded, which for `about:blank` can come before the page's
+   first frame. Chromium then fails the capture ("Unable to capture screenshot") although the
+   browser launched. The page marks itself from a second `requestAnimationFrame` callback, which
+   runs only after a frame has been produced, and the CLI's `--wait-for-selector` waits for that
+   mark. A passing probe prints one line. A failing one prints the CLI's output together with the
+   browser process's own log (Playwright's `pw:browser` debug channel).
 
 ## Outcomes
 

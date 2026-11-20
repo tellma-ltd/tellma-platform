@@ -31,6 +31,10 @@ namespace Tellma.Core.Tests.Infrastructure
             ["Tellma:Sql:AllowedServers:0"] = ".database.windows.net",
             ["Tellma:Identity:Authority"] = "https://id.tellma.com",
             ["Tellma:Identity:ServiceClientSecret"] = "test-service-client-secret",
+
+            // The tenants these compositions serve have no databases, so the job worker stays off; a
+            // test of the worker's registration turns it on.
+            ["Tellma:Jobs:Enabled"] = "false",
         };
 
         /// <summary>The sound configuration with some values added, replaced or removed (a null value removes the key).</summary>

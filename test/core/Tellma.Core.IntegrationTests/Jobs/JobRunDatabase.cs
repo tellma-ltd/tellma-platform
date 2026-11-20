@@ -29,7 +29,9 @@ namespace Tellma.Core.IntegrationTests.Jobs
     ///     scripted handlers, the tables its stacks own refused to a caller's raw writes as in
     ///     production, the tenant's administrators fixed, and the notices and client events recorded
     ///     once their batch committed. A raw table no stack owns takes the handlers' own statements.
-    ///     Created once per test class and reset before each test; a class's tests run one at a time.
+    ///     The change-tracking audit checks every batch but while a test suspends it to run batches
+    ///     side by side. Created once per test class and reset before each test; a class's tests run
+    ///     one at a time.
     /// </summary>
     public class JobRunDatabase : IAsyncLifetime
     {
@@ -53,6 +55,7 @@ namespace Tellma.Core.IntegrationTests.Jobs
             DELETE FROM [test].[RunLog];
             DELETE FROM [fixture].[Shipments];
             DELETE FROM [core].[Jobs];
+            UPDATE [core].[JobWorkerState] SET [LastTickAt] = NULL, [LastTickOwner] = NULL;
             """;
 
         /// <summary>The suite's server.</summary>
@@ -99,6 +102,9 @@ namespace Tellma.Core.IntegrationTests.Jobs
         /// <summary>The host's log.</summary>
         public FakeLogCollector Log => Tenant.Services.GetFakeLogCollector();
 
+        /// <summary>The audit of every batch's writes, which a test suspends while batches run side by side.</summary>
+        internal SuspendableAudit Audit { get; } = new();
+
         /// <inheritdoc />
         public async ValueTask InitializeAsync()
         {
@@ -119,6 +125,10 @@ namespace Tellma.Core.IntegrationTests.Jobs
 
                     // --- The stacks' tables are theirs again, as in production: a caller's raw write to one is refused ---
                     _ = services.Replace(ServiceDescriptor.Singleton<IStackTableOwners>(static provider => new StackTableOwners(provider.GetRequiredService<StackRegistry>())));
+
+                    // --- The fixture's audit, behind a switch a test turns off while batches overlap ---
+                    Audit.Inner = services.LastOrDefault(static service => service.ServiceType == typeof(IDataBatchAudit))?.ImplementationInstance as IDataBatchAudit;
+                    _ = services.Replace(ServiceDescriptor.Singleton<IDataBatchAudit>(Audit));
                 },
                 readCommittedSnapshot: ReadCommittedSnapshot,
                 compose: static tellma => tellma.AddFeature(new JobRunFeature()),
@@ -138,10 +148,11 @@ namespace Tellma.Core.IntegrationTests.Jobs
                 $"CREATE TABLE {RawTable} ([Id] int IDENTITY PRIMARY KEY, [JobId] int NOT NULL, [Note] nvarchar(100) NOT NULL);");
         }
 
-        /// <summary>Deletes every row a test may have written, reactivates the user a test deactivates, and clears the script, the notices, the events and the log.</summary>
+        /// <summary>Deletes every row a test may have written, reactivates the user a test deactivates, resumes the audit, and clears the script, the notices, the events and the log.</summary>
         /// <returns>A task that completes when the database is reset.</returns>
         public async Task ResetAsync()
         {
+            Audit.Suspended = false;
             await SqlServerFixture.ExecuteAsync(
                 ConnectionString,
                 ResetText,
@@ -159,7 +170,7 @@ namespace Tellma.Core.IntegrationTests.Jobs
             return _tenant?.DisposeAsync() ?? ValueTask.CompletedTask;
         }
 
-        /// <summary>Stores a job due five seconds ago and not leased, as an enqueue or a completion leaves one.</summary>
+        /// <summary>Stores a job not leased, as an enqueue or a completion leaves one, due five seconds ago unless told otherwise.</summary>
         /// <param name="key">The handler key.</param>
         /// <param name="runAs">The run-as user.</param>
         /// <param name="requestedBy">The requester; null for none.</param>
@@ -168,7 +179,7 @@ namespace Tellma.Core.IntegrationTests.Jobs
         /// <param name="confirmedKeys">The confirmed warning keys as stored; null for none.</param>
         /// <param name="cancelRequested">Whether a cancel was requested.</param>
         /// <param name="errorCode">The error an earlier attempt recorded; null for none.</param>
-        /// <param name="dueSecondsAgo">How long ago the job became due.</param>
+        /// <param name="dueSecondsAgo">How long ago the job became due; negative for a job due later.</param>
         /// <returns>The job's id.</returns>
         public async Task<int> InsertJobAsync(
             string key,
@@ -190,7 +201,7 @@ namespace Tellma.Core.IntegrationTests.Jobs
                     $"""
                     DECLARE @id int = NEXT VALUE FOR [core].[sq_Jobs];
                     INSERT INTO [core].[Jobs] ([Id], [HandlerKey], [Status], [DueAt], [Attempts], [StateJson], [ConfirmedKeys], [CancelRequestedAt], [ErrorCode], [RunAsUserId], [RequestedById], [CreatedAt])
-                    VALUES (@id, N'{key}', 'Pending', DATEADD(second, -{dueSecondsAgo}, SYSUTCDATETIME()), {attempts}, {Literal(stateJson)}, {Literal(confirmedKeys)}, {cancel}, {Literal(errorCode)}, {runAs}, {requester}, SYSUTCDATETIME());
+                    VALUES (@id, N'{key}', 'Pending', DATEADD(second, -({dueSecondsAgo}), SYSUTCDATETIME()), {attempts}, {Literal(stateJson)}, {Literal(confirmedKeys)}, {cancel}, {Literal(errorCode)}, {runAs}, {requester}, SYSUTCDATETIME());
                     SELECT @id;
                     """));
         }
@@ -288,6 +299,48 @@ namespace Tellma.Core.IntegrationTests.Jobs
     /// <param name="sql">The suite's server.</param>
     public sealed class LockingJobRunDatabase(SqlServerFixture sql) : JobRunDatabase(sql, readCommittedSnapshot: false);
 
+    /// <summary>
+    ///     The fixture's change-tracking audit behind a switch. The audit attributes every change in a
+    ///     batch's window to that batch, which holds only while one batch at a time writes, so a test
+    ///     that runs batches side by side suspends it; a batch begun while it was suspended is not
+    ///     checked when it ends.
+    /// </summary>
+    internal sealed class SuspendableAudit : IDataBatchAudit
+    {
+        /// <summary>What a batch begun while the audit was suspended carries to its end.</summary>
+        private static readonly object Unchecked = new();
+
+        /// <summary>Whether the audit is suspended.</summary>
+        private volatile bool _suspended;
+
+        /// <summary>The fixture's audit; null when the host has none.</summary>
+        public IDataBatchAudit? Inner { get; set; }
+
+        /// <summary>Whether the audit is suspended: batches begun now are not checked.</summary>
+        public bool Suspended
+        {
+            get => _suspended;
+            set => _suspended = value;
+        }
+
+        /// <inheritdoc />
+        public async ValueTask<object?> BeforeAsync(CancellationToken cancellationToken)
+        {
+            return _suspended || Inner is not IDataBatchAudit inner ? Unchecked : await inner.BeforeAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        /// <inheritdoc />
+        public async ValueTask AfterAsync(object? state, IReadOnlySet<TableName> writtenTables, CancellationToken cancellationToken)
+        {
+            if (ReferenceEquals(state, Unchecked) || Inner is not IDataBatchAudit inner)
+            {
+                return;
+            }
+
+            await inner.AfterAsync(state, writtenTables, cancellationToken).ConfigureAwait(false);
+        }
+    }
+
     /// <summary>A job's stored row, every column by name.</summary>
     /// <param name="Columns">The columns.</param>
     public sealed record JobRow(IReadOnlyDictionary<string, object?> Columns)
@@ -369,16 +422,23 @@ namespace Tellma.Core.IntegrationTests.Jobs
     }
 
     /// <summary>
-    ///     A notifier that records each request once its batch committed, and delivers nothing; a
-    ///     test may have it refuse every request, as a notifier whose statement cannot be composed would.
+    ///     A notifier that records each request once its batch committed and each withdrawal sent on
+    ///     its own, and delivers nothing; a test may have it refuse every request, as a notifier whose
+    ///     statement cannot be composed would.
     /// </summary>
     public sealed class CommittedNotices : INotifier
     {
         /// <summary>The requests, in the order recorded.</summary>
         private readonly ConcurrentQueue<NotificationRequest> _requests = new();
 
+        /// <summary>The withdrawals, in the order recorded.</summary>
+        private readonly ConcurrentQueue<WithdrawRequest> _withdrawals = new();
+
         /// <summary>The requests recorded since the last clear.</summary>
         public IReadOnlyList<NotificationRequest> Raised => [.. _requests];
+
+        /// <summary>The withdrawals sent on their own since the last clear.</summary>
+        public IReadOnlyList<WithdrawRequest> Withdrawn => [.. _withdrawals];
 
         /// <summary>Whether every request appended to a batch is refused with an exception; off again after each clear.</summary>
         public bool Refuses { get; set; }
@@ -387,6 +447,7 @@ namespace Tellma.Core.IntegrationTests.Jobs
         public void Clear()
         {
             _requests.Clear();
+            _withdrawals.Clear();
             Refuses = false;
         }
 
@@ -432,7 +493,13 @@ namespace Tellma.Core.IntegrationTests.Jobs
         /// <inheritdoc />
         public Task WithdrawAsync(IReadOnlyList<WithdrawRequest> requests, CancellationToken cancellationToken = default)
         {
-            throw new NotSupportedException("No job completion withdraws a notification.");
+            ArgumentNullException.ThrowIfNull(requests);
+            foreach (WithdrawRequest request in requests)
+            {
+                _withdrawals.Enqueue(request);
+            }
+
+            return Task.CompletedTask;
         }
     }
 
@@ -450,6 +517,9 @@ namespace Tellma.Core.IntegrationTests.Jobs
 
         /// <summary>The handler of one attempt whose failure notices stay in the inbox.</summary>
         public const string Inbox = "test.inbox";
+
+        /// <summary>A key the feature retired: its jobs are cancelled by the hourly sweep.</summary>
+        public const string Retired = "test.retired";
 
         /// <summary>A warning the handlers raise, which a job's initiator may confirm.</summary>
         public const string Backdated = "Test.Backdated";
@@ -528,6 +598,7 @@ namespace Tellma.Core.IntegrationTests.Jobs
                 .JobHandler<RunShipHandler>()
                 .JobHandler<RunStepsHandler>()
                 .JobHandler<RunInboxHandler>()
+                .RetiredJobKey(JobRunKeys.Retired)
                 .Confirmation(JobRunKeys.Backdated)
                 .Confirmation(JobRunKeys.Negative);
             foreach (string key in JobRunKeys.Numbered)

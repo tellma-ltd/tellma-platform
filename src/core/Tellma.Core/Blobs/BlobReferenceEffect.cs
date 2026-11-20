@@ -13,16 +13,17 @@ namespace Tellma.Core.Blobs
     /// <summary>
     ///     Moves the blobs a persist dereferenced or attached through their states, inside the persist's
     ///     transaction: per blob-reference column the emitter captured, the blobs the change
-    ///     dereferenced are released, and on a save the newly attached ones are confirmed after the
-    ///     kind, the uploader and the deadline are checked again. A save whose newly attached blob is
-    ///     no longer attachable rolls back with <see cref="ValidationCodes.BlobNotAttachable" />.
+    ///     dereferenced are released, and on a save, or an action's marked rows, the newly attached
+    ///     ones are confirmed after the kind, the uploader and the deadline are checked again. A write
+    ///     whose newly attached blob is not attachable rolls back with
+    ///     <see cref="ValidationCodes.BlobNotAttachable" />.
     /// </summary>
     /// <remarks>
     ///     <para>
     ///         Every value comes from the capture the emitter filled from the written rows, never from
     ///         memory, so an override save releases what was actually on the row, and a delete releases
     ///         exactly what it removed. A column the persist captured nothing for contributes nothing,
-    ///         so an action's persist gains no statement.
+    ///         so an action that marks no row gains no statement.
     ///     </para>
     ///     <para>
     ///         Only a committed blob is released and only a staged one confirmed, so a double release
@@ -47,8 +48,10 @@ namespace Tellma.Core.Blobs
                 return Task.CompletedTask;
             }
 
-            // A save confirms what it attached; a delete only releases what it removed.
-            bool confirms = context is SavePersistContext<TEntity>;
+            // A save, and an action through the rows it marked, confirm what they attached; a delete
+            // only releases what it removed. An action's marked rows are written by the save
+            // statement, whose capture holds new values the attach rule must judge (spec 0017 §4.1).
+            bool confirms = context is not DeletePersistContext<TEntity>;
             foreach (BlobColumn column in BlobAttachments.Columns(metadata.Get(typeof(TEntity))))
             {
                 // The capture is found by its table and column; its name is the emitter's, never formed here.
@@ -60,7 +63,7 @@ namespace Tellma.Core.Blobs
                 if (confirms)
                 {
                     int userId = context.Context.UserId
-                        ?? throw new InvalidOperationException("A save's persist runs for a connected user, whose id confirms the blobs the user staged.");
+                        ?? throw new InvalidOperationException("A save's or an action's persist runs for a connected user, whose id confirms the blobs the user staged.");
                     Confirm(context.Batch, capture.Identifier, column.Kind, userId);
                 }
                 else

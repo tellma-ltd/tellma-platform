@@ -1,0 +1,8 @@
+// Polls that found the job worker had been away from a tenant past the gap threshold.
+// Backs the "the worker came back from a long absence" alert: a restored backup or a long outage.
+// The overdue work was held rather than run, and waits for an administrator to resume or cancel it
+// on the Jobs page; any detection needs a person.
+customMetrics
+| where name == "tellma.schedules.gap_detected"
+| summarize gaps = sum(valueSum) by cloud_RoleInstance, bin(timestamp, 5m)
+| where gaps > 0

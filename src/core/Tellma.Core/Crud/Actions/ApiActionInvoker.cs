@@ -11,6 +11,7 @@ using Tellma.Core.Abstractions.Validation;
 using Tellma.Core.Access;
 using Tellma.Core.Crud.Enlistment;
 using Tellma.Core.Crud.Save;
+using Tellma.Core.Data;
 
 namespace Tellma.Core.Crud.Actions
 {
@@ -41,6 +42,7 @@ namespace Tellma.Core.Crud.Actions
         /// </exception>
         /// <exception cref="BadRequestException">The action takes a body, and none was sent.</exception>
         /// <exception cref="ValidationException">An annotation of the body failed.</exception>
+        /// <exception cref="DependencyUnavailableException">A round trip exhausted its retries, or may have committed without a way to tell.</exception>
         public async Task<object?> InvokeAsync(ApiActionDescriptor action, object? body, CancellationToken cancellationToken = default)
         {
             ArgumentNullException.ThrowIfNull(action);
@@ -52,7 +54,12 @@ namespace Tellma.Core.Crud.Actions
 
             // --- The handler, from the request's scope; then the authority ---
             object handler = writes.Services.GetRequiredService(method.Handler);
-            await AuthorizeAsync(action, cancellationToken).ConfigureAwait(false);
+
+            // The method runs batches the platform does not compose, so every grant the scope
+            // requires (the securable below, and any the method requires) is decided again whenever
+            // the runner recomposes a batch for a fresh set (spec 0015 §5.1).
+            writes.Evaluator.HoldRequiredGrants();
+            await DataAccessTranslation.RunAsync(() => AuthorizeAsync(action, cancellationToken)).ConfigureAwait(false);
 
             // --- The body's annotations: every failure at once, each at a member of the body ---
             if (request is not null)
@@ -65,12 +72,14 @@ namespace Tellma.Core.Crud.Actions
                 }
             }
 
-            // --- The frame, the scope's open frame and its unit of work, around the interceptors and the method ---
+            // --- The frame, the scope's open frame and its unit of work, around the interceptors and the method.
+            // Spec 0015 §14.2: the frame's rounds and persist, and every batch the method runs on its
+            // own, are outside the stack operations' translation, so the invoker translates them ---
             operations.Name(method.Owner, action.Name);
             object?[] arguments = ArgumentsOf(method, request, cancellationToken);
             var frame = OpenWriteFrame.ForApiAction(writes, action, method, cancellationToken);
-            return await frame.RunAsync(
-                () => Intercepted(action, request, () => ActionInvoker.InvokeAsync(method.Method, handler, arguments), cancellationToken)).ConfigureAwait(false);
+            return await DataAccessTranslation.RunAsync(() => frame.RunAsync(
+                () => Intercepted(action, request, () => ActionInvoker.InvokeAsync(method.Method, handler, arguments), cancellationToken))).ConfigureAwait(false);
         }
 
         /// <summary>The body the method takes: none for an action without a request type, else one of that type.</summary>

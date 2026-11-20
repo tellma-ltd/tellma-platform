@@ -78,7 +78,8 @@ namespace Tellma.Core.Abstractions.Crud
 
         /// <summary>
         ///     The emitter's column captures of this persist, looked up by table and column, such as the
-        ///     blob references a save replaced or a delete removed; empty on an action.
+        ///     blob references a save, or an action's marked rows, replaced and a delete removed; empty
+        ///     on an action that marked no row.
         /// </summary>
         /// <exception cref="ArgumentNullException">Set to null.</exception>
         public required IReadOnlyList<ColumnCapture> Captures

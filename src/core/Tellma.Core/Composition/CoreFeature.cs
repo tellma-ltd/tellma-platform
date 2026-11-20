@@ -241,6 +241,8 @@ namespace Tellma.Core.Composition
                 .TableType<ScheduleNextList>()
                 .NotificationType(JobNotices.FailedDescriptor)
                 .NotificationType(JobNotices.PendingConfirmationDescriptor)
+                .NotificationType(JobNotices.HeldDescriptor)
+                .NotificationType(JobNotices.GapDescriptor)
                 .ClientEvent(JobNotices.ChangedEvent);
 
             // --- The standalone table types: the canonical bulk-operation shapes, and the version-tag guard's ---

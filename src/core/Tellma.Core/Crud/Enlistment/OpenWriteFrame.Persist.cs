@@ -39,12 +39,6 @@ namespace Tellma.Core.Crud.Enlistment
         /// <summary>The request client of an agent's call, whose writes are the agent's.</summary>
         private const string AgentClient = "mcp";
 
-        /// <summary>The dependency a data-access failure names.</summary>
-        private const string DatabaseDependency = "database";
-
-        /// <summary>The wait a caller is told before reloading after a commit the database could not confirm.</summary>
-        private static readonly TimeSpan DatabaseRetryAfter = TimeSpan.FromSeconds(1);
-
         /// <summary>The times the runner entered the persist's compose.</summary>
         private int _entries;
 
@@ -167,7 +161,7 @@ namespace Tellma.Core.Crud.Enlistment
             catch (DataAccessAmbiguousException ambiguous)
             {
                 // A batch that cannot be probed: the caller reloads to learn whether it committed.
-                throw new DependencyUnavailableException(DatabaseDependency, DatabaseRetryAfter, ambiguous);
+                throw DataAccessTranslation.Unavailable(ambiguous);
             }
             catch (DataAccessException failure)
             {

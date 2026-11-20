@@ -27,14 +27,22 @@ namespace Tellma.Core.AspNetCore.Api
             Message = "A request to {Route} was refused before its endpoint ran: {Reason}.")]
         public static partial void RequestRejected(ILogger logger, string reason, string route);
 
-        /// <summary>A request ran past its timeout after its response had started, so its connection was aborted.</summary>
+        /// <summary>
+        ///     A request ran past its timeout once its answer could no longer be a 504, so its
+        ///     connection was aborted.
+        /// </summary>
         /// <param name="logger">The logger.</param>
         /// <param name="route">The matched endpoint's route pattern and methods.</param>
+        /// <param name="reason">
+        ///     Why the answer could not be a 504: <c>started</c> (its response had started),
+        ///     <c>persist</c> (it had sent a write, which may have committed) or <c>body</c> (its body
+        ///     writer had begun).
+        /// </param>
         [LoggerMessage(
             EventName = "ApiResponseAbortedOnTimeout",
             Level = LogLevel.Warning,
-            Message = "A request to {Route} ran past its timeout after its response had started; the connection was aborted.")]
-        public static partial void ResponseAbortedOnTimeout(ILogger logger, string route);
+            Message = "A request to {Route} ran past its timeout after its answer was begun ({Reason}); the connection was aborted.")]
+        public static partial void ResponseAbortedOnTimeout(ILogger logger, string route, string reason);
 
         /// <summary>The web surface projected its child query surfaces, which are on by default.</summary>
         /// <param name="logger">The logger.</param>

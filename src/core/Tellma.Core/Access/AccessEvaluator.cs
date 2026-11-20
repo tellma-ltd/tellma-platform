@@ -64,7 +64,7 @@ namespace Tellma.Core.Access
         private readonly ILookup<string, IAccessCriteriaProvider> _providers =
             (criteriaProviders ?? throw new ArgumentNullException(nameof(criteriaProviders))).ToLookup(static provider => provider.Resource, StringComparer.OrdinalIgnoreCase);
 
-        /// <summary>Guards the loads of other users.</summary>
+        /// <summary>Guards the loads of other users and the required grants.</summary>
         private readonly Lock _gate = new();
 
         /// <summary>The scope's load of each other user's permissions; a null set for an unknown, inactive or system user.</summary>
@@ -73,11 +73,17 @@ namespace Tellma.Core.Access
         /// <summary>Cancels the scope's loads of other users when the evaluator is disposed.</summary>
         private readonly CancellationTokenSource _lifetime = new();
 
+        /// <summary>The pairs <see cref="RequireAsync" /> granted the caller in this scope; guarded by <see cref="_gate" />.</summary>
+        private readonly HashSet<SecurableRef> _required = [];
+
         /// <summary>1 once the scope's deny re-check started; back to 0 when it failed.</summary>
         private int _rechecked;
 
         /// <summary>1 once the evaluator is disposed.</summary>
         private int _disposed;
+
+        /// <summary>Whether a recomposed batch must find every required pair still granted; guarded by <see cref="_gate" />.</summary>
+        private bool _holdRequired;
 
         /// <inheritdoc />
         public async Task<AccessDecision> EvaluateAsync(string resource, string action, CancellationToken cancellationToken = default)
@@ -118,6 +124,12 @@ namespace Tellma.Core.Access
             if (decision.Outcome == AccessOutcome.Denied)
             {
                 throw new ForbiddenException(ForbiddenCode, decision.Resource, decision.Action, ForbiddenReason.NoGrant);
+            }
+
+            // --- The grant is remembered, so a batch recomposed for a fresh set can decide it again ---
+            lock (_gate)
+            {
+                _ = _required.Add(new SecurableRef(decision.Resource, decision.Action));
             }
 
             // --- A sensitive pair asks for a recent, stronger sign-in of every caller but the platform's
@@ -364,6 +376,70 @@ namespace Tellma.Core.Access
             }
 
             return decisions;
+        }
+
+        // Spec 0015 §5.1: a batch runs under exactly the grants its prologue confirmed. A stack
+        // operation decides its own grant again in every composition; an API action's method runs
+        // batches the platform does not compose, so the action invoker asks the guarded runner to
+        // decide every pair the scope required again whenever it recomposes for a fresh set.
+        /// <summary>
+        ///     From now on, makes <see cref="EnsureRequiredHold" /> refuse a fresh set that no longer
+        ///     grants a pair <see cref="RequireAsync" /> granted in this scope, before or after this call.
+        /// </summary>
+        internal void HoldRequiredGrants()
+        {
+            lock (_gate)
+            {
+                _holdRequired = true;
+            }
+        }
+
+        /// <summary>
+        ///     When the scope holds its required grants, decides every pair <see cref="RequireAsync" />
+        ///     granted again from a fresh set, and refuses the first one it no longer grants. Records
+        ///     nothing and counts nothing.
+        /// </summary>
+        /// <param name="user">The connected user a batch is about to be recomposed for.</param>
+        /// <exception cref="ForbiddenException">The fresh set no longer grants a required pair.</exception>
+        internal void EnsureRequiredHold(ConnectedUser user)
+        {
+            ArgumentNullException.ThrowIfNull(user);
+            SecurableRef[] required;
+            lock (_gate)
+            {
+                if (!_holdRequired || _required.Count == 0)
+                {
+                    return;
+                }
+
+                required = [.. _required];
+            }
+
+            foreach (AccessDecision decision in DecideFor(user.Access, required))
+            {
+                if (decision.Outcome == AccessOutcome.Denied)
+                {
+                    throw new ForbiddenException(ForbiddenCode, decision.Resource, decision.Action, ForbiddenReason.NoGrant);
+                }
+            }
+        }
+
+        /// <summary>Decides pairs from a set now, registered or not. Records nothing and counts nothing.</summary>
+        /// <param name="access">The set, such as a connected user's that a batch is composed for.</param>
+        /// <param name="pairs">The pairs.</param>
+        /// <returns>One decision per pair, in order; a pair the registry does not hold is denied.</returns>
+        internal IReadOnlyList<AccessDecision> DecideFor(UserAccess access, IReadOnlyList<SecurableRef> pairs)
+        {
+            ArgumentNullException.ThrowIfNull(access);
+            ArgumentNullException.ThrowIfNull(pairs);
+            SecurableRef[] asked = [.. pairs];
+            var securables = new SecurableDescriptor?[asked.Length];
+            for (int index = 0; index < securables.Length; index++)
+            {
+                securables[index] = registry.Find(asked[index].Resource, asked[index].Action);
+            }
+
+            return Decide(access, asked, securables, time.GetUtcNow());
         }
 
         /// <summary>Decides every pair from one set at one instant.</summary>

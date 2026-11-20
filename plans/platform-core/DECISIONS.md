@@ -359,6 +359,23 @@ Format, one entry per ruling:
 - Also accepted: a readonly select never opens (a pre-existing bug, fixed) and exposes aria-readonly.
 - **Misalignment for Ahmad:** 0010 §B.4 names contentChildren(TmOptionGroup), which the design does not need. See also D-036's §B.4 note.
 
+### D-149 (orchestrator, 2026-11-20): PC-B04 results; Tier 3 still waits
+
+- PC-B04 (Phase 4, PC-062…PC-084): 8 findings (0 blocking, 6 major, 2 minor), all fixed in 27f8bb6a; parts pushed back (Amharic keys, the ProblemMapper backstop per D-108, blob pre-validation, a client build check). The fixer self-watched pc run 44730508322 (green) and fast-forwarded platform-core to f8806aa8 (D-147). Its local run had one load flake that passed on a local rerun; the workflow did not name the test, so it is unidentified. CI was not re-run.
+- For Ahmad (from PC-B04): (a) 0016 §8.3: a timed-out request that sent a persist, or whose body writer began, is aborted and never answered 504 (even a refused persist ends as outcome unknown); (b) 0011 §5.4: the client version cap is now 128 visible ASCII characters, owned by DeploymentVersions and checked at composition; (c) 0013 §6.3 step 1 needs the rule that a recompose re-decides required grants; (d) 0017 §4.4 says an action persist has empty Captures, contradicting §4.1 and 0015 §11.2; the code follows §4.1.
+- With pc-2 free, check_deps lists only Tier 3 (PC-174, PC-181). Weekly usage is 67% with 4 d 7 h left, so the window will not expire unused and PLAN §4 keeps Tier 3 waiting (as D-140). pc-2 idles until a Tier 1 or 2 item is ready.
+
+### D-148 (orchestrator, 2026-11-20): PC-087 Review 1 rulings, and PC-144/PC-146 launched as Tier 2
+
+- PC-087 (0018-b) Review 1 at e2ed8550: 0 blocking, 0 major, 6 minor. The reviewer accepted all six deviations the implementer flagged: DeleteContext<TEntity>.WithDescendants (needed because 0015 §10.3 reruns the §10.1 hook round with the same context), DeploymentIdentity.IsDevelopment (built from the same IHostEnvironment.EnvironmentName), Center served without DeleteByQuery (required by D-132's registry refusal), the refined HasChildren and type-change rules, the hidden-parent non-leak, and the regenerated fixture migration (dotnet-ef has-pending-model-changes clean, gl objects only). Held after fix 1 behind PC-F61 (D-087).
+- For Ahmad: (a) spec 0015's DeleteContext contract should list WithDescendants; (b) 0018 §5.5's centers route list depends on the D-132 choice: under option (b) centers get delete-by-query back; (c) both 0018 §5.4 rows (HasChildren, type change) need rewording, since the literal rules refuse valid saves (WATCHLIST 0018 lead). Fix 1 (0d6e317a) adds two more: the first 0018 §5.4 row should judge a stored parent only when the row is new or moves, and its select should drop SubtreeCount. It also found that a hidden parent stays hidden only when every gl.Center grant carries the row filter: a Save grant implies reading what it reaches (0014 §5.2 step 2), so with Read filtered and Save unfiltered the parent is readable and ParentMustBeGrouping is the right answer.
+- After PC-100 landed no Tier 1 checkpoint was ready (check_deps: PC-144, PC-146 at T2; PC-174, PC-181 at T3), so PC-144 (0020-e) went to pc-3 and PC-146 (0021-c) to pc-4 from f4e6120b, both R1 only. T3 stays queued (D-140).
+
+### D-147 (orchestrator, 2026-11-20): batch-review fixers integrate under D-144 by watching their own pc CI run
+
+- A workflow agent cannot be resumed by the orchestrator, so the §13 batch fixer pushes its integration commit to pc/PC-Bnn, watches that run itself, and follows §4.3's green or red message until the commit is on platform-core. PROCESS.md §13's fixer prompt says so. The orchestrator still watches PR #18's run on the result.
+- PC-B04 (Phase 4, PC-062…PC-084) launched in pc-2 at 36827fe1 once PC-082 went green (pc 44703261531, PR 44705432684). Weekly usage 59% with 4 d 10 h left; Fable 23%, so finders run on Fable.
+
 ### D-146 (orchestrator, 2026-11-20): PC-100 Review 2 rulings
 
 - Deviation D-15 rejected: MaxParallelBatches must hold, including at boot when every poller plans at once; polls get stagger/jitter, and a test pins that N pollers starting together never exceed the bound.

@@ -13,6 +13,7 @@ using Tellma.Core.Abstractions.Errors;
 using Tellma.Core.Abstractions.Settings;
 using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.Access;
+using Tellma.Core.Data;
 using Tellma.Core.Data.Batches;
 using Tellma.Core.Queryex;
 using Tellma.Core.Tenancy;
@@ -75,14 +76,16 @@ namespace Tellma.Core.Blobs
             bool anyMember = descriptor.Policy.ReadAccess == BlobReadAccess.AnyMember;
             if (!anyMember)
             {
-                _ = await evaluator.EvaluateAsync(descriptor.OwnerResource, AccessActions.Read, cancellationToken).ConfigureAwait(false);
+                _ = await DataAccessTranslation.RunAsync(() => evaluator.EvaluateAsync(descriptor.OwnerResource, AccessActions.Read, cancellationToken)).ConfigureAwait(false);
             }
 
-            // --- 3. One read batch: the owner row under the read (skipped when denied), and the blob row ---
+            // --- 3. One read batch: the owner row under the read (skipped when denied), and the blob row.
+            // Spec 0015 §14.2: a download runs outside the stack operations, so it translates its own
+            // availability failures ---
             BatchResult<RowPage>? owner = null;
             BatchResult<ResolvedBlob?>? blob = null;
             AccessDecision? read = null;
-            await runner.RunAsync(
+            _ = await DataAccessTranslation.RunAsync(() => runner.RunAsync(
                 BatchPurpose.Read,
                 (user, batch) =>
                 {
@@ -95,7 +98,7 @@ namespace Tellma.Core.Blobs
                     return ValueTask.CompletedTask;
                 },
                 static (_, _) => true,
-                cancellationToken).ConfigureAwait(false);
+                cancellationToken)).ConfigureAwait(false);
 
             // --- 4. The combination ---
             BlobDownload? download = Combine(descriptor, variant, blob!.Value, owner is { Value.Rows.RowCount: > 0 });
