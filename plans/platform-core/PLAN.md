@@ -163,8 +163,9 @@ Idle stretches are the time to read DECISIONS.md and the batch-review summaries.
 
 - Only PR-tier tests run inside a cycle. Long matrices run nightly on GitHub Actions (§6): the
   repo is public, so minutes are free, and no agent waits on a 40-minute suite.
-- Agents build and test the touched projects first and run the exact full gate of PROCESS.md §11
-  once at the end. Integration suites run one at a time per slot.
+- Agents build the touched projects in the inner loop and the solution once at the end, and run
+  only the tests the change touches. GitHub CI runs the whole PR tier on the pc/{PC} commit at
+  integration, and that run is the gate (D-144).
 - Reviewers get the exact spec sections and commit range, not the corpus.
 - The orchestrator keeps its context lean. Agents return one-line summaries and write details to
   files, and auto-compaction at 400k (SETUP.md) caps the cost of each turn.
@@ -259,18 +260,19 @@ hook. Only when that is impossible do they go to nightly.
 
 1. Every deliverable and planner note in the checkpoint's CHECKPOINTS.md entry is met. Anything
    left out is justified in the commit message under **Deviations**.
-2. `dotnet build Tellma.slnx` prints **Build succeeded** with 0 warnings. A failed build leaves
+2. Build the touched projects in the inner loop, then build the whole solution once at the end:
+   `dotnet build Tellma.slnx` prints **Build succeeded** with 0 warnings. A failed build leaves
    `dotnet test` running stale binaries.
 3. `dotnet format Tellma.slnx --verify-no-changes` is clean: no BOMs, LF where the repo uses LF.
-4. The PR-tier unit filter passes, and so do the checkpoint's own tests and the integration suites
-   it touches. **"Touched"** means every test project under `test/` or `distributions/*/test/`
-   whose ProjectReference closure includes a changed project. If the checkpoint changes
-   `Directory.Packages.props`, `Directory.Build.*`, `Tellma.Core.Abstractions` or `test/shared/*`,
-   every integration suite counts as touched. These run with
-   `--filter "Category=Integration&Category!=Nightly&Live!=true"`, one suite at a time. The client
-   gates for touched packages must also pass: lint, typecheck, lint:test, tokens:check, build,
-   test, api:check (with intended `api:approve` diffs committed), docs:build, size:check, and the
-   Chromium PR-tier e2e. The commit message lists the suites run, and reviewers check that list.
+4. Only the tests the change touches run locally: the checkpoint's own unit and integration tests
+   and the existing tests of the code it changes, each run on its own test project with a
+   `--filter` (integration tests with `Category=Integration&Category!=Nightly&Live!=true`). For
+   client changes, the touched packages' lint, typecheck, lint:test, tokens:check, build, test,
+   api:check (with intended `api:approve` diffs committed), docs:build and size:check, and only
+   the Chromium e2e specs that cover the touched code. No full unit filter, no full integration
+   suites, no full client e2e, and never an unfiltered `dotnet test Tellma.slnx`. GitHub CI runs
+   the whole PR tier on the pc/{PC} commit at integration, and that run is the gate (PROCESS.md
+   §4.3, D-144). The commit message lists the tests run, and reviewers check that list.
 5. AGENTS.md and docs/AGENTS.md hold in full: XML docs and TSDoc on everything, inline section
    comments, a README per project, Windows and Linux. No spec, §, `docs/` or PC-id references in
    XML docs, TSDoc, error messages, logs or test names. Inline code comments may cite specs, but
@@ -281,8 +283,9 @@ hook. Only when that is impossible do they go to nightly.
    DECISIONS.md.
 7. Every review round is closed. Every finding is fixed or pushed back with reasons in
    `reviews/PC-nnn.md`.
-8. The checkpoint is integrated: merged into `platform-core` and pushed (status `integrated`). It
-   becomes `done` when the CI run for that sha is green (PROCESS.md §5.3). A red run is a
+8. The checkpoint is integrated: its merge commit passed CI on pc/{PC} and was pushed to
+   `platform-core` (status `integrated`). It becomes `done` when the platform-core CI run for that
+   sha is green (PROCESS.md §5.3). A red run is a
    stop-the-line fix.
 
 ### 7.2 MVP gate (PC-140)
@@ -361,7 +364,7 @@ that half, and the batch closes when both halves have been reviewed.
 | A command run in the wrong checkout | Every brief pins absolute slot paths and the `cd <slot> &&` form; agents verify the branch before every commit; only the orchestrator writes in the main checkout |
 | Circular contracts discovered late | Contract seed; 0015 contract-first types; implementers may add a missing contract early under its owner's name and say so |
 | Merge conflicts between slots | Slots branch from the latest `platform-core`; integration merges, rebuilds and retests; lockfiles, API goldens, EF snapshots and migrations are regenerated, never hand-merged |
-| Local contention (SQL containers, ports, dev databases, Playwright) | At most 4 slots; slot-unique ports and database suffixes (PROCESS.md §2, §11); integration suites one at a time per slot; e2e Chromium only |
+| Local contention (SQL containers, ports, dev databases, Playwright) | At most 4 slots; slot-unique ports and database suffixes (PROCESS.md §2, §11); only touched tests run locally, full suites on CI (D-144); e2e Chromium only |
 | Windows-only flakiness (clipboard, WebKit timing) | Linux CI is the arbiter for known Windows-local failures (PROCESS.md §11) |
 | A new Opus model mid-run | No Opus id is pinned; switching the session model applies to every new agent (PROCESS.md §12) |
 | Unattended machine (updates, sleep) | SETUP.md: Windows Update paused, sleep off, Docker on login; cron wake-ups |

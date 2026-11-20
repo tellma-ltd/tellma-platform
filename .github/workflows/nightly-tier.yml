@@ -1,4 +1,5 @@
-# Nightly tier: the slow, broad and timing-sensitive tests the PR tier (ci.yml) leaves out.
+# Nightly tier: the slow, broad and timing-sensitive tests the PR tier (ci.yml) leaves out, and the
+# Windows run of two integration suites the PR tier runs on Linux only.
 #
 # GitHub fires `schedule` (and accepts `workflow_dispatch`) only for workflows on the default
 # branch, so main carries a trampoline under this same file name: each night it runs
@@ -15,6 +16,11 @@
 #     (Integration and E2E tests included), except Live=true suites, which need credentials and
 #     run in nightly.yml. On Linux all of them; on Windows those that are neither Integration nor
 #     E2E, matching the OS coverage the PR tier gives each kind.
+#   - dotnet integration on Windows: the PR tier runs no integration tests on Windows, so this
+#     tier runs the platform's (Tellma.Core.IntegrationTests) and the reference distribution's
+#     (Tellma.Distro.Acme.IntegrationTests) integration suites there, against LocalDB, with the PR
+#     tier's own filter: their tests that are not Nightly and not Live=true. The other integration
+#     suites, and every Nightly integration test, run on Linux only.
 #   - Playwright: every test tagged @nightly, @cross-engine or @perf, on all four projects, minus
 #     the quarantined ones. The Firefox and WebKit projects keep their own @cross-engine filter on
 #     top, so a @nightly or @perf test reaches them only when it is also tagged @cross-engine.
@@ -69,8 +75,8 @@ jobs:
           if-no-files-found: ignore
 
   # The Windows half of the dotnet nightly tier. The PR tier runs the unit suites on both OSes, so a
-  # unit test moved to the nightly tier must keep its Windows run. Integration and E2E tests stay on
-  # the Linux job above: they need Linux containers or the Linux browser setup.
+  # unit test moved to the nightly tier must keep its Windows run. Nightly integration and E2E tests
+  # stay on the Linux job above: they need Linux containers or the Linux browser setup.
   dotnet-windows:
     if: github.ref == 'refs/heads/platform-core'
     timeout-minutes: 120
@@ -84,6 +90,66 @@ jobs:
       - run: dotnet build Tellma.slnx -c Release --no-restore
       - name: Nightly-tier dotnet unit tests
         run: dotnet test Tellma.slnx -c Release --no-build --filter "Category=Nightly&Category!=Integration&Category!=E2E&Live!=true"
+
+  # The distribution host's two integration suites on Windows, against LocalDB rather than a
+  # container (the Windows runners have no Linux containers): the platform's catalog and migrator
+  # suite and the reference distribution's. LocalDB is installed when the image lacks it. These are
+  # the PR tier's tests of those two suites (Nightly excluded, as in ci.yml's integration job), which
+  # the PR tier runs on Linux only. The other integration suites need nothing Windows-specific and
+  # run on Linux alone, in the PR tier and in the dotnet job above.
+  integration-windows:
+    if: github.ref == 'refs/heads/platform-core'
+    timeout-minutes: 45
+    runs-on: windows-latest
+    env:
+      TELLMA_TEST_SQL: 'Server=(localdb)\MSSQLLocalDB;Integrated Security=True;TrustServerCertificate=True'
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+      - name: Start LocalDB
+        shell: pwsh
+        run: |
+          # The installer's PATH change does not reach this shell, and its folder names the SQL
+          # Server version, so the tool is located rather than assumed and its folder is added for
+          # this step and the later ones.
+          if (-not (Get-Command sqllocaldb -ErrorAction SilentlyContinue)) {
+            choco install sqllocaldb --no-progress -y
+            $tool = Get-ChildItem "$env:ProgramFiles\Microsoft SQL Server\*\Tools\Binn\SqlLocalDB.exe" | Select-Object -First 1
+            if (-not $tool) { throw 'SqlLocalDB.exe was not found after its install.' }
+            $env:PATH += ";$($tool.DirectoryName)"
+            Add-Content -Path $env:GITHUB_PATH -Value $tool.DirectoryName
+          }
+          if (-not (sqllocaldb info | Where-Object { $_.Trim() -eq 'MSSQLLocalDB' })) {
+            sqllocaldb create MSSQLLocalDB
+          }
+          sqllocaldb start MSSQLLocalDB
+      - run: dotnet build test/core/Tellma.Core.IntegrationTests -c Release
+      - run: dotnet build distributions/acme/test/Tellma.Distro.Acme.IntegrationTests -c Release
+      # The instance's first logins can fail while it warms up, and a suite's first catalog load
+      # would then classify that error instead of the one under test. A query against master,
+      # retried until it answers, leaves the instance warm. The instance's pipe name serves either
+      # sqlcmd (the ODBC one or the Go one).
+      - name: Warm LocalDB
+        shell: pwsh
+        run: |
+          if (-not (Get-Command sqlcmd -ErrorAction SilentlyContinue)) {
+            choco install sqlcmd --no-progress -y
+          }
+          sqllocaldb start MSSQLLocalDB
+          $pipe = (sqllocaldb info MSSQLLocalDB | Select-String 'np:\S+').Matches[0].Value
+          for ($attempt = 1; $attempt -le 5; $attempt++) {
+            sqlcmd -S $pipe -E -d master -l 30 -b -Q 'SELECT 1'
+            if ($LASTEXITCODE -eq 0) { exit 0 }
+            Start-Sleep -Seconds 5
+          }
+          throw 'LocalDB did not answer a query against master.'
+      # Normal verbosity and xUnit's diagnostic messages, as in ci.yml's build-test job. Here they
+      # show what the end-of-suite drops on LocalDB retried, and every database a failed cleanup
+      # left behind.
+      - run: dotnet test test/core/Tellma.Core.IntegrationTests -c Release --no-build --filter "Category=Integration&Category!=Nightly&Live!=true" --logger "console;verbosity=normal" -- xUnit.DiagnosticMessages=true
+      - run: dotnet test distributions/acme/test/Tellma.Distro.Acme.IntegrationTests -c Release --no-build --filter "Category=Integration&Category!=Nightly&Live!=true" --logger "console;verbosity=normal" -- xUnit.DiagnosticMessages=true
 
   # The Playwright nightly tier on the showcase, every browser engine, quarantined tests excluded.
   client-e2e:
