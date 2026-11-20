@@ -68,7 +68,7 @@ namespace Tellma.Core.AspNetCore.Tests.Api
             Assert.Contains(routes, static route => route.Template == RouteContracts.TemplatePrefix + "centers/get-by-parent-ids");
             Assert.Contains(routes, static route => route.Template == RouteContracts.TemplatePrefix + "center-notes/query");
             Assert.Contains(routes, static route => route.Template == RouteContracts.TemplatePrefix + "currencies/all");
-            Assert.Contains(routes, static route => route.Template == RouteContracts.TemplatePrefix + "inbox/summary");
+            Assert.Contains(routes, static route => route.Template == RouteContracts.TemplatePrefix + "pj-inbox/summary");
         }
 
         [Fact]
@@ -78,9 +78,9 @@ namespace Tellma.Core.AspNetCore.Tests.Api
             List<RouteEndpoint> projected = Projected(host);
 
             // --- The export's and the report's own policies, chained ahead of the web group's; the report's lane by priority ---
-            RateChainSpec export = RatePolicies.Resolve(Endpoint(projected, "inbox/export").Metadata);
-            RateChainSpec report = RatePolicies.Resolve(Endpoint(projected, "inbox/report").Metadata);
-            RateChainSpec summary = RatePolicies.Resolve(Endpoint(projected, "inbox/summary").Metadata);
+            RateChainSpec export = RatePolicies.Resolve(Endpoint(projected, "pj-inbox/export").Metadata);
+            RateChainSpec report = RatePolicies.Resolve(Endpoint(projected, "pj-inbox/report").Metadata);
+            RateChainSpec summary = RatePolicies.Resolve(Endpoint(projected, "pj-inbox/summary").Metadata);
             RateChainSpec builtIn = RatePolicies.Resolve(Endpoint(projected, "centers/get-by-parent-ids").Metadata);
 
             Assert.Equal([TellmaRatePolicies.Export, RatePolicies.UserAcrossTenants, TellmaRatePolicies.User, TellmaRatePolicies.Tenant], export.Policies.Select(static policy => policy.Name));
@@ -121,8 +121,10 @@ namespace Tellma.Core.AspNetCore.Tests.Api
                 { "center-notes/query", "pj.PjCenterNote:Read", false, false, false, false, false, "ChildQuery" },
                 { "currencies/all", "pj.PjCurrency:Read", false, false, false, false, false, "Stack" },
                 { "ledgers/delete-by-query", "pj.PjLedger:Delete", true, false, false, false, false, "Stack" },
+                { "pj-inbox/summary", null, false, false, false, false, false, "Service" },
+                { "pj-inbox/purge", "pj.Inbox:Purge", true, false, false, false, false, "Service" },
+                // Core's own inbox summary is polled, so it stamps no activity.
                 { "inbox/summary", null, false, false, false, true, false, "Service" },
-                { "inbox/purge", "pj.Inbox:Purge", true, false, false, false, false, "Service" },
                 { "users/save", "core.User:Save", true, false, false, false, true, "Stack" },
             };
         }
@@ -328,7 +330,7 @@ namespace Tellma.Core.AspNetCore.Tests.Api
             Assert.Equal("done", summary.RootElement.GetString());
             await PostAsync(host, cookie, "centers/ping", null, HttpStatusCode.NoContent);
             await PostAsync(host, cookie, "center-notes/query", /*lang=json,strict*/ """{"top":5}""", HttpStatusCode.OK);
-            using JsonDocument inbox = await PostAsync(host, cookie, "inbox/summary", null, HttpStatusCode.OK);
+            using JsonDocument inbox = await PostAsync(host, cookie, "pj-inbox/summary", null, HttpStatusCode.OK);
             Assert.Equal(3, inbox.RootElement.GetProperty("unread").GetInt32());
 
             IReadOnlyList<PipelineCall> calls = host.Services.GetRequiredService<PipelineLog>().Calls;
@@ -353,7 +355,7 @@ namespace Tellma.Core.AspNetCore.Tests.Api
         {
             await using TellmaTestHost host = await StartAsync();
 
-            using HttpResponseMessage response = await SendAsync(host, host.Cookie(), "inbox/document", null);
+            using HttpResponseMessage response = await SendAsync(host, host.Cookie(), "pj-inbox/document", null);
 
             Assert.Equal(HttpStatusCode.OK, response.StatusCode);
             Assert.Equal("application/json", response.Content.Headers.ContentType?.MediaType);
@@ -409,7 +411,7 @@ namespace Tellma.Core.AspNetCore.Tests.Api
         {
             await using TellmaTestHost host = await StartAsync();
 
-            using HttpResponseMessage response = await SendAsync(host, host.Cookie(), "inbox/export", null);
+            using HttpResponseMessage response = await SendAsync(host, host.Cookie(), "pj-inbox/export", null);
 
             // --- The workbook's media type, its file name in ASCII and in UTF-8, and no length ---
             Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -429,7 +431,7 @@ namespace Tellma.Core.AspNetCore.Tests.Api
         [Theory]
         [InlineData("centers/query", "pj.PjCenter", "query")]
         [InlineData("centers/count-lines", "pj.PjCenter", "count-lines")]
-        [InlineData("inbox/summary", "inbox", "summary")]
+        [InlineData("pj-inbox/summary", "pj-inbox", "summary")]
         public async Task A_projected_request_tags_its_activity_with_its_resource_and_operation(string relative, string resource, string operation)
         {
             // Requests of other suites running alongside carry other trace ids.
@@ -450,7 +452,7 @@ namespace Tellma.Core.AspNetCore.Tests.Api
             ActivitySource.AddActivityListener(listener);
             await using TellmaTestHost host = await StartAsync();
 
-            using HttpRequestMessage request = Request(relative, relative.StartsWith("inbox", StringComparison.Ordinal) ? null : /*lang=json,strict*/ """{"ids":[1]}""", host.Cookie());
+            using HttpRequestMessage request = Request(relative, relative.StartsWith("pj-inbox", StringComparison.Ordinal) ? null : /*lang=json,strict*/ """{"ids":[1]}""", host.Cookie());
             request.Headers.Add("traceparent", $"00-{trace.ToHexString()}-{ActivitySpanId.CreateRandom().ToHexString()}-01");
             using HttpResponseMessage response = await host.Client.SendAsync(request, TestContext.Current.CancellationToken);
 

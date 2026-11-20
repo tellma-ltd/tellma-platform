@@ -100,7 +100,7 @@ namespace Tellma.Core.Notifications
 
                 // --- The reader: the counts, the newest rows, the jobs ---
                 int ordinal = draft.Ordinal;
-                batch.Append(draft, text.ToString(), writes: null, idempotent: false, reader: async (cursor, cancellationToken) =>
+                batch.Append(draft, text.ToString(), writes: null, idempotent: true, reader: async (cursor, cancellationToken) =>
                 {
                     DbDataReader counts = await cursor.NextAsync(ordinal, cancellationToken).ConfigureAwait(false);
                     if (!await counts.ReadAsync(cancellationToken).ConfigureAwait(false))
@@ -197,7 +197,7 @@ namespace Tellma.Core.Notifications
 
                 // --- The reader: the one row of the count and the version ---
                 int ordinal = draft.Ordinal;
-                batch.Append(draft, text.ToString(), writes, idempotent: false, reader: async (cursor, cancellationToken) =>
+                batch.Append(draft, text.ToString(), writes, idempotent: true, reader: async (cursor, cancellationToken) =>
                 {
                     DbDataReader set = await cursor.NextAsync(ordinal, cancellationToken).ConfigureAwait(false);
                     if (!await set.ReadAsync(cancellationToken).ConfigureAwait(false))

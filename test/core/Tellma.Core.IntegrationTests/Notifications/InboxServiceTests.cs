@@ -5,6 +5,8 @@
 
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Diagnostics.Metrics.Testing;
+using System.Diagnostics.Metrics;
 using System.Globalization;
 using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Api;
@@ -87,6 +89,33 @@ namespace Tellma.Core.IntegrationTests.Notifications
             Assert.All(summary.Latest, static row => Assert.Equal(AdaId, row.UserId));
             Assert.Null(summary.SeenAt);
             Assert.Equal(0, summary.Version);
+
+            // --- Every newest row is the system's, so no actor is related ---
+            Assert.Empty(summary.Related.Sets);
+        }
+
+        [Fact]
+        public async Task Unseen_counts_only_the_rows_created_after_the_seen_stamp_and_its_severity_is_theirs_alone()
+        {
+            // --- Seen a minute ago: an error before it, an error exactly at it, then an info and a warning ---
+            _ = await VerbAsync("seen");
+            await SqlServerFixture.ExecuteAsync(
+                fixture.ConnectionString,
+                string.Create(CultureInfo.InvariantCulture, $"UPDATE [core].[UserStamps] SET [InboxSeenAt] = DATEADD(second, -60, SYSUTCDATETIME()) WHERE [UserId] = {AdaId};"));
+            _ = await fixture.InsertAsync(AdaId, secondsAgo: 120, severity: nameof(NotificationSeverity.Error));
+            int atStamp = await fixture.InsertAsync(AdaId, secondsAgo: 90, severity: nameof(NotificationSeverity.Error));
+            await SqlServerFixture.ExecuteAsync(
+                fixture.ConnectionString,
+                string.Create(CultureInfo.InvariantCulture, $"UPDATE [core].[Notifications] SET [CreatedAt] = (SELECT [InboxSeenAt] FROM [core].[UserStamps] WHERE [UserId] = {AdaId}) WHERE [Id] = {atStamp};"));
+            _ = await fixture.InsertAsync(AdaId, secondsAgo: 30, severity: nameof(NotificationSeverity.Info));
+            _ = await fixture.InsertAsync(AdaId, secondsAgo: 20, severity: nameof(NotificationSeverity.Warning));
+
+            InboxSummary summary = await SummaryAsync(AdaId);
+
+            // A row created at the stamp itself was seen; only the two after it are not.
+            Assert.Equal((2, 4), (summary.Unseen, summary.Unread));
+            Assert.Equal(NotificationSeverity.Warning, summary.MaxUnseenSeverity);
+            Assert.NotNull(summary.SeenAt);
         }
 
         [Fact]
@@ -145,12 +174,30 @@ namespace Tellma.Core.IntegrationTests.Notifications
         }
 
         [Fact]
+        public async Task Running_is_capped_at_the_newest_jobs()
+        {
+            List<int> jobs = [];
+            for (int index = 0; index < 12; index++)
+            {
+                jobs.Add(await JobAsync(AdaId, JobStatus.Pending));
+            }
+
+            InboxSummary summary = await SummaryAsync(AdaId);
+
+            Assert.Equal(Enumerable.Reverse(jobs).Take(10), summary.Running.Select(static job => job.Id));
+        }
+
+        [Fact]
         public async Task The_verbs_count_the_callers_rows_move_the_version_once_each_and_ignore_other_users_ids()
         {
             int first = await fixture.InsertAsync(AdaId, secondsAgo: 30);
             _ = await fixture.InsertAsync(AdaId, secondsAgo: 20);
             int third = await fixture.InsertAsync(AdaId, secondsAgo: 10);
             int bens = await fixture.InsertAsync(BenId, secondsAgo: 10);
+            IMeterFactory meters = fixture.Tenant.Services.GetRequiredService<IMeterFactory>();
+            using MetricCollector<long> markedRead = new(meters, NotificationsTelemetryNames.MeterName, NotificationsTelemetryNames.MarkedRead);
+            using MetricCollector<long> cleared = new(meters, NotificationsTelemetryNames.MeterName, NotificationsTelemetryNames.Cleared);
+            using MetricCollector<long> summaries = new(meters, NotificationsTelemetryNames.MeterName, NotificationsTelemetryNames.Summaries);
 
             // --- Read: Ben's id and a missing one are ignored; a repeated id counts once ---
             InboxVerbResult read = await VerbAsync("read", new IdsRequest([first, first, bens, 999_999, 5_000_000_000]));
@@ -178,6 +225,11 @@ namespace Tellma.Core.IntegrationTests.Notifications
             Assert.NotNull(summary.SeenAt);
             Assert.Equal(0, summary.Unseen);
             Assert.Null(summary.MaxUnseenSeverity);
+
+            // --- The rows each verb touched, by verb; a verb that touched none records no point ---
+            Assert.Equal([("read", 1L), ("read-all", 2L)], Points(markedRead));
+            Assert.Equal([("clear", 1L), ("clear-read", 2L)], Points(cleared));
+            Assert.Equal(1L, Assert.Single(summaries.GetMeasurementSnapshot()).Value);
         }
 
         [Fact]
@@ -212,6 +264,7 @@ namespace Tellma.Core.IntegrationTests.Notifications
         {
             Guid adaBefore = await PreferencesTagAsync(AdaId);
             Guid benBefore = await PreferencesTagAsync(BenId);
+            using MetricCollector<long> saves = new(fixture.Tenant.Services.GetRequiredService<IMeterFactory>(), NotificationsTelemetryNames.MeterName, NotificationsTelemetryNames.PreferencesSaved);
 
             IReadOnlyList<NotificationPreference> saved = await fixture.InvokeAsync<IReadOnlyList<NotificationPreference>>(
                 AdaId,
@@ -241,6 +294,22 @@ namespace Tellma.Core.IntegrationTests.Notifications
             // --- An empty save reverts everything to the defaults ---
             Assert.Empty(await fixture.InvokeAsync<IReadOnlyList<NotificationPreference>>(AdaId, Preferences, "save", new List<NotificationPreference>()));
             Assert.Equal(0, await SqlServerFixture.ScalarAsync<int>(fixture.ConnectionString, string.Create(CultureInfo.InvariantCulture, $"SELECT COUNT(*) FROM [core].[NotificationPreferences] WHERE [UserId] = {AdaId};")));
+
+            // --- One point per committed save ---
+            Assert.Equal([1L, 1L], saves.GetMeasurementSnapshot().Select(static measurement => measurement.Value));
+        }
+
+        [Fact]
+        public async Task A_read_only_tenant_serves_a_preferences_save_and_a_frozen_one_refuses_it()
+        {
+            List<NotificationPreference> rows = [Row(FixtureNotifications.Shipped, CoreFeature.EmailChannel, true)];
+
+            Assert.Single(await fixture.InvokeAsync<IReadOnlyList<NotificationPreference>>(AdaId, Preferences, "save", rows, TenantState.ReadOnly));
+
+            TenantUnavailableException refused = await Assert.ThrowsAsync<TenantUnavailableException>(
+                () => fixture.InvokeAsync<IReadOnlyList<NotificationPreference>>(AdaId, Preferences, "save", new List<NotificationPreference>(), TenantState.Frozen));
+            Assert.Equal(TenantProblemCodes.Frozen, refused.Code);
+            Assert.Equal(1, await SqlServerFixture.ScalarAsync<int>(fixture.ConnectionString, string.Create(CultureInfo.InvariantCulture, $"SELECT COUNT(*) FROM [core].[NotificationPreferences] WHERE [UserId] = {AdaId};")));
         }
 
         [Fact]
@@ -286,6 +355,10 @@ namespace Tellma.Core.IntegrationTests.Notifications
             Assert.Equal(adas, own.Id);
             NotFoundException refused = await Assert.ThrowsAsync<NotFoundException>(() => service.GetByIdAsync(bens, DetailsRequest.None, Token));
             Assert.Equal(CoreResources.Notification, refused.Resource);
+
+            // --- A query sees the caller's rows alone ---
+            RowPage page = await service.QueryAsync(new QueryRequest { Select = nameof(Notification.Id) }, Token);
+            Assert.Equal([adas], ((int[])page.Rows.GetBuffer(0)).Take(page.Rows.RowCount));
         }
 
         /// <summary>The caller's summary.</summary>
@@ -303,6 +376,14 @@ namespace Tellma.Core.IntegrationTests.Notifications
         private Task<InboxVerbResult> VerbAsync(string action, object? body = null)
         {
             return fixture.InvokeAsync<InboxVerbResult>(AdaId, Inbox, action, body);
+        }
+
+        /// <summary>A counter's points as their verb tag and value, in the order recorded.</summary>
+        /// <param name="collector">The collector.</param>
+        /// <returns>The points.</returns>
+        private static IEnumerable<(string, long)> Points(MetricCollector<long> collector)
+        {
+            return collector.GetMeasurementSnapshot().Select(static measurement => ((string)measurement.Tags[NotificationsTelemetryNames.VerbTag]!, measurement.Value));
         }
 
         /// <summary>A user's preferences tag.</summary>

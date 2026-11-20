@@ -363,4 +363,18 @@ service queryex
   class: Tellma.Core.Api.QueryexService
   feature: core
   action discover: api member-only body QueryexDiscoverRequest handler QueryexService; idempotent; result QueryexDiscoverResult; mcp Hidden, revision 0; -
+service inbox
+  class: Tellma.Core.Notifications.InboxService
+  feature: core
+  action summary: api member-only body - handler InboxService; idempotent; result InboxSummary; mcp Hidden, revision 0; -
+  action seen: api member-only body - handler InboxService; mutation, read-only-ok, idempotent; result InboxVerbResult; mcp Hidden, revision 0; -
+  action read: api member-only body IdsRequest handler InboxService; mutation, read-only-ok, idempotent; result InboxVerbResult; mcp Hidden, revision 0; -
+  action read-all: api member-only body - handler InboxService; mutation, read-only-ok, idempotent; result InboxVerbResult; mcp Hidden, revision 0; -
+  action clear: api member-only body IdsRequest handler InboxService; mutation, read-only-ok, idempotent, destructive; result InboxVerbResult; mcp Hidden, revision 0; -
+  action clear-read: api member-only body - handler InboxService; mutation, read-only-ok, idempotent, destructive; result InboxVerbResult; mcp Hidden, revision 0; -
+service notification-preferences
+  class: Tellma.Core.Notifications.NotificationPreferencesService
+  feature: core
+  action get: api member-only body - handler NotificationPreferencesService; idempotent; result IReadOnlyList<NotificationPreference>; mcp Hidden, revision 0; -
+  action save: api member-only body IReadOnlyList<NotificationPreference> handler NotificationPreferencesService; mutation, read-only-ok; result IReadOnlyList<NotificationPreference>; mcp Hidden, revision 0; -
 enlistment Tellma.Core.Users.UserService<Tellma.Core.Abstractions.Access.User> -> core.User

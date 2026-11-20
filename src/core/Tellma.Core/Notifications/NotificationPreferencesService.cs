@@ -57,7 +57,7 @@ namespace Tellma.Core.Notifications
                 {
                     found = batch.Sql(
                         $"SELECT [Type], [Channel], [Enabled] FROM [core].[NotificationPreferences] WHERE [UserId] = @tm_UserId;",
-                        new SqlOptions(resultSets: 1));
+                        new SqlOptions(idempotent: true, resultSets: 1));
                     return ValueTask.CompletedTask;
                 },
                 (_, _) => Known(found!.Value.ResultSets[0]),
