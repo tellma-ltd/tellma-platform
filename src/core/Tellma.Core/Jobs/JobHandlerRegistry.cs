@@ -19,7 +19,11 @@ namespace Tellma.Core.Jobs
     ///     arguments-only handler.
     /// </param>
     /// <param name="Owner">The feature that registered the handler.</param>
-    internal sealed record JobHandlerRegistration(string Key, Type HandlerType, JobHandlerAttribute Options, Type? EntityType, ITellmaFeature Owner);
+    /// <param name="ItemType">
+    ///     The type of the items the handler's batches hold: the entity type its interface names for
+    ///     an entity-backed handler, which the leaf derives from, else <see cref="Job" />.
+    /// </param>
+    internal sealed record JobHandlerRegistration(string Key, Type HandlerType, JobHandlerAttribute Options, Type? EntityType, ITellmaFeature Owner, Type ItemType);
 
     /// <summary>
     ///     The job handlers this instance registers, the keys the features retired and the built-in
@@ -45,7 +49,8 @@ namespace Tellma.Core.Jobs
             foreach (ContributedJobHandler handler in record.JobHandlers)
             {
                 Type? entityType = handler.EntityType is null ? null : record.LeafOf(handler.EntityType);
-                _handlers[handler.Attribute.Key] = new JobHandlerRegistration(handler.Attribute.Key, handler.HandlerType, handler.Attribute, entityType, handler.Owner);
+                _handlers[handler.Attribute.Key] = new JobHandlerRegistration(
+                    handler.Attribute.Key, handler.HandlerType, handler.Attribute, entityType, handler.Owner, handler.EntityType ?? typeof(Job));
             }
 
             _retired = new(record.RetiredJobKeys.Select(static retired => retired.Key), StringComparer.Ordinal);

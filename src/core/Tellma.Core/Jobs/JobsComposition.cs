@@ -4,6 +4,7 @@
 // LICENSE file in the root directory of this source tree.
 
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Tellma.Core.Abstractions.Jobs;
 using Tellma.Core.Composition;
 
@@ -12,12 +13,12 @@ namespace Tellma.Core.Jobs
     /// <summary>
     ///     Registers what background jobs need beyond <see cref="CoreFeature" />'s contribution: the
     ///     options, validated by the startup gate; the handler registry built from what the realizers
-    ///     recorded; the seam through which an enqueue wakes this instance's poller; and the scoped
-    ///     job queue.
+    ///     recorded; the seam through which an enqueue wakes this instance's poller; the scoped job
+    ///     queue; and the machinery that runs what a claim leased.
     /// </summary>
     internal static class JobsComposition
     {
-        /// <summary>Registers the options, the registry, the wake seam and the queue.</summary>
+        /// <summary>Registers the options, the registry, the wake seam, the queue and the execution machinery.</summary>
         /// <param name="services">The composition's services.</param>
         /// <param name="record">The realised composition, whose job contributions the registry reads.</param>
         /// <param name="options">The options registrar, whose bindings the startup gate validates.</param>
@@ -36,6 +37,14 @@ namespace Tellma.Core.Jobs
 
             // --- The queue, per scope: it reads the scope's user and confirmations ---
             _ = services.AddScoped<IJobQueue, JobQueue>();
+
+            // --- The execution machinery, one per process: the leases this instance holds, their
+            // renewal, the English rendering of keys for the log, and the runner of claims ---
+            services.TryAddSingleton(TimeProvider.System);
+            _ = services.AddSingleton<JobLeases>();
+            _ = services.AddSingleton<JobRenewal>();
+            _ = services.AddSingleton<JobLogText>();
+            _ = services.AddSingleton<JobRunner>();
         }
     }
 }

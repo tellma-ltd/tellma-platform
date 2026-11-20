@@ -235,10 +235,10 @@ stack fixture.Lookup
   key: int
   description: -
   operations: All
-  capabilities: activatable, cacheable, excel
+  capabilities: activatable, cacheable, searchable, excel
   properties: Id:ServerOwned, CreatedAt:ServerOwned, CreatedById:ServerOwned, ModifiedAt:ServerOwned, ModifiedById:ServerOwned, Code:Editable, Name:Editable, IsActive:ServerOwned
   children: -
-  searchable: -
+  searchable: Code:Prefix, Name:Contains
   natural-keys: Code
   default-select: Id, Code, Name, IsActive, CreatedAt, CreatedById, ModifiedAt, ModifiedById
   related-select: Id, Code

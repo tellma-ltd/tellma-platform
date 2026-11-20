@@ -75,7 +75,8 @@ namespace Tellma.Core.Tests.Crud.Enlistment
     /// <summary>The model's order, which enlists notes and its own rows.</summary>
     [Table("Orders", Schema = "en")]
     [TableType]
-    [Stack(Operations = StackOperations.All | StackOperations.Enlist)]
+    // Its service judges deletes, so it omits DeleteByQuery: a delete by query names no ids its rules could see.
+    [Stack(Operations = StackOperations.Read | StackOperations.Save | StackOperations.Delete | StackOperations.Import | StackOperations.Enlist)]
     public class EnOrder : TopLevelEntity
     {
         /// <summary>The name.</summary>
@@ -86,7 +87,8 @@ namespace Tellma.Core.Tests.Crud.Enlistment
     /// <summary>The model's note, which accepts enlisted writes and enlists tags.</summary>
     [Table("Notes", Schema = "en")]
     [TableType]
-    [Stack(Operations = StackOperations.All | StackOperations.Enlist)]
+    // Its service judges deletes, so it omits DeleteByQuery: a delete by query names no ids its rules could see.
+    [Stack(Operations = StackOperations.Read | StackOperations.Save | StackOperations.Delete | StackOperations.Import | StackOperations.Enlist)]
     public class EnNote : TopLevelEntity
     {
         /// <summary>The text, required.</summary>

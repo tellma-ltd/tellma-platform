@@ -200,6 +200,7 @@ namespace Tellma.Core.Tests.Crud.Enlistment
             // --- The worker sends the batch, then tells the frame it committed ---
             BatchOutcome committed = await completion.ExecuteAsync(Token);
             await frame.AfterCompletionAsync(committed);
+            frame.EndCompletion(failure: null);
             Assert.Equal((201, Committed), (note.Id, note.ModifiedAt));
             Assert.Equal([EnlistmentModel.Notes], _hooks.Committed);
         }
