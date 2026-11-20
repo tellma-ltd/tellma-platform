@@ -366,7 +366,7 @@ namespace Tellma.Core.Jobs
             // --- §7.6: tick step 2, over what step 1 leased ---
             if (result.Tick is IScheduleTickRound tick)
             {
-                await tick.RunStep2Async(cancellationToken).ConfigureAwait(false);
+                await tick.RunStep2Async(services, cancellationToken).ConfigureAwait(false);
             }
         }
 

@@ -30,10 +30,14 @@ namespace Tellma.Core.Jobs
         /// <summary>Whether step 1 leased as many schedules as it may, so more may be due.</summary>
         bool Full { get; }
 
-        /// <summary>Runs step 2 over what step 1 leased, after the poll's round trip.</summary>
+        /// <summary>
+        ///     Runs step 2 over what step 1 leased, after the poll's round trip, in the poll's system
+        ///     scope; a failure is the step's own to log, and never fails the poll.
+        /// </summary>
+        /// <param name="services">The poll's system scope's services.</param>
         /// <param name="cancellationToken">Cancels the step.</param>
         /// <returns>A task that completes when the step ended.</returns>
-        Task RunStep2Async(CancellationToken cancellationToken);
+        Task RunStep2Async(IServiceProvider services, CancellationToken cancellationToken);
     }
 
     /// <summary>What one tick may lease.</summary>

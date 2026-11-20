@@ -23,9 +23,10 @@ POST /{tenantId}/api/web/schedules/get | get | core.Schedule | - | GetRequest | 
 POST /{tenantId}/api/web/schedules/get-by-ids | get-by-ids | core.Schedule | - | GetByIdsRequest | EntitiesResult<Schedule> | core.Schedule:Read | idempotent | C4X4fvQar2bZ
 POST /{tenantId}/api/web/schedules/save | save | core.Schedule | - | SaveRequest<Schedule> | EntitiesResult<Schedule> | core.Schedule:Save | mutation | aDlEWVFMLFUU
 POST /{tenantId}/api/web/schedules/delete | delete | core.Schedule | - | IdsRequest | AffectedResult | core.Schedule:Delete | mutation | lisU15N3Oj5S
-POST /{tenantId}/api/web/schedules/delete-by-query | delete-by-query | core.Schedule | - | DeleteByQueryRequest | AffectedResult | core.Schedule:Delete | mutation | qslFj3HofcDO
 POST /{tenantId}/api/web/schedules/activate | activate | core.Schedule | entity | EntityActionRequest | EntitiesResult<Schedule> | core.Schedule:Activate | mutation, idempotent | RL2-78MQ-xmq
 POST /{tenantId}/api/web/schedules/deactivate | deactivate | core.Schedule | entity | EntityActionRequest | EntitiesResult<Schedule> | core.Schedule:Activate | mutation, idempotent | RL2-78MQ-xmq
+POST /{tenantId}/api/web/schedules/take-over | take-over | core.Schedule | entity | EntityActionRequest | EntitiesResult<Schedule> | core.Schedule:Save | mutation | RL2-78MQ-xmq
+POST /{tenantId}/api/web/schedules/run-now | run-now | core.Schedule | entity | IdRequest | JobAccepted | core.Schedule:Save | mutation | WKivSNmxCXQw
 POST /{tenantId}/api/web/widgets/query | query | fixture.Widget | - | QueryRequest | RowPage | fixture.Widget:Read | idempotent | PqV1-faRenCx
 POST /{tenantId}/api/web/widgets/get | get | fixture.Widget | - | GetRequest | EntitiesResult<Widget> | fixture.Widget:Read | idempotent | 3dOZYmvbGZ23
 POST /{tenantId}/api/web/widgets/get-by-ids | get-by-ids | fixture.Widget | - | GetByIdsRequest | EntitiesResult<Widget> | fixture.Widget:Read | idempotent | UlcZ--uZYDvm

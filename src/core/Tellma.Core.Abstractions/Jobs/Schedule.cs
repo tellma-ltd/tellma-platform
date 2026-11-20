@@ -30,11 +30,15 @@ namespace Tellma.Core.Abstractions.Jobs
     ///         month, month, day of week) evaluated in <see cref="TimeZoneId" />, or in the tenant's
     ///         zone at fire time when that is null.
     ///     </para>
+    ///     <para>
+    ///         The stack serves no delete by query: schedules are deleted by their ids, so every
+    ///         deletion meets the rule that keeps the built-ins.
+    ///     </para>
     /// </remarks>
     [Table("Schedules", Schema = "core")]
     [TableType]
     [Temporal]
-    [Stack]
+    [Stack(Operations = StackOperations.All & ~StackOperations.DeleteByQuery)]
     [DefaultSelect("Id,Code,Name,Name2,Name3,HandlerKey,CronExpression,TimeZoneId,MissedPolicy,OverlapPolicy,CatchUpWindowMinutes,RunAsUserId,PausedReason,IsActive,CreatedAt,CreatedById,ModifiedAt,ModifiedById")]
     public class Schedule : TopLevelEntity, IActivatable
     {
@@ -84,6 +88,7 @@ namespace Tellma.Core.Abstractions.Jobs
         ///     How far back, in minutes, <see cref="MissedPolicy.ReplayAll" /> replays missed
         ///     occurrences; greater than zero.
         /// </summary>
+        [Range(1, int.MaxValue)]
         public int CatchUpWindowMinutes { get; set; } = 1440;
 
         /// <summary>

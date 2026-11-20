@@ -4,6 +4,7 @@
 // LICENSE file in the root directory of this source tree.
 
 using Microsoft.Extensions.Logging;
+using Tellma.Core.Abstractions.Jobs;
 
 namespace Tellma.Core.Jobs
 {
@@ -15,16 +16,17 @@ namespace Tellma.Core.Jobs
         public const string Category = "Tellma.Core.Jobs";
 
         /// <summary>
-        ///     A built-in schedule names a key no handler on this host registers; its jobs wait for a
-        ///     host that runs the handler.
+        ///     A schedule names a key no handler on this host registers and no feature retires: the
+        ///     startup check reports a built-in that does, and the scheduler a schedule it fires. Its
+        ///     jobs wait for a host that runs the handler.
         /// </summary>
         /// <param name="logger">The logger.</param>
-        /// <param name="scheduleId">The built-in schedule's id.</param>
+        /// <param name="scheduleId">The schedule's id.</param>
         /// <param name="handlerKey">The key it names.</param>
         [LoggerMessage(
             EventName = "SchedulerHandlerUnknown",
             Level = LogLevel.Warning,
-            Message = "The built-in schedule {ScheduleId} names the handler key {HandlerKey}, which no handler on this host registers; its jobs wait for a host that runs the handler.")]
+            Message = "The schedule {ScheduleId} names the handler key {HandlerKey}, which no handler on this host registers; its jobs wait for a host that runs the handler.")]
         public static partial void SchedulerHandlerUnknown(ILogger logger, int scheduleId, string handlerKey);
 
         /// <summary>Waking this host's poller after an enqueue failed; the poller claims the jobs on its next poll.</summary>
@@ -248,5 +250,54 @@ namespace Tellma.Core.Jobs
             Level = LogLevel.Error,
             Message = "A batch of {HandlerKey} ended in an unexpected failure; its leases are left to lapse and its jobs run again once they do.")]
         public static partial void JobBatchFailed(ILogger logger, Exception exception, string handlerKey);
+
+        /// <summary>
+        ///     The second step of a scheduler tick failed; the schedules it leased keep their state, and
+        ///     the next tick on any instance computes them again once the lease lapses.
+        /// </summary>
+        /// <param name="logger">The logger.</param>
+        /// <param name="exception">The failure.</param>
+        /// <param name="count">The schedules the tick leased.</param>
+        [LoggerMessage(
+            EventName = "SchedulerTickFailed",
+            Level = LogLevel.Error,
+            Message = "Firing {Count} leased schedule(s) failed; they keep their state and are computed again once the tick's lease lapses.")]
+        public static partial void SchedulerTickFailed(ILogger logger, Exception exception, int count);
+
+        /// <summary>
+        ///     A schedule the tick leased was no longer leased under its token when it fired: the lease
+        ///     lapsed, or a save of the schedule released it. Nothing the step wrote survives.
+        /// </summary>
+        /// <param name="logger">The logger.</param>
+        /// <param name="count">The schedules the tick leased.</param>
+        [LoggerMessage(
+            EventName = "SchedulerTickLeaseLost",
+            Level = LogLevel.Information,
+            Message = "The tick's lease of {Count} schedule(s) no longer held when they fired; nothing was fired, and the next tick computes them again.")]
+        public static partial void SchedulerTickLeaseLost(ILogger logger, int count);
+
+        /// <summary>The scheduler paused a schedule, which fires nothing until a user activates it again.</summary>
+        /// <param name="logger">The logger.</param>
+        /// <param name="scheduleId">The schedule.</param>
+        /// <param name="reason">Why it paused.</param>
+        [LoggerMessage(
+            EventName = "SchedulerSchedulePaused",
+            Level = LogLevel.Warning,
+            Message = "The schedule {ScheduleId} was paused: {Reason}. It fires nothing until it is activated again.")]
+        public static partial void SchedulerSchedulePaused(ILogger logger, int scheduleId, SchedulePausedReason reason);
+
+        /// <summary>
+        ///     A schedule the tick leased has an expression or a zone this host cannot evaluate, so it
+        ///     fires nothing and is looked at again an hour later; the save rules refuse both, so only
+        ///     stored data the rules never saw, or a host whose time-zone data lacks the zone, reaches here.
+        /// </summary>
+        /// <param name="logger">The logger.</param>
+        /// <param name="scheduleId">The schedule.</param>
+        /// <param name="why">What could not be evaluated.</param>
+        [LoggerMessage(
+            EventName = "SchedulerScheduleUnusable",
+            Level = LogLevel.Error,
+            Message = "The schedule {ScheduleId} cannot be evaluated: {Why} It fires nothing, and is looked at again in an hour.")]
+        public static partial void SchedulerScheduleUnusable(ILogger logger, int scheduleId, string why);
     }
 }

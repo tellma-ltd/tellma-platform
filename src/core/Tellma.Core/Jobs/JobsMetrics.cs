@@ -64,6 +64,15 @@ namespace Tellma.Core.Jobs
         /// <summary>Polls that found the worker away past the gap threshold.</summary>
         private readonly Counter<long> _gapDetected;
 
+        /// <summary>Jobs the schedules fired, by missed policy.</summary>
+        private readonly Counter<long> _schedulesFired;
+
+        /// <summary>Occurrences the schedules dropped or coalesced, by missed policy.</summary>
+        private readonly Counter<long> _schedulesMissed;
+
+        /// <summary>Firings skipped because the schedule's previous job had not ended.</summary>
+        private readonly Counter<long> _schedulesOverlapSkipped;
+
         /// <summary>The latest orphan sample of each tenant this instance polls.</summary>
         private readonly ConcurrentDictionary<int, long> _orphaned = new();
 
@@ -89,6 +98,24 @@ namespace Tellma.Core.Jobs
                 "{job}",
                 "Queued jobs overdue by an hour whose key no handler on this instance registers and no feature retires, summed over this instance's latest sample of each tenant.");
             _gapDetected = meter.CreateCounter<long>(JobsTelemetryNames.SchedulesGapDetected, "{tick}", "Polls that found the worker had been away past the gap threshold.");
+            _schedulesFired = meter.CreateCounter<long>(JobsTelemetryNames.SchedulesFired, "{job}", "Jobs the schedules fired, by missed policy.");
+            _schedulesMissed = meter.CreateCounter<long>(JobsTelemetryNames.SchedulesMissed, "{occurrence}", "Occurrences the schedules dropped or coalesced within the gap threshold, by missed policy.");
+            _schedulesOverlapSkipped = meter.CreateCounter<long>(
+                JobsTelemetryNames.SchedulesOverlapSkipped, "{firing}", "Firings skipped because the schedule's previous job had not ended.");
+        }
+
+        /// <summary>The policy tag's value of a missed policy.</summary>
+        /// <param name="policy">The policy.</param>
+        /// <returns>The value: <c>coalesce</c>, <c>replay_all</c> or <c>skip</c>.</returns>
+        public static string PolicyValue(MissedPolicy policy)
+        {
+            return policy switch
+            {
+                MissedPolicy.Coalesce => "coalesce",
+                MissedPolicy.ReplayAll => "replay_all",
+                MissedPolicy.Skip => "skip",
+                _ => throw new ArgumentOutOfRangeException(nameof(policy), policy, "The missed policy is not defined."),
+            };
         }
 
         /// <summary>The outcome tag's value of an outcome kind.</summary>
@@ -192,6 +219,38 @@ namespace Tellma.Core.Jobs
         public void RecordGapDetected()
         {
             _gapDetected.Add(1);
+        }
+
+        /// <summary>Counts the jobs schedules of one missed policy fired.</summary>
+        /// <param name="policy">The schedules' missed policy.</param>
+        /// <param name="count">The jobs.</param>
+        public void RecordSchedulesFired(MissedPolicy policy, int count)
+        {
+            if (count > 0)
+            {
+                _schedulesFired.Add(count, new KeyValuePair<string, object?>(JobsTelemetryNames.PolicyTag, PolicyValue(policy)));
+            }
+        }
+
+        /// <summary>Counts the occurrences schedules of one missed policy dropped or coalesced.</summary>
+        /// <param name="policy">The schedules' missed policy.</param>
+        /// <param name="count">The occurrences.</param>
+        public void RecordSchedulesMissed(MissedPolicy policy, int count)
+        {
+            if (count > 0)
+            {
+                _schedulesMissed.Add(count, new KeyValuePair<string, object?>(JobsTelemetryNames.PolicyTag, PolicyValue(policy)));
+            }
+        }
+
+        /// <summary>Counts the firings skipped because the schedule's previous job had not ended.</summary>
+        /// <param name="count">The firings.</param>
+        public void RecordSchedulesOverlapSkipped(int count)
+        {
+            if (count > 0)
+            {
+                _schedulesOverlapSkipped.Add(count);
+            }
         }
 
         /// <summary>Keeps a tenant's latest orphan sample, which the gauge sums.</summary>

@@ -2669,6 +2669,32 @@
           "singleTarget": false,
           "supportsFilter": true,
           "result": "entities"
+        },
+        {
+          "name": "take-over",
+          "kind": "entity",
+          "builtIn": false,
+          "action": "Save",
+          "labelKey": "Core_Schedule_Action_TakeOver",
+          "mutation": true,
+          "idempotent": false,
+          "destructive": false,
+          "singleTarget": false,
+          "supportsFilter": true,
+          "result": "entities"
+        },
+        {
+          "name": "run-now",
+          "kind": "entity",
+          "builtIn": false,
+          "action": "Save",
+          "labelKey": "Core_Schedule_Action_RunNow",
+          "mutation": true,
+          "idempotent": false,
+          "destructive": false,
+          "singleTarget": true,
+          "supportsFilter": true,
+          "result": "own"
         }
       ],
       "relatedSelect": [
@@ -2687,6 +2713,7 @@
         "Code"
       ],
       "extras": [
+        "state",
         "permissions"
       ],
       "limits": {
