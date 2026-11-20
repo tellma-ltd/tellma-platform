@@ -102,10 +102,11 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 
 | PC | Slot | Branch | Step | Implementer agent (name / id) | Reviewer agent (name / id) | Started (UTC) |
 |---|---|---|---|---|---|---|
-| PC-144 | pc-3 | pc/PC-144 | impl | impl (Opus, high, launched 2026-11-20) | 0020-e; R1 only | 2026-11-20 |
-| PC-146 | pc-4 | pc/PC-146 | impl | impl (Opus, high, launched 2026-11-20) | 0021-c; R1 only | 2026-11-20 |
-| PC-087 | pc-1 | pc/PC-087 | held | held (0d6e317a; R1-1..6 fixed; merge-tree clean); released after PC-F61 | 0018-b; R1 only | 2026-11-20 |
-| PC-F61 | pc-f | pc/PC-F61 | ci-fix | CI red 44723555424 on 366d0ceb (acme-client ubuntu: chromium launch failed after deps installed; client needed attempt 2); CI fixes in progress | nightly client-e2e/quarantine: Playwright OS deps install fails, webkit cannot launch (nightly 44701549452, 44506202284; first 43403796974); not a line stop; R1 only | 2026-11-20 |
+| PC-F63 | pc-f | pc/PC-F63 | impl | impl (Opus, high, launched 2026-11-20) | nightly client-e2e WebKit chart-bidi; R1 only | 2026-11-20 |
+| PC-F64 | pc-f2 | pc/PC-F64 | impl | impl (Opus, high, launched 2026-11-20) | nightly integration-windows TenantScopeTests suspension refresh; R1 only | 2026-11-20 |
+| PC-144 | pc-3 | pc/PC-144 | fix1 | R1 0/2/4 (7d470e81; D-150: interim declared core.Jobs write, PC-F62 general fix); fix1 then hold behind PC-087 | 0020-e; R1 only | 2026-11-20 |
+| PC-146 | pc-4 | pc/PC-146 | fix1 | R1 1/1/3 (5efa9448; inbox route collides with test models, ~79 unit fails); escalated to R2 (inherit xhigh, §4.4); D-151 | 0021-c; R1 only | 2026-11-20 |
+| PC-087 | pc-1 | pc/PC-087 | integrate | released after PC-F61 (0d6e317a); integrating | 0018-b; R1 only | 2026-11-20 |
 
 ## Fix items
 
@@ -170,6 +171,10 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-F58 | CI red on fc1ad812 (integration-windows; ubuntu integration green): Acme TenantStateTests frozen-tenant test 503 catalog-unavailable; test-host readiness race (first catalog load over its 10 s bound on a loaded runner), not PC-080; AcmeHost now awaits the tenant snapshot | done (88555b3a; green 44554210017) | d430d6ae, 21d453d3, 88555b3a (pc/PC-F58) | | from PC-080 integration (CI 44526593455) |
 | PC-F59 | CI fix: TenantScopeTests missing-database open accepts SQL 233 on LocalDB (test-only) | done (679708c3; green 44617227800) | d83b9501, c3e507b2, 679708c3 (pc/PC-F59) | | from PC-086 (CI run 44571660410); D-135 |
 | PC-F60 | D-144: ci.yml runs on pc/** pushes only for ": integrate" commits; integration-windows moved to nightly-tier.yml; CONTRIBUTING tiers | done (a96be78b; pc run 44697079750 green, PR run 44699551746 green) | cdb4bca8, cf37c45a, 73403de8, fedca842, a96be78b (pc/PC-F60) | | from Ahmad's ruling D-144; nightly by hand 44701549452 |
+| PC-F61 | Playwright OS deps: callers pass the bin shim (pnpm exec under sudo aborted before apt); script refuses package-manager launchers; launch probe waits for a rendered frame | done (007f0ff0; pc 44742811597 green, PR 44745457790 green; nightly 44745573605 dispatched to verify) | b4a628df, 000ced1d, 366d0ceb, 5d493f9b, 007f0ff0 | R1 0/0/1; CI fixes: probe raced the first frame (acme-client) |
+| PC-F62 | DeletePlan declares the tables of Cascade/SetNull referencing FKs (undeclared writes, every module); remove per-service workarounds (ScheduleService) | queued (starts after PC-144 lands; D-150) | | |
+| PC-F63 | Nightly client-e2e: 3 WebKit chart-bidi canvas tests fail; dotnet job OS deps unavailable (nightly 44745573605) | in progress (D-151) | | |
+| PC-F64 | Nightly integration-windows: TenantScopeTests cross-instance suspension refresh failed (nightly 44745573605) | in progress (D-151) | | |
 | PC-F02 | systemic e2e flakiness: CI 42456030333 red on 5250c6c (plans-only) with 4 NEW flaky tests | done (R1 1/1/2; CI 42471952389 green), pc-f free | 2c91df4, 4c36d45, 4c89ae1 | 11.32M | grid bundle at its 38 KB ceiling; picker same-frame Enter race open | root-cause all 9; un-quarantine the fixed PC-F01 five |
 
 ## Batch reviews (one per phase)
@@ -438,7 +443,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-145 | 0020-f | 2 | todo | | | |
 | PC-146 | 0021-c | 2 | in progress | | | carry from PC-099 r1: the Notification stack fails closed (no criteria) until this lands; add the self-scope |
 | PC-147 | 0021-d | 2 | todo | | | |
-| PC-148 | 0022-a | 2 | todo | | | |
+| PC-148 | 0022-a | 2 | todo | | | carry (D-151): EnlistmentFrame.Admit admits EmailOutbox (0015 §13.3); 0021 §12 enlisted-rows-committed-with-the-completion e2e test lands here |
 | PC-149 | 0022-b | 2 | todo | | | |
 | PC-150 | 0026-d | 2 | todo | | | |
 | PC-151 | 0023-h | 2 | done (99123772; CI 43994567778 red → PC-F53; green 44019377406 on 880b58d7) | 7b9c658, c678bc7, 9912377 (pc/PC-151) | | |
