@@ -154,11 +154,14 @@ The untracked `.tmp/` copies (gitignored) were ignored.
 - The gate is a substring match over the whole commit message, ignoring case. Any commit whose
   title or body contains ": integrate" starts a full run, for example a fix-round body line such
   as "R1-2: integrate the probe". That is a false positive: it costs CI minutes and breaks nothing.
-  The false negative matters more. An integration commit titled any other way starts no real run:
-  the old `{PC}: merge platform-core` title is skipped (truth table above). PROCESS.md §4.3's
-  integration and green-path merge messages must therefore use the `: integrate` titles. That
-  includes the plans-only re-merge before the fast-forward, which then starts a run nobody waits
-  for.
+  The false negative matters more. An integration commit titled any other way starts no real run,
+  because the gate skips it. Only the three integration commits must carry the marker:
+  - the §4.3 integration merge, `{PC}: integrate (merge platform-core)`, or the empty
+    `{PC}: integrate`;
+  - the green-path re-merge when non-plans commits came in between;
+  - the red-path `{PC}: integrate (CI fixes)`.
+  The plans-only re-merge after a rejected platform-core push keeps `{PC}: merge platform-core`.
+  It is skipped by design (truth table above), as D-144 and §4.6 require.
 - A hold push (D-087) pushes the last fix-round commit, so it is skipped, as intended.
 - Branch deletions: deleting a pc branch should not start a real run. Its push has no
   head_commit, so the gate skips every job even if GitHub creates a run. GitHub does not usually
@@ -176,3 +179,70 @@ The untracked `.tmp/` copies (gitignored) were ignored.
   behaviour PROCESS relies on: §5.3 watches PR #18 runs by head sha, which is unaffected.
 - That the moved job is byte-for-byte the original apart from `if:` and the one comment.
 - The CONTRIBUTING.md wording of the two tiers' OS coverage.
+
+## Review 1
+
+### Findings
+
+R1-1 (minor) plans/platform-core/reviews/PC-F60.md:157-161 ("Open risks", second bullet). The note
+says PROCESS.md §4.3's merge messages "must therefore use the `: integrate` titles. That includes
+the plans-only re-merge before the fast-forward, which then starts a run nobody waits for." That
+contradicts D-144 ("A plans-only re-merge after a rejected platform-core push stays
+`{PC}: merge platform-core` and starts no pc run"), PROCESS.md §4.3 (green message) and §4.6 ("No
+other commit may contain ': integrate'"). Scenario: an orchestrator or integrator acting on this
+note titles the plans-only re-merge `{PC}: integrate (merge platform-core)`, which starts a full
+~17 min pc run that nobody watches, and breaks the §4.6 rule that only the three integration
+commits carry the marker. The workflow itself is right (the old title is skipped, as the truth
+table shows, and that is the intended behaviour for the plans-only re-merge). Fix: reword the
+bullet so the false-negative risk covers only the three integration commits (§4.3 integration
+message, green-path non-plans re-merge, red-path CI fixes), and state that the plans-only
+re-merge keeps `{PC}: merge platform-core` and is skipped by design.
+
+No blocking or major findings. Verified, item by item:
+
+- D-144 trigger and gate. ci.yml `on.push.branches` is `[main, 'pc/**']` and all nine jobs carry
+  `(github.event_name != 'push' || github.ref == 'refs/heads/main' || contains(github.event.head_commit.message, ': integrate'))`
+  (PyYAML parse of every job's `if`, re-run by the reviewer). `&&` binds tighter than `||`, and the
+  gate is parenthesised, so for pull_request (any type, draft included) and push to main the gate
+  is true and each guard reduces exactly to the old one; a draft PR still skips every job via the
+  unchanged draft guard. `contains` is case-insensitive and false on a null `head_commit`. The
+  double-quoted scalars are valid YAML, and GitHub evaluated them as expressions rather than as
+  truthy literals: runs 44694269933 (cf37c45a) and 44694363809 (73403de8) both completed with
+  conclusion `skipped` and all nine jobs `skipped`, all-checks-passed included, with no
+  startup or expression failure. Run 44693894569 (cdb4bca8, ungated) is a full push run on
+  pc/PC-F60 with no integration-windows job, which confirms the pc/** trigger reads the pushed
+  commit's ci.yml (main's ci.yml still has `branches: [main]`). The positive gate path (an
+  `: integrate` pc push running every job) is not yet observed; D-144's rollout makes PC-F60's own
+  integration push that evidence.
+- all-checks-passed. With the gate beside `!cancelled()`, a non-integration pc push skips it
+  rather than running it against skipped needs (which would fail its step); on an integration push
+  it behaves as before. No other job has `needs:`, so the implicit `success()` interplay is
+  unchanged. Its `needs:` list is unchanged and never held integration-windows.
+- Concurrency `ci-<event>-<ref>-<sha>`. Push: `refs/heads/pc/<id>` or `refs/heads/main` plus
+  `github.sha`; pull_request: `refs/pull/<n>/merge` plus the head sha, so PR reopen and
+  ready_for_review at one head sha still share a group, as before. Two runs share a group only for
+  the same event, ref and sha, so no branch can queue behind or replace another's pending run.
+  §5.3's PR #18 watch filters `--event pull_request --branch platform-core`, so pc push runs on the
+  same sha (after the fast-forward) do not pollute it.
+- integration-windows move. A text diff of the job block in `cdb4bca8^:ci.yml` against
+  nightly-tier.yml shows only the `if:` line (now `github.ref == 'refs/heads/platform-core'`, the
+  same guard as the other four nightly jobs) and the one re-pointed verbosity comment. Runner,
+  timeout, `TELLMA_TEST_SQL`, steps and both `dotnet test` filters
+  (`Category=Integration&Category!=Nightly&Live!=true`) are identical. The old ci.yml had no
+  workflow-level `env`/`permissions`/`defaults` the job relied on; nightly-tier's
+  `contents: read` covers checkout. The main-branch trampoline dispatches
+  `nightly-tier.yml --ref platform-core`, so the job runs nightly once PC-F60 lands.
+- Selection comment and CONTRIBUTING.md describe both tiers accurately: the PR tier runs
+  integration on Linux only and unit on both OSes; the nightly tier adds Core and Acme on Windows
+  LocalDB with the PR-tier filter; Nightly integration tests stay Linux-only. No other file outside
+  docs/ and plans/ describes the old Windows integration job (reviewer grep over Markdown, C#,
+  scripts and JSON).
+- AGENTS.md / PLAN.md §7.1: no PC, decision, plans/ or docs/ references in the new comments or in
+  CONTRIBUTING.md; files are UTF-8 without BOM, LF, `git diff --check` clean. No product or test
+  code changed, so no suite is touched (§7.1 item 4); the reviewer ran none.
+
+### Responses
+
+R1-1: fixed in the review 1 fixes commit. The Open risks bullet now limits the false-negative
+risk to the three integration commits. It states that the plans-only re-merge keeps
+`{PC}: merge platform-core` and is skipped by design.
