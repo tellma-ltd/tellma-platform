@@ -359,6 +359,10 @@ Format, one entry per ruling:
 - Also accepted: a readonly select never opens (a pre-existing bug, fixed) and exposes aria-readonly.
 - **Misalignment for Ahmad:** 0010 §B.4 names contentChildren(TmOptionGroup), which the design does not need. See also D-036's §B.4 note.
 
+### D-140 — PC-174 (T3) not started early (2026-11-20)
+
+- After PC-142 went green, the only ready checkpoint was PC-174 (Tier 3). PLAN §4 lets a lower tier start only when no higher tier is ready, a slot would idle, *and* the window would otherwise expire unused. The weekly window was 54% used with 4 d 19 h left (about 31% elapsed), so it will not expire unused; PC-174 waits for Tier 1/2 work to run out or the pacing to change.
+
 ### D-139 — New flake candidate from PC-098's gate (2026-11-19)
 
 - BlobLifecycleStatementTests.The_sweeps_claim_blocks_on_a_row_a_save_is_confirming_and_skips_it_once_the_save_commits (from PC-084) failed once in PC-098's local integration gate: "No request waited for the lock within 30 seconds" on a loaded host; the class passed 2/2 in two reruns alone, and PC-098 does not touch it. Under D-011/D-113 it is not quarantined: if it recurs (locally or on CI) it becomes a PC-Fnn fix item and is root-caused. Briefs list it as a known candidate meanwhile.

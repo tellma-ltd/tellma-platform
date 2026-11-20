@@ -103,8 +103,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC | Slot | Branch | Step | Implementer agent (name / id) | Reviewer agent (name / id) | Started (UTC) |
 |---|---|---|---|---|---|---|
 | PC-100 | pc-4 | pc/PC-100 | impl | impl (Opus, high, launched 2026-11-19) | 0020-d; R1 only | 2026-11-19 |
-| PC-102 | pc-2 | pc/PC-102 | integrating (released after PC-142 green 44642487470; held 2187f29c) | impl (Opus, high, launched 2026-11-19) | 0029-f; R1 only | 2026-11-19 |
-| PC-081 | pc-3 | pc/PC-081 | held (b6da8f64; merge-tree clean; release after PC-102) | impl (Opus, high, launched 2026-11-19) | 0016-d; R1 then R2 fable (security-bound) | 2026-11-19 |
+| PC-081 | pc-3 | pc/PC-081 | integrating (released after PC-102 green 44655600178; held b6da8f64) | impl (Opus, high, launched 2026-11-19) | 0016-d; R1 then R2 fable (security-bound) | 2026-11-19 |
 
 ## Fix items
 
@@ -389,7 +388,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-099 | 0021-b | 1 | done (integrated 183e772, CI 43618488320 green) | 2e7dfd1, 2de32d7, f5174b3, 11a57e0 (pc), 69c009b, 183e772 (pc) |  |  |
 | PC-100 | 0020-d | 1 | in progress | | | carry from PC-141 (D-096): TenantStateTests.A_job_whose_handler_runs_when_read_only_succeeds_on_a_read_only_tenant runs and must pass |
 | PC-101 | 0010-f4 | 1 | done (450f7dd, CI 43164947502 green) | b11e206, c66a4a7, 450f7dd (pc) | 8.94M (impl+fix1+int 7.20, r1 1.74) | R1 0/1/5 all fixed; new deviations: null for an IsNotNull parameter is a caller error; printed text over a parse ceiling reports that ceiling's diagnostic |
-| PC-102 | 0029-f | 1 | impl | | | |
+| PC-102 | 0029-f | 1 | done (1b83923c; green 44655600178) | c586d072, 2187f29c, 1b83923c | | D-136, D-138 |
 | PC-103 | 0024-g | 1 | todo | | | carry from PC-094: replace Acme's interim main.ts (bootstrapApplication) and AcmeApp with bootstrapTellma/TmApp |
 | PC-104 | 0024-h | 1 | todo | | | carry from PC-094: switch Acme to tmEnglish()/tmArabic() and cut angular.json styles to src/styles.css importing @tellma/core/styles.css and @tellma/locale-ar/styles.css |
 | PC-105 | 0029-b | 1 | todo | | | |
