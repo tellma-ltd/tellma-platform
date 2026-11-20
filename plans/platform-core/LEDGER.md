@@ -102,11 +102,12 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 
 | PC | Slot | Branch | Step | Implementer agent (name / id) | Reviewer agent (name / id) | Started (UTC) |
 |---|---|---|---|---|---|---|
+| PC-145 | pc-3 | pc/PC-145 | impl | impl (Opus, high, launched 2026-11-20) | 0020-f; R1 only | 2026-11-20 |
+| PC-F62 | pc-2 | pc/PC-F62 | impl | impl (Opus, high, launched 2026-11-20) | DeletePlan Cascade/SetNull declared writes; R1 only | 2026-11-20 |
 | PC-088 | pc-1 | pc/PC-088 | impl | impl (Opus, high, launched 2026-11-20) | 0018-c; two reviews (R2 fable, security-bound) | 2026-11-20 |
 | PC-F63 | pc-f | pc/PC-F63 | impl | impl (Opus, high, launched 2026-11-20) | nightly client-e2e WebKit chart-bidi; R1 only | 2026-11-20 |
-| PC-F64 | pc-f2 | pc/PC-F64 | impl | impl (Opus, high, launched 2026-11-20) | nightly integration-windows TenantScopeTests suspension refresh; R1 only | 2026-11-20 |
-| PC-144 | pc-3 | pc/PC-144 | fix1 | R1 0/2/4 (7d470e81; D-150: interim declared core.Jobs write, PC-F62 general fix); fix1 then hold behind PC-087 | 0020-e; R1 only | 2026-11-20 |
-| PC-146 | pc-4 | pc/PC-146 | fix1 | R1 1/1/3 (5efa9448; inbox route collides with test models, ~79 unit fails); escalated to R2 (inherit xhigh, §4.4); D-151 | 0021-c; R1 only | 2026-11-20 |
+| PC-F64 | pc-f2 | pc/PC-F64 | fix1 | R1 0/0/1 (6952a9d3; root cause confirmed, product correct); fix1 then integrate | nightly integration-windows TenantScopeTests suspension refresh; R1 only | 2026-11-20 |
+| PC-146 | pc-4 | pc/PC-146 | fix2 | R2 1/0/2 (261870b7; AccessEvaluationTests all-Denied assertion vs self-scope); fix2 then hold behind PC-F64; D-153 | 0021-c; R1 only | 2026-11-20 |
 
 ## Fix items
 
@@ -172,7 +173,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-F59 | CI fix: TenantScopeTests missing-database open accepts SQL 233 on LocalDB (test-only) | done (679708c3; green 44617227800) | d83b9501, c3e507b2, 679708c3 (pc/PC-F59) | | from PC-086 (CI run 44571660410); D-135 |
 | PC-F60 | D-144: ci.yml runs on pc/** pushes only for ": integrate" commits; integration-windows moved to nightly-tier.yml; CONTRIBUTING tiers | done (a96be78b; pc run 44697079750 green, PR run 44699551746 green) | cdb4bca8, cf37c45a, 73403de8, fedca842, a96be78b (pc/PC-F60) | | from Ahmad's ruling D-144; nightly by hand 44701549452 |
 | PC-F61 | Playwright OS deps: callers pass the bin shim (pnpm exec under sudo aborted before apt); script refuses package-manager launchers; launch probe waits for a rendered frame | done (007f0ff0; pc 44742811597 green, PR 44745457790 green; nightly 44745573605 dispatched to verify) | b4a628df, 000ced1d, 366d0ceb, 5d493f9b, 007f0ff0 | R1 0/0/1; CI fixes: probe raced the first frame (acme-client) |
-| PC-F62 | DeletePlan declares the tables of Cascade/SetNull referencing FKs (undeclared writes, every module); remove per-service workarounds (ScheduleService) | queued (starts after PC-144 lands; D-150) | | |
+| PC-F62 | DeletePlan declares the tables of Cascade/SetNull referencing FKs (undeclared writes, every module); remove per-service workarounds (ScheduleService) | in progress (pc-2; D-150) | | |
 | PC-F63 | Nightly client-e2e: 3 WebKit chart-bidi canvas tests fail; dotnet job OS deps unavailable (nightly 44745573605) | in progress (D-151) | | |
 | PC-F64 | Nightly integration-windows: TenantScopeTests cross-instance suspension refresh failed (nightly 44745573605) | in progress (D-151) | | |
 | PC-F02 | systemic e2e flakiness: CI 42456030333 red on 5250c6c (plans-only) with 4 NEW flaky tests | done (R1 1/1/2; CI 42471952389 green), pc-f free | 2c91df4, 4c36d45, 4c89ae1 | 11.32M | grid bundle at its 38 KB ceiling; picker same-frame Enter race open | root-cause all 9; un-quarantine the fixed PC-F01 five |
@@ -439,8 +440,8 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-141 | 0011-h | 2 | done (478b0ab0; CI 43879675326 green) | bb2a2d6, 15d1369 (pc/PC-141) | | |
 | PC-142 | 0015-k | 2 | done (eba471bf; green 44642487470) | e86138b6, 76ee772e, e6f1d0b2, 3083d411, eba471bf | | D-131, D-132, D-134 |
 | PC-143 | 0018-f | 2 | todo | | | |
-| PC-144 | 0020-e | 2 | in progress | | | |
-| PC-145 | 0020-f | 2 | todo | | | |
+| PC-144 | 0020-e | 2 | done (711641ab; pc 44771340622 green; PR 44774613660 green) | 7d470e81, 8e457c6b, 711641ab | | D-150, D-152, D-154 |
+| PC-145 | 0020-f | 2 | in progress | | | carry (D-153): add core.Job to AccessEvaluationTests' list of self-scoped securables (Filtered with no grants) |
 | PC-146 | 0021-c | 2 | in progress | | | carry from PC-099 r1: the Notification stack fails closed (no criteria) until this lands; add the self-scope |
 | PC-147 | 0021-d | 2 | todo | | | |
 | PC-148 | 0022-a | 2 | todo | | | carry (D-151): EnlistmentFrame.Admit admits EmailOutbox (0015 §13.3); 0021 §12 enlisted-rows-committed-with-the-completion e2e test lands here |

@@ -116,8 +116,7 @@ orchestrator: assign slot, create pc/PC-nnn, LEDGER row → impl
     Implementer (resumed) ── merge-tree conflict check ── push branch only, no merge or gates
   Implementer (resumed) ── merge platform-core, build, format ── push pc/{PC} only    → ci-pending
     CI on that pc/{PC} commit red: implementer fixes it in this step (§4.3)         → ci-pending
-  CI on that pc/{PC} commit green ── implementer pushes it to platform-core         → integrated
-  CI green for that sha on platform-core (PR #18)                                   → done
+  CI on that pc/{PC} commit green ── implementer pushes it to platform-core         → done (D-154)
 ```
 
 A checkpoint off the two-review list has two commits; one on it has three. Fix commits are made
@@ -411,8 +410,9 @@ commit integrates like any checkpoint.
 - Every integration push gets its own CI run: PC-000 sets a per-sha concurrency group with no
   cancellation. After every agent completion and on every wake, run
   `cd MAIN && gh run list --branch platform-core --event pull_request --limit 20 --json headSha,status,conclusion,url`.
-  For each `integrated` row whose sha has a completed run, a green run moves it to `done` and a red
-  one stops the line (§8.3). A pending run never blocks other integrations. A checkpoint's slot is
+  An item is `done` once its green pc/{PC} commit is on platform-core (D-154); PR #18's run on
+  that sha does not gate it and is not waited for. A red PR run on platform-core still stops the
+  line (§8.3). A pending run never blocks other integrations. A checkpoint's slot is
   freed when the checkpoint reaches `integrated`, or earlier when it holds (D-087: its branch is
   pushed and it is not yet merged, so the slot holds nothing it needs).
 - **pc/** runs (D-144).** For every `ci-pending` item, watch the run on its returned sha in the
@@ -673,7 +673,7 @@ goes to LEDGER.md and DECISIONS.md.
   whole PR tier (ci.yml runs on a `pc/**` push only when the head commit message contains
 ": integrate", §4.6). Locally, integration only merges, builds and
   formats, and runs the tests the merge resolution touched (§4.3). PR #18's run on the
-  platform-core push re-confirms it, and a red there stops the line (§8.3).
+  platform-core push re-confirms it without gating done (D-154), and a red there stops the line (§8.3).
   - `integration-windows` (LocalDB, Core and Acme) runs in the nightly tier, not before a merge.
     The Identity, EF Core and Queryex integration suites never run on Windows before a merge;
     unit tests still run on both OSes in build-test.

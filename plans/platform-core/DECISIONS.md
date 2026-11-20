@@ -359,6 +359,23 @@ Format, one entry per ruling:
 - Also accepted: a readonly select never opens (a pre-existing bug, fixed) and exposes aria-readonly.
 - **Misalignment for Ahmad:** 0010 §B.4 names contentChildren(TmOptionGroup), which the design does not need. See also D-036's §B.4 note.
 
+### D-154 (Ahmad, 2026-11-20): a green pc push run makes an item done; PR #18's run no longer gates it
+
+- Ahmad: "Don't gate done on the `pull_request` run if the push run is green. Everything else in the process stays the same."
+- Context: since D-144 each integrated commit gets two runs on PR #18's checks list, CI (push) on pc/{PC} (the gate) and CI (pull_request) once the same sha is PR #18's head. While main does not move they test the same tree.
+- From now on an item is done when its green pc/{PC} commit is on platform-core. The orchestrator no longer watches the PR run to mark done. A red PR run on platform-core, seen in the §5.3 run list, still stops the line (§8.3). PROCESS.md §4 diagram, §5.3 and §11 updated (D-088).
+- Applied first to PC-144 (711641ab; pc 44771340622 green; its PR run 44774613660 had also finished green).
+
+### D-153 (orchestrator, 2026-11-20): PC-146 Review 2 rulings; PC-F64 Review 1 rulings
+
+- PC-146 Review 2 (inherit xhigh, 5efa9448..261870b7): 1 blocking, 0 major, 2 minor. R2-1: the new NotificationAccessCriteria makes core.Notification × Read Filtered for a caller with no grants, failing AccessEvaluationTests' "every decision Denied" assertion deterministically; the product is right (0021 §8), so the test is rewritten to list the self-scoped securables, which PC-145's core.Job self-scope then extends. R1-1 is confirmed closed in all four unit projects that compose CoreFeature. The AspNetCore RequestTimeoutTests failure in fix 1 is an unrelated load flake (839/839 on rerun); recorded as a flake candidate. PC-146 holds after fix 2 behind PC-F64 (D-087).
+- For Ahmad: 0021 §4.3 says preference-save errors sit at `[i].type`, but the 0016 §7.3 edge (PC-081, pinned in ValidationPathsTests) renders `body[i].type`. The code follows 0016; 0021 §4.3 should say `body[i].type` for a JSON-array body.
+- PC-F64 Review 1 (6952a9d3): 0 blocking, 0 major, 1 minor (an ARCHITECTURE.md sentence overstated the five-minute bound). Root cause confirmed from the nightly log: the test failed in setup (CatalogHost.MigrateAsync on EF's 30 s default) during a two-minute LocalDB stall; the product's suspension refresh is correct; the longer bound is test-helper only. No stall lever now; moving LocalDB data off C: and the design-time-factory test's 30 s default are on WATCHLIST 0011 for a recurrence. The implementer's identity-store "inconsistency" is not real (the migrator hands the store a connection string with Command Timeout = MigrationCommandTimeout, already pinned). PC-F64 integrates after fix 1.
+
+### D-152 (Ahmad, 2026-11-20): PC-144 platform-core push approved after a permission block
+
+- PC-144's agent had its fast-forward `git push origin HEAD:platform-core` of the green 711641ab (pc run 44771340622) denied by the auto-mode permission classifier; it did not retry. Ahmad was notified (push and email) and approved the push in chat. The orchestrator verified HEAD = 711641ab and that origin/platform-core was its ancestor, then pushed 3bbbac07..711641ab from pc-3. The approval covers that push only.
+
 ### D-151 (orchestrator, 2026-11-20): nightly 44745573605 after PC-F61; PC-146 escalated; touched tests include shared compositions
 
 - Nightly 44745573605 on 007f0ff0 (dispatched to verify PC-F61): the OS dependencies installed for chromium, firefox and webkit in client-e2e and client-e2e-quarantine, so PC-F61 is verified. New reds, each a fix item (D-144, not a line stop): client-e2e, 3 WebKit chart-bidi canvas tests (397 passed) → PC-F63 in pc-f; integration-windows, TenantScopeTests.A_suspension_another_instance_wrote_refuses_the_next_scope_after_a_refresh after 1 min 5 s (775 passed; the job passed in 44701549452) → PC-F64 in pc-f2. The nightly dotnet job ended "OS dependencies: unavailable" after two attempts; PC-F63 checks whether that is a mirror stall or a missed caller.
