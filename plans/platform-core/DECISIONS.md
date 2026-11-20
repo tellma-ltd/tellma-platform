@@ -359,6 +359,11 @@ Format, one entry per ruling:
 - Also accepted: a readonly select never opens (a pre-existing bug, fixed) and exposes aria-readonly.
 - **Misalignment for Ahmad:** 0010 §B.4 names contentChildren(TmOptionGroup), which the design does not need. See also D-036's §B.4 note.
 
+### D-147 (orchestrator, 2026-11-20): batch-review fixers integrate under D-144 by watching their own pc CI run
+
+- A workflow agent cannot be resumed by the orchestrator, so the §13 batch fixer pushes its integration commit to pc/PC-Bnn, watches that run itself, and follows §4.3's green or red message until the commit is on platform-core. PROCESS.md §13's fixer prompt says so. The orchestrator still watches PR #18's run on the result.
+- PC-B04 (Phase 4, PC-062…PC-084) launched in pc-2 at 36827fe1 once PC-082 went green (pc 44703261531, PR 44705432684). Weekly usage 59% with 4 d 10 h left; Fable 23%, so finders run on Fable.
+
 ### D-146 (orchestrator, 2026-11-20): PC-100 Review 2 rulings
 
 - Deviation D-15 rejected: MaxParallelBatches must hold, including at boot when every poller plans at once; polls get stagger/jitter, and a test pins that N pollers starting together never exceed the bound.
