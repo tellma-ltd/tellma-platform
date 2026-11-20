@@ -413,36 +413,19 @@ namespace Tellma.Core.Access
                 return;
             }
 
-            // --- Rule 5: the length, before the engine reads the text ---
+            // --- Rules 5 and 6: the length, then a predicate over the root within one stored filter's profile ---
             int maxLength = _options.Value.MaxFilterLength;
-            if (filter.Length > maxLength)
+            PermissionFilterVerdict verdict = PermissionFilterRules.Check(filter, schema.FindEntity(root), schema, stamp, maxLength, _validate);
+            if (verdict.MaxLengthExceeded is int exceeded)
             {
-                context.Errors.Add(at, AccessCodes.FilterTooLong, AccessRefusals.Arguments(("maxLength", maxLength)));
+                context.Errors.Add(at, AccessCodes.FilterTooLong, AccessRefusals.Arguments(("maxLength", exceeded)));
                 return;
             }
 
-            // --- Rule 6: a predicate over the root, with a user and no parameters, within one stored filter's profile;
-            // a schema without the root validates nothing over it, as the drift classifier reads it ---
-            if (schema.FindEntity(root) is not EntityDescriptor entity)
-            {
-                context.Errors.Add(at, AccessCodes.FilterInvalid);
-                return;
-            }
-
-            QueryexResult<ValidatedExpression> result = _validate(filter, new ValidationOptions
-            {
-                Schema = schema,
-                Root = entity,
-                Mode = QueryexMode.Filter,
-                QueryexVersion = stamp,
-                HasUser = true,
-                Parameters = [],
-                Limits = QueryexProfiles.AccessLimits,
-            });
-            if (!result.Succeeded || result.Diagnostics.Count > 0 || string.IsNullOrWhiteSpace(filter))
+            if (!verdict.Valid)
             {
                 // One error per diagnostic, each carrying the diagnostic's code and its own arguments.
-                foreach (QueryexDiagnostic diagnostic in result.Diagnostics)
+                foreach (QueryexDiagnostic diagnostic in verdict.Diagnostics)
                 {
                     Dictionary<string, object?> arguments = AccessRefusals.Arguments(("code", diagnostic.Code));
                     foreach (KeyValuePair<string, string> argument in diagnostic.Arguments)
@@ -453,7 +436,7 @@ namespace Tellma.Core.Access
                     context.Errors.Add(at, AccessCodes.FilterInvalid, arguments);
                 }
 
-                if (result.Diagnostics.Count == 0)
+                if (verdict.Diagnostics.Count == 0)
                 {
                     context.Errors.Add(at, AccessCodes.FilterInvalid);
                 }

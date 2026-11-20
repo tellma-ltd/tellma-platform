@@ -9,11 +9,15 @@ using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
+using Tellma.Core.Abstractions.Api;
 using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.AspNetCore.Api;
 using Tellma.Core.AspNetCore.Bff;
 using Tellma.Core.AspNetCore.Hosting;
+using Tellma.Core.AspNetCore.Limits;
+using Tellma.Core.AspNetCore.OpenApi;
 using Tellma.Core.AspNetCore.Routing;
 using Tellma.Core.AspNetCore.Surfaces;
 using Tellma.Core.AspNetCore.Tenancy;
@@ -52,19 +56,28 @@ namespace Tellma.Core.AspNetCore
             mapped.Capture(routes.DataSources);
 
             // --- The tenantless platform routes ---
-            Platform(app.MapGet(DistributionInfoEndpoint.Route, DistributionInfoEndpoint.WriteAsync), "distribution-info");
-            Platform(app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = static _ => false }), "health");
-            Platform(
+            // Each anonymous one under the per-address rate; the documents built from configuration alone output-cached.
+            _ = Anonymous(Platform(app.MapGet(DistributionInfoEndpoint.Route, DistributionInfoEndpoint.WriteAsync), "distribution-info"))
+                .CacheOutput(PublicDocumentCachePolicy.OneMinute);
+            _ = Anonymous(Platform(app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = static _ => false }), "health"));
+            _ = Anonymous(Platform(
                 app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = static check => check.Tags.Contains(HealthCheckNames.ReadyTag) }),
-                "health");
-            Platform(app.MapGet(ProtectedResourceEndpoint.Route, ProtectedResourceEndpoint.WriteAsync), "protected-resource-metadata");
+                "health"));
+            _ = Anonymous(Platform(app.MapGet(ProtectedResourceEndpoint.Route, ProtectedResourceEndpoint.WriteAsync), "protected-resource-metadata"))
+                .CacheOutput(PublicDocumentCachePolicy.FiveMinutes);
+
+            // --- The OpenAPI document of the web surface, in Development alone ---
+            if (app.Environment.IsDevelopment())
+            {
+                _ = Anonymous(Platform(WebOpenApi.Map(app), WebOpenApi.TenantlessReason)).CacheOutput(PublicDocumentCachePolicy.FiveMinutes);
+            }
 
             // --- The tenantless routes a host bundle contributes, such as the webhook endpoint ---
             foreach (IPlatformEndpointSource source in app.Services.GetServices<IPlatformEndpointSource>())
             {
                 foreach (IEndpointConventionBuilder endpoint in source.Map(app))
                 {
-                    Platform(endpoint, source.Reason);
+                    _ = Platform(endpoint, source.Reason);
                 }
             }
 
@@ -77,11 +90,11 @@ namespace Tellma.Core.AspNetCore
             }
 
             // --- The BFF: sign-in, sign-out and the back-channel logout are anonymous; the user needs a session ---
-            (IEndpointConventionBuilder[] anonymous, IEndpointConventionBuilder[] session) = BffEndpoints.Map(app);
-            foreach (IEndpointConventionBuilder endpoint in anonymous)
-            {
-                Platform(endpoint, BffEndpoints.TenantlessReason);
-            }
+            // The sign-in is under the per-address rate; the back-channel logout is the identity
+            // server's call, which a shared address would starve.
+            (IEndpointConventionBuilder login, IEndpointConventionBuilder backchannel, IEndpointConventionBuilder[] session) = BffEndpoints.Map(app);
+            _ = Anonymous(Platform(login, BffEndpoints.TenantlessReason));
+            _ = Platform(backchannel, BffEndpoints.TenantlessReason);
 
             foreach (IEndpointConventionBuilder endpoint in session)
             {
@@ -137,8 +150,21 @@ namespace Tellma.Core.AspNetCore
             RouteGroupBuilder builder = app.MapGroup(TenantPrefix + suffix);
             _ = builder.RequireAuthorization(policy).WithMetadata(new TellmaGroupMetadata(group)).DisableCookieRedirect();
 
-            // --- The filter chain, outermost first: tenant, the web surface's request filter, then the witness ---
+            // --- The rate and timeout policies: per user, then per tenant, after an endpoint's own; the web timeout ---
+            // The public API's policies are a later surface's; the hub's connection disables its timeout itself.
+            if (group is TellmaGroup.Web or TellmaGroup.Blobs)
+            {
+                _ = builder.RequireRatePolicy(TellmaRatePolicies.User).RequireRatePolicy(TellmaRatePolicies.Tenant);
+            }
+
+            if (group is TellmaGroup.Web or TellmaGroup.Blobs or TellmaGroup.Hub)
+            {
+                _ = builder.WithRequestTimeout(TellmaRequestTimeouts.Web);
+            }
+
+            // --- The filter chain, outermost first: tenant, telemetry, the web surface's request filter, then the witness ---
             // Each refuses before the next runs; none evaluates a securable, the handler's service does.
+            // The telemetry stage wraps each endpoint's delegate below, between the guard and the witness.
             if (guarded)
             {
                 _ = builder.AddEndpointFilter<TenantAccessFilter>();
@@ -168,8 +194,14 @@ namespace Tellma.Core.AspNetCore
             if (guarded)
             {
                 // Endpoint filters reach route handlers alone; these reach every endpoint of the group.
-                // The witness wraps first, so the guard's wrapper, which the audit checks, stays outermost.
+                // The witness wraps first and the guard last, so the guard's wrapper, which the audit
+                // checks, stays outermost; the web surface's telemetry runs between the two.
                 conventions.Finally(AccessWitnessFilter.Wrap);
+                if (group == TellmaGroup.Web)
+                {
+                    conventions.Finally(ApiTelemetryFilter.Wrap);
+                }
+
                 conventions.Finally(TenantAccessFilter.Wrap);
             }
 
@@ -179,12 +211,21 @@ namespace Tellma.Core.AspNetCore
         /// <summary>Stamps a tenantless platform endpoint: anonymous, tenantless, the platform's.</summary>
         /// <param name="builder">The endpoint.</param>
         /// <param name="reason">Why it serves no tenant.</param>
-        private static void Platform(IEndpointConventionBuilder builder, string reason)
+        /// <returns>The endpoint, for chaining.</returns>
+        private static IEndpointConventionBuilder Platform(IEndpointConventionBuilder builder, string reason)
         {
-            _ = builder
+            return builder
                 .AllowAnonymous()
                 .AsTenantlessEndpoint(reason)
                 .WithMetadata(PlatformEndpointMetadata.Instance);
+        }
+
+        /// <summary>Puts an anonymous endpoint under the per-address rate.</summary>
+        /// <param name="builder">The endpoint.</param>
+        /// <returns>The endpoint, for chaining.</returns>
+        private static IEndpointConventionBuilder Anonymous(IEndpointConventionBuilder builder)
+        {
+            return builder.RequireRatePolicy(TellmaRatePolicies.Anonymous);
         }
     }
 }

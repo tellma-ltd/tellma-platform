@@ -235,10 +235,10 @@ stack fixture.Lookup
   key: int
   description: -
   operations: All
-  capabilities: activatable, cacheable, excel
+  capabilities: activatable, cacheable, searchable, excel
   properties: Id:ServerOwned, CreatedAt:ServerOwned, CreatedById:ServerOwned, ModifiedAt:ServerOwned, ModifiedById:ServerOwned, Code:Editable, Name:Editable, IsActive:ServerOwned
   children: -
-  searchable: -
+  searchable: Code:Prefix, Name:Contains
   natural-keys: Code
   default-select: Id, Code, Name, IsActive, CreatedAt, CreatedById, ModifiedAt, ModifiedById
   related-select: Id, Code
@@ -359,4 +359,8 @@ service settings
   action details: api member-only body - handler SettingsService; idempotent; result TenantSettingsDetails; mcp Hidden, revision 0; -
   action refresh-caches: api core.Settings.General:Save body - handler SettingsService; mutation, idempotent; result void; mcp Hidden, revision 0; -
   action save: api member-only body TenantSettingsPatch handler SettingsService; mutation; result SettingsSaveResult; mcp Hidden, revision 0; -
+service queryex
+  class: Tellma.Core.Api.QueryexService
+  feature: core
+  action discover: api member-only body QueryexDiscoverRequest handler QueryexService; idempotent; result QueryexDiscoverResult; mcp Hidden, revision 0; -
 enlistment Tellma.Core.Users.UserService<Tellma.Core.Abstractions.Access.User> -> core.User

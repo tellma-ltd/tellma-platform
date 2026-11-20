@@ -29,9 +29,11 @@ using Tellma.Core.Abstractions.Crud;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Errors;
 using Tellma.Core.Abstractions.Tenancy;
+using Tellma.Core.Abstractions.Validation;
 using Tellma.Core.Access;
 using Tellma.Core.Api;
 using Tellma.Core.AspNetCore.Api;
+using Tellma.Core.AspNetCore.Limits;
 using Tellma.Core.AspNetCore.Routing;
 using Tellma.Core.AspNetCore.Tests.Infrastructure;
 using Tellma.Core.Crud;
@@ -67,6 +69,37 @@ namespace Tellma.Core.AspNetCore.Tests.Api
             Assert.Contains(routes, static route => route.Template == RouteContracts.TemplatePrefix + "center-notes/query");
             Assert.Contains(routes, static route => route.Template == RouteContracts.TemplatePrefix + "currencies/all");
             Assert.Contains(routes, static route => route.Template == RouteContracts.TemplatePrefix + "inbox/summary");
+        }
+
+        [Fact]
+        public async Task A_rate_policy_an_action_method_declares_reaches_its_endpoint_ahead_of_the_groups()
+        {
+            await using TellmaTestHost host = await StartAsync();
+            List<RouteEndpoint> projected = Projected(host);
+
+            // --- The export's and the report's own policies, chained ahead of the web group's; the report's lane by priority ---
+            RateChainSpec export = RatePolicies.Resolve(Endpoint(projected, "inbox/export").Metadata);
+            RateChainSpec report = RatePolicies.Resolve(Endpoint(projected, "inbox/report").Metadata);
+            RateChainSpec summary = RatePolicies.Resolve(Endpoint(projected, "inbox/summary").Metadata);
+            RateChainSpec builtIn = RatePolicies.Resolve(Endpoint(projected, "centers/get-by-parent-ids").Metadata);
+
+            Assert.Equal([TellmaRatePolicies.Export, RatePolicies.UserAcrossTenants, TellmaRatePolicies.User, TellmaRatePolicies.Tenant], export.Policies.Select(static policy => policy.Name));
+            Assert.False(export.HonorsPriority);
+            Assert.Equal([TellmaRatePolicies.Reports, RatePolicies.UserAcrossTenants, TellmaRatePolicies.User, TellmaRatePolicies.Tenant], report.Policies.Select(static policy => policy.Name));
+            Assert.True(report.HonorsPriority);
+
+            // --- An action that names none, a built-in action and a standard operation take the group's alone ---
+            Assert.Equal([RatePolicies.UserAcrossTenants, TellmaRatePolicies.User, TellmaRatePolicies.Tenant], summary.Policies.Select(static policy => policy.Name));
+            Assert.Equal(summary.Signature, builtIn.Signature);
+            Assert.All(
+                projected.Where(static endpoint => endpoint.Metadata.GetRequiredMetadata<ProjectedRouteMetadata>().Route.Action is null),
+                static endpoint => Assert.Equal([TellmaRatePolicies.User, TellmaRatePolicies.Tenant], endpoint.Metadata.GetOrderedMetadata<IRatePolicyMetadata>().Select(static policy => policy.Policy)));
+
+            // The projected endpoint whose route ends in a relative path.
+            static RouteEndpoint Endpoint(List<RouteEndpoint> projected, string relative)
+            {
+                return Assert.Single(projected, endpoint => endpoint.RoutePattern.RawText!.EndsWith("/api/web/" + relative, StringComparison.Ordinal));
+            }
         }
 
         /// <summary>The projection table: each route kind's grant, tenant facts, contract, timeout, polling and step-up metadata.</summary>
@@ -113,7 +146,8 @@ namespace Tellma.Core.AspNetCore.Tests.Api
             // --- The contract, the kind, the timeout, the activity stamp and the step-up ---
             Assert.Equal(projected.Route.Fingerprint, metadata.GetRequiredMetadata<ContractMetadata>().Fingerprint);
             Assert.Equal(kind, projected.Kind.ToString());
-            Assert.Equal(isLong ? TellmaRequestTimeouts.Long : null, metadata.GetMetadata<RequestTimeoutAttribute>()?.PolicyName);
+            // The group's web timeout, which a long action's own policy overrides.
+            Assert.Equal(isLong ? TellmaRequestTimeouts.Long : TellmaRequestTimeouts.Web, metadata.GetMetadata<RequestTimeoutAttribute>()?.PolicyName);
             Assert.Equal(polling, metadata.GetMetadata<NoActivityStampMetadata>() is not null);
             Assert.Equal(stepUp, metadata.GetMetadata<RequireAssuranceMetadata>() is not null);
 
@@ -138,6 +172,42 @@ namespace Tellma.Core.AspNetCore.Tests.Api
             Assert.Equal(
                 [.. TellmaJson.Options.Converters.Select(static converter => converter.GetType())],
                 [.. options.Converters.Select(static converter => converter.GetType()).Take(TellmaJson.Options.Converters.Count)]);
+        }
+
+        [Fact]
+        public async Task A_save_refused_by_validation_names_each_entity_and_its_property_by_its_label()
+        {
+            await using TellmaTestHost host = await StartAsync();
+            host.Services.GetRequiredService<PipelineLog>().Refusal = new ValidationException(
+                [new ValidationError(ValidationPath.Root.Index(1).Property(nameof(PjCenter.IsActive)), "Pj.Untidy", new Dictionary<string, object?> { ["property"] = nameof(PjCenter.IsActive) })]);
+
+            using HttpResponseMessage response = await SendAsync(
+                host, host.Cookie(), "centers/save", /*lang=json,strict*/ """{"entities":[{"code":"C1","name":"One"},{"code":"C2","name":"Two"}]}""");
+
+            // The save route roots the path at its entities and names the property by its label; the arguments keep the raw name.
+            Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
+            Problem problem = await Problem.ReadAsync(response);
+            Assert.Equal("validation", problem.Code);
+            JsonElement error = Assert.Single(problem.Document.GetProperty("errors").EnumerateArray());
+            Assert.Equal("entities[1].isActive", error.GetProperty("path").GetString());
+            Assert.Equal("Active is untidy", error.GetProperty("message").GetString());
+            Assert.Equal(nameof(PjCenter.IsActive), error.GetProperty("arguments").GetProperty("property").GetString());
+        }
+
+        [Fact]
+        public async Task A_save_awaiting_confirmation_renders_its_first_warnings_own_message()
+        {
+            await using TellmaTestHost host = await StartAsync();
+            host.Services.GetRequiredService<PipelineLog>().Refusal = new ConfirmationRequiredException(
+                [new ConfirmationRequest(ProjectionModel.ConfirmationKeys[0], [1], new Dictionary<string, object?>())]);
+
+            using HttpResponseMessage response = await SendAsync(
+                host, host.Cookie(), "centers/save", /*lang=json,strict*/ """{"entities":[{"code":"C1","name":"One"}]}""");
+
+            Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+            Problem problem = await Problem.ReadAsync(response);
+            Assert.Equal("confirmation-required", problem.Code);
+            Assert.Equal("The posting date is before the period's start", problem.Document.GetProperty("detail").GetString());
         }
 
         [Fact]
@@ -389,6 +459,41 @@ namespace Tellma.Core.AspNetCore.Tests.Api
             Activity activity = Assert.Single(started);
             Assert.Equal(resource, activity.GetTagItem(ApiTelemetryNames.ResourceTag));
             Assert.Equal(operation, activity.GetTagItem(ApiTelemetryNames.OperationTag));
+            Assert.Equal("web", activity.GetTagItem(ApiTelemetryNames.ClientTag));
+        }
+
+        [Fact]
+        public async Task A_projected_operation_is_timed_and_logged_under_its_resource_operation_and_client()
+        {
+            CapturingLoggerProvider logs = new();
+            await using TellmaTestHost host = await StartAsync(options => Capture(options, logs));
+            using MetricCollector<double> durations = new(
+                host.Services.GetRequiredService<IMeterFactory>(), ApiTelemetryNames.MeterName, ApiTelemetryNames.OperationDuration);
+            string cookie = host.Cookie();
+
+            // --- An answer and a problem are both timed, by the closed sets alone ---
+            await PostAsync(host, cookie, "centers/query", "{}", HttpStatusCode.OK);
+            using HttpResponseMessage refused = await SendAsync(host, cookie, "centers/delete", /*lang=json,strict*/ """{"ids":[3000000000]}""");
+            Assert.Equal(HttpStatusCode.BadRequest, refused.StatusCode);
+            IReadOnlyList<CollectedMeasurement<double>> measured = durations.GetMeasurementSnapshot();
+            Assert.Equal(2, measured.Count);
+            Assert.Equal(["query", "delete"], [.. measured.Select(static measurement => measurement.Tags[ApiTelemetryNames.OperationTag])]);
+            Assert.All(measured, static measurement =>
+            {
+                Assert.Equal("pj.PjCenter", measurement.Tags[ApiTelemetryNames.ResourceTag]);
+                Assert.Equal("web", measurement.Tags[ApiTelemetryNames.ClientTag]);
+                Assert.Equal(3, measurement.Tags.Count);
+            });
+
+            // --- The problem's line and the request's completion both carry the scope's members ---
+            CapturedEvent problem = Assert.Single(logs.Events, static captured => Problems.ProblemMappingTests.Answered(captured, "bad-request"));
+            CapturedEvent completed = Assert.Single(logs.Events, static captured => captured.Message.Contains("/api/web/centers/delete\" responded 400", StringComparison.Ordinal));
+            Assert.All([problem, completed], static captured =>
+            {
+                Assert.Equal("web", captured.Members["Client"]);
+                Assert.Equal("pj.PjCenter", captured.Members["Resource"]);
+                Assert.Equal("delete", captured.Members["Operation"]);
+            });
         }
 
         [Fact]

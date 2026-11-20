@@ -3,10 +3,13 @@
 ## Test tiers
 
 Tests run in two tiers. The **PR tier** gates every pull request and every push to one
-(`.github/workflows/ci.yml`). The **nightly tier** holds what is too slow, too broad or too
-timing-sensitive for that: full viewport and language matrices, Firefox and WebKit, performance
-budgets, soaks and long waits (`.github/workflows/nightly-tier.yml`). Tests reach the nightly tier
-only through the tags below; everything untagged is PR tier.
+(`.github/workflows/ci.yml`). It also runs on every push to `main`, and on a push to a `pc/**`
+working branch whose head commit is an integration commit (its message contains `: integrate`);
+any other push to a `pc/**` branch skips every job. The **nightly tier** holds what is too slow,
+too broad or too timing-sensitive for that: full viewport and language matrices, Firefox and
+WebKit, performance budgets, soaks and long waits (`.github/workflows/nightly-tier.yml`). It also
+runs two integration suites on Windows, which the PR tier runs on Linux only. Tests reach the
+nightly tier only through the tags below; everything untagged is PR tier.
 
 Before tagging a slow test nightly, try to make it fast: a wall-clock wait (a watchdog, a poll
 interval, an expiry) is driven by a fake clock or a test `TimeProvider` wherever that is possible.
@@ -74,10 +77,8 @@ the clock:
 
 Run these from the repository root before opening or updating a pull request. CI runs the same
 commands with `-c Release`, the unit suites on Linux and Windows, and the integration suites in a
-single solution-wide run on Linux; on Windows it runs the two distribution-host suites
-(`Tellma.Core.IntegrationTests` and `Tellma.Distro.Acme.IntegrationTests`) against LocalDB, in a
-job that does not gate merges yet. The client gates run on Linux and Windows too; the client e2e
-suite runs on Linux.
+single solution-wide run on Linux only; the nightly tier runs two of them on Windows. The client
+gates run on Linux and Windows too; the client e2e suite runs on Linux.
 
 ```bash
 dotnet build Tellma.slnx
@@ -197,6 +198,18 @@ nor E2E tests, as the PR tier does for the unit suites:
 ```bash
 dotnet test Tellma.slnx --filter "Category=Nightly&Category!=Integration&Category!=E2E&Live!=true"
 ```
+
+The PR tier runs no integration tests on Windows. The nightly tier runs the platform's and the
+reference distribution's integration suites there, against LocalDB, with the PR tier's
+integration filter. On Windows, with `TELLMA_TEST_SQL` set to
+`Server=(localdb)\MSSQLLocalDB;Integrated Security=True;TrustServerCertificate=True`:
+
+```bash
+dotnet test test/core/Tellma.Core.IntegrationTests --filter "Category=Integration&Category!=Nightly&Live!=true"
+dotnet test distributions/acme/test/Tellma.Distro.Acme.IntegrationTests --filter "Category=Integration&Category!=Nightly&Live!=true"
+```
+
+The other integration suites, and every Nightly integration test, run on Linux only.
 
 From the repository root, with all three browsers installed
 (`pnpm --dir client exec playwright install chromium firefox webkit`):

@@ -21,6 +21,15 @@ namespace Tellma.Core.AspNetCore.Sessions
     /// </summary>
     internal sealed class TellmaSessionEvents : CookieAuthenticationEvents
     {
+        /// <summary>The problem code of a request without a session.</summary>
+        private const string UnauthenticatedCode = "unauthenticated";
+
+        /// <summary>The problem code of a request carrying a credential the surface never accepts.</summary>
+        private const string UnsupportedCredentialCode = "unsupported-credential";
+
+        /// <summary>The authorization scheme of a bearer token.</summary>
+        private const string BearerPrefix = "Bearer ";
+
         private readonly SessionRefresher _refresher;
         private readonly TellmaSessionOptions _options;
         private readonly TimeProvider _time;
@@ -41,8 +50,13 @@ namespace Tellma.Core.AspNetCore.Sessions
             _secureCookies = cookies.Secure;
 
             // --- An API answers 401 and 403; it never redirects to a sign-in page ---
-            OnRedirectToLogin = static context => ProblemWriter.WriteAsync(context.HttpContext, StatusCodes.Status401Unauthorized, "unauthenticated");
-            OnRedirectToAccessDenied = static context => ProblemWriter.WriteAsync(context.HttpContext, StatusCodes.Status403Forbidden, "forbidden");
+            // A bearer token on a cookie surface is a credential the surface never accepts, which the
+            // caller is told apart from a missing session.
+            OnRedirectToLogin = static context => ProblemWriter.WriteAsync(
+                context.HttpContext,
+                StatusCodes.Status401Unauthorized,
+                CarriesBearer(context.Request) ? UnsupportedCredentialCode : UnauthenticatedCode);
+            OnRedirectToAccessDenied = static context => ProblemWriter.WriteAsync(context.HttpContext, StatusCodes.Status403Forbidden, ProblemMapper.ForbiddenCode);
             OnRedirectToLogout = static context =>
             {
                 context.Response.StatusCode = StatusCodes.Status204NoContent;
@@ -95,6 +109,15 @@ namespace Tellma.Core.AspNetCore.Sessions
             HttpContext http = context.HttpContext;
             AuthenticationProperties properties = context.Properties;
             DateTimeOffset now = _time.GetUtcNow();
+
+            // --- A bearer token beside the cookie: the request is refused, the session left as it is ---
+            // One credential type per surface keeps the cross-site reasoning valid; the challenge
+            // answers 401 unsupported-credential.
+            if (CarriesBearer(http.Request))
+            {
+                context.RejectPrincipal();
+                return;
+            }
 
             // --- Only a ticket the store holds, under its absolute lifetime ---
             string? key = CatalogSessionStore.CurrentKey(http);
@@ -190,6 +213,22 @@ namespace Tellma.Core.AspNetCore.Sessions
         {
             context.RejectPrincipal();
             await context.HttpContext.SignOutAsync(TellmaAuthentication.SessionScheme).ConfigureAwait(false);
+        }
+
+        /// <summary>Whether a request carries a bearer token in its <c>Authorization</c> header.</summary>
+        /// <param name="request">The request.</param>
+        /// <returns>True when any of its authorization values is a bearer credential.</returns>
+        private static bool CarriesBearer(HttpRequest request)
+        {
+            foreach (string? value in request.Headers.Authorization)
+            {
+                if (value is not null && value.TrimStart().StartsWith(BearerPrefix, StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
     }
 }

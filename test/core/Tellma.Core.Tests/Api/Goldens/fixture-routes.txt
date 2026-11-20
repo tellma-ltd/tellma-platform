@@ -95,3 +95,4 @@ POST /{tenantId}/api/web/settings/entity-tags | entity-tags | - | api | - | IRea
 POST /{tenantId}/api/web/settings/details | details | - | api | - | TenantSettingsDetails | member-only | idempotent | Ue6a3BcH7zii
 POST /{tenantId}/api/web/settings/refresh-caches | refresh-caches | - | api | - | void | core.Settings.General:Save | mutation, idempotent | lYZxNIK2Qbw7
 POST /{tenantId}/api/web/settings/save | save | - | api | TenantSettingsPatch | SettingsSaveResult | member-only | mutation | 2FgBFQi1n4Jw
+POST /{tenantId}/api/web/queryex/discover | discover | - | api | QueryexDiscoverRequest | QueryexDiscoverResult | member-only | idempotent | Q9rAN9qhOkVv

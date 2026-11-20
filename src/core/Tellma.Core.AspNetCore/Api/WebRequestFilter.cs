@@ -4,10 +4,8 @@
 // LICENSE file in the root directory of this source tree.
 
 using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Http.Features;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Primitives;
-using System.Diagnostics;
 using Tellma.Core.Abstractions.Api;
 using Tellma.Core.Crud.Validation;
 
@@ -18,8 +16,7 @@ namespace Tellma.Core.AspNetCore.Api
     // reads the confirmed keys. It evaluates no securable.
 
     /// <summary>
-    ///     The web surface's request filter: tags the request's activity with a projected endpoint's
-    ///     resource and operation, and seeds the request scope's confirmed keys from the
+    ///     The web surface's request filter: seeds the request scope's confirmed keys from the
     ///     <c>Tellma-Confirm</c> header before the handler runs.
     /// </summary>
     internal sealed class WebRequestFilter : IEndpointFilter
@@ -30,15 +27,6 @@ namespace Tellma.Core.AspNetCore.Api
             ArgumentNullException.ThrowIfNull(context);
             ArgumentNullException.ThrowIfNull(next);
             HttpContext http = context.HttpContext;
-
-            // --- The activity tags of a projected endpoint: closed sets, from the route model ---
-            if (http.GetEndpoint()?.Metadata.GetMetadata<ProjectedRouteMetadata>() is ProjectedRouteMetadata projected
-                && http.Features.Get<IHttpActivityFeature>()?.Activity is Activity activity)
-            {
-                _ = activity
-                    .SetTag(ApiTelemetryNames.ResourceTag, projected.TagResource)
-                    .SetTag(ApiTelemetryNames.OperationTag, projected.Route.Operation);
-            }
 
             // --- The confirmed keys: seeded once, only when the caller states some ---
             if (http.Request.Headers.TryGetValue(TellmaHeaders.Confirm, out StringValues confirm))

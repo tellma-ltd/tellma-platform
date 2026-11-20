@@ -83,6 +83,35 @@ namespace Tellma.Core.Tests.Crud
         }
 
         [Fact]
+        public async Task A_delete_by_query_on_a_stack_whose_service_or_a_validator_judges_deletes_fails_and_one_that_omits_it_passes()
+        {
+            const string Refusal = "The stack of sm.SmLatch declares the operations All, which keeps DeleteByQuery while its service or a validator judges its deletes; a delete by query names no ids those rules could see, so it would delete past them.";
+            const StackOperations WithoutByQuery = StackOperations.Read | StackOperations.Save | StackOperations.Delete;
+
+            // --- The service judges deletes, then a validator does: each is refused ---
+            IReadOnlyList<CompositionProblem> byService = await TestComposition.CheckAsync(static tellma => tellma
+                .AddFeature(new TestFeature<Tag.D>("sm", contribute: static contribution => contribution.Entity<SmLatch, JudgingLatchService>())));
+            IReadOnlyList<CompositionProblem> byValidator = await TestComposition.CheckAsync(static tellma => tellma
+                .AddFeature(new TestFeature<Tag.D>("sm", contribute: static contribution => contribution.Entity<SmLatch, PlainLatchService>().Validator<SmLatch, LatchDeleteRules>())));
+            Assert.Equal([Refusal], Problems(byService, CoreCheckNames.Stacks));
+            Assert.Equal([Refusal], Problems(byValidator, CoreCheckNames.Stacks));
+
+            // --- The same stacks without the operation pass, and so does a validator that judges saves alone ---
+            IReadOnlyList<CompositionProblem> omitted = await TestComposition.CheckAsync(static tellma => tellma
+                .AddFeature(new TestFeature<Tag.D>("sm", contribute: static contribution => contribution
+                    .Add(new StackContributionItem(typeof(SmLatch), typeof(JudgingLatchService), WithoutByQuery)))));
+            IReadOnlyList<CompositionProblem> omittedByValidator = await TestComposition.CheckAsync(static tellma => tellma
+                .AddFeature(new TestFeature<Tag.D>("sm", contribute: static contribution => contribution
+                    .Add(new StackContributionItem(typeof(SmLatch), typeof(PlainLatchService), WithoutByQuery))
+                    .Validator<SmLatch, LatchDeleteRules>())));
+            IReadOnlyList<CompositionProblem> savesOnly = await TestComposition.CheckAsync(static tellma => tellma
+                .AddFeature(new TestFeature<Tag.D>("sm", contribute: static contribution => contribution.Entity<SmLatch, PlainLatchService>().Validator<SmLatch, LatchSaveRules>())));
+            Assert.Empty(Problems(omitted, CoreCheckNames.Stacks));
+            Assert.Empty(Problems(omittedByValidator, CoreCheckNames.Stacks));
+            Assert.Empty(Problems(savesOnly, CoreCheckNames.Stacks));
+        }
+
+        [Fact]
         public async Task A_delete_by_query_over_a_security_table_fails_and_the_platform_s_own_stacks_serve_none()
         {
             // --- A distribution's role leaf that takes the operation back ---

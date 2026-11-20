@@ -321,6 +321,22 @@ namespace Tellma.Core.Access
         }
 
         /// <inheritdoc />
+        public bool IsPrologueDue(ConnectedUser user)
+        {
+            ArgumentNullException.ThrowIfNull(user);
+            if (user.Access.IsSystem)
+            {
+                return false;
+            }
+
+            // --- A set the fast-deny window no longer covers, a set past its age, or an activity stamp
+            // the throttle allows; only a connection by subject stamps (spec 0014 §6.4, §7.3) ---
+            return services.Time.GetUtcNow() - user.Access.ValidatedAt > Options.FastDenyWindow
+                || IsAged(user.Access)
+                || (_mode == ConnectionMode.Subject && StampAllowed(accessor.Current, user));
+        }
+
+        /// <inheritdoc />
         public async Task<ConnectedUser> ReconnectColdAsync(CancellationToken cancellationToken)
         {
             RequestContext context = accessor.Current;

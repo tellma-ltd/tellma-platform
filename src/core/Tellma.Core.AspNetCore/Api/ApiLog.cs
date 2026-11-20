@@ -27,6 +27,15 @@ namespace Tellma.Core.AspNetCore.Api
             Message = "A request to {Route} was refused before its endpoint ran: {Reason}.")]
         public static partial void RequestRejected(ILogger logger, string reason, string route);
 
+        /// <summary>A request ran past its timeout after its response had started, so its connection was aborted.</summary>
+        /// <param name="logger">The logger.</param>
+        /// <param name="route">The matched endpoint's route pattern and methods.</param>
+        [LoggerMessage(
+            EventName = "ApiResponseAbortedOnTimeout",
+            Level = LogLevel.Warning,
+            Message = "A request to {Route} ran past its timeout after its response had started; the connection was aborted.")]
+        public static partial void ResponseAbortedOnTimeout(ILogger logger, string route);
+
         /// <summary>The web surface projected its child query surfaces, which are on by default.</summary>
         /// <param name="logger">The logger.</param>
         /// <param name="count">How many surfaces were projected.</param>
@@ -36,5 +45,25 @@ namespace Tellma.Core.AspNetCore.Api
             Level = LogLevel.Information,
             Message = "The web surface projects {Count} child query surfaces: {Surfaces}.")]
         public static partial void ChildSurfacesProjected(ILogger logger, int count, string surfaces);
+
+        /// <summary>A request was answered with a problem: at Information for a 4xx status, at Warning for a 5xx.</summary>
+        /// <param name="logger">The logger.</param>
+        /// <param name="level">The level, by the status's class.</param>
+        /// <param name="status">The status.</param>
+        /// <param name="code">The problem code.</param>
+        [LoggerMessage(
+            EventName = "ApiProblem",
+            Message = "The request was answered with the problem {Code} ({Status}).")]
+        public static partial void Problem(ILogger logger, LogLevel level, int status, string code);
+
+        /// <summary>An exception outside the mapped set reached the web edge and was answered with the internal problem.</summary>
+        /// <param name="logger">The logger.</param>
+        /// <param name="exception">The exception.</param>
+        /// <param name="traceId">The request's trace id, which the problem body carries as its instance.</param>
+        [LoggerMessage(
+            EventName = "ApiUnhandledException",
+            Level = LogLevel.Error,
+            Message = "An unhandled exception was answered with the internal problem under trace {TraceId}.")]
+        public static partial void UnhandledException(ILogger logger, Exception exception, string traceId);
     }
 }

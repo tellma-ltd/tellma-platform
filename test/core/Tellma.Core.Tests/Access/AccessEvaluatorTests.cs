@@ -1009,6 +1009,12 @@ namespace Tellma.Core.Tests.Access
             }
 
             /// <inheritdoc />
+            public bool IsPrologueDue(ConnectedUser user)
+            {
+                throw new NotSupportedException("The evaluator asks for no prologue of its own.");
+            }
+
+            /// <inheritdoc />
             public ConnectPremises PremisesFor(ConnectedUser user)
             {
                 throw new NotSupportedException("The evaluator composes no batch.");

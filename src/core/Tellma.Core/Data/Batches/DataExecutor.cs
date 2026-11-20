@@ -232,6 +232,9 @@ namespace Tellma.Core.Data.Batches
             // step's round trip count.
             BatchOutcome outcome = new(tags, user, RoundTrips: batch.Access.RoundTrips - roundTripsBefore);
 
+            // The unit of work keeps its last outcome: the tags a response reports to its client.
+            batch.Access.LastOutcome = outcome;
+
             // --- The commit callbacks: outside the transaction, never thrown ---
             if (bodyRan)
             {
@@ -808,6 +811,7 @@ namespace Tellma.Core.Data.Batches
 
                 // --- The slow round trip carries its full text to the log, and only there ---
                 elapsed = _time.GetElapsedTime(started);
+                batch.Access.DatabaseTime += elapsed;
                 if (elapsed > run.Options.SlowRoundTripThreshold)
                 {
                     DataBatchLog.SlowRoundTrip(

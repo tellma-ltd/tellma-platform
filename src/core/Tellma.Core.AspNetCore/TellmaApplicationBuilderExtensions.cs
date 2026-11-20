@@ -17,6 +17,7 @@ using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.AspNetCore.Api;
 using Tellma.Core.AspNetCore.Csrf;
 using Tellma.Core.AspNetCore.Hosting;
+using Tellma.Core.AspNetCore.Limits;
 using Tellma.Core.AspNetCore.Observability;
 using Tellma.Core.AspNetCore.Problems;
 using Tellma.Core.AspNetCore.Tenancy;
@@ -31,11 +32,11 @@ namespace Tellma.Core.AspNetCore
 
         /// <summary>
         ///     Installs the request pipeline in its fixed order and nothing else: the header stamp,
-        ///     forwarded headers, request logging, the problem-details exception handler, HSTS and HTTPS
-        ///     redirection outside Development, routing, authentication and authorization, the CSRF
-        ///     control, the web API's contract check and the tenant middleware. A distribution's own
-        ///     middleware goes between this call
-        ///     and <c>MapTellma</c>.
+        ///     forwarded headers, request logging, the problem-details exception handler and status-code
+        ///     pages, HSTS and HTTPS redirection outside Development, response compression, routing,
+        ///     authentication and authorization, the rate limiter, the request timeouts, output caching,
+        ///     the CSRF control, the web API's contract check and the tenant middleware. A
+        ///     distribution's own middleware goes between this call and <c>MapTellma</c>.
         /// </summary>
         /// <param name="app">The application.</param>
         /// <returns>The application, for chaining.</returns>
@@ -87,19 +88,23 @@ namespace Tellma.Core.AspNetCore
             {
                 options.Logger = app.Services.GetRequiredService<ILogger>();
                 options.EnrichDiagnosticContext = static (diagnostics, context) =>
+                {
                     TenantLogScope.Enrich(diagnostics, context.RequestServices.GetService<IRequestContextAccessor>());
+                    ApiLogScope.Enrich(diagnostics, context);
+                };
             });
 
-            // --- 4. Exceptions as problem details ---
+            // --- 4. Exceptions as problem details, and the framework's empty refusals as the same bodies ---
             _ = app.UseExceptionHandler(new ExceptionHandlerOptions
             {
                 // The registered handler answers every exception; this only satisfies the middleware.
-                ExceptionHandler = static context => ProblemWriter.WriteAsync(context, StatusCodes.Status500InternalServerError, "internal"),
+                ExceptionHandler = static context => ProblemWriter.WriteAsync(context, StatusCodes.Status500InternalServerError, ProblemMapper.InternalCode),
 
-                // A mapped refusal is an expected answer, not an error to log; everything else is.
-                SuppressDiagnosticsCallback = static context => TellmaProblemExceptionHandler.IsMapped(context.Exception)
-                    || (context.Exception is OperationCanceledException && context.HttpContext.RequestAborted.IsCancellationRequested),
+                // The handler logs what is an error (the backstop, with its exception) and nothing a
+                // mapped refusal or an abandoned request answers, so the middleware logs nothing itself.
+                SuppressDiagnosticsCallback = static _ => true,
             });
+            _ = app.UseStatusCodePages(FrameworkProblems.HandleStatusAsync);
 
             // --- 5. Transport security, outside Development ---
             if (!app.Environment.IsDevelopment())
@@ -108,7 +113,8 @@ namespace Tellma.Core.AspNetCore
                 _ = app.UseHttpsRedirection();
             }
 
-            // --- 6. Response compression: the web API's, when composed ---
+            // --- 6. Response compression of JSON, unless configured off ---
+            LimitsComposition.UseCompression(app);
 
             // --- 7. Routing ---
             _ = app.UseRouting();
@@ -123,7 +129,10 @@ namespace Tellma.Core.AspNetCore
             _ = app.UseAuthentication();
             _ = app.UseAuthorization();
 
-            // --- 10-12. The rate limiter, request timeouts and output caching: the web API's, when composed ---
+            // --- 10-12. The rate limiter, request timeouts and output caching ---
+            // After authentication, so a partition is the principal's; before the tenant, so a
+            // refusal reads the same for a tenant that does not exist and one the caller may not open.
+            LimitsComposition.UseLimits(app);
 
             // --- 13. CSRF, ahead of every tenant and every endpoint filter ---
             _ = app.UseMiddleware<TellmaCsrfMiddleware>();

@@ -185,6 +185,9 @@ namespace Tellma.Core.Composition
                 .Singleton<SettingsPatchMerger, SettingsPatchMerger>()
                 .ApiService<SettingsService>();
 
+            // --- The Queryex authoring endpoint: an editor's text checked as a query or a role save compiles it (spec 0029 §9) ---
+            _ = contribution.ApiService<QueryexService>();
+
             // --- The Umm al-Qura month table the query language's calendar map reads (spec 0013 §8.2) ---
             _ = contribution.Model<CalendarMonthRowConfiguration>();
 

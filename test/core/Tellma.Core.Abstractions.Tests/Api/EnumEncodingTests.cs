@@ -7,6 +7,7 @@ using System.Text.Json;
 using Tellma.Core.Abstractions.Api;
 using Tellma.Core.Abstractions.Crud;
 using Tellma.Core.Abstractions.Errors;
+using Tellma.Core.Queryex;
 
 namespace Tellma.Core.Abstractions.Tests.Api
 {
@@ -99,6 +100,35 @@ namespace Tellma.Core.Abstractions.Tests.Api
         public void An_undefined_value_is_never_written()
         {
             _ = Assert.Throws<JsonException>(() => Write((McpExposure)7));
+        }
+
+        [Fact]
+        public void A_query_type_is_the_languages_name_without_its_member_prefix()
+        {
+            Assert.Equal(
+                ["\"Bool\"", "\"Numeric\"", "\"String\"", "\"Guid\"", "\"Date\"", "\"DateTime\"", "\"DateTimeOffset\"", "\"HierarchyId\"", "\"Geography\""],
+                Enum.GetValues<QueryexType>().Select(static type => Write(type)));
+            Assert.Equal(QueryexType.QxDateTimeOffset, Read<QueryexType>("\"DateTimeOffset\""));
+            Assert.Equal(QueryexType.QxDate, Read<QueryexType>("\"date\""));
+            Assert.Equal(/*lang=json,strict*/ """{"Date":1}""", Write(new Dictionary<QueryexType, int> { [QueryexType.QxDate] = 1 }));
+            Assert.Equal(QueryexType.QxGuid, Assert.Single(Read<Dictionary<QueryexType, int>>(/*lang=json,strict*/ """{"Guid":1}""")).Key);
+        }
+
+        [Theory]
+        [InlineData("\"QxDate\"")]
+        [InlineData("\"Bogus\"")]
+        [InlineData("\"4\"")]
+        [InlineData("4")]
+        [InlineData("null")]
+        public void A_query_type_refuses_its_member_name_a_number_and_an_unknown_name(string json)
+        {
+            _ = Assert.Throws<JsonException>(() => Read<QueryexType>(json));
+        }
+
+        [Fact]
+        public void An_undefined_query_type_is_never_written()
+        {
+            _ = Assert.Throws<JsonException>(() => Write((QueryexType)99));
         }
 
         /// <summary>Serializes a value with the platform's options.</summary>

@@ -27,11 +27,6 @@ namespace Tellma.Core.Tests.Localization
             // --- The permissions editor's reasons (spec 0032 §12.4) ---
             ["Access_Reason_self"] = "The permissions editor's label of a grant over the user's own records.",
 
-            // --- Problem codes whose raise sites have not landed (spec 0016) ---
-            ["Problem_method_not_allowed"] = "The HTTP surface raises it for a route's other methods.",
-            ["Problem_unsupported_media"] = "The HTTP surface raises it for a body it cannot read.",
-            ["Problem_unsupported_credential"] = "The HTTP surface raises it for a credential it does not accept.",
-
             // --- Reports and dashboards (specs 0033, 0035, and the export job of spec 0019) ---
             ["ReportKind_List"] = "A report's kind.",
             ["ReportKind_Summary"] = "A report's kind.",

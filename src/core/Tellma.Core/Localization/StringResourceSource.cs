@@ -32,6 +32,12 @@ namespace Tellma.Core.Localization
         private const string ResourcesExtension = ".resources";
 
         /// <summary>
+        ///     The name of the assembly that embeds the resources, which a localizer is created from
+        ///     beside <see cref="Name" />; null for a source the suites build in memory.
+        /// </summary>
+        public string? AssemblyName { get; init; }
+
+        /// <summary>
         ///     The shared <c>Strings</c> resources of each assembly, in the assemblies' order: one
         ///     source per neutral <c>…Resources.Strings.resources</c> manifest an assembly embeds,
         ///     which leaves out every <c>ServerStrings</c> set.
@@ -54,7 +60,7 @@ namespace Tellma.Core.Localization
                 {
                     string baseName = manifest[..^ResourcesExtension.Length];
                     ResourceManager manager = new(baseName, assembly);
-                    sources.Add(new StringResourceSource(baseName, culture => ReadSet(manager, culture)));
+                    sources.Add(new StringResourceSource(baseName, culture => ReadSet(manager, culture)) { AssemblyName = assembly.GetName().Name });
                 }
             }
 

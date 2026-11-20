@@ -5,39 +5,63 @@
 
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using Microsoft.Net.Http.Headers;
-using System.Globalization;
-using Tellma.Core.Abstractions.Errors;
-using Tellma.Core.Abstractions.Tenancy;
+using Microsoft.Extensions.Logging;
+using Tellma.Core.Abstractions.Crud;
+using Tellma.Core.Api;
+using Tellma.Core.AspNetCore.Api;
 using Tellma.Core.AspNetCore.Observability;
 
 namespace Tellma.Core.AspNetCore.Problems
 {
+    // Spec 0016 §7.6: registered with the exception middleware, which UseTellma places ahead of
+    // routing, so it covers the endpoint filters, the tenant middleware and hand-mapped endpoints.
     /// <summary>
-    ///     Maps the tenancy and assurance exceptions, and the web surface's binding refusals (a
-    ///     malformed request, a limit exceeded), to problem details, and everything else to the
-    ///     <c>500 internal</c> backstop: the host's mapping until the web API's full mapping replaces it.
+    ///     Answers every exception that reaches the web edge with its problem: the closed set by
+    ///     type, the framework's request refusals by status, anything else as <c>500 internal</c>
+    ///     with the trace id alone, logged with its exception. A caller that went away gets no
+    ///     answer and no log line.
     /// </summary>
-    /// <param name="metrics">The host's instruments, which count step-up challenges.</param>
-    /// <param name="environment">The host environment; Development adds the exception to the backstop.</param>
-    internal sealed class TellmaProblemExceptionHandler(HostMetrics metrics, IHostEnvironment environment) : IExceptionHandler
+    /// <param name="environment">The host environment; Development adds the exception's type and message to the backstop.</param>
+    /// <param name="loggerFactory">Creates the web API's logger.</param>
+    internal sealed class TellmaProblemExceptionHandler(IHostEnvironment environment, ILoggerFactory loggerFactory) : IExceptionHandler
     {
-        /// <summary>The retry-after of an unavailable tenant that names none.</summary>
-        internal static readonly TimeSpan DefaultRetryAfter = TimeSpan.FromSeconds(30);
+        /// <summary>The route model's name of a stack's save.</summary>
+        private const string SaveOperation = "save";
 
-        /// <summary>Whether the handler maps an exception to anything but the backstop.</summary>
+        /// <summary>The web API's logger.</summary>
+        private readonly ILogger _logger = (loggerFactory ?? throw new ArgumentNullException(nameof(loggerFactory))).CreateLogger(ApiLog.Category);
+
+        /// <summary>Whether an exception is a cancellation of a request its caller abandoned.</summary>
+        /// <param name="context">The request.</param>
         /// <param name="exception">The exception.</param>
-        /// <returns>True for the exceptions the mapping names.</returns>
-        public static bool IsMapped(Exception exception)
+        /// <returns>True when the request's own token is cancelled and the exception is a cancellation.</returns>
+        public static bool IsAbandoned(HttpContext context, Exception exception)
         {
-            return exception is StepUpRequiredException
-                or IndividualRequiredException
-                or TenantNotFoundException
-                or TenantUnavailableException
-                or TenantStateException
-                or BadRequestException
-                or LimitExceededException;
+            ArgumentNullException.ThrowIfNull(context);
+            return exception is OperationCanceledException && context.RequestAborted.IsCancellationRequested;
+        }
+
+        /// <summary>What the mapping needs to know of the endpoint that raised an exception.</summary>
+        /// <param name="endpoint">The endpoint, as the exception middleware kept it; null for a request no endpoint matched.</param>
+        /// <param name="services">The request's services, which hold the stack registry.</param>
+        /// <param name="development">Whether the host runs in Development.</param>
+        /// <returns>The mapping's context.</returns>
+        public static ProblemMappingContext ContextOf(Endpoint? endpoint, IServiceProvider services, bool development)
+        {
+            ArgumentNullException.ThrowIfNull(services);
+
+            // --- A projected route names the member a validation path's leading index points into ---
+            RouteContract? route = endpoint?.Metadata.GetMetadata<ProjectedRouteMetadata>()?.Route;
+            (ValidationRoot root, Type? rows) = route switch
+            {
+                { Action: EntityActionDescriptor { SingleTarget: true } } => (ValidationRoot.SingleId, EntityTypeOf(route, services)),
+                { Action: EntityActionDescriptor } => (ValidationRoot.Ids, EntityTypeOf(route, services)),
+                { Action: null, Operation: SaveOperation } => (ValidationRoot.Entities, EntityTypeOf(route, services)),
+                _ => (ValidationRoot.Body, null),
+            };
+            return new ProblemMappingContext(root, rows, development);
         }
 
         /// <inheritdoc />
@@ -47,81 +71,35 @@ namespace Tellma.Core.AspNetCore.Problems
             ArgumentNullException.ThrowIfNull(exception);
 
             // --- A caller that went away gets no answer ---
-            if (exception is OperationCanceledException && httpContext.RequestAborted.IsCancellationRequested)
+            if (IsAbandoned(httpContext, exception))
             {
                 return true;
             }
 
-            switch (exception)
+            // --- The problem; the endpoint is the one the middleware kept, as it cleared the request's ---
+            Endpoint? endpoint = httpContext.Features.Get<IExceptionHandlerFeature>()?.Endpoint;
+            ProblemDescription problem = ProblemMapper.Map(exception, ContextOf(endpoint, httpContext.RequestServices, environment.IsDevelopment()));
+            if (problem.IsUnhandled)
             {
-                // --- The assurance bar: the caller must step up ---
-                case StepUpRequiredException stepUp:
-                    metrics.RecordStepUpChallenge();
-                    int? maxAge = stepUp.MaxAge is { } age ? (int)Math.Ceiling(age.TotalSeconds) : null;
-                    StepUpChallenge.Write(httpContext.Response, stepUp.Acr, maxAge);
-                    await ProblemWriter.WriteAsync(httpContext, StatusCodes.Status401Unauthorized, stepUp.Code).ConfigureAwait(false);
-                    return true;
-
-                case IndividualRequiredException individual:
-                    await ProblemWriter.WriteAsync(httpContext, StatusCodes.Status403Forbidden, individual.Code).ConfigureAwait(false);
-                    return true;
-
-                // --- The tenant: absent (or the caller is no member), refused by its state, or unreachable ---
-                case TenantNotFoundException notFound:
-                    await ProblemWriter.WriteAsync(httpContext, StatusCodes.Status404NotFound, notFound.Code).ConfigureAwait(false);
-                    return true;
-
-                case TenantUnavailableException unavailable:
-                    await WriteUnavailableAsync(httpContext, unavailable).ConfigureAwait(false);
-                    return true;
-
-                // --- A catalog write the catalog refused ---
-                case TenantStateException refused:
-                    await ProblemWriter.WriteAsync(httpContext, StatusCodes.Status409Conflict, refused.Code, refused.Detail).ConfigureAwait(false);
-                    return true;
-
-                // --- The web surface's binding: a request it cannot bind, a body over a ceiling ---
-                case BadRequestException malformed:
-                    await ProblemWriter.WriteAsync(httpContext, StatusCodes.Status400BadRequest, malformed.Code, malformed.Detail, malformed.Arguments).ConfigureAwait(false);
-                    return true;
-
-                case LimitExceededException exceeded:
-                    await ProblemWriter.WriteAsync(httpContext, StatusCodes.Status413PayloadTooLarge, exceeded.Code, arguments: exceeded.Arguments).ConfigureAwait(false);
-                    return true;
-
-                // --- The backstop: nothing but the trace id outside Development ---
-                default:
-                    IReadOnlyDictionary<string, object?>? arguments = environment.IsDevelopment()
-                        ? new Dictionary<string, object?> { ["exception"] = $"{exception.GetType().FullName}: {exception.Message}" }
-                        : null;
-                    await ProblemWriter.WriteAsync(httpContext, StatusCodes.Status500InternalServerError, "internal", arguments: arguments).ConfigureAwait(false);
-                    return true;
+                using (ProblemWriter.BeginScopes(httpContext, _logger))
+                {
+                    ApiLog.UnhandledException(_logger, exception, TraceIdentity.Of(httpContext));
+                }
             }
+
+            await ProblemWriter.WriteAsync(httpContext, problem).ConfigureAwait(false);
+            return true;
         }
 
-        /// <summary>Writes an unavailable tenant's problem, whose status depends on its code.</summary>
-        /// <param name="context">The request.</param>
-        /// <param name="unavailable">The exception.</param>
-        /// <returns>A task that completes when the body is written.</returns>
-        private static Task WriteUnavailableAsync(HttpContext context, TenantUnavailableException unavailable)
+        /// <summary>The entity type of a stack route's rows: the entity of the stack its resource names.</summary>
+        /// <param name="route">The route.</param>
+        /// <param name="services">The request's services.</param>
+        /// <returns>The entity type, or null when no composed stack serves the route's resource.</returns>
+        private static Type? EntityTypeOf(RouteContract route, IServiceProvider services)
         {
-            switch (unavailable.Code)
-            {
-                case TenantProblemCodes.NotFound:
-                    return ProblemWriter.WriteAsync(context, StatusCodes.Status404NotFound, unavailable.Code);
-
-                case TenantProblemCodes.CatalogUnavailable:
-                case TenantProblemCodes.SchemaBehind:
-                    // Waiting changes these: the catalog comes back, the upgrade finishes.
-                    TimeSpan wait = unavailable.RetryAfter ?? DefaultRetryAfter;
-                    context.Response.Headers[HeaderNames.RetryAfter] =
-                        ((long)Math.Ceiling(wait.TotalSeconds)).ToString(CultureInfo.InvariantCulture);
-                    return ProblemWriter.WriteAsync(context, StatusCodes.Status503ServiceUnavailable, unavailable.Code);
-
-                default:
-                    // Suspended, read-only and frozen: an operator's state, which waiting does not change.
-                    return ProblemWriter.WriteAsync(context, StatusCodes.Status403Forbidden, unavailable.Code);
-            }
+            return route.Resource is string resource && services.GetService<IStackRegistry>()?.Find(resource) is StackDescriptor stack
+                ? stack.EntityType
+                : null;
         }
     }
 }

@@ -71,12 +71,16 @@ namespace Tellma.Core.AspNetCore.Bff
 
         /// <summary>Maps the endpoints, each stamped by the caller as a platform endpoint.</summary>
         /// <param name="routes">The application's routes.</param>
-        /// <returns>The anonymous endpoints and the session-authenticated ones, for the caller to stamp.</returns>
-        public static (IEndpointConventionBuilder[] Anonymous, IEndpointConventionBuilder[] Session) Map(IEndpointRouteBuilder routes)
+        /// <returns>
+        ///     The anonymous sign-in, the anonymous back-channel logout and the session-authenticated
+        ///     endpoints, for the caller to stamp.
+        /// </returns>
+        public static (IEndpointConventionBuilder Login, IEndpointConventionBuilder BackchannelLogout, IEndpointConventionBuilder[] Session) Map(IEndpointRouteBuilder routes)
         {
             ArgumentNullException.ThrowIfNull(routes);
             return (
-                [routes.MapGet(LoginRoute, LoginAsync), routes.MapPost(BackchannelLogoutRoute, BackchannelLogoutAsync)],
+                routes.MapGet(LoginRoute, LoginAsync),
+                routes.MapPost(BackchannelLogoutRoute, BackchannelLogoutAsync),
                 [routes.MapPost(LogoutRoute, LogoutAsync), routes.MapGet(UserRoute, UserAsync)]);
         }
 

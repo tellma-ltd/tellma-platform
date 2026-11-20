@@ -187,6 +187,26 @@ namespace Tellma.Core.Tests.Api
             Assert.DoesNotContain(Prefix + "gadgets/save", idempotent.RootElement.EnumerateArray().Select(static route => route.GetString()!));
         }
 
+        [Fact]
+        public async Task The_queryex_discovery_is_a_member_only_idempotent_read_in_the_contracts_chunks_idempotent_list()
+        {
+            ServiceCollection services = [];
+            _ = FixtureComposition.Compose(services);
+            await using ServiceProvider provider = services.BuildServiceProvider(validateScopes: true);
+            ClientAssetContext context = new(provider);
+
+            RouteContract discover = provider.GetRequiredService<IRouteContracts>().For(Prefix + "queryex/discover")!;
+            provider.GetServices<IClientAssetContributor>().OfType<ContractsClientAssetContributor>().Single().Contribute(context);
+
+            // A read every editor retries, open to every member, and kept from the agents.
+            Assert.Equal((typeof(QueryexDiscoverRequest), typeof(QueryexDiscoverResult)), (discover.RequestType, discover.ResponseType));
+            Assert.Equal((false, false, true), (discover.IsMutation, discover.Long, discover.Idempotent));
+            Assert.Null(discover.Securable);
+            Assert.Equal(McpExposure.Hidden, discover.Action!.Mcp);
+            using var idempotent = JsonDocument.Parse(context.Sections.Single(static section => section.Name == "idempotent").Json);
+            Assert.Contains(Prefix + "queryex/discover", idempotent.RootElement.EnumerateArray().Select(static route => route.GetString()!));
+        }
+
         /// <summary>Renders every route as one line: template, operation, resource, serving action, body, result, securable, facts and fingerprint.</summary>
         /// <param name="routes">The route model.</param>
         /// <returns>The text.</returns>

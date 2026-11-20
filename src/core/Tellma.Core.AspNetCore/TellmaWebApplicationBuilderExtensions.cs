@@ -4,6 +4,7 @@
 // LICENSE file in the root directory of this source tree.
 
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Configuration;
@@ -22,7 +23,9 @@ using Tellma.Core.AspNetCore.Api;
 using Tellma.Core.AspNetCore.Authentication;
 using Tellma.Core.AspNetCore.Bff;
 using Tellma.Core.AspNetCore.Hosting;
+using Tellma.Core.AspNetCore.Limits;
 using Tellma.Core.AspNetCore.Observability;
+using Tellma.Core.AspNetCore.OpenApi;
 using Tellma.Core.AspNetCore.Problems;
 using Tellma.Core.AspNetCore.Routing;
 using Tellma.Core.AspNetCore.Sessions;
@@ -97,7 +100,11 @@ namespace Tellma.Core.AspNetCore
             _ = HostOptionsBinding.Bind<SupportOptions>(services, SupportOptions.SectionPath, OptionsOwner);
             _ = HostOptionsBinding.Bind<ClientTelemetryOptions>(services, ClientTelemetryOptions.SectionPath, OptionsOwner);
             _ = HostOptionsBinding.Bind<DistributionLinksOptions>(services, DistributionLinksOptions.SectionPath, OptionsOwner);
+            // Server timing defaults on in Development alone; configured before the binding, so a setting wins.
+            bool development = environment.IsDevelopment();
+            _ = services.Configure<ApiOptions>(options => options.ServerTiming = development);
             _ = HostOptionsBinding.Bind<ApiOptions>(services, ApiOptions.SectionPath, OptionsOwner);
+            _ = HostOptionsBinding.Bind<McpLimitOptions>(services, McpLimitOptions.SectionPath, OptionsOwner);
             _ = services.AddSingleton<IValidateOptions<IdentityHostOptions>, IdentityHostOptionsValidator>();
             _ = services.AddSingleton<IValidateOptions<TellmaSessionOptions>, TellmaSessionOptionsValidator>();
             _ = services.AddSingleton<IValidateOptions<DistributionLinksOptions>, DistributionLinksOptionsValidator>();
@@ -115,12 +122,38 @@ namespace Tellma.Core.AspNetCore
             _ = services.Configure<HostOptions>(static options => options.ShutdownTimeout = ShutdownTimeout);
 
             // --- Problems and the host's instruments ---
+            // The platform's problem-details writer goes first, so a framework component that asks
+            // the service for a body gets the platform's; the customizer stamps what the framework's
+            // own writer answers (the in-process identity server's) with the code and the trace id.
             _ = services.AddSingleton<HostMetrics>();
             _ = services.AddExceptionHandler<TellmaProblemExceptionHandler>();
+            services.Insert(0, ServiceDescriptor.Singleton<IProblemDetailsWriter, TellmaProblemDetailsWriter>());
+            _ = services.AddProblemDetails(static options => options.CustomizeProblemDetails = static context =>
+            {
+                ProblemDescription problem = FrameworkProblems.Of(context.HttpContext, context.ProblemDetails.Status, code: null);
+                _ = context.ProblemDetails.Extensions.TryAdd(FrameworkProblems.CodeExtension, problem.Code);
+                context.ProblemDetails.Instance = TraceIdentity.Of(context.HttpContext);
+            });
+
+            // A request the framework cannot bind (a malformed body, a missing parameter) reaches the
+            // exception handler, so it is answered with the mapping's problem rather than a bare status.
+            _ = services.Configure<RouteHandlerOptions>(static options => options.ThrowOnBadRequest = true);
+
+            // The SPA fallback claims every path and verb, so it tells a verb or media type a route
+            // does not take (405, 415) from a route miss itself.
+            _ = services.AddSingleton<RouteMisses>();
 
             // --- The web API: bodies read and results written under the platform's one set of JSON rules ---
             _ = services.ConfigureHttpJsonOptions(static options => TellmaJson.Configure(options.SerializerOptions));
             _ = services.AddSingleton<ApiMetrics>();
+            UnknownMembers.Register(services);
+
+            // --- Limits: the rate and timeout policies, compression and output caching; the OpenAPI document in Development ---
+            LimitsComposition.Register(services);
+            if (development)
+            {
+                WebOpenApi.Register(services);
+            }
 
             // --- Routing: the audit over every mapped endpoint, the public API's version constraint ---
             _ = services.AddSingleton<MappedEndpoints>();

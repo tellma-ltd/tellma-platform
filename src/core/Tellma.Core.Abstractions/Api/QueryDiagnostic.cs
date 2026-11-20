@@ -15,7 +15,11 @@ namespace Tellma.Core.Abstractions.Api
     ///     <c>filters[i]</c>, <c>namedFilters[i]</c>, <c>orderBy</c>, <c>having</c> and
     ///     <c>measures</c>.
     /// </param>
-    /// <param name="Code">The diagnostic code: a compiler code such as <c>QX3001</c>, or one of the pipeline's <c>Query.*</c> validation codes.</param>
+    /// <param name="Code">
+    ///     The diagnostic code: a compiler code such as <c>QX3001</c>, one of the pipeline's
+    ///     <c>Query.*</c> validation codes, or, for a permission filter checked as a role save checks
+    ///     it, the role save's <c>Permissions.FilterTooLong</c> and <c>Permissions.FilterInvalid</c>.
+    /// </param>
     /// <param name="Start">The zero-based offset of the offending range within the clause's text.</param>
     /// <param name="Length">The length of the offending range; may be zero.</param>
     /// <param name="Location">Which item of the clause the range indexes into, such as <c>Select[2]</c>; null when the clause is a single expression.</param>

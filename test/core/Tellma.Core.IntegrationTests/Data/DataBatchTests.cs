@@ -26,7 +26,8 @@ namespace Tellma.Core.IntegrationTests.Data
     ///     Raw-statement batches against a fixture database: the fixture's own shape, the schema
     ///     guard, transactions, result sets, deduplication, the factory handle, the guard wrapper,
     ///     table-valued parameters, statement ordinals, the change-tracking audit, cancellation, the
-    ///     round-trip span and the slow-round-trip log.
+    ///     round-trip span, the slow-round-trip log, and the outcome, round trips and database time
+    ///     each batch leaves on its unit of work.
     /// </summary>
     /// <param name="fixture">The class's database, reset before each test.</param>
     [Trait("Category", "Integration")]
@@ -122,6 +123,33 @@ namespace Tellma.Core.IntegrationTests.Data
             _ = await batch.ExecuteAsync(Token);
 
             Assert.Equal(0, Int(count.Value));
+        }
+
+        [Fact]
+        public async Task Each_batch_leaves_its_outcome_its_round_trips_and_its_database_time_on_the_unit_of_work()
+        {
+            await using AsyncServiceScope scope = fixture.Tenant.CreateScope();
+            DataAccessScope access = scope.ServiceProvider.GetRequiredService<DataAccessScope>();
+            ITenantDatabase database = scope.ServiceProvider.GetRequiredService<ITenantDatabase>();
+
+            // --- The first batch: its outcome is the unit's last, its time the unit's first ---
+            IDataBatch first = database.CreateBatch(BatchPurpose.Read);
+            _ = first.Sql($"SELECT 1 AS [One];", new SqlOptions(resultSets: 1));
+            BatchOutcome firstOutcome = await first.ExecuteAsync(Token);
+            TimeSpan afterFirst = access.DatabaseTime;
+
+            Assert.Same(firstOutcome, access.LastOutcome);
+            Assert.Equal(firstOutcome.RoundTrips, access.RoundTrips);
+            Assert.True(afterFirst > TimeSpan.Zero, "The first round trip added no database time.");
+
+            // --- The second batch replaces the outcome and adds its round trips and time ---
+            IDataBatch second = database.CreateBatch(BatchPurpose.Read);
+            _ = second.Sql($"SELECT 2 AS [Two];", new SqlOptions(resultSets: 1));
+            BatchOutcome secondOutcome = await second.ExecuteAsync(Token);
+
+            Assert.Same(secondOutcome, access.LastOutcome);
+            Assert.Equal(firstOutcome.RoundTrips + secondOutcome.RoundTrips, access.RoundTrips);
+            Assert.True(access.DatabaseTime > afterFirst, "The second round trip added no database time.");
         }
 
         [Fact]

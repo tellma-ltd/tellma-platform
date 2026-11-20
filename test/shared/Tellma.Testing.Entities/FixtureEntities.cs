@@ -225,13 +225,15 @@ namespace Tellma.Testing.Entities
     [TableType]
     public class Lookup : TopLevelEntity, IActivatable
     {
-        /// <summary>The code, <c>varchar(50)</c>, unique.</summary>
+        /// <summary>The code, <c>varchar(50)</c>, unique, searched by prefix.</summary>
         [Column(TypeName = "varchar(50)")]
         [Unique]
+        [Searchable(SearchKind.Prefix)]
         public string Code { get; set; } = null!;
 
-        /// <summary>The name.</summary>
+        /// <summary>The name, searched anywhere in it.</summary>
         [MaxLength(255)]
+        [Searchable]
         public string Name { get; set; } = null!;
 
         /// <inheritdoc />
