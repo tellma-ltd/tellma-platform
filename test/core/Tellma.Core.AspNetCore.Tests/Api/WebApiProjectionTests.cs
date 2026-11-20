@@ -28,6 +28,7 @@ using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.Abstractions.Crud;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Errors;
+using Tellma.Core.Abstractions.Notifications;
 using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.Abstractions.Validation;
 using Tellma.Core.Access;
@@ -37,6 +38,7 @@ using Tellma.Core.AspNetCore.Limits;
 using Tellma.Core.AspNetCore.Routing;
 using Tellma.Core.AspNetCore.Tests.Infrastructure;
 using Tellma.Core.Crud;
+using Tellma.Core.Notifications;
 
 namespace Tellma.Core.AspNetCore.Tests.Api
 {
@@ -194,6 +196,28 @@ namespace Tellma.Core.AspNetCore.Tests.Api
             Assert.Equal("entities[1].isActive", error.GetProperty("path").GetString());
             Assert.Equal("Active is untidy", error.GetProperty("message").GetString());
             Assert.Equal(nameof(PjCenter.IsActive), error.GetProperty("arguments").GetProperty("property").GetString());
+        }
+
+        [Fact]
+        public async Task A_refused_preferences_save_binds_its_top_level_array_and_roots_each_error_at_the_body()
+        {
+            // An invoker that runs Core's preference rules on the body the edge bound, as the service does before it persists.
+            await using TellmaTestHost host = await StartAsync(static options => options.ConfigureServices += static services =>
+                services.Replace(ServiceDescriptor.Scoped<IApiActionInvoker, PreferenceRulesInvoker>()));
+
+            using HttpResponseMessage response = await SendAsync(
+                host,
+                host.Cookie(),
+                "notification-preferences/save",
+                /*lang=json,strict*/ """[{"type":"acme.nothing","channel":"email","enabled":true},{"type":"core.user.added","channel":"fax","enabled":true}]""");
+
+            // --- A body that is a list renders each row's member under body ---
+            Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
+            Problem problem = await Problem.ReadAsync(response);
+            Assert.Equal("validation", problem.Code);
+            Assert.Equal(
+                [("body[0].type", NotificationValidationCodes.UnknownType), ("body[1].channel", NotificationValidationCodes.UnknownChannel)],
+                problem.Document.GetProperty("errors").EnumerateArray().Select(static error => (error.GetProperty("path").GetString(), error.GetProperty("code").GetString())));
         }
 
         [Fact]
@@ -928,6 +952,25 @@ namespace Tellma.Core.AspNetCore.Tests.Api
             string text = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
             Assert.True(status == response.StatusCode, $"{relative} answered {(int)response.StatusCode}: {text}");
             return JsonDocument.Parse(text.Length == 0 ? "{}" : text);
+        }
+
+        /// <summary>
+        ///     An action invoker that runs the notification preference rules on the bound body: the
+        ///     body must be the list the edge bound from a top-level JSON array, and a refused row
+        ///     throws as the preferences service does.
+        /// </summary>
+        /// <param name="services">The request scope's services.</param>
+        private sealed class PreferenceRulesInvoker(IServiceProvider services) : IApiActionInvoker
+        {
+            /// <inheritdoc />
+            public Task<object?> InvokeAsync(ApiActionDescriptor action, object? body, CancellationToken cancellationToken = default)
+            {
+                IReadOnlyList<NotificationPreference> rows = Assert.IsAssignableFrom<IReadOnlyList<NotificationPreference>>(body);
+                return Task.FromResult<object?>(NotificationPreferenceRules.Deviations(
+                    rows,
+                    services.GetRequiredService<INotificationTypeRegistry>(),
+                    services.GetRequiredService<INotificationChannelRegistry>()));
+            }
         }
 
         /// <summary>A converter factory that claims one type and cannot build its converter, as a broken converter would.</summary>
