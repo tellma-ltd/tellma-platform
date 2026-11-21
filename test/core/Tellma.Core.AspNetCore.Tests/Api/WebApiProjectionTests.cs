@@ -677,8 +677,14 @@ namespace Tellma.Core.AspNetCore.Tests.Api
 
             CapturedEvent logged = Assert.Single(logs.Events, static captured => captured.Message.Contains("child query surfaces", StringComparison.Ordinal));
             Assert.Equal(LogLevel.Information, logged.Level);
-            // Every projected surface is counted, the core stacks' beside the model's.
-            int surfaces = Projected(host).Count(static endpoint => endpoint.Metadata.GetRequiredMetadata<ProjectedRouteMetadata>().Kind == ProjectedRouteKind.ChildQuery);
+            // Every projected surface is counted once, the core stacks' beside the model's, though an
+            // exportable surface projects its export beside its query.
+            int surfaces = Projected(host)
+                .Select(static endpoint => endpoint.Metadata.GetRequiredMetadata<ProjectedRouteMetadata>())
+                .Where(static route => route.Kind == ProjectedRouteKind.ChildQuery)
+                .Select(static route => route.Segment)
+                .Distinct(StringComparer.Ordinal)
+                .Count();
             Assert.StartsWith($"The web surface projects {surfaces} child query surfaces: ", logged.Message, StringComparison.Ordinal);
             Assert.Contains("pj.PjCenterNote (center-notes, owner pj.PjCenter)", logged.Message, StringComparison.Ordinal);
         }

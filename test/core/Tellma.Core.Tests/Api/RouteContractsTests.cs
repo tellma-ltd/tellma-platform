@@ -176,7 +176,12 @@ namespace Tellma.Core.Tests.Api
                 fingerprints.RootElement.EnumerateObject().Select(static member => (member.Name, member.Value.GetString()!)));
 
             using var longRoutes = JsonDocument.Parse(context.Sections[1].Json);
-            Assert.Equal([Prefix + "gadgets/prices/reprice"], longRoutes.RootElement.EnumerateArray().Select(static route => route.GetString()!));
+            Assert.Equal(
+                routes.Where(static route => route.Long).Select(static route => route.Template),
+                longRoutes.RootElement.EnumerateArray().Select(static route => route.GetString()!));
+            Assert.Contains(Prefix + "gadgets/prices/reprice", longRoutes.RootElement.EnumerateArray().Select(static route => route.GetString()!));
+            Assert.Contains(Prefix + "gadgets/export-for-import", longRoutes.RootElement.EnumerateArray().Select(static route => route.GetString()!));
+            Assert.DoesNotContain(Prefix + "gadgets/query", longRoutes.RootElement.EnumerateArray().Select(static route => route.GetString()!));
 
             using var idempotent = JsonDocument.Parse(context.Sections[2].Json);
             Assert.Equal(

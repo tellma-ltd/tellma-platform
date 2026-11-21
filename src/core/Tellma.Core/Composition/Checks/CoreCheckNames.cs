@@ -159,5 +159,11 @@ namespace Tellma.Core.Composition.Checks
         ///     are usable.
         /// </summary>
         public const string BlobsDeployment = "blobs.deployment";
+
+        /// <summary>A warning for each property excluded from Excel that the server already owns.</summary>
+        public const string Excel = "excel";
+
+        /// <summary>The scratch directory every workbook spools to exists and takes a file.</summary>
+        public const string ExcelDeployment = "excel.deployment";
     }
 }

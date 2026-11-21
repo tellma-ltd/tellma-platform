@@ -11,6 +11,7 @@ using Tellma.Core.Abstractions.Crud;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Composition;
 using Tellma.Core.Crud;
+using Tellma.Core.Excel;
 using Tellma.Core.Tests.Infrastructure;
 using Tellma.Testing.Entities;
 
@@ -41,9 +42,11 @@ namespace Tellma.Core.Tests.Crud
             Assert.Equal((StackModel.Parts, "GadgetPart", "Notes"), (notes.OwnerResource, notes.OwnerNavigation, notes.Collection));
             Assert.Equal("part-notes", notes.ResourceSegment);
 
-            // Until the Excel feature lands, an exportable surface carries no export actions.
+            // An exportable surface carries the display export, under the child's read.
             Assert.True(parts.Exportable);
-            Assert.Empty(parts.Actions);
+            ApiActionDescriptor export = Assert.IsType<ApiActionDescriptor>(Assert.Single(parts.Actions));
+            Assert.Equal(("export", new SecurableRef(StackModel.Parts, AccessActions.Read), typeof(ChildExportOperations<SmGadgetPart>)), (export.Name, export.Securable, export.HandlerType));
+            Assert.Equal(["export"], notes.Actions.Select(static action => action.Name));
 
             // --- Every table of an aggregate belongs to its stack, compared as the database does ---
             Assert.Same(gadgets, registry.OwnerOf(new TableName("sm", "Gadgets")));
@@ -112,8 +115,8 @@ namespace Tellma.Core.Tests.Crud
             StackRegistry registry = provider.GetRequiredService<StackRegistry>();
             StackDescriptor gadgets = registry.Find(StackModel.Gadgets)!;
 
-            // --- Built-ins first, then the base class's actions, then the subclass's ---
-            Assert.Equal(["activate", "deactivate", "archive", "prices/reprice", "summary", "take-over"], gadgets.Actions.Select(static action => action.Name));
+            // --- Built-ins first, then the base class's actions, then the subclass's, then the workbook operations ---
+            Assert.Equal(["activate", "deactivate", "archive", "prices/reprice", "summary", "take-over", "export", "export-for-import"], gadgets.Actions.Select(static action => action.Name));
             EntityActionDescriptor archive = Assert.IsType<EntityActionDescriptor>(gadgets.Actions[2]);
             EntityActionDescriptor reprice = Assert.IsType<EntityActionDescriptor>(gadgets.Actions[3]);
             EntityActionDescriptor takeOver = Assert.IsType<EntityActionDescriptor>(gadgets.Actions[5]);
@@ -231,8 +234,8 @@ namespace Tellma.Core.Tests.Crud
                     new SecurableDescriptor(StackModel.Gadgets, "Delete", StackModel.Gadgets, false, "sm", null),
                     new SecurableDescriptor(StackModel.Gadgets, "Activate", StackModel.Gadgets, false, "sm", null),
                     new SecurableDescriptor(StackModel.Gadgets, "Archive", StackModel.Gadgets, false, "sm", null),
-                    new SecurableDescriptor(StackModel.Gadgets, "Export", StackModel.Gadgets, false, "sm", null),
                     new SecurableDescriptor(StackModel.Gadgets, "Reprice", null, false, "sm", null),
+                    new SecurableDescriptor(StackModel.Gadgets, "Tally", StackModel.Gadgets, false, "sm", null),
                     new SecurableDescriptor(StackModel.Parts, "Read", StackModel.Parts, false, "sm", new SecurableOwner(StackModel.Gadgets, "Gadget")),
                     new SecurableDescriptor(StackModel.Notes, "Read", StackModel.Notes, false, "sm", new SecurableOwner(StackModel.Parts, "GadgetPart")),
                 ],

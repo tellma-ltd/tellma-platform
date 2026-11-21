@@ -2675,6 +2675,39 @@ are SpreadsheetML packages written with `DocumentFormat.OpenXml` (MIT), forward-
   style's font, fill and border, and no manifest. File names are the stem's ASCII form and the
   request's local time (`Widgets 2026-11-16 0930.xlsx`), `report` when the stem keeps nothing, the
   stem cut so the name fits 255 characters.
+- **The planner.** `ExportPlanner` plans the two entity workbooks. The display plan is one sheet of
+  the columns `DisplayColumns` expanded: a navigation reads its target's display-name columns
+  (`IDisplayNames`) and writes the display name in the reader's content slot, the slot whose tenant
+  language is the request culture's language or one of its parents', else the first; a group anchor
+  reads the content slot's twin with the first slot behind a blank one; any other path or expression
+  is typed by `QueryexEngine.Validate` and written as itself; every select term is read once, and
+  `FoldingRowSource` folds each row back to one value per column. A header the request leaves blank
+  is the labels of the path joined by ` / `, or the expression as sent. The editable plan's parent
+  sheet is `Id`, `Stamp` (from `ModifiedAt`, when the entity has it), then every property the import
+  writes in declaration order (never one the server owns or derives, a blob reference, a JSON
+  document, a binary, a hierarchy path or one excluded from Excel): a multilingual group as one
+  column per tenant language, a foreign key as one reference column in the requested key, else the
+  target's natural key, else its surrogate `Id`. Each selected collection, at every depth, is a sheet
+  of its own led by the reference to its owner row, named by the parent's and the collections' labels
+  joined by ` · ` with leading segments dropped while the name is longer than 31 characters, its
+  query riding its owner's. A columns subset keeps the natural key's columns; an unknown column,
+  reference key or collection is a `BadRequestException` at its place in the request.
+- **The operations.** `ExcelOperations<TEntity>` is attached by the platform, first among its
+  companions, to every stack that serves `Export` or `Import`, and projects `export` under `Export`
+  and `export-for-import` under `Import`, each under the stack's `Read`; `ChildExportOperations<TChild>`
+  is the `export` action of every exportable child query surface, under the child's `Read`. Both are
+  scoped and built by their own factories over the stack's service or the child query service. A
+  request names its rows by `Ids` alone or by the grid's clauses (`ExportSources`): ids beside a
+  clause, an empty id list outside the editable template, or named filters on a child surface are a
+  `BadRequestException`, as are none or more than 100 display columns and a header over 255
+  characters. `ExcelExports` writes the plan to a scratch file under `Tellma:ScratchPath`, opened only
+  once the first page passes the cap, and hands the rewound file to the caller; a refusal at the
+  parent sheet's synchronous cap (`MaxSynchronousExportRows`) names `export/start` or
+  `export-for-import/start` as the `LimitExceededException`'s remedy. The exports count their rows,
+  durations and refusals (`tellma.excel.*`) and log each completion and refusal. `ExcelComposition`
+  binds `Tellma:Excel`, registers the exporter, the context builder from the request context and the
+  export runner, and the two checks: `excel` warns about each server-owned property excluded from
+  Excel, and `excel.deployment` refuses a scratch directory that does not exist or takes no file.
 
 ## Layout
 
@@ -2704,7 +2737,7 @@ are SpreadsheetML packages written with `DocumentFormat.OpenXml` (MIT), forward-
 | `Tenancy/Catalog/` | The row classes the catalog model maps for its migrations. |
 | `Blobs/` | `FileSystemBlobStore`, its options, default root and validator, `AddFileSystemBlobStore`, the store instruments and log events; internally the content-type sniffer and the file-name sanitiser. |
 | `Calendars/` | `GregorianCalendarSystem`, `UmAlQuraCalendarSystem`, `EthiopianCalendarSystem`, `CalendarRegistry`; internally the Ethiopian and the extended Umm al-Qura framework calendars, the shared renderer and reader, the culture data and the date-pattern reader. |
-| `Excel/` | `ExcelContext`, `ExcelColumnSpec`, `ExcelColumnRole`, `ExcelKeyKind`, `ExcelDateEncoding`, `ExcelSheetPlan`, `ExcelWorkbookPlan`, `ExcelTableSpec`, `ExcelTableRow`, `ExcelRowStyle`, `IExcelExporter`, `ImportCheckpointState`; internally the cell codec and its decoding records, the cell reader, the column encodings, the number formats, the stylesheet, the package, worksheet and workbook writers, the manifest's header block, the serial dates, the sheet and file names, the column letters, the XML escapes and the scratch files. |
+| `Excel/` | `ExcelContext`, `ExcelColumnSpec`, `ExcelColumnRole`, `ExcelKeyKind`, `ExcelDateEncoding`, `ExcelSheetPlan`, `ExcelWorkbookPlan`, `ExcelTableSpec`, `ExcelTableRow`, `ExcelRowStyle`, `IExcelExporter`, `ImportCheckpointState`, `ExcelOperations<TEntity>`, `ChildExportOperations<TChild>`; internally the cell codec and its decoding records, the cell reader, the column encodings, the number formats, the stylesheet, the package, worksheet and workbook writers, the manifest's header block and same-source gate, the serial dates, the sheet and file names, the column letters, the XML escapes and the scratch files; the exporter, the planner, the display columns and their folding row source, the request's sources, the context builder, the export runner, the companions' attachment and factories, the instruments, the log events, the checks and the composition step. |
 | `Caching/` | The versioned cache base, its keys and kinds; internally, the cacheable entities' store and façade, the version-tag registry, its table's row, the prelude and bump contributors, the bump plan, the snapshots, the mismatch policies, the migrator's seeder, the instruments and the log events. |
 | `Jobs/` | Internally: the job tables' configurations and seeds, the handler, built-in-schedule and retired-key realizers with their cross-feature checks, `JobHandlerRegistry`, the `jobs.handlers` and `jobs.schedules` checks, the queue and its enqueue statement, the poller wake, the lease statements, the runner with its leases, renewal, progress, outcome rules, backoff, pending-confirmation record, notices and completion-failure translation, the job and system scopes, the `process` and `settle` activities and the log scope, the composition step that binds the jobs' options, and the log events; `JobService` with its action and retention statements, the self-scope criteria, the label renderer, the `jobHandlers` contributor, and the retention and tree-verify handlers. |
 | `Access/` | Internally: the access tables' configurations and seeds, the user stamp and preference rows, the securable registry with its name grammar and feature contributor, the securables section of the client metadata, the permission set build: the classifier, the builder, the interner and the access instruments and logs; and the user connection: the connect prologue, the connect, permissions and profile caches, the connector, the guarded runner and the connect initializer; and the permission filter rules the role save and the Queryex discovery share. |
@@ -2724,7 +2757,9 @@ runs batches against the data layer's fixture database (`test/shared/Tellma.Test
 holds the job tables, the queue's enqueue statement, the lease statements, the jobs' actions and
 the maintenance handlers, and jobs run end to end through `JobPollDriver` to SQL Server in `Jobs/`.
 `test/core/Tellma.Core.Tests/Excel` holds every workbook the writer produces to the Open XML SDK's
-Office 2019 schema validator.
+Office 2019 schema validator, and the planner's, the display columns' and the requests' rules over
+the fixture entities; `test/core/Tellma.Core.IntegrationTests/Excel` runs the synchronous exports
+through the stack's row source against SQL Server.
 `test/core/Tellma.Core.Tests` also runs the resource audit over Core's own resources
 (`Localization/CoreResourceAuditTests`): a key of `Strings.resx` or `ServerStrings.resx` that no
 convention derives and no literal in `src/` or `client/projects/` names (test support, harnesses,

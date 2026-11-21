@@ -147,7 +147,178 @@
         }
       ],
       "children": [],
-      "actions": [],
+      "actions": [
+        {
+          "name": "export",
+          "kind": "api",
+          "builtIn": false,
+          "action": "Read",
+          "labelKey": "Acme_Currency_Action_Export",
+          "labelFallback": "Export",
+          "mutation": false,
+          "idempotent": true,
+          "destructive": false,
+          "singleTarget": false,
+          "supportsFilter": false,
+          "result": "own",
+          "arguments": {
+            "type": "object",
+            "properties": {
+              "columns": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "expression": {
+                      "type": "string"
+                    },
+                    "header": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "expression"
+                  ]
+                }
+              },
+              "ids": {
+                "type": [
+                  "array",
+                  "null"
+                ]
+              },
+              "filters": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "string"
+                }
+              },
+              "namedFilters": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "string"
+                }
+              },
+              "orderBy": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "search": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "arguments": {
+                "type": [
+                  "object",
+                  "null"
+                ]
+              },
+              "includeInactive": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "columns",
+              "includeInactive"
+            ]
+          },
+          "fields": [
+            {
+              "name": "columns",
+              "labelKey": "Acme_Currency_Action_Export_Columns",
+              "labelFallback": "Columns",
+              "required": true,
+              "value": {
+                "type": "json",
+                "nullable": false
+              }
+            },
+            {
+              "name": "ids",
+              "labelKey": "Acme_Currency_Action_Export_Ids",
+              "labelFallback": "Ids",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "filters",
+              "labelKey": "Acme_Currency_Action_Export_Filters",
+              "labelFallback": "Filters",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "namedFilters",
+              "labelKey": "Acme_Currency_Action_Export_NamedFilters",
+              "labelFallback": "Named filters",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "orderBy",
+              "labelKey": "Acme_Currency_Action_Export_OrderBy",
+              "labelFallback": "Order by",
+              "required": false,
+              "value": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            {
+              "name": "search",
+              "labelKey": "Acme_Currency_Action_Export_Search",
+              "labelFallback": "Search",
+              "required": false,
+              "value": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            {
+              "name": "arguments",
+              "labelKey": "Acme_Currency_Action_Export_Arguments",
+              "labelFallback": "Arguments",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "includeInactive",
+              "labelKey": "Acme_Currency_Action_Export_IncludeInactive",
+              "labelFallback": "Include inactive",
+              "required": true,
+              "value": {
+                "type": "bool",
+                "nullable": false
+              }
+            }
+          ]
+        }
+      ],
       "relatedSelect": [
         "Id",
         "Code"
@@ -818,6 +989,405 @@
           "singleTarget": false,
           "supportsFilter": false,
           "result": "none"
+        },
+        {
+          "name": "export",
+          "kind": "api",
+          "builtIn": false,
+          "action": "Read",
+          "labelKey": "Acme_Customer_Action_Export",
+          "labelFallback": "Export",
+          "mutation": false,
+          "idempotent": true,
+          "destructive": false,
+          "singleTarget": false,
+          "supportsFilter": false,
+          "result": "own",
+          "arguments": {
+            "type": "object",
+            "properties": {
+              "columns": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "expression": {
+                      "type": "string"
+                    },
+                    "header": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "expression"
+                  ]
+                }
+              },
+              "ids": {
+                "type": [
+                  "array",
+                  "null"
+                ]
+              },
+              "filters": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "string"
+                }
+              },
+              "namedFilters": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "string"
+                }
+              },
+              "orderBy": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "search": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "arguments": {
+                "type": [
+                  "object",
+                  "null"
+                ]
+              },
+              "includeInactive": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "columns",
+              "includeInactive"
+            ]
+          },
+          "fields": [
+            {
+              "name": "columns",
+              "labelKey": "Acme_Customer_Action_Export_Columns",
+              "labelFallback": "Columns",
+              "required": true,
+              "value": {
+                "type": "json",
+                "nullable": false
+              }
+            },
+            {
+              "name": "ids",
+              "labelKey": "Acme_Customer_Action_Export_Ids",
+              "labelFallback": "Ids",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "filters",
+              "labelKey": "Acme_Customer_Action_Export_Filters",
+              "labelFallback": "Filters",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "namedFilters",
+              "labelKey": "Acme_Customer_Action_Export_NamedFilters",
+              "labelFallback": "Named filters",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "orderBy",
+              "labelKey": "Acme_Customer_Action_Export_OrderBy",
+              "labelFallback": "Order by",
+              "required": false,
+              "value": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            {
+              "name": "search",
+              "labelKey": "Acme_Customer_Action_Export_Search",
+              "labelFallback": "Search",
+              "required": false,
+              "value": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            {
+              "name": "arguments",
+              "labelKey": "Acme_Customer_Action_Export_Arguments",
+              "labelFallback": "Arguments",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "includeInactive",
+              "labelKey": "Acme_Customer_Action_Export_IncludeInactive",
+              "labelFallback": "Include inactive",
+              "required": true,
+              "value": {
+                "type": "bool",
+                "nullable": false
+              }
+            }
+          ]
+        },
+        {
+          "name": "export-for-import",
+          "kind": "api",
+          "builtIn": false,
+          "action": "Read",
+          "labelKey": "Acme_Customer_Action_ExportForImport",
+          "labelFallback": "Export for import",
+          "mutation": false,
+          "idempotent": true,
+          "destructive": false,
+          "singleTarget": false,
+          "supportsFilter": false,
+          "result": "own",
+          "arguments": {
+            "type": "object",
+            "properties": {
+              "columns": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "string"
+                }
+              },
+              "referenceKeys": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "children": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "collection": {
+                      "type": "string"
+                    },
+                    "columns": {
+                      "type": [
+                        "array",
+                        "null"
+                      ],
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "referenceKeys": {
+                      "type": [
+                        "object",
+                        "null"
+                      ],
+                      "additionalProperties": {
+                        "type": "string"
+                      }
+                    },
+                    "children": {
+                      "type": [
+                        "array",
+                        "null"
+                      ],
+                      "items": {
+                        "$ref": "#/properties/children/items"
+                      }
+                    }
+                  },
+                  "required": [
+                    "collection"
+                  ]
+                }
+              },
+              "ids": {
+                "type": [
+                  "array",
+                  "null"
+                ]
+              },
+              "filters": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "string"
+                }
+              },
+              "namedFilters": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "string"
+                }
+              },
+              "orderBy": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "search": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "arguments": {
+                "type": [
+                  "object",
+                  "null"
+                ]
+              },
+              "includeInactive": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "referenceKeys",
+              "includeInactive"
+            ]
+          },
+          "fields": [
+            {
+              "name": "columns",
+              "labelKey": "Acme_Customer_Action_ExportForImport_Columns",
+              "labelFallback": "Columns",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "referenceKeys",
+              "labelKey": "Acme_Customer_Action_ExportForImport_ReferenceKeys",
+              "labelFallback": "Reference keys",
+              "required": true,
+              "value": {
+                "type": "json",
+                "nullable": false
+              }
+            },
+            {
+              "name": "children",
+              "labelKey": "Acme_Customer_Action_ExportForImport_Children",
+              "labelFallback": "Children",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "ids",
+              "labelKey": "Acme_Customer_Action_ExportForImport_Ids",
+              "labelFallback": "Ids",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "filters",
+              "labelKey": "Acme_Customer_Action_ExportForImport_Filters",
+              "labelFallback": "Filters",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "namedFilters",
+              "labelKey": "Acme_Customer_Action_ExportForImport_NamedFilters",
+              "labelFallback": "Named filters",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "orderBy",
+              "labelKey": "Acme_Customer_Action_ExportForImport_OrderBy",
+              "labelFallback": "Order by",
+              "required": false,
+              "value": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            {
+              "name": "search",
+              "labelKey": "Acme_Customer_Action_ExportForImport_Search",
+              "labelFallback": "Search",
+              "required": false,
+              "value": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            {
+              "name": "arguments",
+              "labelKey": "Acme_Customer_Action_ExportForImport_Arguments",
+              "labelFallback": "Arguments",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "includeInactive",
+              "labelKey": "Acme_Customer_Action_ExportForImport_IncludeInactive",
+              "labelFallback": "Include inactive",
+              "required": true,
+              "value": {
+                "type": "bool",
+                "nullable": false
+              }
+            }
+          ]
         }
       ],
       "relatedSelect": [
@@ -936,7 +1506,178 @@
         }
       ],
       "children": [],
-      "actions": [],
+      "actions": [
+        {
+          "name": "export",
+          "kind": "api",
+          "builtIn": false,
+          "action": "Read",
+          "labelKey": "Acme_CustomerContact_Action_Export",
+          "labelFallback": "Export",
+          "mutation": false,
+          "idempotent": true,
+          "destructive": false,
+          "singleTarget": false,
+          "supportsFilter": false,
+          "result": "own",
+          "arguments": {
+            "type": "object",
+            "properties": {
+              "columns": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "expression": {
+                      "type": "string"
+                    },
+                    "header": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "expression"
+                  ]
+                }
+              },
+              "ids": {
+                "type": [
+                  "array",
+                  "null"
+                ]
+              },
+              "filters": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "string"
+                }
+              },
+              "namedFilters": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "string"
+                }
+              },
+              "orderBy": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "search": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "arguments": {
+                "type": [
+                  "object",
+                  "null"
+                ]
+              },
+              "includeInactive": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "columns",
+              "includeInactive"
+            ]
+          },
+          "fields": [
+            {
+              "name": "columns",
+              "labelKey": "Acme_CustomerContact_Action_Export_Columns",
+              "labelFallback": "Columns",
+              "required": true,
+              "value": {
+                "type": "json",
+                "nullable": false
+              }
+            },
+            {
+              "name": "ids",
+              "labelKey": "Acme_CustomerContact_Action_Export_Ids",
+              "labelFallback": "Ids",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "filters",
+              "labelKey": "Acme_CustomerContact_Action_Export_Filters",
+              "labelFallback": "Filters",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "namedFilters",
+              "labelKey": "Acme_CustomerContact_Action_Export_NamedFilters",
+              "labelFallback": "Named filters",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "orderBy",
+              "labelKey": "Acme_CustomerContact_Action_Export_OrderBy",
+              "labelFallback": "Order by",
+              "required": false,
+              "value": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            {
+              "name": "search",
+              "labelKey": "Acme_CustomerContact_Action_Export_Search",
+              "labelFallback": "Search",
+              "required": false,
+              "value": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            {
+              "name": "arguments",
+              "labelKey": "Acme_CustomerContact_Action_Export_Arguments",
+              "labelFallback": "Arguments",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "includeInactive",
+              "labelKey": "Acme_CustomerContact_Action_Export_IncludeInactive",
+              "labelFallback": "Include inactive",
+              "required": true,
+              "value": {
+                "type": "bool",
+                "nullable": false
+              }
+            }
+          ]
+        }
+      ],
       "relatedSelect": [
         "Id"
       ],
@@ -1011,7 +1752,407 @@
       ],
       "navigations": [],
       "children": [],
-      "actions": [],
+      "actions": [
+        {
+          "name": "export",
+          "kind": "api",
+          "builtIn": false,
+          "action": "Read",
+          "labelKey": "Acme_CustomerExtra_Action_Export",
+          "labelFallback": "Export",
+          "mutation": false,
+          "idempotent": true,
+          "destructive": false,
+          "singleTarget": false,
+          "supportsFilter": false,
+          "result": "own",
+          "arguments": {
+            "type": "object",
+            "properties": {
+              "columns": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "expression": {
+                      "type": "string"
+                    },
+                    "header": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "expression"
+                  ]
+                }
+              },
+              "ids": {
+                "type": [
+                  "array",
+                  "null"
+                ]
+              },
+              "filters": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "string"
+                }
+              },
+              "namedFilters": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "string"
+                }
+              },
+              "orderBy": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "search": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "arguments": {
+                "type": [
+                  "object",
+                  "null"
+                ]
+              },
+              "includeInactive": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "columns",
+              "includeInactive"
+            ]
+          },
+          "fields": [
+            {
+              "name": "columns",
+              "labelKey": "Acme_CustomerExtra_Action_Export_Columns",
+              "labelFallback": "Columns",
+              "required": true,
+              "value": {
+                "type": "json",
+                "nullable": false
+              }
+            },
+            {
+              "name": "ids",
+              "labelKey": "Acme_CustomerExtra_Action_Export_Ids",
+              "labelFallback": "Ids",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "filters",
+              "labelKey": "Acme_CustomerExtra_Action_Export_Filters",
+              "labelFallback": "Filters",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "namedFilters",
+              "labelKey": "Acme_CustomerExtra_Action_Export_NamedFilters",
+              "labelFallback": "Named filters",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "orderBy",
+              "labelKey": "Acme_CustomerExtra_Action_Export_OrderBy",
+              "labelFallback": "Order by",
+              "required": false,
+              "value": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            {
+              "name": "search",
+              "labelKey": "Acme_CustomerExtra_Action_Export_Search",
+              "labelFallback": "Search",
+              "required": false,
+              "value": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            {
+              "name": "arguments",
+              "labelKey": "Acme_CustomerExtra_Action_Export_Arguments",
+              "labelFallback": "Arguments",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "includeInactive",
+              "labelKey": "Acme_CustomerExtra_Action_Export_IncludeInactive",
+              "labelFallback": "Include inactive",
+              "required": true,
+              "value": {
+                "type": "bool",
+                "nullable": false
+              }
+            }
+          ]
+        },
+        {
+          "name": "export-for-import",
+          "kind": "api",
+          "builtIn": false,
+          "action": "Read",
+          "labelKey": "Acme_CustomerExtra_Action_ExportForImport",
+          "labelFallback": "Export for import",
+          "mutation": false,
+          "idempotent": true,
+          "destructive": false,
+          "singleTarget": false,
+          "supportsFilter": false,
+          "result": "own",
+          "arguments": {
+            "type": "object",
+            "properties": {
+              "columns": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "string"
+                }
+              },
+              "referenceKeys": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "children": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "collection": {
+                      "type": "string"
+                    },
+                    "columns": {
+                      "type": [
+                        "array",
+                        "null"
+                      ],
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "referenceKeys": {
+                      "type": [
+                        "object",
+                        "null"
+                      ],
+                      "additionalProperties": {
+                        "type": "string"
+                      }
+                    },
+                    "children": {
+                      "type": [
+                        "array",
+                        "null"
+                      ],
+                      "items": {
+                        "$ref": "#/properties/children/items"
+                      }
+                    }
+                  },
+                  "required": [
+                    "collection"
+                  ]
+                }
+              },
+              "ids": {
+                "type": [
+                  "array",
+                  "null"
+                ]
+              },
+              "filters": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "string"
+                }
+              },
+              "namedFilters": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "string"
+                }
+              },
+              "orderBy": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "search": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "arguments": {
+                "type": [
+                  "object",
+                  "null"
+                ]
+              },
+              "includeInactive": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "referenceKeys",
+              "includeInactive"
+            ]
+          },
+          "fields": [
+            {
+              "name": "columns",
+              "labelKey": "Acme_CustomerExtra_Action_ExportForImport_Columns",
+              "labelFallback": "Columns",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "referenceKeys",
+              "labelKey": "Acme_CustomerExtra_Action_ExportForImport_ReferenceKeys",
+              "labelFallback": "Reference keys",
+              "required": true,
+              "value": {
+                "type": "json",
+                "nullable": false
+              }
+            },
+            {
+              "name": "children",
+              "labelKey": "Acme_CustomerExtra_Action_ExportForImport_Children",
+              "labelFallback": "Children",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "ids",
+              "labelKey": "Acme_CustomerExtra_Action_ExportForImport_Ids",
+              "labelFallback": "Ids",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "filters",
+              "labelKey": "Acme_CustomerExtra_Action_ExportForImport_Filters",
+              "labelFallback": "Filters",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "namedFilters",
+              "labelKey": "Acme_CustomerExtra_Action_ExportForImport_NamedFilters",
+              "labelFallback": "Named filters",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "orderBy",
+              "labelKey": "Acme_CustomerExtra_Action_ExportForImport_OrderBy",
+              "labelFallback": "Order by",
+              "required": false,
+              "value": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            {
+              "name": "search",
+              "labelKey": "Acme_CustomerExtra_Action_ExportForImport_Search",
+              "labelFallback": "Search",
+              "required": false,
+              "value": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            {
+              "name": "arguments",
+              "labelKey": "Acme_CustomerExtra_Action_ExportForImport_Arguments",
+              "labelFallback": "Arguments",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "includeInactive",
+              "labelKey": "Acme_CustomerExtra_Action_ExportForImport_IncludeInactive",
+              "labelFallback": "Include inactive",
+              "required": true,
+              "value": {
+                "type": "bool",
+                "nullable": false
+              }
+            }
+          ]
+        }
+      ],
       "relatedSelect": [
         "Id"
       ],
@@ -2623,7 +3764,178 @@
         }
       ],
       "children": [],
-      "actions": [],
+      "actions": [
+        {
+          "name": "export",
+          "kind": "api",
+          "builtIn": false,
+          "action": "Read",
+          "labelKey": "Core_Permission_Action_Export",
+          "labelFallback": "Export",
+          "mutation": false,
+          "idempotent": true,
+          "destructive": false,
+          "singleTarget": false,
+          "supportsFilter": false,
+          "result": "own",
+          "arguments": {
+            "type": "object",
+            "properties": {
+              "columns": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "expression": {
+                      "type": "string"
+                    },
+                    "header": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "expression"
+                  ]
+                }
+              },
+              "ids": {
+                "type": [
+                  "array",
+                  "null"
+                ]
+              },
+              "filters": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "string"
+                }
+              },
+              "namedFilters": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "string"
+                }
+              },
+              "orderBy": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "search": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "arguments": {
+                "type": [
+                  "object",
+                  "null"
+                ]
+              },
+              "includeInactive": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "columns",
+              "includeInactive"
+            ]
+          },
+          "fields": [
+            {
+              "name": "columns",
+              "labelKey": "Core_Permission_Action_Export_Columns",
+              "labelFallback": "Columns",
+              "required": true,
+              "value": {
+                "type": "json",
+                "nullable": false
+              }
+            },
+            {
+              "name": "ids",
+              "labelKey": "Core_Permission_Action_Export_Ids",
+              "labelFallback": "Ids",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "filters",
+              "labelKey": "Core_Permission_Action_Export_Filters",
+              "labelFallback": "Filters",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "namedFilters",
+              "labelKey": "Core_Permission_Action_Export_NamedFilters",
+              "labelFallback": "Named filters",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "orderBy",
+              "labelKey": "Core_Permission_Action_Export_OrderBy",
+              "labelFallback": "Order by",
+              "required": false,
+              "value": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            {
+              "name": "search",
+              "labelKey": "Core_Permission_Action_Export_Search",
+              "labelFallback": "Search",
+              "required": false,
+              "value": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            {
+              "name": "arguments",
+              "labelKey": "Core_Permission_Action_Export_Arguments",
+              "labelFallback": "Arguments",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "includeInactive",
+              "labelKey": "Core_Permission_Action_Export_IncludeInactive",
+              "labelFallback": "Include inactive",
+              "required": true,
+              "value": {
+                "type": "bool",
+                "nullable": false
+              }
+            }
+          ]
+        }
+      ],
       "relatedSelect": [
         "Id"
       ],
@@ -2867,6 +4179,405 @@
           "singleTarget": false,
           "supportsFilter": true,
           "result": "entities"
+        },
+        {
+          "name": "export",
+          "kind": "api",
+          "builtIn": false,
+          "action": "Read",
+          "labelKey": "Core_Role_Action_Export",
+          "labelFallback": "Export",
+          "mutation": false,
+          "idempotent": true,
+          "destructive": false,
+          "singleTarget": false,
+          "supportsFilter": false,
+          "result": "own",
+          "arguments": {
+            "type": "object",
+            "properties": {
+              "columns": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "expression": {
+                      "type": "string"
+                    },
+                    "header": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "expression"
+                  ]
+                }
+              },
+              "ids": {
+                "type": [
+                  "array",
+                  "null"
+                ]
+              },
+              "filters": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "string"
+                }
+              },
+              "namedFilters": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "string"
+                }
+              },
+              "orderBy": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "search": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "arguments": {
+                "type": [
+                  "object",
+                  "null"
+                ]
+              },
+              "includeInactive": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "columns",
+              "includeInactive"
+            ]
+          },
+          "fields": [
+            {
+              "name": "columns",
+              "labelKey": "Core_Role_Action_Export_Columns",
+              "labelFallback": "Columns",
+              "required": true,
+              "value": {
+                "type": "json",
+                "nullable": false
+              }
+            },
+            {
+              "name": "ids",
+              "labelKey": "Core_Role_Action_Export_Ids",
+              "labelFallback": "Ids",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "filters",
+              "labelKey": "Core_Role_Action_Export_Filters",
+              "labelFallback": "Filters",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "namedFilters",
+              "labelKey": "Core_Role_Action_Export_NamedFilters",
+              "labelFallback": "Named filters",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "orderBy",
+              "labelKey": "Core_Role_Action_Export_OrderBy",
+              "labelFallback": "Order by",
+              "required": false,
+              "value": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            {
+              "name": "search",
+              "labelKey": "Core_Role_Action_Export_Search",
+              "labelFallback": "Search",
+              "required": false,
+              "value": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            {
+              "name": "arguments",
+              "labelKey": "Core_Role_Action_Export_Arguments",
+              "labelFallback": "Arguments",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "includeInactive",
+              "labelKey": "Core_Role_Action_Export_IncludeInactive",
+              "labelFallback": "Include inactive",
+              "required": true,
+              "value": {
+                "type": "bool",
+                "nullable": false
+              }
+            }
+          ]
+        },
+        {
+          "name": "export-for-import",
+          "kind": "api",
+          "builtIn": false,
+          "action": "Read",
+          "labelKey": "Core_Role_Action_ExportForImport",
+          "labelFallback": "Export for import",
+          "mutation": false,
+          "idempotent": true,
+          "destructive": false,
+          "singleTarget": false,
+          "supportsFilter": false,
+          "result": "own",
+          "arguments": {
+            "type": "object",
+            "properties": {
+              "columns": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "string"
+                }
+              },
+              "referenceKeys": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "children": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "collection": {
+                      "type": "string"
+                    },
+                    "columns": {
+                      "type": [
+                        "array",
+                        "null"
+                      ],
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "referenceKeys": {
+                      "type": [
+                        "object",
+                        "null"
+                      ],
+                      "additionalProperties": {
+                        "type": "string"
+                      }
+                    },
+                    "children": {
+                      "type": [
+                        "array",
+                        "null"
+                      ],
+                      "items": {
+                        "$ref": "#/properties/children/items"
+                      }
+                    }
+                  },
+                  "required": [
+                    "collection"
+                  ]
+                }
+              },
+              "ids": {
+                "type": [
+                  "array",
+                  "null"
+                ]
+              },
+              "filters": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "string"
+                }
+              },
+              "namedFilters": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "string"
+                }
+              },
+              "orderBy": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "search": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "arguments": {
+                "type": [
+                  "object",
+                  "null"
+                ]
+              },
+              "includeInactive": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "referenceKeys",
+              "includeInactive"
+            ]
+          },
+          "fields": [
+            {
+              "name": "columns",
+              "labelKey": "Core_Role_Action_ExportForImport_Columns",
+              "labelFallback": "Columns",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "referenceKeys",
+              "labelKey": "Core_Role_Action_ExportForImport_ReferenceKeys",
+              "labelFallback": "Reference keys",
+              "required": true,
+              "value": {
+                "type": "json",
+                "nullable": false
+              }
+            },
+            {
+              "name": "children",
+              "labelKey": "Core_Role_Action_ExportForImport_Children",
+              "labelFallback": "Children",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "ids",
+              "labelKey": "Core_Role_Action_ExportForImport_Ids",
+              "labelFallback": "Ids",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "filters",
+              "labelKey": "Core_Role_Action_ExportForImport_Filters",
+              "labelFallback": "Filters",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "namedFilters",
+              "labelKey": "Core_Role_Action_ExportForImport_NamedFilters",
+              "labelFallback": "Named filters",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "orderBy",
+              "labelKey": "Core_Role_Action_ExportForImport_OrderBy",
+              "labelFallback": "Order by",
+              "required": false,
+              "value": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            {
+              "name": "search",
+              "labelKey": "Core_Role_Action_ExportForImport_Search",
+              "labelFallback": "Search",
+              "required": false,
+              "value": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            {
+              "name": "arguments",
+              "labelKey": "Core_Role_Action_ExportForImport_Arguments",
+              "labelFallback": "Arguments",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "includeInactive",
+              "labelKey": "Core_Role_Action_ExportForImport_IncludeInactive",
+              "labelFallback": "Include inactive",
+              "required": true,
+              "value": {
+                "type": "bool",
+                "nullable": false
+              }
+            }
+          ]
         }
       ],
       "relatedSelect": [
@@ -3020,7 +4731,178 @@
         }
       ],
       "children": [],
-      "actions": [],
+      "actions": [
+        {
+          "name": "export",
+          "kind": "api",
+          "builtIn": false,
+          "action": "Read",
+          "labelKey": "Core_RoleMembership_Action_Export",
+          "labelFallback": "Export",
+          "mutation": false,
+          "idempotent": true,
+          "destructive": false,
+          "singleTarget": false,
+          "supportsFilter": false,
+          "result": "own",
+          "arguments": {
+            "type": "object",
+            "properties": {
+              "columns": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "expression": {
+                      "type": "string"
+                    },
+                    "header": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "expression"
+                  ]
+                }
+              },
+              "ids": {
+                "type": [
+                  "array",
+                  "null"
+                ]
+              },
+              "filters": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "string"
+                }
+              },
+              "namedFilters": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "string"
+                }
+              },
+              "orderBy": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "search": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "arguments": {
+                "type": [
+                  "object",
+                  "null"
+                ]
+              },
+              "includeInactive": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "columns",
+              "includeInactive"
+            ]
+          },
+          "fields": [
+            {
+              "name": "columns",
+              "labelKey": "Core_RoleMembership_Action_Export_Columns",
+              "labelFallback": "Columns",
+              "required": true,
+              "value": {
+                "type": "json",
+                "nullable": false
+              }
+            },
+            {
+              "name": "ids",
+              "labelKey": "Core_RoleMembership_Action_Export_Ids",
+              "labelFallback": "Ids",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "filters",
+              "labelKey": "Core_RoleMembership_Action_Export_Filters",
+              "labelFallback": "Filters",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "namedFilters",
+              "labelKey": "Core_RoleMembership_Action_Export_NamedFilters",
+              "labelFallback": "Named filters",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "orderBy",
+              "labelKey": "Core_RoleMembership_Action_Export_OrderBy",
+              "labelFallback": "Order by",
+              "required": false,
+              "value": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            {
+              "name": "search",
+              "labelKey": "Core_RoleMembership_Action_Export_Search",
+              "labelFallback": "Search",
+              "required": false,
+              "value": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            {
+              "name": "arguments",
+              "labelKey": "Core_RoleMembership_Action_Export_Arguments",
+              "labelFallback": "Arguments",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "includeInactive",
+              "labelKey": "Core_RoleMembership_Action_Export_IncludeInactive",
+              "labelFallback": "Include inactive",
+              "required": true,
+              "value": {
+                "type": "bool",
+                "nullable": false
+              }
+            }
+          ]
+        }
+      ],
       "relatedSelect": [
         "Id"
       ],
@@ -3383,6 +5265,405 @@
           "singleTarget": true,
           "supportsFilter": true,
           "result": "own"
+        },
+        {
+          "name": "export",
+          "kind": "api",
+          "builtIn": false,
+          "action": "Read",
+          "labelKey": "Core_Schedule_Action_Export",
+          "labelFallback": "Export",
+          "mutation": false,
+          "idempotent": true,
+          "destructive": false,
+          "singleTarget": false,
+          "supportsFilter": false,
+          "result": "own",
+          "arguments": {
+            "type": "object",
+            "properties": {
+              "columns": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "expression": {
+                      "type": "string"
+                    },
+                    "header": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "expression"
+                  ]
+                }
+              },
+              "ids": {
+                "type": [
+                  "array",
+                  "null"
+                ]
+              },
+              "filters": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "string"
+                }
+              },
+              "namedFilters": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "string"
+                }
+              },
+              "orderBy": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "search": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "arguments": {
+                "type": [
+                  "object",
+                  "null"
+                ]
+              },
+              "includeInactive": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "columns",
+              "includeInactive"
+            ]
+          },
+          "fields": [
+            {
+              "name": "columns",
+              "labelKey": "Core_Schedule_Action_Export_Columns",
+              "labelFallback": "Columns",
+              "required": true,
+              "value": {
+                "type": "json",
+                "nullable": false
+              }
+            },
+            {
+              "name": "ids",
+              "labelKey": "Core_Schedule_Action_Export_Ids",
+              "labelFallback": "Ids",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "filters",
+              "labelKey": "Core_Schedule_Action_Export_Filters",
+              "labelFallback": "Filters",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "namedFilters",
+              "labelKey": "Core_Schedule_Action_Export_NamedFilters",
+              "labelFallback": "Named filters",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "orderBy",
+              "labelKey": "Core_Schedule_Action_Export_OrderBy",
+              "labelFallback": "Order by",
+              "required": false,
+              "value": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            {
+              "name": "search",
+              "labelKey": "Core_Schedule_Action_Export_Search",
+              "labelFallback": "Search",
+              "required": false,
+              "value": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            {
+              "name": "arguments",
+              "labelKey": "Core_Schedule_Action_Export_Arguments",
+              "labelFallback": "Arguments",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "includeInactive",
+              "labelKey": "Core_Schedule_Action_Export_IncludeInactive",
+              "labelFallback": "Include inactive",
+              "required": true,
+              "value": {
+                "type": "bool",
+                "nullable": false
+              }
+            }
+          ]
+        },
+        {
+          "name": "export-for-import",
+          "kind": "api",
+          "builtIn": false,
+          "action": "Read",
+          "labelKey": "Core_Schedule_Action_ExportForImport",
+          "labelFallback": "Export for import",
+          "mutation": false,
+          "idempotent": true,
+          "destructive": false,
+          "singleTarget": false,
+          "supportsFilter": false,
+          "result": "own",
+          "arguments": {
+            "type": "object",
+            "properties": {
+              "columns": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "string"
+                }
+              },
+              "referenceKeys": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "children": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "collection": {
+                      "type": "string"
+                    },
+                    "columns": {
+                      "type": [
+                        "array",
+                        "null"
+                      ],
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "referenceKeys": {
+                      "type": [
+                        "object",
+                        "null"
+                      ],
+                      "additionalProperties": {
+                        "type": "string"
+                      }
+                    },
+                    "children": {
+                      "type": [
+                        "array",
+                        "null"
+                      ],
+                      "items": {
+                        "$ref": "#/properties/children/items"
+                      }
+                    }
+                  },
+                  "required": [
+                    "collection"
+                  ]
+                }
+              },
+              "ids": {
+                "type": [
+                  "array",
+                  "null"
+                ]
+              },
+              "filters": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "string"
+                }
+              },
+              "namedFilters": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "string"
+                }
+              },
+              "orderBy": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "search": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "arguments": {
+                "type": [
+                  "object",
+                  "null"
+                ]
+              },
+              "includeInactive": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "referenceKeys",
+              "includeInactive"
+            ]
+          },
+          "fields": [
+            {
+              "name": "columns",
+              "labelKey": "Core_Schedule_Action_ExportForImport_Columns",
+              "labelFallback": "Columns",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "referenceKeys",
+              "labelKey": "Core_Schedule_Action_ExportForImport_ReferenceKeys",
+              "labelFallback": "Reference keys",
+              "required": true,
+              "value": {
+                "type": "json",
+                "nullable": false
+              }
+            },
+            {
+              "name": "children",
+              "labelKey": "Core_Schedule_Action_ExportForImport_Children",
+              "labelFallback": "Children",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "ids",
+              "labelKey": "Core_Schedule_Action_ExportForImport_Ids",
+              "labelFallback": "Ids",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "filters",
+              "labelKey": "Core_Schedule_Action_ExportForImport_Filters",
+              "labelFallback": "Filters",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "namedFilters",
+              "labelKey": "Core_Schedule_Action_ExportForImport_NamedFilters",
+              "labelFallback": "Named filters",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "orderBy",
+              "labelKey": "Core_Schedule_Action_ExportForImport_OrderBy",
+              "labelFallback": "Order by",
+              "required": false,
+              "value": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            {
+              "name": "search",
+              "labelKey": "Core_Schedule_Action_ExportForImport_Search",
+              "labelFallback": "Search",
+              "required": false,
+              "value": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            {
+              "name": "arguments",
+              "labelKey": "Core_Schedule_Action_ExportForImport_Arguments",
+              "labelFallback": "Arguments",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "includeInactive",
+              "labelKey": "Core_Schedule_Action_ExportForImport_IncludeInactive",
+              "labelFallback": "Include inactive",
+              "required": true,
+              "value": {
+                "type": "bool",
+                "nullable": false
+              }
+            }
+          ]
         }
       ],
       "relatedSelect": [
@@ -4894,6 +7175,405 @@
               }
             }
           ]
+        },
+        {
+          "name": "export",
+          "kind": "api",
+          "builtIn": false,
+          "action": "Read",
+          "labelKey": "Core_User_Action_Export",
+          "labelFallback": "Export",
+          "mutation": false,
+          "idempotent": true,
+          "destructive": false,
+          "singleTarget": false,
+          "supportsFilter": false,
+          "result": "own",
+          "arguments": {
+            "type": "object",
+            "properties": {
+              "columns": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "expression": {
+                      "type": "string"
+                    },
+                    "header": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "expression"
+                  ]
+                }
+              },
+              "ids": {
+                "type": [
+                  "array",
+                  "null"
+                ]
+              },
+              "filters": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "string"
+                }
+              },
+              "namedFilters": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "string"
+                }
+              },
+              "orderBy": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "search": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "arguments": {
+                "type": [
+                  "object",
+                  "null"
+                ]
+              },
+              "includeInactive": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "columns",
+              "includeInactive"
+            ]
+          },
+          "fields": [
+            {
+              "name": "columns",
+              "labelKey": "Core_User_Action_Export_Columns",
+              "labelFallback": "Columns",
+              "required": true,
+              "value": {
+                "type": "json",
+                "nullable": false
+              }
+            },
+            {
+              "name": "ids",
+              "labelKey": "Core_User_Action_Export_Ids",
+              "labelFallback": "Ids",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "filters",
+              "labelKey": "Core_User_Action_Export_Filters",
+              "labelFallback": "Filters",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "namedFilters",
+              "labelKey": "Core_User_Action_Export_NamedFilters",
+              "labelFallback": "Named filters",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "orderBy",
+              "labelKey": "Core_User_Action_Export_OrderBy",
+              "labelFallback": "Order by",
+              "required": false,
+              "value": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            {
+              "name": "search",
+              "labelKey": "Core_User_Action_Export_Search",
+              "labelFallback": "Search",
+              "required": false,
+              "value": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            {
+              "name": "arguments",
+              "labelKey": "Core_User_Action_Export_Arguments",
+              "labelFallback": "Arguments",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "includeInactive",
+              "labelKey": "Core_User_Action_Export_IncludeInactive",
+              "labelFallback": "Include inactive",
+              "required": true,
+              "value": {
+                "type": "bool",
+                "nullable": false
+              }
+            }
+          ]
+        },
+        {
+          "name": "export-for-import",
+          "kind": "api",
+          "builtIn": false,
+          "action": "Read",
+          "labelKey": "Core_User_Action_ExportForImport",
+          "labelFallback": "Export for import",
+          "mutation": false,
+          "idempotent": true,
+          "destructive": false,
+          "singleTarget": false,
+          "supportsFilter": false,
+          "result": "own",
+          "arguments": {
+            "type": "object",
+            "properties": {
+              "columns": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "string"
+                }
+              },
+              "referenceKeys": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "children": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "collection": {
+                      "type": "string"
+                    },
+                    "columns": {
+                      "type": [
+                        "array",
+                        "null"
+                      ],
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "referenceKeys": {
+                      "type": [
+                        "object",
+                        "null"
+                      ],
+                      "additionalProperties": {
+                        "type": "string"
+                      }
+                    },
+                    "children": {
+                      "type": [
+                        "array",
+                        "null"
+                      ],
+                      "items": {
+                        "$ref": "#/properties/children/items"
+                      }
+                    }
+                  },
+                  "required": [
+                    "collection"
+                  ]
+                }
+              },
+              "ids": {
+                "type": [
+                  "array",
+                  "null"
+                ]
+              },
+              "filters": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "string"
+                }
+              },
+              "namedFilters": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "string"
+                }
+              },
+              "orderBy": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "search": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "arguments": {
+                "type": [
+                  "object",
+                  "null"
+                ]
+              },
+              "includeInactive": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "referenceKeys",
+              "includeInactive"
+            ]
+          },
+          "fields": [
+            {
+              "name": "columns",
+              "labelKey": "Core_User_Action_ExportForImport_Columns",
+              "labelFallback": "Columns",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "referenceKeys",
+              "labelKey": "Core_User_Action_ExportForImport_ReferenceKeys",
+              "labelFallback": "Reference keys",
+              "required": true,
+              "value": {
+                "type": "json",
+                "nullable": false
+              }
+            },
+            {
+              "name": "children",
+              "labelKey": "Core_User_Action_ExportForImport_Children",
+              "labelFallback": "Children",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "ids",
+              "labelKey": "Core_User_Action_ExportForImport_Ids",
+              "labelFallback": "Ids",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "filters",
+              "labelKey": "Core_User_Action_ExportForImport_Filters",
+              "labelFallback": "Filters",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "namedFilters",
+              "labelKey": "Core_User_Action_ExportForImport_NamedFilters",
+              "labelFallback": "Named filters",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "orderBy",
+              "labelKey": "Core_User_Action_ExportForImport_OrderBy",
+              "labelFallback": "Order by",
+              "required": false,
+              "value": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            {
+              "name": "search",
+              "labelKey": "Core_User_Action_ExportForImport_Search",
+              "labelFallback": "Search",
+              "required": false,
+              "value": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            {
+              "name": "arguments",
+              "labelKey": "Core_User_Action_ExportForImport_Arguments",
+              "labelFallback": "Arguments",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "includeInactive",
+              "labelKey": "Core_User_Action_ExportForImport_IncludeInactive",
+              "labelFallback": "Include inactive",
+              "required": true,
+              "value": {
+                "type": "bool",
+                "nullable": false
+              }
+            }
+          ]
         }
       ],
       "relatedSelect": [
@@ -5288,6 +7968,405 @@
           "singleTarget": false,
           "supportsFilter": true,
           "result": "entities"
+        },
+        {
+          "name": "export",
+          "kind": "api",
+          "builtIn": false,
+          "action": "Read",
+          "labelKey": "Gl_Center_Action_Export",
+          "labelFallback": "Export",
+          "mutation": false,
+          "idempotent": true,
+          "destructive": false,
+          "singleTarget": false,
+          "supportsFilter": false,
+          "result": "own",
+          "arguments": {
+            "type": "object",
+            "properties": {
+              "columns": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "expression": {
+                      "type": "string"
+                    },
+                    "header": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "expression"
+                  ]
+                }
+              },
+              "ids": {
+                "type": [
+                  "array",
+                  "null"
+                ]
+              },
+              "filters": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "string"
+                }
+              },
+              "namedFilters": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "string"
+                }
+              },
+              "orderBy": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "search": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "arguments": {
+                "type": [
+                  "object",
+                  "null"
+                ]
+              },
+              "includeInactive": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "columns",
+              "includeInactive"
+            ]
+          },
+          "fields": [
+            {
+              "name": "columns",
+              "labelKey": "Gl_Center_Action_Export_Columns",
+              "labelFallback": "Columns",
+              "required": true,
+              "value": {
+                "type": "json",
+                "nullable": false
+              }
+            },
+            {
+              "name": "ids",
+              "labelKey": "Gl_Center_Action_Export_Ids",
+              "labelFallback": "Ids",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "filters",
+              "labelKey": "Gl_Center_Action_Export_Filters",
+              "labelFallback": "Filters",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "namedFilters",
+              "labelKey": "Gl_Center_Action_Export_NamedFilters",
+              "labelFallback": "Named filters",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "orderBy",
+              "labelKey": "Gl_Center_Action_Export_OrderBy",
+              "labelFallback": "Order by",
+              "required": false,
+              "value": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            {
+              "name": "search",
+              "labelKey": "Gl_Center_Action_Export_Search",
+              "labelFallback": "Search",
+              "required": false,
+              "value": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            {
+              "name": "arguments",
+              "labelKey": "Gl_Center_Action_Export_Arguments",
+              "labelFallback": "Arguments",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "includeInactive",
+              "labelKey": "Gl_Center_Action_Export_IncludeInactive",
+              "labelFallback": "Include inactive",
+              "required": true,
+              "value": {
+                "type": "bool",
+                "nullable": false
+              }
+            }
+          ]
+        },
+        {
+          "name": "export-for-import",
+          "kind": "api",
+          "builtIn": false,
+          "action": "Read",
+          "labelKey": "Gl_Center_Action_ExportForImport",
+          "labelFallback": "Export for import",
+          "mutation": false,
+          "idempotent": true,
+          "destructive": false,
+          "singleTarget": false,
+          "supportsFilter": false,
+          "result": "own",
+          "arguments": {
+            "type": "object",
+            "properties": {
+              "columns": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "string"
+                }
+              },
+              "referenceKeys": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "children": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "collection": {
+                      "type": "string"
+                    },
+                    "columns": {
+                      "type": [
+                        "array",
+                        "null"
+                      ],
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "referenceKeys": {
+                      "type": [
+                        "object",
+                        "null"
+                      ],
+                      "additionalProperties": {
+                        "type": "string"
+                      }
+                    },
+                    "children": {
+                      "type": [
+                        "array",
+                        "null"
+                      ],
+                      "items": {
+                        "$ref": "#/properties/children/items"
+                      }
+                    }
+                  },
+                  "required": [
+                    "collection"
+                  ]
+                }
+              },
+              "ids": {
+                "type": [
+                  "array",
+                  "null"
+                ]
+              },
+              "filters": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "string"
+                }
+              },
+              "namedFilters": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "string"
+                }
+              },
+              "orderBy": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "search": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "arguments": {
+                "type": [
+                  "object",
+                  "null"
+                ]
+              },
+              "includeInactive": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "referenceKeys",
+              "includeInactive"
+            ]
+          },
+          "fields": [
+            {
+              "name": "columns",
+              "labelKey": "Gl_Center_Action_ExportForImport_Columns",
+              "labelFallback": "Columns",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "referenceKeys",
+              "labelKey": "Gl_Center_Action_ExportForImport_ReferenceKeys",
+              "labelFallback": "Reference keys",
+              "required": true,
+              "value": {
+                "type": "json",
+                "nullable": false
+              }
+            },
+            {
+              "name": "children",
+              "labelKey": "Gl_Center_Action_ExportForImport_Children",
+              "labelFallback": "Children",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "ids",
+              "labelKey": "Gl_Center_Action_ExportForImport_Ids",
+              "labelFallback": "Ids",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "filters",
+              "labelKey": "Gl_Center_Action_ExportForImport_Filters",
+              "labelFallback": "Filters",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "namedFilters",
+              "labelKey": "Gl_Center_Action_ExportForImport_NamedFilters",
+              "labelFallback": "Named filters",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "orderBy",
+              "labelKey": "Gl_Center_Action_ExportForImport_OrderBy",
+              "labelFallback": "Order by",
+              "required": false,
+              "value": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            {
+              "name": "search",
+              "labelKey": "Gl_Center_Action_ExportForImport_Search",
+              "labelFallback": "Search",
+              "required": false,
+              "value": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            {
+              "name": "arguments",
+              "labelKey": "Gl_Center_Action_ExportForImport_Arguments",
+              "labelFallback": "Arguments",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "includeInactive",
+              "labelKey": "Gl_Center_Action_ExportForImport_IncludeInactive",
+              "labelFallback": "Include inactive",
+              "required": true,
+              "value": {
+                "type": "bool",
+                "nullable": false
+              }
+            }
+          ]
         }
       ],
       "relatedSelect": [

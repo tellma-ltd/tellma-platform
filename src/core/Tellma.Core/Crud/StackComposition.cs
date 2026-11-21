@@ -9,6 +9,7 @@ using Tellma.Core.Blobs;
 using Tellma.Core.Composition;
 using Tellma.Core.Composition.Checks;
 using Tellma.Core.Data;
+using Tellma.Core.Excel;
 
 namespace Tellma.Core.Crud
 {
@@ -111,6 +112,15 @@ namespace Tellma.Core.Crud
 
             var byLeaf = stacks.ToDictionary(static stack => stack.Leaf);
             AttachCompanions(record, byLeaf, problems);
+
+            // --- The platform's Excel companion, ahead of every feature's, on every stack that exports or imports (spec 0019 §1.2) ---
+            foreach (ComposedStack stack in stacks.Where(static stack => stack.ServiceType is not null && ExcelCompanions.Serves(stack.Operations)))
+            {
+                Type excel = ExcelCompanions.OperationsOf(stack.Leaf);
+                _ = stack.Companions.Remove(excel);
+                stack.Companions.Insert(0, excel);
+            }
+
             AttachComponents(record, stacks, problems);
 
             // --- The blob pair, ahead of every other component, on every stack whose aggregate references a blob (spec 0017 §4.2) ---
@@ -451,6 +461,9 @@ namespace Tellma.Core.Crud
 
         /// <summary>The operations the holding registration names, overriding the entity's declaration; null to keep it.</summary>
         public StackOperations? DeclaredOperations { get; set; }
+
+        /// <summary>The operations the stack serves: the holding registration's, else the leaf's <see cref="StackAttribute" />'s, else all.</summary>
+        public StackOperations Operations => DeclaredOperations ?? EntityShapes.GetAttribute<StackAttribute>(Leaf)?.Operations ?? StackOperations.All;
 
         /// <summary>The key type; null when the leaf is not a keyed entity.</summary>
         public Type? KeyType { get; set; }

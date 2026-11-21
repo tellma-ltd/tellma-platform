@@ -239,10 +239,10 @@ namespace Tellma.Core.Tests.Crud
     public sealed class GadgetOperations<TGadget>
         where TGadget : SmGadget
     {
-        /// <summary>Exports the gadgets: a segment the stack does not project when it omits Export.</summary>
+        /// <summary>Tallies the gadgets.</summary>
         /// <returns>A task.</returns>
-        [ApiAction("export", Mutation = false)]
-        public Task ExportAsync()
+        [ApiAction("tally", Mutation = false)]
+        public Task TallyAsync()
         {
             return Task.CompletedTask;
         }

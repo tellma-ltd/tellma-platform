@@ -22,6 +22,7 @@ using Tellma.Core.Crud.Save;
 using Tellma.Core.Crud.Validation;
 using Tellma.Core.Data.Batches;
 using Tellma.Core.Data.Metadata;
+using Tellma.Core.Excel;
 using Tellma.Core.Provisioning;
 
 namespace Tellma.Core.Crud
@@ -50,7 +51,17 @@ namespace Tellma.Core.Crud
                 RegisterService(services, stack);
                 foreach (Type companion in stack.Companions)
                 {
-                    services.TryAddScoped(companion);
+                    // The platform's Excel companion is built by its own factory: its constructor is
+                    // the codec's, not the container's.
+                    services.TryAdd(ExcelCompanions.IsOperations(companion)
+                        ? ExcelCompanions.Scoped(companion)
+                        : ServiceDescriptor.Scoped(companion, companion));
+                }
+
+                // --- The child export operations of each exportable child query surface (spec 0019 §1.2) ---
+                foreach (Type handler in ExcelCompanions.ChildOperationsUnder(stack.Leaf, stack.Operations, record.LeafOf))
+                {
+                    services.TryAdd(ExcelCompanions.Scoped(handler));
                 }
 
                 // A named filter contributor is created once by the registry from the root provider,

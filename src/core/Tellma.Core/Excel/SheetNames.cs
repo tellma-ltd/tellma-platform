@@ -43,6 +43,18 @@ namespace Tellma.Core.Excel
         /// <returns>The scrubbed name; <c>Sheet</c> when nothing is left.</returns>
         public static string Scrub(string name)
         {
+            string scrubbed = Cut(Clean(name), MaxLength).TrimEnd();
+            return scrubbed.Length == 0 ? Fallback : scrubbed;
+        }
+
+        /// <summary>
+        ///     Cleans a name as <see cref="Scrub" /> does but without cutting it: the characters Excel
+        ///     refuses dropped and the ends trimmed, so a caller can tell how long the name would be.
+        /// </summary>
+        /// <param name="name">The name.</param>
+        /// <returns>The cleaned name, possibly empty and possibly longer than 31 characters.</returns>
+        public static string Clean(string name)
+        {
             ArgumentNullException.ThrowIfNull(name);
 
             // --- Drop what Excel refuses anywhere in a name, and what the workbook's XML cannot carry ---
@@ -63,9 +75,7 @@ namespace Tellma.Core.Excel
             }
 
             // --- Trim: white space, and the apostrophe Excel refuses at either end ---
-            string scrubbed = builder.ToString().Trim().Trim('\'').Trim();
-            scrubbed = Cut(scrubbed, MaxLength).TrimEnd();
-            return scrubbed.Length == 0 ? Fallback : scrubbed;
+            return builder.ToString().Trim().Trim('\'').Trim();
         }
 
         /// <summary>Takes a unique name: the scrubbed name, or it with the first free <c> (n)</c> suffix.</summary>

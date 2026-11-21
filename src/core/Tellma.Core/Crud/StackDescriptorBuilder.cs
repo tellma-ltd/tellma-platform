@@ -15,6 +15,7 @@ using Tellma.Core.Abstractions.Entities;
 using Tellma.Core.Composition;
 using Tellma.Core.Composition.Checks;
 using Tellma.Core.Data;
+using Tellma.Core.Excel;
 using Tellma.Core.Queryex;
 
 namespace Tellma.Core.Crud
@@ -41,7 +42,7 @@ namespace Tellma.Core.Crud
         /// <summary>The audit columns of a top-level entity, in the order the default select lists them.</summary>
         private static readonly string[] AuditColumns = ["CreatedAt", "CreatedById", "ModifiedAt", "ModifiedById"];
 
-        /// <summary>The standard segments an Excel companion projects, which a companion's actions may take.</summary>
+        /// <summary>The standard segments the platform's Excel companion declares, which it alone takes.</summary>
         private static readonly HashSet<string> ExcelSegments = new(StringComparer.Ordinal)
         {
             "export", "export/start", "export-for-import", "export-for-import/start", "inspect-import", "import", "import/start",
@@ -65,7 +66,7 @@ namespace Tellma.Core.Crud
 
             StackAttribute? declared = EntityShapes.GetAttribute<StackAttribute>(leaf);
             ApiResourceAttribute? api = EntityShapes.GetAttribute<ApiResourceAttribute>(leaf);
-            StackOperations operations = stack.DeclaredOperations ?? declared?.Operations ?? StackOperations.All;
+            StackOperations operations = stack.Operations;
 
             // --- The shape: capabilities, searchable columns, natural keys ---
             List<(string Property, SearchKind Kind)> searchable = [.. metadata.Properties
@@ -322,7 +323,10 @@ namespace Tellma.Core.Crud
                         "Mark the companion's operations with [ApiAction], or remove the companion.");
                 }
 
-                HashSet<string> reserved = [.. projected.Where(static segment => !ExcelSegments.Contains(segment))];
+                // The platform's Excel companion takes the workbook segments the stack projects;
+                // every other companion, like the service, takes no projected segment.
+                bool platformExcel = ExcelCompanions.IsOperations(companion);
+                HashSet<string> reserved = platformExcel ? [.. projected.Where(static segment => !ExcelSegments.Contains(segment))] : projected;
                 foreach (MethodInfo method in methods)
                 {
                     string described = ActionMethods.Describe(companion, method);
@@ -331,6 +335,14 @@ namespace Tellma.Core.Crud
                         ReportAction(
                             $"The method {described} declares [EntityAction], but {TypeDisplay.Short(companion)} is a stack companion; an entity action is declared on the stack's service.",
                             $"Move the action to {TypeDisplay.Short(stack.ServiceType!)}, or declare it as an [ApiAction].");
+                        continue;
+                    }
+
+                    // The platform's Excel companion declares every workbook method; a stack projects
+                    // only those its operations name (spec 0019 §2.2): the exports under Export, the
+                    // editable export and the imports under Import.
+                    if (platformExcel && !projected.Contains(apiAction.Name))
+                    {
                         continue;
                     }
 
@@ -684,6 +696,10 @@ namespace Tellma.Core.Crud
                     select.Add(CodeProperty);
                 }
 
+                // --- An exportable surface's actions: the display-shape exports, under the child's Read (spec 0019 §2.2) ---
+                bool exportable = stack.Operations.HasFlag(StackOperations.Export);
+                IReadOnlyList<ApiActionDescriptor> actions = exportable ? ChildExports(child) : [];
+
                 surfaces.Add(new ChildQueryDescriptor(
                     Resource: child.Name,
                     ResourceSegment: api?.Segment ?? StackNames.Kebab(child.Table.Name),
@@ -695,15 +711,42 @@ namespace Tellma.Core.Crud
                     DefaultSelect: string.Join(", ", select.Distinct(StringComparer.Ordinal)),
                     RelatedSelect: RelatedSelect(child),
                     DefaultOrderBy: "Id desc",
-                    Exportable: stack.Operations.HasFlag(StackOperations.Export),
+                    Exportable: exportable,
                     Limits: stack.Limits,
                     Mcp: stack.Mcp,
-
-                    // The two child exports join here when the Excel feature's ChildExportOperations exists.
-                    Actions: []));
+                    Actions: actions));
 
                 AddChildQueries(stack, child, child.Name, surfaces);
             }
+        }
+
+        /// <summary>
+        ///     The actions of an exportable child query surface: each <see cref="ApiActionAttribute" />
+        ///     method of the platform's child export operations closed over the child, secured by the
+        ///     child's resource, whose decision composes the owner's.
+        /// </summary>
+        /// <param name="child">The child entity.</param>
+        /// <returns>The actions, in declaration order.</returns>
+        private ReadOnlyCollection<ApiActionDescriptor> ChildExports(EntityMetadata child)
+        {
+            Type handler = ExcelCompanions.ChildOperationsOf(child.ClrType);
+            List<ApiActionDescriptor> actions = [];
+            foreach (MethodInfo method in ActionMethods.Declared(handler))
+            {
+                if (method.GetCustomAttribute<ApiActionAttribute>(inherit: true) is not ApiActionAttribute apiAction)
+                {
+                    continue;
+                }
+
+                SecurableRef securable = new(child.Name, apiAction.Action ?? StackNames.ActionOf(apiAction.Name));
+                if (ActionMethods.Api(handler, method, apiAction, securable, problems) is ApiActionDescriptor action)
+                {
+                    actions.Add(action);
+                    Methods[action] = new ActionMethod(handler, method, child.Name);
+                }
+            }
+
+            return actions.AsReadOnly();
         }
 
         /// <summary>The name columns the default projections carry: the multilingual group <c>Name</c>, else a plain <c>Name</c>.</summary>
