@@ -384,6 +384,11 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-171 (orchestrator, 2026-11-21): PC-089 fix 1; load-timeout flake candidates in Core.AspNetCore.Tests
+
+- PC-089 fix 1 (24438df0): all five R1 findings fixed. Each tellma-blobs hold now ends at LongRequestTimeout plus the length at 32 KiB/s, clamped at 1 day (a .NET timer cannot wait past ≈ 49.7 days). Every non-200/206/304 blob answer carries no-store and no ETag. Mutation-checked tests pin the deadline and the D-145 lift. Options (a) and (b) of D-169 stay with Ahmad. R2 runs on fable.
+- Flake candidates: Core.AspNetCore.Tests full runs under four-lane load timed out three times on 2026-11-21. RequestTimeoutTests failed twice (PC-147, PC-089 impl). RateLimitingTests.A_refusal_is_counted_as_rate_limited_and_names_the_lane_on_the_report_policy hit its 10 s handler-start wait once (PC-089 fix 1; output kept in the session scratchpad as PC-089-r1-ratelimit-failure.log). Each passed alone, and CI has stayed green. A shared cause (fixed 10 s or 300 ms waits starved on a loaded machine) is likely. Ruling: a PC-Fnn root-causes this when a lane is free and the window allows, ahead of T3 fill; not retried away meanwhile (D-011, D-113).
+
 ### D-170 (orchestrator, 2026-11-21): PC-090 Review 1 rulings; JobEntityLoad bug assigned to PC-149
 
 - PC-090 Review 1 (Opus high, 17267a1c): 0 blocking, 2 major, 3 minor.
