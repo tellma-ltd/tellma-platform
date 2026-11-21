@@ -104,7 +104,6 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 |---|---|---|---|---|---|---|
 | PC-147 | pc-2 | pc/PC-147 | fix1 | R1 0/0/9 (dac43255); fix1 then R2 (fable, security-bound); D-163 | 0021-d; two reviews (R2 fable, security-bound) | 2026-11-20 |
 | PC-148 | pc-4 | pc/PC-148 | fix1 | R1 0/1/4 (b01932b6); fix1 then hold behind PC-088; D-164 | 0022-a; R1 only | 2026-11-20 |
-| PC-088 | pc-1 | pc/PC-088 | ci-pending | ci-pending (7146ab13 integrate: merged 7bb49167; three migration sets restored then regenerated with dotnet-ef; SelfScoped merged; local user-delete cascade declaration removed (D-156); pc run 44867579837); D-157, D-159 | 0018-c; two reviews (R2 fable, security-bound) | 2026-11-20 |
 
 ## Fix items
 
@@ -382,7 +381,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-085 | 0011-g | 1 | done (integrated db81630; CI 43479519320 red: Acme E2E csproj never committed (.gitignore *.e2e matches the folder case-insensitively), fixed by PC-F30, green at 9a1754d (CI 43488423725); integration-windows itself green; fix1 6ba59cb; R1-6 pushed back: AspNetCore→Webhooks edge would break ARCHITECTURE rule 6, IVT seam kept and documented; R1-4 compares runtime models only; new fix: RCSI ALTER WITH ROLLBACK IMMEDIATE (pooled catalog connection timed out Acme readiness); integration-windows non-gating) | a147a95, 6ba59cb, db81630 (pc) |  |  |
 | PC-086 | 0029-a | 1 | done | ce581934, 7a5cdf53, 84278111, 22c362f7; green 44575091654 | | |
 | PC-087 | 0018-b | 1 | done (f75366c4; pc 44748673481 green, PR 44752134569 green) | e2ed8550, 0d6e317a, 01533a52, f75366c4 | | D-148 |
-| PC-088 | 0018-c | 1 | in progress | | | carry (D-156): whichever of PC-088 and PC-F62 lands second removes UserService.Delete.cs's local cascade declaration (UserPreferences, UserStamps, NotificationPreferences); PC-F62 declares it generally |
+| PC-088 | 0018-c | 1 | done (7146ab13; pc 44867579837 green) | ed00f3de, 8caf7211, c1574599, 7146ab13 | | D-157, D-159; D-156 carry closed (local declaration removed at integration); carry (D-156): whichever of PC-088 and PC-F62 lands second removes UserService.Delete.cs's local cascade declaration (UserPreferences, UserStamps, NotificationPreferences); PC-F62 declares it generally |
 | PC-089 | 0017-d | 1 | todo | | | carry: none from D-096 any more (D-120 moved §6.4 BlobContainerStep to PC-083 and the provisioning-record row to whichever of PC-078 and PC-083 lands last); carry from PC-080 (D-124): blob endpoints must evaluate access or record the member witness, or the witness filter answers 500 (unstarted) or aborts the connection (started); carry D-137: wrap the blob GET in the telemetry stage (0016 §5.1 chain); carry D-145: map the blob GET with DisableRequestTimeout or a time-to-first-byte policy (tellma-web cuts downloads at 30 s) |
 | PC-090 | 0018-d | 1 | todo | | | carry from PC-141 (D-096): TenantStateTests.An_action_allowed_when_read_only_succeeds_on_a_read_only_tenant runs and must pass |
 | PC-091 | 0018-e | 1 | todo | | | |
