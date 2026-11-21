@@ -384,6 +384,21 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-169 (orchestrator, 2026-11-21): PC-089 Review 1 rulings
+
+- PC-089 Review 1 (Opus high, dc5e9223): 0 blocking, 2 major, 3 minor.
+  - Confirmed sound: tenant isolation (the storage name comes only from the tenant row, container names are injective, there is no SAS); AllowMember plus the member witness on both endpoints (the D-124 carry); D-137 telemetry; the D-145 lift; the host TokenCredential.
+  - Deviations 3 and 4 are spec-conformant (0011 §1.3, 0016 §8.3), so flags (2) and (4) of D-168 close.
+- R1-1 (major): the tellma-blobs permit is per tenant (32, queue 256) and is held for the whole stream. With DisableTimeout, only Kestrel's 240 B/s minimum rate bounds it, so slow readers can hold a tenant's lane for hours. Ruling: fix 1 bounds each download locally (option c: a size-scaled deadline or a higher minimum data rate), with a test.
+- R1-2 (major): a missing object's 404 carried immutable one-year caching headers. Fixed in fix 1: caching headers only on 304 and after a successful open, and no-store on blob problems.
+- R1-3 to R1-5: test pins, the ServiceUri validator (it refuses a SAS query, and no message prints the query), and served counts on 412/416. Fixed in fix 1.
+- For Ahmad: 0016 §8.2. Options (a), taking the tellma-blobs lease only around resolve and open, and (b), a per-user cap inside the tenant permit, would stop 32 legitimate slow downloads from filling a tenant's lane until fix 1's bound ends them. Either changes §8.2.
+
+### D-168 (orchestrator, 2026-11-21): PC-089 implementation flags; RequestTimeoutTests local recurrence 2
+
+- PC-089 impl (dc5e9223) flags, to be judged in R1 or R2: (1) the Azure option checks form the adapter's own startup check blobs.azure, outside 0017 §9's single blobs check, because core cannot see adapter options; (2) outside Development, UseAzureDefaults registers the Azure store even with no Tellma:Blobs:Azure section, so startup fails naming the missing settings, where 0017 §1.3 says it "picks one"; (3) the tellma-blobs rate permit is held for the whole streamed download; (4) the upload takes the tellma-long timeout, which the spec does not give; (5) the Azure.Storage.Blobs 12.29.2 pin lifts the transitive 12.26.0 in Tellma.Identity and Tellma.Defaults.Azure.AspNetCore, and the Identity unit tests pass; (6) Acme BlobTests set Tellma:Session:StepUp:Acr to aal1, because a user save is sensitive and the email-code sign-in reaches only aal1.
+- RequestTimeoutTests failed locally a second time, in PC-089's full Core.AspNetCore.Tests run under load, and passed alone. Both recurrences (PC-147, PC-089) came on 2026-11-21 with four lanes running; CI has been green. If it recurs once more, locally or on CI, it gets a PC-Fnn root-cause item (D-011, D-113).
+
 ### D-167 (orchestrator, 2026-11-21): reset calculus changed; recommendation to Ahmad is now to apply the manual reset when this window nears 100%
 
 - Usage: 91% at ≈ 10:40 UTC, up 4 points in ≈ 2.2 h with four lanes (≈ 1.8 pts/h), so the window runs out ≈ 15:30–16:30 UTC today. From then to Tuesday noon is ≈ 92 h, so a reset applied then needs ≈ 1.1 pts/h on average.

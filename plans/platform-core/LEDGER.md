@@ -104,8 +104,8 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 
 | PC | Slot | Branch | Step | Implementer agent (name / id) | Reviewer agent (name / id) | Started (UTC) |
 |---|---|---|---|---|---|---|
-| PC-089 | pc-1 | pc/PC-089 | impl | launched after PC-148 done; high; R2 on fable (security-bound) | 0017-d | 2026-11-21 |
-| PC-090 | pc-3 | pc/PC-090 | impl | launched after PC-148 done; high | 0018-d; R1 only | 2026-11-21 |
+| PC-089 | pc-1 | pc/PC-089 | fix1 | impl dc5e9223; R1 0/2/3; fix1 then R2 on fable (security-bound); D-168, D-169 | 0017-d | 2026-11-21 |
+| PC-090 | pc-3 | pc/PC-090 | R1 | impl 17267a1c (11 deviations; LastAdministrator on own-row writes flagged to R1; D-096 carry passes); R1 Opus high | 0018-d; R1 only | 2026-11-21 |
 | PC-149 | pc-4 | pc/PC-149 | impl | launched after PC-148 done; high; carries D-164 | 0022-b; R1 only | 2026-11-21 |
 
 ## Fix items
