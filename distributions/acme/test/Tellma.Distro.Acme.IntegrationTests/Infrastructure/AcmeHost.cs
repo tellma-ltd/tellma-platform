@@ -8,7 +8,6 @@ using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.Mvc.Testing.Handlers;
-using Microsoft.AspNetCore.Routing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -68,13 +67,6 @@ namespace Tellma.Distro.Acme.IntegrationTests.Infrastructure
 
         /// <summary>The test server.</summary>
         public TestServer Server => _app.GetTestServer();
-
-        /// <summary>The route pattern of every endpoint the host maps, the platform's and the test's.</summary>
-        public IReadOnlyList<string> RoutePatterns =>
-            [.. ((IEndpointRouteBuilder)_app).DataSources
-                .SelectMany(static source => source.Endpoints)
-                .OfType<RouteEndpoint>()
-                .Select(static endpoint => endpoint.RoutePattern.RawText ?? string.Empty)];
 
         /// <summary>
         ///     Where the engine's back-channel logout tokens go; null delivers them to the host itself,

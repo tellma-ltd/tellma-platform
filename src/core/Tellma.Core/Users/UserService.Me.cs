@@ -199,7 +199,8 @@ namespace Tellma.Core.Users
             // --- The members, preprocessed as a save preprocesses them ---
             string? language = UserRules.Language(request.Language);
             string? calendar = UserRules.Calendar(request.Calendar);
-            string? zone = request.TimeZone;
+            // An empty zone is not set, as an empty language, calendar or region is.
+            string? zone = string.IsNullOrEmpty(request.TimeZone) ? null : request.TimeZone;
             string? region = UserRules.Region(request.Region);
             HashSet<MeLocaleMember> reset = [.. request.Reset ?? []];
             Dictionary<MeLocaleMember, object?> set = [];

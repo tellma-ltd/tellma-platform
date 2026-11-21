@@ -95,6 +95,13 @@ namespace Tellma.Core.Tests.Users
         {
             Assert.Equal([("Language", AccessCodes.LocaleEmpty)], Refusals(new MeLocaleRequest(null, null, null, null, null)));
             Assert.Equal([("Language", AccessCodes.LocaleEmpty)], Refusals(new MeLocaleRequest("  ", "", null, " ", null, [])));
+            Assert.Equal([("Language", AccessCodes.LocaleEmpty)], Refusals(new MeLocaleRequest(null, null, "", null, null)));
+        }
+
+        [Fact]
+        public void An_empty_zone_beside_a_region_is_not_set_and_only_the_region_is_assigned()
+        {
+            Assert.Equal([(nameof(User.PreferredRegion), (object?)"SA")], Sorted(Assign(new MeLocaleRequest(null, null, "", "sa", null))));
         }
 
         [Fact]
@@ -114,7 +121,6 @@ namespace Tellma.Core.Tests.Users
         [Theory]
         [InlineData("Asia/Calcutta")]
         [InlineData("Mars/Olympus")]
-        [InlineData("")]
         public void A_zone_outside_the_set_an_alias_included_is_refused_at_the_time_zone(string zone)
         {
             Assert.Equal([("TimeZone", AccessCodes.TimeZoneUnknown)], Refusals(new MeLocaleRequest(null, null, zone, null, null)));

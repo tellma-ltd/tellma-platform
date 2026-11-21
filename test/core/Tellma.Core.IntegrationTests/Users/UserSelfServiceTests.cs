@@ -40,6 +40,9 @@ namespace Tellma.Core.IntegrationTests.Users
         /// <summary>The instance over the fixture's databases, with in-memory blobs and the captured log; set by the initialisation.</summary>
         private ServiceProvider? _instance;
 
+        /// <summary>Takes the lock that serialises the security writes, as a side transaction holds it.</summary>
+        private const string TakeSecurityLock = "EXEC sp_getapplock @Resource = N'tellma.access', @LockMode = N'Exclusive', @LockOwner = N'Transaction';";
+
         /// <summary>The test's cancellation.</summary>
         private static CancellationToken Token => TestContext.Current.CancellationToken;
 
@@ -322,6 +325,51 @@ namespace Tellma.Core.IntegrationTests.Users
             Assert.Equal("Asia/Riyadh", (await ProfileAsync(dee)).TimeZone);
         }
 
+        [Fact]
+        [Trait("Category", "Concurrency")]
+        public async Task A_role_save_racing_a_membership_edit_and_a_locale_change_completes_each_with_no_deadlock()
+        {
+            (_, string admin) = await fixture.SeedAdministratorAsync("Ann");
+            (int dee, string member) = await fixture.SeedCallerAsync("Dee");
+            int role = await fixture.SeedRoleAsync((CoreResources.User, AccessActions.Read, null));
+
+            // A longer lock wait than the default, so no writer times out while the lock is held.
+            await using ServiceProvider instance = fixture.CreateInstance(configure: services =>
+            {
+                Configure(services);
+                _ = services.PostConfigure<AccessOptions>(static options => options.SecurityLockTimeout = TimeSpan.FromSeconds(20));
+            });
+
+            // --- The three writers pass their reads and wait on the security lock together, then run
+            // in the lock's order: each takes the lock before the version tags it guards ---
+            IReadOnlyList<Task> writers = await fixture.HoldWhileAsync(
+                TakeSecurityLock,
+                3,
+                "APPLICATION",
+                () => [RenameRoleAsync(instance, admin, role), JoinRoleAsync(instance, admin, dee, role), SetLocaleAsync(member, Locale(timeZone: "Asia/Riyadh"), services: instance)]);
+
+            // --- The role save and the locale change committed: a deadlock victim or a lock timeout
+            // would fault its writer here ---
+            await writers[0];
+            await writers[2];
+            Assert.Equal(Invariant($"Racing {role}"), await fixture.ScalarAsync<string>(ConnectDatabase.TenantA, Invariant($"SELECT [Name] FROM [core].[Roles] WHERE [Id] = {role};")));
+            Assert.Equal("Asia/Riyadh", (await ProfileAsync(dee)).TimeZone);
+
+            // --- The membership edit ran whole before or after the locale change: it committed, or,
+            // run after it, found the user's stamp moved since its load and conflicted; never a deadlock ---
+            int joined = await fixture.ScalarAsync<int>(ConnectDatabase.TenantA, Invariant($"SELECT COUNT(*) FROM [core].[RoleMemberships] WHERE [UserId] = {dee} AND [RoleId] = {role};"));
+            try
+            {
+                await writers[1];
+                Assert.Equal(1, joined);
+            }
+            catch (ConcurrencyException conflict)
+            {
+                Assert.Equal([dee], conflict.Conflicts.Select(static row => row.Id));
+                Assert.Equal(0, joined);
+            }
+        }
+
         // --- The caller's preference bag ---
 
         [Fact]
@@ -435,6 +483,42 @@ namespace Tellma.Core.IntegrationTests.Users
             Assert.Equal(("Arguments.Items[0].Key", AccessCodes.PreferenceKeyInvalid), (error.Path.ToString(), error.Code));
         }
 
+        [Fact]
+        public async Task Another_user_s_bag_past_its_caps_or_named_twice_is_refused_writing_nothing()
+        {
+            await using ServiceProvider capped = fixture.CreateInstance(configure: static services => services.Configure<AccessOptions>(static options =>
+            {
+                options.MaxPreferenceKeys = 2;
+                options.MaxPreferenceValueBytes = 8;
+            }));
+            (int vis, _) = await fixture.SeedCallerAsync("Vis");
+            (_, string admin) = await fixture.SeedAdministratorAsync("Ann");
+            await SeedBagAsync(vis, ("a", "1"), ("b", "2"));
+            Guid? tag = (await fixture.UserTagsAsync(vis)).Preferences;
+
+            // --- A third key: the statement's cap, reported at the request ---
+            ValidationException cap = await Assert.ThrowsAsync<ValidationException>(
+                () => TheirBagAsync(admin, "preferences/set", vis, new UserPreferencesArguments([new KeyValueItem("c", "3")]), capped));
+            ValidationError tooMany = Assert.Single(cap.Errors);
+            Assert.Equal((ValidationPath.Root, AccessCodes.TooManyPreferenceKeys), (tooMany.Path, tooMany.Code));
+
+            // --- A value past its size, at the item's value ---
+            ValidationException size = await Assert.ThrowsAsync<ValidationException>(
+                () => TheirBagAsync(admin, "preferences/set", vis, new UserPreferencesArguments([new KeyValueItem("a", "123456789")]), capped));
+            ValidationError tooLarge = Assert.Single(size.Errors);
+            Assert.Equal(("Arguments.Items[0].Value", AccessCodes.PreferenceValueTooLarge), (tooLarge.Path.ToString(), tooLarge.Code));
+
+            // --- A delete naming one key twice, ignoring case, at the second ---
+            ValidationException twice = await Assert.ThrowsAsync<ValidationException>(
+                () => TheirBagAsync(admin, "preferences/delete", vis, new UserPreferenceKeysArguments(["ab", "aB"]), capped));
+            ValidationError duplicate = Assert.Single(twice.Errors);
+            Assert.Equal(("Arguments.Keys[1]", AccessCodes.PreferenceKeyDuplicate), (duplicate.Path.ToString(), duplicate.Code));
+
+            // --- Nothing written, the target's tag unmoved ---
+            Assert.Equal("a=1;b=2", await BagAsync(vis));
+            Assert.Equal(tag, (await fixture.UserTagsAsync(vis)).Preferences);
+        }
+
         // --- The activity extra ---
 
         [Fact]
@@ -459,6 +543,33 @@ namespace Tellma.Core.IntegrationTests.Users
         }
 
         // --- Helpers ---
+
+        /// <summary>Renames a role through the roles' save, as a stepped-up administrator.</summary>
+        /// <param name="instance">The instance to save through.</param>
+        /// <param name="subject">The administrator.</param>
+        /// <param name="role">The role.</param>
+        /// <returns>A task that completes when the save committed.</returns>
+        private async Task RenameRoleAsync(IServiceProvider instance, string subject, int role)
+        {
+            await using AsyncServiceScope scope = await fixture.SteppedUpScopeAsync(subject, instance);
+            Role loaded = Assert.Single((await scope.Roles().GetByIdAsync(role, DetailsRequest.None, Token)).Entities);
+            loaded.Name = Invariant($"Racing {role}");
+            _ = await scope.Roles().SaveAsync([loaded], new SaveOptions { ReturnEntities = false }, Token);
+        }
+
+        /// <summary>Adds a user to a role through the users' save, as a stepped-up administrator.</summary>
+        /// <param name="instance">The instance to save through.</param>
+        /// <param name="subject">The administrator.</param>
+        /// <param name="userId">The user.</param>
+        /// <param name="role">The role.</param>
+        /// <returns>A task that completes when the save committed.</returns>
+        private async Task JoinRoleAsync(IServiceProvider instance, string subject, int userId, int role)
+        {
+            await using AsyncServiceScope scope = await fixture.SteppedUpScopeAsync(subject, instance);
+            User user = await scope.LoadUserAsync(userId);
+            user.RoleMemberships = [.. user.RoleMemberships ?? [], new RoleMembership { RoleId = role }];
+            _ = await scope.SaveUsersAsync(user);
+        }
 
         /// <summary>Adds the in-memory blobs and the captured log to the instance.</summary>
         /// <param name="services">The instance's services.</param>
@@ -493,10 +604,11 @@ namespace Tellma.Core.IntegrationTests.Users
         /// <param name="subject">The caller.</param>
         /// <param name="request">The change.</param>
         /// <param name="state">The state the request sees the tenant in.</param>
+        /// <param name="services">The instance to call; null for the test's own.</param>
         /// <returns>The answer and the round trips.</returns>
-        private async Task<(MeLocaleResult Result, int RoundTrips)> SetLocaleAsync(string subject, MeLocaleRequest request, TenantState state = TenantState.Active)
+        private async Task<(MeLocaleResult Result, int RoundTrips)> SetLocaleAsync(string subject, MeLocaleRequest request, TenantState state = TenantState.Active, IServiceProvider? services = null)
         {
-            await using AsyncServiceScope scope = await fixture.ScopeAsync(subject, state: state, services: Instance);
+            await using AsyncServiceScope scope = await fixture.ScopeAsync(subject, state: state, services: services ?? Instance);
             DataAccessScope access = scope.ServiceProvider.GetRequiredService<DataAccessScope>();
             int start = access.RoundTrips;
             var result = (MeLocaleResult)(await InvokeAsync(scope, "me/locale", request))!;
@@ -533,10 +645,11 @@ namespace Tellma.Core.IntegrationTests.Users
         /// <param name="action">The action: the set or the delete.</param>
         /// <param name="target">The user whose bag is written.</param>
         /// <param name="arguments">The action's arguments.</param>
+        /// <param name="services">The instance to call; null for the test's own.</param>
         /// <returns>The answer and the round trips.</returns>
-        private async Task<(UserPreferencesResult Result, int RoundTrips)> TheirBagAsync(string subject, string action, int target, object arguments)
+        private async Task<(UserPreferencesResult Result, int RoundTrips)> TheirBagAsync(string subject, string action, int target, object arguments, IServiceProvider? services = null)
         {
-            await using AsyncServiceScope scope = await fixture.ScopeAsync(subject, services: Instance);
+            await using AsyncServiceScope scope = await fixture.ScopeAsync(subject, services: services ?? Instance);
             DataAccessScope access = scope.ServiceProvider.GetRequiredService<DataAccessScope>();
             int start = access.RoundTrips;
             UserPreferencesResult result = await scope.Users().ExecuteActionAsync<UserPreferencesResult>(action, [target], arguments, new ActionOptions(), Token);

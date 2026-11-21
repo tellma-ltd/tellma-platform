@@ -38,12 +38,6 @@ namespace Tellma.Distro.Acme.IntegrationTests
         private const string NeedsUserConnection =
             "Needs the user connection initializer, whose round trip is a tenant request's first against the tenant's database.";
 
-        /// <summary>Why an action a read-only tenant allows cannot be called yet.</summary>
-        private const string NeedsProjectedActions =
-            "Needs the web API projection of the users stack's actions, which stamps the ones a read-only tenant allows, "
-            + "the user connection initializer, which binds the request to its tenant user, and the administrator bootstrap "
-            + "provisioning step, which makes the seeded administrator a user of the seed tenants.";
-
         /// <summary>The tenant every test moves: Acme's live seed tenant.</summary>
         private const int Tenant = 1;
 
@@ -187,7 +181,7 @@ namespace Tellma.Distro.Acme.IntegrationTests
             Assert.True(before is null || after > before, $"The activity stamp stayed at {before:O}.");
         }
 
-        [Fact(Skip = NeedsProjectedActions, SkipUnless = nameof(PlatformSeams.ServesTheLocaleAction), SkipType = typeof(PlatformSeams))]
+        [Fact]
         public async Task An_action_allowed_when_read_only_succeeds_on_a_read_only_tenant()
         {
             AcmeMigrator acme = new(sql, "acme_readonly_action");
