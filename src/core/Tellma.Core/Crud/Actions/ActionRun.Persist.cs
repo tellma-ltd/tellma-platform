@@ -26,7 +26,8 @@ namespace Tellma.Core.Crud.Actions
     // appended beside the invariants once every write is declared), the emitter for the rows Save
     // marked (ConcurrencyMode.Override: an action is a command over rows it just loaded), the
     // updates over the target ids under the caller's Read filter and the action grant, all or
-    // nothing (the built-in action's own, then those Update composed), the statements the hook, the
+    // nothing (the built-in action's own, then those Update composed; an update composed with a
+    // condition instead skips a target that no longer meets it), the statements the hook, the
     // components and the method appended, the participants over an ActionPersistContext, the guards'
     // invariants, the post-check when the action asks for it, and the read-back when the action
     // answers the target ids. A re-entered compose re-runs the validators in memory, recomposes the
@@ -41,8 +42,8 @@ namespace Tellma.Core.Crud.Actions
         /// <summary>The rows the context's Save marked, each once, in marking order.</summary>
         private TEntity[] _marked = [];
 
-        /// <summary>The updates of the target ids, each an assignment: the built-in action's own, then those Update composed.</summary>
-        private List<IReadOnlyDictionary<string, object?>> _updates = [];
+        /// <summary>The updates of the target ids: the built-in action's own, then those Update composed, each with its condition.</summary>
+        private List<ComposedUpdate> _updates = [];
 
         /// <summary>The times the runner entered the persist's compose.</summary>
         private int _entries;
@@ -63,10 +64,10 @@ namespace Tellma.Core.Crud.Actions
         /// <param name="context">The context they composed on; null on the one-round-trip path.</param>
         private void Compose(ActionContext<TEntity, TKey>? context)
         {
-            List<IReadOnlyDictionary<string, object?>> updates = [];
+            List<ComposedUpdate> updates = [];
             if (_descriptor.IsBuiltIn)
             {
-                updates.Add(BuiltInAssignment());
+                updates.Add(new ComposedUpdate(BuiltInAssignment(), Condition: null));
             }
 
             if (context is not null)
@@ -288,11 +289,29 @@ namespace Tellma.Core.Crud.Actions
                 throw new NotFoundException(Resource, [.. _ids.Select(static id => id.ToString(null, CultureInfo.InvariantCulture))]);
             }
 
+            // An update with a condition repeats the action's precondition: a target that changed since
+            // the first round, and no longer meets it, the caller's Read filter or the grant, is
+            // skipped rather than refused; the first round already reported the missing and the
+            // forbidden targets.
             IReadOnlyList<object> ids = [.. _ids.Select(static id => (object)id)];
-            foreach (IReadOnlyDictionary<string, object?> assignments in _updates)
+            foreach ((IReadOnlyDictionary<string, object?> assignments, FilterTree? condition) in _updates)
             {
-                _ = batch.Update(new UpdateSpec<TEntity>.ByIds(ids, read.Filter, granted.Filter, assignments, Stamp: true, AllOrNothing: true));
+                UpdateSpec<TEntity>.ByIds spec = condition is null
+                    ? new(ids, read.Filter, granted.Filter, assignments, Stamp: true, AllOrNothing: true)
+                    : new(ids, read.Filter, Conjoin(read.Filter, granted.Filter, condition), assignments, Stamp: true, AllOrNothing: false);
+                _ = batch.Update(spec);
             }
+        }
+
+        /// <summary>The caller's Read filter, the grant's filter and an update's condition, all of which a target must meet.</summary>
+        /// <param name="read">The caller's Read filter; null for an unrestricted read.</param>
+        /// <param name="grant">The action grant's filter; null for an unrestricted grant.</param>
+        /// <param name="condition">The update's condition.</param>
+        /// <returns>The conjunction of the filters that restrict.</returns>
+        private static FilterTree Conjoin(FilterTree? read, FilterTree? grant, FilterTree condition)
+        {
+            FilterTree[] filters = [.. new[] { read, grant }.OfType<FilterTree>(), condition];
+            return filters.Length == 1 ? condition : FilterTree.And(filters);
         }
 
         // Spec 0015 §9.3: an action with PostCheck asserts, after every write and before the tag

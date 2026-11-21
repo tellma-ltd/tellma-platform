@@ -240,12 +240,15 @@ namespace Tellma.Core.Composition
                 .ClientEvent(SessionEndedEvent.Name);
 
             // --- The email outbox: the rows and their stack, the outbox, the sending jobs' handler and
-            // its failure notice, the attachments' blob kind and the two table types ---
-            // spec 0022 §9.3. OutgoingEmail is a Query | Details | Delete | Enlist stack whose rows
-            // arrive only through the outbox; its registration as a scoped service gives the registry
-            // the outbox's enlistment pair. An email attachment needs no preview, so its kind renders
-            // no thumbnail; the kind itself comes from the attachment's blob reference. The commit
-            // effect counts the rows a frame committed (spec 0022 §9.2).
+            // its failure notice, the delivery events' handler, the nightly retention, the attachments'
+            // blob kind and the two table types ---
+            // spec 0022 §6, §7.3, §9.3. OutgoingEmail is a Query | Details | Delete | Enlist stack
+            // whose rows arrive only through the outbox, with the retry and cancel actions; its
+            // registration as a scoped service gives the registry the outbox's enlistment pair. The
+            // delivery handler answers the "outbox" owner key on spec 0007's webhook path, writing
+            // through a tenant database handle of its own. An email attachment needs no preview, so
+            // its kind renders no thumbnail; the kind itself comes from the attachment's blob
+            // reference. The commit effect counts the rows a frame committed (spec 0022 §9.2).
             _ = contribution
                 .Entity<OutgoingEmail, OutgoingEmailService>()
                 .PersistEffect<OutgoingEmail, OutboxEnqueuedEffect>()
@@ -253,6 +256,10 @@ namespace Tellma.Core.Composition
                 .Scoped<IEmailOutbox, EmailOutbox>()
                 .JobHandler<OutgoingEmailHandler>()
                 .NotificationType(OutgoingEmailHandler.FailedDescriptor)
+                .Scoped<IOutboxDeliveryWriter, OutboxDeliveryWriter>()
+                .Scoped<IEmailDeliveryEventHandler, OutgoingEmailDeliveryHandler>()
+                .JobHandler<OutgoingEmailRetentionHandler>()
+                .BuiltInSchedule(OutgoingEmailRetentionHandler.ScheduleId, OutgoingEmailRetentionHandler.Key, OutgoingEmailRetentionHandler.Cron)
                 .BlobKind(OutgoingEmailAttachment.BlobKind, static policy => policy with { Thumbnail = null })
                 .TableType<OutgoingEmailOutcomeList>()
                 .TableType<EmailDeliveryEventList>();

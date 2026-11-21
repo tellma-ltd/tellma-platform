@@ -101,6 +101,8 @@ stack core.OutgoingEmail
   limits: default
   mcp: ReadOnly, revision 0
   feature: core
+  action retry: entity Retry filtered args -; mutation; result EntitiesResult<OutgoingEmail>; mcp Full, revision 0; Sends each failed or abandoned email again.
+  action cancel: entity Cancel filtered args -; mutation, read-only-ok, destructive; result EntitiesResult<OutgoingEmail>; mcp Full, revision 0; Stops each pending email from being sent.
 stack core.Job
   segment: jobs
   entity: Tellma.Core.Abstractions.Jobs.Job

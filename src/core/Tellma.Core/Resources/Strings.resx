@@ -890,7 +890,7 @@
   <data name="JobHandler_core_notification-retention" xml:space="preserve">
     <value>Deleting old notifications</value>
   </data>
-  <!-- The email outbox: the outgoing emails' labels, its codes, its sending job's label and its failure notice -->
+  <!-- The email outbox: the outgoing emails' labels, its codes, its sending and retention jobs' labels, the retention's progress and its failure notice -->
   <data name="Core_OutgoingEmail_Plural" xml:space="preserve">
     <value>Outgoing emails</value>
   </data>
@@ -932,6 +932,12 @@
   </data>
   <data name="JobHandler_core_outgoing-email" xml:space="preserve">
     <value>Sending an email</value>
+  </data>
+  <data name="JobHandler_core_outgoing-email-retention" xml:space="preserve">
+    <value>Deleting old outgoing emails</value>
+  </data>
+  <data name="Outbox_RetentionProgress" xml:space="preserve">
+    <value>Deleted {deleted, plural, one {# outgoing email} other {# outgoing emails}}.</value>
   </data>
   <data name="Notification_core_email_failed" xml:space="preserve">
     <value>{count, plural, one {An outgoing email could not be sent.} other {# outgoing emails could not be sent.}}</value>

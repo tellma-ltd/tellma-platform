@@ -3076,7 +3076,8 @@ namespace Tellma.Distro.Acme.Migrator.Migrations.Tenant
                 {
                     { 1, null, 1440, "core.job-retention", new DateTimeOffset(new DateTime(2000, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), 1, "0 3 * * *", "core.job-retention", true, new DateTimeOffset(new DateTime(2000, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), 1, "core.job-retention", null, null, null, 1, null },
                     { 2, null, 1440, "core.notification-retention", new DateTimeOffset(new DateTime(2000, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), 1, "30 3 * * *", "core.notification-retention", true, new DateTimeOffset(new DateTime(2000, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), 1, "core.notification-retention", null, null, null, 1, null },
-                    { 6, null, 1440, "core.tree-verify", new DateTimeOffset(new DateTime(2000, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), 1, "0 1 * * 6", "core.tree-verify", true, new DateTimeOffset(new DateTime(2000, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), 1, "core.tree-verify", null, null, null, 1, null }
+                    { 6, null, 1440, "core.tree-verify", new DateTimeOffset(new DateTime(2000, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), 1, "0 1 * * 6", "core.tree-verify", true, new DateTimeOffset(new DateTime(2000, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), 1, "core.tree-verify", null, null, null, 1, null },
+                    { 7, null, 1440, "core.outgoing-email-retention", new DateTimeOffset(new DateTime(2000, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), 1, "45 3 * * *", "core.outgoing-email-retention", true, new DateTimeOffset(new DateTime(2000, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), 1, "core.outgoing-email-retention", null, null, null, 1, null }
                 });
 
             migrationBuilder.InsertData(
@@ -3111,7 +3112,8 @@ namespace Tellma.Distro.Acme.Migrator.Migrations.Tenant
                 {
                     { 1, null, null, null, null, null, null, null },
                     { 2, null, null, null, null, null, null, null },
-                    { 6, null, null, null, null, null, null, null }
+                    { 6, null, null, null, null, null, null, null },
+                    { 7, null, null, null, null, null, null, null }
                 });
 
             migrationBuilder.CreateIndex(

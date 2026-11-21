@@ -11,11 +11,27 @@ namespace Tellma.Core.Outbox
 {
     /// <summary>
     ///     The email outbox's instruments on the core meter: the emails enqueued, by source; the
-    ///     emails the sending job settled, by state; and how long each sent or sandboxed email waited
-    ///     from its enqueue to its send. No instrument carries a tenant, an address or a subject.
+    ///     emails the sending job settled, by state; how long each sent or sandboxed email waited
+    ///     from its enqueue to its send; the delivery events weighed, by what became of them; and the
+    ///     emails the retention deleted. No instrument carries a tenant, an address or a subject.
     /// </summary>
     internal sealed class OutboxMetrics
     {
+        /// <summary>The result of a delivery event applied to its row.</summary>
+        public const string AppliedResult = "applied";
+
+        /// <summary>The result of a delivery event that repeats one applied, or is no stronger than what its row records.</summary>
+        public const string StaleResult = "stale";
+
+        /// <summary>The result of a delivery event whose reference no row has.</summary>
+        public const string UnmatchedResult = "unmatched";
+
+        /// <summary>The result of a delivery event dropped with its missing, provisioning or retired tenant.</summary>
+        public const string TenantSkippedResult = "tenant_skipped";
+
+        /// <summary>Every result a delivery event is counted by.</summary>
+        public static IReadOnlyList<string> Results { get; } = [AppliedResult, StaleResult, UnmatchedResult, TenantSkippedResult];
+
         /// <summary>Emails enqueued.</summary>
         private readonly Counter<long> _enqueued;
 
@@ -24,6 +40,12 @@ namespace Tellma.Core.Outbox
 
         /// <summary>Seconds from an email's enqueue to its send.</summary>
         private readonly Histogram<double> _latency;
+
+        /// <summary>Delivery events weighed, by result.</summary>
+        private readonly Counter<long> _deliveryUpdates;
+
+        /// <summary>Emails the retention deleted.</summary>
+        private readonly Counter<long> _retained;
 
         /// <summary>
         ///     The source of each row the outbox handed to an enlisted save, until its frame commits;
@@ -50,6 +72,14 @@ namespace Tellma.Core.Outbox
                 OutboxTelemetryNames.Latency,
                 "s",
                 "How long a sent or sandboxed email waited from its enqueue to its send, on the database clock.");
+            _deliveryUpdates = meter.CreateCounter<long>(
+                OutboxTelemetryNames.DeliveryUpdates,
+                "{event}",
+                "Delivery events the outbox weighed, by whether each was applied, stale, unmatched or dropped with its tenant.");
+            _retained = meter.CreateCounter<long>(
+                OutboxTelemetryNames.Retained,
+                "{email}",
+                "Outgoing emails the nightly retention deleted.");
         }
 
         /// <summary>The state tag's value of a state: its name in lower case.</summary>
@@ -130,6 +160,30 @@ namespace Tellma.Core.Outbox
             if (latency is TimeSpan wait)
             {
                 _latency.Record(Math.Max(0, wait.TotalSeconds));
+            }
+        }
+
+        /// <summary>Records delivery events weighed with one result.</summary>
+        /// <param name="result">The result, one of <see cref="Results" />.</param>
+        /// <param name="count">The events; nothing is recorded for none.</param>
+        /// <exception cref="ArgumentException"><paramref name="result" /> is not one of <see cref="Results" />.</exception>
+        public void RecordDeliveryUpdates(string result, int count)
+        {
+            if (!Results.Contains(result, StringComparer.Ordinal))
+            {
+                throw new ArgumentException($"'{result}' is not a delivery event result.", nameof(result));
+            }
+
+            Add(_deliveryUpdates, count, new KeyValuePair<string, object?>(OutboxTelemetryNames.ResultTag, result));
+        }
+
+        /// <summary>Records emails the retention deleted.</summary>
+        /// <param name="count">The emails; nothing is recorded for none.</param>
+        public void RecordRetained(int count)
+        {
+            if (count > 0)
+            {
+                _retained.Add(count);
             }
         }
 

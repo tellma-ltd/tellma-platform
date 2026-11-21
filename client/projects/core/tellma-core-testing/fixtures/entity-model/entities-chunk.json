@@ -2328,7 +2328,35 @@
           "labelKey": "Core_OutgoingEmailAttachment_Plural"
         }
       ],
-      "actions": [],
+      "actions": [
+        {
+          "name": "retry",
+          "kind": "entity",
+          "builtIn": false,
+          "action": "Retry",
+          "labelKey": "Action_Retry",
+          "mutation": true,
+          "idempotent": false,
+          "destructive": false,
+          "singleTarget": false,
+          "supportsFilter": true,
+          "result": "entities"
+        },
+        {
+          "name": "cancel",
+          "kind": "entity",
+          "builtIn": false,
+          "action": "Cancel",
+          "labelKey": "Action_Cancel",
+          "mutation": true,
+          "idempotent": false,
+          "destructive": true,
+          "allowWhenReadOnly": true,
+          "singleTarget": false,
+          "supportsFilter": true,
+          "result": "entities"
+        }
+      ],
       "relatedSelect": [
         "Id",
         "Subject"

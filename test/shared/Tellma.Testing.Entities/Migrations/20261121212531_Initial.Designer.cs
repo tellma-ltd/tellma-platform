@@ -14,7 +14,7 @@ using Tellma.Testing.Entities;
 namespace Tellma.Testing.Entities.Migrations
 {
     [DbContext(typeof(TellmaFixtureDbContext))]
-    [Migration("20261121053743_Initial")]
+    [Migration("20261121212531_Initial")]
     partial class Initial
     {
         /// <inheritdoc />
@@ -1182,6 +1182,23 @@ namespace Tellma.Testing.Entities.Migrations
                             ModifiedAt = new DateTimeOffset(new DateTime(2000, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
                             ModifiedById = 1,
                             Name = "core.notification-retention",
+                            OverlapPolicy = "Skip",
+                            RunAsUserId = 1
+                        },
+                        new
+                        {
+                            Id = 7,
+                            CatchUpWindowMinutes = 1440,
+                            Code = "core.outgoing-email-retention",
+                            CreatedAt = new DateTimeOffset(new DateTime(2000, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            CreatedById = 1,
+                            CronExpression = "45 3 * * *",
+                            HandlerKey = "core.outgoing-email-retention",
+                            IsActive = true,
+                            MissedPolicy = "Coalesce",
+                            ModifiedAt = new DateTimeOffset(new DateTime(2000, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            ModifiedById = 1,
+                            Name = "core.outgoing-email-retention",
                             OverlapPolicy = "Skip",
                             RunAsUserId = 1
                         },
@@ -19321,6 +19338,10 @@ namespace Tellma.Testing.Entities.Migrations
                         new
                         {
                             ScheduleId = 2
+                        },
+                        new
+                        {
+                            ScheduleId = 7
                         },
                         new
                         {

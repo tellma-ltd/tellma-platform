@@ -22,6 +22,7 @@ using Tellma.Core.Data.Batches;
 using Tellma.Core.Email;
 using Tellma.Core.IntegrationTests.Jobs;
 using Tellma.Core.Notifications;
+using Tellma.Core.Tenancy;
 using Tellma.Core.Testing.Blobs;
 using Tellma.Core.Testing.Email;
 using Tellma.Testing.Entities;
@@ -38,7 +39,8 @@ namespace Tellma.Core.IntegrationTests.Outbox
     ///     under a sandbox switch a test can turn on, answers through a sender a test can make answer
     ///     short, reaches an administrator directory a test can make fail, runs the scripted job
     ///     handlers whose frames enqueue, keeps every log event, lets the stacks own their tables as in production, and
-    ///     audits every batch's writes against change tracking.
+    ///     audits every batch's writes against change tracking. Its administrator may read, delete,
+    ///     retry and cancel every outgoing email, through a request scope a test opens for them.
     /// </summary>
     public sealed class OutboxDatabase : IAsyncLifetime
     {
@@ -54,7 +56,7 @@ namespace Tellma.Core.IntegrationTests.Outbox
         /// <summary>A member whose name holds a control character.</summary>
         public const int EveId = 105;
 
-        /// <summary>The administrator the failure notices reach.</summary>
+        /// <summary>The administrator the failure notices reach, who may read, delete, retry and cancel every outgoing email.</summary>
         public const int AdministratorId = 111;
 
         /// <summary>The address <see cref="CyId" /> prefers to be written to.</summary>
@@ -79,6 +81,9 @@ namespace Tellma.Core.IntegrationTests.Outbox
             DELETE FROM [core].[Jobs];
             UPDATE [core].[JobWorkerState] SET [LastTickAt] = NULL, [LastTickOwner] = NULL;
             """;
+
+        /// <summary>The actions the administrator's role grants over the outgoing emails.</summary>
+        private static readonly string[] AdministratorActions = [AccessActions.Read, AccessActions.Delete, AccessActions.Retry, AccessActions.Cancel];
 
         /// <summary>The suite's server.</summary>
         private readonly SqlServerFixture _sql;
@@ -169,7 +174,8 @@ namespace Tellma.Core.IntegrationTests.Outbox
                 compose: static tellma => tellma.AddFeature(new JobRunFeature()),
                 cancellationToken: Token);
 
-            // --- The tenant's settings and version tags, then the users with their stamps ---
+            // --- The tenant's settings and version tags, then the users with their stamps, then the
+            // administrator's role over the outgoing emails ---
             string tags = string.Join(", ", Tenant.Services.GetRequiredService<IVersionTagRegistry>().Names.Select(static name => $"(N'{name}')"));
             await SqlServerFixture.ExecuteAsync(
                 ConnectionString,
@@ -179,7 +185,8 @@ namespace Tellma.Core.IntegrationTests.Outbox
                 UserInsert(CyId, "Cy", CyContactEmail, CyTimeZone),
                 UserInsert(DeeId, "Dee", DeeContactEmail, timeZone: null),
                 UserInsert(EveId, EveName, contactEmail: null, timeZone: null),
-                UserInsert(AdministratorId, "Admin", contactEmail: null, timeZone: null));
+                UserInsert(AdministratorId, "Admin", contactEmail: null, timeZone: null),
+                AdministratorRoleInsert());
         }
 
         /// <summary>
@@ -211,6 +218,48 @@ namespace Tellma.Core.IntegrationTests.Outbox
             }
 
             Logs.Dispose();
+        }
+
+        /// <summary>
+        ///     A request scope of the fixture tenant for one of its users, whose session stepped up a
+        ///     moment ago, completed by the initializers as a request's is.
+        /// </summary>
+        /// <param name="userId">The user, one of the fixture's.</param>
+        /// <param name="state">The tenant's state the request sees; the registered one when null.</param>
+        /// <returns>The scope; the caller disposes it.</returns>
+        public async Task<AsyncServiceScope> UserScopeAsync(int userId, TenantState? state = null)
+        {
+            AsyncServiceScope scope = Tenant.Services.CreateAsyncScope();
+            try
+            {
+                // --- The request as the tenant middleware binds it: the tenant, the caller's subject and a fresh step-up ---
+                DateTimeOffset now = DateTimeOffset.UtcNow;
+                IRequestContextHolder holder = scope.ServiceProvider.GetRequiredService<IRequestContextHolder>();
+                TenantDescriptor tenant = Tenant.Services.GetRequiredService<ITenantRegistry>().Get(FixtureTenant.TenantId).Descriptor;
+                RequestContext context = holder.Current with
+                {
+                    Tenant = tenant with { State = state ?? tenant.State },
+                    Kind = PrincipalKind.User,
+                    Subject = Subject(userId),
+                    UserId = null,
+                    Assurance = new AuthenticationAssurance(AssuranceTiers.Aal2, now, now),
+                };
+                holder.Set(context);
+
+                // --- Then the initializers: the connection, which binds the user, and the locale ---
+                _ = await RequestContextInitialization.RunAsync(
+                    holder,
+                    scope.ServiceProvider.GetServices<IRequestContextInitializer>(),
+                    context,
+                    new RequestContextInputs(null, null, null, null, null, null, SuppressActivityStamp: true),
+                    Token);
+                return scope;
+            }
+            catch
+            {
+                await scope.DisposeAsync();
+                throw;
+            }
         }
 
         /// <summary>A user's sign-in address.</summary>
@@ -272,7 +321,7 @@ namespace Tellma.Core.IntegrationTests.Outbox
         /// <returns>The statement.</returns>
         private static string UserInsert(int id, string name, string? contactEmail, string? timeZone)
         {
-            string subject = string.Create(CultureInfo.InvariantCulture, $"fx-outbox-{id}");
+            string subject = Subject(id);
             string contact = contactEmail is null ? "NULL" : $"N'{contactEmail}'";
             string zone = timeZone is null ? "NULL" : $"N'{timeZone}'";
             int system = WellKnownIds.SystemUserId;
@@ -282,6 +331,37 @@ namespace Tellma.Core.IntegrationTests.Outbox
                 INSERT INTO [core].[Users] ([Id], [Kind], [Subject], [Email], [ContactEmail], [InvitedAt], [JoinedAt], [Name], [PreferredTimeZone], [IsActive], [CreatedAt], [CreatedById], [ModifiedAt], [ModifiedById])
                 VALUES ({id}, '{UserKind.Individual}', '{subject}', N'{SignInEmail(id)}', {contact}, SYSDATETIMEOFFSET(), SYSDATETIMEOFFSET(), N'{name}', {zone}, 1, SYSDATETIMEOFFSET(), {system}, SYSDATETIMEOFFSET(), {system});
                 INSERT INTO [core].[UserStamps] ([UserId]) VALUES ({id});
+                """);
+        }
+
+        /// <summary>A user's subject.</summary>
+        /// <param name="id">The user's id.</param>
+        /// <returns>The subject.</returns>
+        private static string Subject(int id)
+        {
+            return string.Create(CultureInfo.InvariantCulture, $"fx-outbox-{id}");
+        }
+
+        /// <summary>The insert of the role that lets the administrator read, delete, retry and cancel every outgoing email.</summary>
+        /// <returns>The statement.</returns>
+        private static string AdministratorRoleInsert()
+        {
+            // --- One permission per action, over every row ---
+            int system = WellKnownIds.SystemUserId;
+            string permissions = string.Join(
+                Environment.NewLine,
+                AdministratorActions.Select(static action => string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"INSERT INTO [core].[Permissions] ([Id], [RoleId], [Resource], [Action], [Filter], [FilterQueryexVersion]) VALUES (NEXT VALUE FOR [core].[sq_Permissions], @role, N'{CoreResources.OutgoingEmail}', N'{action}', NULL, NULL);")));
+
+            // --- The role, its permissions and its one member ---
+            return string.Create(
+                CultureInfo.InvariantCulture,
+                $"""
+                DECLARE @role int = NEXT VALUE FOR [core].[sq_Roles];
+                INSERT INTO [core].[Roles] ([Id], [Name], [CreatedAt], [CreatedById], [ModifiedAt], [ModifiedById]) VALUES (@role, N'Email administrators', SYSDATETIMEOFFSET(), {system}, SYSDATETIMEOFFSET(), {system});
+                {permissions}
+                INSERT INTO [core].[RoleMemberships] ([Id], [UserId], [RoleId]) VALUES (NEXT VALUE FOR [core].[sq_RoleMemberships], {AdministratorId}, @role);
                 """);
         }
 

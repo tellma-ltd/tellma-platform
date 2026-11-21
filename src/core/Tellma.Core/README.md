@@ -1256,9 +1256,17 @@ a call with attachments, so a channel sender's tenantless gate scope needs neith
 
 `OutboxOptions` (`Tellma:Outbox`) holds `Retention` (180 days, one day to ten years),
 `MaxMessageBytes` (7 MiB, 1 KiB to 20 MiB) and `MaxRecipients` (50, 1 to 1000). The outgoing
-emails' stack (route segment `outgoing-emails`) serves the query, the details and the delete by
-ids, read-only to MCP; a delete of a row that may still be sent (unsettled, with a live job) is
-refused as `Email.NotDeletable` at `Ids[i]`. A request's `Source` is `api` or `notification`; any
+emails' stack (route segment `outgoing-emails`) serves the query, the details, the delete by ids
+and two actions, read-only to MCP, under the securables `core.OutgoingEmail` × `Read`, `Delete`,
+`Retry` and `Cancel`; it serves no delete by query, since a delete is validated row by row. A delete
+of a row that may still be sent (unsettled, with a live job) is refused as `Email.NotDeletable` at
+`Ids[i]`. `retry` sends again each row that failed, or that is unsettled with no live job: it
+returns the row to `Pending` with its send and delivery columns cleared and enqueues a new sending
+job, refusing any other row as `Email.NotRetryable`. `cancel` settles each `Pending` row
+`Cancelled`, in a read-only tenant too, and refuses any other as `Email.NotCancellable`; its job then
+meets a settled row and succeeds unsent. Both stamp the rows they change, and both repeat their
+precondition in the update, so a row the sending job reached since the validation is left as it
+is. A request's `Source` is `api` or `notification`; any
 other is refused before anything is staged. The rows are counted on `tellma.outbox.enqueued`
 (meter `Tellma.Core`, tag `source`) once the frame they were enlisted with commits them, by the
 stack's commit effect (`OutboxEnqueuedEffect`); a frame that rolls back counts nothing.
@@ -1300,8 +1308,28 @@ claim and the next triage meets the rows as this one left them. The startup chec
 reports a host whose job worker runs with no email sender registered (the handler resolves the
 sender on each claim, so such a host still builds, and a claim it runs fails before it writes
 anything, every row still pending); the queries in
-`infra/monitoring/outbox` alert on interrupted sends, the failure rate and the latency's 95th
-percentile.
+`infra/monitoring/outbox` alert on interrupted sends, the failure rate, the latency's 95th
+percentile and unmatched delivery events.
+
+`OutgoingEmailDeliveryHandler` answers the `outbox` owner key's delivery events on the email
+pipeline's tenantless webhook path. Opens, clicks and unclassified events are dropped; of the rest,
+each row keeps only its strongest event (the higher status, then the later time). Each tenant is
+looked up in the registry: a missing, provisioning or retired tenant's events are dropped
+(`OutboxDeliveryTenantSkipped`); an active, read-only or suspended tenant's are applied; a frozen
+tenant's wait for the provider to deliver them again, the call failing once every other tenant's
+were applied, as does a tenant whose update failed. The update is one idempotent maintenance round
+trip on a tenant database handle outside any tenant scope: a row moves only to a stronger status, or
+to a later event of the same one, and an event already applied is skipped, whatever the row's
+state. An event naming no row is logged as `OutboxDeliveryEventUnmatched`. Every event is counted
+on `tellma.outbox.delivery_updates` by `result`: `applied`, `stale` (a repeat or no stronger),
+`unmatched` or `tenant_skipped`.
+
+`OutgoingEmailRetentionHandler` runs `core.outgoing-email-retention` nightly at 03:45 on built-in
+schedule 7, as the system user and in a read-only tenant too. Each page reads up to 500 ids of rows
+created longer ago than `Retention`, on the database clock, that are settled, or unsettled with no
+live job, and deletes them through the stack's delete by ids, so the delete's own rules run and the
+attachments' blobs are released to the sweep; a page whose delete is refused because a row changed
+in between is read again once. The rows deleted are counted on `tellma.outbox.retained`.
 
 `EmailNotificationChannel` is the `email` channel's sender: each addressed recipient gets one
 internal email, to their contact address or else their sign-in address (a recipient with neither
