@@ -108,7 +108,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-F65 | pc-f | pc/PC-F65 | impl | flake root cause (D-171); high; one review | fix item | 2026-11-21 |
 | PC-174 | pc-2 | pc/PC-174 | impl | T3 fill under D-140/D-173; high; carry D-131 | 0015-j; R1 only | 2026-11-21 |
 | PC-090 | pc-3 | pc/PC-090 | integrating | impl 17267a1c; R1 0/2/3; fix1 131109ae (R1-2 moved to PC-149); released at once (queue empty); D-170 | 0018-d; R1 only | 2026-11-21 |
-| PC-149 | pc-4 | pc/PC-149 | R1 | impl 7418f050 (18 deviations; welcome email from invite frame; JobEntityLoad per D-170; 0018 §3.3 vs 0015 §5.1 flag); R1 Opus high | 0022-b; R1 only | 2026-11-21 |
+| PC-149 | pc-4 | pc/PC-149 | fix1 | impl 7418f050; R1 0/2/2; fix1 (last) then hold behind PC-090, PC-089; D-170, D-174 | 0022-b; R1 only | 2026-11-21 |
 
 ## Fix items
 

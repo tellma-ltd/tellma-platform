@@ -384,6 +384,16 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-174 (orchestrator, 2026-11-21): PC-149 Review 1 rulings
+
+- PC-149 Review 1 (Opus high, 7418f050): 0 blocking, 2 major, 2 minor.
+  - Confirmed: the D-170 fix (the old load selected only JobId; it now uses the declared select, and correcting AllProperties' doc rather than its behaviour is right).
+  - Also confirmed: pre-mark ordering and the 12-attempt bound; IEmailSender resolved per claim (the outbox.sender startup check still catches a missing sender); provider-error handling per 0022, with no address or body logged; the welcome email commits or rolls back with the invite.
+- R1-1 (major): the Acme sandbox-invite test now races the job worker that sends the new welcome email, and failed 1 run in 3. The implementer wrongly said Acme.Web.Tests was missing and did not run the Acme projects. Ruling: assert only on the identity engine's mail and on the welcome row, run both Acme projects in full, and run the renamed test five times in a row.
+- R1-2 (major): the validating welcome group fails the persist closed (StaleContextException) under a permissions move with a warm id buffer, after the invitations were sent, but commits with a cold one. Ruling: the narrower option. A grant-independent validator over a payload with no references does not count as Validates, so the group replays as 0018 §3.3 says. Restore the §9 recompose pin and test both buffer states. Fall back to fail-closed in both states only if the narrow rule is unsound.
+- R1-3: count tellma.outbox.enqueued on commit. R1-4: add the handler-path tests.
+- For Ahmad: D-122's interim fail-closed rule for validating enlisted groups. The lasting fix would re-run enlisted validators in memory on persist re-entry.
+
 ### D-173 (Ahmad, 2026-11-21): apply the manual reset this week; T3 fill and PC-F65 start now
 
 - Ahmad, answering D-167: "Yes, apply this week". D-165 is superseded. Ahmad applies the reset himself once the weekly meter is close to 100%; the orchestrator tells him when it reaches ≈ 98%.
