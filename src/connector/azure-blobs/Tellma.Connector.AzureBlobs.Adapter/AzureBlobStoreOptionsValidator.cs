@@ -10,8 +10,8 @@ using System.Text.RegularExpressions;
 namespace Tellma.Connector.AzureBlobs
 {
     /// <summary>
-    ///     Validates the Azure blob store's settings: exactly one way to reach the account, a
-    ///     container prefix that yields a valid container name for every tenant id, and positive
+    ///     Validates the Azure blob store's settings: exactly one way to reach the account, an
+    ///     endpoint that is the account's HTTPS address alone, a container prefix that yields a valid container name for every tenant id, and positive
     ///     limits.
     /// </summary>
     internal sealed partial class AzureBlobStoreOptionsValidator : IValidateOptions<AzureBlobStoreOptions>
@@ -49,10 +49,24 @@ namespace Tellma.Connector.AzureBlobs
                     : $"Neither {section}:{nameof(AzureBlobStoreOptions.ServiceUri)} nor {section}:{nameof(AzureBlobStoreOptions.ConnectionString)} is set; set exactly one.");
             }
 
-            // A bearer token never travels over plain HTTP, so the endpoint is an absolute HTTPS one.
-            if (options.ServiceUri is Uri uri && (!uri.IsAbsoluteUri || uri.Scheme != Uri.UriSchemeHttps))
+            // --- The endpoint: the account's own, over HTTPS, and nothing else ---
+            // A bearer token never travels over plain HTTP. A path would put every tenant's container
+            // under one container, and a query is most likely a pasted shared access signature, so
+            // neither is accepted; no message prints more of the address than its scheme and host.
+            string uriSetting = $"{section}:{nameof(AzureBlobStoreOptions.ServiceUri)}";
+            if (options.ServiceUri is Uri uri)
             {
-                failures.Add($"{section}:{nameof(AzureBlobStoreOptions.ServiceUri)} '{uri}' is not an absolute HTTPS address.");
+                if (!uri.IsAbsoluteUri || uri.Scheme != Uri.UriSchemeHttps)
+                {
+                    failures.Add($"{uriSetting} is not an absolute HTTPS address.");
+                }
+                else if (uri.AbsolutePath != "/" || uri.Query.Length > 0 || uri.Fragment.Length > 0 || uri.UserInfo.Length > 0)
+                {
+                    failures.Add(
+                        $"{uriSetting} for '{Shown(uri)}' carries a path, a query, a fragment or user information; "
+                        + "set the account's blob endpoint alone, such as 'https://<account>.blob.core.windows.net'. "
+                        + "The store signs in with the host's identity, so no shared access signature is configured.");
+                }
             }
 
             // --- The container prefix: with the largest tenant id it is still a valid container name ---
@@ -76,6 +90,16 @@ namespace Tellma.Connector.AzureBlobs
             }
 
             return failures;
+        }
+
+        /// <summary>An absolute address's scheme, host and any explicit port: never its user information, path or query.</summary>
+        /// <param name="uri">The absolute address.</param>
+        /// <returns>The part of it a message may print.</returns>
+        private static string Shown(Uri uri)
+        {
+            return uri.IsDefaultPort
+                ? $"{uri.Scheme}://{uri.Host}"
+                : string.Create(CultureInfo.InvariantCulture, $"{uri.Scheme}://{uri.Host}:{uri.Port}");
         }
 
         /// <summary>Whether a name is a valid Azure container name, which is also a DNS label.</summary>

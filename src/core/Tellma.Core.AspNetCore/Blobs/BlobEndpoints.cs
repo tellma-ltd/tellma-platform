@@ -16,6 +16,7 @@ using Tellma.Core.Abstractions.Api;
 using Tellma.Core.Abstractions.Blobs;
 using Tellma.Core.Abstractions.Errors;
 using Tellma.Core.Abstractions.Tenancy;
+using Tellma.Core.AspNetCore.Hosting;
 using Tellma.Core.AspNetCore.Problems;
 using Tellma.Core.Blobs;
 
@@ -37,6 +38,18 @@ namespace Tellma.Core.AspNetCore.Blobs
 
         /// <summary>The longest file name an upload may name, in characters.</summary>
         public const int MaxFileNameLength = 255;
+
+        /// <summary>
+        ///     The slowest rate, in bytes per second, a download's deadline allows for its object on
+        ///     top of the long timeout: 32 KiB/s, so a 100 MiB file has about 53 minutes more.
+        /// </summary>
+        public const int MinimumTransferRate = 32 * 1024;
+
+        /// <summary>
+        ///     The longest deadline any download is given, however large its object: a day, well
+        ///     inside what a timer can wait.
+        /// </summary>
+        public static readonly TimeSpan MaxTransferDeadline = TimeSpan.FromDays(1);
 
         /// <summary>
         ///     Maps the upload and the download on the blob group: any connected active member may
@@ -123,6 +136,8 @@ namespace Tellma.Core.AspNetCore.Blobs
         /// <param name="kinds">The declared kinds, which bound the download counter's kind tag.</param>
         /// <param name="metrics">The download counter.</param>
         /// <param name="requests">The request context, whose tenant owns the storage read.</param>
+        /// <param name="api">The API settings, whose long timeout a transfer's deadline starts from.</param>
+        /// <param name="time">The clock the transfer's deadline runs on.</param>
         /// <param name="cancellationToken">The request's cancellation.</param>
         /// <returns>The result.</returns>
         /// <exception cref="BlobStoreException">The stored primary's length is not the length its row records.</exception>
@@ -137,6 +152,8 @@ namespace Tellma.Core.AspNetCore.Blobs
             [FromServices] IBlobKindRegistry kinds,
             [FromServices] BlobDownloadMetrics metrics,
             [FromServices] IRequestContextAccessor requests,
+            [FromServices] IOptions<ApiOptions> api,
+            [FromServices] TimeProvider time,
             CancellationToken cancellationToken)
         {
             // --- The guards on every response, a problem's included: stamped as it starts, after any clear ---
@@ -160,10 +177,10 @@ namespace Tellma.Core.AspNetCore.Blobs
                 return NotFound();
             }
 
-            // --- The tag and the caching come from the row: a held copy is answered without the store ---
-            BlobResponseHeaders.ApplyCaching(http.Response.Headers, resolved);
+            // --- A held copy is answered from the row, with its tag and caching, and without the store ---
             if (BlobResponseHeaders.IsNotModified(http.Request.Headers.IfNoneMatch, resolved.ETag))
             {
+                BlobResponseHeaders.ApplyCaching(http.Response.Headers, resolved);
                 Count(metrics, counted, BlobTelemetryTagValues.DownloadNotModified);
                 return Results.StatusCode(StatusCodes.Status304NotModified);
             }
@@ -190,13 +207,13 @@ namespace Tellma.Core.AspNetCore.Blobs
                     inner: null);
             }
 
+            // --- The tag and the caching only now, on an object that opened whole: a 404 or a 500 is never cached ---
+            BlobResponseHeaders.ApplyCaching(http.Response.Headers, resolved);
+
             // --- The bytes: open inline or download, with ranges, conditionals and If-Range against the strong tag ---
             http.Response.Headers[HeaderNames.ContentDisposition] = BlobResponseHeaders.ContentDisposition(resolved.ContentType, resolved.FileName, download == true);
-            Count(metrics, counted, BlobTelemetryTagValues.DownloadServed);
-
-            // Everything before the first byte ran under the web timeout; a large file then streams
-            // for as long as the client keeps reading, which the server's minimum data rate bounds.
-            http.Features.Get<IHttpRequestTimeoutFeature>()?.DisableTimeout();
+            CountServedAsItStarts(http.Response, metrics, counted);
+            BoundTransfer(http, TransferDeadline(api.Value.LongRequestTimeout, content.Length), time);
             return Results.Stream(
                 content.Content,
                 resolved.ContentType,
@@ -204,6 +221,67 @@ namespace Tellma.Core.AspNetCore.Blobs
                 lastModified: null,
                 entityTag: EntityTagHeaderValue.Parse(resolved.ETag),
                 enableRangeProcessing: true);
+        }
+
+        /// <summary>
+        ///     How long a download of an object may take from its open: the long timeout, plus the
+        ///     object's length at <see cref="MinimumTransferRate" />, and never more than
+        ///     <see cref="MaxTransferDeadline" />.
+        /// </summary>
+        /// <param name="longTimeout">The long request timeout.</param>
+        /// <param name="length">The object's length in bytes.</param>
+        /// <returns>The deadline.</returns>
+        internal static TimeSpan TransferDeadline(TimeSpan longTimeout, long length)
+        {
+            double seconds = longTimeout.TotalSeconds + ((double)Math.Max(0, length) / MinimumTransferRate);
+            return seconds >= MaxTransferDeadline.TotalSeconds ? MaxTransferDeadline : TimeSpan.FromSeconds(seconds);
+        }
+
+        /// <summary>
+        ///     Replaces the web timeout, which covered the authorization and the open, with the
+        ///     transfer's own deadline, past which the connection is aborted. The blob concurrency
+        ///     permit is held until the endpoint returns, so a client that reads slowly or not at all
+        ///     holds it for no longer than the deadline.
+        /// </summary>
+        /// <param name="http">The request.</param>
+        /// <param name="deadline">The transfer's deadline, from now.</param>
+        /// <param name="time">The clock the deadline runs on.</param>
+        private static void BoundTransfer(HttpContext http, TimeSpan deadline, TimeProvider time)
+        {
+            http.Features.Get<IHttpRequestTimeoutFeature>()?.DisableTimeout();
+
+            // The registration is disposed before the source (disposal runs last-registered first),
+            // and its disposal waits out a running abort, so a completed request is never aborted.
+            CancellationTokenSource expiry = new(deadline, time);
+            CancellationTokenRegistration abort = expiry.Token.Register(static state => ((HttpContext)state!).Abort(), http);
+            http.Response.RegisterForDispose(expiry);
+            http.Response.RegisterForDispose(abort);
+        }
+
+        /// <summary>
+        ///     Counts a download as served when its response starts as <c>200</c> or <c>206</c>; a
+        ///     range refusal or a failed precondition the stream answers sends no object, and is not
+        ///     counted.
+        /// </summary>
+        /// <param name="response">The response.</param>
+        /// <param name="metrics">The counter.</param>
+        /// <param name="kind">The declared kind; null when the request named none.</param>
+        private static void CountServedAsItStarts(HttpResponse response, BlobDownloadMetrics metrics, string? kind)
+        {
+            if (kind is null)
+            {
+                return;
+            }
+
+            response.OnStarting(() =>
+            {
+                if (response.StatusCode is StatusCodes.Status200OK or StatusCodes.Status206PartialContent)
+                {
+                    metrics.Count(kind, BlobTelemetryTagValues.DownloadServed);
+                }
+
+                return Task.CompletedTask;
+            });
         }
 
         /// <summary>The download's answer when there is nothing the caller may read.</summary>

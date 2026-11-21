@@ -49,6 +49,29 @@ namespace Tellma.Connector.AzureBlobs.Tests
             string failure = Assert.Single(AzureBlobStoreOptionsValidator.Describe(
                 new AzureBlobStoreOptions { ServiceUri = new Uri(endpoint, UriKind.RelativeOrAbsolute) }));
             Assert.Contains("is not an absolute HTTPS address", failure, StringComparison.Ordinal);
+            Assert.DoesNotContain(endpoint, failure, StringComparison.Ordinal);
+        }
+
+        [Theory]
+        [InlineData("https://acme.blob.core.windows.net/?sv=2024-11-04&sig=c2VjcmV0", "https://acme.blob.core.windows.net")]
+        [InlineData("https://acme.blob.core.windows.net/tenants", "https://acme.blob.core.windows.net")]
+        [InlineData("https://acme.blob.core.windows.net/#part", "https://acme.blob.core.windows.net")]
+        [InlineData("https://user:c2VjcmV0@acme.blob.core.windows.net/", "https://acme.blob.core.windows.net")]
+        [InlineData("https://acme.example.test:8443/devstoreaccount1", "https://acme.example.test:8443")]
+        public void An_endpoint_with_more_than_the_account_s_address_is_refused_naming_only_its_scheme_and_host(string endpoint, string shown)
+        {
+            string failure = Assert.Single(AzureBlobStoreOptionsValidator.Describe(new AzureBlobStoreOptions { ServiceUri = new Uri(endpoint) }));
+
+            Assert.Contains($"Tellma:Blobs:Azure:ServiceUri for '{shown}' carries a path, a query, a fragment or user information", failure, StringComparison.Ordinal);
+            Assert.DoesNotContain("c2VjcmV0", failure, StringComparison.Ordinal);
+            Assert.DoesNotContain("sig=", failure, StringComparison.Ordinal);
+            Assert.DoesNotContain("/tenants", failure, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void An_endpoint_with_a_trailing_slash_is_the_account_s_address()
+        {
+            Assert.Empty(AzureBlobStoreOptionsValidator.Describe(new AzureBlobStoreOptions { ServiceUri = new Uri("https://acme.blob.core.windows.net/") }));
         }
 
         [Theory]

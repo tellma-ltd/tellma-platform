@@ -3,6 +3,7 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Primitives;
 using Microsoft.Net.Http.Headers;
@@ -35,6 +36,12 @@ namespace Tellma.Core.AspNetCore.Blobs
 
         /// <summary>The caching of a staged blob, which only its uploader may read and a save may still drop.</summary>
         public const string StagedCacheControl = "private, no-store";
+
+        /// <summary>
+        ///     The caching of every blob answer other than the object or a <c>304</c>: a refusal or a
+        ///     problem is never stored, so a restored object is served on the next request.
+        /// </summary>
+        public const string RefusalCacheControl = "no-store";
 
         // The media types a browser may show in place: images, PDF and the text types. Everything
         // else (OOXML, zip) downloads, as does any type when the caller asks to download.
@@ -114,6 +121,30 @@ namespace Tellma.Core.AspNetCore.Blobs
             ArgumentNullException.ThrowIfNull(download);
             headers[HeaderNames.ETag] = download.ETag;
             headers[HeaderNames.CacheControl] = CacheControl(download.State);
+        }
+
+        /// <summary>
+        ///     Whether a response answers the blob surface with anything other than the object or a
+        ///     <c>304</c>: a refusal, a problem, or a range the stream could not satisfy. The endpoint
+        ///     is the matched one, or for a problem the exception handler writes, the one that threw.
+        /// </summary>
+        /// <param name="context">The request, as its response starts.</param>
+        /// <returns>True for a blob response that must carry neither a validator nor caching.</returns>
+        public static bool IsRefusal(HttpContext context)
+        {
+            ArgumentNullException.ThrowIfNull(context);
+            Endpoint? endpoint = context.GetEndpoint() ?? context.Features.Get<IExceptionHandlerFeature>()?.Endpoint;
+            return endpoint?.Metadata.GetMetadata<TenantEndpointMetadata>()?.Surface == TenantSurface.Blobs
+                && context.Response.StatusCode is not (StatusCodes.Status200OK or StatusCodes.Status206PartialContent or StatusCodes.Status304NotModified);
+        }
+
+        /// <summary>Strips a refusal of any tag and caching an earlier step stamped, and forbids storing it.</summary>
+        /// <param name="headers">The response's headers.</param>
+        public static void ApplyRefusal(IHeaderDictionary headers)
+        {
+            ArgumentNullException.ThrowIfNull(headers);
+            _ = headers.Remove(HeaderNames.ETag);
+            headers[HeaderNames.CacheControl] = RefusalCacheControl;
         }
 
         /// <summary>

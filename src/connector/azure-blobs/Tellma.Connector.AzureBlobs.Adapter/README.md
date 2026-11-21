@@ -36,7 +36,9 @@ its own.
 The settings are validated when the store is built, and the `blobs.azure` startup check reports every
 broken rule, a connection string that does not parse, and an endpoint without a credential before the
 host serves traffic. The prefix is checked with the largest tenant id appended, so no tenant can be
-handed an invalid container name later.
+handed an invalid container name later. The endpoint is the account's HTTPS address alone: one with
+a path, a query (a pasted shared access signature, say), a fragment or user information is refused,
+and no message prints more of it than its scheme and host.
 
 ## Behaviour
 

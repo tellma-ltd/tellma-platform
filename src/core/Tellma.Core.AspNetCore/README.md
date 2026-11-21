@@ -187,16 +187,19 @@ back is under the request's own tenant, and the download opens it under that ten
 | Endpoint | What it does |
 |---|---|
 | `POST /{tenantId}/blobs/{kind}?fileName=` | Stages one file: the raw body under its declared `Content-Type`, at most `Tellma:Blobs:MaxUploadSize` (which also raises the server's body limit), `Tellma-Client` required, `tellma-long` timeout. `201 Created` with the staged blob and `Location: /{tenantId}/blobs/{kind}/{id}`; the service's refusals answer `blob-rejected` by code (`404` unknown kind, `411` no `Content-Length`, `413` too large before the body is read, `415` unsupported type, `422` quota or a refused image); a file name over 255 characters answers `400 bad-request`. A mutation, so a `ReadOnly` or `Frozen` tenant refuses it. |
-| `GET /{tenantId}/blobs/{kind}/{id}?variant=&download=` | Serves a blob the caller may read under `tellma-blobs` alone. The strong entity tag (`"{id}"`, `"{id}-{variant}"`) comes from the row, so a matching `If-None-Match` answers `304` without the store; otherwise the stored object streams with `Accept-Ranges: bytes` (`206`, `416`, `If-Range`). A blob the caller may not read, of another kind, released, or missing in the store answers `404 not-found` alike. Exempt from `Tellma-Client`; the provenance rules apply. The request timeout covers everything up to the first byte and is then lifted, so a large file streams for as long as the client reads it at the server's minimum data rate. |
+| `GET /{tenantId}/blobs/{kind}/{id}?variant=&download=` | Serves a blob the caller may read under `tellma-blobs` alone. The strong entity tag (`"{id}"`, `"{id}-{variant}"`) comes from the row, so a matching `If-None-Match` answers `304` without the store; otherwise the stored object streams with `Accept-Ranges: bytes` (`206`, `416`, `If-Range`). A blob the caller may not read, of another kind, released, or missing in the store answers `404 not-found` alike. Exempt from `Tellma-Client`; the provenance rules apply. The web timeout covers everything up to the opened object; the transfer then has its own deadline, `Tellma:Api:LongRequestTimeout` plus the object's length at 32 KiB/s, past which the connection is aborted, so a slow or stalled reader holds its `tellma-blobs` permit for no longer than that. |
 
 Every download response, a problem's included, carries `Content-Security-Policy: frame-ancestors
 'self'` and `X-Content-Type-Options: nosniff`. A committed blob is cached
-`private, max-age=31536000, immutable`, a staged one `private, no-store`. Images, PDF, plain text,
+`private, max-age=31536000, immutable`, a staged one `private, no-store`; only the object and a
+`304` carry the tag and that caching, and every other blob answer (a refusal, a problem, a `416`)
+carries `Cache-Control: no-store` and no tag, so a missing object that is restored is served on the
+next request. Images, PDF, plain text,
 CSV and JSON open `inline` unless `download=true`; every other type is an `attachment`; the file
 name travels as `filename*=UTF-8''…`. A stored primary whose length is not its row's answers
 `500 internal` rather than serving corrupt bytes. `tellma.blobs.downloads` counts each answer by
-kind (a declared one) and outcome (`served`, `not_modified`, `not_found`) on the `Tellma.Core`
-meter.
+kind (a declared one) and outcome (`served` when the response starts as `200` or `206`,
+`not_modified`, `not_found`) on the `Tellma.Core` meter; a `416` or `412` is not counted.
 
 ### Limits
 
