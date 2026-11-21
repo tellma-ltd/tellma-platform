@@ -104,10 +104,9 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 
 | PC | Slot | Branch | Step | Implementer agent (name / id) | Reviewer agent (name / id) | Started (UTC) |
 |---|---|---|---|---|---|---|
-| PC-147 | pc-2 | pc/PC-147 | integrating | R1 0/0/9 (dac43255); fix1 e7a8bf75; R2 fable 0/0/5; fix2 8076570a; released 2026-11-21 after PC-148 done; D-163 | 0021-d; two reviews (R2 fable, security-bound) | 2026-11-20 |
-| PC-089 | pc-1 | pc/PC-089 | impl | launched after PC-148 done; high; R2 on fable (security-bound) | 0017-d | 2026-11-21 |
-| PC-090 | pc-3 | pc/PC-090 | impl | launched after PC-148 done; high | 0018-d; R1 only | 2026-11-21 |
-| PC-149 | pc-4 | pc/PC-149 | impl | launched after PC-148 done; high; carries D-164 | 0022-b; R1 only | 2026-11-21 |
+| PC-089 | pc-1 | pc/PC-089 | R2 | impl dc5e9223; R1 0/2/3; fix1 24438df0 (all fixed); R2 on fable; D-168, D-169 | 0017-d | 2026-11-21 |
+| PC-090 | pc-3 | pc/PC-090 | fix1 | impl 17267a1c; R1 0/2/3; fix1 (last) then integrate; D-170 | 0018-d; R1 only | 2026-11-21 |
+| PC-149 | pc-4 | pc/PC-149 | R1 | impl 7418f050 (18 deviations; welcome email from invite frame; JobEntityLoad per D-170; 0018 §3.3 vs 0015 §5.1 flag); R1 Opus high | 0022-b; R1 only | 2026-11-21 |
 
 ## Fix items
 
@@ -444,7 +443,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-144 | 0020-e | 2 | done (711641ab; pc 44771340622 green; PR 44774613660 green) | 7d470e81, 8e457c6b, 711641ab | | D-150, D-152, D-154 |
 | PC-145 | 0020-f | 2 | done (3c61aac3; pc 44858269311 green) | 1226a7c1, e244b0f9, 3c61aac3 | | D-158; carry (D-153): add core.Job to AccessEvaluationTests' list of self-scoped securables (Filtered with no grants); carry (D-156): the core.job-retention and core.file-retention DELETE of core.Jobs must declare core.ScheduleStates (FK_ScheduleStates_LastJobId SET NULL) and every IJobEntity table (FK_<Table>_JobId SET NULL), from ForeignKeyActions.WrittenByDeleting once PC-F62 is on platform-core (whichever of PC-145 and PC-F62 lands second wires it) |
 | PC-146 | 0021-c | 2 | done (d7ebba3c; pc 44840986549 green) | 5efa9448, 261870b7, 33c39b3f, d7ebba3c | | D-151, D-153; carry from PC-099 r1 closed (Notification self-scope added) |
-| PC-147 | 0021-d | 2 | in progress | | | |
+| PC-147 | 0021-d | 2 | done (fafeca1d; pc 44893146723 green) | dac43255, e7a8bf75, 8076570a, 9bd6566b, fafeca1d | | D-163; live Azure SignalR suite deferred until provisioned (Deferred tests) |
 | PC-148 | 0022-a | 2 | done (948362a2; pc 44881789227 green) | b01932b6, b73f83e0, c0ce93b8, 9d3d364f, 948362a2 | | D-164, D-166; CI fixes root-caused the platform-core PR-run race (ActionRun awaits parked flows); carry (D-151): EnlistmentFrame.Admit admits EmailOutbox (0015 §13.3); 0021 §12 enlisted-rows-committed-with-the-completion e2e test lands here |
 | PC-149 | 0022-b | 2 | in progress | | | carry (D-164): the 0018 §3.3 welcome email and its §9 pins, enqueued from the invite action frame (needs PC-088 on platform-core), with a test that enqueues from an action frame; emit tellma.outbox.enqueued from EmailOutbox.EnqueueAsync tagged with the request's Source |
 | PC-150 | 0026-d | 2 | todo | | | |

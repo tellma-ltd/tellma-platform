@@ -6,8 +6,12 @@
 using Azure.Core;
 using Azure.Identity;
 using Azure.Monitor.OpenTelemetry.Exporter;
+using Microsoft.Azure.SignalR;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Tellma.Core.Abstractions.Hosting;
+using Tellma.Core.AspNetCore;
+using Tellma.Core.AspNetCore.Realtime;
 using Tellma.Core.AspNetCore.Routing;
 using Tellma.Core.Composition;
 using Tellma.Core.Webhooks;
@@ -23,11 +27,22 @@ namespace Tellma.Defaults.Azure.AspNetCore
         /// <summary>The configuration key of the Application Insights connection string.</summary>
         public const string ApplicationInsightsConnectionStringKey = "APPLICATIONINSIGHTS_CONNECTION_STRING";
 
+        /// <summary>The configuration key of the Azure SignalR Service connection string.</summary>
+        public const string SignalRConnectionStringKey = "Azure:SignalR:ConnectionString";
+
+        /// <summary>
+        ///     How long a negotiate's service token can open a connection. Never a close: the session
+        ///     ticket's expiry and the hub's aborts close connections.
+        /// </summary>
+        public static readonly TimeSpan SignalRAccessTokenLifetime = TimeSpan.FromMinutes(5);
+
         /// <summary>
         ///     Composes the Azure web defaults: the webhook endpoint at <c>/api/webhooks/{key}</c>, mapped
         ///     by <c>MapTellma</c> as one of the platform's tenantless routes; the Data Protection key
         ///     ring in Azure Blob storage under a Key Vault key when <c>Tellma:DataProtection:BlobUri</c>
-        ///     and <c>KeyId</c> are set; and the Azure Monitor exporter for logs, traces and metrics when
+        ///     and <c>KeyId</c> are set; the realtime hub on Azure SignalR Service, under the
+        ///     deployment's application name, when <c>Azure:SignalR:ConnectionString</c> is set; and the
+        ///     Azure Monitor exporter for logs, traces and metrics when
         ///     <c>APPLICATIONINSIGHTS_CONNECTION_STRING</c> is set. Calling it again changes nothing.
         /// </summary>
         /// <remarks>
@@ -62,6 +77,27 @@ namespace Tellma.Defaults.Azure.AspNetCore
 
             // --- Data Protection: the key ring in a blob, wrapped by a Key Vault key ---
             AzureKeyRing.Register(services, tellma.Configuration);
+
+            // --- The realtime hub on Azure SignalR Service: the hub-only token carries the subject and the hub ids ---
+            if (!string.IsNullOrWhiteSpace(tellma.Configuration[SignalRConnectionStringKey]))
+            {
+                _ = services.AddTellmaRealtime(static signalR => signalR.AddAzureSignalR(static options =>
+                {
+                    options.ClaimsProvider = static context => TellmaHubClaims.Select(context.User);
+                    options.AccessTokenLifetime = SignalRAccessTokenLifetime;
+                }));
+
+                // The application name isolates the deployment on a shared service instance; it is
+                // the registered deployment's, read when the options are first built. A deployment id
+                // that cannot name an application leaves it unset, which the hosting check reports.
+                _ = services.AddOptions<ServiceOptions>().Configure<DeploymentIdentity>(static (options, deployment) =>
+                {
+                    if (RealtimeApplicationName.TryFrom(deployment, out string? name))
+                    {
+                        options.ApplicationName = name;
+                    }
+                });
+            }
 
             // --- Azure Monitor: the exporter alone, behind the host's own instrumentation ---
             if (tellma.Configuration[ApplicationInsightsConnectionStringKey] is { } connectionString

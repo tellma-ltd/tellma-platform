@@ -1,0 +1,44 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <!-- The test-tree props add a global `using Xunit` for every project under test/. This one is
+         plumbing rather than a suite and references only xunit's extensibility core (for the
+         running test's cancellation token), so files that need xunit say so with their own using. -->
+    <Using Remove="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The host under test: the real AddTellma, UseTellma and MapTellma. -->
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <ProjectReference Include="..\..\..\src\core\Tellma.Core.AspNetCore\Tellma.Core.AspNetCore.csproj" />
+    <!-- The in-memory blob store and the fixed tenant settings the host stands on. -->
+    <ProjectReference Include="..\..\..\src\core\Tellma.Core.Testing\Tellma.Core.Testing.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- No test SDK: omitting Microsoft.NET.Test.Sdk keeps IsTestProject false, so
+         `dotnet test Tellma.slnx` never tries to run it. -->
+    <PackageReference Include="Microsoft.AspNetCore.TestHost" />
+    <!-- The hub's clients, connected over the test server. -->
+    <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" />
+    <!-- Bearer tokens minted against the test issuer's key. -->
+    <PackageReference Include="Microsoft.IdentityModel.JsonWebTokens" />
+    <!-- FakeTimeProvider, the host's clock. -->
+    <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" />
+    <!-- The running test's cancellation token. -->
+    <PackageReference Include="xunit.v3.extensibility.core" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The tenant catalog's in-memory reader, shared with the core suite rather than copied. -->
+    <Compile Include="..\..\core\Tellma.Core.Tests\Infrastructure\FakeCatalogReader.cs" Link="FakeCatalogReader.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The suites that host the web host: the host's own, and the Azure web defaults' offline and live. -->
+    <InternalsVisibleTo Include="Tellma.Core.AspNetCore.Tests" />
+    <InternalsVisibleTo Include="Tellma.Defaults.Azure.Tests" />
+    <InternalsVisibleTo Include="Tellma.Defaults.Azure.AspNetCore.IntegrationTests" />
+  </ItemGroup>
+
+</Project>

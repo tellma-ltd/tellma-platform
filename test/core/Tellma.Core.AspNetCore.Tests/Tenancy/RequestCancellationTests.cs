@@ -7,8 +7,8 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using System.Net;
 using System.Net.Http.Json;
-using Tellma.Core.AspNetCore.Tests.Infrastructure;
 using Tellma.Core.Data;
+using Tellma.Testing.WebHost;
 
 namespace Tellma.Core.AspNetCore.Tests.Tenancy
 {

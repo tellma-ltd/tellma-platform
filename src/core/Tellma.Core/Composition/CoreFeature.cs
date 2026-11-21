@@ -236,8 +236,8 @@ namespace Tellma.Core.Composition
                 .NotificationType(new NotificationTypeDescriptor("core.user.added", "users", Mutable: true, TargetResource: null))
                 .NotificationChannel(new NotificationChannelDescriptor(InboxChannel, DefaultEnabled: true))
                 .NotificationChannel(new NotificationChannelDescriptor(EmailChannel, DefaultEnabled: false))
-                .ClientEvent("inbox.changed")
-                .ClientEvent("session.ended");
+                .ClientEvent(Notifier.InboxChangedEvent)
+                .ClientEvent(SessionEndedEvent.Name);
 
             // --- The email outbox: the rows and their stack, the outbox, the sending jobs' handler,
             // the attachments' blob kind and the two table types ---

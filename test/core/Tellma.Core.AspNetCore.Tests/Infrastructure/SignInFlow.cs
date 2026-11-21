@@ -5,6 +5,7 @@
 
 using Microsoft.Net.Http.Headers;
 using System.Net;
+using Tellma.Testing.WebHost;
 
 namespace Tellma.Core.AspNetCore.Tests.Infrastructure
 {

@@ -85,6 +85,9 @@
     <!-- The host's suite replaces the catalog reader with an in-memory catalog, so the hosts it
          starts never reach for a SQL Server. -->
     <InternalsVisibleTo Include="Tellma.Core.AspNetCore.Tests" />
+    <!-- The shared web test host, which the host's suite and the Azure web defaults' suites start,
+         replaces the catalog reader the same way. -->
+    <InternalsVisibleTo Include="Tellma.Testing.WebHost" />
     <!-- The tool that regenerates the pinned culture data calls the generator this assembly holds,
          so the data's text form has one writer and one reader. A developer tool, never shipped. -->
     <InternalsVisibleTo Include="Tellma.CultureData.Generator" />

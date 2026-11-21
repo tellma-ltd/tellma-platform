@@ -7,9 +7,9 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using System.Net;
 using System.Net.Http.Headers;
-using Tellma.Core.AspNetCore.Tests.Infrastructure;
 using Tellma.Testing.Support.Http;
 using Tellma.Testing.Support.Logging;
+using Tellma.Testing.WebHost;
 
 namespace Tellma.Core.AspNetCore.Tests.Observability
 {
