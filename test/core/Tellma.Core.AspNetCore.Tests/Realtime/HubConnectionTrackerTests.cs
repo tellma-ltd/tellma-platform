@@ -9,7 +9,6 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Diagnostics.Metrics.Testing;
 using Microsoft.Extensions.Logging;
-using System.Diagnostics;
 using System.Text.Json;
 using Tellma.Core.Abstractions.Api;
 using Tellma.Core.Abstractions.Realtime;
@@ -261,14 +260,21 @@ namespace Tellma.Core.AspNetCore.Tests.Realtime
             await using HubClient live = await RealtimeTestHost.ConnectAsync(host, RealtimeTestHost.Active, ann);
             await using HubClient first = await RealtimeTestHost.ConnectAsync(host, RealtimeTestHost.Active, ann);
             await using HubClient second = await RealtimeTestHost.ConnectAsync(host, RealtimeTestHost.Active, ann);
-            manager!.StalledConnections[first.Connection.ConnectionId!] = true;
-            manager.StalledConnections[second.Connection.ConnectionId!] = true;
+            // A closed client forgets its id, so the ids are taken while the connections are open.
+            string[] stalledIds = [.. new[] { first.Connection.ConnectionId!, second.Connection.ConnectionId! }.Order(StringComparer.Ordinal)];
+            foreach (string id in stalledIds)
+            {
+                manager!.StalledConnections[id] = true;
+            }
 
             // --- Two sends that never complete wait out their bounds side by side, not one after the other ---
-            var elapsed = Stopwatch.StartNew();
-            await host.Services.GetRequiredService<HubConnectionTracker>().TenantAccessRevokedAsync(RealtimeTestHost.Active, "ann");
-            elapsed.Stop();
-            Assert.True(elapsed.Elapsed < HubConnectionTracker.SendBound * 2, $"The close took {elapsed.Elapsed}.");
+            // The second starts while the first still waits on its bound, which a close made one send
+            // after the other cannot do, whatever the runner's pace; the close then ends on its own.
+            await Patience.WaitAsync(host.Services.GetRequiredService<HubConnectionTracker>().TenantAccessRevokedAsync(RealtimeTestHost.Active, "ann"));
+            RecordingLifetimeManager.StalledSend[] stalled = [.. manager!.StalledSends];
+            Assert.Equal(stalledIds, stalled.Select(static send => send.ConnectionId).Order(StringComparer.Ordinal));
+            Assert.True(stalled[1].EarlierStillWaiting, "The second stalled send started only after the first had reached its bound.");
+            Assert.All(stalled, static send => Assert.True(send.Bound.IsCancellationRequested));
 
             // --- The live connection told, every connection closed, the stalled ones counted untold ---
             Assert.Equal("access-revoked", Envelope.Payload(await live.NextAsync(), "reason"));

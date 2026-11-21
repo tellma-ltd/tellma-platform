@@ -19,48 +19,72 @@ namespace Tellma.Core.AspNetCore.Tests.Limits
 {
     /// <summary>
     ///     The request timeouts through the real pipeline, lowered through configuration or fired
-    ///     while the endpoint runs: a request
-    ///     that outlives its policy answers 504 <c>timeout</c> when nothing was written, its data access
-    ///     is cancelled with it, a long endpoint's own policy outlasts its group's, and a response the
-    ///     timeout cuts short is aborted rather than ended as though it were whole. A write sent
-    ///     before its timeout, which runs to its end and may commit, and an answer whose body writer
-    ///     began after it, lose their connection rather than answer a 504, a 500 or a whole 200.
+    ///     while the endpoint runs: a request that outlives its policy answers 504 <c>timeout</c> when
+    ///     nothing was written, its data access is cancelled with it, a long endpoint's own policy
+    ///     outlasts its group's, and a response the timeout cuts short is aborted rather than ended as
+    ///     though it were whole. A write sent before its timeout, which runs to its end and may commit,
+    ///     and an answer whose body writer began after it, lose their connection rather than answer a
+    ///     504, a 500 or a whole 200.
     /// </summary>
+    /// <remarks>
+    ///     A timer lowered through configuration starts at the timeout stage, ahead of the tenant front
+    ///     door and the access guard, and the first request through a fresh host runs that stretch
+    ///     cold: on a loaded runner it takes seconds. So a test whose scenario needs the endpoint
+    ///     running when the timeout fires fires it from the endpoint, and a lowered timer is kept only
+    ///     where the answer is the same wherever it fires.
+    /// </remarks>
     public sealed class RequestTimeoutTests
     {
         private static CancellationToken Token => TestContext.Current.CancellationToken;
 
         [Fact]
-        public async Task A_request_past_its_timeout_answers_504_and_cancels_its_data_access()
+        public async Task A_request_past_its_configured_timeout_answers_504()
         {
-            TaskCompletionSource<bool> cancelled = new(TaskCreationOptions.RunContinuationsAsynchronously);
-            await using TellmaTestHost host = await TellmaTestHost.StartAsync(options =>
+            // The lowered timer may fire anywhere from the timeout stage on, before the endpoint runs
+            // or while it waits: with nothing written, the answer is the same.
+            await using TellmaTestHost host = await TellmaTestHost.StartAsync(static options =>
             {
                 options.Settings["Tellma:Api:RequestTimeout"] = "00:00:00.300";
-                options.Map = (_, endpoints) => endpoints.Web.MapGet("/slow", async (DataCancellation cancellation) =>
+                options.Map = static (_, endpoints) => endpoints.Web.MapGet("/slow", static async (DataCancellation cancellation) =>
                 {
                     // Stands in for a read blocked on the server: it waits on the scope's token alone.
-                    try
-                    {
-                        await Task.Delay(Timeout.InfiniteTimeSpan, cancellation.Token);
-                    }
-                    catch (OperationCanceledException)
-                    {
-                        cancelled.TrySetResult(true);
-                        throw;
-                    }
-
+                    await Task.Delay(Timeout.InfiniteTimeSpan, cancellation.Token);
                     return Results.NoContent();
                 })
                 .WithMutation(false)
                 .AllowMember();
             });
 
-            using HttpResponseMessage response = await host.Client.SendAsync(TellmaTestHost.SpaRequest(HttpMethod.Get, "/1/api/web/slow", host.Cookie()), Token);
+            using HttpResponseMessage response = await Patience.WaitAsync(host.Client.SendAsync(TellmaTestHost.SpaRequest(HttpMethod.Get, "/1/api/web/slow", host.Cookie()), Token));
 
             Assert.Equal(HttpStatusCode.GatewayTimeout, response.StatusCode);
             Assert.Equal("timeout", (await Problem.ReadAsync(response)).Code);
-            Assert.True(await cancelled.Task.WaitAsync(TimeSpan.FromSeconds(10), Token));
+        }
+
+        [Fact]
+        public async Task A_timeout_that_fires_during_a_read_cancels_its_data_access_and_answers_504()
+        {
+            TaskCompletionSource<bool> cancelled = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            await using TellmaTestHost host = await TellmaTestHost.StartAsync(options =>
+            {
+                options.Map = (_, endpoints) => endpoints.Web.MapGet("/slow", async (HttpContext context, DataCancellation cancellation) =>
+                {
+                    // Stands in for a read blocked on the server: it waits on the scope's token alone,
+                    // and the timeout fires once it waits.
+                    using CancellationTokenRegistration registration = cancellation.Token.Register(() => cancelled.TrySetResult(true));
+                    FireTimeout(context);
+                    await Task.Delay(Timeout.InfiniteTimeSpan, cancellation.Token);
+                    return Results.NoContent();
+                })
+                .WithMutation(false)
+                .AllowMember();
+            });
+
+            using HttpResponseMessage response = await Patience.WaitAsync(host.Client.SendAsync(TellmaTestHost.SpaRequest(HttpMethod.Get, "/1/api/web/slow", host.Cookie()), Token));
+
+            Assert.Equal(HttpStatusCode.GatewayTimeout, response.StatusCode);
+            Assert.Equal("timeout", (await Problem.ReadAsync(response)).Code);
+            Assert.True(await Patience.WaitAsync(cancelled.Task));
         }
 
         [Fact]
@@ -68,8 +92,11 @@ namespace Tellma.Core.AspNetCore.Tests.Limits
         {
             await using TellmaTestHost host = await TellmaTestHost.StartAsync(static options =>
             {
+                // The group's timer is armed at the timeout stage, before the endpoint runs, so the
+                // endpoint's wait outlasts it from wherever the endpoint starts. The long policy only
+                // has to outlast the whole request, however slowly a loaded runner serves it.
                 options.Settings["Tellma:Api:RequestTimeout"] = "00:00:00.200";
-                options.Settings["Tellma:Api:LongRequestTimeout"] = "00:01:00";
+                options.Settings["Tellma:Api:LongRequestTimeout"] = "01:00:00";
                 options.Map = static (app, endpoints) =>
                 {
                     _ = endpoints.Web.MapGet("/long", static async (HttpContext context) =>
@@ -83,7 +110,7 @@ namespace Tellma.Core.AspNetCore.Tests.Limits
                 };
             });
 
-            using HttpResponseMessage response = await host.Client.SendAsync(TellmaTestHost.SpaRequest(HttpMethod.Get, "/1/api/web/long", host.Cookie()), Token);
+            using HttpResponseMessage response = await Patience.WaitAsync(host.Client.SendAsync(TellmaTestHost.SpaRequest(HttpMethod.Get, "/1/api/web/long", host.Cookie()), Token));
 
             Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
         }
@@ -109,10 +136,12 @@ namespace Tellma.Core.AspNetCore.Tests.Limits
             });
 
             using HttpRequestMessage request = TellmaTestHost.SpaRequest(HttpMethod.Get, "/1/api/web/partial", host.Cookie());
-            using HttpResponseMessage response = await host.Client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, Token);
+            using HttpResponseMessage response = await Patience.WaitAsync(host.Client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, Token));
 
+            // The abort reaches the reader: a read that only waits out the test's patience is a hang.
             Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-            _ = await Assert.ThrowsAnyAsync<Exception>(() => response.Content.ReadAsStringAsync(Token).WaitAsync(TimeSpan.FromSeconds(10), Token));
+            Exception failure = await Assert.ThrowsAnyAsync<Exception>(() => Patience.WaitAsync(response.Content.ReadAsStringAsync(Token)));
+            Assert.IsNotType<TimeoutException>(failure);
         }
 
         [Fact]
@@ -121,9 +150,9 @@ namespace Tellma.Core.AspNetCore.Tests.Limits
             TaskCompletionSource<bool> committed = new(TaskCreationOptions.RunContinuationsAsynchronously);
             await using TellmaTestHost host = await StartAsync("/act", HttpMethod.Post, persists: true, committed, static () => ActionAnswers.Of(new Dictionary<string, int> { ["id"] = 1 }, typeof(Dictionary<string, int>), preSerialized: false));
 
-            await AssertConnectionFailsAsync(host, HttpMethod.Post, "/act");
+            await AssertConnectionFailsAsync(host, HttpMethod.Post, "/act", committed.Task);
 
-            Assert.True(await committed.Task.WaitAsync(TimeSpan.FromSeconds(10), Token));
+            Assert.True(committed.Task.IsCompletedSuccessfully);
         }
 
         [Fact]
@@ -132,9 +161,9 @@ namespace Tellma.Core.AspNetCore.Tests.Limits
             TaskCompletionSource<bool> committed = new(TaskCreationOptions.RunContinuationsAsynchronously);
             await using TellmaTestHost host = await StartAsync("/save", HttpMethod.Post, persists: true, committed, static () => Results.Ok(LargeReadBack()));
 
-            await AssertConnectionFailsAsync(host, HttpMethod.Post, "/save");
+            await AssertConnectionFailsAsync(host, HttpMethod.Post, "/save", committed.Task);
 
-            Assert.True(await committed.Task.WaitAsync(TimeSpan.FromSeconds(10), Token));
+            Assert.True(committed.Task.IsCompletedSuccessfully);
         }
 
         [Fact]
@@ -143,7 +172,7 @@ namespace Tellma.Core.AspNetCore.Tests.Limits
             TaskCompletionSource<bool> answered = new(TaskCreationOptions.RunContinuationsAsynchronously);
             await using TellmaTestHost host = await StartAsync("/read", HttpMethod.Get, persists: false, answered, static () => ActionAnswers.Of(LargeReadBack(), typeof(List<ReadBackRow>), preSerialized: false));
 
-            await AssertConnectionFailsAsync(host, HttpMethod.Get, "/read");
+            await AssertConnectionFailsAsync(host, HttpMethod.Get, "/read", answered.Task);
         }
 
         [Fact]
@@ -215,16 +244,25 @@ namespace Tellma.Core.AspNetCore.Tests.Limits
             });
         }
 
-        /// <summary>Asserts a request's connection fails: no status, neither a 504, a 500 nor a 200, reaches its client.</summary>
+        /// <summary>
+        ///     Asserts a request's connection fails once its endpoint finished past the timeout: no
+        ///     status, neither a 504, a 500 nor a 200, reaches its client.
+        /// </summary>
         /// <param name="host">The host.</param>
         /// <param name="method">The method.</param>
         /// <param name="path">The endpoint's path under the web surface.</param>
+        /// <param name="finished">Completes once the endpoint's work finished past the timeout, before its answer is written.</param>
         /// <returns>A task that completes when the assertion holds.</returns>
-        private static async Task AssertConnectionFailsAsync(TellmaTestHost host, HttpMethod method, string path)
+        private static async Task AssertConnectionFailsAsync(TellmaTestHost host, HttpMethod method, string path, Task finished)
         {
             using HttpRequestMessage request = TellmaTestHost.SpaRequest(method, "/1/api/web" + path, host.Cookie());
+            Task<HttpResponseMessage> sent = host.Client.SendAsync(request, Token);
+
+            // --- The endpoint ran and finished, however long the cold host took to reach it ---
+            // Its answer is written only then, so what follows waits on that answer alone.
+            await Patience.SignalledAsync(finished, sent);
             HttpResponseMessage? response = null;
-            Exception? failure = await Record.ExceptionAsync(async () => response = await host.Client.SendAsync(request, Token).WaitAsync(TimeSpan.FromSeconds(10), Token));
+            Exception? failure = await Record.ExceptionAsync(async () => response = await Patience.WaitAsync(sent));
 
             using (response)
             {

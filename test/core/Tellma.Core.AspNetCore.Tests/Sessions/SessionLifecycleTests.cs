@@ -147,10 +147,12 @@ namespace Tellma.Core.AspNetCore.Tests.Sessions
                 return null;
             };
 
+            DateTimeOffset start = host.Time.GetUtcNow();
+            long mark = host.Time.Mark();
             Task<HttpResponseMessage>[] requests = [.. Enumerable.Range(0, 8).Select(_ => GetUserAsync(host, session.Cookie))];
-            await Task.Delay(200, TestContext.Current.CancellationToken);
+            await JoinedAsync(host, mark, start, requests.Length);
             gate.SetResult();
-            HttpResponseMessage[] responses = await Task.WhenAll(requests).WaitAsync(RealTimeLimit, TestContext.Current.CancellationToken);
+            HttpResponseMessage[] responses = await Patience.WaitAsync(Task.WhenAll(requests));
 
             Assert.All(responses, static response => Assert.Equal(HttpStatusCode.OK, response.StatusCode));
             Assert.Equal(1, host.IdentityServer.Redemptions);
@@ -182,10 +184,12 @@ namespace Tellma.Core.AspNetCore.Tests.Sessions
                 return null;
             };
 
+            DateTimeOffset start = host.Time.GetUtcNow();
+            long mark = host.Time.Mark();
             Task<HttpResponseMessage>[] requests = [.. Enumerable.Range(0, 8).Select(_ => GetUserAsync(host, session.Cookie))];
-            await Task.Delay(200, TestContext.Current.CancellationToken);
+            await JoinedAsync(host, mark, start, requests.Length);
             gate.SetResult();
-            HttpResponseMessage[] responses = await Task.WhenAll(requests).WaitAsync(RealTimeLimit, TestContext.Current.CancellationToken);
+            HttpResponseMessage[] responses = await Patience.WaitAsync(Task.WhenAll(requests));
 
             // --- One redemption served every request, and no identity reached two of them ---
             Assert.All(responses, static response => Assert.Equal(HttpStatusCode.OK, response.StatusCode));
@@ -377,14 +381,21 @@ namespace Tellma.Core.AspNetCore.Tests.Sessions
             authority.Answers.Enqueue(RotatingAnswer.Stalled);
             TestSession session = host.Session(accessTokenLifetime: TimeSpan.FromSeconds(30));
 
+            DateTimeOffset start = host.Time.GetUtcNow();
+            long mark = host.Time.Mark();
+
             // --- The identity server spends the token but answers only after the deadline ---
+            // The deadline and the request's wait on the refresh come due together: the request is
+            // served on its tokens, and the redemption is tried again once its pause lapses.
             Task<HttpResponseMessage> pending = GetUserAsync(host, session.Cookie);
-            await UntilAsync(() => host.IdentityServer.Redemptions == 1);
-            await AdvanceAsync(host, TimeSpan.FromSeconds(12));
-            using HttpResponseMessage first = await pending.WaitAsync(RealTimeLimit, TestContext.Current.CancellationToken);
+            await Patience.UntilAsync(() => host.IdentityServer.Redemptions == 1, "the first redemption");
+            mark = await host.Time.AdvanceToAsync(mark, start + OidcTokenRedeemer.Timeout, count: 2);
+            using HttpResponseMessage first = await Patience.WaitAsync(pending);
+            _ = await host.Time.AdvanceToAsync(mark, start + OidcTokenRedeemer.Timeout + SessionRefresher.RetryPause);
+            await Patience.UntilAsync(() => host.Rows.TokensVersion(session.Key) == 1, "the retried redemption's tokens stored");
 
             // --- The session's next request comes after the leeway of the token's first redemption ---
-            await AdvanceAsync(host, TimeSpan.FromSeconds(23));
+            host.Time.SetUtcNow(start + PastTheLeeway);
             using HttpResponseMessage later = await GetUserAsync(host, session.Cookie);
 
             Assert.Equal(HttpStatusCode.OK, first.StatusCode);
@@ -402,11 +413,15 @@ namespace Tellma.Core.AspNetCore.Tests.Sessions
             authority.Answers.Enqueue(RotatingAnswer.Malformed);
             TestSession session = host.Session(accessTokenLifetime: TimeSpan.FromSeconds(30));
 
+            DateTimeOffset start = host.Time.GetUtcNow();
+            long mark = host.Time.Mark();
+
+            // --- The answer cannot be read: the redemption is tried again once its pause lapses ---
             Task<HttpResponseMessage> pending = GetUserAsync(host, session.Cookie);
-            await UntilAsync(() => host.IdentityServer.Redemptions == 1);
-            await AdvanceAsync(host, TimeSpan.FromSeconds(12));
-            using HttpResponseMessage first = await pending.WaitAsync(RealTimeLimit, TestContext.Current.CancellationToken);
-            await AdvanceAsync(host, TimeSpan.FromSeconds(23));
+            await Patience.UntilAsync(() => host.IdentityServer.Redemptions == 1, "the first redemption");
+            _ = await host.Time.AdvanceToAsync(mark, start + SessionRefresher.RetryPause);
+            using HttpResponseMessage first = await Patience.WaitAsync(pending);
+            host.Time.SetUtcNow(start + PastTheLeeway);
             using HttpResponseMessage later = await GetUserAsync(host, session.Cookie);
 
             Assert.Equal(HttpStatusCode.OK, first.StatusCode);
@@ -427,8 +442,9 @@ namespace Tellma.Core.AspNetCore.Tests.Sessions
                 "sub-1", nonce: null, TimeSpan.FromHours(1), acr: "urn:tellma:acr:aal3", shape: static claims => claims["name"] = "Someone Else", key: unknown, refreshToken: refreshToken);
             TestSession session = host.Session(acr: "urn:tellma:acr:aal1", accessTokenLifetime: TimeSpan.FromSeconds(30));
 
+            // The request is served once its refresh ended, so nothing waits on the clock it moves.
             using HttpResponseMessage response = await GetUserAsync(host, session.Cookie);
-            await AdvanceAsync(host, TimeSpan.FromSeconds(35));
+            host.Time.Advance(PastTheLeeway);
             using HttpResponseMessage later = await GetUserAsync(host, session.Cookie);
 
             // --- The keys were read again once; the tokens were stored, the claims left as they were ---
@@ -459,12 +475,16 @@ namespace Tellma.Core.AspNetCore.Tests.Sessions
             authority.Issue = refreshToken => FakeIdentityServer.Tokens("sub-1", nonce: null, TimeSpan.FromHours(1), key: rolled, refreshToken: refreshToken);
             TestSession session = host.Session(accessTokenLifetime: TimeSpan.FromSeconds(30));
 
+            DateTimeOffset start = host.Time.GetUtcNow();
+            long mark = host.Time.Mark();
+
+            // --- The keys' second read never answers: the deadline ends it, and the request's wait with it ---
             Task<HttpResponseMessage> pending = GetUserAsync(host, session.Cookie);
-            await UntilAsync(() => manager.Refreshes == 1);
-            await AdvanceAsync(host, TimeSpan.FromSeconds(6));
-            using HttpResponseMessage first = await pending.WaitAsync(RealTimeLimit, TestContext.Current.CancellationToken);
-            await UntilAsync(() => host.Rows.TokensVersion(session.Key) == 1);
-            await AdvanceAsync(host, TimeSpan.FromSeconds(29));
+            await Patience.UntilAsync(() => manager.Refreshes == 1, "the keys read again");
+            _ = await host.Time.AdvanceToAsync(mark, start + OidcTokenRedeemer.Timeout, count: 2);
+            using HttpResponseMessage first = await Patience.WaitAsync(pending);
+            await Patience.UntilAsync(() => host.Rows.TokensVersion(session.Key) == 1, "the tokens stored");
+            host.Time.SetUtcNow(start + PastTheLeeway);
             using HttpResponseMessage later = await GetUserAsync(host, session.Cookie);
 
             Assert.Equal(HttpStatusCode.OK, first.StatusCode);
@@ -480,10 +500,14 @@ namespace Tellma.Core.AspNetCore.Tests.Sessions
             await using TellmaTestHost host = await TellmaTestHost.StartAsync(options => options.ConfigureServices = services => TestConfigurationManager.Install(services, manager));
             TestSession session = host.Session(accessTokenLifetime: TimeSpan.FromSeconds(30));
 
+            DateTimeOffset start = host.Time.GetUtcNow();
+            long mark = host.Time.Mark();
+
+            // --- The deadline ends the read, and the request's wait with it ---
             Task<HttpResponseMessage> pending = GetUserAsync(host, session.Cookie);
-            await UntilAsync(() => manager.Reads == 1);
-            await AdvanceUntilAsync(host, () => pending.IsCompleted, OidcTokenRedeemer.Timeout + TimeSpan.FromSeconds(1));
-            using HttpResponseMessage response = await pending.WaitAsync(RealTimeLimit, TestContext.Current.CancellationToken);
+            await Patience.UntilAsync(() => manager.Reads == 1, "the metadata's read");
+            _ = await host.Time.AdvanceToAsync(mark, start + OidcTokenRedeemer.Timeout, count: 2);
+            using HttpResponseMessage response = await Patience.WaitAsync(pending);
 
             Assert.Equal(HttpStatusCode.OK, response.StatusCode);
             Assert.Equal(0, host.IdentityServer.Redemptions);
@@ -499,20 +523,25 @@ namespace Tellma.Core.AspNetCore.Tests.Sessions
             TestSession session = host.Session(accessTokenLifetime: TimeSpan.FromSeconds(30));
             host.Rows.FailingReplacements = SessionRefresher.Retries + 1;
 
+            DateTimeOffset start = host.Time.GetUtcNow();
+            long mark = host.Time.Mark();
+
             // --- The redemption succeeds; every write of its tokens fails ---
             Task<HttpResponseMessage> pending = GetUserAsync(host, session.Cookie);
-            await UntilAsync(() => host.Rows.ReplaceAttempts == 1);
+            await Patience.UntilAsync(() => host.Rows.ReplaceAttempts == 1, "the first write");
             for (int attempt = 1; attempt <= SessionRefresher.Retries; attempt++)
             {
                 // Each pause lapses, and the write is tried again.
-                await AdvanceUntilAsync(host, () => host.Rows.ReplaceAttempts > attempt, TimeSpan.FromSeconds(5));
+                mark = await host.Time.AdvanceToAsync(mark, start + (SessionRefresher.RetryPause * attempt));
+                int written = attempt + 1;
+                await Patience.UntilAsync(() => host.Rows.ReplaceAttempts == written, "the write tried again");
             }
 
-            using HttpResponseMessage first = await pending.WaitAsync(RealTimeLimit, TestContext.Current.CancellationToken);
+            using HttpResponseMessage first = await Patience.WaitAsync(pending);
             Assert.Equal(SessionRefresher.Retries + 1, host.Rows.ReplaceAttempts);
 
             // --- Past the backoff and the leeway, the next request stores the tokens already in hand ---
-            await AdvanceAsync(host, TimeSpan.FromSeconds(29));
+            host.Time.SetUtcNow(start + PastTheLeeway);
             using HttpResponseMessage later = await GetUserAsync(host, session.Cookie);
 
             Assert.Equal(HttpStatusCode.OK, first.StatusCode);
@@ -551,12 +580,14 @@ namespace Tellma.Core.AspNetCore.Tests.Sessions
             TestSession session = host.Session(accessTokenLifetime: TimeSpan.FromSeconds(30));
             host.IdentityServer.StallRefresh = true;
 
-            // The clock moves a second at a time until the request is answered, so a wait armed after a
-            // move is still released by a later one.
+            // The clock moves once the redemption's deadline and the request's wait on the refresh are
+            // both in place, and the two come due together.
+            DateTimeOffset start = host.Time.GetUtcNow();
+            long mark = host.Time.Mark();
             Task<HttpResponseMessage> pending = GetUserAsync(host, session.Cookie);
-            await UntilAsync(() => host.IdentityServer.Redemptions > 0);
-            await AdvanceUntilAsync(host, () => pending.IsCompleted, OidcTokenRedeemer.Timeout + TimeSpan.FromSeconds(3));
-            using HttpResponseMessage response = await pending.WaitAsync(RealTimeLimit, TestContext.Current.CancellationToken);
+            await Patience.UntilAsync(() => host.IdentityServer.Redemptions > 0, "the redemption");
+            _ = await host.Time.AdvanceToAsync(mark, start + OidcTokenRedeemer.Timeout, count: 2);
+            using HttpResponseMessage response = await Patience.WaitAsync(pending);
 
             Assert.Equal(HttpStatusCode.OK, response.StatusCode);
             Assert.Equal([session.Key], host.Rows.Keys());
@@ -585,8 +616,11 @@ namespace Tellma.Core.AspNetCore.Tests.Sessions
             Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
         }
 
-        /// <summary>How long a test waits in real time for a request the fake clock should have released.</summary>
-        private static readonly TimeSpan RealTimeLimit = TimeSpan.FromSeconds(30);
+        /// <summary>
+        ///     How far past a session's sign-in its next request comes when that request must fall after
+        ///     the identity server's reuse leeway of the token first redeemed at the sign-in's instant.
+        /// </summary>
+        private static readonly TimeSpan PastTheLeeway = new TellmaIdentityLifetimeOptions().RefreshTokenReuseLeeway + TimeSpan.FromSeconds(5);
 
         /// <summary>Answers the host's refresh grants as the platform's identity server does, with its reuse leeway.</summary>
         /// <param name="host">The host.</param>
@@ -598,44 +632,22 @@ namespace Tellma.Core.AspNetCore.Tests.Sessions
             return authority;
         }
 
-        /// <summary>Moves the fake clock a second at a time, letting what each second releases run.</summary>
+        /// <summary>
+        ///     Waits until every request of a session waits on its one refresh. Each waits on the flight
+        ///     with a timer on the host's clock, and the redemption, held at the identity server, waits on
+        ///     its own deadline, which comes due with them when the two are as long.
+        /// </summary>
         /// <param name="host">The host.</param>
-        /// <param name="span">How far to move it.</param>
-        /// <returns>A task that completes when the clock has moved.</returns>
-        private static async Task AdvanceAsync(TellmaTestHost host, TimeSpan span)
+        /// <param name="mark">The clock's mark, taken before the requests were sent.</param>
+        /// <param name="start">The clock's reading when they were sent; it has not moved since.</param>
+        /// <param name="requests">How many requests were sent.</param>
+        /// <returns>A task that completes once they all wait.</returns>
+        private static Task JoinedAsync(TellmaTestHost host, long mark, DateTimeOffset start, int requests)
         {
-            for (TimeSpan moved = TimeSpan.Zero; moved < span; moved += TimeSpan.FromSeconds(1))
-            {
-                host.Time.Advance(TimeSpan.FromSeconds(1));
-                await Task.Delay(25, TestContext.Current.CancellationToken);
-            }
-        }
-
-        /// <summary>Moves the fake clock a second at a time until a condition holds, or as far as a limit.</summary>
-        /// <param name="host">The host.</param>
-        /// <param name="condition">The condition.</param>
-        /// <param name="limit">How far the clock may move.</param>
-        /// <returns>A task that completes when the condition holds or the clock has moved the limit.</returns>
-        private static async Task AdvanceUntilAsync(TellmaTestHost host, Func<bool> condition, TimeSpan limit)
-        {
-            for (TimeSpan moved = TimeSpan.Zero; moved < limit && !condition(); moved += TimeSpan.FromSeconds(1))
-            {
-                host.Time.Advance(TimeSpan.FromSeconds(1));
-                await Task.Delay(25, TestContext.Current.CancellationToken);
-            }
-        }
-
-        /// <summary>Waits in real time until a condition holds.</summary>
-        /// <param name="condition">The condition.</param>
-        /// <returns>A task that completes when it holds.</returns>
-        private static async Task UntilAsync(Func<bool> condition)
-        {
-            using var limit = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
-            limit.CancelAfter(RealTimeLimit);
-            while (!condition())
-            {
-                await Task.Delay(10, limit.Token);
-            }
+            int timers = requests + (OidcTokenRedeemer.Timeout == SessionRefresher.FlightWait ? 1 : 0);
+            return Patience.UntilAsync(
+                () => host.Time.Waiting(mark, start + SessionRefresher.FlightWait) >= timers,
+                $"{requests} requests waiting on the one refresh");
         }
 
         /// <summary>Reads the user document as the SPA does.</summary>

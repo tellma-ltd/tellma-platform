@@ -391,7 +391,7 @@ namespace Tellma.Core.AspNetCore.Tests.Hosting
             /// <returns>The outcome.</returns>
             public Task<EmailSendResult> WaitForAsync(string reference)
             {
-                return Pending(reference).Task.WaitAsync(TimeSpan.FromSeconds(30));
+                return Patience.WaitAsync(Pending(reference).Task);
             }
 
             /// <inheritdoc />

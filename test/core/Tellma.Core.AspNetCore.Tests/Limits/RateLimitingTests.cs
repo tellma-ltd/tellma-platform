@@ -128,16 +128,23 @@ namespace Tellma.Core.AspNetCore.Tests.Limits
         public async Task A_refusal_is_counted_as_rate_limited_and_names_the_lane_on_the_report_policy()
         {
             TaskCompletionSource running = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            TaskCompletionSource batchRunning = new(TaskCreationOptions.RunContinuationsAsynchronously);
             TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
             await using TellmaTestHost host = await TellmaTestHost.StartAsync(options =>
             {
                 options.Settings["Tellma:Api:ConcurrentReportsPerUser"] = "1";
                 options.Settings["Tellma:Api:ReportQueuePerUser"] = "0";
 
-                // A later surface's report endpoint: its policy is metadata alone.
-                options.Map = (_, endpoints) => endpoints.Web.MapGet("/report", async () =>
+                // The held report outlives the test's other requests whatever their pace: the web
+                // timeout, a real timer, is not what this test pins.
+                options.Settings["Tellma:Api:RequestTimeout"] = "01:00:00";
+                options.Settings["Tellma:Api:LongRequestTimeout"] = "01:00:00";
+
+                // A later surface's report endpoint: its policy is metadata alone. Each run says it
+                // started, by its lane, and holds its permit until the test releases it.
+                options.Map = (_, endpoints) => endpoints.Web.MapGet("/report", async (HttpContext context) =>
                 {
-                    running.TrySetResult();
+                    (context.Request.Headers[TellmaHeaders.Priority] == "low" ? batchRunning : running).SetResult();
                     await release.Task;
                     return Results.NoContent();
                 })
@@ -149,18 +156,33 @@ namespace Tellma.Core.AspNetCore.Tests.Limits
             string cookie = host.Cookie();
 
             // --- One report holds the interactive permit; a second is refused, a tile's batch run is not ---
+            // The first request is the host's first, which runs cold: the test waits for each run to
+            // start, however long that takes, and hears at once when a request ends without it.
             Task<HttpResponseMessage> holding = host.Client.SendAsync(TellmaTestHost.SpaRequest(HttpMethod.Get, "/1/api/web/report", cookie), Token);
-            await running.Task.WaitAsync(TimeSpan.FromSeconds(10), Token);
-            using HttpResponseMessage second = await host.Client.SendAsync(TellmaTestHost.SpaRequest(HttpMethod.Get, "/1/api/web/report", cookie), Token);
+            HttpResponseMessage? second = null;
+            Task<HttpResponseMessage>? batch = null;
             using HttpRequestMessage tile = TellmaTestHost.SpaRequest(HttpMethod.Get, "/1/api/web/report", cookie);
             tile.Headers.Add(TellmaHeaders.Priority, "low");
-            release.TrySetResult();
-            using HttpResponseMessage batch = await host.Client.SendAsync(tile, Token);
-            using HttpResponseMessage first = await holding;
+            try
+            {
+                await Patience.SignalledAsync(running.Task, holding);
+                second = await host.Client.SendAsync(TellmaTestHost.SpaRequest(HttpMethod.Get, "/1/api/web/report", cookie), Token);
+                batch = host.Client.SendAsync(tile, Token);
+                await Patience.SignalledAsync(batchRunning.Task, batch);
+            }
+            finally
+            {
+                // Released on a failed wait too, so the held runs end and the host stops without them.
+                release.TrySetResult();
+            }
+
+            using HttpResponseMessage refused = second;
+            using HttpResponseMessage first = await Patience.WaitAsync(holding);
+            using HttpResponseMessage tiled = await Patience.WaitAsync(batch);
 
             Assert.Equal(HttpStatusCode.NoContent, first.StatusCode);
-            Assert.Equal(HttpStatusCode.TooManyRequests, second.StatusCode);
-            Assert.Equal(HttpStatusCode.NoContent, batch.StatusCode);
+            Assert.Equal(HttpStatusCode.TooManyRequests, refused.StatusCode);
+            Assert.Equal(HttpStatusCode.NoContent, tiled.StatusCode);
             CollectedMeasurement<long> measurement = Assert.Single(rejected.GetMeasurementSnapshot());
             Assert.Equal("rate_limited", measurement.Tags[ApiTelemetryNames.ReasonTag]);
             Assert.Equal("interactive", measurement.Tags[ApiTelemetryNames.LaneTag]);

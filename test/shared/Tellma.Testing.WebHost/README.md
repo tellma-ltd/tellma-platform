@@ -14,12 +14,14 @@ Service instance). Its types are internal, visible to those three.
 | File | Contents |
 |---|---|
 | [TellmaTestHost](TellmaTestHost.cs) | The host and its options (`TestHostOptions`): the environment, the settings (sound ones by default, the realtime hub off), the catalog rows, the composition and web composition delegates, extra services, and what is mapped. It mints session cookies over stored rows, bearer tokens against the test issuer's key, and the SPA's requests. |
+| [TestClock](TestClock.cs) | The host's fake clock, which also keeps the timers armed on it: a test moves it to an instant once the timers it expects there are armed, never on a guess at how long the host takes to arm them. |
+| [Patience](Patience.cs) | How a test waits for what a correct host does on its own (a signal, a condition, a request's end): a two-minute limit that only ends a hang, since a cold host on a loaded runner takes seconds where an idle one takes milliseconds. |
 | [ProbeEndpoints](ProbeEndpoints.cs) | Endpoints on every surface that answer the request context they ran under. |
 | [TestUsers](TestUsers.cs) | The scripted user connection: user ids, deactivations, a failure every prologue round trip throws, and the count of those round trips. |
 | [InMemorySessionRows](InMemorySessionRows.cs) | The session table in memory, with its renewals counted. |
 | [FakeMembershipDirectory](FakeMembershipDirectory.cs) | The membership hints in memory, a failure every read throws, and a count of the reads. |
 | [FakeReconcileStore](FakeReconcileStore.cs) | The membership reconciliation's store in memory. |
 | [FakeIdentityServer](FakeIdentityServer.cs) | The identity server's back channel: the pushed authorization and token requests answered from a script. |
-| [Realtime/RealtimeTestHost](Realtime/RealtimeTestHost.cs) | The host with the hub on, in the in-process mode, over five tenants in each state; `HubClient`, a client over the test server's WebSockets that records its events and its close; `ConnectedProbe`, a hub filter that signals when the hub finished a connection's connect; and `Envelope`, which reads a received event. |
+| [Realtime/RealtimeTestHost](Realtime/RealtimeTestHost.cs) | The host with the hub on, in the in-process mode, over five tenants in each state; `HubClient`, a client over the test server's WebSockets that records its events and its close; `ConnectedProbe`, a hub filter that signals when the hub finished a connection's connect, by its id or by the token its WebSocket connected with; and `Envelope`, which reads a received event. |
 
 The tenant catalog's in-memory reader is linked from `Tellma.Core.Tests` rather than copied.
