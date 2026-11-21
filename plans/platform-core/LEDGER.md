@@ -104,10 +104,10 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 
 | PC | Slot | Branch | Step | Implementer agent (name / id) | Reviewer agent (name / id) | Started (UTC) |
 |---|---|---|---|---|---|---|
-| PC-089 | pc-1 | pc/PC-089 | fix2 | impl dc5e9223; R1 0/2/3; fix1 24438df0; R2 fable 0/1/5; fix2 then hold behind PC-090; D-168, D-169, D-172 | 0017-d | 2026-11-21 |
+| PC-089 | pc-1 | pc/PC-089 | held | impl dc5e9223; R1 0/2/3; fix1 24438df0; R2 fable 0/1/5; fix2 d2513537 (all fixed); held behind PC-090 (merge-tree: two README conflicts; BlobEndpointTests may need using Tellma.Testing.WebHost); D-168, D-169, D-172 | 0017-d | 2026-11-21 |
 | PC-F65 | pc-f | pc/PC-F65 | impl | flake root cause (D-171); high; one review | fix item | 2026-11-21 |
 | PC-174 | pc-2 | pc/PC-174 | impl | T3 fill under D-140/D-173; high; carry D-131 | 0015-j; R1 only | 2026-11-21 |
-| PC-090 | pc-3 | pc/PC-090 | integrating | impl 17267a1c; R1 0/2/3; fix1 131109ae (R1-2 moved to PC-149); released at once (queue empty); D-170 | 0018-d; R1 only | 2026-11-21 |
+| PC-090 | pc-3 | pc/PC-090 | ci-fix | impl 17267a1c; R1 0/2/3; fix1 131109ae; integrate b02e2a74; pc run 44922584002 red (build-test windows cancelled at its 20-min job timeout, no test failed); CI fixes; D-170, D-175 | 0018-d; R1 only | 2026-11-21 |
 | PC-149 | pc-4 | pc/PC-149 | fix1 | impl 7418f050; R1 0/2/2; fix1 (last) then hold behind PC-090, PC-089; D-170, D-174 | 0022-b; R1 only | 2026-11-21 |
 
 ## Fix items

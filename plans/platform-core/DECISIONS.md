@@ -384,6 +384,20 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-175 (orchestrator, 2026-11-21): integration-step local runs pulled back to D-144; Windows build-test hit its 20-minute timeout
+
+- Ahmad asked whether local checks conflict with D-144. They did.
+  - My notes to PC-148 (CI fixes), PC-147 and PC-090 asked for Tellma.Core.IntegrationTests in full with the integration filter, and for full Acme integration runs. D-144 rules out full integration suites locally.
+  - At the integration step I also asked for D-151's full unit-project runs, which duplicate what the CI run on the integration commit gates anyway. PC-090's integration took ≈ 4 h under six-lane load; its 58-minute Core.AspNetCore.Tests run was one D-151 unit run.
+  - These runs also added to the machine load behind the D-171 timeouts.
+- Ruling, effective now:
+  - Integration step and CI fixes: build and format only, plus the specific tests the merge resolution or the CI fix touches. No full unit projects (CI runs them on both OSes), no full integration suites.
+  - Implementation and fix rounds: unchanged (D-144 plus D-151's full unit-project run when a shared composition changes), because there no CI run gates the commit. Full integration suites stay out.
+  - PC-149 was corrected mid-round. PC-F65's three full Core.AspNetCore.Tests runs under load stay, because that project is the subject of its fix.
+- PC-090's pc run 44922584002 went red only because build-test (windows-latest) was cancelled at its 20-minute timeout-minutes, while Tellma.Core.AspNetCore.Tests was still passing tests. Earlier Windows durations today were 12.4, 18.1 and 18.0 min.
+  - Its CI fix finds which assembly grew. If the growth is spread across the suite, it raises the timeout to 30 min with the measured durations. Without local test runs.
+  - Still open from D-105: profiling slow .NET tests.
+
 ### D-174 (orchestrator, 2026-11-21): PC-149 Review 1 rulings
 
 - PC-149 Review 1 (Opus high, 7418f050): 0 blocking, 2 major, 2 minor.
