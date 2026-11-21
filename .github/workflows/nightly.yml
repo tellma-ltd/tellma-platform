@@ -1,10 +1,9 @@
 name: Nightly live connector suites
 
-# The live SendGrid, ACS and Marmin UAE suites talk to real third-party APIs, so they are never a
-# PR gate: an
-# external service on the merge path is a permanent flakiness tax, and fork PRs cannot read the
-# secrets anyway — they would only ever skip. A daily pulse plus the offline vectors detects API or
-# credential drift within a day.
+# The live SendGrid, ACS, Marmin UAE and Azure SignalR Service suites talk to real third-party
+# APIs, so they are never a PR gate: an external service on the merge path is a permanent
+# flakiness tax, and fork PRs cannot read the secrets anyway — they would only ever skip. A daily
+# pulse plus the offline vectors detects API or credential drift within a day.
 on:
   schedule:
     - cron: '17 3 * * *' # 03:17 UTC daily
@@ -138,10 +137,36 @@ jobs:
           path: artifacts/marminae-live
           if-no-files-found: warn
 
+  signalr-live:
+    if: github.repository == 'tellma-ltd/tellma-platform'
+    runs-on: ubuntu-latest
+    # Its own environment: the realtime hub's test instance has nothing to do with the connectors'.
+    environment: live-realtime-tests
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+      # The suite gates itself on this variable being present, so a missing or expired secret would
+      # otherwise skip every test and report a green run.
+      - name: Require the Azure SignalR Service connection string
+        env:
+          TELLMA_SIGNALR_TEST_CONNECTIONSTRING: ${{ secrets.SIGNALR_TEST_CONNECTIONSTRING }}
+        run: |
+          set -euo pipefail
+          : "${TELLMA_SIGNALR_TEST_CONNECTIONSTRING:?SIGNALR_TEST_CONNECTIONSTRING is not set on the live-realtime-tests environment}"
+      - name: Realtime hub live suite (a dedicated test instance; each run its own application name)
+        env:
+          TELLMA_SIGNALR_TEST_CONNECTIONSTRING: ${{ secrets.SIGNALR_TEST_CONNECTIONSTRING }}
+        # Solution-wide and filtered by trait, for the same reason the suites above are.
+        run: >
+          dotnet test Tellma.slnx -c Release
+          --filter "Live=true&FullyQualifiedName~AzureSignalRLive"
+
   # A nightly that fails silently is a nightly that does not exist.
   report-failure:
     if: ${{ always() && github.repository == 'tellma-ltd/tellma-platform' && contains(needs.*.result, 'failure') }}
-    needs: [sendgrid-live, acs-live, marminae-live]
+    needs: [sendgrid-live, acs-live, marminae-live, signalr-live]
     runs-on: ubuntu-latest
     permissions:
       issues: write

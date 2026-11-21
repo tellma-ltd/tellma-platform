@@ -1,0 +1,13 @@
+// Hub connection attempts the front door or the hub refused, per minute and instance.
+// Backs the "hub connections are being refused" alert: a refusal is a negotiate or connect by a
+// caller who is no member of the tenant, was deactivated there, reached a suspended tenant, or
+// carried no hub claims. A few are normal as sessions and memberships change; a sustained rate is
+// a stale SPA build retrying a tenant it lost, or someone probing tenants. More than 30 a minute on
+// one instance for five minutes is a starting point.
+customMetrics
+| where name == "tellma.realtime.connects"
+| extend outcome = tostring(customDimensions["outcome"])
+| where outcome == "refused"
+| summarize refused = sum(valueSum) by cloud_RoleInstance, bin(timestamp, 1m)
+| summarize minutes = countif(refused > 30) by cloud_RoleInstance, bin(timestamp, 5m)
+| where minutes >= 5

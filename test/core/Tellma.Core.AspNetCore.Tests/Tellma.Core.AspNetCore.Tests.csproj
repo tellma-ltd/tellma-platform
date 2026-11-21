@@ -10,9 +10,14 @@
          through the real router. -->
     <ProjectReference Include="..\..\..\src\core\Tellma.Core.Email\Tellma.Core.Email.csproj" />
     <ProjectReference Include="..\..\..\src\core\Tellma.Core.Testing\Tellma.Core.Testing.csproj" />
+    <!-- The Azure web defaults, so the hub's Azure SignalR Service line is composed as a
+         distribution composes it: its negotiate offline, and the live suite against the service. -->
+    <ProjectReference Include="..\..\..\src\defaults\Tellma.Defaults.Azure.AspNetCore\Tellma.Defaults.Azure.AspNetCore.csproj" />
     <!-- The shared reading of the checked-in alert queries. -->
     <ProjectReference Include="..\..\shared\Tellma.Testing.Support\Tellma.Testing.Support.csproj" />
     <PackageReference Include="Microsoft.AspNetCore.TestHost" />
+    <!-- The hub suite's clients, connected over the test server. -->
+    <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" />
     <!-- Bearer tokens minted against the test issuer's key. -->
     <PackageReference Include="Microsoft.IdentityModel.JsonWebTokens" />
     <!-- MetricCollector, for the CSRF and step-up instruments. -->
@@ -34,6 +39,7 @@
     <!-- The host's alert queries are read at runtime and cross-checked against the emitted
          instrument, tag and tag-value names, so a telemetry rename turns an alert query red. -->
     <Content Include="..\..\..\infra\monitoring\host\*.kql" Link="AlertQueries/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\..\infra\monitoring\realtime\*.kql" Link="RealtimeAlertQueries/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

@@ -1,0 +1,15 @@
+// Connections closed for a revoked access with no session.ended handed to the transport.
+// Backs the "revocations close connections untold" alert: before the hub aborts a deactivated
+// user's connections it sends them session.ended, so the client stops reconnecting and says why.
+// A window with access-revoked closes and no session.ended events on the same instance means the
+// send failed (on Azure SignalR Service, the service refused or could not be reached) and the
+// clients saw their connections drop without a reason. Any such window is worth a look.
+customMetrics
+| where name in ("tellma.realtime.closes", "tellma.realtime.events")
+| extend reason = tostring(customDimensions["reason"])
+| extend clientEvent = tostring(customDimensions["event"])
+| summarize
+    revoked = sumif(valueSum, name == "tellma.realtime.closes" and reason == "access-revoked"),
+    told = sumif(valueSum, name == "tellma.realtime.events" and clientEvent == "session.ended")
+    by cloud_RoleInstance, bin(timestamp, 15m)
+| where revoked > 0 and told == 0

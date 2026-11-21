@@ -10,6 +10,7 @@ using System.Diagnostics;
 using System.Globalization;
 using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.AspNetCore.Authentication;
+using Tellma.Core.AspNetCore.Realtime;
 using Tellma.Core.AspNetCore.Routing;
 using Tellma.Core.Data;
 using Tellma.Core.Tenancy;
@@ -26,11 +27,13 @@ namespace Tellma.Core.AspNetCore.Tenancy
     /// <param name="next">The rest of the pipeline.</param>
     /// <param name="registry">The tenant registry.</param>
     /// <param name="metrics">The tenancy instruments.</param>
+    /// <param name="hubDoor">The hub's front door.</param>
     /// <param name="logger">The logger whose scope carries the tenant's members.</param>
     internal sealed class TenantMiddleware(
         RequestDelegate next,
         ITenantRegistry registry,
         TenancyMetrics metrics,
+        HubFrontDoor hubDoor,
         ILogger<TenantMiddleware> logger)
     {
         /// <summary>The request activity's tag naming the tenant.</summary>
@@ -59,8 +62,20 @@ namespace Tellma.Core.AspNetCore.Tenancy
                 return;
             }
 
-            int tenantId = TenantIdOf(context);
-            TenantInfo tenant = Resolve(tenantId);
+            // --- The hub: a refusal from the tenant's resolution on is a refused connection attempt ---
+            bool hub = metadata.Surface == TenantSurface.Hub;
+            int tenantId;
+            TenantInfo tenant;
+            try
+            {
+                tenantId = TenantIdOf(context);
+                tenant = Resolve(tenantId);
+            }
+            catch (Exception exception) when (hub)
+            {
+                hubDoor.Refused(exception, context);
+                throw;
+            }
 
             // --- One write: the tenant and the principal the endpoint's policy authenticated ---
             PrincipalPart principal = await PrincipalBinding.BindAsync(context).ConfigureAwait(false);
@@ -91,13 +106,18 @@ namespace Tellma.Core.AspNetCore.Tenancy
             using (logger.BeginScope(new TenantLogScope(holder)))
             {
                 // --- The hub's front door: no endpoint filter reaches a hub's connection endpoints ---
-                if (metadata.Surface == TenantSurface.Hub)
+                // The guard, the prologue and the hub claims (spec 0011 §4.3, spec 0021 §6.1).
+                if (hub)
                 {
-                    await guard.EnsureAccessAsync(
-                        new TenantAccessRequirement(IsMutation: false, Assurance: null),
-                        RequestInputs.Of(context),
-                        context.RequestAborted).ConfigureAwait(false);
-                    holder.Current.ApplyCultures();
+                    try
+                    {
+                        await HubFrontDoor.EnterAsync(context, holder, guard).ConfigureAwait(false);
+                    }
+                    catch (Exception exception)
+                    {
+                        hubDoor.Refused(exception, context);
+                        throw;
+                    }
                 }
 
                 await next(context).ConfigureAwait(false);

@@ -63,6 +63,9 @@ feature or entity added there would diverge the web host's model from the migrat
   SPA proxy), each just above the configuration files, so environment variables and the command line
   still win; a port the file does not name keeps the configuration's fallback;
 - forwarded headers from the configured proxies alone;
+- the realtime hub (`AddTellmaRealtime()`, see [Realtime](#realtime)): `Tellma:Realtime`, SignalR
+  with the hub's options and its one JSON protocol, the connection tracker as the session and
+  tenant-state listener, the SignalR client-event publisher, and the `host.realtime-hosting` check;
 - the endpoint audit (`host.endpoint-audit`) and the health checks;
 - Serilog from the `Serilog` section with the version enrichers, as the host's own logger (the
   static `Log.Logger` is left alone), replacing the framework's default logger providers: each event
@@ -125,6 +128,7 @@ Maps the tenantless platform routes and returns the tenant route groups:
 | `POST /bff/backchannel-logout` | anonymous; the identity server's logout tokens |
 | `/id/...` | the engine's own, in in-proc mode; an engine endpoint that states no authorization is anonymous, and an anonymous one authenticates the engine's sign-in cookie, never the platform's session |
 | `POST /api/webhooks/{key}` | anonymous; the webhook receivers, when the Azure web defaults compose them |
+| `/{tenantId}/hub`, `POST /{tenantId}/hub/negotiate` | the realtime hub on the `Hub` group, a member's read; unless `Tellma:Realtime:Enabled` is false |
 | the SPA's files and the navigation fallback | anonymous |
 
 A defaults bundle contributes routes of its own through the internal `IPlatformEndpointSource`
@@ -359,6 +363,53 @@ one run at once.
 The catalog's application lock keeps two instances' runs from overlapping, not from both running:
 each instance's timer runs on its own, so each may run once per interval. A run is idempotent, so a
 second one over unchanged users changes no row.
+
+## Realtime
+
+`TellmaHub` at `/{tenantId}/hub` is a server-to-client channel of client events: it declares no
+method a client can invoke, so every invocation and stream is refused (`connects{outcome=
+invocation-refused}`), and it accepts the JSON protocol alone, with frames of at most 4 KB, no
+detailed errors, and the keep-alive and client timeout of `Tellma:Realtime`.
+
+| Option | Default | Rule |
+| --- | --- | --- |
+| `Enabled` | `true` | Off: no hub is mapped (the negotiate answers 404), the publisher and the status are Core's null ones, and the hosting check passes. |
+| `KeepAliveInterval` | 15 s | Above zero. |
+| `ClientTimeoutInterval` | 150 s | At least twice the keep-alive. |
+| `ExpectedInstances` | 1 | At least one; above one without a backplane, the hosting check warns. |
+
+**The front door.** The hub's endpoints are a member's reads on the `Hub` group, stamping no
+activity and renewing no session. The tenant middleware runs the access guard, then one guarded
+batch's prologue (the user is still active in the tenant's own database, whatever the membership
+cache says), and only then adds the hub identity (`tellma_tid`, `tellma_uid`, `tellma_sh`) to the
+principal. The negotiate and the connect each pass it; the framework closes a connection when the
+session's ticket expires. The hub reads the claims from the connection's principal, never from its
+request context, which SignalR leaves tenantless: a connection without each claim exactly once is
+refused. A refusal counts `connects{outcome=refused}` and logs `HubConnectionRefused`.
+
+**Groups.** A connection joins `t{tid}`, `t{tid}.u{uid}`, `t{tid}.s{subject}` and `t{tid}.x{handle}`,
+every one its tenant's, so the same user or session in another tenant shares no group. The
+publisher sends an event to the scope's tenant group, or to the user groups it names in that tenant.
+
+**Closes.** `HubConnectionTracker` holds the instance's connections. A session that ends, a user
+whose access to a tenant is revoked, and a tenant that is suspended, retired or leaves the registry
+each send `session.ended` (`session-terminated`, `access-revoked`, `tenant-unavailable`) to their
+group in every tenant concerned, the instance's own connections one by one ahead of their abort,
+and then abort the instance's connections; any other tenant-state change sends `cache.changed`
+with the `tenant` tag and closes nothing. A close is remembered for five minutes, so a connection
+whose negotiate passed before it is refused at its connect.
+
+**Hosting modes.** `AddTellmaRealtime(configure)` hands the SignalR builder to the hosting bundle:
+in-process by default, Azure SignalR Service from the Azure web defaults, or a Redis backplane.
+`host.realtime-hosting` fails an unknown lifetime manager, a configured
+`Azure:SignalR:ConnectionString` the hub does not run on, an Azure application name other than the
+deployment's (`RealtimeApplicationName`), and an in-process hub with `Tellma:Jobs:Enabled` false
+(the job worker's events would reach no connection); it warns, without failing, when App Service
+or `ExpectedInstances` says several instances share no backplane.
+
+The meter `Tellma.Core.AspNetCore` carries `tellma.realtime.connections` (by `mode`),
+`tellma.realtime.connects` (by `outcome`), `tellma.realtime.closes` (by `reason`) and
+`tellma.realtime.events` (by `event`); `infra/monitoring/realtime` holds the alert queries.
 
 ## CSRF
 

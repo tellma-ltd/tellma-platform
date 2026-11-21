@@ -227,8 +227,8 @@ namespace Tellma.Core.Composition
                 .NotificationType(new NotificationTypeDescriptor("core.user.added", "users", Mutable: true, TargetResource: null))
                 .NotificationChannel(new NotificationChannelDescriptor(InboxChannel, DefaultEnabled: true))
                 .NotificationChannel(new NotificationChannelDescriptor(EmailChannel, DefaultEnabled: false))
-                .ClientEvent("inbox.changed")
-                .ClientEvent("session.ended");
+                .ClientEvent(Notifier.InboxChangedEvent)
+                .ClientEvent(SessionEndedEvent.Name);
 
             // --- Background jobs: the job and schedule tables, their machinery's tables and table types,
             // and the notices and client event a completion raises ---
