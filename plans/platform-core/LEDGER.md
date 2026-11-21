@@ -103,8 +103,8 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 
 | PC | Slot | Branch | Step | Implementer agent (name / id) | Reviewer agent (name / id) | Started (UTC) |
 |---|---|---|---|---|---|---|
-| PC-147 | pc-2 | pc/PC-147 | fix1 | R1 0/0/9 (dac43255); fix1 then R2 (fable, security-bound); D-163 | 0021-d; two reviews (R2 fable, security-bound) | 2026-11-20 |
-| PC-148 | pc-4 | pc/PC-148 | integrating | R1 0/1/4 (b01932b6); fix1 b73f83e0 (R1-2 pushed back in part, rollback pinned instead); released after PC-088 done; D-164 | 0022-a; R1 only | 2026-11-20 |
+| PC-147 | pc-2 | pc/PC-147 | held | R1 0/0/9 (dac43255); fix1 e7a8bf75; R2 fable 0/0/5; fix2 8076570a (all fixed); held behind PC-148 (merge-tree: Acme IntegrationTests README, keep both rows); D-163 | 0021-d; two reviews (R2 fable, security-bound) | 2026-11-20 |
+| PC-148 | pc-4 | pc/PC-148 | ci-fix | R1 0/1/4 (b01932b6); fix1 b73f83e0; integrate c0ce93b8; pc run 44876341059 red (DataBatchTests table list; UserIdentityActionTests deactivated-meanwhile); CI fixes; D-164 | 0022-a; R1 only | 2026-11-20 |
 
 ## Fix items
 
