@@ -104,8 +104,8 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 
 | PC | Slot | Branch | Step | Implementer agent (name / id) | Reviewer agent (name / id) | Started (UTC) |
 |---|---|---|---|---|---|---|
-| PC-089 | pc-1 | pc/PC-089 | R2 | impl dc5e9223; R1 0/2/3; fix1 24438df0 (all fixed); R2 on fable; D-168, D-169 | 0017-d | 2026-11-21 |
-| PC-090 | pc-3 | pc/PC-090 | fix1 | impl 17267a1c; R1 0/2/3; fix1 (last) then integrate; D-170 | 0018-d; R1 only | 2026-11-21 |
+| PC-089 | pc-1 | pc/PC-089 | fix2 | impl dc5e9223; R1 0/2/3; fix1 24438df0; R2 fable 0/1/5; fix2 then hold behind PC-090; D-168, D-169, D-172 | 0017-d | 2026-11-21 |
+| PC-090 | pc-3 | pc/PC-090 | integrating | impl 17267a1c; R1 0/2/3; fix1 131109ae (R1-2 moved to PC-149); released at once (queue empty); D-170 | 0018-d; R1 only | 2026-11-21 |
 | PC-149 | pc-4 | pc/PC-149 | R1 | impl 7418f050 (18 deviations; welcome email from invite frame; JobEntityLoad per D-170; 0018 §3.3 vs 0015 §5.1 flag); R1 Opus high | 0022-b; R1 only | 2026-11-21 |
 
 ## Fix items

@@ -384,6 +384,23 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-172 (orchestrator, 2026-11-21): PC-089 Review 2 rulings
+
+- PC-089 Review 2 (fable, dc5e9223 and 24438df0): 0 blocking, 1 major, 5 minor.
+  - Confirmed: the R1 fixes hold (the deadline covers the one streaming path and releases the permit; no-store on every non-success answer; the validator prints no query or secret).
+  - Tenant isolation and authorization are unchanged.
+  - The Azurite fixture cannot pass on Linux by skipping.
+- R2-1 (major): the deadline's 5-minute LongRequestTimeout floor lets one member reopen 32 slow downloads every 5 minutes and hold a tenant's tellma-blobs lane indefinitely. Ruling: lower the floor to RequestTimeout (30 s) in fix 2.
+- R2-2 to R2-6, fixed in fix 2:
+  - R2-2: three test pins (a non-reading client, the permit freed, authorization before the 304).
+  - R2-3: credential failures wrapped and metered, with no sibling cancellation.
+  - R2-4: the shortest container name is checked against the 3-character minimum (an empty prefix broke tenants 1 to 9).
+  - R2-5: CSP and nosniff on every blob-group response.
+  - R2-6: zero-length reads in LengthGuardStream.
+- For Ahmad:
+  - D-169's (a) or (b) remains the only way to stop deliberate permit-holding. D-169 understated it as legitimate slow downloads only.
+  - 0017 §9 should state the container-name length bounds, including the minimum.
+
 ### D-171 (orchestrator, 2026-11-21): PC-089 fix 1; load-timeout flake candidates in Core.AspNetCore.Tests
 
 - PC-089 fix 1 (24438df0): all five R1 findings fixed. Each tellma-blobs hold now ends at LongRequestTimeout plus the length at 32 KiB/s, clamped at 1 day (a .NET timer cannot wait past ≈ 49.7 days). Every non-200/206/304 blob answer carries no-store and no ETag. Mutation-checked tests pin the deadline and the D-145 lift. Options (a) and (b) of D-169 stay with Ahmad. R2 runs on fable.
