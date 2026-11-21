@@ -107,11 +107,11 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC | Slot | Branch | Step | Implementer agent (name / id) | Reviewer agent (name / id) | Started (UTC) |
 |---|---|---|---|---|---|---|
 | PC-096 | pc-1 | pc/PC-096 | impl | launched after PC-089 done; xhigh | 0025-b; R1 + R2 inherit xhigh | 2026-11-21 |
-| PC-091 | pc-3 | pc/PC-091 | fix1 | impl 059dbd0e (7 deviations accepted); R1 0/0/2 (MCP Hidden; filter-too-complex tests); fix1 then hold behind PC-149, PC-174, PC-F65; D-180 | 0018-e; R1 only | 2026-11-21 |
-| PC-F65 | pc-f | pc/PC-F65 | held | impl d10f3b46; R1 0/0/4; fix1 36592e58 + responses 4dc7053d (shared host RequestTimeout 5 min); held behind PC-089, PC-149, PC-174 (merge-tree clean); D-179 | fix item | 2026-11-21 |
-| PC-174 | pc-2 | pc/PC-174 | integrating | impl dc83114f; R1 0/2/3; fix1 ad91dc10 (key tie-breaker on every ordering; R1-3/R1-4 kept per D-176 for Ahmad); released after PC-149 done; D-176 | 0015-j; R1 only | 2026-11-21 |
+| PC-091 | pc-3 | pc/PC-091 | held | impl 059dbd0e (7 deviations accepted); R1 0/0/2; fix1 f2eaf519 (access actions MCP Hidden; filter-too-complex tests via BatchScript.Refuses); held behind PC-174, PC-F65 (merge-tree clean); D-180 | 0018-e; R1 only | 2026-11-21 |
+| PC-F65 | pc-f | pc/PC-F65 | integrating | impl d10f3b46; R1 0/0/4; fix1 36592e58 + responses 4dc7053d (shared host RequestTimeout 5 min); released after PC-174 done; D-179 | fix item | 2026-11-21 |
+| PC-175 | pc-2 | pc/PC-175 | impl | launched after PC-174 done; T3 fill (D-173); high | 0019-b; R1 only | 2026-11-21 |
 | PC-212 | pc-4 | pc/PC-212 | impl | launched after PC-149 done; T3 fill (D-173); high | 0017-e; R1 only | 2026-11-21 |
-| PC-181 | pc-f2 | pc/PC-181 | R1 | impl 19eb6762 (10 deviations; flags: all-folded Aggregate emits no GROUP BY (pre-existing), count() in INTERSECT anchored to root key, LocalDB 2019 lacks LEAST); R1 launched | 0010-f6 | 2026-11-21 |
+| PC-181 | pc-f2 | pc/PC-181 | fix1 | impl 19eb6762 (10 deviations accepted); R1 0/2/4 (empty-cell nullity; LEN int; all-folded GROUP BY () fixed here); fix1; then R2 inherit xhigh; D-181 | 0010-f6 | 2026-11-21 |
 
 ## Fix items
 
@@ -476,8 +476,8 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-171 | 0031-i | 2 | todo | | | |
 | PC-172 | 0032-h | 2 | todo | | | |
 | PC-173 | 0019-a | 3 | done (c316f5b4; CI 44034804023 green) | 8f3e494, 437a88f2, c316f5b4 (pc/PC-173) | | |
-| PC-174 | 0015-j | 3 | in progress | | | carry from PC-142 (D-131): extend StackConformanceTests with the excel_rows lane and its §16.2 budget rows |
-| PC-175 | 0019-b | 3 | todo | | | carry from PC-173: implement IExcelExporter over the internal WorkbookWriter (WriteAsync takes ExcelContext + CancellationToken), and bind Tellma:ScratchPath in C# (none exists yet; spec 0017 needs it too); WriteAsync (exporter and WorkbookWriter) takes a Func<Stream> openDestination, called once after the first page passes the cap |
+| PC-174 | 0015-j | 3 | done (2659f734; pc 44942165063 green on 4eb600b6) | dc83114f, ad91dc10, 4eb600b6, 2659f734 | | carry from PC-142 (D-131): extend StackConformanceTests with the excel_rows lane and its §16.2 budget rows |
+| PC-175 | 0019-b | 3 | in progress | | | carry from PC-173: implement IExcelExporter over the internal WorkbookWriter (WriteAsync takes ExcelContext + CancellationToken), and bind Tellma:ScratchPath in C# (none exists yet; spec 0017 needs it too); WriteAsync (exporter and WorkbookWriter) takes a Func<Stream> openDestination, called once after the first page passes the cap |
 | PC-176 | 0019-c | 3 | todo | | | carry from PC-142 (D-131): extend StackConformanceTests with export/import reachability and their budget rows (with PC-177) |
 | PC-177 | 0019-d | 3 | todo | | | |
 | PC-178 | 0019-e | 3 | todo | | | |
