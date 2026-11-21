@@ -20,6 +20,7 @@ using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.Abstractions.Validation;
 using Tellma.Core.Access;
 using Tellma.Core.Crud;
+using Tellma.Core.Crud.ExcelRows;
 using Tellma.Core.Crud.Query;
 using Tellma.Core.Data;
 using Tellma.Core.Queryex;
@@ -747,7 +748,8 @@ namespace Tellma.Core.Tests.Crud.Query
             Assert.Equal(1, page.Rows.RowCount);
             Assert.Equal("and(or(contains(Name, @search)))", QueryRig.Render(Spec(_rig.Script.Batches[^1].Of(ScriptedKind.Rows).Single()).Filter));
             _ = await Assert.ThrowsAsync<InvalidOperationException>(() => children.QueryAsync(QueryModel.Accounts, new QueryRequest(), Token));
-            _ = Assert.Throws<NotSupportedException>(() => children.ExcelRowSource(QueryModel.Lines, new ExportSource.All()));
+            _ = Assert.IsType<ExcelRowSource>(children.ExcelRowSource(QueryModel.Lines, new ExportSource.ByIds([1], null)));
+            _ = Assert.Throws<ArgumentException>(() => children.ExcelRowSource(QueryModel.Lines, new ExportSource.All()));
             _ = Assert.Throws<InvalidOperationException>(() => children.ExcelRowSource("qm.Nope", new ExportSource.All()));
         }
 
@@ -769,7 +771,7 @@ namespace Tellma.Core.Tests.Crud.Query
         }
 
         [Fact]
-        public async Task An_operation_the_stack_omits_is_an_authoring_bug_and_one_not_built_yet_is_not_supported()
+        public async Task An_operation_the_stack_omits_is_an_authoring_bug()
         {
             await using AsyncServiceScope scope = _rig.Scope();
             IEntityPipelineFactory factory = scope.ServiceProvider.GetRequiredService<IEntityPipelineFactory>();
@@ -781,7 +783,7 @@ namespace Tellma.Core.Tests.Crud.Query
             _ = await Assert.ThrowsAsync<InvalidOperationException>(() => accounts.GetByParentIdsAsync(new ParentIdsRequest(null, null, null, null), Token));
             _ = await Assert.ThrowsAsync<InvalidOperationException>(() => accounts.DeleteWithDescendantsAsync([1], Token));
             _ = await Assert.ThrowsAsync<InvalidOperationException>(() => accounts.ExecuteActionAsync("archive", [1], null, new ActionOptions(), Token));
-            _ = Assert.Throws<NotSupportedException>(() => nodes.CreateExcelRowSource(new ExportSource.All()));
+            _ = Assert.IsType<ExcelRowSource>(nodes.CreateExcelRowSource(new ExportSource.All()));
         }
 
         /// <summary>Runs one query in a scope of its own and returns its one row read.</summary>

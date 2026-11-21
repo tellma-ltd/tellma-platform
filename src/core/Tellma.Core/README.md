@@ -1341,8 +1341,8 @@ the outcome it ended with, a cancellation by the caller as `cancelled`; a read c
 `crud.source`. The reads (the query, the details reads, the rows of a tree by parent and every
 row of a cacheable stack), the save (see [The save pipeline](#the-save-pipeline)), and the deletes
 and actions (see [The delete and action pipelines](#the-delete-and-action-pipelines)) are built: an
-operation the stack does not serve is an authoring bug (`InvalidOperationException`), and the Excel
-row source is `NotSupportedException`.
+operation the stack does not serve is an authoring bug (`InvalidOperationException`), and so are
+the Excel row source and the import's lookups (see [the Excel row source](#the-excel-row-source)).
 
 `QueryOperation` runs a query of a stack, and of a child query surface through `IChildQueryService`
 (the child's own `Read` securable, the convention's search, no named filters):
@@ -1513,6 +1513,34 @@ pipeline drives them:
   else to `Validation.Invalid` naming the property and the attribute.
 - **Save shape.** `SaveShape.Check` refuses an empty payload, enforces the stack's save, children
   and rows ceilings, and reports every repeat of a positive id at its path.
+
+### The Excel row source
+
+`ExcelRowsOperation` serves the row source the Excel codec streams from (`excel_rows`), created by
+a stack's `ExcelRowSource` and, for an exportable child query surface, by
+`IChildQueryService.ExcelRowSource` (a child refuses `All` and named filters). It is bound to one
+`ExportSource`: by ids, an id key-set restriction over the distinct ids narrowed to the key type
+(more than `MaxIds` refused), inactive rows included; by query, the clauses as a query's (filters,
+named filters, search, arguments) and the activatable conjunct unless `IncludeInactive`; all, the
+access filter alone. The ordering is the query's, else the source's, else `Id`. The type-level
+check runs once, before the first page.
+
+- **`Pages`** streams the root `MaxTake` rows at a time, one guarded read batch per page; the
+  query's `Take` caps the total, and `CountCap` counts on the first page only, neither bound by the
+  stack's skip window, count cap or take ceiling. A short page ends the stream, and a page with no
+  rows after the first is not yielded. Every dependent collection, at every depth, rides its
+  owner's batch, restricted to the owner rows' keys captured into a batch-local key table; a
+  collection that reaches `MaxTake` rows is completed by one more read per chunk over the owners'
+  ids, its own collections riding it. Each page runs as its own operation, so a grant revoked
+  between pages refuses the next page as `ForbiddenException`.
+- **`ReadAsync`** reads several flat queries (an import's lookups) in one batch, each completed by
+  further batches of `MaxTake`. A restriction's values bind as the column's table type (strings
+  matched under the tenant's collation, numbers out of the column's range dropped). A lookup's
+  target is read under the caller's `Read` decision on it, as a save's reference is
+  (`TargetReads`): a denied target reads no rows, and a sensitive one asks for the step-up.
+
+The traversal rule, the search's length and the refusal re-check apply as in a query; an arithmetic
+failure and exhausted retries translate as the query's do.
 
 ### The save pipeline
 
@@ -2581,8 +2609,9 @@ are SpreadsheetML packages written with `DocumentFormat.OpenXml` (MIT), forward-
 | `Composition/` | `AddTellma`, `TellmaBuilder`, `TellmaComposition.Validate`, `CoreFeature`, `IContributionRealizer<T>`, `RealizationContext`, `TellmaStartupGate`; internally the pipeline, the feature graph, the composition record the checks and later runtimes read, Core's model contributions, and the link builder with its stack-route source. |
 | `Composition/Realizers/` | One realizer per item kind the platform understands: services, standalone table types, shape requirements, Core's model configurations, calendar systems, value sets, notification types and channels, client events, securables, entities, stack companions, stack components, routed API services, confirmations and provisioning steps. Each spec that adds an item kind adds its realizer to `ContributionRealizerSet.CreateBuiltIn`. |
 | `Composition/Checks/` | The built-in startup checks above. |
-| `Crud/` | Internally: the stack composition (each stack with its service, companions and components, closed over its leaf), the descriptor builder, `StackRegistry` (`IStackRegistry` and `IStackRouteSource`), the stacks' securable contributor, the platform's default service, the registrations `CrudComposition` makes, the action-method reader, and the entity pipeline with its factory, its operation frame and its instruments. |
+| `Crud/` | Internally: the stack composition (each stack with its service, companions and components, closed over its leaf), the descriptor builder, `StackRegistry` (`IStackRegistry` and `IStackRouteSource`), the stacks' securable contributor, the platform's default service, the registrations `CrudComposition` makes, the action-method reader, and the entity pipeline with its factory, its operation frame and its instruments, and the reads of reference and lookup targets (`TargetReads`). |
 | `Crud/Query/` | Internally: the query path of [Entity stacks](#the-entity-pipeline-and-the-query-path): the surfaces, the admission, the planner, the search, the argument discovery and binding, the diagnostics' locations and their wire form, the traversal rule, the query operation (with the rows of a tree by parent) and the child query service. |
+| `Crud/ExcelRows/` | Internally: [the Excel row source](#the-excel-row-source): the operation, the admitted query tree, one round trip's composition and its chunks, and the row source with its pages and lookups. |
 | `Crud/Details/` | Internally: the details reads of [Entity stacks](#the-entity-pipeline-and-the-query-path): the projections, the planner and its composition with the extras' name rules and the record permissions, and the details operation with the cached list. |
 | `Crud/Checks/` | The stack checks of [Entity stacks](#entity-stacks). |
 | `Api/` | `IRouteContracts` and `RouteContract`; internally the route model, the contract describer and fingerprint, and the contracts chunk's client-asset contributor ([The route model](#the-route-model)), and the Queryex discovery service with its admission ([Queryex discovery](#queryex-discovery)). |
