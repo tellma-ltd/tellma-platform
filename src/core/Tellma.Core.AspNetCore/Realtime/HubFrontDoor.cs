@@ -47,16 +47,16 @@ namespace Tellma.Core.AspNetCore.Realtime
 
         /// <summary>Runs the door's three steps over a request whose tenant and principal are bound.</summary>
         /// <param name="context">The request.</param>
-        /// <param name="holder">The request scope's context holder.</param>
+        /// <param name="accessor">The request scope's context, which the door reads and never writes.</param>
         /// <param name="guard">The request scope's access guard.</param>
         /// <returns>A task that completes when the request may reach the hub.</returns>
         /// <exception cref="TenantNotFoundException">The caller is no member of the tenant, or is deactivated there.</exception>
         /// <exception cref="TenantUnavailableException">The tenant refuses reads in its state.</exception>
         /// <exception cref="InvalidOperationException">The principal already carries a hub claim, or the context lacks a user or a session.</exception>
-        public static async Task EnterAsync(HttpContext context, IRequestContextHolder holder, ITenantAccessGuard guard)
+        public static async Task EnterAsync(HttpContext context, IRequestContextAccessor accessor, ITenantAccessGuard guard)
         {
             ArgumentNullException.ThrowIfNull(context);
-            ArgumentNullException.ThrowIfNull(holder);
+            ArgumentNullException.ThrowIfNull(accessor);
             ArgumentNullException.ThrowIfNull(guard);
 
             // --- 1. The access guard, for a read: the hub never writes ---
@@ -64,7 +64,7 @@ namespace Tellma.Core.AspNetCore.Realtime
                 new TenantAccessRequirement(IsMutation: false, Assurance: null),
                 RequestInputs.Of(context),
                 context.RequestAborted).ConfigureAwait(false);
-            holder.Current.ApplyCultures();
+            accessor.Current.ApplyCultures();
 
             // --- 2. One prologue-only round trip: membership verified against the tenant's own users ---
             // The guard's connect may have been answered by the cache, which a deactivation committed
@@ -82,7 +82,7 @@ namespace Tellma.Core.AspNetCore.Realtime
                 throw new InvalidOperationException("The request's principal carries a hub claim before the hub's front door added one; only the front door mints hub claims.");
             }
 
-            context.User.AddIdentity(TellmaHubClaims.Create(holder.Current));
+            context.User.AddIdentity(TellmaHubClaims.Create(accessor.Current));
         }
 
         /// <summary>
