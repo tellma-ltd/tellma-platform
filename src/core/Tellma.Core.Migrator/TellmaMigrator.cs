@@ -265,6 +265,7 @@ namespace Tellma.Core.Migrator
         {
             return line switch
             {
+                BlobsVerifyCommandLine verify => new BlobsVerifyCommand(context).RunAsync(verify, cancellationToken),
                 MigrateCommandLine migrate => new MigrateCommand(context).RunAsync(migrate, cancellationToken),
                 ProvisionCommandLine provision => new ProvisionCommand(context).RunAsync(provision, cancellationToken),
                 SetStateCommandLine setState => new SetStateCommand(context).RunAsync(setState, cancellationToken),

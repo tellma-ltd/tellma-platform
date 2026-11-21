@@ -200,10 +200,16 @@ namespace Tellma.Core.Composition
             // --- The Umm al-Qura month table the query language's calendar map reads (spec 0013 §8.2) ---
             _ = contribution.Model<CalendarMonthRowConfiguration>();
 
-            // --- Blobs: the table every blob reference resolves to (never a stack), and the tenant's container at provisioning ---
+            // --- Blobs: the table every blob reference resolves to (never a stack), the tenant's container at provisioning ---
+            // and the sweep and reconcile jobs with their built-in schedules (spec 0017 §7.4): the
+            // sweep every 15 minutes, the reconcile on Saturday at 02:00, inside both weekends.
             _ = contribution
                 .Model<BlobConfiguration>()
-                .ProvisioningStep<BlobContainerStep>();
+                .ProvisioningStep<BlobContainerStep>()
+                .JobHandler<BlobSweepHandler>()
+                .BuiltInSchedule(BlobSweepHandler.ScheduleId, BlobSweepHandler.Key, BlobSweepHandler.Cron)
+                .JobHandler<BlobReconcileHandler>()
+                .BuiltInSchedule(BlobReconcileHandler.ScheduleId, BlobReconcileHandler.Key, BlobReconcileHandler.Cron);
 
             // --- Notifications: the tables, the notifier and renderer, the registries, the client metadata and the catalogue Core owns ---
             // spec 0021 §11. Notification is a read-only stack with the platform's default service,

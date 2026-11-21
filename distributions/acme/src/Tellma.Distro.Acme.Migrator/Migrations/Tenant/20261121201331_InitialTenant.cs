@@ -3076,6 +3076,8 @@ namespace Tellma.Distro.Acme.Migrator.Migrations.Tenant
                 {
                     { 1, null, 1440, "core.job-retention", new DateTimeOffset(new DateTime(2000, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), 1, "0 3 * * *", "core.job-retention", true, new DateTimeOffset(new DateTime(2000, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), 1, "core.job-retention", null, null, null, 1, null },
                     { 2, null, 1440, "core.notification-retention", new DateTimeOffset(new DateTime(2000, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), 1, "30 3 * * *", "core.notification-retention", true, new DateTimeOffset(new DateTime(2000, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), 1, "core.notification-retention", null, null, null, 1, null },
+                    { 4, null, 1440, "core.blob-sweep", new DateTimeOffset(new DateTime(2000, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), 1, "*/15 * * * *", "core.blob-sweep", true, new DateTimeOffset(new DateTime(2000, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), 1, "core.blob-sweep", null, null, null, 1, null },
+                    { 5, null, 1440, "core.blob-reconcile", new DateTimeOffset(new DateTime(2000, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), 1, "0 2 * * 6", "core.blob-reconcile", true, new DateTimeOffset(new DateTime(2000, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), 1, "core.blob-reconcile", null, null, null, 1, null },
                     { 6, null, 1440, "core.tree-verify", new DateTimeOffset(new DateTime(2000, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), 1, "0 1 * * 6", "core.tree-verify", true, new DateTimeOffset(new DateTime(2000, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), 1, "core.tree-verify", null, null, null, 1, null }
                 });
 
@@ -3111,6 +3113,8 @@ namespace Tellma.Distro.Acme.Migrator.Migrations.Tenant
                 {
                     { 1, null, null, null, null, null, null, null },
                     { 2, null, null, null, null, null, null, null },
+                    { 4, null, null, null, null, null, null, null },
+                    { 5, null, null, null, null, null, null, null },
                     { 6, null, null, null, null, null, null, null }
                 });
 

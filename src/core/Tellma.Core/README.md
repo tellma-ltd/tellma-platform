@@ -655,10 +655,44 @@ tellma.Blobs(blobs => blobs
   - **Round trips.** A download takes one round trip. The exception is a caller denied the owner
     read whose cached set is older than the fast-deny window: that caller first pays the evaluator's
     prologue-only re-check, so the download takes two.
-- **The reconcile statement.** `BlobStatements.Reconcile` releases a kind's committed blobs that no
-  owner row references and that were committed more than a day ago, and returns how many.
 - **Telemetry.** `tellma.blobs.attach.rejected` counts each refused attach by kind and reason
   (`duplicate` and `persist` beside the reasons above).
+
+## Blobs: sweep, reconcile and verification
+
+- **The sweep.** `core.blob-sweep` (built-in schedule 4, every 15 minutes; one run per tenant, on a
+  read-only tenant too, as the system user) repeats rounds until one claims fewer than
+  `SweepBatchSize` rows or the job is cancelled. A round's claim, a `Maintenance` batch with no
+  transaction of its own, takes the earliest rows that are staged past their deadline, released,
+  or deleting past their reclaim instant, on the database's clock, and marks them `Deleting` until
+  `SweepReclaimAfter` from then. The round then deletes each row's primary and listed variants from
+  the store in one call (a missing object is success), and row by row when that call fails, then
+  deletes the rows whose objects are gone and that are still `Deleting`. Once per run the store
+  purges its incomplete artefacts older than a day. Objects go before rows, so an object never
+  outlives the row that leads the sweep to it.
+- **Failures never fail the run.** A row whose objects the store could not delete, and a row a
+  foreign key still holds (impossible by construction: only staged rows are confirmed), stay
+  claimed for the sweep after their reclaim instant, are counted in `tellma.blobs.sweep.failures`
+  and are warned of (`BlobSweepStoreFailed` with the store's exception, `BlobSweepRowRetained` with
+  the id); a failed purge is counted and warned of too. `tellma.blobs.sweep.deleted` counts the rows
+  deleted by the state they were claimed from (`staged`, `released`, `deleting`), each round logs
+  `BlobSweepBatch` (claimed, deleted, failed), and the progress message `Blob.SweepProgress` counts
+  the rows claimed and the objects deleted so far.
+- **The reconcile.** `core.blob-reconcile` (built-in schedule 5, Saturday at 02:00) runs
+  `BlobStatements.Reconcile` once per registered kind, in kind order, each its own `Maintenance`
+  round trip over the kind's owner table and column: a kind's committed blobs that no owner row
+  references and that were committed more than a day ago are released for the sweep. A non-zero
+  count points at a path that bypassed the save pipeline, so it is counted in
+  `tellma.blobs.reconcile.released` by kind and warned of (`BlobReconcileReleased`). Progress is
+  `Blob.ReconcileProgress`, after each kind.
+- **Verification.** `BlobVerifier` backs the migrator's `blobs verify --tenant <id>
+  [--delete-orphans]`: for each registered kind and each of its 256 fan-out segments it lists the
+  store, then reads the segment's rows, and reports the objects no row references and the objects a
+  row references that the store lacks (a deleting row and a row staged within the last five minutes
+  excepted). Listing before reading makes a reported orphan a true one, so `--delete-orphans`
+  deletes it safely; rows are never written.
+- **Alerts.** `infra/monitoring/blobs` holds the alert queries over `sweep.failures`,
+  `reconcile.released` and the `attach.rejected` rate, checked against these instruments by a test.
 
 ## Calendars
 
@@ -2594,9 +2628,12 @@ only when no resource declares the label, and the row a succeeded job leaves.
 | Key | Built-in | Does |
 |---|---|---|
 | `core.job-retention` | id 1, `0 3 * * *` | In pages of 1,000 rows, each its own `Maintenance` round trip: first queues flagged every job that waited for confirmation longer than `FailedRetention` and withdraws its notice, then deletes the succeeded jobs that ended longer than `SucceededRetention` ago, then the failed and cancelled ones past `FailedRetention`. A job that has not ended is never deleted; the rows that referenced a deleted job (every job entity's `JobId`, the schedule states' `LastJobId`) lose it, and each delete page declares the tables those keys write, read from the model's foreign keys. |
+| `core.blob-sweep` | id 4, `*/15 * * * *` | Deletes the objects and rows of staged blobs past their deadline and of released blobs, a batch of rows per round, then purges the store's incomplete artefacts (see the blobs' sweep above). |
+| `core.blob-reconcile` | id 5, `0 2 * * 6` | Releases each kind's committed blobs that no owner row references, one `Maintenance` round trip per kind. |
 | `core.tree-verify` | id 6, `0 1 * * 6` | Recounts every tree table's subtree counts with the tree statements' verify, one `Maintenance` round trip per table, repairing the drifted rows. |
 
-Both run on a read-only tenant and report their progress after every page or table.
+All four run on a read-only tenant and report their progress after every page, round, kind or
+table.
 
 ## Excel
 

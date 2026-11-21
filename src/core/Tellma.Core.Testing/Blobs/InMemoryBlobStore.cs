@@ -16,19 +16,39 @@ namespace Tellma.Core.Testing.Blobs
     /// </summary>
     /// <remarks>
     ///     Thread-safe. Writes are atomic per object, so it leaves no incomplete artefacts and the
-    ///     purge is a no-op. <see cref="FailWrites" /> makes every later write throw, for testing what
-    ///     a caller does when the store fails.
+    ///     purge stores nothing; <see cref="Purges" /> records each purge's cut-off.
+    ///     <see cref="FailWrites" /> makes every later write throw and <see cref="FailDeletes" /> keeps
+    ///     the objects it matches, for testing what a caller does when the store fails.
     /// </remarks>
     public sealed class InMemoryBlobStore : IBlobStore
     {
         // Each tenant's objects by name; a tenant without an entry has no storage.
         private readonly ConcurrentDictionary<int, ConcurrentDictionary<string, StoredObject>> _tenants = new();
 
+        // Each purge's tenant and cut-off, in call order.
+        private readonly ConcurrentQueue<(int TenantId, DateTimeOffset OlderThan)> _purges = new();
+
         /// <summary>
         ///     The failure every later <see cref="WriteAsync" /> throws after validating its arguments
         ///     and before storing anything; null (the default) for none.
         /// </summary>
         public Exception? FailWrites { get; set; }
+
+        /// <summary>
+        ///     The names every later <see cref="DeleteAsync" /> fails to delete: the call deletes the
+        ///     others, then throws a <see cref="BlobStoreException" /> when it kept any; null (the
+        ///     default) for none.
+        /// </summary>
+        public Func<string, bool>? FailDeletes { get; set; }
+
+        /// <summary>Each <see cref="PurgeIncompleteAsync" /> call's tenant and cut-off, in call order.</summary>
+        public IReadOnlyList<(int TenantId, DateTimeOffset OlderThan)> Purges => [.. _purges];
+
+        /// <summary>Forgets every purge <see cref="Purges" /> recorded, for a test that reuses the store.</summary>
+        public void ClearPurges()
+        {
+            _purges.Clear();
+        }
 
         /// <summary>Whether the tenant's storage exists.</summary>
         /// <param name="tenantId">The tenant.</param>
@@ -169,15 +189,20 @@ namespace Tellma.Core.Testing.Blobs
                 }
             }
 
+            // --- Each object but the failing ones, then the failure when any was kept ---
+            Func<string, bool>? fail = FailDeletes;
+            List<string> kept = [.. names.Where(name => fail?.Invoke(name) == true)];
             if (_tenants.TryGetValue(tenantId, out ConcurrentDictionary<string, StoredObject>? objects))
             {
-                foreach (string name in names)
+                foreach (string name in names.Except(kept, StringComparer.Ordinal))
                 {
                     _ = objects.TryRemove(name, out _);
                 }
             }
 
-            return Task.CompletedTask;
+            return kept.Count == 0
+                ? Task.CompletedTask
+                : Task.FromException(new BlobStoreException($"Deleting {kept.Count} blob objects failed.", null));
         }
 
         /// <inheritdoc />
@@ -193,8 +218,9 @@ namespace Tellma.Core.Testing.Blobs
         /// <inheritdoc />
         public Task PurgeIncompleteAsync(int tenantId, DateTimeOffset olderThan, CancellationToken cancellationToken)
         {
-            // Writes are atomic per object, so nothing incomplete is ever left.
+            // Writes are atomic per object, so nothing incomplete is ever left; the call is recorded.
             ArgumentOutOfRangeException.ThrowIfNegativeOrZero(tenantId);
+            _purges.Enqueue((tenantId, olderThan));
             return Task.CompletedTask;
         }
 

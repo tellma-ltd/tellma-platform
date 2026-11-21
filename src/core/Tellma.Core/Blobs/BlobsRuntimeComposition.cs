@@ -21,8 +21,9 @@ namespace Tellma.Core.Blobs
 {
     /// <summary>
     ///     Registers what blobs need beyond the host's store: the options, validated by the startup
-    ///     gate; the scratch directory; the upload and attach instruments; the kind registry built from
-    ///     the realised model; the scoped staging and download service; and the <c>blobs</c> checks.
+    ///     gate; the scratch directory; the upload, attach, sweep and reconcile instruments; the kind
+    ///     registry built from the realised model; the scoped staging and download service; and the
+    ///     <c>blobs</c> checks.
     /// </summary>
     internal static class BlobsRuntimeComposition
     {
@@ -41,10 +42,11 @@ namespace Tellma.Core.Blobs
             services.TryAddSingleton(ScratchDirectory.From(record.Configuration));
             services.AddSingleton(new BlobRegistrations(services));
 
-            // --- The upload and attach instruments, on the host's meter factory ---
+            // --- The upload, attach, sweep and reconcile instruments, on the host's meter factory ---
             services.AddMetrics();
             services.TryAddSingleton<BlobUploadMetrics>();
             services.TryAddSingleton<BlobAttachMetrics>();
+            services.TryAddSingleton<BlobMaintenanceMetrics>();
 
             // --- The kind registry, one per process, over the model's metadata and the stacks ---
             // Factories, so the container's build-time validation leaves the dependencies to the gate.

@@ -856,6 +856,18 @@
   <data name="JobHandler_core_tree-verify" xml:space="preserve">
     <value>Check the trees</value>
   </data>
+  <data name="JobHandler_core_blob-sweep" xml:space="preserve">
+    <value>Delete unused files</value>
+  </data>
+  <data name="JobHandler_core_blob-reconcile" xml:space="preserve">
+    <value>Release unreferenced files</value>
+  </data>
+  <data name="Blob_SweepProgress" xml:space="preserve">
+    <value>{claimed, plural, one {# file} other {# files}} collected, {deleted, plural, one {# stored object} other {# stored objects}} deleted.</value>
+  </data>
+  <data name="Blob_ReconcileProgress" xml:space="preserve">
+    <value>{reconciled} of {total} file kinds checked, {released, plural, one {# file} other {# files}} released.</value>
+  </data>
   <data name="Notification_core_job_failed" xml:space="preserve">
     <value>The job {handlerKey} failed.</value>
   </data>
