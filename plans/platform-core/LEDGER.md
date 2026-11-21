@@ -106,8 +106,9 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 |---|---|---|---|---|---|---|
 | PC-089 | pc-1 | pc/PC-089 | held | impl dc5e9223; R1 0/2/3; fix1 24438df0; R2 fable 0/1/5; fix2 d2513537 (all fixed); held behind PC-090 (merge-tree: two README conflicts; BlobEndpointTests may need using Tellma.Testing.WebHost); D-168, D-169, D-172 | 0017-d | 2026-11-21 |
 | PC-F65 | pc-f | pc/PC-F65 | impl | flake root cause (D-171); high; one review | fix item | 2026-11-21 |
-| PC-174 | pc-2 | pc/PC-174 | impl | T3 fill under D-140/D-173; high; carry D-131 | 0015-j; R1 only | 2026-11-21 |
-| PC-090 | pc-3 | pc/PC-090 | ci-fix | impl 17267a1c; R1 0/2/3; fix1 131109ae; integrate b02e2a74; pc run 44922584002 red (build-test windows cancelled at its 20-min job timeout, no test failed); CI fixes; D-170, D-175 | 0018-d; R1 only | 2026-11-21 |
+| PC-174 | pc-2 | pc/PC-174 | fix1 | impl dc83114f; R1 0/2/3; fix1 (last) then hold behind PC-090, PC-089, PC-149; D-176 | 0015-j; R1 only | 2026-11-21 |
+| PC-181 | pc-f2 | pc/PC-181 | impl | T3 fill under D-140/D-173; high; R2 inherit xhigh (complex) | 0010-f6 | 2026-11-21 |
+| PC-090 | pc-3 | pc/PC-090 | ci-pending | impl 17267a1c; R1 0/2/3; fix1 131109ae; integrate b02e2a74 red (Windows build-test 20-min timeout; slower runners); CI fixes 3ba8adc7 (timeout 30); pc run 44927060937; D-170, D-175 | 0018-d; R1 only | 2026-11-21 |
 | PC-149 | pc-4 | pc/PC-149 | fix1 | impl 7418f050; R1 0/2/2; fix1 (last) then hold behind PC-090, PC-089; D-170, D-174 | 0022-b; R1 only | 2026-11-21 |
 
 ## Fix items
@@ -480,7 +481,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-178 | 0019-e | 3 | todo | | | |
 | PC-179 | 0030-f2 | 3 | todo | | | |
 | PC-180 | 0032-b2 | 3 | todo | | | |
-| PC-181 | 0010-f6 | 3 | todo | | | |
+| PC-181 | 0010-f6 | 3 | in progress | | | |
 | PC-182 | 0033-a | 3 | todo | | | |
 | PC-183 | 0033-b | 3 | todo | | | |
 | PC-184 | 0033-c | 3 | todo | | | |

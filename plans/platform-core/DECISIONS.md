@@ -384,6 +384,21 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-176 (orchestrator, 2026-11-21): PC-174 Review 1 rulings
+
+- PC-174 Review 1 (Opus high, dc83114f): 0 blocking, 2 major, 3 minor.
+  - Confirmed: the Widget [Stack(MaxTake = 50)] breaks no test and no later checkpoint; the non-generic ExcelRowSource changes no caller contract; the TargetReads extraction is verbatim; the D-131 carry is complete.
+  - Also confirmed: access and limits (Read is decided once, the own root each page, and the stack caps do not bind the query's own).
+- R1-1 (major): pages over a non-unique ordering can silently repeat or drop rows at page boundaries. Ruling: append the key as a tie-breaker, with a pin test.
+- R1-2 (major): add tests for follow-up waves, nested overflow and the MaxIds refusal.
+- R1-3 to R1-5:
+  - R1-3: an Excel lookup of a target with no securable and no owner stays unrestricted, consistent with a save's reference reads, and is recorded as a deviation.
+  - R1-4: §15's null-OrderBy-by-Id stands, with the conflict named.
+  - R1-5: README wording.
+- For Ahmad:
+  - (1) Should references and lookups to a target that no securable guards and no owner holds be unrestricted (TargetReads, today's save behaviour) or denied (AccessEvaluator.Unknown for a direct decision)?
+  - (2) 0015 §15/§18.2 order a null ByQuery.OrderBy by Id, but 0019 §4.1 says the export is exactly the grid's query (DefaultOrderBy ?? "Id desc"), and §15 gives a child surface the surface's defaults. The specs need aligning.
+
 ### D-175 (orchestrator, 2026-11-21): integration-step local runs pulled back to D-144; Windows build-test hit its 20-minute timeout
 
 - Ahmad asked whether local checks conflict with D-144. They did.
