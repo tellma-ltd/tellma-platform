@@ -40,7 +40,10 @@ namespace Tellma.Core.Abstractions.Email
         /// <param name="cancellationToken">Cancels the staging before the rows are enlisted.</param>
         /// <returns>The enlisted save, whose rows carry their final ids once the task completed.</returns>
         /// <exception cref="ArgumentNullException"><paramref name="host" /> or <paramref name="requests" /> is null.</exception>
-        /// <exception cref="ArgumentException"><paramref name="requests" /> is empty or holds a null request.</exception>
+        /// <exception cref="ArgumentException">
+        ///     <paramref name="requests" /> is empty, holds a null request, or holds one whose source is
+        ///     neither <see cref="EmailEnqueueRequest.ApiSource" /> nor <see cref="EmailEnqueueRequest.NotificationSource" />.
+        /// </exception>
         /// <exception cref="ValidationException">
         ///     A request is malformed, has too many recipients or is too large, or a blob it attaches
         ///     cannot be resolved. Nothing was staged.

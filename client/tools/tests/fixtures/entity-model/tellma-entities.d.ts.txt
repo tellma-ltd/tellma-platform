@@ -14,6 +14,9 @@ export type AcmePriority = 'Low' | 'High';
 /** The values of the enum `core.BlobState`, as the wire spells them. */
 export type CoreBlobState = 'Staged' | 'Committed' | 'Released' | 'Deleting';
 
+/** The values of the enum `core.ConcurrencyMode`, as the wire spells them. */
+export type CoreConcurrencyMode = 'Check' | 'Override';
+
 /** The values of the enum `core.DigitStyle`, as the wire spells them. */
 export type CoreDigitStyle = 'Latin' | 'Native';
 
@@ -31,6 +34,9 @@ export type CoreInviteStatus = 'Invited' | 'Reinvited' | 'Active';
 
 /** The values of the enum `core.JobStatus`, as the wire spells them. */
 export type CoreJobStatus = 'Pending' | 'Running' | 'Succeeded' | 'Failed' | 'Cancelled' | 'Held' | 'PendingConfirmation';
+
+/** The values of the enum `core.MeLocaleMember`, as the wire spells them. */
+export type CoreMeLocaleMember = 'Language' | 'Calendar' | 'TimeZone' | 'Region' | 'Digits';
 
 /** The values of the enum `core.MissedPolicy`, as the wire spells them. */
 export type CoreMissedPolicy = 'Coalesce' | 'ReplayAll' | 'Skip';

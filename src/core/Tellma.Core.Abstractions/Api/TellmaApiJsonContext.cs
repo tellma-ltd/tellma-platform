@@ -51,6 +51,9 @@ namespace Tellma.Core.Abstractions.Api
     // --- Result records ---
     [JsonSerializable(typeof(AffectedResult))]
     [JsonSerializable(typeof(JobAccepted))]
+    [JsonSerializable(typeof(MeResult))]
+    [JsonSerializable(typeof(UserProfileView))]
+    [JsonSerializable(typeof(AccessSummary))]
     [JsonSerializable(typeof(SecurableSummary))]
     [JsonSerializable(typeof(QueryDiagnostic))]
     [JsonSerializable(typeof(QueryexDiscoverResult))]

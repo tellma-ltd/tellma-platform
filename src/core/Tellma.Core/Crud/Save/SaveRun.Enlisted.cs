@@ -72,9 +72,12 @@ namespace Tellma.Core.Crud.Save
         public IReadOnlyList<long> Ids => _abandoned ? [] : [.. _entities.Select(static entity => long.CreateChecked(entity.Id))];
 
         /// <inheritdoc />
+        /// <remarks>A validator that tells it judged nothing over the group's rows does not count.</remarks>
         public bool Validates => !_abandoned
             && _validatorsStarted is not null
-            && HookOverrides.ValidatesSaves(_behavior, _operation.Services.GetServices<IEntityValidator<TEntity>>());
+            && HookOverrides.ValidatesSaves(
+                _behavior,
+                _operation.Services.GetServices<IEntityValidator<TEntity>>().Where(validator => validator is not IPayloadScopedValidator<TEntity> scoped || scoped.Judges(_entities)));
 
         /// <inheritdoc />
         public DateTimeOffset? Stamp { get; private set; }

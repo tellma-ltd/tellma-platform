@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- The suite's types live under the adapter's namespace, without the project suffix. -->
+    <RootNamespace>Tellma.Connector.AzureBlobs.IntegrationTests</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\..\src\connector\azure-blobs\Tellma.Connector.AzureBlobs.Adapter\Tellma.Connector.AzureBlobs.Adapter.csproj" />
+    <!-- The blob-store conformance suite every store passes. -->
+    <ProjectReference Include="..\..\..\..\src\core\Tellma.Core.Testing\Tellma.Core.Testing.csproj" />
+    <!-- The Azurite emulator, in a container Testcontainers starts once per run. -->
+    <PackageReference Include="Testcontainers.Azurite" />
+    <!-- Not used directly: lifts the SSH.NET Testcontainers brings in to the patched version. -->
+    <PackageReference Include="SSH.NET" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+  </ItemGroup>
+
+</Project>

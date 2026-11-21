@@ -384,6 +384,85 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-180 (orchestrator, 2026-11-21): PC-091 Review 1 rulings
+
+Review 1 found 0/0/2 and accepted all 7 implementer deviations. R1-1: the access actions (check, holders) take McpExposure.Hidden, because 0016 §11.8 and 0014 §10 reserve tellma_check_access and every sibling read helper is Hidden. R1-2: add a QueryRig unit test for each new filter-too-complex branch (RoleService, AccessService). PC-091 holds after fix1, behind PC-149, PC-174 and PC-F65.
+
+For Ahmad:
+1. 0018 §4.3 "members" is never Denied for a member, because 0014 §5.1's UserAccessCriteria gives every member a Filtered core.User Read (Id = me()). Either 0032 §5.4 shows its "no access" hint when the self criterion is the only users' grant, or the specs accept the state as unreachable.
+2. 0015 §5.3 lacks DetailsPlan.Decide and OmitExtra, which PC-091 added. Add them to the spec.
+3. 0018 §4.3 and 0014 §9 say "*/* never drifts". PC-091 reports WildcardResourceOnPublicRole, so the text should read "except on a public role".
+
+### D-179 (orchestrator, 2026-11-21): PC-F65 Review 1 rulings
+
+- PC-F65 Review 1 (Opus high, d10f3b46): 0 blocking, 0 major, 4 minor.
+  - Confirmed: the root cause is real; each changed wait waits on a signal or on armed timers; none was simply lengthened.
+  - Confirmed: the 504 test still runs the framework's real timeout path; no product code changed; the ConnectedProbe race is SignalR client behaviour, not a product bug.
+  - The evidence is weaker statistically than claimed (three greens against the matched-pace control, p ≈ 0.30). The failure-by-failure mechanism mapping carries the item.
+- Fix 1 rulings:
+  - R1-1: bound the refused RateLimiting request (it could hang to the CI job timeout).
+  - R1-2: fix the comment.
+  - R1-3 and R1-4: lift the shared test host's RequestTimeout to 5 min now (PC-089 reads LongRequestTimeout and sets its own), and assert the resolved Web policy timeout.
+  - FrameworkProblemsTests(403) stays a flake candidate.
+
+### D-178 (Ahmad, 2026-11-21): manual reset applied
+
+- Ahmad applied the manual reset at ≈ 18:10 UTC 2026-11-21, after the 98% push (D-173). get_usage shows 0% weekly and 0% Fable; resetsAt is unchanged at 2026-11-24 20:00 UTC.
+- Target: ≈ 100 points in ≈ 66 h to Tuesday noon (≈ 1.5 pts/h).
+  - Keep all six slots working.
+  - T1/T2 work takes each free slot first; T3 fills when none is ready (D-140, D-173).
+  - Integration steps stay lean (D-175).
+  - PC-096 (T1) takes the next free slot.
+- Standing: report a pace that would leave much of the reset unused to Ahmad, with the lanes that could be added.
+
+### D-177 (orchestrator, 2026-11-21): PC-149 fix 1
+
+- PC-149 fix 1 (6fba6f4c): R1-1 to R1-4 fixed.
+  - R1-2 took the narrow option: a new internal IPayloadScopedValidator lets BlobReferenceValidator report that it judged nothing when no row at any depth holds a blob reference. Grant-dependent validators and hooks still count. The 0018 §9 recompose pin is restored, with warm-buffer and cold-buffer tests that both commit.
+  - R1-3: tellma.outbox.enqueued is counted after commit by an OutboxEnqueuedEffect.
+  - The renamed Acme sandbox-invite test passed 5 of 5 runs.
+- Merge-tree against ba6d6bab shows three content conflicts with PC-090 in the Users area (UserServiceDependencies.cs, UsersRuntimeComposition.cs and UsersKit.cs), for resolution at integration.
+- Note: the outbox address-list parser takes any comma-free token as a bare address, so a garbage To reaches the sender, and address validation is left to the 0007 email pipeline. Carry to PC-143 (the email channel's SendTestAsync and the D-061 check): confirm that the pipeline refuses such an address and the outbox records the refusal.
+
+### D-176 (orchestrator, 2026-11-21): PC-174 Review 1 rulings
+
+- PC-174 Review 1 (Opus high, dc83114f): 0 blocking, 2 major, 3 minor.
+  - Confirmed: the Widget [Stack(MaxTake = 50)] breaks no test and no later checkpoint; the non-generic ExcelRowSource changes no caller contract; the TargetReads extraction is verbatim; the D-131 carry is complete.
+  - Also confirmed: access and limits (Read is decided once, the own root each page, and the stack caps do not bind the query's own).
+- R1-1 (major): pages over a non-unique ordering can silently repeat or drop rows at page boundaries. Ruling: append the key as a tie-breaker, with a pin test.
+- R1-2 (major): add tests for follow-up waves, nested overflow and the MaxIds refusal.
+- R1-3 to R1-5:
+  - R1-3: an Excel lookup of a target with no securable and no owner stays unrestricted, consistent with a save's reference reads, and is recorded as a deviation.
+  - R1-4: §15's null-OrderBy-by-Id stands, with the conflict named.
+  - R1-5: README wording.
+- For Ahmad:
+  - (1) Should references and lookups to a target that no securable guards and no owner holds be unrestricted (TargetReads, today's save behaviour) or denied (AccessEvaluator.Unknown for a direct decision)?
+  - (2) 0015 §15/§18.2 order a null ByQuery.OrderBy by Id, but 0019 §4.1 says the export is exactly the grid's query (DefaultOrderBy ?? "Id desc"), and §15 gives a child surface the surface's defaults. The specs need aligning.
+
+### D-175 (orchestrator, 2026-11-21): integration-step local runs pulled back to D-144; Windows build-test hit its 20-minute timeout
+
+- Ahmad asked whether local checks conflict with D-144. They did.
+  - My notes to PC-148 (CI fixes), PC-147 and PC-090 asked for Tellma.Core.IntegrationTests in full with the integration filter, and for full Acme integration runs. D-144 rules out full integration suites locally.
+  - At the integration step I also asked for D-151's full unit-project runs, which duplicate what the CI run on the integration commit gates anyway. PC-090's integration took ≈ 4 h under six-lane load; its 58-minute Core.AspNetCore.Tests run was one D-151 unit run.
+  - These runs also added to the machine load behind the D-171 timeouts.
+- Ruling, effective now:
+  - Integration step and CI fixes: build and format only, plus the specific tests the merge resolution or the CI fix touches. No full unit projects (CI runs them on both OSes), no full integration suites.
+  - Implementation and fix rounds: unchanged (D-144 plus D-151's full unit-project run when a shared composition changes), because there no CI run gates the commit. Full integration suites stay out.
+  - PC-149 was corrected mid-round. PC-F65's three full Core.AspNetCore.Tests runs under load stay, because that project is the subject of its fix.
+- PC-090's pc run 44922584002 went red only because build-test (windows-latest) was cancelled at its 20-minute timeout-minutes, while Tellma.Core.AspNetCore.Tests was still passing tests. Earlier Windows durations today were 12.4, 18.1 and 18.0 min.
+  - Its CI fix finds which assembly grew. If the growth is spread across the suite, it raises the timeout to 30 min with the measured durations. Without local test runs.
+  - Still open from D-105: profiling slow .NET tests.
+
+### D-174 (orchestrator, 2026-11-21): PC-149 Review 1 rulings
+
+- PC-149 Review 1 (Opus high, 7418f050): 0 blocking, 2 major, 2 minor.
+  - Confirmed: the D-170 fix (the old load selected only JobId; it now uses the declared select, and correcting AllProperties' doc rather than its behaviour is right).
+  - Also confirmed: pre-mark ordering and the 12-attempt bound; IEmailSender resolved per claim (the outbox.sender startup check still catches a missing sender); provider-error handling per 0022, with no address or body logged; the welcome email commits or rolls back with the invite.
+- R1-1 (major): the Acme sandbox-invite test now races the job worker that sends the new welcome email, and failed 1 run in 3. The implementer wrongly said Acme.Web.Tests was missing and did not run the Acme projects. Ruling: assert only on the identity engine's mail and on the welcome row, run both Acme projects in full, and run the renamed test five times in a row.
+- R1-2 (major): the validating welcome group fails the persist closed (StaleContextException) under a permissions move with a warm id buffer, after the invitations were sent, but commits with a cold one. Ruling: the narrower option. A grant-independent validator over a payload with no references does not count as Validates, so the group replays as 0018 §3.3 says. Restore the §9 recompose pin and test both buffer states. Fall back to fail-closed in both states only if the narrow rule is unsound.
+- R1-3: count tellma.outbox.enqueued on commit. R1-4: add the handler-path tests.
+- For Ahmad: D-122's interim fail-closed rule for validating enlisted groups. The lasting fix would re-run enlisted validators in memory on persist re-entry.
+
 ### D-173 (Ahmad, 2026-11-21): apply the manual reset this week; T3 fill and PC-F65 start now
 
 - Ahmad, answering D-167: "Yes, apply this week". D-165 is superseded. Ahmad applies the reset himself once the weekly meter is close to 100%; the orchestrator tells him when it reaches ≈ 98%.

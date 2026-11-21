@@ -20,7 +20,11 @@ namespace Tellma.Core.Abstractions.Email
     /// <param name="RegardingEntity">The resource of the business record the email concerns, such as <c>acme.SalesInvoice</c>; null for none.</param>
     /// <param name="RegardingId">The id of the business record the email concerns; null for none.</param>
     /// <param name="SendAfter">The earliest instant the email may be sent; null for as soon as the worker runs.</param>
-    /// <param name="Source">Who produced the email, the source the outbox's enqueue counter is tagged with: <c>api</c> by default, <c>notification</c> for the email notification channel.</param>
+    /// <param name="Source">
+    ///     Who produced the email, the source the outbox's enqueue counter is tagged with:
+    ///     <see cref="ApiSource" /> by default, <see cref="NotificationSource" /> for the email
+    ///     notification channel. The outbox refuses any other value.
+    /// </param>
     public sealed record EmailEnqueueRequest(
         EmailMessage Message,
         IReadOnlyList<EmailBlobAttachment>? BlobAttachments = null,

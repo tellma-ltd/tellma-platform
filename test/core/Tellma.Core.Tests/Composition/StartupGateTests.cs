@@ -93,8 +93,9 @@ namespace Tellma.Core.Tests.Composition
 
             // The empty configuration then fails the built-in checks that read configuration: the
             // options check once for the catalog and twice for the identity server's authority and
-            // service secret.
-            string[] builtIn = ["core.options", "core.options", "core.options", "core.sql-profiles", "core.sql-profiles", "core.public-origin"];
+            // service secret; and the job worker, on by default, finds no email sender to hand the
+            // outgoing emails to.
+            string[] builtIn = ["core.options", "core.options", "core.options", "core.sql-profiles", "core.sql-profiles", "core.public-origin", "outbox.sender"];
             Assert.Equal(builtIn, exception.Problems.Skip(1).Select(static p => p.Source));
         }
 
@@ -109,7 +110,7 @@ namespace Tellma.Core.Tests.Composition
             TellmaCompositionException exception = await Assert.ThrowsAsync<TellmaCompositionException>(
                 () => host.StartAsync(TestContext.Current.CancellationToken));
 
-            string[] expected = ["core.options", "core.options", "core.options", "core.deployment-identity", "core.sql-profiles", "core.sql-profiles", "core.public-origin", "test.failing"];
+            string[] expected = ["core.options", "core.options", "core.options", "core.deployment-identity", "core.sql-profiles", "core.sql-profiles", "core.public-origin", "test.failing", "outbox.sender"];
             Assert.Equal(expected, exception.Problems.Select(static p => p.Source));
         }
 
@@ -211,6 +212,7 @@ namespace Tellma.Core.Tests.Composition
                 ["core.stack-securables"] = false,
                 ["blobs"] = false,
                 ["blobs.deployment"] = true,
+                ["outbox.sender"] = true,
             };
 
             Assert.Equal(expected, checks);

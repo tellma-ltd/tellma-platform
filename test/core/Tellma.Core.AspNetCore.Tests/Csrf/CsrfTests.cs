@@ -172,16 +172,16 @@ namespace Tellma.Core.AspNetCore.Tests.Csrf
         [Fact]
         public async Task A_cookie_get_needs_no_header_but_answers_to_the_provenance_rules()
         {
-            using HttpRequestMessage plain = new(HttpMethod.Get, "/1/blobs/photo/7");
+            using HttpRequestMessage plain = new(HttpMethod.Get, "/1/blobs/probe/photo/7");
             plain.Headers.Add("Cookie", fixture.Cookie);
             await AssertAsync(plain, 200, null);
 
-            using HttpRequestMessage crossSite = new(HttpMethod.Get, "/1/blobs/photo/7");
+            using HttpRequestMessage crossSite = new(HttpMethod.Get, "/1/blobs/probe/photo/7");
             crossSite.Headers.Add("Cookie", fixture.Cookie);
             crossSite.Headers.Add("Sec-Fetch-Site", "cross-site");
             await AssertAsync(crossSite, 403, CsrfRules.SecFetchSite);
 
-            using HttpRequestMessage foreign = new(HttpMethod.Get, "/1/blobs/photo/7");
+            using HttpRequestMessage foreign = new(HttpMethod.Get, "/1/blobs/probe/photo/7");
             foreign.Headers.Add("Cookie", fixture.Cookie);
             foreign.Headers.Add("Origin", "https://evil.example");
             await AssertAsync(foreign, 403, CsrfRules.Origin);

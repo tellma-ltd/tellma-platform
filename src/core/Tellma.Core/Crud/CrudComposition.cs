@@ -16,6 +16,7 @@ using Tellma.Core.Crud.Checks;
 using Tellma.Core.Crud.Delete;
 using Tellma.Core.Crud.Details;
 using Tellma.Core.Crud.Enlistment;
+using Tellma.Core.Crud.ExcelRows;
 using Tellma.Core.Crud.Query;
 using Tellma.Core.Crud.Save;
 using Tellma.Core.Crud.Validation;
@@ -88,8 +89,9 @@ namespace Tellma.Core.Crud
             services.TryAddScoped<IConfirmations>(static provider => provider.GetRequiredService<Confirmations>());
 
             // --- The pipeline: its factory, the operation scope, the query path's planner, rules and
-            // child surfaces, the details path's projections, planner and reads, and the save; the
-            // singletons hold no caller state ---
+            // child surfaces, the Excel row source, the details path's projections, planner and reads,
+            // the reads of the entities a write or a lookup reaches, and the save; the singletons
+            // hold no caller state ---
             services.TryAddScoped<IEntityPipelineFactory, EntityPipelineFactory>();
             services.TryAddScoped<CrudOperations>();
             services.TryAddScoped<RecomposeLog>();
@@ -99,10 +101,12 @@ namespace Tellma.Core.Crud
             services.TryAddScoped<QueryTraversalRule>();
             services.TryAddScoped<IQueryTraversalRule>(static provider => provider.GetRequiredService<QueryTraversalRule>());
             services.TryAddScoped<QueryOperation>();
+            services.TryAddScoped<ExcelRowsOperation>();
             services.TryAddScoped<IChildQueryService, ChildQueryService>();
             services.TryAddSingleton<DetailsProjections>();
             services.TryAddScoped<DetailsPlanner>();
             services.TryAddScoped<DetailsOperation>();
+            services.TryAddScoped<TargetReads>();
             services.TryAddScoped<WriteFrames>();
             services.TryAddScoped<SaveOperation>();
             services.TryAddScoped<DeleteOperation>();

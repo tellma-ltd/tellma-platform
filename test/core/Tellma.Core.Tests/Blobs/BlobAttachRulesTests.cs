@@ -21,8 +21,9 @@ namespace Tellma.Core.Tests.Blobs
     /// <summary>
     ///     The attach rule's pure parts: the refusal of one blob row in its order of checks, the
     ///     aggregate's columns at every depth, the values a payload newly attaches on inserted and
-    ///     updated rows and their children, the refusal instrument, the persist's refusal counted
-    ///     once per attached value, and a blob row gone before the persist refused as not attachable.
+    ///     updated rows and their children, whether the validator judges a payload at all, the refusal
+    ///     instrument, the persist's refusal counted once per attached value, and a blob row gone
+    ///     before the persist refused as not attachable.
     /// </summary>
     public sealed class BlobAttachRulesTests : IAsyncDisposable
     {
@@ -95,6 +96,20 @@ namespace Tellma.Core.Tests.Blobs
             Assert.Equal(
                 ["[0].CoverId 1", "[0].Pages[0].ScanId 2", "[0].Pages[2].ScanId 3", "[0].Spreads[0].Stickers[0].ImageId 4"],
                 Attached(album, before: null));
+        }
+
+        [Fact]
+        public void The_validator_judges_a_payload_only_when_a_row_references_a_blob_at_some_depth()
+        {
+            BlobReferenceValidator<BmAlbum> validator = new(
+                _model.GetRequiredService<IEntityMetadataProvider>(), new BlobAttachMetrics(_meters.GetRequiredService<IMeterFactory>()));
+
+            // --- No reference anywhere: nothing for a permission set to change ---
+            Assert.False(validator.Judges([new BmAlbum(), new BmAlbum { Pages = [new BmPage { ScanId = null }] }]));
+
+            // --- A reference on a root, or on a child row two levels down ---
+            Assert.True(validator.Judges([new BmAlbum(), new BmAlbum { CoverId = 1 }]));
+            Assert.True(validator.Judges([new BmAlbum { Spreads = [new BmSpread { Stickers = [new BmSticker { ImageId = 4 }] }] }]));
         }
 
         [Fact]

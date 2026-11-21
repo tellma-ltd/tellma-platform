@@ -8,7 +8,11 @@ using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Hosting.Server;
+using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -18,6 +22,7 @@ using Microsoft.IdentityModel.JsonWebTokens;
 using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 using Microsoft.IdentityModel.Tokens;
 using System.Globalization;
+using System.Net;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using Tellma.Core.Abstractions.Access;
@@ -81,14 +86,18 @@ namespace Tellma.Testing.WebHost
             _app = app;
             Catalog = catalog;
             Time = time;
-            Client = app.GetTestClient();
+            // A Kestrel host is reached over loopback HTTP at the address it bound; the test server in memory.
+            IServer server = app.Services.GetRequiredService<IServer>();
+            Client = server is TestServer
+                ? app.GetTestClient()
+                : new HttpClient { BaseAddress = new Uri(server.Features.GetRequiredFeature<IServerAddressesFeature>().Addresses.First()) };
             Rows = (InMemorySessionRows)app.Services.GetRequiredService<ISessionRows>();
             IdentityServer = app.Services.GetRequiredService<FakeIdentityServer>();
             Memberships = (FakeMembershipDirectory)app.Services.GetRequiredService<ITenantMembershipDirectory>();
             Users = app.Services.GetRequiredService<TestUsers>();
         }
 
-        /// <summary>A client of the host, at <c>https://localhost</c>.</summary>
+        /// <summary>A client of the host: at <c>https://localhost</c> in memory, or at the loopback address a Kestrel host bound.</summary>
         public HttpClient Client { get; }
 
         /// <summary>The host's services.</summary>
@@ -218,6 +227,19 @@ namespace Tellma.Testing.WebHost
             }
 
             options.ConfigureServices?.Invoke(builder.Services);
+
+            // --- A real Kestrel listener on a loopback port in place of the in-memory test server ---
+            // The defaults register Kestrel before the test server replaces it as the last server
+            // registered; removing the test server's registration leaves Kestrel's.
+            if (options.UseKestrel)
+            {
+                foreach (ServiceDescriptor testServer in builder.Services.Where(static descriptor => descriptor.ServiceType == typeof(IServer) && descriptor.ImplementationType == typeof(TestServer)).ToList())
+                {
+                    _ = builder.Services.Remove(testServer);
+                }
+
+                _ = builder.WebHost.ConfigureKestrel(static kestrel => kestrel.Listen(IPAddress.Loopback, 0));
+            }
 
             // --- The pipeline and the routes ---
             WebApplication app = builder.Build();
@@ -476,6 +498,12 @@ namespace Tellma.Testing.WebHost
 
         /// <summary>More services, registered after the composition.</summary>
         public Action<IServiceCollection>? ConfigureServices { get; set; }
+
+        /// <summary>
+        ///     Whether the host listens on a loopback port through Kestrel rather than in memory, for a
+        ///     test of what only a real connection does, such as a client that stops reading.
+        /// </summary>
+        public bool UseKestrel { get; set; }
 
         /// <summary>Whether <c>UseTellma</c> installs the pipeline before <c>MapTellma</c> runs.</summary>
         public bool UseTellma { get; set; } = true;
