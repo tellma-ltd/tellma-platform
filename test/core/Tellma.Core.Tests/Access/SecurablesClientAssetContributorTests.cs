@@ -44,6 +44,10 @@ namespace Tellma.Core.Tests.Access
                 [
                 {"resource":"acme.CreditExposureReport","action":"Read","isSensitive":false,"feature":"fixture","resourceLabelKey":"Securable_acme_CreditExposureReport","resourceLabelFallback":"Credit exposure report","actionLabelKey":"Action_Read","featureLabelKey":"Feature_fixture","featureLabelFallback":"Fixture"},
                 {"resource":"core.Job","action":"Read","filterRoot":"core.Job","isSensitive":false,"feature":"core","resourceLabelKey":"Core_Job_Plural","actionLabelKey":"Action_Read","featureLabelKey":"Feature_core"},
+                {"resource":"core.Job","action":"Retry","filterRoot":"core.Job","isSensitive":false,"feature":"core","resourceLabelKey":"Core_Job_Plural","actionLabelKey":"Action_Retry","featureLabelKey":"Feature_core"},
+                {"resource":"core.Job","action":"Cancel","filterRoot":"core.Job","isSensitive":false,"feature":"core","resourceLabelKey":"Core_Job_Plural","actionLabelKey":"Action_Cancel","featureLabelKey":"Feature_core"},
+                {"resource":"core.Job","action":"Resume","filterRoot":"core.Job","isSensitive":false,"feature":"core","resourceLabelKey":"Core_Job_Plural","actionLabelKey":"Action_Resume","featureLabelKey":"Feature_core"},
+                {"resource":"core.Job","action":"Confirm","filterRoot":"core.Job","isSensitive":false,"feature":"core","resourceLabelKey":"Core_Job_Plural","actionLabelKey":"Core_Job_Action_Confirm","featureLabelKey":"Feature_core"},
                 {"resource":"core.Notification","action":"Read","filterRoot":"core.Notification","isSensitive":false,"feature":"core","resourceLabelKey":"Core_Notification_Plural","actionLabelKey":"Action_Read","featureLabelKey":"Feature_core"},
                 {"resource":"core.OutgoingEmail","action":"Read","filterRoot":"core.OutgoingEmail","isSensitive":false,"feature":"core","resourceLabelKey":"Core_OutgoingEmail_Plural","actionLabelKey":"Action_Read","featureLabelKey":"Feature_core"},
                 {"resource":"core.OutgoingEmail","action":"Delete","filterRoot":"core.OutgoingEmail","isSensitive":false,"feature":"core","resourceLabelKey":"Core_OutgoingEmail_Plural","actionLabelKey":"Action_Delete","featureLabelKey":"Feature_core"},
@@ -65,6 +69,8 @@ namespace Tellma.Core.Tests.Access
                 {"resource":"core.User","action":"Save","filterRoot":"core.User","isSensitive":true,"feature":"core","resourceLabelKey":"Core_User_Plural","actionLabelKey":"Action_Save","featureLabelKey":"Feature_core"},
                 {"resource":"core.User","action":"Delete","filterRoot":"core.User","isSensitive":true,"feature":"core","resourceLabelKey":"Core_User_Plural","actionLabelKey":"Action_Delete","featureLabelKey":"Feature_core"},
                 {"resource":"core.User","action":"Activate","filterRoot":"core.User","isSensitive":true,"feature":"core","resourceLabelKey":"Core_User_Plural","actionLabelKey":"Action_Activate","featureLabelKey":"Feature_core"},
+                {"resource":"core.User","action":"Invite","filterRoot":"core.User","isSensitive":true,"feature":"core","resourceLabelKey":"Core_User_Plural","actionLabelKey":"Core_User_Action_Invite","featureLabelKey":"Feature_core"},
+                {"resource":"core.User","action":"Credentials","filterRoot":"core.User","isSensitive":true,"feature":"core","resourceLabelKey":"Core_User_Plural","actionLabelKey":"Action_Credentials","featureLabelKey":"Feature_core"},
                 {"resource":"core.UserStamp","action":"Read","filterRoot":"core.UserStamp","isSensitive":false,"feature":"core","owner":{"resource":"core.User","navigation":"User"},"resourceLabelKey":"Securable_core_UserStamp","actionLabelKey":"Action_Read","featureLabelKey":"Feature_core"}
                 ]
                 """;

@@ -4,10 +4,10 @@
 // LICENSE file in the root directory of this source tree.
 
 using Tellma.Core.Abstractions.Access;
+using Tellma.Core.Abstractions.Crud;
 using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.Access;
 using Tellma.Core.Tenancy;
-using Tellma.Core.Users;
 using static Tellma.Core.Tests.Access.AccessRulesHarness;
 
 namespace Tellma.Core.Tests.Access
@@ -146,12 +146,15 @@ namespace Tellma.Core.Tests.Access
         private static TenantBootstrapper<User> Bootstrapper(RequestContext context, bool isDevelopment)
         {
             return new TenantBootstrapper<User>(
-                new UserService<User>(new RefusingPipelines()),
+                new RefusingUsers(),
                 new SchemaDatabase(Schema),
                 new FixedContextAccessor(context),
                 new TenancyEnvironment("fixture", isDevelopment),
                 new BootstrapSubject(),
                 TimeProvider.System);
         }
+
+        /// <summary>A users' service whose pipeline refuses every operation, for a bootstrapper whose refusals come first.</summary>
+        private sealed class RefusingUsers() : EntityService<User>(new RefusingPipelines());
     }
 }

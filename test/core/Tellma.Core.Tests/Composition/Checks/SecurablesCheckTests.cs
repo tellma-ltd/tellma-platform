@@ -39,6 +39,10 @@ namespace Tellma.Core.Tests.Composition.Checks
             Assert.Equal(
                 [
                     new SecurableDescriptor("core.Job", "Read", "core.Job", false, "core", null),
+                    new SecurableDescriptor("core.Job", "Retry", "core.Job", false, "core", null),
+                    new SecurableDescriptor("core.Job", "Cancel", "core.Job", false, "core", null),
+                    new SecurableDescriptor("core.Job", "Resume", "core.Job", false, "core", null),
+                    new SecurableDescriptor("core.Job", "Confirm", "core.Job", false, "core", null),
                     new SecurableDescriptor("core.Notification", "Read", "core.Notification", false, "core", null),
                     new SecurableDescriptor("core.OutgoingEmail", "Read", "core.OutgoingEmail", false, "core", null),
                     new SecurableDescriptor("core.OutgoingEmail", "Delete", "core.OutgoingEmail", false, "core", null),
@@ -59,6 +63,8 @@ namespace Tellma.Core.Tests.Composition.Checks
                     new SecurableDescriptor("core.User", "Save", "core.User", true, "core", null),
                     new SecurableDescriptor("core.User", "Delete", "core.User", true, "core", null),
                     new SecurableDescriptor("core.User", "Activate", "core.User", true, "core", null),
+                    new SecurableDescriptor("core.User", "Invite", "core.User", true, "core", null),
+                    new SecurableDescriptor("core.User", "Credentials", "core.User", true, "core", null),
                     new SecurableDescriptor("core.UserStamp", "Read", "core.UserStamp", false, "core", new SecurableOwner("core.User", "User")),
                 ],
                 registry.All);

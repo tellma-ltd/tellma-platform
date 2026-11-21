@@ -16,6 +16,43 @@ namespace Tellma.Core.Abstractions.Access
         /// <summary>The meter every Core instrument is created on.</summary>
         public const string MeterName = "Tellma.Core";
 
+        // --- The users stack's instruments ---
+
+        /// <summary>
+        ///     Counter (<c>{user}</c>): the users the <c>invite</c> action was asked to invite, one per
+        ///     id, by <see cref="OutcomeTag" />: <see cref="InviteInvited" />,
+        ///     <see cref="InviteReinvited" />, <see cref="InviteActive" />, <see cref="InviteError" />,
+        ///     <see cref="InviteSubjectMismatch" /> or <see cref="InviteNotAttempted" />.
+        /// </summary>
+        public const string Invites = "tellma.users.invites";
+
+        /// <summary>
+        ///     Counter (<c>{message}</c>): the test notifications users sent themselves, by
+        ///     <see cref="ChannelTag" /> and <see cref="OutcomeTag" />.
+        /// </summary>
+        public const string TestNotifications = "tellma.users.test_notifications";
+
+        /// <summary>The channel tag of a test notification: the channel's key, such as <c>email</c>.</summary>
+        public const string ChannelTag = "channel";
+
+        /// <summary>The invite outcome of a user the identity server created and sent an invitation to.</summary>
+        public const string InviteInvited = "Invited";
+
+        /// <summary>The invite outcome of a credential-less account the identity server sent the invitation to again.</summary>
+        public const string InviteReinvited = "Reinvited";
+
+        /// <summary>The invite outcome of an account that already holds a credential, which needed no email.</summary>
+        public const string InviteActive = "Active";
+
+        /// <summary>The invite outcome of a user the identity server refused, or a sandbox could not invite.</summary>
+        public const string InviteError = "Error";
+
+        /// <summary>The invite outcome of a user whose email now belongs to another identity account, which was left as it was.</summary>
+        public const string InviteSubjectMismatch = "SubjectMismatch";
+
+        /// <summary>The invite outcome of a user the action never reached, because the identity server stopped answering first.</summary>
+        public const string InviteNotAttempted = "NotAttempted";
+
         // --- The identity-server client's instruments ---
 
         /// <summary>

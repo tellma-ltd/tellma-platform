@@ -25,6 +25,7 @@ using Tellma.Core.Notifications;
 using Tellma.Core.Outbox;
 using Tellma.Core.Provisioning;
 using Tellma.Core.Tenancy;
+using Tellma.Core.Users;
 
 namespace Tellma.Core.Composition
 {
@@ -191,6 +192,9 @@ namespace Tellma.Core.Composition
 
             // --- Blobs: the options, the kind registry, the staging service and the blobs check (spec 0017 §1.3, §9) ---
             BlobsRuntimeComposition.Register(services, _record, options);
+
+            // --- The users' stack: its instruments and its service's collaborators (spec 0018 §3) ---
+            UsersRuntimeComposition.Register(services);
 
             // --- Server-built links (spec 0011 §5.10), over the stack registry's routes ---
             services.AddSingleton<ITellmaLinks, TellmaLinks>();

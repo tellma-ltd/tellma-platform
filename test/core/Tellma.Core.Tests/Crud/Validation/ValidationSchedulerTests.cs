@@ -313,6 +313,124 @@ namespace Tellma.Core.Tests.Crud.Validation
         }
 
         /// <summary>
+        ///     A task waiting for the rounds to settle resumes, without a dispatch of its own, once every
+        ///     other task has loaded and completed; tasks waiting together resume together, and a load
+        ///     after the wait rides a further round.
+        /// </summary>
+        /// <returns>A task that completes when the check has passed.</returns>
+        [Fact]
+        public async Task A_settle_resumes_once_every_other_task_has_spoken()
+        {
+            BatchScript script = WidgetScript();
+            (ValidationScheduler scheduler, ContextLoader loader) = _rig.Loader(script);
+            List<string> order = [];
+            Lock gate = new();
+            void Note(string step)
+            {
+                lock (gate)
+                {
+                    order.Add(step);
+                }
+            }
+
+            scheduler.Run("validator", async () =>
+            {
+                for (int id = 1; id <= 2; id++)
+                {
+                    _ = loader.ByIds<VmWidget, int>([id]);
+                    await loader.LoadAsync();
+                }
+
+                Note("validator done");
+            });
+            scheduler.Run("method", async () =>
+            {
+                await scheduler.SettleAsync();
+                Note("method settled");
+                _ = loader.ByIds<VmWidget, int>([3]);
+                await loader.LoadAsync();
+                Note("method loaded");
+            });
+            scheduler.Run("component", async () =>
+            {
+                await scheduler.SettleAsync();
+                Note("component settled");
+            });
+
+            Assert.Equal(3, await scheduler.RunAsync());
+            Assert.Equal("validator done", order[0]);
+            Assert.Equal(["component settled", "method settled"], order[1..3].Order());
+            Assert.Equal("method loaded", order[3]);
+            Assert.Equal([[1], [2], [3]], script.Batches.Select(static batch => Assert.Single(batch.Of(ScriptedKind.Query)).KeySet<IdList>().Select(static row => row.Id).ToArray()));
+        }
+
+        /// <summary>
+        ///     A settle is refused outside every task, while another flow of the task is parked, and
+        ///     after the task left the rounds; the last two fail the rounds.
+        /// </summary>
+        /// <returns>A task that completes when the check has passed.</returns>
+        [Fact]
+        public async Task A_stray_settle_is_refused()
+        {
+            // --- Outside every task ---
+            (ValidationScheduler scheduler, ContextLoader loader) = _rig.Loader(WidgetScript());
+            _ = Assert.Throws<InvalidOperationException>(() => { _ = scheduler.SettleAsync(); });
+
+            // --- While another flow of the task is parked ---
+            scheduler.Run("double", async () =>
+            {
+                _ = loader.ByIds<VmWidget, int>([1]);
+                Task first = loader.LoadAsync();
+                Assert.Contains("already waiting in the rounds", Assert.Throws<InvalidOperationException>(() => { _ = scheduler.SettleAsync(); }).Message, StringComparison.Ordinal);
+                await first;
+            });
+            Assert.Equal(1, await scheduler.RunAsync());
+
+            // --- After the task left the rounds to wait for the persist ---
+            (ValidationScheduler leaving, _) = _rig.Loader(WidgetScript());
+            InvalidOperationException? refused = null;
+            leaving.Run("method", () =>
+            {
+                Action release = leaving.BeginLeave();
+                refused = Assert.Throws<InvalidOperationException>(() => { _ = leaving.SettleAsync(); });
+                release();
+                return Task.CompletedTask;
+            });
+            Assert.Same(refused, await Assert.ThrowsAsync<InvalidOperationException>(leaving.RunAsync));
+            Assert.Contains("after it left the validation rounds", refused!.Message, StringComparison.Ordinal);
+        }
+
+        /// <summary>A fault stops the rounds and cancels a settle, which never resumes.</summary>
+        /// <returns>A task that completes when the check has passed.</returns>
+        [Fact]
+        public async Task A_fault_cancels_a_settle()
+        {
+            BatchScript script = WidgetScript();
+            (ValidationScheduler scheduler, _) = _rig.Loader(script);
+            TaskCompletionSource waiting = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            bool resumed = false;
+            Task? settle = null;
+
+            scheduler.Run("method", async () =>
+            {
+                settle = scheduler.SettleAsync();
+                waiting.SetResult();
+                await settle;
+                resumed = true;
+            });
+            scheduler.Run("faulty", async () =>
+            {
+                await waiting.Task;
+                throw new FormatException("broken rule");
+            });
+
+            _ = await Assert.ThrowsAsync<FormatException>(scheduler.RunAsync);
+            Assert.False(resumed);
+            Assert.True(settle!.IsCanceled);
+            Assert.Equal(0, script.RoundTrips);
+        }
+
+        /// <summary>
         ///     A flow a validator started and never awaited is refused when it loads after the validator
         ///     returned: nothing is dispatched while another validator still runs, the rounds fail with
         ///     the refusal, and a flow that outlives the rounds too is refused rather than left waiting.

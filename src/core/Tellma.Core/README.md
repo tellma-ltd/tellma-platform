@@ -2144,6 +2144,67 @@ are exempt. Self-protection refusals are counted with the guards (`self_deactiva
 
 Saving a user or a role is a sensitive securable, so it asks for the step-up bar.
 
+### The users' service and its identity actions
+
+`UserService<TUser>` takes its platform collaborators as one `UserServiceDependencies` bundle (the
+identity-server client, the membership directory, the links, the language catalogue, the value sets,
+the guarded batch runner, the securables, the evaluator, the clock, the users' instruments and the
+logger factory), which `UsersRuntimeComposition` registers per scope, so a leaf's service derives with a
+two-argument constructor. A save lower-cases the emails, trims the names and the mobile, and puts the
+locale members in their canonical case; it then checks each new or changed locale member against what
+the deployment offers and each new or changed contact detail against its format, so a stored value the
+deployment no longer offers stays until it changes.
+
+| Code | The users' service refuses |
+|---|---|
+| `Users.LanguageNotOffered` / `Users.RegionNotOffered` | a language or a region the catalogue does not offer |
+| `Users.CalendarUnknown` / `Users.TimeZoneUnknown` | a calendar or a time zone outside its value set |
+| `Users.ContactEmailInvalid` / `Users.MobileInvalid` | a contact email that is not one plain address, a mobile that is not E.164 |
+| `Users.NotIndividual` / `Users.AlreadyJoined` / `Required` | an `invite` target that is not an individual, has joined, or has no email |
+| `Users.NotService` | an `issue-credentials` target that is not a service account |
+| `Users.Inactive` | an inactive target of either action, or an account deactivated while its credentials were issued |
+| `Users.CredentialsConcurrent` | an account whose client another request changed while its credentials were issued |
+
+The two identity actions call the identity server between the action's round trips, with no
+transaction open, once every validator has spoken (`ActionContext.ValidatedAsync`, which resumes the
+method at the validation's quiet point without a round trip of its own, and answers false when an
+error, an unconfirmed warning or the tenant's state will refuse the action, so the identity server is
+never called for an action that will not persist):
+
+- **`invite`** sends one invitation per target in request order (the user's language or the tenant's
+  first, the name in that language's content slot, the tenant's link, and a lookup only on a sandbox),
+  then appends one write-back statement to the persist batch: each answered user's account linked
+  unless it holds another, `InvitedAt` and `InviteStatus` written on success, `LastInviteError`
+  replaced, the row stamped, and every answered user's preferences tag moved. Users whose stored
+  account differs from the one answered come back as `Users.SubjectMismatch`, untouched; a sandbox's
+  unknown address or credential-less account is `Users.SandboxRequiresExistingIdentity`. Once the
+  action committed, the users who gained an account are recorded in the membership directory. A
+  prefix the identity server answered is recorded and raised as `partial-failure` with the ids never
+  attempted. A recompose of the persist replays the write-back and never calls the identity server
+  again.
+- **`issue-credentials`** (single target) creates a client, joins the account on its first
+  credentials, links it to the client only while it is still active and still names the client it was
+  loaded with (else `Users.Inactive` or `Users.CredentialsConcurrent`, and nothing commits), and
+  answers the client id and its one-time secret, which no log or rendering carries. Once the action
+  committed, the client is recorded and the previous one deleted; a persist that failed deletes the
+  new one instead. One whose commit is unknown (a lost connection around the commit) reads the account
+  back once: a row naming the new client committed, so the client is recorded and the previous one
+  deleted, and the failure is still raised; any other row did not, so the new client is deleted. Only a
+  failed read-back keeps it, logged as `ServiceAccountClientKept`.
+- **`invitation-status`** reads the requested users under the caller's read decision in one round
+  trip, omitting the users the caller cannot read, then asks the identity server for the delivery of
+  the invitations it emailed.
+
+After a committed `deactivate`, every session listener is told of each linked user, the membership
+hints turn inactive and a service account's client is deleted; after `activate`, the hints turn
+active. These effects, like the actions' own, run outside any transaction and log a failure
+(`ServiceAccountDeleteFailed`, `ServiceAccountClientKept`, `UserAccessRevocationFailed`, `UserMembershipHintFailed`) rather than
+throw. `UserAccessCriteria` grants every member `Read` of their own user row (`Id = me()`). Invites
+are counted on `tellma.users.invites` (meter `Tellma.Core`, tag `outcome`: `Invited`, `Reinvited`,
+`Active`, `SubjectMismatch`, `Error`, `NotAttempted`) and logged as `UsersInvited` or
+`UsersInvitePartial`. A user delete's preferences, stamps and notification preferences leave by their
+keys' cascade, which the delete declares among its writes as it does every key's `ON DELETE` action.
+
 `RoleService<TRole>`'s preprocessing collapses a role's exact duplicate permissions (the same
 resource, action and filter, compared ordinally) to one row before the rules count and stamp them,
 since no unique index can hold them apart: a stored row survives over a new one, and a stored
@@ -2426,6 +2487,45 @@ leaves those states (logged as `JobPollerRetired`, its orphan sample dropped). T
   on the `Tellma.Core` meter; `JobWorkerHeartbeat` is logged whenever a poll stamps a tenant, at most
   once a minute, for the log-based staleness alert under `infra/monitoring/jobs/`.
 
+### The jobs' stack
+
+`JobService` serves `core.Job`'s query and details, and four actions on the general action path,
+each over the targets its first round loads, every target held to the action's precondition (a
+refused target fails the whole call at its position):
+
+| Action | Securable | Precondition | Effect |
+|---|---|---|---|
+| `retry` | `Retry` | `Failed` (`Jobs.NotRetryable`) | Pending, due now, attempts and error cleared. |
+| `cancel` | `Cancel` | not ended (`Jobs.NotCancellable`) | A running job, or a pending one already flagged, is flagged and stops at its next renewal; a job waiting for confirmation, or one with a checkpoint, is queued flagged so its next claim records the stop; any other is cancelled at once. Destructive, and served on a read-only tenant. |
+| `resume` | `Resume` | `Held` (`Jobs.NotHeld`) | Pending, due now, cancel flag and error cleared. |
+| `confirm` | `Confirm` | `PendingConfirmation` (`Jobs.NotPendingConfirmation`), requested by the caller (`Jobs.NotInitiator`), every recorded key among the one to sixteen keys sent | The recorded keys join the job's confirmed keys; pending, due now, from its first attempt. Hidden from MCP. |
+
+Each action's statement is fixed text that repeats its precondition, so a repeat after a commit
+fails the precondition instead of acting twice. Every target's requester is told `job.changed`. A
+resume or a cancel that ends a requester's last held job withdraws their `core.job.held`, and one
+that ends the last held job of the tenant withdraws `core.scheduler.gap`; a confirm, and the cancel
+of a job waiting for confirmation, withdraw its `core.job.pending-confirmation`. Retry, resume and
+confirm wake this instance's poller once they commit. `JobAccessCriteria` gives every member the
+self-scope `RequestedById = me()` on `Read`, `Cancel` and `Confirm`, so a member reads, stops and
+confirms the jobs they requested without a role; a row that owns a job reads the job's related
+projection (`Job.Status`) for any reader of that row.
+
+`JobLabels` renders a job's display text in the reader's language: the job's own label with its
+arguments (an `entity` argument that names an entity renders as its plural label), else the
+handler's `JobHandler_<key>` resource when a shared resource declares it, else the handler key. The
+`jobHandlers` section of the client metadata lists every registered handler, by key, with whether a user
+schedule may name it, whether it commits in steps, its label key, the key itself as the fallback
+only when no resource declares the label, and the row a succeeded job leaves.
+
+### The platform's maintenance handlers
+
+| Key | Built-in | Does |
+|---|---|---|
+| `core.job-retention` | id 1, `0 3 * * *` | In pages of 1,000 rows, each its own `Maintenance` round trip: first queues flagged every job that waited for confirmation longer than `FailedRetention` and withdraws its notice, then deletes the succeeded jobs that ended longer than `SucceededRetention` ago, then the failed and cancelled ones past `FailedRetention`. A job that has not ended is never deleted; the rows that referenced a deleted job (every job entity's `JobId`, the schedule states' `LastJobId`) lose it, and each delete page declares the tables those keys write, read from the model's foreign keys. |
+| `core.tree-verify` | id 6, `0 1 * * 6` | Recounts every tree table's subtree counts with the tree statements' verify, one `Maintenance` round trip per table, repairing the drifted rows. |
+
+Both run on a read-only tenant and report their progress after every page or table.
+
 ## Excel
 
 `Excel/` holds the workbook features' runtime contracts and the engine that writes them. Workbooks
@@ -2500,7 +2600,7 @@ are SpreadsheetML packages written with `DocumentFormat.OpenXml` (MIT), forward-
 | `Calendars/` | `GregorianCalendarSystem`, `UmAlQuraCalendarSystem`, `EthiopianCalendarSystem`, `CalendarRegistry`; internally the Ethiopian and the extended Umm al-Qura framework calendars, the shared renderer and reader, the culture data and the date-pattern reader. |
 | `Excel/` | `ExcelContext`, `ExcelColumnSpec`, `ExcelColumnRole`, `ExcelKeyKind`, `ExcelDateEncoding`, `ExcelSheetPlan`, `ExcelWorkbookPlan`, `ExcelTableSpec`, `ExcelTableRow`, `ExcelRowStyle`, `IExcelExporter`, `ImportCheckpointState`; internally the cell codec and its decoding records, the cell reader, the column encodings, the number formats, the stylesheet, the package, worksheet and workbook writers, the manifest's header block, the serial dates, the sheet and file names, the column letters, the XML escapes and the scratch files. |
 | `Caching/` | The versioned cache base, its keys and kinds; internally, the cacheable entities' store and façade, the version-tag registry, its table's row, the prelude and bump contributors, the bump plan, the snapshots, the mismatch policies, the migrator's seeder, the instruments and the log events. |
-| `Jobs/` | Internally: the job tables' configurations and seeds, the handler, built-in-schedule and retired-key realizers with their cross-feature checks, `JobHandlerRegistry`, the `jobs.handlers` and `jobs.schedules` checks, the queue and its enqueue statement, the poller wake, the lease statements, the runner with its leases, renewal, progress, outcome rules, backoff, pending-confirmation record, notices and completion-failure translation, the job and system scopes, the `process` and `settle` activities and the log scope, the composition step that binds the jobs' options, and the log events. |
+| `Jobs/` | Internally: the job tables' configurations and seeds, the handler, built-in-schedule and retired-key realizers with their cross-feature checks, `JobHandlerRegistry`, the `jobs.handlers` and `jobs.schedules` checks, the queue and its enqueue statement, the poller wake, the lease statements, the runner with its leases, renewal, progress, outcome rules, backoff, pending-confirmation record, notices and completion-failure translation, the job and system scopes, the `process` and `settle` activities and the log scope, the composition step that binds the jobs' options, and the log events; `JobService` with its action and retention statements, the self-scope criteria, the label renderer, the `jobHandlers` contributor, and the retention and tree-verify handlers. |
 | `Access/` | Internally: the access tables' configurations and seeds, the user stamp and preference rows, the securable registry with its name grammar and feature contributor, the securables section of the client metadata, the permission set build: the classifier, the builder, the interner and the access instruments and logs; and the user connection: the connect prologue, the connect, permissions and profile caches, the connector, the guarded runner and the connect initializer; and the permission filter rules the role save and the Queryex discovery share. |
 | `Identity/` | `IdentityServerClient`; internally its transport and token cache, the wire shapes and their source-generated JSON metadata, the options' settling and validator, the composition step that binds them and registers the named HTTP client, the instruments and the log events. |
 | `Notifications/` | `NotificationTypeRegistry`, `NotificationChannelRegistry`, `ClientEventRegistry`, `NotificationsClientAssetContributor`, `ClientEventPublisher`, `NullClientEventPublisher`, `NotificationConfiguration` and `NotificationDeliveryArguments`; internally the notifier, its statements and the delivering channels, the email channel's sender, the renderer, the preference row, the metrics, the name grammars, the hub-less real-time status, the composition step and the log events. |
@@ -2515,8 +2615,8 @@ are SpreadsheetML packages written with `DocumentFormat.OpenXml` (MIT), forward-
 `test/core/Tellma.Core.IntegrationTests` (`Category=Integration`) runs the catalog migrations, the
 write side, the registry, the membership hints and the tenant scope factory against SQL Server, and
 runs batches against the data layer's fixture database (`test/shared/Tellma.Testing.Entities`), and
-holds the job tables, the queue's enqueue statement, the lease statements and jobs run end to end
-through `JobPollDriver` to SQL Server in `Jobs/`.
+holds the job tables, the queue's enqueue statement, the lease statements, the jobs' actions and
+the maintenance handlers, and jobs run end to end through `JobPollDriver` to SQL Server in `Jobs/`.
 `test/core/Tellma.Core.Tests/Excel` holds every workbook the writer produces to the Open XML SDK's
 Office 2019 schema validator.
 `test/core/Tellma.Core.Tests` also runs the resource audit over Core's own resources

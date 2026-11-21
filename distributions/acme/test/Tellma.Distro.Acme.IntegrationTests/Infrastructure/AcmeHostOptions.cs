@@ -4,6 +4,7 @@
 // LICENSE file in the root directory of this source tree.
 
 using Microsoft.Extensions.DependencyInjection;
+using Tellma.Core.AspNetCore;
 using Tellma.Core.Composition;
 
 namespace Tellma.Distro.Acme.IntegrationTests.Infrastructure
@@ -25,6 +26,9 @@ namespace Tellma.Distro.Acme.IntegrationTests.Infrastructure
 
         /// <summary>Whether the host maps the tenant probes onto its web group, as a distribution maps its own endpoints.</summary>
         public bool MapsProbes { get; init; }
+
+        /// <summary>Maps a test's own endpoints onto the host's groups, as a distribution maps its own; null for none.</summary>
+        public Action<TellmaEndpoints>? Map { get; init; }
 
         /// <summary>
         ///     Whether starting the host waits until its tenant snapshot is loaded, as a load balancer

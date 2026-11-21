@@ -13,7 +13,7 @@ using Tellma.Core.EntityFrameworkCore.TableTypes;
 namespace Tellma.Core.Migrator.TestDistribution.Migrations
 {
     [DbContext(typeof(TellmaDbContext))]
-    [Migration("20261121024624_Initial")]
+    [Migration("20261121053808_Initial")]
     partial class Initial
     {
         /// <inheritdoc />
@@ -1148,6 +1148,40 @@ namespace Tellma.Core.Migrator.TestDistribution.Migrations
                             ModifiedAt = new DateTimeOffset(new DateTime(2000, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
                             ModifiedById = 1,
                             Name = "core.notification-retention",
+                            OverlapPolicy = "Skip",
+                            RunAsUserId = 1
+                        },
+                        new
+                        {
+                            Id = 1,
+                            CatchUpWindowMinutes = 1440,
+                            Code = "core.job-retention",
+                            CreatedAt = new DateTimeOffset(new DateTime(2000, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            CreatedById = 1,
+                            CronExpression = "0 3 * * *",
+                            HandlerKey = "core.job-retention",
+                            IsActive = true,
+                            MissedPolicy = "Coalesce",
+                            ModifiedAt = new DateTimeOffset(new DateTime(2000, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            ModifiedById = 1,
+                            Name = "core.job-retention",
+                            OverlapPolicy = "Skip",
+                            RunAsUserId = 1
+                        },
+                        new
+                        {
+                            Id = 6,
+                            CatchUpWindowMinutes = 1440,
+                            Code = "core.tree-verify",
+                            CreatedAt = new DateTimeOffset(new DateTime(2000, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            CreatedById = 1,
+                            CronExpression = "0 1 * * 6",
+                            HandlerKey = "core.tree-verify",
+                            IsActive = true,
+                            MissedPolicy = "Coalesce",
+                            ModifiedAt = new DateTimeOffset(new DateTime(2000, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            ModifiedById = 1,
+                            Name = "core.tree-verify",
                             OverlapPolicy = "Skip",
                             RunAsUserId = 1
                         });
@@ -19236,6 +19270,14 @@ namespace Tellma.Core.Migrator.TestDistribution.Migrations
                         new
                         {
                             ScheduleId = 2
+                        },
+                        new
+                        {
+                            ScheduleId = 1
+                        },
+                        new
+                        {
+                            ScheduleId = 6
                         });
                 });
 
@@ -19929,6 +19971,14 @@ namespace Tellma.Core.Migrator.TestDistribution.Migrations
             modelBuilder.HasTableTypeDefinition("StringList", "dbo", type => type
                 .Column(name: "Id", storeType: "nvarchar(450)", maxLength: 450)
                 .HasKey("Id")
+                .HasGrants("tellma_app"));
+
+            modelBuilder.HasTableTypeDefinition("UserInvitationOutcomeList", "dbo", type => type
+                .Column(name: "UserId", storeType: "int")
+                .Column(name: "Subject", storeType: "varchar(255)", nullable: true, collation: "Latin1_General_100_BIN2")
+                .Column(name: "InviteStatus", storeType: "varchar(9)", nullable: true)
+                .Column(name: "LastInviteError", storeType: "nvarchar(1024)", nullable: true, maxLength: 1024)
+                .HasKey("UserId")
                 .HasGrants("tellma_app"));
 
             modelBuilder.HasTableTypeDefinition("UserPreferenceList", "dbo", type => type

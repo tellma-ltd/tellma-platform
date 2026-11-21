@@ -7,6 +7,7 @@ public abstract class ActionContext<TEntity>
     public CancellationToken CancellationToken { get; init; }
     public IReadOnlyList<TEntity> Entities { get; }
     public Task Persisted { get; }
+    public Task<bool> ValidatedAsync()
     public object? Arguments { get; init; }
     public required IContextLoader Loader { get; init; }
     public required IDataBatch Batch { get; init; }

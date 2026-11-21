@@ -65,6 +65,44 @@ namespace Tellma.Core.Jobs
                 : confirmedKeys.Split(KeySeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         }
 
+        /// <summary>The distinct keys of the warnings a record names, in the order they first appear.</summary>
+        /// <param name="pendingConfirmationsJson">The record, as <see cref="Serialize" /> wrote it.</param>
+        /// <returns>The keys; empty for a record that is not one or names none.</returns>
+        public static IReadOnlyList<string> Keys(string pendingConfirmationsJson)
+        {
+            ArgumentNullException.ThrowIfNull(pendingConfirmationsJson);
+
+            // --- The record's items, each with its key; anything else names no key ---
+            List<string> keys = [];
+            try
+            {
+                using var record = JsonDocument.Parse(pendingConfirmationsJson);
+                if (record.RootElement.ValueKind == JsonValueKind.Object
+                    && record.RootElement.TryGetProperty("items", out JsonElement items)
+                    && items.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (JsonElement item in items.EnumerateArray())
+                    {
+                        if (item.ValueKind == JsonValueKind.Object
+                            && item.TryGetProperty("key", out JsonElement key)
+                            && key.ValueKind == JsonValueKind.String
+                            && key.GetString() is string text
+                            && !keys.Contains(text, StringComparer.Ordinal))
+                        {
+                            keys.Add(text);
+                        }
+                    }
+                }
+            }
+            catch (JsonException)
+            {
+                // A record the machinery did not write names no key; the statement judges the row again.
+                return [];
+            }
+
+            return keys;
+        }
+
         /// <summary>
         ///     The record of the warnings: <c>{ count, items }</c>, each item with its first
         ///     <see cref="JobLimits.MaxPendingConfirmationIds" /> ids, trimmed from the end to

@@ -241,7 +241,7 @@ namespace Tellma.Core.Tests.Crud
         }
 
         [Fact]
-        public async Task A_cacheable_stack_reads_without_a_filter_and_a_read_only_stack_registers_its_read_alone()
+        public async Task A_cacheable_stack_reads_without_a_filter_and_a_read_only_stack_registers_its_read_and_its_actions_alone()
         {
             ServiceCollection services = [];
             _ = FixtureComposition.Compose(services);
@@ -259,7 +259,12 @@ namespace Tellma.Core.Tests.Crud
                 securables.ForResource("fixture.Lookup"));
 
             // --- Query and details only: the read and nothing else ---
-            Assert.Equal([new SecurableDescriptor("core.Job", "Read", "core.Job", false, "core", null)], securables.ForResource("core.Job"));
+            Assert.Equal([new SecurableDescriptor("core.Notification", "Read", "core.Notification", false, "core", null)], securables.ForResource("core.Notification"));
+
+            // --- A read-only stack with declared actions: the read, then the platform's actions in their order, then its own ---
+            Assert.Equal(
+                ["Read", "Retry", "Cancel", "Resume", "Confirm"],
+                securables.ForResource("core.Job").Select(static securable => securable.Action));
         }
     }
 }
