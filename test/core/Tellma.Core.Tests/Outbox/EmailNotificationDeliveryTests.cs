@@ -4,7 +4,9 @@
 // LICENSE file in the root directory of this source tree.
 
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Logging.Testing;
 using System.Diagnostics.Metrics;
 using System.Globalization;
 using System.Text.Json;
@@ -21,6 +23,7 @@ using Tellma.Core.Abstractions.Validation;
 using Tellma.Core.Calendars;
 using Tellma.Core.Localization;
 using Tellma.Core.Notifications;
+using Tellma.Core.Outbox;
 using Tellma.Core.Tests.Access;
 
 namespace Tellma.Core.Tests.Outbox
@@ -30,8 +33,10 @@ namespace Tellma.Core.Tests.Outbox
     ///     per addressed recipient in their order, to the contact address over the sign-in address,
     ///     a recipient with neither skipped; one rendering per localization, in each recipient's
     ///     language, calendar and zone, with the tenant's name in their content language; the link to
-    ///     the target in both bodies, HTML-encoded in the HTML one; and nothing enqueued when no
-    ///     recipient has an address.
+    ///     the target in both bodies, HTML-encoded in the HTML one; a recipient whose address the
+    ///     outbox cannot store skipped with a warning while the others are enqueued, and a name with
+    ///     a control character kept on one line; and nothing enqueued when no recipient has an
+    ///     address the outbox can store.
     /// </summary>
     public sealed class EmailNotificationDeliveryTests : IDisposable
     {
@@ -54,8 +59,8 @@ namespace Tellma.Core.Tests.Outbox
         private static readonly NotificationRequest Shipped = new(
             "fixture.shipment.shipped", [1, 2, 3, 4], JsonSerializer.SerializeToElement(new { number = "SO-7" }), "fixture.Shipment", 42, null, null);
 
-        /// <summary>The metrics the localizer factory's meter comes from.</summary>
-        private readonly ServiceProvider _metrics = new ServiceCollection().AddMetrics().BuildServiceProvider();
+        /// <summary>The metrics the localizer factory's meter comes from, and the logs the channel writes.</summary>
+        private readonly ServiceProvider _services = new ServiceCollection().AddMetrics().AddLogging().AddFakeLogging().BuildServiceProvider();
 
         /// <summary>The outbox the channel enqueues through.</summary>
         private readonly RecordingOutbox _outbox = new();
@@ -69,7 +74,7 @@ namespace Tellma.Core.Tests.Outbox
         /// <inheritdoc />
         public void Dispose()
         {
-            _metrics.Dispose();
+            _services.Dispose();
         }
 
         [Fact]
@@ -154,6 +159,54 @@ namespace Tellma.Core.Tests.Outbox
             Assert.Empty(_renderer.Calls);
         }
 
+        [Fact]
+        public async Task A_recipient_whose_address_the_outbox_refuses_is_skipped_with_a_warning_and_the_others_are_enqueued()
+        {
+            await Channel().DeliverAsync(
+                _host,
+                Shipped,
+                [
+                    Recipient(1, "Ada", "ada@example.com", contactEmail: "Ada <ada@acme.example>", English),
+                    Recipient(2, "Ben\tJones\r\nBcc: x@example.net", "ben@example.com", contactEmail: null, English),
+                    Recipient(3, "Cy", " cy@example.com ", contactEmail: null, Arabic),
+                ],
+                TestContext.Current.CancellationToken);
+
+            // --- Ben, his name on one line, and Cy, trimmed, in one call the outbox accepts ---
+            IReadOnlyList<EmailEnqueueRequest> requests = Assert.Single(_outbox.Calls).Requests;
+            Assert.Equal([2, 3], requests.Select(static request => request.RecipientUserId));
+            Assert.Equal(
+                [new EmailAddress("ben@example.com", "Ben Jones  Bcc: x@example.net"), new EmailAddress("cy@example.com", "Cy")],
+                requests.Select(static request => Assert.Single(request.Message.To)));
+            Assert.All(requests, static request => Assert.True(EmailOutbox.IsWellFormed(request)));
+
+            // --- One warning, naming Ada by id and never by address ---
+            FakeLogRecord skipped = Assert.Single(Logged());
+            Assert.Equal(LogLevel.Warning, skipped.Level);
+            Assert.Contains(new KeyValuePair<string, string?>("RecipientUserId", "1"), skipped.StructuredState!);
+            Assert.DoesNotContain("acme.example", skipped.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public async Task Nothing_is_enqueued_when_every_address_is_one_the_outbox_refuses()
+        {
+            await Channel().DeliverAsync(
+                _host,
+                Shipped,
+                [Recipient(1, "Ada", "ada@example.com", contactEmail: "Ada <ada@acme.example>", English), Recipient(2, "Ben", "ben @example.com", null, English)],
+                TestContext.Current.CancellationToken);
+
+            Assert.Empty(_outbox.Calls);
+            Assert.Equal(2, Logged().Count);
+        }
+
+        /// <summary>The channel's skipped-recipient warnings, in order.</summary>
+        /// <returns>The records.</returns>
+        private List<FakeLogRecord> Logged()
+        {
+            return [.. _services.GetFakeLogCollector().GetSnapshot().Where(static record => record.Id.Name == "EmailNotificationRecipientSkipped")];
+        }
+
         /// <summary>A recipient.</summary>
         /// <param name="userId">The user.</param>
         /// <param name="name">Their name.</param>
@@ -191,8 +244,9 @@ namespace Tellma.Core.Tests.Outbox
                 },
             };
             IcuStringLocalizerFactory localizers = new(
-                new LanguageCatalog(new LanguageDeclaration(["en-GB", "ar-SA"], [])), NullLoggerFactory.Instance, _metrics.GetRequiredService<IMeterFactory>());
-            return new EmailNotificationChannel(_outbox, _renderer, localizers, new Links(), new FixedContextAccessor(context), new NoSettingsCache());
+                new LanguageCatalog(new LanguageDeclaration(["en-GB", "ar-SA"], [])), NullLoggerFactory.Instance, _services.GetRequiredService<IMeterFactory>());
+            return new EmailNotificationChannel(
+                _outbox, _renderer, localizers, new Links(), new FixedContextAccessor(context), new NoSettingsCache(), _services.GetRequiredService<ILoggerFactory>());
         }
 
         /// <summary>An outbox that records each call.</summary>

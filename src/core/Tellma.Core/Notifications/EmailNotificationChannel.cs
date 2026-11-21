@@ -4,6 +4,7 @@
 // LICENSE file in the root directory of this source tree.
 
 using Microsoft.Extensions.Localization;
+using Microsoft.Extensions.Logging;
 using System.Net;
 using System.Text;
 using System.Text.Json;
@@ -16,6 +17,7 @@ using Tellma.Core.Abstractions.Notifications;
 using Tellma.Core.Abstractions.Settings;
 using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.Composition;
+using Tellma.Core.Outbox;
 
 namespace Tellma.Core.Notifications
 {
@@ -42,7 +44,10 @@ namespace Tellma.Core.Notifications
     ///         The emails are addressed to members of the tenant, so their audience is
     ///         <see cref="EmailAudience.Internal" />, and each row records its recipient and the
     ///         notification's target as the record it concerns. A recipient with no address is
-    ///         skipped. The constructor needs no tenant, so the startup gate can read the key.
+    ///         skipped, and so, with a warning, is one whose address the outbox cannot store, so one
+    ///         unusable address never fails the other recipients' emails; a display name loses its
+    ///         control characters instead. The constructor needs no tenant, so the startup gate can
+    ///         read the key.
     ///     </para>
     /// </remarks>
     /// <param name="outbox">The scope's outbox, which the emails are enqueued through.</param>
@@ -51,13 +56,15 @@ namespace Tellma.Core.Notifications
     /// <param name="links">Builds the link to the notification's target.</param>
     /// <param name="accessor">The scope's request context, which names the tenant and may hold its settings.</param>
     /// <param name="settings">The tenant's settings, when the scope's context holds none.</param>
+    /// <param name="loggers">Creates the logger that reports a skipped recipient.</param>
     internal sealed class EmailNotificationChannel(
         IEmailOutbox outbox,
         INotificationRenderer renderer,
         IStringLocalizerFactory localizers,
         ITellmaLinks links,
         IRequestContextAccessor accessor,
-        ITenantSettingsCache settings) : INotificationChannel
+        ITenantSettingsCache settings,
+        ILoggerFactory loggers) : INotificationChannel
     {
         /// <summary>The resource of an email notification's subject. Arguments: <c>tenantName</c> and <c>text</c>.</summary>
         public const string SubjectKey = "Email_Notification_Subject";
@@ -83,6 +90,9 @@ namespace Tellma.Core.Notifications
         /// <summary>What a subject cut to fit its column ends with.</summary>
         private const char Ellipsis = '…';
 
+        /// <summary>Reports a recipient skipped because their email cannot be stored.</summary>
+        private readonly ILogger _logger = loggers.CreateLogger(NotificationsLog.Category);
+
         /// <inheritdoc />
         public string Key => CoreFeature.EmailChannel;
 
@@ -98,12 +108,25 @@ namespace Tellma.Core.Notifications
             ArgumentNullException.ThrowIfNull(recipients);
 
             // --- The addressed recipients: the contact address, else the sign-in address ---
-            List<(NotificationRecipient Recipient, string Address)> addressed = [];
+            // Spec 0022 §4 sends to a recipient with an address and skips one without. An address
+            // the outbox would refuse is skipped the same way, with a warning: the outbox refuses a
+            // whole call for one bad request, and that would fail every other recipient's email.
+            List<(NotificationRecipient Recipient, EmailAddress Mailbox)> addressed = [];
             foreach (NotificationRecipient recipient in recipients)
             {
-                if (Address(recipient) is string address)
+                if (Address(recipient) is not string address)
                 {
-                    addressed.Add((recipient, address));
+                    continue;
+                }
+
+                EmailAddress mailbox = Mailbox(address, recipient.Name);
+                if (EmailAddressList.IsWellFormed(mailbox))
+                {
+                    addressed.Add((recipient, mailbox));
+                }
+                else
+                {
+                    NotificationsLog.EmailRecipientSkipped(_logger, recipient.UserId);
                 }
             }
 
@@ -124,7 +147,7 @@ namespace Tellma.Core.Notifications
             // --- One rendering per localization, one request per addressed recipient, in their order ---
             Dictionary<LocalizationKey, Rendered> rendered = [];
             List<EmailEnqueueRequest> emails = new(addressed.Count);
-            foreach ((NotificationRecipient recipient, string address) in addressed)
+            foreach ((NotificationRecipient recipient, EmailAddress mailbox) in addressed)
             {
                 var key = LocalizationKey.Of(recipient.Localization);
                 if (!rendered.TryGetValue(key, out Rendered? email))
@@ -133,10 +156,10 @@ namespace Tellma.Core.Notifications
                     rendered.Add(key, email);
                 }
 
-                emails.Add(new EmailEnqueueRequest(
+                EmailEnqueueRequest message = new(
                     new EmailMessage
                     {
-                        To = [new EmailAddress(address, string.IsNullOrWhiteSpace(recipient.Name) ? null : recipient.Name)],
+                        To = [mailbox],
                         Subject = email.Subject,
                         TextBody = email.Text,
                         HtmlBody = email.Html,
@@ -145,11 +168,25 @@ namespace Tellma.Core.Notifications
                     RecipientUserId: recipient.UserId,
                     RegardingEntity: request.TargetResource,
                     RegardingId: request.TargetId,
-                    Source: EmailEnqueueRequest.NotificationSource));
+                    Source: EmailEnqueueRequest.NotificationSource);
+
+                // The outbox's own rules are the last word: a request it would refuse is skipped
+                // like an unusable address, never sent to fail the whole call.
+                if (EmailOutbox.IsWellFormed(message))
+                {
+                    emails.Add(message);
+                }
+                else
+                {
+                    NotificationsLog.EmailRecipientSkipped(_logger, recipient.UserId);
+                }
             }
 
             // --- One enqueue, enlisted with the delivery job's frame ---
-            _ = await outbox.EnqueueAsync(host, emails, cancellationToken).ConfigureAwait(false);
+            if (emails.Count > 0)
+            {
+                _ = await outbox.EnqueueAsync(host, emails, cancellationToken).ConfigureAwait(false);
+            }
         }
 
         /// <inheritdoc />
@@ -172,19 +209,27 @@ namespace Tellma.Core.Notifications
                 : null;
         }
 
+        /// <summary>
+        ///     A recipient's mailbox: the address without surrounding white space, and their name on
+        ///     one line (each control character a space), or none when it is blank.
+        /// </summary>
+        /// <param name="address">The address.</param>
+        /// <param name="name">The recipient's name; null for none.</param>
+        /// <returns>The mailbox, which the outbox may still refuse for its address.</returns>
+        internal static EmailAddress Mailbox(string address, string? name)
+        {
+            ArgumentNullException.ThrowIfNull(address);
+            string? displayName = name is null ? null : OneLine(name);
+            return new EmailAddress(address.Trim(), string.IsNullOrEmpty(displayName) ? null : displayName);
+        }
+
         /// <summary>A subject on one line that fits its column: control characters become spaces, and a longer one is cut and ends with an ellipsis.</summary>
         /// <param name="subject">The rendered subject.</param>
         /// <returns>The subject to store.</returns>
         internal static string FitSubject(string subject)
         {
             ArgumentNullException.ThrowIfNull(subject);
-            StringBuilder builder = new(subject.Length);
-            foreach (char c in subject)
-            {
-                _ = builder.Append(char.IsControl(c) ? ' ' : c);
-            }
-
-            string line = builder.ToString().Trim();
+            string line = OneLine(subject);
             if (line.Length <= OutgoingEmail.SubjectLength)
             {
                 return line;
@@ -198,6 +243,20 @@ namespace Tellma.Core.Notifications
             }
 
             return string.Concat(line.AsSpan(0, cut).TrimEnd(), Ellipsis.ToString());
+        }
+
+        /// <summary>A text on one line: each control character a space, and no surrounding white space.</summary>
+        /// <param name="text">The text.</param>
+        /// <returns>The line.</returns>
+        private static string OneLine(string text)
+        {
+            StringBuilder builder = new(text.Length);
+            foreach (char c in text)
+            {
+                _ = builder.Append(char.IsControl(c) ? ' ' : c);
+            }
+
+            return builder.ToString().Trim();
         }
 
         /// <summary>The first line of a rendered notification: its title, without the detail line.</summary>

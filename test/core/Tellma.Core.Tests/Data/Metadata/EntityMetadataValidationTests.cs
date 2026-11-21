@@ -229,6 +229,16 @@ namespace Tellma.Core.Tests.Data.Metadata
             Assert.Empty(MetadataModels.Build(typeof(FullyProjected)).Problems);
         }
 
+        [Fact]
+        public void A_parent_without_a_natural_key_draws_no_warning_from_its_childrens_parent_key()
+        {
+            EntityMetadataBuild build = MetadataModels.Build(typeof(UnkeyedOwner), typeof(UnkeyedOwnerLine));
+
+            Assert.Empty(build.Problems);
+            Assert.Empty(build.Warnings);
+            Assert.Equal(typeof(UnkeyedOwner), Assert.Single(build.Provider!.Get(typeof(UnkeyedOwnerLine)).References).Target.ClrType);
+        }
+
         // --- Uniqueness ---
 
         [Fact]

@@ -8,6 +8,7 @@ using System.Globalization;
 using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Blobs;
 using Tellma.Core.Abstractions.Composition;
+using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Email;
 using Tellma.Core.Abstractions.Errors;
 using Tellma.Core.Abstractions.Jobs;
@@ -24,10 +25,11 @@ namespace Tellma.Core.IntegrationTests.Outbox
     /// <summary>
     ///     The outbox against a fixture database: an enqueue in a job's frame committing its rows,
     ///     their attachments' blobs and their sending jobs with the job's completion, a committed blob
-    ///     attached as a copy, a frame that throws leaving only the staged blobs, a refused blob
-    ///     reference reported at its path, and the email notification channel enqueuing one email per
-    ///     addressed recipient with the delivery job's completion, or none when the job fails. Every
-    ///     batch's writes are audited against change tracking.
+    ///     attached as a copy, a frame that throws before persisting and a completion that fails after
+    ///     it each leaving only the staged blobs, a refused blob reference reported at its path, and the email notification channel
+    ///     enqueuing one email per addressed recipient with the delivery job's completion, skipping a
+    ///     recipient whose address cannot be stored, or none when the job fails. Every batch's writes
+    ///     are audited against change tracking.
     /// </summary>
     /// <param name="fixture">The class's database, reset before each test.</param>
     [Trait("Category", "Integration")]
@@ -175,6 +177,31 @@ namespace Tellma.Core.IntegrationTests.Outbox
         }
 
         [Fact]
+        public async Task A_completion_that_fails_after_the_enqueue_persisted_rolls_back_the_row_its_job_and_the_blob_confirm()
+        {
+            // --- The enqueue's groups sit in the completion batch; a later statement then breaks it ---
+            fixture.Script.Probe = async (batch, context) =>
+            {
+                _ = await context.Services.GetRequiredService<IEmailOutbox>().EnqueueAsync(
+                    context.Host, [new EmailEnqueueRequest(Message() with { Attachments = [new EmailAttachment("persisted.png", BlobContentTypes.Png, Png(20))] })], Token);
+                _ = await context.Host.PersistAsync(Token);
+                _ = batch.Batch.Sql($"DECLARE @zero int = 0, @broken int; SET @broken = 1 / @zero;", SqlOptions.None);
+            };
+            int id = await fixture.InsertJobAsync(JobRunKeys.Probe, WellKnownIds.SystemUserId);
+
+            // --- The outcomes alone are recorded: a retry of the unexpected failure ---
+            PolledJob polled = Assert.Single(await JobPollDriver.PollOnceAsync(fixture.Tenant, [JobRunKeys.Probe], Token, Token));
+            Assert.Equal((id, PolledJobEnd.Completed, JobStatus.Pending, JobErrorCodes.Internal), (polled.JobId, polled.End, polled.Status, polled.ErrorCode));
+
+            // --- No row and no sending job; the blob was never confirmed ---
+            Assert.Empty(await fixture.RowsAsync("SELECT [Id] FROM [core].[OutgoingEmails];"));
+            Assert.Empty(await fixture.RowsAsync("SELECT [Id] FROM [core].[OutgoingEmailAttachments];"));
+            Assert.Empty(await fixture.RowsAsync($"SELECT [Id] FROM [core].[Jobs] WHERE [HandlerKey] = N'{OutgoingEmailService.SendHandlerKey}';"));
+            IReadOnlyDictionary<string, object?> blob = Assert.Single(await fixture.RowsAsync("SELECT [Kind], [State] FROM [core].[Blobs];"));
+            Assert.Equal((OutgoingEmailAttachment.BlobKind, nameof(BlobState.Staged)), ((string)blob["Kind"]!, (string)blob["State"]!));
+        }
+
+        [Fact]
         public async Task A_blob_reference_that_does_not_resolve_is_refused_at_its_path_before_anything_is_staged()
         {
             ValidationException? refused = null;
@@ -233,6 +260,22 @@ namespace Tellma.Core.IntegrationTests.Outbox
             Assert.Equal(
                 2,
                 Assert.Single(await fixture.RowsAsync($"SELECT COUNT(*) AS [Count] FROM [core].[Jobs] WHERE [HandlerKey] = N'{OutgoingEmailService.SendHandlerKey}' AND [Status] = 'Pending';"))["Count"]);
+        }
+
+        [Fact]
+        public async Task A_recipient_whose_address_the_outbox_refuses_is_skipped_and_the_others_emails_commit()
+        {
+            // --- Dee's contact address is a mailbox; Eve's name holds a tab ---
+            await PreferEmailAsync(AdaId, DeeId, EveId);
+            await NotifyAsync(new NotificationRequest(FixtureNotifications.Shipped, [AdaId, DeeId, EveId], null, FixtureNotifications.ShipmentResource, 42, null, null));
+
+            PolledJob polled = Assert.Single(await JobPollDriver.PollOnceAsync(fixture.Tenant, [Delivery], Token, Token));
+            Assert.Equal((PolledJobEnd.Completed, JobStatus.Succeeded), (polled.End, polled.Status));
+
+            // --- Ada's email and Eve's, her name on one line; none to Dee ---
+            IReadOnlyList<IReadOnlyDictionary<string, object?>> emails = await fixture.RowsAsync("SELECT [RecipientUserId], [To] FROM [core].[OutgoingEmails] ORDER BY [Id];");
+            Assert.Equal([(object?)AdaId, EveId], emails.Select(static row => row["RecipientUserId"]));
+            Assert.Equal([new EmailAddress(SignInEmail(EveId), "Eve Stone")], EmailAddressList.Parse((string)emails[1]["To"]!));
         }
 
         [Fact]

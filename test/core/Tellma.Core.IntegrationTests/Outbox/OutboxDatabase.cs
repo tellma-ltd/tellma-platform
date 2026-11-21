@@ -35,11 +35,23 @@ namespace Tellma.Core.IntegrationTests.Outbox
         /// <summary>A member with a contact address, three hours east of the tenant.</summary>
         public const int CyId = 103;
 
+        /// <summary>A member whose contact address carries a display name, which the outbox cannot store.</summary>
+        public const int DeeId = 104;
+
+        /// <summary>A member whose name holds a control character.</summary>
+        public const int EveId = 105;
+
         /// <summary>The administrator the failure notices reach.</summary>
         public const int AdministratorId = 111;
 
         /// <summary>The address <see cref="CyId" /> prefers to be written to.</summary>
         public const string CyContactEmail = "cy.contact@example.com";
+
+        /// <summary>The contact address <see cref="DeeId" /> gave, a mailbox rather than an address.</summary>
+        public const string DeeContactEmail = "Dee <dee.contact@example.com>";
+
+        /// <summary>The name of <see cref="EveId" />, with a tab between its words.</summary>
+        public const string EveName = "Eve\tStone";
 
         /// <summary>The time zone <see cref="CyId" /> prefers.</summary>
         public const string CyTimeZone = "Asia/Riyadh";
@@ -119,6 +131,8 @@ namespace Tellma.Core.IntegrationTests.Outbox
                 $"INSERT INTO [core].[VersionTags] ([Name], [Tag]) SELECT n.[Name], NEWID() FROM (VALUES {tags}) AS n ([Name]) WHERE NOT EXISTS (SELECT 1 FROM [core].[VersionTags] AS t WHERE t.[Name] = n.[Name]);",
                 UserInsert(AdaId, "Ada", contactEmail: null, timeZone: null),
                 UserInsert(CyId, "Cy", CyContactEmail, CyTimeZone),
+                UserInsert(DeeId, "Dee", DeeContactEmail, timeZone: null),
+                UserInsert(EveId, EveName, contactEmail: null, timeZone: null),
                 UserInsert(AdministratorId, "Admin", contactEmail: null, timeZone: null));
         }
 

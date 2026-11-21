@@ -991,6 +991,31 @@ namespace Tellma.Core.Tests.Data.Metadata.Malformed
         public string? Note { get; set; }
     }
 
+    /// <summary>An owner with no natural key, whose lines reach it only by their parent key.</summary>
+    [Table("Unkeyed", Schema = "fixture")]
+    [TableType]
+    public class UnkeyedOwner : TopLevelEntity
+    {
+        [MaxLength(100)]
+        public string Name { get; set; } = null!;
+
+        [NotMapped]
+        [MaxChildren(50)]
+        public List<UnkeyedOwnerLine>? Lines { get; set; }
+    }
+
+    /// <summary>A child of <see cref="UnkeyedOwner" />, which a sheet fills from its owner's id.</summary>
+    [Table("UnkeyedLines", Schema = "fixture")]
+    [TableType]
+    public class UnkeyedOwnerLine : ChildEntity
+    {
+        [ParentKey]
+        public int UnkeyedOwnerId { get; set; }
+
+        [MaxLength(100)]
+        public string Text { get; set; } = null!;
+    }
+
     /// <summary>An entity the model builds through its constructor, which has no parameterless one.</summary>
     [Table("Constructed", Schema = "fixture")]
     [TableType]
