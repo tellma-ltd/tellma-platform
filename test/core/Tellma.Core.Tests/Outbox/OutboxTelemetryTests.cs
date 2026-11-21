@@ -40,17 +40,38 @@ namespace Tellma.Core.Tests.Outbox
         }
 
         [Fact]
-        public void The_enqueued_emails_are_counted_one_per_row_by_source_with_no_point_for_a_source_absent()
+        public void The_committed_emails_are_counted_one_per_row_by_source_with_no_point_for_a_source_absent()
         {
             using MetricCollector<long> enqueued = Collector<long>(OutboxTelemetryNames.Enqueued);
             OutboxMetrics metrics = new(Meters);
+            OutgoingEmail[] first = [new(), new(), new()];
+            OutgoingEmail[] second = [new()];
+            metrics.Took(first, [Request(EmailEnqueueRequest.ApiSource), Request(EmailEnqueueRequest.NotificationSource), Request(EmailEnqueueRequest.ApiSource)]);
+            metrics.Took(second, [Request(EmailEnqueueRequest.NotificationSource)]);
 
-            metrics.RecordEnqueued([Request(EmailEnqueueRequest.ApiSource), Request(EmailEnqueueRequest.NotificationSource), Request(EmailEnqueueRequest.ApiSource)]);
-            metrics.RecordEnqueued([Request(EmailEnqueueRequest.NotificationSource)]);
+            // --- Nothing is counted until a commit reports the rows ---
+            Assert.Empty(enqueued.GetMeasurementSnapshot());
+
+            metrics.RecordEnqueued(first);
+            metrics.RecordEnqueued(second);
 
             Assert.Equal(
                 [(2L, "api"), (1L, "notification"), (1L, "notification")],
                 enqueued.GetMeasurementSnapshot().Select(static point => (point.Value, (string)point.Tags[OutboxTelemetryNames.SourceTag]!)));
+        }
+
+        [Fact]
+        public void A_row_is_counted_once_and_a_row_the_outbox_never_took_not_at_all()
+        {
+            using MetricCollector<long> enqueued = Collector<long>(OutboxTelemetryNames.Enqueued);
+            OutboxMetrics metrics = new(Meters);
+            OutgoingEmail taken = new();
+            metrics.Took([taken], [Request(EmailEnqueueRequest.ApiSource)]);
+
+            metrics.RecordEnqueued([taken, new OutgoingEmail()]);
+            metrics.RecordEnqueued([taken]);
+
+            Assert.Equal([1L], enqueued.GetMeasurementSnapshot().Select(static point => point.Value));
         }
 
         [Fact]

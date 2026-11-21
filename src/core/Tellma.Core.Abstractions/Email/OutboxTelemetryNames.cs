@@ -23,7 +23,8 @@ namespace Tellma.Core.Abstractions.Email
 
         /// <summary>
         ///     Counter (<c>{email}</c>): outgoing emails enqueued, one per row, counted once the
-        ///     enlisted save took its rows. Tagged <see cref="SourceTag" />.
+        ///     frame the rows were enlisted with committed them; a frame that rolls back counts
+        ///     nothing. Tagged <see cref="SourceTag" />.
         /// </summary>
         public const string Enqueued = "tellma.outbox.enqueued";
 

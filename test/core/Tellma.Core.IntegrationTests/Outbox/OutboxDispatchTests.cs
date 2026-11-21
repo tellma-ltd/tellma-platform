@@ -7,6 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.Metrics.Testing;
 using System.Diagnostics.Metrics;
 using System.Globalization;
+using System.Text.Json;
 using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Email;
@@ -26,8 +27,10 @@ namespace Tellma.Core.IntegrationTests.Outbox
     ///     The sending job against a fixture database: each outcome of the email sender settling its
     ///     row and ending its job, a transient failure retried until the last attempt fails it, a
     ///     sender that throws, a row found still sending failed unsent, a settled row left alone, an
-    ///     attachment whose object is gone rejecting its email, a pre-mark that a re-run repeats, the
-    ///     administrators' one inbox notice per claim, and the outbox's instruments.
+    ///     attachment whose object is gone rejecting its email, a stored address that no longer
+    ///     parses, a sender that answers short, a pre-mark that a re-run repeats, the administrators'
+    ///     one inbox notice per claim replaced by a later claim's and lost alone when their lookup
+    ///     fails, and the outbox's instruments, which count nothing for a frame that rolls back.
     /// </summary>
     /// <param name="fixture">The class's database, reset before each test.</param>
     [Trait("Category", "Integration")]
@@ -327,6 +330,109 @@ namespace Tellma.Core.IntegrationTests.Outbox
                 fixture.ConnectionString,
                 string.Create(CultureInfo.InvariantCulture, $"UPDATE [core].[OutgoingEmails] SET [State] = 'Failed' WHERE [Id] = {id};"));
             Assert.Empty(await PreMarkAsync(id));
+        }
+
+        [Fact]
+        public async Task A_frame_that_rolls_back_after_enqueuing_counts_no_email_and_keeps_no_row()
+        {
+            using MetricCollector<long> enqueued = Collector<long>(OutboxTelemetryNames.Enqueued);
+            fixture.Script.Probe = async (batch, context) =>
+            {
+                // The enlisted save took the rows, then the frame fails before it persists them.
+                _ = await context.Services.GetRequiredService<IEmailOutbox>().EnqueueAsync(context.Host, [Request()], Token);
+                throw new InvalidOperationException("The job fails before its frame persists.");
+            };
+            _ = await fixture.InsertJobAsync(JobRunKeys.Probe, WellKnownIds.SystemUserId);
+
+            PolledJob polled = Assert.Single(await JobPollDriver.PollOnceAsync(fixture.Tenant, [JobRunKeys.Probe], Token, Token));
+
+            Assert.NotEqual(JobStatus.Succeeded, polled.Status);
+            Assert.Empty(await fixture.RowsAsync("SELECT [Id] FROM [core].[OutgoingEmails];"));
+            Assert.Empty(enqueued.GetMeasurementSnapshot());
+        }
+
+        [Fact]
+        public async Task A_sender_that_answers_short_leaves_its_rows_sending_so_the_next_claim_fails_them_unsent()
+        {
+            int[] ids = [.. await EnqueueAsync(Request(), Request())];
+            fixture.Faults.Answer = static results => [.. results.Take(results.Count - 1)];
+
+            _ = await DispatchAsync();
+
+            // --- Which message went out is unknown: both rows stay sending, neither job succeeded ---
+            Assert.Equal(2, fixture.Sender.Captured.Count);
+            foreach (int id in ids)
+            {
+                IReadOnlyDictionary<string, object?> row = await RowAsync(id);
+                Assert.Equal((nameof(OutgoingEmailState.Sending), (object?)1), (row["State"], row["AttemptCount"]));
+                Assert.NotEqual(nameof(JobStatus.Succeeded), (await JobAsync(row))["Status"]);
+            }
+
+            // --- The next claim fails them as interrupted rather than send either again ---
+            fixture.Faults.Answer = null;
+            foreach (int id in ids)
+            {
+                await DueNowAsync(await RowAsync(id));
+            }
+
+            _ = await DispatchAsync();
+            Assert.Equal(2, fixture.Sender.Captured.Count);
+            foreach (int id in ids)
+            {
+                IReadOnlyDictionary<string, object?> row = await RowAsync(id);
+                Assert.Equal((nameof(OutgoingEmailState.Failed), (object?)OutgoingEmailCodes.Interrupted), (row["State"], row["ErrorCode"]));
+            }
+        }
+
+        [Fact]
+        public async Task A_stored_address_that_no_longer_parses_rejects_its_email_unsent_and_the_others_still_go()
+        {
+            int[] ids = [.. await EnqueueAsync(Request(), Request())];
+            await SqlServerFixture.ExecuteAsync(
+                fixture.ConnectionString,
+                string.Create(CultureInfo.InvariantCulture, $"UPDATE [core].[OutgoingEmails] SET [To] = N'\"Ada\" ada@example.com' WHERE [Id] = {ids[0]};"));
+
+            _ = await DispatchAsync();
+
+            IReadOnlyDictionary<string, object?> rejected = await RowAsync(ids[0]);
+            Assert.Equal((nameof(OutgoingEmailState.Rejected), (object?)OutgoingEmailCodes.InvalidMessage, (object?)1), (rejected["State"], rejected["ErrorCode"], rejected["AttemptCount"]));
+            Assert.Equal(Text(ids[1]), Assert.Single(fixture.Sender.Captured).Message.Correlation!.Reference);
+            Assert.Equal(nameof(OutgoingEmailState.Sent), (await RowAsync(ids[1]))["State"]);
+        }
+
+        [Fact]
+        public async Task A_failed_administrator_lookup_loses_only_the_notice()
+        {
+            fixture.Sender.OnSending(static (_, _) => new EmailSendResult(EmailSendOutcome.Rejected, Error: "Mailbox unavailable."));
+            fixture.Faults.AdministratorsFail = true;
+            int id = Assert.Single(await EnqueueAsync(Request()));
+
+            PolledJob polled = Assert.Single(await DispatchAsync());
+
+            // --- The state committed and the job succeeded; the notice alone was lost, and logged ---
+            Assert.Equal(nameof(OutgoingEmailState.Rejected), (await RowAsync(id))["State"]);
+            Assert.Equal(JobStatus.Succeeded, polled.Status);
+            Assert.Empty(await NoticesAsync());
+            _ = Assert.Single(fixture.Logs.Entries, static entry => entry.EventId.Name == "OutboxNoticeRecipientsFailed");
+        }
+
+        [Fact]
+        public async Task A_later_claim_s_failures_replace_the_unread_notice_with_their_count_and_first_row()
+        {
+            fixture.Sender.OnSending(static (_, _) => new EmailSendResult(EmailSendOutcome.Rejected, Error: "Mailbox unavailable."));
+            _ = await EnqueueAsync(Request(), Request());
+            _ = await DispatchAsync();
+            _ = Assert.Single(await NoticesAsync());
+
+            int later = (await EnqueueAsync(Request()))[^1];
+            _ = await DispatchAsync();
+
+            // --- Still one unread notice, now counting the later claim's one failure, on its row ---
+            IReadOnlyDictionary<string, object?> notice = Assert.Single(await NoticesAsync());
+            Assert.Equal((object?)(long)later, notice["TargetId"]);
+            using var arguments = JsonDocument.Parse((string)notice["ArgumentsJson"]!);
+            JsonProperty count = Assert.Single(arguments.RootElement.EnumerateObject(), static property => string.Equals(property.Name, "count", StringComparison.OrdinalIgnoreCase));
+            Assert.Equal(1, count.Value.GetInt32());
         }
 
         /// <summary>A plain internal message to Ada, enqueued by the api.</summary>

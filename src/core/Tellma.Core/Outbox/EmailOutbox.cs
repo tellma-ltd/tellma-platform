@@ -43,7 +43,7 @@ namespace Tellma.Core.Outbox
     /// <param name="services">The scope's services, which the blob service and store are resolved from when a call has attachments.</param>
     /// <param name="accessor">The scope's request context, which names the tenant whose store a copied blob is read from.</param>
     /// <param name="options">The outbox's limits.</param>
-    /// <param name="metrics">The outbox's instruments, which count the rows each enlisted save takes.</param>
+    /// <param name="metrics">The outbox's instruments, which note each row's source for its count once its frame commits.</param>
     internal sealed class EmailOutbox(IServiceProvider services, IRequestContextAccessor accessor, IOptions<OutboxOptions> options, OutboxMetrics metrics)
         : IEmailOutbox, IEnlists<OutgoingEmail>
     {
@@ -111,10 +111,10 @@ namespace Tellma.Core.Outbox
             }
 
             // --- Enlist with the caller's frame: the rows, their blobs and their jobs commit with it ---
-            // Spec 0022 §9.2 counts one per row, by its request's source, once the frame took them.
-            EnlistedSave<OutgoingEmail> enlisted = await this.EnlistSaveAsync(host, rows).ConfigureAwait(false);
-            metrics.RecordEnqueued(requests);
-            return enlisted;
+            // Spec 0022 §9.2 counts one per row, by its request's source, once the frame committed
+            // them: the rows' sources are noted here and counted by the stack's commit effect.
+            metrics.Took(rows, requests);
+            return await this.EnlistSaveAsync(host, rows).ConfigureAwait(false);
         }
 
         /// <summary>

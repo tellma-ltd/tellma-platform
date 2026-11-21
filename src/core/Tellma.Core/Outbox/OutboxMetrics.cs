@@ -4,6 +4,7 @@
 // LICENSE file in the root directory of this source tree.
 
 using System.Diagnostics.Metrics;
+using System.Runtime.CompilerServices;
 using Tellma.Core.Abstractions.Email;
 
 namespace Tellma.Core.Outbox
@@ -23,6 +24,12 @@ namespace Tellma.Core.Outbox
 
         /// <summary>Seconds from an email's enqueue to its send.</summary>
         private readonly Histogram<double> _latency;
+
+        /// <summary>
+        ///     The source of each row the outbox handed to an enlisted save, until its frame commits;
+        ///     a row whose frame rolls back is dropped with the row itself.
+        /// </summary>
+        private readonly ConditionalWeakTable<OutgoingEmail, string> _sources = [];
 
         /// <summary>Creates the instruments.</summary>
         /// <param name="meterFactory">The host's meter factory, which owns the meter's lifetime.</param>
@@ -63,13 +70,54 @@ namespace Tellma.Core.Outbox
             };
         }
 
-        /// <summary>Records the emails one enlisted save enqueued, one per row, each tagged with its request's source.</summary>
-        /// <param name="requests">The requests whose rows the save took, each of a source the outbox admits.</param>
-        public void RecordEnqueued(IReadOnlyList<EmailEnqueueRequest> requests)
+        /// <summary>Notes the source of each row the outbox is about to enlist, so its commit can be counted by it.</summary>
+        /// <param name="rows">The rows, in request order.</param>
+        /// <param name="requests">The requests, each of a source the outbox admits.</param>
+        /// <exception cref="ArgumentException">The two lists differ in length.</exception>
+        public void Took(IReadOnlyList<OutgoingEmail> rows, IReadOnlyList<EmailEnqueueRequest> requests)
         {
+            ArgumentNullException.ThrowIfNull(rows);
             ArgumentNullException.ThrowIfNull(requests);
-            int notifications = requests.Count(static request => string.Equals(request.Source, EmailEnqueueRequest.NotificationSource, StringComparison.Ordinal));
-            Add(_enqueued, requests.Count - notifications, new KeyValuePair<string, object?>(OutboxTelemetryNames.SourceTag, EmailEnqueueRequest.ApiSource));
+            if (rows.Count != requests.Count)
+            {
+                throw new ArgumentException("Every row needs the request it came from.", nameof(rows));
+            }
+
+            for (int index = 0; index < rows.Count; index++)
+            {
+                _sources.AddOrUpdate(rows[index], requests[index].Source);
+            }
+        }
+
+        /// <summary>
+        ///     Records the emails a committed save wrote, one per row the outbox took, each tagged with
+        ///     its request's source; a row is counted once, and a row the outbox never took not at all.
+        /// </summary>
+        /// <param name="committed">The rows the committed save wrote.</param>
+        public void RecordEnqueued(IEnumerable<OutgoingEmail> committed)
+        {
+            ArgumentNullException.ThrowIfNull(committed);
+            int api = 0;
+            int notifications = 0;
+            foreach (OutgoingEmail row in committed)
+            {
+                // Removing the row's source counts it once, however often a commit reports it.
+                if (!_sources.TryGetValue(row, out string? source) || !_sources.Remove(row))
+                {
+                    continue;
+                }
+
+                if (string.Equals(source, EmailEnqueueRequest.NotificationSource, StringComparison.Ordinal))
+                {
+                    notifications++;
+                }
+                else
+                {
+                    api++;
+                }
+            }
+
+            Add(_enqueued, api, new KeyValuePair<string, object?>(OutboxTelemetryNames.SourceTag, EmailEnqueueRequest.ApiSource));
             Add(_enqueued, notifications, new KeyValuePair<string, object?>(OutboxTelemetryNames.SourceTag, EmailEnqueueRequest.NotificationSource));
         }
 

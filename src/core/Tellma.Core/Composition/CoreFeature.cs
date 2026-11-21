@@ -243,9 +243,11 @@ namespace Tellma.Core.Composition
             // spec 0022 §9.3. OutgoingEmail is a Query | Details | Delete | Enlist stack whose rows
             // arrive only through the outbox; its registration as a scoped service gives the registry
             // the outbox's enlistment pair. An email attachment needs no preview, so its kind renders
-            // no thumbnail; the kind itself comes from the attachment's blob reference.
+            // no thumbnail; the kind itself comes from the attachment's blob reference. The commit
+            // effect counts the rows a frame committed (spec 0022 §9.2).
             _ = contribution
                 .Entity<OutgoingEmail, OutgoingEmailService>()
+                .PersistEffect<OutgoingEmail, OutboxEnqueuedEffect>()
                 .Model<OutgoingEmailConfiguration>()
                 .Scoped<IEmailOutbox, EmailOutbox>()
                 .JobHandler<OutgoingEmailHandler>()

@@ -18,6 +18,7 @@ using Tellma.Core.Abstractions.Identity;
 using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.Abstractions.Validation;
 using Tellma.Core.Crud.Validation;
+using Tellma.Core.Data.Ids;
 using Tellma.Core.IntegrationTests.Access;
 using Tellma.Testing.Support.Identity;
 
@@ -197,48 +198,26 @@ namespace Tellma.Core.IntegrationTests.Users
             (int ann, string admin) = await fixture.SeedAdministratorAsync("Ann");
             int ada = await SeedNewAsync("Ada");
             await WarmAsync(admin);
-            _identity.OnInvite = async (invitations, _) =>
-            {
-                // The caller's permissions move while the identity server answers, so the persist's guard
-                // refuses the first send. The answer is a refusal, which welcomes nobody, so the persist
-                // carries no enlisted group and its re-entry replays the write-back.
-                await fixture.BumpPermissionsAsync(ann);
-                return [.. invitations.Select(static invitation => new IdentityInvitationResult(invitation.Email, null, null, "account_disabled"))];
-            };
+            await WarmInviteAsync(admin);
 
-            await using AsyncServiceScope scope = await fixture.SteppedUpScopeAsync(admin, Instance);
-            DataAccessScope access = scope.ServiceProvider.GetRequiredService<DataAccessScope>();
-            int start = access.RoundTrips;
-            IReadOnlyList<InviteResult> results = await scope.Users().ExecuteActionAsync<IReadOnlyList<InviteResult>>("invite", [ada], null, new ActionOptions(), Token);
+            // The welcome's ids come from a warm buffer, so its group was enlisted before the
+            // persist's first send and replays on the re-entry.
+            int trips = await RecomposedInviteAsync(ann, admin, ada);
 
-            Assert.Equal([new InviteResult(ada, null, "account_disabled")], results);
-            Assert.Equal(3, access.RoundTrips - start);
-            Assert.Single(_identity.Invites);
-            Assert.Equal("account_disabled", (await RowAsync(ada)).LastInviteError);
-            Assert.Empty(await WelcomesAsync(ada));
+            Assert.Equal(3, trips);
         }
 
         [Fact]
-        public async Task A_permission_move_under_an_enlisted_welcome_fails_the_invite_closed_and_commits_nothing()
+        public async Task A_persist_recomposed_with_a_cold_id_buffer_calls_the_identity_server_once_and_commits_once()
         {
             (int ann, string admin) = await fixture.SeedAdministratorAsync("Ann");
             int ada = await SeedNewAsync("Ada");
+            await WarmAsync(admin);
             await WarmInviteAsync(admin);
-            _identity.OnInvite = async (invitations, _) =>
-            {
-                // The caller's permissions move while the identity server answers. The welcome's group
-                // was validated under the set before, so the persist's re-entry refuses to commit it.
-                await fixture.BumpPermissionsAsync(ann);
-                return [.. invitations.Select(static invitation => new IdentityInvitationResult(invitation.Email, ScriptedIdentityClient.SubjectOf(invitation.Email), InviteStatus.Invited, null))];
-            };
 
-            _ = await Assert.ThrowsAsync<StaleContextException>(() => InviteAsync(admin, ada));
-
-            // The identity server was asked once; neither the write-back nor the welcome committed.
-            Assert.Single(_identity.Invites);
-            Assert.Null((await RowAsync(ada)).Subject);
-            Assert.Empty(await WelcomesAsync(ada));
-            Assert.Empty(_memberships.Hints());
+            // The welcome's ids then ride a round of their own after the identity server answered.
+            Instance.GetRequiredService<IdAllocator>().ForgetTenant(ConnectDatabase.TenantA);
+            _ = await RecomposedInviteAsync(ann, admin, ada);
         }
 
         // --- The welcome email ---
@@ -726,6 +705,40 @@ namespace Tellma.Core.IntegrationTests.Users
         {
             await using AsyncServiceScope scope = await fixture.SteppedUpScopeAsync(subject, Instance);
             _ = await scope.Users().QueryAsync(new QueryRequest { Select = "Id" }, Token);
+        }
+
+        /// <summary>
+        ///     Invites a user while the caller's permissions move as the identity server answers, so the
+        ///     persist's guard refuses the first send, then checks that the re-entry replayed the
+        ///     write-back and the welcome email without asking the identity server again.
+        /// </summary>
+        /// <param name="ann">The caller's user id.</param>
+        /// <param name="admin">The caller's subject.</param>
+        /// <param name="ada">The user invited.</param>
+        /// <returns>The round trips the invite took.</returns>
+        private async Task<int> RecomposedInviteAsync(int ann, string admin, int ada)
+        {
+            _identity.OnInvite = async (invitations, _) =>
+            {
+                await fixture.BumpPermissionsAsync(ann);
+                return [.. invitations.Select(static invitation => new IdentityInvitationResult(invitation.Email, ScriptedIdentityClient.SubjectOf(invitation.Email), InviteStatus.Invited, null))];
+            };
+
+            await using AsyncServiceScope scope = await fixture.SteppedUpScopeAsync(admin, Instance);
+            DataAccessScope access = scope.ServiceProvider.GetRequiredService<DataAccessScope>();
+            int start = access.RoundTrips;
+            IReadOnlyList<InviteResult> results = await scope.Users().ExecuteActionAsync<IReadOnlyList<InviteResult>>("invite", [ada], null, new ActionOptions(), Token);
+            int trips = access.RoundTrips - start;
+
+            Assert.Equal([new InviteResult(ada, InviteStatus.Invited, null)], results);
+            Assert.Single(_identity.Invites);
+            UserRow row = await RowAsync(ada);
+            Assert.Equal((ScriptedIdentityClient.SubjectOf(Email(ada)), "Invited"), (row.Subject, row.State));
+            Assert.Single(_memberships.Hints());
+
+            // The welcome email rode the persist that committed, once.
+            _ = Assert.Single(await WelcomesAsync(ada));
+            return trips;
         }
 
         /// <summary>

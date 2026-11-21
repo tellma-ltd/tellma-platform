@@ -1259,8 +1259,9 @@ a call with attachments, so a channel sender's tenantless gate scope needs neith
 emails' stack (route segment `outgoing-emails`) serves the query, the details and the delete by
 ids, read-only to MCP; a delete of a row that may still be sent (unsettled, with a live job) is
 refused as `Email.NotDeletable` at `Ids[i]`. A request's `Source` is `api` or `notification`; any
-other is refused before anything is staged. Each enlisted call counts its rows on
-`tellma.outbox.enqueued` (meter `Tellma.Core`, tag `source`).
+other is refused before anything is staged. The rows are counted on `tellma.outbox.enqueued`
+(meter `Tellma.Core`, tag `source`) once the frame they were enlisted with commits them, by the
+stack's commit effect (`OutboxEnqueuedEffect`); a frame that rolls back counts nothing.
 
 `OutgoingEmailHandler` runs `core.outgoing-email` (25 jobs a claim, one claim at a time per tenant,
 twelve attempts backing off from one minute to two hours, run in a read-only tenant, failure notices
@@ -1808,7 +1809,8 @@ tenant, in a job that runs on one and in a provisioning step, refused in any oth
   group's own validators never run again, so a re-entry composed for another permission set than
   the composition before it is `StaleContextException`, naming the permissions tag, whenever it
   would replay a group whose target's validators judged its rows; a group nothing validated
-  replays.
+  replays, as does one whose only validator is the blob-reference check over rows that reference
+  no blob, which judges nothing a permission set decides.
 - **The front door.** A service's `SaveAsync`, `DeleteByIdsAsync`, `DeleteByQueryAsync`,
   `ExecuteActionAsync`, `ActivateAsync`, `DeactivateAsync` or `DeleteWithDescendantsAsync` entered
   while a pipeline frame of the flow composes is `InvalidOperationException`. From an open frame it
@@ -2223,9 +2225,8 @@ never called for an action that will not persist):
   action committed, the users who gained an account are recorded in the membership directory. A
   prefix the identity server answered is recorded and raised as `partial-failure` with the ids never
   attempted. A recompose of the persist replays the write-back and never calls the identity server
-  again, unless the caller's permission set moved under a welcome email the action enlisted: the
-  outbox's validated rows then fail the re-entry closed as stale, nothing commits, and the admin
-  invites again. Every answered user with a status whose loaded row holds no account or the one answered is
+  again, the welcome emails it enlisted included: their rows reference no blob, so the outbox's one
+  validator judged nothing a moved permission set could change. Every answered user with a status whose loaded row holds no account or the one answered is
   sent a welcome email through the outbox with the action's frame, so it commits with the write-back:
   to their contact address, else their sign-in address, in their own negotiated language and content
   slot (`Email_UserAdded_Subject`, `_Text` and `_Html` in Core's server resources, naming the tenant,
