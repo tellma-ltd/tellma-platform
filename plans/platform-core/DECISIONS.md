@@ -384,6 +384,18 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-187 (orchestrator, 2026-11-22): PC-214 Review 1 rulings
+
+Review 1 found 0/1/5, all fixed in fix1. The reviewer confirmed that D-132 still forces the missing delete-by-query (waiting on Ahmad's (a)/(b)), that the D-177 carry adds no throw path, and that the three migrations are pure dotnet-ef output.
+- R1-1: a two-target pipeline test for the conditional update.
+- R1-2: retry refuses, rather than skips, a target its conditional update would pass over. Otherwise a row cancelled between rounds would get a new JobId and a no-op job. Cancel keeps skip semantics (0022 §7.1 "filtered by the grant and the precondition", as 0020's job verbs).
+- R1-3: the doc states exactly when a target is skipped and when PostCheck refuses it. No receipt API yet, since no caller needs one.
+- R1-4: retry stamps ModifiedAt even when the reset columns already hold their values (0022 §10).
+- R1-5: unmatched is counted per event.
+- R1-6: retention paging tests.
+
+PC-214 holds after fix1, behind PC-212.
+
 ### D-186 (orchestrator, 2026-11-21): PC-212 Review 1 rulings
 
 Review 1 found 0/0/3, all fixed in fix1: tests for sweep cancellation, the purge-failure log and meter, and out-of-grammar rows; README wording. The reviewer also judged three things sound:

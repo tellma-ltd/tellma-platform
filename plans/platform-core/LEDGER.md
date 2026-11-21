@@ -98,6 +98,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | 2026-11-14 12:01 | 8 | 0 | 2026-11-17 20:00 | Full reset detected (all-models → 8, Fable → 0). Line stopped on PC-F38 (PC-058 multi-picker races); PC-044/054/F36 done; PC-055 r1; PC-031/PC-040 impl |
 | 2026-11-17 20:02 | 0 | 0 | 2026-11-24 20:00 | Weekly reset detected (all-models 91 → 0, Fable 5 → 0). PC-068/F55/F56/070 done; PC-072 impl (pc-3); PC-B02/B03 finders resumed (pc-1/pc-2, D-110) |
 | 2026-11-21 18:10 | 0 | 0 | 2026-11-24 20:00 | Ahmad applied the manual reset (D-178); resetsAt unchanged. Target ≈ 1.5 pts/h to use it by Tuesday noon: keep six lanes full under D-144/D-175, T3 fill when T1/T2 cannot fill a lane |
+| 2026-11-22 00:00 | 13 | 0 | 2026-11-24 20:00 | ≈2 pts/h over the last hour, with four lanes busy (PC-092 impl, PC-096 R2, PC-175 R1, PC-214 fix1). ≈1.45 pts/h is still needed. PC-212 done. pc-4 and pc-f2 idle: nothing ready. Next unlocks come from PC-092 and PC-096 (PC-F67). If the pace falls below ≈1.5, the before-GA fix items PC-F11/PC-F17 are the lanes to add (report to Ahmad first, D-178) |
 | 2026-11-21 23:00 | 11 | 0 | 2026-11-24 20:00 | +11 in ≈4.8 h since the 18:10 reset (≈2.3 pts/h) with six lanes; ≈1.46 pts/h is needed to use the rest by Tuesday noon. PC-089, PC-149, PC-174, PC-F65, PC-091 (with PC-F66) and PC-181 are done. pc-f2 is idle: nothing is ready (PC-F67 waits on PC-096; PC-F11/PC-F17 are before-GA) |
 | 2026-11-21 17:50 | 98 | 34 | 2026-11-24 20:00 | Ahmad asked to apply the manual reset now (D-173); push sent. PC-090 done. PC-091 launched in pc-3; PC-096 (T1, xhigh) takes the next free slot |
 | 2026-11-21 08:30 | 87 | 33 | 2026-11-24 20:00 | +2 in ≈3.3 h with two lanes in review/fix. PC-148 is done, and PC-089, PC-090 and PC-149 launched beside PC-147, so four lanes run. At ≈1.5–2 pts/h the window runs out ≈ 2026-11-21 15:00–17:00. D-165 is borderline now: a reset applied then needs ≈1.1 pts/h on average to be used by Tuesday noon. Firm recommendation to Ahmad when the window nears 100% |
@@ -108,10 +109,9 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC | Slot | Branch | Step | Implementer agent (name / id) | Reviewer agent (name / id) | Started (UTC) |
 |---|---|---|---|---|---|---|
 | PC-092 | pc-3 | pc/PC-092 | impl | launched after PC-091 done; T1; high | 0018-g; R1 only | 2026-11-21 |
-| PC-096 | pc-1 | pc/PC-096 | fix1 | impl f7e4a8f6 (14 deviations); R1 0/1/7 (future sync.at stall; enter/adoption races; OpenAPI depth -> PC-F67); fix1; then R2 inherit xhigh; D-185 | 0025-b; R1 + R2 inherit xhigh | 2026-11-21 |
-| PC-175 | pc-2 | pc/PC-175 | impl | launched after PC-174 done; T3 fill (D-173); high | 0019-b; R1 only | 2026-11-21 |
-| PC-212 | pc-4 | pc/PC-212 | integrating | impl a4fc6e1a (13 deviations accepted); R1 0/0/3; fix1 3e3e7a21 (tests; deviation 9 corrected: CancellationToken.None survives only a requested cancel); released after PC-181 done; carry D-183 at integration; D-186 | 0017-e; R1 only | 2026-11-21 |
-| PC-214 | pc-f | pc/PC-214 | R1 | impl 3e264e5e (10 deviations; flags: no delete-by-query per D-132; new ActionContext.Update(assignments, condition) skips non-matching targets; D-177 carry n/a); R1 launched | 0022-c; R1 only | 2026-11-21 |
+| PC-096 | pc-1 | pc/PC-096 | R2 | impl f7e4a8f6; R1 0/1/7; fix1 922c883b (R1-1..5, R1-7 fixed; deviations 15-17; @tellma/core ceiling 20.44 KB, 0025 share 8.14/9 KB); R2 inherit xhigh launched; PC-F67 after landing; D-185 | 0025-b; R1 + R2 inherit xhigh | 2026-11-21 |
+| PC-175 | pc-2 | pc/PC-175 | R1 | impl df9e5804 (16 deviations; flags: ScratchDirectory reused; unsorted display export ascending Id (D-176 site); Remedy not localized; ExcelOperations via StackComposition; gadget segment renamed; golden lists internal IStackExcelRows); R1 launched | 0019-b; R1 only | 2026-11-21 |
+| PC-214 | pc-f | pc/PC-214 | fix1 | impl 3e264e5e (deviations 2, 4-10 accepted); R1 0/1/5 (conditional-update test; retry refuses; ModifiedAt stamp; per-event unmatched; retention paging tests); fix1 then hold behind PC-212; D-187 | 0022-c; R1 only | 2026-11-21 |
 
 ## Fix items
 
@@ -517,7 +517,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-209 | 0026-e | 3 | todo | | | |
 | PC-210 | 0026-g | 3 | todo | | | |
 | PC-211 | 0026-h | 3 | todo | | | |
-| PC-212 | 0017-e | 3 | in progress | | | carry D-183: at integration, move BlobEndpointTests fixed waits onto Patience/TestClock | |
+| PC-212 | 0017-e | 3 | done (1afcb4af; pc 44960830161 green on 57c2f3cb) | a4fc6e1a, 3e3e7a21, 57c2f3cb, 1afcb4af | | carry D-183: at integration, move BlobEndpointTests fixed waits onto Patience/TestClock | |
 | PC-213 | 0020-g | 3 | todo | | | carry (D-156): a raw SQL retention DELETE declares the tables its foreign keys' ON DELETE actions write, via ForeignKeyActions.WrittenByDeleting |
 | PC-214 | 0022-c | 3 | in progress | | | |
 | PC-215 | 0032-b1 | 3 | todo | | | |
