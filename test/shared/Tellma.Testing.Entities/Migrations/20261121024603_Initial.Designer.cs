@@ -14,7 +14,7 @@ using Tellma.Testing.Entities;
 namespace Tellma.Testing.Entities.Migrations
 {
     [DbContext(typeof(TellmaFixtureDbContext))]
-    [Migration("20261120222849_Initial")]
+    [Migration("20261121024603_Initial")]
     partial class Initial
     {
         /// <inheritdoc />
@@ -60,6 +60,12 @@ namespace Tellma.Testing.Entities.Migrations
                 .StartsAt(1000L);
 
             modelBuilder.HasSequence<int>("sq_Notifications", "core")
+                .StartsAt(1000L);
+
+            modelBuilder.HasSequence<int>("sq_OutgoingEmailAttachments", "core")
+                .StartsAt(1000L);
+
+            modelBuilder.HasSequence<int>("sq_OutgoingEmails", "core")
                 .StartsAt(1000L);
 
             modelBuilder.HasSequence<int>("sq_Permissions", "core")
@@ -654,6 +660,203 @@ namespace Tellma.Testing.Entities.Migrations
                         {
                             t.HasCheckConstraint("CK_Blobs_Id", "[Id] > 0");
                         });
+                });
+
+            modelBuilder.Entity("Tellma.Core.Abstractions.Email.OutgoingEmail", b =>
+                {
+                    b.Property<int>("Id")
+                        .HasColumnType("int");
+
+                    b.Property<int>("AttemptCount")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(0);
+
+                    b.Property<string>("Audience")
+                        .IsRequired()
+                        .HasMaxLength(8)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(8)");
+
+                    b.Property<string>("Bcc")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Cc")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasPrecision(7)
+                        .HasColumnType("datetimeoffset(7)");
+
+                    b.Property<int>("CreatedById")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset?>("DeliveryAt")
+                        .HasPrecision(3)
+                        .HasColumnType("datetimeoffset(3)");
+
+                    b.Property<string>("DeliveryReason")
+                        .HasMaxLength(512)
+                        .HasColumnType("nvarchar(512)");
+
+                    b.Property<string>("DeliveryRecipient")
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
+
+                    b.Property<string>("DeliveryStatus")
+                        .HasMaxLength(12)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(12)");
+
+                    b.Property<string>("ErrorCode")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("ErrorDetail")
+                        .HasMaxLength(1024)
+                        .HasColumnType("nvarchar(1024)");
+
+                    b.Property<bool>("ExpectsDeliveryEvents")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
+
+                    b.Property<string>("From")
+                        .HasMaxLength(512)
+                        .HasColumnType("nvarchar(512)");
+
+                    b.Property<string>("HtmlBody")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int?>("JobId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("LastProviderEventId")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<DateTimeOffset>("ModifiedAt")
+                        .HasPrecision(7)
+                        .HasColumnType("datetimeoffset(7)");
+
+                    b.Property<int>("ModifiedById")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ProviderMessageId")
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
+
+                    b.Property<int?>("RecipientUserId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("RegardingEntity")
+                        .HasColumnType("varchar(128)");
+
+                    b.Property<long?>("RegardingId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("ReplyTo")
+                        .HasMaxLength(512)
+                        .HasColumnType("nvarchar(512)");
+
+                    b.Property<DateTimeOffset?>("SendAfter")
+                        .HasPrecision(3)
+                        .HasColumnType("datetimeoffset(3)");
+
+                    b.Property<DateTimeOffset?>("SentAt")
+                        .HasPrecision(3)
+                        .HasColumnType("datetimeoffset(3)");
+
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .HasMaxLength(9)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(9)");
+
+                    b.Property<string>("Subject")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("TextBody")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("To")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id")
+                        .HasName("PK_OutgoingEmails");
+
+                    b.HasIndex("JobId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_OutgoingEmails_JobId")
+                        .HasFilter("[JobId] IS NOT NULL");
+
+                    b.HasIndex("RecipientUserId", "CreatedAt")
+                        .IsDescending(false, true)
+                        .HasDatabaseName("IX_OutgoingEmails_Recipient")
+                        .HasFilter("[RecipientUserId] IS NOT NULL");
+
+                    b.HasIndex("RegardingEntity", "RegardingId")
+                        .HasDatabaseName("IX_OutgoingEmails_Regarding")
+                        .HasFilter("[RegardingEntity] IS NOT NULL");
+
+                    b.HasIndex("State", "CreatedAt")
+                        .HasDatabaseName("IX_OutgoingEmails_State");
+
+                    b.ToTable("OutgoingEmails", "core", t =>
+                        {
+                            t.HasCheckConstraint("CK_OutgoingEmails_Id", "[Id] > 0");
+                        });
+
+                    b
+                        .HasAnnotation("Tellma:TableType:Enabled", true)
+                        .HasAnnotation("Tellma:TableType:Grants", "[\"tellma_app\"]");
+                });
+
+            modelBuilder.Entity("Tellma.Core.Abstractions.Email.OutgoingEmailAttachment", b =>
+                {
+                    b.Property<int>("Id")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ContentId")
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
+
+                    b.Property<int?>("FileId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
+
+                    b.Property<int>("OutgoingEmailId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id")
+                        .HasName("PK_OutgoingEmailAttachments");
+
+                    b.HasIndex("FileId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_OutgoingEmailAttachments_FileId")
+                        .HasFilter("[FileId] IS NOT NULL");
+
+                    b.HasIndex("OutgoingEmailId")
+                        .HasDatabaseName("IX_OutgoingEmailAttachments_OutgoingEmailId");
+
+                    SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("OutgoingEmailId"), new[] { "Id" });
+
+                    b.ToTable("OutgoingEmailAttachments", "core", t =>
+                        {
+                            t.HasCheckConstraint("CK_OutgoingEmailAttachments_Id", "[Id] > 0");
+                        });
+
+                    b
+                        .HasAnnotation("Tellma:TableType:Enabled", true)
+                        .HasAnnotation("Tellma:TableType:Grants", "[\"tellma_app\"]");
                 });
 
             modelBuilder.Entity("Tellma.Core.Abstractions.Jobs.Job", b =>
@@ -19949,6 +20152,51 @@ namespace Tellma.Testing.Entities.Migrations
                         .HasConstraintName("FK_Blobs_CreatedById");
                 });
 
+            modelBuilder.Entity("Tellma.Core.Abstractions.Email.OutgoingEmail", b =>
+                {
+                    b.HasOne("Tellma.Core.Abstractions.Access.User", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("FK_OutgoingEmails_CreatedById");
+
+                    b.HasOne("Tellma.Core.Abstractions.Jobs.Job", null)
+                        .WithOne()
+                        .HasForeignKey("Tellma.Core.Abstractions.Email.OutgoingEmail", "JobId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("FK_OutgoingEmails_JobId");
+
+                    b.HasOne("Tellma.Core.Abstractions.Access.User", null)
+                        .WithMany()
+                        .HasForeignKey("ModifiedById")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("FK_OutgoingEmails_ModifiedById");
+
+                    b.HasOne("Tellma.Core.Abstractions.Access.User", null)
+                        .WithMany()
+                        .HasForeignKey("RecipientUserId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("FK_OutgoingEmails_RecipientUserId");
+                });
+
+            modelBuilder.Entity("Tellma.Core.Abstractions.Email.OutgoingEmailAttachment", b =>
+                {
+                    b.HasOne("Tellma.Core.Abstractions.Blobs.Blob", null)
+                        .WithOne()
+                        .HasForeignKey("Tellma.Core.Abstractions.Email.OutgoingEmailAttachment", "FileId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("FK_OutgoingEmailAttachments_FileId");
+
+                    b.HasOne("Tellma.Core.Abstractions.Email.OutgoingEmail", null)
+                        .WithMany()
+                        .HasForeignKey("OutgoingEmailId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("FK_OutgoingEmailAttachments_OutgoingEmailId");
+                });
+
             modelBuilder.Entity("Tellma.Core.Abstractions.Jobs.Job", b =>
                 {
                     b.HasOne("Tellma.Core.Abstractions.Access.User", null)
@@ -20397,6 +20645,52 @@ namespace Tellma.Testing.Entities.Migrations
                 .HasKey("Id")
                 .HasGrants("tellma_app"));
 
+            modelBuilder.HasTableTypeDefinition("OutgoingEmailAttachmentsList", "core", type => type
+                .ForTable("OutgoingEmailAttachments", "core")
+                .Column(name: "Id", storeType: "int")
+                .Column(name: "OutgoingEmailId", storeType: "int")
+                .Column(name: "FileName", storeType: "nvarchar(255)", maxLength: 255)
+                .Column(name: "ContentId", storeType: "nvarchar(255)", nullable: true, maxLength: 255)
+                .Column(name: "FileId", storeType: "int", nullable: true)
+                .HasKey("Id")
+                .HasGrants("tellma_app"));
+
+            modelBuilder.HasTableTypeDefinition("OutgoingEmailsList", "core", type => type
+                .ForTable("OutgoingEmails", "core")
+                .Column(name: "Id", storeType: "int")
+                .Column(name: "JobId", storeType: "int", nullable: true)
+                .Column(name: "State", storeType: "varchar(9)", maxLength: 9)
+                .Column(name: "Audience", storeType: "varchar(8)", maxLength: 8)
+                .Column(name: "From", storeType: "nvarchar(512)", nullable: true, maxLength: 512)
+                .Column(name: "ReplyTo", storeType: "nvarchar(512)", nullable: true, maxLength: 512)
+                .Column(name: "To", storeType: "nvarchar(max)")
+                .Column(name: "Cc", storeType: "nvarchar(max)", nullable: true)
+                .Column(name: "Bcc", storeType: "nvarchar(max)", nullable: true)
+                .Column(name: "Subject", storeType: "nvarchar(500)", maxLength: 500)
+                .Column(name: "TextBody", storeType: "nvarchar(max)")
+                .Column(name: "HtmlBody", storeType: "nvarchar(max)", nullable: true)
+                .Column(name: "RecipientUserId", storeType: "int", nullable: true)
+                .Column(name: "RegardingEntity", storeType: "varchar(128)", nullable: true)
+                .Column(name: "RegardingId", storeType: "bigint", nullable: true)
+                .Column(name: "SendAfter", storeType: "datetimeoffset(3)", nullable: true, precision: 3)
+                .Column(name: "AttemptCount", storeType: "int")
+                .Column(name: "SentAt", storeType: "datetimeoffset(3)", nullable: true, precision: 3)
+                .Column(name: "ProviderMessageId", storeType: "nvarchar(255)", nullable: true, maxLength: 255)
+                .Column(name: "ExpectsDeliveryEvents", storeType: "bit")
+                .Column(name: "ErrorCode", storeType: "nvarchar(64)", nullable: true, maxLength: 64)
+                .Column(name: "ErrorDetail", storeType: "nvarchar(1024)", nullable: true, maxLength: 1024)
+                .Column(name: "DeliveryStatus", storeType: "varchar(12)", nullable: true, maxLength: 12)
+                .Column(name: "DeliveryAt", storeType: "datetimeoffset(3)", nullable: true, precision: 3)
+                .Column(name: "DeliveryRecipient", storeType: "nvarchar(255)", nullable: true, maxLength: 255)
+                .Column(name: "DeliveryReason", storeType: "nvarchar(512)", nullable: true, maxLength: 512)
+                .Column(name: "LastProviderEventId", storeType: "nvarchar(100)", nullable: true, maxLength: 100)
+                .Column(name: "CreatedAt", storeType: "datetimeoffset(7)", precision: 7)
+                .Column(name: "CreatedById", storeType: "int")
+                .Column(name: "ModifiedAt", storeType: "datetimeoffset(7)", precision: 7)
+                .Column(name: "ModifiedById", storeType: "int")
+                .HasKey("Id")
+                .HasGrants("tellma_app"));
+
             modelBuilder.HasTableTypeDefinition("PermissionsList", "core", type => type
                 .ForTable("Permissions", "core")
                 .Column(name: "Id", storeType: "int")
@@ -20535,6 +20829,18 @@ namespace Tellma.Testing.Entities.Migrations
                 .HasKey("Id")
                 .HasGrants("tellma_app"));
 
+            modelBuilder.HasTableTypeDefinition("EmailDeliveryEventList", "dbo", type => type
+                .Column(name: "Ordinal", storeType: "int")
+                .Column(name: "OutgoingEmailId", storeType: "int")
+                .Column(name: "Status", storeType: "varchar(12)", maxLength: 12)
+                .Column(name: "Rank", storeType: "tinyint")
+                .Column(name: "Recipient", storeType: "nvarchar(255)", nullable: true, maxLength: 255)
+                .Column(name: "Reason", storeType: "nvarchar(512)", nullable: true, maxLength: 512)
+                .Column(name: "Timestamp", storeType: "datetimeoffset(3)", nullable: true, precision: 3)
+                .Column(name: "ProviderEventId", storeType: "nvarchar(100)", maxLength: 100)
+                .HasKey("Ordinal")
+                .HasGrants("tellma_app"));
+
             modelBuilder.HasTableTypeDefinition("GuidList", "dbo", type => type
                 .Column(name: "Id", storeType: "uniqueidentifier")
                 .HasKey("Id")
@@ -20613,6 +20919,16 @@ namespace Tellma.Testing.Entities.Migrations
                 .Column(name: "LastOrdinal", storeType: "int")
                 .Column(name: "ArgumentsJson", storeType: "nvarchar(max)")
                 .HasKey("SliceOrdinal")
+                .HasGrants("tellma_app"));
+
+            modelBuilder.HasTableTypeDefinition("OutgoingEmailOutcomeList", "dbo", type => type
+                .Column(name: "Id", storeType: "int")
+                .Column(name: "State", storeType: "varchar(9)", maxLength: 9)
+                .Column(name: "ProviderMessageId", storeType: "nvarchar(255)", nullable: true, maxLength: 255)
+                .Column(name: "ExpectsDeliveryEvents", storeType: "bit")
+                .Column(name: "ErrorCode", storeType: "nvarchar(64)", nullable: true, maxLength: 64)
+                .Column(name: "ErrorDetail", storeType: "nvarchar(1024)", nullable: true, maxLength: 1024)
+                .HasKey("Id")
                 .HasGrants("tellma_app"));
 
             modelBuilder.HasTableTypeDefinition("ScheduleNextList", "dbo", type => type

@@ -45,6 +45,16 @@ namespace Tellma.Core.Migrator.TestDistribution.Migrations
                 startValue: 1000L);
 
             migrationBuilder.CreateSequence<int>(
+                name: "sq_OutgoingEmailAttachments",
+                schema: "core",
+                startValue: 1000L);
+
+            migrationBuilder.CreateSequence<int>(
+                name: "sq_OutgoingEmails",
+                schema: "core",
+                startValue: 1000L);
+
+            migrationBuilder.CreateSequence<int>(
                 name: "sq_Permissions",
                 schema: "core",
                 startValue: 1000L);
@@ -743,6 +753,76 @@ namespace Tellma.Core.Migrator.TestDistribution.Migrations
                 .Annotation("Tellma:LockEscalation", "DISABLE");
 
             migrationBuilder.CreateTable(
+                name: "OutgoingEmails",
+                schema: "core",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false),
+                    JobId = table.Column<int>(type: "int", nullable: true),
+                    State = table.Column<string>(type: "varchar(9)", unicode: false, maxLength: 9, nullable: false),
+                    Audience = table.Column<string>(type: "varchar(8)", unicode: false, maxLength: 8, nullable: false),
+                    From = table.Column<string>(type: "nvarchar(512)", maxLength: 512, nullable: true),
+                    ReplyTo = table.Column<string>(type: "nvarchar(512)", maxLength: 512, nullable: true),
+                    To = table.Column<string>(type: "nvarchar(max)", nullable: false),
+                    Cc = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    Bcc = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    Subject = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: false),
+                    TextBody = table.Column<string>(type: "nvarchar(max)", nullable: false),
+                    HtmlBody = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    RecipientUserId = table.Column<int>(type: "int", nullable: true),
+                    RegardingEntity = table.Column<string>(type: "varchar(128)", nullable: true),
+                    RegardingId = table.Column<long>(type: "bigint", nullable: true),
+                    SendAfter = table.Column<DateTimeOffset>(type: "datetimeoffset(3)", precision: 3, nullable: true),
+                    AttemptCount = table.Column<int>(type: "int", nullable: false, defaultValue: 0)
+                        .Annotation("Relational:DefaultConstraintName", "DF_OutgoingEmails_AttemptCount"),
+                    SentAt = table.Column<DateTimeOffset>(type: "datetimeoffset(3)", precision: 3, nullable: true),
+                    ProviderMessageId = table.Column<string>(type: "nvarchar(255)", maxLength: 255, nullable: true),
+                    ExpectsDeliveryEvents = table.Column<bool>(type: "bit", nullable: false, defaultValue: false)
+                        .Annotation("Relational:DefaultConstraintName", "DF_OutgoingEmails_ExpectsDeliveryEvents"),
+                    ErrorCode = table.Column<string>(type: "nvarchar(64)", maxLength: 64, nullable: true),
+                    ErrorDetail = table.Column<string>(type: "nvarchar(1024)", maxLength: 1024, nullable: true),
+                    DeliveryStatus = table.Column<string>(type: "varchar(12)", unicode: false, maxLength: 12, nullable: true),
+                    DeliveryAt = table.Column<DateTimeOffset>(type: "datetimeoffset(3)", precision: 3, nullable: true),
+                    DeliveryRecipient = table.Column<string>(type: "nvarchar(255)", maxLength: 255, nullable: true),
+                    DeliveryReason = table.Column<string>(type: "nvarchar(512)", maxLength: 512, nullable: true),
+                    LastProviderEventId = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: true),
+                    CreatedAt = table.Column<DateTimeOffset>(type: "datetimeoffset(7)", precision: 7, nullable: false),
+                    CreatedById = table.Column<int>(type: "int", nullable: false),
+                    ModifiedAt = table.Column<DateTimeOffset>(type: "datetimeoffset(7)", precision: 7, nullable: false),
+                    ModifiedById = table.Column<int>(type: "int", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_OutgoingEmails", x => x.Id);
+                    table.CheckConstraint("CK_OutgoingEmails_Id", "[Id] > 0");
+                    table.ForeignKey(
+                        name: "FK_OutgoingEmails_CreatedById",
+                        column: x => x.CreatedById,
+                        principalSchema: "core",
+                        principalTable: "Users",
+                        principalColumn: "Id");
+                    table.ForeignKey(
+                        name: "FK_OutgoingEmails_JobId",
+                        column: x => x.JobId,
+                        principalSchema: "core",
+                        principalTable: "Jobs",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.SetNull);
+                    table.ForeignKey(
+                        name: "FK_OutgoingEmails_ModifiedById",
+                        column: x => x.ModifiedById,
+                        principalSchema: "core",
+                        principalTable: "Users",
+                        principalColumn: "Id");
+                    table.ForeignKey(
+                        name: "FK_OutgoingEmails_RecipientUserId",
+                        column: x => x.RecipientUserId,
+                        principalSchema: "core",
+                        principalTable: "Users",
+                        principalColumn: "Id");
+                });
+
+            migrationBuilder.CreateTable(
                 name: "ScheduleStates",
                 schema: "core",
                 columns: table => new
@@ -773,6 +853,35 @@ namespace Tellma.Core.Migrator.TestDistribution.Migrations
                         principalTable: "Schedules",
                         principalColumn: "Id",
                         onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "OutgoingEmailAttachments",
+                schema: "core",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false),
+                    OutgoingEmailId = table.Column<int>(type: "int", nullable: false),
+                    FileName = table.Column<string>(type: "nvarchar(255)", maxLength: 255, nullable: false),
+                    ContentId = table.Column<string>(type: "nvarchar(255)", maxLength: 255, nullable: true),
+                    FileId = table.Column<int>(type: "int", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_OutgoingEmailAttachments", x => x.Id);
+                    table.CheckConstraint("CK_OutgoingEmailAttachments_Id", "[Id] > 0");
+                    table.ForeignKey(
+                        name: "FK_OutgoingEmailAttachments_FileId",
+                        column: x => x.FileId,
+                        principalSchema: "core",
+                        principalTable: "Blobs",
+                        principalColumn: "Id");
+                    table.ForeignKey(
+                        name: "FK_OutgoingEmailAttachments_OutgoingEmailId",
+                        column: x => x.OutgoingEmailId,
+                        principalSchema: "core",
+                        principalTable: "OutgoingEmails",
+                        principalColumn: "Id");
                 });
 
             migrationBuilder.InsertData(
@@ -3154,6 +3263,50 @@ namespace Tellma.Core.Migrator.TestDistribution.Migrations
                 .Annotation("SqlServer:Include", new[] { "ReadAt", "Type", "Severity" });
 
             migrationBuilder.CreateIndex(
+                name: "IX_OutgoingEmailAttachments_OutgoingEmailId",
+                schema: "core",
+                table: "OutgoingEmailAttachments",
+                column: "OutgoingEmailId")
+                .Annotation("SqlServer:Include", new[] { "Id" });
+
+            migrationBuilder.CreateIndex(
+                name: "UX_OutgoingEmailAttachments_FileId",
+                schema: "core",
+                table: "OutgoingEmailAttachments",
+                column: "FileId",
+                unique: true,
+                filter: "[FileId] IS NOT NULL");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_OutgoingEmails_Recipient",
+                schema: "core",
+                table: "OutgoingEmails",
+                columns: new[] { "RecipientUserId", "CreatedAt" },
+                descending: new[] { false, true },
+                filter: "[RecipientUserId] IS NOT NULL");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_OutgoingEmails_Regarding",
+                schema: "core",
+                table: "OutgoingEmails",
+                columns: new[] { "RegardingEntity", "RegardingId" },
+                filter: "[RegardingEntity] IS NOT NULL");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_OutgoingEmails_State",
+                schema: "core",
+                table: "OutgoingEmails",
+                columns: new[] { "State", "CreatedAt" });
+
+            migrationBuilder.CreateIndex(
+                name: "UX_OutgoingEmails_JobId",
+                schema: "core",
+                table: "OutgoingEmails",
+                column: "JobId",
+                unique: true,
+                filter: "[JobId] IS NOT NULL");
+
+            migrationBuilder.CreateIndex(
                 name: "IX_Permissions_RoleId",
                 schema: "core",
                 table: "Permissions",
@@ -3351,6 +3504,66 @@ namespace Tellma.Core.Migrator.TestDistribution.Migrations
                     new TableTypeColumnDefinition { Name = "DedupKey", StoreType = "nvarchar(128)", IsNullable = true, MaxLength = 128 },
                     new TableTypeColumnDefinition { Name = "CreatedAt", StoreType = "datetimeoffset(3)", Precision = 3 },
                     new TableTypeColumnDefinition { Name = "ReadAt", StoreType = "datetimeoffset(3)", IsNullable = true, Precision = 3 },
+                },
+                primaryKey: new[] { "Id" },
+                grants: new[] { "tellma_app" });
+
+            migrationBuilder.CreateTableType(
+                name: "OutgoingEmailAttachmentsList",
+                physicalName: "OutgoingEmailAttachmentsList_69b8bfd2",
+                schema: "core",
+                scope: "tellma.tenant",
+                definitionHash: "69b8bfd284769b77e2226a8db4bcd0ed7b6554462935506849c8e05cfb9c1321",
+                columns: new[]
+                {
+                    new TableTypeColumnDefinition { Name = "Id", StoreType = "int" },
+                    new TableTypeColumnDefinition { Name = "OutgoingEmailId", StoreType = "int" },
+                    new TableTypeColumnDefinition { Name = "FileName", StoreType = "nvarchar(255)", MaxLength = 255 },
+                    new TableTypeColumnDefinition { Name = "ContentId", StoreType = "nvarchar(255)", IsNullable = true, MaxLength = 255 },
+                    new TableTypeColumnDefinition { Name = "FileId", StoreType = "int", IsNullable = true },
+                },
+                primaryKey: new[] { "Id" },
+                grants: new[] { "tellma_app" });
+
+            migrationBuilder.CreateTableType(
+                name: "OutgoingEmailsList",
+                physicalName: "OutgoingEmailsList_c103cd34",
+                schema: "core",
+                scope: "tellma.tenant",
+                definitionHash: "c103cd34ac7247bb22f8b7e84c17f82ab34b8382c04f4ed6258adb5a65c27bd9",
+                columns: new[]
+                {
+                    new TableTypeColumnDefinition { Name = "Id", StoreType = "int" },
+                    new TableTypeColumnDefinition { Name = "JobId", StoreType = "int", IsNullable = true },
+                    new TableTypeColumnDefinition { Name = "State", StoreType = "varchar(9)", MaxLength = 9 },
+                    new TableTypeColumnDefinition { Name = "Audience", StoreType = "varchar(8)", MaxLength = 8 },
+                    new TableTypeColumnDefinition { Name = "From", StoreType = "nvarchar(512)", IsNullable = true, MaxLength = 512 },
+                    new TableTypeColumnDefinition { Name = "ReplyTo", StoreType = "nvarchar(512)", IsNullable = true, MaxLength = 512 },
+                    new TableTypeColumnDefinition { Name = "To", StoreType = "nvarchar(max)" },
+                    new TableTypeColumnDefinition { Name = "Cc", StoreType = "nvarchar(max)", IsNullable = true },
+                    new TableTypeColumnDefinition { Name = "Bcc", StoreType = "nvarchar(max)", IsNullable = true },
+                    new TableTypeColumnDefinition { Name = "Subject", StoreType = "nvarchar(500)", MaxLength = 500 },
+                    new TableTypeColumnDefinition { Name = "TextBody", StoreType = "nvarchar(max)" },
+                    new TableTypeColumnDefinition { Name = "HtmlBody", StoreType = "nvarchar(max)", IsNullable = true },
+                    new TableTypeColumnDefinition { Name = "RecipientUserId", StoreType = "int", IsNullable = true },
+                    new TableTypeColumnDefinition { Name = "RegardingEntity", StoreType = "varchar(128)", IsNullable = true },
+                    new TableTypeColumnDefinition { Name = "RegardingId", StoreType = "bigint", IsNullable = true },
+                    new TableTypeColumnDefinition { Name = "SendAfter", StoreType = "datetimeoffset(3)", IsNullable = true, Precision = 3 },
+                    new TableTypeColumnDefinition { Name = "AttemptCount", StoreType = "int" },
+                    new TableTypeColumnDefinition { Name = "SentAt", StoreType = "datetimeoffset(3)", IsNullable = true, Precision = 3 },
+                    new TableTypeColumnDefinition { Name = "ProviderMessageId", StoreType = "nvarchar(255)", IsNullable = true, MaxLength = 255 },
+                    new TableTypeColumnDefinition { Name = "ExpectsDeliveryEvents", StoreType = "bit" },
+                    new TableTypeColumnDefinition { Name = "ErrorCode", StoreType = "nvarchar(64)", IsNullable = true, MaxLength = 64 },
+                    new TableTypeColumnDefinition { Name = "ErrorDetail", StoreType = "nvarchar(1024)", IsNullable = true, MaxLength = 1024 },
+                    new TableTypeColumnDefinition { Name = "DeliveryStatus", StoreType = "varchar(12)", IsNullable = true, MaxLength = 12 },
+                    new TableTypeColumnDefinition { Name = "DeliveryAt", StoreType = "datetimeoffset(3)", IsNullable = true, Precision = 3 },
+                    new TableTypeColumnDefinition { Name = "DeliveryRecipient", StoreType = "nvarchar(255)", IsNullable = true, MaxLength = 255 },
+                    new TableTypeColumnDefinition { Name = "DeliveryReason", StoreType = "nvarchar(512)", IsNullable = true, MaxLength = 512 },
+                    new TableTypeColumnDefinition { Name = "LastProviderEventId", StoreType = "nvarchar(100)", IsNullable = true, MaxLength = 100 },
+                    new TableTypeColumnDefinition { Name = "CreatedAt", StoreType = "datetimeoffset(7)", Precision = 7 },
+                    new TableTypeColumnDefinition { Name = "CreatedById", StoreType = "int" },
+                    new TableTypeColumnDefinition { Name = "ModifiedAt", StoreType = "datetimeoffset(7)", Precision = 7 },
+                    new TableTypeColumnDefinition { Name = "ModifiedById", StoreType = "int" },
                 },
                 primaryKey: new[] { "Id" },
                 grants: new[] { "tellma_app" });
@@ -3559,6 +3772,26 @@ namespace Tellma.Core.Migrator.TestDistribution.Migrations
                 grants: new[] { "tellma_app" });
 
             migrationBuilder.CreateTableType(
+                name: "EmailDeliveryEventList",
+                physicalName: "EmailDeliveryEventList_f9c9c1c7",
+                schema: "dbo",
+                scope: "tellma.tenant",
+                definitionHash: "f9c9c1c74520309e0eaf5aa123425d31c3a2e6e4fb6ecbb99969d406ebe05fa8",
+                columns: new[]
+                {
+                    new TableTypeColumnDefinition { Name = "Ordinal", StoreType = "int" },
+                    new TableTypeColumnDefinition { Name = "OutgoingEmailId", StoreType = "int" },
+                    new TableTypeColumnDefinition { Name = "Status", StoreType = "varchar(12)", MaxLength = 12 },
+                    new TableTypeColumnDefinition { Name = "Rank", StoreType = "tinyint" },
+                    new TableTypeColumnDefinition { Name = "Recipient", StoreType = "nvarchar(255)", IsNullable = true, MaxLength = 255 },
+                    new TableTypeColumnDefinition { Name = "Reason", StoreType = "nvarchar(512)", IsNullable = true, MaxLength = 512 },
+                    new TableTypeColumnDefinition { Name = "Timestamp", StoreType = "datetimeoffset(3)", IsNullable = true, Precision = 3 },
+                    new TableTypeColumnDefinition { Name = "ProviderEventId", StoreType = "nvarchar(100)", MaxLength = 100 },
+                },
+                primaryKey: new[] { "Ordinal" },
+                grants: new[] { "tellma_app" });
+
+            migrationBuilder.CreateTableType(
                 name: "GuidList",
                 physicalName: "GuidList_922aa933",
                 schema: "dbo",
@@ -3719,6 +3952,24 @@ namespace Tellma.Core.Migrator.TestDistribution.Migrations
                 grants: new[] { "tellma_app" });
 
             migrationBuilder.CreateTableType(
+                name: "OutgoingEmailOutcomeList",
+                physicalName: "OutgoingEmailOutcomeList_9ab65983",
+                schema: "dbo",
+                scope: "tellma.tenant",
+                definitionHash: "9ab659839b497cfef12f0ea21f7974125c02e60a5737ca13503acdcbb89731eb",
+                columns: new[]
+                {
+                    new TableTypeColumnDefinition { Name = "Id", StoreType = "int" },
+                    new TableTypeColumnDefinition { Name = "State", StoreType = "varchar(9)", MaxLength = 9 },
+                    new TableTypeColumnDefinition { Name = "ProviderMessageId", StoreType = "nvarchar(255)", IsNullable = true, MaxLength = 255 },
+                    new TableTypeColumnDefinition { Name = "ExpectsDeliveryEvents", StoreType = "bit" },
+                    new TableTypeColumnDefinition { Name = "ErrorCode", StoreType = "nvarchar(64)", IsNullable = true, MaxLength = 64 },
+                    new TableTypeColumnDefinition { Name = "ErrorDetail", StoreType = "nvarchar(1024)", IsNullable = true, MaxLength = 1024 },
+                },
+                primaryKey: new[] { "Id" },
+                grants: new[] { "tellma_app" });
+
+            migrationBuilder.CreateTableType(
                 name: "ScheduleNextList",
                 physicalName: "ScheduleNextList_e422990c",
                 schema: "dbo",
@@ -3793,7 +4044,7 @@ namespace Tellma.Core.Migrator.TestDistribution.Migrations
                 primaryKey: new[] { "Id" },
                 grants: new[] { "tellma_app" });
 
-            migrationBuilder.CleanupTableTypes(scope: "tellma.tenant", keepList: new[] { "JobsList_a90a5696", "NotificationsList_45bbd83e", "PermissionsList_c3b8a544", "RoleMembershipsList_fd20e92d", "RolesList_77bed563", "SchedulesList_5acfe7bf", "SettingEntriesList_609d1ba0", "SettingsList_254adc5a", "UsersList_860a025a", "BigIdList_7629c0a3", "DateList_566fd984", "GuidList_922aa933", "IdList_9b0dfe3c", "IdStampList_36427f71", "JobLeaseList_17bf60e1", "JobOutcomeList_6165fff7", "JobProgressList_33eeb232", "JobRequestList_f3ef6d1d", "NotificationPreferenceList_61bf7917", "NotificationRowList_2c2b24d8", "NotificationSliceList_29aa6852", "ScheduleNextList_e422990c", "StringList_bb8903a2", "UserPreferenceList_8b1ed724", "VersionTagList_e552f6b8", "GadgetsList_d6f3f00e" });
+            migrationBuilder.CleanupTableTypes(scope: "tellma.tenant", keepList: new[] { "JobsList_a90a5696", "NotificationsList_45bbd83e", "OutgoingEmailAttachmentsList_69b8bfd2", "OutgoingEmailsList_c103cd34", "PermissionsList_c3b8a544", "RoleMembershipsList_fd20e92d", "RolesList_77bed563", "SchedulesList_5acfe7bf", "SettingEntriesList_609d1ba0", "SettingsList_254adc5a", "UsersList_860a025a", "BigIdList_7629c0a3", "DateList_566fd984", "EmailDeliveryEventList_f9c9c1c7", "GuidList_922aa933", "IdList_9b0dfe3c", "IdStampList_36427f71", "JobLeaseList_17bf60e1", "JobOutcomeList_6165fff7", "JobProgressList_33eeb232", "JobRequestList_f3ef6d1d", "NotificationPreferenceList_61bf7917", "NotificationRowList_2c2b24d8", "NotificationSliceList_29aa6852", "OutgoingEmailOutcomeList_9ab65983", "ScheduleNextList_e422990c", "StringList_bb8903a2", "UserPreferenceList_8b1ed724", "VersionTagList_e552f6b8", "GadgetsList_d6f3f00e" });
         }
 
         /// <inheritdoc />
@@ -3832,6 +4083,10 @@ namespace Tellma.Core.Migrator.TestDistribution.Migrations
                 name: "Notifications",
                 schema: "core")
                 .Annotation("Tellma:LockEscalation", "DISABLE");
+
+            migrationBuilder.DropTable(
+                name: "OutgoingEmailAttachments",
+                schema: "core");
 
             migrationBuilder.DropTable(
                 name: "Permissions",
@@ -3886,6 +4141,10 @@ namespace Tellma.Core.Migrator.TestDistribution.Migrations
                 schema: "core");
 
             migrationBuilder.DropTable(
+                name: "OutgoingEmails",
+                schema: "core");
+
+            migrationBuilder.DropTable(
                 name: "Roles",
                 schema: "core")
                 .Annotation("SqlServer:IsTemporal", true)
@@ -3935,6 +4194,14 @@ namespace Tellma.Core.Migrator.TestDistribution.Migrations
 
             migrationBuilder.DropSequence(
                 name: "sq_Notifications",
+                schema: "core");
+
+            migrationBuilder.DropSequence(
+                name: "sq_OutgoingEmailAttachments",
+                schema: "core");
+
+            migrationBuilder.DropSequence(
+                name: "sq_OutgoingEmails",
                 schema: "core");
 
             migrationBuilder.DropSequence(

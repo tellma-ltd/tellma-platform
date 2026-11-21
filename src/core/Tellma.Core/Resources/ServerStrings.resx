@@ -13,4 +13,18 @@
     <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </resheader>
   <!-- Server-only text: what the server renders and the browser application never shows. -->
+  <!-- The email notification channel: the subject and bodies around a notification's text -->
+  <data name="Email_Notification_Subject" xml:space="preserve">
+    <value>{tenantName}: {text}</value>
+  </data>
+  <data name="Email_Notification_Text" xml:space="preserve">
+    <value>{text}
+
+Open: {link}
+
+You receive this email because email is on for this kind of notification in {tenantName}. You can turn it off in your notification settings.</value>
+  </data>
+  <data name="Email_Notification_Html" xml:space="preserve">
+    <value>&lt;div dir="ltr"&gt;&lt;p&gt;{text}&lt;/p&gt;&lt;p&gt;&lt;a href="{link}"&gt;Open in {tenantName}&lt;/a&gt;&lt;/p&gt;&lt;p style="color:#6b7280;font-size:12px"&gt;You receive this email because email is on for this kind of notification in {tenantName}. You can turn it off in your notification settings.&lt;/p&gt;&lt;/div&gt;</value>
+  </data>
 </root>

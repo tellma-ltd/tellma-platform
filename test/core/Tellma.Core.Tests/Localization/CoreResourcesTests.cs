@@ -12,6 +12,7 @@ using System.Resources;
 using System.Text.RegularExpressions;
 using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Blobs;
+using Tellma.Core.Abstractions.Email;
 using Tellma.Core.Abstractions.Errors;
 using Tellma.Core.Abstractions.Settings;
 using Tellma.Core.Abstractions.Validation;
@@ -25,8 +26,8 @@ namespace Tellma.Core.Tests.Localization
     ///     Core's shared resources: the key grammar, every value a well-formed ICU message, the Arabic
     ///     satellite complete, the region names generated for exactly the catalogued regions, a
     ///     title for every problem code, a message for every validation and refusal code and for every
-    ///     query diagnostic, and the empty
-    ///     server-only resources.
+    ///     query diagnostic, and the
+    ///     server-only resources' email notification text.
     /// </summary>
     public sealed partial class CoreResourcesTests
     {
@@ -130,8 +131,8 @@ namespace Tellma.Core.Tests.Localization
             // The audit above fails only on keys nothing uses; this is its inverse: a code the
             // pipeline raises is rendered from the key its dots make, so a missing key would put the
             // bare code on the wire. Every public constant of the code catalogues counts; the blob
-            // refusals' catalogue also names its arguments, which are not codes.
-            Type[] catalogues = [typeof(ValidationCodes), typeof(SettingsValidationCodes), typeof(AccessCodes), typeof(BlobRejectedException)];
+            // refusals' and the outbox's catalogues also name their arguments, which are not codes.
+            Type[] catalogues = [typeof(ValidationCodes), typeof(SettingsValidationCodes), typeof(AccessCodes), typeof(BlobRejectedException), typeof(OutgoingEmailCodes)];
             string[] codes = [.. catalogues
                 .SelectMany(static type => type.GetFields(BindingFlags.Public | BindingFlags.Static))
                 .Where(static field => field.IsLiteral && field.FieldType == typeof(string) && !field.Name.EndsWith("Argument", StringComparison.Ordinal))
@@ -162,14 +163,26 @@ namespace Tellma.Core.Tests.Localization
             Assert.Equal(codes, Entries(string.Empty).Keys.Where(static key => key.StartsWith("Queryex_", StringComparison.Ordinal)).Order(StringComparer.Ordinal));
         }
 
-        [Fact]
-        public void The_server_only_resources_exist_and_hold_nothing_yet()
+        [Theory]
+        [InlineData("")]
+        [InlineData("ar")]
+        public void The_server_only_resources_hold_the_email_notification_text_as_well_formed_icu_messages(string culture)
         {
+            // The neutral set and the Arabic satellite each hold exactly the email channel's subject
+            // and bodies, and each renders from its three named arguments.
             ResourceManager resources = new("Tellma.Core.Resources.ServerStrings", typeof(ServerStrings).Assembly);
-            ResourceSet? set = resources.GetResourceSet(CultureInfo.InvariantCulture, createIfNotExists: true, tryParents: false);
-
+            ResourceSet? set = resources.GetResourceSet(CultureInfo.GetCultureInfo(culture), createIfNotExists: true, tryParents: false);
             Assert.NotNull(set);
-            Assert.Empty(set.Cast<DictionaryEntry>());
+            var entries = set.Cast<DictionaryEntry>().ToDictionary(static entry => (string)entry.Key, static entry => (string)entry.Value!, StringComparer.Ordinal);
+
+            Assert.Equal(["Email_Notification_Html", "Email_Notification_Subject", "Email_Notification_Text"], entries.Keys.Order(StringComparer.Ordinal));
+            MessageFormatter formatter = ProductionFormatter(CultureInfo.GetCultureInfo(culture.Length == 0 ? "en" : culture));
+            Assert.All(entries, entry =>
+            {
+                Assert.DoesNotContain('\'', entry.Value);
+                string rendered = formatter.FormatMessage(entry.Value, new Dictionary<string, object?> { ["tenantName"] = "Acme", ["text"] = "Hello", ["link"] = "https://example.com/a" });
+                Assert.Contains("Hello", rendered, StringComparison.Ordinal);
+            });
         }
 
         /// <summary>The entries of one culture's resources alone, without its parents'.</summary>

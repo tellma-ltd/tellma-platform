@@ -43,7 +43,7 @@ namespace Tellma.Core.Tests.Data
 
             Assert.Equal(
                 [
-                    "core.Blobs", "core.CalendarMonths", "core.JobWorkerState", "core.Jobs", "core.NotificationPreferences", "core.Notifications", "core.Permissions",
+                    "core.Blobs", "core.CalendarMonths", "core.JobWorkerState", "core.Jobs", "core.NotificationPreferences", "core.Notifications", "core.OutgoingEmailAttachments", "core.OutgoingEmails", "core.Permissions",
                     "core.RoleMemberships", "core.Roles", "core.ScheduleStates", "core.Schedules", "core.SettingEntries", "core.Settings",
                     "core.UserPreferences", "core.UserStamps", "core.Users", "core.VersionTags",
                     "dbo.__TellmaProvisioning", "dbo.__TellmaSchema",
@@ -84,7 +84,7 @@ namespace Tellma.Core.Tests.Data
                 .ToDictionary(static type => type.Name);
 
             Assert.Equal(
-                ["BigIdList", "CollatedKeyList", "DateList", "GuidList", "IdList", "IdStampList", "JobLeaseList", "JobOutcomeList", "JobProgressList", "JobRequestList", "NotificationPreferenceList", "NotificationRowList", "NotificationSliceList", "ScheduleNextList", "StringList", "UserPreferenceList", "VersionTagList"],
+                ["BigIdList", "CollatedKeyList", "DateList", "EmailDeliveryEventList", "GuidList", "IdList", "IdStampList", "JobLeaseList", "JobOutcomeList", "JobProgressList", "JobRequestList", "NotificationPreferenceList", "NotificationRowList", "NotificationSliceList", "OutgoingEmailOutcomeList", "ScheduleNextList", "StringList", "UserPreferenceList", "VersionTagList"],
                 standalone.Keys.Order(StringComparer.Ordinal));
             Assert.All(standalone.Values, static type => Assert.Equal(("dbo", "tellma_app"), (type.Schema, Assert.Single(type.Grants))));
             Assert.Equal("date", standalone[nameof(DateList)].Columns.Single().StoreType);

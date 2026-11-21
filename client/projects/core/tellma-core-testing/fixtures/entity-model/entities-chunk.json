@@ -1812,6 +1812,613 @@
       }
     },
     {
+      "name": "core.OutgoingEmail",
+      "segment": "outgoing-emails",
+      "labelKey": "Core_OutgoingEmail",
+      "pluralLabelKey": "Core_OutgoingEmail_Plural",
+      "newLabelKey": "Entity_New",
+      "labelFallback": "Outgoing email",
+      "operations": [
+        "query",
+        "details",
+        "delete"
+      ],
+      "capabilities": [
+        "blobs",
+        "job-entity"
+      ],
+      "displayName": {
+        "source": "Subject",
+        "multilingual": false
+      },
+      "kind": "stack",
+      "key": {
+        "property": "Id",
+        "type": "int"
+      },
+      "properties": [
+        {
+          "name": "Id",
+          "json": "id",
+          "type": "integer",
+          "queryable": true,
+          "nullable": false,
+          "unique": true,
+          "labelKey": "Core_OutgoingEmail_Id",
+          "labelFallback": "Id",
+          "excel": true,
+          "ownership": "server-owned"
+        },
+        {
+          "name": "CreatedAt",
+          "json": "createdAt",
+          "type": "instant",
+          "queryable": true,
+          "nullable": false,
+          "labelKey": "CreatedAt",
+          "excel": true,
+          "ownership": "server-owned"
+        },
+        {
+          "name": "CreatedById",
+          "json": "createdById",
+          "type": "integer",
+          "queryable": true,
+          "nullable": false,
+          "labelKey": "Core_OutgoingEmail_CreatedById",
+          "labelFallback": "Created by id",
+          "excel": true,
+          "ownership": "server-owned",
+          "foreignKeyOf": "CreatedBy"
+        },
+        {
+          "name": "ModifiedAt",
+          "json": "modifiedAt",
+          "type": "instant",
+          "queryable": true,
+          "nullable": false,
+          "labelKey": "ModifiedAt",
+          "excel": true,
+          "ownership": "server-owned"
+        },
+        {
+          "name": "ModifiedById",
+          "json": "modifiedById",
+          "type": "integer",
+          "queryable": true,
+          "nullable": false,
+          "labelKey": "Core_OutgoingEmail_ModifiedById",
+          "labelFallback": "Modified by id",
+          "excel": true,
+          "ownership": "server-owned",
+          "foreignKeyOf": "ModifiedBy"
+        },
+        {
+          "name": "JobId",
+          "json": "jobId",
+          "type": "integer",
+          "queryable": true,
+          "nullable": true,
+          "unique": true,
+          "labelKey": "Core_OutgoingEmail_JobId",
+          "labelFallback": "Job id",
+          "excel": true,
+          "ownership": "server-owned",
+          "foreignKeyOf": "Job"
+        },
+        {
+          "name": "State",
+          "json": "state",
+          "type": "enum",
+          "queryable": true,
+          "nullable": false,
+          "labelKey": "Core_OutgoingEmail_State",
+          "labelFallback": "State",
+          "excel": true,
+          "ownership": "server-owned",
+          "enum": "core.OutgoingEmailState"
+        },
+        {
+          "name": "Audience",
+          "json": "audience",
+          "type": "enum",
+          "queryable": true,
+          "nullable": false,
+          "labelKey": "Core_OutgoingEmail_Audience",
+          "labelFallback": "Audience",
+          "excel": true,
+          "ownership": "write-once",
+          "enum": "core.EmailAudience"
+        },
+        {
+          "name": "From",
+          "json": "from",
+          "type": "string",
+          "queryable": true,
+          "nullable": true,
+          "labelKey": "Core_OutgoingEmail_From",
+          "labelFallback": "From",
+          "excel": true,
+          "ownership": "write-once",
+          "maxLength": 512
+        },
+        {
+          "name": "ReplyTo",
+          "json": "replyTo",
+          "type": "string",
+          "queryable": true,
+          "nullable": true,
+          "labelKey": "Core_OutgoingEmail_ReplyTo",
+          "labelFallback": "Reply to",
+          "excel": true,
+          "ownership": "write-once",
+          "maxLength": 512
+        },
+        {
+          "name": "To",
+          "json": "to",
+          "type": "string",
+          "queryable": true,
+          "nullable": false,
+          "labelKey": "Core_OutgoingEmail_To",
+          "labelFallback": "To",
+          "excel": true,
+          "ownership": "write-once"
+        },
+        {
+          "name": "Cc",
+          "json": "cc",
+          "type": "string",
+          "queryable": true,
+          "nullable": true,
+          "labelKey": "Core_OutgoingEmail_Cc",
+          "labelFallback": "Cc",
+          "excel": true,
+          "ownership": "write-once"
+        },
+        {
+          "name": "Bcc",
+          "json": "bcc",
+          "type": "string",
+          "queryable": true,
+          "nullable": true,
+          "labelKey": "Core_OutgoingEmail_Bcc",
+          "labelFallback": "Bcc",
+          "excel": true,
+          "ownership": "write-once"
+        },
+        {
+          "name": "Subject",
+          "json": "subject",
+          "type": "string",
+          "queryable": true,
+          "nullable": false,
+          "labelKey": "Core_OutgoingEmail_Subject",
+          "labelFallback": "Subject",
+          "excel": true,
+          "ownership": "write-once",
+          "maxLength": 500
+        },
+        {
+          "name": "TextBody",
+          "json": "textBody",
+          "type": "string",
+          "queryable": true,
+          "nullable": false,
+          "labelKey": "Core_OutgoingEmail_TextBody",
+          "labelFallback": "Text body",
+          "excel": true,
+          "ownership": "write-once"
+        },
+        {
+          "name": "HtmlBody",
+          "json": "htmlBody",
+          "type": "string",
+          "queryable": true,
+          "nullable": true,
+          "labelKey": "Core_OutgoingEmail_HtmlBody",
+          "labelFallback": "Html body",
+          "excel": true,
+          "ownership": "write-once"
+        },
+        {
+          "name": "RecipientUserId",
+          "json": "recipientUserId",
+          "type": "integer",
+          "queryable": true,
+          "nullable": true,
+          "labelKey": "Core_OutgoingEmail_RecipientUserId",
+          "labelFallback": "Recipient user id",
+          "excel": true,
+          "ownership": "write-once",
+          "foreignKeyOf": "RecipientUser"
+        },
+        {
+          "name": "RegardingEntity",
+          "json": "regardingEntity",
+          "type": "string",
+          "queryable": true,
+          "nullable": true,
+          "labelKey": "Core_OutgoingEmail_RegardingEntity",
+          "labelFallback": "Regarding entity",
+          "excel": true,
+          "ownership": "write-once",
+          "maxLength": 128
+        },
+        {
+          "name": "RegardingId",
+          "json": "regardingId",
+          "type": "integer",
+          "queryable": true,
+          "nullable": true,
+          "long": true,
+          "labelKey": "Core_OutgoingEmail_RegardingId",
+          "labelFallback": "Regarding id",
+          "excel": true,
+          "ownership": "write-once"
+        },
+        {
+          "name": "SendAfter",
+          "json": "sendAfter",
+          "type": "instant",
+          "queryable": true,
+          "nullable": true,
+          "labelKey": "Core_OutgoingEmail_SendAfter",
+          "labelFallback": "Send after",
+          "excel": true,
+          "ownership": "write-once"
+        },
+        {
+          "name": "AttemptCount",
+          "json": "attemptCount",
+          "type": "integer",
+          "queryable": true,
+          "nullable": false,
+          "labelKey": "Core_OutgoingEmail_AttemptCount",
+          "labelFallback": "Attempt count",
+          "excel": true,
+          "ownership": "server-owned"
+        },
+        {
+          "name": "SentAt",
+          "json": "sentAt",
+          "type": "instant",
+          "queryable": true,
+          "nullable": true,
+          "labelKey": "Core_OutgoingEmail_SentAt",
+          "labelFallback": "Sent at",
+          "excel": true,
+          "ownership": "server-owned"
+        },
+        {
+          "name": "ProviderMessageId",
+          "json": "providerMessageId",
+          "type": "string",
+          "queryable": true,
+          "nullable": true,
+          "labelKey": "Core_OutgoingEmail_ProviderMessageId",
+          "labelFallback": "Provider message id",
+          "excel": true,
+          "ownership": "server-owned",
+          "maxLength": 255
+        },
+        {
+          "name": "ExpectsDeliveryEvents",
+          "json": "expectsDeliveryEvents",
+          "type": "bool",
+          "queryable": true,
+          "nullable": false,
+          "labelKey": "Core_OutgoingEmail_ExpectsDeliveryEvents",
+          "labelFallback": "Expects delivery events",
+          "excel": true,
+          "ownership": "server-owned"
+        },
+        {
+          "name": "ErrorCode",
+          "json": "errorCode",
+          "type": "string",
+          "queryable": true,
+          "nullable": true,
+          "labelKey": "Core_OutgoingEmail_ErrorCode",
+          "labelFallback": "Error code",
+          "excel": true,
+          "ownership": "server-owned",
+          "maxLength": 64
+        },
+        {
+          "name": "ErrorDetail",
+          "json": "errorDetail",
+          "type": "string",
+          "queryable": true,
+          "nullable": true,
+          "labelKey": "Core_OutgoingEmail_ErrorDetail",
+          "labelFallback": "Error detail",
+          "excel": true,
+          "ownership": "server-owned",
+          "maxLength": 1024
+        },
+        {
+          "name": "DeliveryStatus",
+          "json": "deliveryStatus",
+          "type": "enum",
+          "queryable": true,
+          "nullable": true,
+          "labelKey": "Core_OutgoingEmail_DeliveryStatus",
+          "labelFallback": "Delivery status",
+          "excel": true,
+          "ownership": "server-owned",
+          "enum": "core.EmailDeliveryStatus"
+        },
+        {
+          "name": "DeliveryAt",
+          "json": "deliveryAt",
+          "type": "instant",
+          "queryable": true,
+          "nullable": true,
+          "labelKey": "Core_OutgoingEmail_DeliveryAt",
+          "labelFallback": "Delivery at",
+          "excel": true,
+          "ownership": "server-owned"
+        },
+        {
+          "name": "DeliveryRecipient",
+          "json": "deliveryRecipient",
+          "type": "string",
+          "queryable": true,
+          "nullable": true,
+          "labelKey": "Core_OutgoingEmail_DeliveryRecipient",
+          "labelFallback": "Delivery recipient",
+          "excel": true,
+          "ownership": "server-owned",
+          "maxLength": 255
+        },
+        {
+          "name": "DeliveryReason",
+          "json": "deliveryReason",
+          "type": "string",
+          "queryable": true,
+          "nullable": true,
+          "labelKey": "Core_OutgoingEmail_DeliveryReason",
+          "labelFallback": "Delivery reason",
+          "excel": true,
+          "ownership": "server-owned",
+          "maxLength": 512
+        },
+        {
+          "name": "LastProviderEventId",
+          "json": "lastProviderEventId",
+          "type": "string",
+          "queryable": true,
+          "nullable": true,
+          "labelKey": "Core_OutgoingEmail_LastProviderEventId",
+          "labelFallback": "Last provider event id",
+          "excel": true,
+          "ownership": "server-owned",
+          "maxLength": 100
+        }
+      ],
+      "navigations": [
+        {
+          "name": "CreatedBy",
+          "json": "createdBy",
+          "foreignKey": "CreatedById",
+          "target": "core.User",
+          "kind": "reference",
+          "nullable": false,
+          "labelKey": "CreatedBy"
+        },
+        {
+          "name": "ModifiedBy",
+          "json": "modifiedBy",
+          "foreignKey": "ModifiedById",
+          "target": "core.User",
+          "kind": "reference",
+          "nullable": false,
+          "labelKey": "ModifiedBy"
+        },
+        {
+          "name": "Job",
+          "json": "job",
+          "foreignKey": "JobId",
+          "target": "core.Job",
+          "kind": "reference",
+          "nullable": true,
+          "labelKey": "Core_OutgoingEmail_Job",
+          "labelFallback": "Job"
+        },
+        {
+          "name": "RecipientUser",
+          "json": "recipientUser",
+          "foreignKey": "RecipientUserId",
+          "target": "core.User",
+          "kind": "reference",
+          "nullable": true,
+          "labelKey": "Core_OutgoingEmail_RecipientUser",
+          "labelFallback": "Recipient user"
+        }
+      ],
+      "children": [
+        {
+          "name": "OutgoingEmailAttachments",
+          "json": "outgoingEmailAttachments",
+          "entity": "core.OutgoingEmailAttachment",
+          "parentKey": "OutgoingEmailId",
+          "maxCount": 20,
+          "labelKey": "Core_OutgoingEmailAttachment_Plural"
+        }
+      ],
+      "actions": [],
+      "relatedSelect": [
+        "Id",
+        "Subject"
+      ],
+      "defaultOrderBy": "CreatedAt desc",
+      "searchable": [],
+      "naturalKeys": [],
+      "extras": [
+        "permissions"
+      ],
+      "limits": {
+        "maxTake": 10000,
+        "countCap": 10000,
+        "maxSkipWindow": 100000,
+        "maxSearchLength": 200,
+        "maxIds": 10000,
+        "maxExtras": 16,
+        "maxFilterLength": 8192
+      }
+    },
+    {
+      "name": "core.OutgoingEmailAttachment",
+      "segment": "outgoing-email-attachments",
+      "labelKey": "Core_OutgoingEmailAttachment",
+      "pluralLabelKey": "Core_OutgoingEmailAttachment_Plural",
+      "newLabelKey": "Entity_New",
+      "labelFallback": "Outgoing email attachment",
+      "operations": [
+        "query"
+      ],
+      "capabilities": [],
+      "displayName": {
+        "source": "Id",
+        "multilingual": false
+      },
+      "kind": "child",
+      "key": {
+        "property": "Id",
+        "type": "int"
+      },
+      "owner": {
+        "entity": "core.OutgoingEmail",
+        "navigation": "OutgoingEmail",
+        "collection": "OutgoingEmailAttachments"
+      },
+      "properties": [
+        {
+          "name": "Id",
+          "json": "id",
+          "type": "integer",
+          "queryable": true,
+          "nullable": false,
+          "unique": true,
+          "labelKey": "Core_OutgoingEmailAttachment_Id",
+          "labelFallback": "Id",
+          "excel": true,
+          "ownership": "server-owned"
+        },
+        {
+          "name": "OutgoingEmailId",
+          "json": "outgoingEmailId",
+          "type": "integer",
+          "queryable": true,
+          "nullable": false,
+          "labelKey": "Core_OutgoingEmailAttachment_OutgoingEmailId",
+          "labelFallback": "Outgoing email id",
+          "excel": true,
+          "ownership": "editable",
+          "foreignKeyOf": "OutgoingEmail"
+        },
+        {
+          "name": "FileName",
+          "json": "fileName",
+          "type": "string",
+          "queryable": true,
+          "nullable": false,
+          "labelKey": "Core_OutgoingEmailAttachment_FileName",
+          "labelFallback": "File name",
+          "excel": true,
+          "ownership": "editable",
+          "maxLength": 255
+        },
+        {
+          "name": "ContentId",
+          "json": "contentId",
+          "type": "string",
+          "queryable": true,
+          "nullable": true,
+          "labelKey": "Core_OutgoingEmailAttachment_ContentId",
+          "labelFallback": "Content id",
+          "excel": true,
+          "ownership": "editable",
+          "maxLength": 255
+        },
+        {
+          "name": "FileId",
+          "json": "fileId",
+          "type": "integer",
+          "queryable": true,
+          "nullable": true,
+          "unique": true,
+          "labelKey": "Core_OutgoingEmailAttachment_FileId",
+          "labelFallback": "File id",
+          "excel": true,
+          "ownership": "editable",
+          "foreignKeyOf": "File",
+          "blob": {
+            "kind": "email-attachment",
+            "accept": [
+              "application/pdf",
+              "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+              "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+              "image/jpeg",
+              "image/png",
+              "image/webp",
+              "image/gif",
+              "text/plain",
+              "text/csv",
+              "application/json",
+              "application/zip"
+            ],
+            "maxSize": 104857600,
+            "image": null,
+            "thumbnail": false,
+            "readAccess": "owner-read"
+          }
+        }
+      ],
+      "navigations": [
+        {
+          "name": "OutgoingEmail",
+          "json": "outgoingEmail",
+          "foreignKey": "OutgoingEmailId",
+          "target": "core.OutgoingEmail",
+          "kind": "owner",
+          "nullable": false,
+          "labelKey": "Core_OutgoingEmailAttachment_OutgoingEmail",
+          "labelFallback": "Outgoing email"
+        },
+        {
+          "name": "File",
+          "json": "file",
+          "foreignKey": "FileId",
+          "target": "core.Blob",
+          "kind": "reference",
+          "nullable": true,
+          "labelKey": "Core_OutgoingEmailAttachment_File",
+          "labelFallback": "File"
+        }
+      ],
+      "children": [],
+      "actions": [],
+      "relatedSelect": [
+        "Id"
+      ],
+      "defaultOrderBy": "Id desc",
+      "searchable": [],
+      "naturalKeys": [],
+      "extras": [],
+      "limits": {
+        "maxTake": 10000,
+        "countCap": 10000,
+        "maxSkipWindow": 100000,
+        "maxSearchLength": 200,
+        "maxIds": 10000,
+        "maxExtras": 16,
+        "maxFilterLength": 8192
+      }
+    },
+    {
       "name": "core.Permission",
       "segment": "permissions",
       "labelKey": "Core_Permission",
@@ -4141,6 +4748,56 @@
       ]
     },
     {
+      "name": "core.EmailAudience",
+      "values": [
+        {
+          "value": "Internal",
+          "labelKey": "Core_EmailAudience_Internal",
+          "labelFallback": "Internal"
+        },
+        {
+          "value": "External",
+          "labelKey": "Core_EmailAudience_External",
+          "labelFallback": "External"
+        }
+      ]
+    },
+    {
+      "name": "core.EmailDeliveryStatus",
+      "values": [
+        {
+          "value": "Deferred",
+          "labelKey": "Core_EmailDeliveryStatus_Deferred",
+          "labelFallback": "Deferred"
+        },
+        {
+          "value": "Delivered",
+          "labelKey": "Core_EmailDeliveryStatus_Delivered",
+          "labelFallback": "Delivered"
+        },
+        {
+          "value": "Dropped",
+          "labelKey": "Core_EmailDeliveryStatus_Dropped",
+          "labelFallback": "Dropped"
+        },
+        {
+          "value": "Failed",
+          "labelKey": "Core_EmailDeliveryStatus_Failed",
+          "labelFallback": "Failed"
+        },
+        {
+          "value": "Bounced",
+          "labelKey": "Core_EmailDeliveryStatus_Bounced",
+          "labelFallback": "Bounced"
+        },
+        {
+          "value": "SpamReported",
+          "labelKey": "Core_EmailDeliveryStatus_SpamReported",
+          "labelFallback": "Spam reported"
+        }
+      ]
+    },
+    {
       "name": "core.Gender",
       "values": [
         {
@@ -4322,6 +4979,46 @@
           "value": "Error",
           "labelKey": "Core_NotificationSeverity_Error",
           "labelFallback": "Error"
+        }
+      ]
+    },
+    {
+      "name": "core.OutgoingEmailState",
+      "values": [
+        {
+          "value": "Pending",
+          "labelKey": "Core_OutgoingEmailState_Pending",
+          "labelFallback": "Pending"
+        },
+        {
+          "value": "Sending",
+          "labelKey": "Core_OutgoingEmailState_Sending",
+          "labelFallback": "Sending"
+        },
+        {
+          "value": "Sent",
+          "labelKey": "Core_OutgoingEmailState_Sent",
+          "labelFallback": "Sent"
+        },
+        {
+          "value": "Sandboxed",
+          "labelKey": "Core_OutgoingEmailState_Sandboxed",
+          "labelFallback": "Sandboxed"
+        },
+        {
+          "value": "Rejected",
+          "labelKey": "Core_OutgoingEmailState_Rejected",
+          "labelFallback": "Rejected"
+        },
+        {
+          "value": "Failed",
+          "labelKey": "Core_OutgoingEmailState_Failed",
+          "labelFallback": "Failed"
+        },
+        {
+          "value": "Cancelled",
+          "labelKey": "Core_OutgoingEmailState_Cancelled",
+          "labelFallback": "Cancelled"
         }
       ]
     },

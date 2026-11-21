@@ -40,6 +40,9 @@ namespace Tellma.Core.Tests.Composition.Checks
                 [
                     new SecurableDescriptor("core.Job", "Read", "core.Job", false, "core", null),
                     new SecurableDescriptor("core.Notification", "Read", "core.Notification", false, "core", null),
+                    new SecurableDescriptor("core.OutgoingEmail", "Read", "core.OutgoingEmail", false, "core", null),
+                    new SecurableDescriptor("core.OutgoingEmail", "Delete", "core.OutgoingEmail", false, "core", null),
+                    new SecurableDescriptor("core.OutgoingEmailAttachment", "Read", "core.OutgoingEmailAttachment", false, "core", new SecurableOwner("core.OutgoingEmail", "OutgoingEmail")),
                     new SecurableDescriptor("core.Permission", "Read", "core.Permission", false, "core", new SecurableOwner("core.Role", "Role")),
                     new SecurableDescriptor("core.Role", "Read", "core.Role", false, "core", null),
                     new SecurableDescriptor("core.Role", "Save", "core.Role", true, "core", null),

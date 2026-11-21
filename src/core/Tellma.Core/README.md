@@ -1233,6 +1233,46 @@ once. A channel that throws fails the claim, and the job retries.
 `UnreadRetention`, `RetentionPageSize` rows per maintenance batch, counting each page as
 `tellma.notifications.retained` by band and reporting the totals as progress.
 
+## The email outbox
+
+`IEmailOutbox.EnqueueAsync(host, requests)` writes mail in the transaction of the change that
+produced it: one `core.OutgoingEmails` row per request, enlisted with the caller's frame, so the
+email and the change commit or roll back together. The call first resolves every blob attachment
+and validates every request, reporting all refusals at once: `Email.InvalidMessage` at `[i]` for a
+malformed message (no primary recipient, an address that could break a header, a subject that is
+blank, on more than one line or longer than its column, a blank text body, more attachments than a
+row holds, a regarding resource other than a dotted name), else `Email.TooManyRecipients` past
+`MaxRecipients` and `Email.TooLarge` past `MaxMessageBytes` (the UTF-8 bodies, the message's files
+and the resolved blobs' stored sizes); a blob reference that does not resolve, or a staged blob of
+another kind, is `Blob.NotAttachable` at `[i].BlobAttachments[j]`. Then it stages every file as an
+`email-attachment` blob, one round trip and one store write each: the message's own files, a staged
+email attachment as it is, and a committed blob as a copy, so each email owns its files alone. The
+kind keeps no thumbnail. The rows are `Pending`, their addresses stored as RFC 5322 lists
+(`"Name" <address>`, joined by `, `). `OutgoingEmailService` enqueues each new row's
+`core.outgoing-email` job in the same persist, run as the system user with no requester and due
+at the row's `SendAfter`; the rows' blobs commit with it. On a rollback only the staged blobs
+remain, and their staging deadline expires them. The blob service and store are resolved only for
+a call with attachments, so a channel sender's tenantless gate scope needs neither.
+
+`OutboxOptions` (`Tellma:Outbox`) holds `Retention` (180 days, one day to ten years),
+`MaxMessageBytes` (7 MiB, 1 KiB to 20 MiB) and `MaxRecipients` (50, 1 to 1000). The outgoing
+emails' stack (route segment `outgoing-emails`) serves the query, the details and the delete by
+ids, read-only to MCP; a delete of a row that may still be sent (unsettled, with a live job) is
+refused as `Email.NotDeletable` at `Ids[i]`. The `core.outgoing-email` handler (25 jobs a claim,
+one claim at a time, twelve attempts backing off from one minute to two hours, run in a read-only
+tenant, failure notices to the inbox alone) is registered so the enqueue can name it; its dispatch
+is not built yet, so every claim fails without sending and each row stays `Pending`.
+
+`EmailNotificationChannel` is the `email` channel's sender: each addressed recipient gets one
+internal email, to their contact address or else their sign-in address (a recipient with neither
+is skipped), regarding the notification's target. Recipients sharing a localization share one
+rendering of the notification's text; the subject (`Email_Notification_Subject`, the text's title
+line, cut to its column), the text body and the HTML body (`Email_Notification_Text`,
+`Email_Notification_Html`, the arguments HTML-encoded) are Core's server resources, given the
+tenant's name in the recipient's content language, the text and the link to the target. All of
+them are enqueued in one call with the delivery job's frame, so they commit with the job's
+completion and none is written when the job fails.
+
 ## Entity stacks
 
 A feature stacks an entity with `Entity<TEntity>()` (the platform's default service) or
@@ -1688,7 +1728,8 @@ tenant, in a job that runs on one and in a provisioning step, refused in any oth
 - **Enlisting.** A writer that declares `IEnlists<TTarget>` adds a save (`EnlistSaveAsync`) or a
   delete by ids (`EnlistDelete`) of the target's stack to a frame. The frame admits it only for a
   pair the registry holds, from a participant of the frame (the host's service, companions and
-  components, a group's own participants, or the class an open frame was opened for), and only
+  components, a group's own participants, the class an open frame was opened for, or the email
+  outbox, which every frame admits so that any code with a host can enqueue mail), and only
   while a pipeline frame validates or before an open frame's `PersistAsync`. A write to the
   writer's own stack is admitted from the open frame of that stack's API action alone, and a root
   id enlisted twice with one target in one frame is refused at the second. The injected
@@ -2462,10 +2503,11 @@ are SpreadsheetML packages written with `DocumentFormat.OpenXml` (MIT), forward-
 | `Jobs/` | Internally: the job tables' configurations and seeds, the handler, built-in-schedule and retired-key realizers with their cross-feature checks, `JobHandlerRegistry`, the `jobs.handlers` and `jobs.schedules` checks, the queue and its enqueue statement, the poller wake, the lease statements, the runner with its leases, renewal, progress, outcome rules, backoff, pending-confirmation record, notices and completion-failure translation, the job and system scopes, the `process` and `settle` activities and the log scope, the composition step that binds the jobs' options, and the log events. |
 | `Access/` | Internally: the access tables' configurations and seeds, the user stamp and preference rows, the securable registry with its name grammar and feature contributor, the securables section of the client metadata, the permission set build: the classifier, the builder, the interner and the access instruments and logs; and the user connection: the connect prologue, the connect, permissions and profile caches, the connector, the guarded runner and the connect initializer; and the permission filter rules the role save and the Queryex discovery share. |
 | `Identity/` | `IdentityServerClient`; internally its transport and token cache, the wire shapes and their source-generated JSON metadata, the options' settling and validator, the composition step that binds them and registers the named HTTP client, the instruments and the log events. |
-| `Notifications/` | `NotificationTypeRegistry`, `NotificationChannelRegistry`, `ClientEventRegistry`, `NotificationsClientAssetContributor`, `ClientEventPublisher`, `NullClientEventPublisher`, `NotificationConfiguration` and `NotificationDeliveryArguments`; internally the notifier, its statements and the delivering channels, the renderer, the preference row, the metrics, the name grammars, the hub-less real-time status, the composition step and the log events. |
+| `Notifications/` | `NotificationTypeRegistry`, `NotificationChannelRegistry`, `ClientEventRegistry`, `NotificationsClientAssetContributor`, `ClientEventPublisher`, `NullClientEventPublisher`, `NotificationConfiguration` and `NotificationDeliveryArguments`; internally the notifier, its statements and the delivering channels, the email channel's sender, the renderer, the preference row, the metrics, the name grammars, the hub-less real-time status, the composition step and the log events. |
+| `Outbox/` | `OutgoingEmailService`; internally the outbox, the stored address lists, the outgoing emails' model configuration, the sending job's handler and the composition step that binds the outbox's options. |
 | `Client/` | Internally: the client entity model, its data types, the action arguments' fields and schema, the declarations writer and the client-asset contributor. |
 | `Localization/` | `LanguageCatalog`, `LanguageDeclaration`, `LocalizationNegotiator`, `ValueSetRegistry`, `IcuStringLocalizerFactory`, `ConventionalStringKeys`; internally the catalogue's data, the declaration's resolution, the `Accept-Language` reader, the negotiated cultures, the pinned culture data with its reader, writer and generator source, the localizer's resource reader, ICU renderer, calendar formatter, argument reader and missing-key telemetry, the string-pack composer with its resource sources and client-asset contributor, the label provider, the label key chains, the named enums, the key conventions and the name humanizer. |
-| `Resources/` | `Strings.resx`, Core's shared resources (English), with its `ar` and `am` satellites and the `Strings` marker; `ServerStrings.resx`, the server-only resources, with its marker. |
+| `Resources/` | `Strings.resx`, Core's shared resources (English), with its `ar` and `am` satellites and the `Strings` marker; `ServerStrings.resx`, the server-only resources (the email notification's subject and bodies), with its `ar` satellite and its marker. |
 
 ## Tests
 

@@ -9,6 +9,7 @@ using Tellma.Core.Abstractions.Calendars;
 using Tellma.Core.Abstractions.Client;
 using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.Abstractions.Data;
+using Tellma.Core.Abstractions.Email;
 using Tellma.Core.Abstractions.Identity;
 using Tellma.Core.Abstractions.Jobs;
 using Tellma.Core.Abstractions.Localization;
@@ -28,6 +29,7 @@ using Tellma.Core.Identity;
 using Tellma.Core.Jobs;
 using Tellma.Core.Localization;
 using Tellma.Core.Notifications;
+using Tellma.Core.Outbox;
 using Tellma.Core.Provisioning;
 using Tellma.Core.Settings;
 using Tellma.Core.Users;
@@ -229,6 +231,21 @@ namespace Tellma.Core.Composition
                 .NotificationChannel(new NotificationChannelDescriptor(EmailChannel, DefaultEnabled: false))
                 .ClientEvent("inbox.changed")
                 .ClientEvent("session.ended");
+
+            // --- The email outbox: the rows and their stack, the outbox, the sending jobs' handler,
+            // the attachments' blob kind and the two table types ---
+            // spec 0022 §9.3. OutgoingEmail is a Query | Details | Delete | Enlist stack whose rows
+            // arrive only through the outbox; its registration as a scoped service gives the registry
+            // the outbox's enlistment pair. An email attachment needs no preview, so its kind renders
+            // no thumbnail; the kind itself comes from the attachment's blob reference.
+            _ = contribution
+                .Entity<OutgoingEmail, OutgoingEmailService>()
+                .Model<OutgoingEmailConfiguration>()
+                .Scoped<IEmailOutbox, EmailOutbox>()
+                .JobHandler<OutgoingEmailHandler>()
+                .BlobKind(OutgoingEmailAttachment.BlobKind, static policy => policy with { Thumbnail = null })
+                .TableType<OutgoingEmailOutcomeList>()
+                .TableType<EmailDeliveryEventList>();
 
             // --- Background jobs: the job and schedule tables, their machinery's tables and table types,
             // and the notices and client event a completion raises ---

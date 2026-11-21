@@ -142,6 +142,45 @@
     "kind": "stack"
   },
   {
+    "name": "core.OutgoingEmail",
+    "segment": "outgoing-emails",
+    "labelKey": "Core_OutgoingEmail",
+    "pluralLabelKey": "Core_OutgoingEmail_Plural",
+    "newLabelKey": "Entity_New",
+    "labelFallback": "Outgoing email",
+    "operations": [
+      "query",
+      "details",
+      "delete"
+    ],
+    "capabilities": [
+      "blobs",
+      "job-entity"
+    ],
+    "displayName": {
+      "source": "Subject",
+      "multilingual": false
+    },
+    "kind": "stack"
+  },
+  {
+    "name": "core.OutgoingEmailAttachment",
+    "segment": "outgoing-email-attachments",
+    "labelKey": "Core_OutgoingEmailAttachment",
+    "pluralLabelKey": "Core_OutgoingEmailAttachment_Plural",
+    "newLabelKey": "Entity_New",
+    "labelFallback": "Outgoing email attachment",
+    "operations": [
+      "query"
+    ],
+    "capabilities": [],
+    "displayName": {
+      "source": "Id",
+      "multilingual": false
+    },
+    "kind": "child"
+  },
+  {
     "name": "core.Permission",
     "segment": "permissions",
     "labelKey": "Core_Permission",

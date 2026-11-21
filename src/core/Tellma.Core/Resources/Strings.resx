@@ -725,6 +725,49 @@
   <data name="JobHandler_core_notification-retention" xml:space="preserve">
     <value>Deleting old notifications</value>
   </data>
+  <!-- The email outbox: the outgoing emails' labels, its codes and its sending job's label -->
+  <data name="Core_OutgoingEmail_Plural" xml:space="preserve">
+    <value>Outgoing emails</value>
+  </data>
+  <data name="Core_OutgoingEmailAttachment_Plural" xml:space="preserve">
+    <value>Email attachments</value>
+  </data>
+  <data name="Email_InvalidMessage" xml:space="preserve">
+    <value>This email can’t be sent as written. It needs at least one recipient, well-formed addresses, a subject on one line of at most 500 characters, a text body, and at most 20 attachments.</value>
+  </data>
+  <data name="Email_TooManyRecipients" xml:space="preserve">
+    <value>This email has {count, number} recipients. The most allowed is {max, number}.</value>
+  </data>
+  <data name="Email_TooLarge" xml:space="preserve">
+    <value>This email is too large: {size, number} bytes. The most allowed is {maxBytes, number} bytes.</value>
+  </data>
+  <data name="Email_Rejected" xml:space="preserve">
+    <value>The email provider refused this email.</value>
+  </data>
+  <data name="Email_AttachmentMissing" xml:space="preserve">
+    <value>An attachment’s file was missing when the email was to be sent, so it was not sent.</value>
+  </data>
+  <data name="Email_TransientFailure" xml:space="preserve">
+    <value>The email could not be sent this time. It will be tried again.</value>
+  </data>
+  <data name="Email_AttemptsExhausted" xml:space="preserve">
+    <value>The email could not be sent after repeated attempts. Send it again once the problem is resolved.</value>
+  </data>
+  <data name="Email_Interrupted" xml:space="preserve">
+    <value>Sending this email was interrupted, and it may have been delivered. It was not sent again automatically.</value>
+  </data>
+  <data name="Email_NotRetryable" xml:space="preserve">
+    <value>Only an email that failed, or one whose sending job is no longer running, can be sent again.</value>
+  </data>
+  <data name="Email_NotCancellable" xml:space="preserve">
+    <value>Only an email that is waiting to be sent can be cancelled.</value>
+  </data>
+  <data name="Email_NotDeletable" xml:space="preserve">
+    <value>This email may still be sent. Cancel it, or wait until it is sent, before deleting it.</value>
+  </data>
+  <data name="JobHandler_core_outgoing-email" xml:space="preserve">
+    <value>Sending an email</value>
+  </data>
   <data name="Schedules_CronInvalid" xml:space="preserve">
     <value>The cron expression {expression} is not valid. Give minute, hour, day of month, month and day of week, such as 0 3 * * * for three every morning.</value>
   </data>

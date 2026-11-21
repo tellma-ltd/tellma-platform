@@ -725,6 +725,49 @@
   <data name="JobHandler_core_notification-retention" xml:space="preserve">
     <value>حذف الإشعارات القديمة</value>
   </data>
+  <!-- The email outbox: the outgoing emails' labels, its codes and its sending job's label -->
+  <data name="Core_OutgoingEmail_Plural" xml:space="preserve">
+    <value>رسائل البريد الصادرة</value>
+  </data>
+  <data name="Core_OutgoingEmailAttachment_Plural" xml:space="preserve">
+    <value>مرفقات البريد</value>
+  </data>
+  <data name="Email_InvalidMessage" xml:space="preserve">
+    <value>لا يمكن إرسال هذا البريد كما هو. يلزم مستلم واحد على الأقل، وعناوين صحيحة، وموضوع في سطر واحد لا يتجاوز 500 حرف، ونص للرسالة، و20 مرفقًا على الأكثر.</value>
+  </data>
+  <data name="Email_TooManyRecipients" xml:space="preserve">
+    <value>عدد مستلمي هذا البريد {count, number}، والحد الأقصى المسموح به {max, number}.</value>
+  </data>
+  <data name="Email_TooLarge" xml:space="preserve">
+    <value>هذا البريد كبير جدًا: {size, number} بايت. الحد الأقصى المسموح به {maxBytes, number} بايت.</value>
+  </data>
+  <data name="Email_Rejected" xml:space="preserve">
+    <value>رفض مزوّد البريد هذه الرسالة.</value>
+  </data>
+  <data name="Email_AttachmentMissing" xml:space="preserve">
+    <value>كان ملف أحد المرفقات مفقودًا عند الإرسال، فلم تُرسل الرسالة.</value>
+  </data>
+  <data name="Email_TransientFailure" xml:space="preserve">
+    <value>تعذّر إرسال البريد هذه المرة، وستُعاد المحاولة.</value>
+  </data>
+  <data name="Email_AttemptsExhausted" xml:space="preserve">
+    <value>تعذّر إرسال البريد بعد محاولات متكررة. أعد إرساله بعد حل المشكلة.</value>
+  </data>
+  <data name="Email_Interrupted" xml:space="preserve">
+    <value>انقطع إرسال هذا البريد وربما وصل إلى المستلمين، فلم يُعَد إرساله تلقائيًا.</value>
+  </data>
+  <data name="Email_NotRetryable" xml:space="preserve">
+    <value>لا يمكن إعادة الإرسال إلا لبريد فشل، أو لم تعد مهمة إرساله قيد التشغيل.</value>
+  </data>
+  <data name="Email_NotCancellable" xml:space="preserve">
+    <value>لا يمكن إلغاء إلا البريد الذي ينتظر الإرسال.</value>
+  </data>
+  <data name="Email_NotDeletable" xml:space="preserve">
+    <value>قد يُرسل هذا البريد بعد. ألغِه أو انتظر حتى يُرسل قبل حذفه.</value>
+  </data>
+  <data name="JobHandler_core_outgoing-email" xml:space="preserve">
+    <value>إرسال بريد إلكتروني</value>
+  </data>
   <data name="Schedules_CronInvalid" xml:space="preserve">
     <value>تعبير cron {expression} غير صالح. أدخل الدقيقة والساعة واليوم من الشهر والشهر واليوم من الأسبوع، مثل 0 3 * * * للساعة الثالثة صباح كل يوم.</value>
   </data>

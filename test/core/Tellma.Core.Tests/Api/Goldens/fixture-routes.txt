@@ -15,6 +15,10 @@ POST /{tenantId}/api/web/roles/deactivate | deactivate | core.Role | entity | En
 POST /{tenantId}/api/web/notifications/query | query | core.Notification | - | QueryRequest | RowPage | core.Notification:Read | idempotent | PqV1-faRenCx
 POST /{tenantId}/api/web/notifications/get | get | core.Notification | - | GetRequest | EntitiesResult<Notification> | core.Notification:Read | idempotent | X-lsgUqE_iPC
 POST /{tenantId}/api/web/notifications/get-by-ids | get-by-ids | core.Notification | - | GetByIdsRequest | EntitiesResult<Notification> | core.Notification:Read | idempotent | W3AaofMQvkDC
+POST /{tenantId}/api/web/outgoing-emails/query | query | core.OutgoingEmail | - | QueryRequest | RowPage | core.OutgoingEmail:Read | idempotent | PqV1-faRenCx
+POST /{tenantId}/api/web/outgoing-emails/get | get | core.OutgoingEmail | - | GetRequest | EntitiesResult<OutgoingEmail> | core.OutgoingEmail:Read | idempotent | 55wqT2jEWaFQ
+POST /{tenantId}/api/web/outgoing-emails/get-by-ids | get-by-ids | core.OutgoingEmail | - | GetByIdsRequest | EntitiesResult<OutgoingEmail> | core.OutgoingEmail:Read | idempotent | gKbNur9DjZV-
+POST /{tenantId}/api/web/outgoing-emails/delete | delete | core.OutgoingEmail | - | IdsRequest | AffectedResult | core.OutgoingEmail:Delete | mutation | lisU15N3Oj5S
 POST /{tenantId}/api/web/jobs/query | query | core.Job | - | QueryRequest | RowPage | core.Job:Read | idempotent | PqV1-faRenCx
 POST /{tenantId}/api/web/jobs/get | get | core.Job | - | GetRequest | EntitiesResult<Job> | core.Job:Read | idempotent | -MjFr5wa1iWK
 POST /{tenantId}/api/web/jobs/get-by-ids | get-by-ids | core.Job | - | GetByIdsRequest | EntitiesResult<Job> | core.Job:Read | idempotent | BX5mwxCckWCS
@@ -97,6 +101,7 @@ POST /{tenantId}/api/web/centers/activate | activate | gl.Center | entity | Enti
 POST /{tenantId}/api/web/centers/deactivate | deactivate | gl.Center | entity | EntityActionRequest | EntitiesResult<Center> | gl.Center:Activate | mutation, idempotent | 0IZj7NH1IR9n
 POST /{tenantId}/api/web/role-memberships/query | query | core.RoleMembership | - | QueryRequest | RowPage | core.RoleMembership:Read | idempotent | PqV1-faRenCx
 POST /{tenantId}/api/web/permissions/query | query | core.Permission | - | QueryRequest | RowPage | core.Permission:Read | idempotent | PqV1-faRenCx
+POST /{tenantId}/api/web/outgoing-email-attachments/query | query | core.OutgoingEmailAttachment | - | QueryRequest | RowPage | core.OutgoingEmailAttachment:Read | idempotent | PqV1-faRenCx
 POST /{tenantId}/api/web/widget-parts/query | query | fixture.WidgetPart | - | QueryRequest | RowPage | fixture.WidgetPart:Read | idempotent | PqV1-faRenCx
 POST /{tenantId}/api/web/widget-part-notes/query | query | fixture.WidgetPartNote | - | QueryRequest | RowPage | fixture.WidgetPartNote:Read | idempotent | PqV1-faRenCx
 POST /{tenantId}/api/web/links/query | query | fixture.Link | - | QueryRequest | RowPage | fixture.Link:Read | idempotent | PqV1-faRenCx

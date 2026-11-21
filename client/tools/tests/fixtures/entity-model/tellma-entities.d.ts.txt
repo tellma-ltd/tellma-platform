@@ -17,6 +17,12 @@ export type CoreBlobState = 'Staged' | 'Committed' | 'Released' | 'Deleting';
 /** The values of the enum `core.DigitStyle`, as the wire spells them. */
 export type CoreDigitStyle = 'Latin' | 'Native';
 
+/** The values of the enum `core.EmailAudience`, as the wire spells them. */
+export type CoreEmailAudience = 'Internal' | 'External';
+
+/** The values of the enum `core.EmailDeliveryStatus`, as the wire spells them. */
+export type CoreEmailDeliveryStatus = 'Deferred' | 'Delivered' | 'Dropped' | 'Failed' | 'Bounced' | 'SpamReported';
+
 /** The values of the enum `core.Gender`, as the wire spells them. */
 export type CoreGender = 'Female' | 'Male';
 
@@ -31,6 +37,9 @@ export type CoreMissedPolicy = 'Coalesce' | 'ReplayAll' | 'Skip';
 
 /** The values of the enum `core.NotificationSeverity`, as the wire spells them. */
 export type CoreNotificationSeverity = 'Info' | 'Success' | 'Warning' | 'Error';
+
+/** The values of the enum `core.OutgoingEmailState`, as the wire spells them. */
+export type CoreOutgoingEmailState = 'Pending' | 'Sending' | 'Sent' | 'Sandboxed' | 'Rejected' | 'Failed' | 'Cancelled';
 
 /** The values of the enum `core.OverlapPolicy`, as the wire spells them. */
 export type CoreOverlapPolicy = 'Skip' | 'Allow';
@@ -245,6 +254,88 @@ export interface CoreNotification {
   createdAt: string;
   /** The property `ReadAt`. */
   readAt?: string | null;
+}
+
+/** A row of the entity `core.OutgoingEmail`, as the wire carries it. */
+export interface CoreOutgoingEmail {
+  /** The property `Id`. */
+  id: number;
+  /** The property `CreatedAt`. */
+  createdAt: string;
+  /** The property `CreatedById`. */
+  createdById: number;
+  /** The property `ModifiedAt`. */
+  modifiedAt: string;
+  /** The property `ModifiedById`. */
+  modifiedById: number;
+  /** The property `JobId`. */
+  jobId?: number | null;
+  /** The property `State`. */
+  state: CoreOutgoingEmailState;
+  /** The property `Audience`. */
+  audience: CoreEmailAudience;
+  /** The property `From`. */
+  from?: string | null;
+  /** The property `ReplyTo`. */
+  replyTo?: string | null;
+  /** The property `To`. */
+  to: string;
+  /** The property `Cc`. */
+  cc?: string | null;
+  /** The property `Bcc`. */
+  bcc?: string | null;
+  /** The property `Subject`. */
+  subject: string;
+  /** The property `TextBody`. */
+  textBody: string;
+  /** The property `HtmlBody`. */
+  htmlBody?: string | null;
+  /** The property `RecipientUserId`. */
+  recipientUserId?: number | null;
+  /** The property `RegardingEntity`. */
+  regardingEntity?: string | null;
+  /** The property `RegardingId`. */
+  regardingId?: TmDecimal | null;
+  /** The property `SendAfter`. */
+  sendAfter?: string | null;
+  /** The property `AttemptCount`. */
+  attemptCount: number;
+  /** The property `SentAt`. */
+  sentAt?: string | null;
+  /** The property `ProviderMessageId`. */
+  providerMessageId?: string | null;
+  /** The property `ExpectsDeliveryEvents`. */
+  expectsDeliveryEvents: boolean;
+  /** The property `ErrorCode`. */
+  errorCode?: string | null;
+  /** The property `ErrorDetail`. */
+  errorDetail?: string | null;
+  /** The property `DeliveryStatus`. */
+  deliveryStatus?: CoreEmailDeliveryStatus | null;
+  /** The property `DeliveryAt`. */
+  deliveryAt?: string | null;
+  /** The property `DeliveryRecipient`. */
+  deliveryRecipient?: string | null;
+  /** The property `DeliveryReason`. */
+  deliveryReason?: string | null;
+  /** The property `LastProviderEventId`. */
+  lastProviderEventId?: string | null;
+  /** The child collection `OutgoingEmailAttachments`. */
+  outgoingEmailAttachments?: CoreOutgoingEmailAttachment[] | null;
+}
+
+/** A row of the entity `core.OutgoingEmailAttachment`, as the wire carries it. */
+export interface CoreOutgoingEmailAttachment {
+  /** The property `Id`. */
+  id: number;
+  /** The property `OutgoingEmailId`. */
+  outgoingEmailId: number;
+  /** The property `FileName`. */
+  fileName: string;
+  /** The property `ContentId`. */
+  contentId?: string | null;
+  /** The property `FileId`. */
+  fileId?: number | null;
 }
 
 /** A row of the entity `core.Permission`, as the wire carries it. */
@@ -530,6 +621,10 @@ declare module '@tellma/core' {
     'core.Job': CoreJob;
     /** The entity `core.Notification`. */
     'core.Notification': CoreNotification;
+    /** The entity `core.OutgoingEmail`. */
+    'core.OutgoingEmail': CoreOutgoingEmail;
+    /** The entity `core.OutgoingEmailAttachment`. */
+    'core.OutgoingEmailAttachment': CoreOutgoingEmailAttachment;
     /** The entity `core.Permission`. */
     'core.Permission': CorePermission;
     /** The entity `core.Role`. */
@@ -599,6 +694,20 @@ declare module '@tellma/core' {
       scalars: 'Id' | 'UserId' | 'Type' | 'Severity' | 'ArgumentsJson' | 'TargetResource' | 'TargetId' | 'ActorUserId' | 'DedupKey' | 'CreatedAt' | 'ReadAt';
       groups: never;
       navigations: { User: 'core.User'; ActorUser: 'core.User' };
+      children: {};
+    };
+    /** The path shape of the entity `core.OutgoingEmail`. */
+    'core.OutgoingEmail': {
+      scalars: 'Id' | 'CreatedAt' | 'CreatedById' | 'ModifiedAt' | 'ModifiedById' | 'JobId' | 'State' | 'Audience' | 'From' | 'ReplyTo' | 'To' | 'Cc' | 'Bcc' | 'Subject' | 'TextBody' | 'HtmlBody' | 'RecipientUserId' | 'RegardingEntity' | 'RegardingId' | 'SendAfter' | 'AttemptCount' | 'SentAt' | 'ProviderMessageId' | 'ExpectsDeliveryEvents' | 'ErrorCode' | 'ErrorDetail' | 'DeliveryStatus' | 'DeliveryAt' | 'DeliveryRecipient' | 'DeliveryReason' | 'LastProviderEventId';
+      groups: never;
+      navigations: { CreatedBy: 'core.User'; ModifiedBy: 'core.User'; Job: 'core.Job'; RecipientUser: 'core.User' };
+      children: { OutgoingEmailAttachments: 'core.OutgoingEmailAttachment' };
+    };
+    /** The path shape of the entity `core.OutgoingEmailAttachment`. */
+    'core.OutgoingEmailAttachment': {
+      scalars: 'Id' | 'OutgoingEmailId' | 'FileName' | 'ContentId' | 'FileId';
+      groups: never;
+      navigations: { OutgoingEmail: 'core.OutgoingEmail'; File: 'core.Blob' };
       children: {};
     };
     /** The path shape of the entity `core.Permission`. */

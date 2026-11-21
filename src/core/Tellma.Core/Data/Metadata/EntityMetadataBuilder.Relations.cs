@@ -188,9 +188,12 @@ namespace Tellma.Core.Data.Metadata
 
                 references.Add((properties.IndexOf(column), new ReferenceMetadata(navigation, column, target.Metadata)));
 
-                // A blob or job column never travels in a spreadsheet, so its target's natural key serves nothing.
+                // A blob or job column never travels in a spreadsheet, so its target's natural key serves
+                // nothing; nor does a child's parent key, which a sheet fills from its owner's Id
+                // (spec 0019 §5.2), never by a lookup.
                 bool keyed = EntityShapes.GetAttribute<BlobReferenceAttribute>(leaf.Members[dependent.Name]) is null
-                    && leaf.JobIdMember?.Name != dependent.Name;
+                    && leaf.JobIdMember?.Name != dependent.Name
+                    && leaf.ParentKey?.Name != dependent.Name;
                 if (keyed)
                 {
                     leaf.KeyedReferences.Add((target, $"{leaf.Metadata.Name}.{navigation}"));

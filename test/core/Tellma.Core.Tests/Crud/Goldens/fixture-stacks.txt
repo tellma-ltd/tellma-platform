@@ -68,6 +68,28 @@ stack core.Notification
   limits: default
   mcp: Full, revision 0
   feature: core
+stack core.OutgoingEmail
+  segment: outgoing-emails
+  entity: Tellma.Core.Abstractions.Email.OutgoingEmail
+  service: Tellma.Core.Outbox.OutgoingEmailService
+  key: int
+  description: -
+  operations: Query, Details, Delete, Enlist
+  capabilities: blobs, job-entity
+  properties: Id:ServerOwned, CreatedAt:ServerOwned, CreatedById:ServerOwned, ModifiedAt:ServerOwned, ModifiedById:ServerOwned, JobId:ServerOwned, State:ServerOwned, Audience:WriteOnce, From:WriteOnce, ReplyTo:WriteOnce, To:WriteOnce, Cc:WriteOnce, Bcc:WriteOnce, Subject:WriteOnce, TextBody:WriteOnce, HtmlBody:WriteOnce, RecipientUserId:WriteOnce, RegardingEntity:WriteOnce, RegardingId:WriteOnce, SendAfter:WriteOnce, AttemptCount:ServerOwned, SentAt:ServerOwned, ProviderMessageId:ServerOwned, ExpectsDeliveryEvents:ServerOwned, ErrorCode:ServerOwned, ErrorDetail:ServerOwned, DeliveryStatus:ServerOwned, DeliveryAt:ServerOwned, DeliveryRecipient:ServerOwned, DeliveryReason:ServerOwned, LastProviderEventId:ServerOwned
+  children: OutgoingEmailAttachments(OutgoingEmailAttachment by OutgoingEmailId, max 20)
+  searchable: -
+  natural-keys: -
+  default-select: Id,JobId,State,Audience,From,ReplyTo,To,Subject,RecipientUserId,RegardingEntity,RegardingId,SendAfter,AttemptCount,SentAt,ExpectsDeliveryEvents,ErrorCode,ErrorDetail,DeliveryStatus,DeliveryAt,DeliveryRecipient,DeliveryReason,CreatedAt,CreatedById,ModifiedAt,ModifiedById
+  related-select: Id, Subject
+  details-expand: CreatedBy, ModifiedBy, Job, RecipientUser, OutgoingEmailAttachments.File
+  default-order-by: CreatedAt desc
+  display-name: Subject group - prefix -
+  extras: permissions
+  named-filters: -
+  limits: default
+  mcp: ReadOnly, revision 0
+  feature: core
 stack core.Job
   segment: jobs
   entity: Tellma.Core.Abstractions.Jobs.Job
@@ -344,6 +366,17 @@ child core.Permission
   exportable: yes
   limits: default
   mcp: Full
+child core.OutgoingEmailAttachment
+  segment: outgoing-email-attachments
+  entity: Tellma.Core.Abstractions.Email.OutgoingEmailAttachment
+  owner: core.OutgoingEmail through OutgoingEmail, collection OutgoingEmailAttachments
+  searchable: -
+  default-select: Id, OutgoingEmailId
+  related-select: Id
+  default-order-by: Id desc
+  exportable: no
+  limits: default
+  mcp: ReadOnly
 child fixture.WidgetPart
   segment: widget-parts
   entity: Tellma.Testing.Entities.WidgetPart
@@ -404,3 +437,4 @@ service notification-preferences
   action get: api member-only body - handler NotificationPreferencesService; idempotent; result IReadOnlyList<NotificationPreference>; mcp Hidden, revision 0; -
   action save: api member-only body IReadOnlyList<NotificationPreference> handler NotificationPreferencesService; mutation, read-only-ok; result IReadOnlyList<NotificationPreference>; mcp Hidden, revision 0; -
 enlistment Tellma.Core.Users.UserService<Tellma.Core.Abstractions.Access.User> -> core.User
+enlistment Tellma.Core.Outbox.EmailOutbox -> core.OutgoingEmail
