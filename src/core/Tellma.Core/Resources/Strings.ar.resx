@@ -890,7 +890,7 @@
   <data name="JobHandler_core_notification-retention" xml:space="preserve">
     <value>حذف الإشعارات القديمة</value>
   </data>
-  <!-- The email outbox: the outgoing emails' labels, its codes and its sending job's label -->
+  <!-- The email outbox: the outgoing emails' labels, its codes, its sending job's label and its failure notice -->
   <data name="Core_OutgoingEmail_Plural" xml:space="preserve">
     <value>رسائل البريد الصادرة</value>
   </data>
@@ -932,6 +932,12 @@
   </data>
   <data name="JobHandler_core_outgoing-email" xml:space="preserve">
     <value>إرسال بريد إلكتروني</value>
+  </data>
+  <data name="Notification_core_email_failed" xml:space="preserve">
+    <value>{count, plural, zero {لم يتعذّر إرسال أي بريد صادر.} one {تعذّر إرسال رسالة بريد صادرة.} two {تعذّر إرسال رسالتَي بريد صادرتين.} few {تعذّر إرسال # رسائل بريد صادرة.} many {تعذّر إرسال # رسالة بريد صادرة.} other {تعذّر إرسال # رسالة بريد صادرة.}}</value>
+  </data>
+  <data name="NotificationType_core_email_failed" xml:space="preserve">
+    <value>رسائل البريد التي تعذّر إرسالها</value>
   </data>
   <data name="Schedules_CronInvalid" xml:space="preserve">
     <value>تعبير cron {expression} غير صالح. أدخل الدقيقة والساعة واليوم من الشهر والشهر واليوم من الأسبوع، مثل 0 3 * * * للساعة الثالثة صباح كل يوم.</value>

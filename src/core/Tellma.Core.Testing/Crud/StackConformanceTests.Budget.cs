@@ -7,6 +7,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Tellma.Core.Abstractions.Api;
 using Tellma.Core.Abstractions.Crud;
 using Tellma.Core.Abstractions.Data;
+using Tellma.Core.Abstractions.Excel;
+using Tellma.Core.Queryex;
 using Xunit;
 
 namespace Tellma.Core.Testing.Crud
@@ -19,8 +21,9 @@ namespace Tellma.Core.Testing.Crud
         /// <summary>
         ///     Each read takes its round-trip budget, measured over two rows so a statement per row
         ///     shows: one for a query (with its count, and with its ancestors on a tree), a details
-        ///     read, a read by parent ids and a child surface's query; none for a cached list, or two
-        ///     on a table beyond the list's row limit.
+        ///     read, a read by parent ids, a child surface's query, an Excel page with every
+        ///     collection at every depth, an Excel lookup and an exportable child surface's Excel page;
+        ///     none for a cached list, or two on a table beyond the list's row limit.
         /// </summary>
         /// <returns>A task that completes when the case ran.</returns>
         [Fact]
@@ -32,8 +35,7 @@ namespace Tellma.Core.Testing.Crud
             AssertTwoRowsAtEveryDepth(await LoadAsync(first.Id));
             TKey[] ids = [first.Id, second.Id];
 
-            // --- Each read the stack serves and its budget. Excel rows join this table, at one round
-            // trip per page, once the platform serves them ---
+            // --- Each read the stack serves and its budget ---
             List<(string What, int Budget, Func<IServiceProvider, Task> Call)> reads = [];
             if (Serves(StackOperations.Query))
             {
@@ -64,6 +66,22 @@ namespace Tellma.Core.Testing.Crud
             {
                 QueryRequest request = new() { Select = "Id", Take = 2 };
                 reads.Add(($"a query of {child.Resource}", 1, scope => scope.GetRequiredService<IChildQueryService>().QueryAsync(child.Resource, request, Token)));
+            }
+
+            // --- The Excel rows (spec 0015 §16.2): one round trip per page, every collection at every
+            // depth riding it while each holds fewer rows than the take ceiling; a lookup's flat
+            // reads in one; and each exportable child surface's page by query ---
+            if (Serves(StackOperations.Export))
+            {
+                ExcelQuery lookup = new(Metadata.Name, [Metadata.Key.Name], null, new KeySetRestriction(Metadata.Key.Name, "@lookup"), [.. ids.Select(static id => (object)long.CreateChecked(id))], null, null, null);
+                reads.Add(("an Excel page with its collections", 1, scope => ExcelRowsAsync(Service(scope).ExcelRowSource(ExportByIds(ids)), ExcelTree())));
+                reads.Add(("an Excel lookup", 1, scope => Service(scope).ExcelRowSource(new ExportSource.All()).ReadAsync([lookup], Token)));
+                foreach (ChildQueryDescriptor child in ChildSurfaces().Where(static child => child.Exportable))
+                {
+                    ExportSource.ByQuery source = new(null, null, null, null, null, IncludeInactive: false);
+                    ExcelQuery page = new(child.Resource, ["Id"], null, null, null, Take: 2, CountCap: 2, null);
+                    reads.Add(($"an Excel page of {child.Resource}", 1, scope => ExcelRowsAsync(scope.GetRequiredService<IChildQueryService>().ExcelRowSource(child.Resource, source), page)));
+                }
             }
 
             // --- Each read once to warm its caller, its plan and its caches, then counted ---

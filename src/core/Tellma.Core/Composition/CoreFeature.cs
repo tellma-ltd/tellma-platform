@@ -242,17 +242,20 @@ namespace Tellma.Core.Composition
                 .ClientEvent(Notifier.InboxChangedEvent)
                 .ClientEvent(SessionEndedEvent.Name);
 
-            // --- The email outbox: the rows and their stack, the outbox, the sending jobs' handler,
-            // the attachments' blob kind and the two table types ---
+            // --- The email outbox: the rows and their stack, the outbox, the sending jobs' handler and
+            // its failure notice, the attachments' blob kind and the two table types ---
             // spec 0022 §9.3. OutgoingEmail is a Query | Details | Delete | Enlist stack whose rows
             // arrive only through the outbox; its registration as a scoped service gives the registry
             // the outbox's enlistment pair. An email attachment needs no preview, so its kind renders
-            // no thumbnail; the kind itself comes from the attachment's blob reference.
+            // no thumbnail; the kind itself comes from the attachment's blob reference. The commit
+            // effect counts the rows a frame committed (spec 0022 §9.2).
             _ = contribution
                 .Entity<OutgoingEmail, OutgoingEmailService>()
+                .PersistEffect<OutgoingEmail, OutboxEnqueuedEffect>()
                 .Model<OutgoingEmailConfiguration>()
                 .Scoped<IEmailOutbox, EmailOutbox>()
                 .JobHandler<OutgoingEmailHandler>()
+                .NotificationType(OutgoingEmailHandler.FailedDescriptor)
                 .BlobKind(OutgoingEmailAttachment.BlobKind, static policy => policy with { Thumbnail = null })
                 .TableType<OutgoingEmailOutcomeList>()
                 .TableType<EmailDeliveryEventList>();

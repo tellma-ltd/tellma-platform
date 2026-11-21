@@ -11,7 +11,6 @@ using System.Net;
 using System.Text.Json;
 using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.AspNetCore;
-using Tellma.Core.Testing.Blobs;
 using Tellma.Distro.Acme.IntegrationTests.Infrastructure;
 using Tellma.Identity;
 using Tellma.Identity.TestSupport;
@@ -133,6 +132,11 @@ namespace Tellma.Distro.Acme.IntegrationTests
 
                 // A deployment lists its tenant servers; this test serves no tenant, so any host does.
                 ["Tellma:Sql:AllowedServers:0"] = "localhost",
+
+                // Outside Development the Azure defaults compose the Azure blob store, whose startup
+                // check requires its account; the host serves the in-memory store in its place, so
+                // the account is named and never reached.
+                ["Tellma:Blobs:Azure:ServiceUri"] = "https://acmeready.blob.core.windows.net/",
             };
 
             try
@@ -143,14 +147,8 @@ namespace Tellma.Distro.Acme.IntegrationTests
                 {
                     Environment = "Production",
                     AwaitsCatalog = false,
-                    Services = static services =>
-                    {
-                        _ = services.Configure<JwtBearerOptions>(
-                            TellmaAuthentication.BearerScheme, static bearer => bearer.Configuration = new OpenIdConnectConfiguration { Issuer = Authority });
-
-                        // Outside Development the Azure defaults register no blob store yet.
-                        _ = services.AddInMemoryBlobs();
-                    },
+                    Services = static services => _ = services.Configure<JwtBearerOptions>(
+                        TellmaAuthentication.BearerScheme, static bearer => bearer.Configuration = new OpenIdConnectConfiguration { Issuer = Authority }),
                 });
                 using HttpClient client = host.Server.CreateClient();
 

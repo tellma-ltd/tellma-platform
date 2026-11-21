@@ -1,0 +1,9 @@
+// Outgoing email latency, 95th percentile: from the enqueue that created a row to its send.
+// Backs the "mail is slow to leave" alert: a growing wait is a backlog of sending jobs, a provider
+// that keeps failing transiently so rows wait out their backoff, or emails scheduled to send later
+// (which this counts too, so a distribution that schedules mail sets its own threshold). Ten minutes
+// is a starting point.
+customMetrics
+| where name == "tellma.outbox.latency"
+| summarize latencyP95 = percentile(value, 95) by bin(timestamp, 15m)
+| where latencyP95 > 600

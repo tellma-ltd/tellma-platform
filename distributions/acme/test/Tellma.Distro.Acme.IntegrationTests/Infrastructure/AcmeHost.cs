@@ -150,8 +150,12 @@ namespace Tellma.Distro.Acme.IntegrationTests.Infrastructure
             _ = builder.Services.AddHttpClient(IdentityServerClient.HttpClientName)
                 .ConfigurePrimaryHttpMessageHandler(() => new ServerHandler(() => host!.Server.CreateHandler()));
 
-            // --- Blobs in memory, so a suite never writes under the developer's application data ---
-            _ = builder.Services.AddInMemoryBlobs();
+            // --- Blobs in memory, so a suite never writes under the developer's application data,
+            // unless the test keeps the composed store under a root of its own ---
+            if (!options.KeepsComposedBlobs)
+            {
+                _ = builder.Services.AddInMemoryBlobs();
+            }
 
             // --- The tenant probes' record, one per host, so two hosts of one test keep theirs apart ---
             TenantProbeLog? probes = options.MapsProbes ? new TenantProbeLog() : null;

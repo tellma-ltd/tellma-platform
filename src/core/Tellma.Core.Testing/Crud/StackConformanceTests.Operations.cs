@@ -30,8 +30,8 @@ namespace Tellma.Core.Testing.Crud
             // --- Each operation, whether the stack serves it, and what it answers given an id no row
             // holds, so no call changes a row. A call answers the rows its answer holds, or null when
             // its answer holds none to count. Each takes the scope's services rather than the stack's
-            // service, so an operation another service serves (Excel rows, an import) joins the table
-            // as one more row once the platform serves it ---
+            // service, so an operation another service serves (an import) joins the table as one more
+            // row once the platform serves it ---
             List<(string Name, bool Served, Reach Expected, Func<IServiceProvider, TKey, Task<int?>> Call)> operations =
             [
                 ("query", Serves(StackOperations.Query), Reach.Answers, async (scope, _) => (await Service(scope).QueryAsync(new QueryRequest { Select = Metadata.Key.Name, Take = 1 }, Token)).Rows.RowCount),
@@ -45,6 +45,7 @@ namespace Tellma.Core.Testing.Crud
                 ("delete_with_descendants", Serves(StackOperations.Delete, Tree), Reach.NotFound, async (scope, id) => (await Service(scope).Pipeline.DeleteWithDescendantsAsync([id], Token)).Count),
                 ("activate", ServesActivation(), Reach.NotFound, (scope, id) => ActAsync(scope, ActivateAction, id, null)),
                 ("deactivate", ServesActivation(), Reach.NotFound, (scope, id) => ActAsync(scope, DeactivateAction, id, null)),
+                ("excel_rows", Serves(StackOperations.Export), Reach.AnswersNone, (scope, id) => ExcelRowsAsync(Service(scope).ExcelRowSource(ExportByIds([id])), ExcelTree())),
             ];
 
             // --- The declared entity actions, each with its arguments, and the declared API actions,
@@ -153,6 +154,7 @@ namespace Tellma.Core.Testing.Crud
                 (Stack.Resource, AccessActions.Read, Serves(StackOperations.Query), scope => Service(scope).QueryAsync(new QueryRequest { Select = Metadata.Key.Name, Take = 1 }, Token)),
                 (Stack.Resource, AccessActions.Save, Serves(StackOperations.Save), scope => Service(scope).SaveAsync([NewValidEntity(NextOrdinal())], new SaveOptions(), Token)),
                 (Stack.Resource, AccessActions.Delete, Serves(StackOperations.Delete), scope => Service(scope).DeleteByIdsAsync([MissingId()], null, Token)),
+                (Stack.Resource, AccessActions.Read, Serves(StackOperations.Export), scope => ExcelRowsAsync(Service(scope).ExcelRowSource(ExportByIds([MissingId()])), ExcelTree())),
             ];
 
             // --- Each entity action, the built-ins among them, under its own securable; each API

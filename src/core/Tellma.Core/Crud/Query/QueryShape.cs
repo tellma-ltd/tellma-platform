@@ -8,6 +8,7 @@ using System.Text;
 using System.Text.Json;
 using Tellma.Core.Abstractions.Api;
 using Tellma.Core.Abstractions.Errors;
+using Tellma.Core.Abstractions.Excel;
 using Tellma.Core.Abstractions.Validation;
 using Tellma.Core.Calendars;
 using Tellma.Core.Queryex;
@@ -29,7 +30,7 @@ namespace Tellma.Core.Crud.Query
         /// <summary>The ordering of a tree read whose root declares none: by key.</summary>
         public const string KeyOrder = "Id";
 
-        /// <summary>Creates a shape; through <see cref="Admit" /> only.</summary>
+        /// <summary>Creates a shape; through the admitting factories only.</summary>
         private QueryShape()
         {
         }
@@ -119,6 +120,61 @@ namespace Tellma.Core.Crud.Query
                 Arguments = ByName(request.Arguments),
                 IncludeInactive = request.IncludeInactive,
                 PlatformFilters = [.. platformFilters],
+            };
+        }
+
+        /// <summary>
+        ///     Admits one statement of an Excel row source: its select and its ordering, and on the
+        ///     row source's own root the clauses of a by-query source. No page-size ceiling, skip
+        ///     window or count cap binds it, since the row source pages at the take ceiling itself;
+        ///     the search length does.
+        /// </summary>
+        /// <param name="surface">The surface of the statement's root.</param>
+        /// <param name="select">The select, the columns joined.</param>
+        /// <param name="orderBy">The ordering.</param>
+        /// <param name="clauses">The by-query source's clauses; null for none.</param>
+        /// <param name="skip">The rows to skip.</param>
+        /// <param name="take">The page size.</param>
+        /// <returns>The shape.</returns>
+        /// <exception cref="BadRequestException">Two arguments whose names differ only in case.</exception>
+        /// <exception cref="LimitExceededException">The search text exceeds its ceiling.</exception>
+        /// <exception cref="InvalidQueryException">A named filter the surface does not declare.</exception>
+        public static QueryShape AdmitRows(QuerySurface surface, string select, string orderBy, ExportSource.ByQuery? clauses, int skip, int take)
+        {
+            ArgumentNullException.ThrowIfNull(surface);
+            ArgumentException.ThrowIfNullOrWhiteSpace(select);
+            ArgumentException.ThrowIfNullOrWhiteSpace(orderBy);
+
+            // --- The search, once its bidi controls are stripped, under its ceiling: empty is no search ---
+            string? search = Strip(clauses?.Search);
+            if (search is not null && search.Length > surface.Limits.MaxSearchLength)
+            {
+                throw new LimitExceededException(LimitNames.MaxSearchLength, search.Length, surface.Limits.MaxSearchLength);
+            }
+
+            // --- The clauses: blank text is a clause not sent ---
+            List<(int, string)> filters = [];
+            for (int index = 0; index < (clauses?.Filters?.Count ?? 0); index++)
+            {
+                if (Text(clauses!.Filters![index]) is string filter)
+                {
+                    filters.Add((index, filter));
+                }
+            }
+
+            // --- Only a by-query source sees active rows alone; by ids, every row, and a dependent or
+            // a lookup reads every row its restriction names (spec 0015 §15) ---
+            return new QueryShape
+            {
+                Select = select,
+                Filters = filters,
+                NamedFilters = Named(clauses?.NamedFilters, surface),
+                OrderBy = orderBy,
+                Skip = skip,
+                Take = take,
+                Search = search,
+                Arguments = ByName(clauses?.Arguments),
+                IncludeInactive = clauses?.IncludeInactive ?? true,
             };
         }
 

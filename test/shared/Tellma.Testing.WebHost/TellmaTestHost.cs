@@ -8,17 +8,21 @@ using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Hosting.Server;
+using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
-using Microsoft.Extensions.Time.Testing;
 using Microsoft.IdentityModel.JsonWebTokens;
 using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 using Microsoft.IdentityModel.Tokens;
 using System.Globalization;
+using System.Net;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using Tellma.Core.Abstractions.Access;
@@ -77,19 +81,23 @@ namespace Tellma.Testing.WebHost
 
         private readonly WebApplication _app;
 
-        private TellmaTestHost(WebApplication app, FakeCatalogReader catalog, FakeTimeProvider time)
+        private TellmaTestHost(WebApplication app, FakeCatalogReader catalog, TestClock time)
         {
             _app = app;
             Catalog = catalog;
             Time = time;
-            Client = app.GetTestClient();
+            // A Kestrel host is reached over loopback HTTP at the address it bound; the test server in memory.
+            IServer server = app.Services.GetRequiredService<IServer>();
+            Client = server is TestServer
+                ? app.GetTestClient()
+                : new HttpClient { BaseAddress = new Uri(server.Features.GetRequiredFeature<IServerAddressesFeature>().Addresses.First()) };
             Rows = (InMemorySessionRows)app.Services.GetRequiredService<ISessionRows>();
             IdentityServer = app.Services.GetRequiredService<FakeIdentityServer>();
             Memberships = (FakeMembershipDirectory)app.Services.GetRequiredService<ITenantMembershipDirectory>();
             Users = app.Services.GetRequiredService<TestUsers>();
         }
 
-        /// <summary>A client of the host, at <c>https://localhost</c>.</summary>
+        /// <summary>A client of the host: at <c>https://localhost</c> in memory, or at the loopback address a Kestrel host bound.</summary>
         public HttpClient Client { get; }
 
         /// <summary>The host's services.</summary>
@@ -98,8 +106,8 @@ namespace Tellma.Testing.WebHost
         /// <summary>The in-memory catalog the registry reads.</summary>
         public FakeCatalogReader Catalog { get; }
 
-        /// <summary>The host's clock.</summary>
-        public FakeTimeProvider Time { get; }
+        /// <summary>The host's clock, a fake one that knows the timers the host arms on it.</summary>
+        public TestClock Time { get; }
 
         /// <summary>The catalog's session table.</summary>
         public InMemorySessionRows Rows { get; }
@@ -135,6 +143,12 @@ namespace Tellma.Testing.WebHost
                 ["Tellma:Identity:ServiceClientSecret"] = "test-service-client-secret",
                 ["Tellma:DataProtection:KeyRingPath"] = Path.Combine(Path.GetTempPath(), "tellma-aspnetcore-tests-keys"),
 
+                // The web timeout, a real timer, outlasts the tests' patience: a cold host on a
+                // loaded runner serves its first request in seconds, and a test that pins the
+                // timeout sets its own. Five minutes is the long policy's default, which it must
+                // not exceed.
+                ["Tellma:Api:RequestTimeout"] = "00:05:00",
+
                 // The tenants these hosts serve have no databases, so the job worker stays off; the
                 // jobs suites run it against a database of their own.
                 ["Tellma:Jobs:Enabled"] = "false",
@@ -149,7 +163,7 @@ namespace Tellma.Testing.WebHost
         /// <summary>Builds a host without starting it, for a test that expects startup to fail.</summary>
         /// <param name="configure">Changes to the defaults.</param>
         /// <returns>The application and its parts.</returns>
-        public static (WebApplication App, FakeCatalogReader Catalog, FakeTimeProvider Time) Build(Action<TestHostOptions>? configure = null)
+        public static (WebApplication App, FakeCatalogReader Catalog, TestClock Time) Build(Action<TestHostOptions>? configure = null)
         {
             TestHostOptions options = new();
             configure?.Invoke(options);
@@ -169,7 +183,7 @@ namespace Tellma.Testing.WebHost
             FakeCatalogReader catalog = new();
             catalog.Write([.. options.Rows]);
             catalog.Failure = options.CatalogFailure;
-            FakeTimeProvider time = new(DateTimeOffset.UtcNow);
+            TestClock time = new(DateTimeOffset.UtcNow);
             _ = builder.Services.AddSingleton<ICatalogReader>(catalog);
             _ = builder.Services.AddSingleton<TimeProvider>(time);
             _ = builder.Services.AddScoped<IRequestContextInitializer, ConnectingInitializer>();
@@ -214,6 +228,19 @@ namespace Tellma.Testing.WebHost
 
             options.ConfigureServices?.Invoke(builder.Services);
 
+            // --- A real Kestrel listener on a loopback port in place of the in-memory test server ---
+            // The defaults register Kestrel before the test server replaces it as the last server
+            // registered; removing the test server's registration leaves Kestrel's.
+            if (options.UseKestrel)
+            {
+                foreach (ServiceDescriptor testServer in builder.Services.Where(static descriptor => descriptor.ServiceType == typeof(IServer) && descriptor.ImplementationType == typeof(TestServer)).ToList())
+                {
+                    _ = builder.Services.Remove(testServer);
+                }
+
+                _ = builder.WebHost.ConfigureKestrel(static kestrel => kestrel.Listen(IPAddress.Loopback, 0));
+            }
+
             // --- The pipeline and the routes ---
             WebApplication app = builder.Build();
             if (options.UseTellma)
@@ -237,7 +264,7 @@ namespace Tellma.Testing.WebHost
         /// <returns>The started host.</returns>
         public static async Task<TellmaTestHost> StartAsync(Action<TestHostOptions>? configure = null)
         {
-            (WebApplication app, FakeCatalogReader catalog, FakeTimeProvider time) = Build(configure);
+            (WebApplication app, FakeCatalogReader catalog, TestClock time) = Build(configure);
             await app.StartAsync(TestContext.Current.CancellationToken);
             return new TellmaTestHost(app, catalog, time);
         }
@@ -471,6 +498,12 @@ namespace Tellma.Testing.WebHost
 
         /// <summary>More services, registered after the composition.</summary>
         public Action<IServiceCollection>? ConfigureServices { get; set; }
+
+        /// <summary>
+        ///     Whether the host listens on a loopback port through Kestrel rather than in memory, for a
+        ///     test of what only a real connection does, such as a client that stops reading.
+        /// </summary>
+        public bool UseKestrel { get; set; }
 
         /// <summary>Whether <c>UseTellma</c> installs the pipeline before <c>MapTellma</c> runs.</summary>
         public bool UseTellma { get; set; } = true;

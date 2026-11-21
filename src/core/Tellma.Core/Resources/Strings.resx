@@ -890,7 +890,7 @@
   <data name="JobHandler_core_notification-retention" xml:space="preserve">
     <value>Deleting old notifications</value>
   </data>
-  <!-- The email outbox: the outgoing emails' labels, its codes and its sending job's label -->
+  <!-- The email outbox: the outgoing emails' labels, its codes, its sending job's label and its failure notice -->
   <data name="Core_OutgoingEmail_Plural" xml:space="preserve">
     <value>Outgoing emails</value>
   </data>
@@ -932,6 +932,12 @@
   </data>
   <data name="JobHandler_core_outgoing-email" xml:space="preserve">
     <value>Sending an email</value>
+  </data>
+  <data name="Notification_core_email_failed" xml:space="preserve">
+    <value>{count, plural, one {An outgoing email could not be sent.} other {# outgoing emails could not be sent.}}</value>
+  </data>
+  <data name="NotificationType_core_email_failed" xml:space="preserve">
+    <value>Emails that could not be sent</value>
   </data>
   <data name="Schedules_CronInvalid" xml:space="preserve">
     <value>The cron expression {expression} is not valid. Give minute, hour, day of month, month and day of week, such as 0 3 * * * for three every morning.</value>

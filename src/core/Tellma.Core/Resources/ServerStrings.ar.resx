@@ -26,4 +26,22 @@
   <data name="Email_Notification_Html" xml:space="preserve">
     <value>&lt;div dir="rtl"&gt;&lt;p&gt;{text}&lt;/p&gt;&lt;p&gt;&lt;a href="{link}"&gt;فتح في {tenantName}&lt;/a&gt;&lt;/p&gt;&lt;p style="color:#6b7280;font-size:12px"&gt;تصلك هذه الرسالة لأن البريد الإلكتروني مفعّل لهذا النوع من الإشعارات في {tenantName}. يمكنك إيقافه من إعدادات الإشعارات.&lt;/p&gt;&lt;/div&gt;</value>
   </data>
+  <!-- The welcome email: the subject and bodies a user receives when an invite adds them to the tenant -->
+  <data name="Email_UserAdded_Subject" xml:space="preserve">
+    <value>تمت إضافتك إلى {tenantName}</value>
+  </data>
+  <data name="Email_UserAdded_Text" xml:space="preserve">
+    <value>أضافك {actorName} إلى {tenantName}.
+
+{status, select, Invited {ستصلك رسالة منفصلة من خدمة تسجيل الدخول فيها رابط لإعداد طريقة تسجيل دخولك. استخدم ذلك الرابط قبل الرابط أدناه.
+
+} Reinvited {ستصلك رسالة منفصلة من خدمة تسجيل الدخول فيها رابط لإعداد طريقة تسجيل دخولك. استخدم ذلك الرابط قبل الرابط أدناه.
+
+} other {}}افتح {tenantName}: {link}
+
+احتفظ بهذه الرسالة، فرابطها يعيدك إلى {tenantName} متى احتجت إليه.</value>
+  </data>
+  <data name="Email_UserAdded_Html" xml:space="preserve">
+    <value>&lt;div dir="rtl"&gt;&lt;p&gt;أضافك {actorName} إلى {tenantName}.&lt;/p&gt;{status, select, Invited {&lt;p&gt;ستصلك رسالة منفصلة من خدمة تسجيل الدخول فيها رابط لإعداد طريقة تسجيل دخولك. استخدم ذلك الرابط قبل الرابط أدناه.&lt;/p&gt;} Reinvited {&lt;p&gt;ستصلك رسالة منفصلة من خدمة تسجيل الدخول فيها رابط لإعداد طريقة تسجيل دخولك. استخدم ذلك الرابط قبل الرابط أدناه.&lt;/p&gt;} other {}}&lt;p&gt;&lt;a href="{link}"&gt;افتح {tenantName}&lt;/a&gt;&lt;/p&gt;&lt;p style="color:#6b7280;font-size:12px"&gt;احتفظ بهذه الرسالة، فرابطها يعيدك إلى {tenantName} متى احتجت إليه.&lt;/p&gt;&lt;/div&gt;</value>
+  </data>
 </root>

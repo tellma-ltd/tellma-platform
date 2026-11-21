@@ -450,7 +450,7 @@ namespace Tellma.Core.AspNetCore.Tests.Api
             // --- The bytes, then the outcome disposed once the response completed ---
             Assert.Equal(PipelineLog.WorkbookBytes.ToArray(), await response.Content.ReadAsByteArrayAsync(TestContext.Current.CancellationToken));
             ObservedStream workbook = Assert.Single(host.Services.GetRequiredService<PipelineLog>().Workbooks);
-            await workbook.Disposed.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+            await Patience.WaitAsync(workbook.Disposed);
         }
 
         [Theory]

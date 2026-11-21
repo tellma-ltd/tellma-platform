@@ -384,6 +384,50 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-181 (orchestrator, 2026-11-21): PC-181 Review 1 rulings
+
+Review 1 found 0/2/4. All of R1-1 (measures take grand-total nullity, with an empty-cell test), R1-2 (LEN typed int, bigint only for (max) text; plan width checked against the server column type), R1-3, R1-5 and R1-6 are fixed in fix1. R1-4 is the implementer's pre-existing engine issue: an Aggregate query whose every aggregation folds away emits no GROUP BY and returns one row per fact row, which violates 0008 §2.1/§11.3. It is fixed in PC-181 rather than as a separate fix item, because PC-181 owns that emitter path: emit `GROUP BY ()` with no grouping keys and pin it with a corpus case. Deviation 9 (a column-less count() inside an INTERSECT subquery is anchored to the root key) is verified correct on LocalDB. The 16 LEAST calendar failures are environmental (LocalDB 2019). R2 (inherit, xhigh) follows fix1.
+
+### D-180 (orchestrator, 2026-11-21): PC-091 Review 1 rulings
+
+Review 1 found 0/0/2 and accepted all 7 implementer deviations. R1-1: the access actions (check, holders) take McpExposure.Hidden, because 0016 §11.8 and 0014 §10 reserve tellma_check_access and every sibling read helper is Hidden. R1-2: add a QueryRig unit test for each new filter-too-complex branch (RoleService, AccessService). PC-091 holds after fix1, behind PC-149, PC-174 and PC-F65.
+
+For Ahmad:
+1. 0018 §4.3 "members" is never Denied for a member, because 0014 §5.1's UserAccessCriteria gives every member a Filtered core.User Read (Id = me()). Either 0032 §5.4 shows its "no access" hint when the self criterion is the only users' grant, or the specs accept the state as unreachable.
+2. 0015 §5.3 lacks DetailsPlan.Decide and OmitExtra, which PC-091 added. Add them to the spec.
+3. 0018 §4.3 and 0014 §9 say "*/* never drifts". PC-091 reports WildcardResourceOnPublicRole, so the text should read "except on a public role".
+
+### D-179 (orchestrator, 2026-11-21): PC-F65 Review 1 rulings
+
+- PC-F65 Review 1 (Opus high, d10f3b46): 0 blocking, 0 major, 4 minor.
+  - Confirmed: the root cause is real; each changed wait waits on a signal or on armed timers; none was simply lengthened.
+  - Confirmed: the 504 test still runs the framework's real timeout path; no product code changed; the ConnectedProbe race is SignalR client behaviour, not a product bug.
+  - The evidence is weaker statistically than claimed (three greens against the matched-pace control, p ≈ 0.30). The failure-by-failure mechanism mapping carries the item.
+- Fix 1 rulings:
+  - R1-1: bound the refused RateLimiting request (it could hang to the CI job timeout).
+  - R1-2: fix the comment.
+  - R1-3 and R1-4: lift the shared test host's RequestTimeout to 5 min now (PC-089 reads LongRequestTimeout and sets its own), and assert the resolved Web policy timeout.
+  - FrameworkProblemsTests(403) stays a flake candidate.
+
+### D-178 (Ahmad, 2026-11-21): manual reset applied
+
+- Ahmad applied the manual reset at ≈ 18:10 UTC 2026-11-21, after the 98% push (D-173). get_usage shows 0% weekly and 0% Fable; resetsAt is unchanged at 2026-11-24 20:00 UTC.
+- Target: ≈ 100 points in ≈ 66 h to Tuesday noon (≈ 1.5 pts/h).
+  - Keep all six slots working.
+  - T1/T2 work takes each free slot first; T3 fills when none is ready (D-140, D-173).
+  - Integration steps stay lean (D-175).
+  - PC-096 (T1) takes the next free slot.
+- Standing: report a pace that would leave much of the reset unused to Ahmad, with the lanes that could be added.
+
+### D-177 (orchestrator, 2026-11-21): PC-149 fix 1
+
+- PC-149 fix 1 (6fba6f4c): R1-1 to R1-4 fixed.
+  - R1-2 took the narrow option: a new internal IPayloadScopedValidator lets BlobReferenceValidator report that it judged nothing when no row at any depth holds a blob reference. Grant-dependent validators and hooks still count. The 0018 §9 recompose pin is restored, with warm-buffer and cold-buffer tests that both commit.
+  - R1-3: tellma.outbox.enqueued is counted after commit by an OutboxEnqueuedEffect.
+  - The renamed Acme sandbox-invite test passed 5 of 5 runs.
+- Merge-tree against ba6d6bab shows three content conflicts with PC-090 in the Users area (UserServiceDependencies.cs, UsersRuntimeComposition.cs and UsersKit.cs), for resolution at integration.
+- Note: the outbox address-list parser takes any comma-free token as a bare address, so a garbage To reaches the sender, and address validation is left to the 0007 email pipeline. Carry to PC-143 (the email channel's SendTestAsync and the D-061 check): confirm that the pipeline refuses such an address and the outbox records the refusal.
+
 ### D-176 (orchestrator, 2026-11-21): PC-174 Review 1 rulings
 
 - PC-174 Review 1 (Opus high, dc83114f): 0 blocking, 2 major, 3 minor.

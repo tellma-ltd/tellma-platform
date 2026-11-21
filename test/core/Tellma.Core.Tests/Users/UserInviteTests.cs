@@ -4,16 +4,22 @@
 // LICENSE file in the root directory of this source tree.
 
 using Microsoft.Extensions.Diagnostics.Metrics.Testing;
+using Microsoft.Extensions.Localization;
+using Microsoft.Extensions.Logging;
 using Tellma.Core.Abstractions.Access;
+using Tellma.Core.Abstractions.Crud;
 using Tellma.Core.Abstractions.Data;
+using Tellma.Core.Abstractions.Email;
 using Tellma.Core.Abstractions.Errors;
 using Tellma.Core.Abstractions.Identity;
+using Tellma.Core.Abstractions.Localization;
 using Tellma.Core.Abstractions.TableTypes;
 using Tellma.Core.Abstractions.Validation;
 using Tellma.Core.Data.Batches;
 using Tellma.Core.Tests.Data.Batches;
 using Tellma.Core.Users;
 using Tellma.Testing.Support.Identity;
+using Tellma.Testing.Support.Logging;
 
 namespace Tellma.Core.Tests.Users
 {
@@ -274,6 +280,155 @@ namespace Tellma.Core.Tests.Users
 
             Assert.Equal([new InviteResult(3, InviteStatus.Invited, null)], results);
             Assert.Single(_kit.Logs.Entries, static entry => entry.EventId.Name == "UserMembershipHintFailed");
+        }
+
+        [Fact]
+        public async Task Each_added_user_is_welcomed_through_the_action_frame_in_one_call()
+        {
+            User ada = UsersKit.Individual(3, "Ada");
+            ada.ContactEmail = "ada.contact@example.com";
+            User bob = UsersKit.Individual(4, "Bob");
+            bob.Name2 = "بوب";
+            (IDataBatch batch, RecordingBatchProxy recorder) = RecordingBatchProxy.Create();
+            ActionContext<User, int> context = UsersKit.Action(batch, sandbox: false, [3, 4], ada, bob);
+
+            _ = await RunAsync(context, recorder);
+
+            // One call, enlisted with the action's own frame, one request per user in request order.
+            (IWriteHost host, IReadOnlyList<EmailEnqueueRequest> requests) = Assert.Single(_kit.Outbox.Calls);
+            Assert.Same(context.Host, host);
+            Assert.Equal(2, requests.Count);
+
+            // The contact address wins over the sign-in address, the name is the one of the user's
+            // content language; the email regards the user.
+            EmailEnqueueRequest first = requests[0];
+            Assert.Equal(new EmailAddress("ada.contact@example.com", "Ada"), Assert.Single(first.Message.To));
+            Assert.Equal(new EmailAddress("user4@example.com", "Bob"), Assert.Single(requests[1].Message.To));
+            Assert.Equal(EmailAudience.Internal, first.Message.Audience);
+            Assert.Equal(3, first.RecipientUserId);
+            Assert.Equal(CoreResources.User, first.RegardingEntity);
+            Assert.Equal(3, first.RegardingId);
+            Assert.Equal(EmailEnqueueRequest.ApiSource, first.Source);
+
+            // The tenant's name, the caller's name and the tenant's link, in the tenant's first language.
+            Assert.Equal("You have been added to Acme", first.Message.Subject);
+            Assert.StartsWith("Caller added you to Acme.", first.Message.TextBody, StringComparison.Ordinal);
+            Assert.Contains(UsersKit.TenantLink, first.Message.TextBody, StringComparison.Ordinal);
+            Assert.Contains("href=\"" + UsersKit.TenantLink + "\"", first.Message.HtmlBody, StringComparison.Ordinal);
+            Assert.Contains("dir=\"ltr\"", first.Message.HtmlBody, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public async Task The_welcome_names_the_sign_in_email_only_to_users_who_were_sent_one()
+        {
+            User ada = UsersKit.Individual(3, "Ada");
+            User bob = UsersKit.Individual(4, "Bob");
+            User cy = UsersKit.Individual(5, "Cy");
+            InviteStatus[] statuses = [InviteStatus.Invited, InviteStatus.Reinvited, InviteStatus.Active];
+            _kit.Identity.OnInvite = (invitations, _) => Task.FromResult<IReadOnlyList<IdentityInvitationResult>>(
+                [.. invitations.Select((invitation, index) => new IdentityInvitationResult(invitation.Email, ScriptedIdentityClient.SubjectOf(invitation.Email), statuses[index], null))]);
+            (IDataBatch batch, RecordingBatchProxy recorder) = RecordingBatchProxy.Create();
+
+            _ = await RunAsync(UsersKit.Action(batch, sandbox: false, [3, 4, 5], ada, bob, cy), recorder);
+
+            // The invited and the reinvited are told to set up their sign-in first; the active are not.
+            IReadOnlyList<EmailEnqueueRequest> requests = _kit.Outbox.Requests;
+            Assert.Equal([true, true, false], requests.Select(static request => request.Message.TextBody!.Contains("sign-in service", StringComparison.Ordinal)));
+            Assert.Equal([true, true, false], requests.Select(static request => request.Message.HtmlBody!.Contains("sign-in service", StringComparison.Ordinal)));
+            Assert.All(requests, static request => Assert.DoesNotContain("{", request.Message.TextBody, StringComparison.Ordinal));
+        }
+
+        [Fact]
+        public async Task The_welcome_renders_in_the_invited_user_language_and_content_slot()
+        {
+            User ada = UsersKit.Individual(3, "Ada");
+            ada.Name2 = "آدا";
+            ada.PreferredLanguage = "ar";
+            (IDataBatch batch, RecordingBatchProxy recorder) = RecordingBatchProxy.Create();
+
+            _ = await RunAsync(UsersKit.Action(batch, sandbox: false, [3], ada), recorder);
+
+            // Arabic resources, the tenant's, the caller's and the user's second names, right to left.
+            EmailMessage message = Assert.Single(_kit.Outbox.Requests).Message;
+            Assert.Equal("تمت إضافتك إلى أكمي", message.Subject);
+            Assert.StartsWith("أضافك المتصل إلى أكمي.", message.TextBody, StringComparison.Ordinal);
+            Assert.Equal("آدا", Assert.Single(message.To).DisplayName);
+            Assert.Contains("dir=\"rtl\"", message.HtmlBody, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void The_welcome_html_encodes_the_names_it_carries()
+        {
+            User ada = UsersKit.Individual(3, "Ada");
+            IStringLocalizer strings = _kit.Localizers.Create(
+                CoreStrings.Assembly + ".Resources.ServerStrings", CoreStrings.Assembly);
+
+            EmailEnqueueRequest request = Assert.IsType<EmailEnqueueRequest>(_kit.Service.Welcome(
+                ada,
+                InviteStatus.Invited,
+                UsersKit.Settings(),
+                new LocalizedText("<b>Acme</b> & Co", null, null),
+                new LocalizedText("Caller", null, null),
+                UsersKit.TenantLink,
+                strings));
+
+            // The text body carries the name as is; the HTML body only encoded.
+            Assert.Contains("<b>Acme</b> & Co", request.Message.TextBody, StringComparison.Ordinal);
+            Assert.Contains("&lt;b&gt;Acme&lt;/b&gt; &amp; Co", request.Message.HtmlBody, StringComparison.Ordinal);
+            Assert.DoesNotContain("<b>", request.Message.HtmlBody, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public async Task Refused_and_mismatched_users_are_not_welcomed()
+        {
+            User ada = UsersKit.Individual(3, "Ada");
+            User cy = UsersKit.Individual(5, "Cy");
+            cy.Subject = "sub-other";
+            User di = UsersKit.Individual(6, "Di");
+            _kit.Identity.OnInvite = static (invitations, _) => Task.FromResult<IReadOnlyList<IdentityInvitationResult>>(
+                [
+                    new(invitations[0].Email, ScriptedIdentityClient.SubjectOf(invitations[0].Email), InviteStatus.Invited, null),
+                    new(invitations[1].Email, ScriptedIdentityClient.SubjectOf(invitations[1].Email), InviteStatus.Active, null),
+                    new(invitations[2].Email, null, null, "account_disabled"),
+                ]);
+            (IDataBatch batch, RecordingBatchProxy recorder) = RecordingBatchProxy.Create();
+
+            _ = await RunAsync(UsersKit.Action(batch, sandbox: false, [3, 5, 6], ada, cy, di), recorder);
+
+            // Cy holds another account than the one answered; Di was refused.
+            Assert.Equal([3], _kit.Outbox.Requests.Select(static request => request.RecipientUserId));
+        }
+
+        [Fact]
+        public async Task A_user_with_no_address_the_outbox_accepts_is_skipped_with_a_warning()
+        {
+            User ada = UsersKit.Individual(3, "Ada");
+            User bob = UsersKit.Individual(4, "Bob");
+            bob.ContactEmail = "not an address";
+            (IDataBatch batch, RecordingBatchProxy recorder) = RecordingBatchProxy.Create();
+
+            IReadOnlyList<InviteResult> results = await RunAsync(UsersKit.Action(batch, sandbox: false, [3, 4], ada, bob), recorder);
+
+            // The invite stands for both; only Ada is welcomed, and Bob's skip names only his id.
+            Assert.Equal([new InviteResult(3, InviteStatus.Invited, null), new InviteResult(4, InviteStatus.Invited, null)], results);
+            Assert.Equal([3], _kit.Outbox.Requests.Select(static request => request.RecipientUserId));
+            CapturedLogEntry skipped = Assert.Single(_kit.Logs.Entries, static entry => entry.EventId.Name == "WelcomeEmailSkipped");
+            Assert.Equal(LogLevel.Warning, skipped.Level);
+            Assert.StartsWith("User 4 ", skipped.Message, StringComparison.Ordinal);
+            Assert.Empty(_kit.Logs.Mentioning("not an address"));
+        }
+
+        [Fact]
+        public async Task An_invite_whose_every_user_was_refused_enqueues_nothing()
+        {
+            User ada = UsersKit.Individual(3, "Ada");
+            _kit.Identity.OnInvite = static (invitations, _) => Task.FromResult<IReadOnlyList<IdentityInvitationResult>>(
+                [new(invitations[0].Email, null, null, "account_disabled")]);
+            (IDataBatch batch, RecordingBatchProxy recorder) = RecordingBatchProxy.Create();
+
+            _ = await RunAsync(UsersKit.Action(batch, sandbox: false, [3], ada), recorder);
+
+            Assert.Empty(_kit.Outbox.Calls);
         }
 
         /// <summary>Runs an invite to its commit: the write-back answers the mismatches, then the persist completes.</summary>

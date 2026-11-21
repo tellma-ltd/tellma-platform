@@ -16,6 +16,7 @@ using Tellma.Core.Abstractions.Api;
 using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.AspNetCore.Api;
 using Tellma.Core.AspNetCore.Bff;
+using Tellma.Core.AspNetCore.Blobs;
 using Tellma.Core.AspNetCore.Hosting;
 using Tellma.Core.AspNetCore.Limits;
 using Tellma.Core.AspNetCore.OpenApi;
@@ -35,8 +36,8 @@ namespace Tellma.Core.AspNetCore
 
         /// <summary>
         ///     Maps the platform's tenantless routes (the information document, the health probes, the
-        ///     admin surface when enabled, the protected-resource metadata and the SPA) and the tenant
-        ///     route groups, then audits what it mapped. A distribution maps its own endpoints onto the
+        ///     admin surface when enabled, the protected-resource metadata and the SPA), the tenant
+        ///     route groups, the web API and the blob upload and download, then audits what it mapped. A distribution maps its own endpoints onto the
         ///     groups returned, inheriting their policies, filters and metadata; the startup gate audits
         ///     those too.
         /// </summary>
@@ -129,6 +130,9 @@ namespace Tellma.Core.AspNetCore
             // --- The web API: every route the model derives from the stack registry, on the Web group ---
             IReadOnlyList<CompositionProblem> projection = WebApiProjection.Map(app.Services, groups.Web);
 
+            // --- The blob upload and download, on the Blobs group ---
+            _ = groups.Blobs.MapTellmaBlobs();
+
             // --- The SPA, whose fallback answers every request nothing else matched ---
             SpaHosting.Map(app);
 
@@ -170,7 +174,7 @@ namespace Tellma.Core.AspNetCore
                 _ = builder.WithRequestTimeout(TellmaRequestTimeouts.Web);
             }
 
-            // --- The filter chain, outermost first: tenant, telemetry, the web surface's request filter, then the witness ---
+            // --- The filter chain, outermost first: tenant, telemetry (web and blobs), the web surface's request filter, then the witness ---
             // Each refuses before the next runs; none evaluates a securable, the handler's service does.
             // The telemetry stage wraps each endpoint's delegate below, between the guard and the witness.
             if (guarded)
@@ -203,9 +207,9 @@ namespace Tellma.Core.AspNetCore
             {
                 // Endpoint filters reach route handlers alone; these reach every endpoint of the group.
                 // The witness wraps first and the guard last, so the guard's wrapper, which the audit
-                // checks, stays outermost; the web surface's telemetry runs between the two.
+                // checks, stays outermost; the telemetry of the web and blob surfaces runs between the two.
                 conventions.Finally(AccessWitnessFilter.Wrap);
-                if (group == TellmaGroup.Web)
+                if (group is TellmaGroup.Web or TellmaGroup.Blobs)
                 {
                     conventions.Finally(ApiTelemetryFilter.Wrap);
                 }

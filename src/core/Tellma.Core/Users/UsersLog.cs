@@ -42,6 +42,18 @@ namespace Tellma.Core.Users
             Message = "An invite stopped after {Processed} user(s); {Remaining} user(s) were not attempted.")]
         public static partial void UsersInvitePartial(ILogger logger, int processed, int remaining);
 
+        /// <summary>
+        ///     An invited user receives no welcome email: they have no email address, or none the
+        ///     outbox can store. The invite itself stands.
+        /// </summary>
+        /// <param name="logger">The logger.</param>
+        /// <param name="userId">The user.</param>
+        [LoggerMessage(
+            EventName = "WelcomeEmailSkipped",
+            Level = LogLevel.Warning,
+            Message = "User {UserId} was invited but receives no welcome email: their email address cannot be sent to.")]
+        public static partial void WelcomeEmailSkipped(ILogger logger, int userId);
+
         /// <summary>A service account's previous or orphaned client could not be deleted at the identity server.</summary>
         /// <param name="logger">The logger.</param>
         /// <param name="exception">Why the delete failed.</param>
