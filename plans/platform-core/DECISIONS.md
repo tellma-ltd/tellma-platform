@@ -384,6 +384,18 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-179 (orchestrator, 2026-11-21): PC-F65 Review 1 rulings
+
+- PC-F65 Review 1 (Opus high, d10f3b46): 0 blocking, 0 major, 4 minor.
+  - Confirmed: the root cause is real; each changed wait waits on a signal or on armed timers; none was simply lengthened.
+  - Confirmed: the 504 test still runs the framework's real timeout path; no product code changed; the ConnectedProbe race is SignalR client behaviour, not a product bug.
+  - The evidence is weaker statistically than claimed (three greens against the matched-pace control, p ≈ 0.30). The failure-by-failure mechanism mapping carries the item.
+- Fix 1 rulings:
+  - R1-1: bound the refused RateLimiting request (it could hang to the CI job timeout).
+  - R1-2: fix the comment.
+  - R1-3 and R1-4: lift the shared test host's RequestTimeout to 5 min now (PC-089 reads LongRequestTimeout and sets its own), and assert the resolved Web policy timeout.
+  - FrameworkProblemsTests(403) stays a flake candidate.
+
 ### D-178 (Ahmad, 2026-11-21): manual reset applied
 
 - Ahmad applied the manual reset at ≈ 18:10 UTC 2026-11-21, after the 98% push (D-173). get_usage shows 0% weekly and 0% Fable; resetsAt is unchanged at 2026-11-24 20:00 UTC.

@@ -106,9 +106,9 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 
 | PC | Slot | Branch | Step | Implementer agent (name / id) | Reviewer agent (name / id) | Started (UTC) |
 |---|---|---|---|---|---|---|
-| PC-089 | pc-1 | pc/PC-089 | ci-pending | impl dc5e9223; R1 0/2/3; fix1 24438df0; R2 fable 0/1/5; fix2 d2513537; integrate ccb7553e; pc run 44931200147; D-168, D-169, D-172 | 0017-d | 2026-11-21 |
+| PC-089 | pc-1 | pc/PC-089 | ci-pending | impl dc5e9223; R1 0/2/3; fix1 24438df0; R2 fable 0/1/5; fix2 d2513537; integrate ccb7553e red 44931200147; CI fixes 073dee41 (test-only: WebHostTests sets a ServiceUri in Production); pc run 44934755140; D-168, D-169, D-172 | 0017-d | 2026-11-21 |
 | PC-091 | pc-3 | pc/PC-091 | impl | launched after PC-090 done; high | 0018-e; R1 only | 2026-11-21 |
-| PC-F65 | pc-f | pc/PC-F65 | R1 | impl d10f3b46 (Patience/TestClock helpers; old code failed 10/15 loaded full runs, new 3/3 green); R1 Opus high; carries to PC-089 integration | fix item | 2026-11-21 |
+| PC-F65 | pc-f | pc/PC-F65 | held | impl d10f3b46; R1 0/0/4; fix1 36592e58 + responses 4dc7053d (shared host RequestTimeout 5 min); held behind PC-089, PC-149, PC-174 (merge-tree clean); D-179 | fix item | 2026-11-21 |
 | PC-174 | pc-2 | pc/PC-174 | held | impl dc83114f; R1 0/2/3; fix1 ad91dc10 (key tie-breaker on every ordering; R1-3/R1-4 kept per D-176 for Ahmad); held behind PC-089, PC-149 (merge-tree clean); D-176 | 0015-j; R1 only | 2026-11-21 |
 | PC-181 | pc-f2 | pc/PC-181 | impl | T3 fill under D-140/D-173; high; R2 inherit xhigh (complex) | 0010-f6 | 2026-11-21 |
 | PC-149 | pc-4 | pc/PC-149 | held | impl 7418f050; R1 0/2/2; fix1 6fba6f4c (all fixed; IPayloadScopedValidator, OutboxEnqueuedEffect); held behind PC-089 (merge-tree: 3 conflicts in Users with PC-090); D-170, D-174 | 0022-b; R1 only | 2026-11-21 |
