@@ -107,11 +107,11 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC | Slot | Branch | Step | Implementer agent (name / id) | Reviewer agent (name / id) | Started (UTC) |
 |---|---|---|---|---|---|---|
 | PC-096 | pc-1 | pc/PC-096 | impl | launched after PC-089 done; xhigh | 0025-b; R1 + R2 inherit xhigh | 2026-11-21 |
-| PC-091 | pc-3 | pc/PC-091 | held | impl 059dbd0e (7 deviations accepted); R1 0/0/2; fix1 f2eaf519 (access actions MCP Hidden; filter-too-complex tests via BatchScript.Refuses); held behind PC-174, PC-F65 (merge-tree clean); D-180 | 0018-e; R1 only | 2026-11-21 |
-| PC-F65 | pc-f | pc/PC-F65 | integrating | impl d10f3b46; R1 0/0/4; fix1 36592e58 + responses 4dc7053d (shared host RequestTimeout 5 min); released after PC-174 done; D-179 | fix item | 2026-11-21 |
+| PC-091 | pc-3 | pc/PC-091 | integrating | impl 059dbd0e (7 deviations accepted); R1 0/0/2; fix1 f2eaf519 (access actions MCP Hidden; filter-too-complex tests via BatchScript.Refuses); released after PC-F65 done; D-180 | 0018-e; R1 only | 2026-11-21 |
 | PC-175 | pc-2 | pc/PC-175 | impl | launched after PC-174 done; T3 fill (D-173); high | 0019-b; R1 only | 2026-11-21 |
 | PC-212 | pc-4 | pc/PC-212 | impl | launched after PC-149 done; T3 fill (D-173); high | 0017-e; R1 only | 2026-11-21 |
-| PC-181 | pc-f2 | pc/PC-181 | fix1 | impl 19eb6762 (10 deviations accepted); R1 0/2/4 (empty-cell nullity; LEN int; all-folded GROUP BY () fixed here); fix1; then R2 inherit xhigh; D-181 | 0010-f6 | 2026-11-21 |
+| PC-214 | pc-f | pc/PC-214 | impl | launched after PC-F65 done; T3 fill (D-173); high | 0022-c; R1 only | 2026-11-21 |
+| PC-181 | pc-f2 | pc/PC-181 | fix2 | impl 19eb6762; R1 0/2/4; fix1 651abb4c; R2 inherit xhigh 0/1/3 (keyless measures count; LEN of parameters; QX4011; null tests on parameters); fix2 then hold behind PC-F65, PC-091; D-181, D-182 | 0010-f6 | 2026-11-21 |
 
 ## Fix items
 
@@ -180,7 +180,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-F62 | DeletePlan declares the tables of Cascade/SetNull referencing FKs (undeclared writes, every module); remove per-service workarounds (ScheduleService) | done (c62f762f; pc 44851530590 green; ForeignKeyActions derives Cascade/SetNull/SetDefault writes for deletes and saves, user capture before cascade, refusals at startup; D-150, D-156) | | |
 | PC-F63 | Nightly client-e2e: 3 WebKit chart-bidi canvas tests fail; dotnet job OS deps unavailable (nightly 44745573605) | done (247691dc; pc 44845403533 green; root cause WebKit drawBidiText carries a cursive final's GPOS y-offset onto later runs; ALM closes Arabic-script words in chart canvas text; D-155, D-160, D-161) | | |
 | PC-F64 | Nightly integration-windows: TenantScopeTests cross-instance suspension refresh failed (nightly 44745573605) | done (97475bd4; pc 44823811836 green; root causes: TenantScopeTests 30 s setup bound under a LocalDB CREATE DATABASE convoy, SMTP tests localhost vs 0.0.0.0, RequestTimeoutTests timer firing before the access guard; D-151, D-155) | | |
-| PC-F65 | Load-starved fixed waits in Core.AspNetCore.Tests (RequestTimeoutTests x2, RateLimitingTests x1 under four-lane local load; D-171) | in progress | | | pc-f |
+| PC-F65 | Load-starved fixed waits in Core.AspNetCore.Tests (RequestTimeoutTests x2, RateLimitingTests x1 under four-lane local load; D-171) | done (9e21bb68; pc 44945741967 green on 90110751) | d10f3b46, 36592e58, 4dc7053d, 90110751, 9e21bb68 | carry: BlobEndpointTests fixed 10 s/30 s waits and 200 ms delay onto Patience/TestClock (D-183) | pc-f |
 | PC-F02 | systemic e2e flakiness: CI 42456030333 red on 5250c6c (plans-only) with 4 NEW flaky tests | done (R1 1/1/2; CI 42471952389 green), pc-f free | 2c91df4, 4c36d45, 4c89ae1 | 11.32M | grid bundle at its 38 KB ceiling; picker same-frame Enter race open | root-cause all 9; un-quarantine the fixed PC-F01 five |
 
 ## Batch reviews (one per phase)
@@ -514,9 +514,9 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-209 | 0026-e | 3 | todo | | | |
 | PC-210 | 0026-g | 3 | todo | | | |
 | PC-211 | 0026-h | 3 | todo | | | |
-| PC-212 | 0017-e | 3 | in progress | | | |
+| PC-212 | 0017-e | 3 | in progress | | | carry D-183: at integration, move BlobEndpointTests fixed waits onto Patience/TestClock | |
 | PC-213 | 0020-g | 3 | todo | | | carry (D-156): a raw SQL retention DELETE declares the tables its foreign keys' ON DELETE actions write, via ForeignKeyActions.WrittenByDeleting |
-| PC-214 | 0022-c | 3 | todo | | | |
+| PC-214 | 0022-c | 3 | in progress | | | |
 | PC-215 | 0032-b1 | 3 | todo | | | |
 | PC-216 | 0025-f | 3 | todo | | | |
 | PC-217 | 0010-a4 | 3 | done (41ee7bf8; CI 43906562691 green) | 59bbd79, cf57d4b, a94fb9e (pc/PC-217) | | |
