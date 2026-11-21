@@ -275,12 +275,12 @@ namespace Tellma.Core.AspNetCore.Tests.Api
     /// <param name="factory">The recording pipeline's factory.</param>
     public sealed class PjCurrencyService(RecordingPipelineFactory factory) : EntityService<PjCurrency>(factory);
 
-    /// <summary>A routed service with a polling action.</summary>
-    [ApiRoute("inbox")]
+    /// <summary>A routed service of the suite's own, beside Core's inbox.</summary>
+    [ApiRoute("pj-inbox")]
     [SuppressMessage("Performance", "CA1822:Mark members as static", Justification = "An action is an instance method by contract; the registry refuses a static one.")]
     public sealed class PjInboxService
     {
-        /// <summary>Summarises the caller's inbox: polled, so it stamps no activity.</summary>
+        /// <summary>Summarises the caller's inbox; its route is not a polling one, so it stamps activity.</summary>
         /// <returns>The summary.</returns>
         [ApiAction("summary", Mutation = false, Idempotent = true, MemberOnly = true)]
         public Task<PjInboxSummary> SummaryAsync()

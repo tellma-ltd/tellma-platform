@@ -1200,6 +1200,39 @@ the reader's content slot, and anything else as its JSON text. A missing resourc
 key; arguments that are not a JSON object render the message without them and log
 `NotificationArgumentsInvalid` once per scope.
 
+### The inbox, preferences, delivery and retention
+
+`InboxService` (route `inbox`) serves the calling user's own inbox; every action is member-only,
+hidden from MCP, and judged by the statements' own predicates on the caller, so another user's id
+is ignored, never refused. `summary` reads, in one Read batch, the unread and unseen counts (capped
+at `SummaryCountCap`), the highest unseen severity, the inbox version, the latest
+`SummaryLatestCount` rows newest first (ties by id), the caller's running jobs with their labels, and
+the actors as related users projected to their related select. `seen`, `read`, `read-all`, `clear`
+and `clear-read` each run one Persist batch that bumps the caller's inbox version and publishes
+`inbox.changed` to the caller after the commit; they return the rows touched and the new version.
+`read` and `clear` take at most the notifications' `MaxIds` ids, dropping repeats and ids outside the
+key's range. The verbs run in a read-only tenant and are refused in a frozen one.
+`NotificationAccessCriteria` scopes the read of `Notification` to `UserId = me()`.
+
+`NotificationPreferencesService` (route `notification-preferences`) reads the caller's stored
+deviations (`get`, dropping types and channels no longer registered) and replaces them (`save`):
+`NotificationPreferenceRules` refuses an unknown type or channel, a repeated pair and the inbox
+turned off for a type that cannot be muted, with the codes in `NotificationValidationCodes`, and
+drops every row equal to its channel's default. The save bumps the caller's preferences tag and is
+admitted in a read-only tenant.
+
+`NotificationDeliveryHandler` runs `core.notification-delivery` (four slices a claim, twelve
+attempts, failure notices to the inbox alone, run in a read-only tenant). It reads every slice's
+recipients and their stored preferences in one round trip, negotiates each active recipient's
+localization once from their preferences and the tenant's settings, and hands each delivering
+channel, in registration order, the recipients who receive it; then it persists the enlisted writes
+once. A channel that throws fails the claim, and the job retries.
+
+`NotificationRetentionHandler` runs `core.notification-retention`, a built-in schedule (id 2) at
+03:30 every day. It deletes read rows older than `ReadRetention`, then unread rows older than
+`UnreadRetention`, `RetentionPageSize` rows per maintenance batch, counting each page as
+`tellma.notifications.retained` by band and reporting the totals as progress.
+
 ## Entity stacks
 
 A feature stacks an entity with `Entity<TEntity>()` (the platform's default service) or

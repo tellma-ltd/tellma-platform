@@ -186,7 +186,7 @@ function drawnTexts(element: HTMLElement): DrawnText[] {
   return spans
     .filter((span) => span.type === 'tspan')
     .map((span) => ({
-      text: (span.style.text ?? '').replace(/[\u200E\u200F]/g, ''),
+      text: (span.style.text ?? '').replace(/[\u061C\u200E\u200F]/g, ''),
       x: (span.getComputedTransform()?.[4] ?? 0) + (span.style.x ?? 0),
     }));
 }

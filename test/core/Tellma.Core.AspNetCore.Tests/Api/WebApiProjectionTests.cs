@@ -28,6 +28,7 @@ using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.Abstractions.Crud;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Errors;
+using Tellma.Core.Abstractions.Notifications;
 using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.Abstractions.Validation;
 using Tellma.Core.Access;
@@ -37,6 +38,7 @@ using Tellma.Core.AspNetCore.Limits;
 using Tellma.Core.AspNetCore.Routing;
 using Tellma.Core.AspNetCore.Tests.Infrastructure;
 using Tellma.Core.Crud;
+using Tellma.Core.Notifications;
 
 namespace Tellma.Core.AspNetCore.Tests.Api
 {
@@ -68,7 +70,7 @@ namespace Tellma.Core.AspNetCore.Tests.Api
             Assert.Contains(routes, static route => route.Template == RouteContracts.TemplatePrefix + "centers/get-by-parent-ids");
             Assert.Contains(routes, static route => route.Template == RouteContracts.TemplatePrefix + "center-notes/query");
             Assert.Contains(routes, static route => route.Template == RouteContracts.TemplatePrefix + "currencies/all");
-            Assert.Contains(routes, static route => route.Template == RouteContracts.TemplatePrefix + "inbox/summary");
+            Assert.Contains(routes, static route => route.Template == RouteContracts.TemplatePrefix + "pj-inbox/summary");
         }
 
         [Fact]
@@ -78,9 +80,9 @@ namespace Tellma.Core.AspNetCore.Tests.Api
             List<RouteEndpoint> projected = Projected(host);
 
             // --- The export's and the report's own policies, chained ahead of the web group's; the report's lane by priority ---
-            RateChainSpec export = RatePolicies.Resolve(Endpoint(projected, "inbox/export").Metadata);
-            RateChainSpec report = RatePolicies.Resolve(Endpoint(projected, "inbox/report").Metadata);
-            RateChainSpec summary = RatePolicies.Resolve(Endpoint(projected, "inbox/summary").Metadata);
+            RateChainSpec export = RatePolicies.Resolve(Endpoint(projected, "pj-inbox/export").Metadata);
+            RateChainSpec report = RatePolicies.Resolve(Endpoint(projected, "pj-inbox/report").Metadata);
+            RateChainSpec summary = RatePolicies.Resolve(Endpoint(projected, "pj-inbox/summary").Metadata);
             RateChainSpec builtIn = RatePolicies.Resolve(Endpoint(projected, "centers/get-by-parent-ids").Metadata);
 
             Assert.Equal([TellmaRatePolicies.Export, RatePolicies.UserAcrossTenants, TellmaRatePolicies.User, TellmaRatePolicies.Tenant], export.Policies.Select(static policy => policy.Name));
@@ -121,8 +123,10 @@ namespace Tellma.Core.AspNetCore.Tests.Api
                 { "center-notes/query", "pj.PjCenterNote:Read", false, false, false, false, false, "ChildQuery" },
                 { "currencies/all", "pj.PjCurrency:Read", false, false, false, false, false, "Stack" },
                 { "ledgers/delete-by-query", "pj.PjLedger:Delete", true, false, false, false, false, "Stack" },
+                { "pj-inbox/summary", null, false, false, false, false, false, "Service" },
+                { "pj-inbox/purge", "pj.Inbox:Purge", true, false, false, false, false, "Service" },
+                // Core's own inbox summary is polled, so it stamps no activity.
                 { "inbox/summary", null, false, false, false, true, false, "Service" },
-                { "inbox/purge", "pj.Inbox:Purge", true, false, false, false, false, "Service" },
                 { "users/save", "core.User:Save", true, false, false, false, true, "Stack" },
             };
         }
@@ -192,6 +196,28 @@ namespace Tellma.Core.AspNetCore.Tests.Api
             Assert.Equal("entities[1].isActive", error.GetProperty("path").GetString());
             Assert.Equal("Active is untidy", error.GetProperty("message").GetString());
             Assert.Equal(nameof(PjCenter.IsActive), error.GetProperty("arguments").GetProperty("property").GetString());
+        }
+
+        [Fact]
+        public async Task A_refused_preferences_save_binds_its_top_level_array_and_roots_each_error_at_the_body()
+        {
+            // An invoker that runs Core's preference rules on the body the edge bound, as the service does before it persists.
+            await using TellmaTestHost host = await StartAsync(static options => options.ConfigureServices += static services =>
+                services.Replace(ServiceDescriptor.Scoped<IApiActionInvoker, PreferenceRulesInvoker>()));
+
+            using HttpResponseMessage response = await SendAsync(
+                host,
+                host.Cookie(),
+                "notification-preferences/save",
+                /*lang=json,strict*/ """[{"type":"acme.nothing","channel":"email","enabled":true},{"type":"core.user.added","channel":"fax","enabled":true}]""");
+
+            // --- A body that is a list renders each row's member under body ---
+            Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
+            Problem problem = await Problem.ReadAsync(response);
+            Assert.Equal("validation", problem.Code);
+            Assert.Equal(
+                [("body[0].type", NotificationValidationCodes.UnknownType), ("body[1].channel", NotificationValidationCodes.UnknownChannel)],
+                problem.Document.GetProperty("errors").EnumerateArray().Select(static error => (error.GetProperty("path").GetString(), error.GetProperty("code").GetString())));
         }
 
         [Fact]
@@ -328,7 +354,7 @@ namespace Tellma.Core.AspNetCore.Tests.Api
             Assert.Equal("done", summary.RootElement.GetString());
             await PostAsync(host, cookie, "centers/ping", null, HttpStatusCode.NoContent);
             await PostAsync(host, cookie, "center-notes/query", /*lang=json,strict*/ """{"top":5}""", HttpStatusCode.OK);
-            using JsonDocument inbox = await PostAsync(host, cookie, "inbox/summary", null, HttpStatusCode.OK);
+            using JsonDocument inbox = await PostAsync(host, cookie, "pj-inbox/summary", null, HttpStatusCode.OK);
             Assert.Equal(3, inbox.RootElement.GetProperty("unread").GetInt32());
 
             IReadOnlyList<PipelineCall> calls = host.Services.GetRequiredService<PipelineLog>().Calls;
@@ -353,7 +379,7 @@ namespace Tellma.Core.AspNetCore.Tests.Api
         {
             await using TellmaTestHost host = await StartAsync();
 
-            using HttpResponseMessage response = await SendAsync(host, host.Cookie(), "inbox/document", null);
+            using HttpResponseMessage response = await SendAsync(host, host.Cookie(), "pj-inbox/document", null);
 
             Assert.Equal(HttpStatusCode.OK, response.StatusCode);
             Assert.Equal("application/json", response.Content.Headers.ContentType?.MediaType);
@@ -409,7 +435,7 @@ namespace Tellma.Core.AspNetCore.Tests.Api
         {
             await using TellmaTestHost host = await StartAsync();
 
-            using HttpResponseMessage response = await SendAsync(host, host.Cookie(), "inbox/export", null);
+            using HttpResponseMessage response = await SendAsync(host, host.Cookie(), "pj-inbox/export", null);
 
             // --- The workbook's media type, its file name in ASCII and in UTF-8, and no length ---
             Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -429,7 +455,7 @@ namespace Tellma.Core.AspNetCore.Tests.Api
         [Theory]
         [InlineData("centers/query", "pj.PjCenter", "query")]
         [InlineData("centers/count-lines", "pj.PjCenter", "count-lines")]
-        [InlineData("inbox/summary", "inbox", "summary")]
+        [InlineData("pj-inbox/summary", "pj-inbox", "summary")]
         public async Task A_projected_request_tags_its_activity_with_its_resource_and_operation(string relative, string resource, string operation)
         {
             // Requests of other suites running alongside carry other trace ids.
@@ -450,7 +476,7 @@ namespace Tellma.Core.AspNetCore.Tests.Api
             ActivitySource.AddActivityListener(listener);
             await using TellmaTestHost host = await StartAsync();
 
-            using HttpRequestMessage request = Request(relative, relative.StartsWith("inbox", StringComparison.Ordinal) ? null : /*lang=json,strict*/ """{"ids":[1]}""", host.Cookie());
+            using HttpRequestMessage request = Request(relative, relative.StartsWith("pj-inbox", StringComparison.Ordinal) ? null : /*lang=json,strict*/ """{"ids":[1]}""", host.Cookie());
             request.Headers.Add("traceparent", $"00-{trace.ToHexString()}-{ActivitySpanId.CreateRandom().ToHexString()}-01");
             using HttpResponseMessage response = await host.Client.SendAsync(request, TestContext.Current.CancellationToken);
 
@@ -926,6 +952,25 @@ namespace Tellma.Core.AspNetCore.Tests.Api
             string text = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
             Assert.True(status == response.StatusCode, $"{relative} answered {(int)response.StatusCode}: {text}");
             return JsonDocument.Parse(text.Length == 0 ? "{}" : text);
+        }
+
+        /// <summary>
+        ///     An action invoker that runs the notification preference rules on the bound body: the
+        ///     body must be the list the edge bound from a top-level JSON array, and a refused row
+        ///     throws as the preferences service does.
+        /// </summary>
+        /// <param name="services">The request scope's services.</param>
+        private sealed class PreferenceRulesInvoker(IServiceProvider services) : IApiActionInvoker
+        {
+            /// <inheritdoc />
+            public Task<object?> InvokeAsync(ApiActionDescriptor action, object? body, CancellationToken cancellationToken = default)
+            {
+                IReadOnlyList<NotificationPreference> rows = Assert.IsAssignableFrom<IReadOnlyList<NotificationPreference>>(body);
+                return Task.FromResult<object?>(NotificationPreferenceRules.Deviations(
+                    rows,
+                    services.GetRequiredService<INotificationTypeRegistry>(),
+                    services.GetRequiredService<INotificationChannelRegistry>()));
+            }
         }
 
         /// <summary>A converter factory that claims one type and cannot build its converter, as a broken converter would.</summary>

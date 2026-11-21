@@ -68,6 +68,8 @@ namespace Tellma.Core.IntegrationTests.Jobs
         ///     The statements that return the database to its state after creation, the seeded rows kept:
         ///     the user schedules go with their states, and the fixture's built-in schedule is active, as
         ///     seeded, and not yet initialised, so a poll only ever fires it once a test makes it due.
+        ///     The platform's own built-in schedules are kept stopped, so a tick leases and fires the
+        ///     fixture's schedules alone.
         /// </summary>
         private static readonly string ResetText = string.Create(CultureInfo.InvariantCulture, $"""
             DELETE FROM [test].[RunLog];
@@ -77,6 +79,8 @@ namespace Tellma.Core.IntegrationTests.Jobs
             UPDATE [core].[ScheduleStates] SET [NextDueAt] = NULL, [LastFiredAt] = NULL, [LastScheduledFor] = NULL, [LastSkippedAt] = NULL, [LeaseToken] = NULL, [LeaseExpiresAt] = NULL;
             UPDATE [core].[Schedules] SET [IsActive] = 1, [PausedReason] = NULL, [CronExpression] = N'{BuiltInCron}', [TimeZoneId] = NULL
             WHERE [Id] = {FixtureFeature.ProbeScheduleId} AND ([IsActive] = 0 OR [PausedReason] IS NOT NULL OR [CronExpression] <> N'{BuiltInCron}' OR [TimeZoneId] IS NOT NULL);
+            UPDATE [core].[Schedules] SET [IsActive] = 0
+            WHERE [Id] <> {FixtureFeature.ProbeScheduleId} AND [Id] <= {WellKnownIds.ReservedIdBandEnd} AND [IsActive] = 1;
             UPDATE [core].[JobWorkerState] SET [LastTickAt] = NULL, [LastTickOwner] = NULL;
             """);
 

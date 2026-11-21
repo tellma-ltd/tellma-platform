@@ -703,6 +703,28 @@
   <data name="Notification_core_scheduler_gap" xml:space="preserve">
     <value>Background jobs did not run from {previousTickAt, date, medium} {previousTickAt, time, short} until {now, date, medium} {now, time, short}. {heldCount, plural, =0 {No overdue job was paused.} one {# overdue job is paused until an administrator resumes or stops it.} other {# overdue jobs are paused until an administrator resumes or stops them.}}</value>
   </data>
+  <!-- Notifications: the preference save's validation codes, retention's progress, and the handlers' labels -->
+  <data name="Notifications_UnknownType" xml:space="preserve">
+    <value>There is no such notification type.</value>
+  </data>
+  <data name="Notifications_UnknownChannel" xml:space="preserve">
+    <value>There is no such delivery channel.</value>
+  </data>
+  <data name="Notifications_DuplicatePreference" xml:space="preserve">
+    <value>This notification type and channel are listed more than once.</value>
+  </data>
+  <data name="Notifications_CannotMute" xml:space="preserve">
+    <value>Notifications of this type can’t be turned off in the inbox.</value>
+  </data>
+  <data name="Notifications_RetentionProgress" xml:space="preserve">
+    <value>Deleted {read, plural, one {# read notification} other {# read notifications}} and {unread, plural, one {# unread notification} other {# unread notifications}}.</value>
+  </data>
+  <data name="JobHandler_core_notification-delivery" xml:space="preserve">
+    <value>Delivering notifications</value>
+  </data>
+  <data name="JobHandler_core_notification-retention" xml:space="preserve">
+    <value>Deleting old notifications</value>
+  </data>
   <data name="Schedules_CronInvalid" xml:space="preserve">
     <value>The cron expression {expression} is not valid. Give minute, hour, day of month, month and day of week, such as 0 3 * * * for three every morning.</value>
   </data>

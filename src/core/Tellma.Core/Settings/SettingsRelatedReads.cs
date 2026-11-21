@@ -11,7 +11,6 @@ using Tellma.Core.Abstractions.Crud;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Settings;
 using Tellma.Core.Crud;
-using Tellma.Core.Crud.Query;
 using Tellma.Core.Queryex;
 
 namespace Tellma.Core.Settings
@@ -90,7 +89,7 @@ namespace Tellma.Core.Settings
                 }
 
                 schema ??= schemas.GetSchema(shape);
-                IReadOnlySet<string> projection = Projection(target, schema);
+                IReadOnlySet<string> projection = RelatedProjections.Of(stacks, target, schema);
                 Composer composer = Composers.GetOrAdd(
                     (target.ClrType, keyType),
                     static pair => ComposeOfMethod.MakeGenericMethod(pair.Entity, pair.Key).CreateDelegate<Composer>());
@@ -174,23 +173,6 @@ namespace Tellma.Core.Settings
                     related.Add(entity.Name, found, projection);
                 }
             };
-        }
-
-        /// <summary>The columns of a target's related select its schema entity declares, its key first.</summary>
-        /// <param name="entity">The target leaf.</param>
-        /// <param name="schema">The query schema.</param>
-        /// <returns>The columns.</returns>
-        /// <exception cref="InvalidOperationException">The schema declares no entity of the leaf.</exception>
-        private OrderedNameSet Projection(EntityMetadata entity, QueryexSchema schema)
-        {
-            EntityDescriptor descriptor = schema.FindEntity(entity.Name)
-                ?? throw new InvalidOperationException($"The query schema declares no entity {entity.Name}, which a setting key references, so its related rows cannot be read.");
-            IReadOnlySet<string> related = stacks.Find(entity.Name)?.RelatedSelect
-                ?? stacks.FindChildQuery(entity.Name)?.RelatedSelect
-                ?? StackDescriptorBuilder.RelatedSelect(entity);
-
-            // A multilingual twin the tenant's languages leave out is not in the schema.
-            return new OrderedNameSet([entity.Key.Name, .. related.Where(column => SchemaLookup.Property(descriptor, column) is not null)]);
         }
     }
 }

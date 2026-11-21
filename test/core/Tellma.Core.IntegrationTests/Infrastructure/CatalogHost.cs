@@ -136,12 +136,23 @@ namespace Tellma.Core.IntegrationTests.Infrastructure
             return host;
         }
 
-        /// <summary>Applies the catalog migrations to a database, as the migrator does.</summary>
+        /// <summary>
+        ///     Applies the catalog migrations to a database as the migrator does, each statement under a
+        ///     bound far above the 30-second default: the one the suite's fixtures create and prepare
+        ///     databases under.
+        /// </summary>
         /// <param name="connectionString">The database's connection string.</param>
         /// <returns>A task that completes when the catalog is migrated.</returns>
         public static async Task MigrateAsync(string connectionString)
         {
             await using var context = CatalogDbContext.Create(connectionString);
+
+            // The migrator runs the catalog's migrations under its migration bound (an hour by
+            // default), never the client's 30-second default. A server busy with the suite's
+            // parallel creations and migrations can hold one DDL statement past 30 seconds, as it
+            // holds a creation, and the test under way would fail in its setup before it reached
+            // what it pins.
+            context.Database.SetCommandTimeout(SqlDatabaseCreation.CommandTimeout);
             await context.Database.MigrateAsync(TestContext.Current.CancellationToken);
         }
 
