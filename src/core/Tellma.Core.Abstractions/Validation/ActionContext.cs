@@ -148,35 +148,38 @@ namespace Tellma.Core.Abstractions.Validation
         }
 
         /// <summary>
-        ///     Waits until the action's validation has settled: every other task of the validation
-        ///     rounds (the hook, the components and the stack's validators) has completed or waits here
-        ///     too, and no load is pending. <see cref="Errors" /> then holds every error those tasks
-        ///     reported, so a method that calls another system before it composes, such as an identity
-        ///     server, awaits this and makes the call only while <see cref="Errors" /> holds none.
+        ///     Waits until the action's validation has settled, then answers whether the action, as
+        ///     validated, would persist. Settled means every other task of the validation rounds (the
+        ///     hook, the components and the stack's validators) has completed or waits here too, and no
+        ///     load is pending. The answer is false when <see cref="Errors" /> holds an error, when a
+        ///     warning was raised and not confirmed, or when the tenant's state admits no persist of the
+        ///     action; the pipeline then refuses the action and <see cref="Persisted" /> faults with the
+        ///     refusal. A method that calls another system before it composes, such as an identity
+        ///     server, makes the call only on true, and on false awaits <see cref="Persisted" />.
         /// </summary>
         /// <remarks>
         ///     <para>
         ///         The wait costs no round trip: it resumes at the quiet point where the rounds would
         ///         otherwise end. A task that awaits it may load again afterwards, and the rounds go on;
-        ///         another task that awaited it too resumes at the same point, so an error it reports
-        ///         after resuming can follow the check. Await it after the first
+        ///         another task that awaited it too resumes at the same point, so an error or a warning
+        ///         it reports after resuming can follow the answer. Await it after the first
         ///         <see cref="IContextLoader.LoadAsync" />, so the targets are loaded, and before reading
         ///         <see cref="Persisted" />.
         ///     </para>
         ///     <para>
         ///         It faults when the rounds stop early, as a parked load does. A context the pipeline
-        ///         did not create, such as one a unit test builds, has no rounds to wait for, and the
-        ///         wait completes at once.
+        ///         did not create, such as one a unit test builds, has no rounds to wait for: the answer
+        ///         comes at once, and is false only when <see cref="Errors" /> holds an error.
         ///     </para>
         /// </remarks>
-        /// <returns>A task that completes once the validation settled.</returns>
+        /// <returns>True when the action, as validated, would persist; false when the pipeline will refuse it.</returns>
         /// <exception cref="InvalidOperationException">
         ///     The calling flow is no task of the rounds, its task already read <see cref="Persisted" />,
         ///     or another of its flows is parked at a load.
         /// </exception>
-        public Task ValidatedAsync()
+        public Task<bool> ValidatedAsync()
         {
-            return Settle?.Invoke() ?? Task.CompletedTask;
+            return Settle?.Invoke() ?? Task.FromResult(!Errors.HasErrors);
         }
 
         /// <summary>
@@ -200,8 +203,11 @@ namespace Tellma.Core.Abstractions.Validation
         /// <summary>Refuses a save or an update from a flow that may compose no more; set by the pipeline.</summary>
         internal Action? ComposeGuard { get; init; }
 
-        /// <summary>Waits until the validation rounds settled, for <see cref="ValidatedAsync" />; set by the pipeline, null outside it.</summary>
-        internal Func<Task>? Settle { get; init; }
+        /// <summary>
+        ///     Waits until the validation rounds settled and answers whether the action would persist,
+        ///     for <see cref="ValidatedAsync" />; set by the pipeline, null outside it.
+        /// </summary>
+        internal Func<Task<bool>>? Settle { get; init; }
 
         /// <summary>The source the pipeline completes or faults <see cref="Persisted" /> through: once the persist committed, or with what ended the action.</summary>
         private TaskCompletionSource PersistedSource { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);

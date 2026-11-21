@@ -24,33 +24,44 @@ namespace Tellma.Core.Crud
         /// <exception cref="TenantUnavailableException">The tenant is frozen, or read-only and nothing admits the persist.</exception>
         public static void Ensure(RequestContext context, bool mutation, bool allowWhenReadOnly, IReadOnlyList<WriteFrame> frames)
         {
+            if (Refusal(context, mutation, allowWhenReadOnly, frames) is TenantUnavailableException refused)
+            {
+                throw refused;
+            }
+        }
+
+        /// <summary>The refusal <see cref="Ensure" /> raises, answered rather than thrown, so a caller can ask ahead of the persist.</summary>
+        /// <param name="context">The scope's request context.</param>
+        /// <param name="mutation">Whether the operation writes tenant data.</param>
+        /// <param name="allowWhenReadOnly">Whether the operation runs on a read-only tenant.</param>
+        /// <param name="frames">The write frames the persist is nested in, outermost first.</param>
+        /// <returns>The refusal; null when the tenant's state admits the persist.</returns>
+        public static TenantUnavailableException? Refusal(RequestContext context, bool mutation, bool allowWhenReadOnly, IReadOnlyList<WriteFrame> frames)
+        {
             ArgumentNullException.ThrowIfNull(context);
             ArgumentNullException.ThrowIfNull(frames);
             if (context.Tenant is not TenantDescriptor tenant)
             {
-                return;
+                return null;
             }
 
             switch (tenant.State)
             {
                 case TenantState.Frozen:
                     // The database may be READ_ONLY: no persist runs, whatever frame it is nested in.
-                    throw Refused(tenant, TenantProblemCodes.Frozen);
+                    return Refused(tenant, TenantProblemCodes.Frozen);
 
                 case TenantState.ReadOnly:
                     // --- A frame that admits it: a read-only-safe API action, a RunsWhenReadOnly job, a provisioning step ---
                     if (frames.Any(static frame => frame.AdmitsReadOnly))
                     {
-                        return;
+                        return null;
                     }
 
                     // --- An API action frame that does not: its descriptor, not the nested operation's, judges ---
-                    if (frames.Any(static frame => frame.Kind == WriteHostKind.ApiAction) || (mutation && !allowWhenReadOnly))
-                    {
-                        throw Refused(tenant, TenantProblemCodes.ReadOnly);
-                    }
-
-                    return;
+                    return frames.Any(static frame => frame.Kind == WriteHostKind.ApiAction) || (mutation && !allowWhenReadOnly)
+                        ? Refused(tenant, TenantProblemCodes.ReadOnly)
+                        : null;
 
                 // The tenant middleware and the prologue refuse a tenant in any other state.
                 case TenantState.Active:
@@ -58,7 +69,7 @@ namespace Tellma.Core.Crud
                 case TenantState.Provisioning:
                 case TenantState.Retired:
                 default:
-                    return;
+                    return null;
             }
         }
 

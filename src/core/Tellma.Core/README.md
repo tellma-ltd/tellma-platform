@@ -2076,11 +2076,14 @@ deployment no longer offers stays until it changes.
 | `Users.ContactEmailInvalid` / `Users.MobileInvalid` | a contact email that is not one plain address, a mobile that is not E.164 |
 | `Users.NotIndividual` / `Users.AlreadyJoined` / `Required` | an `invite` target that is not an individual, has joined, or has no email |
 | `Users.NotService` | an `issue-credentials` target that is not a service account |
-| `Users.Inactive` | an inactive target of either action |
+| `Users.Inactive` | an inactive target of either action, or an account deactivated while its credentials were issued |
+| `Users.CredentialsConcurrent` | an account whose client another request changed while its credentials were issued |
 
 The two identity actions call the identity server between the action's round trips, with no
 transaction open, once every validator has spoken (`ActionContext.ValidatedAsync`, which resumes the
-method at the validation's quiet point without a round trip of its own):
+method at the validation's quiet point without a round trip of its own, and answers false when an
+error, an unconfirmed warning or the tenant's state will refuse the action, so the identity server is
+never called for an action that will not persist):
 
 - **`invite`** sends one invitation per target in request order (the user's language or the tenant's
   first, the name in that language's content slot, the tenant's link, and a lookup only on a sandbox),
@@ -2093,11 +2096,15 @@ method at the validation's quiet point without a round trip of its own):
   prefix the identity server answered is recorded and raised as `partial-failure` with the ids never
   attempted. A recompose of the persist replays the write-back and never calls the identity server
   again.
-- **`issue-credentials`** (single target) creates a client, updates the account to name it (joining
-  it on its first credentials), and answers the client id and its one-time secret, which no log or
-  rendering carries. Once the action committed, the client is recorded and the previous one deleted;
-  a persist that provably never committed deletes the new one instead, and one whose commit is
-  unknown (a lost connection around the commit) keeps it and logs `ServiceAccountClientKept`.
+- **`issue-credentials`** (single target) creates a client, joins the account on its first
+  credentials, links it to the client only while it is still active and still names the client it was
+  loaded with (else `Users.Inactive` or `Users.CredentialsConcurrent`, and nothing commits), and
+  answers the client id and its one-time secret, which no log or rendering carries. Once the action
+  committed, the client is recorded and the previous one deleted; a persist that failed deletes the
+  new one instead. One whose commit is unknown (a lost connection around the commit) reads the account
+  back once: a row naming the new client committed, so the client is recorded and the previous one
+  deleted, and the failure is still raised; any other row did not, so the new client is deleted. Only a
+  failed read-back keeps it, logged as `ServiceAccountClientKept`.
 - **`invitation-status`** reads the requested users under the caller's read decision in one round
   trip, omitting the users the caller cannot read, then asks the identity server for the delivery of
   the invitations it emailed.

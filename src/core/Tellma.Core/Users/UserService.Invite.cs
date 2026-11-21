@@ -61,8 +61,9 @@ namespace Tellma.Core.Users
 
             // --- Phase 1 (round trip 1): the targets, then every validator's verdict ---
             await context.Loader.LoadAsync().ConfigureAwait(false);
-            await context.ValidatedAsync().ConfigureAwait(false);
-            if (context.Errors.HasErrors)
+            // An error, an unconfirmed warning or the tenant's state refuses the action after the
+            // rounds: the identity server is never called for an action that will not persist.
+            if (!await context.ValidatedAsync().ConfigureAwait(false))
             {
                 await FailValidatedAsync(context).ConfigureAwait(false);
             }

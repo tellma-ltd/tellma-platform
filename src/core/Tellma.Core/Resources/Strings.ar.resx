@@ -520,6 +520,9 @@
   <data name="Users_AlreadyJoined" xml:space="preserve">
     <value>انضم هذا المستخدم بالفعل.</value>
   </data>
+  <data name="Users_CredentialsConcurrent" xml:space="preserve">
+    <value>غيّر طلب آخر بيانات اعتماد حساب الخدمة هذا في الوقت نفسه، لذا أُلغيت البيانات الجديدة. أصدرها مرة أخرى.</value>
+  </data>
   <data name="Users_SubjectMismatch" xml:space="preserve">
     <value>أصبح هذا البريد الإلكتروني تابعًا لحساب تسجيل دخول آخر، لذا لم يُعدَّل المستخدم.</value>
   </data>

@@ -520,6 +520,9 @@
   <data name="Users_AlreadyJoined" xml:space="preserve">
     <value>This user has already joined.</value>
   </data>
+  <data name="Users_CredentialsConcurrent" xml:space="preserve">
+    <value>Another request changed the credentials of this service account at the same time, so the new ones were discarded. Issue them again.</value>
+  </data>
   <data name="Users_SubjectMismatch" xml:space="preserve">
     <value>This email now belongs to a different sign-in account, so the user was left unchanged.</value>
   </data>

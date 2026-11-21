@@ -99,6 +99,12 @@ namespace Tellma.Core.Abstractions.Access
         public const string AlreadyJoined = "Users.AlreadyJoined";
 
         /// <summary>
+        ///     Another request changed a service account's credentials while new ones were being
+        ///     issued, so the new ones were discarded; issuing them again answers working ones.
+        /// </summary>
+        public const string CredentialsConcurrent = "Users.CredentialsConcurrent";
+
+        /// <summary>
         ///     The user's email now belongs to another identity account than the one the user is bound
         ///     to, so the invitation left the user as it was.
         /// </summary>

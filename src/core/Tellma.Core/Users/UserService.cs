@@ -241,16 +241,17 @@ namespace Tellma.Core.Users
         }
 
         /// <summary>
-        ///     Waits for the action to fail with the validation errors its rounds collected: the persist
-        ///     never runs, so the wait rethrows what ended the action.
+        ///     Waits for the action to fail with what its validation settled on: errors, unconfirmed
+        ///     warnings or the tenant's state. The persist never runs, so the wait rethrows what ended
+        ///     the action.
         /// </summary>
         /// <param name="context">The action's context.</param>
         /// <returns>Never returns normally.</returns>
-        /// <exception cref="InvalidOperationException">The action persisted although its validation failed.</exception>
+        /// <exception cref="InvalidOperationException">The action persisted although its validation refused it.</exception>
         private static async Task FailValidatedAsync(ActionContext<TUser, int> context)
         {
             await context.Persisted.ConfigureAwait(false);
-            throw new InvalidOperationException("The action persisted although its validation reported errors.");
+            throw new InvalidOperationException("The action persisted although its validation refused it.");
         }
     }
 }

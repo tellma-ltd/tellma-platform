@@ -76,7 +76,7 @@ namespace Tellma.Core.Tests.Users
                 new FixedLinks(),
                 Languages,
                 ValueSets,
-                Refusing.Of<IGuardedBatchRunner>(),
+                Runner,
                 Harness.Services.GetRequiredService<ISecurableRegistry>(),
                 _scope.ServiceProvider.GetRequiredService<AccessEvaluator>(),
                 new FakeTimeProvider(Now),
@@ -93,6 +93,9 @@ namespace Tellma.Core.Tests.Users
 
         /// <summary>The membership hints recorded.</summary>
         public RecordingMemberships Memberships { get; } = new();
+
+        /// <summary>The guarded runner, which answers each raw read from a script.</summary>
+        public ScriptedRunner Runner { get; } = new();
 
         /// <summary>The session listener a deactivation tells.</summary>
         public RecordingListener Listener { get; } = new();
@@ -292,6 +295,45 @@ namespace Tellma.Core.Tests.Users
             }
 
             return Task.CompletedTask;
+        }
+    }
+
+    /// <summary>
+    ///     A guarded runner whose batches record one raw statement each and answer it with the ids
+    ///     scripted, or fail before the round trip.
+    /// </summary>
+    internal sealed class ScriptedRunner : IGuardedBatchRunner
+    {
+        /// <summary>The ids each statement's first result set answers.</summary>
+        public int[] Rows { get; set; } = [];
+
+        /// <summary>Fails every run when set.</summary>
+        public Exception? Failure { get; set; }
+
+        /// <summary>Every run's purpose and the statement it composed, in call order.</summary>
+        public ConcurrentQueue<(BatchPurpose Purpose, FormattableString Sql)> Runs { get; } = new();
+
+        /// <inheritdoc />
+        public async Task<TResult> RunAsync<TResult>(
+            BatchPurpose purpose,
+            Func<ConnectedUser, IDataBatch, ValueTask> compose,
+            Func<ConnectedUser, BatchOutcome, TResult> read,
+            CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(compose);
+            ArgumentNullException.ThrowIfNull(read);
+            if (Failure is { } failure)
+            {
+                throw failure;
+            }
+
+            // The statement is composed and recorded, then answered; neither callback reads the user
+            // or the outcome.
+            (IDataBatch batch, RecordingBatchProxy recorder) = RecordingBatchProxy.Create();
+            await compose(null!, batch).ConfigureAwait(false);
+            Runs.Enqueue((purpose, Assert.Single(recorder.Statements).Sql));
+            recorder.Complete(Rows);
+            return read(null!, null!);
         }
     }
 

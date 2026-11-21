@@ -10,12 +10,14 @@ using System.Collections.Concurrent;
 using System.Globalization;
 using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Api;
+using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.Abstractions.Crud;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Errors;
 using Tellma.Core.Abstractions.Identity;
 using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.Abstractions.Validation;
+using Tellma.Core.Crud.Validation;
 using Tellma.Core.IntegrationTests.Access;
 using Tellma.Testing.Support.Identity;
 
@@ -24,10 +26,11 @@ namespace Tellma.Core.IntegrationTests.Users
     /// <summary>
     ///     The users' identity actions against a real tenant database and a scripted identity server:
     ///     the invite's write-back and its transitions, the invitation status under the caller's read
-    ///     decision, service credentials issued, rotated and revoked, an invite answered in part, a
-    ///     recomposed persist that calls the identity server once, the round-trip budgets of the users' writes,
-    ///     no transaction open while the identity server is called, and a user delete that takes the rows
-    ///     its keys cascade to.
+    ///     decision, service credentials issued, rotated and revoked, refused when the account changed
+    ///     while its client was created, an invite answered in part, a recomposed persist that calls the
+    ///     identity server once, an unconfirmed warning that calls it never, the round-trip budgets of
+    ///     the users' writes, no transaction open while the identity server is called, and a user delete
+    ///     that takes the rows its keys cascade to.
     /// </summary>
     /// <param name="fixture">The two tenant databases and their composition.</param>
     [Trait("Category", "Integration")]
@@ -51,11 +54,7 @@ namespace Tellma.Core.IntegrationTests.Users
         /// <inheritdoc />
         public ValueTask InitializeAsync()
         {
-            _instance = fixture.CreateInstance(configure: services =>
-            {
-                _ = services.Replace(ServiceDescriptor.Singleton<IIdentityServerClient>(_identity));
-                _ = services.Replace(ServiceDescriptor.Singleton<ITenantMembershipDirectory>(_memberships));
-            });
+            _instance = fixture.CreateInstance(configure: Scripted);
             return ValueTask.CompletedTask;
         }
 
@@ -395,6 +394,107 @@ namespace Tellma.Core.IntegrationTests.Users
             Assert.Equal([(ConnectDatabase.TenantA, first.ClientId, true), (ConnectDatabase.TenantA, second.ClientId, true)], _memberships.Records());
         }
 
+        [Fact]
+        public async Task Credentials_on_an_account_whose_client_changed_meanwhile_are_refused_and_the_new_client_deleted()
+        {
+            (_, string admin) = await fixture.SeedAdministratorAsync("Ann");
+            int robot = await SeedServiceAsync();
+            CredentialsResult first = await IssueAsync(admin, robot);
+
+            // Another issue links the account to another client while this one's client is created.
+            _identity.BeforeCreate = (_, _) => fixture.ExecuteAsync(ConnectDatabase.TenantA, Invariant($"UPDATE [core].[Users] SET [Subject] = N'svc-concurrent' WHERE [Id] = {robot};"));
+
+            ValidationException refused = await Assert.ThrowsAsync<ValidationException>(() => IssueAsync(admin, robot));
+
+            Assert.Equal([AccessCodes.CredentialsConcurrent], refused.Codes());
+            Assert.Equal("svc-concurrent", (await RowAsync(robot)).Subject);
+            Assert.Equal([_identity.Created.Last().Account.ClientId], _identity.Deleted);
+            Assert.DoesNotContain(_identity.Deleted, deleted => deleted == first.ClientId);
+        }
+
+        [Fact]
+        public async Task Credentials_on_an_account_deactivated_meanwhile_are_refused_and_the_new_client_deleted()
+        {
+            (_, string admin) = await fixture.SeedAdministratorAsync("Ann");
+            int robot = await SeedServiceAsync();
+            _identity.BeforeCreate = (_, _) => fixture.ExecuteAsync(ConnectDatabase.TenantA, Invariant($"UPDATE [core].[Users] SET [IsActive] = 0 WHERE [Id] = {robot};"));
+
+            ValidationException refused = await Assert.ThrowsAsync<ValidationException>(() => IssueAsync(admin, robot));
+
+            Assert.Equal([AccessCodes.Inactive], refused.Codes());
+            UserRow row = await RowAsync(robot);
+            Assert.Null(row.Subject);
+            Assert.Null(row.JoinedAt);
+            Assert.Equal([Assert.Single(_identity.Created).Account.ClientId], _identity.Deleted);
+            Assert.Empty(_memberships.Records());
+        }
+
+        // --- A warning the caller did not confirm refuses both identity actions before the identity server is called ---
+
+        [Fact]
+        public async Task An_unconfirmed_warning_calls_no_identity_server_and_the_confirmed_resend_invites_once()
+        {
+            (_, string admin) = await fixture.SeedAdministratorAsync("Ann");
+            int ada = await SeedNewAsync("Ada");
+            int robot = await SeedServiceAsync();
+            UserRow uninvited = await RowAsync(ada);
+            await using ServiceProvider warned = fixture.CreateInstance(configure: Scripted, compose: static tellma => tellma.AddFeature(new IdentityWarningFeature()));
+
+            // --- Neither action calls out while the warning stands ---
+            await using (AsyncServiceScope scope = await fixture.SteppedUpScopeAsync(admin, warned))
+            {
+                ConfirmationRequiredException invite = await Assert.ThrowsAsync<ConfirmationRequiredException>(
+                    () => scope.Users().ExecuteActionAsync<IReadOnlyList<InviteResult>>("invite", [ada], null, new ActionOptions(), Token));
+                Assert.Equal([IdentityWarningFeature.Key], invite.Requests.Select(static request => request.Key));
+            }
+
+            await using (AsyncServiceScope scope = await fixture.SteppedUpScopeAsync(admin, warned))
+            {
+                _ = await Assert.ThrowsAsync<ConfirmationRequiredException>(
+                    () => scope.Users().ExecuteActionAsync<CredentialsResult>("issue-credentials", [robot], null, new ActionOptions(), Token));
+            }
+
+            Assert.Empty(_identity.Invites);
+            Assert.Empty(_identity.Created);
+            Assert.Equal(uninvited, await RowAsync(ada));
+            Assert.Null((await RowAsync(robot)).Subject);
+
+            // --- The confirmed resend invites once ---
+            IReadOnlyList<InviteResult> results;
+            await using (AsyncServiceScope scope = await fixture.SteppedUpScopeAsync(admin, warned))
+            {
+                scope.ServiceProvider.GetRequiredService<Confirmations>().Seed([IdentityWarningFeature.Key]);
+                results = await scope.Users().ExecuteActionAsync<IReadOnlyList<InviteResult>>("invite", [ada], null, new ActionOptions(), Token);
+            }
+
+            Assert.Equal([new InviteResult(ada, InviteStatus.Invited, null)], results);
+            Assert.Single(_identity.Invites);
+        }
+
+        // --- The probe the no-open-transaction tests rest on ---
+
+        [Fact]
+        public async Task The_open_transaction_probe_sees_another_session_s_open_transaction()
+        {
+            int ada = await SeedNewAsync("Ada");
+            Assert.Equal(0, await OpenTransactionsAsync(Token));
+
+            // A transaction holding a write on another session, as the pipeline's would.
+            await using SqlConnection connection = new(fixture.ConnectionString(ConnectDatabase.TenantA));
+            await connection.OpenAsync(Token);
+            await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(Token);
+            await using (SqlCommand command = connection.CreateCommand())
+            {
+                command.Transaction = transaction;
+                command.CommandText = Invariant($"UPDATE [core].[Users] SET [LastInviteError] = N'probe' WHERE [Id] = {ada};");
+                Assert.Equal(1, await command.ExecuteNonQueryAsync(Token));
+            }
+
+            Assert.Equal(1, await OpenTransactionsAsync(Token));
+            await transaction.RollbackAsync(Token);
+            Assert.Equal(0, await OpenTransactionsAsync(Token));
+        }
+
         // --- The budgets of the users' other writes ---
 
         [Fact]
@@ -485,6 +585,14 @@ namespace Tellma.Core.IntegrationTests.Users
         }
 
         // --- Helpers ---
+
+        /// <summary>Replaces the identity server and the membership directory with the test's scripted ones.</summary>
+        /// <param name="services">The instance's services.</param>
+        private void Scripted(IServiceCollection services)
+        {
+            _ = services.Replace(ServiceDescriptor.Singleton<IIdentityServerClient>(_identity));
+            _ = services.Replace(ServiceDescriptor.Singleton<ITenantMembershipDirectory>(_memberships));
+        }
 
         /// <summary>Invites users in a stepped-up scope of the caller.</summary>
         /// <param name="subject">The caller.</param>
@@ -701,6 +809,50 @@ namespace Tellma.Core.IntegrationTests.Users
 
                 return Task.CompletedTask;
             }
+        }
+    }
+
+    /// <summary>A feature whose users' validator raises a warning on both identity actions.</summary>
+    internal sealed class IdentityWarningFeature : ITellmaFeature
+    {
+        /// <summary>The warning's confirmation key.</summary>
+        public const string Key = "Test.IdentityChecked";
+
+        /// <inheritdoc />
+        public string Name => "test";
+
+        /// <inheritdoc />
+        public void Declare(FeatureDeclaration declaration)
+        {
+        }
+
+        /// <inheritdoc />
+        public void Contribute(FeatureContribution contribution)
+        {
+            ArgumentNullException.ThrowIfNull(contribution);
+            _ = contribution.Confirmation(Key).Validator<User, IdentityWarningValidator>();
+        }
+    }
+
+    /// <summary>A users' validator that asks the caller to confirm every invite and every issue of credentials.</summary>
+    internal sealed class IdentityWarningValidator : IEntityValidator<User>
+    {
+        /// <inheritdoc />
+        public Task ValidateAsync(SaveContext<User> context)
+        {
+            return Task.CompletedTask;
+        }
+
+        /// <inheritdoc />
+        public Task ValidateActionAsync(string action, ActionContext<User> context)
+        {
+            ArgumentNullException.ThrowIfNull(context);
+            if (action is "invite" or "issue-credentials")
+            {
+                context.Host.Confirmations.Require(IdentityWarningFeature.Key);
+            }
+
+            return Task.CompletedTask;
         }
     }
 }
