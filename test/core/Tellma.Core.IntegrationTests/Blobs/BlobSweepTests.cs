@@ -14,6 +14,7 @@ using Tellma.Core.Abstractions.Jobs;
 using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.Blobs;
 using Tellma.Core.IntegrationTests.Data;
+using Tellma.Core.Jobs;
 using Tellma.Testing.Entities;
 
 namespace Tellma.Core.IntegrationTests.Blobs
@@ -22,8 +23,10 @@ namespace Tellma.Core.IntegrationTests.Blobs
     ///     The sweep and the reconcile against a fixture database: the claim takes only rows past their
     ///     deadline and takes a lapsed claim again, the row delete removes only rows still deleting, the
     ///     sweep job erases released and expired blobs from storage and the database through the
-    ///     worker's poll on a read-only tenant, a storage failure and a still-referenced row each stay
-    ///     claimed and are metered, the reconcile job releases old orphans of every kind, and both
+    ///     worker's poll on a read-only tenant, a storage failure, a still-referenced row and a row
+    ///     whose names fall outside the grammar each stay claimed and are metered, a failed purge is
+    ///     metered without failing the run, a requested cancel finishes the round under way and claims
+    ///     nothing more, the reconcile job releases old orphans of every kind, and both
     ///     built-in schedules are seeded rows. Every instant is relative to the database's clock, the
     ///     one the claim reads.
     /// </summary>
@@ -199,6 +202,100 @@ namespace Tellma.Core.IntegrationTests.Blobs
             FakeLogRecord retained = Assert.Single(Records("BlobSweepRowRetained"));
             Assert.Equal(referenced.Id.ToString(CultureInfo.InvariantCulture), Property(retained, "Id"));
             Assert.Equal([1L], failures.GetMeasurementSnapshot().Select(static measurement => measurement.Value));
+        }
+
+        [Fact]
+        public async Task A_claimed_row_whose_names_are_outside_the_grammar_stays_claimed_and_is_metered_while_the_others_are_swept()
+        {
+            // The key's kind and segment are upper case, which no staged row ever carries.
+            string outside = BlobName.Primary(BlobReferenceDatabase.FileKind, Guid.NewGuid().ToString("N")).ToUpperInvariant();
+            SeededBlob malformed = await fixture.SeedAsync(BlobState.Released, "DATEADD(minute, -2, SYSUTCDATETIME())", stored: false, storageKey: outside);
+            SeededBlob swept = await fixture.SeedAsync(BlobState.Released, "DATEADD(minute, -1, SYSUTCDATETIME())");
+            _ = await fixture.JobAsync(BlobSweepHandler.Key);
+            using MetricCollector<long> failures = Collector(BlobTelemetryNames.SweepFailures);
+
+            PolledJob polled = Assert.Single(await JobPollDriver.PollOnceAsync(fixture.Tenant, [BlobSweepHandler.Key], Token, Token));
+
+            // --- The job succeeds; the malformed row stays claimed until its reclaim instant, the other is gone ---
+            Assert.Equal(JobStatus.Succeeded, polled.Status);
+            Assert.Equal([malformed.Id], await fixture.BlobIdsAsync());
+            Assert.Equal(nameof(BlobState.Deleting), await fixture.StateAsync(malformed.Id));
+            Assert.InRange(await fixture.MinutesToExpiryAsync(malformed.Id) ?? -1, 59, 60);
+            Assert.Null(fixture.Store.Find(FixtureTenant.TenantId, swept.Names[0]));
+
+            // --- One failure, counted in the round's event; the store was never asked about the malformed names ---
+            Assert.Equal([1L], failures.GetMeasurementSnapshot().Select(static measurement => measurement.Value));
+            Assert.Equal(["2|1|1"], Records("BlobSweepBatch").Select(static record => $"{Property(record, "Claimed")}|{Property(record, "Deleted")}|{Property(record, "Failed")}"));
+            Assert.Empty(Records("BlobSweepStoreFailed"));
+        }
+
+        [Fact]
+        public async Task A_failed_purge_is_metered_and_warned_of_and_the_sweep_still_succeeds()
+        {
+            SeededBlob swept = await fixture.SeedAsync(BlobState.Released, "DATEADD(minute, -1, SYSUTCDATETIME())");
+            fixture.Store.FailPurges = new BlobStoreException("The purge failed.", null);
+            int sweep = await fixture.JobAsync(BlobSweepHandler.Key);
+            using MetricCollector<long> failures = Collector(BlobTelemetryNames.SweepFailures);
+
+            PolledJob polled = Assert.Single(await JobPollDriver.PollOnceAsync(fixture.Tenant, [BlobSweepHandler.Key], Token, Token));
+
+            // --- The rows were swept before the purge, and its failure does not fail the run ---
+            Assert.Equal((sweep, JobStatus.Succeeded), (polled.JobId, polled.Status));
+            Assert.Empty(await fixture.BlobIdsAsync());
+            Assert.Null(fixture.Store.Find(FixtureTenant.TenantId, swept.Names[0]));
+            _ = Assert.Single(fixture.Store.Purges);
+
+            // --- One failure, metered and warned of with the store's exception, for no row ---
+            Assert.Equal([1L], failures.GetMeasurementSnapshot().Select(static measurement => measurement.Value));
+            FakeLogRecord warning = Assert.Single(Records("BlobSweepStoreFailed"));
+            Assert.Same(fixture.Store.FailPurges, warning.Exception);
+            Assert.Equal((BlobTelemetryTagValues.StorePurge, "0"), (Property(warning, "Operation"), Property(warning, "Rows")));
+        }
+
+        [Fact]
+        public async Task A_cancel_during_a_rounds_store_delete_finishes_that_round_and_claims_nothing_more()
+        {
+            // --- Five due rows: a full round of three, then two more ---
+            List<SeededBlob> rows = [];
+            for (int minutes = 5; minutes >= 1; minutes--)
+            {
+                rows.Add(await fixture.SeedAsync(BlobState.Released, string.Create(CultureInfo.InvariantCulture, $"DATEADD(minute, -{minutes}, SYSUTCDATETIME())")));
+            }
+
+            // --- The job's cancel is requested, and seen by a renewal, while the first round's objects are being deleted ---
+            int sweep = await fixture.JobAsync(BlobSweepHandler.Key);
+            int deletes = 0;
+            fixture.Store.Deleting = async _ =>
+            {
+                if (Interlocked.Increment(ref deletes) == 1)
+                {
+                    await SqlServerFixture.ExecuteAsync(
+                        fixture.ConnectionString,
+                        string.Create(CultureInfo.InvariantCulture, $"UPDATE [core].[Jobs] SET [CancelRequestedAt] = SYSUTCDATETIME() WHERE [Id] = {sweep};"));
+                    await fixture.Tenant.Services.GetRequiredService<IJobRenewal>().RenewAsync(FixtureTenant.TenantId, Token);
+                }
+            };
+
+            PolledJob polled = Assert.Single(await JobPollDriver.PollOnceAsync(fixture.Tenant, [BlobSweepHandler.Key], Token, Token));
+
+            // --- The job ends cancelled after one round ---
+            Assert.Equal((sweep, PolledJobEnd.Completed, JobStatus.Cancelled), (polled.JobId, polled.End, polled.Status));
+            Assert.Equal(1, deletes);
+
+            // --- The first round's rows went with their objects, though the cancel came first ---
+            Assert.Equal([.. rows.Skip(BlobSweepDatabase.SweepBatchSize).Select(static row => row.Id)], await fixture.BlobIdsAsync());
+            Assert.All(rows.Take(BlobSweepDatabase.SweepBatchSize), row => Assert.Null(fixture.Store.Find(FixtureTenant.TenantId, row.Names[0])));
+
+            // --- The later rows were never claimed: still released, still past their seeded deadline; no purge ran ---
+            foreach (SeededBlob row in rows.Skip(BlobSweepDatabase.SweepBatchSize))
+            {
+                Assert.Equal(nameof(BlobState.Released), await fixture.StateAsync(row.Id));
+                Assert.InRange(await fixture.MinutesToExpiryAsync(row.Id) ?? 1, -5, 0);
+                Assert.NotNull(fixture.Store.Find(FixtureTenant.TenantId, row.Names[0]));
+            }
+
+            Assert.Empty(fixture.Store.Purges);
+            Assert.Equal(["3|3|0"], Records("BlobSweepBatch").Select(static record => $"{Property(record, "Claimed")}|{Property(record, "Deleted")}|{Property(record, "Failed")}"));
         }
 
         [Fact]

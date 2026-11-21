@@ -214,8 +214,10 @@ namespace Tellma.Core.Blobs
         ///     so that row alone is retained.
         /// </summary>
         /// <remarks>
-        ///     The delete runs to the end whatever the job's cancellation: the objects are already gone,
-        ///     and a row left behind would only be claimed again.
+        ///     The delete runs to the end whatever a requested cancel of the job: the objects are
+        ///     already gone, and a row left behind would only be claimed again. A lost lease or the
+        ///     host's stop still ends the scope, and the rows it left are claimed again after their
+        ///     reclaim instant, deleting objects already gone.
         /// </remarks>
         /// <param name="ids">The rows; not empty.</param>
         /// <returns>The ids deleted.</returns>

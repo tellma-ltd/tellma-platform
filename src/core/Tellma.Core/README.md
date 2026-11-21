@@ -670,13 +670,14 @@ tellma.Blobs(blobs => blobs
   deletes the rows whose objects are gone and that are still `Deleting`. Once per run the store
   purges its incomplete artefacts older than a day. Objects go before rows, so an object never
   outlives the row that leads the sweep to it.
-- **Failures never fail the run.** A row whose objects the store could not delete, and a row a
-  foreign key still holds (impossible by construction: only staged rows are confirmed), stay
+- **Failures never fail the run.** A row whose objects the store could not delete, a row whose
+  names fall outside the blob name grammar (staging never writes one), and a row a foreign key
+  still holds (impossible by construction: only staged rows are confirmed), stay
   claimed for the sweep after their reclaim instant, are counted in `tellma.blobs.sweep.failures`
   and are warned of (`BlobSweepStoreFailed` with the store's exception, `BlobSweepRowRetained` with
   the id); a failed purge is counted and warned of too. `tellma.blobs.sweep.deleted` counts the rows
-  deleted by the state they were claimed from (`staged`, `released`, `deleting`), each round logs
-  `BlobSweepBatch` (claimed, deleted, failed), and the progress message `Blob.SweepProgress` counts
+  deleted by the state they were claimed from (`staged`, `released`, `deleting`), each round that
+  claimed rows logs `BlobSweepBatch` (claimed, deleted, failed), and the progress message `Blob.SweepProgress` counts
   the rows claimed and the objects deleted so far.
 - **The reconcile.** `core.blob-reconcile` (built-in schedule 5, Saturday at 02:00) runs
   `BlobStatements.Reconcile` once per registered kind, in kind order, each its own `Maintenance`

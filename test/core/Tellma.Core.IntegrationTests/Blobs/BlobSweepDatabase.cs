@@ -102,6 +102,8 @@ namespace Tellma.Core.IntegrationTests.Blobs
             await SqlServerFixture.ExecuteAsync(ConnectionString, ResetText);
             Store.RemoveTenant(FixtureTenant.TenantId);
             Store.FailDeletes = null;
+            Store.FailPurges = null;
+            Store.Deleting = null;
             Store.ClearPurges();
             Tenant.State = TenantState.Active;
             Audit.Suspended = false;
@@ -122,6 +124,7 @@ namespace Tellma.Core.IntegrationTests.Blobs
         /// <param name="stored">Whether the row's objects are written to the store.</param>
         /// <param name="kind">The row's kind.</param>
         /// <param name="createdAt">The staging instant, a SQL expression.</param>
+        /// <param name="storageKey">The row's primary name; null for a fresh one of the kind.</param>
         /// <returns>The row's id and its objects' names.</returns>
         public async Task<SeededBlob> SeedAsync(
             BlobState state,
@@ -130,9 +133,10 @@ namespace Tellma.Core.IntegrationTests.Blobs
             bool thumbnail = false,
             bool stored = true,
             string kind = BlobReferenceDatabase.FileKind,
-            string createdAt = "SYSUTCDATETIME()")
+            string createdAt = "SYSUTCDATETIME()",
+            string? storageKey = null)
         {
-            string storageKey = BlobName.Primary(kind, Guid.NewGuid().ToString("N"));
+            storageKey ??= BlobName.Primary(kind, Guid.NewGuid().ToString("N"));
             string variants = thumbnail ? Thumb : string.Empty;
             int id = await SqlServerFixture.ScalarAsync<int>(ConnectionString, string.Create(CultureInfo.InvariantCulture, $"""
                 DECLARE @id int = NEXT VALUE FOR [core].[sq_Blobs];
