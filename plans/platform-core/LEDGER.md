@@ -102,9 +102,9 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 
 | PC | Slot | Branch | Step | Implementer agent (name / id) | Reviewer agent (name / id) | Started (UTC) |
 |---|---|---|---|---|---|---|
-| PC-147 | pc-2 | pc/PC-147 | impl | impl (Opus, high, launched 2026-11-20) | 0021-d; two reviews (R2 fable, security-bound) | 2026-11-20 |
-| PC-148 | pc-4 | pc/PC-148 | impl | impl (Opus, high, launched 2026-11-20); carry D-151 | 0022-a; R1 only | 2026-11-20 |
-| PC-088 | pc-1 | pc/PC-088 | integrating | released 2026-11-20 after PC-145 (held c1574599); regenerate three migration sets, merge SelfScoped, remove local user-delete cascade declaration (D-156); D-157, D-159 | 0018-c; two reviews (R2 fable, security-bound) | 2026-11-20 |
+| PC-147 | pc-2 | pc/PC-147 | fix1 | R1 0/0/9 (dac43255); fix1 then R2 (fable, security-bound); D-163 | 0021-d; two reviews (R2 fable, security-bound) | 2026-11-20 |
+| PC-148 | pc-4 | pc/PC-148 | fix1 | R1 0/1/4 (b01932b6); fix1 then hold behind PC-088; D-164 | 0022-a; R1 only | 2026-11-20 |
+| PC-088 | pc-1 | pc/PC-088 | ci-pending | ci-pending (7146ab13 integrate: merged 7bb49167; three migration sets restored then regenerated with dotnet-ef; SelfScoped merged; local user-delete cascade declaration removed (D-156); pc run 44867579837); D-157, D-159 | 0018-c; two reviews (R2 fable, security-bound) | 2026-11-20 |
 
 ## Fix items
 
@@ -288,6 +288,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | Decide excludes inactive-role grants (PC-043 checkpoint test list) | 0014 §5.2, §6.2 | inactive roles are excluded by the load; carried into PC-050 (PC-043 R1-4) |
 | Acme §10 rows skipped in PC-141 (6): first request binds UserId, Frozen read, ReadOnly read stamps activity (connect initializer + administrator bootstrap); AllowWhenReadOnly me/locale action (users-stack projection); RunsWhenReadOnly job (job worker); composed platform provisioning steps | 0011 §3.3, §4.3, §10 | conditional skips (PlatformSeams) since 15d1369d; carried to PC-078, PC-090, PC-100, PC-089 (D-096) |
 | tm-pivot pixel baselines: light, dark and RTL (PC-193 R1-9; computed-style checks stand in) | 0034 §14 | land with the repo's pixel-baseline infrastructure, next to the chart visual suite (WATCHLIST c10 #7) |
+| Live Azure SignalR suite (PC-147, Defaults.Azure.AspNetCore.IntegrationTests, Live=true): never run, Azure-specific assertions unverified | 0021 §12 | needs the live-realtime-tests environment, SIGNALR_TEST_CONNECTIONSTRING secret and SIGNALR_LIVE_ENABLED variable (Ahmad); the nightly live workflow is disabled and runs from main (D-163) |
 
 ## Status
 
@@ -436,13 +437,13 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-140 | MVP | 1 | todo | | | |
 | PC-141 | 0011-h | 2 | done (478b0ab0; CI 43879675326 green) | bb2a2d6, 15d1369 (pc/PC-141) | | |
 | PC-142 | 0015-k | 2 | done (eba471bf; green 44642487470) | e86138b6, 76ee772e, e6f1d0b2, 3083d411, eba471bf | | D-131, D-132, D-134 |
-| PC-143 | 0018-f | 2 | todo | | | |
+| PC-143 | 0018-f | 2 | todo | | | carry (D-164): register EmailNotificationChannel in CoreFeature only once PC-149 (dispatch) is on platform-core, else opted-in email piles up as Pending rows whose jobs fail closed; finish SendTestAsync; drop OutboxDatabase.cs's explicit channel registration (it would clash in NotificationChannelsCheck); confirm the gate can build the channel without a tenant (D-061) with its ITenantSettingsCache and IEmailSender dependencies |
 | PC-144 | 0020-e | 2 | done (711641ab; pc 44771340622 green; PR 44774613660 green) | 7d470e81, 8e457c6b, 711641ab | | D-150, D-152, D-154 |
 | PC-145 | 0020-f | 2 | done (3c61aac3; pc 44858269311 green) | 1226a7c1, e244b0f9, 3c61aac3 | | D-158; carry (D-153): add core.Job to AccessEvaluationTests' list of self-scoped securables (Filtered with no grants); carry (D-156): the core.job-retention and core.file-retention DELETE of core.Jobs must declare core.ScheduleStates (FK_ScheduleStates_LastJobId SET NULL) and every IJobEntity table (FK_<Table>_JobId SET NULL), from ForeignKeyActions.WrittenByDeleting once PC-F62 is on platform-core (whichever of PC-145 and PC-F62 lands second wires it) |
 | PC-146 | 0021-c | 2 | done (d7ebba3c; pc 44840986549 green) | 5efa9448, 261870b7, 33c39b3f, d7ebba3c | | D-151, D-153; carry from PC-099 r1 closed (Notification self-scope added) |
 | PC-147 | 0021-d | 2 | in progress | | | |
 | PC-148 | 0022-a | 2 | in progress | | | carry (D-151): EnlistmentFrame.Admit admits EmailOutbox (0015 §13.3); 0021 §12 enlisted-rows-committed-with-the-completion e2e test lands here |
-| PC-149 | 0022-b | 2 | todo | | | |
+| PC-149 | 0022-b | 2 | todo | | | carry (D-164): the 0018 §3.3 welcome email and its §9 pins, enqueued from the invite action frame (needs PC-088 on platform-core), with a test that enqueues from an action frame; emit tellma.outbox.enqueued from EmailOutbox.EnqueueAsync tagged with the request's Source |
 | PC-150 | 0026-d | 2 | todo | | | |
 | PC-151 | 0023-h | 2 | done (99123772; CI 43994567778 red → PC-F53; green 44019377406 on 880b58d7) | 7b9c658, c678bc7, 9912377 (pc/PC-151) | | |
 | PC-152 | 0024-j | 2 | todo | | | |
