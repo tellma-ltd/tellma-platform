@@ -9,12 +9,31 @@ using Tellma.Core.Abstractions.Notifications;
 namespace Tellma.Core.Notifications
 {
     /// <summary>
-    ///     The notifier's instruments on the core meter: rows created, recipients suppressed, rows
-    ///     replaced and withdrawn, and delivery jobs enqueued, each by type. No instrument carries a
-    ///     tenant or a user.
+    ///     The notifications' instruments on the core meter: the notifier's rows created, recipients
+    ///     suppressed, rows replaced and withdrawn, and delivery jobs enqueued, each by type; the
+    ///     inbox's summaries, rows marked read and rows cleared, by verb; the preference saves; and
+    ///     the rows retention deleted, by band. No instrument carries a tenant or a user.
     /// </summary>
     internal sealed class NotificationsMetrics
     {
+        /// <summary>The verb tag of the rows marked read by name.</summary>
+        public const string ReadVerb = "read";
+
+        /// <summary>The verb tag of the rows marked read all at once.</summary>
+        public const string ReadAllVerb = "read-all";
+
+        /// <summary>The verb tag of the rows cleared by name.</summary>
+        public const string ClearVerb = "clear";
+
+        /// <summary>The verb tag of the read rows cleared all at once.</summary>
+        public const string ClearReadVerb = "clear-read";
+
+        /// <summary>The band tag of the read rows retention deletes.</summary>
+        public const string ReadBand = "read";
+
+        /// <summary>The band tag of the unread rows retention deletes.</summary>
+        public const string UnreadBand = "unread";
+
         /// <summary>Rows inserted.</summary>
         private readonly Counter<long> _created;
 
@@ -29,6 +48,21 @@ namespace Tellma.Core.Notifications
 
         /// <summary>Delivery jobs inserted.</summary>
         private readonly Counter<long> _deliveryEnqueued;
+
+        /// <summary>Inbox summaries served.</summary>
+        private readonly Counter<long> _summaries;
+
+        /// <summary>Rows the inbox verbs marked read.</summary>
+        private readonly Counter<long> _markedRead;
+
+        /// <summary>Rows the inbox verbs deleted.</summary>
+        private readonly Counter<long> _cleared;
+
+        /// <summary>Preference saves committed.</summary>
+        private readonly Counter<long> _preferencesSaved;
+
+        /// <summary>Rows retention deleted.</summary>
+        private readonly Counter<long> _retained;
 
         /// <summary>Creates the instruments.</summary>
         /// <param name="meterFactory">The host's meter factory, which owns the meter's lifetime.</param>
@@ -57,6 +91,26 @@ namespace Tellma.Core.Notifications
                 NotificationsTelemetryNames.DeliveryEnqueued,
                 "{job}",
                 "Delivery jobs inserted, one per qualifying slice of a request, by type.");
+            _summaries = meter.CreateCounter<long>(
+                NotificationsTelemetryNames.Summaries,
+                "{request}",
+                "Inbox summaries served.");
+            _markedRead = meter.CreateCounter<long>(
+                NotificationsTelemetryNames.MarkedRead,
+                "{notification}",
+                "Rows the inbox verbs marked read, by verb.");
+            _cleared = meter.CreateCounter<long>(
+                NotificationsTelemetryNames.Cleared,
+                "{notification}",
+                "Rows the users deleted from their inboxes, by verb.");
+            _preferencesSaved = meter.CreateCounter<long>(
+                NotificationsTelemetryNames.PreferencesSaved,
+                "{request}",
+                "Saves of a user's notification preferences.");
+            _retained = meter.CreateCounter<long>(
+                NotificationsTelemetryNames.Retained,
+                "{notification}",
+                "Rows retention deleted, by band.");
         }
 
         /// <summary>Records what one committed request did.</summary>
@@ -92,10 +146,46 @@ namespace Tellma.Core.Notifications
             }
         }
 
-        /// <summary>Adds a positive amount to a counter; nothing for none, so an idle type leaves no zero points.</summary>
+        /// <summary>Records one inbox summary served.</summary>
+        public void RecordSummary()
+        {
+            _summaries.Add(1);
+        }
+
+        /// <summary>Records the rows one committed verb marked read.</summary>
+        /// <param name="verb">The verb: <see cref="ReadVerb" /> or <see cref="ReadAllVerb" />.</param>
+        /// <param name="count">The rows newly marked read.</param>
+        public void RecordMarkedRead(string verb, int count)
+        {
+            Add(_markedRead, count, new KeyValuePair<string, object?>(NotificationsTelemetryNames.VerbTag, verb));
+        }
+
+        /// <summary>Records the rows one committed verb deleted.</summary>
+        /// <param name="verb">The verb: <see cref="ClearVerb" /> or <see cref="ClearReadVerb" />.</param>
+        /// <param name="count">The rows deleted.</param>
+        public void RecordCleared(string verb, int count)
+        {
+            Add(_cleared, count, new KeyValuePair<string, object?>(NotificationsTelemetryNames.VerbTag, verb));
+        }
+
+        /// <summary>Records one committed save of a user's preferences.</summary>
+        public void RecordPreferencesSaved()
+        {
+            _preferencesSaved.Add(1);
+        }
+
+        /// <summary>Records the rows one retention page deleted.</summary>
+        /// <param name="band">The band: <see cref="ReadBand" /> or <see cref="UnreadBand" />.</param>
+        /// <param name="count">The rows deleted.</param>
+        public void RecordRetained(string band, int count)
+        {
+            Add(_retained, count, new KeyValuePair<string, object?>(NotificationsTelemetryNames.BandTag, band));
+        }
+
+        /// <summary>Adds a positive amount to a counter; nothing for none, so an idle tag leaves no zero points.</summary>
         /// <param name="counter">The counter.</param>
         /// <param name="amount">The amount.</param>
-        /// <param name="tag">The type tag.</param>
+        /// <param name="tag">The counter's one tag.</param>
         private static void Add(Counter<long> counter, int amount, KeyValuePair<string, object?> tag)
         {
             if (amount > 0)

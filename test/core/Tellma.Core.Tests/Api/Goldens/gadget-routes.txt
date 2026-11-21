@@ -66,5 +66,13 @@ POST /{tenantId}/api/web/settings/details | details | - | api | - | TenantSettin
 POST /{tenantId}/api/web/settings/refresh-caches | refresh-caches | - | api | - | void | core.Settings.General:Save | mutation, idempotent | lYZxNIK2Qbw7
 POST /{tenantId}/api/web/settings/save | save | - | api | TenantSettingsPatch | SettingsSaveResult | member-only | mutation | 2FgBFQi1n4Jw
 POST /{tenantId}/api/web/queryex/discover | discover | - | api | QueryexDiscoverRequest | QueryexDiscoverResult | member-only | idempotent | Q9rAN9qhOkVv
-POST /{tenantId}/api/web/inbox/mark-read | mark-read | - | api | - | void | member-only | mutation | lYZxNIK2Qbw7
-POST /{tenantId}/api/web/inbox/purge | purge | - | api | - | int | sm.Inbox:Purge | mutation | O-8g6frL8YBY
+POST /{tenantId}/api/web/inbox/summary | summary | - | api | - | InboxSummary | member-only | idempotent | o9p0wbvTAosb
+POST /{tenantId}/api/web/inbox/seen | seen | - | api | - | InboxVerbResult | member-only | mutation, read-only, idempotent | pXR_mrC6LMxV
+POST /{tenantId}/api/web/inbox/read | read | - | api | IdsRequest | InboxVerbResult | member-only | mutation, read-only, idempotent | 6IqLbKcPH6Wm
+POST /{tenantId}/api/web/inbox/read-all | read-all | - | api | - | InboxVerbResult | member-only | mutation, read-only, idempotent | pXR_mrC6LMxV
+POST /{tenantId}/api/web/inbox/clear | clear | - | api | IdsRequest | InboxVerbResult | member-only | mutation, read-only, idempotent | 6IqLbKcPH6Wm
+POST /{tenantId}/api/web/inbox/clear-read | clear-read | - | api | - | InboxVerbResult | member-only | mutation, read-only, idempotent | pXR_mrC6LMxV
+POST /{tenantId}/api/web/notification-preferences/get | get | - | api | - | IReadOnlyList<NotificationPreference> | member-only | idempotent | aHSARUxbj3Rb
+POST /{tenantId}/api/web/notification-preferences/save | save | - | api | IReadOnlyList<NotificationPreference> | IReadOnlyList<NotificationPreference> | member-only | mutation, read-only | 5Ftm5m9VtQxS
+POST /{tenantId}/api/web/sm-inbox/mark-read | mark-read | - | api | - | void | member-only | mutation | lYZxNIK2Qbw7
+POST /{tenantId}/api/web/sm-inbox/purge | purge | - | api | - | int | sm.Inbox:Purge | mutation | O-8g6frL8YBY

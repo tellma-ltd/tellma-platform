@@ -927,6 +927,23 @@ namespace Tellma.Distro.Acme.Migrator.Migrations.Tenant
                     b.HasData(
                         new
                         {
+                            Id = 2,
+                            CatchUpWindowMinutes = 1440,
+                            Code = "core.notification-retention",
+                            CreatedAt = new DateTimeOffset(new DateTime(2000, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            CreatedById = 1,
+                            CronExpression = "30 3 * * *",
+                            HandlerKey = "core.notification-retention",
+                            IsActive = true,
+                            MissedPolicy = "Coalesce",
+                            ModifiedAt = new DateTimeOffset(new DateTime(2000, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            ModifiedById = 1,
+                            Name = "core.notification-retention",
+                            OverlapPolicy = "Skip",
+                            RunAsUserId = 1
+                        },
+                        new
+                        {
                             Id = 1,
                             CatchUpWindowMinutes = 1440,
                             Code = "core.job-retention",
@@ -19041,6 +19058,10 @@ namespace Tellma.Distro.Acme.Migrator.Migrations.Tenant
                     b.ToTable("ScheduleStates", "core");
 
                     b.HasData(
+                        new
+                        {
+                            ScheduleId = 2
+                        },
                         new
                         {
                             ScheduleId = 1

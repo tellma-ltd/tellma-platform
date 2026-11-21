@@ -288,8 +288,8 @@ namespace Tellma.Core.Tests.Access
             }
 
             Assert.Equal(
-                [("JobWorkerState", 1), ("Permissions", 1), ("RoleMemberships", 1), ("Roles", 1), ("ScheduleStates", 1), ("ScheduleStates", 6), ("Schedules", 1), ("Schedules", 6), ("Settings", 1), ("UserStamps", 1), ("Users", 1)],
-                seeded.OrderBy(static row => row.Table, StringComparer.Ordinal));
+                [("JobWorkerState", 1), ("Permissions", 1), ("RoleMemberships", 1), ("Roles", 1), ("ScheduleStates", 1), ("ScheduleStates", 2), ("ScheduleStates", 6), ("Schedules", 1), ("Schedules", 2), ("Schedules", 6), ("Settings", 1), ("UserStamps", 1), ("Users", 1)],
+                seeded.OrderBy(static row => row.Table, StringComparer.Ordinal).ThenBy(static row => row.Key));
             Assert.All(seeded, static row => Assert.InRange(row.Key, 1, WellKnownIds.ReservedIdBandEnd));
         }
 

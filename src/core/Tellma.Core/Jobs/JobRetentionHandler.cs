@@ -8,6 +8,7 @@ using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Jobs;
 using Tellma.Core.Abstractions.Notifications;
 using Tellma.Core.Data.Batches;
+using Tellma.Core.Data.Writes;
 
 namespace Tellma.Core.Jobs
 {
@@ -25,9 +26,9 @@ namespace Tellma.Core.Jobs
     /// <param name="database">The tenant's database, which each page's maintenance batch comes from.</param>
     /// <param name="notifier">The scope's notifier, which withdraws the stopped jobs' notices.</param>
     /// <param name="options">The jobs' options: both retention periods.</param>
-    /// <param name="metadata">The model's entity metadata, which names the tables whose rows reference a job.</param>
+    /// <param name="foreignKeys">The model's foreign keys whose delete action writes their table, which name the tables a deleted job's references write.</param>
     [JobHandler(Key, LeaseSeconds = 600, RunsWhenReadOnly = true)]
-    internal sealed class JobRetentionHandler(ITenantDatabase database, INotifier notifier, IOptions<JobsOptions> options, IEntityMetadataProvider metadata) : IJobHandler
+    internal sealed class JobRetentionHandler(ITenantDatabase database, INotifier notifier, IOptions<JobsOptions> options, ForeignKeyActions foreignKeys) : IJobHandler
     {
         /// <summary>The handler's key, which its built-in schedule names.</summary>
         public const string Key = "core.job-retention";
@@ -64,15 +65,15 @@ namespace Tellma.Core.Jobs
         }
 
         /// <summary>
-        ///     The tables a delete page writes: the job table, and the tables whose rows reference a
-        ///     job and lose it through their keys' <c>SET NULL</c>, every job entity's and the schedule
-        ///     states'.
+        ///     The tables a delete page writes: the job table, and every table the model's keys to it
+        ///     write when a job is deleted (each job entity's and the schedule states', whose keys set
+        ///     the job to null).
         /// </summary>
         /// <returns>The tables.</returns>
         private HashSet<TableName> DeleteWrites()
         {
-            HashSet<TableName> writes = [JobStatements.Jobs, JobStatements.ScheduleStates];
-            writes.UnionWith(metadata.All.Where(static entity => entity.IsJobEntity).Select(static entity => entity.Table));
+            HashSet<TableName> writes = [JobStatements.Jobs];
+            writes.UnionWith(foreignKeys.WrittenByDeleting([JobStatements.Jobs]));
             return writes;
         }
 

@@ -10,11 +10,11 @@ using Tellma.Core.EntityFrameworkCore.TableTypes;
 
 #nullable disable
 
-namespace Tellma.Distro.Acme.Migrator.Migrations.Tenant
+namespace Tellma.Core.Migrator.TestDistribution.Migrations
 {
     [DbContext(typeof(TellmaDbContext))]
-    [Migration("20261120190450_InitialTenant")]
-    partial class InitialTenant
+    [Migration("20261121020652_Initial")]
+    partial class Initial
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -29,6 +29,9 @@ namespace Tellma.Distro.Acme.Migrator.Migrations.Tenant
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
 
             modelBuilder.HasSequence<int>("sq_Blobs", "core")
+                .StartsAt(1000L);
+
+            modelBuilder.HasSequence<int>("sq_Gadgets", "probe")
                 .StartsAt(1000L);
 
             modelBuilder.HasSequence<int>("sq_Jobs", "core")
@@ -928,6 +931,23 @@ namespace Tellma.Distro.Acme.Migrator.Migrations.Tenant
                         .HasAnnotation("Tellma:TableType:Grants", "[\"tellma_app\"]");
 
                     b.HasData(
+                        new
+                        {
+                            Id = 2,
+                            CatchUpWindowMinutes = 1440,
+                            Code = "core.notification-retention",
+                            CreatedAt = new DateTimeOffset(new DateTime(2000, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            CreatedById = 1,
+                            CronExpression = "30 3 * * *",
+                            HandlerKey = "core.notification-retention",
+                            IsActive = true,
+                            MissedPolicy = "Coalesce",
+                            ModifiedAt = new DateTimeOffset(new DateTime(2000, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            ModifiedById = 1,
+                            Name = "core.notification-retention",
+                            OverlapPolicy = "Skip",
+                            RunAsUserId = 1
+                        },
                         new
                         {
                             Id = 1,
@@ -19046,12 +19066,53 @@ namespace Tellma.Distro.Acme.Migrator.Migrations.Tenant
                     b.HasData(
                         new
                         {
+                            ScheduleId = 2
+                        },
+                        new
+                        {
                             ScheduleId = 1
                         },
                         new
                         {
                             ScheduleId = 6
                         });
+                });
+
+            modelBuilder.Entity("Tellma.Core.Migrator.TestDistribution.Gadget", b =>
+                {
+                    b.Property<int>("Id")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasPrecision(7)
+                        .HasColumnType("datetimeoffset(7)");
+
+                    b.Property<int>("CreatedById")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset>("ModifiedAt")
+                        .HasPrecision(7)
+                        .HasColumnType("datetimeoffset(7)");
+
+                    b.Property<int>("ModifiedById")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
+
+                    b.HasKey("Id")
+                        .HasName("PK_Gadgets");
+
+                    b.ToTable("Gadgets", "probe", t =>
+                        {
+                            t.HasCheckConstraint("CK_Gadgets_Id", "[Id] > 0");
+                        });
+
+                    b
+                        .HasAnnotation("Tellma:TableType:Enabled", true)
+                        .HasAnnotation("Tellma:TableType:Grants", "[\"tellma_app\"]");
                 });
 
             modelBuilder.Entity("Tellma.Core.Notifications.NotificationPreferenceRow", b =>
@@ -19290,6 +19351,23 @@ namespace Tellma.Distro.Acme.Migrator.Migrations.Tenant
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("FK_ScheduleStates_ScheduleId");
+                });
+
+            modelBuilder.Entity("Tellma.Core.Migrator.TestDistribution.Gadget", b =>
+                {
+                    b.HasOne("Tellma.Core.Abstractions.Access.User", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("FK_Gadgets_CreatedById");
+
+                    b.HasOne("Tellma.Core.Abstractions.Access.User", null)
+                        .WithMany()
+                        .HasForeignKey("ModifiedById")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("FK_Gadgets_ModifiedById");
                 });
 
             modelBuilder.Entity("Tellma.Core.Notifications.NotificationPreferenceRow", b =>
@@ -19590,6 +19668,17 @@ namespace Tellma.Distro.Acme.Migrator.Migrations.Tenant
                 .Column(name: "Tag", storeType: "uniqueidentifier", nullable: true)
                 .Column(name: "Bumped", storeType: "bit")
                 .HasKey("Name")
+                .HasGrants("tellma_app"));
+
+            modelBuilder.HasTableTypeDefinition("GadgetsList", "probe", type => type
+                .ForTable("Gadgets", "probe")
+                .Column(name: "Id", storeType: "int")
+                .Column(name: "Name", storeType: "nvarchar(255)", maxLength: 255)
+                .Column(name: "CreatedAt", storeType: "datetimeoffset(7)", precision: 7)
+                .Column(name: "CreatedById", storeType: "int")
+                .Column(name: "ModifiedAt", storeType: "datetimeoffset(7)", precision: 7)
+                .Column(name: "ModifiedById", storeType: "int")
+                .HasKey("Id")
                 .HasGrants("tellma_app"));
 #pragma warning restore 612, 618
         }

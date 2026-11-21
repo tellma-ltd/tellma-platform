@@ -19,6 +19,7 @@ using Tellma.Core.Data.Ids;
 using Tellma.Core.Data.Queries;
 using Tellma.Core.Data.Saves;
 using Tellma.Core.Data.TableTypes;
+using Tellma.Core.Data.Writes;
 
 namespace Tellma.Core.Data.Batches
 {
@@ -66,6 +67,7 @@ namespace Tellma.Core.Data.Batches
         /// <param name="queries">What query statements compile and materialise with.</param>
         /// <param name="allocator">The id allocator, whose refills ride the batches that write its tables.</param>
         /// <param name="saves">The save emitter.</param>
+        /// <param name="foreignKeys">The model's foreign keys whose delete actions write their tables, which a delete declares.</param>
         /// <param name="services">The root provider, for the optional caching services.</param>
         public DataExecutor(
             IOptions<DataOptions> options,
@@ -78,6 +80,7 @@ namespace Tellma.Core.Data.Batches
             QueryServices queries,
             IdAllocator allocator,
             SaveEmitter saves,
+            ForeignKeyActions foreignKeys,
             IServiceProvider services)
         {
             ArgumentNullException.ThrowIfNull(options);
@@ -90,6 +93,7 @@ namespace Tellma.Core.Data.Batches
             ArgumentNullException.ThrowIfNull(queries);
             ArgumentNullException.ThrowIfNull(allocator);
             ArgumentNullException.ThrowIfNull(saves);
+            ArgumentNullException.ThrowIfNull(foreignKeys);
             ArgumentNullException.ThrowIfNull(services);
 
             _options = options;
@@ -102,6 +106,7 @@ namespace Tellma.Core.Data.Batches
             Queries = queries;
             Allocator = allocator;
             Saves = saves;
+            ForeignKeys = foreignKeys;
             Snapshots = services.GetService<IVersionTagSnapshots>();
             _userSnapshots = services.GetService<IUserVersionTagSnapshots>();
             VersionTags = services.GetService<IVersionTagRegistry>();
@@ -153,6 +158,9 @@ namespace Tellma.Core.Data.Batches
 
         /// <summary>The save emitter.</summary>
         public SaveEmitter Saves { get; }
+
+        /// <summary>The model's foreign keys whose delete actions write their tables.</summary>
+        public ForeignKeyActions ForeignKeys { get; }
 
         /// <summary>The data layer's instruments.</summary>
         public DataMetrics Metrics { get; }

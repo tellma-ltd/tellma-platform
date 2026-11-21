@@ -143,8 +143,9 @@ namespace Tellma.Core.Jobs
         // policies or owner it read before the change.
         /// <summary>
         ///     Appends the schedules' state upsert, the release of a tick's lease of every other updated
-        ///     or taken-over schedule, on an activation the paused reasons' clear and their notices'
-        ///     withdrawal, and on a delete the declaration of what its keys wrote.
+        ///     or taken-over schedule, and on an activation the paused reasons' clear and their notices'
+        ///     withdrawal. A delete appends nothing: its states leave by their key's cascade and its
+        ///     jobs lose their schedule by theirs, both of which the delete itself declares.
         /// </summary>
         /// <param name="context">The persist context, of the operation's kind.</param>
         /// <returns>A task that completes when the statements are appended.</returns>
@@ -207,14 +208,6 @@ namespace Tellma.Core.Jobs
                 // --- A deactivation: nothing is scheduled for the schedules it stops ---
                 case ActionPersistContext<TSchedule> { Action: Deactivate } deactivation:
                     states.AddRange(deactivation.Entities.Where(static row => row.IsActive).Select(static row => new ScheduleNextList { ScheduleId = row.Id, NextDueAt = null }));
-                    break;
-
-                // --- A delete: the states leave with their schedules by their key's cascade and the jobs
-                // lose their schedule by theirs; this statement declares both among the batch's writes,
-                // so its change tracking and tags see them ---
-                case DeletePersistContext<TSchedule> deletion:
-                    SqlIdentifier deleted = deletion.AffectedIds;
-                    Append(deletion.Batch, data => JobStatements.DeclareScheduleDelete(data, deleted));
                     break;
 
                 default:

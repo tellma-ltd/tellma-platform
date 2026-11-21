@@ -202,7 +202,9 @@ namespace Tellma.Core.Composition
             // table, never a stack. Each type is declared by the feature
             // code that raises it; core.user.added is the one this contribution declares for the
             // users' invitation. The two baseline channels and the two client events the
-            // notifications and the hub publish come first.
+            // notifications and the hub publish come first. The self-scope criterion lets every member
+            // read their own rows; the inbox and preference services, the delivery and retention handlers
+            // and retention's nightly schedule (spec 0021 §4.3, §4.5, §5, §7) follow.
             _ = contribution
                 .Entity<Notification>()
                 .Model<NotificationConfiguration>()
@@ -216,6 +218,12 @@ namespace Tellma.Core.Composition
                 .Singleton<INotificationChannelRegistry, NotificationChannelRegistry>()
                 .Singleton<IClientEventRegistry, ClientEventRegistry>()
                 .Singleton<IClientAssetContributor, NotificationsClientAssetContributor>()
+                .Singleton<IAccessCriteriaProvider, NotificationAccessCriteria>()
+                .ApiService<InboxService>()
+                .ApiService<NotificationPreferencesService>()
+                .JobHandler<NotificationDeliveryHandler>()
+                .JobHandler<NotificationRetentionHandler>()
+                .BuiltInSchedule(2, NotificationRetentionHandler.Key, "30 3 * * *")
                 .NotificationType(new NotificationTypeDescriptor("core.user.added", "users", Mutable: true, TargetResource: null))
                 .NotificationChannel(new NotificationChannelDescriptor(InboxChannel, DefaultEnabled: true))
                 .NotificationChannel(new NotificationChannelDescriptor(EmailChannel, DefaultEnabled: false))

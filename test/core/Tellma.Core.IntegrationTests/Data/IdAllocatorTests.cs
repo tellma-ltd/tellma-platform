@@ -23,6 +23,7 @@ using Tellma.Core.Data.Ids;
 using Tellma.Core.Data.Queries;
 using Tellma.Core.Data.Saves;
 using Tellma.Core.Data.TableTypes;
+using Tellma.Core.Data.Writes;
 using Tellma.Testing.Entities;
 
 namespace Tellma.Core.IntegrationTests.Data
@@ -510,6 +511,7 @@ namespace Tellma.Core.IntegrationTests.Data
                 root.GetRequiredService<QueryServices>(),
                 root.GetRequiredService<IdAllocator>(),
                 root.GetRequiredService<SaveEmitter>(),
+                root.GetRequiredService<ForeignKeyActions>(),
                 new ContributorScope(root, snapshots: snapshots));
         }
 

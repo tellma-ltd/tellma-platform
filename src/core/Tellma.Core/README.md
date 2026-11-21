@@ -395,9 +395,21 @@ digits than its column holds, and stamps
 activatable tree's `IsActive` recounts the rows' ancestors.
 
 `IDataBatch.Delete` deletes a root's collections deepest first in explicit statements, then the
-roots, whose ids are the receipt; a sibling row goes by its cascade, so the delete declares its
-table among its writes but needs no authority over it, except that a sibling holding a blob
-reference is deleted explicitly before its owner, so its blobs are captured too. By ids it captures the existing rows under U locks and the read filter, selects the rest
+roots, whose ids are the receipt; a sibling row goes by its cascade, except that a sibling holding
+a blob reference is deleted explicitly before its owner, so its blobs are captured too. Every
+table the database writes by the `ON DELETE` action of a key referencing a deleted table (a
+sibling's cascade, `core.ScheduleStates` cascading and `core.Jobs.ScheduleId` set to null with a
+schedule, a user's stamp and preference rows cascading with the user), and transitively the
+tables a cascaded table's own keys write, is read from the relational model (`ForeignKeyActions`)
+and declared among the delete's writes, for tags, guards and change tracking; the caller needs
+no authority over those tables, and gains none for its own statements. A key's action reports no
+rows, so when such a table has a user-level version tag rule (the preference tables do) the
+delete first reads the users its reached rows name, by the keys from every table that loses rows,
+into a capture the bump epilogue reads; the capture reads under update and range locks, so no
+row the keys will reach is added after it. A save that deletes child rows declares the same
+consequences of their deletion. A model where one of them has a user-level rule (a save cannot
+tell which rows its deletes reach), or where a `SET DEFAULT` key writes a rule's user column,
+fails the `core.version-tags` startup check. By ids it captures the existing rows under U locks and the read filter, selects the rest
 and throws `50404` with them, throws `50403` unless every captured row passes the grant filter,
 and with the stamps the rows were read with throws `50409` with the conflict rows the save's guard
 reports. By query it caps and counts its keys as an update does. `WithDescendants` deletes tree
@@ -1187,6 +1199,39 @@ calendar date, numbers as numbers, booleans as `true`/`false`, null as nothing, 
 the reader's content slot, and anything else as its JSON text. A missing resource renders the type
 key; arguments that are not a JSON object render the message without them and log
 `NotificationArgumentsInvalid` once per scope.
+
+### The inbox, preferences, delivery and retention
+
+`InboxService` (route `inbox`) serves the calling user's own inbox; every action is member-only,
+hidden from MCP, and judged by the statements' own predicates on the caller, so another user's id
+is ignored, never refused. `summary` reads, in one Read batch, the unread and unseen counts (capped
+at `SummaryCountCap`), the highest unseen severity, the inbox version, the latest
+`SummaryLatestCount` rows newest first (ties by id), the caller's running jobs with their labels, and
+the actors as related users projected to their related select. `seen`, `read`, `read-all`, `clear`
+and `clear-read` each run one Persist batch that bumps the caller's inbox version and publishes
+`inbox.changed` to the caller after the commit; they return the rows touched and the new version.
+`read` and `clear` take at most the notifications' `MaxIds` ids, dropping repeats and ids outside the
+key's range. The verbs run in a read-only tenant and are refused in a frozen one.
+`NotificationAccessCriteria` scopes the read of `Notification` to `UserId = me()`.
+
+`NotificationPreferencesService` (route `notification-preferences`) reads the caller's stored
+deviations (`get`, dropping types and channels no longer registered) and replaces them (`save`):
+`NotificationPreferenceRules` refuses an unknown type or channel, a repeated pair and the inbox
+turned off for a type that cannot be muted, with the codes in `NotificationValidationCodes`, and
+drops every row equal to its channel's default. The save bumps the caller's preferences tag and is
+admitted in a read-only tenant.
+
+`NotificationDeliveryHandler` runs `core.notification-delivery` (four slices a claim, twelve
+attempts, failure notices to the inbox alone, run in a read-only tenant). It reads every slice's
+recipients and their stored preferences in one round trip, negotiates each active recipient's
+localization once from their preferences and the tenant's settings, and hands each delivering
+channel, in registration order, the recipients who receive it; then it persists the enlisted writes
+once. A channel that throws fails the claim, and the job retries.
+
+`NotificationRetentionHandler` runs `core.notification-retention`, a built-in schedule (id 2) at
+03:30 every day. It deletes read rows older than `ReadRetention`, then unread rows older than
+`UnreadRetention`, `RetentionPageSize` rows per maintenance batch, counting each page as
+`tellma.notifications.retained` by band and reporting the totals as progress.
 
 ## Entity stacks
 
@@ -2374,7 +2419,7 @@ only when no resource declares the label, and the row a succeeded job leaves.
 
 | Key | Built-in | Does |
 |---|---|---|
-| `core.job-retention` | id 1, `0 3 * * *` | In pages of 1,000 rows, each its own `Maintenance` round trip: first queues flagged every job that waited for confirmation longer than `FailedRetention` and withdraws its notice, then deletes the succeeded jobs that ended longer than `SucceededRetention` ago, then the failed and cancelled ones past `FailedRetention`. A job that has not ended is never deleted; the rows that referenced a deleted job (every job entity's `JobId`, the schedule states' `LastJobId`) lose it. |
+| `core.job-retention` | id 1, `0 3 * * *` | In pages of 1,000 rows, each its own `Maintenance` round trip: first queues flagged every job that waited for confirmation longer than `FailedRetention` and withdraws its notice, then deletes the succeeded jobs that ended longer than `SucceededRetention` ago, then the failed and cancelled ones past `FailedRetention`. A job that has not ended is never deleted; the rows that referenced a deleted job (every job entity's `JobId`, the schedule states' `LastJobId`) lose it, and each delete page declares the tables those keys write, read from the model's foreign keys. |
 | `core.tree-verify` | id 6, `0 1 * * 6` | Recounts every tree table's subtree counts with the tree statements' verify, one `Maintenance` round trip per table, repairing the drifted rows. |
 
 Both run on a read-only tenant and report their progress after every page or table.

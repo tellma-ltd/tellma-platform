@@ -38,7 +38,7 @@ namespace Tellma.Core.IntegrationTests.Access
         ///     The securables every member holds through a bespoke self-scope criterion alone, so a
         ///     caller with no grants is filtered on them, never denied; ordinal order.
         /// </summary>
-        private static readonly (string Resource, string Action)[] SelfScoped = [(CoreResources.Job, AccessActions.Cancel), (CoreResources.Job, JobService.Confirm), (CoreResources.Job, AccessActions.Read)];
+        private static readonly (string Resource, string Action)[] SelfScoped = [(CoreResources.Job, AccessActions.Cancel), (CoreResources.Job, JobService.Confirm), (CoreResources.Job, AccessActions.Read), (CoreResources.Notification, AccessActions.Read)];
 
         /// <summary>The prologue round trips of the fixture's instance, one measurement each, tagged by variant.</summary>
         private readonly MetricCollector<double> _prologues = Prologues(fixture.Services);

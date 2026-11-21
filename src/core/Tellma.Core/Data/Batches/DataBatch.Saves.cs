@@ -35,8 +35,10 @@ namespace Tellma.Core.Data.Batches
             }
 
             // --- The plan, the authority over every table of the aggregate, and the user the stamps name ---
+            // A referencing key's action on a deleted child row is the database's consequence of the
+            // save, so its table is declared among the writes but needs no authority.
             SavePlan plan = _executor.Saves.Plan(typeof(TEntity));
-            CheckAuthority(plan.Writes);
+            CheckAuthority(plan.Aggregate);
             int userId = Connection.UserId
                 ?? throw new InvalidOperationException("A save stamps the rows it writes with the current user, and the scope has none. Save in a scope that carries a user.");
 
