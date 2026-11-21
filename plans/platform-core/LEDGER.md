@@ -106,12 +106,12 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 
 | PC | Slot | Branch | Step | Implementer agent (name / id) | Reviewer agent (name / id) | Started (UTC) |
 |---|---|---|---|---|---|---|
-| PC-096 | pc-1 | pc/PC-096 | impl | launched after PC-089 done; xhigh | 0025-b; R1 + R2 inherit xhigh | 2026-11-21 |
-| PC-091 | pc-3 | pc/PC-091 | R1 | impl 059dbd0e (7 deviations; 2 flags for ruling: members extra never Denied under UserAccessCriteria, access MCP exposure default); R1 launched | 0018-e; R1 only | 2026-11-21 |
-| PC-F65 | pc-f | pc/PC-F65 | held | impl d10f3b46; R1 0/0/4; fix1 36592e58 + responses 4dc7053d (shared host RequestTimeout 5 min); held behind PC-089, PC-149, PC-174 (merge-tree clean); D-179 | fix item | 2026-11-21 |
-| PC-174 | pc-2 | pc/PC-174 | held | impl dc83114f; R1 0/2/3; fix1 ad91dc10 (key tie-breaker on every ordering; R1-3/R1-4 kept per D-176 for Ahmad); held behind PC-089, PC-149 (merge-tree clean); D-176 | 0015-j; R1 only | 2026-11-21 |
-| PC-181 | pc-f2 | pc/PC-181 | impl | T3 fill under D-140/D-173; high; R2 inherit xhigh (complex) | 0010-f6 | 2026-11-21 |
-| PC-149 | pc-4 | pc/PC-149 | ci-pending | impl 7418f050; R1 0/2/2; fix1 6fba6f4c; integrate 6ddf615f (3 Users conflicts with PC-090 resolved as union; README bundle list refreshed); pc run 44938266888; D-170, D-174, D-177 | 0022-b; R1 only | 2026-11-21 |
+| PC-092 | pc-3 | pc/PC-092 | impl | launched after PC-091 done; T1; high | 0018-g; R1 only | 2026-11-21 |
+| PC-096 | pc-1 | pc/PC-096 | fix1 | impl f7e4a8f6 (14 deviations); R1 0/1/7 (future sync.at stall; enter/adoption races; OpenAPI depth -> PC-F67); fix1; then R2 inherit xhigh; D-185 | 0025-b; R1 + R2 inherit xhigh | 2026-11-21 |
+| PC-175 | pc-2 | pc/PC-175 | impl | launched after PC-174 done; T3 fill (D-173); high | 0019-b; R1 only | 2026-11-21 |
+| PC-212 | pc-4 | pc/PC-212 | R1 | impl a4fc6e1a (13 deviations; flags: shared JobPollDriver/FixtureTenant change, extra BlobSweepStoreFailed event, SuspendableAudit in reconcile test); R1 launched; carry D-183 at integration | 0017-e; R1 only | 2026-11-21 |
+| PC-214 | pc-f | pc/PC-214 | impl | launched after PC-F65 done; T3 fill (D-173); high | 0022-c; R1 only | 2026-11-21 |
+| PC-181 | pc-f2 | pc/PC-181 | integrating | impl 19eb6762; R1 0/2/4; fix1 651abb4c; R2 inherit xhigh 0/1/3; fix2 efec0cc6 (all fixed; length() emits CAST(LEN(x) AS int); null-test exemption covers declarable parameter types); released after PC-091 done; D-181, D-182 | 0010-f6 | 2026-11-21 |
 
 ## Fix items
 
@@ -180,7 +180,9 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-F62 | DeletePlan declares the tables of Cascade/SetNull referencing FKs (undeclared writes, every module); remove per-service workarounds (ScheduleService) | done (c62f762f; pc 44851530590 green; ForeignKeyActions derives Cascade/SetNull/SetDefault writes for deletes and saves, user capture before cascade, refusals at startup; D-150, D-156) | | |
 | PC-F63 | Nightly client-e2e: 3 WebKit chart-bidi canvas tests fail; dotnet job OS deps unavailable (nightly 44745573605) | done (247691dc; pc 44845403533 green; root cause WebKit drawBidiText carries a cursive final's GPOS y-offset onto later runs; ALM closes Arabic-script words in chart canvas text; D-155, D-160, D-161) | | |
 | PC-F64 | Nightly integration-windows: TenantScopeTests cross-instance suspension refresh failed (nightly 44745573605) | done (97475bd4; pc 44823811836 green; root causes: TenantScopeTests 30 s setup bound under a LocalDB CREATE DATABASE convoy, SMTP tests localhost vs 0.0.0.0, RequestTimeoutTests timer firing before the access guard; D-151, D-155) | | |
-| PC-F65 | Load-starved fixed waits in Core.AspNetCore.Tests (RequestTimeoutTests x2, RateLimitingTests x1 under four-lane local load; D-171) | in progress | | | pc-f |
+| PC-F65 | Load-starved fixed waits in Core.AspNetCore.Tests (RequestTimeoutTests x2, RateLimitingTests x1 under four-lane local load; D-171) | done (9e21bb68; pc 44945741967 green on 90110751) | d10f3b46, 36592e58, 4dc7053d, 90110751, 9e21bb68 | carry: BlobEndpointTests fixed 10 s/30 s waits and 200 ms delay onto Patience/TestClock (D-183) | pc-f |
+| PC-F66 | CI build-test (windows-latest): vstest.console failed to connect to a testhost within 90 s and aborted that assembly's run while every reported test passed (PR run 44947728191 on 9e21bb68; Windows runner starved by parallel test hosts). Root-cause and fix in ci.yml or the test setup, no retries (D-184) | done in PC-091 CI fixes (39ab3f1b, ci.yml Windows unit step -m:2; pc 44952666444 green, Windows build-test 17 min) | | | |
+| PC-F67 | OpenAPI schema writer fails /openapi/web.json once a schema nests past MaxDepth 16 (0016 §3.1 vs §12.1); decouple the schema writer's depth from the wire limit and restore ClientSyncResult.Me as MeResult (D-185) | todo (after PC-096 lands) | | | |
 | PC-F02 | systemic e2e flakiness: CI 42456030333 red on 5250c6c (plans-only) with 4 NEW flaky tests | done (R1 1/1/2; CI 42471952389 green), pc-f free | 2c91df4, 4c36d45, 4c89ae1 | 11.32M | grid bundle at its 38 KB ceiling; picker same-frame Enter race open | root-cause all 9; un-quarantine the fixed PC-F01 five |
 
 ## Batch reviews (one per phase)
@@ -223,6 +225,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 
 | Test | Since | Tracking |
 |---|---|---|
+| CI windows-latest unit step: vstest testhost connect timeout (90 s) aborts one assembly under parallel load (PR run 44947728191) | 2026-11-21 | PC-F66 (fixed 39ab3f1b) |
 | tellma-core-tools build.spec "stops with exit 3 …" (local load-only timeout) | 2026-11-14 | D-085 |
 | integration fixtures: CREATE DATABASE fails with SQL 1807 (model locked) under concurrent slots (local only) | 2026-11-15 | PC-F47 |
 | Identity InvitationDeliveryStatusApiTests.A_delivered_invitation_reports_what_the_provider_said (expectsDeliveryEvents) under load; passed alone 6/6 | 2026-11-15 | watch |
@@ -393,8 +396,8 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-088 | 0018-c | 1 | done (7146ab13; pc 44867579837 green) | ed00f3de, 8caf7211, c1574599, 7146ab13 | | D-157, D-159; D-156 carry closed (local declaration removed at integration); carry (D-156): whichever of PC-088 and PC-F62 lands second removes UserService.Delete.cs's local cascade declaration (UserPreferences, UserStamps, NotificationPreferences); PC-F62 declares it generally |
 | PC-089 | 0017-d | 1 | done (b6d256d6; pc 44934755140 green on 073dee41) | dc5e9223, 24438df0, d2513537, ccb7553e, 073dee41, b6d256d6 | | carry: none from D-096 any more (D-120 moved §6.4 BlobContainerStep to PC-083 and the provisioning-record row to whichever of PC-078 and PC-083 lands last); carry from PC-080 (D-124): blob endpoints must evaluate access or record the member witness, or the witness filter answers 500 (unstarted) or aborts the connection (started); carry D-137: wrap the blob GET in the telemetry stage (0016 §5.1 chain); carry D-145: map the blob GET with DisableRequestTimeout or a time-to-first-byte policy (tellma-web cuts downloads at 30 s) |
 | PC-090 | 0018-d | 1 | done (ca6dcb88; pc 44927060937 green) | 17267a1c, 131109ae, b02e2a74, 3ba8adc7, ca6dcb88 | | D-170, D-175; ci.yml build-test timeout 20 -> 30 min (slower Windows runners); D-096 carry closed (test runs and passes); carry from PC-141 (D-096): TenantStateTests.An_action_allowed_when_read_only_succeeds_on_a_read_only_tenant runs and must pass |
-| PC-091 | 0018-e | 1 | in progress | | | |
-| PC-092 | 0018-g | 1 | todo | | | carry from PC-094: extend the existing server AcmeFeature ("acme", empty); do not create another |
+| PC-091 | 0018-e | 1 | done (97a52c61; pc 44952666444 green on 39ab3f1b) | 059dbd0e, f2eaf519, 65375312, 39ab3f1b, 97a52c61 | | |
+| PC-092 | 0018-g | 1 | in progress | | | carry from PC-094: extend the existing server AcmeFeature ("acme", empty); do not create another |
 | PC-093 | 0018-h | 1 | todo | | | |
 | PC-094 | 0024-f | 1 | done (c4796b36; CI 43929225344 green, new acme-client jobs green) | 0213664, da754e8 (pc/PC-094) | | |
 | PC-095 | 0016-f | 1 | todo | | | |
@@ -451,7 +454,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-146 | 0021-c | 2 | done (d7ebba3c; pc 44840986549 green) | 5efa9448, 261870b7, 33c39b3f, d7ebba3c | | D-151, D-153; carry from PC-099 r1 closed (Notification self-scope added) |
 | PC-147 | 0021-d | 2 | done (fafeca1d; pc 44893146723 green) | dac43255, e7a8bf75, 8076570a, 9bd6566b, fafeca1d | | D-163; live Azure SignalR suite deferred until provisioned (Deferred tests) |
 | PC-148 | 0022-a | 2 | done (948362a2; pc 44881789227 green) | b01932b6, b73f83e0, c0ce93b8, 9d3d364f, 948362a2 | | D-164, D-166; CI fixes root-caused the platform-core PR-run race (ActionRun awaits parked flows); carry (D-151): EnlistmentFrame.Admit admits EmailOutbox (0015 §13.3); 0021 §12 enlisted-rows-committed-with-the-completion e2e test lands here |
-| PC-149 | 0022-b | 2 | in progress | | | carry (D-164): the 0018 §3.3 welcome email and its §9 pins, enqueued from the invite action frame (needs PC-088 on platform-core), with a test that enqueues from an action frame; emit tellma.outbox.enqueued from EmailOutbox.EnqueueAsync tagged with the request's Source |
+| PC-149 | 0022-b | 2 | done (cf1ab646; pc 44938266888 green on 6ddf615f) | 7418f050, 6fba6f4c, 6ddf615f, cf1ab646 | | carry (D-164): the 0018 §3.3 welcome email and its §9 pins, enqueued from the invite action frame (needs PC-088 on platform-core), with a test that enqueues from an action frame; emit tellma.outbox.enqueued from EmailOutbox.EnqueueAsync tagged with the request's Source |
 | PC-150 | 0026-d | 2 | todo | | | |
 | PC-151 | 0023-h | 2 | done (99123772; CI 43994567778 red → PC-F53; green 44019377406 on 880b58d7) | 7b9c658, c678bc7, 9912377 (pc/PC-151) | | |
 | PC-152 | 0024-j | 2 | todo | | | |
@@ -476,8 +479,8 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-171 | 0031-i | 2 | todo | | | |
 | PC-172 | 0032-h | 2 | todo | | | |
 | PC-173 | 0019-a | 3 | done (c316f5b4; CI 44034804023 green) | 8f3e494, 437a88f2, c316f5b4 (pc/PC-173) | | |
-| PC-174 | 0015-j | 3 | in progress | | | carry from PC-142 (D-131): extend StackConformanceTests with the excel_rows lane and its §16.2 budget rows |
-| PC-175 | 0019-b | 3 | todo | | | carry from PC-173: implement IExcelExporter over the internal WorkbookWriter (WriteAsync takes ExcelContext + CancellationToken), and bind Tellma:ScratchPath in C# (none exists yet; spec 0017 needs it too); WriteAsync (exporter and WorkbookWriter) takes a Func<Stream> openDestination, called once after the first page passes the cap |
+| PC-174 | 0015-j | 3 | done (2659f734; pc 44942165063 green on 4eb600b6) | dc83114f, ad91dc10, 4eb600b6, 2659f734 | | carry from PC-142 (D-131): extend StackConformanceTests with the excel_rows lane and its §16.2 budget rows |
+| PC-175 | 0019-b | 3 | in progress | | | carry from PC-173: implement IExcelExporter over the internal WorkbookWriter (WriteAsync takes ExcelContext + CancellationToken), and bind Tellma:ScratchPath in C# (none exists yet; spec 0017 needs it too); WriteAsync (exporter and WorkbookWriter) takes a Func<Stream> openDestination, called once after the first page passes the cap |
 | PC-176 | 0019-c | 3 | todo | | | carry from PC-142 (D-131): extend StackConformanceTests with export/import reachability and their budget rows (with PC-177) |
 | PC-177 | 0019-d | 3 | todo | | | |
 | PC-178 | 0019-e | 3 | todo | | | |
@@ -514,9 +517,9 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-209 | 0026-e | 3 | todo | | | |
 | PC-210 | 0026-g | 3 | todo | | | |
 | PC-211 | 0026-h | 3 | todo | | | |
-| PC-212 | 0017-e | 3 | todo | | | |
+| PC-212 | 0017-e | 3 | in progress | | | carry D-183: at integration, move BlobEndpointTests fixed waits onto Patience/TestClock | |
 | PC-213 | 0020-g | 3 | todo | | | carry (D-156): a raw SQL retention DELETE declares the tables its foreign keys' ON DELETE actions write, via ForeignKeyActions.WrittenByDeleting |
-| PC-214 | 0022-c | 3 | todo | | | |
+| PC-214 | 0022-c | 3 | in progress | | | |
 | PC-215 | 0032-b1 | 3 | todo | | | |
 | PC-216 | 0025-f | 3 | todo | | | |
 | PC-217 | 0010-a4 | 3 | done (41ee7bf8; CI 43906562691 green) | 59bbd79, cf57d4b, a94fb9e (pc/PC-217) | | |

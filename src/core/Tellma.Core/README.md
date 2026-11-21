@@ -451,7 +451,7 @@ queries and writes have no class for it. Its fingerprint digests the model.
 
 | Member | Statements |
 |---|---|
-| `Rows` | One page of columnar rows. With `CaptureKeys` or `IncludeAncestors`, a keys-only twin first fills a statement-local table (`@tb{b}_keys`) under the filter, restrictions and paging, and the page reads those keys in the spec's order, its key appended as the last tiebreak only where the ordering does not already hold it (in any position or direction, as the language decides for the twin: the page keeps a zero skip, `OFFSET @qx{n}_skip ROWS`, which marks it paged); a capped count (cap + 1 rows counted) and a tree's ancestors (the nodes above the page, not on it, in the same order) follow. A grouped spec captures no keys and climbs to no ancestors; its count counts its groups. Each call's statements fit the batch's parameter budget together or none is added. |
+| `Rows` | One page of columnar rows. With `CaptureKeys` or `IncludeAncestors`, a keys-only twin first fills a statement-local table (`@tb{b}_keys`) under the filter, restrictions and paging, and the page reads those keys in the spec's order, its key appended as the last tiebreak only where the ordering does not already hold it (in any position or direction, as the language decides for the twin: the page keeps a zero skip, `OFFSET @qx{n}_skip ROWS`, which marks it paged); a capped count (cap + 1 rows counted) and a tree's ancestors (the nodes above the page, not on it, in the same order) follow. A grouped spec captures no keys and climbs to no ancestors; its count counts its groups. A grouped spec's `Measures` add their partial columns after the select items, which the page reads like any other column, its decimals with the precision and scale the server reports, so a caller that compiled the same spec itself evaluates its measures over the page; the count compiles without them. Each call's statements fit the batch's parameter budget together or none is added. |
 | `Count` | A capped count: a result of cap + 1 means more than the cap. |
 | `EvaluateConstant` | One row of path-free expressions. |
 | `Assert` | A count compared with an expected value, throwing the given platform or distribution number and code. |
@@ -1415,9 +1415,10 @@ entity. Each operation runs in the frame of `CrudOperations`: the scope's first 
 the outcome it ended with, a cancellation by the caller as `cancelled`; a read carries no
 `crud.source`. The reads (the query, the details reads, the rows of a tree by parent and every
 row of a cacheable stack), the save (see [The save pipeline](#the-save-pipeline)), and the deletes
-and actions (see [The delete and action pipelines](#the-delete-and-action-pipelines)) are built: an
-operation the stack does not serve is an authoring bug (`InvalidOperationException`), and the Excel
-row source is `NotSupportedException`.
+and actions (see [The delete and action pipelines](#the-delete-and-action-pipelines)) are built, and
+so are the Excel row source and the import's lookups (see
+[The Excel row source](#the-excel-row-source)): an operation the stack does not serve is an
+authoring bug (`InvalidOperationException`).
 
 `QueryOperation` runs a query of a stack, and of a child query surface through `IChildQueryService`
 (the child's own `Read` securable, the convention's search, no named filters):
@@ -1489,11 +1490,14 @@ composes one guarded round trip:
    visible ids, so each target is read once however many rows point at it, and merged into the
    related entities, each entity once (`DetailsProjections`, cached per stack and schema).
 3. **The extras**: the service's `ContributeDetails` when it declares a requested extra, then each
-   `IDetailsContributor<T>` given the requested extras it declares. An extra added that its class
-   does not declare, that the request does not include, or twice, raw text that declares a write or
-   no result set, and a requested extra its declaring class did not add are authoring bugs
-   (`InvalidOperationException`). Each extra is returned under its name in request order, a computed
-   one serialised under `TellmaJson.Options` after the batch over the visible rows.
+   `IDetailsContributor<T>` given the requested extras it declares. A class that leaves a requested
+   extra absent on purpose (its caller may not read what the extra shows) omits it with
+   `DetailsPlan.OmitExtra`, and decides that with `DetailsPlan.Decide`, which answers the caller's
+   decision over the same permission set the read is composed under. An extra added or omitted that
+   its class does not declare, that the request does not include, or twice, raw text that declares
+   a write or no result set, and a requested extra its declaring class neither added nor omitted are
+   authoring bugs (`InvalidOperationException`). Each extra is returned under its name in request
+   order, a computed one serialised under `TellmaJson.Options` after the batch over the visible rows.
 4. **The `permissions` extra**: per visible row, the granted abilities it refuses (`save`, `delete`,
    `activate`, and `action:<name>` per entity action). Each filtered grant adds one keyed read of the
    visible ids under its filter; a row it misses refuses the ability as `outside-filter`, and the
@@ -1588,6 +1592,38 @@ pipeline drives them:
   else to `Validation.Invalid` naming the property and the attribute.
 - **Save shape.** `SaveShape.Check` refuses an empty payload, enforces the stack's save, children
   and rows ceilings, and reports every repeat of a positive id at its path.
+
+### The Excel row source
+
+`ExcelRowsOperation` serves the row source the Excel codec streams from (`excel_rows`), created by
+a stack's `ExcelRowSource` and, for an exportable child query surface, by
+`IChildQueryService.ExcelRowSource` (a child refuses `All` and named filters). It is bound to one
+`ExportSource`: by ids, an id key-set restriction over the distinct ids narrowed to the key type
+(more than `MaxIds` refused), inactive rows included; by query, the clauses as a query's (filters,
+named filters, search, arguments) and the activatable conjunct unless `IncludeInactive`; all, the
+access filter alone. The ordering is the query's, else the source's, else `Id`, and the key ends
+every ordering that does not already end with it, so pages cut by skip neither repeat nor drop a
+row that ties on the ordering. The type-level
+check runs once, before the first page.
+
+- **`Pages`** streams the root `MaxTake` rows at a time, one guarded read batch per page; the
+  query's `Take` caps the total, and `CountCap` counts on the first page only, neither bound by the
+  stack's skip window, count cap or take ceiling. A short page ends the stream, and a page with no
+  rows after the first is not yielded. Every dependent collection, at every depth, rides its
+  owner's batch, restricted to the owner rows' keys captured into a batch-local key table; a
+  collection that reaches `MaxTake` rows is completed by one more read per chunk over the owners'
+  ids, its own collections riding it. Each page runs as its own operation, so a grant revoked
+  between pages refuses the next page as `ForbiddenException`.
+- **`ReadAsync`** reads several flat queries (an import's lookups) in one batch, each completed by
+  further batches of `MaxTake`. A restriction's values bind as the column's table type (strings
+  matched under the tenant's collation, numbers out of the column's range dropped). A lookup's
+  target is read as a save's reference to it is (`TargetReads`): under the caller's `Read` decision
+  on its own securable, else on its owner's seen through the child's navigation, else, for an
+  entity no grant can reach, unrestricted; a denied target reads no rows, and a sensitive one asks
+  for the step-up.
+
+The traversal rule, the search's length and the refusal re-check apply as in a query; an arithmetic
+failure and exhausted retries translate as the query's do.
 
 ### The save pipeline
 
@@ -1878,9 +1914,10 @@ tenant, in a job that runs on one and in a provisioning step, refused in any oth
 
 `QueryexService` (route `queryex`, registered by `CoreFeature`) serves `discover`, a member-only,
 idempotent read hidden from the agents, for the editors: it checks clauses being written as `query`
-or a role save would compile them and answers `200` with every problem. Admission (`DiscoverShape`)
-runs before any I/O: a root the widest schema shape lacks is `NotFoundException`; measures (not
-supported yet), a having clause without an aggregation, a confirmed parameter without a name, of a
+or a role save would compile them and answers `200` with every problem. An aggregate query's measures
+are checked as its compilation checks them, each problem at its item in clause `measures`. Admission (`DiscoverShape`)
+runs before any I/O: a root the widest schema shape lacks is `NotFoundException`; measures or a
+having clause without an aggregation, a confirmed parameter without a name, of a
 hierarchy or geography type or named twice, and for a permission filter more than one filter or any
 other clause or parameter, are each `BadRequestException`. The caller's set comes from the scope's
 connection, and no statement ever runs. A cached caller costs no round trip while a prologue
@@ -2123,6 +2160,19 @@ it), never a silent empty list. The resolver authorises nothing itself: the role
 member counts and the holder count reach any connected caller, so a caller that returns the result
 holds the scope's caller to `core.Role` × `Read` first.
 
+`AccessService` (route `access`, contributed by `CoreFeature`) projects the two member-only read
+actions the role and user pages call, both hidden from MCP:
+
+| Action | Round trips | What it answers |
+|---|---|---|
+| `check` (the caller) | 0 | the caller's decision per requested securable, from the set the scope already loaded |
+| `check` (`UserId` another user) | 2 | after `core.Role` × `Read`, one read of the user under the caller's own `core.User` × `Read` filter (a hidden user is not found, as a missing one is), then the user's decision per securable |
+| `holders` | 1 | after `core.Role` × `Read`, the resolver's answer for one securable |
+
+A `check` names at most `MaxSecurables` (200) securables (`LimitExceededException`, limit
+`MaxSecurables`); a `UserId` equal to the caller's own id is the caller's check. An unknown resource
+or action is a `Denied` decision carrying its problem, never an error.
+
 `IAdministratorDirectory` (`AdministratorDirectory`) reads, in one guarded round trip, the ids of at
 most 20 active individuals, invited or joined, with a current membership of the administrator role,
 lowest id first, for a tenant's administrative notices; it checks no permission of the caller.
@@ -2316,6 +2366,22 @@ joined to the read's admitted ids.
 resource, action and filter, compared ordinally) to one row before the rules count and stamp them,
 since no unique index can hold them apart: a stored row survives over a new one, and a stored
 duplicate is deleted by the save. A leaf that overrides `PreprocessAsync` calls the base to keep it.
+
+`RoleService<TRole>` declares two details extras for the role page's one read (its platform
+collaborators come as one `RoleServiceDependencies` bundle, registered by
+`UsersRuntimeComposition`):
+
+- **`members`**: one query over `core.RoleMembership` restricted to the visible roles on `RoleId`,
+  each row's user under the caller's own `core.User` × `Read` filter (rebased through the
+  membership's `User`), ended memberships left out, ordered by the user's name, at most
+  `MaxMembers` (500) rows. Each row carries its `Id`, `RoleId`, `UserId`, `StartsAt`, `EndsAt`,
+  `Notes` and the user's name columns the tenant declares, `Email`, `ImageId`, `IsActive` and
+  `State`. A caller whose read of the users is denied gets no `members` extra and no statement for
+  it.
+- **`problems`**: computed from the permissions the read loads, one `PermissionProblem` per stored
+  permission that grants nothing, in role then permission order, judged by the evaluator's own
+  `PermissionClassifier`; an invalid filter carries its diagnostics located at clause `filters[0]`,
+  or the save's `Permissions.FilterInvalid` when the engine gave none.
 
 A delete by query runs no validation round, so the delete rules above would never see its targets:
 the users' and the roles' stacks leave `DeleteByQuery` out of their operations, so neither projects
@@ -2688,8 +2754,9 @@ are SpreadsheetML packages written with `DocumentFormat.OpenXml` (MIT), forward-
 | `Composition/` | `AddTellma`, `TellmaBuilder`, `TellmaComposition.Validate`, `CoreFeature`, `IContributionRealizer<T>`, `RealizationContext`, `TellmaStartupGate`; internally the pipeline, the feature graph, the composition record the checks and later runtimes read, Core's model contributions, and the link builder with its stack-route source. |
 | `Composition/Realizers/` | One realizer per item kind the platform understands: services, standalone table types, shape requirements, Core's model configurations, calendar systems, value sets, notification types and channels, client events, securables, entities, stack companions, stack components, routed API services, confirmations and provisioning steps. Each spec that adds an item kind adds its realizer to `ContributionRealizerSet.CreateBuiltIn`. |
 | `Composition/Checks/` | The built-in startup checks above. |
-| `Crud/` | Internally: the stack composition (each stack with its service, companions and components, closed over its leaf), the descriptor builder, `StackRegistry` (`IStackRegistry` and `IStackRouteSource`), the stacks' securable contributor, the platform's default service, the registrations `CrudComposition` makes, the action-method reader, and the entity pipeline with its factory, its operation frame and its instruments. |
+| `Crud/` | Internally: the stack composition (each stack with its service, companions and components, closed over its leaf), the descriptor builder, `StackRegistry` (`IStackRegistry` and `IStackRouteSource`), the stacks' securable contributor, the platform's default service, the registrations `CrudComposition` makes, the action-method reader, and the entity pipeline with its factory, its operation frame and its instruments, and the reads of reference and lookup targets (`TargetReads`). |
 | `Crud/Query/` | Internally: the query path of [Entity stacks](#the-entity-pipeline-and-the-query-path): the surfaces, the admission, the planner, the search, the argument discovery and binding, the diagnostics' locations and their wire form, the traversal rule, the query operation (with the rows of a tree by parent) and the child query service. |
+| `Crud/ExcelRows/` | Internally: [the Excel row source](#the-excel-row-source): the operation, the admitted query tree, one round trip's composition and its chunks, and the row source with its pages and lookups. |
 | `Crud/Details/` | Internally: the details reads of [Entity stacks](#the-entity-pipeline-and-the-query-path): the projections, the planner and its composition with the extras' name rules and the record permissions, and the details operation with the cached list. |
 | `Crud/Checks/` | The stack checks of [Entity stacks](#entity-stacks). |
 | `Api/` | `IRouteContracts` and `RouteContract`; internally the route model, the contract describer and fingerprint, and the contracts chunk's client-asset contributor ([The route model](#the-route-model)), and the Queryex discovery service with its admission ([Queryex discovery](#queryex-discovery)). |

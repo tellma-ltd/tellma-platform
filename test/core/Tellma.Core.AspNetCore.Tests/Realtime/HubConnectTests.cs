@@ -151,7 +151,7 @@ namespace Tellma.Core.AspNetCore.Tests.Realtime
 
             await using HubClient client = await RealtimeTestHost.ConnectAsync(host, RealtimeTestHost.Active, session.Cookie);
 
-            ClaimsPrincipal user = await probe.User.Task.WaitAsync(RealtimeTestHost.Patience, TestContext.Current.CancellationToken);
+            ClaimsPrincipal user = await Patience.WaitAsync(probe.User.Task);
             Assert.Equal("sub-7", user.FindFirst("sub")?.Value);
             Assert.Equal("1", Assert.Single(user.FindAll(TellmaHubClaims.TenantId)).Value);
             Assert.Equal("7", Assert.Single(user.FindAll(TellmaHubClaims.UserId)).Value);
@@ -163,7 +163,7 @@ namespace Tellma.Core.AspNetCore.Tests.Realtime
                 TellmaHubClaims.Select(user).Select(static claim => (claim.Type, claim.Value)));
 
             // SignalR runs the hub in a scope of its own: nothing bound it.
-            Assert.Null(await probe.Tenant.Task.WaitAsync(RealtimeTestHost.Patience, TestContext.Current.CancellationToken));
+            Assert.Null(await Patience.WaitAsync(probe.Tenant.Task));
         }
 
         [Fact]
@@ -346,14 +346,9 @@ namespace Tellma.Core.AspNetCore.Tests.Realtime
         /// <summary>Waits until a condition holds, which the hub reaches on its own threads.</summary>
         /// <param name="condition">The condition.</param>
         /// <returns>A task that completes when it holds.</returns>
-        internal static async Task WaitUntilAsync(Func<bool> condition)
+        internal static Task WaitUntilAsync(Func<bool> condition)
         {
-            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
-            timeout.CancelAfter(RealtimeTestHost.Patience);
-            while (!condition())
-            {
-                await Task.Delay(TimeSpan.FromMilliseconds(20), timeout.Token);
-            }
+            return Patience.UntilAsync(condition, "a condition the hub reaches on its own threads");
         }
 
         /// <summary>A hub filter that records what the hub's connect sees: the principal and the scope's tenant.</summary>

@@ -18,7 +18,6 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
-using Microsoft.Extensions.Time.Testing;
 using Microsoft.IdentityModel.JsonWebTokens;
 using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 using Microsoft.IdentityModel.Tokens;
@@ -82,7 +81,7 @@ namespace Tellma.Testing.WebHost
 
         private readonly WebApplication _app;
 
-        private TellmaTestHost(WebApplication app, FakeCatalogReader catalog, FakeTimeProvider time)
+        private TellmaTestHost(WebApplication app, FakeCatalogReader catalog, TestClock time)
         {
             _app = app;
             Catalog = catalog;
@@ -107,8 +106,8 @@ namespace Tellma.Testing.WebHost
         /// <summary>The in-memory catalog the registry reads.</summary>
         public FakeCatalogReader Catalog { get; }
 
-        /// <summary>The host's clock.</summary>
-        public FakeTimeProvider Time { get; }
+        /// <summary>The host's clock, a fake one that knows the timers the host arms on it.</summary>
+        public TestClock Time { get; }
 
         /// <summary>The catalog's session table.</summary>
         public InMemorySessionRows Rows { get; }
@@ -144,6 +143,12 @@ namespace Tellma.Testing.WebHost
                 ["Tellma:Identity:ServiceClientSecret"] = "test-service-client-secret",
                 ["Tellma:DataProtection:KeyRingPath"] = Path.Combine(Path.GetTempPath(), "tellma-aspnetcore-tests-keys"),
 
+                // The web timeout, a real timer, outlasts the tests' patience: a cold host on a
+                // loaded runner serves its first request in seconds, and a test that pins the
+                // timeout sets its own. Five minutes is the long policy's default, which it must
+                // not exceed.
+                ["Tellma:Api:RequestTimeout"] = "00:05:00",
+
                 // The tenants these hosts serve have no databases, so the job worker stays off; the
                 // jobs suites run it against a database of their own.
                 ["Tellma:Jobs:Enabled"] = "false",
@@ -158,7 +163,7 @@ namespace Tellma.Testing.WebHost
         /// <summary>Builds a host without starting it, for a test that expects startup to fail.</summary>
         /// <param name="configure">Changes to the defaults.</param>
         /// <returns>The application and its parts.</returns>
-        public static (WebApplication App, FakeCatalogReader Catalog, FakeTimeProvider Time) Build(Action<TestHostOptions>? configure = null)
+        public static (WebApplication App, FakeCatalogReader Catalog, TestClock Time) Build(Action<TestHostOptions>? configure = null)
         {
             TestHostOptions options = new();
             configure?.Invoke(options);
@@ -178,7 +183,7 @@ namespace Tellma.Testing.WebHost
             FakeCatalogReader catalog = new();
             catalog.Write([.. options.Rows]);
             catalog.Failure = options.CatalogFailure;
-            FakeTimeProvider time = new(DateTimeOffset.UtcNow);
+            TestClock time = new(DateTimeOffset.UtcNow);
             _ = builder.Services.AddSingleton<ICatalogReader>(catalog);
             _ = builder.Services.AddSingleton<TimeProvider>(time);
             _ = builder.Services.AddScoped<IRequestContextInitializer, ConnectingInitializer>();
@@ -259,7 +264,7 @@ namespace Tellma.Testing.WebHost
         /// <returns>The started host.</returns>
         public static async Task<TellmaTestHost> StartAsync(Action<TestHostOptions>? configure = null)
         {
-            (WebApplication app, FakeCatalogReader catalog, FakeTimeProvider time) = Build(configure);
+            (WebApplication app, FakeCatalogReader catalog, TestClock time) = Build(configure);
             await app.StartAsync(TestContext.Current.CancellationToken);
             return new TellmaTestHost(app, catalog, time);
         }

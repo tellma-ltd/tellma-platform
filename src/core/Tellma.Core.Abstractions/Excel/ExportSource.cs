@@ -49,7 +49,7 @@ namespace Tellma.Core.Abstractions.Excel
         /// <param name="Filters">The filters, each its own leaf, conjoined; null for none.</param>
         /// <param name="NamedFilters">The stack's named filters by name, conjoined; null for none.</param>
         /// <param name="Search">The search term; null for none.</param>
-        /// <param name="OrderBy">The ordering, as query ordering text; null for the stack's default.</param>
+        /// <param name="OrderBy">The ordering, as query ordering text; null orders by id.</param>
         /// <param name="Arguments">The values of the parameters the clauses mention, by name; null for none.</param>
         /// <param name="IncludeInactive">Whether inactive rows of an activatable stack are included.</param>
         public sealed record ByQuery(

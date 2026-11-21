@@ -160,6 +160,25 @@ namespace Tellma.Core.Queryex.Tests.Corpus
                 rendered.Append(' ').Append(column.Text).Append('\n');
             }
 
+            // Measures only where the query has some, so every file of a query without them is
+            // byte for byte what it was before measures existed.
+            if (query.Measures is CompiledMeasures measures)
+            {
+                rendered.Append("-- partials\n");
+                foreach (MeasurePartial partial in measures.Partials)
+                {
+                    rendered.Append("--   ").Append(partial.Ordinal.ToString(CultureInfo.InvariantCulture))
+                        .Append(" : ").Append(partial.Kind).Append(' ').Append(partial.Type).Append('\n');
+                }
+
+                rendered.Append("-- measures\n");
+                foreach (CompiledMeasure measure in measures.Items)
+                {
+                    rendered.Append("--   ").Append(measure.Type).Append(' ').Append(measure.Nullity)
+                        .Append(' ').Append(measure.Text).Append('\n');
+                }
+            }
+
             return rendered.ToString();
         }
 

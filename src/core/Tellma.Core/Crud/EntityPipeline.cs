@@ -13,6 +13,7 @@ using Tellma.Core.Crud.Actions;
 using Tellma.Core.Crud.Delete;
 using Tellma.Core.Crud.Details;
 using Tellma.Core.Crud.Enlistment;
+using Tellma.Core.Crud.ExcelRows;
 using Tellma.Core.Crud.Query;
 using Tellma.Core.Crud.Save;
 
@@ -27,17 +28,13 @@ namespace Tellma.Core.Crud
     ///     stack omits throws <see cref="InvalidOperationException" />, an authoring bug never a user
     ///     outcome.
     /// </summary>
-    /// <remarks>
-    ///     The query, the details reads, the tree read, the save, the deletes and the actions run
-    ///     here. The Excel row source refuses with <see cref="NotSupportedException" /> until its
-    ///     steps are built.
-    /// </remarks>
     /// <typeparam name="TEntity">The stack's entity type.</typeparam>
     /// <typeparam name="TKey">The stack's key type.</typeparam>
     /// <param name="descriptor">The stack's descriptor.</param>
     /// <param name="behavior">The service's hooks.</param>
     /// <param name="surfaces">The query surfaces.</param>
     /// <param name="queries">The scope's query operation.</param>
+    /// <param name="excelRows">The scope's Excel row-source operation.</param>
     /// <param name="details">The scope's details reads.</param>
     /// <param name="save">The scope's save operation.</param>
     /// <param name="deletes">The scope's deletes.</param>
@@ -47,6 +44,7 @@ namespace Tellma.Core.Crud
         IEntityBehavior<TEntity, TKey> behavior,
         QuerySurfaces surfaces,
         QueryOperation queries,
+        ExcelRowsOperation excelRows,
         DetailsOperation details,
         SaveOperation save,
         DeleteOperation deletes,
@@ -167,8 +165,9 @@ namespace Tellma.Core.Crud
         /// <inheritdoc />
         public IExcelRowSource CreateExcelRowSource(ExportSource source)
         {
+            ArgumentNullException.ThrowIfNull(source);
             Require(StackOperations.Export, CrudOperationNames.ExcelRows);
-            throw NotBuilt(CrudOperationNames.ExcelRows);
+            return excelRows.Create(Surface(), source, behavior.SearchFilter);
         }
 
         /// <summary>The stack's query surface.</summary>
@@ -196,14 +195,6 @@ namespace Tellma.Core.Crud
             {
                 throw new InvalidOperationException($"The stack {Descriptor.Resource} lacks the {capability} capability, so its service cannot run '{name}'.");
             }
-        }
-
-        /// <summary>The refusal of an operation whose steps are not built yet.</summary>
-        /// <param name="name">The operation's name.</param>
-        /// <returns>The exception.</returns>
-        private NotSupportedException NotBuilt(string name)
-        {
-            return new NotSupportedException($"The pipeline of {Descriptor.Resource} does not run '{name}' yet.");
         }
     }
 }

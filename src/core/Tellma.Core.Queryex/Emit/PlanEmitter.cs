@@ -930,17 +930,23 @@ namespace Tellma.Core.Queryex.Emit
                 _sql.Write("NOT ");
             }
 
+            // The operands sit in a subquery of their own, where a count that reads no column would
+            // count the subquery's one row.
+            _subqueries++;
             _sql.Write("EXISTS (SELECT ");
             Value(comparison.Left);
             _sql.Write(" INTERSECT SELECT ");
             Value(comparison.Right);
             _sql.Write(')');
+            _subqueries--;
         }
 
         /// <summary>Writes a membership test that mentions its value once.</summary>
         /// <param name="membership">The node.</param>
         private void WriteSetMembership(PlanSetMembership membership)
         {
+            // In a subquery of its own, like an equality's operands.
+            _subqueries++;
             _sql.Write("EXISTS (SELECT ");
             Value(membership.Value);
             _sql.Write(" INTERSECT ");
@@ -970,6 +976,7 @@ namespace Tellma.Core.Queryex.Emit
             }
 
             _sql.Write(')');
+            _subqueries--;
         }
 
         /// <summary>Writes a hierarchy test.</summary>

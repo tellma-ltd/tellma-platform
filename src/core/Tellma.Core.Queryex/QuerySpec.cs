@@ -60,6 +60,32 @@ namespace Tellma.Core.Queryex
         /// </summary>
         public string? OrderBy { get; init; }
 
+        /// <summary>
+        ///     Measures a host evaluates itself over rolled-up groups, as a comma-separated list. A
+        ///     caller error unless <see cref="Aggregate" /> is set; absent, empty or blank, the
+        ///     statement is exactly what it would be without this member.
+        /// </summary>
+        /// <remarks>
+        ///     <para>
+        ///         Each item is a measure on the grouped rows, such as <c>sum(Amount) / count()</c>.
+        ///         It is not computed in SQL: its aggregations are, each one a sum, a count, a least or
+        ///         a greatest value appended to the select list as a partial column, an average
+        ///         contributing a sum and a count. <see cref="CompiledQuery.Measures" /> describes the
+        ///         partials and evaluates each measure over them in the backend's own arithmetic, so a
+        ///         host can combine fine groups into coarser ones and evaluate a subtotal as the
+        ///         measure of the combined rows rather than as a combination of the measures.
+        ///     </para>
+        ///     <para>
+        ///         Outside its aggregations an item may use only what that evaluation computes
+        ///         exactly: literals, parameters, the context values, arithmetic, comparisons over
+        ///         numbers, truth values and dates, the logical connectives, <c>if</c>,
+        ///         <c>coalesce</c>, <c>abs</c>, <c>round</c>, <c>floor</c>, <c>ceiling</c>, identity
+        ///         conversions, and the calendar parts and differences of dates. Measures never
+        ///         become grouping keys, and no other clause sees them.
+        ///     </para>
+        /// </remarks>
+        public string? Measures { get; init; }
+
         /// <summary>Rows to skip. Paging requires an explicit ordering.</summary>
         /// <remarks>
         ///     Caller-supplied rather than expression text, because it is never authored by a user
@@ -173,6 +199,13 @@ namespace Tellma.Core.Queryex
 
         /// <summary>The ordering list, when present.</summary>
         public string? OrderBy { get; init; }
+
+        /// <summary>
+        ///     The measures, when present: checked as a compilation checks them, each item at a
+        ///     location of its own. A caller error unless <see cref="Aggregate" /> is set; empty or
+        ///     blank is absent.
+        /// </summary>
+        public string? Measures { get; init; }
 
         /// <summary>
         ///     True to have the row-level predicate's top-level restrictions reported, each as a

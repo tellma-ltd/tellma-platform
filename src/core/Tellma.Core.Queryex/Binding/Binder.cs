@@ -52,8 +52,14 @@ namespace Tellma.Core.Queryex.Binding
         /// <summary>What the expression depends on besides its own text.</summary>
         private readonly BindingContext _context;
 
-        /// <summary>Where to report problems.</summary>
-        private readonly DiagnosticScope _scope;
+        /// <summary>Where to report problems about the list as a whole.</summary>
+        private readonly DiagnosticScope _listScope;
+
+        /// <summary>
+        ///     Where to report problems: the list's scope, or for a list of measures the scope of the
+        ///     item being bound, since each measure is a site of its own.
+        /// </summary>
+        private DiagnosticScope _scope;
 
         /// <summary>How deeply inside aggregations the current node sits.</summary>
         private int _aggregateDepth;
@@ -91,6 +97,7 @@ namespace Tellma.Core.Queryex.Binding
         internal Binder(BindingContext context, in DiagnosticScope scope)
         {
             _context = context;
+            _listScope = scope;
             _scope = scope;
         }
 
@@ -116,8 +123,11 @@ namespace Tellma.Core.Queryex.Binding
             }
 
             ImmutableArray<BoundItem>.Builder items = ImmutableArray.CreateBuilder<BoundItem>(list.Items.Count);
-            foreach (ExpressionItemSyntax item in list.Items)
+            for (int index = 0; index < list.Items.Count; index++)
             {
+                // Each measure is reported, and has its parameters located, at a site of its own.
+                ExpressionItemSyntax item = list.Items[index];
+                _scope = _context.Measures ? _listScope.Item(index) : _listScope;
                 if (item.Direction != QueryexDirection.None && !directions)
                 {
                     _scope.Report(DiagnosticCodes.DirectionNotPermitted, item.DirectionSpan);
@@ -126,6 +136,7 @@ namespace Tellma.Core.Queryex.Binding
                 items.Add(new BoundItem(BindItem(item), item.Span, item.Direction));
             }
 
+            _scope = _listScope;
             return items.ToImmutable();
         }
 
@@ -200,6 +211,13 @@ namespace Tellma.Core.Queryex.Binding
         private void CheckItemRules(ExpressionItemSyntax item, TypedExpr bound)
         {
             CheckCollations(bound);
+
+            if (_context.Measures)
+            {
+                // A measure has rules of its own, which replace the select list's grouping rules.
+                CheckMeasureRules(item, bound);
+                return;
+            }
 
             if (_context.Mode.Shape == QueryexShape.Value && bound.Type == BoundType.Null)
             {

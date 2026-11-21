@@ -182,10 +182,12 @@ namespace Tellma.Core.AspNetCore.Tests.Sessions
         /// </summary>
         /// <param name="waits">The due times the timer reports as it starts each wait.</param>
         /// <returns>The due time.</returns>
-        private static Task<DateTimeOffset> NextWaitAsync(Channel<DateTimeOffset> waits)
+        private static async Task<DateTimeOffset> NextWaitAsync(Channel<DateTimeOffset> waits)
         {
-            return waits.Reader.ReadAsync(TestContext.Current.CancellationToken).AsTask()
-                .WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+            // The read itself is cancelled at the limit, so no read left waiting takes a later wait.
+            using var limit = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+            limit.CancelAfter(Patience.Limit);
+            return await waits.Reader.ReadAsync(limit.Token);
         }
     }
 }

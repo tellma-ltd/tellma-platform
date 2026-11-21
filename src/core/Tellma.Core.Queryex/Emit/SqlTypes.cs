@@ -101,6 +101,45 @@ namespace Tellma.Core.Queryex.Emit
             return QueryexStoreType.QxDecimal(WidePrecision, scale);
         }
 
+        /// <summary>The type the backend holds a negated number in.</summary>
+        /// <param name="operand">The operand's type.</param>
+        /// <returns>
+        ///     The operand's type, except that a <c>tinyint</c>, which holds no negative value, is
+        ///     negated into a <c>smallint</c>.
+        /// </returns>
+        internal static QueryexStoreType NegationOf(QueryexStoreType operand)
+        {
+            return operand.Family == QueryexStoreFamily.QxTinyInt ? QueryexStoreType.QxSmallInt : operand;
+        }
+
+        /// <summary>The type the backend holds a pattern's result in, given the argument it follows.</summary>
+        /// <param name="argument">The followed argument's type.</param>
+        /// <param name="following">How the result follows it.</param>
+        /// <returns>The result type.</returns>
+        internal static QueryexStoreType Following(QueryexStoreType argument, ResultFollowing following)
+        {
+            if (following == ResultFollowing.Same)
+            {
+                return argument;
+            }
+
+            // A count of characters is cast to an int whatever text it counts.
+            if (following == ResultFollowing.Length)
+            {
+                return QueryexStoreType.QxInt;
+            }
+
+            // The numeric functions return a narrow whole number as an int, and floor and ceiling
+            // keep a decimal's precision while dropping its scale.
+            return argument.Family is QueryexStoreFamily.QxTinyInt or QueryexStoreFamily.QxSmallInt
+                ? QueryexStoreType.QxInt
+                : following == ResultFollowing.Integral
+                    && argument.Family == QueryexStoreFamily.QxDecimal
+                    && argument.Size is int precision
+                    ? QueryexStoreType.QxDecimal(precision, 0)
+                    : argument;
+        }
+
         /// <summary>The type joining two pieces of text produces.</summary>
         /// <param name="left">The left operand's type.</param>
         /// <param name="right">The right operand's type.</param>

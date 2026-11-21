@@ -36,11 +36,16 @@ namespace Tellma.Testing.Entities
 
     /// <summary>
     ///     A top-level, system-versioned, activatable entity with a natural key, multilingual names, a
-    ///     write-once unique subject, a JSON column and an image reference.
+    ///     write-once unique subject, a JSON column and an image reference. Its take ceiling is low, so
+    ///     a suite reaches a page boundary, and a collection beyond the ceiling, with a few rows.
     /// </summary>
+    /// <remarks>
+    ///     The ceiling is the default page size, so a query that names no page size stays within it.
+    /// </remarks>
     [Table("Widgets", Schema = FixtureSchema.Name)]
     [Temporal]
     [TableType]
+    [Stack(MaxTake = 50)]
     public class Widget : TopLevelEntity, IActivatable
     {
         /// <summary>The natural key, <c>varchar(50)</c>, unique when present.</summary>

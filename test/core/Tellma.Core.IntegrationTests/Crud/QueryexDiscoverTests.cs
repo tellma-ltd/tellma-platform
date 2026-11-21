@@ -55,7 +55,7 @@ namespace Tellma.Core.IntegrationTests.Crud
         // --- Authorize ---
 
         [Fact]
-        public async Task An_unknown_root_is_not_found_and_measures_are_a_bad_request_before_any_round_trip()
+        public async Task An_unknown_root_is_not_found_and_measures_without_an_aggregate_are_a_bad_request_before_any_round_trip()
         {
             (_, string subject) = await fixture.SeedCallerAsync((Widgets, AccessActions.Read, null));
 
