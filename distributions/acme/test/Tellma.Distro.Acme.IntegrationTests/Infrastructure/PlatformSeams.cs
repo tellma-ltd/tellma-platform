@@ -23,9 +23,6 @@ namespace Tellma.Distro.Acme.IntegrationTests.Infrastructure
         /// <summary>The name of the provisioning step that makes the seeded administrator a tenant user.</summary>
         private const string BootstrapAdministratorStep = "core.bootstrap-administrator";
 
-        /// <summary>The route the users stack's own-locale action is projected onto, under a surface's group.</summary>
-        private const string UserLocaleRoute = "/users/me/locale";
-
         /// <summary>The composition, read on first use.</summary>
         private static readonly Lazy<Composition> Composed = new(Read, LazyThreadSafetyMode.ExecutionAndPublication);
 
@@ -43,9 +40,6 @@ namespace Tellma.Distro.Acme.IntegrationTests.Infrastructure
         ///     its first round trip to the tenant's database inside the access guard.
         /// </summary>
         public static bool ConnectsTheUser => Composed.Value.UserConnection;
-
-        /// <summary>Whether the users stack's own-locale action is projected onto the web API, for a served administrator.</summary>
-        public static bool ServesTheLocaleAction => ServesTheAdministrator && Composed.Value.UserLocaleAction;
 
         /// <summary>Whether every one of the platform's provisioning steps is composed.</summary>
         public static bool ComposesPlatformSteps => PlatformSteps.All(Composed.Value.Steps.Contains);
@@ -68,19 +62,10 @@ namespace Tellma.Distro.Acme.IntegrationTests.Infrastructure
             try
             {
                 List<ServiceDescriptor> descriptors = [.. services!];
-                IReadOnlyList<string> routes = host.RoutePatterns;
-
-                // A host that maps nothing was read wrongly, and would hide every route-keyed capability.
-                if (routes.Count == 0)
-                {
-                    throw new InvalidOperationException("Acme's web host mapped no route, so its composition cannot be read.");
-                }
-
                 using IServiceScope scope = host.Services.CreateScope();
                 return new Composition(
                     UserConnection: ComposesUserConnection(scope.ServiceProvider),
-                    Steps: StepNames(descriptors, scope.ServiceProvider),
-                    UserLocaleAction: routes.Any(static pattern => pattern.EndsWith(UserLocaleRoute, StringComparison.OrdinalIgnoreCase)));
+                    Steps: StepNames(descriptors, scope.ServiceProvider));
             }
             finally
             {
@@ -137,7 +122,6 @@ namespace Tellma.Distro.Acme.IntegrationTests.Infrastructure
         /// <summary>What Acme's composition holds.</summary>
         /// <param name="UserConnection">Whether an initializer binds a tenant request to its tenant user.</param>
         /// <param name="Steps">The composed provisioning steps' names.</param>
-        /// <param name="UserLocaleAction">Whether the users stack's own-locale action is projected.</param>
-        private sealed record Composition(bool UserConnection, IReadOnlySet<string> Steps, bool UserLocaleAction);
+        private sealed record Composition(bool UserConnection, IReadOnlySet<string> Steps);
     }
 }

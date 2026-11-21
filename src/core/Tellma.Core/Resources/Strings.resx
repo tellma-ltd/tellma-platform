@@ -148,6 +148,9 @@
   <data name="Action_Credentials" xml:space="preserve">
     <value>Credentials</value>
   </data>
+  <data name="Action_Preferences" xml:space="preserve">
+    <value>Preferences</value>
+  </data>
   <data name="Action_Share" xml:space="preserve">
     <value>Share</value>
   </data>
@@ -194,6 +197,63 @@
   </data>
   <data name="Core_User_Action_InvitationStatus_Ids" xml:space="preserve">
     <value>Users</value>
+  </data>
+  <data name="Core_User_Action_Me" xml:space="preserve">
+    <value>My profile</value>
+  </data>
+  <data name="Core_User_Action_MeSave" xml:space="preserve">
+    <value>Save my profile</value>
+  </data>
+  <data name="Core_User_Action_MeLocale" xml:space="preserve">
+    <value>Change my language and region</value>
+  </data>
+  <data name="Core_User_Action_MeLocale_Language" xml:space="preserve">
+    <value>Language</value>
+  </data>
+  <data name="Core_User_Action_MeLocale_Calendar" xml:space="preserve">
+    <value>Calendar</value>
+  </data>
+  <data name="Core_User_Action_MeLocale_TimeZone" xml:space="preserve">
+    <value>Time zone</value>
+  </data>
+  <data name="Core_User_Action_MeLocale_Region" xml:space="preserve">
+    <value>Region</value>
+  </data>
+  <data name="Core_User_Action_MeLocale_Digits" xml:space="preserve">
+    <value>Digits</value>
+  </data>
+  <data name="Core_User_Action_MeLocale_Reset" xml:space="preserve">
+    <value>Reset to default</value>
+  </data>
+  <data name="Core_User_Action_MePreferencesSet" xml:space="preserve">
+    <value>Save my preferences</value>
+  </data>
+  <data name="Core_User_Action_MePreferencesSet_Items" xml:space="preserve">
+    <value>Preferences</value>
+  </data>
+  <data name="Core_User_Action_MePreferencesDelete" xml:space="preserve">
+    <value>Clear my preferences</value>
+  </data>
+  <data name="Core_User_Action_MePreferencesDelete_Keys" xml:space="preserve">
+    <value>Preference names</value>
+  </data>
+  <data name="Core_User_Action_PreferencesGet" xml:space="preserve">
+    <value>View preferences</value>
+  </data>
+  <data name="Core_User_Action_PreferencesGet_UserId" xml:space="preserve">
+    <value>User</value>
+  </data>
+  <data name="Core_User_Action_PreferencesSet" xml:space="preserve">
+    <value>Change preferences</value>
+  </data>
+  <data name="Core_User_Action_PreferencesSet_Items" xml:space="preserve">
+    <value>Preferences</value>
+  </data>
+  <data name="Core_User_Action_PreferencesDelete" xml:space="preserve">
+    <value>Clear preferences</value>
+  </data>
+  <data name="Core_User_Action_PreferencesDelete_Keys" xml:space="preserve">
+    <value>Preference names</value>
   </data>
   <data name="Core_Role_Plural" xml:space="preserve">
     <value>Roles</value>
@@ -523,6 +583,12 @@
   <data name="Users_RegionNotOffered" xml:space="preserve">
     <value>This region isn’t offered.</value>
   </data>
+  <data name="Users_LocaleEmpty" xml:space="preserve">
+    <value>Choose at least one language or regional setting to change.</value>
+  </data>
+  <data name="Users_LocaleResetConflict" xml:space="preserve">
+    <value>A setting can’t be changed and reset at the same time.</value>
+  </data>
   <data name="Users_ContactEmailInvalid" xml:space="preserve">
     <value>Enter a valid email address.</value>
   </data>
@@ -824,7 +890,7 @@
   <data name="JobHandler_core_notification-retention" xml:space="preserve">
     <value>Deleting old notifications</value>
   </data>
-  <!-- The email outbox: the outgoing emails' labels, its codes and its sending job's label -->
+  <!-- The email outbox: the outgoing emails' labels, its codes, its sending job's label and its failure notice -->
   <data name="Core_OutgoingEmail_Plural" xml:space="preserve">
     <value>Outgoing emails</value>
   </data>
@@ -866,6 +932,12 @@
   </data>
   <data name="JobHandler_core_outgoing-email" xml:space="preserve">
     <value>Sending an email</value>
+  </data>
+  <data name="Notification_core_email_failed" xml:space="preserve">
+    <value>{count, plural, one {An outgoing email could not be sent.} other {# outgoing emails could not be sent.}}</value>
+  </data>
+  <data name="NotificationType_core_email_failed" xml:space="preserve">
+    <value>Emails that could not be sent</value>
   </data>
   <data name="Schedules_CronInvalid" xml:space="preserve">
     <value>The cron expression {expression} is not valid. Give minute, hour, day of month, month and day of week, such as 0 3 * * * for three every morning.</value>

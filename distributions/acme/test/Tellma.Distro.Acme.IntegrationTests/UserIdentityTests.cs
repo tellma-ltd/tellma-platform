@@ -6,6 +6,7 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.DependencyInjection;
 using System.Globalization;
 using System.Net;
@@ -27,7 +28,7 @@ namespace Tellma.Distro.Acme.IntegrationTests
     /// <summary>
     ///     The users' identity actions end to end against Acme's in-proc identity engine: an invite
     ///     answering each of the engine's outcomes and the delivery of the email it sent, a sandbox's
-    ///     invite that only looks accounts up, and a service account whose issued credentials obtain
+    ///     invite that only looks accounts up and welcomes the one it linked, and a service account whose issued credentials obtain
     ///     a token the tenant's API resolves to that account, until a rotation retires them.
     /// </summary>
     /// <param name="sql">The SQL Server the migrator and the host run against.</param>
@@ -42,6 +43,9 @@ namespace Tellma.Distro.Acme.IntegrationTests
 
         /// <summary>The route of the test's bearer probe on the public API group.</summary>
         private const string WhoAmIRoute = "/whoami";
+
+        /// <summary>The owner key the outbox correlates the emails it sends with.</summary>
+        private const string OutboxOwnerKey = "outbox";
 
         /// <summary>How long the engine may take to send an invitation email it queued.</summary>
         private static readonly TimeSpan DeliveryBound = TimeSpan.FromSeconds(30);
@@ -86,7 +90,7 @@ namespace Tellma.Distro.Acme.IntegrationTests
         }
 
         [Fact]
-        public async Task A_sandbox_invite_links_an_existing_account_and_creates_and_emails_nobody()
+        public async Task A_sandbox_invite_links_an_existing_account_creates_nobody_and_welcomes_only_the_linked_user()
         {
             AcmeMigrator acme = new(sql, "acme_sandbox_invite");
             _ = await acme.MigrateAsync();
@@ -100,10 +104,15 @@ namespace Tellma.Distro.Acme.IntegrationTests
             Assert.Equal(
                 [new InviteResult(known, InviteStatus.Active, null), new InviteResult(stranger, null, AccessCodes.SandboxRequiresExistingIdentity)],
                 results);
-            Assert.Equal(0, host.Emails.CountFor("stranger@example.com"));
-            Assert.Equal(0, host.Emails.CountFor("known@example.com"));
             await using AsyncServiceScope identity = host.Services.CreateAsyncScope();
             Assert.Null(await identity.ServiceProvider.GetRequiredService<UserManager<TellmaIdentityUser>>().FindByEmailAsync("stranger@example.com"));
+
+            // --- The identity engine emailed nobody: the only mail the host may send is the outbox's ---
+            // The worker may already have sent the linked user's welcome, which the outbox correlates.
+            Assert.DoesNotContain(host.Emails.Captured, static email => email.Message.Correlation?.OwnerKey != OutboxOwnerKey);
+
+            // --- The linked user alone is welcomed, through the sandbox tenant's outbox ---
+            Assert.Equal([known], await WelcomedAsync(acme, Sandbox));
         }
 
         [Fact]
@@ -200,6 +209,26 @@ namespace Tellma.Distro.Acme.IntegrationTests
             // A throwaway password for this test's account alone: the engine counts it as a credential.
             IdentityResult created = await users.CreateAsync(account, "Aa1!" + Guid.NewGuid().ToString("N"));
             Assert.True(created.Succeeded, string.Join("; ", created.Errors.Select(static error => error.Description)));
+        }
+
+        /// <summary>The users a tenant's outbox holds a welcome email for, one entry per email, by id.</summary>
+        /// <param name="acme">The deployment.</param>
+        /// <param name="tenantId">The tenant.</param>
+        /// <returns>The recipients' ids.</returns>
+        private static async Task<IReadOnlyList<int>> WelcomedAsync(AcmeMigrator acme, int tenantId)
+        {
+            await using SqlConnection connection = new(acme.TenantConnectionString(tenantId));
+            await connection.OpenAsync(Token);
+            await using SqlCommand command = connection.CreateCommand();
+            command.CommandText = $"SELECT [RecipientUserId] FROM [core].[OutgoingEmails] WHERE [RegardingEntity] = N'{CoreResources.User}' ORDER BY [Id];";
+            await using SqlDataReader reader = await command.ExecuteReaderAsync(Token);
+            List<int> recipients = [];
+            while (await reader.ReadAsync(Token))
+            {
+                recipients.Add(reader.GetInt32(0));
+            }
+
+            return recipients;
         }
 
         /// <summary>Saves an active individual in a tenant as the system.</summary>

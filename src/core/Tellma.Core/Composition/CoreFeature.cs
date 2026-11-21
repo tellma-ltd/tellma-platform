@@ -132,11 +132,15 @@ namespace Tellma.Core.Composition
                 .Model<UserPreferenceConfiguration>()
                 .TableType<UserPreferenceList>();
 
-            // --- The users' stack beyond spec 0014 (spec 0018 §1.2, §3): the own-row read criterion
-            // and the invite write-back's table type ---
+            // --- The users' stack beyond spec 0014 (spec 0018 §1.2, §3): the own-row read criterion,
+            // the activity details extra and the invite write-back's table type ---
             _ = contribution
                 .Singleton<IAccessCriteriaProvider, UserAccessCriteria>()
+                .DetailsContributor<User, UserActivityContributor<User>>()
                 .TableType<UserInvitationOutcome>();
+
+            // --- The access endpoints: a user's decisions and a securable's holders (spec 0018 §3.7) ---
+            _ = contribution.ApiService<AccessService>();
 
             // --- The identity-server client, one per distribution (spec 0018 §1.2, §2) ---
             // Its options and named HTTP client are registered with the platform's options.
@@ -238,17 +242,20 @@ namespace Tellma.Core.Composition
                 .ClientEvent(Notifier.InboxChangedEvent)
                 .ClientEvent(SessionEndedEvent.Name);
 
-            // --- The email outbox: the rows and their stack, the outbox, the sending jobs' handler,
-            // the attachments' blob kind and the two table types ---
+            // --- The email outbox: the rows and their stack, the outbox, the sending jobs' handler and
+            // its failure notice, the attachments' blob kind and the two table types ---
             // spec 0022 §9.3. OutgoingEmail is a Query | Details | Delete | Enlist stack whose rows
             // arrive only through the outbox; its registration as a scoped service gives the registry
             // the outbox's enlistment pair. An email attachment needs no preview, so its kind renders
-            // no thumbnail; the kind itself comes from the attachment's blob reference.
+            // no thumbnail; the kind itself comes from the attachment's blob reference. The commit
+            // effect counts the rows a frame committed (spec 0022 §9.2).
             _ = contribution
                 .Entity<OutgoingEmail, OutgoingEmailService>()
+                .PersistEffect<OutgoingEmail, OutboxEnqueuedEffect>()
                 .Model<OutgoingEmailConfiguration>()
                 .Scoped<IEmailOutbox, EmailOutbox>()
                 .JobHandler<OutgoingEmailHandler>()
+                .NotificationType(OutgoingEmailHandler.FailedDescriptor)
                 .BlobKind(OutgoingEmailAttachment.BlobKind, static policy => policy with { Thumbnail = null })
                 .TableType<OutgoingEmailOutcomeList>()
                 .TableType<EmailDeliveryEventList>();

@@ -57,8 +57,10 @@ namespace Tellma.Core.Tests.Localization
         }
 
         [Theory]
+        // An entity's twin derives no key of its own; the shared Name2 and Name3 are derived only
+        // because the users' profile edit takes them as argument fields.
         [InlineData("Fixture_Widget_Name2")]
-        [InlineData("Name3")]
+        [InlineData("Core_Role_Name3")]
         [InlineData("Calendar_uq_Month13")]
         [InlineData("Problem_not_found")]
         // A collection falls back to its child entity's labels, never a bare key of its own.

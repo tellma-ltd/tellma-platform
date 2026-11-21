@@ -205,10 +205,45 @@ namespace Tellma.Core.Tests.Crud.Details
             Assert.Equal(JsonValueKind.Object, result.Extras["names"].ValueKind);
         }
 
+        [Fact]
+        public async Task An_extra_omitted_on_purpose_is_absent_and_a_producer_decides_from_the_set_the_read_is_composed_under()
+        {
+            _rig.Grant((DetailsModel.Orders, AccessActions.Read, null), (DetailsModel.Nodes, AccessActions.Read, "Name != 'hidden'"));
+            Script(main: [1], orders: [Order(1, "A")]);
+
+            await using AsyncServiceScope scope = _rig.Scope();
+            DmOrderService orders = Orders(scope);
+            List<AccessDecision> decisions = [];
+            orders.Contribution = plan =>
+            {
+                decisions.Add(plan.Decide(DetailsModel.Nodes, AccessActions.Read));
+                decisions.Add(plan.Decide(DetailsModel.Customers, AccessActions.Read));
+                decisions.Add(plan.Decide("dm.Gone", AccessActions.Read));
+                plan.OmitExtra(DmOrderService.Totals);
+                plan.AddComputedExtra(DmOrderService.Raw, static rows => rows.Count);
+            };
+
+            EntitiesResult<DmOrder> result = await orders.GetByIdAsync(1, new DetailsRequest { Include = [DmOrderService.Totals, DmOrderService.Raw] }, Token);
+
+            // --- The omitted extra is absent, its sibling present; one round trip ---
+            Assert.Equal([DmOrderService.Raw], result.Extras!.Keys);
+            Assert.Equal("1", result.Extras[DmOrderService.Raw].GetRawText());
+            Assert.Equal(1, _rig.Script.RoundTrips);
+
+            // --- The decisions are the connected caller's: filtered, denied, and an unknown pair denied with its problem ---
+            Assert.Equal([AccessOutcome.Filtered, AccessOutcome.Denied, AccessOutcome.Denied], decisions.Select(static decision => decision.Outcome));
+            Assert.Equal("or(Name != 'hidden')", QueryRig.Render(decisions[0].Filter));
+            Assert.Equal(AccessProblemCode.UnknownResource, Assert.Single(decisions[2].Problems).Code);
+        }
+
         [Theory]
         [InlineData("undeclared")]
         [InlineData("unrequested")]
         [InlineData("twice")]
+        [InlineData("omitted-twice")]
+        [InlineData("added-and-omitted")]
+        [InlineData("omitted-undeclared")]
+        [InlineData("omitted-unrequested")]
         [InlineData("none")]
         [InlineData("writes")]
         [InlineData("no-result-set")]
@@ -421,6 +456,20 @@ namespace Tellma.Core.Tests.Crud.Details
                 case "twice":
                     plan.AddComputedExtra(DmOrderService.Totals, static rows => rows.Count);
                     plan.AddComputedExtra(DmOrderService.Totals, static rows => rows.Count);
+                    break;
+                case "omitted-twice":
+                    plan.OmitExtra(DmOrderService.Totals);
+                    plan.OmitExtra(DmOrderService.Totals);
+                    break;
+                case "added-and-omitted":
+                    plan.AddComputedExtra(DmOrderService.Totals, static rows => rows.Count);
+                    plan.OmitExtra(DmOrderService.Totals);
+                    break;
+                case "omitted-undeclared":
+                    plan.OmitExtra(DmOrderLineage.Lineage);
+                    break;
+                case "omitted-unrequested":
+                    plan.OmitExtra(DmOrderService.Raw);
                     break;
                 case "writes":
                     _ = plan.AddRead($"DELETE FROM [dm].[Orders]", new SqlOptions(writes: new HashSet<TableName> { new("dm", "Orders") }));

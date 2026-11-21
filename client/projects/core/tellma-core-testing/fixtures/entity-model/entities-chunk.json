@@ -2887,6 +2887,8 @@
         "Name3"
       ],
       "extras": [
+        "members",
+        "problems",
         "permissions"
       ],
       "limits": {
@@ -4331,6 +4333,536 @@
           "result": "own"
         },
         {
+          "name": "me",
+          "kind": "api",
+          "builtIn": false,
+          "action": null,
+          "labelKey": "Core_User_Action_Me",
+          "mutation": false,
+          "idempotent": true,
+          "destructive": false,
+          "singleTarget": false,
+          "supportsFilter": false,
+          "result": "own"
+        },
+        {
+          "name": "me/save",
+          "kind": "api",
+          "builtIn": false,
+          "action": null,
+          "labelKey": "Core_User_Action_MeSave",
+          "mutation": true,
+          "idempotent": false,
+          "destructive": false,
+          "singleTarget": false,
+          "supportsFilter": false,
+          "result": "own",
+          "arguments": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "name2": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "name3": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "imageId": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "signatureId": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "gender": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "enum": [
+                  "Female",
+                  "Male",
+                  null
+                ]
+              },
+              "contactEmail": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "contactMobile": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "modifiedAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "concurrency": {
+                "default": "Check"
+              }
+            },
+            "required": [
+              "name",
+              "modifiedAt",
+              "concurrency"
+            ]
+          },
+          "fields": [
+            {
+              "name": "name",
+              "labelKey": "Name",
+              "required": true,
+              "value": {
+                "type": "string",
+                "nullable": false
+              }
+            },
+            {
+              "name": "name2",
+              "labelKey": "Core_User_Action_MeSave_Name2",
+              "labelFallback": "Name2",
+              "required": false,
+              "value": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            {
+              "name": "name3",
+              "labelKey": "Core_User_Action_MeSave_Name3",
+              "labelFallback": "Name3",
+              "required": false,
+              "value": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            {
+              "name": "imageId",
+              "labelKey": "Core_User_Action_MeSave_ImageId",
+              "labelFallback": "Image id",
+              "required": false,
+              "value": {
+                "type": "integer",
+                "nullable": true
+              }
+            },
+            {
+              "name": "signatureId",
+              "labelKey": "Core_User_Action_MeSave_SignatureId",
+              "labelFallback": "Signature id",
+              "required": false,
+              "value": {
+                "type": "integer",
+                "nullable": true
+              }
+            },
+            {
+              "name": "gender",
+              "labelKey": "Core_User_Action_MeSave_Gender",
+              "labelFallback": "Gender",
+              "required": false,
+              "value": {
+                "type": "enum",
+                "nullable": true,
+                "enum": "core.Gender"
+              }
+            },
+            {
+              "name": "contactEmail",
+              "labelKey": "Core_User_Action_MeSave_ContactEmail",
+              "labelFallback": "Contact email",
+              "required": false,
+              "value": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            {
+              "name": "contactMobile",
+              "labelKey": "Core_User_Action_MeSave_ContactMobile",
+              "labelFallback": "Contact mobile",
+              "required": false,
+              "value": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            {
+              "name": "modifiedAt",
+              "labelKey": "ModifiedAt",
+              "required": true,
+              "value": {
+                "type": "instant",
+                "nullable": false
+              }
+            },
+            {
+              "name": "concurrency",
+              "labelKey": "Core_User_Action_MeSave_Concurrency",
+              "labelFallback": "Concurrency",
+              "required": true,
+              "value": {
+                "type": "enum",
+                "nullable": false,
+                "enum": "core.ConcurrencyMode"
+              }
+            }
+          ]
+        },
+        {
+          "name": "me/locale",
+          "kind": "api",
+          "builtIn": false,
+          "action": null,
+          "labelKey": "Core_User_Action_MeLocale",
+          "mutation": true,
+          "idempotent": false,
+          "destructive": false,
+          "allowWhenReadOnly": true,
+          "singleTarget": false,
+          "supportsFilter": false,
+          "result": "own",
+          "arguments": {
+            "type": "object",
+            "properties": {
+              "language": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "calendar": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "timeZone": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "region": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "digits": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "enum": [
+                  "Latin",
+                  "Native",
+                  null
+                ]
+              },
+              "reset": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "default": null
+              }
+            }
+          },
+          "fields": [
+            {
+              "name": "language",
+              "labelKey": "Core_User_Action_MeLocale_Language",
+              "required": false,
+              "value": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            {
+              "name": "calendar",
+              "labelKey": "Core_User_Action_MeLocale_Calendar",
+              "required": false,
+              "value": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            {
+              "name": "timeZone",
+              "labelKey": "Core_User_Action_MeLocale_TimeZone",
+              "required": false,
+              "value": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            {
+              "name": "region",
+              "labelKey": "Core_User_Action_MeLocale_Region",
+              "required": false,
+              "value": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            {
+              "name": "digits",
+              "labelKey": "Core_User_Action_MeLocale_Digits",
+              "required": false,
+              "value": {
+                "type": "enum",
+                "nullable": true,
+                "enum": "core.DigitStyle"
+              }
+            },
+            {
+              "name": "reset",
+              "labelKey": "Core_User_Action_MeLocale_Reset",
+              "required": false,
+              "value": {
+                "type": "enum",
+                "nullable": true,
+                "enum": "core.MeLocaleMember",
+                "array": true
+              }
+            }
+          ]
+        },
+        {
+          "name": "me/preferences/set",
+          "kind": "api",
+          "builtIn": false,
+          "action": null,
+          "labelKey": "Core_User_Action_MePreferencesSet",
+          "mutation": true,
+          "idempotent": false,
+          "destructive": false,
+          "allowWhenReadOnly": true,
+          "singleTarget": false,
+          "supportsFilter": false,
+          "result": "own",
+          "arguments": {
+            "type": "object",
+            "properties": {
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "key": {
+                      "type": "string"
+                    },
+                    "value": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "key",
+                    "value"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "items"
+            ]
+          },
+          "fields": [
+            {
+              "name": "items",
+              "labelKey": "Core_User_Action_MePreferencesSet_Items",
+              "required": true,
+              "value": {
+                "type": "json",
+                "nullable": false
+              }
+            }
+          ]
+        },
+        {
+          "name": "me/preferences/delete",
+          "kind": "api",
+          "builtIn": false,
+          "action": null,
+          "labelKey": "Core_User_Action_MePreferencesDelete",
+          "mutation": true,
+          "idempotent": false,
+          "destructive": false,
+          "allowWhenReadOnly": true,
+          "singleTarget": false,
+          "supportsFilter": false,
+          "result": "own",
+          "arguments": {
+            "type": "object",
+            "properties": {
+              "keys": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "keys"
+            ]
+          },
+          "fields": [
+            {
+              "name": "keys",
+              "labelKey": "Core_User_Action_MePreferencesDelete_Keys",
+              "required": true,
+              "value": {
+                "type": "json",
+                "nullable": false
+              }
+            }
+          ]
+        },
+        {
+          "name": "preferences/get",
+          "kind": "api",
+          "builtIn": false,
+          "action": "Preferences",
+          "labelKey": "Core_User_Action_PreferencesGet",
+          "mutation": false,
+          "idempotent": true,
+          "destructive": false,
+          "singleTarget": false,
+          "supportsFilter": false,
+          "result": "own",
+          "arguments": {
+            "type": "object",
+            "properties": {
+              "userId": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "userId"
+            ]
+          },
+          "fields": [
+            {
+              "name": "userId",
+              "labelKey": "Core_User_Action_PreferencesGet_UserId",
+              "required": true,
+              "value": {
+                "type": "integer",
+                "nullable": false
+              }
+            }
+          ]
+        },
+        {
+          "name": "preferences/set",
+          "kind": "entity",
+          "builtIn": false,
+          "action": "Preferences",
+          "labelKey": "Core_User_Action_PreferencesSet",
+          "mutation": true,
+          "idempotent": false,
+          "destructive": false,
+          "allowWhenReadOnly": true,
+          "singleTarget": true,
+          "supportsFilter": true,
+          "result": "own",
+          "arguments": {
+            "type": "object",
+            "properties": {
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "key": {
+                      "type": "string"
+                    },
+                    "value": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "key",
+                    "value"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "items"
+            ]
+          },
+          "fields": [
+            {
+              "name": "items",
+              "labelKey": "Core_User_Action_PreferencesSet_Items",
+              "required": true,
+              "value": {
+                "type": "json",
+                "nullable": false
+              }
+            }
+          ]
+        },
+        {
+          "name": "preferences/delete",
+          "kind": "entity",
+          "builtIn": false,
+          "action": "Preferences",
+          "labelKey": "Core_User_Action_PreferencesDelete",
+          "mutation": true,
+          "idempotent": false,
+          "destructive": false,
+          "allowWhenReadOnly": true,
+          "singleTarget": true,
+          "supportsFilter": true,
+          "result": "own",
+          "arguments": {
+            "type": "object",
+            "properties": {
+              "keys": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "keys"
+            ]
+          },
+          "fields": [
+            {
+              "name": "keys",
+              "labelKey": "Core_User_Action_PreferencesDelete_Keys",
+              "required": true,
+              "value": {
+                "type": "json",
+                "nullable": false
+              }
+            }
+          ]
+        },
+        {
           "name": "invitation-status",
           "kind": "api",
           "builtIn": false,
@@ -4383,6 +4915,7 @@
         "Subject"
       ],
       "extras": [
+        "activity",
         "permissions"
       ],
       "limits": {
@@ -4875,6 +5408,21 @@
       ]
     },
     {
+      "name": "core.ConcurrencyMode",
+      "values": [
+        {
+          "value": "Check",
+          "labelKey": "Core_ConcurrencyMode_Check",
+          "labelFallback": "Check"
+        },
+        {
+          "value": "Override",
+          "labelKey": "Core_ConcurrencyMode_Override",
+          "labelFallback": "Override"
+        }
+      ]
+    },
+    {
       "name": "core.DigitStyle",
       "values": [
         {
@@ -5076,6 +5624,36 @@
         {
           "value": "zh",
           "label": "中文"
+        }
+      ]
+    },
+    {
+      "name": "core.MeLocaleMember",
+      "values": [
+        {
+          "value": "Language",
+          "labelKey": "Core_MeLocaleMember_Language",
+          "labelFallback": "Language"
+        },
+        {
+          "value": "Calendar",
+          "labelKey": "Core_MeLocaleMember_Calendar",
+          "labelFallback": "Calendar"
+        },
+        {
+          "value": "TimeZone",
+          "labelKey": "Core_MeLocaleMember_TimeZone",
+          "labelFallback": "Time zone"
+        },
+        {
+          "value": "Region",
+          "labelKey": "Core_MeLocaleMember_Region",
+          "labelFallback": "Region"
+        },
+        {
+          "value": "Digits",
+          "labelKey": "Core_MeLocaleMember_Digits",
+          "labelFallback": "Digits"
         }
       ]
     },

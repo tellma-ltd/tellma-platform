@@ -4,6 +4,7 @@
 // LICENSE file in the root directory of this source tree.
 
 using System.Numerics;
+using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Assignments;
 using Tellma.Core.Abstractions.Crud;
 using Tellma.Core.Abstractions.Data;
@@ -138,6 +139,8 @@ namespace Tellma.Core.Abstractions.Tests.Crud
 
             _ = Assert.Throws<InvalidOperationException>(() => plan.AddExtra("total", $"SELECT 1", null));
             _ = Assert.Throws<InvalidOperationException>(() => plan.AddComputedExtra("count", static rows => rows.Count));
+            _ = Assert.Throws<InvalidOperationException>(() => plan.OmitExtra("count"));
+            _ = Assert.Throws<InvalidOperationException>(() => plan.Decide("core.User", "Read"));
         }
 
         [Fact]
@@ -154,10 +157,15 @@ namespace Tellma.Core.Abstractions.Tests.Crud
             _ = plan.AddRead(spec, null);
             _ = plan.AddRead(sql, null);
             plan.AddComputedExtra("count", compute);
+            plan.OmitExtra("hidden");
+            AccessDecision decision = plan.Decide("core.User", "Read");
 
-            Assert.Equal(["extra:total:sql", "extra:lines:query", "read:query", "read:sql", "computed:count"], sink.Calls);
+            Assert.Equal(["extra:total:sql", "extra:lines:query", "read:query", "read:sql", "computed:count", "omitted:hidden", "decide:core.User:Read"], sink.Calls);
             Assert.Same(compute, sink.Compute);
+            Assert.Equal(AccessOutcome.Unrestricted, decision.Outcome);
             _ = Assert.Throws<ArgumentException>(() => plan.AddExtra(" ", sql, null));
+            _ = Assert.Throws<ArgumentException>(() => plan.OmitExtra(" "));
+            _ = Assert.Throws<ArgumentException>(() => plan.Decide("core.User", " "));
             _ = Assert.Throws<ArgumentNullException>(() => plan.AddRead((QuerySpec)null!, null));
         }
 
@@ -273,6 +281,19 @@ namespace Tellma.Core.Abstractions.Tests.Crud
             {
                 Calls.Add("computed:" + name);
                 Compute = compute;
+            }
+
+            /// <inheritdoc />
+            public void OmitExtra(string name)
+            {
+                Calls.Add("omitted:" + name);
+            }
+
+            /// <inheritdoc />
+            public AccessDecision Decide(string resource, string action)
+            {
+                Calls.Add("decide:" + resource + ":" + action);
+                return new AccessDecision(resource, action, AccessOutcome.Unrestricted, null, [], []);
             }
         }
 

@@ -47,8 +47,13 @@ namespace Tellma.Core.AspNetCore.Tests.Tenancy
         {
             TaskCompletionSource waiting = new(TaskCreationOptions.RunContinuationsAsynchronously);
             TaskCompletionSource cancelled = new(TaskCreationOptions.RunContinuationsAsynchronously);
-            await using TellmaTestHost host = await TellmaTestHost.StartAsync(options => options.Map = (_, endpoints) =>
-                endpoints.Web.MapGet(WaitRoute, async (DataCancellation cancellation) =>
+            await using TellmaTestHost host = await TellmaTestHost.StartAsync(options =>
+            {
+                // The blocked read is ended by the client alone: the web timeout, a real timer the
+                // cold host's first request could outrun on a loaded runner, is not what this pins.
+                options.Settings["Tellma:Api:RequestTimeout"] = "01:00:00";
+                options.Settings["Tellma:Api:LongRequestTimeout"] = "01:00:00";
+                options.Map = (_, endpoints) => endpoints.Web.MapGet(WaitRoute, async (DataCancellation cancellation) =>
                 {
                     // Stands in for a read blocked on the server: it waits on the scope's token alone.
                     using CancellationTokenRegistration registration = cancellation.Token.Register(() => cancelled.TrySetResult());
@@ -57,17 +62,18 @@ namespace Tellma.Core.AspNetCore.Tests.Tenancy
                     return Results.NoContent();
                 })
                 .WithMutation(false)
-                .AllowMember());
+                .AllowMember();
+            });
 
             // --- The client sends, waits until the endpoint is blocked, then goes away ---
             using var client = CancellationTokenSource.CreateLinkedTokenSource(Token);
             using HttpRequestMessage request = TellmaTestHost.SpaRequest(HttpMethod.Get, $"/1/api/web{WaitRoute}", host.Cookie());
             Task<HttpResponseMessage> sent = host.Client.SendAsync(request, client.Token);
-            await waiting.Task.WaitAsync(TimeSpan.FromSeconds(10), Token);
+            await Patience.SignalledAsync(waiting.Task, sent);
             await client.CancelAsync();
 
-            _ = await Assert.ThrowsAnyAsync<OperationCanceledException>(() => sent);
-            await cancelled.Task.WaitAsync(TimeSpan.FromSeconds(10), Token);
+            _ = await Assert.ThrowsAnyAsync<OperationCanceledException>(() => Patience.WaitAsync(sent));
+            await Patience.WaitAsync(cancelled.Task);
         }
 
         /// <summary>What the cancellation endpoint answers.</summary>

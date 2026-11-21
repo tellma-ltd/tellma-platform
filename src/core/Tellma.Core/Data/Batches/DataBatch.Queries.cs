@@ -36,6 +36,20 @@ namespace Tellma.Core.Data.Batches
         /// <summary>The tenant's query schema and its map, read once per batch.</summary>
         private QueryexSchemaMap Map => field ??= _executor.Queries.Schemas.Map(Connection.Shape);
 
+        /// <summary>
+        ///     The select of every property the tenant's query schema declares for an entity, as a
+        ///     collection's load selects them: the root of an entity query selects only what its
+        ///     <see cref="EntityQuery{TEntity}.Select" /> names, so a load of a whole row names these.
+        /// </summary>
+        /// <param name="entityType">The entity's CLR type.</param>
+        /// <returns>The comma-separated property names, in declaration order.</returns>
+        internal string DeclaredSelect(Type entityType)
+        {
+            ArgumentNullException.ThrowIfNull(entityType);
+            EntityMetadata metadata = _executor.Queries.Metadata.Get(entityType);
+            return string.Join(", ", Map.Declared(metadata).Select(static property => property.Name));
+        }
+
         /// <summary>The context values every query statement of the batch binds, read once so they all see one today().</summary>
         private QueryexContextValues Context => field ??= Connection.Context;
 

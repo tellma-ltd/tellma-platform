@@ -1,0 +1,14 @@
+// Outgoing emails that settled failed or rejected, as a share of every email settled.
+// Backs the "the outbox is losing mail" alert: a rejected email was refused by the provider or could
+// not be sent at all, and a failed one used its last attempt or was interrupted; either way the
+// tenant's administrators were told in their inbox. A handful is normal; above 5% of the settled
+// emails, or more than 20 in the window, is a starting point. Sandboxed mail counts as settled, not
+// failed.
+customMetrics
+| where name == "tellma.outbox.settled"
+| extend state = tostring(customDimensions["state"])
+| summarize
+    lost = sumif(valueSum, state in ("failed", "rejected")),
+    total = sum(valueSum)
+    by bin(timestamp, 15m)
+| where lost > 20 or (lost > 0 and lost * 20 > total)

@@ -36,7 +36,8 @@ jobs:
   # Build everything and run the unit suites (integration excluded) on both OSes.
   build-test:
     if: "${{ !github.event.pull_request.draft && (github.event_name != 'push' || github.ref == 'refs/heads/main' || contains(github.event.head_commit.message, ': integrate')) }}"
-    timeout-minutes: 20
+    # Windows measured 12.4, 18.0, 18.0 and over 20.2 min (cut off mid-suite) on 2026-11-21, by runner speed.
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -64,7 +65,15 @@ jobs:
       # drops the lines a fixture writes outside a test (a database drop it had to retry, say):
       # normal verbosity prints the cleanup's message and stack, and the diagnostic messages
       # carry the fixture's own lines. CONTRIBUTING.md has the same flags for a local run.
-      - run: dotnet test Tellma.slnx -c Release --no-build --filter "Category!=Integration&Category!=E2E&Category!=Nightly&Live!=true" --logger "console;verbosity=normal" -- xUnit.DiagnosticMessages=true
+      # On Windows the step runs at most two test hosts at once (-m:2). Left unbounded, MSBuild
+      # launches one host per runner core, and each host runs its own tests in parallel. With
+      # Tellma.Core.Tests and Tellma.Core.AspNetCore.Tests running, a host that starts next can
+      # fail to answer its launcher in time: xUnit's "did not respond within 60 seconds" and
+      # vstest's "failed to connect to testhost" both hit windows-latest on 2026-11-21, with every
+      # test that ran passing. Two lanes keep the step inside the job's timeout. That day,
+      # Tellma.Core.AspNetCore.Tests alone took 16.8 min, the critical path, and every other
+      # assembly together 14.3 min. Linux has not starved, so it keeps MSBuild's default.
+      - run: dotnet test Tellma.slnx -c Release --no-build ${{ runner.os == 'Windows' && '-m:2' || '' }} --filter "Category!=Integration&Category!=E2E&Category!=Nightly&Live!=true" --logger "console;verbosity=normal" -- xUnit.DiagnosticMessages=true
         env:
           TELLMA_REQUIRE_PINNED_ICU: ${{ runner.os == 'Linux' && '1' || '0' }}
 

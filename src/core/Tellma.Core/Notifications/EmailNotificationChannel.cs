@@ -6,7 +6,6 @@
 using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Logging;
 using System.Net;
-using System.Text;
 using System.Text.Json;
 using Tellma.Core.Abstractions.Api;
 using Tellma.Core.Abstractions.Composition;
@@ -87,9 +86,6 @@ namespace Tellma.Core.Notifications
         /// <summary>The argument holding the link to the notification's target.</summary>
         private const string LinkArgument = "link";
 
-        /// <summary>What a subject cut to fit its column ends with.</summary>
-        private const char Ellipsis = '…';
-
         /// <summary>Reports a recipient skipped because their email cannot be stored.</summary>
         private readonly ILogger _logger = loggers.CreateLogger(NotificationsLog.Category);
 
@@ -119,7 +115,7 @@ namespace Tellma.Core.Notifications
                     continue;
                 }
 
-                EmailAddress mailbox = Mailbox(address, recipient.Name);
+                EmailAddress mailbox = OutgoingEmailText.Mailbox(address, recipient.Name);
                 if (EmailAddressList.IsWellFormed(mailbox))
                 {
                     addressed.Add((recipient, mailbox));
@@ -140,6 +136,7 @@ namespace Tellma.Core.Notifications
             TenantSettings tenant = accessor.Current.TenantSettings
                 ?? (await settings.GetAsync().ConfigureAwait(false)).Value
                 ?? throw new InvalidOperationException("The tenant settings cache served no settings.");
+            LocalizedText tenantName = OutgoingEmailText.TenantName(tenant, accessor.Current.RequireTenant());
             string link = links.Target(tenantId, request.TargetResource, request.TargetId);
             string? argumentsJson = ArgumentsJson(request.Arguments);
             IStringLocalizer strings = localizers.Create(ServerStringsBaseName, CoreStrings.Assembly);
@@ -152,7 +149,7 @@ namespace Tellma.Core.Notifications
                 var key = LocalizationKey.Of(recipient.Localization);
                 if (!rendered.TryGetValue(key, out Rendered? email))
                 {
-                    email = Render(strings, request, argumentsJson, TenantName(tenant, recipient.Localization), link, recipient.Localization);
+                    email = Render(strings, request, argumentsJson, tenantName.In(recipient.Localization.ContentLanguageIndex), link, recipient.Localization);
                     rendered.Add(key, email);
                 }
 
@@ -209,56 +206,6 @@ namespace Tellma.Core.Notifications
                 : null;
         }
 
-        /// <summary>
-        ///     A recipient's mailbox: the address without surrounding white space, and their name on
-        ///     one line (each control character a space), or none when it is blank.
-        /// </summary>
-        /// <param name="address">The address.</param>
-        /// <param name="name">The recipient's name; null for none.</param>
-        /// <returns>The mailbox, which the outbox may still refuse for its address.</returns>
-        internal static EmailAddress Mailbox(string address, string? name)
-        {
-            ArgumentNullException.ThrowIfNull(address);
-            string? displayName = name is null ? null : OneLine(name);
-            return new EmailAddress(address.Trim(), string.IsNullOrEmpty(displayName) ? null : displayName);
-        }
-
-        /// <summary>A subject on one line that fits its column: control characters become spaces, and a longer one is cut and ends with an ellipsis.</summary>
-        /// <param name="subject">The rendered subject.</param>
-        /// <returns>The subject to store.</returns>
-        internal static string FitSubject(string subject)
-        {
-            ArgumentNullException.ThrowIfNull(subject);
-            string line = OneLine(subject);
-            if (line.Length <= OutgoingEmail.SubjectLength)
-            {
-                return line;
-            }
-
-            // Cut before a whole character, never between the halves of a surrogate pair.
-            int cut = OutgoingEmail.SubjectLength - 1;
-            if (char.IsLowSurrogate(line[cut]))
-            {
-                cut--;
-            }
-
-            return string.Concat(line.AsSpan(0, cut).TrimEnd(), Ellipsis.ToString());
-        }
-
-        /// <summary>A text on one line: each control character a space, and no surrounding white space.</summary>
-        /// <param name="text">The text.</param>
-        /// <returns>The line.</returns>
-        private static string OneLine(string text)
-        {
-            StringBuilder builder = new(text.Length);
-            foreach (char c in text)
-            {
-                _ = builder.Append(char.IsControl(c) ? ' ' : c);
-            }
-
-            return builder.ToString().Trim();
-        }
-
         /// <summary>The first line of a rendered notification: its title, without the detail line.</summary>
         /// <param name="text">The rendered text.</param>
         /// <returns>The title.</returns>
@@ -283,20 +230,6 @@ namespace Tellma.Core.Notifications
             };
         }
 
-        /// <summary>The tenant's name in a reader's content language: the settings' names, else the catalog's.</summary>
-        /// <param name="tenant">The tenant's settings.</param>
-        /// <param name="localization">The reader's localization.</param>
-        /// <returns>The name.</returns>
-        private string TenantName(TenantSettings tenant, LocalizationContext localization)
-        {
-            IReadOnlyList<string?> names = tenant.Names;
-            TenantDescriptor catalog = accessor.Current.RequireTenant();
-            LocalizedText name = names.Count > 0 && !string.IsNullOrWhiteSpace(names[0])
-                ? new LocalizedText(names[0]!, names.Count > 1 ? names[1] : null, names.Count > 2 ? names[2] : null)
-                : new LocalizedText(catalog.Name, catalog.Name2, catalog.Name3);
-            return name.In(localization.ContentLanguageIndex);
-        }
-
         /// <summary>Renders one group's email: the text once, then the subject and both bodies, all in the group's localization.</summary>
         /// <param name="strings">Core's server resources.</param>
         /// <param name="request">The notification.</param>
@@ -313,7 +246,7 @@ namespace Tellma.Core.Notifications
                 string text = renderer.Render(request.Type, argumentsJson, request.TargetResource, request.TargetId, localization);
 
                 // --- The subject and the text body from the plain values ---
-                string subject = FitSubject(strings[SubjectKey, Arguments(tenantName, Title(text), link)].Value);
+                string subject = OutgoingEmailText.FitSubject(strings[SubjectKey, Arguments(tenantName, Title(text), link)].Value);
                 string body = strings[TextKey, Arguments(tenantName, text, link)].Value;
 
                 // --- The HTML body from the encoded values, the text's lines kept as line breaks ---

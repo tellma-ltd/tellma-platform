@@ -12,15 +12,17 @@ using Tellma.Core.Access;
 namespace Tellma.Core.Users
 {
     // The service is spec 0018 §3.1's UserService: the hooks of §3.2 here, the invite action of §3.3,
-    // the invitation status of §3.4, the issue-credentials action of §3.8 and the post-commit side
-    // effects of §3.6 in the partial files beside it. The access rules of spec 0014 §8.4 are a
+    // the invitation status of §3.4, the self-service and the preference bags of §3.5, the
+    // issue-credentials action of §3.8 and the post-commit side effects of §3.6 in the partial files
+    // beside it. The access rules of spec 0014 §8.4 are a
     // separate component, so a distribution leaf cannot drop them.
     /// <summary>
     ///     The users' stack service: the standard operations over the tenant's users and their role
     ///     memberships, closed over the distribution's user leaf, plus inviting users through the
-    ///     identity server, issuing service accounts' client credentials, and reading how far each
-    ///     invitation got. The access rules that keep the users' writes safe run beside it as a
-    ///     component of the stack.
+    ///     identity server, issuing service accounts' client credentials, reading how far each
+    ///     invitation got, the caller's own profile, locale and preferences, and an administrator's
+    ///     access to another user's preferences. The access rules that keep the users' writes safe
+    ///     run beside it as a component of the stack.
     /// </summary>
     /// <remarks>
     ///     <para>
@@ -129,9 +131,10 @@ namespace Tellma.Core.Users
         }
 
         /// <summary>
-        ///     Validates the service's own actions per target: <c>invite</c> takes active individuals who
-        ///     have not joined yet, each with an email; <c>issue-credentials</c> takes an active service
-        ///     account. The system user is the access rules' to refuse.
+        ///     Validates the service's own actions: <c>invite</c> takes active individuals who have not
+        ///     joined yet, each with an email; <c>issue-credentials</c> takes an active service account;
+        ///     a preference write's arguments follow the bag's rules. The system user is the access
+        ///     rules' to refuse.
         /// </summary>
         /// <param name="action">The action's name.</param>
         /// <param name="context">The action's context.</param>
@@ -141,6 +144,9 @@ namespace Tellma.Core.Users
             ArgumentNullException.ThrowIfNull(action);
             ArgumentNullException.ThrowIfNull(context);
             await base.ValidateActionAsync(action, context).ConfigureAwait(false);
+
+            // --- An administrative preference write's arguments, checked in memory ---
+            ValidatePreferenceArguments(action, context);
 
             bool invite = string.Equals(action, InviteAction, StringComparison.Ordinal);
             bool credentials = string.Equals(action, IssueCredentialsAction, StringComparison.Ordinal);

@@ -15,7 +15,7 @@ stack core.User
   details-expand: CreatedBy, ModifiedBy, Image, Signature, RoleMemberships.Role
   default-order-by: -
   display-name: Name group Name prefix -
-  extras: permissions
+  extras: activity, permissions
   named-filters: -
   limits: default
   mcp: Full, revision 0
@@ -24,6 +24,14 @@ stack core.User
   action deactivate: entity Activate built-in filtered args -; mutation, idempotent; result EntitiesResult<User>; mcp Full, revision 0; -
   action issue-credentials: entity Credentials filtered single args -; mutation; result CredentialsResult; mcp Full, revision 0; Issue or rotate a service account's client credentials
   action invite: entity Invite filtered args -; mutation; result IReadOnlyList<InviteResult>; mcp Full, revision 0; Invite users through the identity server
+  action me: api member-only body - handler UserService<User>; idempotent; result MeResult; mcp Full, revision 0; -
+  action me/save: api member-only body MeSaveRequest handler UserService<User>; mutation; result MeResult; mcp Full, revision 0; -
+  action me/locale: api member-only body MeLocaleRequest handler UserService<User>; mutation, read-only-ok; result MeLocaleResult; mcp Full, revision 0; -
+  action me/preferences/set: api member-only body UserPreferencesArguments handler UserService<User>; mutation, read-only-ok; result PreferencesResult; mcp Full, revision 0; -
+  action me/preferences/delete: api member-only body UserPreferenceKeysArguments handler UserService<User>; mutation, read-only-ok; result PreferencesResult; mcp Full, revision 0; -
+  action preferences/get: api core.User:Preferences body UserPreferencesRequest handler UserService<User>; idempotent; result UserPreferencesResult; mcp Full, revision 0; -
+  action preferences/set: entity Preferences filtered single args UserPreferencesArguments; mutation, read-only-ok; result UserPreferencesResult; mcp Full, revision 0; -
+  action preferences/delete: entity Preferences filtered single args UserPreferenceKeysArguments; mutation, read-only-ok; result UserPreferencesResult; mcp Full, revision 0; -
   action invitation-status: api core.User:Read body IdsRequest handler UserService<User>; idempotent; result IReadOnlyList<InvitationStatus>; mcp Full, revision 0; -
 stack core.Role
   segment: roles
@@ -42,7 +50,7 @@ stack core.Role
   details-expand: CreatedBy, ModifiedBy
   default-order-by: -
   display-name: Name group Name prefix -
-  extras: permissions
+  extras: members, problems, permissions
   named-filters: -
   limits: default
   mcp: Full, revision 0
@@ -164,7 +172,7 @@ stack fixture.Widget
   display-name: Name group Name prefix -
   extras: permissions
   named-filters: -
-  limits: default
+  limits: StackLimits { MaxTake = 50, CountCap = 10000, MaxSkipWindow = 100000, MaxSaveCount = 10000, MaxRowsPerSave = 100000, MaxIds = 10000, MaxDeleteByQueryRows = 10000, MaxExpandDepth = 3, MaxValidationRounds = 3, MaxSearchLength = 200, MaxExtras = 16 }
   mcp: Full, revision 0
   feature: fixture
   action activate: entity Activate built-in filtered args -; mutation, idempotent; result EntitiesResult<Widget>; mcp Full, revision 0; -
@@ -393,7 +401,7 @@ child fixture.WidgetPart
   related-select: Id
   default-order-by: Id desc
   exportable: yes
-  limits: default
+  limits: StackLimits { MaxTake = 50, CountCap = 10000, MaxSkipWindow = 100000, MaxSaveCount = 10000, MaxRowsPerSave = 100000, MaxIds = 10000, MaxDeleteByQueryRows = 10000, MaxExpandDepth = 3, MaxValidationRounds = 3, MaxSearchLength = 200, MaxExtras = 16 }
   mcp: Full
 child fixture.WidgetPartNote
   segment: widget-part-notes
@@ -404,7 +412,7 @@ child fixture.WidgetPartNote
   related-select: Id
   default-order-by: Id desc
   exportable: yes
-  limits: default
+  limits: StackLimits { MaxTake = 50, CountCap = 10000, MaxSkipWindow = 100000, MaxSaveCount = 10000, MaxRowsPerSave = 100000, MaxIds = 10000, MaxDeleteByQueryRows = 10000, MaxExpandDepth = 3, MaxValidationRounds = 3, MaxSearchLength = 200, MaxExtras = 16 }
   mcp: Full
 child fixture.Link
   segment: links
@@ -417,6 +425,11 @@ child fixture.Link
   exportable: yes
   limits: default
   mcp: Full
+service access
+  class: Tellma.Core.Access.AccessService
+  feature: core
+  action check: api member-only body AccessCheckRequest handler AccessService; idempotent; result IReadOnlyList<AccessDecision>; mcp Hidden, revision 0; -
+  action holders: api member-only body AccessHoldersRequest handler AccessService; idempotent; result AccessHolders; mcp Hidden, revision 0; -
 service settings
   class: Tellma.Core.Settings.SettingsService
   feature: core

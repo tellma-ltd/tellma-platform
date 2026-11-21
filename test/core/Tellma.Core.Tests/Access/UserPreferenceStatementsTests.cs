@@ -27,6 +27,8 @@ namespace Tellma.Core.Tests.Access
         [InlineData("gridState.acme-Widgets.columns")]
         [InlineData("grid.1.2")]
         [InlineData("a9.B-")]
+        [InlineData("report.acme-credit-exposure.params")]
+        [InlineData("report.2026-q3.params")]
         public void A_key_of_dotted_segments_the_first_led_by_a_lower_case_letter_is_valid(string key)
         {
             Assert.True(UserPreferenceStatements.IsValidKey(key));
@@ -36,6 +38,8 @@ namespace Tellma.Core.Tests.Access
         [InlineData(null)]
         [InlineData("")]
         [InlineData("Theme")]
+        [InlineData("Report.exposure")]
+        [InlineData("report.-exposure")]
         [InlineData("1theme")]
         [InlineData("nav-bar")]
         [InlineData("nav.")]

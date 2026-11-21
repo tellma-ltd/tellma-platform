@@ -1258,10 +1258,50 @@ a call with attachments, so a channel sender's tenantless gate scope needs neith
 `MaxMessageBytes` (7 MiB, 1 KiB to 20 MiB) and `MaxRecipients` (50, 1 to 1000). The outgoing
 emails' stack (route segment `outgoing-emails`) serves the query, the details and the delete by
 ids, read-only to MCP; a delete of a row that may still be sent (unsettled, with a live job) is
-refused as `Email.NotDeletable` at `Ids[i]`. The `core.outgoing-email` handler (25 jobs a claim,
-one claim at a time, twelve attempts backing off from one minute to two hours, run in a read-only
-tenant, failure notices to the inbox alone) is registered so the enqueue can name it; its dispatch
-is not built yet, so every claim fails without sending and each row stays `Pending`.
+refused as `Email.NotDeletable` at `Ids[i]`. A request's `Source` is `api` or `notification`; any
+other is refused before anything is staged. The rows are counted on `tellma.outbox.enqueued`
+(meter `Tellma.Core`, tag `source`) once the frame they were enlisted with commits them, by the
+stack's commit effect (`OutboxEnqueuedEffect`); a frame that rolls back counts nothing.
+
+`OutgoingEmailHandler` runs `core.outgoing-email` (25 jobs a claim, one claim at a time per tenant,
+twelve attempts backing off from one minute to two hours, run in a read-only tenant, failure notices
+to the inbox alone). Each claim:
+
+1. **Triages** the rows as the claim loaded them: a settled row succeeds unsent; a row still
+   `Sending` was interrupted after it may have reached the provider, so it settles `Failed` with
+   `Email.Interrupted` (logged as `OutboxSendInterrupted`) rather than being sent twice; a pending
+   row whose job is being cancelled is left alone, so its job ends cancelled.
+2. **Loads** the pending rows' attachments in one read round trip joined to their blobs, then reads
+   each object whole from the store; a row whose object is missing is unsendable
+   (`Email.AttachmentMissing`), as is one whose stored addresses no longer parse
+   (`Email.InvalidMessage`).
+3. **Pre-marks** the pending rows `Sending` and counts the attempt, in one maintenance round trip
+   that returns the rows now sending, so a re-run returns the same rows. A claim whose host is
+   stopping or whose lease was lost stops before it, every row still pending.
+4. **Sends** the sendable rows in one call to the email sender with no cancellation, each message
+   correlated as `(outbox, rowId, tenantId)`. A sender that throws sent nothing, so every message
+   failed transiently (logged as `OutboxSendFailed` with the exception's type alone); a sender that
+   answers another number of results than messages fails the claim with the rows still sending, so
+   the next claim fails them rather than send any twice.
+5. **Settles** every verdict in one maintenance round trip, matched on `State = 'Sending'`, before
+   any job is marked: `Sent` keeps the provider's id and whether delivery events follow; `Sandboxed`
+   keeps neither; `Rejected` keeps the provider's detail; a transient failure returns the row to
+   `Pending` and retries its job with `Email.TransientFailure` while attempts remain, and fails it
+   with `Email.AttemptsExhausted` on the twelfth. Every settled row is counted on
+   `tellma.outbox.settled` (tag `state`), and each sent or sandboxed row's wait from its enqueue to
+   its send, on the database clock, on `tellma.outbox.latency` (seconds).
+6. **Notifies** the tenant's administrators once when any row settled rejected or failed:
+   `core.email.failed` (an error, toasted, `{count}` emails, on the first such row), inbox-only and
+   deduplicated on its type so an unread notice is replaced. A failed administrator lookup is logged
+   as `OutboxNoticeRecipientsFailed` and loses only the notice.
+
+An exception anywhere before the settle leaves every job unmarked, so the job machinery retries the
+claim and the next triage meets the rows as this one left them. The startup check `outbox.sender`
+reports a host whose job worker runs with no email sender registered (the handler resolves the
+sender on each claim, so such a host still builds, and a claim it runs fails before it writes
+anything, every row still pending); the queries in
+`infra/monitoring/outbox` alert on interrupted sends, the failure rate and the latency's 95th
+percentile.
 
 `EmailNotificationChannel` is the `email` channel's sender: each addressed recipient gets one
 internal email, to their contact address or else their sign-in address (a recipient with neither
@@ -1340,9 +1380,10 @@ entity. Each operation runs in the frame of `CrudOperations`: the scope's first 
 the outcome it ended with, a cancellation by the caller as `cancelled`; a read carries no
 `crud.source`. The reads (the query, the details reads, the rows of a tree by parent and every
 row of a cacheable stack), the save (see [The save pipeline](#the-save-pipeline)), and the deletes
-and actions (see [The delete and action pipelines](#the-delete-and-action-pipelines)) are built: an
-operation the stack does not serve is an authoring bug (`InvalidOperationException`), and the Excel
-row source is `NotSupportedException`.
+and actions (see [The delete and action pipelines](#the-delete-and-action-pipelines)) are built, and
+so are the Excel row source and the import's lookups (see
+[The Excel row source](#the-excel-row-source)): an operation the stack does not serve is an
+authoring bug (`InvalidOperationException`).
 
 `QueryOperation` runs a query of a stack, and of a child query surface through `IChildQueryService`
 (the child's own `Read` securable, the convention's search, no named filters):
@@ -1414,11 +1455,14 @@ composes one guarded round trip:
    visible ids, so each target is read once however many rows point at it, and merged into the
    related entities, each entity once (`DetailsProjections`, cached per stack and schema).
 3. **The extras**: the service's `ContributeDetails` when it declares a requested extra, then each
-   `IDetailsContributor<T>` given the requested extras it declares. An extra added that its class
-   does not declare, that the request does not include, or twice, raw text that declares a write or
-   no result set, and a requested extra its declaring class did not add are authoring bugs
-   (`InvalidOperationException`). Each extra is returned under its name in request order, a computed
-   one serialised under `TellmaJson.Options` after the batch over the visible rows.
+   `IDetailsContributor<T>` given the requested extras it declares. A class that leaves a requested
+   extra absent on purpose (its caller may not read what the extra shows) omits it with
+   `DetailsPlan.OmitExtra`, and decides that with `DetailsPlan.Decide`, which answers the caller's
+   decision over the same permission set the read is composed under. An extra added or omitted that
+   its class does not declare, that the request does not include, or twice, raw text that declares
+   a write or no result set, and a requested extra its declaring class neither added nor omitted are
+   authoring bugs (`InvalidOperationException`). Each extra is returned under its name in request
+   order, a computed one serialised under `TellmaJson.Options` after the batch over the visible rows.
 4. **The `permissions` extra**: per visible row, the granted abilities it refuses (`save`, `delete`,
    `activate`, and `action:<name>` per entity action). Each filtered grant adds one keyed read of the
    visible ids under its filter; a row it misses refuses the ability as `outside-filter`, and the
@@ -1513,6 +1557,38 @@ pipeline drives them:
   else to `Validation.Invalid` naming the property and the attribute.
 - **Save shape.** `SaveShape.Check` refuses an empty payload, enforces the stack's save, children
   and rows ceilings, and reports every repeat of a positive id at its path.
+
+### The Excel row source
+
+`ExcelRowsOperation` serves the row source the Excel codec streams from (`excel_rows`), created by
+a stack's `ExcelRowSource` and, for an exportable child query surface, by
+`IChildQueryService.ExcelRowSource` (a child refuses `All` and named filters). It is bound to one
+`ExportSource`: by ids, an id key-set restriction over the distinct ids narrowed to the key type
+(more than `MaxIds` refused), inactive rows included; by query, the clauses as a query's (filters,
+named filters, search, arguments) and the activatable conjunct unless `IncludeInactive`; all, the
+access filter alone. The ordering is the query's, else the source's, else `Id`, and the key ends
+every ordering that does not already end with it, so pages cut by skip neither repeat nor drop a
+row that ties on the ordering. The type-level
+check runs once, before the first page.
+
+- **`Pages`** streams the root `MaxTake` rows at a time, one guarded read batch per page; the
+  query's `Take` caps the total, and `CountCap` counts on the first page only, neither bound by the
+  stack's skip window, count cap or take ceiling. A short page ends the stream, and a page with no
+  rows after the first is not yielded. Every dependent collection, at every depth, rides its
+  owner's batch, restricted to the owner rows' keys captured into a batch-local key table; a
+  collection that reaches `MaxTake` rows is completed by one more read per chunk over the owners'
+  ids, its own collections riding it. Each page runs as its own operation, so a grant revoked
+  between pages refuses the next page as `ForbiddenException`.
+- **`ReadAsync`** reads several flat queries (an import's lookups) in one batch, each completed by
+  further batches of `MaxTake`. A restriction's values bind as the column's table type (strings
+  matched under the tenant's collation, numbers out of the column's range dropped). A lookup's
+  target is read as a save's reference to it is (`TargetReads`): under the caller's `Read` decision
+  on its own securable, else on its owner's seen through the child's navigation, else, for an
+  entity no grant can reach, unrestricted; a denied target reads no rows, and a sensitive one asks
+  for the step-up.
+
+The traversal rule, the search's length and the refusal re-check apply as in a query; an arithmetic
+failure and exhausted retries translate as the query's do.
 
 ### The save pipeline
 
@@ -1769,7 +1845,8 @@ tenant, in a job that runs on one and in a provisioning step, refused in any oth
   group's own validators never run again, so a re-entry composed for another permission set than
   the composition before it is `StaleContextException`, naming the permissions tag, whenever it
   would replay a group whose target's validators judged its rows; a group nothing validated
-  replays.
+  replays, as does one whose only validator is the blob-reference check over rows that reference
+  no blob, which judges nothing a permission set decides.
 - **The front door.** A service's `SaveAsync`, `DeleteByIdsAsync`, `DeleteByQueryAsync`,
   `ExecuteActionAsync`, `ActivateAsync`, `DeactivateAsync` or `DeleteWithDescendantsAsync` entered
   while a pipeline frame of the flow composes is `InvalidOperationException`. From an open frame it
@@ -2048,6 +2125,19 @@ it), never a silent empty list. The resolver authorises nothing itself: the role
 member counts and the holder count reach any connected caller, so a caller that returns the result
 holds the scope's caller to `core.Role` × `Read` first.
 
+`AccessService` (route `access`, contributed by `CoreFeature`) projects the two member-only read
+actions the role and user pages call, both hidden from MCP:
+
+| Action | Round trips | What it answers |
+|---|---|---|
+| `check` (the caller) | 0 | the caller's decision per requested securable, from the set the scope already loaded |
+| `check` (`UserId` another user) | 2 | after `core.Role` × `Read`, one read of the user under the caller's own `core.User` × `Read` filter (a hidden user is not found, as a missing one is), then the user's decision per securable |
+| `holders` | 1 | after `core.Role` × `Read`, the resolver's answer for one securable |
+
+A `check` names at most `MaxSecurables` (200) securables (`LimitExceededException`, limit
+`MaxSecurables`); a `UserId` equal to the caller's own id is the caller's check. An unknown resource
+or action is a `Denied` decision carrying its problem, never an error.
+
 `IAdministratorDirectory` (`AdministratorDirectory`) reads, in one guarded round trip, the ids of at
 most 20 active individuals, invited or joined, with a current membership of the administrator role,
 lowest id first, for a tenant's administrative notices; it checks no permission of the caller.
@@ -2152,8 +2242,10 @@ Saving a user or a role is a sensitive securable, so it asks for the step-up bar
 
 `UserService<TUser>` takes its platform collaborators as one `UserServiceDependencies` bundle (the
 identity-server client, the membership directory, the links, the language catalogue, the value sets,
-the guarded batch runner, the securables, the evaluator, the clock, the users' instruments and the
-logger factory), which `UsersRuntimeComposition` registers per scope, so a leaf's service derives with a
+the guarded batch runner, the securables, the evaluator, the access guards, the request context, the
+write frames, the open write frame, the access options, the entity metadata, the query schemas, the
+user connection, the email outbox, the localization negotiator, the string localizer factory, the
+clock, the users' instruments and the logger factory), which `UsersRuntimeComposition` registers per scope, so a leaf's service derives with a
 two-argument constructor. A save lower-cases the emails, trims the names and the mobile, and puts the
 locale members in their canonical case; it then checks each new or changed locale member against what
 the deployment offers and each new or changed contact detail against its format, so a stored value the
@@ -2185,7 +2277,14 @@ never called for an action that will not persist):
   action committed, the users who gained an account are recorded in the membership directory. A
   prefix the identity server answered is recorded and raised as `partial-failure` with the ids never
   attempted. A recompose of the persist replays the write-back and never calls the identity server
-  again.
+  again, the welcome emails it enlisted included: their rows reference no blob, so the outbox's one
+  validator judged nothing a moved permission set could change. Every answered user with a status whose loaded row holds no account or the one answered is
+  sent a welcome email through the outbox with the action's frame, so it commits with the write-back:
+  to their contact address, else their sign-in address, in their own negotiated language and content
+  slot (`Email_UserAdded_Subject`, `_Text` and `_Html` in Core's server resources, naming the tenant,
+  the caller and the tenant's link, and telling an invited or reinvited user to set up their sign-in
+  first). A user whose address the outbox would refuse is skipped and logged as
+  `WelcomeEmailSkipped`; the invite stands.
 - **`issue-credentials`** (single target) creates a client, joins the account on its first
   credentials, links it to the client only while it is still active and still names the client it was
   loaded with (else `Users.Inactive` or `Users.CredentialsConcurrent`, and nothing commits), and
@@ -2209,10 +2308,45 @@ are counted on `tellma.users.invites` (meter `Tellma.Core`, tag `outcome`: `Invi
 `UsersInvitePartial`. A user delete's preferences, stamps and notification preferences leave by their
 keys' cascade, which the delete declares among its writes as it does every key's `ON DELETE` action.
 
+### The caller's self-service and the preference bags
+
+Every member reaches their own row without a role grant, through the users' member-only actions:
+
+| Action | Round trips | What it does |
+|---|---|---|
+| `me` | 1 | the caller's profile (from the connected user), preference bag, access summary (every registered securable decided over the set the round trip validated, with its `HasFilter`, problems and next boundary) and the four client tags, the summary under the composite permissions tag |
+| `me/save` | 3 | loads the caller's row with every mapped column and the last modifier's names, refuses a moved stamp as a conflict before anything is enlisted (unless `Override`), copies the request's eight members onto the stored row with the memberships left out, and enlists it through the action's open frame, its paths without the row index, so the users' rules run and no `Save` grant is asked |
+| `me/locale` | 1 | validates in memory (`Users.LocaleEmpty` at `language`, `Users.LocaleResetConflict` at `reset`, then the save's locale rules, each value stored as its set spells it), then one persist batch: the access guards' lock, the update of the caller's row (each member set, `NULL` for each reset; an unchanged value writes no row), the invariants and the stored values; a read-only tenant admits it |
+| `me/preferences/set`, `me/preferences/delete` | 1 | checks the keys and values in memory (paths `items[i].key`, `keys[i]`), then the bag's statement with the key cap asserted inside it (`Users.TooManyPreferenceKeys` at the request), then the bag; the answer carries the caller's moved preferences tag; a read-only tenant admits them |
+
+An administrator reads and writes another user's bag under `core.User` × `Preferences` and its
+filter: `preferences/get` (one round trip; a user the filter hides is not found) and the
+single-target entity actions `preferences/set` and `preferences/delete` (two round trips, the
+target's bag answered and its preferences tag moved, each write logged as
+`UserPreferencesChangedByAdministrator` at Information). `UserActivityContributor<TUser>` produces
+the users' `activity` details extra: each visible user's `LastActiveAt` from `core.UserStamps`,
+joined to the read's admitted ids.
+
 `RoleService<TRole>`'s preprocessing collapses a role's exact duplicate permissions (the same
 resource, action and filter, compared ordinally) to one row before the rules count and stamp them,
 since no unique index can hold them apart: a stored row survives over a new one, and a stored
 duplicate is deleted by the save. A leaf that overrides `PreprocessAsync` calls the base to keep it.
+
+`RoleService<TRole>` declares two details extras for the role page's one read (its platform
+collaborators come as one `RoleServiceDependencies` bundle, registered by
+`UsersRuntimeComposition`):
+
+- **`members`**: one query over `core.RoleMembership` restricted to the visible roles on `RoleId`,
+  each row's user under the caller's own `core.User` × `Read` filter (rebased through the
+  membership's `User`), ended memberships left out, ordered by the user's name, at most
+  `MaxMembers` (500) rows. Each row carries its `Id`, `RoleId`, `UserId`, `StartsAt`, `EndsAt`,
+  `Notes` and the user's name columns the tenant declares, `Email`, `ImageId`, `IsActive` and
+  `State`. A caller whose read of the users is denied gets no `members` extra and no statement for
+  it.
+- **`problems`**: computed from the permissions the read loads, one `PermissionProblem` per stored
+  permission that grants nothing, in role then permission order, judged by the evaluator's own
+  `PermissionClassifier`; an invalid filter carries its diagnostics located at clause `filters[0]`,
+  or the save's `Permissions.FilterInvalid` when the engine gave none.
 
 A delete by query runs no validation round, so the delete rules above would never see its targets:
 the users' and the roles' stacks leave `DeleteByQuery` out of their operations, so neither projects
@@ -2582,8 +2716,9 @@ are SpreadsheetML packages written with `DocumentFormat.OpenXml` (MIT), forward-
 | `Composition/` | `AddTellma`, `TellmaBuilder`, `TellmaComposition.Validate`, `CoreFeature`, `IContributionRealizer<T>`, `RealizationContext`, `TellmaStartupGate`; internally the pipeline, the feature graph, the composition record the checks and later runtimes read, Core's model contributions, and the link builder with its stack-route source. |
 | `Composition/Realizers/` | One realizer per item kind the platform understands: services, standalone table types, shape requirements, Core's model configurations, calendar systems, value sets, notification types and channels, client events, securables, entities, stack companions, stack components, routed API services, confirmations and provisioning steps. Each spec that adds an item kind adds its realizer to `ContributionRealizerSet.CreateBuiltIn`. |
 | `Composition/Checks/` | The built-in startup checks above. |
-| `Crud/` | Internally: the stack composition (each stack with its service, companions and components, closed over its leaf), the descriptor builder, `StackRegistry` (`IStackRegistry` and `IStackRouteSource`), the stacks' securable contributor, the platform's default service, the registrations `CrudComposition` makes, the action-method reader, and the entity pipeline with its factory, its operation frame and its instruments. |
+| `Crud/` | Internally: the stack composition (each stack with its service, companions and components, closed over its leaf), the descriptor builder, `StackRegistry` (`IStackRegistry` and `IStackRouteSource`), the stacks' securable contributor, the platform's default service, the registrations `CrudComposition` makes, the action-method reader, and the entity pipeline with its factory, its operation frame and its instruments, and the reads of reference and lookup targets (`TargetReads`). |
 | `Crud/Query/` | Internally: the query path of [Entity stacks](#the-entity-pipeline-and-the-query-path): the surfaces, the admission, the planner, the search, the argument discovery and binding, the diagnostics' locations and their wire form, the traversal rule, the query operation (with the rows of a tree by parent) and the child query service. |
+| `Crud/ExcelRows/` | Internally: [the Excel row source](#the-excel-row-source): the operation, the admitted query tree, one round trip's composition and its chunks, and the row source with its pages and lookups. |
 | `Crud/Details/` | Internally: the details reads of [Entity stacks](#the-entity-pipeline-and-the-query-path): the projections, the planner and its composition with the extras' name rules and the record permissions, and the details operation with the cached list. |
 | `Crud/Checks/` | The stack checks of [Entity stacks](#entity-stacks). |
 | `Api/` | `IRouteContracts` and `RouteContract`; internally the route model, the contract describer and fingerprint, and the contracts chunk's client-asset contributor ([The route model](#the-route-model)), and the Queryex discovery service with its admission ([Queryex discovery](#queryex-discovery)). |

@@ -14,6 +14,8 @@
     <ProjectReference Include="..\assets\Tellma.Core.Migrator.TestDistribution\Tellma.Core.Migrator.TestDistribution.csproj" />
     <!-- The web host's tracing configuration, run against a real SQL Server. -->
     <ProjectReference Include="..\..\..\src\core\Tellma.Core.AspNetCore\Tellma.Core.AspNetCore.csproj" />
+    <!-- The email pipeline the outbox's sending jobs send through, its router and its sandbox policy. -->
+    <ProjectReference Include="..\..\..\src\core\Tellma.Core.Email\Tellma.Core.Email.csproj" />
     <!-- The data layer's shared SQL fixture: the fixture schema, its migrations, and the host that
          opens a tenant database over a fixture database. -->
     <ProjectReference Include="..\..\shared\Tellma.Testing.Entities\Tellma.Testing.Entities.csproj" />

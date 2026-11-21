@@ -22,6 +22,9 @@ namespace Tellma.Core.AspNetCore.Tests.Realtime
     {
         private readonly DefaultHubLifetimeManager<TellmaHub> _inner = new(NullLogger<DefaultHubLifetimeManager<TellmaHub>>.Instance);
 
+        /// <summary>Orders the stalled sends' records, so each reads the ones before it whole.</summary>
+        private readonly Lock _stalledGate = new();
+
         /// <summary>The groups sent to, in order, by a group or group-except send.</summary>
         public ConcurrentQueue<string> GroupSends { get; } = new();
 
@@ -30,6 +33,9 @@ namespace Tellma.Core.AspNetCore.Tests.Realtime
 
         /// <summary>The connections a send to which never completes, by connection id.</summary>
         public ConcurrentDictionary<string, bool> StalledConnections { get; } = new(StringComparer.Ordinal);
+
+        /// <summary>The sends to stalled connections, in the order they started.</summary>
+        public ConcurrentQueue<StalledSend> StalledSends { get; } = new();
 
         /// <summary>
         ///     Composes the manager into a host and makes the tracker see a mode that reaches every
@@ -83,10 +89,22 @@ namespace Tellma.Core.AspNetCore.Tests.Realtime
         /// <inheritdoc />
         public override Task SendConnectionAsync(string connectionId, string methodName, object?[] args, CancellationToken cancellationToken = default)
         {
-            // A stalled send ignores its token too, as a transport write waiting on a full buffer does.
-            return StalledConnections.ContainsKey(connectionId)
-                ? new TaskCompletionSource().Task
-                : _inner.SendConnectionAsync(connectionId, methodName, args, cancellationToken);
+            if (!StalledConnections.ContainsKey(connectionId))
+            {
+                return _inner.SendConnectionAsync(connectionId, methodName, args, cancellationToken);
+            }
+
+            // --- A stalled send ignores its token too, as a transport write waiting on a full buffer does ---
+            // It is recorded with whether every stalled send before it still waited on its bound
+            // when it started: sends made side by side all start before the first bound runs out.
+            bool earlierWaiting;
+            lock (_stalledGate)
+            {
+                earlierWaiting = StalledSends.All(static send => !send.Bound.IsCancellationRequested);
+                StalledSends.Enqueue(new StalledSend(connectionId, earlierWaiting, cancellationToken));
+            }
+
+            return new TaskCompletionSource().Task;
         }
 
         /// <inheritdoc />
@@ -143,6 +161,12 @@ namespace Tellma.Core.AspNetCore.Tests.Realtime
         {
             return _inner.RemoveFromGroupAsync(connectionId, groupName, cancellationToken);
         }
+
+        /// <summary>A send to a stalled connection, as it started.</summary>
+        /// <param name="ConnectionId">The connection.</param>
+        /// <param name="EarlierStillWaiting">Whether no stalled send before it had reached its bound when it started.</param>
+        /// <param name="Bound">The send's token, which its bound cancels.</param>
+        public sealed record StalledSend(string ConnectionId, bool EarlierStillWaiting, CancellationToken Bound);
 
         /// <summary>Records a group send.</summary>
         /// <param name="group">The group.</param>

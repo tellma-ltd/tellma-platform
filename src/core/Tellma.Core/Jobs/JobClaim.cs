@@ -27,7 +27,8 @@ namespace Tellma.Core.Jobs
     }
 
     // Spec 0020 §5.1: the entity join load rides the poll's round trip after the claim, restricted
-    // to the claim's table variable of ids, with every mapped property selected.
+    // to the claim's table variable of ids, with every mapped property selected: the declared ones by
+    // name, since an entity query's root reads only what its select names, and the JSON columns.
     /// <summary>The entity load of one claim.</summary>
     /// <typeparam name="TEntity">The entity type the model maps.</typeparam>
     internal sealed class JobEntityLoad<TEntity> : IJobEntityLoad
@@ -45,7 +46,7 @@ namespace Tellma.Core.Jobs
             ArgumentException.ThrowIfNullOrWhiteSpace(claimedTable);
             _rows = batch.Query(new EntityQuery<TEntity>
             {
-                Select = nameof(IJobEntity.JobId),
+                Select = batch.DeclaredSelect(typeof(TEntity)),
                 AllProperties = true,
                 Restrictions = [new KeySetRestriction(nameof(IJobEntity.JobId), claimedTable)],
             });

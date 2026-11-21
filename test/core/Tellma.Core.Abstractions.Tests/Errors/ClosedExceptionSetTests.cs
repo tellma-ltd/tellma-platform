@@ -242,6 +242,7 @@ namespace Tellma.Core.Abstractions.Tests.Errors
                     [nameof(LimitNames.MaxDeleteByQueryRows)] = "MaxDeleteByQueryRows",
                     [nameof(LimitNames.MaxSearchLength)] = "MaxSearchLength",
                     [nameof(LimitNames.MaxExtras)] = "MaxExtras",
+                    [nameof(LimitNames.MaxSecurables)] = "MaxSecurables",
                     [nameof(LimitNames.Entities)] = "entities",
                     [nameof(LimitNames.Body)] = "body",
                 },
