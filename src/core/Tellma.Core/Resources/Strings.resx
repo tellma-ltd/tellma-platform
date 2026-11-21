@@ -142,6 +142,12 @@
   <data name="Action_Deactivate" xml:space="preserve">
     <value>Deactivate</value>
   </data>
+  <data name="Action_Invite" xml:space="preserve">
+    <value>Invite</value>
+  </data>
+  <data name="Action_Credentials" xml:space="preserve">
+    <value>Credentials</value>
+  </data>
   <data name="Action_Share" xml:space="preserve">
     <value>Share</value>
   </data>
@@ -150,6 +156,15 @@
   </data>
   <data name="Action_Transfer" xml:space="preserve">
     <value>Transfer ownership</value>
+  </data>
+  <data name="Action_Retry" xml:space="preserve">
+    <value>Retry</value>
+  </data>
+  <data name="Action_Cancel" xml:space="preserve">
+    <value>Stop</value>
+  </data>
+  <data name="Action_Resume" xml:space="preserve">
+    <value>Resume</value>
   </data>
   <!-- Entities: the create label and the display name of a record without one -->
   <data name="Entity_New" xml:space="preserve">
@@ -168,6 +183,18 @@
   <data name="Core_User_Plural" xml:space="preserve">
     <value>Users</value>
   </data>
+  <data name="Core_User_Action_Invite" xml:space="preserve">
+    <value>Invite</value>
+  </data>
+  <data name="Core_User_Action_IssueCredentials" xml:space="preserve">
+    <value>Issue credentials</value>
+  </data>
+  <data name="Core_User_Action_InvitationStatus" xml:space="preserve">
+    <value>Invitation status</value>
+  </data>
+  <data name="Core_User_Action_InvitationStatus_Ids" xml:space="preserve">
+    <value>Users</value>
+  </data>
   <data name="Core_Role_Plural" xml:space="preserve">
     <value>Roles</value>
   </data>
@@ -179,6 +206,12 @@
   </data>
   <data name="Core_Job_Plural" xml:space="preserve">
     <value>Jobs</value>
+  </data>
+  <data name="Core_Job_Action_Confirm" xml:space="preserve">
+    <value>Confirm and continue</value>
+  </data>
+  <data name="Core_Job_Action_Confirm_Keys" xml:space="preserve">
+    <value>Warnings confirmed</value>
   </data>
   <data name="Core_Schedule_Plural" xml:space="preserve">
     <value>Schedules</value>
@@ -478,6 +511,45 @@
   <data name="Users_PreferenceKeyDuplicate" xml:space="preserve">
     <value>This preference appears more than once.</value>
   </data>
+  <data name="Users_LanguageNotOffered" xml:space="preserve">
+    <value>This language isn’t offered.</value>
+  </data>
+  <data name="Users_CalendarUnknown" xml:space="preserve">
+    <value>This calendar isn’t recognized.</value>
+  </data>
+  <data name="Users_TimeZoneUnknown" xml:space="preserve">
+    <value>This time zone isn’t recognized.</value>
+  </data>
+  <data name="Users_RegionNotOffered" xml:space="preserve">
+    <value>This region isn’t offered.</value>
+  </data>
+  <data name="Users_ContactEmailInvalid" xml:space="preserve">
+    <value>Enter a valid email address.</value>
+  </data>
+  <data name="Users_MobileInvalid" xml:space="preserve">
+    <value>Enter the mobile number in international format, such as +971501234567.</value>
+  </data>
+  <data name="Users_NotIndividual" xml:space="preserve">
+    <value>Only individual users can be invited.</value>
+  </data>
+  <data name="Users_NotService" xml:space="preserve">
+    <value>Credentials can only be issued to service accounts.</value>
+  </data>
+  <data name="Users_Inactive" xml:space="preserve">
+    <value>This user is inactive.</value>
+  </data>
+  <data name="Users_AlreadyJoined" xml:space="preserve">
+    <value>This user has already joined.</value>
+  </data>
+  <data name="Users_CredentialsConcurrent" xml:space="preserve">
+    <value>Another request changed the credentials of this service account at the same time, so the new ones were discarded. Issue them again.</value>
+  </data>
+  <data name="Users_SubjectMismatch" xml:space="preserve">
+    <value>This email now belongs to a different sign-in account, so the user was left unchanged.</value>
+  </data>
+  <data name="Users_SandboxRequiresExistingIdentity" xml:space="preserve">
+    <value>A sandbox can only add people who have already set up their sign-in.</value>
+  </data>
   <data name="RoleMemberships_Overlap" xml:space="preserve">
     <value>This membership overlaps another membership of the same role.</value>
   </data>
@@ -691,6 +763,33 @@
   <data name="Jobs_HandlerRetired" xml:space="preserve">
     <value>The job was stopped because this kind of job is no longer offered.</value>
   </data>
+  <data name="Jobs_NotRetryable" xml:space="preserve">
+    <value>Only a failed job can be run again.</value>
+  </data>
+  <data name="Jobs_NotCancellable" xml:space="preserve">
+    <value>The job has already ended.</value>
+  </data>
+  <data name="Jobs_NotHeld" xml:space="preserve">
+    <value>The job is not paused.</value>
+  </data>
+  <data name="Jobs_NotPendingConfirmation" xml:space="preserve">
+    <value>The job is not waiting for these warnings to be confirmed.</value>
+  </data>
+  <data name="Jobs_NotInitiator" xml:space="preserve">
+    <value>Only the user who started the job can confirm its warnings.</value>
+  </data>
+  <data name="Jobs_RetentionProgress" xml:space="preserve">
+    <value>{stopped, plural, one {# job stopped} other {# jobs stopped}}, {succeeded, plural, one {# succeeded job} other {# succeeded jobs}} and {ended, plural, one {# failed or cancelled job} other {# failed or cancelled jobs}} deleted.</value>
+  </data>
+  <data name="Jobs_TreeVerifyProgress" xml:space="preserve">
+    <value>{verified} of {total} trees checked, {repaired, plural, one {# row} other {# rows}} repaired.</value>
+  </data>
+  <data name="JobHandler_core_job-retention" xml:space="preserve">
+    <value>Clean up old jobs</value>
+  </data>
+  <data name="JobHandler_core_tree-verify" xml:space="preserve">
+    <value>Check the trees</value>
+  </data>
   <data name="Notification_core_job_failed" xml:space="preserve">
     <value>The job {handlerKey} failed.</value>
   </data>
@@ -724,6 +823,49 @@
   </data>
   <data name="JobHandler_core_notification-retention" xml:space="preserve">
     <value>Deleting old notifications</value>
+  </data>
+  <!-- The email outbox: the outgoing emails' labels, its codes and its sending job's label -->
+  <data name="Core_OutgoingEmail_Plural" xml:space="preserve">
+    <value>Outgoing emails</value>
+  </data>
+  <data name="Core_OutgoingEmailAttachment_Plural" xml:space="preserve">
+    <value>Email attachments</value>
+  </data>
+  <data name="Email_InvalidMessage" xml:space="preserve">
+    <value>This email can’t be sent as written. It needs at least one recipient, well-formed addresses, a subject on one line of at most 500 characters, a text body, and at most 20 attachments.</value>
+  </data>
+  <data name="Email_TooManyRecipients" xml:space="preserve">
+    <value>This email has {count, number} recipients. The most allowed is {max, number}.</value>
+  </data>
+  <data name="Email_TooLarge" xml:space="preserve">
+    <value>This email is too large: {size, number} bytes. The most allowed is {maxBytes, number} bytes.</value>
+  </data>
+  <data name="Email_Rejected" xml:space="preserve">
+    <value>The email provider refused this email.</value>
+  </data>
+  <data name="Email_AttachmentMissing" xml:space="preserve">
+    <value>An attachment’s file was missing when the email was to be sent, so it was not sent.</value>
+  </data>
+  <data name="Email_TransientFailure" xml:space="preserve">
+    <value>The email could not be sent this time. It will be tried again.</value>
+  </data>
+  <data name="Email_AttemptsExhausted" xml:space="preserve">
+    <value>The email could not be sent after repeated attempts. Send it again once the problem is resolved.</value>
+  </data>
+  <data name="Email_Interrupted" xml:space="preserve">
+    <value>Sending this email was interrupted, and it may have been delivered. It was not sent again automatically.</value>
+  </data>
+  <data name="Email_NotRetryable" xml:space="preserve">
+    <value>Only an email that failed, or one whose sending job is no longer running, can be sent again.</value>
+  </data>
+  <data name="Email_NotCancellable" xml:space="preserve">
+    <value>Only an email that is waiting to be sent can be cancelled.</value>
+  </data>
+  <data name="Email_NotDeletable" xml:space="preserve">
+    <value>This email may still be sent. Cancel it, or wait until it is sent, before deleting it.</value>
+  </data>
+  <data name="JobHandler_core_outgoing-email" xml:space="preserve">
+    <value>Sending an email</value>
   </data>
   <data name="Schedules_CronInvalid" xml:space="preserve">
     <value>The cron expression {expression} is not valid. Give minute, hour, day of month, month and day of week, such as 0 3 * * * for three every morning.</value>

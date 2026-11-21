@@ -8,7 +8,10 @@ using Microsoft.Extensions.Logging;
 namespace Tellma.Core.Notifications
 {
     /// <summary>Source-generated log messages of notifications and client events.</summary>
-    /// <remarks>Tenant and user ids reach these events through the log scope, never as parameters.</remarks>
+    /// <remarks>
+    ///     The tenant's and the acting user's ids reach these events through the log scope, never as
+    ///     parameters; only a recipient other than the acting user is named by a parameter.
+    /// </remarks>
     internal static partial class NotificationsLog
     {
         /// <summary>The category of the notifier's and the renderer's events.</summary>
@@ -67,5 +70,18 @@ namespace Tellma.Core.Notifications
             Level = LogLevel.Warning,
             Message = "The client event {EventName} could not be delivered; clients catch up on their next read.")]
         public static partial void ClientEventFailed(ILogger logger, Exception exception, string eventName);
+
+        /// <summary>
+        ///     The email channel skipped a recipient whose address, or whose email, the outbox cannot
+        ///     store; the other recipients' emails are enqueued. The recipient is named by id, never
+        ///     by address.
+        /// </summary>
+        /// <param name="logger">The logger.</param>
+        /// <param name="recipientUserId">The skipped recipient, who is not the scope's user.</param>
+        [LoggerMessage(
+            EventName = "EmailNotificationRecipientSkipped",
+            Level = LogLevel.Warning,
+            Message = "The email notification to user {RecipientUserId} was skipped: the outbox cannot store their address or their email.")]
+        public static partial void EmailRecipientSkipped(ILogger logger, int recipientUserId);
     }
 }

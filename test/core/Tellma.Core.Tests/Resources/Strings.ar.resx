@@ -32,4 +32,7 @@
   <data name="Fixture_WidgetKind_Fancy" xml:space="preserve">
     <value>فاخر</value>
   </data>
+  <data name="JobHandler_acme_recompute-balances" xml:space="preserve">
+    <value>إعادة حساب الأرصدة</value>
+  </data>
 </root>

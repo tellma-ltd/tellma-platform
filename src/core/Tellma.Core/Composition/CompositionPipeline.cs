@@ -22,8 +22,10 @@ using Tellma.Core.Identity;
 using Tellma.Core.Jobs;
 using Tellma.Core.Localization;
 using Tellma.Core.Notifications;
+using Tellma.Core.Outbox;
 using Tellma.Core.Provisioning;
 using Tellma.Core.Tenancy;
+using Tellma.Core.Users;
 
 namespace Tellma.Core.Composition
 {
@@ -176,6 +178,9 @@ namespace Tellma.Core.Composition
             // --- Notifications: the options, and the hub-less client event publisher and status ---
             NotificationsComposition.Register(services, options);
 
+            // --- The email outbox: the options (spec 0022 §9.1) ---
+            OutboxComposition.Register(services, options);
+
             // --- Background jobs: the options, the handler registry, the poller wake and the queue (spec 0020 §4, §12.1) ---
             JobsComposition.Register(services, _record, options);
 
@@ -187,6 +192,9 @@ namespace Tellma.Core.Composition
 
             // --- Blobs: the options, the kind registry, the staging service and the blobs check (spec 0017 §1.3, §9) ---
             BlobsRuntimeComposition.Register(services, _record, options);
+
+            // --- The users' stack: its instruments and its service's collaborators (spec 0018 §3) ---
+            UsersRuntimeComposition.Register(services);
 
             // --- Server-built links (spec 0011 §5.10), over the stack registry's routes ---
             services.AddSingleton<ITellmaLinks, TellmaLinks>();

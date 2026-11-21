@@ -13,7 +13,10 @@ namespace Tellma.Core.Crud.Validation
     // pending request and resumes the parked ones. A task may join a round in progress (§13.3's
     // enlisted writes), and a validator awaiting anything other than LoadAsync is active, so the
     // dispatch waits for it. A task may leave the rounds while it still runs (an action's method
-    // about to wait for its persist, §11.2); a later park of its flow is a stray. Exceeding
+    // about to wait for its persist, §11.2); a later park of its flow is a stray. A task may wait
+    // for the rounds to settle (an action's method that calls another system only once every
+    // validator has spoken, spec 0018 §3.3): it is resumed, without a dispatch, at the quiet point
+    // where nothing is parked or requested, which would otherwise end the rounds. Exceeding
     // MaxValidationRounds is an authoring bug. The operation's own tasks carry a slot, the same on a
     // re-run of them (§5.1), by which what the re-run does is matched to what the first run did.
     /// <summary>
@@ -72,6 +75,12 @@ namespace Tellma.Core.Crud.Validation
 
         /// <summary>The tasks parked for the round now collecting.</summary>
         private readonly List<Participant> _parked = [];
+
+        /// <summary>The tasks waiting for the rounds to settle.</summary>
+        private readonly List<Participant> _settling = [];
+
+        /// <summary>Released when the rounds settle with tasks waiting for it; the settling tasks await it.</summary>
+        private TaskCompletionSource _settled = NewGate();
 
         /// <summary>Whether the pipeline asked for a round with no task parked.</summary>
         private bool _requested;
@@ -142,9 +151,10 @@ namespace Tellma.Core.Crud.Validation
         public int? CurrentSlot => CurrentParticipant.Value is { } current && current.Scheduler == this ? current.Slot : null;
 
         /// <summary>
-        ///     Whether the current flow's task is parked at a load. The current flow runs, so another
-        ///     flow of the same task is parked, and what the current flow does now races that flow's
-        ///     resumption: a re-run, whose loads are answered at once, may do it in another order.
+        ///     Whether the current flow's task is parked at a load or waits for the rounds to settle.
+        ///     The current flow runs, so another flow of the same task is waiting, and what the current
+        ///     flow does now races that flow's resumption: a re-run, whose loads are answered at once,
+        ///     may do it in another order.
         /// </summary>
         public bool IsCurrentTaskParked
         {
@@ -157,7 +167,7 @@ namespace Tellma.Core.Crud.Validation
 
                 lock (_gate)
                 {
-                    return current.State == ParticipantState.Parked;
+                    return current.State is ParticipantState.Parked or ParticipantState.Settling;
                 }
             }
         }
@@ -339,10 +349,10 @@ namespace Tellma.Core.Crud.Validation
                 {
                     return Task.FromCanceled(Aborted);
                 }
-                else if (participant.State == ParticipantState.Parked)
+                else if (participant.State is ParticipantState.Parked or ParticipantState.Settling)
                 {
                     throw new InvalidOperationException(
-                        $"The task '{participant.Name}' awaited LoadAsync while already parked at it. One task parks at one load at a time; run concurrent work that loads as a task of its own.");
+                        $"The task '{participant.Name}' awaited LoadAsync while already parked at a load or waiting for the action's validation. One task waits at one load at a time; run concurrent work that loads as a task of its own.");
                 }
                 else
                 {
@@ -354,6 +364,61 @@ namespace Tellma.Core.Crud.Validation
             }
 
             // The stray flow's own caller may never observe it, so the rounds fail with it too.
+            Fail(stray);
+            throw stray;
+        }
+
+        /// <summary>
+        ///     Waits until the rounds settle: every other task has completed or waits for the same,
+        ///     and nothing is parked or requested. The waiting tasks resume then, without a dispatch,
+        ///     and may load again.
+        /// </summary>
+        /// <returns>A task that completes when the rounds settled; cancelled when they stop early.</returns>
+        /// <exception cref="InvalidOperationException">
+        ///     The current flow is no task of this scheduler, another of its flows is parked or waits
+        ///     already, or the flow outlived its task, the rounds, or the task's leaving them.
+        /// </exception>
+        public Task SettleAsync()
+        {
+            Participant participant = CurrentParticipant.Value is { } current && current.Scheduler == this
+                ? current
+                : throw new InvalidOperationException(
+                    "The action's validation was awaited outside its validation rounds. Await it from the action's method or a validator, which the rounds run.");
+
+            InvalidOperationException? stray = null;
+            lock (_gate)
+            {
+                // --- The same strays a park refuses, for the same reasons ---
+                if (participant.Leaving)
+                {
+                    stray = new InvalidOperationException(
+                        $"The task '{participant.Name}' awaited the action's validation after it left the validation rounds to wait for the persist. Await the validation before reading Persisted.");
+                    _lateFailure ??= stray;
+                }
+                else if (participant.State == ParticipantState.Completed || _finished)
+                {
+                    stray = new InvalidOperationException(
+                        $"The action's validation was awaited by a flow that outlived the task '{participant.Name}'{(_finished ? " and the validation rounds" : string.Empty)}. Await it from the task's own flow, before the task returns.");
+                }
+                else if (_aborted)
+                {
+                    return Task.FromCanceled(Aborted);
+                }
+                else if (participant.State is ParticipantState.Parked or ParticipantState.Settling)
+                {
+                    throw new InvalidOperationException(
+                        $"The task '{participant.Name}' awaited the action's validation while already waiting in the rounds. One flow of a task waits at a time.");
+                }
+                else
+                {
+                    participant.State = ParticipantState.Settling;
+                    _settling.Add(participant);
+                    Leave();
+                    return _settled.Task;
+                }
+            }
+
+            // As a stray park: the rounds fail with it.
             Fail(stray);
             throw stray;
         }
@@ -378,14 +443,14 @@ namespace Tellma.Core.Crud.Validation
             lock (_gate)
             {
                 // --- Marked under the gate, so no park of the flow slips in between ---
-                if (participant.State != ParticipantState.Parked)
+                if (participant.State is not (ParticipantState.Parked or ParticipantState.Settling))
                 {
                     participant.Leaving = true;
                     return () => Release(participant);
                 }
 
                 stray = new InvalidOperationException(
-                    $"The task '{participant.Name}' left the validation rounds from one flow while another of its flows was parked at LoadAsync. Await every load before the task leaves the rounds.");
+                    $"The task '{participant.Name}' left the validation rounds from one flow while another of its flows was waiting in them. Await every load, and the validation, before the task leaves the rounds.");
             }
 
             // The parked flow would wait on a round nobody dispatches, so the rounds fail with it.
@@ -443,6 +508,11 @@ namespace Tellma.Core.Crud.Validation
                         // Completed straight from a failed park: it no longer waits for the round.
                         _ = _parked.Remove(participant);
                     }
+                    else if (participant.State == ParticipantState.Settling)
+                    {
+                        // Completed straight from a failed wait: it no longer waits for the rounds to settle.
+                        _ = _settling.Remove(participant);
+                    }
                     else if (participant.State == ParticipantState.Running)
                     {
                         Leave();
@@ -461,7 +531,7 @@ namespace Tellma.Core.Crud.Validation
         {
             while (true)
             {
-                // --- Wait until every running task has parked or completed ---
+                // --- Wait until every running task has parked, waits to settle, or completed ---
                 Task? quiet = null;
                 TaskCompletionSource? release = null;
                 int round = 0;
@@ -471,9 +541,25 @@ namespace Tellma.Core.Crud.Validation
                     {
                         quiet = (_quiet ??= NewGate()).Task;
                     }
+                    else if (_failure is null && _parked.Count == 0 && !_requested && _settling.Count > 0)
+                    {
+                        // --- Settled: the tasks waiting for it resume without a dispatch, and the
+                        // rounds go on while any of them runs or parks again ---
+                        TaskCompletionSource settled = _settled;
+                        _settled = NewGate();
+                        foreach (Participant waiting in _settling)
+                        {
+                            waiting.State = ParticipantState.Running;
+                        }
+
+                        _running += _settling.Count;
+                        _settling.Clear();
+                        _ = settled.TrySetResult();
+                        continue;
+                    }
                     else if (_failure is not null || (_parked.Count == 0 && !_requested))
                     {
-                        // A failure ends the rounds; with nothing parked and nothing requested, they
+                        // A failure ends the rounds; with nothing parked, waiting or requested, they
                         // are done. Closed under the same gate, so no stray flow registers or parks
                         // on a round nobody would dispatch.
                         _finished = true;
@@ -545,11 +631,12 @@ namespace Tellma.Core.Crud.Validation
             }
         }
 
-        /// <summary>Fails every parked task and every later park; called under the gate.</summary>
+        /// <summary>Fails every parked or settling task and every later park or wait; called under the gate.</summary>
         private void StopParked()
         {
             _aborted = true;
             _ = _round.TrySetCanceled(Aborted);
+            _ = _settled.TrySetCanceled(Aborted);
         }
 
         /// <summary>One running task stopped running; called under the gate.</summary>
@@ -583,6 +670,9 @@ namespace Tellma.Core.Crud.Validation
 
             /// <summary>Parked at the loader for the round now collecting.</summary>
             Parked,
+
+            /// <summary>Waiting for the rounds to settle: no longer counted toward a quiet point, and resumed at one with nothing else to do.</summary>
+            Settling,
 
             /// <summary>Still running, but left the rounds: it no longer counts toward a quiet point.</summary>
             Released,

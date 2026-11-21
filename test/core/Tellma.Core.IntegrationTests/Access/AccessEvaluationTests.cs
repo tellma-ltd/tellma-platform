@@ -14,6 +14,7 @@ using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.Access;
 using Tellma.Core.Caching;
+using Tellma.Core.Jobs;
 using Tellma.Core.Localization;
 
 namespace Tellma.Core.IntegrationTests.Access
@@ -37,7 +38,16 @@ namespace Tellma.Core.IntegrationTests.Access
         ///     The securables every member holds through a bespoke self-scope criterion alone, so a
         ///     caller with no grants is filtered on them, never denied; ordinal order.
         /// </summary>
-        private static readonly (string Resource, string Action)[] SelfScoped = [(CoreResources.Notification, AccessActions.Read)];
+        private static readonly (string Resource, string Action)[] SelfScoped =
+        [
+            (CoreResources.Job, AccessActions.Cancel),
+            (CoreResources.Job, JobService.Confirm),
+            (CoreResources.Job, AccessActions.Read),
+            (CoreResources.Notification, AccessActions.Read),
+            ("core.RoleMembership", AccessActions.Read),
+            (CoreResources.User, AccessActions.Read),
+            ("core.UserStamp", AccessActions.Read),
+        ];
 
         /// <summary>The prologue round trips of the fixture's instance, one measurement each, tagged by variant.</summary>
         private readonly MetricCollector<double> _prologues = Prologues(fixture.Services);
@@ -161,6 +171,8 @@ namespace Tellma.Core.IntegrationTests.Access
             AccessDecision second = await evaluator.EvaluateAsync(CoreResources.Role, AccessActions.Save, Token);
             IReadOnlyList<AccessDecision> summary = await evaluator.EvaluateAllAsync(Token);
 
+            // A caller without grants still reads their own user row, and its owned memberships and
+            // stamp follow their owner; every other securable is denied.
             Assert.Equal(AccessOutcome.Denied, second.Outcome);
             // With no role grants, the self-scoped securables are filtered by their bespoke criteria alone and every other is denied.
             Assert.Equal(

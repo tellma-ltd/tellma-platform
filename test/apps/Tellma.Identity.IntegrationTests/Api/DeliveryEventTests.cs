@@ -9,6 +9,7 @@ using Tellma.Core.Abstractions.Email;
 using Tellma.Identity.Data;
 using Tellma.Identity.Data.Entities;
 using Tellma.Identity.IntegrationTests.Infrastructure;
+using EmailDeliveryStatus = Tellma.Identity.Data.Entities.EmailDeliveryStatus;
 
 namespace Tellma.Identity.IntegrationTests.Api
 {

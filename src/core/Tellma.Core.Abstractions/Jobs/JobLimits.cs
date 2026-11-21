@@ -63,6 +63,9 @@ namespace Tellma.Core.Abstractions.Jobs
         /// </summary>
         public const int MaxConfirmationKeys = 16;
 
+        /// <summary>The most characters one warning key a confirmation names may have.</summary>
+        public const int MaxConfirmationKeyLength = 100;
+
         /// <summary>
         ///     The most characters a job's confirmed keys may take, comma-separated: the width of their
         ///     column. A job whose keys would take more fails with

@@ -9,6 +9,7 @@ using Tellma.Core.Abstractions.Calendars;
 using Tellma.Core.Abstractions.Client;
 using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.Abstractions.Data;
+using Tellma.Core.Abstractions.Email;
 using Tellma.Core.Abstractions.Identity;
 using Tellma.Core.Abstractions.Jobs;
 using Tellma.Core.Abstractions.Localization;
@@ -28,6 +29,7 @@ using Tellma.Core.Identity;
 using Tellma.Core.Jobs;
 using Tellma.Core.Localization;
 using Tellma.Core.Notifications;
+using Tellma.Core.Outbox;
 using Tellma.Core.Provisioning;
 using Tellma.Core.Settings;
 using Tellma.Core.Users;
@@ -130,6 +132,12 @@ namespace Tellma.Core.Composition
                 .Model<UserPreferenceConfiguration>()
                 .TableType<UserPreferenceList>();
 
+            // --- The users' stack beyond spec 0014 (spec 0018 §1.2, §3): the own-row read criterion
+            // and the invite write-back's table type ---
+            _ = contribution
+                .Singleton<IAccessCriteriaProvider, UserAccessCriteria>()
+                .TableType<UserInvitationOutcome>();
+
             // --- The identity-server client, one per distribution (spec 0018 §1.2, §2) ---
             // Its options and named HTTP client are registered with the platform's options.
             _ = contribution.Singleton<IIdentityServerClient, IdentityServerClient>();
@@ -230,14 +238,37 @@ namespace Tellma.Core.Composition
                 .ClientEvent(Notifier.InboxChangedEvent)
                 .ClientEvent(SessionEndedEvent.Name);
 
+            // --- The email outbox: the rows and their stack, the outbox, the sending jobs' handler,
+            // the attachments' blob kind and the two table types ---
+            // spec 0022 §9.3. OutgoingEmail is a Query | Details | Delete | Enlist stack whose rows
+            // arrive only through the outbox; its registration as a scoped service gives the registry
+            // the outbox's enlistment pair. An email attachment needs no preview, so its kind renders
+            // no thumbnail; the kind itself comes from the attachment's blob reference.
+            _ = contribution
+                .Entity<OutgoingEmail, OutgoingEmailService>()
+                .Model<OutgoingEmailConfiguration>()
+                .Scoped<IEmailOutbox, EmailOutbox>()
+                .JobHandler<OutgoingEmailHandler>()
+                .BlobKind(OutgoingEmailAttachment.BlobKind, static policy => policy with { Thumbnail = null })
+                .TableType<OutgoingEmailOutcomeList>()
+                .TableType<EmailDeliveryEventList>();
+
             // --- Background jobs: the job and schedule tables, their machinery's tables and table types,
             // and the notices and client event a completion raises ---
-            // spec 0020 §2, §7, §10, §15. Job is an entity without a service until its service lands;
-            // Schedule's service and rules are closed over the leaf, like the users' and roles'. The
-            // schedule state and the worker heartbeat are platform tables, never stacks. The handlers
-            // and built-in schedules Core owns are contributed with their handlers.
+            // spec 0020 §2, §7, §10, §11, §14.4, §14.5, §15. Job's service serves the reads and the four
+            // job actions, and its self-scope lets every member read, cancel and confirm the jobs they
+            // requested; Schedule's service and rules are closed over the leaf, like the users' and
+            // roles'. The schedule state and the worker heartbeat are platform tables, never stacks.
+            // The handlers Core owns come with their built-in schedules, retention at 03:00 ahead of
+            // the other nightly retentions, and the client metadata lists every registered handler.
             _ = contribution
-                .Entity<Job>()
+                .Entity<Job, JobService>()
+                .Singleton<IAccessCriteriaProvider, JobAccessCriteria>()
+                .Singleton<IClientAssetContributor, JobHandlersClientAssetContributor>()
+                .JobHandler<JobRetentionHandler>()
+                .BuiltInSchedule(JobRetentionHandler.ScheduleId, JobRetentionHandler.Key, JobRetentionHandler.Cron)
+                .JobHandler<TreeVerifyHandler>()
+                .BuiltInSchedule(TreeVerifyHandler.ScheduleId, TreeVerifyHandler.Key, TreeVerifyHandler.Cron)
                 .Entity<Schedule, ScheduleService<Schedule>>()
                 .Validator<Schedule, ScheduleRules<Schedule>>()
                 .Model<JobConfiguration>()

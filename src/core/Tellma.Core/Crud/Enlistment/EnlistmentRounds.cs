@@ -9,6 +9,7 @@ using Tellma.Core.Crud.Save;
 using Tellma.Core.Crud.Validation;
 using Tellma.Core.Data;
 using Tellma.Core.Data.Queries;
+using Tellma.Core.Outbox;
 
 namespace Tellma.Core.Crud.Enlistment
 {
@@ -91,14 +92,16 @@ namespace Tellma.Core.Crud.Enlistment
 
         // Spec 0015 §13.3: a participant is a class the host's frame was opened for, or one attached
         // to the stack of a group enlisted inside it. A class outside them would write another stack
-        // from a frame that never asked for it.
-        /// <summary>Whether a writer takes part in the host's frame.</summary>
+        // from a frame that never asked for it. The email outbox is the one exception: spec 0022 §3
+        // admits it in every frame, so any participant, a notification channel among them, can
+        // enqueue mail through it with the frame it was handed.
+        /// <summary>Whether a writer takes part in the host's frame: one of its participants, or the email outbox, which every frame admits.</summary>
         /// <param name="writer">The writer's class.</param>
         /// <returns>True when it does.</returns>
         public bool IsParticipant(Type writer)
         {
             ArgumentNullException.ThrowIfNull(writer);
-            if (Attached(participants, writer))
+            if (writer == typeof(EmailOutbox) || Attached(participants, writer))
             {
                 return true;
             }

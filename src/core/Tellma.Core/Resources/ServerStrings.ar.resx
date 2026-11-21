@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <!-- The email notification channel: the subject and bodies around a notification's text -->
+  <data name="Email_Notification_Subject" xml:space="preserve">
+    <value>{tenantName}: {text}</value>
+  </data>
+  <data name="Email_Notification_Text" xml:space="preserve">
+    <value>{text}
+
+فتح: {link}
+
+تصلك هذه الرسالة لأن البريد الإلكتروني مفعّل لهذا النوع من الإشعارات في {tenantName}. يمكنك إيقافه من إعدادات الإشعارات.</value>
+  </data>
+  <data name="Email_Notification_Html" xml:space="preserve">
+    <value>&lt;div dir="rtl"&gt;&lt;p&gt;{text}&lt;/p&gt;&lt;p&gt;&lt;a href="{link}"&gt;فتح في {tenantName}&lt;/a&gt;&lt;/p&gt;&lt;p style="color:#6b7280;font-size:12px"&gt;تصلك هذه الرسالة لأن البريد الإلكتروني مفعّل لهذا النوع من الإشعارات في {tenantName}. يمكنك إيقافه من إعدادات الإشعارات.&lt;/p&gt;&lt;/div&gt;</value>
+  </data>
+</root>

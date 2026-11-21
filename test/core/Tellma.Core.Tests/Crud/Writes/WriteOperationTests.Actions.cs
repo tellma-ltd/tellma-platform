@@ -488,6 +488,38 @@ namespace Tellma.Core.Tests.Crud.Writes
         }
 
         [Fact]
+        public async Task A_failed_action_is_raised_only_once_the_method_waiting_for_its_persist_has_answered_the_failure()
+        {
+            bool compensated = false;
+            _hooks.ValidateAction = static (_, context) =>
+            {
+                context.Errors.Add(ValidationPath.Root.Property("Ids").Index(0), "Pw.Closed");
+                return Task.CompletedTask;
+            };
+            _hooks.Close = async context =>
+            {
+                await context.Loader.LoadAsync();
+                try
+                {
+                    await context.Persisted;
+                }
+                catch (ValidationException)
+                {
+                    // Work of its own on the failure, such as undoing a remote call, that takes a while.
+                    await Task.Delay(TimeSpan.FromMilliseconds(100), Token);
+                    compensated = true;
+                    throw;
+                }
+            };
+
+            _ = await Assert.ThrowsAsync<ValidationException>(
+                () => TicketsAsync(tickets => tickets.ExecuteActionAsync(PipelineWriteModel.Close, [1], null, new ActionOptions(), Token)));
+
+            // --- The method's answer to the failure finished before the caller saw it ---
+            Assert.True(compensated);
+        }
+
+        [Fact]
         public async Task A_partial_failure_persists_what_the_method_composed_then_is_rethrown_once_committed()
         {
             PartialFailureException partial = new("Pw.Partial", new { Closed = 1 }, ["2"]);

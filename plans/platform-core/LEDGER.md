@@ -97,13 +97,14 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | 2026-11-13 03:00 | | | 2026-11-17 20:00 | CI red on ddb8259 (grid-a11y forced-colors flake + real forced-colors CSS bugs) → PC-F25 fixed, green at f9b7e33; PC-033, PC-036 done (45 + fix items); PC-026 released to integrate; PC-047 r2 fable; PC-038/PC-051 fix1; PC-073 fix2; PC-037 impl. D-064..D-067 |
 | 2026-11-14 12:01 | 8 | 0 | 2026-11-17 20:00 | Full reset detected (all-models → 8, Fable → 0). Line stopped on PC-F38 (PC-058 multi-picker races); PC-044/054/F36 done; PC-055 r1; PC-031/PC-040 impl |
 | 2026-11-17 20:02 | 0 | 0 | 2026-11-24 20:00 | Weekly reset detected (all-models 91 → 0, Fable 5 → 0). PC-068/F55/F56/070 done; PC-072 impl (pc-3); PC-B02/B03 finders resumed (pc-1/pc-2, D-110) |
+| 2026-11-21 05:15 | 85 | 31 | 2026-11-24 20:00 | ≈1.05 pts/h since the 11-17 rollover (85 in 81 h); at that pace the window runs out ≈ 2026-11-21 19:30. Ready queue: no T1/T2 (PC-147, PC-148 in flight), T3 PC-174/PC-181 held (D-140). Ahmad asked whether to apply a manual reset this week |
 
 ## In flight
 
 | PC | Slot | Branch | Step | Implementer agent (name / id) | Reviewer agent (name / id) | Started (UTC) |
 |---|---|---|---|---|---|---|
-| PC-145 | pc-3 | pc/PC-145 | integrating | released 2026-11-20 after PC-F62 (held e244b0f9); wire the band delete SET NULL writes via ForeignKeyActions.WrittenByDeleting at the merge (D-156); D-158 | 0020-f; R1 only | 2026-11-20 |
-| PC-088 | pc-1 | pc/PC-088 | held | held (c1574599; R2 0/1/5 fixed or recorded; merge-tree: regenerate three migration sets, merge AccessEvaluationTests SelfScoped); released after PC-145; D-157, D-159 | 0018-c; two reviews (R2 fable, security-bound) | 2026-11-20 |
+| PC-147 | pc-2 | pc/PC-147 | held | R1 0/0/9 (dac43255); fix1 e7a8bf75; R2 fable 0/0/5; fix2 8076570a (all fixed); held behind PC-148 (merge-tree: Acme IntegrationTests README, keep both rows); D-163 | 0021-d; two reviews (R2 fable, security-bound) | 2026-11-20 |
+| PC-148 | pc-4 | pc/PC-148 | ci-fix | R1 0/1/4 (b01932b6); fix1 b73f83e0; integrate c0ce93b8; pc run 44876341059 red (DataBatchTests table list; UserIdentityActionTests deactivated-meanwhile); CI fixes; D-164 | 0022-a; R1 only | 2026-11-20 |
 
 ## Fix items
 
@@ -287,6 +288,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | Decide excludes inactive-role grants (PC-043 checkpoint test list) | 0014 §5.2, §6.2 | inactive roles are excluded by the load; carried into PC-050 (PC-043 R1-4) |
 | Acme §10 rows skipped in PC-141 (6): first request binds UserId, Frozen read, ReadOnly read stamps activity (connect initializer + administrator bootstrap); AllowWhenReadOnly me/locale action (users-stack projection); RunsWhenReadOnly job (job worker); composed platform provisioning steps | 0011 §3.3, §4.3, §10 | conditional skips (PlatformSeams) since 15d1369d; carried to PC-078, PC-090, PC-100, PC-089 (D-096) |
 | tm-pivot pixel baselines: light, dark and RTL (PC-193 R1-9; computed-style checks stand in) | 0034 §14 | land with the repo's pixel-baseline infrastructure, next to the chart visual suite (WATCHLIST c10 #7) |
+| Live Azure SignalR suite (PC-147, Defaults.Azure.AspNetCore.IntegrationTests, Live=true): never run, Azure-specific assertions unverified | 0021 §12 | needs the live-realtime-tests environment, SIGNALR_TEST_CONNECTIONSTRING secret and SIGNALR_LIVE_ENABLED variable (Ahmad); the nightly live workflow is disabled and runs from main (D-163) |
 
 ## Status
 
@@ -380,7 +382,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-085 | 0011-g | 1 | done (integrated db81630; CI 43479519320 red: Acme E2E csproj never committed (.gitignore *.e2e matches the folder case-insensitively), fixed by PC-F30, green at 9a1754d (CI 43488423725); integration-windows itself green; fix1 6ba59cb; R1-6 pushed back: AspNetCore→Webhooks edge would break ARCHITECTURE rule 6, IVT seam kept and documented; R1-4 compares runtime models only; new fix: RCSI ALTER WITH ROLLBACK IMMEDIATE (pooled catalog connection timed out Acme readiness); integration-windows non-gating) | a147a95, 6ba59cb, db81630 (pc) |  |  |
 | PC-086 | 0029-a | 1 | done | ce581934, 7a5cdf53, 84278111, 22c362f7; green 44575091654 | | |
 | PC-087 | 0018-b | 1 | done (f75366c4; pc 44748673481 green, PR 44752134569 green) | e2ed8550, 0d6e317a, 01533a52, f75366c4 | | D-148 |
-| PC-088 | 0018-c | 1 | in progress | | | carry (D-156): whichever of PC-088 and PC-F62 lands second removes UserService.Delete.cs's local cascade declaration (UserPreferences, UserStamps, NotificationPreferences); PC-F62 declares it generally |
+| PC-088 | 0018-c | 1 | done (7146ab13; pc 44867579837 green) | ed00f3de, 8caf7211, c1574599, 7146ab13 | | D-157, D-159; D-156 carry closed (local declaration removed at integration); carry (D-156): whichever of PC-088 and PC-F62 lands second removes UserService.Delete.cs's local cascade declaration (UserPreferences, UserStamps, NotificationPreferences); PC-F62 declares it generally |
 | PC-089 | 0017-d | 1 | todo | | | carry: none from D-096 any more (D-120 moved §6.4 BlobContainerStep to PC-083 and the provisioning-record row to whichever of PC-078 and PC-083 lands last); carry from PC-080 (D-124): blob endpoints must evaluate access or record the member witness, or the witness filter answers 500 (unstarted) or aborts the connection (started); carry D-137: wrap the blob GET in the telemetry stage (0016 §5.1 chain); carry D-145: map the blob GET with DisableRequestTimeout or a time-to-first-byte policy (tellma-web cuts downloads at 30 s) |
 | PC-090 | 0018-d | 1 | todo | | | carry from PC-141 (D-096): TenantStateTests.An_action_allowed_when_read_only_succeeds_on_a_read_only_tenant runs and must pass |
 | PC-091 | 0018-e | 1 | todo | | | |
@@ -435,13 +437,13 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-140 | MVP | 1 | todo | | | |
 | PC-141 | 0011-h | 2 | done (478b0ab0; CI 43879675326 green) | bb2a2d6, 15d1369 (pc/PC-141) | | |
 | PC-142 | 0015-k | 2 | done (eba471bf; green 44642487470) | e86138b6, 76ee772e, e6f1d0b2, 3083d411, eba471bf | | D-131, D-132, D-134 |
-| PC-143 | 0018-f | 2 | todo | | | |
+| PC-143 | 0018-f | 2 | todo | | | carry (D-164): register EmailNotificationChannel in CoreFeature only once PC-149 (dispatch) is on platform-core, else opted-in email piles up as Pending rows whose jobs fail closed; finish SendTestAsync; drop OutboxDatabase.cs's explicit channel registration (it would clash in NotificationChannelsCheck); confirm the gate can build the channel without a tenant (D-061) with its ITenantSettingsCache and IEmailSender dependencies |
 | PC-144 | 0020-e | 2 | done (711641ab; pc 44771340622 green; PR 44774613660 green) | 7d470e81, 8e457c6b, 711641ab | | D-150, D-152, D-154 |
-| PC-145 | 0020-f | 2 | in progress | | | carry (D-153): add core.Job to AccessEvaluationTests' list of self-scoped securables (Filtered with no grants); carry (D-156): the core.job-retention and core.file-retention DELETE of core.Jobs must declare core.ScheduleStates (FK_ScheduleStates_LastJobId SET NULL) and every IJobEntity table (FK_<Table>_JobId SET NULL), from ForeignKeyActions.WrittenByDeleting once PC-F62 is on platform-core (whichever of PC-145 and PC-F62 lands second wires it) |
+| PC-145 | 0020-f | 2 | done (3c61aac3; pc 44858269311 green) | 1226a7c1, e244b0f9, 3c61aac3 | | D-158; carry (D-153): add core.Job to AccessEvaluationTests' list of self-scoped securables (Filtered with no grants); carry (D-156): the core.job-retention and core.file-retention DELETE of core.Jobs must declare core.ScheduleStates (FK_ScheduleStates_LastJobId SET NULL) and every IJobEntity table (FK_<Table>_JobId SET NULL), from ForeignKeyActions.WrittenByDeleting once PC-F62 is on platform-core (whichever of PC-145 and PC-F62 lands second wires it) |
 | PC-146 | 0021-c | 2 | done (d7ebba3c; pc 44840986549 green) | 5efa9448, 261870b7, 33c39b3f, d7ebba3c | | D-151, D-153; carry from PC-099 r1 closed (Notification self-scope added) |
-| PC-147 | 0021-d | 2 | todo | | | |
-| PC-148 | 0022-a | 2 | todo | | | carry (D-151): EnlistmentFrame.Admit admits EmailOutbox (0015 §13.3); 0021 §12 enlisted-rows-committed-with-the-completion e2e test lands here |
-| PC-149 | 0022-b | 2 | todo | | | |
+| PC-147 | 0021-d | 2 | in progress | | | |
+| PC-148 | 0022-a | 2 | in progress | | | carry (D-151): EnlistmentFrame.Admit admits EmailOutbox (0015 §13.3); 0021 §12 enlisted-rows-committed-with-the-completion e2e test lands here |
+| PC-149 | 0022-b | 2 | todo | | | carry (D-164): the 0018 §3.3 welcome email and its §9 pins, enqueued from the invite action frame (needs PC-088 on platform-core), with a test that enqueues from an action frame; emit tellma.outbox.enqueued from EmailOutbox.EnqueueAsync tagged with the request's Source |
 | PC-150 | 0026-d | 2 | todo | | | |
 | PC-151 | 0023-h | 2 | done (99123772; CI 43994567778 red → PC-F53; green 44019377406 on 880b58d7) | 7b9c658, c678bc7, 9912377 (pc/PC-151) | | |
 | PC-152 | 0024-j | 2 | todo | | | |

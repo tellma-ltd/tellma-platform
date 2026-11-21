@@ -68,6 +68,54 @@ namespace Tellma.Core.Abstractions.Access
         /// <summary>A preference key repeats within one request.</summary>
         public const string PreferenceKeyDuplicate = "Users.PreferenceKeyDuplicate";
 
+        /// <summary>A user's preferred language is not a bare language code the distribution offers.</summary>
+        public const string LanguageNotOffered = "Users.LanguageNotOffered";
+
+        /// <summary>A user's preferred calendar is not a calendar the platform composes.</summary>
+        public const string CalendarUnknown = "Users.CalendarUnknown";
+
+        /// <summary>A user's preferred time zone is not a zone the platform knows; an older alias of a zone is refused too.</summary>
+        public const string TimeZoneUnknown = "Users.TimeZoneUnknown";
+
+        /// <summary>A user's preferred region is not offered with any language the distribution offers.</summary>
+        public const string RegionNotOffered = "Users.RegionNotOffered";
+
+        /// <summary>A user's contact email is not a single valid address.</summary>
+        public const string ContactEmailInvalid = "Users.ContactEmailInvalid";
+
+        /// <summary>A user's contact mobile is not an international number: a plus sign and 7 to 15 digits, the first not zero.</summary>
+        public const string MobileInvalid = "Users.MobileInvalid";
+
+        /// <summary>An action that serves individuals alone, such as an invitation, targets a service account or the system user.</summary>
+        public const string NotIndividual = "Users.NotIndividual";
+
+        /// <summary>An action that serves service accounts alone, such as issuing credentials, targets another kind of user.</summary>
+        public const string NotService = "Users.NotService";
+
+        /// <summary>An action that needs an active user, such as an invitation or issuing credentials, targets a deactivated one.</summary>
+        public const string Inactive = "Users.Inactive";
+
+        /// <summary>A user who has signed in already is invited.</summary>
+        public const string AlreadyJoined = "Users.AlreadyJoined";
+
+        /// <summary>
+        ///     Another request changed a service account's credentials while new ones were being
+        ///     issued, so the new ones were discarded; issuing them again answers working ones.
+        /// </summary>
+        public const string CredentialsConcurrent = "Users.CredentialsConcurrent";
+
+        /// <summary>
+        ///     The user's email now belongs to another identity account than the one the user is bound
+        ///     to, so the invitation left the user as it was.
+        /// </summary>
+        public const string SubjectMismatch = "Users.SubjectMismatch";
+
+        /// <summary>
+        ///     A sandbox tenant invites only people who already hold a credential at the identity
+        ///     server, since a sandbox never causes the identity server to email anyone.
+        /// </summary>
+        public const string SandboxRequiresExistingIdentity = "Users.SandboxRequiresExistingIdentity";
+
         /// <summary>Two windows of one user's memberships of one role overlap; a permanent one overlaps every other.</summary>
         public const string MembershipOverlap = "RoleMemberships.Overlap";
 

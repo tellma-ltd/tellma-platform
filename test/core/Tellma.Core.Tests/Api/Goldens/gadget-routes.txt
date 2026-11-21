@@ -5,6 +5,9 @@ POST /{tenantId}/api/web/users/save | save | core.User | - | SaveRequest<User> |
 POST /{tenantId}/api/web/users/delete | delete | core.User | - | IdsRequest | AffectedResult | core.User:Delete | mutation | lisU15N3Oj5S
 POST /{tenantId}/api/web/users/activate | activate | core.User | entity | EntityActionRequest | EntitiesResult<User> | core.User:Activate | mutation, idempotent | pc2DaU7k4Sg0
 POST /{tenantId}/api/web/users/deactivate | deactivate | core.User | entity | EntityActionRequest | EntitiesResult<User> | core.User:Activate | mutation, idempotent | pc2DaU7k4Sg0
+POST /{tenantId}/api/web/users/issue-credentials | issue-credentials | core.User | entity | IdRequest | CredentialsResult | core.User:Credentials | mutation | XNBArSvfta01
+POST /{tenantId}/api/web/users/invite | invite | core.User | entity | IdsRequest | IReadOnlyList<InviteResult> | core.User:Invite | mutation | PgGi61D6gu1m
+POST /{tenantId}/api/web/users/invitation-status | invitation-status | core.User | api | IdsRequest | IReadOnlyList<InvitationStatus> | core.User:Read | idempotent | jS2fYFZnaXBe
 POST /{tenantId}/api/web/roles/query | query | core.Role | - | QueryRequest | RowPage | core.Role:Read | idempotent | PqV1-faRenCx
 POST /{tenantId}/api/web/roles/get | get | core.Role | - | GetRequest | EntitiesResult<Role> | core.Role:Read | idempotent | UrE0C_S3Q0wA
 POST /{tenantId}/api/web/roles/get-by-ids | get-by-ids | core.Role | - | GetByIdsRequest | EntitiesResult<Role> | core.Role:Read | idempotent | _R-z6oPzKA_H
@@ -15,9 +18,17 @@ POST /{tenantId}/api/web/roles/deactivate | deactivate | core.Role | entity | En
 POST /{tenantId}/api/web/notifications/query | query | core.Notification | - | QueryRequest | RowPage | core.Notification:Read | idempotent | PqV1-faRenCx
 POST /{tenantId}/api/web/notifications/get | get | core.Notification | - | GetRequest | EntitiesResult<Notification> | core.Notification:Read | idempotent | X-lsgUqE_iPC
 POST /{tenantId}/api/web/notifications/get-by-ids | get-by-ids | core.Notification | - | GetByIdsRequest | EntitiesResult<Notification> | core.Notification:Read | idempotent | W3AaofMQvkDC
+POST /{tenantId}/api/web/outgoing-emails/query | query | core.OutgoingEmail | - | QueryRequest | RowPage | core.OutgoingEmail:Read | idempotent | PqV1-faRenCx
+POST /{tenantId}/api/web/outgoing-emails/get | get | core.OutgoingEmail | - | GetRequest | EntitiesResult<OutgoingEmail> | core.OutgoingEmail:Read | idempotent | 55wqT2jEWaFQ
+POST /{tenantId}/api/web/outgoing-emails/get-by-ids | get-by-ids | core.OutgoingEmail | - | GetByIdsRequest | EntitiesResult<OutgoingEmail> | core.OutgoingEmail:Read | idempotent | gKbNur9DjZV-
+POST /{tenantId}/api/web/outgoing-emails/delete | delete | core.OutgoingEmail | - | IdsRequest | AffectedResult | core.OutgoingEmail:Delete | mutation | lisU15N3Oj5S
 POST /{tenantId}/api/web/jobs/query | query | core.Job | - | QueryRequest | RowPage | core.Job:Read | idempotent | PqV1-faRenCx
 POST /{tenantId}/api/web/jobs/get | get | core.Job | - | GetRequest | EntitiesResult<Job> | core.Job:Read | idempotent | -MjFr5wa1iWK
 POST /{tenantId}/api/web/jobs/get-by-ids | get-by-ids | core.Job | - | GetByIdsRequest | EntitiesResult<Job> | core.Job:Read | idempotent | BX5mwxCckWCS
+POST /{tenantId}/api/web/jobs/retry | retry | core.Job | entity | EntityActionRequest | EntitiesResult<Job> | core.Job:Retry | mutation | VJh7iQbqT19B
+POST /{tenantId}/api/web/jobs/cancel | cancel | core.Job | entity | EntityActionRequest | EntitiesResult<Job> | core.Job:Cancel | mutation, read-only | VJh7iQbqT19B
+POST /{tenantId}/api/web/jobs/resume | resume | core.Job | entity | EntityActionRequest | EntitiesResult<Job> | core.Job:Resume | mutation | VJh7iQbqT19B
+POST /{tenantId}/api/web/jobs/confirm | confirm | core.Job | entity | EntityActionRequest<ConfirmJobArguments> | EntitiesResult<Job> | core.Job:Confirm | mutation | wflrl-DymBMr
 POST /{tenantId}/api/web/schedules/query | query | core.Schedule | - | QueryRequest | RowPage | core.Schedule:Read | idempotent | PqV1-faRenCx
 POST /{tenantId}/api/web/schedules/get | get | core.Schedule | - | GetRequest | EntitiesResult<Schedule> | core.Schedule:Read | idempotent | KfYa4FX3b7MQ
 POST /{tenantId}/api/web/schedules/get-by-ids | get-by-ids | core.Schedule | - | GetByIdsRequest | EntitiesResult<Schedule> | core.Schedule:Read | idempotent | C4X4fvQar2bZ
@@ -54,6 +65,7 @@ POST /{tenantId}/api/web/sprockets/delete | delete | sm.SmSprocket | - | IdsRequ
 POST /{tenantId}/api/web/sprockets/delete-by-query | delete-by-query | sm.SmSprocket | - | DeleteByQueryRequest | AffectedResult | sm.SmSprocket:Delete | mutation | qslFj3HofcDO
 POST /{tenantId}/api/web/role-memberships/query | query | core.RoleMembership | - | QueryRequest | RowPage | core.RoleMembership:Read | idempotent | PqV1-faRenCx
 POST /{tenantId}/api/web/permissions/query | query | core.Permission | - | QueryRequest | RowPage | core.Permission:Read | idempotent | PqV1-faRenCx
+POST /{tenantId}/api/web/outgoing-email-attachments/query | query | core.OutgoingEmailAttachment | - | QueryRequest | RowPage | core.OutgoingEmailAttachment:Read | idempotent | PqV1-faRenCx
 POST /{tenantId}/api/web/gadget-parts/query | query | sm.SmGadgetPart | - | QueryRequest | RowPage | sm.SmGadgetPart:Read | idempotent | PqV1-faRenCx
 POST /{tenantId}/api/web/part-notes/query | query | sm.SmGadgetPartNote | - | QueryRequest | RowPage | sm.SmGadgetPartNote:Read | idempotent | PqV1-faRenCx
 POST /{tenantId}/api/web/settings/client | client | - | api | - | ValueTuple<byte[], string> | member-only | idempotent | JjXeFFL8XHtK

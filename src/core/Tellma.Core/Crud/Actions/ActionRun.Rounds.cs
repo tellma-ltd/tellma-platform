@@ -23,7 +23,12 @@ namespace Tellma.Core.Crud.Actions
     // Spec 0015 §11.2 steps 2 and 3: round trip 1 carries the targets under the caller's Read filter,
     // with every child collection when the action loads children, and their count under the action's
     // grant, beside every load the hook, the components and the method request before their first
-    // await. The three run as tasks of the validation rounds over one ActionContext. The method
+    // await. The three run as tasks of the validation rounds over one ActionContext. A task that must
+    // know every validator's verdict before it acts, such as a method calling an identity server
+    // between the round trips (spec 0018 §3.3), awaits the context's ValidatedAsync: the scheduler
+    // resumes it at the quiet point that would end the rounds, at no round trip, and the answer says
+    // whether an error, an unconfirmed warning or the tenant-state verdict will refuse the action
+    // after the rounds (spec 0015 §7.5 and §5.1), so the method calls out only when none will. The method
     // composes before the persist batch exists: its Batch is a deferred recording replayed onto the
     // persist, and a task that reads Persisted leaves the rounds once the flow that read it stops
     // running on its thread, so the persist it waits for runs once every other task completed or
@@ -95,6 +100,9 @@ namespace Tellma.Core.Crud.Actions
         /// <summary>The frame the first run's tasks run in; null on the one-round-trip path.</summary>
         private PipelineFrame? _frame;
 
+        /// <summary>The confirmations frame of the general path, holding its unconfirmed warnings; null on the one-round-trip path.</summary>
+        private ConfirmationFrame? _confirmations;
+
         /// <summary>The rounds the groups enlisted with the action run in; null while none can have enlisted.</summary>
         private EnlistmentRounds? Enlistments => _frame is { HasRounds: true } frame ? frame.Rounds : null;
 
@@ -103,6 +111,7 @@ namespace Tellma.Core.Crud.Actions
         private async Task<object?> RunGeneralAsync()
         {
             using ConfirmationFrame frame = Services.Confirmations.Frame(Resource, OperationName);
+            _confirmations = frame;
             ValidationScheduler scheduler = new(_stack.Limits.MaxValidationRounds, OperationName, DispatchAsync, Services.Metrics, _cancellationToken);
             _scheduler = scheduler;
             _loader = new ContextLoader(Services.Metadata, _map, scheduler, ReadDecision);
@@ -139,8 +148,10 @@ namespace Tellma.Core.Crud.Actions
             catch (Exception failure) when (failure is not OutOfMemoryException)
             {
                 // What ended the action ends a method waiting for its persist; a committed action's
-                // Persisted already completed, so this changes nothing then.
+                // Persisted already completed, so this changes nothing then. The flows that waited
+                // for it resume with the failure, and the action raises it only once they returned.
                 _ = _context.FaultPersisted(failure);
+                await SettleReleasedAsync().ConfigureAwait(false);
                 Observe(_methodTask);
                 Enlistments?.Count(failure);
                 throw;
@@ -179,7 +190,25 @@ namespace Tellma.Core.Crud.Actions
                 AssignmentsService = Services.Services.GetService<IAssignments>(),
                 PersistedRead = () => ReadPersisted(scheduler, late),
                 ComposeGuard = PersistGate.EnsureComposing,
+                Settle = () => SettledAsync(scheduler, errors),
             };
+        }
+
+        /// <summary>
+        ///     Waits until the validation rounds settled, then answers whether the action, as validated,
+        ///     would persist: no error, no unconfirmed warning, and a tenant state that admits it. These
+        ///     are what refuse the action after the rounds (the validation outcome, then the persist's
+        ///     verdict), so a method that answers false makes no remote call the refusal would waste.
+        /// </summary>
+        /// <param name="scheduler">The rounds.</param>
+        /// <param name="errors">The action's errors.</param>
+        /// <returns>True when nothing refuses the action as it stands.</returns>
+        private async Task<bool> SettledAsync(ValidationScheduler scheduler, ValidationErrors<TEntity> errors)
+        {
+            await scheduler.SettleAsync().ConfigureAwait(false);
+            return !errors.HasErrors
+                && _confirmations is { Unconfirmed.Count: 0 }
+                && PersistVerdict.Refusal(Services.Accessor.Current, _descriptor.Mutation, _descriptor.AllowWhenReadOnly, Services.Frames.Open) is null;
         }
 
         /// <summary>Starts the service's action hook, every component's, and, when asked, the method, as tasks of the rounds.</summary>
@@ -333,6 +362,31 @@ namespace Tellma.Core.Crud.Actions
                     {
                         CrudLog.ActionTaskFailedAfterCommit(Services.Logger, released.Name, Resource, OperationName, Activity.Current?.TraceId.ToString(), failure);
                     }
+                }
+            }
+        }
+
+        // Spec 0015 §11.2 faults Persisted with what ended the action. A flow parked on it may
+        // answer that failure with work of its own: spec 0018 §3.8's issue-credentials deletes the
+        // client it created outside the batch when the persist fails. The action waits for every
+        // such flow before it raises, so that work finishes inside the operation, while its scope
+        // and its services are alive, and the caller sees the action end after it. Only the
+        // released flows are awaited: they left the rounds, so none waits for a round that will
+        // never run.
+        /// <summary>Waits, once the action failed, for every flow that left the rounds to wait for the persist.</summary>
+        /// <returns>A task that completes when every released flow returned or failed.</returns>
+        private async Task SettleReleasedAsync()
+        {
+            foreach (ReleasedFlow released in _released)
+            {
+                try
+                {
+                    await released.Flow.ConfigureAwait(false);
+                }
+                catch (Exception failure) when (failure is not OutOfMemoryException)
+                {
+                    // The action's own failure is raised; a flow rethrowing it, or failing on its
+                    // own while the action ended, gives way to it. The flow stays observed.
                 }
             }
         }

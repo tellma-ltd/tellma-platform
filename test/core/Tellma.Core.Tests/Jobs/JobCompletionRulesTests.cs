@@ -112,6 +112,16 @@ namespace Tellma.Core.Tests.Jobs
             Assert.Empty(PendingConfirmations.Split(null));
         }
 
+        [Fact]
+        public void The_records_keys_are_read_once_each_in_order_and_a_record_that_is_not_one_names_none()
+        {
+            string record = PendingConfirmations.Serialize([Warning("Sales.Backdated"), Warning("Inventory.Negative"), Warning("Sales.Backdated")]);
+
+            Assert.Equal(["Sales.Backdated", "Inventory.Negative"], PendingConfirmations.Keys(record));
+            Assert.Empty(PendingConfirmations.Keys("not json"));
+            Assert.Empty(PendingConfirmations.Keys(/*lang=json,strict*/ """{"count":1,"items":[{"ids":[1]}]}"""));
+        }
+
         // --- The notices ---
 
         [Fact]

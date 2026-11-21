@@ -142,6 +142,12 @@
   <data name="Action_Deactivate" xml:space="preserve">
     <value>إلغاء التفعيل</value>
   </data>
+  <data name="Action_Invite" xml:space="preserve">
+    <value>دعوة</value>
+  </data>
+  <data name="Action_Credentials" xml:space="preserve">
+    <value>بيانات الاعتماد</value>
+  </data>
   <data name="Action_Share" xml:space="preserve">
     <value>مشاركة</value>
   </data>
@@ -150,6 +156,15 @@
   </data>
   <data name="Action_Transfer" xml:space="preserve">
     <value>نقل الملكية</value>
+  </data>
+  <data name="Action_Retry" xml:space="preserve">
+    <value>إعادة المحاولة</value>
+  </data>
+  <data name="Action_Cancel" xml:space="preserve">
+    <value>إيقاف</value>
+  </data>
+  <data name="Action_Resume" xml:space="preserve">
+    <value>استئناف</value>
   </data>
   <!-- Entities: the create label and the display name of a record without one -->
   <data name="Entity_New" xml:space="preserve">
@@ -168,6 +183,18 @@
   <data name="Core_User_Plural" xml:space="preserve">
     <value>المستخدمون</value>
   </data>
+  <data name="Core_User_Action_Invite" xml:space="preserve">
+    <value>دعوة</value>
+  </data>
+  <data name="Core_User_Action_IssueCredentials" xml:space="preserve">
+    <value>إصدار بيانات الاعتماد</value>
+  </data>
+  <data name="Core_User_Action_InvitationStatus" xml:space="preserve">
+    <value>حالة الدعوة</value>
+  </data>
+  <data name="Core_User_Action_InvitationStatus_Ids" xml:space="preserve">
+    <value>المستخدمون</value>
+  </data>
   <data name="Core_Role_Plural" xml:space="preserve">
     <value>الأدوار</value>
   </data>
@@ -179,6 +206,12 @@
   </data>
   <data name="Core_Job_Plural" xml:space="preserve">
     <value>المهام</value>
+  </data>
+  <data name="Core_Job_Action_Confirm" xml:space="preserve">
+    <value>التأكيد والمتابعة</value>
+  </data>
+  <data name="Core_Job_Action_Confirm_Keys" xml:space="preserve">
+    <value>التحذيرات المؤكدة</value>
   </data>
   <data name="Core_Schedule_Plural" xml:space="preserve">
     <value>الجداول الزمنية</value>
@@ -478,6 +511,45 @@
   <data name="Users_PreferenceKeyDuplicate" xml:space="preserve">
     <value>هذا التفضيل مكرر.</value>
   </data>
+  <data name="Users_LanguageNotOffered" xml:space="preserve">
+    <value>هذه اللغة غير متاحة.</value>
+  </data>
+  <data name="Users_CalendarUnknown" xml:space="preserve">
+    <value>هذا التقويم غير معروف.</value>
+  </data>
+  <data name="Users_TimeZoneUnknown" xml:space="preserve">
+    <value>هذه المنطقة الزمنية غير معروفة.</value>
+  </data>
+  <data name="Users_RegionNotOffered" xml:space="preserve">
+    <value>هذه المنطقة غير متاحة.</value>
+  </data>
+  <data name="Users_ContactEmailInvalid" xml:space="preserve">
+    <value>أدخل عنوان بريد إلكتروني صالحًا.</value>
+  </data>
+  <data name="Users_MobileInvalid" xml:space="preserve">
+    <value>أدخل رقم الجوال بالصيغة الدولية، مثل ‎+971501234567.</value>
+  </data>
+  <data name="Users_NotIndividual" xml:space="preserve">
+    <value>يمكن دعوة المستخدمين الأفراد فقط.</value>
+  </data>
+  <data name="Users_NotService" xml:space="preserve">
+    <value>لا يمكن إصدار بيانات الاعتماد إلا لحسابات الخدمة.</value>
+  </data>
+  <data name="Users_Inactive" xml:space="preserve">
+    <value>هذا المستخدم غير نشط.</value>
+  </data>
+  <data name="Users_AlreadyJoined" xml:space="preserve">
+    <value>انضم هذا المستخدم بالفعل.</value>
+  </data>
+  <data name="Users_CredentialsConcurrent" xml:space="preserve">
+    <value>غيّر طلب آخر بيانات اعتماد حساب الخدمة هذا في الوقت نفسه، لذا أُلغيت البيانات الجديدة. أصدرها مرة أخرى.</value>
+  </data>
+  <data name="Users_SubjectMismatch" xml:space="preserve">
+    <value>أصبح هذا البريد الإلكتروني تابعًا لحساب تسجيل دخول آخر، لذا لم يُعدَّل المستخدم.</value>
+  </data>
+  <data name="Users_SandboxRequiresExistingIdentity" xml:space="preserve">
+    <value>لا يمكن لبيئة الاختبار إضافة إلا من أعدّوا تسجيل الدخول الخاص بهم مسبقًا.</value>
+  </data>
   <data name="RoleMemberships_Overlap" xml:space="preserve">
     <value>تتداخل هذه العضوية مع عضوية أخرى في الدور نفسه.</value>
   </data>
@@ -691,6 +763,33 @@
   <data name="Jobs_HandlerRetired" xml:space="preserve">
     <value>أُوقفت المهمة لأن هذا النوع من المهام لم يعد متاحًا.</value>
   </data>
+  <data name="Jobs_NotRetryable" xml:space="preserve">
+    <value>لا يمكن إعادة تشغيل إلا المهمة الفاشلة.</value>
+  </data>
+  <data name="Jobs_NotCancellable" xml:space="preserve">
+    <value>انتهت المهمة بالفعل.</value>
+  </data>
+  <data name="Jobs_NotHeld" xml:space="preserve">
+    <value>المهمة ليست متوقفة مؤقتًا.</value>
+  </data>
+  <data name="Jobs_NotPendingConfirmation" xml:space="preserve">
+    <value>المهمة لا تنتظر تأكيد هذه التحذيرات.</value>
+  </data>
+  <data name="Jobs_NotInitiator" xml:space="preserve">
+    <value>لا يؤكد تحذيرات المهمة إلا المستخدم الذي بدأها.</value>
+  </data>
+  <data name="Jobs_RetentionProgress" xml:space="preserve">
+    <value>أُوقفت {stopped, plural, zero {# مهمة} one {مهمة واحدة} two {مهمتان} few {# مهام} many {# مهمة} other {# مهمة}}، وحُذفت {succeeded, plural, zero {# مهمة ناجحة} one {مهمة ناجحة واحدة} two {مهمتان ناجحتان} few {# مهام ناجحة} many {# مهمة ناجحة} other {# مهمة ناجحة}} و{ended, plural, zero {# مهمة فاشلة أو ملغاة} one {مهمة واحدة فاشلة أو ملغاة} two {مهمتان فاشلتان أو ملغاتان} few {# مهام فاشلة أو ملغاة} many {# مهمة فاشلة أو ملغاة} other {# مهمة فاشلة أو ملغاة}}.</value>
+  </data>
+  <data name="Jobs_TreeVerifyProgress" xml:space="preserve">
+    <value>فُحصت {verified} من {total} من الأشجار، وأُصلح {repaired, plural, zero {# صف} one {صف واحد} two {صفان} few {# صفوف} many {# صفًا} other {# صف}}.</value>
+  </data>
+  <data name="JobHandler_core_job-retention" xml:space="preserve">
+    <value>تنظيف المهام القديمة</value>
+  </data>
+  <data name="JobHandler_core_tree-verify" xml:space="preserve">
+    <value>فحص الأشجار</value>
+  </data>
   <data name="Notification_core_job_failed" xml:space="preserve">
     <value>فشلت المهمة {handlerKey}.</value>
   </data>
@@ -724,6 +823,49 @@
   </data>
   <data name="JobHandler_core_notification-retention" xml:space="preserve">
     <value>حذف الإشعارات القديمة</value>
+  </data>
+  <!-- The email outbox: the outgoing emails' labels, its codes and its sending job's label -->
+  <data name="Core_OutgoingEmail_Plural" xml:space="preserve">
+    <value>رسائل البريد الصادرة</value>
+  </data>
+  <data name="Core_OutgoingEmailAttachment_Plural" xml:space="preserve">
+    <value>مرفقات البريد</value>
+  </data>
+  <data name="Email_InvalidMessage" xml:space="preserve">
+    <value>لا يمكن إرسال هذا البريد كما هو. يلزم مستلم واحد على الأقل، وعناوين صحيحة، وموضوع في سطر واحد لا يتجاوز 500 حرف، ونص للرسالة، و20 مرفقًا على الأكثر.</value>
+  </data>
+  <data name="Email_TooManyRecipients" xml:space="preserve">
+    <value>عدد مستلمي هذا البريد {count, number}، والحد الأقصى المسموح به {max, number}.</value>
+  </data>
+  <data name="Email_TooLarge" xml:space="preserve">
+    <value>هذا البريد كبير جدًا: {size, number} بايت. الحد الأقصى المسموح به {maxBytes, number} بايت.</value>
+  </data>
+  <data name="Email_Rejected" xml:space="preserve">
+    <value>رفض مزوّد البريد هذه الرسالة.</value>
+  </data>
+  <data name="Email_AttachmentMissing" xml:space="preserve">
+    <value>كان ملف أحد المرفقات مفقودًا عند الإرسال، فلم تُرسل الرسالة.</value>
+  </data>
+  <data name="Email_TransientFailure" xml:space="preserve">
+    <value>تعذّر إرسال البريد هذه المرة، وستُعاد المحاولة.</value>
+  </data>
+  <data name="Email_AttemptsExhausted" xml:space="preserve">
+    <value>تعذّر إرسال البريد بعد محاولات متكررة. أعد إرساله بعد حل المشكلة.</value>
+  </data>
+  <data name="Email_Interrupted" xml:space="preserve">
+    <value>انقطع إرسال هذا البريد وربما وصل إلى المستلمين، فلم يُعَد إرساله تلقائيًا.</value>
+  </data>
+  <data name="Email_NotRetryable" xml:space="preserve">
+    <value>لا يمكن إعادة الإرسال إلا لبريد فشل، أو لم تعد مهمة إرساله قيد التشغيل.</value>
+  </data>
+  <data name="Email_NotCancellable" xml:space="preserve">
+    <value>لا يمكن إلغاء إلا البريد الذي ينتظر الإرسال.</value>
+  </data>
+  <data name="Email_NotDeletable" xml:space="preserve">
+    <value>قد يُرسل هذا البريد بعد. ألغِه أو انتظر حتى يُرسل قبل حذفه.</value>
+  </data>
+  <data name="JobHandler_core_outgoing-email" xml:space="preserve">
+    <value>إرسال بريد إلكتروني</value>
   </data>
   <data name="Schedules_CronInvalid" xml:space="preserve">
     <value>تعبير cron {expression} غير صالح. أدخل الدقيقة والساعة واليوم من الشهر والشهر واليوم من الأسبوع، مثل 0 3 * * * للساعة الثالثة صباح كل يوم.</value>
