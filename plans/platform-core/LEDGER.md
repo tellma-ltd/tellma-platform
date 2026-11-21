@@ -102,8 +102,9 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 
 | PC | Slot | Branch | Step | Implementer agent (name / id) | Reviewer agent (name / id) | Started (UTC) |
 |---|---|---|---|---|---|---|
-| PC-145 | pc-3 | pc/PC-145 | integrating | released 2026-11-20 after PC-F62 (held e244b0f9); wire the band delete SET NULL writes via ForeignKeyActions.WrittenByDeleting at the merge (D-156); D-158 | 0020-f; R1 only | 2026-11-20 |
-| PC-088 | pc-1 | pc/PC-088 | held | held (c1574599; R2 0/1/5 fixed or recorded; merge-tree: regenerate three migration sets, merge AccessEvaluationTests SelfScoped); released after PC-145; D-157, D-159 | 0018-c; two reviews (R2 fable, security-bound) | 2026-11-20 |
+| PC-147 | pc-2 | pc/PC-147 | impl | impl (Opus, high, launched 2026-11-20) | 0021-d; two reviews (R2 fable, security-bound) | 2026-11-20 |
+| PC-148 | pc-4 | pc/PC-148 | impl | impl (Opus, high, launched 2026-11-20); carry D-151 | 0022-a; R1 only | 2026-11-20 |
+| PC-088 | pc-1 | pc/PC-088 | integrating | released 2026-11-20 after PC-145 (held c1574599); regenerate three migration sets, merge SelfScoped, remove local user-delete cascade declaration (D-156); D-157, D-159 | 0018-c; two reviews (R2 fable, security-bound) | 2026-11-20 |
 
 ## Fix items
 
@@ -437,10 +438,10 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-142 | 0015-k | 2 | done (eba471bf; green 44642487470) | e86138b6, 76ee772e, e6f1d0b2, 3083d411, eba471bf | | D-131, D-132, D-134 |
 | PC-143 | 0018-f | 2 | todo | | | |
 | PC-144 | 0020-e | 2 | done (711641ab; pc 44771340622 green; PR 44774613660 green) | 7d470e81, 8e457c6b, 711641ab | | D-150, D-152, D-154 |
-| PC-145 | 0020-f | 2 | in progress | | | carry (D-153): add core.Job to AccessEvaluationTests' list of self-scoped securables (Filtered with no grants); carry (D-156): the core.job-retention and core.file-retention DELETE of core.Jobs must declare core.ScheduleStates (FK_ScheduleStates_LastJobId SET NULL) and every IJobEntity table (FK_<Table>_JobId SET NULL), from ForeignKeyActions.WrittenByDeleting once PC-F62 is on platform-core (whichever of PC-145 and PC-F62 lands second wires it) |
+| PC-145 | 0020-f | 2 | done (3c61aac3; pc 44858269311 green) | 1226a7c1, e244b0f9, 3c61aac3 | | D-158; carry (D-153): add core.Job to AccessEvaluationTests' list of self-scoped securables (Filtered with no grants); carry (D-156): the core.job-retention and core.file-retention DELETE of core.Jobs must declare core.ScheduleStates (FK_ScheduleStates_LastJobId SET NULL) and every IJobEntity table (FK_<Table>_JobId SET NULL), from ForeignKeyActions.WrittenByDeleting once PC-F62 is on platform-core (whichever of PC-145 and PC-F62 lands second wires it) |
 | PC-146 | 0021-c | 2 | done (d7ebba3c; pc 44840986549 green) | 5efa9448, 261870b7, 33c39b3f, d7ebba3c | | D-151, D-153; carry from PC-099 r1 closed (Notification self-scope added) |
-| PC-147 | 0021-d | 2 | todo | | | |
-| PC-148 | 0022-a | 2 | todo | | | carry (D-151): EnlistmentFrame.Admit admits EmailOutbox (0015 §13.3); 0021 §12 enlisted-rows-committed-with-the-completion e2e test lands here |
+| PC-147 | 0021-d | 2 | in progress | | | |
+| PC-148 | 0022-a | 2 | in progress | | | carry (D-151): EnlistmentFrame.Admit admits EmailOutbox (0015 §13.3); 0021 §12 enlisted-rows-committed-with-the-completion e2e test lands here |
 | PC-149 | 0022-b | 2 | todo | | | |
 | PC-150 | 0026-d | 2 | todo | | | |
 | PC-151 | 0023-h | 2 | done (99123772; CI 43994567778 red → PC-F53; green 44019377406 on 880b58d7) | 7b9c658, c678bc7, 9912377 (pc/PC-151) | | |
