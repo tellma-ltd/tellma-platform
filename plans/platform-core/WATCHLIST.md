@@ -1123,6 +1123,8 @@ Size: about 37k LOC for 0030, 41k for 0031 and 41k for 0032, all including tests
 - SQL Server for the ClientSyncService integration test: Testcontainers.MsSql on Linux, LocalDB or a SQL instance on Windows.
 - Playwright multi-context, plus the debugger-pause ability (CDP Debugger.pause) for the steal scenario; WebKit for the @cross-engine hung-leader spec.
 
+- PC-096 → PC-110: TmErrorPresenter must provide the internal `ɵTM_SYNC_ERRORS` seam (`client/projects/core/tellma-core/src/state/sync/tm-cache-refresher.ts`, `present(error)`), and its `tenant-not-found` path must also run the `{ tenant: t }` sweep (spec 0025 §2.6, spec 0024 §11). TmCacheRefresher hands it every sync's `tenant-not-found` and `tenant-unavailable`, background syncs' included; until then the default drops them, so they reach neither the user nor `tm.sync.failed`, and only a cold entry's rejection reaches `ɵenter`'s caller.
+
 ## 0026
 
 **Possible contradictions and gaps (unverified leads):**

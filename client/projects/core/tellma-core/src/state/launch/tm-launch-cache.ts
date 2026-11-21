@@ -79,7 +79,7 @@ export class TmLaunchCache {
   readonly #fetched = new Set<TmUserDoc>();
   /** Aborts the user documents' reads when the app is destroyed. */
   readonly #life = new AbortController();
-  /** The last entry into a tenant. */
+  /** The entry into a tenant in flight. */
   #entry: { readonly tenantId: number; readonly sub: string; readonly done: Promise<void> } | null = null;
 
   /** The routed tenant's launch documents; each reads `undefined` while absent. */
@@ -179,10 +179,11 @@ export class TmLaunchCache {
   /**
    * Enters a tenant: reads its partition into the store unless the boot
    * step or an earlier entry has, then, when `settings`, `me` or `tenant` is
-   * missing, runs a cold sync, which the tenant's page awaits. A second
-   * call for the same entry returns the same promise; one after a failure
-   * tries again. Internal: the tenant route calls it before it creates the
-   * page.
+   * missing, runs a cold sync, which the tenant's page awaits. A call while
+   * an entry into the same tenant is in flight returns its promise; a later
+   * one checks the documents again, so an entry after they went absent (a
+   * sweep, the idle rule) syncs them. Internal: the tenant route calls it
+   * before it creates the page.
    *
    * @param tenantId - The tenant.
    * @returns A promise that settles once the tenant's chrome can render; it
@@ -206,11 +207,13 @@ export class TmLaunchCache {
     })();
     const current = { tenantId, sub, done };
     this.#entry = current;
-    done.catch(() => {
+    // Only an entry in flight is joined.
+    const settled = (): void => {
       if (this.#entry === current) {
         this.#entry = null;
       }
-    });
+    };
+    done.then(settled, settled);
     return done;
   }
 
@@ -281,9 +284,10 @@ export class TmLaunchCache {
     const tagOf = (): string | undefined => read<TmSyncDoc>('sync')?.entityTags[name];
     const access = read<TmMeResult>('me')?.access.tag;
     try {
-      // --- Step 1: the list's tag; a sync first when the tab has none, which reports every list's ---
+      // --- Step 1: the list's tag; a sync first when the tab has none, which
+      // reports every list's, unless one in flight reports it ---
       if (tagOf() === undefined) {
-        await this.#refresher.refresh(tenantId, ['entities'], 'list');
+        await this.#refresher.refresh(tenantId, [LIST + name], 'list');
       }
       const tag = tagOf();
       const segment = this.#injector

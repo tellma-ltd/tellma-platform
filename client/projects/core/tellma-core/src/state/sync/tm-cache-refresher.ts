@@ -138,6 +138,9 @@ const CLIENT_TAGS = ['settings', 'preferences', 'permissions', 'entities'] as co
 /** The prefix of a list's tag and document. */
 const LIST = 'entity:';
 
+/** The tenant documents a cold entry needs. */
+const LAUNCH = ['settings', 'me', 'tenant'] as const;
+
 /** The shortest time between two syncs of a tenant in one browser. */
 const THROTTLE_MS = 2_000;
 
@@ -297,11 +300,15 @@ export class TmCacheRefresher {
    * Syncs a tenant's cached documents, unless a sync made it unnecessary
    * meanwhile. A call while another is pending joins it. `access` re-decides
    * the caller's grants at the server's clock, and ends early while the held
-   * envelope's boundary is still ahead; `entities` asks for every cacheable
-   * list's current tag.
+   * envelope's boundary is still ahead. `entities` asks for every cacheable
+   * list's current tag; so does a list's name, which ends early once the
+   * list's tag is known. A `cold` call ends early once the tenant's
+   * `settings`, `me` and `tenant` are all present, and any other once a sync
+   * was sent after it.
    *
    * @param tenantId - The tenant.
-   * @param docs - What the call is for, such as `['me']` or `['access']`; the server answers by the held tags.
+   * @param docs - What the call is for, such as `['me']`, `['access']` or
+   *   `['entity:acme.Currency']`; the server answers by the held tags.
    * @param trigger - Why it syncs.
    * @returns A promise that settles once the sync is stored, or once none was needed. It
    *   rejects only for `cold`, with the sync's error; every other failure is reported and
@@ -314,13 +321,23 @@ export class TmCacheRefresher {
     }
     const requested = this.#now();
     const access = docs.includes('access');
+    const lists = docs.filter((name) => name.startsWith(LIST)).map((name) => name.slice(LIST.length));
+    // What makes the call needless, tested inside the lock. A cold call
+    // tests the documents themselves, since a sync another tab sent may hold
+    // tags this tab's build cannot read (spec 0025 §2.4); a list's call
+    // tests its tag, which a sync already in flight reports.
+    const needless = access
+      ? () => this.#current(partition)
+      : trigger === 'cold'
+        ? () => LAUNCH.every((name) => this.#read(partition, name) !== undefined)
+        : () =>
+            this.#sentSince(partition, requested) ||
+            (lists.length > 0 && lists.every((name) => this.#syncDoc(partition)?.entityTags[name] !== undefined));
     return this.#join(
       partition,
       trigger,
-      // A forced call is needless once a sync was sent after it; an access
-      // call only while the held boundary is still ahead.
-      access ? () => this.#current(partition) : () => requested < this.#syncAt(partition),
-      access ? 'permissions' : docs.includes('entities') ? 'entities' : undefined,
+      needless,
+      access ? 'permissions' : lists.length > 0 || docs.includes('entities') ? 'entities' : undefined,
     );
   }
 
@@ -455,7 +472,7 @@ export class TmCacheRefresher {
     const me = this.#read<TmMeResult>(partition, 'me')?.data;
     hold('preferences', me?.preferencesTag);
     hold('permissions', me?.access.tag);
-    hold('entities', this.#read<TmSyncDoc>(partition, 'sync')?.data.entities);
+    hold('entities', this.#syncDoc(partition)?.entities);
     for (const name of this.#store.ɵnames(partition, LIST)) {
       hold(name, this.#read(partition, name)?.tag);
     }
@@ -469,9 +486,23 @@ export class TmCacheRefresher {
       .map((name) => [name, tags[name]!]);
   }
 
-  /** When the tenant last synced, in epoch milliseconds; `-Infinity` before its first. */
+  /** The tenant's mirrored `sync` document's value. */
+  #syncDoc(partition: TmTenantPartition): TmSyncDoc | undefined {
+    return this.#read<TmSyncDoc>(partition, 'sync')?.data;
+  }
+
+  /** When the tenant last synced, by this browser's clock, in epoch milliseconds; `-Infinity` before its first. */
   #syncAt(partition: TmTenantPartition): number {
-    return this.#read<TmSyncDoc>(partition, 'sync')?.data.at ?? -Infinity;
+    return this.#syncDoc(partition)?.at ?? -Infinity;
+  }
+
+  /**
+   * Whether a sync was sent after a time. A stamp ahead of the clock, left
+   * by a clock that was set back since, says nothing.
+   */
+  #sentSince(partition: TmTenantPartition, time: number): boolean {
+    const at = this.#syncAt(partition);
+    return time < at && at <= this.#now();
   }
 
   /** Whether the held envelope's grants still hold: it has no boundary, or the boundary is ahead. */
@@ -545,7 +576,9 @@ export class TmCacheRefresher {
           return;
         }
         // --- Step 4: at most one sync every 2 s; calls arriving meanwhile join this run ---
-        const wait = this.#syncAt(partition) + THROTTLE_MS - this.#now();
+        // A stamp ahead of the clock waits 2 s at most, so a clock set back
+        // never holds the lock for longer.
+        const wait = Math.min(THROTTLE_MS, this.#syncAt(partition) + THROTTLE_MS - this.#now());
         if (wait > 0) {
           await new Promise<void>((resolve, reject) => {
             const cancel = (): void => {

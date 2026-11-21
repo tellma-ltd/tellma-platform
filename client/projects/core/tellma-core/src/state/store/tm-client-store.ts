@@ -132,6 +132,8 @@ interface TmMirrorEntry {
   readonly stored: WritableSignal<TmStoredDoc<unknown> | undefined>;
   /** The view `doc()` hands out, made at its first call. */
   view?: Signal<TmStoredDoc<unknown> | undefined>;
+  /** The updates `ɵshow` shows until released, which a write meanwhile makes again on its copy. */
+  shown?: Set<TmDocUpdate>;
 }
 
 /** How long the database may take to open before the tab runs in memory. */
@@ -664,7 +666,8 @@ export class TmClientStore {
    * its update makes it from the stored copy, and posts one `store.changed`
    * naming the documents written. An update that returns `undefined` leaves
    * its document as it is. The mirror shows the new copies together, once
-   * every update has run; in memory, the updates run on the mirrored copies.
+   * every update has run, each with the change of a `ɵshow` still holding
+   * it made again; in memory, the updates run on the mirrored copies.
    * A write the browser's quota refuses is dropped and kept in this tab's
    * mirror; so is a write the storage fails, and the store runs in memory
    * from then on. Internal: the cache refresher's one transaction per sync
@@ -688,8 +691,15 @@ export class TmClientStore {
     const mirror = (docs: readonly (TmStoredDoc<unknown> | undefined)[]): void => {
       mirrored = true;
       if (!this.#sweptSince(p, since)) {
-        items.forEach(([entry], index) => {
-          const doc = docs[index];
+        items.forEach(([entry, update], index) => {
+          let doc = docs[index];
+          // A copy shown ahead of its own write stays shown: its change is
+          // made again on this copy, unless this is that write.
+          for (const shown of entry.shown ?? []) {
+            if (doc !== undefined && shown !== update) {
+              doc = shown(doc) ?? doc;
+            }
+          }
           if (doc !== undefined) {
             entry.stored.set(doc);
           }
@@ -725,10 +735,15 @@ export class TmClientStore {
         return () => items.filter((_, index) => docs[index] !== undefined).map(([entry]) => entry.n);
       },
       // In memory, from the start or since the storage failed before the
-      // reads: the updates run on the mirrored copies.
+      // reads: the updates run on the mirrored copies, where a shown one
+      // already shows.
       () => {
         if (!mirrored) {
-          mirror(items.map(([entry, update]) => update(untracked(entry.stored))));
+          mirror(
+            items.map(([entry, update]) =>
+              entry.shown?.has(update) ? undefined : update(untracked(entry.stored)),
+            ),
+          );
         }
       },
     );
@@ -736,15 +751,17 @@ export class TmClientStore {
 
   /**
    * Shows new copies of documents in this tab's mirror at once, ahead of the
-   * write that stores them, and keeps every read from setting their mirror
-   * until the returned function is called. An update that returns
-   * `undefined` leaves its document as it is. Internal: an adoption, which
-   * shows a write's result in the caller's task and stores it under the sync
-   * lock.
+   * write that stores them, and keeps them shown until the returned function
+   * is called: no read sets their mirror, and a `ɵwrite` of them meanwhile
+   * shows its copy with the same update made again on it, unless the
+   * `ɵwrite` passes that update itself. An update that returns `undefined`
+   * leaves its document as it is. Internal: an adoption, which shows a
+   * write's result in the caller's task and stores it under the sync lock,
+   * passing the same updates to `ɵwrite`.
    *
    * @param partition - The documents' partition.
    * @param updates - Each document's update, by document name; each runs synchronously on the mirrored copy.
-   * @returns Lets reads set the documents' mirror again; call it once the write has settled.
+   * @returns Lets reads and writes set the documents' mirror again; call it once the write has settled.
    * @throws TmStoreRefusedError when the write guard refuses, and whatever an
    *   update throws; either way nothing is shown.
    */
@@ -753,17 +770,24 @@ export class TmClientStore {
     const p = tmPartitionKey(partition);
     const shown = Object.entries(updates).map(([name, update]) => {
       const entry = this.#entry(p, this.#storedName(name));
-      return [entry, update(untracked(entry.stored))] as const;
+      return [entry, update, update(untracked(entry.stored))] as const;
     });
-    for (const [entry, doc] of shown) {
+    for (const [entry, update, doc] of shown) {
       if (doc !== undefined) {
         entry.stored.set(doc);
       }
+      (entry.shown ??= new Set()).add(update);
     }
-    return this.#hold(
+    const release = this.#hold(
       p,
       shown.map(([entry]) => entry.n),
     );
+    return () => {
+      release();
+      for (const [entry, update] of shown) {
+        entry.shown?.delete(update);
+      }
+    };
   }
 
   /**

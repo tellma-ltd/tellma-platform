@@ -17,7 +17,7 @@ import { TmTabBus } from '../bus/tm-tab-bus';
 import { TmRecordingTabBus } from '../bus/tm-tab-bus.testing.util';
 import type { TmBootRecord, TmBootTheme } from '../tm-boot-record';
 import { TM_REFUSING_STORAGE, TmFakeStorage } from '../tm-storage.testing.util';
-import { TmClientStore, TmStoreRefusedError, type TmStoredDoc, type TmSweepRule } from './tm-client-store';
+import { TmClientStore, TmStoreRefusedError, type TmDocUpdate, type TmStoredDoc, type TmSweepRule } from './tm-client-store';
 import { TM_DOC_FORMATS, TM_STORE_EXTRA_FORMATS, TM_STORE_FORMATS } from './tm-doc-formats';
 import { TM_STORE_HOST, type TmStoreHost } from './tm-store-host';
 import { TM_IMAGES_CACHE, TM_STORE_DATABASE, TM_STORE_DOCS, type TmPartition } from './tm-store-layout';
@@ -673,6 +673,26 @@ describe('TmClientStore', () => {
       await store.ɵreread(T17, ['me']);
       expect(store.doc(T17, 'me')()?.data).toBe('committed');
     });
+
+    for (const memory of [false, true]) {
+      it(`keeps a shown copy over another write until released, and makes its change once in its own write${memory ? ', in memory' : ''}`, async () => {
+        const { store } = setUp(memory ? { host: { memory: true } } : {});
+        await store.ɵwrite(T17, { sync: () => docOf({ at: NOW, entities: null, entityTags: {} }), me: () => docOf('stored') });
+        const show: TmDocUpdate = (current) => docOf(`${String(current?.data)} and shown`);
+        const release = store.ɵshow(T17, { me: show });
+        expect(store.doc(T17, 'me')()?.data).toBe('stored and shown');
+
+        // Another write of it lands first: the shown change is made again on its copy.
+        await store.ɵwrite(T17, { me: () => docOf('synced') });
+        expect(store.doc(T17, 'me')()?.data).toBe('synced and shown');
+        // The show's own write makes the change once.
+        await store.ɵwrite(T17, { me: show });
+        expect(store.doc(T17, 'me')()?.data).toBe('synced and shown');
+        release();
+        await store.ɵwrite(T17, { me: () => docOf('later') });
+        expect(store.doc(T17, 'me')()?.data).toBe('later');
+      });
+    }
 
     it('re-reads only the named documents, in one readonly transaction', async () => {
       const { store } = setUp();

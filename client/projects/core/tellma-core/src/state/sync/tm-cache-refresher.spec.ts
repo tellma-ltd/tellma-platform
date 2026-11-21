@@ -21,6 +21,8 @@ import { TmApiError } from '../../api/tm-api-error';
 import { TM_API_HOST } from '../../api/tm-api-host';
 import { TmFakeApiHost } from '../../api/tm-api.testing.util';
 import { TM_NOW } from '../../app/tm-now';
+import { TmTabBus } from '../bus/tm-tab-bus';
+import { TmRecordingTabBus } from '../bus/tm-tab-bus.testing.util';
 import type {
   TmMeResult,
   TmSyncDoc,
@@ -28,11 +30,14 @@ import type {
   TmTenantSettingsForClient,
 } from '../launch/tm-launch-docs';
 import { TmClientStore, type TmStoredDoc } from '../store/tm-client-store';
+import { TM_STORE_HOST } from '../store/tm-store-host';
 import type { TmTenantPartition } from '../store/tm-store-layout';
+import { tmDeleteStoreDatabase, tmMemoryStoreHost } from '../store/tm-store.testing.util';
 import { TM_SYNC_ERRORS, TmCacheRefresher, type TmSyncErrors } from './tm-cache-refresher';
 
 // The refresher over an in-memory store, a scripted API, in-memory locks, a
-// faked page and faked timers.
+// faked page and faked timers; and two tabs' refreshers over the browser's
+// real IndexedDB, each with its own store, on real timers.
 
 /** A page for every route. */
 @Component({ template: '' })
@@ -350,6 +355,57 @@ describe('TmCacheRefresher', () => {
 
       expect(rig.syncs()).toHaveLength(2);
     });
+
+    it('syncs a cold call that a later-sent sync left without the document it lacks', async () => {
+      // As two builds side by side: the other tab holds its own copy of the
+      // settings, so its sync brings none.
+      const rig = await setUp({ at: NOW - 500 });
+      await rig.store.patch(T17, 'settings', () => undefined);
+      const other = rig.another();
+      rig.api.respond('client/sync', answer());
+      void other.refresh(17, ['tenant'], 'leader');
+      await flush();
+      // The other tab waits out the throttle inside the lock; its sync is sent after this call.
+      const cold = rig.refresher.refresh(17, ['settings', 'me', 'tenant'], 'cold');
+      await vi.advanceTimersByTimeAsync(1_500);
+      await flush();
+      expect(rig.syncs()).toHaveLength(1);
+
+      rig.api.respond('client/sync', answer({ settings: SETTINGS }));
+      await vi.advanceTimersByTimeAsync(2_000);
+      await flush();
+      await cold;
+      expect(rig.syncs()).toHaveLength(2);
+      expect(rig.doc('settings')).toEqual(expect.objectContaining({ tag: 'S1', data: SETTINGS }));
+    });
+  });
+
+  describe('a clock set back', () => {
+    it('takes a last sync stamped ahead of the clock as unknown, so a forced call syncs within 2 s', async () => {
+      const rig = await setUp({ at: NOW + 3_600_000 });
+      rig.api.respond('client/sync', answer());
+      const done = rig.refresher.refresh(17, ['tenant'], 'leader');
+      await vi.advanceTimersByTimeAsync(1_999);
+      expect(rig.syncs()).toEqual([]);
+      await vi.advanceTimersByTimeAsync(1);
+      await flush();
+      await done;
+
+      expect(rig.syncs()).toHaveLength(1);
+      expect(rig.doc<TmSyncDoc>('sync')?.data.at).toBe(NOW + 2_000);
+      expect(rig.locks.held()).toEqual([]);
+    });
+
+    it('stores what a cold call lacks under a last sync stamped ahead of the clock', async () => {
+      const rig = await setUp({ at: NOW + 3_600_000 });
+      await rig.store.patch(T17, 'settings', () => undefined);
+      rig.api.respond('client/sync', answer({ settings: SETTINGS }));
+      const cold = rig.refresher.refresh(17, ['settings', 'me', 'tenant'], 'cold');
+      await vi.advanceTimersByTimeAsync(2_000);
+      await flush();
+      await cold;
+      expect(rig.doc('settings')).toEqual(expect.objectContaining({ tag: 'S1', data: SETTINGS }));
+    });
   });
 
   describe('coalescing and the throttle', () => {
@@ -418,7 +474,7 @@ describe('TmCacheRefresher', () => {
     });
 
     it('aborts a sync when the tab leaves the tenant', async () => {
-      const rig = await setUp();
+      const rig = await setUp({ cold: true });
       rig.api.respond('client/sync', () => new Promise(() => undefined));
       const sync = rig.refresher.refresh(17, ['settings', 'me', 'tenant'], 'cold');
       const outcome = sync.catch((error: unknown) => (error as TmApiError).kind);
@@ -501,18 +557,27 @@ describe('TmCacheRefresher', () => {
       });
     });
 
-    it('writes an adoption under the sync lock, after the sync that holds it', async () => {
+    it('writes an adoption under the sync lock, after the sync that holds it, and shows it throughout', async () => {
       const rig = await setUp();
       const sync = gate();
       rig.api.respond('client/sync', () => sync.promise);
       void rig.refresher.refresh(17, ['tenant'], 'leader');
       await flush();
+      // What the mirror shows once each write lands.
+      const write = rig.store.ɵwrite.bind(rig.store);
+      const shown: (string | undefined)[] = [];
+      vi.spyOn(rig.store, 'ɵwrite').mockImplementation(async (partition, updates) => {
+        await write(partition, updates);
+        shown.push(rig.doc<TmMeResult>('me')?.data.preferencesTag);
+      });
       rig.refresher.adopt(17, { preferences: { preferences: {}, preferencesTag: 'P2' } });
-      // The adopted tags show at once, and the older envelope the sync then
-      // brings does not overwrite them: the adoption is stored after it.
+      // The adopted tags show at once. The older envelope the sync then
+      // brings is stored first, and the adoption stays shown over it until
+      // its own write lands after it.
       expect(rig.doc<TmMeResult>('me')?.data.preferencesTag).toBe('P2');
       sync.resolve(answer({ me: me() }));
       await flush();
+      expect(shown).toEqual(['P2', 'P2']);
       expect(rig.doc<TmMeResult>('me')?.data).toEqual(
         expect.objectContaining({ preferences: {}, preferencesTag: 'P2' }),
       );
@@ -670,11 +735,31 @@ describe('TmCacheRefresher', () => {
       expect(rig.doc<TmSyncDoc>('sync')?.data).toEqual({ at: NOW, entities: null, entityTags: {} });
     });
 
-    it('holds no composite for an entities refresh, so every list reports its tag', async () => {
+    it("holds no composite for an entities refresh or a list's, so every list reports its tag", async () => {
       const rig = await setUp();
       rig.api.respond('client/sync', answer({ tags: { 'entity:acme.Currency': 'C1' } }));
       await rig.refresher.refresh(17, ['entities'], 'list');
-      expect(rig.syncs().map((call) => call.body)).toEqual([{ held: HELD_BUT_ENTITIES }]);
+      await vi.advanceTimersByTimeAsync(2_000);
+      await rig.refresher.refresh(17, ['entity:acme.Unit'], 'list');
+      expect(rig.syncs().map((call) => call.body)).toEqual([{ held: HELD_BUT_ENTITIES }, { held: HELD_BUT_ENTITIES }]);
+    });
+
+    it("ends a list's call at the check once a sync in flight reported the list's tag", async () => {
+      const rig = await setUp({ cold: true });
+      const sync = gate();
+      rig.api.respond('client/sync', () => sync.promise);
+      const cold = rig.refresher.refresh(17, ['settings', 'me', 'tenant'], 'cold');
+      await flush();
+      // Called after the cold sync was sent, so it starts a run of its own.
+      const list = rig.refresher.refresh(17, ['entity:acme.Bank'], 'list');
+      sync.resolve(answer({ settings: SETTINGS, me: me(), tags: { 'entity:acme.Bank': 'B1' } }));
+      await flush();
+      await vi.advanceTimersByTimeAsync(2_000);
+      await flush();
+      await Promise.all([cold, list]);
+
+      expect(rig.syncs()).toHaveLength(1);
+      expect(rig.doc<TmSyncDoc>('sync')?.data.entityTags).toEqual({ 'acme.Bank': 'B1' });
     });
   });
 
@@ -691,5 +776,64 @@ describe('TmCacheRefresher', () => {
     expect(rig.doc('settings')).toEqual(expect.objectContaining({ tag: 'S1', data: SETTINGS }));
     expect(rig.doc('tenant')?.data).toEqual(TENANT);
     expect(items(rig, 'tm.sync.completed')).toEqual([expect.objectContaining({ trigger: 'cold', changed: 'several' })]);
+  });
+
+  describe('two tabs over IndexedDB', () => {
+    beforeEach(tmDeleteStoreDatabase);
+    afterEach(tmDeleteStoreDatabase);
+
+    it("ends the second tab's run at the check, from what it re-reads before any message tells it", async () => {
+      TestBed.configureTestingModule({
+        providers: [
+          provideTellmaTesting(),
+          provideTellmaStateTesting(),
+          provideRouter([{ path: '**', component: TmPage }]),
+          { provide: TM_API_HOST, useValue: new TmFakeApiHost() },
+          { provide: TM_NOW, useValue: () => Date.now() },
+        ],
+      });
+      await TestBed.inject(Router).navigateByUrl('/17/centers');
+      // Each tab has its own store and mirror over the one database, and a
+      // tab bus that delivers nothing: only the re-read inside the lock can
+      // show the second tab what the first stored. The locks are shared.
+      const tab = (): { readonly injector: EnvironmentInjector; readonly store: TmClientStore; readonly refresher: TmCacheRefresher } => {
+        const injector = createEnvironmentInjector(
+          [
+            { provide: TM_STORE_HOST, useValue: { ...tmMemoryStoreHost(), memory: false, indexedDB } },
+            { provide: TmTabBus, useClass: TmRecordingTabBus },
+            TmClientStore,
+            TmCacheRefresher,
+          ],
+          TestBed.inject(EnvironmentInjector),
+        );
+        return { injector, store: injector.get(TmClientStore), refresher: injector.get(TmCacheRefresher) };
+      };
+      const first = tab();
+      const second = tab();
+      const stored = <T>(data: T, tag: string | null = null): TmStoredDoc<T> => ({ tag, savedAt: Date.now() - 60_000, data });
+      await first.store.ɵwrite(T17, {
+        settings: () => stored(SETTINGS, 'S1'),
+        me: () => stored(me()),
+        tenant: () => stored(TENANT),
+        sync: () => stored<TmSyncDoc>({ at: Date.now() - 60_000, entities: 'E1', entityTags: {} }),
+      });
+      await second.store.readAll(T17);
+      const api = TestBed.inject(TmFakeApi);
+      const syncs = (): TmFakeApiCall[] => api.calls().filter((call) => call.route === 'client/sync');
+      const sync = gate();
+      api.respond('client/sync', () => sync.promise);
+
+      first.refresher.observe(17, { preferences: 'P2' }, 'header');
+      second.refresher.observe(17, { preferences: 'P2' }, 'header');
+      await vi.waitFor(() => expect(syncs()).toHaveLength(1));
+      sync.resolve(answer({ tags: { preferences: 'P2' }, me: me({ preferencesTag: 'P2' }) }));
+      // Queued behind both tabs' runs, so it is granted once the second has ended.
+      await TestBed.inject(TmFakeLocks).run(LOCK, () => Promise.resolve());
+
+      expect(syncs()).toHaveLength(1);
+      expect(second.store.doc<TmMeResult>(T17, 'me')()?.data.preferencesTag).toBe('P2');
+      first.injector.destroy();
+      second.injector.destroy();
+    });
   });
 });

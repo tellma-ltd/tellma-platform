@@ -183,6 +183,22 @@ describe('TmLaunchCache', () => {
       expect(rig.calls('client/sync')).toHaveLength(1);
       expect(rig.launch.warm()).toBe(true);
     });
+
+    it('checks the documents again on entering a tenant it left, so an entry after a sweep syncs', async () => {
+      const rig = await setUp();
+      const router = TestBed.inject(Router);
+      await rig.launch.ɵenter(17);
+      await settle();
+      await router.navigateByUrl('/');
+      await settle();
+      await rig.store.sweep({ tenant: 17 });
+
+      await router.navigateByUrl('/17/centers');
+      await settle();
+      await rig.launch.ɵenter(17);
+      expect(rig.calls('client/sync')).toHaveLength(1);
+      expect(rig.launch.warm()).toBe(true);
+    });
   });
 
   describe('entity sets', () => {
@@ -272,6 +288,24 @@ describe('TmLaunchCache', () => {
 
       expect(rig.calls('client/sync')).toHaveLength(1);
       expect(rig.calls('roles/all')).toEqual([]);
+    });
+
+    it("costs no sync of its own for a list read while a cold sync is in flight, which reports the list's tag", async () => {
+      const rig = await setUp({ cold: true });
+      let answer!: (value: unknown) => void;
+      rig.api.respond('client/sync', () => new Promise((resolve) => (answer = resolve)));
+      rig.api.respond('customers/all', { entities: CUSTOMERS });
+      // The routed tenant's entry sends the cold sync.
+      await settle();
+      expect(rig.calls('client/sync')).toHaveLength(1);
+      const customers = rig.launch.entitySet('acme.Customer');
+      customers();
+      await settle();
+
+      answer(COLD_ANSWER);
+      await settle();
+      expect(customers()?.items).toEqual(CUSTOMERS);
+      expect(rig.calls('client/sync')).toHaveLength(1);
     });
   });
 

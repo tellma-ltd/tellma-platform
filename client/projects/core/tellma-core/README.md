@@ -141,19 +141,23 @@ HTTP layer's cache seam, so every response's version-tags header reaches `observ
 
 - **`observe(t, tags, trigger)`** syncs when a reported `settings`, `preferences`, `permissions` or
   `entities` tag differs from the held one; a list's tag only marks the held list stale.
-- **`refresh(t, docs, trigger)`** syncs unless a sync sent after the call made it needless;
-  `['access']` ends early while the held envelope's `validUntil` is ahead, and holds no
-  `permissions` tag so the server decides the grants; `['entities']` holds no composite, so the
-  answer reports every list's tag. It rejects only for `cold`.
+- **`refresh(t, docs, trigger)`** syncs unless a sync sent after the call made it needless (a
+  `sync.at` ahead of the clock, which was set back since, counts as unknown); `['access']` ends
+  early while the held envelope's `validUntil` is ahead, and holds no `permissions` tag so the
+  server decides the grants; `['entities']` and a list's `['entity:<Name>']` hold no composite, so
+  the answer reports every list's tag, and a list's call ends early once its tag is known; a
+  `cold` call ends early once `settings`, `me` and `tenant` are all present. It rejects only for
+  `cold`.
 - **A run.** Calls join the tenant's pending run (a `cold` call makes it cold). The run queues on
   the Web Lock `tm:<slug>:<sub>:<t>:sync`, re-reads `settings`, `me` and `sync`, and ends there when
   every joined call is needless; otherwise it waits out a 2 s throttle since the tenant's last sync
-  in any tab, then sends one background read (a cold one stamps activity) and stores the answer in
+  in any tab (2 s at most), then sends one background read (a cold one stamps activity) and stores the answer in
   one transaction, `sync.at` being the send time. A list the server calls stale while the held tags
   say otherwise loses its tag and the composite, so the next sync reports every list's.
 - **`adopt(t, docs)`** stores a write's own results (a settings save, a profile save, a preferences
   or locale write) as server truth: the tab shows them at once and the store writes them under the
-  sync lock, so the write's own header finds its tags held.
+  sync lock, so the write's own header finds its tags held. A sync stored in between keeps them
+  shown: the store makes the adoption's change again on the sync's copy.
 - **The boundary.** At the routed tenant's `validUntil`, plus a 0-2 s jitter and only while the page
   is visible, the refresher runs `refresh(['access'], 'boundary')`; a boundary the server keeps (a
   clock running ahead) backs off from 30 s, doubling to 10 min.
@@ -165,9 +169,10 @@ HTTP layer's cache seam, so every response's version-tags header reaches `observ
 `TmLaunchCache` (`src/state/launch/`) serves what the chrome renders from: the routed tenant's
 `docs` (`settings`, `me`, `tenant`) and `warm` (all three present), the user's `tenants` and the
 distribution's facts. Entering a tenant reads its partition once and runs a cold sync when a launch
-document is missing; a failed entry rejects, and the next one tries again. `entitySet(name)` reads
-an entity's whole list: its first read while the list is absent or stale loads `{segment}/all` (a
-sync first when the tab holds no tag for it), and a stale list keeps serving until the newer one
+document is missing; a failed entry rejects, and every entry after one settles checks the
+documents again. `entitySet(name)` reads an entity's whole list: its first read while the list is
+absent or stale loads `{segment}/all` (a sync first when the tab holds no tag for it, unless a sync
+in flight reports it), and a stale list keeps serving until the newer one
 lands. A refused list stores nothing and is tried again once the caller's grants move. The user's
 tenants and the distribution are read again in the background once per launch, at idle, and the
 tenants on every tenantless route.
