@@ -103,6 +103,7 @@
     <Project Path="test/connector/smtp/Tellma.Connector.Smtp.Adapter.Tests/Tellma.Connector.Smtp.Adapter.Tests.csproj" />
   </Folder>
   <Folder Name="/test/defaults/">
+    <Project Path="test/defaults/Tellma.Defaults.Azure.AspNetCore.IntegrationTests/Tellma.Defaults.Azure.AspNetCore.IntegrationTests.csproj" />
     <Project Path="test/defaults/Tellma.Defaults.Azure.Tests/Tellma.Defaults.Azure.Tests.csproj" />
   </Folder>
   <Folder Name="/test/module/gl/">
@@ -111,6 +112,7 @@
   <Folder Name="/test/shared/">
     <Project Path="test/shared/Tellma.Queryex.Testing/Tellma.Queryex.Testing.csproj" />
     <Project Path="test/shared/Tellma.Testing.Support/Tellma.Testing.Support.csproj" />
+    <Project Path="test/shared/Tellma.Testing.WebHost/Tellma.Testing.WebHost.csproj" />
     <Project Path="test/shared/Tellma.Testing.Entities/Tellma.Testing.Entities.csproj" />
     <Project Path="test/shared/Tellma.Testing.Resources/Tellma.Testing.Resources.csproj" />
   </Folder>

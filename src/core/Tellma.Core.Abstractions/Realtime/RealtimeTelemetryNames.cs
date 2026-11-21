@@ -30,7 +30,10 @@ namespace Tellma.Core.Abstractions.Realtime
         /// </summary>
         public const string Connects = "tellma.realtime.connects";
 
-        /// <summary>Counter (<c>{connection}</c>): connections the server closed. Tagged <see cref="ReasonTag" />.</summary>
+        /// <summary>
+        ///     Counter (<c>{connection}</c>): connections the server closed. Tagged <see cref="ReasonTag" />
+        ///     and <see cref="ToldTag" />.
+        /// </summary>
         public const string Closes = "tellma.realtime.closes";
 
         /// <summary>The connect outcome tag: <c>connected</c>, <c>refused</c> or <c>invocation-refused</c>.</summary>
@@ -38,6 +41,12 @@ namespace Tellma.Core.Abstractions.Realtime
 
         /// <summary>The close reason tag: <c>session-terminated</c>, <c>access-revoked</c> or <c>tenant-unavailable</c>.</summary>
         public const string ReasonTag = "reason";
+
+        /// <summary>
+        ///     The close told tag: <c>true</c> when the connection's <c>session.ended</c> was handed to
+        ///     the transport before the close, <c>false</c> when that send failed or did not finish in time.
+        /// </summary>
+        public const string ToldTag = "told";
 
         /// <summary>The hosting mode tag: <c>in-process</c>, <c>redis</c> or <c>azure</c>.</summary>
         public const string ModeTag = "mode";

@@ -58,7 +58,7 @@ namespace Tellma.Core.Users
                 BatchPurpose.Read,
                 (user, batch) =>
                 {
-                    read = ComposeStatusRead(user, batch, ids);
+                    read = ComposeVisibleRead(user, batch, AccessActions.Read, ids, StatusSelect, "invitation status");
                     return ValueTask.CompletedTask;
                 },
                 (_, _) => read?.Value.Entities ?? [],
@@ -110,17 +110,23 @@ namespace Tellma.Core.Users
             return new InvitationStatus(user.Id, user.State, user.InviteStatus, user.LastInviteError, delivery);
         }
 
-        /// <summary>Composes the status read: the requested users the caller's read decision admits; nothing when it denies.</summary>
+        /// <summary>
+        ///     Composes a read of the requested users that the caller's decision on an action of the
+        ///     users admits, in id order; nothing when it denies.
+        /// </summary>
         /// <param name="user">The connected caller.</param>
         /// <param name="batch">The batch.</param>
+        /// <param name="action">The action whose decision filters the users, such as <c>Read</c>.</param>
         /// <param name="ids">The requested ids.</param>
-        /// <returns>The read; null when the caller reads no user.</returns>
+        /// <param name="select">The columns read.</param>
+        /// <param name="purpose">What the read is for, which a filter too complex to compile names.</param>
+        /// <returns>The read; null when the caller holds no grant of the action.</returns>
         /// <exception cref="InvalidOperationException">The caller's filter exceeds the compile ceilings.</exception>
-        private BatchResult<EntityQueryResult<TUser>>? ComposeStatusRead(ConnectedUser user, IDataBatch batch, IReadOnlyList<int> ids)
+        private BatchResult<EntityQueryResult<TUser>>? ComposeVisibleRead(ConnectedUser user, IDataBatch batch, string action, IReadOnlyList<int> ids, string select, string purpose)
         {
-            AccessDecision decision = _dependencies.Securables.Find(CoreResources.User, AccessActions.Read) is SecurableDescriptor securable
+            AccessDecision decision = _dependencies.Securables.Find(CoreResources.User, action) is SecurableDescriptor securable
                 ? _dependencies.Evaluator.DecideFrom(user.Access, securable, _dependencies.Time.GetUtcNow())
-                : _dependencies.Evaluator.Unknown(CoreResources.User, AccessActions.Read);
+                : _dependencies.Evaluator.Unknown(CoreResources.User, action);
             if (!decision.IsAllowed)
             {
                 return null;
@@ -131,7 +137,7 @@ namespace Tellma.Core.Users
             {
                 return batch.Query(new EntityQuery<TUser>
                 {
-                    Select = StatusSelect,
+                    Select = select,
                     Filter = decision.Filter,
                     Restrictions = [new KeySetRestriction(nameof(User.Id), keys.Name)],
                     OrderBy = nameof(User.Id),
@@ -142,7 +148,7 @@ namespace Tellma.Core.Users
                 // An administrator's configuration problem: a plain error, never a silent denial.
                 string involved = string.Join(", ", decision.Grants.OfType<RoleAccessGrant>().Select(static grant => grant.RoleId).Distinct().Order());
                 AccessLog.FilterTooComplex(_dependencies.Logger, tooComplex, user.Access.TenantId, user.UserId, decision.Resource, decision.Action, involved);
-                throw new InvalidOperationException("The caller's filter on the users exceeded the compile ceilings, so the invitation status cannot be read.", tooComplex);
+                throw new InvalidOperationException($"The caller's filter on the users exceeded the compile ceilings, so the {purpose} cannot be read.", tooComplex);
             }
         }
     }

@@ -14,6 +14,7 @@ using System.Text.Json;
 using Tellma.Core.AspNetCore.Hosting;
 using Tellma.Core.AspNetCore.Surfaces;
 using Tellma.Core.AspNetCore.Tests.Infrastructure;
+using Tellma.Testing.WebHost;
 
 namespace Tellma.Core.AspNetCore.Tests.Surfaces
 {

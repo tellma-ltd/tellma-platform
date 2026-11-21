@@ -85,6 +85,17 @@ namespace Tellma.Core.Users
         /// <exception cref="InvalidOperationException">No set has the name.</exception>
         public static bool InSet(IValueSetRegistry valueSets, string set, string value)
         {
+            return Spelling(valueSets, set, value) is not null;
+        }
+
+        /// <summary>A value as a value set spells it, matched ignoring case; an alias is never a value.</summary>
+        /// <param name="valueSets">The value sets.</param>
+        /// <param name="set">The set's name.</param>
+        /// <param name="value">The value.</param>
+        /// <returns>The set's spelling of the value; null when the set holds no such value.</returns>
+        /// <exception cref="InvalidOperationException">No set has the name.</exception>
+        public static string? Spelling(IValueSetRegistry valueSets, string set, string value)
+        {
             ArgumentNullException.ThrowIfNull(valueSets);
             ValueSetDescriptor descriptor = valueSets.Find(set)
                 ?? throw new InvalidOperationException($"No value set is named '{set}', though the users' rules check against it.");
@@ -92,11 +103,11 @@ namespace Tellma.Core.Users
             {
                 if (string.Equals(entry.Value, value, StringComparison.OrdinalIgnoreCase))
                 {
-                    return true;
+                    return entry.Value;
                 }
             }
 
-            return false;
+            return null;
         }
 
         /// <summary>

@@ -199,6 +199,10 @@ namespace Tellma.Core.AspNetCore
             _ = services.AddSingleton<BackchannelLogoutValidator>();
             services.TryAddSingleton<IAuthenticationPolicyProvider, DefaultAuthenticationPolicyProvider>();
 
+            // --- Realtime: the hub, its tracker and its publisher, in the mode composeWeb selected ---
+            // A delegate a composer passed earlier stays; this call passes none.
+            _ = services.AddTellmaRealtime();
+
             // --- Tenancy: the membership hints' reconciliation ---
             _ = HostOptionsBinding.Bind<TenancyHostOptions>(services, TenancyHostOptions.SectionPath, OptionsOwner);
             _ = services.AddSingleton<IMembershipReconcileStore, SqlMembershipReconcileStore>();

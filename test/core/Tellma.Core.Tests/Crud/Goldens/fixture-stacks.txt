@@ -15,7 +15,7 @@ stack core.User
   details-expand: CreatedBy, ModifiedBy, Image, Signature, RoleMemberships.Role
   default-order-by: -
   display-name: Name group Name prefix -
-  extras: permissions
+  extras: activity, permissions
   named-filters: -
   limits: default
   mcp: Full, revision 0
@@ -24,6 +24,14 @@ stack core.User
   action deactivate: entity Activate built-in filtered args -; mutation, idempotent; result EntitiesResult<User>; mcp Full, revision 0; -
   action issue-credentials: entity Credentials filtered single args -; mutation; result CredentialsResult; mcp Full, revision 0; Issue or rotate a service account's client credentials
   action invite: entity Invite filtered args -; mutation; result IReadOnlyList<InviteResult>; mcp Full, revision 0; Invite users through the identity server
+  action me: api member-only body - handler UserService<User>; idempotent; result MeResult; mcp Full, revision 0; -
+  action me/save: api member-only body MeSaveRequest handler UserService<User>; mutation; result MeResult; mcp Full, revision 0; -
+  action me/locale: api member-only body MeLocaleRequest handler UserService<User>; mutation, read-only-ok; result MeLocaleResult; mcp Full, revision 0; -
+  action me/preferences/set: api member-only body UserPreferencesArguments handler UserService<User>; mutation, read-only-ok; result PreferencesResult; mcp Full, revision 0; -
+  action me/preferences/delete: api member-only body UserPreferenceKeysArguments handler UserService<User>; mutation, read-only-ok; result PreferencesResult; mcp Full, revision 0; -
+  action preferences/get: api core.User:Preferences body UserPreferencesRequest handler UserService<User>; idempotent; result UserPreferencesResult; mcp Full, revision 0; -
+  action preferences/set: entity Preferences filtered single args UserPreferencesArguments; mutation, read-only-ok; result UserPreferencesResult; mcp Full, revision 0; -
+  action preferences/delete: entity Preferences filtered single args UserPreferenceKeysArguments; mutation, read-only-ok; result UserPreferencesResult; mcp Full, revision 0; -
   action invitation-status: api core.User:Read body IdsRequest handler UserService<User>; idempotent; result IReadOnlyList<InvitationStatus>; mcp Full, revision 0; -
 stack core.Role
   segment: roles

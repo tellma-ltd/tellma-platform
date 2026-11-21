@@ -6,6 +6,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.Metrics.Testing;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
 using System.Collections.Concurrent;
 using System.Data;
@@ -13,6 +14,7 @@ using System.Diagnostics.Metrics;
 using System.Reflection;
 using System.Text.Json;
 using Tellma.Core.Abstractions.Access;
+using Tellma.Core.Abstractions.Api;
 using Tellma.Core.Abstractions.Caching;
 using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.Abstractions.Crud;
@@ -23,8 +25,11 @@ using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.Abstractions.Validation;
 using Tellma.Core.Access;
 using Tellma.Core.Calendars;
+using Tellma.Core.Crud;
+using Tellma.Core.Data.Queries;
 using Tellma.Core.Localization;
 using Tellma.Core.Queryex;
+using Tellma.Core.Tenancy;
 using Tellma.Core.Tests.Access;
 using Tellma.Core.Tests.Data.Batches;
 using Tellma.Core.Users;
@@ -52,7 +57,6 @@ namespace Tellma.Core.Tests.Users
         /// <summary>The instant every context runs at.</summary>
         public static readonly DateTimeOffset Now = new(2026, 11, 20, 9, 0, 0, TimeSpan.Zero);
 
-
         /// <summary>The scope the evaluator is resolved from.</summary>
         private readonly AsyncServiceScope _scope;
 
@@ -60,7 +64,9 @@ namespace Tellma.Core.Tests.Users
         private readonly ServiceProvider _listeners;
 
         /// <summary>Composes the kit.</summary>
-        public UsersKit()
+        /// <param name="runner">The guarded runner the service runs its own batches through; null for <see cref="Runner" />.</param>
+        /// <param name="openWrites">The open frame a profile edit enlists into; null for the scope's own, which serves no frame here.</param>
+        public UsersKit(IGuardedBatchRunner? runner = null, IOpenWriteHost? openWrites = null)
         {
             _scope = Harness.Services.CreateAsyncScope();
             _listeners = new ServiceCollection().AddSingleton<ISessionTerminationListener>(Listener).BuildServiceProvider();
@@ -76,13 +82,26 @@ namespace Tellma.Core.Tests.Users
                 new FixedLinks(),
                 Languages,
                 ValueSets,
-                Runner,
+                runner ?? Runner,
                 Harness.Services.GetRequiredService<ISecurableRegistry>(),
                 _scope.ServiceProvider.GetRequiredService<AccessEvaluator>(),
+                _scope.ServiceProvider.GetRequiredService<IAccessGuards>(),
+                _scope.ServiceProvider.GetRequiredService<IRequestContextAccessor>(),
+                _scope.ServiceProvider.GetRequiredService<WriteFrames>(),
+                openWrites ?? _scope.ServiceProvider.GetRequiredService<IOpenWriteHost>(),
+                Options.Create(new AccessOptions()),
+                Harness.Services.GetRequiredService<IEntityMetadataProvider>(),
+                Harness.Services.GetRequiredService<QueryexSchemaProvider>(),
                 new FakeTimeProvider(Now),
                 new UsersMetrics(meters),
                 LoggerFactory);
             Service = new UsersUnderTest(new RefusingPipelines(), Dependencies);
+        }
+
+        /// <summary>Sets <see cref="Context" /> as the scope's request context, which the service's own reads and guards resolve from.</summary>
+        public void EnterContext()
+        {
+            _scope.ServiceProvider.GetRequiredService<IRequestContextHolder>().Set(Context());
         }
 
         /// <summary>The default composition's batches, whose connection refuses.</summary>
@@ -255,6 +274,15 @@ namespace Tellma.Core.Tests.Users
         public Task<CredentialsResult> RunIssueCredentialsAsync(ActionContext<User, int> context)
         {
             return IssueCredentialsAsync(context);
+        }
+
+        /// <summary>Runs the caller's profile edit directly, without the invoker's securable or frame.</summary>
+        /// <param name="request">The edit.</param>
+        /// <param name="cancellationToken">Cancels the edit.</param>
+        /// <returns>The caller's envelope after the edit.</returns>
+        public Task<MeResult> RunSaveMeAsync(MeSaveRequest request, CancellationToken cancellationToken)
+        {
+            return SaveMeAsync(request, cancellationToken);
         }
     }
 

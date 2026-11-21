@@ -13,6 +13,7 @@ using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.AspNetCore.Tests.Infrastructure;
 using Tellma.Core.AspNetCore.Tests.Problems;
+using Tellma.Testing.WebHost;
 
 namespace Tellma.Core.AspNetCore.Tests.Api
 {

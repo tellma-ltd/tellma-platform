@@ -21,6 +21,7 @@ using Tellma.Core.AspNetCore.Hosting;
 using Tellma.Core.AspNetCore.Limits;
 using Tellma.Core.AspNetCore.Observability;
 using Tellma.Core.AspNetCore.Problems;
+using Tellma.Core.AspNetCore.Realtime;
 using Tellma.Core.AspNetCore.Tenancy;
 
 namespace Tellma.Core.AspNetCore
@@ -35,9 +36,9 @@ namespace Tellma.Core.AspNetCore
         ///     Installs the request pipeline in its fixed order and nothing else: the header stamp,
         ///     forwarded headers, request logging, the problem-details exception handler and status-code
         ///     pages, HSTS and HTTPS redirection outside Development, response compression, routing,
-        ///     authentication and authorization, the rate limiter, the request timeouts, output caching,
-        ///     the CSRF control, the web API's contract check and the tenant middleware. A
-        ///     distribution's own middleware goes between this call and <c>MapTellma</c>.
+        ///     the hub's refusal count, authentication and authorization, the rate limiter, the request
+        ///     timeouts, output caching, the CSRF control, the web API's contract check and the tenant
+        ///     middleware. A distribution's own middleware goes between this call and <c>MapTellma</c>.
         /// </summary>
         /// <param name="app">The application.</param>
         /// <returns>The application, for chaining.</returns>
@@ -138,6 +139,8 @@ namespace Tellma.Core.AspNetCore
             }
 
             // --- 9. Authentication, then authorization ---
+            // The hub's refusals by them and by the CSRF control are counted as its front door's are.
+            _ = app.UseMiddleware<HubRefusalMiddleware>();
             _ = app.UseAuthentication();
             _ = app.UseAuthorization();
 

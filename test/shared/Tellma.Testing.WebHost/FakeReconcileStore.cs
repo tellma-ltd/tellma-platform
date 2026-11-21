@@ -7,7 +7,7 @@ using System.Collections.Concurrent;
 using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.AspNetCore.Tenancy;
 
-namespace Tellma.Core.AspNetCore.Tests.Infrastructure
+namespace Tellma.Testing.WebHost
 {
     /// <summary>
     ///     The reconciliation's store in memory: a lock shared by every store built over the same

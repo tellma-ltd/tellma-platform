@@ -12,6 +12,7 @@ using System.Net;
 using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Access;
 using Tellma.Core.AspNetCore.Tests.Infrastructure;
+using Tellma.Testing.WebHost;
 
 namespace Tellma.Core.AspNetCore.Tests.Api
 {

@@ -5,6 +5,7 @@
 
 using System.Collections.Concurrent;
 using System.Net;
+using Tellma.Testing.WebHost;
 
 namespace Tellma.Core.AspNetCore.Tests.Infrastructure
 {

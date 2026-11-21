@@ -10,6 +10,7 @@ using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.AspNetCore.Csrf;
 using Tellma.Core.AspNetCore.Tests.Infrastructure;
+using Tellma.Testing.WebHost;
 
 namespace Tellma.Core.AspNetCore.Tests.Csrf
 {

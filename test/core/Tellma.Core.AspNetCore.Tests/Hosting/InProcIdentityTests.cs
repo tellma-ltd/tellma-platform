@@ -19,13 +19,13 @@ using System.Security.Claims;
 using System.Text.RegularExpressions;
 using Tellma.Core.Abstractions.Email;
 using Tellma.Core.AspNetCore.Hosting;
-using Tellma.Core.AspNetCore.Tests.Infrastructure;
 using Tellma.Core.Email;
 using Tellma.Core.Testing.Email;
 using Tellma.Identity.Data;
 using Tellma.Identity.Services.Audit;
 using Tellma.Identity.Services.BackchannelLogout;
 using Tellma.Identity.Services.Email;
+using Tellma.Testing.WebHost;
 
 namespace Tellma.Core.AspNetCore.Tests.Hosting
 {

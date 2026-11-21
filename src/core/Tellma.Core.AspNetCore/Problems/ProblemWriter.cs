@@ -34,6 +34,9 @@ namespace Tellma.Core.AspNetCore.Problems
         /// <summary>The request item that marks a request answered with an absent tenant's problem.</summary>
         private static readonly object TenantNotFoundKey = new();
 
+        /// <summary>The request item that holds the code of the last problem written as the response.</summary>
+        private static readonly object WrittenCodeKey = new();
+
         /// <summary>
         ///     Whether a request was answered with an absent tenant's problem, which carries no header
         ///     an admitted request's answer adds: it must read the same whether the guard refused the
@@ -45,6 +48,15 @@ namespace Tellma.Core.AspNetCore.Problems
         {
             ArgumentNullException.ThrowIfNull(context);
             return context.Items.ContainsKey(TenantNotFoundKey);
+        }
+
+        /// <summary>The code of the last problem written as a request's response.</summary>
+        /// <param name="context">The request.</param>
+        /// <returns>The code; null when no problem was written.</returns>
+        public static string? WrittenCode(HttpContext context)
+        {
+            ArgumentNullException.ThrowIfNull(context);
+            return context.Items.TryGetValue(WrittenCodeKey, out object? code) ? code as string : null;
         }
 
         /// <summary>Writes a problem as the response, replacing its status.</summary>
@@ -107,6 +119,8 @@ namespace Tellma.Core.AspNetCore.Problems
             {
                 context.Items[TenantNotFoundKey] = true;
             }
+
+            context.Items[WrittenCodeKey] = problem.Code;
 
             // --- Counted and logged once per problem written ---
             services.GetService<ApiMetrics>()?.RecordProblem(problem.Status, problem.Code);

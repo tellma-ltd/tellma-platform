@@ -17,8 +17,8 @@ using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.Abstractions.Crud;
 using Tellma.Core.Access;
 using Tellma.Core.AspNetCore.Routing;
-using Tellma.Core.AspNetCore.Tests.Infrastructure;
 using Tellma.Core.Composition;
+using Tellma.Testing.WebHost;
 
 namespace Tellma.Core.AspNetCore.Tests.Routing
 {

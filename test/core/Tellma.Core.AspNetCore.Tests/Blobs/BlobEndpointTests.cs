@@ -20,6 +20,7 @@ using Tellma.Core.Abstractions.Blobs;
 using Tellma.Core.AspNetCore.Blobs;
 using Tellma.Core.AspNetCore.Hosting;
 using Tellma.Core.AspNetCore.Tests.Infrastructure;
+using Tellma.Testing.WebHost;
 
 namespace Tellma.Core.AspNetCore.Tests.Blobs
 {

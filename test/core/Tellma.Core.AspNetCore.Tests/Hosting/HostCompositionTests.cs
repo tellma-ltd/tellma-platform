@@ -13,8 +13,8 @@ using Tellma.Core.Abstractions.Email;
 using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.Access;
 using Tellma.Core.AspNetCore.Hosting;
-using Tellma.Core.AspNetCore.Tests.Infrastructure;
 using Tellma.Core.Tenancy;
+using Tellma.Testing.WebHost;
 
 namespace Tellma.Core.AspNetCore.Tests.Hosting
 {

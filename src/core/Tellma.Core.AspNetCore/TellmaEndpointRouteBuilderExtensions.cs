@@ -11,6 +11,7 @@ using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
+using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Api;
 using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.AspNetCore.Api;
@@ -19,6 +20,7 @@ using Tellma.Core.AspNetCore.Blobs;
 using Tellma.Core.AspNetCore.Hosting;
 using Tellma.Core.AspNetCore.Limits;
 using Tellma.Core.AspNetCore.OpenApi;
+using Tellma.Core.AspNetCore.Realtime;
 using Tellma.Core.AspNetCore.Routing;
 using Tellma.Core.AspNetCore.Surfaces;
 using Tellma.Core.AspNetCore.Tenancy;
@@ -119,6 +121,12 @@ namespace Tellma.Core.AspNetCore
                 TenantGroup(app, "/blobs", TellmaGroup.Blobs, TenantSurface.Blobs, TellmaPolicies.Web, guarded: true),
                 app.MapGroup("/api").WithMetadata(new TellmaGroupMetadata(TellmaGroup.Tenantless)));
 
+            // --- The realtime hub at /{tenantId}/hub, unless it is turned off ---
+            if (HostSettings.Read<RealtimeOptions>(app.Configuration, RealtimeOptions.SectionPath).Enabled)
+            {
+                MapHub(groups.Hub);
+            }
+
             // --- The web API: every route the model derives from the stack registry, on the Web group ---
             IReadOnlyList<CompositionProblem> projection = WebApiProjection.Map(app.Services, groups.Web);
 
@@ -210,6 +218,19 @@ namespace Tellma.Core.AspNetCore
             }
 
             return builder;
+        }
+
+        /// <summary>Maps the realtime hub on the Hub group, whose policy, CSRF rules and front door it inherits.</summary>
+        /// <param name="hub">The Hub group.</param>
+        private static void MapHub(RouteGroupBuilder hub)
+        {
+            // No connection outlives its session's ticket: the framework closes it when the ticket
+            // expires, and Azure SignalR Service's SDK embeds the expiry in the service's token
+            // (spec 0021 §6.1). A member's endpoint, whose requests stamp no activity: a tab's
+            // reconnects are not the user's.
+            _ = hub.MapHub<TellmaHub>(string.Empty, static options => options.CloseOnAuthenticationExpiration = true)
+                .WithMetadata(new NoActivityStampMetadata(), PlatformEndpointMetadata.Instance)
+                .AllowMember();
         }
 
         /// <summary>Stamps a tenantless platform endpoint: anonymous, tenantless, the platform's.</summary>

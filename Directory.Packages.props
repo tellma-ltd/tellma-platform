@@ -54,8 +54,14 @@
     <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.11" />
     <!-- The web surface's OpenAPI document in Development; it brings Microsoft.OpenApi 2.x. -->
     <PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="10.0.11" />
+    <!-- The .NET SignalR client, for the hub suites alone: they connect over the test server and,
+         nightly, through Azure SignalR Service. -->
+    <PackageVersion Include="Microsoft.AspNetCore.SignalR.Client" Version="10.0.11" />
     <PackageVersion Include="Microsoft.AspNetCore.SpaProxy" Version="10.0.11" />
     <PackageVersion Include="Microsoft.AspNetCore.TestHost" Version="10.0.11" />
+    <!-- Azure SignalR Service, the SaaS hosting mode of the realtime hub: referenced by the Azure
+         web bundle alone, so no Core package carries it. -->
+    <PackageVersion Include="Microsoft.Azure.SignalR" Version="1.33.1" />
     <!-- Pinned to the exact Roslyn version Microsoft.EntityFrameworkCore.Design depends on
          (its Workspaces dependency demands = 5.0.0). -->
     <PackageVersion Include="Microsoft.CodeAnalysis.CSharp" Version="5.0.0" />
