@@ -36,5 +36,13 @@ namespace Tellma.Core.Abstractions.Data
         ///     reports to its client; null until a batch completes.
         /// </summary>
         public BatchOutcome? LastOutcome { get; set; }
+
+        /// <summary>
+        ///     Whether the unit of work has sent a persist round trip to the database. A sent persist
+        ///     runs to its end whatever cancels its caller, so its write may have committed although
+        ///     the unit of work was cancelled; a request that ran past its timeout answers no status
+        ///     once this is set, and its connection is aborted instead.
+        /// </summary>
+        public bool PersistSent { get; set; }
     }
 }

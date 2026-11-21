@@ -51,5 +51,13 @@ namespace Tellma.Core.Abstractions.Jobs
         ///     it now, and nothing the statement's transaction wrote survives.
         /// </summary>
         public const string LeaseLost = "Job.LeaseLost";
+
+        /// <summary>
+        ///     The code the scheduler's second tick statement throws, as <see cref="TellmaSqlErrors.Invariant" />,
+        ///     when a schedule it advances is no longer leased under the tick's token: the lease lapsed,
+        ///     or a save of the schedule cleared it. Nothing the statement's transaction wrote survives,
+        ///     and the next tick recomputes the schedules from their stored state.
+        /// </summary>
+        public const string TickLeaseLost = "Schedule.TickLeaseLost";
     }
 }

@@ -35,10 +35,13 @@ namespace Tellma.Connector.Smtp.Adapter.Tests.Infrastructure
             Store = store;
             Authenticator = authenticator;
 
+            // The listener binds the one address a sender under test connects to. Bound by port
+            // alone it would listen on IPv4 only, and a sender resolving a name that lists ::1 first
+            // (localhost on Windows) would wait out a refused IPv6 attempt on every connection.
             ISmtpServerOptions options = new SmtpServerOptionsBuilder()
                 .ServerName("localhost")
                 .Endpoint(endpoint => endpoint
-                    .Port(port)
+                    .Endpoint(new IPEndPoint(Address, port))
                     .AllowUnsecureAuthentication(true))
                 .Build();
 
@@ -49,6 +52,12 @@ namespace Tellma.Connector.Smtp.Adapter.Tests.Infrastructure
             _server = new SmtpServer.SmtpServer(options, services);
             _running = _server.StartAsync(_shutdown.Token);
         }
+
+        /// <summary>
+        ///     The IPv4 loopback address the server listens on, and the only host a sender under test
+        ///     connects to.
+        /// </summary>
+        public static IPAddress Address { get; } = IPAddress.Loopback;
 
         /// <summary>The loopback port the server listens on.</summary>
         public int Port { get; }
@@ -109,7 +118,7 @@ namespace Tellma.Connector.Smtp.Adapter.Tests.Infrastructure
 
         private static int FreePort()
         {
-            TcpListener probe = new(IPAddress.Loopback, 0);
+            TcpListener probe = new(Address, 0);
             probe.Start();
             try
             {
@@ -137,7 +146,7 @@ namespace Tellma.Connector.Smtp.Adapter.Tests.Infrastructure
                 try
                 {
                     using TcpClient client = new();
-                    await client.ConnectAsync(IPAddress.Loopback, Port);
+                    await client.ConnectAsync(Address, Port);
                     return;
                 }
                 catch (SocketException)

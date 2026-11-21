@@ -183,6 +183,12 @@
   <data name="Core_Schedule_Plural" xml:space="preserve">
     <value>الجداول الزمنية</value>
   </data>
+  <data name="Core_Schedule_Action_TakeOver" xml:space="preserve">
+    <value>تولي الجدول</value>
+  </data>
+  <data name="Core_Schedule_Action_RunNow" xml:space="preserve">
+    <value>تشغيل الآن</value>
+  </data>
   <data name="Core_Notification_Plural" xml:space="preserve">
     <value>الإشعارات</value>
   </data>
@@ -429,6 +435,106 @@
   <data name="Settings_EntryTypeMismatch" xml:space="preserve">
     <value>نوع هذه القيمة لا يناسب الإعداد.</value>
   </data>
+  <!-- Validation and guard codes of users, roles, memberships and permissions -->
+  <data name="Users_SystemUserImmutable" xml:space="preserve">
+    <value>لا يمكن تغيير مستخدم النظام.</value>
+  </data>
+  <data name="Users_CannotDeactivateSelf" xml:space="preserve">
+    <value>لا يمكنك إلغاء تنشيط حسابك.</value>
+  </data>
+  <data name="Users_CannotDeleteSelf" xml:space="preserve">
+    <value>لا يمكنك حذف حسابك.</value>
+  </data>
+  <data name="Users_CannotRemoveOwnAdministratorMembership" xml:space="preserve">
+    <value>لا يمكنك إزالة دور المسؤول عن نفسك أو تقييده.</value>
+  </data>
+  <data name="Users_EmailLockedAfterInvite" xml:space="preserve">
+    <value>لا يمكن تغيير البريد الإلكتروني بعد دعوة المستخدم.</value>
+  </data>
+  <data name="Users_OnlyNewUsersDeletable" xml:space="preserve">
+    <value>لا يمكن حذف إلا المستخدمين الذين لم تتم دعوتهم. ألغِ تنشيط هذا المستخدم بدلًا من ذلك.</value>
+  </data>
+  <data name="Users_KindNotAllowed" xml:space="preserve">
+    <value>لا يمكن استخدام هذا النوع من المستخدمين هنا.</value>
+  </data>
+  <data name="Users_EmailNotAllowed" xml:space="preserve">
+    <value>البريد الإلكتروني متاح للأفراد فقط.</value>
+  </data>
+  <data name="Users_TooManyRoles" xml:space="preserve">
+    <value>يمكن أن يكون للمستخدم {max, plural, zero {# دور} one {دور واحد} two {دوران} few {# أدوار} many {# دورًا} other {# دور}} على الأكثر.</value>
+  </data>
+  <data name="Users_MembershipEscalation" xml:space="preserve">
+    <value>لا يمكنك منح هذا الدور: فهو يتضمن “{resource}: {action}” التي لا تملكها دون قيود.</value>
+  </data>
+  <data name="Users_TooManyPreferenceKeys" xml:space="preserve">
+    <value>عدد التفضيلات المحفوظة كبير جدًا.</value>
+  </data>
+  <data name="Users_PreferenceValueTooLarge" xml:space="preserve">
+    <value>هذا التفضيل كبير جدًا. الحد الأقصى المسموح به {maxBytes, number} بايت.</value>
+  </data>
+  <data name="Users_PreferenceKeyInvalid" xml:space="preserve">
+    <value>اسم هذا التفضيل غير صالح.</value>
+  </data>
+  <data name="Users_PreferenceKeyDuplicate" xml:space="preserve">
+    <value>هذا التفضيل مكرر.</value>
+  </data>
+  <data name="RoleMemberships_Overlap" xml:space="preserve">
+    <value>تتداخل هذه العضوية مع عضوية أخرى في الدور نفسه.</value>
+  </data>
+  <data name="RoleMemberships_EndsBeforeStart" xml:space="preserve">
+    <value>يجب أن تكون النهاية بعد البداية.</value>
+  </data>
+  <data name="RoleMemberships_EndsInPast" xml:space="preserve">
+    <value>النهاية قد مضت بالفعل.</value>
+  </data>
+  <data name="Roles_PublicRoleHasMembers" xml:space="preserve">
+    <value>لا يمكن أن يكون للدور العام أعضاء. أزل أعضاءه أولًا.</value>
+  </data>
+  <data name="Roles_AdministratorImmutable" xml:space="preserve">
+    <value>لا يمكن جعل دور المسؤول عامًا أو إلغاء تنشيطه أو حذفه أو تقييده.</value>
+  </data>
+  <data name="Roles_HasMembers" xml:space="preserve">
+    <value>لا يمكن حذف دور له أعضاء. أزل أعضاءه أولًا.</value>
+  </data>
+  <data name="Roles_TooManyPermissions" xml:space="preserve">
+    <value>يمكن أن يكون للدور {max, plural, zero {# صلاحية} one {صلاحية واحدة} two {صلاحيتان} few {# صلاحيات} many {# صلاحية} other {# صلاحية}} على الأكثر.</value>
+  </data>
+  <data name="Permissions_UnknownSecurable" xml:space="preserve">
+    <value>“{resource}: {action}” ليست صلاحية موجودة.</value>
+  </data>
+  <data name="Permissions_FilterNotSupported" xml:space="preserve">
+    <value>لا يمكن أن يكون لهذه الصلاحية عامل تصفية.</value>
+  </data>
+  <data name="Permissions_FilterInvalid" xml:space="preserve">
+    <value>عامل التصفية هذا غير صالح.</value>
+  </data>
+  <data name="Permissions_FilterTooLong" xml:space="preserve">
+    <value>أدخل {maxLength, plural, zero {# حرفًا} one {حرفًا واحدًا} two {حرفين} few {# أحرف} many {# حرفًا} other {# حرف}} على الأكثر.</value>
+  </data>
+  <data name="Permissions_FilterVersionUnsupported" xml:space="preserve">
+    <value>كُتب عامل التصفية هذا لإصدار أقدم. أدخله مرة أخرى.</value>
+  </data>
+  <data name="Permissions_WildcardResourceOnPublicRole" xml:space="preserve">
+    <value>لا يمكن أن يكون للدور العام صلاحية على كل شيء.</value>
+  </data>
+  <data name="Permissions_EscalationBeyondSelf" xml:space="preserve">
+    <value>لا يمكنك منح “{resource}: {action}” لأنك لا تملكها دون قيود.</value>
+  </data>
+  <data name="Access_LastAdministrator" xml:space="preserve">
+    <value>يجب أن يبقى مستخدم نشط واحد على الأقل مسؤولًا.</value>
+  </data>
+  <data name="Access_PublicRoleHasMembers" xml:space="preserve">
+    <value>لا يمكن أن يكون للدور العام أعضاء.</value>
+  </data>
+  <data name="Access_AdministratorRoleDamaged" xml:space="preserve">
+    <value>يجب أن يبقى دور المسؤول نشطًا وخاصًا ودون قيود.</value>
+  </data>
+  <data name="Access_LockTimeout" xml:space="preserve">
+    <value>شخص آخر يغيّر إعدادات الأمان. حاول مرة أخرى.</value>
+  </data>
+  <data name="Access_LockDeadlock" xml:space="preserve">
+    <value>شخص آخر يغيّر إعدادات الأمان. حاول مرة أخرى.</value>
+  </data>
   <!-- Validation codes of the save and query pipeline -->
   <data name="Required" xml:space="preserve">
     <value>أدخل قيمة.</value>
@@ -560,7 +666,7 @@
   <data name="Core_Job_ExportReport" xml:space="preserve">
     <value>تصدير {title}</value>
   </data>
-  <!-- Background jobs: the platform's error codes and the notices a completion raises -->
+  <!-- Background jobs: the platform's error codes, the notices a completion raises, and the schedules' rules and pause notice -->
   <data name="Jobs_Internal" xml:space="preserve">
     <value>حدث خطأ غير متوقع أثناء تشغيل المهمة.</value>
   </data>
@@ -618,6 +724,45 @@
   </data>
   <data name="JobHandler_core_notification-retention" xml:space="preserve">
     <value>حذف الإشعارات القديمة</value>
+  </data>
+  <data name="Schedules_CronInvalid" xml:space="preserve">
+    <value>تعبير cron {expression} غير صالح. أدخل الدقيقة والساعة واليوم من الشهر والشهر واليوم من الأسبوع، مثل 0 3 * * * للساعة الثالثة صباح كل يوم.</value>
+  </data>
+  <data name="Schedules_CronNeverOccurs" xml:space="preserve">
+    <value>تعبير cron {expression} لن يتكرر مرة أخرى، فلن يعمل الجدول أبدًا.</value>
+  </data>
+  <data name="Schedules_TimeZoneUnknown" xml:space="preserve">
+    <value>المنطقة الزمنية {timeZone} ليست من المناطق الزمنية المدعومة.</value>
+  </data>
+  <data name="Schedules_HandlerUnknown" xml:space="preserve">
+    <value>لا يوجد نوع من المهام باسم {handlerKey}.</value>
+  </data>
+  <data name="Schedules_HandlerNotSchedulable" xml:space="preserve">
+    <value>لا يمكن جدولة المهام من نوع {handlerKey}.</value>
+  </data>
+  <data name="Schedules_ReplayAllRequiresAllow" xml:space="preserve">
+    <value>إعادة تشغيل كل مرة فائتة تتطلب السماح بتداخل مرات التشغيل.</value>
+  </data>
+  <data name="Schedules_ArgumentsTooLarge" xml:space="preserve">
+    <value>المعطيات كبيرة جدًا؛ تحمل المهمة {maxBytes, number} بايت على الأكثر.</value>
+  </data>
+  <data name="Schedules_OwnedByAnotherUser" xml:space="preserve">
+    <value>يعمل هذا الجدول باسم مستخدم آخر. تولَّ ملكيته قبل تغيير ما يشغّله أو موعده.</value>
+  </data>
+  <data name="Schedules_OwnerInactive" xml:space="preserve">
+    <value>يعمل هذا الجدول باسم مستخدم لم يعد نشطًا. تولَّ ملكيته قبل تفعيله.</value>
+  </data>
+  <data name="Schedules_BuiltInImmutable" xml:space="preserve">
+    <value>هذا الجدول مدمج: لا يتغير منه إلا أسماؤه وتعبير cron والمنطقة الزمنية، ولا يمكن حذفه أو تولي ملكيته.</value>
+  </data>
+  <data name="Schedules_BuiltInAlwaysActive" xml:space="preserve">
+    <value>هذا الجدول مدمج ويبقى نشطًا دائمًا.</value>
+  </data>
+  <data name="Schedules_RunInProgress" xml:space="preserve">
+    <value>لم ينتهِ تشغيل سابق لهذا الجدول بعد.</value>
+  </data>
+  <data name="Notification_core_schedule_paused" xml:space="preserve">
+    <value>أُوقف الجدول {name} مؤقتًا: {reason, select, OwnerInactive {لم يعد المستخدم الذي يعمل باسمه نشطًا} Exhausted {لن يتكرر تعبير cron الخاص به مرة أخرى} other {لم يعد نوع مهمته متاحًا}}. يعمل مجددًا بعد تفعيله.</value>
   </data>
   <!-- Queryex diagnostics, with the arguments the engine gives each -->
   <data name="Queryex_QX1001" xml:space="preserve">

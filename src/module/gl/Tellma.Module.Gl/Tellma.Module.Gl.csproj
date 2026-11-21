@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <Description>The general ledger module: the responsibility centers' stack service and its tree rules, the GL feature a distribution composes, the development tenants' sample-centers provisioning step and its default tree, and the module's English and Arabic strings. Built on the platform's contract surface alone; references no Tellma.Core and no Entity Framework package.</Description>
+    <!-- One namespace for both GL packages, so a type keeps its name when it moves between them. -->
+    <RootNamespace>Tellma.Module.Gl</RootNamespace>
+    <!-- Resources/Strings.resx is English, so an English lookup never probes for a satellite. -->
+    <NeutralLanguage>en</NeutralLanguage>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Tellma.Module.Gl.Abstractions\Tellma.Module.Gl.Abstractions.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The provisioning step resolves the centers' stack service from the tenant scope it runs in. -->
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
+    <!-- The module's structured log events. -->
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The unit tests drive the step's list checks and the rules' tree arithmetic directly. -->
+    <InternalsVisibleTo Include="Tellma.Module.Gl.Tests" />
+  </ItemGroup>
+
+</Project>

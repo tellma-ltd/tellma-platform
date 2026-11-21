@@ -183,6 +183,12 @@
   <data name="Core_Schedule_Plural" xml:space="preserve">
     <value>Schedules</value>
   </data>
+  <data name="Core_Schedule_Action_TakeOver" xml:space="preserve">
+    <value>Take over</value>
+  </data>
+  <data name="Core_Schedule_Action_RunNow" xml:space="preserve">
+    <value>Run now</value>
+  </data>
   <data name="Core_Notification_Plural" xml:space="preserve">
     <value>Notifications</value>
   </data>
@@ -429,6 +435,106 @@
   <data name="Settings_EntryTypeMismatch" xml:space="preserve">
     <value>This value has the wrong type for the setting.</value>
   </data>
+  <!-- Validation and guard codes of users, roles, memberships and permissions -->
+  <data name="Users_SystemUserImmutable" xml:space="preserve">
+    <value>The system user can’t be changed.</value>
+  </data>
+  <data name="Users_CannotDeactivateSelf" xml:space="preserve">
+    <value>You can’t deactivate yourself.</value>
+  </data>
+  <data name="Users_CannotDeleteSelf" xml:space="preserve">
+    <value>You can’t delete yourself.</value>
+  </data>
+  <data name="Users_CannotRemoveOwnAdministratorMembership" xml:space="preserve">
+    <value>You can’t remove or limit your own administrator role.</value>
+  </data>
+  <data name="Users_EmailLockedAfterInvite" xml:space="preserve">
+    <value>The email can’t be changed once the user is invited.</value>
+  </data>
+  <data name="Users_OnlyNewUsersDeletable" xml:space="preserve">
+    <value>Only users who haven’t been invited can be deleted. Deactivate this user instead.</value>
+  </data>
+  <data name="Users_KindNotAllowed" xml:space="preserve">
+    <value>This kind of user can’t be used here.</value>
+  </data>
+  <data name="Users_EmailNotAllowed" xml:space="preserve">
+    <value>Only individuals can have an email.</value>
+  </data>
+  <data name="Users_TooManyRoles" xml:space="preserve">
+    <value>A user can have at most {max, plural, one {# role} other {# roles}}.</value>
+  </data>
+  <data name="Users_MembershipEscalation" xml:space="preserve">
+    <value>You can’t grant this role: it includes “{resource}: {action}”, which you don’t hold without restriction.</value>
+  </data>
+  <data name="Users_TooManyPreferenceKeys" xml:space="preserve">
+    <value>There are too many saved preferences.</value>
+  </data>
+  <data name="Users_PreferenceValueTooLarge" xml:space="preserve">
+    <value>This preference is too large. The most allowed is {maxBytes, number} bytes.</value>
+  </data>
+  <data name="Users_PreferenceKeyInvalid" xml:space="preserve">
+    <value>This preference name isn’t valid.</value>
+  </data>
+  <data name="Users_PreferenceKeyDuplicate" xml:space="preserve">
+    <value>This preference appears more than once.</value>
+  </data>
+  <data name="RoleMemberships_Overlap" xml:space="preserve">
+    <value>This membership overlaps another membership of the same role.</value>
+  </data>
+  <data name="RoleMemberships_EndsBeforeStart" xml:space="preserve">
+    <value>The end must be after the start.</value>
+  </data>
+  <data name="RoleMemberships_EndsInPast" xml:space="preserve">
+    <value>The end has already passed.</value>
+  </data>
+  <data name="Roles_PublicRoleHasMembers" xml:space="preserve">
+    <value>A public role can’t have members. Remove its members first.</value>
+  </data>
+  <data name="Roles_AdministratorImmutable" xml:space="preserve">
+    <value>The administrator role can’t be made public, deactivated, deleted or restricted.</value>
+  </data>
+  <data name="Roles_HasMembers" xml:space="preserve">
+    <value>A role with members can’t be deleted. Remove its members first.</value>
+  </data>
+  <data name="Roles_TooManyPermissions" xml:space="preserve">
+    <value>A role can have at most {max, plural, one {# permission} other {# permissions}}.</value>
+  </data>
+  <data name="Permissions_UnknownSecurable" xml:space="preserve">
+    <value>“{resource}: {action}” isn’t a permission that exists.</value>
+  </data>
+  <data name="Permissions_FilterNotSupported" xml:space="preserve">
+    <value>This permission can’t have a filter.</value>
+  </data>
+  <data name="Permissions_FilterInvalid" xml:space="preserve">
+    <value>This filter isn’t valid.</value>
+  </data>
+  <data name="Permissions_FilterTooLong" xml:space="preserve">
+    <value>Enter at most {maxLength, plural, one {# character} other {# characters}}.</value>
+  </data>
+  <data name="Permissions_FilterVersionUnsupported" xml:space="preserve">
+    <value>This filter was written for an older version. Enter it again.</value>
+  </data>
+  <data name="Permissions_WildcardResourceOnPublicRole" xml:space="preserve">
+    <value>A public role can’t have a permission on everything.</value>
+  </data>
+  <data name="Permissions_EscalationBeyondSelf" xml:space="preserve">
+    <value>You can’t grant “{resource}: {action}” because you don’t hold it without restriction.</value>
+  </data>
+  <data name="Access_LastAdministrator" xml:space="preserve">
+    <value>At least one active user must remain an administrator.</value>
+  </data>
+  <data name="Access_PublicRoleHasMembers" xml:space="preserve">
+    <value>A public role can’t have members.</value>
+  </data>
+  <data name="Access_AdministratorRoleDamaged" xml:space="preserve">
+    <value>The administrator role must stay active, private and unrestricted.</value>
+  </data>
+  <data name="Access_LockTimeout" xml:space="preserve">
+    <value>Someone else is changing security settings. Try again.</value>
+  </data>
+  <data name="Access_LockDeadlock" xml:space="preserve">
+    <value>Someone else is changing security settings. Try again.</value>
+  </data>
   <!-- Validation codes of the save and query pipeline -->
   <data name="Required" xml:space="preserve">
     <value>Enter a value.</value>
@@ -560,7 +666,7 @@
   <data name="Core_Job_ExportReport" xml:space="preserve">
     <value>Exporting {title}</value>
   </data>
-  <!-- Background jobs: the platform's error codes and the notices a completion raises -->
+  <!-- Background jobs: the platform's error codes, the notices a completion raises, and the schedules' rules and pause notice -->
   <data name="Jobs_Internal" xml:space="preserve">
     <value>An unexpected error occurred while running the job.</value>
   </data>
@@ -618,6 +724,45 @@
   </data>
   <data name="JobHandler_core_notification-retention" xml:space="preserve">
     <value>Deleting old notifications</value>
+  </data>
+  <data name="Schedules_CronInvalid" xml:space="preserve">
+    <value>The cron expression {expression} is not valid. Give minute, hour, day of month, month and day of week, such as 0 3 * * * for three every morning.</value>
+  </data>
+  <data name="Schedules_CronNeverOccurs" xml:space="preserve">
+    <value>The cron expression {expression} never occurs again, so the schedule would never run.</value>
+  </data>
+  <data name="Schedules_TimeZoneUnknown" xml:space="preserve">
+    <value>The time zone {timeZone} is not one of the supported time zones.</value>
+  </data>
+  <data name="Schedules_HandlerUnknown" xml:space="preserve">
+    <value>No kind of job named {handlerKey} is offered.</value>
+  </data>
+  <data name="Schedules_HandlerNotSchedulable" xml:space="preserve">
+    <value>Jobs of the kind {handlerKey} cannot be scheduled.</value>
+  </data>
+  <data name="Schedules_ReplayAllRequiresAllow" xml:space="preserve">
+    <value>Replaying every missed run requires allowing runs to overlap.</value>
+  </data>
+  <data name="Schedules_ArgumentsTooLarge" xml:space="preserve">
+    <value>The arguments are too large; a job carries at most {maxBytes, number} bytes.</value>
+  </data>
+  <data name="Schedules_OwnedByAnotherUser" xml:space="preserve">
+    <value>This schedule runs as another user. Take it over before changing what it runs or when.</value>
+  </data>
+  <data name="Schedules_OwnerInactive" xml:space="preserve">
+    <value>This schedule runs as a user who is no longer active. Take it over before activating it.</value>
+  </data>
+  <data name="Schedules_BuiltInImmutable" xml:space="preserve">
+    <value>This schedule is built in: only its names, cron expression and time zone can change, and it cannot be deleted or taken over.</value>
+  </data>
+  <data name="Schedules_BuiltInAlwaysActive" xml:space="preserve">
+    <value>This schedule is built in and is always active.</value>
+  </data>
+  <data name="Schedules_RunInProgress" xml:space="preserve">
+    <value>A run of this schedule has not finished yet.</value>
+  </data>
+  <data name="Notification_core_schedule_paused" xml:space="preserve">
+    <value>The schedule {name} was paused: {reason, select, OwnerInactive {the user it runs as is no longer active} Exhausted {its cron expression never occurs again} other {its kind of job is no longer offered}}. It runs again once it is activated.</value>
   </data>
   <!-- Queryex diagnostics, with the arguments the engine gives each -->
   <data name="Queryex_QX1001" xml:space="preserve">

@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <Description>The general ledger module's contract surface: the responsibility center entity and its type, the feature and resource names, the validation codes, and the sample-centers seam a dependent feature replaces. A distribution's own modules reference this package, never the module's implementation or Tellma.Core.</Description>
+    <!-- One namespace for both GL packages, so a type keeps its name when it moves between them. -->
+    <RootNamespace>Tellma.Module.Gl</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The one edge: the platform's contract surface. No package references, so a module built on
+         GL's contract carries no runtime weight (see the README). -->
+    <ProjectReference Include="..\..\..\core\Tellma.Core.Abstractions\Tellma.Core.Abstractions.csproj" />
+  </ItemGroup>
+
+</Project>

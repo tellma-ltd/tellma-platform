@@ -420,7 +420,7 @@ namespace Tellma.Core.Tests.Jobs
         private sealed record Tick(int Leased, bool Full) : IScheduleTickRound
         {
             /// <inheritdoc />
-            public Task RunStep2Async(CancellationToken cancellationToken)
+            public Task RunStep2Async(IServiceProvider services, CancellationToken cancellationToken)
             {
                 return Task.CompletedTask;
             }

@@ -677,7 +677,7 @@ namespace Tellma.Core.IntegrationTests.Jobs
             }
 
             /// <inheritdoc />
-            public Task RunStep2Async(CancellationToken cancellationToken)
+            public Task RunStep2Async(IServiceProvider services, CancellationToken cancellationToken)
             {
                 _ = Interlocked.Increment(ref _secondSteps);
                 return Task.CompletedTask;

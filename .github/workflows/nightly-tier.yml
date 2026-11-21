@@ -173,10 +173,11 @@ jobs:
         working-directory: .
       # The script survives an apt-mirror outage as long as every engine still launches (see the
       # dotnet job). Its path starts at the repository root, one level above this job's working
-      # directory.
+      # directory. The CLI is the package's bin shim and not `pnpm exec`, because the script runs it
+      # as root to install the OS packages (eng/playwright-browsers/README.md).
       - name: Install browsers
         timeout-minutes: 15
-        run: bash ../eng/playwright-browsers/install-browsers.sh chromium firefox webkit -- pnpm exec playwright
+        run: bash ../eng/playwright-browsers/install-browsers.sh chromium firefox webkit -- node_modules/.bin/playwright
       # The tokens CSS is generated, not committed, and the showcase build needs it.
       - run: pnpm run tokens:build-css
       # Built in a step of its own, as in the PR tier, so a build failure shows as a failed build
@@ -228,7 +229,7 @@ jobs:
       # As in client-e2e: survives an apt-mirror outage as long as every engine still launches.
       - name: Install browsers
         timeout-minutes: 15
-        run: bash ../eng/playwright-browsers/install-browsers.sh chromium firefox webkit -- pnpm exec playwright
+        run: bash ../eng/playwright-browsers/install-browsers.sh chromium firefox webkit -- node_modules/.bin/playwright
       - run: pnpm run tokens:build-css
       - run: pnpm run build:showcase
       # All projects, so a quarantined @cross-engine test still runs on every engine.

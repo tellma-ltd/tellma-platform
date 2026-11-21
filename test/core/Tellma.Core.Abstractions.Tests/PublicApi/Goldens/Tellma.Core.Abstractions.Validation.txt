@@ -31,6 +31,7 @@ public abstract class DeleteContext<TEntity>
     public CancellationToken CancellationToken { get; init; }
     public EnlistmentDescriptor? Enlistment { get; init; }
     public IReadOnlyList<TEntity> Entities { get; }
+    public bool WithDescendants { get; init; }
     public required IContextLoader Loader { get; init; }
     public required IWriteHost Host { get; init; }
     public required RequestContext Context { get; init; }

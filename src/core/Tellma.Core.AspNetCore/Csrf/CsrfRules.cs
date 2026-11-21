@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.Extensions.Primitives;
 using Microsoft.Net.Http.Headers;
+using Tellma.Core.Abstractions.Composition;
 
 namespace Tellma.Core.AspNetCore.Csrf
 {
@@ -49,8 +50,12 @@ namespace Tellma.Core.AspNetCore.Csrf
         /// <summary>The rule on a body's <c>Content-Type</c>.</summary>
         public const string ContentType = "content_type";
 
-        /// <summary>The longest client version accepted, which keeps the logged value bounded.</summary>
-        public const int MaxVersionLength = 64;
+        /// <summary>
+        ///     The longest client version accepted, which keeps the logged value bounded; the
+        ///     composition refuses a distribution version longer than this, so the web client's own
+        ///     header always passes.
+        /// </summary>
+        public const int MaxVersionLength = DeploymentVersions.MaxClientVersionLength;
 
         /// <summary>The fetch metadata header naming the relation between the request's initiator and its target.</summary>
         private const string SecFetchSiteHeader = "Sec-Fetch-Site";
@@ -132,7 +137,7 @@ namespace Tellma.Core.AspNetCore.Csrf
 
             string name = value[..slash];
             ReadOnlySpan<char> version = value.AsSpan(slash + 1);
-            return clientNames.Contains(name) && version.Length is > 0 and <= MaxVersionLength && IsVisibleAscii(version)
+            return clientNames.Contains(name) && DeploymentVersions.IsClientVersion(version)
                 ? name
                 : null;
         }
@@ -183,22 +188,6 @@ namespace Tellma.Core.AspNetCore.Csrf
         private static string? Single(StringValues values)
         {
             return values.Count == 1 ? values[0] : null;
-        }
-
-        /// <summary>Whether text is visible ASCII: no space, no control character.</summary>
-        /// <param name="text">The text.</param>
-        /// <returns>True when it is.</returns>
-        private static bool IsVisibleAscii(ReadOnlySpan<char> text)
-        {
-            foreach (char c in text)
-            {
-                if (c is < '!' or > '~')
-                {
-                    return false;
-                }
-            }
-
-            return true;
         }
     }
 }

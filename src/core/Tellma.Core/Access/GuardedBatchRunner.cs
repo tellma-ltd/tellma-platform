@@ -31,6 +31,7 @@ namespace Tellma.Core.Access
     /// <param name="loggerFactory">Creates the access logger.</param>
     /// <param name="tagMetrics">The version-tag instruments, which meter an exhausted re-run; null in a composition without them.</param>
     /// <param name="recompositions">Receives the cause of every re-entered compose; null in a composition that counts none.</param>
+    /// <param name="evaluator">The scope's evaluator, which decides the scope's required grants again before a recompose; null in a composition without one.</param>
     internal sealed class GuardedBatchRunner(
         IScopeConnection connection,
         ITenantDatabase database,
@@ -39,7 +40,8 @@ namespace Tellma.Core.Access
         AccessMetrics metrics,
         ILoggerFactory loggerFactory,
         VersionTagMetrics? tagMetrics = null,
-        RecomposeLog? recompositions = null) : IGuardedBatchRunner
+        RecomposeLog? recompositions = null,
+        AccessEvaluator? evaluator = null) : IGuardedBatchRunner
     {
         /// <summary>The access logger.</summary>
         private readonly ILogger _logger = (loggerFactory ?? throw new ArgumentNullException(nameof(loggerFactory))).CreateLogger(AccessEvents.Category);
@@ -66,6 +68,13 @@ namespace Tellma.Core.Access
             bool recomposed = false;
             while (true)
             {
+                // --- A recompose runs under the fresh set: a grant the scope required and that set no
+                // longer holds refuses the batch before it is composed again (spec 0015 §5.1) ---
+                if (recomposed)
+                {
+                    evaluator?.EnsureRequiredHold(user);
+                }
+
                 // --- Compose: the prologue first, then the caller's statements ---
                 IDataBatch batch = database.CreateBatch(purpose);
                 ConnectPremises premises = connection.PremisesFor(user);

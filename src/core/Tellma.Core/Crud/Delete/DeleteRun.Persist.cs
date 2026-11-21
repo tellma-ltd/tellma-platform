@@ -59,6 +59,7 @@ namespace Tellma.Core.Crud.Delete
                 Loader = _loader,
                 Errors = _errors,
                 Host = _frame,
+                WithDescendants = _shape == DeleteShape.WithDescendants,
                 CancellationToken = _cancellationToken,
             };
 
@@ -189,7 +190,7 @@ namespace Tellma.Core.Crud.Delete
             catch (DataAccessAmbiguousException ambiguous)
             {
                 // A delete cannot be probed: the caller reloads to learn whether it committed.
-                throw new DependencyUnavailableException(DatabaseDependency, DatabaseRetryAfter, ambiguous);
+                throw DataAccessTranslation.Unavailable(ambiguous);
             }
             catch (DataAccessException failure)
             {

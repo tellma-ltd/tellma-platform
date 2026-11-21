@@ -4,11 +4,16 @@
 // LICENSE file in the root directory of this source tree.
 
 using Microsoft.Extensions.DependencyInjection;
+using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Blobs;
+using Tellma.Core.Abstractions.Composition;
+using Tellma.Core.Abstractions.Crud;
+using Tellma.Core.Abstractions.Validation;
 using Tellma.Core.IntegrationTests.Access;
 using Tellma.Core.Testing.Blobs;
+using Tellma.Testing.Entities;
 
 namespace Tellma.Core.IntegrationTests.Blobs
 {
@@ -50,7 +55,9 @@ namespace Tellma.Core.IntegrationTests.Blobs
         public async ValueTask InitializeAsync()
         {
             await Connect.InitializeAsync();
-            _instance = Connect.CreateInstance(configure: static services => services.AddInMemoryBlobs());
+            _instance = Connect.CreateInstance(
+                configure: static services => services.AddInMemoryBlobs(),
+                compose: static tellma => tellma.AddFeature(new BlobOwnerServiceFeature()));
         }
 
         /// <inheritdoc />
@@ -146,6 +153,90 @@ namespace Tellma.Core.IntegrationTests.Blobs
                 VALUES (@id, N'{kind}', '{state}', N'{BlobContentTypes.Pdf}', N'file.pdf', 10, N'', SYSUTCDATETIME(), {userId}, {committedAt}, {expiresAt}, 0x{new string('0', 64)}, N'{storageKey}');
                 SELECT @id;
                 """));
+        }
+    }
+
+    /// <summary>The arguments of the blob owner's <c>set-file</c> action.</summary>
+    public sealed record BlobOwnerSetFile
+    {
+        /// <summary>The blob the targets' file column is set to; null clears it.</summary>
+        public int? FileId { get; init; }
+    }
+
+    /// <summary>
+    ///     The blob owner stack's service: two entity actions that write blob columns through the rows
+    ///     they mark, which the stack's emitter writes as a save does.
+    /// </summary>
+    /// <param name="factory">The pipeline factory.</param>
+    public sealed class BlobOwnerService(IEntityPipelineFactory factory) : EntityService<BlobOwner>(factory)
+    {
+        /// <summary>The name of the action that sets the targets' file column.</summary>
+        public const string SetFile = "set-file";
+
+        /// <summary>The name of the action that drops every file row of the targets.</summary>
+        public const string DropFiles = "drop-files";
+
+        /// <summary>Sets the targets' file column and marks them for saving.</summary>
+        /// <param name="context">The action's context.</param>
+        /// <param name="arguments">The blob to set; null clears the column.</param>
+        /// <returns>A task that completes when the rows are marked.</returns>
+        [EntityAction(SetFile)]
+        [SuppressMessage("Performance", "CA1822:Mark members as static", Justification = "An action is an instance method by contract; the registry refuses a static one.")]
+        public async Task SetFileAsync(ActionContext<BlobOwner, int> context, BlobOwnerSetFile arguments)
+        {
+            ArgumentNullException.ThrowIfNull(context);
+            ArgumentNullException.ThrowIfNull(arguments);
+
+            // --- The targets load with the first round; the marked rows carry the new value ---
+            await context.Loader.LoadAsync();
+            foreach (BlobOwner owner in context.Entities)
+            {
+                owner.FileId = arguments.FileId;
+            }
+
+            context.Save(context.Entities);
+        }
+
+        /// <summary>Drops every file row of the targets and marks them for saving.</summary>
+        /// <param name="context">The action's context.</param>
+        /// <returns>A task that completes when the rows are marked.</returns>
+        [EntityAction(DropFiles, LoadChildren = true)]
+        [SuppressMessage("Performance", "CA1822:Mark members as static", Justification = "An action is an instance method by contract; the registry refuses a static one.")]
+        public async Task DropFilesAsync(ActionContext<BlobOwner, int> context)
+        {
+            ArgumentNullException.ThrowIfNull(context);
+
+            // --- The targets load with their file rows; the marked rows hold none ---
+            await context.Loader.LoadAsync();
+            foreach (BlobOwner owner in context.Entities)
+            {
+                owner.Files = [];
+            }
+
+            context.Save(context.Entities);
+        }
+    }
+
+    /// <summary>The feature that runs the fixture's blob owner stack through <see cref="BlobOwnerService" />.</summary>
+    internal sealed class BlobOwnerServiceFeature : ITellmaFeature
+    {
+        /// <inheritdoc />
+        public string Name => "blob-owner-service";
+
+        /// <inheritdoc />
+        public void Declare(FeatureDeclaration declaration)
+        {
+            ArgumentNullException.ThrowIfNull(declaration);
+
+            // Depending on the fixture's feature lets this registration replace its blob owner service.
+            _ = declaration.Requires(FixtureFeature.FeatureName);
+        }
+
+        /// <inheritdoc />
+        public void Contribute(FeatureContribution contribution)
+        {
+            ArgumentNullException.ThrowIfNull(contribution);
+            _ = contribution.Entity<BlobOwner, BlobOwnerService>();
         }
     }
 }

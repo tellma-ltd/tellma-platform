@@ -70,14 +70,13 @@ namespace Tellma.Core.Settings
 
                 // --- Step 4: the persist and its closing reads; step 6's mirror after its commit ---
                 PersistVerdict.Ensure(context, mutation: true, allowWhenReadOnly: false, frames.Open);
-                HeldCategories held = await HeldAsync(cancellationToken).ConfigureAwait(false);
-                SettingsPersist persisted = await PersistAsync(patch, merge, placeholders, held, tenantId, cancellationToken).ConfigureAwait(false);
+                SettingsPersist persisted = await PersistAsync(patch, merge, placeholders, tenantId, cancellationToken).ConfigureAwait(false);
 
                 // --- Step 5: the writer warmed from the closing reads, and both views answered ---
                 VersionTag tag = persisted.Outcome.VersionTags[VersionTagNames.Settings];
                 TenantSettingsEntry entry = store.Build(tenantId, allowPlaceholder: accessor.Current.IsSystem, tag, SettingsReads.ColdLoadRows(persisted.Typed, persisted.Entries));
                 store.Offer(tenantId, entry, tag);
-                TenantSettingsDetails details = persisted.Reads.Details(this, held, persisted.Typed, persisted.Entries);
+                TenantSettingsDetails details = persisted.Reads.Details(this, persisted.Held, persisted.Typed, persisted.Entries);
                 await MirroredAsync(persisted.Mirror, tenantId).ConfigureAwait(false);
                 return new SettingsSaveResult(details, entry.Client, VersionTagWire.Settings(tag));
             }
@@ -216,13 +215,14 @@ namespace Tellma.Core.Settings
 
         /// <summary>
         ///     Runs the persist batch: the typed row, the entries' saves and deletes, the tags a
-        ///     language change moves, and the closing reads. A patch that writes nothing runs the
-        ///     closing reads alone, on a Read batch.
+        ///     language change moves, and the closing reads of the categories the composing user
+        ///     reads. A patch that writes nothing runs the closing reads alone, on a Read batch. A
+        ///     commit the probe proved after its response was lost is answered from the closing reads
+        ///     run again on their own.
         /// </summary>
         /// <param name="patch">The patch.</param>
         /// <param name="merge">What it writes.</param>
         /// <param name="placeholders">The rows with reserved ids, by key.</param>
-        /// <param name="held">The categories the caller reads, which the response's view and related rows cover.</param>
         /// <param name="tenantId">The tenant.</param>
         /// <param name="cancellationToken">Cancels the batch before it is sent.</param>
         /// <returns>The committed batch's outcome and closing reads, and the mirror started after its commit.</returns>
@@ -231,7 +231,6 @@ namespace Tellma.Core.Settings
             TenantSettingsPatch patch,
             SettingsMerge merge,
             Dictionary<string, SettingEntry> placeholders,
-            HeldCategories held,
             int tenantId,
             CancellationToken cancellationToken)
         {
@@ -247,6 +246,7 @@ namespace Tellma.Core.Settings
 
             bool writes = merge.Typed is not null || saves.Count > 0 || merge.Deletes.Count > 0;
             EditorReads? reads = null;
+            HeldCategories? held = null;
             Task? mirror = null;
             BatchOutcome outcome;
             try
@@ -286,7 +286,9 @@ namespace Tellma.Core.Settings
                             }
                         }
 
-                        // --- The closing reads, which end the batch ---
+                        // --- The closing reads, which end the batch, of the categories the user each
+                        // composition is for reads (spec 0015 §5.1) ---
+                        held = HeldBy(user);
                         reads = ComposeEditorReads(batch, held, typed: true, merge.Changes);
 
                         // --- The mirror, started once the batch committed ---
@@ -300,6 +302,17 @@ namespace Tellma.Core.Settings
                     static (_, outcome) => outcome,
                     cancellationToken).ConfigureAwait(false);
             }
+            catch (DataAccessAmbiguousException ambiguous) when (ambiguous.Verdict == CommitVerdict.Committed)
+            {
+                // Spec 0015 §8: the probe found an inserted entry, so the save committed and only its
+                // response was lost. Its closing reads run again on their own, and the mirror the
+                // commit would have started starts now.
+                (outcome, reads, held) = await ClosingReadsAsync(merge.Changes).ConfigureAwait(false);
+                if (merge.Mirror is TenantDisplayNames names)
+                {
+                    mirror = MirrorAsync(tenantId, names);
+                }
+            }
             catch (DataAccessException failure) when (Translate(failure) is ConcurrencyException translated)
             {
                 throw translated;
@@ -308,7 +321,27 @@ namespace Tellma.Core.Settings
             // --- The closing reads, read once for the store and the response ---
             accessor.Current.ApplyCultures();
             EditorReads closing = reads ?? throw new InvalidOperationException("A committed settings persist composed its closing reads.");
-            return new SettingsPersist(outcome, closing, closing.TypedRow, SettingsReads.ReadEntries(closing.Entries), mirror);
+            return new SettingsPersist(outcome, closing, held!, closing.TypedRow, SettingsReads.ReadEntries(closing.Entries), mirror);
+        }
+
+        /// <summary>Runs a committed save's closing reads on a Read batch of their own, whatever the caller's token says.</summary>
+        /// <param name="changes">The stored JSON of the entries the save wrote, by key, null for a reset one.</param>
+        /// <returns>The read batch's outcome, its closing reads, and the categories they cover.</returns>
+        private async Task<(BatchOutcome Outcome, EditorReads Reads, HeldCategories Held)> ClosingReadsAsync(IReadOnlyDictionary<string, string?> changes)
+        {
+            EditorReads? reads = null;
+            HeldCategories? held = null;
+            BatchOutcome outcome = await runner.RunAsync(
+                BatchPurpose.Read,
+                (user, batch) =>
+                {
+                    held = HeldBy(user);
+                    reads = ComposeEditorReads(batch, held, typed: true, changes);
+                    return ValueTask.CompletedTask;
+                },
+                static (_, outcome) => outcome,
+                CancellationToken.None).ConfigureAwait(false);
+            return (outcome, reads!, held!);
         }
 
         /// <summary>
@@ -382,12 +415,13 @@ namespace Tellma.Core.Settings
             }
         }
 
-        /// <summary>A committed persist: its outcome, its closing reads and the rows they read, and the mirror it started.</summary>
-        /// <param name="Outcome">The batch's outcome.</param>
+        /// <summary>A committed persist: its outcome, its closing reads, the categories and rows they read, and the mirror it started.</summary>
+        /// <param name="Outcome">The batch's outcome, or that of the read that answered a commit whose response was lost.</param>
         /// <param name="Reads">The closing reads.</param>
+        /// <param name="Held">The categories the closing reads cover, as the composing user's set grants them.</param>
         /// <param name="Typed">The typed row read.</param>
         /// <param name="Entries">Every stored entry read.</param>
         /// <param name="Mirror">The mirror started after the commit; null when none was.</param>
-        private sealed record SettingsPersist(BatchOutcome Outcome, EditorReads Reads, StoredSettings? Typed, FrozenDictionary<string, StoredEntry> Entries, Task? Mirror);
+        private sealed record SettingsPersist(BatchOutcome Outcome, EditorReads Reads, HeldCategories Held, StoredSettings? Typed, FrozenDictionary<string, StoredEntry> Entries, Task? Mirror);
     }
 }

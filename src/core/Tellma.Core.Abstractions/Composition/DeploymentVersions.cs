@@ -19,6 +19,39 @@ namespace Tellma.Core.Abstractions.Composition
     /// <param name="DistributionVersion">The informational version of the distribution's composition library, the assembly declaring its composition method.</param>
     public sealed record DeploymentVersions(string PlatformVersion, string DistributionVersion)
     {
+        /// <summary>
+        ///     The longest version a client states in its <c>Tellma-Client</c> header, which keeps
+        ///     the logged value bounded: room for any SemVer version with a pre-release label and
+        ///     build metadata that carries a full commit sha.
+        /// </summary>
+        public const int MaxClientVersionLength = 128;
+
+        /// <summary>
+        ///     Whether a version can be stated by a client in its <c>Tellma-Client</c> header: 1 to
+        ///     <see cref="MaxClientVersionLength" /> visible ASCII characters, no space and no
+        ///     control character. The web client states the distribution's version, so a
+        ///     composition whose distribution version is not one is refused.
+        /// </summary>
+        /// <param name="version">The version.</param>
+        /// <returns>True when it is.</returns>
+        public static bool IsClientVersion(ReadOnlySpan<char> version)
+        {
+            if (version.Length is 0 or > MaxClientVersionLength)
+            {
+                return false;
+            }
+
+            foreach (char c in version)
+            {
+                if (c is < '!' or > '~')
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
         /// <inheritdoc cref="DeploymentVersions(string, string)" />
         public string PlatformVersion { get; } = ValidateVersion(PlatformVersion, nameof(PlatformVersion));
 

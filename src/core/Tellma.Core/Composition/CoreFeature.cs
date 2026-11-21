@@ -232,12 +232,14 @@ namespace Tellma.Core.Composition
 
             // --- Background jobs: the job and schedule tables, their machinery's tables and table types,
             // and the notices and client event a completion raises ---
-            // spec 0020 §2, §7, §10, §15. Job and Schedule are entities without services until their
-            // services land; the schedule state and the worker heartbeat are platform tables, never
-            // stacks. The handlers and built-in schedules Core owns are contributed with their handlers.
+            // spec 0020 §2, §7, §10, §15. Job is an entity without a service until its service lands;
+            // Schedule's service and rules are closed over the leaf, like the users' and roles'. The
+            // schedule state and the worker heartbeat are platform tables, never stacks. The handlers
+            // and built-in schedules Core owns are contributed with their handlers.
             _ = contribution
                 .Entity<Job>()
-                .Entity<Schedule>()
+                .Entity<Schedule, ScheduleService<Schedule>>()
+                .Validator<Schedule, ScheduleRules<Schedule>>()
                 .Model<JobConfiguration>()
                 .Model(typeof(ScheduleConfiguration<>))
                 .Model<ScheduleStateConfiguration>()
@@ -251,6 +253,7 @@ namespace Tellma.Core.Composition
                 .NotificationType(JobNotices.PendingConfirmationDescriptor)
                 .NotificationType(JobNotices.HeldDescriptor)
                 .NotificationType(JobNotices.GapDescriptor)
+                .NotificationType(JobNotices.SchedulePausedDescriptor)
                 .ClientEvent(JobNotices.ChangedEvent);
 
             // --- The standalone table types: the canonical bulk-operation shapes, and the version-tag guard's ---
