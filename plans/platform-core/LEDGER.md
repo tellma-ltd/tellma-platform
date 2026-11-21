@@ -97,6 +97,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | 2026-11-13 03:00 | | | 2026-11-17 20:00 | CI red on ddb8259 (grid-a11y forced-colors flake + real forced-colors CSS bugs) → PC-F25 fixed, green at f9b7e33; PC-033, PC-036 done (45 + fix items); PC-026 released to integrate; PC-047 r2 fable; PC-038/PC-051 fix1; PC-073 fix2; PC-037 impl. D-064..D-067 |
 | 2026-11-14 12:01 | 8 | 0 | 2026-11-17 20:00 | Full reset detected (all-models → 8, Fable → 0). Line stopped on PC-F38 (PC-058 multi-picker races); PC-044/054/F36 done; PC-055 r1; PC-031/PC-040 impl |
 | 2026-11-17 20:02 | 0 | 0 | 2026-11-24 20:00 | Weekly reset detected (all-models 91 → 0, Fable 5 → 0). PC-068/F55/F56/070 done; PC-072 impl (pc-3); PC-B02/B03 finders resumed (pc-1/pc-2, D-110) |
+| 2026-11-21 18:10 | 0 | 0 | 2026-11-24 20:00 | Ahmad applied the manual reset (D-178); resetsAt unchanged. Target ≈ 1.5 pts/h to use it by Tuesday noon: keep six lanes full under D-144/D-175, T3 fill when T1/T2 cannot fill a lane |
 | 2026-11-21 17:50 | 98 | 34 | 2026-11-24 20:00 | Ahmad asked to apply the manual reset now (D-173); push sent. PC-090 done. PC-091 launched in pc-3; PC-096 (T1, xhigh) takes the next free slot |
 | 2026-11-21 08:30 | 87 | 33 | 2026-11-24 20:00 | +2 in ≈3.3 h with two lanes in review/fix. PC-148 is done, and PC-089, PC-090 and PC-149 launched beside PC-147, so four lanes run. At ≈1.5–2 pts/h the window runs out ≈ 2026-11-21 15:00–17:00. D-165 is borderline now: a reset applied then needs ≈1.1 pts/h on average to be used by Tuesday noon. Firm recommendation to Ahmad when the window nears 100% |
 | 2026-11-21 05:15 | 85 | 31 | 2026-11-24 20:00 | ≈1.05 pts/h since the 11-17 rollover (85 in 81 h); at that pace the window runs out ≈ 2026-11-21 19:30. Ready queue: no T1/T2 (PC-147, PC-148 in flight), T3 PC-174/PC-181 held (D-140). Ahmad asked whether to apply a manual reset this week |
@@ -105,10 +106,10 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 
 | PC | Slot | Branch | Step | Implementer agent (name / id) | Reviewer agent (name / id) | Started (UTC) |
 |---|---|---|---|---|---|---|
-| PC-089 | pc-1 | pc/PC-089 | integrating | impl dc5e9223; R1 0/2/3; fix1 24438df0; R2 fable 0/1/5; fix2 d2513537; released 2026-11-21 after PC-090 done; D-168, D-169, D-172 | 0017-d | 2026-11-21 |
+| PC-089 | pc-1 | pc/PC-089 | ci-pending | impl dc5e9223; R1 0/2/3; fix1 24438df0; R2 fable 0/1/5; fix2 d2513537; integrate ccb7553e; pc run 44931200147; D-168, D-169, D-172 | 0017-d | 2026-11-21 |
 | PC-091 | pc-3 | pc/PC-091 | impl | launched after PC-090 done; high | 0018-e; R1 only | 2026-11-21 |
-| PC-F65 | pc-f | pc/PC-F65 | impl | flake root cause (D-171); high; one review | fix item | 2026-11-21 |
-| PC-174 | pc-2 | pc/PC-174 | fix1 | impl dc83114f; R1 0/2/3; fix1 (last) then hold behind PC-090, PC-089, PC-149; D-176 | 0015-j; R1 only | 2026-11-21 |
+| PC-F65 | pc-f | pc/PC-F65 | R1 | impl d10f3b46 (Patience/TestClock helpers; old code failed 10/15 loaded full runs, new 3/3 green); R1 Opus high; carries to PC-089 integration | fix item | 2026-11-21 |
+| PC-174 | pc-2 | pc/PC-174 | held | impl dc83114f; R1 0/2/3; fix1 ad91dc10 (key tie-breaker on every ordering; R1-3/R1-4 kept per D-176 for Ahmad); held behind PC-089, PC-149 (merge-tree clean); D-176 | 0015-j; R1 only | 2026-11-21 |
 | PC-181 | pc-f2 | pc/PC-181 | impl | T3 fill under D-140/D-173; high; R2 inherit xhigh (complex) | 0010-f6 | 2026-11-21 |
 | PC-149 | pc-4 | pc/PC-149 | held | impl 7418f050; R1 0/2/2; fix1 6fba6f4c (all fixed; IPayloadScopedValidator, OutboxEnqueuedEffect); held behind PC-089 (merge-tree: 3 conflicts in Users with PC-090); D-170, D-174 | 0022-b; R1 only | 2026-11-21 |
 

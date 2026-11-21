@@ -384,6 +384,16 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-178 (Ahmad, 2026-11-21): manual reset applied
+
+- Ahmad applied the manual reset at ≈ 18:10 UTC 2026-11-21, after the 98% push (D-173). get_usage shows 0% weekly and 0% Fable; resetsAt is unchanged at 2026-11-24 20:00 UTC.
+- Target: ≈ 100 points in ≈ 66 h to Tuesday noon (≈ 1.5 pts/h).
+  - Keep all six slots working.
+  - T1/T2 work takes each free slot first; T3 fills when none is ready (D-140, D-173).
+  - Integration steps stay lean (D-175).
+  - PC-096 (T1) takes the next free slot.
+- Standing: report a pace that would leave much of the reset unused to Ahmad, with the lanes that could be added.
+
 ### D-177 (orchestrator, 2026-11-21): PC-149 fix 1
 
 - PC-149 fix 1 (6fba6f4c): R1-1 to R1-4 fixed.
