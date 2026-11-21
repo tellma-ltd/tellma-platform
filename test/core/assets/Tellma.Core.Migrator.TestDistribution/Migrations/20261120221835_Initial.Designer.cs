@@ -13,7 +13,7 @@ using Tellma.Core.EntityFrameworkCore.TableTypes;
 namespace Tellma.Core.Migrator.TestDistribution.Migrations
 {
     [DbContext(typeof(TellmaDbContext))]
-    [Migration("20261115072750_Initial")]
+    [Migration("20261120221835_Initial")]
     partial class Initial
     {
         /// <inheritdoc />
@@ -929,6 +929,25 @@ namespace Tellma.Core.Migrator.TestDistribution.Migrations
                             }))
                         .HasAnnotation("Tellma:TableType:Enabled", true)
                         .HasAnnotation("Tellma:TableType:Grants", "[\"tellma_app\"]");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = 2,
+                            CatchUpWindowMinutes = 1440,
+                            Code = "core.notification-retention",
+                            CreatedAt = new DateTimeOffset(new DateTime(2000, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            CreatedById = 1,
+                            CronExpression = "30 3 * * *",
+                            HandlerKey = "core.notification-retention",
+                            IsActive = true,
+                            MissedPolicy = "Coalesce",
+                            ModifiedAt = new DateTimeOffset(new DateTime(2000, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            ModifiedById = 1,
+                            Name = "core.notification-retention",
+                            OverlapPolicy = "Skip",
+                            RunAsUserId = 1
+                        });
                 });
 
             modelBuilder.Entity("Tellma.Core.Abstractions.Notifications.Notification", b =>
@@ -19009,6 +19028,12 @@ namespace Tellma.Core.Migrator.TestDistribution.Migrations
                         .HasFilter("[NextDueAt] IS NOT NULL");
 
                     b.ToTable("ScheduleStates", "core");
+
+                    b.HasData(
+                        new
+                        {
+                            ScheduleId = 2
+                        });
                 });
 
             modelBuilder.Entity("Tellma.Core.Migrator.TestDistribution.Gadget", b =>

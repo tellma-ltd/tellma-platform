@@ -183,6 +183,12 @@
   <data name="Core_Schedule_Plural" xml:space="preserve">
     <value>الجداول الزمنية</value>
   </data>
+  <data name="Core_Schedule_Action_TakeOver" xml:space="preserve">
+    <value>تولي الجدول</value>
+  </data>
+  <data name="Core_Schedule_Action_RunNow" xml:space="preserve">
+    <value>تشغيل الآن</value>
+  </data>
   <data name="Core_Notification_Plural" xml:space="preserve">
     <value>الإشعارات</value>
   </data>
@@ -660,7 +666,7 @@
   <data name="Core_Job_ExportReport" xml:space="preserve">
     <value>تصدير {title}</value>
   </data>
-  <!-- Background jobs: the platform's error codes and the notices a completion raises -->
+  <!-- Background jobs: the platform's error codes, the notices a completion raises, and the schedules' rules and pause notice -->
   <data name="Jobs_Internal" xml:space="preserve">
     <value>حدث خطأ غير متوقع أثناء تشغيل المهمة.</value>
   </data>
@@ -696,6 +702,67 @@
   </data>
   <data name="Notification_core_scheduler_gap" xml:space="preserve">
     <value>لم تعمل المهام في الخلفية من {previousTickAt, date, medium} {previousTickAt, time, short} حتى {now, date, medium} {now, time, short}. {heldCount, plural, =0 {لم تُوقف أي مهمة متأخرة.} one {أُوقفت مهمة متأخرة واحدة مؤقتًا حتى يستأنفها المسؤول أو يوقفها.} two {أُوقفت مهمتان متأخرتان مؤقتًا حتى يستأنفهما المسؤول أو يوقفهما.} few {أُوقفت # مهام متأخرة مؤقتًا حتى يستأنفها المسؤول أو يوقفها.} many {أُوقفت # مهمة متأخرة مؤقتًا حتى يستأنفها المسؤول أو يوقفها.} other {أُوقفت # مهمة متأخرة مؤقتًا حتى يستأنفها المسؤول أو يوقفها.}}</value>
+  </data>
+  <!-- Notifications: the preference save's validation codes, retention's progress, and the handlers' labels -->
+  <data name="Notifications_UnknownType" xml:space="preserve">
+    <value>لا يوجد نوع إشعار بهذا الاسم.</value>
+  </data>
+  <data name="Notifications_UnknownChannel" xml:space="preserve">
+    <value>لا توجد قناة توصيل بهذا الاسم.</value>
+  </data>
+  <data name="Notifications_DuplicatePreference" xml:space="preserve">
+    <value>هذا النوع من الإشعارات مع هذه القناة مُدرج أكثر من مرة.</value>
+  </data>
+  <data name="Notifications_CannotMute" xml:space="preserve">
+    <value>لا يمكن إيقاف إشعارات هذا النوع في صندوق الوارد.</value>
+  </data>
+  <data name="Notifications_RetentionProgress" xml:space="preserve">
+    <value>حُذفت إشعارات مقروءة: {read}، وغير مقروءة: {unread}.</value>
+  </data>
+  <data name="JobHandler_core_notification-delivery" xml:space="preserve">
+    <value>توصيل الإشعارات</value>
+  </data>
+  <data name="JobHandler_core_notification-retention" xml:space="preserve">
+    <value>حذف الإشعارات القديمة</value>
+  </data>
+  <data name="Schedules_CronInvalid" xml:space="preserve">
+    <value>تعبير cron {expression} غير صالح. أدخل الدقيقة والساعة واليوم من الشهر والشهر واليوم من الأسبوع، مثل 0 3 * * * للساعة الثالثة صباح كل يوم.</value>
+  </data>
+  <data name="Schedules_CronNeverOccurs" xml:space="preserve">
+    <value>تعبير cron {expression} لن يتكرر مرة أخرى، فلن يعمل الجدول أبدًا.</value>
+  </data>
+  <data name="Schedules_TimeZoneUnknown" xml:space="preserve">
+    <value>المنطقة الزمنية {timeZone} ليست من المناطق الزمنية المدعومة.</value>
+  </data>
+  <data name="Schedules_HandlerUnknown" xml:space="preserve">
+    <value>لا يوجد نوع من المهام باسم {handlerKey}.</value>
+  </data>
+  <data name="Schedules_HandlerNotSchedulable" xml:space="preserve">
+    <value>لا يمكن جدولة المهام من نوع {handlerKey}.</value>
+  </data>
+  <data name="Schedules_ReplayAllRequiresAllow" xml:space="preserve">
+    <value>إعادة تشغيل كل مرة فائتة تتطلب السماح بتداخل مرات التشغيل.</value>
+  </data>
+  <data name="Schedules_ArgumentsTooLarge" xml:space="preserve">
+    <value>المعطيات كبيرة جدًا؛ تحمل المهمة {maxBytes, number} بايت على الأكثر.</value>
+  </data>
+  <data name="Schedules_OwnedByAnotherUser" xml:space="preserve">
+    <value>يعمل هذا الجدول باسم مستخدم آخر. تولَّ ملكيته قبل تغيير ما يشغّله أو موعده.</value>
+  </data>
+  <data name="Schedules_OwnerInactive" xml:space="preserve">
+    <value>يعمل هذا الجدول باسم مستخدم لم يعد نشطًا. تولَّ ملكيته قبل تفعيله.</value>
+  </data>
+  <data name="Schedules_BuiltInImmutable" xml:space="preserve">
+    <value>هذا الجدول مدمج: لا يتغير منه إلا أسماؤه وتعبير cron والمنطقة الزمنية، ولا يمكن حذفه أو تولي ملكيته.</value>
+  </data>
+  <data name="Schedules_BuiltInAlwaysActive" xml:space="preserve">
+    <value>هذا الجدول مدمج ويبقى نشطًا دائمًا.</value>
+  </data>
+  <data name="Schedules_RunInProgress" xml:space="preserve">
+    <value>لم ينتهِ تشغيل سابق لهذا الجدول بعد.</value>
+  </data>
+  <data name="Notification_core_schedule_paused" xml:space="preserve">
+    <value>أُوقف الجدول {name} مؤقتًا: {reason, select, OwnerInactive {لم يعد المستخدم الذي يعمل باسمه نشطًا} Exhausted {لن يتكرر تعبير cron الخاص به مرة أخرى} other {لم يعد نوع مهمته متاحًا}}. يعمل مجددًا بعد تفعيله.</value>
   </data>
   <!-- Queryex diagnostics, with the arguments the engine gives each -->
   <data name="Queryex_QX1001" xml:space="preserve">

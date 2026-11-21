@@ -202,7 +202,9 @@ namespace Tellma.Core.Composition
             // table, never a stack. Each type is declared by the feature
             // code that raises it; core.user.added is the one this contribution declares for the
             // users' invitation. The two baseline channels and the two client events the
-            // notifications and the hub publish come first.
+            // notifications and the hub publish come first. The self-scope criterion lets every member
+            // read their own rows; the inbox and preference services, the delivery and retention handlers
+            // and retention's nightly schedule (spec 0021 §4.3, §4.5, §5, §7) follow.
             _ = contribution
                 .Entity<Notification>()
                 .Model<NotificationConfiguration>()
@@ -216,6 +218,12 @@ namespace Tellma.Core.Composition
                 .Singleton<INotificationChannelRegistry, NotificationChannelRegistry>()
                 .Singleton<IClientEventRegistry, ClientEventRegistry>()
                 .Singleton<IClientAssetContributor, NotificationsClientAssetContributor>()
+                .Singleton<IAccessCriteriaProvider, NotificationAccessCriteria>()
+                .ApiService<InboxService>()
+                .ApiService<NotificationPreferencesService>()
+                .JobHandler<NotificationDeliveryHandler>()
+                .JobHandler<NotificationRetentionHandler>()
+                .BuiltInSchedule(2, NotificationRetentionHandler.Key, "30 3 * * *")
                 .NotificationType(new NotificationTypeDescriptor("core.user.added", "users", Mutable: true, TargetResource: null))
                 .NotificationChannel(new NotificationChannelDescriptor(InboxChannel, DefaultEnabled: true))
                 .NotificationChannel(new NotificationChannelDescriptor(EmailChannel, DefaultEnabled: false))
@@ -224,12 +232,14 @@ namespace Tellma.Core.Composition
 
             // --- Background jobs: the job and schedule tables, their machinery's tables and table types,
             // and the notices and client event a completion raises ---
-            // spec 0020 §2, §7, §10, §15. Job and Schedule are entities without services until their
-            // services land; the schedule state and the worker heartbeat are platform tables, never
-            // stacks. The handlers and built-in schedules Core owns are contributed with their handlers.
+            // spec 0020 §2, §7, §10, §15. Job is an entity without a service until its service lands;
+            // Schedule's service and rules are closed over the leaf, like the users' and roles'. The
+            // schedule state and the worker heartbeat are platform tables, never stacks. The handlers
+            // and built-in schedules Core owns are contributed with their handlers.
             _ = contribution
                 .Entity<Job>()
-                .Entity<Schedule>()
+                .Entity<Schedule, ScheduleService<Schedule>>()
+                .Validator<Schedule, ScheduleRules<Schedule>>()
                 .Model<JobConfiguration>()
                 .Model(typeof(ScheduleConfiguration<>))
                 .Model<ScheduleStateConfiguration>()
@@ -243,6 +253,7 @@ namespace Tellma.Core.Composition
                 .NotificationType(JobNotices.PendingConfirmationDescriptor)
                 .NotificationType(JobNotices.HeldDescriptor)
                 .NotificationType(JobNotices.GapDescriptor)
+                .NotificationType(JobNotices.SchedulePausedDescriptor)
                 .ClientEvent(JobNotices.ChangedEvent);
 
             // --- The standalone table types: the canonical bulk-operation shapes, and the version-tag guard's ---

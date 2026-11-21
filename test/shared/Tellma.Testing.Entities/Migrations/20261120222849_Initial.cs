@@ -25,6 +25,9 @@ namespace Tellma.Testing.Entities.Migrations
             migrationBuilder.EnsureSchema(
                 name: "core");
 
+            migrationBuilder.EnsureSchema(
+                name: "gl");
+
             migrationBuilder.CreateSequence<int>(
                 name: "sq_BlobFolders",
                 schema: "fixture",
@@ -43,6 +46,11 @@ namespace Tellma.Testing.Entities.Migrations
             migrationBuilder.CreateSequence<int>(
                 name: "sq_Blobs",
                 schema: "core",
+                startValue: 1000L);
+
+            migrationBuilder.CreateSequence<int>(
+                name: "sq_Centers",
+                schema: "gl",
                 startValue: 1000L);
 
             migrationBuilder.CreateSequence<int>(
@@ -375,6 +383,54 @@ namespace Tellma.Testing.Entities.Migrations
                 .Annotation("SqlServer:TemporalHistoryTableSchema", "core")
                 .Annotation("SqlServer:TemporalPeriodEndColumnName", "ValidTo")
                 .Annotation("SqlServer:TemporalPeriodStartColumnName", "ValidFrom");
+
+            migrationBuilder.CreateTable(
+                name: "Centers",
+                schema: "gl",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false),
+                    CenterType = table.Column<string>(type: "varchar(12)", unicode: false, maxLength: 12, nullable: false),
+                    Name = table.Column<string>(type: "nvarchar(255)", maxLength: 255, nullable: false),
+                    Name2 = table.Column<string>(type: "nvarchar(255)", maxLength: 255, nullable: true),
+                    Name3 = table.Column<string>(type: "nvarchar(255)", maxLength: 255, nullable: true),
+                    Code = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: false),
+                    Node = table.Column<SqlHierarchyId>(type: "hierarchyid", nullable: false),
+                    CreatedAt = table.Column<DateTimeOffset>(type: "datetimeoffset(7)", precision: 7, nullable: false),
+                    CreatedById = table.Column<int>(type: "int", nullable: false),
+                    ModifiedAt = table.Column<DateTimeOffset>(type: "datetimeoffset(7)", precision: 7, nullable: false),
+                    ModifiedById = table.Column<int>(type: "int", nullable: false),
+                    ParentId = table.Column<int>(type: "int", nullable: true),
+                    SubtreeCount = table.Column<int>(type: "int", nullable: false, defaultValue: 1)
+                        .Annotation("Relational:DefaultConstraintName", "DF_Centers_SubtreeCount"),
+                    IsActive = table.Column<bool>(type: "bit", nullable: false, defaultValue: true)
+                        .Annotation("Relational:DefaultConstraintName", "DF_Centers_IsActive"),
+                    ActiveSubtreeCount = table.Column<int>(type: "int", nullable: false, defaultValue: 1)
+                        .Annotation("Relational:DefaultConstraintName", "DF_Centers_ActiveSubtreeCount")
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_Centers", x => x.Id);
+                    table.CheckConstraint("CK_Centers_Id", "[Id] > 0");
+                    table.ForeignKey(
+                        name: "FK_Centers_CreatedById",
+                        column: x => x.CreatedById,
+                        principalSchema: "core",
+                        principalTable: "Users",
+                        principalColumn: "Id");
+                    table.ForeignKey(
+                        name: "FK_Centers_ModifiedById",
+                        column: x => x.ModifiedById,
+                        principalSchema: "core",
+                        principalTable: "Users",
+                        principalColumn: "Id");
+                    table.ForeignKey(
+                        name: "FK_Centers_ParentId",
+                        column: x => x.ParentId,
+                        principalSchema: "gl",
+                        principalTable: "Centers",
+                        principalColumn: "Id");
+                });
 
             migrationBuilder.CreateTable(
                 name: "Lookups",
@@ -3415,7 +3471,11 @@ namespace Tellma.Testing.Entities.Migrations
                 schema: "core",
                 table: "Schedules",
                 columns: new[] { "Id", "ArgumentsJson", "CatchUpWindowMinutes", "Code", "CreatedAt", "CreatedById", "CronExpression", "HandlerKey", "IsActive", "ModifiedAt", "ModifiedById", "Name", "Name2", "Name3", "PausedReason", "RunAsUserId", "TimeZoneId" },
-                values: new object[] { 500, null, 1440, "fixture.probe", new DateTimeOffset(new DateTime(2000, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), 1, "0 1 * * *", "fixture.probe", true, new DateTimeOffset(new DateTime(2000, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), 1, "fixture.probe", null, null, null, 1, null });
+                values: new object[,]
+                {
+                    { 2, null, 1440, "core.notification-retention", new DateTimeOffset(new DateTime(2000, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), 1, "30 3 * * *", "core.notification-retention", true, new DateTimeOffset(new DateTime(2000, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), 1, "core.notification-retention", null, null, null, 1, null },
+                    { 500, null, 1440, "fixture.probe", new DateTimeOffset(new DateTime(2000, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), 1, "0 1 * * *", "fixture.probe", true, new DateTimeOffset(new DateTime(2000, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), 1, "fixture.probe", null, null, null, 1, null }
+                });
 
             migrationBuilder.InsertData(
                 schema: "core",
@@ -3445,7 +3505,11 @@ namespace Tellma.Testing.Entities.Migrations
                 schema: "core",
                 table: "ScheduleStates",
                 columns: new[] { "ScheduleId", "LastFiredAt", "LastJobId", "LastScheduledFor", "LastSkippedAt", "LeaseExpiresAt", "LeaseToken", "NextDueAt" },
-                values: new object[] { 500, null, null, null, null, null, null, null });
+                values: new object[,]
+                {
+                    { 2, null, null, null, null, null, null, null },
+                    { 500, null, null, null, null, null, null, null }
+                });
 
             migrationBuilder.CreateIndex(
                 name: "IX_BlobFolders_ParentId",
@@ -3527,6 +3591,32 @@ namespace Tellma.Testing.Entities.Migrations
                 schema: "core",
                 table: "CalendarMonths",
                 columns: new[] { "Calendar", "StartDate" },
+                unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Centers_IsActive_Name",
+                schema: "gl",
+                table: "Centers",
+                columns: new[] { "IsActive", "Name" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Centers_ParentId",
+                schema: "gl",
+                table: "Centers",
+                column: "ParentId");
+
+            migrationBuilder.CreateIndex(
+                name: "UX_Centers_Code",
+                schema: "gl",
+                table: "Centers",
+                column: "Code",
+                unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "UX_Centers_Node",
+                schema: "gl",
+                table: "Centers",
+                column: "Node",
                 unique: true);
 
             migrationBuilder.CreateIndex(
@@ -4645,7 +4735,33 @@ namespace Tellma.Testing.Entities.Migrations
                 primaryKey: new[] { "Id" },
                 grants: new[] { "tellma_app" });
 
-            migrationBuilder.CleanupTableTypes(scope: "tellma.fixture", keepList: new[] { "JobsList_a90a5696", "NotificationsList_45bbd83e", "PermissionsList_c3b8a544", "RoleMembershipsList_fd20e92d", "RolesList_77bed563", "SchedulesList_5acfe7bf", "SettingEntriesList_609d1ba0", "SettingsList_254adc5a", "UsersList_860a025a", "BigIdList_7629c0a3", "DateList_566fd984", "GuidList_922aa933", "IdList_9b0dfe3c", "IdStampList_36427f71", "JobLeaseList_17bf60e1", "JobOutcomeList_6165fff7", "JobProgressList_33eeb232", "JobRequestList_f3ef6d1d", "NotificationPreferenceList_61bf7917", "NotificationRowList_2c2b24d8", "NotificationSliceList_29aa6852", "ScheduleNextList_e422990c", "StringList_bb8903a2", "UserPreferenceList_8b1ed724", "VersionTagList_e552f6b8", "BlobFoldersList_5f21ddcb", "BlobOwnerFilesList_202e1a4a", "BlobOwnersList_225e542b", "ExportsList_f43dd628", "LinksList_da254281", "LookupsList_20dd89f0", "NodesList_133dd19b", "ShipmentsList_19cd4949", "WidgetPartNotesList_ff09ea87", "WidgetPartsList_60abe0b4", "WidgetsList_32217e51" });
+            migrationBuilder.CreateTableType(
+                name: "CentersList",
+                physicalName: "CentersList_f83bfb78",
+                schema: "gl",
+                scope: "tellma.fixture",
+                definitionHash: "f83bfb78a92777dc2664e842f5c8af94a36e2476a54859f98ed52e0cc54ad4ab",
+                columns: new[]
+                {
+                    new TableTypeColumnDefinition { Name = "Id", StoreType = "int" },
+                    new TableTypeColumnDefinition { Name = "CenterType", StoreType = "varchar(12)", MaxLength = 12 },
+                    new TableTypeColumnDefinition { Name = "Name", StoreType = "nvarchar(255)", MaxLength = 255 },
+                    new TableTypeColumnDefinition { Name = "Name2", StoreType = "nvarchar(255)", IsNullable = true, MaxLength = 255 },
+                    new TableTypeColumnDefinition { Name = "Name3", StoreType = "nvarchar(255)", IsNullable = true, MaxLength = 255 },
+                    new TableTypeColumnDefinition { Name = "Code", StoreType = "nvarchar(50)", MaxLength = 50 },
+                    new TableTypeColumnDefinition { Name = "CreatedAt", StoreType = "datetimeoffset(7)", Precision = 7 },
+                    new TableTypeColumnDefinition { Name = "CreatedById", StoreType = "int" },
+                    new TableTypeColumnDefinition { Name = "ModifiedAt", StoreType = "datetimeoffset(7)", Precision = 7 },
+                    new TableTypeColumnDefinition { Name = "ModifiedById", StoreType = "int" },
+                    new TableTypeColumnDefinition { Name = "ParentId", StoreType = "int", IsNullable = true },
+                    new TableTypeColumnDefinition { Name = "SubtreeCount", StoreType = "int" },
+                    new TableTypeColumnDefinition { Name = "IsActive", StoreType = "bit" },
+                    new TableTypeColumnDefinition { Name = "ActiveSubtreeCount", StoreType = "int" },
+                },
+                primaryKey: new[] { "Id" },
+                grants: new[] { "tellma_app" });
+
+            migrationBuilder.CleanupTableTypes(scope: "tellma.fixture", keepList: new[] { "JobsList_a90a5696", "NotificationsList_45bbd83e", "PermissionsList_c3b8a544", "RoleMembershipsList_fd20e92d", "RolesList_77bed563", "SchedulesList_5acfe7bf", "SettingEntriesList_609d1ba0", "SettingsList_254adc5a", "UsersList_860a025a", "BigIdList_7629c0a3", "DateList_566fd984", "GuidList_922aa933", "IdList_9b0dfe3c", "IdStampList_36427f71", "JobLeaseList_17bf60e1", "JobOutcomeList_6165fff7", "JobProgressList_33eeb232", "JobRequestList_f3ef6d1d", "NotificationPreferenceList_61bf7917", "NotificationRowList_2c2b24d8", "NotificationSliceList_29aa6852", "ScheduleNextList_e422990c", "StringList_bb8903a2", "UserPreferenceList_8b1ed724", "VersionTagList_e552f6b8", "BlobFoldersList_5f21ddcb", "BlobOwnerFilesList_202e1a4a", "BlobOwnersList_225e542b", "ExportsList_f43dd628", "LinksList_da254281", "LookupsList_20dd89f0", "NodesList_133dd19b", "ShipmentsList_19cd4949", "WidgetPartNotesList_ff09ea87", "WidgetPartsList_60abe0b4", "WidgetsList_32217e51", "CentersList_f83bfb78" });
         }
 
         /// <inheritdoc />
@@ -4675,6 +4791,10 @@ namespace Tellma.Testing.Entities.Migrations
             migrationBuilder.DropTable(
                 name: "CalendarMonths",
                 schema: "core");
+
+            migrationBuilder.DropTable(
+                name: "Centers",
+                schema: "gl");
 
             migrationBuilder.DropTable(
                 name: "Exports",
@@ -4847,6 +4967,10 @@ namespace Tellma.Testing.Entities.Migrations
             migrationBuilder.DropSequence(
                 name: "sq_Blobs",
                 schema: "core");
+
+            migrationBuilder.DropSequence(
+                name: "sq_Centers",
+                schema: "gl");
 
             migrationBuilder.DropSequence(
                 name: "sq_Exports",

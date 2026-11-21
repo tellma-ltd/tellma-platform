@@ -10,13 +10,14 @@ using Microsoft.Extensions.Hosting;
 using Tellma.Core.Abstractions.Hosting;
 using Tellma.Core.Composition;
 using Tellma.Core.Data;
+using Tellma.Module.Gl;
 
 namespace Tellma.Testing.Entities
 {
     /// <summary>
     ///     The composition every fixture host is built from: the platform with the
-    ///     <see cref="FixtureFeature" />, as a distribution composes its features. The fixture
-    ///     context's model is built from the same composition, so the database the fixture migrations
+    ///     <see cref="FixtureFeature" /> and the GL module, as a distribution composes its features.
+    ///     The fixture context's model is built from the same composition, so the database the fixture migrations
     ///     create is the one a fixture host's model describes, fingerprint included.
     /// </summary>
     public static class FixtureComposition
@@ -44,7 +45,7 @@ namespace Tellma.Testing.Entities
         /// <summary>The fixture composition's model definition.</summary>
         internal static TellmaModelDefinition Definition => ModelDefinition.Value;
 
-        /// <summary>Composes the platform with the fixture feature into a collection.</summary>
+        /// <summary>Composes the platform with the fixture feature and the GL module into a collection.</summary>
         /// <param name="services">The collection.</param>
         /// <param name="configure">Changes the configuration before composing.</param>
         /// <param name="compose">Adds to the composition beside the fixture feature.</param>
@@ -74,6 +75,10 @@ namespace Tellma.Testing.Entities
             return services.AddTellma(Slug, configuration, new FixtureEnvironment(), tellma =>
             {
                 _ = tellma.AddFeature(new FixtureFeature());
+
+                // The GL module, the platform's reference module: its centers stack is the suites'
+                // module-owned tree, closed over the module's own leaf.
+                _ = tellma.AddFeature<GlFeature>();
                 compose?.Invoke(tellma);
             });
         }

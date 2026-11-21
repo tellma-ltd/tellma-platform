@@ -10,13 +10,17 @@ namespace Tellma.Core.Tests.Repository
 {
     /// <summary>
     ///     The repository's <c>taxonomy.json</c> agrees with what the repository hosts: every
-    ///     distribution folder is registered, every registered slug is well formed, and no
-    ///     distribution takes a reserved slug but the reference distribution, which reserves its own.
+    ///     distribution folder is registered, every registered slug is well formed, no distribution
+    ///     takes a reserved slug but the reference distribution, which reserves its own, and the
+    ///     module folders and the modules registry name each other.
     /// </summary>
     public class TaxonomyTests
     {
         // The reference distribution's slug is reserved because the platform takes it.
         private const string ReferenceDistribution = "acme";
+
+        // A module's projects are Tellma.Module.<M> and Tellma.Module.<M>.Abstractions.
+        private const string ModulePrefix = "Tellma.Module.";
 
         [Fact]
         public void Every_distribution_folder_is_registered()
@@ -52,12 +56,65 @@ namespace Tellma.Core.Tests.Repository
         }
 
         [Fact]
+        public void Every_module_folder_holds_a_module_project_whose_segment_is_registered()
+        {
+            var taxonomy = Taxonomy.Read();
+
+            Assert.All(ModuleFolders(taxonomy.Root), folder =>
+            {
+                // --- The folder's module project, Tellma.Module.<M> beside its Abstractions ---
+                string[] projects = [.. Directory.EnumerateDirectories(folder)
+                    .Select(static path => Path.GetFileName(path)!)
+                    .Where(static name => name.StartsWith(ModulePrefix, StringComparison.Ordinal) && !name.EndsWith(".Abstractions", StringComparison.Ordinal))];
+                string module = Assert.Single(projects)[ModulePrefix.Length..];
+
+                // --- Its segment is registered, and names the folder ---
+                Assert.Contains(module, taxonomy.Modules);
+                Assert.Equal(FolderName(module), Path.GetFileName(folder));
+                Assert.True(File.Exists(Path.Combine(folder, ModulePrefix + module, ModulePrefix + module + ".csproj")), $"{ModulePrefix}{module} has no project file.");
+            });
+        }
+
+        [Fact]
+        public void Every_registered_module_is_a_pascal_case_segment_with_a_folder()
+        {
+            var taxonomy = Taxonomy.Read();
+            string[] folders = [.. ModuleFolders(taxonomy.Root).Select(static path => Path.GetFileName(path)!)];
+
+            Assert.All(taxonomy.Modules, module =>
+            {
+                Assert.Matches("^[A-Z][a-z0-9]*([A-Z][a-z0-9]*)*$", module);
+                Assert.Contains(FolderName(module), folders);
+            });
+        }
+
+        [Fact]
         public void Every_registry_is_an_array_of_distinct_names()
         {
             var taxonomy = Taxonomy.Read();
 
             IReadOnlyList<string>[] registries = [taxonomy.Modules, taxonomy.Compliance, taxonomy.ReservedSlugs, taxonomy.Distributions];
             Assert.All(registries, static names => Assert.Equal(names.Count, names.Distinct(StringComparer.Ordinal).Count()));
+        }
+
+        /// <summary>The module folders under <c>src/module</c>; none when the category does not exist yet.</summary>
+        /// <param name="root">The repository root.</param>
+        /// <returns>The folders' paths.</returns>
+        private static string[] ModuleFolders(string root)
+        {
+            string modules = Path.Combine(root, "src", "module");
+            return Directory.Exists(modules) ? [.. Directory.EnumerateDirectories(modules)] : [];
+        }
+
+        /// <summary>
+        ///     The folder a module's projects sit in: its PascalCase segments lowercased and joined by
+        ///     hyphens, as every grouping folder is named (<c>Gl</c> in <c>gl</c>).
+        /// </summary>
+        /// <param name="module">The registered segment.</param>
+        /// <returns>The folder name.</returns>
+        private static string FolderName(string module)
+        {
+            return string.Concat(module.Select(static (c, i) => char.IsUpper(c) && i > 0 ? "-" + char.ToLowerInvariant(c) : char.ToLowerInvariant(c).ToString()));
         }
 
         /// <summary>The parsed registry and the repository root it was read from.</summary>

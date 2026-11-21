@@ -58,7 +58,7 @@ namespace Tellma.Core.Tests.Jobs
             FakeLogRecord log = Assert.Single(logs);
             Assert.Equal((LogLevel.Warning, "SchedulerHandlerUnknown"), (log.Level, log.Id.Name));
             Assert.Equal(
-                "The built-in schedule 500 names the handler key acme.elsewhere, which no handler on this host registers; its jobs wait for a host that runs the handler.",
+                "The schedule 500 names the handler key acme.elsewhere, which no handler on this host registers; its jobs wait for a host that runs the handler.",
                 log.Message);
         }
 

@@ -183,6 +183,12 @@
   <data name="Core_Schedule_Plural" xml:space="preserve">
     <value>Schedules</value>
   </data>
+  <data name="Core_Schedule_Action_TakeOver" xml:space="preserve">
+    <value>Take over</value>
+  </data>
+  <data name="Core_Schedule_Action_RunNow" xml:space="preserve">
+    <value>Run now</value>
+  </data>
   <data name="Core_Notification_Plural" xml:space="preserve">
     <value>Notifications</value>
   </data>
@@ -660,7 +666,7 @@
   <data name="Core_Job_ExportReport" xml:space="preserve">
     <value>Exporting {title}</value>
   </data>
-  <!-- Background jobs: the platform's error codes and the notices a completion raises -->
+  <!-- Background jobs: the platform's error codes, the notices a completion raises, and the schedules' rules and pause notice -->
   <data name="Jobs_Internal" xml:space="preserve">
     <value>An unexpected error occurred while running the job.</value>
   </data>
@@ -696,6 +702,67 @@
   </data>
   <data name="Notification_core_scheduler_gap" xml:space="preserve">
     <value>Background jobs did not run from {previousTickAt, date, medium} {previousTickAt, time, short} until {now, date, medium} {now, time, short}. {heldCount, plural, =0 {No overdue job was paused.} one {# overdue job is paused until an administrator resumes or stops it.} other {# overdue jobs are paused until an administrator resumes or stops them.}}</value>
+  </data>
+  <!-- Notifications: the preference save's validation codes, retention's progress, and the handlers' labels -->
+  <data name="Notifications_UnknownType" xml:space="preserve">
+    <value>There is no such notification type.</value>
+  </data>
+  <data name="Notifications_UnknownChannel" xml:space="preserve">
+    <value>There is no such delivery channel.</value>
+  </data>
+  <data name="Notifications_DuplicatePreference" xml:space="preserve">
+    <value>This notification type and channel are listed more than once.</value>
+  </data>
+  <data name="Notifications_CannotMute" xml:space="preserve">
+    <value>Notifications of this type can’t be turned off in the inbox.</value>
+  </data>
+  <data name="Notifications_RetentionProgress" xml:space="preserve">
+    <value>Deleted {read, plural, one {# read notification} other {# read notifications}} and {unread, plural, one {# unread notification} other {# unread notifications}}.</value>
+  </data>
+  <data name="JobHandler_core_notification-delivery" xml:space="preserve">
+    <value>Delivering notifications</value>
+  </data>
+  <data name="JobHandler_core_notification-retention" xml:space="preserve">
+    <value>Deleting old notifications</value>
+  </data>
+  <data name="Schedules_CronInvalid" xml:space="preserve">
+    <value>The cron expression {expression} is not valid. Give minute, hour, day of month, month and day of week, such as 0 3 * * * for three every morning.</value>
+  </data>
+  <data name="Schedules_CronNeverOccurs" xml:space="preserve">
+    <value>The cron expression {expression} never occurs again, so the schedule would never run.</value>
+  </data>
+  <data name="Schedules_TimeZoneUnknown" xml:space="preserve">
+    <value>The time zone {timeZone} is not one of the supported time zones.</value>
+  </data>
+  <data name="Schedules_HandlerUnknown" xml:space="preserve">
+    <value>No kind of job named {handlerKey} is offered.</value>
+  </data>
+  <data name="Schedules_HandlerNotSchedulable" xml:space="preserve">
+    <value>Jobs of the kind {handlerKey} cannot be scheduled.</value>
+  </data>
+  <data name="Schedules_ReplayAllRequiresAllow" xml:space="preserve">
+    <value>Replaying every missed run requires allowing runs to overlap.</value>
+  </data>
+  <data name="Schedules_ArgumentsTooLarge" xml:space="preserve">
+    <value>The arguments are too large; a job carries at most {maxBytes, number} bytes.</value>
+  </data>
+  <data name="Schedules_OwnedByAnotherUser" xml:space="preserve">
+    <value>This schedule runs as another user. Take it over before changing what it runs or when.</value>
+  </data>
+  <data name="Schedules_OwnerInactive" xml:space="preserve">
+    <value>This schedule runs as a user who is no longer active. Take it over before activating it.</value>
+  </data>
+  <data name="Schedules_BuiltInImmutable" xml:space="preserve">
+    <value>This schedule is built in: only its names, cron expression and time zone can change, and it cannot be deleted or taken over.</value>
+  </data>
+  <data name="Schedules_BuiltInAlwaysActive" xml:space="preserve">
+    <value>This schedule is built in and is always active.</value>
+  </data>
+  <data name="Schedules_RunInProgress" xml:space="preserve">
+    <value>A run of this schedule has not finished yet.</value>
+  </data>
+  <data name="Notification_core_schedule_paused" xml:space="preserve">
+    <value>The schedule {name} was paused: {reason, select, OwnerInactive {the user it runs as is no longer active} Exhausted {its cron expression never occurs again} other {its kind of job is no longer offered}}. It runs again once it is activated.</value>
   </data>
   <!-- Queryex diagnostics, with the arguments the engine gives each -->
   <data name="Queryex_QX1001" xml:space="preserve">

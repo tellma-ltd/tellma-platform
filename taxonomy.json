@@ -1,5 +1,7 @@
 {
-  "modules": [],
+  "modules": [
+    "Gl"
+  ],
   "compliance": [],
   "reservedSlugs": [
     "core",
