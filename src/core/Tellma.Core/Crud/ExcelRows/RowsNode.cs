@@ -73,7 +73,7 @@ namespace Tellma.Core.Crud.ExcelRows
         /// <summary>The columns each row answers: the query's, without a key appended for the row source's own use.</summary>
         public int Width => Query.SelectPaths.Count;
 
-        /// <summary>The ordering.</summary>
+        /// <summary>The ordering, ended by the key unless it already ends with it, so it is total.</summary>
         public string OrderBy { get; }
 
         /// <summary>The select's column the keys are read from, for the dependents' follow-ups; null when the node has none.</summary>
@@ -213,7 +213,50 @@ namespace Tellma.Core.Crud.ExcelRows
                 keyColumn = index;
             }
 
-            return new RowsNode(query, kind, entity, surface, string.Join(", ", columns), orderBy, keyColumn, parentKey, ownerKeyType);
+            return new RowsNode(query, kind, entity, surface, string.Join(", ", columns), TieBroken(orderBy, entity.Key.Name), keyColumn, parentKey, ownerKeyType);
+        }
+
+        // Every page and follow-up is cut by skip and take over the ordering, and the store orders
+        // rows that tie on it as it pleases, so two reads may each place a tied row on either side
+        // of the cut. The key ends every ordering that does not already end with it, so the rows'
+        // order is total and the reads neither repeat nor drop a row.
+        /// <summary>The ordering with the key appended as its last term, unless that term is already the key.</summary>
+        /// <param name="orderBy">The ordering, as query ordering text.</param>
+        /// <param name="key">The entity's key column.</param>
+        /// <returns>The total ordering.</returns>
+        internal static string TieBroken(string orderBy, string key)
+        {
+            // --- The last top-level term: after the last comma outside parentheses and quotes ---
+            int depth = 0;
+            bool quoted = false;
+            int start = 0;
+            for (int index = 0; index < orderBy.Length; index++)
+            {
+                char current = orderBy[index];
+                if (current == '\'')
+                {
+                    quoted = !quoted;
+                }
+                else if (!quoted && current == '(')
+                {
+                    depth++;
+                }
+                else if (!quoted && current == ')')
+                {
+                    depth--;
+                }
+                else if (!quoted && depth == 0 && current == ',')
+                {
+                    start = index + 1;
+                }
+            }
+
+            // --- The term's path, its direction dropped ---
+            string[] words = orderBy[start..].Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+            bool directed = words.Length == 2
+                && (string.Equals(words[1], "asc", StringComparison.OrdinalIgnoreCase) || string.Equals(words[1], "desc", StringComparison.OrdinalIgnoreCase));
+            bool endsWithKey = (words.Length == 1 || directed) && string.Equals(words[0], key, StringComparison.OrdinalIgnoreCase);
+            return endsWithKey ? orderBy : $"{orderBy}, {key}";
         }
 
         /// <summary>A clause's text, or null when it is absent or blank.</summary>

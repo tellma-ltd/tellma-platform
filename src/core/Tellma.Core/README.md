@@ -1340,9 +1340,10 @@ entity. Each operation runs in the frame of `CrudOperations`: the scope's first 
 the outcome it ended with, a cancellation by the caller as `cancelled`; a read carries no
 `crud.source`. The reads (the query, the details reads, the rows of a tree by parent and every
 row of a cacheable stack), the save (see [The save pipeline](#the-save-pipeline)), and the deletes
-and actions (see [The delete and action pipelines](#the-delete-and-action-pipelines)) are built: an
-operation the stack does not serve is an authoring bug (`InvalidOperationException`), and so are
-the Excel row source and the import's lookups (see [the Excel row source](#the-excel-row-source)).
+and actions (see [The delete and action pipelines](#the-delete-and-action-pipelines)) are built, and
+so are the Excel row source and the import's lookups (see
+[The Excel row source](#the-excel-row-source)): an operation the stack does not serve is an
+authoring bug (`InvalidOperationException`).
 
 `QueryOperation` runs a query of a stack, and of a child query surface through `IChildQueryService`
 (the child's own `Read` securable, the convention's search, no named filters):
@@ -1522,7 +1523,9 @@ a stack's `ExcelRowSource` and, for an exportable child query surface, by
 `ExportSource`: by ids, an id key-set restriction over the distinct ids narrowed to the key type
 (more than `MaxIds` refused), inactive rows included; by query, the clauses as a query's (filters,
 named filters, search, arguments) and the activatable conjunct unless `IncludeInactive`; all, the
-access filter alone. The ordering is the query's, else the source's, else `Id`. The type-level
+access filter alone. The ordering is the query's, else the source's, else `Id`, and the key ends
+every ordering that does not already end with it, so pages cut by skip neither repeat nor drop a
+row that ties on the ordering. The type-level
 check runs once, before the first page.
 
 - **`Pages`** streams the root `MaxTake` rows at a time, one guarded read batch per page; the
@@ -1536,8 +1539,10 @@ check runs once, before the first page.
 - **`ReadAsync`** reads several flat queries (an import's lookups) in one batch, each completed by
   further batches of `MaxTake`. A restriction's values bind as the column's table type (strings
   matched under the tenant's collation, numbers out of the column's range dropped). A lookup's
-  target is read under the caller's `Read` decision on it, as a save's reference is
-  (`TargetReads`): a denied target reads no rows, and a sensitive one asks for the step-up.
+  target is read as a save's reference to it is (`TargetReads`): under the caller's `Read` decision
+  on its own securable, else on its owner's seen through the child's navigation, else, for an
+  entity no grant can reach, unrestricted; a denied target reads no rows, and a sensitive one asks
+  for the step-up.
 
 The traversal rule, the search's length and the refusal re-check apply as in a query; an arithmetic
 failure and exhausted retries translate as the query's do.

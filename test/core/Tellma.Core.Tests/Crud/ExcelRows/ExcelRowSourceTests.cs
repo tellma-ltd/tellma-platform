@@ -11,6 +11,7 @@ using Tellma.Core.Abstractions.Errors;
 using Tellma.Core.Abstractions.Excel;
 using Tellma.Core.Abstractions.TableTypes;
 using Tellma.Core.Abstractions.Tenancy;
+using Tellma.Core.Crud.ExcelRows;
 using Tellma.Core.Crud.Query;
 using Tellma.Core.Queryex;
 using Tellma.Core.Tests.Crud.Query;
@@ -90,7 +91,35 @@ namespace Tellma.Core.Tests.Crud.ExcelRows
             ScriptedStatement queryOrdered = await SingleRowsAsync(source, Root("Id") with { OrderBy = "Name" });
 
             Assert.Null(sourceOrdered.Spec.Filter);
-            Assert.Equal(("Code desc", "Name"), (sourceOrdered.Spec.OrderBy, queryOrdered.Spec.OrderBy));
+            Assert.Equal(("Code desc, Id", "Name, Id"), (sourceOrdered.Spec.OrderBy, queryOrdered.Spec.OrderBy));
+        }
+
+        [Fact]
+        public async Task Every_ordering_of_a_page_and_its_dependents_is_ended_by_the_key()
+        {
+            _rig.Grant((QueryModel.Accounts, AccessActions.Read, null));
+            _ = _rig.Script.OnRows(static _ => QueryRig.Page());
+            ExportSource source = new ExportSource.ByQuery(null, null, null, "Name", null, IncludeInactive: false);
+            ExcelQuery lines = new(QueryModel.Lines, ["Id"], "Name", null, null, null, null, null);
+
+            await using AsyncServiceScope scope = _rig.Scope();
+            _ = await PagesAsync(Accounts(scope).ExcelRowSource(source), Root("Id") with { Dependents = [lines] });
+
+            ScriptedStatement[] reads = [.. Assert.Single(_rig.Script.Batches).Of(ScriptedKind.Rows)];
+            Assert.Equal(["Name, Id", "Name, Id"], reads.Select(static read => read.Spec.OrderBy));
+        }
+
+        [Theory]
+        [InlineData("Name", "Name, Id")]
+        [InlineData("Id", "Id")]
+        [InlineData("Id desc", "Id desc")]
+        [InlineData("Name desc, id ASC", "Name desc, id ASC")]
+        [InlineData("Id, Name", "Id, Name, Id")]
+        [InlineData("coalesce(Code, Id)", "coalesce(Code, Id), Id")]
+        [InlineData("Code = 'x, Id'", "Code = 'x, Id', Id")]
+        public void An_ordering_that_does_not_end_with_the_key_is_ended_by_it(string orderBy, string expected)
+        {
+            Assert.Equal(expected, RowsNode.TieBroken(orderBy, "Id"));
         }
 
         [Fact]

@@ -19,7 +19,8 @@ namespace Tellma.Core.IntegrationTests.Crud
     ///     The Excel row source against a real tenant database, through the real connect prologue,
     ///     runner and evaluator: one round trip per page of the take ceiling with every collection
     ///     riding it, one more for a collection beyond the ceiling, the first page's capped count, the
-    ///     query's clauses and its default ordering by id, several lookups in one round trip with an
+    ///     query's clauses and its default ordering by id, rows tying on the ordering read once each
+    ///     across the cuts, several lookups in one round trip with an
     ///     unreadable target yielding nothing, a grant revoked between pages refusing the next, and a
     ///     child surface exporting the rows its query reads.
     /// </summary>
@@ -137,6 +138,28 @@ namespace Tellma.Core.IntegrationTests.Crud
             Assert.Equal(ExcelRowSourceDatabase.WidgetCount - (ExcelRowSourceDatabase.WidgetCount / 10), active.Count);
             Assert.Equal(ExcelRowSourceDatabase.WidgetCount - 1, all.Count);
             Assert.Equal(10, Column<int>(all, 0)[8]);
+        }
+
+        [Fact]
+        public async Task Rows_that_tie_on_the_ordering_across_the_cuts_are_read_once_each()
+        {
+            (_, string subject) = await fixture.SeedCallerAsync((Widgets, AccessActions.Read, null));
+
+            // Every widget is of one kind, and every part of the first widget under one owner, so
+            // the orderings tie on every row, past the take ceiling of the root and of the parts.
+            ExportSource source = new ExportSource.ByQuery(null, null, null, "Kind", null, IncludeInactive: true);
+            ExcelQuery parts = new(Parts, ["WidgetId", "Id"], "WidgetId", null, null, null, null, null);
+            await using AsyncServiceScope scope = await fixture.Connect.ScopeAsync(subject);
+            List<ExcelPage> pages = await PagesAsync(WidgetService(scope).ExcelRowSource(source), new ExcelQuery(Widgets, ["Id"], null, null, null, null, null, [parts]));
+
+            // --- Each widget once, none missing, the key ordering the ties ---
+            Assert.Equal([50, 50, 20], pages.Select(static page => page.Rows.Count));
+            Assert.Equal(Enumerable.Range(1, ExcelRowSourceDatabase.WidgetCount), pages.SelectMany(static page => Column<int>(page, 0)));
+
+            // --- The first page's parts once each, by owner then id, across the chunk and its follow-ups ---
+            List<int> pageParts = Column<int>(Assert.Single(pages[0].Dependents), 1);
+            int[] others = [.. Enumerable.Range(1, 50).Where(ExcelRowSourceDatabase.HasPart).Select(ExcelRowSourceDatabase.PartOf)];
+            Assert.Equal([.. Enumerable.Range(1001, ExcelRowSourceDatabase.FirstWidgetParts), .. others], pageParts);
         }
 
         // --- The lookups ---
