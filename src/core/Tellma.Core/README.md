@@ -1414,11 +1414,14 @@ composes one guarded round trip:
    visible ids, so each target is read once however many rows point at it, and merged into the
    related entities, each entity once (`DetailsProjections`, cached per stack and schema).
 3. **The extras**: the service's `ContributeDetails` when it declares a requested extra, then each
-   `IDetailsContributor<T>` given the requested extras it declares. An extra added that its class
-   does not declare, that the request does not include, or twice, raw text that declares a write or
-   no result set, and a requested extra its declaring class did not add are authoring bugs
-   (`InvalidOperationException`). Each extra is returned under its name in request order, a computed
-   one serialised under `TellmaJson.Options` after the batch over the visible rows.
+   `IDetailsContributor<T>` given the requested extras it declares. A class that leaves a requested
+   extra absent on purpose (its caller may not read what the extra shows) omits it with
+   `DetailsPlan.OmitExtra`, and decides that with `DetailsPlan.Decide`, which answers the caller's
+   decision over the same permission set the read is composed under. An extra added or omitted that
+   its class does not declare, that the request does not include, or twice, raw text that declares
+   a write or no result set, and a requested extra its declaring class neither added nor omitted are
+   authoring bugs (`InvalidOperationException`). Each extra is returned under its name in request
+   order, a computed one serialised under `TellmaJson.Options` after the batch over the visible rows.
 4. **The `permissions` extra**: per visible row, the granted abilities it refuses (`save`, `delete`,
    `activate`, and `action:<name>` per entity action). Each filtered grant adds one keyed read of the
    visible ids under its filter; a row it misses refuses the ability as `outside-filter`, and the
@@ -2047,6 +2050,19 @@ it), never a silent empty list. The resolver authorises nothing itself: the role
 member counts and the holder count reach any connected caller, so a caller that returns the result
 holds the scope's caller to `core.Role` × `Read` first.
 
+`AccessService` (route `access`, contributed by `CoreFeature`) projects the two member-only read
+actions the role and user pages call:
+
+| Action | Round trips | What it answers |
+|---|---|---|
+| `check` (the caller) | 0 | the caller's decision per requested securable, from the set the scope already loaded |
+| `check` (`UserId` another user) | 2 | after `core.Role` × `Read`, one read of the user under the caller's own `core.User` × `Read` filter (a hidden user is not found, as a missing one is), then the user's decision per securable |
+| `holders` | 1 | after `core.Role` × `Read`, the resolver's answer for one securable |
+
+A `check` names at most `MaxSecurables` (200) securables (`LimitExceededException`, limit
+`MaxSecurables`); a `UserId` equal to the caller's own id is the caller's check. An unknown resource
+or action is a `Denied` decision carrying its problem, never an error.
+
 `IAdministratorDirectory` (`AdministratorDirectory`) reads, in one guarded round trip, the ids of at
 most 20 active individuals, invited or joined, with a current membership of the administrator role,
 lowest id first, for a tenant's administrative notices; it checks no permission of the caller.
@@ -2232,6 +2248,22 @@ joined to the read's admitted ids.
 resource, action and filter, compared ordinally) to one row before the rules count and stamp them,
 since no unique index can hold them apart: a stored row survives over a new one, and a stored
 duplicate is deleted by the save. A leaf that overrides `PreprocessAsync` calls the base to keep it.
+
+`RoleService<TRole>` declares two details extras for the role page's one read (its platform
+collaborators come as one `RoleServiceDependencies` bundle, registered by
+`UsersRuntimeComposition`):
+
+- **`members`**: one query over `core.RoleMembership` restricted to the visible roles on `RoleId`,
+  each row's user under the caller's own `core.User` × `Read` filter (rebased through the
+  membership's `User`), ended memberships left out, ordered by the user's name, at most
+  `MaxMembers` (500) rows. Each row carries its `Id`, `RoleId`, `UserId`, `StartsAt`, `EndsAt`,
+  `Notes` and the user's name columns the tenant declares, `Email`, `ImageId`, `IsActive` and
+  `State`. A caller whose read of the users is denied gets no `members` extra and no statement for
+  it.
+- **`problems`**: computed from the permissions the read loads, one `PermissionProblem` per stored
+  permission that grants nothing, in role then permission order, judged by the evaluator's own
+  `PermissionClassifier`; an invalid filter carries its diagnostics located at clause `filters[0]`,
+  or the save's `Permissions.FilterInvalid` when the engine gave none.
 
 A delete by query runs no validation round, so the delete rules above would never see its targets:
 the users' and the roles' stacks leave `DeleteByQuery` out of their operations, so neither projects

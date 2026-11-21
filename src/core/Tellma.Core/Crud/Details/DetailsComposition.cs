@@ -6,6 +6,7 @@
 using System.Globalization;
 using System.Numerics;
 using System.Text.Json;
+using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Api;
 using Tellma.Core.Abstractions.Crud;
 using Tellma.Core.Abstractions.Data;
@@ -53,8 +54,11 @@ namespace Tellma.Core.Crud.Details
         /// <summary>The grouped reads of what each collection level points at.</summary>
         private readonly List<(DetailsTargets Targets, BatchResult<RowPage> Rows)> _targets = [];
 
-        /// <summary>The extras the producers added, by name, each producing its value after the batch.</summary>
-        private readonly Dictionary<string, Func<IReadOnlyList<TEntity>, JsonElement>> _extras = new(StringComparer.Ordinal);
+        /// <summary>The extras the producers added, by name, each producing its value after the batch; null for one omitted on purpose.</summary>
+        private readonly Dictionary<string, Func<IReadOnlyList<TEntity>, JsonElement>?> _extras = new(StringComparer.Ordinal);
+
+        /// <summary>Decides a securable from the permission set the batch is composed under.</summary>
+        private readonly Func<string, string, AccessDecision> _decide;
 
         /// <summary>What turns rows read into related entities.</summary>
         private readonly DetailsMaterials _materials;
@@ -72,6 +76,7 @@ namespace Tellma.Core.Crud.Details
         /// <param name="idsSource">The table of the ids already visible, as a save's read-back passes; null to read them under the filter.</param>
         /// <param name="projection">What the read selects.</param>
         /// <param name="materials">What turns rows read into related entities.</param>
+        /// <param name="decide">Decides a securable from the permission set the batch is composed under, for the producers.</param>
         public DetailsComposition(
             IDataBatch batch,
             IEntityBehavior<TEntity, TKey> behavior,
@@ -81,9 +86,11 @@ namespace Tellma.Core.Crud.Details
             FilterTree? readFilter,
             SqlIdentifier? idsSource,
             DetailsProjection projection,
-            DetailsMaterials materials)
+            DetailsMaterials materials,
+            Func<string, string, AccessDecision> decide)
         {
             _batch = batch;
+            _decide = decide;
             _behavior = behavior;
             _request = request;
             _requested = new HashSet<string>(request.Include, StringComparer.Ordinal);
@@ -126,9 +133,9 @@ namespace Tellma.Core.Crud.Details
         /// <summary>The table of the visible ids, which every extra joins.</summary>
         public SqlIdentifier IdsSource { get; }
 
-        /// <summary>Whether an extra is already added under a name.</summary>
+        /// <summary>Whether an extra is already added, or omitted on purpose, under a name.</summary>
         /// <param name="name">The name.</param>
-        /// <returns>True when added.</returns>
+        /// <returns>True when added or omitted.</returns>
         public bool Has(string name)
         {
             return _extras.ContainsKey(name);
@@ -203,8 +210,9 @@ namespace Tellma.Core.Crud.Details
                 {
                     extras[name] = Serialize(Permissions(visible));
                 }
-                else if (_extras.TryGetValue(name, out Func<IReadOnlyList<TEntity>, JsonElement>? produce))
+                else if (_extras.TryGetValue(name, out Func<IReadOnlyList<TEntity>, JsonElement>? produce) && produce is not null)
                 {
+                    // An extra omitted on purpose has no producer and is absent.
                     extras[name] = produce(visible);
                 }
             }
@@ -327,29 +335,30 @@ namespace Tellma.Core.Crud.Details
             return _materials.Root.Key.Name;
         }
 
-        /// <summary>Records an extra under a name, by the name rules every producer is held to.</summary>
+        /// <summary>Records an extra under a name, or its omission, by the name rules every producer is held to.</summary>
         /// <param name="producer">The producer's class.</param>
         /// <param name="declared">The extras it declares.</param>
         /// <param name="name">The extra's name.</param>
-        /// <param name="produce">Produces the value after the batch.</param>
-        /// <exception cref="InvalidOperationException">The name is not requested, not declared by the producer, or already added.</exception>
-        private void Add(Type producer, IReadOnlySet<string> declared, string name, Func<IReadOnlyList<TEntity>, JsonElement> produce)
+        /// <param name="produce">Produces the value after the batch; null for an extra omitted on purpose.</param>
+        /// <exception cref="InvalidOperationException">The name is not requested, not declared by the producer, or already added or omitted.</exception>
+        private void Add(Type producer, IReadOnlySet<string> declared, string name, Func<IReadOnlyList<TEntity>, JsonElement>? produce)
         {
+            string verb = produce is null ? "omits" : "adds";
             if (!declared.Contains(name))
             {
                 throw new InvalidOperationException(
-                    $"{producer.Name} adds the details extra '{name}', which its [DetailsExtras] does not declare. Declare every extra a class adds.");
+                    $"{producer.Name} {verb} the details extra '{name}', which its [DetailsExtras] does not declare. Declare every extra a class adds or omits.");
             }
 
             if (!_requested.Contains(name))
             {
                 throw new InvalidOperationException(
-                    $"{producer.Name} adds the details extra '{name}', which the request does not include. Add only the extras the plan's request includes.");
+                    $"{producer.Name} {verb} the details extra '{name}', which the request does not include. Add or omit only the extras the plan's request includes.");
             }
 
             if (!_extras.TryAdd(name, produce))
             {
-                throw new InvalidOperationException($"{producer.Name} adds the details extra '{name}' a second time. Add each extra once.");
+                throw new InvalidOperationException($"{producer.Name} adds or omits the details extra '{name}' a second time. Add or omit each extra once.");
             }
         }
 
@@ -418,6 +427,18 @@ namespace Tellma.Core.Crud.Details
             public void AddComputedExtra<TValue>(string name, Func<IReadOnlyList<TEntity>, TValue> compute)
             {
                 owner.Add(producer, declared, name, visible => Serialize(compute(visible)));
+            }
+
+            /// <inheritdoc />
+            public void OmitExtra(string name)
+            {
+                owner.Add(producer, declared, name, produce: null);
+            }
+
+            /// <inheritdoc />
+            public AccessDecision Decide(string resource, string action)
+            {
+                return owner._decide(resource, action);
             }
         }
     }

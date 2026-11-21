@@ -193,7 +193,7 @@ namespace Tellma.Core.Composition
             // --- Blobs: the options, the kind registry, the staging service and the blobs check (spec 0017 §1.3, §9) ---
             BlobsRuntimeComposition.Register(services, _record, options);
 
-            // --- The users' stack: its instruments and its service's collaborators (spec 0018 §3) ---
+            // --- The users' and roles' stacks: the instruments and the services' collaborators (spec 0018 §3, §4) ---
             UsersRuntimeComposition.Register(services);
 
             // --- Server-built links (spec 0011 §5.10), over the stack registry's routes ---

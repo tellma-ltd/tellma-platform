@@ -139,6 +139,9 @@ namespace Tellma.Core.Composition
                 .DetailsContributor<User, UserActivityContributor<User>>()
                 .TableType<UserInvitationOutcome>();
 
+            // --- The access endpoints: a user's decisions and a securable's holders (spec 0018 §3.7) ---
+            _ = contribution.ApiService<AccessService>();
+
             // --- The identity-server client, one per distribution (spec 0018 §1.2, §2) ---
             // Its options and named HTTP client are registered with the platform's options.
             _ = contribution.Singleton<IIdentityServerClient, IdentityServerClient>();

@@ -21,13 +21,13 @@ using Tellma.Core.Data.Queries;
 namespace Tellma.Core.Users
 {
     /// <summary>
-    ///     Registers what the users' stack service needs beyond <see cref="Composition.CoreFeature" />'s
-    ///     registration of the stack itself: its instruments and the bundle of platform collaborators
-    ///     its public constructor takes.
+    ///     Registers what the users' and the roles' stack services need beyond
+    ///     <see cref="Composition.CoreFeature" />'s registration of the stacks themselves: the users'
+    ///     instruments and the bundles of platform collaborators their public constructors take.
     /// </summary>
     internal static class UsersRuntimeComposition
     {
-        /// <summary>Registers the instruments and the collaborators' bundle; each registration is idempotent.</summary>
+        /// <summary>Registers the instruments and the collaborators' bundles; each registration is idempotent.</summary>
         /// <param name="services">The composition's services.</param>
         public static void Register(IServiceCollection services)
         {
@@ -56,6 +56,13 @@ namespace Tellma.Core.Users
                 provider.GetRequiredService<QueryexSchemaProvider>(),
                 provider.GetRequiredService<TimeProvider>(),
                 provider.GetRequiredService<UsersMetrics>(),
+                provider.GetRequiredService<ILoggerFactory>()));
+
+            // --- The roles' stack's bundle, one per process: its collaborators are all singletons ---
+            services.TryAddSingleton(static provider => new RoleServiceDependencies(
+                provider.GetRequiredService<PermissionClassifier>(),
+                provider.GetRequiredService<QueryexSchemaProvider>(),
+                provider.GetRequiredService<IEntityMetadataProvider>(),
                 provider.GetRequiredService<ILoggerFactory>()));
         }
     }
