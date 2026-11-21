@@ -7,7 +7,7 @@ socket, real MIME on the wire, and no external infrastructure — which is why t
 
 | Folder | Covers |
 |---|---|
-| `Infrastructure/` | The in-process server: a free loopback port found by probing (the whole solution's suites run in parallel, so a fixed port would collide), readiness by connection probe rather than by sleeping, raw MIME captured and re-parsed, and scripted reply codes and authentication failures. |
+| `Infrastructure/` | The in-process server: one IPv4 loopback address that the server binds and every sender connects to by number (on Windows `localhost` resolves to `::1` first, and each connection would wait out a refused IPv6 attempt), a free loopback port found by probing (the whole solution's suites run in parallel, so a fixed port would collide), readiness by connection probe rather than by sleeping, raw MIME captured and re-parsed, and scripted reply codes and authentication failures. |
 | `Protocol/` | Full round-trip fidelity — multipart ordering, `cid:` linked resources, ordinary attachments, non-ASCII subjects and display names, the default sender, the reported `Message-Id` — plus the reply-code outcome map, authentication success and failure, the fail-closed TLS default, and the mid-batch reconnect. |
 | `Conformance/` | The SMTP transport answering the shared `IEmailSender` contract. |
 

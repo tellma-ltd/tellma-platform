@@ -21,14 +21,19 @@ POST /{tenantId}/api/web/notifications/get-by-ids | get-by-ids | core.Notificati
 POST /{tenantId}/api/web/jobs/query | query | core.Job | - | QueryRequest | RowPage | core.Job:Read | idempotent | PqV1-faRenCx
 POST /{tenantId}/api/web/jobs/get | get | core.Job | - | GetRequest | EntitiesResult<Job> | core.Job:Read | idempotent | -MjFr5wa1iWK
 POST /{tenantId}/api/web/jobs/get-by-ids | get-by-ids | core.Job | - | GetByIdsRequest | EntitiesResult<Job> | core.Job:Read | idempotent | BX5mwxCckWCS
+POST /{tenantId}/api/web/jobs/retry | retry | core.Job | entity | EntityActionRequest | EntitiesResult<Job> | core.Job:Retry | mutation | VJh7iQbqT19B
+POST /{tenantId}/api/web/jobs/cancel | cancel | core.Job | entity | EntityActionRequest | EntitiesResult<Job> | core.Job:Cancel | mutation, read-only | VJh7iQbqT19B
+POST /{tenantId}/api/web/jobs/resume | resume | core.Job | entity | EntityActionRequest | EntitiesResult<Job> | core.Job:Resume | mutation | VJh7iQbqT19B
+POST /{tenantId}/api/web/jobs/confirm | confirm | core.Job | entity | EntityActionRequest<ConfirmJobArguments> | EntitiesResult<Job> | core.Job:Confirm | mutation | wflrl-DymBMr
 POST /{tenantId}/api/web/schedules/query | query | core.Schedule | - | QueryRequest | RowPage | core.Schedule:Read | idempotent | PqV1-faRenCx
 POST /{tenantId}/api/web/schedules/get | get | core.Schedule | - | GetRequest | EntitiesResult<Schedule> | core.Schedule:Read | idempotent | KfYa4FX3b7MQ
 POST /{tenantId}/api/web/schedules/get-by-ids | get-by-ids | core.Schedule | - | GetByIdsRequest | EntitiesResult<Schedule> | core.Schedule:Read | idempotent | C4X4fvQar2bZ
 POST /{tenantId}/api/web/schedules/save | save | core.Schedule | - | SaveRequest<Schedule> | EntitiesResult<Schedule> | core.Schedule:Save | mutation | aDlEWVFMLFUU
 POST /{tenantId}/api/web/schedules/delete | delete | core.Schedule | - | IdsRequest | AffectedResult | core.Schedule:Delete | mutation | lisU15N3Oj5S
-POST /{tenantId}/api/web/schedules/delete-by-query | delete-by-query | core.Schedule | - | DeleteByQueryRequest | AffectedResult | core.Schedule:Delete | mutation | qslFj3HofcDO
 POST /{tenantId}/api/web/schedules/activate | activate | core.Schedule | entity | EntityActionRequest | EntitiesResult<Schedule> | core.Schedule:Activate | mutation, idempotent | RL2-78MQ-xmq
 POST /{tenantId}/api/web/schedules/deactivate | deactivate | core.Schedule | entity | EntityActionRequest | EntitiesResult<Schedule> | core.Schedule:Activate | mutation, idempotent | RL2-78MQ-xmq
+POST /{tenantId}/api/web/schedules/take-over | take-over | core.Schedule | entity | EntityActionRequest | EntitiesResult<Schedule> | core.Schedule:Save | mutation | RL2-78MQ-xmq
+POST /{tenantId}/api/web/schedules/run-now | run-now | core.Schedule | entity | IdRequest | JobAccepted | core.Schedule:Save | mutation | WKivSNmxCXQw
 POST /{tenantId}/api/web/gadgets/query | query | sm.SmGadget | - | QueryRequest | RowPage | sm.SmGadget:Read | idempotent | PqV1-faRenCx
 POST /{tenantId}/api/web/gadgets/get | get | sm.SmGadget | - | GetRequest | EntitiesResult<SmGadget> | sm.SmGadget:Read | idempotent | 5mezyF2jCvNp
 POST /{tenantId}/api/web/gadgets/get-by-ids | get-by-ids | sm.SmGadget | - | GetByIdsRequest | EntitiesResult<SmGadget> | sm.SmGadget:Read | idempotent | -dbsTnnQ9xYd
@@ -64,5 +69,13 @@ POST /{tenantId}/api/web/settings/details | details | - | api | - | TenantSettin
 POST /{tenantId}/api/web/settings/refresh-caches | refresh-caches | - | api | - | void | core.Settings.General:Save | mutation, idempotent | lYZxNIK2Qbw7
 POST /{tenantId}/api/web/settings/save | save | - | api | TenantSettingsPatch | SettingsSaveResult | member-only | mutation | 2FgBFQi1n4Jw
 POST /{tenantId}/api/web/queryex/discover | discover | - | api | QueryexDiscoverRequest | QueryexDiscoverResult | member-only | idempotent | Q9rAN9qhOkVv
-POST /{tenantId}/api/web/inbox/mark-read | mark-read | - | api | - | void | member-only | mutation | lYZxNIK2Qbw7
-POST /{tenantId}/api/web/inbox/purge | purge | - | api | - | int | sm.Inbox:Purge | mutation | O-8g6frL8YBY
+POST /{tenantId}/api/web/inbox/summary | summary | - | api | - | InboxSummary | member-only | idempotent | o9p0wbvTAosb
+POST /{tenantId}/api/web/inbox/seen | seen | - | api | - | InboxVerbResult | member-only | mutation, read-only, idempotent | pXR_mrC6LMxV
+POST /{tenantId}/api/web/inbox/read | read | - | api | IdsRequest | InboxVerbResult | member-only | mutation, read-only, idempotent | 6IqLbKcPH6Wm
+POST /{tenantId}/api/web/inbox/read-all | read-all | - | api | - | InboxVerbResult | member-only | mutation, read-only, idempotent | pXR_mrC6LMxV
+POST /{tenantId}/api/web/inbox/clear | clear | - | api | IdsRequest | InboxVerbResult | member-only | mutation, read-only, idempotent | 6IqLbKcPH6Wm
+POST /{tenantId}/api/web/inbox/clear-read | clear-read | - | api | - | InboxVerbResult | member-only | mutation, read-only, idempotent | pXR_mrC6LMxV
+POST /{tenantId}/api/web/notification-preferences/get | get | - | api | - | IReadOnlyList<NotificationPreference> | member-only | idempotent | aHSARUxbj3Rb
+POST /{tenantId}/api/web/notification-preferences/save | save | - | api | IReadOnlyList<NotificationPreference> | IReadOnlyList<NotificationPreference> | member-only | mutation, read-only | 5Ftm5m9VtQxS
+POST /{tenantId}/api/web/sm-inbox/mark-read | mark-read | - | api | - | void | member-only | mutation | lYZxNIK2Qbw7
+POST /{tenantId}/api/web/sm-inbox/purge | purge | - | api | - | int | sm.Inbox:Purge | mutation | O-8g6frL8YBY

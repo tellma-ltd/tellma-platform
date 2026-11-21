@@ -6,8 +6,29 @@
 /** A text direction. */
 type Direction = 'ltr' | 'rtl';
 
-/** The bidi marks the chart writes into canvas strings. */
-const MARKS = /[\u200E\u200F]/g;
+/** The bidi marks the chart writes into canvas strings: LRM, RLM and ALM. */
+const MARKS = /[\u200E\u200F\u061C]/g;
+
+/**
+ * The end of an Arabic word: its last letter, with the combining marks,
+ * joiners and tatweel after it, where no more of the word follows. A
+ * non-joiner ends the word.
+ */
+const ARABIC_WORD_END =
+  /(?=\p{L})\p{Script=Arabic}(?:\p{M}|\u200D|\u0640)*(?!(?:\p{M}|\u200D|\u0640)|(?=\p{L})\p{Script=Arabic})/gu;
+
+/**
+ * A run as the reference draws it: each Arabic word closed by an ALM, the
+ * zero-width mark of its letters' bidi class. WebKit draws a right-to-left
+ * run whose leftmost glyph is offset vertically (an Arabic final form joined
+ * cursively) off the baseline, and moves what it draws after it alike; the
+ * closing mark becomes that glyph and has no offset. Chromium and Firefox
+ * draw the run alike with the mark or without it, so the reference is each
+ * run as an engine draws it on the line, whatever the engine.
+ */
+export function onTheLine(text: string): string {
+  return text.replace(ARABIC_WORD_END, `$&\u061C`);
+}
 
 /** One run a label is expected to draw: its text, and the direction it reads in. */
 export interface ProbeRun {
@@ -154,9 +175,9 @@ function differing(a: Uint8ClampedArray, b: Uint8ClampedArray, skip?: Uint8Array
 /**
  * Draws a label's expected segments apart, each in its own direction, placed
  * in the base direction's order from where the span's alignment puts its
- * edge, with the paint the renderer gives the span. Every segment's first
- * pass (stroke or fill, in the span's order) comes before any second pass,
- * as one string's would.
+ * edge, with the paint the renderer gives the span, each on the line
+ * ({@link onTheLine}). Every segment's first pass (stroke or fill, in the
+ * span's order) comes before any second pass, as one string's would.
  */
 function drawApart(
   context: CanvasRenderingContext2D,
@@ -184,10 +205,12 @@ function drawApart(
   context.lineJoin = style.lineJoin ?? 'miter';
   context.lineCap = 'butt';
   context.miterLimit = 10;
-  // Section: each segment's advance, and the string's left edge.
-  const widths = segments.map((segment) => {
+  // Section: each segment's advance, and the string's left edge. A closing
+  // mark is of zero width, so the advances are the segments' own.
+  const texts = segments.map((segment) => onTheLine(segment.text));
+  const widths = segments.map((segment, index) => {
     context.direction = segment.direction;
-    return context.measureText(segment.text).width;
+    return context.measureText(texts[index]!).width;
   });
   const total = widths.reduce((sum, width) => sum + width, 0);
   // The string's edge is found as the canvas aligns it: from the drawn
@@ -225,12 +248,12 @@ function drawApart(
       context.direction = segment.direction;
       if (pass === 'fill' && fill !== null) {
         context.fillStyle = fill;
-        context.fillText(segment.text, lefts[index]!, style.y ?? 0);
+        context.fillText(texts[index]!, lefts[index]!, style.y ?? 0);
       }
       if (pass === 'stroke' && stroke !== null) {
         context.strokeStyle = stroke;
         context.lineWidth = style.lineWidth!;
-        context.strokeText(segment.text, lefts[index]!, style.y ?? 0);
+        context.strokeText(texts[index]!, lefts[index]!, style.y ?? 0);
       }
     });
   }

@@ -14,6 +14,7 @@ using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.Access;
 using Tellma.Core.Caching;
+using Tellma.Core.Jobs;
 using Tellma.Core.Localization;
 
 namespace Tellma.Core.IntegrationTests.Access
@@ -33,24 +34,27 @@ namespace Tellma.Core.IntegrationTests.Access
     [Trait("Category", "Integration")]
     public sealed class AccessEvaluationTests(ConnectDatabase fixture) : IClassFixture<ConnectDatabase>, IDisposable
     {
+        /// <summary>
+        ///     The securables every member holds through a bespoke self-scope criterion alone, so a
+        ///     caller with no grants is filtered on them, never denied; ordinal order.
+        /// </summary>
+        private static readonly (string Resource, string Action)[] SelfScoped =
+        [
+            (CoreResources.Job, AccessActions.Cancel),
+            (CoreResources.Job, JobService.Confirm),
+            (CoreResources.Job, AccessActions.Read),
+            (CoreResources.Notification, AccessActions.Read),
+            ("core.RoleMembership", AccessActions.Read),
+            (CoreResources.User, AccessActions.Read),
+            ("core.UserStamp", AccessActions.Read),
+        ];
+
         /// <summary>The prologue round trips of the fixture's instance, one measurement each, tagged by variant.</summary>
         private readonly MetricCollector<double> _prologues = Prologues(fixture.Services);
 
         /// <summary>The connect results of the fixture's instance, tagged by result.</summary>
         private readonly MetricCollector<long> _results = new(
             fixture.Services.GetRequiredService<IMeterFactory>(), AccessTelemetryNames.MeterName, AccessTelemetryNames.ConnectResults);
-
-        /// <summary>
-        ///     The securables every member reads in part without a grant, in ordinal order: their own
-        ///     user row, and the memberships and stamp it owns. The criteria of other stacks that scope a read to
-        ///     its caller join this list.
-        /// </summary>
-        private static readonly (string Resource, string Action)[] SelfScoped =
-        [
-            ("core.RoleMembership", AccessActions.Read),
-            (CoreResources.User, AccessActions.Read),
-            ("core.UserStamp", AccessActions.Read),
-        ];
 
         /// <summary>The test's cancellation.</summary>
         private static CancellationToken Token => TestContext.Current.CancellationToken;
@@ -170,12 +174,13 @@ namespace Tellma.Core.IntegrationTests.Access
             // A caller without grants still reads their own user row, and its owned memberships and
             // stamp follow their owner; every other securable is denied.
             Assert.Equal(AccessOutcome.Denied, second.Outcome);
+            // With no role grants, the self-scoped securables are filtered by their bespoke criteria alone and every other is denied.
             Assert.Equal(
                 SelfScoped,
-                summary.Where(static decision => decision.Outcome == AccessOutcome.Filtered).Select(static decision => (decision.Resource, decision.Action)).OrderBy(static pair => pair.Resource, StringComparer.Ordinal));
+                summary.Where(static decision => decision.Outcome != AccessOutcome.Denied).Select(static decision => (decision.Resource, decision.Action)).Order());
             Assert.All(
-                summary.Where(static decision => !SelfScoped.Contains((decision.Resource, decision.Action))),
-                static decision => Assert.Equal(AccessOutcome.Denied, decision.Outcome));
+                summary.Where(static decision => decision.Outcome != AccessOutcome.Denied),
+                static decision => Assert.Equal((AccessOutcome.Filtered, true, true), (decision.Outcome, decision.Filter is not null, decision.Grants.All(static grant => grant is BespokeAccessGrant))));
             _ = Assert.Single(Variants(prologues).Skip(before));
         }
 

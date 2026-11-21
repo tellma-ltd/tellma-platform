@@ -181,6 +181,65 @@ namespace Tellma.Core.Jobs
             return result.Value;
         }
 
+        // Spec 0020 §7.8: the schedules' run-now action inserts one job of the schedule, now, with the
+        // caller as its requester and no scheduled occurrence; this instance's poller claims it once
+        // the action commits (§4.4).
+        /// <summary>Appends the run-now insert of a schedule's job to an action's persist batch.</summary>
+        /// <param name="batch">The action's persist batch, or a persist participant's recording view of it.</param>
+        /// <param name="scheduleId">The schedule.</param>
+        /// <param name="runAsUserId">The user the job runs as.</param>
+        /// <param name="requestedById">The user who asked for the run.</param>
+        /// <returns>The job's id, once the batch executed.</returns>
+        /// <exception cref="ArgumentException">The batch is not one a tenant database created.</exception>
+        internal BatchResult<int> RunNow(IDataBatch batch, int scheduleId, int runAsUserId, int requestedById)
+        {
+            ArgumentNullException.ThrowIfNull(batch);
+            return RunNow(batch, scheduleId, runAsUserId, requestedById, TraceParent());
+        }
+
+        /// <summary>Appends the run-now insert, with the trace parent read where the action composed it.</summary>
+        /// <param name="batch">The batch, or a recording view of it.</param>
+        /// <param name="scheduleId">The schedule.</param>
+        /// <param name="runAsUserId">The user the job runs as.</param>
+        /// <param name="requestedById">The user who asked for the run.</param>
+        /// <param name="traceParent">The trace the job's run links to; null for none.</param>
+        /// <returns>The job's id, once the batch executed.</returns>
+        private BatchResult<int> RunNow(IDataBatch batch, int scheduleId, int runAsUserId, int requestedById, string? traceParent)
+        {
+            // --- A persist participant's recording view: recorded, so a recomposed persist appends it again ---
+            if (batch is RecordingBatch recording)
+            {
+                return recording.RecordResult(inner => RunNow(inner, scheduleId, runAsUserId, requestedById, traceParent));
+            }
+
+            DataBatch data = batch as DataBatch
+                ?? throw new ArgumentException("The batch is not one a tenant database created, so the run-now statement cannot ride it.", nameof(batch));
+            BatchResult<int> result = JobStatements.RunNow(data, scheduleId, runAsUserId, requestedById, traceParent);
+            data.OnCommitted(_ => _wake.Wake(data.Connection.TenantId));
+            return result;
+        }
+
+        // Spec 0020 §11.1: retry, resume and confirm make jobs due now; this instance's poller claims
+        // them once the action commits, as it does an enqueue's (§4.4).
+        /// <summary>Wakes this instance's poller once an action's persist batch commits.</summary>
+        /// <param name="batch">The action's persist batch, or a persist participant's recording view of it.</param>
+        /// <exception cref="ArgumentException">The batch is not one a tenant database created.</exception>
+        internal void Nudge(IDataBatch batch)
+        {
+            ArgumentNullException.ThrowIfNull(batch);
+
+            // --- A persist participant's recording view: recorded, so a recomposed persist registers it again ---
+            if (batch is RecordingBatch recording)
+            {
+                recording.Record(Nudge);
+                return;
+            }
+
+            DataBatch data = batch as DataBatch
+                ?? throw new ArgumentException("The batch is not one a tenant database created, so the poller cannot be woken when it commits.", nameof(batch));
+            data.OnCommitted(_ => _wake.Wake(data.Connection.TenantId));
+        }
+
         /// <summary>The handler a request names, which must be registered on this instance.</summary>
         /// <param name="key">The request's handler key.</param>
         /// <returns>The handler's registration.</returns>

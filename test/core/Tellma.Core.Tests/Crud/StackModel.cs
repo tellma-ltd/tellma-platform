@@ -421,7 +421,7 @@ namespace Tellma.Core.Tests.Crud
     public sealed class SelfEnlistingGadgetService(IEntityPipelineFactory factory) : EntityService<SmGadget>(factory), IEnlists<SmGadget>, IEnlists<SmGizmo>;
 
     /// <summary>A routed service with a member-only and a secured action.</summary>
-    [ApiRoute("inbox")]
+    [ApiRoute("sm-inbox")]
     [SuppressMessage("Style", "IDE0060:Remove unused parameter", Justification = "The signature is what the fixture declares; the platform reads it, never runs it.")]
     public sealed class InboxService
     {

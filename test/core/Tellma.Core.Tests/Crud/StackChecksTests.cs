@@ -446,7 +446,7 @@ namespace Tellma.Core.Tests.Crud
             new StackSecurablesCheck().Audit(stacks, securables, problems);
 
             Assert.Contains("The securable 'sm.SmGadget:Save', which the stack of sm.SmGadget requires, is not registered, so no grant can name it.", problems.Select(static problem => problem.Problem));
-            Assert.Contains("The securable 'sm.Inbox:Purge', which the action 'purge' of the routed service 'inbox' requires, is not registered, so no grant can name it.", problems.Select(static problem => problem.Problem));
+            Assert.Contains("The securable 'sm.Inbox:Purge', which the action 'purge' of the routed service 'sm-inbox' requires, is not registered, so no grant can name it.", problems.Select(static problem => problem.Problem));
             Assert.Contains("The securable 'sm.SmGadgetPartNote:Read', which the child query surface of sm.SmGadgetPartNote requires, is not registered, so no grant can name it.", problems.Select(static problem => problem.Problem));
             Assert.All(problems, static problem => Assert.Equal(CoreCheckNames.StackSecurables, problem.Source));
         }

@@ -926,6 +926,59 @@ namespace Tellma.Core.Migrator.TestDistribution.Migrations
                             }))
                         .HasAnnotation("Tellma:TableType:Enabled", true)
                         .HasAnnotation("Tellma:TableType:Grants", "[\"tellma_app\"]");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = 2,
+                            CatchUpWindowMinutes = 1440,
+                            Code = "core.notification-retention",
+                            CreatedAt = new DateTimeOffset(new DateTime(2000, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            CreatedById = 1,
+                            CronExpression = "30 3 * * *",
+                            HandlerKey = "core.notification-retention",
+                            IsActive = true,
+                            MissedPolicy = "Coalesce",
+                            ModifiedAt = new DateTimeOffset(new DateTime(2000, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            ModifiedById = 1,
+                            Name = "core.notification-retention",
+                            OverlapPolicy = "Skip",
+                            RunAsUserId = 1
+                        },
+                        new
+                        {
+                            Id = 1,
+                            CatchUpWindowMinutes = 1440,
+                            Code = "core.job-retention",
+                            CreatedAt = new DateTimeOffset(new DateTime(2000, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            CreatedById = 1,
+                            CronExpression = "0 3 * * *",
+                            HandlerKey = "core.job-retention",
+                            IsActive = true,
+                            MissedPolicy = "Coalesce",
+                            ModifiedAt = new DateTimeOffset(new DateTime(2000, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            ModifiedById = 1,
+                            Name = "core.job-retention",
+                            OverlapPolicy = "Skip",
+                            RunAsUserId = 1
+                        },
+                        new
+                        {
+                            Id = 6,
+                            CatchUpWindowMinutes = 1440,
+                            Code = "core.tree-verify",
+                            CreatedAt = new DateTimeOffset(new DateTime(2000, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            CreatedById = 1,
+                            CronExpression = "0 1 * * 6",
+                            HandlerKey = "core.tree-verify",
+                            IsActive = true,
+                            MissedPolicy = "Coalesce",
+                            ModifiedAt = new DateTimeOffset(new DateTime(2000, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            ModifiedById = 1,
+                            Name = "core.tree-verify",
+                            OverlapPolicy = "Skip",
+                            RunAsUserId = 1
+                        });
                 });
 
             modelBuilder.Entity("Tellma.Core.Abstractions.Notifications.Notification", b =>
@@ -19006,6 +19059,20 @@ namespace Tellma.Core.Migrator.TestDistribution.Migrations
                         .HasFilter("[NextDueAt] IS NOT NULL");
 
                     b.ToTable("ScheduleStates", "core");
+
+                    b.HasData(
+                        new
+                        {
+                            ScheduleId = 2
+                        },
+                        new
+                        {
+                            ScheduleId = 1
+                        },
+                        new
+                        {
+                            ScheduleId = 6
+                        });
                 });
 
             modelBuilder.Entity("Tellma.Core.Migrator.TestDistribution.Gadget", b =>

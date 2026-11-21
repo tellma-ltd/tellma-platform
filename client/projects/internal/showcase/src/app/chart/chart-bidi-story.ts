@@ -25,6 +25,7 @@ import {
 import { tmFormatNumber } from '@tellma/core-ui/l10n';
 
 import {
+  onTheLine,
   probeChartLabels,
   type ProbedLabel,
   type ProbeExpectation,
@@ -262,7 +263,8 @@ function expectation(base: Direction): ProbeExpectation {
  * each base direction. "Together" is the string the chart hands the
  * engine, drawn whole on a canvas that takes its direction from CSS;
  * "apart" draws each run on its own, in its own direction, placed in the
- * base direction's order (the base pieces in the base direction); "plain"
+ * base direction's order (the base pieces in the base direction), each on
+ * the line as {@link onTheLine} draws it; "plain"
  * draws the pieces joined without marks. Together must equal apart
  * pixel for pixel in every engine.
  *
@@ -409,10 +411,11 @@ export class ChartBidiStory {
       context.fillText(text, base === 'rtl' ? WIDTH - INSET : INSET, y);
       return;
     }
-    // Section: apart: each piece alone, in its own direction, placed in base order.
+    // Section: apart: each piece alone, in its own direction, placed in base
+    // order, and on the line (its Arabic words closed by an ALM).
     let x = base === 'rtl' ? WIDTH - INSET : INSET;
     for (const piece of item.pieces) {
-      const text = typeof piece === 'string' ? piece : piece.base;
+      const text = onTheLine(typeof piece === 'string' ? piece : piece.base);
       context.direction = typeof piece === 'string' ? runDirection(text) : base;
       context.textAlign = base === 'rtl' ? 'right' : 'left';
       context.fillText(text, x, y);

@@ -25,7 +25,11 @@ namespace Tellma.Connector.Smtp.Adapter.Tests.Infrastructure
         {
             SmtpEmailOptions options = new()
             {
-                Host = "localhost",
+                // The server's own address, never "localhost": Windows resolves that name to ::1
+                // first, where nothing listens, and every connection would pay a refused IPv6
+                // attempt of about two seconds out of the connection's ten-second budget (more on a
+                // loaded runner) before falling back to IPv4.
+                Host = InProcessSmtpServer.Address.ToString(),
                 Port = port,
                 SecureSocket = secureSocket,
                 Username = username,

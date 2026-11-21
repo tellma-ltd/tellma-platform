@@ -74,7 +74,7 @@ stack core.Notification
 stack core.Job
   segment: jobs
   entity: Tellma.Core.Abstractions.Jobs.Job
-  service: Tellma.Core.Crud.DefaultEntityService<Tellma.Core.Abstractions.Jobs.Job, int>
+  service: Tellma.Core.Jobs.JobService
   key: int
   description: -
   operations: Query, Details
@@ -88,18 +88,22 @@ stack core.Job
   details-expand: RunAsUser, RequestedBy, Schedule
   default-order-by: -
   display-name: Id group - prefix -
-  extras: -
+  extras: permissions
   named-filters: -
   limits: default
   mcp: Full, revision 0
   feature: core
+  action retry: entity Retry filtered args -; mutation; result EntitiesResult<Job>; mcp Full, revision 0; Runs each failed job again, from its first attempt.
+  action cancel: entity Cancel filtered args -; mutation, read-only-ok, destructive; result EntitiesResult<Job>; mcp Full, revision 0; Stops each job that has not ended.
+  action resume: entity Resume filtered args -; mutation; result EntitiesResult<Job>; mcp Full, revision 0; Lets each paused job run.
+  action confirm: entity Confirm filtered args ConfirmJobArguments; mutation; result EntitiesResult<Job>; mcp Hidden, revision 0; Confirms the warnings each job waits on, so it runs on.
 stack core.Schedule
   segment: schedules
   entity: Tellma.Core.Abstractions.Jobs.Schedule
-  service: Tellma.Core.Crud.DefaultEntityService<Tellma.Core.Abstractions.Jobs.Schedule, int>
+  service: Tellma.Core.Jobs.ScheduleService<Tellma.Core.Abstractions.Jobs.Schedule>
   key: int
   description: -
-  operations: All
+  operations: Save, Delete, Import, Read
   capabilities: activatable, temporal, multilingual, searchable, excel
   properties: Id:ServerOwned, CreatedAt:ServerOwned, CreatedById:ServerOwned, ModifiedAt:ServerOwned, ModifiedById:ServerOwned, Code:Editable, Name:Editable, Name2:Editable, Name3:Editable, HandlerKey:WriteOnce, ArgumentsJson:Editable, CronExpression:Editable, TimeZoneId:Editable, MissedPolicy:Editable, OverlapPolicy:Editable, CatchUpWindowMinutes:Editable, RunAsUserId:ServerOwned, PausedReason:ServerOwned, IsActive:ServerOwned
   children: -
@@ -110,13 +114,15 @@ stack core.Schedule
   details-expand: CreatedBy, ModifiedBy, RunAsUser
   default-order-by: -
   display-name: Name group Name prefix -
-  extras: permissions
+  extras: state, permissions
   named-filters: -
   limits: default
   mcp: Full, revision 0
   feature: core
   action activate: entity Activate built-in filtered args -; mutation, idempotent; result EntitiesResult<Schedule>; mcp Full, revision 0; -
   action deactivate: entity Activate built-in filtered args -; mutation, idempotent; result EntitiesResult<Schedule>; mcp Full, revision 0; -
+  action take-over: entity Save filtered args -; mutation; result EntitiesResult<Schedule>; mcp Full, revision 0; Makes the caller the user each schedule's jobs run as.
+  action run-now: entity Save filtered single args -; mutation; result JobAccepted; mcp Full, revision 0; Runs the schedule's job once, now.
 stack fixture.Widget
   segment: widgets
   entity: Tellma.Testing.Entities.Widget
@@ -390,4 +396,18 @@ service queryex
   class: Tellma.Core.Api.QueryexService
   feature: core
   action discover: api member-only body QueryexDiscoverRequest handler QueryexService; idempotent; result QueryexDiscoverResult; mcp Hidden, revision 0; -
+service inbox
+  class: Tellma.Core.Notifications.InboxService
+  feature: core
+  action summary: api member-only body - handler InboxService; idempotent; result InboxSummary; mcp Hidden, revision 0; -
+  action seen: api member-only body - handler InboxService; mutation, read-only-ok, idempotent; result InboxVerbResult; mcp Hidden, revision 0; -
+  action read: api member-only body IdsRequest handler InboxService; mutation, read-only-ok, idempotent; result InboxVerbResult; mcp Hidden, revision 0; -
+  action read-all: api member-only body - handler InboxService; mutation, read-only-ok, idempotent; result InboxVerbResult; mcp Hidden, revision 0; -
+  action clear: api member-only body IdsRequest handler InboxService; mutation, read-only-ok, idempotent, destructive; result InboxVerbResult; mcp Hidden, revision 0; -
+  action clear-read: api member-only body - handler InboxService; mutation, read-only-ok, idempotent, destructive; result InboxVerbResult; mcp Hidden, revision 0; -
+service notification-preferences
+  class: Tellma.Core.Notifications.NotificationPreferencesService
+  feature: core
+  action get: api member-only body - handler NotificationPreferencesService; idempotent; result IReadOnlyList<NotificationPreference>; mcp Hidden, revision 0; -
+  action save: api member-only body IReadOnlyList<NotificationPreference> handler NotificationPreferencesService; mutation, read-only-ok; result IReadOnlyList<NotificationPreference>; mcp Hidden, revision 0; -
 enlistment Tellma.Core.Users.UserService<Tellma.Core.Abstractions.Access.User> -> core.User

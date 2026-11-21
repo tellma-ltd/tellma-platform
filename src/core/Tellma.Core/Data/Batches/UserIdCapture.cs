@@ -49,6 +49,18 @@ namespace Tellma.Core.Data.Batches
             return $"uid_{table.Schema}_{table.Name}";
         }
 
+        /// <summary>
+        ///     The statement-local word of a delete's capture of the users named by a table's rows that
+        ///     a key's <c>ON DELETE</c> action reaches, <c>uidk_&lt;Schema&gt;_&lt;Table&gt;</c>.
+        /// </summary>
+        /// <param name="table">The reached table.</param>
+        /// <returns>The word.</returns>
+        public static string ConsequenceWord(TableName table)
+        {
+            ArgumentNullException.ThrowIfNull(table);
+            return $"uidk_{table.Schema}_{table.Name}";
+        }
+
         /// <summary>The capture's column holding a user-id column's value before the write.</summary>
         /// <param name="column">The user-id column.</param>
         /// <returns>The capture's column.</returns>
@@ -75,6 +87,20 @@ namespace Tellma.Core.Data.Batches
             ArgumentException.ThrowIfNullOrEmpty(name);
             ArgumentNullException.ThrowIfNull(columns);
             return $"DECLARE {name} TABLE ({SqlNames.Quote(RowId)} {keyType} NOT NULL{string.Concat(columns.Select(static column => $", {SqlNames.Quote(Old(column))} int NULL, {SqlNames.Quote(New(column))} int NULL"))});";
+        }
+
+        /// <summary>
+        ///     The declaration of a capture that keeps no row id, for rows whose key the capturing
+        ///     statement does not write: only each user-id column's before and after columns.
+        /// </summary>
+        /// <param name="name">The capture's batch-local name.</param>
+        /// <param name="columns">The user-id columns.</param>
+        /// <returns>The <c>DECLARE</c> statement, terminated.</returns>
+        public static string ImageDeclaration(string name, IReadOnlyList<string> columns)
+        {
+            ArgumentException.ThrowIfNullOrEmpty(name);
+            ArgumentNullException.ThrowIfNull(columns);
+            return $"DECLARE {name} TABLE ({string.Join(", ", columns.Select(static column => $"{SqlNames.Quote(Old(column))} int NULL, {SqlNames.Quote(New(column))} int NULL"))});";
         }
 
         /// <summary>

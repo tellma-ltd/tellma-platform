@@ -395,9 +395,21 @@ digits than its column holds, and stamps
 activatable tree's `IsActive` recounts the rows' ancestors.
 
 `IDataBatch.Delete` deletes a root's collections deepest first in explicit statements, then the
-roots, whose ids are the receipt; a sibling row goes by its cascade, so the delete declares its
-table among its writes but needs no authority over it, except that a sibling holding a blob
-reference is deleted explicitly before its owner, so its blobs are captured too. By ids it captures the existing rows under U locks and the read filter, selects the rest
+roots, whose ids are the receipt; a sibling row goes by its cascade, except that a sibling holding
+a blob reference is deleted explicitly before its owner, so its blobs are captured too. Every
+table the database writes by the `ON DELETE` action of a key referencing a deleted table (a
+sibling's cascade, `core.ScheduleStates` cascading and `core.Jobs.ScheduleId` set to null with a
+schedule, a user's stamp and preference rows cascading with the user), and transitively the
+tables a cascaded table's own keys write, is read from the relational model (`ForeignKeyActions`)
+and declared among the delete's writes, for tags, guards and change tracking; the caller needs
+no authority over those tables, and gains none for its own statements. A key's action reports no
+rows, so when such a table has a user-level version tag rule (the preference tables do) the
+delete first reads the users its reached rows name, by the keys from every table that loses rows,
+into a capture the bump epilogue reads; the capture reads under update and range locks, so no
+row the keys will reach is added after it. A save that deletes child rows declares the same
+consequences of their deletion. A model where one of them has a user-level rule (a save cannot
+tell which rows its deletes reach), or where a `SET DEFAULT` key writes a rule's user column,
+fails the `core.version-tags` startup check. By ids it captures the existing rows under U locks and the read filter, selects the rest
 and throws `50404` with them, throws `50403` unless every captured row passes the grant filter,
 and with the stamps the rows were read with throws `50409` with the conflict rows the save's guard
 reports. By query it caps and counts its keys as an update does. `WithDescendants` deletes tree
@@ -1187,6 +1199,39 @@ calendar date, numbers as numbers, booleans as `true`/`false`, null as nothing, 
 the reader's content slot, and anything else as its JSON text. A missing resource renders the type
 key; arguments that are not a JSON object render the message without them and log
 `NotificationArgumentsInvalid` once per scope.
+
+### The inbox, preferences, delivery and retention
+
+`InboxService` (route `inbox`) serves the calling user's own inbox; every action is member-only,
+hidden from MCP, and judged by the statements' own predicates on the caller, so another user's id
+is ignored, never refused. `summary` reads, in one Read batch, the unread and unseen counts (capped
+at `SummaryCountCap`), the highest unseen severity, the inbox version, the latest
+`SummaryLatestCount` rows newest first (ties by id), the caller's running jobs with their labels, and
+the actors as related users projected to their related select. `seen`, `read`, `read-all`, `clear`
+and `clear-read` each run one Persist batch that bumps the caller's inbox version and publishes
+`inbox.changed` to the caller after the commit; they return the rows touched and the new version.
+`read` and `clear` take at most the notifications' `MaxIds` ids, dropping repeats and ids outside the
+key's range. The verbs run in a read-only tenant and are refused in a frozen one.
+`NotificationAccessCriteria` scopes the read of `Notification` to `UserId = me()`.
+
+`NotificationPreferencesService` (route `notification-preferences`) reads the caller's stored
+deviations (`get`, dropping types and channels no longer registered) and replaces them (`save`):
+`NotificationPreferenceRules` refuses an unknown type or channel, a repeated pair and the inbox
+turned off for a type that cannot be muted, with the codes in `NotificationValidationCodes`, and
+drops every row equal to its channel's default. The save bumps the caller's preferences tag and is
+admitted in a read-only tenant.
+
+`NotificationDeliveryHandler` runs `core.notification-delivery` (four slices a claim, twelve
+attempts, failure notices to the inbox alone, run in a read-only tenant). It reads every slice's
+recipients and their stored preferences in one round trip, negotiates each active recipient's
+localization once from their preferences and the tenant's settings, and hands each delivering
+channel, in registration order, the recipients who receive it; then it persists the enlisted writes
+once. A channel that throws fails the claim, and the job retries.
+
+`NotificationRetentionHandler` runs `core.notification-retention`, a built-in schedule (id 2) at
+03:30 every day. It deletes read rows older than `ReadRetention`, then unread rows older than
+`UnreadRetention`, `RetentionPageSize` rows per maintenance batch, counting each page as
+`tellma.notifications.retained` by band and reporting the totals as progress.
 
 ## Entity stacks
 
@@ -2117,8 +2162,7 @@ throw. `UserAccessCriteria` grants every member `Read` of their own user row (`I
 are counted on `tellma.users.invites` (meter `Tellma.Core`, tag `outcome`: `Invited`, `Reinvited`,
 `Active`, `SubjectMismatch`, `Error`, `NotAttempted`) and logged as `UsersInvited` or
 `UsersInvitePartial`. A user delete's preferences, stamps and notification preferences leave by their
-keys' cascade; the delete's persist appends one statement that declares those three tables among the
-batch's writes, so its change tracking and version tags see them.
+keys' cascade, which the delete declares among its writes as it does every key's `ON DELETE` action.
 
 `RoleService<TRole>`'s preprocessing collapses a role's exact duplicate permissions (the same
 resource, action and filter, compared ordinally) to one row before the rules count and stamp them,
@@ -2402,6 +2446,45 @@ leaves those states (logged as `JobPollerRetired`, its orphan sample dropped). T
   on the `Tellma.Core` meter; `JobWorkerHeartbeat` is logged whenever a poll stamps a tenant, at most
   once a minute, for the log-based staleness alert under `infra/monitoring/jobs/`.
 
+### The jobs' stack
+
+`JobService` serves `core.Job`'s query and details, and four actions on the general action path,
+each over the targets its first round loads, every target held to the action's precondition (a
+refused target fails the whole call at its position):
+
+| Action | Securable | Precondition | Effect |
+|---|---|---|---|
+| `retry` | `Retry` | `Failed` (`Jobs.NotRetryable`) | Pending, due now, attempts and error cleared. |
+| `cancel` | `Cancel` | not ended (`Jobs.NotCancellable`) | A running job, or a pending one already flagged, is flagged and stops at its next renewal; a job waiting for confirmation, or one with a checkpoint, is queued flagged so its next claim records the stop; any other is cancelled at once. Destructive, and served on a read-only tenant. |
+| `resume` | `Resume` | `Held` (`Jobs.NotHeld`) | Pending, due now, cancel flag and error cleared. |
+| `confirm` | `Confirm` | `PendingConfirmation` (`Jobs.NotPendingConfirmation`), requested by the caller (`Jobs.NotInitiator`), every recorded key among the one to sixteen keys sent | The recorded keys join the job's confirmed keys; pending, due now, from its first attempt. Hidden from MCP. |
+
+Each action's statement is fixed text that repeats its precondition, so a repeat after a commit
+fails the precondition instead of acting twice. Every target's requester is told `job.changed`. A
+resume or a cancel that ends a requester's last held job withdraws their `core.job.held`, and one
+that ends the last held job of the tenant withdraws `core.scheduler.gap`; a confirm, and the cancel
+of a job waiting for confirmation, withdraw its `core.job.pending-confirmation`. Retry, resume and
+confirm wake this instance's poller once they commit. `JobAccessCriteria` gives every member the
+self-scope `RequestedById = me()` on `Read`, `Cancel` and `Confirm`, so a member reads, stops and
+confirms the jobs they requested without a role; a row that owns a job reads the job's related
+projection (`Job.Status`) for any reader of that row.
+
+`JobLabels` renders a job's display text in the reader's language: the job's own label with its
+arguments (an `entity` argument that names an entity renders as its plural label), else the
+handler's `JobHandler_<key>` resource when a shared resource declares it, else the handler key. The
+`jobHandlers` section of the client metadata lists every registered handler, by key, with whether a user
+schedule may name it, whether it commits in steps, its label key, the key itself as the fallback
+only when no resource declares the label, and the row a succeeded job leaves.
+
+### The platform's maintenance handlers
+
+| Key | Built-in | Does |
+|---|---|---|
+| `core.job-retention` | id 1, `0 3 * * *` | In pages of 1,000 rows, each its own `Maintenance` round trip: first queues flagged every job that waited for confirmation longer than `FailedRetention` and withdraws its notice, then deletes the succeeded jobs that ended longer than `SucceededRetention` ago, then the failed and cancelled ones past `FailedRetention`. A job that has not ended is never deleted; the rows that referenced a deleted job (every job entity's `JobId`, the schedule states' `LastJobId`) lose it, and each delete page declares the tables those keys write, read from the model's foreign keys. |
+| `core.tree-verify` | id 6, `0 1 * * 6` | Recounts every tree table's subtree counts with the tree statements' verify, one `Maintenance` round trip per table, repairing the drifted rows. |
+
+Both run on a read-only tenant and report their progress after every page or table.
+
 ## Excel
 
 `Excel/` holds the workbook features' runtime contracts and the engine that writes them. Workbooks
@@ -2476,7 +2559,7 @@ are SpreadsheetML packages written with `DocumentFormat.OpenXml` (MIT), forward-
 | `Calendars/` | `GregorianCalendarSystem`, `UmAlQuraCalendarSystem`, `EthiopianCalendarSystem`, `CalendarRegistry`; internally the Ethiopian and the extended Umm al-Qura framework calendars, the shared renderer and reader, the culture data and the date-pattern reader. |
 | `Excel/` | `ExcelContext`, `ExcelColumnSpec`, `ExcelColumnRole`, `ExcelKeyKind`, `ExcelDateEncoding`, `ExcelSheetPlan`, `ExcelWorkbookPlan`, `ExcelTableSpec`, `ExcelTableRow`, `ExcelRowStyle`, `IExcelExporter`, `ImportCheckpointState`; internally the cell codec and its decoding records, the cell reader, the column encodings, the number formats, the stylesheet, the package, worksheet and workbook writers, the manifest's header block, the serial dates, the sheet and file names, the column letters, the XML escapes and the scratch files. |
 | `Caching/` | The versioned cache base, its keys and kinds; internally, the cacheable entities' store and façade, the version-tag registry, its table's row, the prelude and bump contributors, the bump plan, the snapshots, the mismatch policies, the migrator's seeder, the instruments and the log events. |
-| `Jobs/` | Internally: the job tables' configurations and seeds, the handler, built-in-schedule and retired-key realizers with their cross-feature checks, `JobHandlerRegistry`, the `jobs.handlers` and `jobs.schedules` checks, the queue and its enqueue statement, the poller wake, the lease statements, the runner with its leases, renewal, progress, outcome rules, backoff, pending-confirmation record, notices and completion-failure translation, the job and system scopes, the `process` and `settle` activities and the log scope, the composition step that binds the jobs' options, and the log events. |
+| `Jobs/` | Internally: the job tables' configurations and seeds, the handler, built-in-schedule and retired-key realizers with their cross-feature checks, `JobHandlerRegistry`, the `jobs.handlers` and `jobs.schedules` checks, the queue and its enqueue statement, the poller wake, the lease statements, the runner with its leases, renewal, progress, outcome rules, backoff, pending-confirmation record, notices and completion-failure translation, the job and system scopes, the `process` and `settle` activities and the log scope, the composition step that binds the jobs' options, and the log events; `JobService` with its action and retention statements, the self-scope criteria, the label renderer, the `jobHandlers` contributor, and the retention and tree-verify handlers. |
 | `Access/` | Internally: the access tables' configurations and seeds, the user stamp and preference rows, the securable registry with its name grammar and feature contributor, the securables section of the client metadata, the permission set build: the classifier, the builder, the interner and the access instruments and logs; and the user connection: the connect prologue, the connect, permissions and profile caches, the connector, the guarded runner and the connect initializer; and the permission filter rules the role save and the Queryex discovery share. |
 | `Identity/` | `IdentityServerClient`; internally its transport and token cache, the wire shapes and their source-generated JSON metadata, the options' settling and validator, the composition step that binds them and registers the named HTTP client, the instruments and the log events. |
 | `Notifications/` | `NotificationTypeRegistry`, `NotificationChannelRegistry`, `ClientEventRegistry`, `NotificationsClientAssetContributor`, `ClientEventPublisher`, `NullClientEventPublisher`, `NotificationConfiguration` and `NotificationDeliveryArguments`; internally the notifier, its statements and the delivering channels, the renderer, the preference row, the metrics, the name grammars, the hub-less real-time status, the composition step and the log events. |
@@ -2490,8 +2573,8 @@ are SpreadsheetML packages written with `DocumentFormat.OpenXml` (MIT), forward-
 `test/core/Tellma.Core.IntegrationTests` (`Category=Integration`) runs the catalog migrations, the
 write side, the registry, the membership hints and the tenant scope factory against SQL Server, and
 runs batches against the data layer's fixture database (`test/shared/Tellma.Testing.Entities`), and
-holds the job tables, the queue's enqueue statement, the lease statements and jobs run end to end
-through `JobPollDriver` to SQL Server in `Jobs/`.
+holds the job tables, the queue's enqueue statement, the lease statements, the jobs' actions and
+the maintenance handlers, and jobs run end to end through `JobPollDriver` to SQL Server in `Jobs/`.
 `test/core/Tellma.Core.Tests/Excel` holds every workbook the writer produces to the Open XML SDK's
 Office 2019 schema validator.
 `test/core/Tellma.Core.Tests` also runs the resource audit over Core's own resources

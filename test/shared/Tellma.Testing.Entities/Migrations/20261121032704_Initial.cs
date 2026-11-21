@@ -3471,7 +3471,13 @@ namespace Tellma.Testing.Entities.Migrations
                 schema: "core",
                 table: "Schedules",
                 columns: new[] { "Id", "ArgumentsJson", "CatchUpWindowMinutes", "Code", "CreatedAt", "CreatedById", "CronExpression", "HandlerKey", "IsActive", "ModifiedAt", "ModifiedById", "Name", "Name2", "Name3", "PausedReason", "RunAsUserId", "TimeZoneId" },
-                values: new object[] { 500, null, 1440, "fixture.probe", new DateTimeOffset(new DateTime(2000, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), 1, "0 1 * * *", "fixture.probe", true, new DateTimeOffset(new DateTime(2000, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), 1, "fixture.probe", null, null, null, 1, null });
+                values: new object[,]
+                {
+                    { 1, null, 1440, "core.job-retention", new DateTimeOffset(new DateTime(2000, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), 1, "0 3 * * *", "core.job-retention", true, new DateTimeOffset(new DateTime(2000, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), 1, "core.job-retention", null, null, null, 1, null },
+                    { 2, null, 1440, "core.notification-retention", new DateTimeOffset(new DateTime(2000, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), 1, "30 3 * * *", "core.notification-retention", true, new DateTimeOffset(new DateTime(2000, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), 1, "core.notification-retention", null, null, null, 1, null },
+                    { 6, null, 1440, "core.tree-verify", new DateTimeOffset(new DateTime(2000, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), 1, "0 1 * * 6", "core.tree-verify", true, new DateTimeOffset(new DateTime(2000, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), 1, "core.tree-verify", null, null, null, 1, null },
+                    { 500, null, 1440, "fixture.probe", new DateTimeOffset(new DateTime(2000, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), 1, "0 1 * * *", "fixture.probe", true, new DateTimeOffset(new DateTime(2000, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), 1, "fixture.probe", null, null, null, 1, null }
+                });
 
             migrationBuilder.InsertData(
                 schema: "core",
@@ -3501,7 +3507,13 @@ namespace Tellma.Testing.Entities.Migrations
                 schema: "core",
                 table: "ScheduleStates",
                 columns: new[] { "ScheduleId", "LastFiredAt", "LastJobId", "LastScheduledFor", "LastSkippedAt", "LeaseExpiresAt", "LeaseToken", "NextDueAt" },
-                values: new object[] { 500, null, null, null, null, null, null, null });
+                values: new object[,]
+                {
+                    { 1, null, null, null, null, null, null, null },
+                    { 2, null, null, null, null, null, null, null },
+                    { 6, null, null, null, null, null, null, null },
+                    { 500, null, null, null, null, null, null, null }
+                });
 
             migrationBuilder.CreateIndex(
                 name: "IX_BlobFolders_ParentId",

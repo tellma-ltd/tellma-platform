@@ -1594,7 +1594,86 @@
         }
       ],
       "children": [],
-      "actions": [],
+      "actions": [
+        {
+          "name": "retry",
+          "kind": "entity",
+          "builtIn": false,
+          "action": "Retry",
+          "labelKey": "Action_Retry",
+          "mutation": true,
+          "idempotent": false,
+          "destructive": false,
+          "singleTarget": false,
+          "supportsFilter": true,
+          "result": "entities"
+        },
+        {
+          "name": "cancel",
+          "kind": "entity",
+          "builtIn": false,
+          "action": "Cancel",
+          "labelKey": "Action_Cancel",
+          "mutation": true,
+          "idempotent": false,
+          "destructive": true,
+          "allowWhenReadOnly": true,
+          "singleTarget": false,
+          "supportsFilter": true,
+          "result": "entities"
+        },
+        {
+          "name": "resume",
+          "kind": "entity",
+          "builtIn": false,
+          "action": "Resume",
+          "labelKey": "Action_Resume",
+          "mutation": true,
+          "idempotent": false,
+          "destructive": false,
+          "singleTarget": false,
+          "supportsFilter": true,
+          "result": "entities"
+        },
+        {
+          "name": "confirm",
+          "kind": "entity",
+          "builtIn": false,
+          "action": "Confirm",
+          "labelKey": "Core_Job_Action_Confirm",
+          "mutation": true,
+          "idempotent": false,
+          "destructive": false,
+          "singleTarget": false,
+          "supportsFilter": true,
+          "result": "entities",
+          "arguments": {
+            "type": "object",
+            "properties": {
+              "keys": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "keys"
+            ]
+          },
+          "fields": [
+            {
+              "name": "keys",
+              "labelKey": "Core_Job_Action_Confirm_Keys",
+              "required": true,
+              "value": {
+                "type": "json",
+                "nullable": false
+              }
+            }
+          ]
+        }
+      ],
       "relatedSelect": [
         "Id",
         "HandlerKey",
@@ -1607,7 +1686,9 @@
       "defaultOrderBy": "Id desc",
       "searchable": [],
       "naturalKeys": [],
-      "extras": [],
+      "extras": [
+        "permissions"
+      ],
       "limits": {
         "maxTake": 10000,
         "countCap": 10000,
@@ -2669,6 +2750,32 @@
           "singleTarget": false,
           "supportsFilter": true,
           "result": "entities"
+        },
+        {
+          "name": "take-over",
+          "kind": "entity",
+          "builtIn": false,
+          "action": "Save",
+          "labelKey": "Core_Schedule_Action_TakeOver",
+          "mutation": true,
+          "idempotent": false,
+          "destructive": false,
+          "singleTarget": false,
+          "supportsFilter": true,
+          "result": "entities"
+        },
+        {
+          "name": "run-now",
+          "kind": "entity",
+          "builtIn": false,
+          "action": "Save",
+          "labelKey": "Core_Schedule_Action_RunNow",
+          "mutation": true,
+          "idempotent": false,
+          "destructive": false,
+          "singleTarget": true,
+          "supportsFilter": true,
+          "result": "own"
         }
       ],
       "relatedSelect": [
@@ -2687,6 +2794,7 @@
         "Code"
       ],
       "extras": [
+        "state",
         "permissions"
       ],
       "limits": {

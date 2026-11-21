@@ -10,6 +10,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Testing;
 using System.Collections.Concurrent;
 using System.Globalization;
+using System.Text;
 using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Caching;
 using Tellma.Core.Abstractions.Composition;
@@ -18,8 +19,12 @@ using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Jobs;
 using Tellma.Core.Abstractions.Notifications;
 using Tellma.Core.Abstractions.Realtime;
+using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.Crud;
 using Tellma.Core.Data.Batches;
+using Tellma.Core.Jobs;
+using Tellma.Core.Queryex;
+using Tellma.Core.Tenancy;
 using Tellma.Testing.Entities;
 
 namespace Tellma.Core.IntegrationTests.Jobs
@@ -27,8 +32,9 @@ namespace Tellma.Core.IntegrationTests.Jobs
     /// <summary>
     ///     One fixture database whose host runs jobs: the fixture composition with a feature of
     ///     scripted handlers, the tables its stacks own refused to a caller's raw writes as in
-    ///     production, the tenant's administrators fixed, and the notices and client events recorded
-    ///     once their batch committed. A raw table no stack owns takes the handlers' own statements.
+    ///     production, the tenant's administrators fixed, its users granted the schedules (one of them
+    ///     only the schedule a filter lets it read), its administrator granted every job action, its active user the shipments, and the notices, withdrawals and client events
+    ///     recorded once their batch committed. A raw table no stack owns takes the handlers' own statements.
     ///     The change-tracking audit checks every batch but while a test suspends it to run batches
     ///     side by side. Created once per test class and reset before each test; a class's tests run
     ///     one at a time.
@@ -44,25 +50,56 @@ namespace Tellma.Core.IntegrationTests.Jobs
         /// <summary>An active user a test deactivates while a job runs as them; active again after every reset.</summary>
         public const int DeactivatedUserId = 121;
 
+        /// <summary>An active user who reads only the schedule coded <see cref="ViewerScheduleCode" />.</summary>
+        public const int ViewerUserId = 131;
+
         /// <summary>A user who is no longer an active member.</summary>
         public const int InactiveUserId = 151;
+
+        /// <summary>The code of the one schedule <see cref="ViewerUserId" /> may read.</summary>
+        public const string ViewerScheduleCode = "seen";
+
+        /// <summary>The resource of the fixture's shipments, which the active user reads.</summary>
+        public const string ShipmentResource = "fixture.Shipment";
 
         /// <summary>The raw table the handlers' own statements write; no stack owns it.</summary>
         public const string RawTable = "[test].[RunLog]";
 
-        /// <summary>The statements that return the database to its state after creation, the seeded rows kept.</summary>
-        private const string ResetText = """
+        /// <summary>The fixture's built-in schedule's expression, as the migrations seed it.</summary>
+        public const string BuiltInCron = "0 1 * * *";
+
+        /// <summary>
+        ///     The statements that return the database to its state after creation, the seeded rows kept:
+        ///     the user schedules go with their states, and the fixture's built-in schedule is active, as
+        ///     seeded, and not yet initialised, so a poll only ever fires it once a test makes it due.
+        ///     The platform's own built-in schedules are kept stopped, so a tick leases and fires the
+        ///     fixture's schedules alone.
+        /// </summary>
+        private static readonly string ResetText = string.Create(CultureInfo.InvariantCulture, $"""
             DELETE FROM [test].[RunLog];
             DELETE FROM [fixture].[Shipments];
+            DELETE FROM [fixture].[Nodes];
             DELETE FROM [core].[Jobs];
+            DELETE FROM [core].[Schedules] WHERE [Id] > {WellKnownIds.ReservedIdBandEnd};
+            UPDATE [core].[ScheduleStates] SET [NextDueAt] = NULL, [LastFiredAt] = NULL, [LastScheduledFor] = NULL, [LastSkippedAt] = NULL, [LeaseToken] = NULL, [LeaseExpiresAt] = NULL;
+            UPDATE [core].[Schedules] SET [IsActive] = 1, [PausedReason] = NULL, [CronExpression] = N'{BuiltInCron}', [TimeZoneId] = NULL
+            WHERE [Id] = {FixtureFeature.ProbeScheduleId} AND ([IsActive] = 0 OR [PausedReason] IS NOT NULL OR [CronExpression] <> N'{BuiltInCron}' OR [TimeZoneId] IS NOT NULL);
+            UPDATE [core].[Schedules] SET [IsActive] = 0
+            WHERE [Id] <> {FixtureFeature.ProbeScheduleId} AND [Id] <= {WellKnownIds.ReservedIdBandEnd} AND [IsActive] = 1;
             UPDATE [core].[JobWorkerState] SET [LastTickAt] = NULL, [LastTickOwner] = NULL;
-            """;
+            """);
 
         /// <summary>The suite's server.</summary>
         private readonly SqlServerFixture _sql;
 
         /// <summary>The host, once created.</summary>
         private FixtureTenant? _tenant;
+
+        /// <summary>The subscription that counts the wakes of the fixture tenant's pollers.</summary>
+        private IDisposable? _wakeSubscription;
+
+        /// <summary>The wakes since the last reset.</summary>
+        private int _wakes;
 
         /// <summary>Creates the database with read-committed snapshot on, as provisioning creates a tenant database.</summary>
         /// <param name="sql">The suite's server.</param>
@@ -99,6 +136,9 @@ namespace Tellma.Core.IntegrationTests.Jobs
         /// <summary>The notifications raised, each once its batch committed.</summary>
         public CommittedNotices Notices { get; } = new();
 
+        /// <summary>How many times the host woke the fixture tenant's pollers since the last reset.</summary>
+        public int Wakes => Volatile.Read(ref _wakes);
+
         /// <summary>The host's log.</summary>
         public FakeLogCollector Log => Tenant.Services.GetFakeLogCollector();
 
@@ -119,6 +159,9 @@ namespace Tellma.Core.IntegrationTests.Jobs
                     _ = services.AddScoped<IClientEventPublisher>(_ => Events);
                     _ = services.Replace(ServiceDescriptor.Scoped<IAdministratorDirectory>(static _ => new FixedAdministrators()));
                     _ = services.AddFakeLogging();
+
+                    // The jobs' debug records too, so a test sees each progress report a handler made.
+                    _ = services.AddLogging(static builder => builder.AddFilter(JobsLog.Category, LogLevel.Debug));
 
                     // Each record carries the trace of the activity it was logged under, as an exporter reads it.
                     _ = services.Configure<LoggerFactoryOptions>(static options => options.ActivityTrackingOptions = ActivityTrackingOptions.TraceId);
@@ -144,11 +187,20 @@ namespace Tellma.Core.IntegrationTests.Jobs
                 UserInsert(AdministratorId, active: true),
                 UserInsert(DeactivatedUserId, active: true),
                 UserInsert(InactiveUserId, active: false),
+                UserInsert(ViewerUserId, active: true),
+                RoleInsert("Schedulers", [ActiveUserId, AdministratorId, DeactivatedUserId], [AccessActions.Read, AccessActions.Save, AccessActions.Delete, AccessActions.Activate], filter: null),
+                RoleInsert("Viewers", [ViewerUserId], [AccessActions.Read], filter: $"Code = '{ViewerScheduleCode}'"),
+                RoleInsert("Job administrators", [AdministratorId], [AccessActions.Read, AccessActions.Retry, AccessActions.Cancel, AccessActions.Resume, JobService.Confirm], filter: null, CoreResources.Job),
+                RoleInsert("Shipment readers", [ActiveUserId], [AccessActions.Read], filter: null, ShipmentResource),
                 "CREATE SCHEMA [test];",
                 $"CREATE TABLE {RawTable} ([Id] int IDENTITY PRIMARY KEY, [JobId] int NOT NULL, [Note] nvarchar(100) NOT NULL);");
+
+            // --- The wakes stand in for the poller a running host has: each one counts ---
+            _wakeSubscription = Tenant.Services.GetRequiredService<TenantPollerWake>()
+                .Subscribe(FixtureTenant.TenantId, () => Interlocked.Increment(ref _wakes));
         }
 
-        /// <summary>Deletes every row a test may have written, reactivates the user a test deactivates, resumes the audit, and clears the script, the notices, the events and the log.</summary>
+        /// <summary>Deletes every row a test may have written, reactivates the user a test deactivates, resumes the audit, and clears the script, the notices, the events, the wakes and the log.</summary>
         /// <returns>A task that completes when the database is reset.</returns>
         public async Task ResetAsync()
         {
@@ -160,6 +212,7 @@ namespace Tellma.Core.IntegrationTests.Jobs
             Script.Reset();
             Notices.Clear();
             Events.Clear();
+            _ = Interlocked.Exchange(ref _wakes, 0);
             Log.Clear();
         }
 
@@ -167,7 +220,50 @@ namespace Tellma.Core.IntegrationTests.Jobs
         public ValueTask DisposeAsync()
         {
             GC.SuppressFinalize(this);
+            _wakeSubscription?.Dispose();
             return _tenant?.DisposeAsync() ?? ValueTask.CompletedTask;
+        }
+
+        /// <summary>
+        ///     A request scope of the fixture tenant for one of its users, whose session stepped up a
+        ///     moment ago, completed by the initializers as a request's is.
+        /// </summary>
+        /// <param name="userId">The user, one of the fixture's.</param>
+        /// <param name="state">The tenant's state the request sees; the registered one when null.</param>
+        /// <returns>The scope; the caller disposes it.</returns>
+        public async Task<AsyncServiceScope> UserScopeAsync(int userId, TenantState? state = null)
+        {
+            AsyncServiceScope scope = Tenant.Services.CreateAsyncScope();
+            try
+            {
+                // --- The request as the tenant middleware binds it: the tenant, the caller's subject and a fresh step-up ---
+                DateTimeOffset now = DateTimeOffset.UtcNow;
+                IRequestContextHolder holder = scope.ServiceProvider.GetRequiredService<IRequestContextHolder>();
+                TenantDescriptor tenant = Tenant.Services.GetRequiredService<ITenantRegistry>().Get(FixtureTenant.TenantId).Descriptor;
+                RequestContext context = holder.Current with
+                {
+                    Tenant = tenant with { State = state ?? tenant.State },
+                    Kind = PrincipalKind.User,
+                    Subject = Subject(userId),
+                    UserId = null,
+                    Assurance = new AuthenticationAssurance(AssuranceTiers.Aal2, now, now),
+                };
+                holder.Set(context);
+
+                // --- Then the initializers: the connection, which binds the user, and the locale ---
+                _ = await RequestContextInitialization.RunAsync(
+                    holder,
+                    scope.ServiceProvider.GetServices<IRequestContextInitializer>(),
+                    context,
+                    new RequestContextInputs(null, null, null, null, null, null, SuppressActivityStamp: true),
+                    TestContext.Current.CancellationToken);
+                return scope;
+            }
+            catch
+            {
+                await scope.DisposeAsync();
+                throw;
+            }
         }
 
         /// <summary>Stores a job not leased, as an enqueue or a completion leaves one, due five seconds ago unless told otherwise.</summary>
@@ -204,6 +300,17 @@ namespace Tellma.Core.IntegrationTests.Jobs
                     VALUES (@id, N'{key}', 'Pending', DATEADD(second, -({dueSecondsAgo}), SYSUTCDATETIME()), {attempts}, {Literal(stateJson)}, {Literal(confirmedKeys)}, {cancel}, {Literal(errorCode)}, {runAs}, {requester}, SYSUTCDATETIME());
                     SELECT @id;
                     """));
+        }
+
+        /// <summary>Sets columns of a stored job, as the machinery would have left them.</summary>
+        /// <param name="id">The job.</param>
+        /// <param name="assignments">The SET list, such as <c>[Status] = 'Held'</c>.</param>
+        /// <returns>A task that completes when the job is updated.</returns>
+        public Task SetJobAsync(int id, string assignments)
+        {
+            return SqlServerFixture.ExecuteAsync(
+                ConnectionString,
+                string.Create(CultureInfo.InvariantCulture, $"UPDATE [core].[Jobs] SET {assignments} WHERE [Id] = {id};"));
         }
 
         /// <summary>Stores a pending shipment that owns a job.</summary>
@@ -273,7 +380,7 @@ namespace Tellma.Core.IntegrationTests.Jobs
         /// <returns>The statement.</returns>
         private static string UserInsert(int id, bool active)
         {
-            string subject = string.Create(CultureInfo.InvariantCulture, $"fx-jobrun-{id}");
+            string subject = Subject(id);
             int system = WellKnownIds.SystemUserId;
             return string.Create(
                 CultureInfo.InvariantCulture,
@@ -282,6 +389,53 @@ namespace Tellma.Core.IntegrationTests.Jobs
                 VALUES ({id}, '{UserKind.Individual}', '{subject}', N'{subject}@example.com', SYSDATETIMEOFFSET(), SYSDATETIMEOFFSET(), N'{subject}', {(active ? 1 : 0)}, SYSDATETIMEOFFSET(), {system}, SYSDATETIMEOFFSET(), {system});
                 INSERT INTO [core].[UserStamps] ([UserId]) VALUES ({id});
                 """);
+        }
+
+        /// <summary>A fixture user's subject.</summary>
+        /// <param name="id">The user's id.</param>
+        /// <returns>The subject.</returns>
+        private static string Subject(int id)
+        {
+            return string.Create(CultureInfo.InvariantCulture, $"fx-jobrun-{id}");
+        }
+
+        /// <summary>The statement that inserts a role over one resource, the schedules unless told otherwise, its permissions and its members.</summary>
+        /// <param name="name">The role's name.</param>
+        /// <param name="members">The users who are its members.</param>
+        /// <param name="actions">The actions it grants on the resource.</param>
+        /// <param name="filter">The filter every permission carries; null for none.</param>
+        /// <param name="resource">The resource; the schedules when null.</param>
+        /// <returns>The statement.</returns>
+        private static string RoleInsert(string name, IReadOnlyList<int> members, IReadOnlyList<string> actions, string? filter, string? resource = null)
+        {
+            int system = WellKnownIds.SystemUserId;
+            string text = Literal(filter);
+            string version = filter is null ? "NULL" : QueryexLanguage.Version.ToString(CultureInfo.InvariantCulture);
+            StringBuilder sql = new();
+            _ = sql.Append(CultureInfo.InvariantCulture, $"""
+                DECLARE @role int = NEXT VALUE FOR [core].[sq_Roles];
+                INSERT INTO [core].[Roles] ([Id], [Name], [CreatedAt], [CreatedById], [ModifiedAt], [ModifiedById]) VALUES (@role, N'{name}', SYSDATETIMEOFFSET(), {system}, SYSDATETIMEOFFSET(), {system});
+
+                """);
+
+            // --- One permission per action, then one membership per member ---
+            foreach (string action in actions)
+            {
+                _ = sql.Append(CultureInfo.InvariantCulture, $"""
+                    INSERT INTO [core].[Permissions] ([Id], [RoleId], [Resource], [Action], [Filter], [FilterQueryexVersion]) VALUES (NEXT VALUE FOR [core].[sq_Permissions], @role, N'{resource ?? CoreResources.Schedule}', N'{action}', {text}, {version});
+
+                    """);
+            }
+
+            foreach (int member in members)
+            {
+                _ = sql.Append(CultureInfo.InvariantCulture, $"""
+                    INSERT INTO [core].[RoleMemberships] ([Id], [UserId], [RoleId]) VALUES (NEXT VALUE FOR [core].[sq_RoleMemberships], {member}, @role);
+
+                    """);
+            }
+
+            return sql.ToString();
         }
 
         /// <summary>An administrator directory that names the fixture's administrator.</summary>
@@ -422,8 +576,8 @@ namespace Tellma.Core.IntegrationTests.Jobs
     }
 
     /// <summary>
-    ///     A notifier that records each request once its batch committed and each withdrawal sent on
-    ///     its own, and delivers nothing; a test may have it refuse every request, as a notifier whose
+    ///     A notifier that records each request and each withdrawal once its batch committed, and each
+    ///     sent on its own at once, and delivers nothing; a test may have it refuse every request, as a notifier whose
     ///     statement cannot be composed would.
     /// </summary>
     public sealed class CommittedNotices : INotifier
@@ -437,18 +591,25 @@ namespace Tellma.Core.IntegrationTests.Jobs
         /// <summary>The requests recorded since the last clear.</summary>
         public IReadOnlyList<NotificationRequest> Raised => [.. _requests];
 
-        /// <summary>The withdrawals sent on their own since the last clear.</summary>
+        /// <summary>The withdrawals recorded since the last clear.</summary>
         public IReadOnlyList<WithdrawRequest> Withdrawn => [.. _withdrawals];
 
         /// <summary>Whether every request appended to a batch is refused with an exception; off again after each clear.</summary>
         public bool Refuses { get; set; }
 
-        /// <summary>Forgets every request, and accepts requests again.</summary>
+        /// <summary>
+        ///     Runs as each withdrawal sent on its own arrives, before its token is checked, as a test
+        ///     arranges something to happen while one is in flight; none again after each clear.
+        /// </summary>
+        public Action? Withdrawing { get; set; }
+
+        /// <summary>Forgets every request, accepts requests again, and runs nothing as a withdrawal arrives.</summary>
         public void Clear()
         {
             _requests.Clear();
             _withdrawals.Clear();
             Refuses = false;
+            Withdrawing = null;
         }
 
         /// <inheritdoc />
@@ -487,13 +648,26 @@ namespace Tellma.Core.IntegrationTests.Jobs
         /// <inheritdoc />
         public void Withdraw(IDataBatch batch, IReadOnlyList<WithdrawRequest> requests)
         {
-            throw new NotSupportedException("No job completion withdraws a notification.");
+            ArgumentNullException.ThrowIfNull(batch);
+            ArgumentNullException.ThrowIfNull(requests);
+            WithdrawRequest[] withdrawn = [.. requests];
+            batch.OnCommitted(_ =>
+            {
+                foreach (WithdrawRequest request in withdrawn)
+                {
+                    _withdrawals.Enqueue(request);
+                }
+            });
         }
 
         /// <inheritdoc />
         public Task WithdrawAsync(IReadOnlyList<WithdrawRequest> requests, CancellationToken cancellationToken = default)
         {
             ArgumentNullException.ThrowIfNull(requests);
+
+            // --- What the test arranged, then the token, as a notifier's round trip honours it ---
+            Withdrawing?.Invoke();
+            cancellationToken.ThrowIfCancellationRequested();
             foreach (WithdrawRequest request in requests)
             {
                 _withdrawals.Enqueue(request);
@@ -517,6 +691,9 @@ namespace Tellma.Core.IntegrationTests.Jobs
 
         /// <summary>The handler of one attempt whose failure notices stay in the inbox.</summary>
         public const string Inbox = "test.inbox";
+
+        /// <summary>A schedulable arguments-only handler that runs while the tenant is read-only.</summary>
+        public const string Sweep = "test.sweep";
 
         /// <summary>A key the feature retired: its jobs are cancelled by the hourly sweep.</summary>
         public const string Retired = "test.retired";
@@ -598,6 +775,7 @@ namespace Tellma.Core.IntegrationTests.Jobs
                 .JobHandler<RunShipHandler>()
                 .JobHandler<RunStepsHandler>()
                 .JobHandler<RunInboxHandler>()
+                .JobHandler<RunSweepHandler>()
                 .RetiredJobKey(JobRunKeys.Retired)
                 .Confirmation(JobRunKeys.Backdated)
                 .Confirmation(JobRunKeys.Negative);
@@ -669,6 +847,17 @@ namespace Tellma.Core.IntegrationTests.Jobs
             ArgumentNullException.ThrowIfNull(batch);
             script.Invoked(JobRunKeys.Inbox, batch);
             return script.Inbox?.Invoke(batch, new JobRunContext(services, host)) ?? Task.CompletedTask;
+        }
+    }
+
+    /// <summary>A schedulable handler that runs while the tenant is read-only, and does nothing.</summary>
+    [JobHandler(JobRunKeys.Sweep, Schedulable = true, RunsWhenReadOnly = true)]
+    public sealed class RunSweepHandler : IJobHandler
+    {
+        /// <inheritdoc />
+        public Task ExecuteAsync(JobBatch<Job> batch)
+        {
+            return Task.CompletedTask;
         }
     }
 }

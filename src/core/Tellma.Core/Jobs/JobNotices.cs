@@ -7,6 +7,7 @@ using System.Globalization;
 using System.Text.Json;
 using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Jobs;
+using Tellma.Core.Abstractions.Localization;
 using Tellma.Core.Abstractions.Notifications;
 using Tellma.Core.Abstractions.Realtime;
 
@@ -16,8 +17,9 @@ namespace Tellma.Core.Jobs
     // PendingConfirmation raises core.job.pending-confirmation, each to the requester, else to the
     // tenant's administrators; job.changed goes to the requester alone, never to administrators. The
     // gap hold of §6.10 raises core.scheduler.gap to the administrators and core.job.held to each
-    // requester of a held row, neither with a target.
-    /// <summary>The notifications and client events a completion raises.</summary>
+    // requester of a held row, neither with a target. The scheduler's pause of §7.7 raises
+    // core.schedule.paused on the schedule, to its owner or to the administrators.
+    /// <summary>The notifications and client events the job machinery and the scheduler raise.</summary>
     internal static class JobNotices
     {
         /// <summary>The category of the job notifications.</summary>
@@ -34,6 +36,9 @@ namespace Tellma.Core.Jobs
 
         /// <summary>The notification of a gap in the worker's polls.</summary>
         public const string GapType = "core.scheduler.gap";
+
+        /// <summary>The notification of a schedule the scheduler paused.</summary>
+        public const string SchedulePausedType = "core.schedule.paused";
 
         /// <summary>The client event of a job whose row changed.</summary>
         public const string ChangedEvent = "job.changed";
@@ -53,6 +58,47 @@ namespace Tellma.Core.Jobs
         /// <summary>The descriptor of <see cref="GapType" />.</summary>
         public static NotificationTypeDescriptor GapDescriptor { get; } = new(
             GapType, Category, Mutable: false, TargetResource: null, Severity: NotificationSeverity.Warning, Toast: true);
+
+        /// <summary>The descriptor of <see cref="SchedulePausedType" />.</summary>
+        public static NotificationTypeDescriptor SchedulePausedDescriptor { get; } = new(
+            SchedulePausedType, Category, Mutable: true, TargetResource: CoreResources.Schedule, Severity: NotificationSeverity.Warning, Toast: true);
+
+        /// <summary>The dedup key of a schedule's paused notice, which its withdrawal names.</summary>
+        /// <param name="scheduleId">The schedule.</param>
+        /// <returns>The key.</returns>
+        public static string SchedulePausedKey(int scheduleId)
+        {
+            return string.Create(CultureInfo.InvariantCulture, $"{SchedulePausedType}:{scheduleId}");
+        }
+
+        // Spec 0020 §7.7: an inactive owner is reported to the administrators, who act on another
+        // user's schedule; an exhausted expression or a retired key to the owner when it is a person,
+        // else to the administrators. Each schedule's notice dedups on its own key, split so no
+        // request names more recipients than the notifier takes.
+        /// <summary>The notices a schedule's pause raises.</summary>
+        /// <param name="scheduleId">The schedule.</param>
+        /// <param name="name">Its name in each content language.</param>
+        /// <param name="ownerId">The user it runs as.</param>
+        /// <param name="reason">Why it paused.</param>
+        /// <param name="administrators">The tenant's administrators.</param>
+        /// <param name="maxRecipientsPerRequest">The most recipients one request may name.</param>
+        /// <returns>The requests; none when there is no one to tell.</returns>
+        public static IEnumerable<NotificationRequest> SchedulePaused(
+            int scheduleId, LocalizedText name, int ownerId, SchedulePausedReason reason, IReadOnlyList<int> administrators, int maxRecipientsPerRequest)
+        {
+            ArgumentNullException.ThrowIfNull(name);
+            ArgumentNullException.ThrowIfNull(administrators);
+            ArgumentOutOfRangeException.ThrowIfLessThan(maxRecipientsPerRequest, 1);
+            IEnumerable<int> recipients = reason != SchedulePausedReason.OwnerInactive && ownerId != WellKnownIds.SystemUserId
+                ? [ownerId]
+                : administrators.Distinct();
+            SchedulePausedArguments arguments = new(scheduleId, name, reason.ToString());
+            foreach (int[] chunk in recipients.Chunk(maxRecipientsPerRequest))
+            {
+                yield return new NotificationRequest(
+                    SchedulePausedType, chunk, arguments, CoreResources.Schedule, scheduleId, ActorUserId: null, DedupKey: SchedulePausedKey(scheduleId));
+            }
+        }
 
         /// <summary>The dedup key of a job's confirmation notice, which its withdrawal names.</summary>
         /// <param name="jobId">The job.</param>
@@ -179,6 +225,12 @@ namespace Tellma.Core.Jobs
     /// <summary>The arguments of <c>core.job.held</c>.</summary>
     /// <param name="Count">The requester's held jobs.</param>
     internal sealed record JobHeldArguments(int Count);
+
+    /// <summary>The arguments of <c>core.schedule.paused</c>.</summary>
+    /// <param name="ScheduleId">The schedule.</param>
+    /// <param name="Name">Its name in each content language.</param>
+    /// <param name="Reason">Why it paused: <c>OwnerInactive</c>, <c>Exhausted</c> or <c>HandlerRetired</c>.</param>
+    internal sealed record SchedulePausedArguments(int ScheduleId, LocalizedText Name, string Reason);
 
     /// <summary>The arguments of <c>core.scheduler.gap</c>.</summary>
     /// <param name="PreviousTickAt">The last poll before the gap.</param>

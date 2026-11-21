@@ -5,19 +5,14 @@
 
 using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Crud;
-using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Caching;
-using Tellma.Core.Data.Batches;
-using Tellma.Core.Tests.Data.Batches;
-using Tellma.Core.Users;
 
 namespace Tellma.Core.Tests.Users
 {
     /// <summary>
     ///     The post-commit effects of deactivating and activating users: the session listeners told of
     ///     each deactivated linked user, the membership hints recorded in one call, and a deactivated
-    ///     service account's client deleted; every failure logged, none thrown; and the statement that
-    ///     declares the tables a user delete's keys cascade to.
+    ///     service account's client deleted; every failure logged, none thrown.
     /// </summary>
     public sealed class UserEffectsTests : IDisposable
     {
@@ -87,36 +82,6 @@ namespace Tellma.Core.Tests.Users
             Assert.Single(_kit.Logs.Entries, static entry => entry.EventId.Name == "UserMembershipHintFailed");
             Assert.Single(_kit.Logs.Entries, static entry => entry.EventId.Name == "ServiceAccountDeleteFailed");
             Assert.Equal(["svc-1"], _kit.Identity.Deleted);
-        }
-
-        // --- A delete's cascades ---
-
-        [Fact]
-        public void The_delete_declaration_writes_the_preferences_stamps_and_notification_preferences_over_the_deleted_ids()
-        {
-            using BatchHarness harness = new();
-            DataBatch batch = harness.Batch(BatchPurpose.Persist);
-
-            UserService<User>.DeclareUserDelete(batch, new SqlIdentifier("@deleted"));
-
-            BatchStatement statement = Assert.Single(batch.Statements);
-            Assert.Equal(
-                """
-                DELETE [p] FROM [core].[UserPreferences] AS [p] INNER JOIN @deleted AS [k] ON [k].[Id] = [p].[UserId];
-                DELETE [s] FROM [core].[UserStamps] AS [s] INNER JOIN @deleted AS [k] ON [k].[Id] = [s].[UserId];
-                DELETE [n] FROM [core].[NotificationPreferences] AS [n] INNER JOIN @deleted AS [k] ON [k].[Id] = [n].[UserId];
-                """,
-                statement.Text,
-                ignoreLineEndingDifferences: true);
-            Assert.Equal(
-                [new TableName("core", "NotificationPreferences"), new TableName("core", "UserPreferences"), new TableName("core", "UserStamps")],
-                statement.Writes.OrderBy(static table => table.Name, StringComparer.Ordinal));
-            Assert.True(statement.MayRunTwice);
-            Assert.Empty(statement.Parameters);
-            UserIdSource users = Assert.Single(batch.UserIdSources);
-            Assert.Equal("@deleted", users.Identifier.Name);
-            Assert.Null(users.Column);
-            Assert.Equal(statement.Writes, users.Tables);
         }
 
         /// <summary>The committed outcome of a built-in action over loaded targets.</summary>

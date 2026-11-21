@@ -149,7 +149,7 @@ namespace Tellma.Core.Tests.Api
             Assert.Null(count.Securable);
             Assert.Null(count.RequestType);
 
-            RouteContract purge = routes.For(Prefix + "inbox/purge")!;
+            RouteContract purge = routes.For(Prefix + "sm-inbox/purge")!;
             Assert.Null(purge.Resource);
             Assert.Equal("sm.Inbox:Purge", purge.Securable!.ToString());
 
