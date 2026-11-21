@@ -7,13 +7,18 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Composition;
+using Tellma.Core.Abstractions.Crud;
+using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Email;
 using Tellma.Core.Abstractions.Identity;
 using Tellma.Core.Abstractions.Localization;
 using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.Access;
+using Tellma.Core.Crud;
+using Tellma.Core.Data.Queries;
 
 namespace Tellma.Core.Users
 {
@@ -44,6 +49,13 @@ namespace Tellma.Core.Users
                 provider.GetRequiredService<IGuardedBatchRunner>(),
                 provider.GetRequiredService<ISecurableRegistry>(),
                 provider.GetRequiredService<AccessEvaluator>(),
+                provider.GetRequiredService<IAccessGuards>(),
+                provider.GetRequiredService<IRequestContextAccessor>(),
+                provider.GetRequiredService<WriteFrames>(),
+                provider.GetRequiredService<IOpenWriteHost>(),
+                provider.GetRequiredService<IOptions<AccessOptions>>(),
+                provider.GetRequiredService<IEntityMetadataProvider>(),
+                provider.GetRequiredService<QueryexSchemaProvider>(),
                 provider.GetRequiredService<IScopeConnection>(),
                 provider.GetRequiredService<IEmailOutbox>(),
                 provider.GetRequiredService<ILocalizationNegotiator>(),

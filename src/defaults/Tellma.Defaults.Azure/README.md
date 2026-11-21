@@ -13,11 +13,18 @@ public static void Compose(TellmaBuilder tellma) =>
 | Concern | What it registers |
 |---|---|
 | Email | The email pipeline (`AddTellmaEmail()`), with the Azure Communication Services transport (`acs-email`) and the SendGrid transport (`sendgrid`) beside the Development log sink. `Email:Provider` chooses the sender; each transport reads its own section (`Email:AcsEmail`, `Email:SendGrid`). |
+| Blobs | The Skia image processor (`AddTellmaSkia()`), which normalises uploaded images and renders thumbnails, and exactly one blob store, chosen below. |
 
-| Blobs | The Skia image processor (`AddTellmaSkia()`), which normalises uploaded images and renders thumbnails, and in Development the file-system blob store (`AddFileSystemBlobStore()`, rooted under the user's local application data unless `Tellma:Blobs:FileSystem:RootPath` says otherwise). |
+The blob store is chosen once, at composition:
 
-Outside Development the bundle registers no blob store yet, so the startup gate's
-`blobs.deployment` check fails the host until the Azure blob store joins the bundle.
+| `Tellma:Blobs:Azure` | Environment | Store |
+|---|---|---|
+| present | any | The Azure blob store (`AddAzureBlobStore`), bound from the section: `ServiceUri` in a deployment, or a `ConnectionString` for Azurite. |
+| absent | Development | The file-system store (`AddFileSystemBlobStore()`), rooted under the user's local application data unless `Tellma:Blobs:FileSystem:RootPath` says otherwise. No Docker and no storage account are needed. |
+| absent | any other | The Azure blob store with nothing configured, so its `blobs.azure` startup check fails the host before it serves traffic, rather than the host running without durable blobs. |
+
+The Azure store reaches its account with the host's registered `TokenCredential`: the App Service's
+managed identity, which needs *Storage Blob Data Contributor* on the account.
 
 ## Rules
 

@@ -15,6 +15,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 using OpenTelemetry.Trace;
 using Tellma.Core.Abstractions.Blobs;
+using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.Abstractions.Email;
 using Tellma.Core.AspNetCore;
 using Tellma.Core.Composition;
@@ -24,8 +25,8 @@ using Tellma.Defaults.Azure.AspNetCore;
 namespace Tellma.Defaults.Azure.Tests
 {
     /// <summary>
-    ///     What the Azure bundles compose: the email transports and the blob processor and store for
-    ///     both hosts; the webhook endpoint,
+    ///     What the Azure bundles compose: the email transports, the blob processor, and the one blob
+    ///     store the Azure section and the environment choose, for both hosts; the webhook endpoint,
     ///     the key ring and the exporter for the web host, each only once and each of the last two only
     ///     when configured.
     /// </summary>
@@ -40,6 +41,15 @@ namespace Tellma.Defaults.Azure.Tests
 
         // The file-system blob store is internal to the runtime, so it is recognized by name.
         private const string FileSystemBlobStore = "FileSystemBlobStore";
+
+        // The Azure blob store and its startup check are internal to their adapter, so they are recognized by name.
+        private const string AzureBlobStore = "AzureBlobStore";
+
+        private const string AzureBlobStoreCheck = "blobs.azure";
+
+        private const string AzureServiceUriKey = "Tellma:Blobs:Azure:ServiceUri";
+
+        private const string AzureServiceUri = "https://acme.blob.core.windows.net";
 
         private const string ConnectionString = "InstrumentationKey=00000000-0000-0000-0000-000000000000;IngestionEndpoint=https://example.invalid/";
 
@@ -58,16 +68,42 @@ namespace Tellma.Defaults.Azure.Tests
         }
 
         [Theory]
-        [InlineData("Development", true)]
-        [InlineData("Production", false)]
-        public void The_defaults_register_the_skia_processor_once_and_the_file_system_store_in_development_only(string environment, bool store)
+        [InlineData("Development", false, FileSystemBlobStore)]
+        [InlineData("Production", false, AzureBlobStore)]
+        [InlineData("Development", true, AzureBlobStore)]
+        [InlineData("Production", true, AzureBlobStore)]
+        public void The_defaults_register_the_skia_processor_and_one_store_the_Azure_section_and_the_environment_choose(
+            string environment, bool azureSection, string store)
         {
-            ServiceCollection services = Compose([], static tellma => tellma.UseAzureDefaults().UseAzureDefaults(), new SuiteEnvironment { EnvironmentName = environment });
+            ServiceCollection services = Compose(
+                azureSection ? new() { [AzureServiceUriKey] = AzureServiceUri } : [],
+                static tellma => tellma.UseAzureDefaults().UseAzureDefaults(),
+                new SuiteEnvironment { EnvironmentName = environment });
 
             Assert.Equal(typeof(SkiaImageProcessor), Assert.Single(services, static descriptor => descriptor.ServiceType == typeof(IImageProcessor)).ImplementationType);
-            Assert.Equal(
-                store ? [FileSystemBlobStore] : [],
-                services.Where(static descriptor => descriptor.ServiceType == typeof(IBlobStore)).Select(static descriptor => descriptor.ImplementationType?.Name));
+            Assert.Equal(store, Assert.Single(services, static descriptor => descriptor.ServiceType == typeof(IBlobStore)).ImplementationType?.Name);
+        }
+
+        [Fact]
+        public async Task Outside_development_a_missing_Azure_section_fails_the_Azure_store_s_startup_check()
+        {
+            await using ServiceProvider provider = Compose([], static tellma => tellma.UseAzureDefaults(), new SuiteEnvironment { EnvironmentName = Environments.Production })
+                .BuildServiceProvider();
+
+            CompositionProblem problem = Assert.Single(await AzureBlobStoreCheckAsync(provider));
+
+            Assert.StartsWith("Neither Tellma:Blobs:Azure:ServiceUri nor Tellma:Blobs:Azure:ConnectionString is set", problem.Problem, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public async Task A_configured_endpoint_passes_the_Azure_store_s_startup_check_with_the_host_s_identity()
+        {
+            await using ServiceProvider provider = Compose(
+                new() { [AzureServiceUriKey] = AzureServiceUri },
+                static tellma => tellma.UseAzureDefaults(),
+                new SuiteEnvironment { EnvironmentName = Environments.Production }).BuildServiceProvider();
+
+            Assert.Empty(await AzureBlobStoreCheckAsync(provider));
         }
 
         [Fact]
@@ -187,6 +223,15 @@ namespace Tellma.Defaults.Azure.Tests
             const System.Reflection.BindingFlags Flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic;
             object? sampler = provider.GetType().GetProperty("Sampler", Flags)?.GetValue(provider) ?? provider.GetType().GetField("Sampler", Flags)?.GetValue(provider);
             return Assert.IsAssignableFrom<Sampler>(sampler);
+        }
+
+        /// <summary>Runs the Azure blob store's startup check over a built provider.</summary>
+        /// <param name="provider">The provider.</param>
+        /// <returns>The problems it reports.</returns>
+        private static Task<IReadOnlyList<CompositionProblem>> AzureBlobStoreCheckAsync(ServiceProvider provider)
+        {
+            IStartupCheck check = Assert.Single(provider.GetServices<IStartupCheck>(), static check => check.Name == AzureBlobStoreCheck);
+            return check.CheckAsync(provider, TestContext.Current.CancellationToken);
         }
 
         /// <summary>Whether any registration comes from the Azure Monitor exporter's assembly.</summary>

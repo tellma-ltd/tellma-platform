@@ -2192,8 +2192,10 @@ Saving a user or a role is a sensitive securable, so it asks for the step-up bar
 
 `UserService<TUser>` takes its platform collaborators as one `UserServiceDependencies` bundle (the
 identity-server client, the membership directory, the links, the language catalogue, the value sets,
-the guarded batch runner, the securables, the evaluator, the clock, the users' instruments and the
-logger factory), which `UsersRuntimeComposition` registers per scope, so a leaf's service derives with a
+the guarded batch runner, the securables, the evaluator, the access guards, the request context, the
+write frames, the open write frame, the access options, the entity metadata, the query schemas, the
+user connection, the email outbox, the localization negotiator, the string localizer factory, the
+clock, the users' instruments and the logger factory), which `UsersRuntimeComposition` registers per scope, so a leaf's service derives with a
 two-argument constructor. A save lower-cases the emails, trims the names and the mobile, and puts the
 locale members in their canonical case; it then checks each new or changed locale member against what
 the deployment offers and each new or changed contact detail against its format, so a stored value the
@@ -2255,6 +2257,25 @@ are counted on `tellma.users.invites` (meter `Tellma.Core`, tag `outcome`: `Invi
 `Active`, `SubjectMismatch`, `Error`, `NotAttempted`) and logged as `UsersInvited` or
 `UsersInvitePartial`. A user delete's preferences, stamps and notification preferences leave by their
 keys' cascade, which the delete declares among its writes as it does every key's `ON DELETE` action.
+
+### The caller's self-service and the preference bags
+
+Every member reaches their own row without a role grant, through the users' member-only actions:
+
+| Action | Round trips | What it does |
+|---|---|---|
+| `me` | 1 | the caller's profile (from the connected user), preference bag, access summary (every registered securable decided over the set the round trip validated, with its `HasFilter`, problems and next boundary) and the four client tags, the summary under the composite permissions tag |
+| `me/save` | 3 | loads the caller's row with every mapped column and the last modifier's names, refuses a moved stamp as a conflict before anything is enlisted (unless `Override`), copies the request's eight members onto the stored row with the memberships left out, and enlists it through the action's open frame, its paths without the row index, so the users' rules run and no `Save` grant is asked |
+| `me/locale` | 1 | validates in memory (`Users.LocaleEmpty` at `language`, `Users.LocaleResetConflict` at `reset`, then the save's locale rules, each value stored as its set spells it), then one persist batch: the access guards' lock, the update of the caller's row (each member set, `NULL` for each reset; an unchanged value writes no row), the invariants and the stored values; a read-only tenant admits it |
+| `me/preferences/set`, `me/preferences/delete` | 1 | checks the keys and values in memory (paths `items[i].key`, `keys[i]`), then the bag's statement with the key cap asserted inside it (`Users.TooManyPreferenceKeys` at the request), then the bag; the answer carries the caller's moved preferences tag; a read-only tenant admits them |
+
+An administrator reads and writes another user's bag under `core.User` × `Preferences` and its
+filter: `preferences/get` (one round trip; a user the filter hides is not found) and the
+single-target entity actions `preferences/set` and `preferences/delete` (two round trips, the
+target's bag answered and its preferences tag moved, each write logged as
+`UserPreferencesChangedByAdministrator` at Information). `UserActivityContributor<TUser>` produces
+the users' `activity` details extra: each visible user's `LastActiveAt` from `core.UserStamps`,
+joined to the read's admitted ids.
 
 `RoleService<TRole>`'s preprocessing collapses a role's exact duplicate permissions (the same
 resource, action and filter, compared ordinally) to one row before the rules count and stamp them,

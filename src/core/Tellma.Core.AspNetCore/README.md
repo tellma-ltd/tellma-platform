@@ -63,6 +63,9 @@ feature or entity added there would diverge the web host's model from the migrat
   SPA proxy), each just above the configuration files, so environment variables and the command line
   still win; a port the file does not name keeps the configuration's fallback;
 - forwarded headers from the configured proxies alone;
+- the realtime hub (`AddTellmaRealtime()`, see [Realtime](#realtime)): `Tellma:Realtime`, SignalR
+  with the hub's options and its one JSON protocol, the connection tracker as the session and
+  tenant-state listener, the SignalR client-event publisher, and the `host.realtime-hosting` check;
 - the endpoint audit (`host.endpoint-audit`) and the health checks;
 - Serilog from the `Serilog` section with the version enrichers, as the host's own logger (the
   static `Log.Logger` is left alone), replacing the framework's default logger providers: each event
@@ -88,7 +91,8 @@ Installs the pipeline in this order and nothing else:
    `Tellma:Api:EnableCompression` is false;
 7. routing;
 8. the in-proc identity engine's middleware, in in-proc mode;
-9. authentication, then authorization;
+9. the hub's refusal count (a hub request answered 401 or 403 before its front door counts
+   `connects{outcome=refused}`), then authentication, then authorization;
 10. the rate limiter (see [Limits](#limits)), after authentication so a partition is the
     principal's and before the tenant so a refusal reads the same for a missing tenant and a
     refused one;
@@ -125,6 +129,7 @@ Maps the tenantless platform routes and returns the tenant route groups:
 | `POST /bff/backchannel-logout` | anonymous; the identity server's logout tokens |
 | `/id/...` | the engine's own, in in-proc mode; an engine endpoint that states no authorization is anonymous, and an anonymous one authenticates the engine's sign-in cookie, never the platform's session |
 | `POST /api/webhooks/{key}` | anonymous; the webhook receivers, when the Azure web defaults compose them |
+| `/{tenantId}/hub`, `POST /{tenantId}/hub/negotiate` | the realtime hub on the `Hub` group, a member's read; unless `Tellma:Realtime:Enabled` is false |
 | the SPA's files and the navigation fallback | anonymous |
 
 A defaults bundle contributes routes of its own through the internal `IPlatformEndpointSource`
@@ -176,6 +181,30 @@ and the stack's own limit answers `413 limit-exceeded` before the service runs. 
 binary bodies. A success on a guarded group (`Web`, `Api`, `Blobs`) without a recorded access check
 answers `500 internal`, whether the endpoint is a route handler or a plain request delegate; one
 that already started writing its body loses its connection before its status line leaves.
+
+### The blob endpoints
+
+`MapTellma` maps the blob upload and download on the `Blobs` group (`MapTellmaBlobs`), which runs
+the telemetry stage as the `Web` group does. Both are member endpoints: any connected active member
+may call them, and the blob service makes the finer decisions. Every storage key the service hands
+back is under the request's own tenant, and the download opens it under that tenant alone.
+
+| Endpoint | What it does |
+|---|---|
+| `POST /{tenantId}/blobs/{kind}?fileName=` | Stages one file: the raw body under its declared `Content-Type`, at most `Tellma:Blobs:MaxUploadSize` (which also raises the server's body limit), `Tellma-Client` required, `tellma-long` timeout. `201 Created` with the staged blob and `Location: /{tenantId}/blobs/{kind}/{id}`; the service's refusals answer `blob-rejected` by code (`404` unknown kind, `411` no `Content-Length`, `413` too large before the body is read, `415` unsupported type, `422` quota or a refused image); a file name over 255 characters answers `400 bad-request`. A mutation, so a `ReadOnly` or `Frozen` tenant refuses it. |
+| `GET /{tenantId}/blobs/{kind}/{id}?variant=&download=` | Serves a blob the caller may read under `tellma-blobs` alone. The strong entity tag (`"{id}"`, `"{id}-{variant}"`) comes from the row, so a matching `If-None-Match` answers `304` without the store; otherwise the stored object streams with `Accept-Ranges: bytes` (`206`, `416`, `If-Range`). A blob the caller may not read, of another kind, released, or missing in the store answers `404 not-found` alike. Exempt from `Tellma-Client`; the provenance rules apply. The web timeout covers everything up to the opened object; the transfer then has its own deadline, `Tellma:Api:RequestTimeout` plus the object's length at 32 KiB/s (at most a day), past which the connection is aborted, so a slow or stalled reader holds its `tellma-blobs` permit for no longer than that. |
+
+Every download response, a problem's included, carries `Content-Security-Policy: frame-ancestors
+'self'` and `X-Content-Type-Options: nosniff`. A committed blob is cached
+`private, max-age=31536000, immutable`, a staged one `private, no-store`; only the object and a
+`304` carry the tag and that caching, and every other blob answer (a refusal, a problem, a `416`)
+carries `Cache-Control: no-store` and no tag, so a missing object that is restored is served on the
+next request. Images, PDF, plain text,
+CSV and JSON open `inline` unless `download=true`; every other type is an `attachment`; the file
+name travels as `filename*=UTF-8''…`. A stored primary whose length is not its row's answers
+`500 internal` rather than serving corrupt bytes. `tellma.blobs.downloads` counts each answer by
+kind (a declared one) and outcome (`served` when the response starts as `200` or `206`,
+`not_modified`, `not_found`) on the `Tellma.Core` meter; a `416` or `412` is not counted.
 
 ### Limits
 
@@ -359,6 +388,66 @@ one run at once.
 The catalog's application lock keeps two instances' runs from overlapping, not from both running:
 each instance's timer runs on its own, so each may run once per interval. A run is idempotent, so a
 second one over unchanged users changes no row.
+
+## Realtime
+
+`TellmaHub` at `/{tenantId}/hub` is a server-to-client channel of client events: it declares no
+method a client can invoke, so every invocation and stream is refused (`connects{outcome=
+invocation-refused}`), and it accepts the JSON protocol alone, with frames of at most 4 KB, no
+detailed errors, and the keep-alive and client timeout of `Tellma:Realtime`.
+
+| Option | Default | Rule |
+| --- | --- | --- |
+| `Enabled` | `true` | Off: no hub is mapped (the negotiate answers 404), the publisher and the status are Core's null ones, and the hosting check passes. |
+| `KeepAliveInterval` | 15 s | Above zero. |
+| `ClientTimeoutInterval` | 150 s | At least twice the keep-alive. |
+| `ExpectedInstances` | 1 | At least one; above one without a backplane, the hosting check warns. |
+
+**The front door.** The hub's endpoints are a member's reads on the `Hub` group, stamping no
+activity and renewing no session. The tenant middleware runs the access guard, then one guarded
+batch's prologue (the user is still active in the tenant's own database, whatever the membership
+cache says), and only then adds the hub identity (`tellma_tid`, `tellma_uid`, `tellma_sh`) to the
+principal. The negotiate and the connect each pass it; the framework closes a connection when the
+session's ticket expires. The hub reads the claims from the connection's principal, never from its
+request context, which SignalR leaves tenantless: a connection without each claim exactly once is
+refused. A refusal counts `connects{outcome=refused}` and logs `HubConnectionRefused` with its
+problem code, and so does a hub request that authentication (`unauthenticated`), authorization or
+the CSRF control (`csrf-rejected`) answered 401 or 403 before the door. A server failure at the
+door (an answer of 500 or above: an unreachable catalog or tenant database, a schema behind) is no
+refusal, and is left to the error handling, so an outage does not read as clients turned away.
+
+**Groups.** A connection joins `t{tid}`, `t{tid}.u{uid}`, `t{tid}.s{subject}` and `t{tid}.x{handle}`,
+every one its tenant's, so the same user or session in another tenant shares no group. The
+publisher sends an event to the scope's tenant group, or to the user groups it names in that tenant.
+
+**Closes.** `HubConnectionTracker` holds the instance's connections. A session that ends, a user
+whose access to a tenant is revoked, and a tenant that is suspended, retired or leaves the registry
+each send `session.ended` (`session-terminated`, `access-revoked`, `tenant-unavailable`) to the
+instance's own connections concerned, one by one ahead of their abort, and then abort them; any
+other tenant-state change sends `cache.changed` with the `tenant` tag to the tenant's connections
+on the instance and closes nothing. A session's end and a revoked access are recorded on one
+instance, so in a mode that reaches every instance they also go to their group (`GroupExcept` the
+instance's own), in every tenant the subject belongs to; a tenant's state change runs on every
+instance, so each tells its own connections alone. The sends run side by side and each stands
+alone, waiting at most two seconds: one that fails or stalls leaves the others told and delays no
+abort past that bound. A close is remembered, so a connection whose front door passed before it is
+told `session.ended` with the close's reason and refused at its connect: for five minutes on Azure
+SignalR Service, the life of a negotiate's service token, and for ten seconds self-hosted, where
+the connect passes the front door itself, so a user reactivated at once is admitted again within
+seconds. With `Enabled` false the tracker does nothing.
+
+**Hosting modes.** `AddTellmaRealtime(configure)` hands the SignalR builder to the hosting bundle:
+in-process by default, Azure SignalR Service from the Azure web defaults, or a Redis backplane.
+`host.realtime-hosting` fails an unknown lifetime manager, a configured
+`Azure:SignalR:ConnectionString` the hub does not run on, an Azure application name other than the
+deployment's (`RealtimeApplicationName`) or a deployment id that cannot name one (it must start
+with a letter), and an in-process hub with `Tellma:Jobs:Enabled` false
+(the job worker's events would reach no connection); it warns, without failing, when App Service
+or `ExpectedInstances` says several instances share no backplane.
+
+The meter `Tellma.Core.AspNetCore` carries `tellma.realtime.connections` (by `mode`),
+`tellma.realtime.connects` (by `outcome`), `tellma.realtime.closes` (by `reason` and `told`, whether that connection's own `session.ended` reached the transport first) and
+`tellma.realtime.events` (by `event`); `infra/monitoring/realtime` holds the alert queries.
 
 ## CSRF
 

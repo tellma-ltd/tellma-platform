@@ -11,7 +11,7 @@ using System.Net;
 using System.Text;
 using System.Text.Json;
 
-namespace Tellma.Core.AspNetCore.Tests.Infrastructure
+namespace Tellma.Testing.WebHost
 {
     /// <summary>A request the identity server received over the back channel.</summary>
     /// <param name="Path">The endpoint's path.</param>

@@ -12,6 +12,7 @@ using Tellma.Core.Abstractions.Api;
 using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.AspNetCore.Observability;
 using Tellma.Core.AspNetCore.Tests.Infrastructure;
+using Tellma.Testing.WebHost;
 
 namespace Tellma.Core.AspNetCore.Tests.Observability
 {

@@ -11,13 +11,16 @@ using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
+using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Api;
 using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.AspNetCore.Api;
 using Tellma.Core.AspNetCore.Bff;
+using Tellma.Core.AspNetCore.Blobs;
 using Tellma.Core.AspNetCore.Hosting;
 using Tellma.Core.AspNetCore.Limits;
 using Tellma.Core.AspNetCore.OpenApi;
+using Tellma.Core.AspNetCore.Realtime;
 using Tellma.Core.AspNetCore.Routing;
 using Tellma.Core.AspNetCore.Surfaces;
 using Tellma.Core.AspNetCore.Tenancy;
@@ -33,8 +36,8 @@ namespace Tellma.Core.AspNetCore
 
         /// <summary>
         ///     Maps the platform's tenantless routes (the information document, the health probes, the
-        ///     admin surface when enabled, the protected-resource metadata and the SPA) and the tenant
-        ///     route groups, then audits what it mapped. A distribution maps its own endpoints onto the
+        ///     admin surface when enabled, the protected-resource metadata and the SPA), the tenant
+        ///     route groups, the web API and the blob upload and download, then audits what it mapped. A distribution maps its own endpoints onto the
         ///     groups returned, inheriting their policies, filters and metadata; the startup gate audits
         ///     those too.
         /// </summary>
@@ -118,8 +121,17 @@ namespace Tellma.Core.AspNetCore
                 TenantGroup(app, "/blobs", TellmaGroup.Blobs, TenantSurface.Blobs, TellmaPolicies.Web, guarded: true),
                 app.MapGroup("/api").WithMetadata(new TellmaGroupMetadata(TellmaGroup.Tenantless)));
 
+            // --- The realtime hub at /{tenantId}/hub, unless it is turned off ---
+            if (HostSettings.Read<RealtimeOptions>(app.Configuration, RealtimeOptions.SectionPath).Enabled)
+            {
+                MapHub(groups.Hub);
+            }
+
             // --- The web API: every route the model derives from the stack registry, on the Web group ---
             IReadOnlyList<CompositionProblem> projection = WebApiProjection.Map(app.Services, groups.Web);
+
+            // --- The blob upload and download, on the Blobs group ---
+            _ = groups.Blobs.MapTellmaBlobs();
 
             // --- The SPA, whose fallback answers every request nothing else matched ---
             SpaHosting.Map(app);
@@ -162,7 +174,7 @@ namespace Tellma.Core.AspNetCore
                 _ = builder.WithRequestTimeout(TellmaRequestTimeouts.Web);
             }
 
-            // --- The filter chain, outermost first: tenant, telemetry, the web surface's request filter, then the witness ---
+            // --- The filter chain, outermost first: tenant, telemetry (web and blobs), the web surface's request filter, then the witness ---
             // Each refuses before the next runs; none evaluates a securable, the handler's service does.
             // The telemetry stage wraps each endpoint's delegate below, between the guard and the witness.
             if (guarded)
@@ -195,9 +207,9 @@ namespace Tellma.Core.AspNetCore
             {
                 // Endpoint filters reach route handlers alone; these reach every endpoint of the group.
                 // The witness wraps first and the guard last, so the guard's wrapper, which the audit
-                // checks, stays outermost; the web surface's telemetry runs between the two.
+                // checks, stays outermost; the telemetry of the web and blob surfaces runs between the two.
                 conventions.Finally(AccessWitnessFilter.Wrap);
-                if (group == TellmaGroup.Web)
+                if (group is TellmaGroup.Web or TellmaGroup.Blobs)
                 {
                     conventions.Finally(ApiTelemetryFilter.Wrap);
                 }
@@ -206,6 +218,19 @@ namespace Tellma.Core.AspNetCore
             }
 
             return builder;
+        }
+
+        /// <summary>Maps the realtime hub on the Hub group, whose policy, CSRF rules and front door it inherits.</summary>
+        /// <param name="hub">The Hub group.</param>
+        private static void MapHub(RouteGroupBuilder hub)
+        {
+            // No connection outlives its session's ticket: the framework closes it when the ticket
+            // expires, and Azure SignalR Service's SDK embeds the expiry in the service's token
+            // (spec 0021 §6.1). A member's endpoint, whose requests stamp no activity: a tab's
+            // reconnects are not the user's.
+            _ = hub.MapHub<TellmaHub>(string.Empty, static options => options.CloseOnAuthenticationExpiration = true)
+                .WithMetadata(new NoActivityStampMetadata(), PlatformEndpointMetadata.Instance)
+                .AllowMember();
         }
 
         /// <summary>Stamps a tenantless platform endpoint: anonymous, tenantless, the platform's.</summary>

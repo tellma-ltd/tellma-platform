@@ -1,0 +1,54 @@
+// Copyright (c) Tellma Ltd. All rights reserved.
+//
+// This source code is licensed under the Apache-2.0 license found in the
+// LICENSE file in the root directory of this source tree.
+
+using System.Diagnostics.CodeAnalysis;
+using Tellma.Core.Abstractions.Hosting;
+
+namespace Tellma.Core.AspNetCore.Realtime
+{
+    /// <summary>
+    ///     The application name a deployment's hub takes on a shared Azure SignalR Service instance:
+    ///     the deployment id with every hyphen replaced by an underscore, such as
+    ///     <c>etpharma_staging</c> for <c>etpharma-staging</c>.
+    /// </summary>
+    /// <remarks>
+    ///     The service prefixes every hub name with the application name, so several deployments
+    ///     share one instance without their hubs, groups or server connections ever meeting. The
+    ///     service accepts a name that starts with a letter and holds letters, digits and underscores
+    ///     alone, which a deployment id written that way always is.
+    /// </remarks>
+    public static class RealtimeApplicationName
+    {
+        /// <summary>The application name of a deployment.</summary>
+        /// <param name="deployment">The deployment.</param>
+        /// <returns>The deployment id with every hyphen replaced by an underscore.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="deployment" /> is null.</exception>
+        /// <exception cref="ArgumentException">The deployment id does not start with a letter, which the service requires.</exception>
+        public static string From(DeploymentIdentity deployment)
+        {
+            return TryFrom(deployment, out string? name)
+                ? name
+                : throw new ArgumentException(
+                    $"The deployment id '{deployment.DeploymentId}' does not start with a letter, so it cannot name the deployment's application on Azure SignalR Service.",
+                    nameof(deployment));
+        }
+
+        /// <summary>The application name of a deployment, when its id can name one.</summary>
+        /// <param name="deployment">The deployment.</param>
+        /// <param name="name">The deployment id with every hyphen replaced by an underscore; null when the id does not start with a letter.</param>
+        /// <returns>True when the deployment id starts with a letter, which the service requires.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="deployment" /> is null.</exception>
+        public static bool TryFrom(DeploymentIdentity deployment, [NotNullWhen(true)] out string? name)
+        {
+            ArgumentNullException.ThrowIfNull(deployment);
+
+            // A deployment id is lowercase letters, digits and hyphens; only the first character can
+            // keep it from being an application name once the hyphens are replaced.
+            string id = deployment.DeploymentId;
+            name = id[0] is >= 'a' and <= 'z' ? id.Replace('-', '_') : null;
+            return name is not null;
+        }
+    }
+}

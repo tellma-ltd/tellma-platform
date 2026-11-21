@@ -10,6 +10,7 @@ using System.Text;
 using System.Text.Json;
 using Tellma.Core.Abstractions.Errors;
 using Tellma.Core.AspNetCore.Tests.Infrastructure;
+using Tellma.Testing.WebHost;
 
 namespace Tellma.Core.AspNetCore.Tests.Problems
 {

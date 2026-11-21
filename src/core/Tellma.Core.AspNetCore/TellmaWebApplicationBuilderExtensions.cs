@@ -22,6 +22,7 @@ using Tellma.Core.Access;
 using Tellma.Core.AspNetCore.Api;
 using Tellma.Core.AspNetCore.Authentication;
 using Tellma.Core.AspNetCore.Bff;
+using Tellma.Core.AspNetCore.Blobs;
 using Tellma.Core.AspNetCore.Hosting;
 using Tellma.Core.AspNetCore.Limits;
 using Tellma.Core.AspNetCore.Observability;
@@ -146,6 +147,7 @@ namespace Tellma.Core.AspNetCore
             // --- The web API: bodies read and results written under the platform's one set of JSON rules ---
             _ = services.ConfigureHttpJsonOptions(static options => TellmaJson.Configure(options.SerializerOptions));
             _ = services.AddSingleton<ApiMetrics>();
+            _ = services.AddSingleton<BlobDownloadMetrics>();
             UnknownMembers.Register(services);
 
             // --- Limits: the rate and timeout policies, compression and output caching; the OpenAPI document in Development ---
@@ -196,6 +198,10 @@ namespace Tellma.Core.AspNetCore
             _ = services.AddScoped<BffOidcEvents>();
             _ = services.AddSingleton<BackchannelLogoutValidator>();
             services.TryAddSingleton<IAuthenticationPolicyProvider, DefaultAuthenticationPolicyProvider>();
+
+            // --- Realtime: the hub, its tracker and its publisher, in the mode composeWeb selected ---
+            // A delegate a composer passed earlier stays; this call passes none.
+            _ = services.AddTellmaRealtime();
 
             // --- Tenancy: the membership hints' reconciliation ---
             _ = HostOptionsBinding.Bind<TenancyHostOptions>(services, TenancyHostOptions.SectionPath, OptionsOwner);

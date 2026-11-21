@@ -11,9 +11,9 @@ using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.AspNetCore.Hosting;
 using Tellma.Core.AspNetCore.Sessions;
 using Tellma.Core.AspNetCore.Tenancy;
-using Tellma.Core.AspNetCore.Tests.Infrastructure;
 using Tellma.Core.Tenancy;
 using Tellma.Core.Tests.Infrastructure;
+using Tellma.Testing.WebHost;
 
 namespace Tellma.Core.AspNetCore.Tests.Sessions
 {

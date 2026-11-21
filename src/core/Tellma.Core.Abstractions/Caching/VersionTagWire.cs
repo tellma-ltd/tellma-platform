@@ -89,26 +89,43 @@ namespace Tellma.Core.Abstractions.Caching
         }
 
         /// <summary>
-        ///     The value of the response header that carries the four client tags. A response without
-        ///     the caller's own tags (a batch that ran for the platform or for no caller) omits
+        ///     The client tags a response carries, each in its wire form, by item name. A response
+        ///     without the caller's own tags (a batch that ran for the platform or for no caller) omits
         ///     <c>permissions</c> and <c>preferences</c>.
+        /// </summary>
+        /// <param name="tenant">The tenant's tags after the request's last batch.</param>
+        /// <param name="user">The caller's own tags after that batch, or null when it carried none.</param>
+        /// <returns>The items, in the order <c>settings</c>, <c>permissions</c>, <c>preferences</c>, <c>entities</c>.</returns>
+        public static IReadOnlyList<KeyValuePair<string, string>> Items(VersionTagSnapshot tenant, UserVersionTagSnapshot? user)
+        {
+            ArgumentNullException.ThrowIfNull(tenant);
+
+            List<KeyValuePair<string, string>> items = new(4) { new(SettingsItem, Settings(tenant[VersionTagNames.Settings])) };
+            if (user is not null)
+            {
+                items.Add(new(PermissionsItem, Permissions(tenant[VersionTagNames.Permissions], user.Permissions)));
+                items.Add(new(PreferencesItem, Preferences(user.Preferences)));
+            }
+
+            items.Add(new(EntitiesItem, Entities(tenant[VersionTagNames.Entities])));
+            return items;
+        }
+
+        /// <summary>
+        ///     The value of the response header that carries the four client tags: <see cref="Items" />,
+        ///     each as <c>name=value</c>, comma-separated.
         /// </summary>
         /// <param name="tenant">The tenant's tags after the request's last batch.</param>
         /// <param name="user">The caller's own tags after that batch, or null when it carried none.</param>
         /// <returns>The header value, items in the order <c>settings</c>, <c>permissions</c>, <c>preferences</c>, <c>entities</c>.</returns>
         public static string HeaderValue(VersionTagSnapshot tenant, UserVersionTagSnapshot? user)
         {
-            ArgumentNullException.ThrowIfNull(tenant);
-
             StringBuilder header = new();
-            Item(header, SettingsItem, Settings(tenant[VersionTagNames.Settings]));
-            if (user is not null)
+            foreach ((string name, string value) in Items(tenant, user))
             {
-                Item(header, PermissionsItem, Permissions(tenant[VersionTagNames.Permissions], user.Permissions));
-                Item(header, PreferencesItem, Preferences(user.Preferences));
+                Item(header, name, value);
             }
 
-            Item(header, EntitiesItem, Entities(tenant[VersionTagNames.Entities]));
             return header.ToString();
         }
 

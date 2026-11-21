@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- The adapter's types live in the connector's own namespace, without the project suffix. -->
+    <RootNamespace>Tellma.Connector.AzureBlobs</RootNamespace>
+    <Description>The Azure Blob Storage blob store: an IBlobStore over the first-party Azure.Storage.Blobs client, one container per tenant on the distribution's storage account, addressed with the host's TokenCredential (or an Azurite connection string in development), with create-only uploads and ranged, seekable download streams.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\core\Tellma.Core.Abstractions\Tellma.Core.Abstractions.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The client; it brings Azure.Core, whose TokenCredential the host supplies. -->
+    <PackageReference Include="Azure.Storage.Blobs" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
+    <!-- AddMetrics(), which registers the IMeterFactory the store instruments are created from. -->
+    <PackageReference Include="Microsoft.Extensions.Diagnostics" />
+    <!-- Referenced directly for its [LoggerMessage] source generator. -->
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Options" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The suites drive the options validator, the length guard and the store's client seam,
+         none of which is part of the adapter's public surface. -->
+    <InternalsVisibleTo Include="Tellma.Connector.AzureBlobs.Adapter.Tests" />
+    <InternalsVisibleTo Include="Tellma.Connector.AzureBlobs.Adapter.IntegrationTests" />
+  </ItemGroup>
+
+</Project>

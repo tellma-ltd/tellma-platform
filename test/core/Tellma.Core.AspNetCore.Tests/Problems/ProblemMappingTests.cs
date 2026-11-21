@@ -22,6 +22,7 @@ using Tellma.Core.AspNetCore.Api;
 using Tellma.Core.AspNetCore.Tests.Infrastructure;
 using Tellma.Core.Crud.Query;
 using Tellma.Core.Queryex;
+using Tellma.Testing.WebHost;
 
 namespace Tellma.Core.AspNetCore.Tests.Problems
 {

@@ -108,5 +108,18 @@ namespace Tellma.Core.Users
             Level = LogLevel.Warning,
             Message = "{Count} tenant membership hint(s) could not be recorded; the reconciliation repairs them.")]
         public static partial void MembershipHintFailed(ILogger logger, Exception exception, int count);
+
+        /// <summary>
+        ///     An administrator changed another user's preferences, which keep no history of their
+        ///     own, so the log is the record of who changed them.
+        /// </summary>
+        /// <param name="logger">The logger.</param>
+        /// <param name="targetId">The user whose preferences changed.</param>
+        /// <param name="area">What changed: <c>preferences</c> for the preference bag.</param>
+        [LoggerMessage(
+            EventName = "UserPreferencesChangedByAdministrator",
+            Level = LogLevel.Information,
+            Message = "The {Area} of user {TargetId} were changed by an administrator.")]
+        public static partial void UserPreferencesChangedByAdministrator(ILogger logger, int targetId, string area);
     }
 }

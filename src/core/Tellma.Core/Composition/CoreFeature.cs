@@ -132,10 +132,11 @@ namespace Tellma.Core.Composition
                 .Model<UserPreferenceConfiguration>()
                 .TableType<UserPreferenceList>();
 
-            // --- The users' stack beyond spec 0014 (spec 0018 §1.2, §3): the own-row read criterion
-            // and the invite write-back's table type ---
+            // --- The users' stack beyond spec 0014 (spec 0018 §1.2, §3): the own-row read criterion,
+            // the activity details extra and the invite write-back's table type ---
             _ = contribution
                 .Singleton<IAccessCriteriaProvider, UserAccessCriteria>()
+                .DetailsContributor<User, UserActivityContributor<User>>()
                 .TableType<UserInvitationOutcome>();
 
             // --- The identity-server client, one per distribution (spec 0018 §1.2, §2) ---
@@ -235,8 +236,8 @@ namespace Tellma.Core.Composition
                 .NotificationType(new NotificationTypeDescriptor("core.user.added", "users", Mutable: true, TargetResource: null))
                 .NotificationChannel(new NotificationChannelDescriptor(InboxChannel, DefaultEnabled: true))
                 .NotificationChannel(new NotificationChannelDescriptor(EmailChannel, DefaultEnabled: false))
-                .ClientEvent("inbox.changed")
-                .ClientEvent("session.ended");
+                .ClientEvent(Notifier.InboxChangedEvent)
+                .ClientEvent(SessionEndedEvent.Name);
 
             // --- The email outbox: the rows and their stack, the outbox, the sending jobs' handler and
             // its failure notice, the attachments' blob kind and the two table types ---

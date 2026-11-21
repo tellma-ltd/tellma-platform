@@ -148,6 +148,9 @@
   <data name="Action_Credentials" xml:space="preserve">
     <value>بيانات الاعتماد</value>
   </data>
+  <data name="Action_Preferences" xml:space="preserve">
+    <value>التفضيلات</value>
+  </data>
   <data name="Action_Share" xml:space="preserve">
     <value>مشاركة</value>
   </data>
@@ -194,6 +197,63 @@
   </data>
   <data name="Core_User_Action_InvitationStatus_Ids" xml:space="preserve">
     <value>المستخدمون</value>
+  </data>
+  <data name="Core_User_Action_Me" xml:space="preserve">
+    <value>ملفي الشخصي</value>
+  </data>
+  <data name="Core_User_Action_MeSave" xml:space="preserve">
+    <value>حفظ ملفي الشخصي</value>
+  </data>
+  <data name="Core_User_Action_MeLocale" xml:space="preserve">
+    <value>تغيير لغتي ومنطقتي</value>
+  </data>
+  <data name="Core_User_Action_MeLocale_Language" xml:space="preserve">
+    <value>اللغة</value>
+  </data>
+  <data name="Core_User_Action_MeLocale_Calendar" xml:space="preserve">
+    <value>التقويم</value>
+  </data>
+  <data name="Core_User_Action_MeLocale_TimeZone" xml:space="preserve">
+    <value>المنطقة الزمنية</value>
+  </data>
+  <data name="Core_User_Action_MeLocale_Region" xml:space="preserve">
+    <value>المنطقة</value>
+  </data>
+  <data name="Core_User_Action_MeLocale_Digits" xml:space="preserve">
+    <value>الأرقام</value>
+  </data>
+  <data name="Core_User_Action_MeLocale_Reset" xml:space="preserve">
+    <value>إعادة إلى الافتراضي</value>
+  </data>
+  <data name="Core_User_Action_MePreferencesSet" xml:space="preserve">
+    <value>حفظ تفضيلاتي</value>
+  </data>
+  <data name="Core_User_Action_MePreferencesSet_Items" xml:space="preserve">
+    <value>التفضيلات</value>
+  </data>
+  <data name="Core_User_Action_MePreferencesDelete" xml:space="preserve">
+    <value>مسح تفضيلاتي</value>
+  </data>
+  <data name="Core_User_Action_MePreferencesDelete_Keys" xml:space="preserve">
+    <value>أسماء التفضيلات</value>
+  </data>
+  <data name="Core_User_Action_PreferencesGet" xml:space="preserve">
+    <value>عرض التفضيلات</value>
+  </data>
+  <data name="Core_User_Action_PreferencesGet_UserId" xml:space="preserve">
+    <value>المستخدم</value>
+  </data>
+  <data name="Core_User_Action_PreferencesSet" xml:space="preserve">
+    <value>تغيير التفضيلات</value>
+  </data>
+  <data name="Core_User_Action_PreferencesSet_Items" xml:space="preserve">
+    <value>التفضيلات</value>
+  </data>
+  <data name="Core_User_Action_PreferencesDelete" xml:space="preserve">
+    <value>مسح التفضيلات</value>
+  </data>
+  <data name="Core_User_Action_PreferencesDelete_Keys" xml:space="preserve">
+    <value>أسماء التفضيلات</value>
   </data>
   <data name="Core_Role_Plural" xml:space="preserve">
     <value>الأدوار</value>
@@ -522,6 +582,12 @@
   </data>
   <data name="Users_RegionNotOffered" xml:space="preserve">
     <value>هذه المنطقة غير متاحة.</value>
+  </data>
+  <data name="Users_LocaleEmpty" xml:space="preserve">
+    <value>اختر إعدادًا واحدًا على الأقل من إعدادات اللغة أو المنطقة لتغييره.</value>
+  </data>
+  <data name="Users_LocaleResetConflict" xml:space="preserve">
+    <value>لا يمكن تغيير إعداد وإعادة تعيينه في الوقت نفسه.</value>
   </data>
   <data name="Users_ContactEmailInvalid" xml:space="preserve">
     <value>أدخل عنوان بريد إلكتروني صالحًا.</value>

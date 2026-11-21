@@ -14,7 +14,7 @@ using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
 using Tellma.Core.Abstractions.Api;
 using Tellma.Core.AspNetCore.Api;
-using Tellma.Core.AspNetCore.Tests.Infrastructure;
+using Tellma.Testing.WebHost;
 
 namespace Tellma.Core.AspNetCore.Tests.Api
 {

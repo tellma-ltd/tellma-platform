@@ -7,7 +7,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.Options;
 using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.AspNetCore.Hosting;
-using Tellma.Core.AspNetCore.Tests.Infrastructure;
+using Tellma.Testing.WebHost;
 
 namespace Tellma.Core.AspNetCore.Tests.Hosting
 {

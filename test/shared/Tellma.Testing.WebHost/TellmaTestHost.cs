@@ -8,7 +8,11 @@ using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Hosting.Server;
+using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -19,10 +23,13 @@ using Microsoft.IdentityModel.JsonWebTokens;
 using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 using Microsoft.IdentityModel.Tokens;
 using System.Globalization;
+using System.Net;
 using System.Security.Claims;
 using System.Security.Cryptography;
+using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.Access;
+using Tellma.Core.AspNetCore;
 using Tellma.Core.AspNetCore.Hosting;
 using Tellma.Core.AspNetCore.Sessions;
 using Tellma.Core.AspNetCore.Surfaces;
@@ -32,8 +39,9 @@ using Tellma.Core.Tenancy;
 using Tellma.Core.Testing.Blobs;
 using Tellma.Core.Testing.Settings;
 using Tellma.Core.Tests.Infrastructure;
+using Xunit;
 
-namespace Tellma.Core.AspNetCore.Tests.Infrastructure
+namespace Tellma.Testing.WebHost
 {
     /// <summary>A session the test host stored: its cookie, its key and its handle.</summary>
     /// <param name="Cookie">The <c>Cookie</c> header's value.</param>
@@ -79,13 +87,18 @@ namespace Tellma.Core.AspNetCore.Tests.Infrastructure
             _app = app;
             Catalog = catalog;
             Time = time;
-            Client = app.GetTestClient();
+            // A Kestrel host is reached over loopback HTTP at the address it bound; the test server in memory.
+            IServer server = app.Services.GetRequiredService<IServer>();
+            Client = server is TestServer
+                ? app.GetTestClient()
+                : new HttpClient { BaseAddress = new Uri(server.Features.GetRequiredFeature<IServerAddressesFeature>().Addresses.First()) };
             Rows = (InMemorySessionRows)app.Services.GetRequiredService<ISessionRows>();
             IdentityServer = app.Services.GetRequiredService<FakeIdentityServer>();
             Memberships = (FakeMembershipDirectory)app.Services.GetRequiredService<ITenantMembershipDirectory>();
+            Users = app.Services.GetRequiredService<TestUsers>();
         }
 
-        /// <summary>A client of the host, at <c>https://localhost</c>.</summary>
+        /// <summary>A client of the host: at <c>https://localhost</c> in memory, or at the loopback address a Kestrel host bound.</summary>
         public HttpClient Client { get; }
 
         /// <summary>The host's services.</summary>
@@ -105,6 +118,12 @@ namespace Tellma.Core.AspNetCore.Tests.Infrastructure
 
         /// <summary>The membership hints.</summary>
         public FakeMembershipDirectory Memberships { get; }
+
+        /// <summary>The tenants' users, as the scripted connection and batch runner see them.</summary>
+        public TestUsers Users { get; }
+
+        /// <summary>The test server, for clients that need its handler or its WebSocket client.</summary>
+        public TestServer Server => _app.GetTestServer();
 
         /// <summary>The session cookie's name.</summary>
         public string SessionCookieName => Services.GetRequiredService<IOptionsMonitor<CookieAuthenticationOptions>>().Get(TellmaAuthentication.SessionScheme).Cookie.Name!;
@@ -128,6 +147,11 @@ namespace Tellma.Core.AspNetCore.Tests.Infrastructure
                 // The tenants these hosts serve have no databases, so the job worker stays off; the
                 // jobs suites run it against a database of their own.
                 ["Tellma:Jobs:Enabled"] = "false",
+
+                // The hub stays off, so the probes own the Hub group's negotiate route and an
+                // in-process hub without the worker fails no hosting check; the realtime suites
+                // turn it on.
+                ["Tellma:Realtime:Enabled"] = "false",
             };
         }
 
@@ -158,9 +182,10 @@ namespace Tellma.Core.AspNetCore.Tests.Infrastructure
             _ = builder.Services.AddSingleton<ICatalogReader>(catalog);
             _ = builder.Services.AddSingleton<TimeProvider>(time);
             _ = builder.Services.AddScoped<IRequestContextInitializer, ConnectingInitializer>();
+            _ = builder.Services.AddSingleton<TestUsers>();
 
             // --- The composition under test ---
-            _ = builder.AddTellma(Slug, options.Compose ?? (static _ => { }));
+            _ = builder.AddTellma(Slug, options.Compose ?? (static _ => { }), options.ComposeWeb);
 
             // --- What stands in for the tenant database's settings, read by the locale negotiation ---
             _ = builder.Services.UseFixedTenantSettings();
@@ -168,8 +193,9 @@ namespace Tellma.Core.AspNetCore.Tests.Infrastructure
             // --- What stands in for the blob store and the image processor the blobs check requires ---
             _ = builder.Services.AddInMemoryBlobs();
 
-            // --- The real user connection, which needs a tenant database with users, gives way to the stand-in ---
+            // --- The real user connection and guarded round trips, which need a tenant database with users, give way to stand-ins ---
             _ = builder.Services.Remove(builder.Services.Single(static descriptor => descriptor.ImplementationType == typeof(ConnectInitializer)));
+            builder.Services.Replace(ServiceDescriptor.Scoped<IGuardedBatchRunner, FakeGuardedBatchRunner>());
 
             // --- What stands in for the catalog's sessions and memberships, and the reconciliation's lock ---
             builder.Services.Replace(ServiceDescriptor.Singleton<ISessionRows>(new InMemorySessionRows(time)));
@@ -196,6 +222,19 @@ namespace Tellma.Core.AspNetCore.Tests.Infrastructure
             }
 
             options.ConfigureServices?.Invoke(builder.Services);
+
+            // --- A real Kestrel listener on a loopback port in place of the in-memory test server ---
+            // The defaults register Kestrel before the test server replaces it as the last server
+            // registered; removing the test server's registration leaves Kestrel's.
+            if (options.UseKestrel)
+            {
+                foreach (ServiceDescriptor testServer in builder.Services.Where(static descriptor => descriptor.ServiceType == typeof(IServer) && descriptor.ImplementationType == typeof(TestServer)).ToList())
+                {
+                    _ = builder.Services.Remove(testServer);
+                }
+
+                _ = builder.WebHost.ConfigureKestrel(static kestrel => kestrel.Listen(IPAddress.Loopback, 0));
+            }
 
             // --- The pipeline and the routes ---
             WebApplication app = builder.Build();
@@ -246,6 +285,7 @@ namespace Tellma.Core.AspNetCore.Tests.Infrastructure
         /// <param name="sessionId">The identity server's session.</param>
         /// <param name="accessTokenLifetime">How long the access token lives; an hour by default.</param>
         /// <param name="refreshToken">The refresh token, if any.</param>
+        /// <param name="expiresAt">When the ticket expires; the session options' idle expiry by default.</param>
         /// <returns>The session.</returns>
         public TestSession Session(
             string subject = "sub-1",
@@ -253,7 +293,8 @@ namespace Tellma.Core.AspNetCore.Tests.Infrastructure
             DateTimeOffset? authTime = null,
             string? sessionId = "sid-1",
             TimeSpan? accessTokenLifetime = null,
-            string? refreshToken = "refresh-1")
+            string? refreshToken = "refresh-1",
+            DateTimeOffset? expiresAt = null)
         {
             // --- The principal, as the sign-in keeps it ---
             List<Claim> claims = [new("sub", subject), new("azp", Slug), new("name", "Jane Doe"), new("email", "jane@example.com"), new("locale", "en")];
@@ -277,7 +318,7 @@ namespace Tellma.Core.AspNetCore.Tests.Infrastructure
             TellmaSessionOptions options = Services.GetRequiredService<IOptions<TellmaSessionOptions>>().Value;
             AuthenticationProperties properties = new() { IsPersistent = true, IssuedUtc = now };
             SessionProperties.SetCreatedAt(properties, now);
-            properties.ExpiresUtc = SessionProperties.ExpiryAt(now, now, options.IdleLifetime, options.AbsoluteLifetime);
+            properties.ExpiresUtc = expiresAt ?? SessionProperties.ExpiryAt(now, now, options.IdleLifetime, options.AbsoluteLifetime);
             List<AuthenticationToken> tokens =
             [
                 new() { Name = "access_token", Value = "access-1" },
@@ -441,6 +482,9 @@ namespace Tellma.Core.AspNetCore.Tests.Infrastructure
         /// <summary>The distribution's composition: its features and entity leaves; none when null.</summary>
         public Action<TellmaBuilder>? Compose { get; set; }
 
+        /// <summary>The distribution's web composition, such as a hosting bundle's web defaults; none when null.</summary>
+        public Action<TellmaBuilder>? ComposeWeb { get; set; }
+
         /// <summary>The web root, for the SPA's files.</summary>
         public string? WebRoot { get; set; }
 
@@ -449,6 +493,12 @@ namespace Tellma.Core.AspNetCore.Tests.Infrastructure
 
         /// <summary>More services, registered after the composition.</summary>
         public Action<IServiceCollection>? ConfigureServices { get; set; }
+
+        /// <summary>
+        ///     Whether the host listens on a loopback port through Kestrel rather than in memory, for a
+        ///     test of what only a real connection does, such as a client that stops reading.
+        /// </summary>
+        public bool UseKestrel { get; set; }
 
         /// <summary>Whether <c>UseTellma</c> installs the pipeline before <c>MapTellma</c> runs.</summary>
         public bool UseTellma { get; set; } = true;
@@ -462,10 +512,12 @@ namespace Tellma.Core.AspNetCore.Tests.Infrastructure
 
     /// <summary>
     ///     The user connection: every subject but <see cref="TellmaTestHost.Stranger" /> is a member,
-    ///     bound to <see cref="TellmaTestHost.UserId" />, and witnessed as one.
+    ///     bound to the user id <see cref="TestUsers" /> names (<see cref="TellmaTestHost.UserId" />
+    ///     by default), and witnessed as one.
     /// </summary>
     /// <param name="witness">The request's authorization witness.</param>
-    internal sealed class ConnectingInitializer(AccessWitness witness) : IRequestContextInitializer
+    /// <param name="users">The scripted users.</param>
+    internal sealed class ConnectingInitializer(AccessWitness witness, TestUsers users) : IRequestContextInitializer
     {
         /// <inheritdoc />
         public int Order => 100;
@@ -481,7 +533,8 @@ namespace Tellma.Core.AspNetCore.Tests.Infrastructure
 
             // A connected member satisfies a member endpoint's witness, as the real connection records it.
             witness.RecordMember();
-            return Task.FromResult(context with { UserId = TellmaTestHost.UserId });
+            int userId = context.Tenant is { } tenant && context.Subject is { } subject ? users.UserIdOf(tenant.Id, subject) : TellmaTestHost.UserId;
+            return Task.FromResult(context with { UserId = userId });
         }
     }
 }

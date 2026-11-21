@@ -14,6 +14,7 @@ using System.Text.Json;
 using Tellma.Core.AspNetCore.Hosting;
 using Tellma.Core.AspNetCore.Surfaces;
 using Tellma.Core.AspNetCore.Tests.Infrastructure;
+using Tellma.Testing.WebHost;
 
 namespace Tellma.Core.AspNetCore.Tests.Surfaces
 {
@@ -125,7 +126,7 @@ namespace Tellma.Core.AspNetCore.Tests.Surfaces
         [InlineData("/.well-known/other", "not-found")]
         [InlineData("/1/api/web/nothing", "route-not-found")]
         [InlineData("/1/hub/nothing", "route-not-found")]
-        [InlineData("/1/blobs/x", "route-not-found")]
+        [InlineData("/1/blobs/x/y/z", "route-not-found")]
         [InlineData("/1/mcp/x", "route-not-found")]
         public async Task A_navigation_to_a_server_path_gets_a_problem(string path, string code)
         {

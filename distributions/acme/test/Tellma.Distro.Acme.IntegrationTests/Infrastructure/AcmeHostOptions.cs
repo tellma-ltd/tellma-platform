@@ -36,5 +36,13 @@ namespace Tellma.Distro.Acme.IntegrationTests.Infrastructure
         ///     start not ready.
         /// </summary>
         public bool AwaitsCatalog { get; init; } = true;
+
+        /// <summary>
+        ///     Whether the host keeps the blob store and image processor Acme's composition chose (in
+        ///     Development the file-system store under <c>Tellma:Blobs:FileSystem:RootPath</c>, and
+        ///     Skia) instead of the in-memory stand-ins; off by default, so a suite never writes under
+        ///     the developer's application data.
+        /// </summary>
+        public bool KeepsComposedBlobs { get; init; }
     }
 }
