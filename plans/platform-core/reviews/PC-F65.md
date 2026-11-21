@@ -322,3 +322,23 @@ cause need not wait for PC-089.**
   for the reasons above. It is the last wall-clock bound on cold work in this assembly.
 
 ### Responses
+
+- R1-1: fixed in 36592e58. The refused report is awaited through `Patience.WaitAsync`, so a
+  regression that queues it instead fails at the limit and the `finally` still releases the held
+  permit.
+- R1-2: fixed in 36592e58. The comment now says that the endpoint's long policy replaces its
+  group's, so only the long timer is armed, and that a lost override would answer 504 within the
+  endpoint's 800 ms.
+- R1-3: fixed in 36592e58. The test asserts that the resolved `Web` policy's timeout is the
+  configured 300 ms. With R1-4, an ignored setting would also leave the five-minute default,
+  which outlasts `Patience`.
+- R1-4: fixed in 36592e58. The shared host sets `Tellma:Api:RequestTimeout` to `00:05:00`, the
+  `LongRequestTimeout` default. `LongRequestTimeout` is untouched, and every test that pins a
+  timeout sets its own. The README and the open risks say so. `FrameworkProblemsTests(403)` is
+  kept in the notes as a flake candidate, with its evidence.
+- Verification on 36592e58 (lightly loaded machine, Debug):
+  - The touched classes plus FrameworkProblemsTests: 188/188.
+  - `Tellma.Core.AspNetCore.Tests` in full (unit filter): 934/934.
+  - `Tellma.Defaults.Azure.Tests`: 19/19.
+  - `dotnet build Tellma.slnx`: Build succeeded, 0 warnings.
+  - `dotnet format --verify-no-changes`: exit 0.
