@@ -31,6 +31,11 @@ Beside the clauses, more inputs mirror what a host composes a query from:
   A predicate that mentions one stops deciding anything, and anywhere else it is the absent value
   of its declared type; clear the box to see the same query with nothing left out. The token, tree
   and printed-back panes keep showing the select list as typed: what was left out shows in the SQL.
+- **measures** — with the aggregate box ticked, the measures of the query separated by commas,
+  such as `sum(Amount) / count(), max(Amount)`. The compilation appends the partial columns they
+  are computed from after the select items, reusing a select item that is already one of them; the
+  measures pane lists each measure's type and nullity and each partial's column, kind and type.
+  Without the box ticked the input is ignored, as the having clause is.
 
 One input replaces the query altogether:
 

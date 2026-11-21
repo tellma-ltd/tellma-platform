@@ -34,9 +34,11 @@ namespace Tellma.Queryex.Testing.Corpus
                 .Concat(Structure())
                 .Concat(Omitted())
                 .Concat(Calendars())
+                .Concat(Measures())
                 .Concat(Refusals())
                 .Concat(StructureRefusals())
-                .Concat(OmittedRefusals());
+                .Concat(OmittedRefusals())
+                .Concat(MeasureRefusals());
             return [.. all];
         }
 
@@ -402,6 +404,15 @@ namespace Tellma.Queryex.Testing.Corpus
                 Root = LedgerFixture.Invoice,
                 Select = "Id",
                 Filter = FilterTree.Leaf("Centre.Name is not null"),
+            });
+
+            // An equality or a membership whose side can be absent is a test of sets, whose
+            // operands sit in a subquery; a count there still counts the statement's rows.
+            yield return Query("emit-count-in-set-test", new QuerySpec
+            {
+                Root = LedgerFixture.Invoice,
+                Aggregate = true,
+                Select = "Centre.Name, if(count() > 1, count(), null) = 2, if(count() > 0, count(), null) in (1, 3)",
             });
         }
 

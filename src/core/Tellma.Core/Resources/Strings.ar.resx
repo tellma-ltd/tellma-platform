@@ -1036,6 +1036,12 @@
   <data name="Queryex_QX4009" xml:space="preserve">
     <value>لا يمكن استخدام المسار {name} هنا: لا يوجد صف لقراءته منه.</value>
   </data>
+  <data name="Queryex_QX4010" xml:space="preserve">
+    <value>لا يمكن حساب {construct} على القيم المجمّعة.</value>
+  </data>
+  <data name="Queryex_QX4011" xml:space="preserve">
+    <value>يجب أن يجمّع المقياس، وأن يكون كل مسار يقرؤه داخل تجميع.</value>
+  </data>
   <data name="Queryex_QX5001" xml:space="preserve">
     <value>التعبير أطول من {limit} حرفًا.</value>
   </data>

@@ -93,6 +93,12 @@ namespace Tellma.Core.Queryex.Pipeline
                 state.Read(spec.OrderBy, value, true, DiagnosticLocation.Clause(QueryexClause.OrderBy));
             }
 
+            if (!string.IsNullOrWhiteSpace(spec.Measures))
+            {
+                // Bound as compilation binds them, each measure reported at a site of its own.
+                state.ReadMeasures(spec.Measures, DiagnosticLocation.Clause(QueryexClause.Measures));
+            }
+
             return state.Result();
         }
 
@@ -205,6 +211,10 @@ namespace Tellma.Core.Queryex.Pipeline
             ///     Whether the text is a filter leaf reached through conjunctions alone, whose
             ///     top-level restrictions are to be read.
             /// </param>
+            /// <param name="measures">
+            ///     Whether the items are measures, which bind under the measure rules and are each
+            ///     reported at a site of their own.
+            /// </param>
             private void Read(
                 string text,
                 QueryexMode mode,
@@ -212,7 +222,8 @@ namespace Tellma.Core.Queryex.Pipeline
                 DiagnosticLocation location,
                 int? queryexVersion,
                 PathScope scope,
-                bool conjunctive)
+                bool conjunctive,
+                bool measures = false)
             {
                 if (_budget.Exceeded)
                 {
@@ -237,8 +248,21 @@ namespace Tellma.Core.Queryex.Pipeline
                 ReadSyntax(syntax);
 
                 // Counted off the parse, so each parameter is reported once per place it is written
-                // whether or not a schema was supplied and whatever binding does with it.
-                ReadParameters(syntax, location);
+                // whether or not a schema was supplied and whatever binding does with it. A measure's
+                // place is its own item.
+                if (measures)
+                {
+                    for (int index = 0; index < syntax.Items.Count; index++)
+                    {
+                        DiagnosticLocation item = location.Item(index);
+                        _locations[item.Text ?? string.Empty] = item;
+                        ReadParameters(syntax.Items[index], item);
+                    }
+                }
+                else
+                {
+                    ReadParameters(syntax, location);
+                }
 
                 if (_options.Schema is null || scope.Root is null)
                 {
@@ -253,6 +277,7 @@ namespace Tellma.Core.Queryex.Pipeline
                     Root = scope.Root,
                     Mode = mode,
                     QueryexVersion = queryexVersion ?? _options.QueryexVersion,
+                    Measures = measures,
                     Inference = _inference,
                 };
 
@@ -267,9 +292,9 @@ namespace Tellma.Core.Queryex.Pipeline
 
                 _budget.TryConsumeTypedNodes(bound.NodeCount, default, _sink.Scope(location));
 
-                foreach (BoundItem item in bound.Items)
+                for (int index = 0; index < bound.Items.Length; index++)
                 {
-                    ReadBound(item.Expression, location, scope);
+                    ReadBound(bound.Items[index].Expression, measures ? location.Item(index) : location, scope);
                 }
 
                 // A predicate is one item; a leaf that is a list is a mistake binding has already
@@ -278,6 +303,14 @@ namespace Tellma.Core.Queryex.Pipeline
                 {
                     ConjunctReader.Read(bound.Items[0].Expression, syntax, location.Text, _conjuncts);
                 }
+            }
+
+            /// <summary>Reads a list of measures, each at a site of its own.</summary>
+            /// <param name="text">The measures.</param>
+            /// <param name="location">The list's location; each item's is that location's item.</param>
+            internal void ReadMeasures(string text, DiagnosticLocation location)
+            {
+                Read(text, QueryexMode.Aggregate, false, location, null, Top(), conjunctive: false, measures: true);
             }
 
             /// <summary>Reads a whole filter tree.</summary>

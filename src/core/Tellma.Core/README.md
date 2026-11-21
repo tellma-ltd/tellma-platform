@@ -451,7 +451,7 @@ queries and writes have no class for it. Its fingerprint digests the model.
 
 | Member | Statements |
 |---|---|
-| `Rows` | One page of columnar rows. With `CaptureKeys` or `IncludeAncestors`, a keys-only twin first fills a statement-local table (`@tb{b}_keys`) under the filter, restrictions and paging, and the page reads those keys in the spec's order, its key appended as the last tiebreak only where the ordering does not already hold it (in any position or direction, as the language decides for the twin: the page keeps a zero skip, `OFFSET @qx{n}_skip ROWS`, which marks it paged); a capped count (cap + 1 rows counted) and a tree's ancestors (the nodes above the page, not on it, in the same order) follow. A grouped spec captures no keys and climbs to no ancestors; its count counts its groups. Each call's statements fit the batch's parameter budget together or none is added. |
+| `Rows` | One page of columnar rows. With `CaptureKeys` or `IncludeAncestors`, a keys-only twin first fills a statement-local table (`@tb{b}_keys`) under the filter, restrictions and paging, and the page reads those keys in the spec's order, its key appended as the last tiebreak only where the ordering does not already hold it (in any position or direction, as the language decides for the twin: the page keeps a zero skip, `OFFSET @qx{n}_skip ROWS`, which marks it paged); a capped count (cap + 1 rows counted) and a tree's ancestors (the nodes above the page, not on it, in the same order) follow. A grouped spec captures no keys and climbs to no ancestors; its count counts its groups. A grouped spec's `Measures` add their partial columns after the select items, which the page reads like any other column, its decimals with the precision and scale the server reports, so a caller that compiled the same spec itself evaluates its measures over the page; the count compiles without them. Each call's statements fit the batch's parameter budget together or none is added. |
 | `Count` | A capped count: a result of cap + 1 means more than the cap. |
 | `EvaluateConstant` | One row of path-free expressions. |
 | `Assert` | A count compared with an expected value, throwing the given platform or distribution number and code. |
@@ -1802,9 +1802,10 @@ tenant, in a job that runs on one and in a provisioning step, refused in any oth
 
 `QueryexService` (route `queryex`, registered by `CoreFeature`) serves `discover`, a member-only,
 idempotent read hidden from the agents, for the editors: it checks clauses being written as `query`
-or a role save would compile them and answers `200` with every problem. Admission (`DiscoverShape`)
-runs before any I/O: a root the widest schema shape lacks is `NotFoundException`; measures (not
-supported yet), a having clause without an aggregation, a confirmed parameter without a name, of a
+or a role save would compile them and answers `200` with every problem. An aggregate query's measures
+are checked as its compilation checks them, each problem at its item in clause `measures`. Admission (`DiscoverShape`)
+runs before any I/O: a root the widest schema shape lacks is `NotFoundException`; measures or a
+having clause without an aggregation, a confirmed parameter without a name, of a
 hierarchy or geography type or named twice, and for a permission filter more than one filter or any
 other clause or parameter, are each `BadRequestException`. The caller's set comes from the scope's
 connection, and no statement ever runs. A cached caller costs no round trip while a prologue

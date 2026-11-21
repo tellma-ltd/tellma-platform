@@ -69,7 +69,7 @@ namespace Tellma.Core.Data.Queries
             {
                 ArgumentNullException.ThrowIfNull(spec);
                 _ = Add(spec.Root.Name).Add(spec.Select).Add(spec.Aggregate).Add(spec.Filter).Add(spec.Having)
-                    .Add(spec.OrderBy).Add(spec.Skip).Add(spec.Take).Add(spec.Restrictions);
+                    .Add(spec.OrderBy).Add(spec.Measures).Add(spec.Skip).Add(spec.Take).Add(spec.Restrictions);
                 _ = Add(spec.UndeclaredColumns.Count);
                 foreach (string column in spec.UndeclaredColumns)
                 {

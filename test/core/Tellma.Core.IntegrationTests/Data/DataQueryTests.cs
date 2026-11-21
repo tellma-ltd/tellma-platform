@@ -120,6 +120,48 @@ namespace Tellma.Core.IntegrationTests.Data
         }
 
         [Fact]
+        public async Task A_grouped_page_with_measures_carries_their_partial_columns_after_its_own_and_counts_the_same_groups()
+        {
+            await using AsyncServiceScope scope = fixture.CreateScope();
+            IDataBatch batch = Batch(scope);
+            QuerySpec plain = new()
+            {
+                Root = Entity(scope, "fixture.Widget"),
+                Select = "Kind, count()",
+                Aggregate = true,
+                OrderBy = "Kind",
+            };
+            QuerySpec measured = plain with { Measures = "sum(Price) / count(), max(Price)" };
+
+            BatchResult<RowPage> without = batch.Rows(plain, null, new RowQueryOptions { CountCap = 10 });
+            BatchResult<RowPage> with = batch.Rows(measured, null, new RowQueryOptions { CountCap = 10 });
+            BatchResult<RowPage> spelled = batch.Rows(plain with { Select = "Kind, count(), sum(Price), max(Price)" }, null, null);
+            _ = await batch.ExecuteAsync(Token);
+
+            // The count the select already has is reused; the sum and the greatest price follow it,
+            // typed and valued as the same aggregations spelled out in the select.
+            QueryRowSet rows = with.Value.Rows;
+            QueryRowSet oracle = spelled.Value.Rows;
+            Assert.Equal(2, without.Value.Rows.Columns.Count);
+            Assert.Equal(4, rows.Columns.Count);
+            Assert.All(rows.Columns.Skip(2), static column => Assert.False(column.GroupingKey));
+            Assert.Equal(
+                oracle.Columns.Skip(2).Select(static column => (column.Type, column.Precision, column.Scale)),
+                rows.Columns.Skip(2).Select(static column => (column.Type, column.Precision, column.Scale)));
+            for (int column = 2; column < 4; column++)
+            {
+                Assert.Equal((decimal[])oracle.GetBuffer(column), (decimal[])rows.GetBuffer(column));
+                Assert.Equal(
+                    Enumerable.Range(0, oracle.RowCount).Select(row => oracle.IsNull(column, row)),
+                    Enumerable.Range(0, rows.RowCount).Select(row => rows.IsNull(column, row)));
+            }
+
+            // Measures add columns to each group and never a group.
+            Assert.Equal(Strings(without.Value.Rows, 0), Strings(rows, 0));
+            Assert.Equal(without.Value.Count, with.Value.Count);
+        }
+
+        [Fact]
         public async Task An_assertion_passes_on_its_count_and_throws_its_error_and_code_on_any_other()
         {
             await using AsyncServiceScope scope = fixture.CreateScope();
