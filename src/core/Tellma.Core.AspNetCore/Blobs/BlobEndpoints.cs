@@ -41,7 +41,7 @@ namespace Tellma.Core.AspNetCore.Blobs
 
         /// <summary>
         ///     The slowest rate, in bytes per second, a download's deadline allows for its object on
-        ///     top of the long timeout: 32 KiB/s, so a 100 MiB file has about 53 minutes more.
+        ///     top of the web timeout: 32 KiB/s, so a 100 MiB file has about 53 minutes more.
         /// </summary>
         public const int MinimumTransferRate = 32 * 1024;
 
@@ -136,7 +136,7 @@ namespace Tellma.Core.AspNetCore.Blobs
         /// <param name="kinds">The declared kinds, which bound the download counter's kind tag.</param>
         /// <param name="metrics">The download counter.</param>
         /// <param name="requests">The request context, whose tenant owns the storage read.</param>
-        /// <param name="api">The API settings, whose long timeout a transfer's deadline starts from.</param>
+        /// <param name="api">The API settings, whose web timeout a transfer's deadline starts from.</param>
         /// <param name="time">The clock the transfer's deadline runs on.</param>
         /// <param name="cancellationToken">The request's cancellation.</param>
         /// <returns>The result.</returns>
@@ -156,15 +156,8 @@ namespace Tellma.Core.AspNetCore.Blobs
             [FromServices] TimeProvider time,
             CancellationToken cancellationToken)
         {
-            // --- The guards on every response, a problem's included: stamped as it starts, after any clear ---
-            http.Response.OnStarting(
-                static state =>
-                {
-                    BlobResponseHeaders.ApplyGuards(((HttpResponse)state).Headers);
-                    return Task.CompletedTask;
-                },
-                http.Response);
-
+            // The framing and sniffing guards are the host's header stamp's, on every blob answer,
+            // a refusal before this handler included.
             // A kind no reference declares is never counted: the tag would take whatever a client sends.
             string? counted = kinds.Find(kind)?.Kind;
             string? requested = string.IsNullOrEmpty(variant) ? null : variant;
@@ -213,7 +206,7 @@ namespace Tellma.Core.AspNetCore.Blobs
             // --- The bytes: open inline or download, with ranges, conditionals and If-Range against the strong tag ---
             http.Response.Headers[HeaderNames.ContentDisposition] = BlobResponseHeaders.ContentDisposition(resolved.ContentType, resolved.FileName, download == true);
             CountServedAsItStarts(http.Response, metrics, counted);
-            BoundTransfer(http, TransferDeadline(api.Value.LongRequestTimeout, content.Length), time);
+            BoundTransfer(http, TransferDeadline(api.Value.RequestTimeout, content.Length), time);
             return Results.Stream(
                 content.Content,
                 resolved.ContentType,
@@ -224,16 +217,17 @@ namespace Tellma.Core.AspNetCore.Blobs
         }
 
         /// <summary>
-        ///     How long a download of an object may take from its open: the long timeout, plus the
-        ///     object's length at <see cref="MinimumTransferRate" />, and never more than
-        ///     <see cref="MaxTransferDeadline" />.
+        ///     How long a download of an object may take from its open: the web timeout, the budget
+        ///     every answer has for its first byte, plus the object's length at
+        ///     <see cref="MinimumTransferRate" />, and never more than <see cref="MaxTransferDeadline" />.
+        ///     A small object's hold is thus about the web timeout, however slowly it is read.
         /// </summary>
-        /// <param name="longTimeout">The long request timeout.</param>
+        /// <param name="webTimeout">The web request timeout.</param>
         /// <param name="length">The object's length in bytes.</param>
         /// <returns>The deadline.</returns>
-        internal static TimeSpan TransferDeadline(TimeSpan longTimeout, long length)
+        internal static TimeSpan TransferDeadline(TimeSpan webTimeout, long length)
         {
-            double seconds = longTimeout.TotalSeconds + ((double)Math.Max(0, length) / MinimumTransferRate);
+            double seconds = webTimeout.TotalSeconds + ((double)Math.Max(0, length) / MinimumTransferRate);
             return seconds >= MaxTransferDeadline.TotalSeconds ? MaxTransferDeadline : TimeSpan.FromSeconds(seconds);
         }
 

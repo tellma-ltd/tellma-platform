@@ -53,6 +53,29 @@ namespace Tellma.Connector.AzureBlobs.Tests
         }
 
         [Fact]
+        public async Task A_zero_length_read_before_the_declared_end_is_no_end_and_the_content_still_reads_whole()
+        {
+            byte[] bytes = [1, 2, 3, 4];
+            LengthGuardStream guard = new(new MemoryStream(bytes), bytes.Length, Name);
+
+            // --- Zero-length reads, synchronous and asynchronous, before any byte and midway ---
+            Assert.Equal(0, guard.Read([]));
+            Assert.Equal(0, await guard.ReadAsync(Memory<byte>.Empty, Token));
+            byte[] first = new byte[2];
+            Assert.Equal(2, guard.Read(first));
+            Assert.Equal(0, guard.Read(new byte[4], 0, 0));
+            Assert.Equal(0, await guard.ReadAsync(new byte[4].AsMemory(0, 0), Token));
+
+            // --- Nothing was refused, and the rest still reads to the declared end ---
+            Assert.Null(guard.Mismatch);
+            byte[] rest = new byte[4];
+            Assert.Equal(2, await guard.ReadAsync(rest, Token));
+            Assert.Equal(0, await guard.ReadAsync(rest, Token));
+            Assert.Equal(bytes[2..], rest[..2]);
+            Assert.Null(guard.Mismatch);
+        }
+
+        [Fact]
         public void An_empty_content_of_declared_length_zero_reads_nothing_and_one_byte_more_fails()
         {
             Assert.Equal(0, new LengthGuardStream(new MemoryStream([]), 0, Name).Read(new byte[4]));

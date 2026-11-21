@@ -31,12 +31,15 @@ services.AddAzureBlobStore(options => configuration.GetSection(AzureBlobStoreOpt
 passed to `AddAzureBlobStore`, else the host's registered one (the App Service's managed identity in
 Azure, the developer's own sign-in locally). The identity needs *Storage Blob Data Contributor* on the
 account, which covers creating the tenants' containers. The adapter never constructs a credential of
-its own.
+its own. A credential that cannot produce a token is a storage failure like any other: the operation
+throws `BlobStoreException`, is metered as failed, and a write or delete of several objects still
+attempts each.
 
 The settings are validated when the store is built, and the `blobs.azure` startup check reports every
 broken rule, a connection string that does not parse, and an endpoint without a credential before the
-host serves traffic. The prefix is checked with the largest tenant id appended, so no tenant can be
-handed an invalid container name later. The endpoint is the account's HTTPS address alone: one with
+host serves traffic. The prefix is checked with the largest and the smallest tenant ids appended, so no tenant can be
+handed an invalid container name later (an empty prefix is refused: `t1` is under the
+three-character minimum). The endpoint is the account's HTTPS address alone: one with
 a path, a query (a pasted shared access signature, say), a fragment or user information is refused,
 and no message prints more of it than its scheme and host.
 

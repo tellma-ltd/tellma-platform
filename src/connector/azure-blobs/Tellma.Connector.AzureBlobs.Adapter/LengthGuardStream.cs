@@ -73,11 +73,17 @@ namespace Tellma.Connector.AzureBlobs
         /// <inheritdoc />
         public override int Read(Span<byte> buffer)
         {
+            // --- A zero-length read asks for nothing, so its zero is no end: it reaches the content and is not counted ---
+            if (buffer.IsEmpty)
+            {
+                return _content.Read(buffer);
+            }
+
             // --- At the declared end: one probe byte tells a whole content from one running past it ---
             if (_consumed >= Length)
             {
                 Span<byte> probe = stackalloc byte[1];
-                return buffer.IsEmpty || _content.Read(probe) == 0 ? 0 : throw Fail(RunsPast());
+                return _content.Read(probe) == 0 ? 0 : throw Fail(RunsPast());
             }
 
             // --- Before it: never more than the declared remainder, and an early end is a failure ---
@@ -95,14 +101,14 @@ namespace Tellma.Connector.AzureBlobs
         /// <inheritdoc />
         public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
         {
-            // The same two cases as the synchronous read.
+            // The same three cases as the synchronous read.
+            if (buffer.IsEmpty)
+            {
+                return await _content.ReadAsync(buffer, cancellationToken).ConfigureAwait(false);
+            }
+
             if (_consumed >= Length)
             {
-                if (buffer.IsEmpty)
-                {
-                    return 0;
-                }
-
                 byte[] probe = new byte[1];
                 return await _content.ReadAsync(probe, cancellationToken).ConfigureAwait(false) == 0 ? 0 : throw Fail(RunsPast());
             }

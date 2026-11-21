@@ -124,17 +124,28 @@ namespace Tellma.Core.AspNetCore.Blobs
         }
 
         /// <summary>
-        ///     Whether a response answers the blob surface with anything other than the object or a
-        ///     <c>304</c>: a refusal, a problem, or a range the stream could not satisfy. The endpoint
-        ///     is the matched one, or for a problem the exception handler writes, the one that threw.
+        ///     Whether a response answers the blob surface, whatever answered it: the endpoint, the
+        ///     tenant guard, the limiter or the binder. The endpoint is the matched one, or for a
+        ///     problem the exception handler writes, the one that threw.
+        /// </summary>
+        /// <param name="context">The request, as its response starts.</param>
+        /// <returns>True for a response of the blob surface.</returns>
+        public static bool IsBlobSurface(HttpContext context)
+        {
+            ArgumentNullException.ThrowIfNull(context);
+            Endpoint? endpoint = context.GetEndpoint() ?? context.Features.Get<IExceptionHandlerFeature>()?.Endpoint;
+            return endpoint?.Metadata.GetMetadata<TenantEndpointMetadata>()?.Surface == TenantSurface.Blobs;
+        }
+
+        /// <summary>
+        ///     Whether a blob surface response is anything other than the object or a <c>304</c>: a
+        ///     refusal, a problem, or a range the stream could not satisfy.
         /// </summary>
         /// <param name="context">The request, as its response starts.</param>
         /// <returns>True for a blob response that must carry neither a validator nor caching.</returns>
         public static bool IsRefusal(HttpContext context)
         {
-            ArgumentNullException.ThrowIfNull(context);
-            Endpoint? endpoint = context.GetEndpoint() ?? context.Features.Get<IExceptionHandlerFeature>()?.Endpoint;
-            return endpoint?.Metadata.GetMetadata<TenantEndpointMetadata>()?.Surface == TenantSurface.Blobs
+            return IsBlobSurface(context)
                 && context.Response.StatusCode is not (StatusCodes.Status200OK or StatusCodes.Status206PartialContent or StatusCodes.Status304NotModified);
         }
 

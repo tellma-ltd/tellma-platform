@@ -65,12 +65,17 @@ namespace Tellma.Core.AspNetCore
                     context.Response.Headers[TellmaHeaders.TraceId] = traceId;
                     context.Response.Headers[TellmaHeaders.Build] = versions.DistributionVersion;
 
-                    // Tenant JSON is never stored by a cache. The blob surface states its own caching
-                    // for the object and a 304; any other blob answer, early refusals included, is
-                    // never stored and carries no tag, whatever an earlier step stamped.
-                    if (BlobResponseHeaders.IsRefusal(context))
+                    // Tenant JSON is never stored by a cache. Every blob answer, early refusals
+                    // included, carries the framing and sniffing guards; the blob surface states its
+                    // own caching for the object and a 304, and any other blob answer is never stored
+                    // and carries no tag, whatever an earlier step stamped.
+                    if (BlobResponseHeaders.IsBlobSurface(context))
                     {
-                        BlobResponseHeaders.ApplyRefusal(context.Response.Headers);
+                        BlobResponseHeaders.ApplyGuards(context.Response.Headers);
+                        if (BlobResponseHeaders.IsRefusal(context))
+                        {
+                            BlobResponseHeaders.ApplyRefusal(context.Response.Headers);
+                        }
                     }
                     else if (TenantJson.Is(context) && !context.Response.Headers.ContainsKey(HeaderNames.CacheControl))
                     {

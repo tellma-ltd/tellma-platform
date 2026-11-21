@@ -76,7 +76,7 @@ namespace Tellma.Connector.AzureBlobs.Tests
 
         [Theory]
         [InlineData("tellma-")]
-        [InlineData("")]
+        [InlineData("a")]
         [InlineData("acme")]
         [InlineData("a1-b2-")]
         [InlineData("x123456789x123456789x123456789x123456789x123456789x1")]
@@ -96,6 +96,14 @@ namespace Tellma.Connector.AzureBlobs.Tests
         {
             string failure = Assert.Single(AzureBlobStoreOptionsValidator.Describe(new AzureBlobStoreOptions { ConnectionString = Emulator, ContainerPrefix = prefix }));
             Assert.Contains($"'{prefix}t2147483647'", failure, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void An_empty_prefix_is_refused_because_the_first_tenants_names_are_too_short()
+        {
+            // 't1' to 't9' are under the service's three-character minimum, though 't2147483647' is valid.
+            string failure = Assert.Single(AzureBlobStoreOptionsValidator.Describe(new AzureBlobStoreOptions { ConnectionString = Emulator, ContainerPrefix = string.Empty }));
+            Assert.Contains("ContainerPrefix '' does not yield a valid container name for every tenant: 't1' must be 3 to 63", failure, StringComparison.Ordinal);
         }
 
         [Fact]

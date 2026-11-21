@@ -3,14 +3,18 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Diagnostics.Metrics.Testing;
 using Microsoft.Extensions.Options;
+using System.Diagnostics;
 using System.Diagnostics.Metrics;
 using System.Net;
 using System.Net.Http.Headers;
+using System.Net.Sockets;
 using System.Runtime.CompilerServices;
+using System.Text;
 using Tellma.Core.Abstractions.Api;
 using Tellma.Core.Abstractions.Blobs;
 using Tellma.Core.AspNetCore.Blobs;
@@ -21,9 +25,11 @@ namespace Tellma.Core.AspNetCore.Tests.Blobs
 {
     /// <summary>
     ///     The blob download as the host maps it, over a scripted blob service and store: a held copy
-    ///     answered without the store, a missing or corrupt object never cached, a transfer that
-    ///     outlives the web timeout, one that outlives its own deadline, the telemetry stage's
-    ///     headers, and the download counter per outcome.
+    ///     answered without the store and only once the caller may read the blob, a missing or
+    ///     corrupt object never cached, the guards on refusals before the handler, a transfer that
+    ///     outlives the web timeout, one that outlives its own deadline (a stalled object, and a
+    ///     client that stops reading, whose permit is then freed), the telemetry stage's headers, and
+    ///     the download counter per outcome.
     /// </summary>
     public sealed class BlobEndpointTests
     {
@@ -54,6 +60,44 @@ namespace Tellma.Core.AspNetCore.Tests.Blobs
             Assert.Equal(BlobResponseHeaders.CommittedCacheControl, CacheControl(response));
             Assert.Equal(0, store.Opens);
             Assert.Equal([BlobTelemetryTagValues.DownloadNotModified], Outcomes(downloads));
+        }
+
+        [Theory]
+        [InlineData(Tag)]
+        [InlineData("*")]
+        public async Task A_held_copy_of_a_blob_the_caller_may_not_read_is_a_404_never_a_304(string ifNoneMatch)
+        {
+            // The tag is derivable from the address, so a 304 answered before the authorization would tell any blob id exists.
+            ScriptedBlobStore store = new(static () => new BlobContent(new MemoryStream(Bytes), Bytes.Length));
+            await using TellmaTestHost host = await StartAsync(store, readable: false);
+
+            using HttpRequestMessage request = TellmaTestHost.SpaRequest(HttpMethod.Get, Address, host.Cookie());
+            Assert.True(request.Headers.TryAddWithoutValidation("If-None-Match", ifNoneMatch));
+            using HttpResponseMessage response = await host.Client.SendAsync(request, Token);
+
+            Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+            Assert.Equal("not-found", (await Problem.ReadAsync(response)).Code);
+            Assert.Null(response.Headers.ETag);
+            Assert.Equal(BlobResponseHeaders.RefusalCacheControl, CacheControl(response));
+            Assert.Equal(0, store.Opens);
+        }
+
+        [Theory]
+        [InlineData("/2/blobs/user-image/7", HttpStatusCode.NotFound)]
+        [InlineData(Address + "?download=maybe", HttpStatusCode.BadRequest)]
+        public async Task A_refusal_before_the_handler_carries_the_guards_and_no_caching(string path, HttpStatusCode status)
+        {
+            // The tenant guard's refusal of a tenant that does not exist, and the binder's of a flag that does not parse.
+            ScriptedBlobStore store = new(static () => new BlobContent(new MemoryStream(Bytes), Bytes.Length));
+            await using TellmaTestHost host = await StartAsync(store);
+
+            using HttpResponseMessage response = await host.Client.SendAsync(TellmaTestHost.SpaRequest(HttpMethod.Get, path, host.Cookie()), Token);
+
+            Assert.Equal(status, response.StatusCode);
+            Assert.Equal([BlobResponseHeaders.ContentSecurityPolicy], response.Headers.GetValues("Content-Security-Policy"));
+            Assert.Equal([BlobResponseHeaders.NoSniff], response.Headers.GetValues("X-Content-Type-Options"));
+            Assert.Equal(BlobResponseHeaders.RefusalCacheControl, CacheControl(response));
+            Assert.Equal(0, store.Opens);
         }
 
         [Fact]
@@ -162,12 +206,12 @@ namespace Tellma.Core.AspNetCore.Tests.Blobs
         [Fact]
         public async Task A_transfer_past_its_deadline_is_aborted_and_lets_go_of_its_object()
         {
-            // A client that stops reading, or an object that stops arriving: the bytes stop after the first chunk.
+            // An object that stops arriving: the source yields its first chunk and then nothing.
             const long Length = 1024 * 1024;
             StallingStream stalled = new(firstChunk: 16);
             ScriptedBlobStore store = new(() => new BlobContent(stalled, Length));
             await using TellmaTestHost host = await StartAsync(store, settings: null, Length);
-            TimeSpan deadline = BlobEndpoints.TransferDeadline(host.Services.GetRequiredService<IOptions<ApiOptions>>().Value.LongRequestTimeout, Length);
+            TimeSpan deadline = BlobEndpoints.TransferDeadline(host.Services.GetRequiredService<IOptions<ApiOptions>>().Value.RequestTimeout, Length);
 
             using HttpResponseMessage response = await host.Client.SendAsync(
                 TellmaTestHost.SpaRequest(HttpMethod.Get, Address, host.Cookie()), HttpCompletionOption.ResponseHeadersRead, Token);
@@ -186,13 +230,73 @@ namespace Tellma.Core.AspNetCore.Tests.Blobs
         }
 
         [Fact]
-        public void A_transfer_s_deadline_is_the_long_timeout_plus_its_length_at_the_minimum_rate()
+        public async Task A_client_that_stops_reading_holds_the_tenant_s_one_permit_until_the_deadline_frees_it()
         {
-            Assert.Equal(TimeSpan.FromMinutes(5), BlobEndpoints.TransferDeadline(TimeSpan.FromMinutes(5), 0));
-            Assert.Equal(TimeSpan.FromMinutes(5) + TimeSpan.FromSeconds(3200), BlobEndpoints.TransferDeadline(TimeSpan.FromMinutes(5), 100L * 1024 * 1024));
+            // --- One blob permit, no queue, and no minimum data rate: only the deadline can end the hold ---
+            const long Length = 64L * 1024 * 1024;
+            ZeroStream zeros = new(Length);
+            ScriptedBlobStore store = new(() => new BlobContent(zeros, Length));
+            await using TellmaTestHost host = await StartAsync(
+                store,
+                static settings =>
+                {
+                    settings["Tellma:Api:ConcurrentBlobReadsPerTenant"] = "1";
+                    settings["Tellma:Api:BlobReadQueuePerTenant"] = "0";
+                },
+                Length,
+                kestrel: true);
+            TimeSpan deadline = BlobEndpoints.TransferDeadline(host.Services.GetRequiredService<IOptions<ApiOptions>>().Value.RequestTimeout, Length);
+            string cookie = host.Cookie();
+
+            // --- A held copy first, which takes and frees the permit, so the raw request's way to its answer is warm ---
+            using (HttpResponseMessage warm = await host.Client.SendAsync(HeldCopy(cookie), Token))
+            {
+                Assert.Equal(HttpStatusCode.NotModified, warm.StatusCode);
+            }
+
+            // --- A raw connection that reads the response's head and then nothing more ---
+            using TcpClient reader = new() { ReceiveBufferSize = 4096 };
+            await reader.ConnectAsync(IPAddress.Loopback, host.Client.BaseAddress!.Port, Token);
+            NetworkStream connection = reader.GetStream();
+            await connection.WriteAsync(Encoding.ASCII.GetBytes($"GET {Address} HTTP/1.1\r\nHost: localhost\r\nCookie: {cookie}\r\n\r\n"), Token);
+            Assert.StartsWith("HTTP/1.1 200", await ReadHeadAsync(connection), StringComparison.Ordinal);
+
+            // --- The handler is blocked in the body's write: the object stops being read well short of its end ---
+            long produced = await zeros.SettledAsync(Token);
+            Assert.InRange(produced, 1, Length - 1);
+
+            // --- While it holds the only permit, a second download is refused ---
+            using (HttpResponseMessage refused = await host.Client.SendAsync(HeldCopy(cookie), Token))
+            {
+                Assert.Equal(HttpStatusCode.TooManyRequests, refused.StatusCode);
+            }
+
+            // --- Past the deadline the connection is aborted, the object let go, and the permit freed ---
+            host.Time.Advance(deadline + TimeSpan.FromSeconds(1));
+            Assert.True(await zeros.Released.Task.WaitAsync(TimeSpan.FromSeconds(10), Token));
+            HttpStatusCode answered = HttpStatusCode.TooManyRequests;
+            for (var waited = Stopwatch.StartNew(); answered != HttpStatusCode.NotModified && waited.Elapsed < TimeSpan.FromSeconds(10);)
+            {
+                using HttpResponseMessage next = await host.Client.SendAsync(HeldCopy(cookie), Token);
+                answered = next.StatusCode;
+                if (answered != HttpStatusCode.NotModified)
+                {
+                    await Task.Delay(TimeSpan.FromMilliseconds(100), Token);
+                }
+            }
+
+            Assert.Equal(HttpStatusCode.NotModified, answered);
+        }
+
+        [Fact]
+        public void A_transfer_s_deadline_is_the_web_timeout_plus_its_length_at_the_minimum_rate()
+        {
+            var web = TimeSpan.FromSeconds(30);
+            Assert.Equal(web, BlobEndpoints.TransferDeadline(web, 0));
+            Assert.Equal(web + TimeSpan.FromSeconds(3200), BlobEndpoints.TransferDeadline(web, 100L * 1024 * 1024));
 
             // However large the object, the deadline stops at a day, which a timer can still wait.
-            Assert.Equal(BlobEndpoints.MaxTransferDeadline, BlobEndpoints.TransferDeadline(TimeSpan.FromMinutes(5), long.MaxValue));
+            Assert.Equal(BlobEndpoints.MaxTransferDeadline, BlobEndpoints.TransferDeadline(web, long.MaxValue));
             Assert.Equal(TimeSpan.FromDays(1), BlobEndpoints.MaxTransferDeadline);
         }
 
@@ -200,21 +304,56 @@ namespace Tellma.Core.AspNetCore.Tests.Blobs
         /// <param name="store">The store.</param>
         /// <param name="settings">Changes to the host's settings.</param>
         /// <param name="size">The length the blob's row records.</param>
+        /// <param name="readable">Whether the caller may read the blob; when not, the service resolves nothing.</param>
+        /// <param name="kestrel">Whether the host listens through Kestrel, without its minimum response data rate.</param>
         /// <returns>The host.</returns>
-        private static Task<TellmaTestHost> StartAsync(ScriptedBlobStore store, Action<Dictionary<string, string?>>? settings = null, long? size = null)
+        private static Task<TellmaTestHost> StartAsync(
+            ScriptedBlobStore store, Action<Dictionary<string, string?>>? settings = null, long? size = null, bool readable = true, bool kestrel = false)
         {
-            BlobDownload resolved = new(7, "user-image", BlobState.Committed, "user-image/07/7", "image/webp", size ?? Bytes.Length, "me.webp", IsImage: true, Tag);
+            BlobDownload? resolved = readable
+                ? new(7, "user-image", BlobState.Committed, "user-image/07/7", "image/webp", size ?? Bytes.Length, "me.webp", IsImage: true, Tag)
+                : null;
             return TellmaTestHost.StartAsync(options =>
             {
                 settings?.Invoke(options.Settings);
+                options.UseKestrel = kestrel;
                 options.ConfigureServices = services =>
                 {
                     services.RemoveAll<IBlobService>();
                     _ = services.AddSingleton<IBlobService>(new ScriptedBlobService(resolved));
                     services.RemoveAll<IBlobStore>();
                     _ = services.AddSingleton<IBlobStore>(store);
+
+                    // Kestrel would otherwise end a client that stops reading on its own, after a few seconds.
+                    _ = services.Configure<KestrelServerOptions>(static server => server.Limits.MinResponseDataRate = null);
                 };
             });
+        }
+
+        /// <summary>A download of blob 7 naming its tag, as a browser's held copy does: answered 304 once a permit is free.</summary>
+        /// <param name="cookie">The session cookie.</param>
+        /// <returns>The request.</returns>
+        private static HttpRequestMessage HeldCopy(string cookie)
+        {
+            HttpRequestMessage request = TellmaTestHost.SpaRequest(HttpMethod.Get, Address, cookie);
+            request.Headers.IfNoneMatch.Add(new EntityTagHeaderValue(Tag));
+            return request;
+        }
+
+        /// <summary>Reads a raw HTTP response up to the end of its head.</summary>
+        /// <param name="connection">The connection.</param>
+        /// <returns>The status line and headers.</returns>
+        private static async Task<string> ReadHeadAsync(NetworkStream connection)
+        {
+            byte[] buffer = new byte[1];
+            StringBuilder head = new();
+            while (!head.ToString().EndsWith("\r\n\r\n", StringComparison.Ordinal))
+            {
+                Assert.Equal(1, await connection.ReadAsync(buffer, Token).AsTask().WaitAsync(TimeSpan.FromSeconds(30), Token));
+                _ = head.Append((char)buffer[0]);
+            }
+
+            return head.ToString();
         }
 
         /// <summary>Collects the host's download counter.</summary>
@@ -245,9 +384,9 @@ namespace Tellma.Core.AspNetCore.Tests.Blobs
             return response.Headers.NonValidated.TryGetValues("Cache-Control", out HeaderStringValues values) ? values.ToString() : string.Empty;
         }
 
-        /// <summary>A blob service that resolves every download to one blob and stages nothing.</summary>
-        /// <param name="resolved">The blob every download resolves to.</param>
-        private sealed class ScriptedBlobService(BlobDownload resolved) : IBlobService
+        /// <summary>A blob service that resolves every download to one blob, or to nothing, and stages nothing.</summary>
+        /// <param name="resolved">The blob every download resolves to; null when the caller may read none.</param>
+        private sealed class ScriptedBlobService(BlobDownload? resolved) : IBlobService
         {
             /// <inheritdoc />
             public Task<BlobDescriptor> StageAsync(BlobStageRequest request, CancellationToken cancellationToken = default)
@@ -258,7 +397,7 @@ namespace Tellma.Core.AspNetCore.Tests.Blobs
             /// <inheritdoc />
             public Task<BlobDownload?> ResolveAsync(string kind, int id, string? variant, CancellationToken cancellationToken = default)
             {
-                return Task.FromResult<BlobDownload?>(resolved);
+                return Task.FromResult(resolved);
             }
         }
 
@@ -333,6 +472,111 @@ namespace Tellma.Core.AspNetCore.Tests.Blobs
             public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
             {
                 return ReadAsync(buffer.AsMemory(offset, count), cancellationToken).AsTask();
+            }
+        }
+
+        /// <summary>
+        ///     A large object of zeros, produced only as it is read, which reports how much was read
+        ///     and when the response lets go of it.
+        /// </summary>
+        /// <param name="length">The object's length.</param>
+        private sealed class ZeroStream(long length) : Stream
+        {
+            private long _produced;
+
+            /// <summary>Completes when the stream is disposed: the endpoint has returned.</summary>
+            public TaskCompletionSource<bool> Released { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+            /// <inheritdoc />
+            public override bool CanRead => true;
+
+            /// <inheritdoc />
+            public override bool CanSeek => false;
+
+            /// <inheritdoc />
+            public override bool CanWrite => false;
+
+            /// <inheritdoc />
+            public override long Length => throw new NotSupportedException();
+
+            /// <inheritdoc />
+            public override long Position
+            {
+                get => throw new NotSupportedException();
+                set => throw new NotSupportedException();
+            }
+
+            /// <summary>Waits until no more of the object has been read for half a second: the reader is blocked.</summary>
+            /// <param name="cancellationToken">Cancels the wait.</param>
+            /// <returns>How many bytes were read.</returns>
+            public async Task<long> SettledAsync(CancellationToken cancellationToken)
+            {
+                long last = -1;
+                for (var waited = Stopwatch.StartNew(); waited.Elapsed < TimeSpan.FromSeconds(30);)
+                {
+                    long now = Interlocked.Read(ref _produced);
+                    if (now > 0 && now == last)
+                    {
+                        return now;
+                    }
+
+                    last = now;
+                    await Task.Delay(TimeSpan.FromMilliseconds(500), cancellationToken).ConfigureAwait(false);
+                }
+
+                throw new TimeoutException($"The object was still being read after 30 seconds: {Interlocked.Read(ref _produced)} bytes.");
+            }
+
+            /// <inheritdoc />
+            public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                int count = (int)Math.Min(buffer.Length, length - Interlocked.Read(ref _produced));
+                buffer.Span[..count].Clear();
+                _ = Interlocked.Add(ref _produced, count);
+                return ValueTask.FromResult(count);
+            }
+
+            /// <inheritdoc />
+            public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
+            {
+                return ReadAsync(buffer.AsMemory(offset, count), cancellationToken).AsTask();
+            }
+
+            /// <inheritdoc />
+            public override int Read(byte[] buffer, int offset, int count)
+            {
+                throw new NotSupportedException();
+            }
+
+            /// <inheritdoc />
+            public override void Flush()
+            {
+            }
+
+            /// <inheritdoc />
+            public override long Seek(long offset, SeekOrigin origin)
+            {
+                throw new NotSupportedException();
+            }
+
+            /// <inheritdoc />
+            public override void SetLength(long value)
+            {
+                throw new NotSupportedException();
+            }
+
+            /// <inheritdoc />
+            public override void Write(byte[] buffer, int offset, int count)
+            {
+                throw new NotSupportedException();
+            }
+
+            /// <inheritdoc />
+            protected override void Dispose(bool disposing)
+            {
+                _ = Released.TrySetResult(true);
+                base.Dispose(disposing);
             }
         }
 

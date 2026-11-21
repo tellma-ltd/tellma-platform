@@ -22,6 +22,13 @@ namespace Tellma.Connector.AzureBlobs
         /// </summary>
         internal static readonly string LongestSuffix = "t" + int.MaxValue.ToString(CultureInfo.InvariantCulture);
 
+        /// <summary>
+        ///     The container name of the first tenant id: the shortest suffix any prefix is joined
+        ///     with, so a prefix valid with it and with <see cref="LongestSuffix" /> is long enough
+        ///     for every tenant id.
+        /// </summary>
+        internal static readonly string ShortestSuffix = "t1";
+
         /// <inheritdoc />
         public ValidateOptionsResult Validate(string? name, AzureBlobStoreOptions options)
         {
@@ -69,13 +76,18 @@ namespace Tellma.Connector.AzureBlobs
                 }
             }
 
-            // --- The container prefix: with the largest tenant id it is still a valid container name ---
+            // --- The container prefix: with the largest tenant id, and with the smallest, it is still a valid container name ---
+            // The longest name finds a prefix too long or of the wrong characters; the shortest
+            // finds one too short for the service's three-character minimum (an empty prefix).
             string prefix = options.ContainerPrefix ?? string.Empty;
-            if (!IsValidContainerName(prefix + LongestSuffix))
+            string? invalid = !IsValidContainerName(prefix + LongestSuffix) ? prefix + LongestSuffix
+                : !IsValidContainerName(prefix + ShortestSuffix) ? prefix + ShortestSuffix
+                : null;
+            if (invalid is not null)
             {
                 failures.Add(
                     $"{section}:{nameof(AzureBlobStoreOptions.ContainerPrefix)} '{prefix}' does not yield a valid container name for every tenant: "
-                    + $"'{prefix}{LongestSuffix}' must be 3 to 63 lowercase letters, digits and hyphens, start and end with a letter or digit, and hold no two hyphens in a row.");
+                    + $"'{invalid}' must be 3 to 63 lowercase letters, digits and hyphens, start and end with a letter or digit, and hold no two hyphens in a row.");
             }
 
             // --- The limits ---

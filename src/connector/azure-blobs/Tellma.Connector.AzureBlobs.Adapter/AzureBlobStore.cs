@@ -185,6 +185,8 @@ namespace Tellma.Connector.AzureBlobs
             }
 
             // --- Every write, in parallel and best-effort; the first failure in list order is the call's ---
+            // Every exception is kept rather than thrown out of the loop, which would cancel the
+            // writes not yet started and leave them unattempted.
             long started = Stopwatch.GetTimestamp();
             var failures = new Exception?[writes.Count];
             await Parallel.ForAsync(
@@ -197,7 +199,7 @@ namespace Tellma.Connector.AzureBlobs
                     {
                         await WriteOneAsync(tenantId, container, writes[i], token).ConfigureAwait(false);
                     }
-                    catch (Exception exception) when (exception is BlobStoreException or BlobAlreadyExistsException or OperationCanceledException)
+                    catch (Exception exception)
                     {
                         failures[i] = exception;
                     }
@@ -341,12 +343,17 @@ namespace Tellma.Connector.AzureBlobs
             return Task.CompletedTask;
         }
 
-        /// <summary>Whether an exception is the storage's own failure, which the store reports as <see cref="BlobStoreException" />.</summary>
+        /// <summary>
+        ///     Whether an exception from a client call is the storage's failure, which the store
+        ///     reports as <see cref="BlobStoreException" />: anything but a cancellation and the
+        ///     store's own answers. That covers a refused request, the retries' joint failure, a
+        ///     transport failure, and a credential that cannot produce a token.
+        /// </summary>
         /// <param name="exception">The exception.</param>
-        /// <returns>True for a refused request, and for the retries' joint failure the client raises after its last attempt.</returns>
+        /// <returns>True unless the exception is a cancellation, a <see cref="BlobStoreException" /> or a <see cref="BlobAlreadyExistsException" />.</returns>
         private static bool IsStorageFailure(Exception exception)
         {
-            return exception is RequestFailedException or AggregateException or IOException;
+            return exception is not (OperationCanceledException or BlobStoreException or BlobAlreadyExistsException);
         }
 
         /// <summary>Whether a refusal means the tenant's container does not exist.</summary>
