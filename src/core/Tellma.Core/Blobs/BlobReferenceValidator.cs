@@ -7,6 +7,7 @@ using Tellma.Core.Abstractions.Blobs;
 using Tellma.Core.Abstractions.Crud;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Validation;
+using Tellma.Core.Crud.Validation;
 
 namespace Tellma.Core.Blobs
 {
@@ -33,13 +34,38 @@ namespace Tellma.Core.Blobs
     ///         come from a warm buffer and that otherwise runs no first round takes one validation round
     ///         for the blob rows it attaches.
     ///     </para>
+    ///     <para>
+    ///         The rule reads the saving user, the blob rows and the clock, never a permission, and a
+    ///         payload that references no blob is judged not at all: such a group, enlisted with a
+    ///         frame whose permission set moves, replays rather than fails.
+    ///     </para>
     /// </remarks>
     /// <typeparam name="TEntity">The stack's leaf.</typeparam>
     /// <param name="metadata">The entity metadata.</param>
     /// <param name="metrics">The attach instrument.</param>
-    internal sealed class BlobReferenceValidator<TEntity>(IEntityMetadataProvider metadata, BlobAttachMetrics metrics) : IEntityValidator<TEntity>
+    internal sealed class BlobReferenceValidator<TEntity>(IEntityMetadataProvider metadata, BlobAttachMetrics metrics) : IEntityValidator<TEntity>, IPayloadScopedValidator<TEntity>
         where TEntity : class
     {
+        /// <inheritdoc />
+        public bool Judges(IReadOnlyList<TEntity> entities)
+        {
+            ArgumentNullException.ThrowIfNull(entities);
+            EntityMetadata root = metadata.Get(typeof(TEntity));
+            if (BlobAttachments.Columns(root).Count == 0)
+            {
+                return false;
+            }
+
+            // --- Any reference at all, as an inserted row's: a superset of what the payload attaches ---
+            List<BlobAttach> references = [];
+            for (int index = 0; index < entities.Count && references.Count == 0; index++)
+            {
+                BlobAttachments.NewlyAttached(root, entities[index], before: null, ValidationPath.Root.Index(index), references);
+            }
+
+            return references.Count > 0;
+        }
+
         /// <inheritdoc />
         public async Task ValidateAsync(SaveContext<TEntity> context)
         {

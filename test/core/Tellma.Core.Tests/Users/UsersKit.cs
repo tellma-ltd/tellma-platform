@@ -5,7 +5,9 @@
 
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.Metrics.Testing;
+using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
 using System.Collections.Concurrent;
 using System.Data;
@@ -13,18 +15,23 @@ using System.Diagnostics.Metrics;
 using System.Reflection;
 using System.Text.Json;
 using Tellma.Core.Abstractions.Access;
+using Tellma.Core.Abstractions.Api;
 using Tellma.Core.Abstractions.Caching;
 using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.Abstractions.Crud;
 using Tellma.Core.Abstractions.Data;
+using Tellma.Core.Abstractions.Email;
 using Tellma.Core.Abstractions.Localization;
 using Tellma.Core.Abstractions.Settings;
 using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.Abstractions.Validation;
 using Tellma.Core.Access;
 using Tellma.Core.Calendars;
+using Tellma.Core.Crud;
+using Tellma.Core.Data.Queries;
 using Tellma.Core.Localization;
 using Tellma.Core.Queryex;
+using Tellma.Core.Tenancy;
 using Tellma.Core.Tests.Access;
 using Tellma.Core.Tests.Data.Batches;
 using Tellma.Core.Users;
@@ -52,7 +59,6 @@ namespace Tellma.Core.Tests.Users
         /// <summary>The instant every context runs at.</summary>
         public static readonly DateTimeOffset Now = new(2026, 11, 20, 9, 0, 0, TimeSpan.Zero);
 
-
         /// <summary>The scope the evaluator is resolved from.</summary>
         private readonly AsyncServiceScope _scope;
 
@@ -60,14 +66,18 @@ namespace Tellma.Core.Tests.Users
         private readonly ServiceProvider _listeners;
 
         /// <summary>Composes the kit.</summary>
-        public UsersKit()
+        /// <param name="runner">The guarded runner the service runs its own batches through; null for <see cref="Runner" />.</param>
+        /// <param name="openWrites">The open frame a profile edit enlists into; null for the scope's own, which serves no frame here.</param>
+        public UsersKit(IGuardedBatchRunner? runner = null, IOpenWriteHost? openWrites = null)
         {
             _scope = Harness.Services.CreateAsyncScope();
             _listeners = new ServiceCollection().AddSingleton<ISessionTerminationListener>(Listener).BuildServiceProvider();
-            Languages = new LanguageCatalog(new LanguageDeclaration(["en-GB", "ar-SA"], []));
-            ValueSets = new ValueSetRegistry(Languages, new CalendarRegistry([new GregorianCalendarSystem(), new UmAlQuraCalendarSystem()]), []);
-            LoggerFactory = Microsoft.Extensions.Logging.LoggerFactory.Create(builder => builder.SetMinimumLevel(LogLevel.Trace).AddProvider(Logs));
             IMeterFactory meters = Harness.Services.GetRequiredService<IMeterFactory>();
+            Languages = new LanguageCatalog(new LanguageDeclaration(["en-GB", "ar-SA"], []));
+            CalendarRegistry calendars = new([new GregorianCalendarSystem(), new UmAlQuraCalendarSystem()]);
+            ValueSets = new ValueSetRegistry(Languages, calendars, []);
+            LoggerFactory = Microsoft.Extensions.Logging.LoggerFactory.Create(builder => builder.SetMinimumLevel(LogLevel.Trace).AddProvider(Logs));
+            Localizers = new IcuStringLocalizerFactory(Languages, LoggerFactory, meters);
             Invites = new MetricCollector<long>(meters, UsersTelemetryNames.MeterName, UsersTelemetryNames.Invites);
             Dependencies = new UserServiceDependencies(
                 _listeners,
@@ -76,13 +86,30 @@ namespace Tellma.Core.Tests.Users
                 new FixedLinks(),
                 Languages,
                 ValueSets,
-                Runner,
+                runner ?? Runner,
                 Harness.Services.GetRequiredService<ISecurableRegistry>(),
                 _scope.ServiceProvider.GetRequiredService<AccessEvaluator>(),
+                _scope.ServiceProvider.GetRequiredService<IAccessGuards>(),
+                _scope.ServiceProvider.GetRequiredService<IRequestContextAccessor>(),
+                _scope.ServiceProvider.GetRequiredService<WriteFrames>(),
+                openWrites ?? _scope.ServiceProvider.GetRequiredService<IOpenWriteHost>(),
+                Options.Create(new AccessOptions()),
+                Harness.Services.GetRequiredService<IEntityMetadataProvider>(),
+                Harness.Services.GetRequiredService<QueryexSchemaProvider>(),
+                new CallerConnection(),
+                Outbox,
+                new LocalizationNegotiator(Languages, calendars, ValueSets, meters),
+                Localizers,
                 new FakeTimeProvider(Now),
                 new UsersMetrics(meters),
                 LoggerFactory);
             Service = new UsersUnderTest(new RefusingPipelines(), Dependencies);
+        }
+
+        /// <summary>Sets <see cref="Context" /> as the scope's request context, which the service's own reads and guards resolve from.</summary>
+        public void EnterContext()
+        {
+            _scope.ServiceProvider.GetRequiredService<IRequestContextHolder>().Set(Context());
         }
 
         /// <summary>The default composition's batches, whose connection refuses.</summary>
@@ -96,6 +123,9 @@ namespace Tellma.Core.Tests.Users
 
         /// <summary>The guarded runner, which answers each raw read from a script.</summary>
         public ScriptedRunner Runner { get; } = new();
+
+        /// <summary>The outbox the welcome emails are enqueued through, which records each call.</summary>
+        public RecordingOutbox Outbox { get; } = new();
 
         /// <summary>The session listener a deactivation tells.</summary>
         public RecordingListener Listener { get; } = new();
@@ -111,6 +141,9 @@ namespace Tellma.Core.Tests.Users
 
         /// <summary>The languages on offer: English and Arabic.</summary>
         public LanguageCatalog Languages { get; }
+
+        /// <summary>The localizers over the languages, which the welcome email's resources are read through.</summary>
+        public IStringLocalizerFactory Localizers { get; }
 
         /// <summary>The value sets over the languages and the Gregorian and Umm al-Qura calendars.</summary>
         public ValueSetRegistry ValueSets { get; }
@@ -216,6 +249,87 @@ namespace Tellma.Core.Tests.Users
             Harness.Dispose();
         }
 
+        /// <summary>
+        ///     The scope's connection, connected as the caller named Caller and المتصل; nothing else
+        ///     of a connection is the users' stack's concern.
+        /// </summary>
+        private sealed class CallerConnection : IScopeConnection
+        {
+            /// <summary>The caller the scope connects as.</summary>
+            private readonly ConnectedUser _caller = new(
+                CallerId,
+                UserKind.Individual,
+                UserState.Joined,
+                new UserProfile("Caller", "المتصل", null, null, null, null, null, null, null, null, null, null, null, null, Now),
+                Guid.NewGuid(),
+                UserAccess.System,
+                new Dictionary<string, Guid>(StringComparer.Ordinal),
+                null);
+
+            /// <inheritdoc />
+            public RequestContextInputs Inputs => RequestContextInputs.Empty;
+
+            /// <inheritdoc />
+            public Task<ConnectedUser> CurrentAsync(CancellationToken cancellationToken)
+            {
+                return Task.FromResult(_caller);
+            }
+
+            /// <inheritdoc />
+            public bool IsPrologueDue(ConnectedUser user)
+            {
+                throw new NotSupportedException("The users' stack composes no prologue.");
+            }
+
+            /// <inheritdoc />
+            public ConnectPremises PremisesFor(ConnectedUser user)
+            {
+                throw new NotSupportedException("The users' stack composes no prologue.");
+            }
+
+            /// <inheritdoc />
+            public BatchResult<ConnectResult> Contribute(IDataBatch batch, ConnectPremises premises)
+            {
+                throw new NotSupportedException("The users' stack composes no prologue.");
+            }
+
+            /// <inheritdoc />
+            public ConnectResult? ReadOf(BatchResult<ConnectResult> prologue)
+            {
+                throw new NotSupportedException("The users' stack reads no prologue.");
+            }
+
+            /// <inheritdoc />
+            public ConnectedUser Apply(ConnectResult result, ConnectedUser basis)
+            {
+                throw new NotSupportedException("The users' stack applies no prologue.");
+            }
+
+            /// <inheritdoc />
+            public Task<ConnectedUser> ReconnectColdAsync(CancellationToken cancellationToken)
+            {
+                throw new NotSupportedException("The users' stack never reconnects.");
+            }
+
+            /// <inheritdoc />
+            public Task<ConnectedUser> RevalidateAsync(ConnectedUser user, CancellationToken cancellationToken)
+            {
+                throw new NotSupportedException("The users' stack never re-checks a denial.");
+            }
+
+            /// <inheritdoc />
+            public Task<UserAccess?> LoadDetachedAsync(int userId, CancellationToken cancellationToken)
+            {
+                throw new NotSupportedException("The users' stack loads no other user's set.");
+            }
+
+            /// <inheritdoc />
+            public void Drop(ConnectedUser user)
+            {
+                throw new NotSupportedException("The users' stack drops no entries.");
+            }
+        }
+
         /// <summary>The tenant's link for every tenant.</summary>
         private sealed class FixedLinks : ITellmaLinks
         {
@@ -255,6 +369,34 @@ namespace Tellma.Core.Tests.Users
         public Task<CredentialsResult> RunIssueCredentialsAsync(ActionContext<User, int> context)
         {
             return IssueCredentialsAsync(context);
+        }
+
+        /// <summary>Runs the caller's profile edit directly, without the invoker's securable or frame.</summary>
+        /// <param name="request">The edit.</param>
+        /// <param name="cancellationToken">Cancels the edit.</param>
+        /// <returns>The caller's envelope after the edit.</returns>
+        public Task<MeResult> RunSaveMeAsync(MeSaveRequest request, CancellationToken cancellationToken)
+        {
+            return SaveMeAsync(request, cancellationToken);
+        }
+    }
+
+    /// <summary>An outbox that records each call and enlists nothing.</summary>
+    internal sealed class RecordingOutbox : IEmailOutbox
+    {
+        /// <summary>The calls, in order: the frame each enlisted with and its requests.</summary>
+        public ConcurrentQueue<(IWriteHost Host, IReadOnlyList<EmailEnqueueRequest> Requests)> Calls { get; } = new();
+
+        /// <summary>Every request of every call, in call order.</summary>
+        public IReadOnlyList<EmailEnqueueRequest> Requests => [.. Calls.SelectMany(static call => call.Requests)];
+
+        /// <inheritdoc />
+        public Task<EnlistedSave<OutgoingEmail>> EnqueueAsync(IWriteHost host, IReadOnlyList<EmailEnqueueRequest> requests, CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(host);
+            ArgumentNullException.ThrowIfNull(requests);
+            Calls.Enqueue((host, requests));
+            return Task.FromResult<EnlistedSave<OutgoingEmail>>(null!);
         }
     }
 

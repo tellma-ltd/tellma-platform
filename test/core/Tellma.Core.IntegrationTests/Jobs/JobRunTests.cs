@@ -305,6 +305,22 @@ namespace Tellma.Core.IntegrationTests.Jobs
         }
 
         [Fact]
+        public async Task A_handler_receives_each_owning_row_with_every_column_as_stored()
+        {
+            int id = await ShipmentJobAsync(0, "stored-0");
+            List<(int? JobId, string? Payload)> seen = [];
+            fixture.Script.Ship = (batch, _, _) =>
+            {
+                seen.AddRange(batch.Items.Select(static item => (item.Item.JobId, item.Item.Payload)));
+                return Task.CompletedTask;
+            };
+
+            _ = Assert.Single(await PollAsync(JobRunKeys.Ship));
+
+            Assert.Equal([(id, "stored-0")], seen);
+        }
+
+        [Fact]
         public async Task A_lease_taken_by_another_instance_rolls_back_the_handlers_statements_and_enlisted_writes_and_records_nothing()
         {
             int id = await ShipmentJobAsync(0, "stored-0");

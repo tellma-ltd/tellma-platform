@@ -80,6 +80,12 @@ namespace Tellma.Core.Abstractions.Access
         /// <summary>A user's preferred region is not offered with any language the distribution offers.</summary>
         public const string RegionNotOffered = "Users.RegionNotOffered";
 
+        /// <summary>A request to change the caller's locale sets no member and resets none.</summary>
+        public const string LocaleEmpty = "Users.LocaleEmpty";
+
+        /// <summary>A request to change the caller's locale both sets a member and resets it.</summary>
+        public const string LocaleResetConflict = "Users.LocaleResetConflict";
+
         /// <summary>A user's contact email is not a single valid address.</summary>
         public const string ContactEmailInvalid = "Users.ContactEmailInvalid";
 

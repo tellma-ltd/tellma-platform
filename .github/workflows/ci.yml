@@ -36,7 +36,8 @@ jobs:
   # Build everything and run the unit suites (integration excluded) on both OSes.
   build-test:
     if: "${{ !github.event.pull_request.draft && (github.event_name != 'push' || github.ref == 'refs/heads/main' || contains(github.event.head_commit.message, ': integrate')) }}"
-    timeout-minutes: 20
+    # Windows measured 12.4, 18.0, 18.0 and over 20.2 min (cut off mid-suite) on 2026-11-21, by runner speed.
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:

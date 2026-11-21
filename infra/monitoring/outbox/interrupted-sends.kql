@@ -1,0 +1,12 @@
+// Outgoing emails found still sending, from the log.
+// Backs the "an email may have gone out twice, or not at all" alert: the sending job marks its rows
+// sending just before it hands them to the email sender and settles them right after, so a row a
+// later claim finds still sending was interrupted in between (a crash, a lost lease, a settle that
+// failed). The row is failed rather than sent again, and its recipient may or may not have it. Any
+// occurrence is worth a look; a burst points at an instance that keeps dying mid-send.
+traces
+| where timestamp > ago(1h)
+| extend event = tostring(customDimensions["EventName"])
+| where event == "OutboxSendInterrupted"
+| summarize interrupted = count() by bin(timestamp, 15m)
+| where interrupted > 0

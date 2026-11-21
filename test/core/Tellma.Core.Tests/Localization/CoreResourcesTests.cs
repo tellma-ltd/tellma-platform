@@ -166,22 +166,39 @@ namespace Tellma.Core.Tests.Localization
         [Theory]
         [InlineData("")]
         [InlineData("ar")]
-        public void The_server_only_resources_hold_the_email_notification_text_as_well_formed_icu_messages(string culture)
+        public void The_server_only_resources_hold_the_platform_emails_as_well_formed_icu_messages(string culture)
         {
-            // The neutral set and the Arabic satellite each hold exactly the email channel's subject
-            // and bodies, and each renders from its three named arguments.
+            // The neutral set and the Arabic satellite each hold exactly the email channel's and the
+            // welcome email's subjects and bodies, and each renders from its named arguments.
             ResourceManager resources = new("Tellma.Core.Resources.ServerStrings", typeof(ServerStrings).Assembly);
             ResourceSet? set = resources.GetResourceSet(CultureInfo.GetCultureInfo(culture), createIfNotExists: true, tryParents: false);
             Assert.NotNull(set);
             var entries = set.Cast<DictionaryEntry>().ToDictionary(static entry => (string)entry.Key, static entry => (string)entry.Value!, StringComparer.Ordinal);
 
-            Assert.Equal(["Email_Notification_Html", "Email_Notification_Subject", "Email_Notification_Text"], entries.Keys.Order(StringComparer.Ordinal));
+            Assert.Equal(
+                [
+                    "Email_Notification_Html",
+                    "Email_Notification_Subject",
+                    "Email_Notification_Text",
+                    "Email_UserAdded_Html",
+                    "Email_UserAdded_Subject",
+                    "Email_UserAdded_Text",
+                ],
+                entries.Keys.Order(StringComparer.Ordinal));
             MessageFormatter formatter = ProductionFormatter(CultureInfo.GetCultureInfo(culture.Length == 0 ? "en" : culture));
             Assert.All(entries, entry =>
             {
                 Assert.DoesNotContain('\'', entry.Value);
-                string rendered = formatter.FormatMessage(entry.Value, new Dictionary<string, object?> { ["tenantName"] = "Acme", ["text"] = "Hello", ["link"] = "https://example.com/a" });
-                Assert.Contains("Hello", rendered, StringComparison.Ordinal);
+                string rendered = formatter.FormatMessage(entry.Value, new Dictionary<string, object?>
+                {
+                    ["tenantName"] = "Acme",
+                    ["text"] = "Hello",
+                    ["link"] = "https://example.com/a",
+                    ["actorName"] = "Ada",
+                    ["status"] = "Invited",
+                });
+                Assert.Contains("Acme", rendered, StringComparison.Ordinal);
+                Assert.DoesNotContain("{", rendered, StringComparison.Ordinal);
             });
         }
 

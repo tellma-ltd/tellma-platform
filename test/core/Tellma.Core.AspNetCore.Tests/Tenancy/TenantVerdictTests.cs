@@ -173,7 +173,7 @@ namespace Tellma.Core.AspNetCore.Tests.Tenancy
             int tenantId = Tenants[state];
             HttpMethod method = operation == "write" ? HttpMethod.Post : HttpMethod.Get;
             using HttpRequestMessage request = surface == "blobs"
-                ? TellmaTestHost.SpaRequest(method, $"/{tenantId}/blobs/attachments/7", host.Cookie(caller == "stranger" ? TellmaTestHost.Stranger : "sub-1"))
+                ? TellmaTestHost.SpaRequest(method, $"/{tenantId}/blobs/probe/attachments/7", host.Cookie(caller == "stranger" ? TellmaTestHost.Stranger : "sub-1"))
                 : TellmaTestHost.BearerRequest(method, $"/{tenantId}/api/v1/probe", caller switch
                 {
                     "service" => TellmaTestHost.ServiceToken(),

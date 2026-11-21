@@ -15,6 +15,7 @@ using Tellma.Core.Composition.Checks;
 using Tellma.Core.Provisioning;
 using Tellma.Core.Queryex;
 using Tellma.Core.Tests.Infrastructure;
+using Tellma.Core.Users;
 
 namespace Tellma.Core.Tests.Access
 {
@@ -67,13 +68,14 @@ namespace Tellma.Core.Tests.Access
             await using AsyncServiceScope scope = provider.CreateAsyncScope();
             TellmaCompositionRecord record = provider.GetRequiredService<TellmaCompositionRecord>();
 
-            // --- The rules and the effects of the users' and the roles' stacks, the core feature's own ---
+            // --- The rules, the effects and the details contributor of the users' and the roles' stacks, the core feature's own ---
             Assert.Equal(
                 [
                     (typeof(User), typeof(UserAccessRules<User>), ComponentKind.Validator),
                     (typeof(Role), typeof(RoleAccessRules<Role>), ComponentKind.Validator),
                     (typeof(User), typeof(UserStampsCompanion<User>), ComponentKind.PersistEffect),
                     (typeof(User), typeof(BootstrapSubjectEffect<User>), ComponentKind.PersistEffect),
+                    (typeof(User), typeof(UserActivityContributor<User>), ComponentKind.DetailsContributor),
                 ],
                 record.Components.Where(static component => component.EntityType == typeof(User) || component.EntityType == typeof(Role))
                     .Select(static component => (component.EntityType, component.ComponentType, component.Kind)));

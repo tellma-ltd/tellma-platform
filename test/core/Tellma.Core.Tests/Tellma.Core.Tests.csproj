@@ -48,6 +48,9 @@
          and log events the job machinery emits, so a telemetry rename turns an alert query red at
          PR time. -->
     <Content Include="..\..\..\infra\monitoring\jobs\*.kql" Link="JobAlertQueries/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <!-- The outbox alert queries, cross-checked the same way against the outbox's instruments, tags
+         and log events. -->
+    <Content Include="..\..\..\infra\monitoring\outbox\*.kql" Link="OutboxAlertQueries/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

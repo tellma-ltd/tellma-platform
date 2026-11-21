@@ -189,7 +189,9 @@ namespace Tellma.Core.Crud.Save
         // composition before it (the runner reconnected past a moved permissions tag) would commit
         // rows those validators judged under grants the caller may no longer hold, such as a role
         // membership whose escalation test read the caller's own set. So it fails closed: stale,
-        // whenever a group's target validated its rows; a group no validator judged replays as it is.
+        // whenever a group's target validated its rows; a group no validator judged replays as it is,
+        // as does one whose only validators tell they judged nothing over its rows (a blob-reference
+        // check over rows that reference no blob).
         /// <summary>
         ///     Notes the permission set a persist composition is for; on a re-entry composed for
         ///     another set, refuses it when a group the batch carries was validated under the one before.
