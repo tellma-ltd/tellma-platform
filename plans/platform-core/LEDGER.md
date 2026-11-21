@@ -107,11 +107,11 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC | Slot | Branch | Step | Implementer agent (name / id) | Reviewer agent (name / id) | Started (UTC) |
 |---|---|---|---|---|---|---|
 | PC-096 | pc-1 | pc/PC-096 | impl | launched after PC-089 done; xhigh | 0025-b; R1 + R2 inherit xhigh | 2026-11-21 |
-| PC-091 | pc-3 | pc/PC-091 | R1 | impl 059dbd0e (7 deviations; 2 flags for ruling: members extra never Denied under UserAccessCriteria, access MCP exposure default); R1 launched | 0018-e; R1 only | 2026-11-21 |
+| PC-091 | pc-3 | pc/PC-091 | fix1 | impl 059dbd0e (7 deviations accepted); R1 0/0/2 (MCP Hidden; filter-too-complex tests); fix1 then hold behind PC-149, PC-174, PC-F65; D-180 | 0018-e; R1 only | 2026-11-21 |
 | PC-F65 | pc-f | pc/PC-F65 | held | impl d10f3b46; R1 0/0/4; fix1 36592e58 + responses 4dc7053d (shared host RequestTimeout 5 min); held behind PC-089, PC-149, PC-174 (merge-tree clean); D-179 | fix item | 2026-11-21 |
-| PC-174 | pc-2 | pc/PC-174 | held | impl dc83114f; R1 0/2/3; fix1 ad91dc10 (key tie-breaker on every ordering; R1-3/R1-4 kept per D-176 for Ahmad); held behind PC-089, PC-149 (merge-tree clean); D-176 | 0015-j; R1 only | 2026-11-21 |
-| PC-181 | pc-f2 | pc/PC-181 | impl | T3 fill under D-140/D-173; high; R2 inherit xhigh (complex) | 0010-f6 | 2026-11-21 |
-| PC-149 | pc-4 | pc/PC-149 | ci-pending | impl 7418f050; R1 0/2/2; fix1 6fba6f4c; integrate 6ddf615f (3 Users conflicts with PC-090 resolved as union; README bundle list refreshed); pc run 44938266888; D-170, D-174, D-177 | 0022-b; R1 only | 2026-11-21 |
+| PC-174 | pc-2 | pc/PC-174 | integrating | impl dc83114f; R1 0/2/3; fix1 ad91dc10 (key tie-breaker on every ordering; R1-3/R1-4 kept per D-176 for Ahmad); released after PC-149 done; D-176 | 0015-j; R1 only | 2026-11-21 |
+| PC-212 | pc-4 | pc/PC-212 | impl | launched after PC-149 done; T3 fill (D-173); high | 0017-e; R1 only | 2026-11-21 |
+| PC-181 | pc-f2 | pc/PC-181 | R1 | impl 19eb6762 (10 deviations; flags: all-folded Aggregate emits no GROUP BY (pre-existing), count() in INTERSECT anchored to root key, LocalDB 2019 lacks LEAST); R1 launched | 0010-f6 | 2026-11-21 |
 
 ## Fix items
 
@@ -451,7 +451,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-146 | 0021-c | 2 | done (d7ebba3c; pc 44840986549 green) | 5efa9448, 261870b7, 33c39b3f, d7ebba3c | | D-151, D-153; carry from PC-099 r1 closed (Notification self-scope added) |
 | PC-147 | 0021-d | 2 | done (fafeca1d; pc 44893146723 green) | dac43255, e7a8bf75, 8076570a, 9bd6566b, fafeca1d | | D-163; live Azure SignalR suite deferred until provisioned (Deferred tests) |
 | PC-148 | 0022-a | 2 | done (948362a2; pc 44881789227 green) | b01932b6, b73f83e0, c0ce93b8, 9d3d364f, 948362a2 | | D-164, D-166; CI fixes root-caused the platform-core PR-run race (ActionRun awaits parked flows); carry (D-151): EnlistmentFrame.Admit admits EmailOutbox (0015 §13.3); 0021 §12 enlisted-rows-committed-with-the-completion e2e test lands here |
-| PC-149 | 0022-b | 2 | in progress | | | carry (D-164): the 0018 §3.3 welcome email and its §9 pins, enqueued from the invite action frame (needs PC-088 on platform-core), with a test that enqueues from an action frame; emit tellma.outbox.enqueued from EmailOutbox.EnqueueAsync tagged with the request's Source |
+| PC-149 | 0022-b | 2 | done (cf1ab646; pc 44938266888 green on 6ddf615f) | 7418f050, 6fba6f4c, 6ddf615f, cf1ab646 | | carry (D-164): the 0018 §3.3 welcome email and its §9 pins, enqueued from the invite action frame (needs PC-088 on platform-core), with a test that enqueues from an action frame; emit tellma.outbox.enqueued from EmailOutbox.EnqueueAsync tagged with the request's Source |
 | PC-150 | 0026-d | 2 | todo | | | |
 | PC-151 | 0023-h | 2 | done (99123772; CI 43994567778 red → PC-F53; green 44019377406 on 880b58d7) | 7b9c658, c678bc7, 9912377 (pc/PC-151) | | |
 | PC-152 | 0024-j | 2 | todo | | | |
@@ -514,7 +514,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-209 | 0026-e | 3 | todo | | | |
 | PC-210 | 0026-g | 3 | todo | | | |
 | PC-211 | 0026-h | 3 | todo | | | |
-| PC-212 | 0017-e | 3 | todo | | | |
+| PC-212 | 0017-e | 3 | in progress | | | |
 | PC-213 | 0020-g | 3 | todo | | | carry (D-156): a raw SQL retention DELETE declares the tables its foreign keys' ON DELETE actions write, via ForeignKeyActions.WrittenByDeleting |
 | PC-214 | 0022-c | 3 | todo | | | |
 | PC-215 | 0032-b1 | 3 | todo | | | |
