@@ -384,9 +384,27 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-184 (orchestrator, 2026-11-21): platform-core PR run red on a vstest connect timeout, fix item PC-F66
+
+PR run 44947728191 on 9e21bb68 (PC-F65's platform-core push) was red on build-test (windows-latest) only. Every test that reported passed, but vstest.console logged "failed to connect to testhost process after 90 seconds" while Tellma.Core.Tests and Tellma.Core.AspNetCore.Tests saturated the runner, and that assembly's run aborted. PC-F65's own pc run on 90110751 (same code) was green. This is runner starvation, not a code fault. Under D-011/D-113 it is root-caused, with no retry. The same build-test job gates every pc integration run, so it is fix item PC-F66 and takes the next free slot ahead of T3 fill. Expected fix options, decided by the fix agent with evidence: bound the number of test hosts the Windows unit step runs at once, or raise VSTEST_CONNECTION_TIMEOUT with a reason. Per D-154 and Ahmad's ruling, done items are gated on the push run, so this PR red changes no item's status. It is not a §9 notification event.
+
+### D-183 (orchestrator, 2026-11-21): BlobEndpointTests waits carry
+
+PC-F65 is done at 9e21bb68. PC-089's BlobEndpointTests still use fixed 10 s/30 s waits and a 200 ms delay. They are flake candidates of the same class that PC-F65 root-caused. The carry goes to PC-212, which works in the blobs test area: at its integration step (after the merge brings in PC-F65's Patience/TestClock helpers), it moves those waits onto the helpers and runs BlobEndpointTests. This is a code change at integration, kept to that one test file. Running its tests falls within D-175's "tests the merge touches". Only PC-214 (T3) was ready for the freed pc-f slot, so it launched there under D-173.
+
+### D-182 (orchestrator, 2026-11-21): PC-181 Review 2 rulings
+
+Review 2 (inherit, xhigh) found 0/1/3. It confirmed on LocalDB that R1-4's `HAVING (1 = 1)` departure from D-181 is correct and that the interpreter change matches 0008 §2.1. All four findings are fixed in fix2:
+- R2-1: keep Measures in the grouped count spec, so a measures page with a keyless select counts one row.
+- R2-2: plan non-column text as the host binds it, so length() of a parameter is int.
+- R2-3: level(max(Node)) is QX4011.
+- R2-4: null tests over parameters of any type are exempt from the measure type check.
+
+PC-181 holds after fix2, behind PC-F65 and PC-091.
+
 ### D-181 (orchestrator, 2026-11-21): PC-181 Review 1 rulings
 
-Review 1 found 0/2/4. All of R1-1 (measures take grand-total nullity, with an empty-cell test), R1-2 (LEN typed int, bigint only for (max) text; plan width checked against the server column type), R1-3, R1-5 and R1-6 are fixed in fix1. R1-4 is the implementer's pre-existing engine issue: an Aggregate query whose every aggregation folds away emits no GROUP BY and returns one row per fact row, which violates 0008 §2.1/§11.3. It is fixed in PC-181 rather than as a separate fix item, because PC-181 owns that emitter path: emit `GROUP BY ()` with no grouping keys and pin it with a corpus case. Deviation 9 (a column-less count() inside an INTERSECT subquery is anchored to the root key) is verified correct on LocalDB. The 16 LEAST calendar failures are environmental (LocalDB 2019). R2 (inherit, xhigh) follows fix1.
+Review 1 found 0/2/4. All of R1-1 (measures take grand-total nullity, with an empty-cell test), R1-2 (LEN typed int, bigint only for (max) text; plan width checked against the server column type), R1-3, R1-5 and R1-6 are fixed in fix1. R1-4 is the implementer's pre-existing engine issue: an Aggregate query whose every aggregation folds away emits no GROUP BY and returns one row per fact row, which violates 0008 §2.1/§11.3. It is fixed in PC-181 rather than as a separate fix item, because PC-181 owns that emitter path: emit `GROUP BY ()` with no grouping keys and pin it with a corpus case. Deviation 9 (a column-less count() inside an INTERSECT subquery is anchored to the root key) is verified correct on LocalDB. The 16 LEAST calendar failures are environmental (LocalDB 2019). R2 (inherit, xhigh) follows fix1. Fix1 (651abb4c) departed on R1-4 with reason. On SQL Server, `GROUP BY ()` returns zero rows over empty input, so the emitter writes `HAVING (1 = 1)` when no key, no group predicate and no surviving aggregation remain but one was written. The reference interpreter now answers 0008 §2.1's degenerate shape (no key, no aggregation, no having) once per row. R2 verifies both.
 
 ### D-180 (orchestrator, 2026-11-21): PC-091 Review 1 rulings
 
