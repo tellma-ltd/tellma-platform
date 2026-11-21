@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <Description>The Azure deployment's common composition, shared by a distribution's web host and its migrator: UseAzureDefaults() composes the email pipeline with the Azure Communication Services and SendGrid transports, the sender chosen by Email:Provider, the Skia image processor and, in Development, the file-system blob store. A distribution-layer package: it sits above the connectors it composes, and no Core package references it. Takes no ASP.NET Core dependency.</Description>
+    <Description>The Azure deployment's common composition, shared by a distribution's web host and its migrator: UseAzureDefaults() composes the email pipeline with the Azure Communication Services and SendGrid transports, the sender chosen by Email:Provider, the Skia image processor and the blob store: the Azure store when Tellma:Blobs:Azure is configured or outside Development, the file-system store otherwise. A distribution-layer package: it sits above the connectors it composes, and no Core package references it. Takes no ASP.NET Core dependency.</Description>
   </PropertyGroup>
 
   <ItemGroup>
@@ -9,6 +9,7 @@
     <ProjectReference Include="..\..\core\Tellma.Core.Email\Tellma.Core.Email.csproj" />
     <ProjectReference Include="..\..\core\Tellma.Core.Imaging\Tellma.Core.Imaging.csproj" />
     <ProjectReference Include="..\..\connector\acs-email\Tellma.Connector.AcsEmail.Adapter\Tellma.Connector.AcsEmail.Adapter.csproj" />
+    <ProjectReference Include="..\..\connector\azure-blobs\Tellma.Connector.AzureBlobs.Adapter\Tellma.Connector.AzureBlobs.Adapter.csproj" />
     <ProjectReference Include="..\..\connector\sendgrid\Tellma.Connector.SendGrid.Adapter\Tellma.Connector.SendGrid.Adapter.csproj" />
   </ItemGroup>
 

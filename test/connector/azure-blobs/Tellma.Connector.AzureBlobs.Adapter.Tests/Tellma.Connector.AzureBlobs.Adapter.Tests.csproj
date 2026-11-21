@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- The suite's types live under the adapter's namespace, without the project suffix. -->
+    <RootNamespace>Tellma.Connector.AzureBlobs.Tests</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\..\src\connector\azure-blobs\Tellma.Connector.AzureBlobs.Adapter\Tellma.Connector.AzureBlobs.Adapter.csproj" />
+    <!-- The service provider and logging a host composes the store into. -->
+    <ProjectReference Include="..\..\..\..\src\core\Tellma.Core.Testing\Tellma.Core.Testing.csproj" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+  </ItemGroup>
+
+</Project>

@@ -59,6 +59,8 @@ namespace Tellma.Core.AspNetCore.Tests.Routing
             Assert.Contains("/{*path}", routes);
             Assert.Contains("/{tenantId:int:min(1)}/api/web/probe", routes);
             Assert.Contains("/{tenantId:int:min(1)}/hub/negotiate", routes);
+            Assert.Contains("/{tenantId:int:min(1)}/blobs/probe/{kind}/{id:int}", routes);
+            Assert.Contains("/{tenantId:int:min(1)}/blobs/{kind}", routes);
             Assert.Contains("/{tenantId:int:min(1)}/blobs/{kind}/{id:int}", routes);
             Assert.Contains("/{tenantId:int:min(1)}/api/v{version:apiVersion}/probe", routes);
         }
@@ -221,7 +223,14 @@ namespace Tellma.Core.AspNetCore.Tests.Routing
                 options.Map = static (application, endpoints) =>
                 {
                     _ = endpoints.Blobs.MapGet("/raw", Nothing).WithMutation(false).AllowMember();
-                    ((IEndpointConventionBuilder)endpoints.Blobs).Finally(static endpoint => endpoint.RequestDelegate = Nothing);
+                    // The swap reaches the probe alone; the group's own blob endpoints keep their guard.
+                    ((IEndpointConventionBuilder)endpoints.Blobs).Finally(static endpoint =>
+                    {
+                        if (endpoint is RouteEndpointBuilder { RoutePattern.RawText: string pattern } && pattern.EndsWith("/raw", StringComparison.Ordinal))
+                        {
+                            endpoint.RequestDelegate = Nothing;
+                        }
+                    });
                 };
             });
             await using (app)

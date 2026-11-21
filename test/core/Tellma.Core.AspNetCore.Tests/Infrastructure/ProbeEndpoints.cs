@@ -48,7 +48,7 @@ namespace Tellma.Core.AspNetCore.Tests.Infrastructure
             // The negotiate probe stands in for SignalR's own, so it carries the hub marker SignalR
             // stamps; the Hub group admits a hub's connection endpoints alone.
             _ = endpoints.Hub.MapPost("/negotiate", Probe).WithMetadata(new HubMetadata(typeof(ProbeHub))).AllowMember();
-            _ = endpoints.Blobs.MapGet("/{kind}/{id:int}", Probe).WithMutation(false).AllowMember();
+            _ = endpoints.Blobs.MapGet("/probe/{kind}/{id:int}", Probe).WithMutation(false).AllowMember();
             _ = endpoints.Api.MapGet("/probe", Probe).WithMutation(false).AllowMember();
             _ = endpoints.Api.MapPost("/probe", Probe).WithMutation(true).AllowMember();
             _ = endpoints.Api.MapPost("/stepup", Probe)

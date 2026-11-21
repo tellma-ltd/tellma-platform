@@ -185,7 +185,9 @@ namespace Tellma.Core.AspNetCore.Tests.Limits
             RouteEndpoint[] endpoints = [.. host.Services.GetRequiredService<EndpointDataSource>().Endpoints.OfType<RouteEndpoint>()];
 
             Assert.Equal([TellmaRatePolicies.User, TellmaRatePolicies.Tenant], Policies(endpoints, "/{tenantId:int:min(1)}/api/web/probe"));
-            Assert.Equal([TellmaRatePolicies.User, TellmaRatePolicies.Tenant], Policies(endpoints, "/{tenantId:int:min(1)}/blobs/{kind}/{id:int}"));
+            Assert.Equal([TellmaRatePolicies.User, TellmaRatePolicies.Tenant], Policies(endpoints, "/{tenantId:int:min(1)}/blobs/probe/{kind}/{id:int}"));
+            Assert.Equal([TellmaRatePolicies.User, TellmaRatePolicies.Tenant], Policies(endpoints, "/{tenantId:int:min(1)}/blobs/{kind}"));
+            Assert.Equal([TellmaRatePolicies.User, TellmaRatePolicies.Tenant, TellmaRatePolicies.Blobs], Policies(endpoints, "/{tenantId:int:min(1)}/blobs/{kind}/{id:int}"));
             Assert.Empty(Policies(endpoints, "/{tenantId:int:min(1)}/api/v{version:apiVersion}/probe"));
             Assert.Empty(Policies(endpoints, "/{tenantId:int:min(1)}/hub/negotiate"));
             Assert.Equal([TellmaRatePolicies.Anonymous], Policies(endpoints, "/api/distribution-info"));
