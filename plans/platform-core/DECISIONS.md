@@ -384,6 +384,10 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-162 (orchestrator, 2026-11-20): nightly 44847843416 green; PC-F63 and PC-F64 verified
+
+- Nightly 44847843416 on platform-core cabe29d3 (dispatched after PC-F63 landed): dotnet, dotnet-windows, integration-windows, client-e2e and client-e2e-quarantine all green. This verifies PC-F63 (WebKit chart-bidi on the Linux runner; real Safari stays unverified) and PC-F64 (TenantScopeTests suspension refresh on integration-windows) against nightly 44745573605, and the dotnet job's OS-dependency step passed this time.
+
 ### D-161 (Ahmad, 2026-11-20): PC-F63's blocked push approved
 
 - Ahmad: "Approve the push" (answering "Approve PC-F63's fast-forward push of 247691dc to platform-core?"). The orchestrator confirmed origin/platform-core (f0dacf30) is an ancestor of 247691dc and pushed f0dacf30..247691dc, fast-forward, not forced. The approval covers that push only. PC-F63 is done (D-154); PC-F62 released.
