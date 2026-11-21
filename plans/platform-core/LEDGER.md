@@ -98,6 +98,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | 2026-11-14 12:01 | 8 | 0 | 2026-11-17 20:00 | Full reset detected (all-models → 8, Fable → 0). Line stopped on PC-F38 (PC-058 multi-picker races); PC-044/054/F36 done; PC-055 r1; PC-031/PC-040 impl |
 | 2026-11-17 20:02 | 0 | 0 | 2026-11-24 20:00 | Weekly reset detected (all-models 91 → 0, Fable 5 → 0). PC-068/F55/F56/070 done; PC-072 impl (pc-3); PC-B02/B03 finders resumed (pc-1/pc-2, D-110) |
 | 2026-11-21 18:10 | 0 | 0 | 2026-11-24 20:00 | Ahmad applied the manual reset (D-178); resetsAt unchanged. Target ≈ 1.5 pts/h to use it by Tuesday noon: keep six lanes full under D-144/D-175, T3 fill when T1/T2 cannot fill a lane |
+| 2026-11-21 23:00 | 11 | 0 | 2026-11-24 20:00 | +11 in ≈4.8 h since the 18:10 reset (≈2.3 pts/h) with six lanes; ≈1.46 pts/h is needed to use the rest by Tuesday noon. PC-089, PC-149, PC-174, PC-F65, PC-091 (with PC-F66) and PC-181 are done. pc-f2 is idle: nothing is ready (PC-F67 waits on PC-096; PC-F11/PC-F17 are before-GA) |
 | 2026-11-21 17:50 | 98 | 34 | 2026-11-24 20:00 | Ahmad asked to apply the manual reset now (D-173); push sent. PC-090 done. PC-091 launched in pc-3; PC-096 (T1, xhigh) takes the next free slot |
 | 2026-11-21 08:30 | 87 | 33 | 2026-11-24 20:00 | +2 in ≈3.3 h with two lanes in review/fix. PC-148 is done, and PC-089, PC-090 and PC-149 launched beside PC-147, so four lanes run. At ≈1.5–2 pts/h the window runs out ≈ 2026-11-21 15:00–17:00. D-165 is borderline now: a reset applied then needs ≈1.1 pts/h on average to be used by Tuesday noon. Firm recommendation to Ahmad when the window nears 100% |
 | 2026-11-21 05:15 | 85 | 31 | 2026-11-24 20:00 | ≈1.05 pts/h since the 11-17 rollover (85 in 81 h); at that pace the window runs out ≈ 2026-11-21 19:30. Ready queue: no T1/T2 (PC-147, PC-148 in flight), T3 PC-174/PC-181 held (D-140). Ahmad asked whether to apply a manual reset this week |
@@ -109,9 +110,8 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-092 | pc-3 | pc/PC-092 | impl | launched after PC-091 done; T1; high | 0018-g; R1 only | 2026-11-21 |
 | PC-096 | pc-1 | pc/PC-096 | fix1 | impl f7e4a8f6 (14 deviations); R1 0/1/7 (future sync.at stall; enter/adoption races; OpenAPI depth -> PC-F67); fix1; then R2 inherit xhigh; D-185 | 0025-b; R1 + R2 inherit xhigh | 2026-11-21 |
 | PC-175 | pc-2 | pc/PC-175 | impl | launched after PC-174 done; T3 fill (D-173); high | 0019-b; R1 only | 2026-11-21 |
-| PC-212 | pc-4 | pc/PC-212 | R1 | impl a4fc6e1a (13 deviations; flags: shared JobPollDriver/FixtureTenant change, extra BlobSweepStoreFailed event, SuspendableAudit in reconcile test); R1 launched; carry D-183 at integration | 0017-e; R1 only | 2026-11-21 |
+| PC-212 | pc-4 | pc/PC-212 | integrating | impl a4fc6e1a (13 deviations accepted); R1 0/0/3; fix1 3e3e7a21 (tests; deviation 9 corrected: CancellationToken.None survives only a requested cancel); released after PC-181 done; carry D-183 at integration; D-186 | 0017-e; R1 only | 2026-11-21 |
 | PC-214 | pc-f | pc/PC-214 | impl | launched after PC-F65 done; T3 fill (D-173); high | 0022-c; R1 only | 2026-11-21 |
-| PC-181 | pc-f2 | pc/PC-181 | integrating | impl 19eb6762; R1 0/2/4; fix1 651abb4c; R2 inherit xhigh 0/1/3; fix2 efec0cc6 (all fixed; length() emits CAST(LEN(x) AS int); null-test exemption covers declarable parameter types); released after PC-091 done; D-181, D-182 | 0010-f6 | 2026-11-21 |
 
 ## Fix items
 
@@ -486,7 +486,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-178 | 0019-e | 3 | todo | | | |
 | PC-179 | 0030-f2 | 3 | todo | | | |
 | PC-180 | 0032-b2 | 3 | todo | | | |
-| PC-181 | 0010-f6 | 3 | in progress | | | |
+| PC-181 | 0010-f6 | 3 | done (838975ec; pc 44957047158 green on f2226aff) | 19eb6762, 651abb4c, efec0cc6, f2226aff, 838975ec | | |
 | PC-182 | 0033-a | 3 | todo | | | |
 | PC-183 | 0033-b | 3 | todo | | | |
 | PC-184 | 0033-c | 3 | todo | | | |
