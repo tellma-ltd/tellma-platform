@@ -1700,7 +1700,10 @@ no row and every id is not found.
   of `Persisted` during the rounds from a flow that carries no task's context is refused, and a
   released flow faulted with several exceptions abandons the action with the first it holds. The hook's and
   the components' released flows are awaited after the commit, as the method is, and a failure of
-  theirs then is logged (`ActionTaskFailedAfterCommit`). A `PartialFailure` the method throws is
+  theirs then is logged (`ActionTaskFailedAfterCommit`). When the action fails instead, every released
+  flow, the method's included, resumes with the failure and is awaited before the action raises
+  it, so work a flow does on the failure (undoing a remote call) finishes inside the operation and
+  its scope; the action's failure is raised whatever the flows threw. A `PartialFailure` the method throws is
   rethrown once its persist committed. Any other failure of the method after the commit is raised
   only when the method answers a value of its own; otherwise it is logged
   (`ActionMethodFailedAfterCommit`) and the action answers its ids. The outcome's stamp is the one the rows `Save` marked carry, else the

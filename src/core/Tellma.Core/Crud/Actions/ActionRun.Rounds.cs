@@ -148,8 +148,10 @@ namespace Tellma.Core.Crud.Actions
             catch (Exception failure) when (failure is not OutOfMemoryException)
             {
                 // What ended the action ends a method waiting for its persist; a committed action's
-                // Persisted already completed, so this changes nothing then.
+                // Persisted already completed, so this changes nothing then. The flows that waited
+                // for it resume with the failure, and the action raises it only once they returned.
                 _ = _context.FaultPersisted(failure);
+                await SettleReleasedAsync().ConfigureAwait(false);
                 Observe(_methodTask);
                 Enlistments?.Count(failure);
                 throw;
@@ -360,6 +362,31 @@ namespace Tellma.Core.Crud.Actions
                     {
                         CrudLog.ActionTaskFailedAfterCommit(Services.Logger, released.Name, Resource, OperationName, Activity.Current?.TraceId.ToString(), failure);
                     }
+                }
+            }
+        }
+
+        // Spec 0015 §11.2 faults Persisted with what ended the action. A flow parked on it may
+        // answer that failure with work of its own: spec 0018 §3.8's issue-credentials deletes the
+        // client it created outside the batch when the persist fails. The action waits for every
+        // such flow before it raises, so that work finishes inside the operation, while its scope
+        // and its services are alive, and the caller sees the action end after it. Only the
+        // released flows are awaited: they left the rounds, so none waits for a round that will
+        // never run.
+        /// <summary>Waits, once the action failed, for every flow that left the rounds to wait for the persist.</summary>
+        /// <returns>A task that completes when every released flow returned or failed.</returns>
+        private async Task SettleReleasedAsync()
+        {
+            foreach (ReleasedFlow released in _released)
+            {
+                try
+                {
+                    await released.Flow.ConfigureAwait(false);
+                }
+                catch (Exception failure) when (failure is not OutOfMemoryException)
+                {
+                    // The action's own failure is raised; a flow rethrowing it, or failing on its
+                    // own while the action ended, gives way to it. The flow stays observed.
                 }
             }
         }

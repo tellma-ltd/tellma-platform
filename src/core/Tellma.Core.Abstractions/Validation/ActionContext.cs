@@ -136,7 +136,10 @@ namespace Tellma.Core.Abstractions.Validation
         ///     that awaits something else first may compose after the persist was sent: the action then
         ///     commits without that write, and the refusal is logged and raised once it committed, for an
         ///     action answering a value or not, rather than answered as success. A read from a flow that
-        ///     carries none of the task's context, while the validation rounds run, is refused.
+        ///     carries none of the task's context, while the validation rounds run, is refused. When the
+        ///     action fails, it is raised to the caller only once every reader resumed with the failure
+        ///     and returned, so a reader can undo work of its own, such as a remote call, within the
+        ///     action; the action's failure is raised whatever the reader then throws.
         /// </remarks>
         public Task Persisted
         {
