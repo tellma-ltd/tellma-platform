@@ -132,10 +132,11 @@ namespace Tellma.Core.Composition
                 .Model<UserPreferenceConfiguration>()
                 .TableType<UserPreferenceList>();
 
-            // --- The users' stack beyond spec 0014 (spec 0018 §1.2, §3): the own-row read criterion
-            // and the invite write-back's table type ---
+            // --- The users' stack beyond spec 0014 (spec 0018 §1.2, §3): the own-row read criterion,
+            // the activity details extra and the invite write-back's table type ---
             _ = contribution
                 .Singleton<IAccessCriteriaProvider, UserAccessCriteria>()
+                .DetailsContributor<User, UserActivityContributor<User>>()
                 .TableType<UserInvitationOutcome>();
 
             // --- The identity-server client, one per distribution (spec 0018 §1.2, §2) ---

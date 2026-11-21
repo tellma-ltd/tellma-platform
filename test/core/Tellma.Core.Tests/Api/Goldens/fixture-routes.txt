@@ -7,6 +7,14 @@ POST /{tenantId}/api/web/users/activate | activate | core.User | entity | Entity
 POST /{tenantId}/api/web/users/deactivate | deactivate | core.User | entity | EntityActionRequest | EntitiesResult<User> | core.User:Activate | mutation, idempotent | pc2DaU7k4Sg0
 POST /{tenantId}/api/web/users/issue-credentials | issue-credentials | core.User | entity | IdRequest | CredentialsResult | core.User:Credentials | mutation | XNBArSvfta01
 POST /{tenantId}/api/web/users/invite | invite | core.User | entity | IdsRequest | IReadOnlyList<InviteResult> | core.User:Invite | mutation | PgGi61D6gu1m
+POST /{tenantId}/api/web/users/me | me | core.User | api | - | MeResult | member-only | idempotent | IH8_utI43bnm
+POST /{tenantId}/api/web/users/me/save | me/save | core.User | api | MeSaveRequest | MeResult | member-only | mutation | CYPfnhdrbYmY
+POST /{tenantId}/api/web/users/me/locale | me/locale | core.User | api | MeLocaleRequest | MeLocaleResult | member-only | mutation, read-only | L02Kb4ZV7bKr
+POST /{tenantId}/api/web/users/me/preferences/set | me/preferences/set | core.User | api | UserPreferencesArguments | PreferencesResult | member-only | mutation, read-only | wT8mDrlFjWQL
+POST /{tenantId}/api/web/users/me/preferences/delete | me/preferences/delete | core.User | api | UserPreferenceKeysArguments | PreferencesResult | member-only | mutation, read-only | -Wf3OrTgSmAG
+POST /{tenantId}/api/web/users/preferences/get | preferences/get | core.User | api | UserPreferencesRequest | UserPreferencesResult | core.User:Preferences | idempotent | aOMZhcdCDIhl
+POST /{tenantId}/api/web/users/preferences/set | preferences/set | core.User | entity | IdRequest<UserPreferencesArguments> | UserPreferencesResult | core.User:Preferences | mutation, read-only | _4AHQbmWt6X5
+POST /{tenantId}/api/web/users/preferences/delete | preferences/delete | core.User | entity | IdRequest<UserPreferenceKeysArguments> | UserPreferencesResult | core.User:Preferences | mutation, read-only | fWq3snKoJqby
 POST /{tenantId}/api/web/users/invitation-status | invitation-status | core.User | api | IdsRequest | IReadOnlyList<InvitationStatus> | core.User:Read | idempotent | jS2fYFZnaXBe
 POST /{tenantId}/api/web/roles/query | query | core.Role | - | QueryRequest | RowPage | core.Role:Read | idempotent | PqV1-faRenCx
 POST /{tenantId}/api/web/roles/get | get | core.Role | - | GetRequest | EntitiesResult<Role> | core.Role:Read | idempotent | UrE0C_S3Q0wA
