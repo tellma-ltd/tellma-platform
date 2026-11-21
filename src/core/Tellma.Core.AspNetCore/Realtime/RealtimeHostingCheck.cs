@@ -15,7 +15,8 @@ namespace Tellma.Core.AspNetCore.Realtime
     /// <summary>
     ///     The startup check of the hub's hosting mode against the deployment. It fails when Azure
     ///     SignalR Service is configured but not selected, when it is selected under another
-    ///     deployment's application name, when the hosting mode is one the platform does not know,
+    ///     deployment's application name or for a deployment whose id cannot name an application,
+    ///     when the hosting mode is one the platform does not know,
     ///     and when this instance runs no job worker yet its hub reaches its own connections alone,
     ///     so the events of the instance that does would never reach them. It warns when the host
     ///     reports several instances and no mode reaches every instance's connections.
@@ -78,7 +79,16 @@ namespace Tellma.Core.AspNetCore.Realtime
 
             if (hosting.Mode == RealtimeMode.Azure)
             {
-                string expected = RealtimeApplicationName.From(deployment);
+                // A deployment id the service cannot take as a name leaves the options without one.
+                if (!RealtimeApplicationName.TryFrom(deployment, out string? expected))
+                {
+                    problems.Add(new CompositionProblem(
+                        CheckName,
+                        $"Azure SignalR Service is selected, but the deployment id '{deployment.DeploymentId}' does not start with a letter, so it cannot name the deployment's application on a shared service instance.",
+                        "Give the distribution an application slug that starts with a letter, or select a Redis backplane through AddTellmaRealtime(configure)."));
+                    return Task.FromResult<IReadOnlyList<CompositionProblem>>(problems);
+                }
+
                 string? actual = hosting.AzureApplicationName(services);
                 if (!string.Equals(actual, expected, StringComparison.Ordinal))
                 {

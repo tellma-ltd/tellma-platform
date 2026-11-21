@@ -9,6 +9,7 @@ using System.Net;
 using System.Security.Cryptography;
 using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.AspNetCore.Tests.Infrastructure;
+using Tellma.Testing.WebHost;
 
 namespace Tellma.Core.AspNetCore.Tests.Bff
 {

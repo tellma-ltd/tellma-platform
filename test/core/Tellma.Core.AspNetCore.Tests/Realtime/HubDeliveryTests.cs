@@ -8,7 +8,8 @@ using Microsoft.Extensions.Diagnostics.Metrics.Testing;
 using System.Text.Json;
 using Tellma.Core.Abstractions.Api;
 using Tellma.Core.Abstractions.Realtime;
-using Tellma.Core.AspNetCore.Tests.Infrastructure;
+using Tellma.Testing.WebHost;
+using Tellma.Testing.WebHost.Realtime;
 
 namespace Tellma.Core.AspNetCore.Tests.Realtime
 {

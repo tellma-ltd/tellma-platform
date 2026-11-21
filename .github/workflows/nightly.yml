@@ -138,7 +138,11 @@ jobs:
           if-no-files-found: warn
 
   signalr-live:
-    if: github.repository == 'tellma-ltd/tellma-platform'
+    # Off until the suite is provisioned, rather than red by design. Provisioning switches it on:
+    # create the live-realtime-tests environment, give it the SIGNALR_TEST_CONNECTIONSTRING secret
+    # (a dedicated Azure SignalR Service test instance), then set the repository variable
+    # SIGNALR_LIVE_ENABLED to 'true'. From then on a missing secret fails the require step below.
+    if: github.repository == 'tellma-ltd/tellma-platform' && vars.SIGNALR_LIVE_ENABLED == 'true'
     runs-on: ubuntu-latest
     # Its own environment: the realtime hub's test instance has nothing to do with the connectors'.
     environment: live-realtime-tests
@@ -158,10 +162,11 @@ jobs:
       - name: Realtime hub live suite (a dedicated test instance; each run its own application name)
         env:
           TELLMA_SIGNALR_TEST_CONNECTIONSTRING: ${{ secrets.SIGNALR_TEST_CONNECTIONSTRING }}
-        # Solution-wide and filtered by trait, for the same reason the suites above are.
+        # Solution-wide and filtered by trait, for the same reason the suites above are; the name
+        # filter is the Azure defaults' integration project, which holds the realtime live suite.
         run: >
           dotnet test Tellma.slnx -c Release
-          --filter "Live=true&FullyQualifiedName~AzureSignalRLive"
+          --filter "Live=true&FullyQualifiedName~Tellma.Defaults.Azure.AspNetCore.IntegrationTests"
 
   # A nightly that fails silently is a nightly that does not exist.
   report-failure:

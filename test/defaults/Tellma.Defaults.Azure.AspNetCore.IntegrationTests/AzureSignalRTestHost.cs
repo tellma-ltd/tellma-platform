@@ -8,10 +8,10 @@ using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using System.Net;
-using Tellma.Core.AspNetCore.Tests.Infrastructure;
-using Tellma.Defaults.Azure.AspNetCore;
+using Tellma.Testing.WebHost;
+using Tellma.Testing.WebHost.Realtime;
 
-namespace Tellma.Core.AspNetCore.Tests.Realtime
+namespace Tellma.Defaults.Azure.AspNetCore.IntegrationTests
 {
     /// <summary>
     ///     A web host with the hub on Azure SignalR Service, composed by the Azure web defaults as a

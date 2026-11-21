@@ -8,10 +8,12 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Azure.SignalR;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 using System.Security.Claims;
 using Tellma.Core.Abstractions.Composition;
+using Tellma.Core.Abstractions.Hosting;
 using Tellma.Core.AspNetCore;
 using Tellma.Core.AspNetCore.Realtime;
 using Tellma.Defaults.Azure.AspNetCore;
@@ -67,6 +69,23 @@ namespace Tellma.Defaults.Azure.Tests
             CompositionProblem problem = Assert.Single(await RunHostingCheckAsync(app));
             Assert.Contains("'acme_production'", problem.Problem, StringComparison.Ordinal);
             Assert.Contains("'acme_development'", problem.Problem, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public async Task A_deployment_id_that_cannot_name_an_application_fails_the_hosting_check_and_not_the_options()
+        {
+            // The service takes an application name that starts with a letter. The composition refuses
+            // such a slug, so the deployment is one a host registered in place of the composed one.
+            await using WebApplication app = Build(
+                new() { [AzureWebDefaultsTellmaBuilderExtensions.SignalRConnectionStringKey] = ConnectionString },
+                static services => services.Replace(ServiceDescriptor.Singleton(new DeploymentIdentity("3m", Environments.Development))));
+
+            ServiceOptions options = app.Services.GetRequiredService<IOptions<ServiceOptions>>().Value;
+            Assert.NotEqual("3m_development", options.ApplicationName);
+            CompositionProblem problem = Assert.Single(await RunHostingCheckAsync(app));
+            Assert.Equal("host.realtime-hosting", problem.Source);
+            Assert.Contains("'3m-development'", problem.Problem, StringComparison.Ordinal);
+            Assert.Contains("starts with a letter", problem.Fix, StringComparison.Ordinal);
         }
 
         [Fact]

@@ -39,6 +39,7 @@ using Tellma.Core.AspNetCore.Routing;
 using Tellma.Core.AspNetCore.Tests.Infrastructure;
 using Tellma.Core.Crud;
 using Tellma.Core.Notifications;
+using Tellma.Testing.WebHost;
 
 namespace Tellma.Core.AspNetCore.Tests.Api
 {

@@ -8,7 +8,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Tellma.Core.Abstractions.Identity;
 using Tellma.Core.AspNetCore.Hosting;
-using Tellma.Core.AspNetCore.Tests.Infrastructure;
+using Tellma.Testing.WebHost;
 
 namespace Tellma.Core.AspNetCore.Tests.Hosting
 {

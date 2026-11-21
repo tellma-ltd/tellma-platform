@@ -34,7 +34,7 @@ builder.AddTellma(AcmeComposition.Slug, AcmeComposition.Compose, tellma => tellm
 
 ## Tests
 
-`test/defaults/Tellma.Defaults.Azure.Tests` pins the registrations; the Acme distribution's web
-suite pins the endpoint audit over a host that composes the bundle. The hub's line is exercised over
-the full web host in `test/core/Tellma.Core.AspNetCore.Tests` (offline), and nightly against a test
-Azure SignalR Service instance there (`AzureSignalRLiveTests`).
+`test/defaults/Tellma.Defaults.Azure.Tests` pins the registrations and exercises the hub's line
+over the full web host offline; the Acme distribution's web suite pins the endpoint audit over a
+host that composes the bundle. `test/defaults/Tellma.Defaults.Azure.AspNetCore.IntegrationTests`
+runs the hub's line nightly against a test Azure SignalR Service instance (`AzureSignalRLiveTests`).

@@ -3,6 +3,7 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+using System.Diagnostics.CodeAnalysis;
 using Tellma.Core.Abstractions.Hosting;
 
 namespace Tellma.Core.AspNetCore.Realtime
@@ -27,16 +28,27 @@ namespace Tellma.Core.AspNetCore.Realtime
         /// <exception cref="ArgumentException">The deployment id does not start with a letter, which the service requires.</exception>
         public static string From(DeploymentIdentity deployment)
         {
+            return TryFrom(deployment, out string? name)
+                ? name
+                : throw new ArgumentException(
+                    $"The deployment id '{deployment.DeploymentId}' does not start with a letter, so it cannot name the deployment's application on Azure SignalR Service.",
+                    nameof(deployment));
+        }
+
+        /// <summary>The application name of a deployment, when its id can name one.</summary>
+        /// <param name="deployment">The deployment.</param>
+        /// <param name="name">The deployment id with every hyphen replaced by an underscore; null when the id does not start with a letter.</param>
+        /// <returns>True when the deployment id starts with a letter, which the service requires.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="deployment" /> is null.</exception>
+        public static bool TryFrom(DeploymentIdentity deployment, [NotNullWhen(true)] out string? name)
+        {
             ArgumentNullException.ThrowIfNull(deployment);
 
             // A deployment id is lowercase letters, digits and hyphens; only the first character can
             // keep it from being an application name once the hyphens are replaced.
             string id = deployment.DeploymentId;
-            return id[0] is >= 'a' and <= 'z'
-                ? id.Replace('-', '_')
-                : throw new ArgumentException(
-                    $"The deployment id '{id}' does not start with a letter, so it cannot name the deployment's application on Azure SignalR Service.",
-                    nameof(deployment));
+            name = id[0] is >= 'a' and <= 'z' ? id.Replace('-', '_') : null;
+            return name is not null;
         }
     }
 }

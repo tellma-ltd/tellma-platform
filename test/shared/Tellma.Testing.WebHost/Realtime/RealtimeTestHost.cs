@@ -14,11 +14,11 @@ using System.Text.Json;
 using System.Threading.Channels;
 using Tellma.Core.Abstractions.Realtime;
 using Tellma.Core.AspNetCore.Realtime;
-using Tellma.Core.AspNetCore.Tests.Infrastructure;
 using Tellma.Core.Tenancy;
 using Tellma.Core.Tests.Infrastructure;
+using Xunit;
 
-namespace Tellma.Core.AspNetCore.Tests.Realtime
+namespace Tellma.Testing.WebHost.Realtime
 {
     /// <summary>
     ///     A web host with the hub on, in the in-process mode, over five tenants, and the clients that

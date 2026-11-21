@@ -40,6 +40,12 @@
     <InternalsVisibleTo Include="Tellma.Defaults.Azure.AspNetCore" />
     <!-- The integration suite runs the host's tracing configuration against a real SQL Server. -->
     <InternalsVisibleTo Include="Tellma.Core.IntegrationTests" />
+    <!-- The shared web test host stands in for the host's session rows, membership hints and user
+         connection, and the Azure web defaults' suites drive the hub's tracker and read its hosting
+         mode over a host composed with the bundle. -->
+    <InternalsVisibleTo Include="Tellma.Testing.WebHost" />
+    <InternalsVisibleTo Include="Tellma.Defaults.Azure.Tests" />
+    <InternalsVisibleTo Include="Tellma.Defaults.Azure.AspNetCore.IntegrationTests" />
   </ItemGroup>
 
 </Project>

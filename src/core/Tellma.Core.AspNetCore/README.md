@@ -91,7 +91,8 @@ Installs the pipeline in this order and nothing else:
    `Tellma:Api:EnableCompression` is false;
 7. routing;
 8. the in-proc identity engine's middleware, in in-proc mode;
-9. authentication, then authorization;
+9. the hub's refusal count (a hub request answered 401 or 403 before its front door counts
+   `connects{outcome=refused}`), then authentication, then authorization;
 10. the rate limiter (see [Limits](#limits)), after authentication so a partition is the
     principal's and before the tenant so a refusal reads the same for a missing tenant and a
     refused one;
@@ -385,7 +386,9 @@ cache says), and only then adds the hub identity (`tellma_tid`, `tellma_uid`, `t
 principal. The negotiate and the connect each pass it; the framework closes a connection when the
 session's ticket expires. The hub reads the claims from the connection's principal, never from its
 request context, which SignalR leaves tenantless: a connection without each claim exactly once is
-refused. A refusal counts `connects{outcome=refused}` and logs `HubConnectionRefused`.
+refused. A refusal counts `connects{outcome=refused}` and logs `HubConnectionRefused` with its
+problem code, and so does a hub request that authentication (`unauthenticated`), authorization or
+the CSRF control (`csrf-rejected`) answered 401 or 403 before the door.
 
 **Groups.** A connection joins `t{tid}`, `t{tid}.u{uid}`, `t{tid}.s{subject}` and `t{tid}.x{handle}`,
 every one its tenant's, so the same user or session in another tenant shares no group. The
@@ -393,17 +396,23 @@ publisher sends an event to the scope's tenant group, or to the user groups it n
 
 **Closes.** `HubConnectionTracker` holds the instance's connections. A session that ends, a user
 whose access to a tenant is revoked, and a tenant that is suspended, retired or leaves the registry
-each send `session.ended` (`session-terminated`, `access-revoked`, `tenant-unavailable`) to their
-group in every tenant concerned, the instance's own connections one by one ahead of their abort,
-and then abort the instance's connections; any other tenant-state change sends `cache.changed`
-with the `tenant` tag and closes nothing. A close is remembered for five minutes, so a connection
-whose negotiate passed before it is refused at its connect.
+each send `session.ended` (`session-terminated`, `access-revoked`, `tenant-unavailable`) to the
+instance's own connections concerned, one by one ahead of their abort, and then abort them; any
+other tenant-state change sends `cache.changed` with the `tenant` tag to the tenant's connections
+on the instance and closes nothing. A session's end and a revoked access are recorded on one
+instance, so in a mode that reaches every instance they also go to their group (`GroupExcept` the
+instance's own), in every tenant the subject belongs to; a tenant's state change runs on every
+instance, so each tells its own connections alone. Each send stands alone: one that fails leaves
+the others told. A close is remembered for five minutes, so a connection whose negotiate passed
+before it is told `session.ended` with the close's reason and refused at its connect. With
+`Enabled` false the tracker does nothing.
 
 **Hosting modes.** `AddTellmaRealtime(configure)` hands the SignalR builder to the hosting bundle:
 in-process by default, Azure SignalR Service from the Azure web defaults, or a Redis backplane.
 `host.realtime-hosting` fails an unknown lifetime manager, a configured
 `Azure:SignalR:ConnectionString` the hub does not run on, an Azure application name other than the
-deployment's (`RealtimeApplicationName`), and an in-process hub with `Tellma:Jobs:Enabled` false
+deployment's (`RealtimeApplicationName`) or a deployment id that cannot name one (it must start
+with a letter), and an in-process hub with `Tellma:Jobs:Enabled` false
 (the job worker's events would reach no connection); it warns, without failing, when App Service
 or `ExpectedInstances` says several instances share no backplane.
 

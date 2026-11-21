@@ -10,9 +10,8 @@
          through the real router. -->
     <ProjectReference Include="..\..\..\src\core\Tellma.Core.Email\Tellma.Core.Email.csproj" />
     <ProjectReference Include="..\..\..\src\core\Tellma.Core.Testing\Tellma.Core.Testing.csproj" />
-    <!-- The Azure web defaults, so the hub's Azure SignalR Service line is composed as a
-         distribution composes it: its negotiate offline, and the live suite against the service. -->
-    <ProjectReference Include="..\..\..\src\defaults\Tellma.Defaults.Azure.AspNetCore\Tellma.Defaults.Azure.AspNetCore.csproj" />
+    <!-- The test host, its fakes and the hub's clients, shared with the Azure web defaults' suites. -->
+    <ProjectReference Include="..\..\shared\Tellma.Testing.WebHost\Tellma.Testing.WebHost.csproj" />
     <!-- The shared reading of the checked-in alert queries. -->
     <ProjectReference Include="..\..\shared\Tellma.Testing.Support\Tellma.Testing.Support.csproj" />
     <PackageReference Include="Microsoft.AspNetCore.TestHost" />
@@ -30,8 +29,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- The tenant catalog's in-memory reader, shared with the core suite rather than copied. -->
-    <Compile Include="..\Tellma.Core.Tests\Infrastructure\FakeCatalogReader.cs" Link="Infrastructure\FakeCatalogReader.cs" />
     <!-- The test feature the projection suite composes its stacks with, shared with the core suite. -->
     <Compile Include="..\Tellma.Core.Tests\Infrastructure\TestFeature.cs" Link="Infrastructure\TestFeature.cs" />
     <!-- The launch-landing vectors the client's launch redirect reads too: the sign-in's landing follows the same file. -->

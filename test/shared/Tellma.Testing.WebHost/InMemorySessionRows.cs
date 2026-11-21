@@ -5,7 +5,7 @@
 
 using Tellma.Core.AspNetCore.Sessions;
 
-namespace Tellma.Core.AspNetCore.Tests.Infrastructure
+namespace Tellma.Testing.WebHost
 {
     /// <summary>
     ///     The catalog's session table in memory, with the statements' semantics: reads skip expired

@@ -21,7 +21,8 @@ namespace Tellma.Core.AspNetCore.Realtime
     ///     </para>
     ///     <para>
     ///         A connection is added to the tracker before its groups, so a close that runs while it is
-    ///         joining either finds it or finds it already refused.
+    ///         joining either finds it or finds it already refused. A refused connection is sent
+    ///         <c>session.ended</c> with the close's reason before it is aborted.
     ///     </para>
     /// </remarks>
     /// <param name="tracker">The connections this instance hosts.</param>
@@ -51,10 +52,13 @@ namespace Tellma.Core.AspNetCore.Realtime
             using IDisposable? scope = logger.BeginScope(LogScope(claims));
 
             // --- Tracked first: a session or tenant that ended meanwhile refuses it here ---
+            // The refused client is told why before the abort, so it stops reconnecting rather than
+            // retrying a close it never heard of.
             if (!tracker.TryAdd(Context, claims, out string? refusal))
             {
                 metrics.RecordRefused();
                 RealtimeLog.HubConnectionRefused(logger, refusal);
+                await tracker.TellRefusedAsync(Clients.Caller, claims.TenantId, refusal).ConfigureAwait(false);
                 Context.Abort();
                 return;
             }

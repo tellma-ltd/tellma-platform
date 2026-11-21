@@ -24,6 +24,7 @@ using System.Security.Cryptography;
 using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.Access;
+using Tellma.Core.AspNetCore;
 using Tellma.Core.AspNetCore.Hosting;
 using Tellma.Core.AspNetCore.Sessions;
 using Tellma.Core.AspNetCore.Surfaces;
@@ -33,8 +34,9 @@ using Tellma.Core.Tenancy;
 using Tellma.Core.Testing.Blobs;
 using Tellma.Core.Testing.Settings;
 using Tellma.Core.Tests.Infrastructure;
+using Xunit;
 
-namespace Tellma.Core.AspNetCore.Tests.Infrastructure
+namespace Tellma.Testing.WebHost
 {
     /// <summary>A session the test host stored: its cookie, its key and its handle.</summary>
     /// <param name="Cookie">The <c>Cookie</c> header's value.</param>

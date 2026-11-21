@@ -20,6 +20,8 @@ using Tellma.Core.AspNetCore.Realtime;
 using Tellma.Core.AspNetCore.Routing;
 using Tellma.Core.AspNetCore.Tests.Infrastructure;
 using Tellma.Core.Notifications;
+using Tellma.Testing.WebHost;
+using Tellma.Testing.WebHost.Realtime;
 
 namespace Tellma.Core.AspNetCore.Tests.Realtime
 {

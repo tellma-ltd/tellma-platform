@@ -8,7 +8,7 @@ using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Tenancy;
 
-namespace Tellma.Core.AspNetCore.Tests.Infrastructure
+namespace Tellma.Testing.WebHost
 {
     /// <summary>
     ///     The tenants' users as the scripted connection and the scripted batch runner see them: the

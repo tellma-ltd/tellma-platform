@@ -11,10 +11,11 @@ using Tellma.Core.Abstractions.Realtime;
 using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.AspNetCore.Realtime;
 using Tellma.Core.AspNetCore.Sessions;
-using Tellma.Core.AspNetCore.Tests.Infrastructure;
 using Tellma.Core.Tenancy;
+using Tellma.Testing.WebHost;
+using Tellma.Testing.WebHost.Realtime;
 
-namespace Tellma.Core.AspNetCore.Tests.Realtime
+namespace Tellma.Defaults.Azure.AspNetCore.IntegrationTests
 {
     /// <summary>
     ///     The hub on a real Azure SignalR Service instance: the hub-only token's claims reach the

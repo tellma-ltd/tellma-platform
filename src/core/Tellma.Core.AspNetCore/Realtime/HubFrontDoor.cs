@@ -10,6 +10,7 @@ using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Errors;
 using Tellma.Core.Abstractions.Tenancy;
+using Tellma.Core.AspNetCore.Problems;
 using Tellma.Core.AspNetCore.Tenancy;
 using Tellma.Core.Tenancy;
 
@@ -30,7 +31,9 @@ namespace Tellma.Core.AspNetCore.Realtime
     ///     <para>
     ///         A refusal at any step, or at the tenant's resolution before it, is counted as a refused
     ///         connection attempt and logged with its problem code, then answered by the problem
-    ///         mapping as the web surface's read would be.
+    ///         mapping as the web surface's read would be. So is a request to the hub that the
+    ///         pipeline refused before the door, with a 401 from authentication or a 403 from
+    ///         authorization or the CSRF control.
     ///     </para>
     /// </remarks>
     /// <param name="metrics">The realtime instruments.</param>
@@ -78,6 +81,28 @@ namespace Tellma.Core.AspNetCore.Realtime
             }
 
             context.User.AddIdentity(TellmaHubClaims.Create(holder.Current));
+        }
+
+        /// <summary>
+        ///     Counts and logs a request to the hub the pipeline answered 401 or 403 without throwing:
+        ///     a refusal before the door, by authentication, authorization or the CSRF control. A
+        ///     refusal the door raised propagates as an exception instead, and is counted by
+        ///     <see cref="Refused" />.
+        /// </summary>
+        /// <param name="context">The answered request.</param>
+        public void Answered(HttpContext context)
+        {
+            ArgumentNullException.ThrowIfNull(context);
+            int status = context.Response.StatusCode;
+            if (status is not (StatusCodes.Status401Unauthorized or StatusCodes.Status403Forbidden) || context.RequestAborted.IsCancellationRequested)
+            {
+                return;
+            }
+
+            // The code of the problem written, else the one the status would be answered with.
+            string reason = ProblemWriter.WrittenCode(context) ?? ProblemMapper.ForStatus(status, routeMiss: false)?.Code ?? ServerErrorReason;
+            metrics.RecordRefused();
+            RealtimeLog.HubConnectionRefused(logger, reason);
         }
 
         /// <summary>Counts and logs a refused connection attempt; a request its client abandoned is neither.</summary>

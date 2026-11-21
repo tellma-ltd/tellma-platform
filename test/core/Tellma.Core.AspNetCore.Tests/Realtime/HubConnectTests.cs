@@ -16,6 +16,8 @@ using Tellma.Core.Abstractions.Realtime;
 using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.AspNetCore.Realtime;
 using Tellma.Core.AspNetCore.Tests.Infrastructure;
+using Tellma.Testing.WebHost;
+using Tellma.Testing.WebHost.Realtime;
 
 namespace Tellma.Core.AspNetCore.Tests.Realtime
 {
@@ -211,6 +213,62 @@ namespace Tellma.Core.AspNetCore.Tests.Realtime
 
             Assert.Equal(2, connects.GetMeasurementSnapshot().Count(static m => Equals(m.Tags[RealtimeTelemetryNames.OutcomeTag], RealtimeMetrics.InvocationRefusedOutcome)));
             Assert.Equal(HubConnectionState.Connected, client.Connection.State);
+        }
+
+        [Fact]
+        public async Task A_frame_over_four_kilobytes_closes_the_connection_without_detail()
+        {
+            await using TellmaTestHost host = await RealtimeTestHost.StartAsync();
+            await using HubClient client = await RealtimeTestHost.ConnectAsync(host, RealtimeTestHost.Active, host.Cookie());
+
+            // --- Under the limit: refused as an invocation, and the connection stays open ---
+            _ = await Assert.ThrowsAsync<HubException>(() => client.Connection.InvokeAsync("JoinGroup", new string('a', 3_000), TestContext.Current.CancellationToken));
+            Assert.Equal(HubConnectionState.Connected, client.Connection.State);
+
+            // --- Over it: the server closes the connection, naming no limit and no server type ---
+            _ = await Assert.ThrowsAnyAsync<Exception>(() => client.Connection.InvokeAsync("JoinGroup", new string('a', 5_000), TestContext.Current.CancellationToken));
+            Exception closed = Assert.IsType<HubException>(await client.ClosedAsync());
+            Assert.DoesNotContain("4096", closed.Message, StringComparison.Ordinal);
+            Assert.DoesNotContain("InvalidDataException", closed.Message, StringComparison.Ordinal);
+        }
+
+        [Theory]
+        [InlineData("anonymous", 401, "unauthenticated")]
+        [InlineData("cross-origin", 403, "csrf-rejected")]
+        public async Task A_negotiate_refused_before_the_front_door_is_counted_and_logged_once_with_its_code(string caller, int status, string code)
+        {
+            // An expired session and a cross-site request are the refusals a stale client and a probe meet first.
+            CapturingLoggerProvider logs = new();
+            await using TellmaTestHost host = await RealtimeTestHost.StartAsync(options => CaptureDebug(options, logs));
+            using MetricCollector<long> connects = Collect(host, RealtimeTelemetryNames.Connects);
+            using HttpRequestMessage request = new(HttpMethod.Post, $"/{RealtimeTestHost.Active}/hub/negotiate?negotiateVersion=1");
+            if (caller == "cross-origin")
+            {
+                request.Headers.Add("Cookie", host.Cookie());
+                request.Headers.Add("Sec-Fetch-Site", "cross-site");
+                request.Headers.Add("Origin", "https://evil.example");
+            }
+
+            using HttpResponseMessage response = await host.Client.SendAsync(request, TestContext.Current.CancellationToken);
+
+            Assert.Equal(status, (int)response.StatusCode);
+            Assert.Equal(code, (await Problem.ReadAsync(response)).Code);
+            CollectedMeasurement<long> refused = Assert.Single(connects.GetMeasurementSnapshot());
+            Assert.Equal(RealtimeMetrics.RefusedOutcome, refused.Tags[RealtimeTelemetryNames.OutcomeTag]);
+            Assert.Equal(code, Assert.Single(logs.Events, static e => e.EventName == "HubConnectionRefused").Members["Reason"]);
+        }
+
+        [Fact]
+        public async Task A_refusal_by_the_front_door_is_counted_once()
+        {
+            await using TellmaTestHost host = await RealtimeTestHost.StartAsync();
+            using MetricCollector<long> connects = Collect(host, RealtimeTelemetryNames.Connects);
+
+            using HttpResponseMessage response = await RealtimeTestHost.NegotiateAsync(host, RealtimeTestHost.Suspended, host.Cookie());
+
+            Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+            CollectedMeasurement<long> refused = Assert.Single(connects.GetMeasurementSnapshot());
+            Assert.Equal(RealtimeMetrics.RefusedOutcome, refused.Tags[RealtimeTelemetryNames.OutcomeTag]);
         }
 
         [Fact]

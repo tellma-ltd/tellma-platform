@@ -88,9 +88,15 @@ namespace Tellma.Defaults.Azure.AspNetCore
                 }));
 
                 // The application name isolates the deployment on a shared service instance; it is
-                // the registered deployment's, read when the options are first built.
+                // the registered deployment's, read when the options are first built. A deployment id
+                // that cannot name an application leaves it unset, which the hosting check reports.
                 _ = services.AddOptions<ServiceOptions>().Configure<DeploymentIdentity>(static (options, deployment) =>
-                    options.ApplicationName = RealtimeApplicationName.From(deployment));
+                {
+                    if (RealtimeApplicationName.TryFrom(deployment, out string? name))
+                    {
+                        options.ApplicationName = name;
+                    }
+                });
             }
 
             // --- Azure Monitor: the exporter alone, behind the host's own instrumentation ---
