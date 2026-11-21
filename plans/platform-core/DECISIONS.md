@@ -384,6 +384,20 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-188 (orchestrator, 2026-11-22): PC-175 Review 1 rulings
+
+Review 1 found 0/1/4 and accepted all 16 deviations. The ScratchDirectory reuse, the unlocalized Remedy (its 413 body carries arguments.remedy) and the per-stack ExcelOperations wiring are accepted. IStackExcelRows is not exposed; its golden line is a renderer artifact.
+
+Fixed in fix1:
+- R1-1: assert the §14.3 export metrics and log events.
+- R1-2: unique display headers (§3.3).
+- R1-3: invert the pipeline-to-Excel dependency (0019 §1.1) if a small seam does it, otherwise record a named deviation.
+- R1-4: the three missing tests.
+
+R1-5 is D-176's open question for Ahmad (Q2), with no code change: an unsorted display export runs in ascending Id. That follows 0019 §2.1 and 0015 §15's formula, but not 0019 §4.1 or 0015 §2.2's DefaultOrderBy ?? "Id desc".
+
+PC-175 holds after fix1, behind PC-214.
+
 ### D-187 (orchestrator, 2026-11-22): PC-214 Review 1 rulings
 
 Review 1 found 0/1/5, all fixed in fix1. The reviewer confirmed that D-132 still forces the missing delete-by-query (waiting on Ahmad's (a)/(b)), that the D-177 carry adds no throw path, and that the three migrations are pure dotnet-ef output.

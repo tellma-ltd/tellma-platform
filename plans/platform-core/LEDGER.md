@@ -110,7 +110,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 |---|---|---|---|---|---|---|
 | PC-092 | pc-3 | pc/PC-092 | impl | launched after PC-091 done; T1; high | 0018-g; R1 only | 2026-11-21 |
 | PC-096 | pc-1 | pc/PC-096 | R2 | impl f7e4a8f6; R1 0/1/7; fix1 922c883b (R1-1..5, R1-7 fixed; deviations 15-17; @tellma/core ceiling 20.44 KB, 0025 share 8.14/9 KB); R2 inherit xhigh launched; PC-F67 after landing; D-185 | 0025-b; R1 + R2 inherit xhigh | 2026-11-21 |
-| PC-175 | pc-2 | pc/PC-175 | R1 | impl df9e5804 (16 deviations; flags: ScratchDirectory reused; unsorted display export ascending Id (D-176 site); Remedy not localized; ExcelOperations via StackComposition; gadget segment renamed; golden lists internal IStackExcelRows); R1 launched | 0019-b; R1 only | 2026-11-21 |
+| PC-175 | pc-2 | pc/PC-175 | fix1 | impl df9e5804 (16 deviations accepted); R1 0/1/4 (export metrics/logs; unique headers; pipeline-to-codec dependency; tests); fix1 then hold behind PC-214; D-188 | 0019-b; R1 only | 2026-11-21 |
 | PC-214 | pc-f | pc/PC-214 | fix1 | impl 3e264e5e (deviations 2, 4-10 accepted); R1 0/1/5 (conditional-update test; retry refuses; ModifiedAt stamp; per-event unmatched; retention paging tests); fix1 then hold behind PC-212; D-187 | 0022-c; R1 only | 2026-11-21 |
 
 ## Fix items
