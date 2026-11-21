@@ -384,6 +384,11 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-173 (Ahmad, 2026-11-21): apply the manual reset this week; T3 fill and PC-F65 start now
+
+- Ahmad, answering D-167: "Yes, apply this week". D-165 is superseded. Ahmad applies the reset himself once the weekly meter is close to 100%; the orchestrator tells him when it reaches ≈ 98%.
+- At 93% (≈ 13:40 UTC 2026-11-21) the pace had fallen to ≈ 0.5 pts/h, because lanes waited on long local test runs. About 107 points (7 left plus 100 from the reset) over ≈ 70 h to Tuesday noon needs ≈ 1.5 pts/h. Without more lanes, the window would otherwise expire unused. So under D-140, T3 fill starts with PC-174 (pc-2), and the D-171 flake fix PC-F65 (pc-f) starts now. PC-181 (T3, 0010-f6) follows when the next lane frees. T1/T2 work still takes any lane first as it becomes ready.
+
 ### D-172 (orchestrator, 2026-11-21): PC-089 Review 2 rulings
 
 - PC-089 Review 2 (fable, dc5e9223 and 24438df0): 0 blocking, 1 major, 5 minor.

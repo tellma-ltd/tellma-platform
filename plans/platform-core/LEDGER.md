@@ -105,6 +105,8 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC | Slot | Branch | Step | Implementer agent (name / id) | Reviewer agent (name / id) | Started (UTC) |
 |---|---|---|---|---|---|---|
 | PC-089 | pc-1 | pc/PC-089 | fix2 | impl dc5e9223; R1 0/2/3; fix1 24438df0; R2 fable 0/1/5; fix2 then hold behind PC-090; D-168, D-169, D-172 | 0017-d | 2026-11-21 |
+| PC-F65 | pc-f | pc/PC-F65 | impl | flake root cause (D-171); high; one review | fix item | 2026-11-21 |
+| PC-174 | pc-2 | pc/PC-174 | impl | T3 fill under D-140/D-173; high; carry D-131 | 0015-j; R1 only | 2026-11-21 |
 | PC-090 | pc-3 | pc/PC-090 | integrating | impl 17267a1c; R1 0/2/3; fix1 131109ae (R1-2 moved to PC-149); released at once (queue empty); D-170 | 0018-d; R1 only | 2026-11-21 |
 | PC-149 | pc-4 | pc/PC-149 | R1 | impl 7418f050 (18 deviations; welcome email from invite frame; JobEntityLoad per D-170; 0018 §3.3 vs 0015 §5.1 flag); R1 Opus high | 0022-b; R1 only | 2026-11-21 |
 
@@ -175,6 +177,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-F62 | DeletePlan declares the tables of Cascade/SetNull referencing FKs (undeclared writes, every module); remove per-service workarounds (ScheduleService) | done (c62f762f; pc 44851530590 green; ForeignKeyActions derives Cascade/SetNull/SetDefault writes for deletes and saves, user capture before cascade, refusals at startup; D-150, D-156) | | |
 | PC-F63 | Nightly client-e2e: 3 WebKit chart-bidi canvas tests fail; dotnet job OS deps unavailable (nightly 44745573605) | done (247691dc; pc 44845403533 green; root cause WebKit drawBidiText carries a cursive final's GPOS y-offset onto later runs; ALM closes Arabic-script words in chart canvas text; D-155, D-160, D-161) | | |
 | PC-F64 | Nightly integration-windows: TenantScopeTests cross-instance suspension refresh failed (nightly 44745573605) | done (97475bd4; pc 44823811836 green; root causes: TenantScopeTests 30 s setup bound under a LocalDB CREATE DATABASE convoy, SMTP tests localhost vs 0.0.0.0, RequestTimeoutTests timer firing before the access guard; D-151, D-155) | | |
+| PC-F65 | Load-starved fixed waits in Core.AspNetCore.Tests (RequestTimeoutTests x2, RateLimitingTests x1 under four-lane local load; D-171) | in progress | | | pc-f |
 | PC-F02 | systemic e2e flakiness: CI 42456030333 red on 5250c6c (plans-only) with 4 NEW flaky tests | done (R1 1/1/2; CI 42471952389 green), pc-f free | 2c91df4, 4c36d45, 4c89ae1 | 11.32M | grid bundle at its 38 KB ceiling; picker same-frame Enter race open | root-cause all 9; un-quarantine the fixed PC-F01 five |
 
 ## Batch reviews (one per phase)
@@ -470,7 +473,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-171 | 0031-i | 2 | todo | | | |
 | PC-172 | 0032-h | 2 | todo | | | |
 | PC-173 | 0019-a | 3 | done (c316f5b4; CI 44034804023 green) | 8f3e494, 437a88f2, c316f5b4 (pc/PC-173) | | |
-| PC-174 | 0015-j | 3 | todo | | | carry from PC-142 (D-131): extend StackConformanceTests with the excel_rows lane and its §16.2 budget rows |
+| PC-174 | 0015-j | 3 | in progress | | | carry from PC-142 (D-131): extend StackConformanceTests with the excel_rows lane and its §16.2 budget rows |
 | PC-175 | 0019-b | 3 | todo | | | carry from PC-173: implement IExcelExporter over the internal WorkbookWriter (WriteAsync takes ExcelContext + CancellationToken), and bind Tellma:ScratchPath in C# (none exists yet; spec 0017 needs it too); WriteAsync (exporter and WorkbookWriter) takes a Func<Stream> openDestination, called once after the first page passes the cap |
 | PC-176 | 0019-c | 3 | todo | | | carry from PC-142 (D-131): extend StackConformanceTests with export/import reachability and their budget rows (with PC-177) |
 | PC-177 | 0019-d | 3 | todo | | | |
