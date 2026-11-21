@@ -5,6 +5,8 @@
 
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Testing;
 using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Api;
 using Tellma.Core.Abstractions.Crud;
@@ -41,7 +43,7 @@ namespace Tellma.Core.Tests.Access
         /// <summary>Composes the default composition with the recording resolver.</summary>
         public AccessServiceTests()
         {
-            _rig = new QueryRig(static _ => { }, services => services.Replace(ServiceDescriptor.Scoped<IAccessHoldersResolver>(_ => _holders)));
+            _rig = new QueryRig(static _ => { }, services => services.AddFakeLogging().Replace(ServiceDescriptor.Scoped<IAccessHoldersResolver>(_ => _holders)));
         }
 
         /// <summary>The test's cancellation.</summary>
@@ -130,6 +132,33 @@ namespace Tellma.Core.Tests.Access
             Assert.Equal((CoreResources.User, "7"), (missing.Resource, Assert.Single(missing.Ids)));
             Assert.Equal(1, _rig.Script.RoundTrips);
             Assert.Equal(0, _rig.OtherLoads);
+        }
+
+        [Fact]
+        public async Task A_users_filter_the_batch_refuses_as_too_complex_is_an_error_logged_with_the_roles_behind_it_and_nothing_runs()
+        {
+            _rig.Grant((CoreResources.Role, AccessActions.Read, null), (CoreResources.User, AccessActions.Read, UsersFilter));
+            _rig.GrantOther(Target, (CoreResources.Job, AccessActions.Read, null));
+
+            // --- The batch refuses the visibility read as a filter past its compile ceilings ---
+            ArgumentException ceiling = new("The filter exceeds the compile ceilings.");
+            _rig.Script.Refuses = statement => statement.Kind == ScriptedKind.Rows ? ceiling : null;
+
+            await using AsyncServiceScope scope = _rig.Scope();
+            InvalidOperationException refused = await Assert.ThrowsAsync<InvalidOperationException>(
+                () => CheckAsync(scope, new AccessCheckRequest(Target, [new(CoreResources.Job, AccessActions.Read)])));
+
+            // --- The ceiling's error is kept, logged once at Error with the roles behind the filter, and nothing ran or loaded ---
+            Assert.Same(ceiling, refused.InnerException);
+            FakeLogRecord logged = Assert.Single(scope.ServiceProvider.GetFakeLogCollector().GetSnapshot(), static record => record.Id.Id == AccessEvents.FilterTooComplex);
+            Assert.Equal(LogLevel.Error, logged.Level);
+            Assert.Same(ceiling, logged.Exception);
+            Assert.Equal(
+                ("1", "42", CoreResources.User, AccessActions.Read, "10"),
+                (logged.GetStructuredStateValue("TenantId"), logged.GetStructuredStateValue("UserId"), logged.GetStructuredStateValue("Resource"), logged.GetStructuredStateValue("Action"), logged.GetStructuredStateValue("RoleIds")));
+            Assert.Equal(0, _rig.Script.RoundTrips);
+            Assert.Equal(0, _rig.OtherLoads);
+            Assert.False(Assert.Single(_rig.Script.Batches).IsExecuted);
         }
 
         [Fact]

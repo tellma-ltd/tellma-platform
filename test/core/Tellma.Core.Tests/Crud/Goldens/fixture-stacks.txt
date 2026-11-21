@@ -428,8 +428,8 @@ child fixture.Link
 service access
   class: Tellma.Core.Access.AccessService
   feature: core
-  action check: api member-only body AccessCheckRequest handler AccessService; idempotent; result IReadOnlyList<AccessDecision>; mcp Full, revision 0; -
-  action holders: api member-only body AccessHoldersRequest handler AccessService; idempotent; result AccessHolders; mcp Full, revision 0; -
+  action check: api member-only body AccessCheckRequest handler AccessService; idempotent; result IReadOnlyList<AccessDecision>; mcp Hidden, revision 0; -
+  action holders: api member-only body AccessHoldersRequest handler AccessService; idempotent; result AccessHolders; mcp Hidden, revision 0; -
 service settings
   class: Tellma.Core.Settings.SettingsService
   feature: core

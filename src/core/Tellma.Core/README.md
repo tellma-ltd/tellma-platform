@@ -2051,7 +2051,7 @@ member counts and the holder count reach any connected caller, so a caller that 
 holds the scope's caller to `core.Role` × `Read` first.
 
 `AccessService` (route `access`, contributed by `CoreFeature`) projects the two member-only read
-actions the role and user pages call:
+actions the role and user pages call, both hidden from MCP:
 
 | Action | Round trips | What it answers |
 |---|---|---|

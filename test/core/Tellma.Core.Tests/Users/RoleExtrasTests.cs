@@ -5,6 +5,8 @@
 
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Testing;
 using System.Text.Json;
 using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Api;
@@ -118,6 +120,33 @@ namespace Tellma.Core.Tests.Users
             Assert.DoesNotContain(batch.Of(ScriptedKind.Rows), static statement => statement.Spec.Root.Name == "core.RoleMembership");
             Assert.Equal([RoleService<Role>.ProblemsExtra], result.Extras!.Keys);
             Assert.Equal(1, result.Extras[RoleService<Role>.ProblemsExtra].GetArrayLength());
+        }
+
+        [Fact]
+        public async Task A_users_filter_the_batch_refuses_as_too_complex_is_an_error_logged_with_the_roles_behind_it_and_nothing_runs()
+        {
+            QueryRig rig = Rig(static services => services.AddFakeLogging());
+            rig.Grant((CoreResources.Role, AccessActions.Read, null), (CoreResources.User, AccessActions.Read, UsersFilter));
+            Script(rig, QueryRig.Page(11), RoleRow());
+
+            // --- The batch refuses the members' query as a filter past its compile ceilings ---
+            ArgumentException ceiling = new("The filter exceeds the compile ceilings.");
+            rig.Script.Refuses = statement => statement.Kind == ScriptedKind.Rows && statement.Spec.Root.Name == "core.RoleMembership" ? ceiling : null;
+
+            await using AsyncServiceScope scope = rig.Scope();
+            InvalidOperationException refused = await Assert.ThrowsAsync<InvalidOperationException>(
+                () => Roles(scope).GetByIdAsync(RoleId, new DetailsRequest { Include = [RoleService<Role>.MembersExtra] }, Token));
+
+            // --- The ceiling's error is kept, logged once at Error with the roles behind the filter, and no batch ran ---
+            Assert.Same(ceiling, refused.InnerException);
+            FakeLogRecord logged = Assert.Single(scope.ServiceProvider.GetFakeLogCollector().GetSnapshot(), static record => record.Id.Id == AccessEvents.FilterTooComplex);
+            Assert.Equal(LogLevel.Error, logged.Level);
+            Assert.Same(ceiling, logged.Exception);
+            Assert.Equal(
+                ("1", "42", CoreResources.User, AccessActions.Read, "10"),
+                (logged.GetStructuredStateValue("TenantId"), logged.GetStructuredStateValue("UserId"), logged.GetStructuredStateValue("Resource"), logged.GetStructuredStateValue("Action"), logged.GetStructuredStateValue("RoleIds")));
+            Assert.Equal(0, rig.Script.RoundTrips);
+            Assert.False(Assert.Single(rig.Script.Batches).IsExecuted);
         }
 
         [Fact]

@@ -461,6 +461,13 @@ namespace Tellma.Core.Tests.Crud.Scripted
         {
             EnsureComposing();
             ScriptedStatement recorded = new(this, _statements.Count, kind, entity, statement, arguments, options, name);
+
+            // --- A statement the script refuses is never recorded, as a real batch composes nothing for it ---
+            if (_script.Refuses?.Invoke(recorded) is Exception refused)
+            {
+                throw refused;
+            }
+
             _statements.Add(recorded);
             return recorded;
         }

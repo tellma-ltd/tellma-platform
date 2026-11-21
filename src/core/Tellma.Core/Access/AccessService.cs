@@ -68,7 +68,7 @@ namespace Tellma.Core.Access
         /// <exception cref="LimitExceededException">More securables than one check decides.</exception>
         /// <exception cref="ForbiddenException">Another user is named and the caller may not read the roles.</exception>
         /// <exception cref="NotFoundException">Another user is named whom the caller may not read, or who does not exist.</exception>
-        [ApiAction("check", MemberOnly = true, Idempotent = true, Mutation = false)]
+        [ApiAction("check", MemberOnly = true, Idempotent = true, Mutation = false, Mcp = McpExposure.Hidden)]
         public async Task<IReadOnlyList<AccessDecision>> CheckAsync(AccessCheckRequest request, CancellationToken cancellationToken = default)
         {
             // --- Admission, before any round trip: the ceiling, then each pair whole ---
@@ -123,7 +123,7 @@ namespace Tellma.Core.Access
         /// <returns>The holders.</returns>
         /// <exception cref="BadRequestException">No body.</exception>
         /// <exception cref="ForbiddenException">The caller may not read the roles.</exception>
-        [ApiAction("holders", MemberOnly = true, Idempotent = true, Mutation = false)]
+        [ApiAction("holders", MemberOnly = true, Idempotent = true, Mutation = false, Mcp = McpExposure.Hidden)]
         public async Task<AccessHolders> HoldersAsync(AccessHoldersRequest request, CancellationToken cancellationToken = default)
         {
             if (request is null)

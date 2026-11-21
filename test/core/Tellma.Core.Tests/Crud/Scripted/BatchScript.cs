@@ -55,6 +55,13 @@ namespace Tellma.Core.Tests.Crud.Scripted
         /// </summary>
         public Func<Type, IEnumerable<TableName>>? Writes { get; set; }
 
+        /// <summary>
+        ///     The error a statement is refused with as it is appended, as the platform's batch refuses
+        ///     one its compile ceilings reject, so nothing is recorded for it; null, or a null answer, to
+        ///     record it.
+        /// </summary>
+        public Func<ScriptedStatement, Exception?>? Refuses { get; set; }
+
         /// <summary>The batches handed out, in order.</summary>
         public IReadOnlyList<ScriptedBatch> Batches
         {
