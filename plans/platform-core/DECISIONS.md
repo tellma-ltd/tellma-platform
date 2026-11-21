@@ -384,6 +384,15 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-180 (orchestrator, 2026-11-21): PC-091 Review 1 rulings
+
+Review 1 found 0/0/2 and accepted all 7 implementer deviations. R1-1: the access actions (check, holders) take McpExposure.Hidden, because 0016 §11.8 and 0014 §10 reserve tellma_check_access and every sibling read helper is Hidden. R1-2: add a QueryRig unit test for each new filter-too-complex branch (RoleService, AccessService). PC-091 holds after fix1, behind PC-149, PC-174 and PC-F65.
+
+For Ahmad:
+1. 0018 §4.3 "members" is never Denied for a member, because 0014 §5.1's UserAccessCriteria gives every member a Filtered core.User Read (Id = me()). Either 0032 §5.4 shows its "no access" hint when the self criterion is the only users' grant, or the specs accept the state as unreachable.
+2. 0015 §5.3 lacks DetailsPlan.Decide and OmitExtra, which PC-091 added. Add them to the spec.
+3. 0018 §4.3 and 0014 §9 say "*/* never drifts". PC-091 reports WildcardResourceOnPublicRole, so the text should read "except on a public role".
+
 ### D-179 (orchestrator, 2026-11-21): PC-F65 Review 1 rulings
 
 - PC-F65 Review 1 (Opus high, d10f3b46): 0 blocking, 0 major, 4 minor.
