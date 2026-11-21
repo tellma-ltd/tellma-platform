@@ -106,12 +106,12 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 
 | PC | Slot | Branch | Step | Implementer agent (name / id) | Reviewer agent (name / id) | Started (UTC) |
 |---|---|---|---|---|---|---|
-| PC-089 | pc-1 | pc/PC-089 | ci-pending | impl dc5e9223; R1 0/2/3; fix1 24438df0; R2 fable 0/1/5; fix2 d2513537; integrate ccb7553e red 44931200147; CI fixes 073dee41 (test-only: WebHostTests sets a ServiceUri in Production); pc run 44934755140; D-168, D-169, D-172 | 0017-d | 2026-11-21 |
-| PC-091 | pc-3 | pc/PC-091 | impl | launched after PC-090 done; high | 0018-e; R1 only | 2026-11-21 |
+| PC-096 | pc-1 | pc/PC-096 | impl | launched after PC-089 done; xhigh | 0025-b; R1 + R2 inherit xhigh | 2026-11-21 |
+| PC-091 | pc-3 | pc/PC-091 | R1 | impl 059dbd0e (7 deviations; 2 flags for ruling: members extra never Denied under UserAccessCriteria, access MCP exposure default); R1 launched | 0018-e; R1 only | 2026-11-21 |
 | PC-F65 | pc-f | pc/PC-F65 | held | impl d10f3b46; R1 0/0/4; fix1 36592e58 + responses 4dc7053d (shared host RequestTimeout 5 min); held behind PC-089, PC-149, PC-174 (merge-tree clean); D-179 | fix item | 2026-11-21 |
 | PC-174 | pc-2 | pc/PC-174 | held | impl dc83114f; R1 0/2/3; fix1 ad91dc10 (key tie-breaker on every ordering; R1-3/R1-4 kept per D-176 for Ahmad); held behind PC-089, PC-149 (merge-tree clean); D-176 | 0015-j; R1 only | 2026-11-21 |
 | PC-181 | pc-f2 | pc/PC-181 | impl | T3 fill under D-140/D-173; high; R2 inherit xhigh (complex) | 0010-f6 | 2026-11-21 |
-| PC-149 | pc-4 | pc/PC-149 | held | impl 7418f050; R1 0/2/2; fix1 6fba6f4c (all fixed; IPayloadScopedValidator, OutboxEnqueuedEffect); held behind PC-089 (merge-tree: 3 conflicts in Users with PC-090); D-170, D-174 | 0022-b; R1 only | 2026-11-21 |
+| PC-149 | pc-4 | pc/PC-149 | ci-pending | impl 7418f050; R1 0/2/2; fix1 6fba6f4c; integrate 6ddf615f (3 Users conflicts with PC-090 resolved as union; README bundle list refreshed); pc run 44938266888; D-170, D-174, D-177 | 0022-b; R1 only | 2026-11-21 |
 
 ## Fix items
 
@@ -391,14 +391,14 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-086 | 0029-a | 1 | done | ce581934, 7a5cdf53, 84278111, 22c362f7; green 44575091654 | | |
 | PC-087 | 0018-b | 1 | done (f75366c4; pc 44748673481 green, PR 44752134569 green) | e2ed8550, 0d6e317a, 01533a52, f75366c4 | | D-148 |
 | PC-088 | 0018-c | 1 | done (7146ab13; pc 44867579837 green) | ed00f3de, 8caf7211, c1574599, 7146ab13 | | D-157, D-159; D-156 carry closed (local declaration removed at integration); carry (D-156): whichever of PC-088 and PC-F62 lands second removes UserService.Delete.cs's local cascade declaration (UserPreferences, UserStamps, NotificationPreferences); PC-F62 declares it generally |
-| PC-089 | 0017-d | 1 | in progress | | | carry: none from D-096 any more (D-120 moved §6.4 BlobContainerStep to PC-083 and the provisioning-record row to whichever of PC-078 and PC-083 lands last); carry from PC-080 (D-124): blob endpoints must evaluate access or record the member witness, or the witness filter answers 500 (unstarted) or aborts the connection (started); carry D-137: wrap the blob GET in the telemetry stage (0016 §5.1 chain); carry D-145: map the blob GET with DisableRequestTimeout or a time-to-first-byte policy (tellma-web cuts downloads at 30 s) |
+| PC-089 | 0017-d | 1 | done (b6d256d6; pc 44934755140 green on 073dee41) | dc5e9223, 24438df0, d2513537, ccb7553e, 073dee41, b6d256d6 | | carry: none from D-096 any more (D-120 moved §6.4 BlobContainerStep to PC-083 and the provisioning-record row to whichever of PC-078 and PC-083 lands last); carry from PC-080 (D-124): blob endpoints must evaluate access or record the member witness, or the witness filter answers 500 (unstarted) or aborts the connection (started); carry D-137: wrap the blob GET in the telemetry stage (0016 §5.1 chain); carry D-145: map the blob GET with DisableRequestTimeout or a time-to-first-byte policy (tellma-web cuts downloads at 30 s) |
 | PC-090 | 0018-d | 1 | done (ca6dcb88; pc 44927060937 green) | 17267a1c, 131109ae, b02e2a74, 3ba8adc7, ca6dcb88 | | D-170, D-175; ci.yml build-test timeout 20 -> 30 min (slower Windows runners); D-096 carry closed (test runs and passes); carry from PC-141 (D-096): TenantStateTests.An_action_allowed_when_read_only_succeeds_on_a_read_only_tenant runs and must pass |
 | PC-091 | 0018-e | 1 | in progress | | | |
 | PC-092 | 0018-g | 1 | todo | | | carry from PC-094: extend the existing server AcmeFeature ("acme", empty); do not create another |
 | PC-093 | 0018-h | 1 | todo | | | |
 | PC-094 | 0024-f | 1 | done (c4796b36; CI 43929225344 green, new acme-client jobs green) | 0213664, da754e8 (pc/PC-094) | | |
 | PC-095 | 0016-f | 1 | todo | | | |
-| PC-096 | 0025-b | 1 | todo | | | |
+| PC-096 | 0025-b | 1 | in progress | | | |
 | PC-097 | 0020-b | 1 | done a90b368 (CI 43515001627 green) | bf01975, fb0abb0, 262b849, a90b368 (pc) |  |  |
 | PC-098 | 0020-c | 1 | done (92307211; green 44632808005) | 06ceb5dd, 46456458, 10ac40b1, 15f0e6a7, 92307211 | | D-128, D-129 (R1-4 for Ahmad), D-139 |
 | PC-099 | 0021-b | 1 | done (integrated 183e772, CI 43618488320 green) | 2e7dfd1, 2de32d7, f5174b3, 11a57e0 (pc), 69c009b, 183e772 (pc) |  |  |
