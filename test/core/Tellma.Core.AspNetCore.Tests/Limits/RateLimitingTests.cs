@@ -166,7 +166,9 @@ namespace Tellma.Core.AspNetCore.Tests.Limits
             try
             {
                 await Patience.SignalledAsync(running.Task, holding);
-                second = await host.Client.SendAsync(TellmaTestHost.SpaRequest(HttpMethod.Get, "/1/api/web/report", cookie), Token);
+                // Refused at once; a report queued behind the held one would wait until the release
+                // below, so the wait is bounded and the release still runs.
+                second = await Patience.WaitAsync(host.Client.SendAsync(TellmaTestHost.SpaRequest(HttpMethod.Get, "/1/api/web/report", cookie), Token));
                 batch = host.Client.SendAsync(tile, Token);
                 await Patience.SignalledAsync(batchRunning.Task, batch);
             }

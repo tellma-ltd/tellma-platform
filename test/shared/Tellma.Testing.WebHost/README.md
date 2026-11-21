@@ -13,7 +13,7 @@ Service instance). Its types are internal, visible to those three.
 
 | File | Contents |
 |---|---|
-| [TellmaTestHost](TellmaTestHost.cs) | The host and its options (`TestHostOptions`): the environment, the settings (sound ones by default, the realtime hub off), the catalog rows, the composition and web composition delegates, extra services, and what is mapped. It mints session cookies over stored rows, bearer tokens against the test issuer's key, and the SPA's requests. |
+| [TellmaTestHost](TellmaTestHost.cs) | The host and its options (`TestHostOptions`): the environment, the settings (sound ones by default, the realtime hub off, a five-minute web timeout that outlasts every test's patience), the catalog rows, the composition and web composition delegates, extra services, and what is mapped. It mints session cookies over stored rows, bearer tokens against the test issuer's key, and the SPA's requests. |
 | [TestClock](TestClock.cs) | The host's fake clock, which also keeps the timers armed on it: a test moves it to an instant once the timers it expects there are armed, never on a guess at how long the host takes to arm them. |
 | [Patience](Patience.cs) | How a test waits for what a correct host does on its own (a signal, a condition, a request's end): a two-minute limit that only ends a hang, since a cold host on a loaded runner takes seconds where an idle one takes milliseconds. |
 | [ProbeEndpoints](ProbeEndpoints.cs) | Endpoints on every surface that answer the request context they ran under. |

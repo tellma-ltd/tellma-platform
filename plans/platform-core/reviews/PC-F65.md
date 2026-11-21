@@ -157,21 +157,23 @@ this load, against about 6 min idle.
 
 ### Open risks
 
-- Every tenant request in the shared host still runs under the real 30 s web timeout. That is
-  far above the loaded first request (7.3 s), but it is still a wall-clock bound on cold work.
-  Lifting the shared default was deferred because PC-089's BlobEndpointTests compute deadlines
-  from those options.
-- `A_long_endpoint_outlasts_its_groups_timeout`: the endpoint's `.WithRequestTimeout(Long)`
-  replaces the group's policy, so the 200 ms group timer never arms for it. The test cannot fail
-  by load, but it would also pass if the group timer were ignored entirely. Its comment's
-  "armed at the timeout stage" premise deserves a reviewer's look.
-- One old-code load failure, `FrameworkProblemsTests.A_bare_status_a_component_set_answers_its_problem(403)`,
-  was overwritten before its message was kept. That test has no wait of its own. The only wall
-  clocks on its path are the shared host's 30 s web timeout and the rate-limit windows (one
-  request). A cold first request past 30 s, answering 504, is the likely cause. It points at the
-  risk above and argues for lifting the shared default once PC-089 has integrated. Lifting only
-  `RequestTimeout` to the 5-minute `LongRequestTimeout` default would leave PC-089's deadlines
-  alone. It did not recur in the three after runs.
+- (Addressed in review 1 fix 1.) Every tenant request in the shared host ran under the real 30 s
+  web timeout, a wall-clock bound on cold work. The shared host now sets `RequestTimeout` to five
+  minutes, the `LongRequestTimeout` default, so PC-089's deadlines, which read
+  `LongRequestTimeout`, are untouched. Tests that pin a timeout set their own.
+- (Comment fixed in review 1 fix 1.) `A_long_endpoint_outlasts_its_groups_timeout`: the
+  endpoint's `.WithRequestTimeout(Long)` replaces the group's policy, so only the long timer is
+  armed. If the override were lost, the 200 ms group timer would answer 504 within the
+  endpoint's 800 ms, so the test pins what its name claims.
+- Flake candidate, kept on record: `FrameworkProblemsTests.A_bare_status_a_component_set_answers_its_problem(status: 403, code: "forbidden")`.
+  - What happened: it failed once, in an old-code load copy (copy 3, run 3, 08:05, 933 tests,
+    4 failures). The copy's next run overwrote its log, so the message was lost.
+  - The test has no wait of its own. The only wall clocks on its path were the shared host's 30 s
+    web timeout and the rate-limit windows, and it sends one request.
+  - Likely cause, not shown: a cold first request past 30 s, answering 504. The worst first
+    request measured was 7.3 s, but the machine was more heavily loaded at that point.
+  - Status: it did not recur in the three after runs, nor in the old-code runs after it. Review 1
+    fix 1 removes that cause. If it recurs, its message decides whether it is something else.
 - `HubClient.HasUnread()` absence checks can pass falsely (an event still in flight), but they
   cannot fail falsely.
 - The stalled-send overlap check relies on the tracker starting both sends within one 2 s bound.
@@ -179,6 +181,144 @@ this load, against about 6 min idle.
 
 ## Review 1
 
+Scope: commit d10f3b46 (test code under `test/core/Tellma.Core.AspNetCore.Tests` and
+`test/shared/Tellma.Testing.WebHost`, plus this file).
+
+What I checked:
+
+- **No product code changed.** `git show --stat` touches only `test/` and this review file. The
+  ConnectedProbe race does not point at a product bug. The hub refuses the connection in its
+  connect, as designed, and closes it. `HubConnection.ConnectionId` reads null once the client has
+  seen the close, which is how the SignalR client behaves. Only the probe read it too late.
+  The token fix is sound. `?id=` on the WebSocket connect URI is the negotiate's connection token.
+  The server reads the same query from `GetHttpContext()` of the transport request, and both
+  sides URL-decode it. `AzureSignalRTestHost` builds its own `HubConnection` and still waits by id
+  (listed as a carry).
+- **Root cause and each changed wait.** Every changed wait now waits on one of three things:
+  - an endpoint signal, through `SignalledAsync`, which fails fast with the request's outcome;
+  - armed timers on the `TestClock`;
+  - the request's own completion, under a hang-only bound.
+
+  No bound was lengthened to make a timing pass. The 1 h web-timeout lifts sit only on hosts whose
+  scenario never relies on that timer: RateLimiting report, RequestCancellation and the
+  long-endpoint Long policy.
+- **SessionLifecycleTests against SessionRefresher/OidcTokenRedeemer.**
+  - `FlightWait == OidcTokenRedeemer.Timeout == 5 s`, so a request's `running.WaitAsync(FlightWait, time)` and
+    the redeemer's `new CancellationTokenSource(Timeout, time)` both come due at `start + 5 s`. That
+    makes `count: 2`, and `8 + 1` in `JoinedAsync`, the exact set.
+  - The retry `Task.Delay(RetryPause, time)` is armed after the deadline fires, so it is due at
+    `start + 6 s`. The write retries fall at `start + RetryPause × attempt`.
+  - `PastTheLeeway` is the 30 s leeway + 5 s = 35 s, the same total the old 1-second stepping
+    reached in four of the six tests.
+
+  Each step's timers are armed only by work the previous move released, so they read the moved clock.
+- **TestClock.** No lock-order inversion. `_gate` is never held while the fake clock's own lock
+  is taken, because `GetUtcNow()` is read before `_gate` in `Record` and `Waiting`, and
+  `Inner.Dispose` runs outside `_gate`. `NextDue` is right for one-shot and periodic timers.
+  Taking the mark before the move is the right order, since callbacks the move runs inline may
+  arm the next timers. One theoretical gap: `Record` reads the clock (line 95) separately from
+  `base.CreateTimer` (line 85). A timer armed on another thread at the instant the test moves the
+  clock could be recorded at a due time that is not its real one. No current test arms a timer it
+  waits for concurrently with a move, so this is not a finding.
+- **Stalled-send test.** `TrySendAsync` (HubConnectionTracker.cs:439-447) passes its own `bound.Token`
+  through `IClientProxy.SendAsync` to `SendConnectionAsync`. The `Bound.IsCancellationRequested`
+  assertion therefore also rules out a send made without its bound. A one-after-the-other close
+  would start the second send with the first's bound already cancelled, and would fail
+  `EarlierStillWaiting`. All sends are created synchronously in `TellAsync`'s `Select`, so the 2 s
+  window the notes flag needs a 2 s deschedule inside a synchronous loop. I accept that risk.
+- **504 split (the declared deviation).** The cancellation case still runs the framework's real
+  timeout path. `FireTimeout` cancels the timeout feature's own source (D-155's accepted seam), so
+  `RequestTimeoutsMiddleware` writes the 504 and `DataCancellation` sees the same token. Only the
+  timer's firing moves to the lowered-timer test (see R1-3).
+- **RateLimiting.** Sending the tile while the interactive permit is still held makes the test
+  stronger. Before, the permit was released first, so a batch lane that shared the interactive
+  permit would have passed.
+- **Build and tests (mine, idle-ish machine, Debug).**
+  - `dotnet build test/core/Tellma.Core.AspNetCore.Tests` printed Build succeeded with 0 warnings.
+  - The touched classes plus WebApiProjectionTests and InProcIdentityTests passed 169/169 in 4 m 54 s
+    (PC-F65-r1-touched.log, session scratchpad).
+  - I did not repeat the loaded full runs.
+- **Evidence method.** It is a fair A/B. The old-code copies were both the load and the control,
+  running at the same time as the new-code runs, from a frozen bin. But three green full runs are
+  weaker evidence than the summary suggests. Against the matched-pace control (the lighter rounds
+  failed 2 of 6), three greens happen by chance with p ≈ (4/6)³ ≈ 0.30. Against the overall 10 of 15,
+  p ≈ 0.04. The mechanistic case is what carries the item: each of the 7 named failures maps to a
+  wait that was replaced, and the probe timings back it. The runs are consistent with that case;
+  on their own they do not prove it.
+
 ### Findings
+
+**R1-1 (minor) — the held-report test's refused request is still an unbounded wait, and in a
+queueing regression the test hangs indefinitely.**
+
+- Where: `test/core/Tellma.Core.AspNetCore.Tests/Limits/RateLimitingTests.cs:169`,
+  `second = await host.Client.SendAsync(…, Token)`.
+- How it hangs: the permit is released only in the `finally` that follows this await. The
+  report's lane is enforced by `UseRateLimiter`, which runs ahead of `UseRequestTimeouts`
+  (LimitsComposition.cs:88-91), so a queued request has no web timer at all. The held endpoint
+  awaits `release.Task` and ignores its token.
+- Failure scenario: a regression that queues the second report instead of refusing it (for
+  example, `ReportQueuePerUser = 0` no longer honoured) deadlocks the test. CI then ends it at the
+  45-minute job timeout with no test name. The old code hung the same way, so this is not new.
+  This change, though, introduces the tool for it, and its stated rule is that every wait on what
+  a correct host does on its own uses it.
+- Fix: `second = await Patience.WaitAsync(host.Client.SendAsync(…, Token));`. The `finally` then
+  releases the permit after a 2-minute `TimeoutException` that names the wait.
+
+**R1-2 (minor) — the long-endpoint test's new comment states a false premise.**
+
+- Where: `test/core/Tellma.Core.AspNetCore.Tests/Limits/RequestTimeoutTests.cs:95-97`.
+- What it gets wrong: the comment says the group's timer "is armed at the timeout stage, before
+  the endpoint runs, so the endpoint's wait outlasts it". ASP.NET Core's `RequestTimeoutsMiddleware`
+  arms one timer per request, from the endpoint's most specific policy metadata. The endpoint's
+  `.WithRequestTimeout(Long)` wins over the group's `Web` policy, so the 200 ms timer is never armed
+  for `/long`. The implementer's open risk reads it correctly, and the comment contradicts it.
+- What the test does pin is still right. If the endpoint's override were lost, the 200 ms group
+  timer would fire during the 800 ms wait, and the request would answer 504. The test therefore
+  cannot pass falsely on what its name claims. Only its explanation is wrong.
+- Failure scenario: a later reader trusts the comment and "fixes" the 200/800 ms pair, or the
+  override, on the strength of a mechanism that does not exist.
+- Fix: say that the endpoint's Long policy replaces the group's, so only the long timer is armed.
+  The 200 ms group setting is there so that a lost override answers 504 within the endpoint's
+  800 ms.
+
+**R1-3 (minor) — `A_request_past_its_configured_timeout_answers_504` passes when the configured
+timeout is ignored.**
+
+- Where: `test/core/Tellma.Core.AspNetCore.Tests/Limits/RequestTimeoutTests.cs:41-62`.
+- Failure scenario: if `Tellma:Api:RequestTimeout` stopped reaching the `Web` policy
+  (LimitsComposition.cs:49), the 30 s default would fire instead. That still answers 504
+  `timeout`, well inside the 2-minute `Patience`, so the test stays green.
+- Why it matters now: the gap is older than this change, since the old test's send was unbounded
+  too. After the split, though, this is the only test that a real configured timer fires, and its
+  new name claims exactly that. No other test reads the policy that the setting produces.
+- Fix: keep the timing-free shape and add a deterministic pin, for example
+  `Assert.Equal(TimeSpan.FromMilliseconds(300), host.Services.GetRequiredService<IOptions<RequestTimeoutOptions>>().Value.Policies[TellmaRequestTimeouts.Web].Timeout)`.
+  Lifting the shared default (R1-4) would also make the test discriminating: a 5-minute default
+  outlasts `Patience` and fails the test.
+
+**R1-4 (minor) — one observed load failure is left unexplained, and the cheap fix for its likely
+cause need not wait for PC-089.**
+
+- Where: `test/shared/Tellma.Testing.WebHost/TellmaTestHost.cs`, the default settings (around
+  line 127). The failure is `FrameworkProblemsTests.A_bare_status_a_component_set_answers_its_problem(403)`.
+- What is unexplained: the test failed once in the old-code load runs, and its message was lost.
+  The proposed cause is a cold first request past the shared 30 s web timeout, answering 504. The
+  measured worst first request was 7.3 s, though, so the cause is not shown. Every other
+  shared-host test still runs under that 30 s real timer.
+- Failure scenario: the same flake recurs on a loaded CI runner. It then has no root cause on
+  record and no LEDGER flake entry, which D-011 and D-113 expect for a flake that is not fixed.
+- Fix: in fix 1, set `Tellma:Api:RequestTimeout` to the `LongRequestTimeout` default (5 min) in
+  the shared host's defaults. This does not need to wait for PC-089:
+  - PC-089's deadlines read `LongRequestTimeout`, which this leaves alone.
+  - Its BlobEndpointTests set their own 1 s `RequestTimeout` explicitly.
+  - On this branch every test that pins a timeout sets both values itself, and
+    `A_long_timeout_shorter_than_the_web_timeout_fails_startup` sets both.
+  - A request that hangs then fails at `Patience` with the test's name, not as a 504.
+
+  If the failure recurs after that, it is not the timeout: record it as a flake candidate with
+  its message kept.
+- My view on the implementer's open question: yes, lift it. Do it now rather than after PC-089,
+  for the reasons above. It is the last wall-clock bound on cold work in this assembly.
 
 ### Responses

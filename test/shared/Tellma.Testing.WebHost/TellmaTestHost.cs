@@ -134,6 +134,12 @@ namespace Tellma.Testing.WebHost
                 ["Tellma:Identity:ServiceClientSecret"] = "test-service-client-secret",
                 ["Tellma:DataProtection:KeyRingPath"] = Path.Combine(Path.GetTempPath(), "tellma-aspnetcore-tests-keys"),
 
+                // The web timeout, a real timer, outlasts the tests' patience: a cold host on a
+                // loaded runner serves its first request in seconds, and a test that pins the
+                // timeout sets its own. Five minutes is the long policy's default, which it must
+                // not exceed.
+                ["Tellma:Api:RequestTimeout"] = "00:05:00",
+
                 // The tenants these hosts serve have no databases, so the job worker stays off; the
                 // jobs suites run it against a database of their own.
                 ["Tellma:Jobs:Enabled"] = "false",

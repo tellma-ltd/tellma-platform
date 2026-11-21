@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Timeouts;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using System.Net;
 using System.Reflection;
 using Tellma.Core.Abstractions.Data;
@@ -57,6 +58,9 @@ namespace Tellma.Core.AspNetCore.Tests.Limits
 
             using HttpResponseMessage response = await Patience.WaitAsync(host.Client.SendAsync(TellmaTestHost.SpaRequest(HttpMethod.Get, "/1/api/web/slow", host.Cookie()), Token));
 
+            // The setting reaches the web policy: the host's default outlasts the test's patience,
+            // so a 504 from it never arrives in time, and the policy itself carries the setting.
+            Assert.Equal(TimeSpan.FromMilliseconds(300), host.Services.GetRequiredService<IOptions<RequestTimeoutOptions>>().Value.Policies[TellmaRequestTimeouts.Web].Timeout);
             Assert.Equal(HttpStatusCode.GatewayTimeout, response.StatusCode);
             Assert.Equal("timeout", (await Problem.ReadAsync(response)).Code);
         }
@@ -92,9 +96,10 @@ namespace Tellma.Core.AspNetCore.Tests.Limits
         {
             await using TellmaTestHost host = await TellmaTestHost.StartAsync(static options =>
             {
-                // The group's timer is armed at the timeout stage, before the endpoint runs, so the
-                // endpoint's wait outlasts it from wherever the endpoint starts. The long policy only
-                // has to outlast the whole request, however slowly a loaded runner serves it.
+                // The endpoint's long policy replaces its group's, so only the long timer is armed:
+                // were the override lost, the 200 ms group timer would answer 504 within the
+                // endpoint's 800 ms wait. The long policy only has to outlast the whole request,
+                // however slowly a loaded runner serves it.
                 options.Settings["Tellma:Api:RequestTimeout"] = "00:00:00.200";
                 options.Settings["Tellma:Api:LongRequestTimeout"] = "01:00:00";
                 options.Map = static (app, endpoints) =>
