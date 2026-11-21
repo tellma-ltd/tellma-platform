@@ -57,14 +57,14 @@ namespace Tellma.Core.Users
                 BatchPurpose.Read,
                 (_, batch) =>
                 {
-                    bag = ComposeOwnBag(batch, idempotent: true);
+                    bag = MeEnvelope.ComposeBag(batch, idempotent: true);
                     return ValueTask.CompletedTask;
                 },
                 static (user, outcome) => (user, outcome),
                 cancellationToken).ConfigureAwait(false);
 
             // --- The envelope, the access summary from the set the round trip validated ---
-            return EnvelopeOf(View(caller.UserId, caller.Kind, caller.State, caller.Profile), Bag(bag!.Value), outcome.VersionTags, CallerTags(outcome.UserVersionTags), caller.Access);
+            return EnvelopeOf(MeEnvelope.View(caller), MeEnvelope.Bag(bag!.Value), outcome.VersionTags, MeEnvelope.CallerTags(outcome.UserVersionTags), caller.Access);
         }
 
         /// <summary>
@@ -93,12 +93,12 @@ namespace Tellma.Core.Users
                 (user, batch) =>
                 {
                     (row, modifier) = ComposeOwnRow(batch, user.UserId);
-                    bag = ComposeOwnBag(batch, idempotent: true);
+                    bag = MeEnvelope.ComposeBag(batch, idempotent: true);
                     return ValueTask.CompletedTask;
                 },
                 (user, _) => (row!.Value.Entities is [TUser only] ? only : throw new InvalidOperationException("The connected caller's own row was not found."), user),
                 cancellationToken).ConfigureAwait(false);
-            IReadOnlyDictionary<string, string> preferences = Bag(bag!.Value);
+            IReadOnlyDictionary<string, string> preferences = MeEnvelope.Bag(bag!.Value);
 
             // --- A stale stamp conflicts before anything is enlisted, unless the caller overrides it ---
             if (request.Concurrency != ConcurrencyMode.Override && request.ModifiedAt != stored.ModifiedAt)
@@ -117,7 +117,7 @@ namespace Tellma.Core.Users
 
             // --- The envelope over the saved row, the first batch's bag, the set the first batch
             // validated and the persist's tags ---
-            return EnvelopeOf(View(saved.Rows[0]), preferences, persisted.VersionTags, CallerTags(persisted.UserVersionTags), caller.Access);
+            return EnvelopeOf(MeEnvelope.View(saved.Rows[0]), preferences, persisted.VersionTags, MeEnvelope.CallerTags(persisted.UserVersionTags), caller.Access);
         }
 
         /// <summary>
@@ -177,7 +177,7 @@ namespace Tellma.Core.Users
                 Text(set, 3),
                 digits is null ? null : Enum.Parse<DigitStyle>(digits, ignoreCase: false),
                 ((DateTimeOffset[])set.GetBuffer(5))[0],
-                VersionTagWire.Preferences(CallerTags(outcome.UserVersionTags).Preferences));
+                VersionTagWire.Preferences(MeEnvelope.CallerTags(outcome.UserVersionTags).Preferences));
         }
 
         /// <summary>
@@ -332,33 +332,6 @@ namespace Tellma.Core.Users
                 [new ConcurrencyConflict(stored.Id, stored.ModifiedAt.ToString(PersistFailures.StampFormat, CultureInfo.InvariantCulture), stored.ModifiedById, name, IsMissing: false)]);
         }
 
-        /// <summary>The caller's profile, as the envelope carries it, from a user's row.</summary>
-        /// <param name="user">The row.</param>
-        /// <returns>The profile.</returns>
-        internal static UserProfileView View(User user)
-        {
-            ArgumentNullException.ThrowIfNull(user);
-            return new UserProfileView(
-                user.Id, user.Kind, user.State, user.Name, user.Name2, user.Name3, user.Email, user.ContactEmail, user.ContactMobile,
-                user.ImageId, user.SignatureId, user.PreferredLanguage, user.PreferredCalendar, user.PreferredTimeZone, user.PreferredRegion,
-                user.PreferredDigits, user.Gender, user.ModifiedAt);
-        }
-
-        /// <summary>The caller's profile, as the envelope carries it, from the connected user's cached profile.</summary>
-        /// <param name="userId">The caller's id.</param>
-        /// <param name="kind">The caller's kind.</param>
-        /// <param name="state">The caller's state.</param>
-        /// <param name="profile">The caller's profile.</param>
-        /// <returns>The profile.</returns>
-        internal static UserProfileView View(int userId, UserKind kind, UserState state, UserProfile profile)
-        {
-            ArgumentNullException.ThrowIfNull(profile);
-            return new UserProfileView(
-                userId, kind, state, profile.Name, profile.Name2, profile.Name3, profile.Email, profile.ContactEmail, profile.ContactMobile,
-                profile.ImageId, profile.SignatureId, profile.PreferredLanguage, profile.PreferredCalendar, profile.PreferredTimeZone, profile.PreferredRegion,
-                profile.PreferredDigits, profile.Gender, profile.ModifiedAt);
-        }
-
         /// <summary>
         ///     The envelope of a profile, a bag and the tags a round trip left: the access summary
         ///     from every registered securable decided over the caller's set as that round trip
@@ -373,66 +346,7 @@ namespace Tellma.Core.Users
         private MeResult EnvelopeOf(
             UserProfileView user, IReadOnlyDictionary<string, string> preferences, VersionTagSnapshot tenant, UserVersionTagSnapshot caller, UserAccess access)
         {
-            DateTimeOffset now = _dependencies.Time.GetUtcNow();
-            AccessDecision[] decisions = [.. _dependencies.Securables.All.Select(securable => _dependencies.Evaluator.DecideFrom(access, securable, now))];
-            return Envelope(user, preferences, tenant, caller, decisions, access, now);
-        }
-
-        /// <summary>
-        ///     Composes the envelope: the four client tags as the header carries them, the access
-        ///     summary under the composite permissions tag with one entry per securable allowed, and
-        ///     the caller's preferences tag.
-        /// </summary>
-        /// <param name="user">The caller's profile.</param>
-        /// <param name="preferences">The caller's bag.</param>
-        /// <param name="tenant">The tenant's tags.</param>
-        /// <param name="caller">The caller's own tags.</param>
-        /// <param name="decisions">The caller's decision on every registered securable, in the registry's order.</param>
-        /// <param name="access">The caller's set.</param>
-        /// <param name="now">The instant the summary is valid from.</param>
-        /// <returns>The envelope.</returns>
-        internal static MeResult Envelope(
-            UserProfileView user,
-            IReadOnlyDictionary<string, string> preferences,
-            VersionTagSnapshot tenant,
-            UserVersionTagSnapshot caller,
-            IReadOnlyList<AccessDecision> decisions,
-            UserAccess access,
-            DateTimeOffset now)
-        {
-            ArgumentNullException.ThrowIfNull(user);
-            ArgumentNullException.ThrowIfNull(preferences);
-            ArgumentNullException.ThrowIfNull(tenant);
-            ArgumentNullException.ThrowIfNull(caller);
-            ArgumentNullException.ThrowIfNull(decisions);
-            ArgumentNullException.ThrowIfNull(access);
-
-            Dictionary<string, string> tags = new(StringComparer.Ordinal);
-            foreach ((string name, string value) in VersionTagWire.Items(tenant, caller))
-            {
-                tags[name] = value;
-            }
-
-            SecurableSummary[] securables = [.. decisions
-                .Where(static decision => decision.IsAllowed)
-                .Select(static decision => new SecurableSummary(decision.Resource, decision.Action, decision.Outcome == AccessOutcome.Filtered))];
-            AccessSummary summary = new(
-                tags[VersionTagWire.PermissionsItem],
-                MeResult.FormatVersion,
-                access.IsSystem,
-                securables,
-                access.Problems,
-                access.NextBoundary(now));
-            return new MeResult(user, tags[VersionTagWire.PreferencesItem], preferences, summary, tags);
-        }
-
-        /// <summary>The caller's own tags a round trip reported.</summary>
-        /// <param name="tags">The tags; null when the round trip carried no connected member.</param>
-        /// <returns>The tags.</returns>
-        /// <exception cref="InvalidOperationException">The round trip reported none, which a member's own round trip always does.</exception>
-        private static UserVersionTagSnapshot CallerTags(UserVersionTagSnapshot? tags)
-        {
-            return tags ?? throw new InvalidOperationException("The caller's round trip reported no tags of the caller, which every round trip of a connected member reports.");
+            return MeEnvelope.Of(user, preferences, tenant, caller, access, _dependencies.Securables, _dependencies.Evaluator, _dependencies.Time.GetUtcNow());
         }
 
         /// <summary>
@@ -466,35 +380,6 @@ namespace Tellma.Core.Users
                 """,
                 new SqlOptions(idempotent: true, resultSets: 1));
             return (row, modifier);
-        }
-
-        /// <summary>Appends the read of the caller's own preference bag, in key order.</summary>
-        /// <param name="batch">The batch.</param>
-        /// <param name="idempotent">Whether the batch may re-run the read: true in a Read batch.</param>
-        /// <returns>The read: one result set of keys and values.</returns>
-        private static BatchResult<RawResult> ComposeOwnBag(IDataBatch batch, bool idempotent)
-        {
-            return batch.Sql(
-                $"SELECT [Key], [Value] FROM [core].[UserPreferences] WHERE [UserId] = @tm_UserId ORDER BY [Key];",
-                new SqlOptions(idempotent: idempotent, resultSets: 1));
-        }
-
-        /// <summary>A bag read's keys and values, in the read's order.</summary>
-        /// <param name="read">The read: one result set of keys and values.</param>
-        /// <returns>The bag.</returns>
-        internal static IReadOnlyDictionary<string, string> Bag(RawResult read)
-        {
-            ArgumentNullException.ThrowIfNull(read);
-            QueryRowSet set = read.ResultSets[0];
-            string[] keys = (string[])set.GetBuffer(0);
-            string[] values = (string[])set.GetBuffer(1);
-            Dictionary<string, string> bag = new(set.RowCount, StringComparer.Ordinal);
-            for (int index = 0; index < set.RowCount; index++)
-            {
-                bag[keys[index]] = values[index];
-            }
-
-            return bag;
         }
 
         /// <summary>The first row's text in a column of a one-row result set.</summary>

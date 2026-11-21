@@ -99,7 +99,9 @@ The layout is frozen: the boot script's expiry delete uses it too, and both test
   absent unless its `sync` document is within the idle window (the stored distribution's
   `session.idleDays`, else 7 days), and the user's `tenants` and `distribution` once older than it.
 - **Writes.** `put` keeps a stored copy saved later; `patch` reads and writes in one readwrite
-  transaction, and `undefined` deletes. Each commit posts `store.changed` with the stored name, and
+  transaction, and `undefined` deletes. The cache refresher's internal writes store several
+  documents of a partition in one transaction with one `store.changed`, and show a write's result in
+  the mirror ahead of the write that stores it. Each commit posts `store.changed` with the stored name, and
   other tabs re-read what they mirror of it. A write is refused with `TmStoreRefusedError`
   (`other-user`, `cookie` or `session`) unless the session is the partition's user's and active.
 - **Sweeps.** `session-ended` deletes every user's partitions and the image cache;
@@ -130,6 +132,45 @@ posting tab's id; a tab ignores an unknown version or type and never hears its o
 channels open once the Core chunk names the slug (earlier posts wait for them), close while the
 page sits in the back-forward cache, and reopen when it comes back, when the store re-reads every
 mirrored document.
+
+### Sync and the launch documents
+
+`TmCacheRefresher` (`src/state/sync/`) is the one path to `client/sync`, which answers a tenant's
+`settings`, `me`, `tenant` and lists' tags by the tags the tab holds. `provideTellma` makes it the
+HTTP layer's cache seam, so every response's version-tags header reaches `observe`.
+
+- **`observe(t, tags, trigger)`** syncs when a reported `settings`, `preferences`, `permissions` or
+  `entities` tag differs from the held one; a list's tag only marks the held list stale.
+- **`refresh(t, docs, trigger)`** syncs unless a sync sent after the call made it needless;
+  `['access']` ends early while the held envelope's `validUntil` is ahead, and holds no
+  `permissions` tag so the server decides the grants; `['entities']` holds no composite, so the
+  answer reports every list's tag. It rejects only for `cold`.
+- **A run.** Calls join the tenant's pending run (a `cold` call makes it cold). The run queues on
+  the Web Lock `tm:<slug>:<sub>:<t>:sync`, re-reads `settings`, `me` and `sync`, and ends there when
+  every joined call is needless; otherwise it waits out a 2 s throttle since the tenant's last sync
+  in any tab, then sends one background read (a cold one stamps activity) and stores the answer in
+  one transaction, `sync.at` being the send time. A list the server calls stale while the held tags
+  say otherwise loses its tag and the composite, so the next sync reports every list's.
+- **`adopt(t, docs)`** stores a write's own results (a settings save, a profile save, a preferences
+  or locale write) as server truth: the tab shows them at once and the store writes them under the
+  sync lock, so the write's own header finds its tags held.
+- **The boundary.** At the routed tenant's `validUntil`, plus a 0-2 s jitter and only while the page
+  is visible, the refresher runs `refresh(['access'], 'boundary')`; a boundary the server keeps (a
+  clock running ahead) backs off from 30 s, doubling to 10 min.
+- **Failures.** `tenant-not-found` and `tenant-unavailable` go to the error presenter seam, even from
+  a background sync; a cancel, a session end and an outdated client are left to their owners;
+  anything else is reported as `tm.sync.failed`. Leaving the tenant or the page aborts its syncs.
+  Each sync records `tm.sync.completed` with its trigger and what it changed.
+
+`TmLaunchCache` (`src/state/launch/`) serves what the chrome renders from: the routed tenant's
+`docs` (`settings`, `me`, `tenant`) and `warm` (all three present), the user's `tenants` and the
+distribution's facts. Entering a tenant reads its partition once and runs a cold sync when a launch
+document is missing; a failed entry rejects, and the next one tries again. `entitySet(name)` reads
+an entity's whole list: its first read while the list is absent or stale loads `{segment}/all` (a
+sync first when the tab holds no tag for it), and a stale list keeps serving until the newer one
+lands. A refused list stores nothing and is tried again once the caller's grants move. The user's
+tenants and the distribution are read again in the background once per launch, at idle, and the
+tenants on every tenantless route.
 
 ## The HTTP layer
 

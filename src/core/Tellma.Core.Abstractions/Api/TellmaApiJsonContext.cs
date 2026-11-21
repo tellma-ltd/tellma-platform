@@ -47,6 +47,7 @@ namespace Tellma.Core.Abstractions.Api
     [JsonSerializable(typeof(ImportRequest))]
     [JsonSerializable(typeof(StartImportRequest))]
     [JsonSerializable(typeof(QueryexDiscoverRequest))]
+    [JsonSerializable(typeof(ClientSyncRequest))]
 
     // --- Result records ---
     [JsonSerializable(typeof(AffectedResult))]
@@ -60,6 +61,8 @@ namespace Tellma.Core.Abstractions.Api
     [JsonSerializable(typeof(AccessGrant))]
     [JsonSerializable(typeof(ImportPlan))]
     [JsonSerializable(typeof(ImportOutcome))]
+    [JsonSerializable(typeof(ClientSyncResult))]
+    [JsonSerializable(typeof(TenantFacts))]
 
     // --- The rows envelopes: each written by its own converter, which the generated metadata carries ---
     [JsonSerializable(typeof(RowPage))]

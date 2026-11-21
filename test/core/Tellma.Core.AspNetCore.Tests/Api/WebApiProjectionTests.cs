@@ -128,6 +128,8 @@ namespace Tellma.Core.AspNetCore.Tests.Api
                 { "pj-inbox/purge", "pj.Inbox:Purge", true, false, false, false, false, "Service" },
                 // Core's own inbox summary is polled, so it stamps no activity.
                 { "inbox/summary", null, false, false, false, true, false, "Service" },
+                // So is the client's sync of its cached documents.
+                { "client/sync", null, false, false, false, true, false, "Service" },
                 { "users/save", "core.User:Save", true, false, false, false, true, "Stack" },
             };
         }

@@ -194,6 +194,10 @@ namespace Tellma.Core.Composition
                 .Singleton<SettingsPatchMerger, SettingsPatchMerger>()
                 .ApiService<SettingsService>();
 
+            // --- The client's one revalidation of a tenant's cached documents: settings, the caller's
+            // envelope, the lists' tags and the tenant's facts in one Read batch (spec 0025 §5.1) ---
+            _ = contribution.ApiService<ClientSyncService>();
+
             // --- The Queryex authoring endpoint: an editor's text checked as a query or a role save compiles it (spec 0029 §9) ---
             _ = contribution.ApiService<QueryexService>();
 

@@ -289,6 +289,10 @@ service settings
   action details: api member-only body - handler SettingsService; idempotent; result TenantSettingsDetails; mcp Hidden, revision 0; -
   action refresh-caches: api core.Settings.General:Save body - handler SettingsService; mutation, idempotent; result void; mcp Hidden, revision 0; -
   action save: api member-only body TenantSettingsPatch handler SettingsService; mutation; result SettingsSaveResult; mcp Hidden, revision 0; -
+service client
+  class: Tellma.Core.Client.ClientSyncService
+  feature: core
+  action sync: api member-only body ClientSyncRequest handler ClientSyncService; idempotent; result ClientSyncResult; mcp Hidden, revision 0; -
 service queryex
   class: Tellma.Core.Api.QueryexService
   feature: core

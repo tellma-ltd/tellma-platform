@@ -2220,6 +2220,17 @@ Every member reaches their own row without a role grant, through the users' memb
 | `me/locale` | 1 | validates in memory (`Users.LocaleEmpty` at `language`, `Users.LocaleResetConflict` at `reset`, then the save's locale rules, each value stored as its set spells it), then one persist batch: the access guards' lock, the update of the caller's row (each member set, `NULL` for each reset; an unchanged value writes no row), the invariants and the stored values; a read-only tenant admits it |
 | `me/preferences/set`, `me/preferences/delete` | 1 | checks the keys and values in memory (paths `items[i].key`, `keys[i]`), then the bag's statement with the key cap asserted inside it (`Users.TooManyPreferenceKeys` at the request), then the bag; the answer carries the caller's moved preferences tag; a read-only tenant admits them |
 
+`client/sync` (`Client/ClientSyncService`, member-only, idempotent, hidden from agents) is the one
+call a browser tab revalidates a tenant's cached documents with. It takes the tags the tab holds
+and runs one Read batch: the connect prologue, then the caller's preference rows. It answers the
+tenant's facts (`TenantFacts`: id, category, state, live tenant, whether the hub runs) and the four
+client tags always; the settings, as the bytes the settings cache serialized when it loaded them,
+when the held `settings` tag differs; the envelope `me` answers when a held caller tag differs;
+every list's tag when the held `entities` tag differs or is absent; and the held lists whose tags
+moved. Tags compare ordinally and a held name the server does not know is ignored. It is a polling
+route, so it never stamps the caller's activity. `me` and `client/sync` compose the envelope
+through one internal helper, `MeEnvelope`.
+
 An administrator reads and writes another user's bag under `core.User` × `Preferences` and its
 filter: `preferences/get` (one round trip; a user the filter hides is not found) and the
 single-target entity actions `preferences/set` and `preferences/delete` (two round trips, the
@@ -2628,7 +2639,7 @@ are SpreadsheetML packages written with `DocumentFormat.OpenXml` (MIT), forward-
 | `Identity/` | `IdentityServerClient`; internally its transport and token cache, the wire shapes and their source-generated JSON metadata, the options' settling and validator, the composition step that binds them and registers the named HTTP client, the instruments and the log events. |
 | `Notifications/` | `NotificationTypeRegistry`, `NotificationChannelRegistry`, `ClientEventRegistry`, `NotificationsClientAssetContributor`, `ClientEventPublisher`, `NullClientEventPublisher`, `NotificationConfiguration` and `NotificationDeliveryArguments`; internally the notifier, its statements and the delivering channels, the email channel's sender, the renderer, the preference row, the metrics, the name grammars, the hub-less real-time status, the composition step and the log events. |
 | `Outbox/` | `OutgoingEmailService`; internally the outbox, the stored address lists, the outgoing emails' model configuration, the sending job's handler and the composition step that binds the outbox's options. |
-| `Client/` | Internally: the client entity model, its data types, the action arguments' fields and schema, the declarations writer and the client-asset contributor. |
+| `Client/` | Internally: the client entity model, its data types, the action arguments' fields and schema, the declarations writer and the client-asset contributor; and `ClientSyncService`, the `client/sync` route. |
 | `Localization/` | `LanguageCatalog`, `LanguageDeclaration`, `LocalizationNegotiator`, `ValueSetRegistry`, `IcuStringLocalizerFactory`, `ConventionalStringKeys`; internally the catalogue's data, the declaration's resolution, the `Accept-Language` reader, the negotiated cultures, the pinned culture data with its reader, writer and generator source, the localizer's resource reader, ICU renderer, calendar formatter, argument reader and missing-key telemetry, the string-pack composer with its resource sources and client-asset contributor, the label provider, the label key chains, the named enums, the key conventions and the name humanizer. |
 | `Resources/` | `Strings.resx`, Core's shared resources (English), with its `ar` and `am` satellites and the `Strings` marker; `ServerStrings.resx`, the server-only resources (the email notification's subject and bodies), with its `ar` satellite and its marker. |
 
