@@ -1,6 +1,6 @@
 SELECT
     (CAST([T].[Memo] AS nvarchar(max)) + [T].[Notes]) AS [c0],
-    LEN([T].[DocCode]) AS [c1],
+    CAST(LEN([T].[DocCode]) AS int) AS [c1],
     UPPER(TRIM([T].[Memo])) AS [c2],
     LEFT([T].[Memo], @qx0_p3) AS [c3],
     REPLACE([T].[Memo], @qx0_p4, @qx0_p5) AS [c4]

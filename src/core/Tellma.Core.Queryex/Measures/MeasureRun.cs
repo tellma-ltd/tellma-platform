@@ -902,8 +902,11 @@ namespace Tellma.Core.Queryex.Measures
                         ? new MeasureValue(QueryexType.QxDateTimeOffset, false, dateTimeOffset: instant)
                         : null,
 
-                    // No parameter or slot of these types reaches a measure.
-                    BoundType.Guid or BoundType.HierarchyId or BoundType.Geography or BoundType.Null or BoundType.Error => null,
+                    // An identifier reaches a measure only to be tested for absence, so a present one
+                    // carries nothing but its presence. No parameter of the other types can be
+                    // declared.
+                    BoundType.Guid => value is Guid ? new MeasureValue(QueryexType.QxGuid, false) : null,
+                    BoundType.HierarchyId or BoundType.Geography or BoundType.Null or BoundType.Error => null,
                     _ => null,
                 };
 

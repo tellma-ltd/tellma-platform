@@ -123,13 +123,10 @@ namespace Tellma.Core.Queryex.Emit
                 return argument;
             }
 
-            // The backend counts a bounded text's characters in an int and only an unbounded one's
-            // in a bigint.
+            // A count of characters is cast to an int whatever text it counts.
             if (following == ResultFollowing.Length)
             {
-                return argument.Family is QueryexStoreFamily.QxVarChar or QueryexStoreFamily.QxNVarChar && argument.Size is null
-                    ? QueryexStoreType.QxBigInt
-                    : QueryexStoreType.QxInt;
+                return QueryexStoreType.QxInt;
             }
 
             // The numeric functions return a narrow whole number as an int, and floor and ceiling

@@ -50,8 +50,9 @@ namespace Tellma.Core.Queryex.Emit
         Integral,
 
         /// <summary>
-        ///     A count of the argument's characters: an <c>int</c>, or a <c>bigint</c> for an unbounded
-        ///     text, which can hold more characters than an <c>int</c> counts.
+        ///     A count of the argument's characters, which the pattern casts to an <c>int</c>: the
+        ///     backend counts an unbounded text in a <c>bigint</c>, and whether a bound text is
+        ///     unbounded depends on the value bound, while every count fits an <c>int</c>.
         /// </summary>
         Length,
     }

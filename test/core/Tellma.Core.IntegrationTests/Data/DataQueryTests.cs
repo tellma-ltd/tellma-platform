@@ -221,9 +221,40 @@ namespace Tellma.Core.IntegrationTests.Data
                 }
             }
 
-            // --- Measures add columns to each group and never a group ---
+            // --- Over keyed groups, measures add columns to each group and never a group ---
             Assert.Equal(Strings(without.Value.Rows, 0), Strings(rows, 0));
             Assert.Equal(without.Value.Count, with.Value.Count);
+        }
+
+        [Fact]
+        public async Task A_labelled_grand_total_with_measures_is_one_row_counted_once_over_rows_or_none()
+        {
+            await using AsyncServiceScope scope = fixture.CreateScope();
+            IDataBatch batch = Batch(scope);
+            QuerySpec total = new()
+            {
+                Root = Entity(scope, "fixture.Widget"),
+                Select = "'Total'",
+                Measures = "sum(Price)",
+                Aggregate = true,
+            };
+            QuerySpec nothing = total with { Filter = FilterTree.Leaf("false") };
+            QuerySpec folded = total with { Measures = "if(false, sum(Price), 1)" };
+            RowQueryOptions options = new() { CountCap = 10 };
+
+            BatchResult<RowPage> overRows = batch.Rows(total, null, options);
+            BatchResult<RowPage> overNone = batch.Rows(nothing, null, options);
+            BatchResult<RowPage> foldedOverRows = batch.Rows(folded, null, options);
+            BatchResult<RowPage> foldedOverNone = batch.Rows(folded with { Filter = nothing.Filter }, null, options);
+            _ = await batch.ExecuteAsync(Token);
+
+            // The measures make each page one grand total, whether or not a row is read and whether
+            // or not a partial survives, and its count agrees with it.
+            foreach (RowPage page in new[] { overRows.Value, overNone.Value, foldedOverRows.Value, foldedOverNone.Value })
+            {
+                Assert.Equal(["Total"], Strings(page.Rows, 0));
+                Assert.Equal(1, page.Count);
+            }
         }
 
         [Fact]

@@ -58,6 +58,30 @@ namespace Tellma.Core.Queryex.Tests.Measures
                 harness.Measures.Items.Select(static item => item.Nullity));
         }
 
+        /// <summary>
+        ///     A null test reads only whether a value is there, so it admits an identifier parameter
+        ///     and the typed absent value, alone or through a choice or a coalescing.
+        /// </summary>
+        [Fact]
+        public void NullTests_AdmitValuesOfAnyType()
+        {
+            MeasureHarness harness = Compile(
+                "if(@G is null, sum(Amount), 0), coalesce(@G, if(count() > 0, @G, null)) is not null,"
+                + " cast(null, 'guid') is null and count() >= 0",
+                new QueryexParameterDeclaration("G", QueryexType.QxGuid, IsNotNull: false));
+            object?[][] rows = [[2.5000m], [1L]];
+
+            harness.Arguments["G"] = Guid.Parse("7d9f2c1e-4b8a-4e3d-9a61-0f2b5c8d7e14");
+            Assert.Equal(["0.0000", "true", "true"], harness.Evaluate(rows).Select(value => value.ToString()));
+
+            harness.Arguments["G"] = null;
+            Assert.Equal(["2.5000", "false", "true"], harness.Evaluate(rows).Select(value => value.ToString()));
+
+            // A value of another type is still refused.
+            harness.Arguments["G"] = "7d9f2c1e-4b8a-4e3d-9a61-0f2b5c8d7e14";
+            Assert.Throws<ArgumentException>(harness.Prepare);
+        }
+
         /// <summary>Arithmetic propagates absence, and an absent dividend over zero is absent rather than an error.</summary>
         [Fact]
         public void Absence_Propagates()

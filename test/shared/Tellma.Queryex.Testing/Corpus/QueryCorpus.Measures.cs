@@ -72,6 +72,19 @@ namespace Tellma.Queryex.Testing.Corpus
                 Measures = "count(), max(Amount) - min(Amount)",
             });
 
+            // A null test reads only whether a parameter is there, so it admits one of any type,
+            // through a choice or a coalescing too; the parameter never reaches the statement.
+            yield return Query("measure-null-tested-parameter", new QuerySpec
+            {
+                Root = LedgerFixture.Invoice,
+                Aggregate = true,
+                Select = "Centre.Name",
+                Measures = "if(@Key is null, sum(Amount), 0), coalesce(@Key, if(count() > 0, @Key, null)) is not null",
+            }) with
+            {
+                Parameters = [new QueryexParameterDeclaration("Key", QueryexType.QxGuid, IsNotNull: false)],
+            };
+
             // An omitted parameter folds inside a partial's condition as in any aggregation. Partials
             // are told apart as written, so the folded condition stays a partial of its own beside
             // the unconditional one, and a declared parameter left in still binds inside its partial.
@@ -110,6 +123,10 @@ namespace Tellma.Queryex.Testing.Corpus
             yield return Refused("refuse-measure-instant-difference", "diffDays(min(PostedOn), max(PostedOn))", Construct(0, 38, "diffDays"));
             yield return Refused("refuse-measure-date-arithmetic", "addDays(max(PostingDate), 1)", Construct(0, 28, "addDays"));
             yield return Refused("refuse-measure-identifier", "if(count() > 0, cast(null, 'guid'), cast(null, 'guid'))", Construct(0, 55, "guid"));
+
+            // The position functions read a row's position, so outside an aggregation they are the
+            // aggregation rule's, reported at the call.
+            yield return Refused("refuse-measure-level", "count() + level(max(AltNode))", Site("QX4011", "Measures[0]", 10, 19));
 
             // Only the refused node is reported, in the item it sits in.
             yield return Refused(

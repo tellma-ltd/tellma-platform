@@ -62,12 +62,18 @@ namespace Tellma.Core.Queryex.IntegrationTests
         /// <summary>A row filter no fact row passes, for the grand total over nothing.</summary>
         private static readonly FilterTree NoRow = FilterTree.Leaf("Leaf < 0");
 
-        /// <summary>The value the declared parameter is given.</summary>
+        /// <summary>The value the declared number parameter is given.</summary>
         private static readonly decimal ParameterValue = 2.5m;
 
-        /// <summary>The parameter a measure may read.</summary>
+        /// <summary>The value the declared text parameter is given.</summary>
+        private const string TextValue = "Twelve chars";
+
+        /// <summary>The parameters a measure may read.</summary>
         private static readonly QueryexParameterDeclaration[] Parameters =
-            [new QueryexParameterDeclaration("P", QueryexType.QxNumeric, IsNotNull: false)];
+        [
+            new QueryexParameterDeclaration("P", QueryexType.QxNumeric, IsNotNull: false),
+            new QueryexParameterDeclaration("T", QueryexType.QxString, IsNotNull: false),
+        ];
 
         /// <summary>What the statements' slots are bound with.</summary>
         private static readonly InterpreterContext Context = InterpreterContext.Fixed with
@@ -75,6 +81,7 @@ namespace Tellma.Core.Queryex.IntegrationTests
             Parameters = new Dictionary<string, QxValue>(StringComparer.OrdinalIgnoreCase)
             {
                 ["P"] = QxValue.Number(new SqlDecimal(ParameterValue)),
+                ["T"] = QxValue.Text(TextValue),
             },
         };
 
@@ -115,6 +122,7 @@ namespace Tellma.Core.Queryex.IntegrationTests
 
                 // Text lengths, counted in the width the server counts them in.
                 "max(length(Label))", "max(length(Label)) * max(Qty) * max(Qty)", "min(length(Label)) + max(Tiny)",
+                "max(length(@T))", "max(length(coalesce(Label, @T)))",
 
                 // Absence over no row at all, which a grouped statement never sees.
                 "if(sum(Amount) is null, 0, 1)", "max(Day) is null", "coalesce(sum(Amount), -1)",
@@ -205,7 +213,7 @@ namespace Tellma.Core.Queryex.IntegrationTests
 
             MeasureEvaluator evaluator = measures.Prepare(new MeasureContext(
                 [.. measures.Partials.Select(partial => DecimalType(source.Schema[partial.Ordinal]))],
-                new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase) { ["P"] = ParameterValue },
+                new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase) { ["P"] = ParameterValue, ["T"] = TextValue },
                 Context.Today,
                 Context.Now,
                 Context.UserId));

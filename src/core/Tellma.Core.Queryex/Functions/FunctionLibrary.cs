@@ -644,8 +644,10 @@ namespace Tellma.Core.Queryex.Functions
         /// <returns>The definitions.</returns>
         private static IEnumerable<FunctionDefinition> StringOperations()
         {
-            // The backend counts in an int, and in a bigint only for an unbounded text.
-            yield return Unary("length", "LEN({0})", TypeSpecs.Text, TypeSpecs.Numeric, follows: 0, following: ResultFollowing.Length);
+            // The backend counts an unbounded text in a bigint, and a bound parameter is unbounded
+            // only when its value is long, so the count is cast to the int every count fits in and
+            // its type no longer depends on the value bound.
+            yield return Unary("length", "CAST(LEN({0}) AS int)", TypeSpecs.Text, TypeSpecs.Numeric, follows: 0, following: ResultFollowing.Length);
             yield return Unary("trim", "TRIM({0})", TypeSpecs.Text, TypeSpecs.Text, follows: 0);
             yield return Unary("upper", "UPPER({0})", TypeSpecs.Text, TypeSpecs.Text, follows: 0);
             yield return Unary("lower", "LOWER({0})", TypeSpecs.Text, TypeSpecs.Text, follows: 0);

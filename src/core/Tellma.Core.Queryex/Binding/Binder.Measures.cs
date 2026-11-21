@@ -46,6 +46,22 @@ namespace Tellma.Core.Queryex.Binding
         /// <param name="node">The node.</param>
         private void ReportUncomputable(TypedExpr node)
         {
+            if (node is TypedCall { IsAggregate: false } call && NeedsPath(call))
+            {
+                // These functions take a position from a row, so outside an aggregation they read
+                // the rows the way a stray path does.
+                _scope.Report(DiagnosticCodes.MeasureMustAggregate, node.Span);
+                return;
+            }
+
+            if (node is TypedIsNull test && TestsOnlyNullness(test.Operand))
+            {
+                // A null test asks only whether a value is there, which the evaluator answers for a
+                // parameter of any type.
+                ReportUncomputableAround(test.Operand);
+                return;
+            }
+
             string? construct = UncomputableConstruct(node);
             if (construct is not null)
             {
@@ -65,6 +81,72 @@ namespace Tellma.Core.Queryex.Binding
             {
                 ReportUncomputable(child);
             }
+        }
+
+        /// <summary>
+        ///     Reports what a null test's operand computes besides the values it tests: the conditions
+        ///     of its choices.
+        /// </summary>
+        /// <param name="node">The operand, or one of the values it chooses between.</param>
+        private void ReportUncomputableAround(TypedExpr node)
+        {
+            if (node is not TypedCall call)
+            {
+                return;
+            }
+
+            // A choice's condition is computed; its values are only tested.
+            bool choice = call.Definition.Name.Equals("if", StringComparison.OrdinalIgnoreCase);
+            for (int index = 0; index < call.Arguments.Length; index++)
+            {
+                if (choice && index == 0)
+                {
+                    ReportUncomputable(call.Arguments[index]);
+                }
+                else
+                {
+                    ReportUncomputableAround(call.Arguments[index]);
+                }
+            }
+        }
+
+        /// <summary>
+        ///     Whether a null test's operand is a value of a type the evaluator holds no value of,
+        ///     made only of parameters, the absent value and choices between them.
+        /// </summary>
+        /// <param name="node">The operand.</param>
+        /// <returns>True when only its nullness is needed and every part of it supplies that.</returns>
+        private static bool TestsOnlyNullness(TypedExpr node)
+        {
+            return node.Type is BoundType.Guid or BoundType.Geography && SuppliesNullness(node);
+        }
+
+        /// <summary>Whether a value's nullness is all the evaluator needs to read of it.</summary>
+        /// <param name="node">The value.</param>
+        /// <returns>True for a parameter, the absent value, or a choice or coalescing of those.</returns>
+        private static bool SuppliesNullness(TypedExpr node)
+        {
+            return node switch
+            {
+                TypedParameter or TypedNull => true,
+
+                // The absent value given a type, as an omitted parameter is left behind.
+                TypedCall { IsAggregate: false } call when call.Definition.Name.Equals("cast", StringComparison.OrdinalIgnoreCase) =>
+                    call.Arguments[0] is TypedNull,
+                TypedCall { IsAggregate: false } call when call.Definition.Name.Equals("if", StringComparison.OrdinalIgnoreCase) =>
+                    SuppliesNullness(call.Arguments[1]) && SuppliesNullness(call.Arguments[2]),
+                TypedCall { IsAggregate: false } call when call.Definition.Name.Equals("coalesce", StringComparison.OrdinalIgnoreCase) =>
+                    call.Arguments.All(SuppliesNullness),
+                _ => false,
+            };
+        }
+
+        /// <summary>Whether a function reads a position from a row, which only an aggregation may do in a measure.</summary>
+        /// <param name="call">The call, outside every aggregation.</param>
+        /// <returns>True when it does.</returns>
+        private static bool NeedsPath(TypedCall call)
+        {
+            return call.Definition.Name.ToUpperInvariant() is "DESCENDANTOF" or "ANCESTOROF" or "LEVEL";
         }
 
         /// <summary>The construct a node is, when the evaluator cannot compute it exactly.</summary>

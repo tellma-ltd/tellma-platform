@@ -640,13 +640,15 @@ namespace Tellma.Core.Data.Batches
 
             // A group has no key of its own: the grouped body is counted as it stands, its skip
             // dropped. Only an ordering can be limited, so an unordered one is counted whole and the
-            // count is capped as it is read; its groups are all computed either way. Measures add
-            // columns to each group and never a group, so the count compiles without them.
+            // count is capped as it is read; its groups are all computed either way. Measures stay:
+            // over a select list that derives no key and aggregates nothing, they are what makes the
+            // body a single grand total rather than one row per underlying row, and the count reads
+            // none of their columns.
             QuerySpec counted = !spec.Aggregate
                 ? spec with { Select = key, OrderBy = key, Skip = null, Take = take, UndeclaredColumns = [] }
                 : string.IsNullOrWhiteSpace(spec.OrderBy)
-                    ? spec with { Skip = null, Take = null, Measures = null, UndeclaredColumns = [] }
-                    : spec with { Skip = null, Take = take, Measures = null, UndeclaredColumns = [] };
+                    ? spec with { Skip = null, Take = null, UndeclaredColumns = [] }
+                    : spec with { Skip = null, Take = take, UndeclaredColumns = [] };
             CompiledQuery compiled = Compile(counted, arguments, ordinal);
 
             string text = $"{compiled.Prologue}SELECT COUNT(*) AS [Count] FROM (\n{compiled.Body}) AS [q]\n{Option(compiled)};\n";
