@@ -384,6 +384,19 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-189 (orchestrator, 2026-11-22): PC-096 Review 2 rulings
+
+Review 2 found 0/1/2 and judged deviations 14-17, the budget raise (+0.16 KB, within D-031) and the `ɵshow`/`ɵwrite` paths sound. R1-7's pushback reason did not hold, but the outcome stands through the WATCHLIST hand-off to PC-110.
+
+Fixed in fix2:
+- R2-1: a tenant's queued sync run is dropped when its controller aborts, `ɵenter` never returns an entry from before a leave, and the abort is re-checked before the 2 s throttle wait. Add a leave-and-re-enter test.
+- R2-2: the re-read inside the lock covers `tenant` too (a fix1 regression). Add a two-cold-tabs test.
+- R2-3: the code keeps following 0016 §4.3 (client/sync never stamps activity). Record a named deviation against 0025 §5.3 step 5, and rename the over-claiming test.
+
+For Ahmad: 0025 §5.3 step 5 says a cold sync stamps activity, while 0016 §4.3 says client/sync never does. Either amend 0025, or have the server honour a foreground client/sync.
+
+PC-096 holds after fix2, behind PC-214 and PC-175.
+
 ### D-188 (orchestrator, 2026-11-22): PC-175 Review 1 rulings
 
 Review 1 found 0/1/4 and accepted all 16 deviations. The ScratchDirectory reuse, the unlocalized Remedy (its 413 body carries arguments.remedy) and the per-stack ExcelOperations wiring are accepted. IStackExcelRows is not exposed; its golden line is a renderer artifact.
