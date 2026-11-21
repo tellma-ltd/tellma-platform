@@ -19,6 +19,6 @@ GROUP BY [P1].[SegmentName]
 --   2 : Count QxNumeric
 --   3 : Count QxNumeric
 -- measures
---   QxNumeric NotNull sum(Amount)
---   QxNumeric NotNull sum(Amount) / count()
---   QxNumeric NotNull avg(Amount)
+--   QxNumeric Nullable sum(Amount)
+--   QxNumeric Nullable sum(Amount) / count()
+--   QxNumeric Nullable avg(Amount)

@@ -414,6 +414,33 @@ namespace Tellma.Queryex.Testing.Corpus
                 Aggregate = true,
                 Select = "Centre.Name, if(count() > 1, count(), null) = 2, if(count() > 0, count(), null) in (1, 3)",
             });
+
+            // A grand total whose aggregations all fold away is still one group, and answers one
+            // row however many it reads.
+            yield return Query("emit-grand-total-folded", new QuerySpec
+            {
+                Root = LedgerFixture.Invoice,
+                Aggregate = true,
+                Select = "count() is null, 1",
+            });
+
+            // The same over no row at all is still one row, as every grand total is.
+            yield return Query("emit-grand-total-folded-over-nothing", new QuerySpec
+            {
+                Root = LedgerFixture.Invoice,
+                Aggregate = true,
+                Select = "count() is null, 1",
+                Filter = FilterTree.Leaf("false"),
+            });
+
+            // A select list that never aggregated anything is the degenerate shape, and answers
+            // one row per row it reads.
+            yield return Query("emit-aggregate-without-aggregation", new QuerySpec
+            {
+                Root = LedgerFixture.Invoice,
+                Aggregate = true,
+                Select = "1",
+            });
         }
 
         /// <summary>The queries that are refused, and why.</summary>

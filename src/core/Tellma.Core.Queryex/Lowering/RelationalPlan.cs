@@ -510,6 +510,13 @@ namespace Tellma.Core.Queryex.Lowering
         /// <summary>The grouping keys, when the query groups.</summary>
         internal ImmutableArray<PlanValue> GroupBy { get; init; } = [];
 
+        /// <summary>
+        ///     Whether the statement is a grand total that has to say so: an aggregate query with no
+        ///     grouping key and no group-level predicate whose aggregations all folded away, which
+        ///     without a predicate every group passes would answer once per row rather than once.
+        /// </summary>
+        internal bool GroupsAsOne { get; init; }
+
         /// <summary>The group-level predicate, when there is one.</summary>
         internal PlanPredicate? Having { get; init; }
 

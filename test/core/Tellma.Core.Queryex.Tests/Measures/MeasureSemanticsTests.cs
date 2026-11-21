@@ -34,6 +34,30 @@ namespace Tellma.Core.Queryex.Tests.Measures
             Assert.Equal(new QueryexNumericType(38, 6), harness.Prepare().ResultTypes[0]);
         }
 
+        /// <summary>
+        ///     Over a cell that combines no row, the measures are a grand total's over no row, however
+        ///     the statement that read the partials groups: a sum and an extreme are absent, and each
+        ///     measure's reported nullity says they can be.
+        /// </summary>
+        [Fact]
+        public void EmptyCell_IsAGrandTotalOverNoRow()
+        {
+            MeasureHarness harness = Compile(
+                "sum(Amount), sum(Amount) is null, if(sum(Amount) is null, 0, 1), max(Day) is null, count(), count() = 0");
+
+            MeasureValue[] values = harness.Evaluate();
+
+            Assert.True(values[0].IsNull);
+            Assert.True(values[1].Boolean);
+            Assert.Equal("0", values[2].Number.ToString());
+            Assert.True(values[3].Boolean);
+            Assert.Equal("0", values[4].Number.ToString());
+            Assert.True(values[5].Boolean);
+            Assert.Equal(
+                [QueryexNullity.Nullable, QueryexNullity.NotNull, QueryexNullity.NotNull, QueryexNullity.NotNull, QueryexNullity.NotNull, QueryexNullity.NotNull],
+                harness.Measures.Items.Select(static item => item.Nullity));
+        }
+
         /// <summary>Arithmetic propagates absence, and an absent dividend over zero is absent rather than an error.</summary>
         [Fact]
         public void Absence_Propagates()
@@ -82,11 +106,17 @@ namespace Tellma.Core.Queryex.Tests.Measures
             MeasureHarness harness = Compile("sum(Amount), max(Day) , count() * 2");
             Assert.Equal(
                 [
-                    new CompiledMeasure("sum(Amount)", QueryexType.QxNumeric, QueryexNullity.NotNull),
-                    new CompiledMeasure("max(Day)", QueryexType.QxDate, QueryexNullity.NotNull),
+                    new CompiledMeasure("sum(Amount)", QueryexType.QxNumeric, QueryexNullity.Nullable),
+                    new CompiledMeasure("max(Day)", QueryexType.QxDate, QueryexNullity.Nullable),
                     new CompiledMeasure("count() * 2", QueryexType.QxNumeric, QueryexNullity.NotNull),
                 ],
                 harness.Measures.Items);
+
+            // A measure can be absent over a cell that combines no row; the partial columns are the
+            // grouped statement's, where every group has a row.
+            Assert.Equal(
+                [QueryexNullity.NotNull, QueryexNullity.NotNull, QueryexNullity.NotNull],
+                harness.Measures.Partials.Select(partial => harness.Query.Columns[partial.Ordinal].Nullity));
 
             Assert.Equal(
                 [

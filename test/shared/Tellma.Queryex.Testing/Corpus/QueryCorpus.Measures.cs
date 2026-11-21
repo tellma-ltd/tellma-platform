@@ -101,6 +101,8 @@ namespace Tellma.Queryex.Testing.Corpus
             yield return Refused("refuse-measure-concatenation", "max(Code) || 'x'", Construct(0, 16, "||"));
             yield return Refused("refuse-measure-text-equality", "if(max(Code) = 'A', 1, 0)", Construct(3, 15, "text comparison"));
             yield return Refused("refuse-measure-text-membership", "if(max(Memo) in ('a', 'b'), 1, 0)", Construct(3, 23, "text comparison"));
+            yield return Refused("refuse-measure-position-equality", "if(max(AltNode) = min(AltNode), 1, 0)", Construct(3, 27, "text comparison"));
+            yield return Refused("refuse-measure-zone", "local(max(PostedAt))", Construct(0, 20, "local"));
             yield return Refused("refuse-measure-conversion", "cast(sum(Amount), 'string')", Construct(0, 27, "cast"));
             yield return Refused("refuse-measure-instant-component", "month(max(PostedOn))", Construct(0, 20, "month"));
             yield return Refused("refuse-measure-other-calendar", "year(max(PostingDate), 'uq')", Construct(0, 28, "year"));

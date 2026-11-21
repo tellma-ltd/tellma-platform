@@ -8,6 +8,7 @@ using System.Collections.ObjectModel;
 using System.Data.Common;
 using System.Data.SqlTypes;
 using System.Globalization;
+using Tellma.Queryex.Testing.Probe;
 using Tellma.Queryex.Testing.Schema;
 using Tellma.Queryex.Testing.Semantics;
 
@@ -19,11 +20,16 @@ namespace Tellma.Core.Queryex.IntegrationTests
     /// </summary>
     /// <remarks>
     ///     <para>
-    ///         Each measure is checked three ways. Per leaf group, the measure over that group's
+    ///         Each measure is checked four ways. Per leaf group, the measure over that group's
     ///         partials is the value the server computed beside them. Per branch, the measure over
     ///         the branch's leaves combined is the value the server computes grouping by the branch.
     ///         Over everything, the measure over every leaf combined is the value the server computes
-    ///         with no grouping at all.
+    ///         with no grouping at all. And over nothing, the measure over a cell that combines no
+    ///         row is the value the server computes with no grouping over a filter no row passes.
+    ///     </para>
+    ///     <para>
+    ///         Every partial the evaluator reads as a whole number is planned at the width of the
+    ///         column the server returns, since that is the buffer a reader hands over.
     ///     </para>
     ///     <para>
     ///         Where the server fails a statement, the evaluation fails too, with the code the
@@ -52,6 +58,9 @@ namespace Tellma.Core.Queryex.IntegrationTests
 
         /// <summary>The engine under test.</summary>
         private static readonly QueryexEngine Engine = new();
+
+        /// <summary>A row filter no fact row passes, for the grand total over nothing.</summary>
+        private static readonly FilterTree NoRow = FilterTree.Leaf("Leaf < 0");
 
         /// <summary>The value the declared parameter is given.</summary>
         private static readonly decimal ParameterValue = 2.5m;
@@ -103,6 +112,12 @@ namespace Tellma.Core.Queryex.IntegrationTests
                 "max(Label)", "min(Label)", "if(sum(Amount) > 100000, 'High', 'Low')", "max(Flag)", "min(Flag)",
                 "sum(Amount) > 0 and count(Cost) > 3", "max(Instant) < now()", "max(Day) >= '2024-02-29'",
                 "max(Qty) in (1000, 999, 998)", "sum(Cost) is null", "min(Stamp) < max(Stamp) or max(Flag) = false",
+
+                // Text lengths, counted in the width the server counts them in.
+                "max(length(Label))", "max(length(Label)) * max(Qty) * max(Qty)", "min(length(Label)) + max(Tiny)",
+
+                // Absence over no row at all, which a grouped statement never sees.
+                "if(sum(Amount) is null, 0, 1)", "max(Day) is null", "coalesce(sum(Amount), -1)",
             ];
         }
 
@@ -150,18 +165,16 @@ namespace Tellma.Core.Queryex.IntegrationTests
                 "Only " + compared.ToString(CultureInfo.InvariantCulture) + " measures compared values at every level.");
         }
 
-        /// <summary>Checks the three identities for one measure.</summary>
+        /// <summary>Checks the four identities for one measure.</summary>
         /// <param name="measure">The measure.</param>
         /// <returns>What the check found.</returns>
         private async Task<Outcome> CheckAsync(string measure)
         {
-            // The grand total carries a count beside the measure. A measure whose aggregations all
-            // fold away (`count() is null`) would otherwise leave a statement with no grouping and
-            // no aggregate, which the backend answers row by row rather than once.
-            if (!TryCompile(measure, "Branch, Leaf, " + measure, measures: true, out CompiledQuery? leaf, out string? failure)
-                || !TryCompile(measure, "Branch, Leaf", measures: true, out CompiledQuery? partials, out failure)
-                || !TryCompile(measure, "Branch, " + measure, measures: false, out CompiledQuery? branch, out failure)
-                || !TryCompile(measure, measure + ", count()", measures: false, out CompiledQuery? total, out failure))
+            if (!TryCompile(measure, "Branch, Leaf, " + measure, measures: true, null, out CompiledQuery? leaf, out string? failure)
+                || !TryCompile(measure, "Branch, Leaf", measures: true, null, out CompiledQuery? partials, out failure)
+                || !TryCompile(measure, "Branch, " + measure, measures: false, null, out CompiledQuery? branch, out failure)
+                || !TryCompile(measure, measure, measures: false, null, out CompiledQuery? total, out failure)
+                || !TryCompile(measure, measure, measures: false, NoRow, out CompiledQuery? empty, out failure))
             {
                 return new Outcome(failure, false);
             }
@@ -175,8 +188,21 @@ namespace Tellma.Core.Queryex.IntegrationTests
                 return new Outcome(measure + ": the partials alone fail on the server with " + source.Error, false);
             }
 
-            // The two statements list the same partials, each at its own columns.
+            // The two statements list the same partials, each at its own columns, every whole one at
+            // the width the server returns it in.
             CompiledMeasures measures = (leafResult.Error is null ? leaf! : partials!).Measures!;
+            IReadOnlyList<string?> widths = QueryexProbe.PartialWholeTypes(measures);
+            for (int partial = 0; partial < widths.Count; partial++)
+            {
+                string returned = source.Schema[measures.Partials[partial].Ordinal].DataTypeName!;
+                if (widths[partial] is string planned && planned != returned)
+                {
+                    return new Outcome(
+                        measure + ": partial " + partial.ToString(CultureInfo.InvariantCulture) + " is planned as " + planned + ", and the server returns " + returned + ".",
+                        false);
+                }
+            }
+
             MeasureEvaluator evaluator = measures.Prepare(new MeasureContext(
                 [.. measures.Partials.Select(partial => DecimalType(source.Schema[partial.Ordinal]))],
                 new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase) { ["P"] = ParameterValue },
@@ -252,19 +278,29 @@ namespace Tellma.Core.Queryex.IntegrationTests
                     [(everything, totalResult.Error is null ? Assert.Single(totalResult.Rows).Measure : null, "every row")],
                     totalResult);
 
+            // Over nothing: a cell nothing is combined into, against the grand total of no row.
+            Result emptyResult = await RunAsync(empty!, 0);
+            mismatch ??= Compare(
+                measure + " (no row)",
+                evaluator,
+                table,
+                [(table.AddCell(), emptyResult.Error is null ? Assert.Single(emptyResult.Rows).Measure : null, "no row")],
+                emptyResult);
+
             return new Outcome(
                 mismatch,
-                leafResult.Error is null && branchResult.Error is null && totalResult.Error is null);
+                leafResult.Error is null && branchResult.Error is null && totalResult.Error is null && emptyResult.Error is null);
         }
 
         /// <summary>Compiles one of a measure's statements.</summary>
         /// <param name="measure">The measure.</param>
         /// <param name="select">The select list.</param>
         /// <param name="measures">Whether the statement carries the measure's partials.</param>
+        /// <param name="filter">The row filter, or null for every row.</param>
         /// <param name="query">The compiled statement.</param>
         /// <param name="failure">Why it did not compile.</param>
         /// <returns>True when it compiled.</returns>
-        private static bool TryCompile(string measure, string select, bool measures, out CompiledQuery? query, out string? failure)
+        private static bool TryCompile(string measure, string select, bool measures, FilterTree? filter, out CompiledQuery? query, out string? failure)
         {
             QueryexResult<CompiledQuery> result = Engine.CompileQuery(
                 new QuerySpec
@@ -272,6 +308,7 @@ namespace Tellma.Core.Queryex.IntegrationTests
                     Root = MeasureFixture.Fact,
                     Aggregate = true,
                     Select = select,
+                    Filter = filter,
                     Measures = measures ? measure : null,
                 },
                 new QueryCompilationOptions

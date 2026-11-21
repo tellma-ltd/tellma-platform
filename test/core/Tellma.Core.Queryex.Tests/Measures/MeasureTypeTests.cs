@@ -88,6 +88,15 @@ namespace Tellma.Core.Queryex.Tests.Measures
             Assert.Equal("2.3500 (38,4)", Typed(Compile("round(sum(Amount), 2)").First(2.3450m).Number));
             Assert.Equal("-16.0000 (38,4)", Typed(Compile("round(sum(Amount), 0)").First(-15.5000m).Number));
             Assert.Equal("0.6667 (38,4)", Typed(Compile("if(count() > 0, sum(Amount) / sum(Cost), sum(Amount))").First(1L, 2.0000m, 3.0000m).Number));
+
+            // Every one of 38 places dropped: a half or more rounds up into a digit the type has no
+            // room for, as the backend fails it, and less rounds to zero.
+            MeasureHarness whole = Compile("round(sum(Rate), 0)");
+            whole.DecimalTypes[whole.Partial("sum(Rate)")] = new QueryexNumericType(38, 38);
+            Assert.Equal("0.00000000000000000000000000000000000000 (38,38)", Typed(whole.First(0.4m).Number));
+            Assert.Equal(
+                QueryexEvaluationException.ArithmeticOverflow,
+                Assert.Throws<QueryexEvaluationException>(() => whole.First(0.9m)).Code);
         }
 
         /// <summary>Each partial is typed as the backend types its column.</summary>

@@ -43,12 +43,12 @@ GROUP BY [P1].[SegmentName]
 --   10 : Min QxString
 --   11 : Max QxBool
 -- measures
---   QxNumeric NotNull if(sum(Amount) > 0 and count() in (1, 2, 3), round(sum(Amount) / count(), 2), coalesce(max(Rate), -1))
---   QxNumeric NotNull year(max(PostingDate)) * 100 + month(max(PostingDate), 'gc')
+--   QxNumeric Nullable if(sum(Amount) > 0 and count() in (1, 2, 3), round(sum(Amount) / count(), 2), coalesce(max(Rate), -1))
+--   QxNumeric Nullable year(max(PostingDate)) * 100 + month(max(PostingDate), 'gc')
 --   QxNumeric Nullable diffDays(min(PostingDate), max(DueDate))
---   QxNumeric NotNull cast(abs(min(Amount)), 'numeric')
+--   QxNumeric Nullable cast(abs(min(Amount)), 'numeric')
 --   QxDate Nullable coalesce(max(DueDate), cast(null, 'date'))
---   QxNumeric NotNull floor(sum(Amount)) + ceiling(min(Count) * 1.5)
---   QxString NotNull max(Code)
+--   QxNumeric Nullable floor(sum(Amount)) + ceiling(min(Count) * 1.5)
+--   QxString Nullable max(Code)
 --   QxString Nullable min(Memo)
---   QxBool NotNull max(IsPosted)
+--   QxBool Nullable max(IsPosted)

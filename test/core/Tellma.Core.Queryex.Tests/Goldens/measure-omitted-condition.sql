@@ -21,5 +21,5 @@ GROUP BY [P1].[SegmentName]
 --   3 : Count QxNumeric
 -- measures
 --   QxNumeric Nullable sum(Amount, CustomerId = @Customer)
---   QxNumeric NotNull sum(Amount)
+--   QxNumeric Nullable sum(Amount)
 --   QxNumeric NotNull count(Amount, PostingDate <= @AsOf)

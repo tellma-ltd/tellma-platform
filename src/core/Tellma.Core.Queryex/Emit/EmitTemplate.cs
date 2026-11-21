@@ -48,6 +48,12 @@ namespace Tellma.Core.Queryex.Emit
 
         /// <summary>As <see cref="Numeric" />, and a decimal kept at its precision with no fractional digits.</summary>
         Integral,
+
+        /// <summary>
+        ///     A count of the argument's characters: an <c>int</c>, or a <c>bigint</c> for an unbounded
+        ///     text, which can hold more characters than an <c>int</c> counts.
+        /// </summary>
+        Length,
     }
 
     /// <summary>One piece of a template.</summary>

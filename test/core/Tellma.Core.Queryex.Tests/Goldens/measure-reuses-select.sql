@@ -19,6 +19,6 @@ GROUP BY [P1].[SegmentName]
 --   2 : Max QxDate
 --   3 : Min QxDate
 -- measures
---   QxNumeric NotNull sum(Amount) * 2
---   QxDate NotNull max(PostingDate)
---   QxDate NotNull min(PostingDate)
+--   QxNumeric Nullable sum(Amount) * 2
+--   QxDate Nullable max(PostingDate)
+--   QxDate Nullable min(PostingDate)

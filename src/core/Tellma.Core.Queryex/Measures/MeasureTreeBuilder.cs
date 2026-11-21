@@ -24,17 +24,25 @@ namespace Tellma.Core.Queryex.Measures
     ///         measures first use them.
     ///     </para>
     ///     <para>
-    ///         Everything settled before the statement runs is settled here exactly as lowering
-    ///         settles it in the statement — a condition that is a written truth value, a comparison
-    ///         or an absence test whose answer the nullity analysis already knows — so the evaluator
-    ///         never reads an operand the backend would not have read, and fails exactly where the
-    ///         backend would.
+    ///         Everything settled before the statement runs is settled here as lowering settles it
+    ///         in a statement without grouping keys — a condition that is a written truth value, a
+    ///         comparison or an absence test whose answer the nullity analysis already knows — so the
+    ///         evaluator never reads an operand the backend would not have read, and fails exactly
+    ///         where the backend would.
+    ///     </para>
+    ///     <para>
+    ///         The nullity is a grand total's, never the grouped statement's: a cell may combine no
+    ///         row at all, and over no row a sum or an extreme is absent even where every group of
+    ///         the statement has one.
     ///     </para>
     /// </remarks>
     internal sealed class MeasureTreeBuilder
     {
-        /// <summary>The nullity answers for every node of the measures.</summary>
+        /// <summary>The nullity answers for every node of the measures, as a grand total has them.</summary>
         private readonly NullityMap _nullity;
+
+        /// <summary>The statement's own nullity answers, which lower the partial columns.</summary>
+        private readonly NullityMap _statement;
 
         /// <summary>The distinct aggregations, in first-use order.</summary>
         private readonly List<TypedCall> _partials = [];
@@ -50,12 +58,17 @@ namespace Tellma.Core.Queryex.Measures
 
         /// <summary>Initializes a builder.</summary>
         /// <param name="nullity">
-        ///     The nullity answers for every node of the measures; the aggregations an average splits
-        ///     into are added to it.
+        ///     The nullity answers for every node of the measures as a grand total has them, which the
+        ///     trees fold by; the aggregations an average splits into are added to it.
         /// </param>
-        internal MeasureTreeBuilder(NullityMap nullity)
+        /// <param name="statement">
+        ///     The statement's own nullity answers, which lower the partial columns; the aggregations
+        ///     an average splits into are added to it too.
+        /// </param>
+        internal MeasureTreeBuilder(NullityMap nullity, NullityMap statement)
         {
             _nullity = nullity;
+            _statement = statement;
         }
 
         /// <summary>The distinct aggregations the trees read, in first-use order.</summary>
@@ -423,6 +436,8 @@ namespace Tellma.Core.Queryex.Measures
             _synthesized.Add(tally);
             _nullity.Set(total, _nullity[call]);
             _nullity.Set(tally, QueryexNullity.NotNull);
+            _statement.Set(total, _statement[call]);
+            _statement.Set(tally, QueryexNullity.NotNull);
 
             MeasureNode dividend = new MeasurePartialNode(NodeCount++, BoundType.Numeric, PartialOf(total));
             MeasureNode divisor = new MeasurePartialNode(NodeCount++, BoundType.Numeric, PartialOf(tally));

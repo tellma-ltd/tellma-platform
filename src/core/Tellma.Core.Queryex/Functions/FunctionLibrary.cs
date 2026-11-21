@@ -644,7 +644,8 @@ namespace Tellma.Core.Queryex.Functions
         /// <returns>The definitions.</returns>
         private static IEnumerable<FunctionDefinition> StringOperations()
         {
-            yield return Unary("length", "LEN({0})", TypeSpecs.Text, TypeSpecs.Numeric, store: QueryexStoreType.QxBigInt);
+            // The backend counts in an int, and in a bigint only for an unbounded text.
+            yield return Unary("length", "LEN({0})", TypeSpecs.Text, TypeSpecs.Numeric, follows: 0, following: ResultFollowing.Length);
             yield return Unary("trim", "TRIM({0})", TypeSpecs.Text, TypeSpecs.Text, follows: 0);
             yield return Unary("upper", "UPPER({0})", TypeSpecs.Text, TypeSpecs.Text, follows: 0);
             yield return Unary("lower", "LOWER({0})", TypeSpecs.Text, TypeSpecs.Text, follows: 0);

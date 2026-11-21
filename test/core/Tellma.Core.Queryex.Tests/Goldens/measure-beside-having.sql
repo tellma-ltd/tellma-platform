@@ -25,4 +25,4 @@ OFFSET 0 ROWS FETCH NEXT @qx0_take ROWS ONLY
 --   3 : Min QxNumeric
 -- measures
 --   QxNumeric NotNull count()
---   QxNumeric NotNull max(Amount) - min(Amount)
+--   QxNumeric Nullable max(Amount) - min(Amount)

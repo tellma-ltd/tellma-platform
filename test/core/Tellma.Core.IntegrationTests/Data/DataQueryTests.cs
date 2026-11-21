@@ -4,6 +4,7 @@
 // LICENSE file in the root directory of this source tree.
 
 using Microsoft.Extensions.DependencyInjection;
+using System.Globalization;
 using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Settings;
@@ -120,7 +121,7 @@ namespace Tellma.Core.IntegrationTests.Data
         }
 
         [Fact]
-        public async Task A_grouped_page_with_measures_carries_their_partial_columns_after_its_own_and_counts_the_same_groups()
+        public async Task A_grouped_page_with_measures_carries_their_partials_which_evaluate_each_measure_as_the_server_does()
         {
             await using AsyncServiceScope scope = fixture.CreateScope();
             IDataBatch batch = Batch(scope);
@@ -131,32 +132,96 @@ namespace Tellma.Core.IntegrationTests.Data
                 Aggregate = true,
                 OrderBy = "Kind",
             };
-            QuerySpec measured = plain with { Measures = "sum(Price) / count(), max(Price)" };
+            const string Measures = "sum(Price) / count(), max(Price), min(Id) * 2, max(length(Name)) + 1, max(DueOn)";
+            QuerySpec measured = plain with { Measures = Measures };
 
             BatchResult<RowPage> without = batch.Rows(plain, null, new RowQueryOptions { CountCap = 10 });
             BatchResult<RowPage> with = batch.Rows(measured, null, new RowQueryOptions { CountCap = 10 });
-            BatchResult<RowPage> spelled = batch.Rows(plain with { Select = "Kind, count(), sum(Price), max(Price)" }, null, null);
+            BatchResult<RowPage> partials = batch.Rows(
+                plain with { Select = "Kind, count(), sum(Price), max(Price), min(Id), max(length(Name)), max(DueOn)" }, null, null);
+            BatchResult<RowPage> valued = batch.Rows(plain with { Select = "Kind, count(), " + Measures }, null, null);
             _ = await batch.ExecuteAsync(Token);
 
-            // The count the select already has is reused; the sum and the greatest price follow it,
-            // typed and valued as the same aggregations spelled out in the select.
+            // --- The partials: the count the select already has is reused, the rest follow it ---
+            // Typed and valued as the same aggregations spelled out in the select.
             QueryRowSet rows = with.Value.Rows;
-            QueryRowSet oracle = spelled.Value.Rows;
+            QueryRowSet oracle = partials.Value.Rows;
             Assert.Equal(2, without.Value.Rows.Columns.Count);
-            Assert.Equal(4, rows.Columns.Count);
+            Assert.Equal(7, rows.Columns.Count);
             Assert.All(rows.Columns.Skip(2), static column => Assert.False(column.GroupingKey));
             Assert.Equal(
                 oracle.Columns.Skip(2).Select(static column => (column.Type, column.Precision, column.Scale)),
                 rows.Columns.Skip(2).Select(static column => (column.Type, column.Precision, column.Scale)));
-            for (int column = 2; column < 4; column++)
+            for (int column = 2; column < rows.Columns.Count; column++)
             {
-                Assert.Equal((decimal[])oracle.GetBuffer(column), (decimal[])rows.GetBuffer(column));
-                Assert.Equal(
-                    Enumerable.Range(0, oracle.RowCount).Select(row => oracle.IsNull(column, row)),
-                    Enumerable.Range(0, rows.RowCount).Select(row => rows.IsNull(column, row)));
+                Assert.Equal(oracle.GetBuffer(column).GetType(), rows.GetBuffer(column).GetType());
+                Assert.Equal(Present(oracle, column), Present(rows, column));
             }
 
-            // Measures add columns to each group and never a group.
+            // --- The measures: compiled as the batch compiled them, and evaluated over the page ---
+            // The caller's own compilation, under the same schema and options, lists the same
+            // partials at the same columns, and each column's facets are the run's decimal types.
+            QueryexResult<CompiledQuery> compiled = new QueryexEngine().CompileQuery(
+                measured,
+                new QueryCompilationOptions
+                {
+                    QueryexVersion = QueryexLanguage.Version,
+                    Schema = scope.ServiceProvider.GetRequiredService<IQueryexSchemaProvider>().GetSchema(MultilingualShape.All),
+                });
+            Assert.True(compiled.Succeeded);
+            CompiledMeasures measures = Assert.IsType<CompiledMeasures>(compiled.Value?.Measures);
+            MeasureEvaluator evaluator = measures.Prepare(new MeasureContext(
+                [.. measures.Partials.Select(partial => rows.Columns[partial.Ordinal] is { Precision: int precision, Scale: int scale }
+                    ? new QueryexNumericType((byte)precision, (byte)scale)
+                    : (QueryexNumericType?)null)],
+                new Dictionary<string, object?>(),
+                DateOnly.FromDateTime(DateTime.UtcNow),
+                DateTimeOffset.UtcNow,
+                null));
+
+            // One cell per group, loaded from the page's own buffers, absent values left out.
+            PartialTable table = evaluator.CreateTable(rows.RowCount);
+            int[] cells = [.. Enumerable.Range(0, rows.RowCount).Select(_ => table.AddCell())];
+            for (int partial = 0; partial < measures.Partials.Count; partial++)
+            {
+                int column = measures.Partials[partial].Ordinal;
+                for (int row = 0; row < rows.RowCount; row++)
+                {
+                    if (!rows.IsNull(column, row))
+                    {
+                        table.Add(cells[row], partial, rows.GetBuffer(column), row);
+                    }
+                }
+            }
+
+            // Each measure is the server's value for the same text, at the same type.
+            QueryRowSet expected = valued.Value.Rows;
+            for (int measure = 0; measure < measures.Items.Count; measure++)
+            {
+                QueryColumn column = expected.Columns[2 + measure];
+                for (int row = 0; row < rows.RowCount; row++)
+                {
+                    MeasureValue value = evaluator.Evaluate(table, cells[row], measure);
+                    object? server = expected.IsNull(2 + measure, row) ? null : expected.GetBuffer(2 + measure).GetValue(row);
+                    Assert.Equal(server is null, value.IsNull);
+                    if (server is DateOnly day)
+                    {
+                        Assert.Equal(day, value.Date);
+                    }
+                    else if (server is not null)
+                    {
+                        Assert.Equal(Convert.ToDecimal(server, CultureInfo.InvariantCulture), value.Number.Value);
+                        QueryexNumericType? type = evaluator.ResultTypes[measure];
+                        Assert.Equal(column.Scale, type?.Scale);
+                        if (column.Precision is int precision)
+                        {
+                            Assert.Equal(precision, (int?)type?.Precision);
+                        }
+                    }
+                }
+            }
+
+            // --- Measures add columns to each group and never a group ---
             Assert.Equal(Strings(without.Value.Rows, 0), Strings(rows, 0));
             Assert.Equal(without.Value.Count, with.Value.Count);
         }
@@ -654,6 +719,16 @@ namespace Tellma.Core.IntegrationTests.Data
         private static long[] Longs(QueryRowSet rows, int column)
         {
             return (long[])rows.GetBuffer(column);
+        }
+
+        /// <summary>A column's values as objects, null where the row holds none.</summary>
+        /// <param name="rows">The rows.</param>
+        /// <param name="column">The column.</param>
+        /// <returns>The values.</returns>
+        private static List<object?> Present(QueryRowSet rows, int column)
+        {
+            Array values = rows.GetBuffer(column);
+            return [.. Enumerable.Range(0, rows.RowCount).Select(row => rows.IsNull(column, row) ? null : values.GetValue(row))];
         }
 
         /// <summary>A text column's values, null where the row holds none.</summary>

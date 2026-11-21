@@ -327,7 +327,10 @@ namespace Tellma.Core.Queryex.Measures
             {
                 Int128 unit = PowersOfTen[dropped];
                 (Int128 quotient, Int128 remainder) = Int128.DivRem(mantissa, unit);
-                if (Int128.Abs(remainder) * 2 >= unit)
+                // Compared without doubling the remainder, which past half of 10^38 would not fit
+                // the 128 bits.
+                var magnitude = Int128.Abs(remainder);
+                if (magnitude >= unit - magnitude)
                 {
                     quotient += mantissa < 0 ? -1 : 1;
                 }

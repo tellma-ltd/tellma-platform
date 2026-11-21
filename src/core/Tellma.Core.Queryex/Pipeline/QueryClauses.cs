@@ -89,6 +89,9 @@ namespace Tellma.Core.Queryex.Pipeline
         /// <summary>The bound measures, when there are any.</summary>
         private BoundExpression? _measures;
 
+        /// <summary>The measures' nullity as a grand total has it, which their evaluation trees fold by.</summary>
+        private NullityMap? _measureNullity;
+
         /// <summary>The measures' evaluation trees and the partials they read, once planned.</summary>
         private MeasureTreeBuilder? _measureTrees;
 
@@ -246,6 +249,22 @@ namespace Tellma.Core.Queryex.Pipeline
             }
 
             ImmutableArray<JoinNode> joins = lowerer.Complete(fragments, paging);
+
+            // An aggregate query that aggregates something and has no key is a grand total, one
+            // group, which an aggregation or a group-level predicate in the statement tells the
+            // backend (spec 0008 §2.1). Once every aggregation written has folded away and there
+            // is no such predicate, nothing does, and the statement says it with a predicate every
+            // group passes. A select list that never aggregated anything is the degenerate shape
+            // that answers row by row, and stays as written.
+            bool aggregated = _select.Items.Any(static item => item.Expression.ContainsAggregate)
+                || _measures is not null;
+            bool groupsAsOne = _spec.Aggregate
+                && aggregated
+                && groupBy.Length == 0
+                && having is null
+                && !select.Any(static item => PlanWalk.Aggregates(item.Value))
+                && !orderBy.Any(static term => term.Value is not null && PlanWalk.Aggregates(term.Value));
+
             return new RelationalPlan
             {
                 Root = lowerer.Root,
@@ -258,6 +277,7 @@ namespace Tellma.Core.Queryex.Pipeline
                 Select = select,
                 Where = where,
                 GroupBy = groupBy,
+                GroupsAsOne = groupsAsOne,
                 Having = having,
                 OrderBy = orderBy,
                 Skip = skip,
@@ -448,7 +468,11 @@ namespace Tellma.Core.Queryex.Pipeline
                 return;
             }
 
-            MeasureTreeBuilder trees = new(_nullity);
+            // A measure is evaluated over cells a host combines, and a cell may combine no row: its
+            // nullity is a grand total's, whatever the statement groups by. The partial columns keep
+            // the statement's own.
+            _measureNullity = new NullityAnalyzer(_options.HasUser, hasGroupingKeys: false).Analyze(_measures.Items);
+            MeasureTreeBuilder trees = new(_measureNullity, _nullity);
             ImmutableArray<MeasureNode>.Builder roots = ImmutableArray.CreateBuilder<MeasureNode>(_measures.Items.Length);
             for (int index = 0; index < _measures.Items.Length; index++)
             {
@@ -523,7 +547,7 @@ namespace Tellma.Core.Queryex.Pipeline
                 items.Add(new CompiledMeasure(
                     _spec.Measures!.Substring(item.Span.Start, item.Span.Length),
                     BoundTypes.ToPublic(item.Expression.Type),
-                    _nullity[item.Expression]));
+                    _measureNullity![item.Expression]));
             }
 
             Measures = new CompiledMeasures(

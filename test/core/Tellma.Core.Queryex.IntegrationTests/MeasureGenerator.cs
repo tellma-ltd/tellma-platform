@@ -36,7 +36,7 @@ namespace Tellma.Core.Queryex.IntegrationTests
             "avg(Amount)", "avg(Rate)", "avg(Qty)", "avg(Fine)", "avg(Tiny)",
             "min(Tiny)", "max(Tiny)", "min(Small)", "max(Small)", "min(Qty)", "max(Qty)", "min(Big)", "max(Big)",
             "min(Whole)", "max(Whole)", "min(Amount)", "max(Amount)", "min(Rate)", "max(Rate)", "min(Fine)",
-            "max(Fine)", "min(Cost)", "max(Cost)",
+            "max(Fine)", "min(Cost)", "max(Cost)", "max(length(Label))", "min(length(Label))",
         ];
 
         /// <summary>The numbers that come from dates.</summary>
