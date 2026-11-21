@@ -384,6 +384,15 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-170 (orchestrator, 2026-11-21): PC-090 Review 1 rulings; JobEntityLoad bug assigned to PC-149
+
+- PC-090 Review 1 (Opus high, 17267a1c): 0 blocking, 2 major, 3 minor.
+  - Confirmed: LastAdministrator (50422) on me/save and me/locale is specified (0014 §8.3 runs L1-L3 on every non-System batch that writes core.Users; 0018 §3.5 names ContributeInvariants), so the implementer's flag closes.
+  - Also confirmed: the self-service scope (the caller's row only, and only the allowed columns); the Preferences securable is not sensitive; the activity extra leaves D-163 item 9 untouched; the D-096 carry ran and passed.
+- R1-1 (major): the 0014 §14 concurrency test (a role save racing a membership edit and a me/locale write, with no deadlock), deferred here by PC-078, was missing. Ruling: add it in fix 1.
+- R1-2 (major, pre-existing): JobEntityLoad (JobClaim.cs) selects only JobId with AllProperties, which adds only JSON columns despite its doc. So entity-backed job handlers get defaulted scalars, and an OutgoingEmail would arrive empty. Ruling: assigned to PC-149, the first handler to read those columns, which is in implementation and was told at once. Fix the load, reconcile AllProperties' doc or behaviour, and add a test.
+- R1-3: an empty timeZone means "not set", like the other preferences. R1-4: add the admin preferences key-cap and key-check action tests. R1-5: the D-096 row becomes a plain [Fact].
+
 ### D-169 (orchestrator, 2026-11-21): PC-089 Review 1 rulings
 
 - PC-089 Review 1 (Opus high, dc5e9223): 0 blocking, 2 major, 3 minor.
