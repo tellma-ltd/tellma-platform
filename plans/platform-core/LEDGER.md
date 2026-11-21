@@ -97,6 +97,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | 2026-11-13 03:00 | | | 2026-11-17 20:00 | CI red on ddb8259 (grid-a11y forced-colors flake + real forced-colors CSS bugs) → PC-F25 fixed, green at f9b7e33; PC-033, PC-036 done (45 + fix items); PC-026 released to integrate; PC-047 r2 fable; PC-038/PC-051 fix1; PC-073 fix2; PC-037 impl. D-064..D-067 |
 | 2026-11-14 12:01 | 8 | 0 | 2026-11-17 20:00 | Full reset detected (all-models → 8, Fable → 0). Line stopped on PC-F38 (PC-058 multi-picker races); PC-044/054/F36 done; PC-055 r1; PC-031/PC-040 impl |
 | 2026-11-17 20:02 | 0 | 0 | 2026-11-24 20:00 | Weekly reset detected (all-models 91 → 0, Fable 5 → 0). PC-068/F55/F56/070 done; PC-072 impl (pc-3); PC-B02/B03 finders resumed (pc-1/pc-2, D-110) |
+| 2026-11-21 05:15 | 85 | 31 | 2026-11-24 20:00 | ≈1.05 pts/h since the 11-17 rollover (85 in 81 h); at that pace the window runs out ≈ 2026-11-21 19:30. Ready queue: no T1/T2 (PC-147, PC-148 in flight), T3 PC-174/PC-181 held (D-140). Ahmad asked whether to apply a manual reset this week |
 
 ## In flight
 
