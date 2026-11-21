@@ -6,6 +6,11 @@
 *.bat               text eol=crlf
 *.cmd               text eol=crlf
 
+# Planning notes and the scripts beside them stay LF on every OS, Windows script types included,
+# since the agent tooling that runs those scripts refuses CRLF. Listed after the Windows script
+# rules so it overrides them, and before the binary types so those still win.
+plans/**            text eol=lf
+
 # Images and media
 *.png               binary
 *.jpg               binary

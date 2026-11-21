@@ -32,11 +32,20 @@
   <label><span>filter</span><input type="text" id="filter" value="Amount &gt; 0"></label>
   <label><span>having</span><input type="text" id="having" value=""></label>
   <label><span>order by</span><input type="text" id="orderBy" value=""></label>
+  <label><span>restrictions (path @table = keys; …)</span><input type="text" id="restrictions" value=""></label>
+  <label><span>undeclared columns</span><input type="text" id="undeclaredColumns" value=""></label>
+  <label><span>filter via (navigation path)</span><input type="text" id="via" value=""></label>
+  <label><span>exists (entity navigation: criterion; …)</span><input type="text" id="exists" value=""></label>
+  <label><span>parameters (name type, …)</span><input type="text" id="parameters" value=""></label>
+  <label><span>omitted parameters</span><input type="text" id="omitted" value=""></label>
+  <label><span>constant items, in place of the query (type expression; …)</span><input type="text" id="constants" value=""></label>
+  <label><span>measure, for its row condition</span><input type="text" id="measure" value=""></label>
 </div>
 
 <div class="options">
   <label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="aggregate"> aggregate</label>
   <label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="execute"> run it</label>
+  <label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="conjuncts"> conjuncts</label>
   <label style="display:flex;gap:6px;align-items:center">root <select id="root"></select></label>
   <span id="status"></span>
 </div>
@@ -45,17 +54,20 @@
   <section><h2>SQL</h2><pre id="sql"></pre></section>
   <section><h2>diagnostics</h2><pre id="diagnostics"></pre></section>
   <section><h2>bound tree</h2><div id="nodes"></div></section>
-  <section><h2>parameters</h2><div id="parameters"></div></section>
+  <section><h2>parameters</h2><div id="slots"></div></section>
   <section><h2>columns</h2><div id="columns"></div></section>
   <section><h2>tokens</h2><div id="tokens"></div></section>
   <section><h2>printed back</h2><pre id="printed"></pre></section>
   <section><h2>rows</h2><div id="rows"></div></section>
+  <section><h2>conjuncts</h2><div id="conjunctList"></div></section>
+  <section><h2>measure condition</h2><pre id="measureCondition"></pre></section>
 </div>
 
 <script>
 // Everything the page does is one round trip per keystroke, debounced. The compiler is fast enough
 // that watching every stage react as the input changes is the whole point of the tool.
-const fields = ['select', 'filter', 'having', 'orderBy'];
+const fields = ['select', 'filter', 'having', 'orderBy', 'restrictions', 'undeclaredColumns', 'via', 'exists',
+  'parameters', 'omitted', 'constants', 'measure'];
 const el = id => document.getElementById(id);
 
 function table(headers, rows) {
@@ -77,7 +89,16 @@ async function inspect() {
     orderBy: el('orderBy').value,
     aggregate: el('aggregate').checked,
     root: el('root').value,
-    execute: el('execute').checked
+    execute: el('execute').checked,
+    restrictions: el('restrictions').value,
+    undeclaredColumns: el('undeclaredColumns').value,
+    via: el('via').value,
+    exists: el('exists').value,
+    parameters: el('parameters').value,
+    omitted: el('omitted').value,
+    constants: el('constants').value,
+    conjuncts: el('conjuncts').checked,
+    measure: el('measure').value
   };
 
   el('status').textContent = 'compiling…';
@@ -100,7 +121,7 @@ async function inspect() {
   el('nodes').innerHTML = table(['node', 'type', 'nullity', 'detail'],
     (result.nodes ?? []).map(n => ['·'.repeat(n.depth) + ' ' + n.kind, n.type, n.nullity, n.detail]));
 
-  el('parameters').innerHTML = table(['name', 'type', 'stored as', 'origin', 'value'],
+  el('slots').innerHTML = table(['name', 'type', 'stored as', 'origin', 'value'],
     (result.parameters ?? []).map(p => [p.name, p.type, p.storeType, p.origin, p.value]));
 
   el('columns').innerHTML = table(['#', 'text', 'type', 'nullity', 'key'],
@@ -112,6 +133,12 @@ async function inspect() {
   el('rows').innerHTML = result.rows
     ? table((result.columns ?? []).map(c => c.text), result.rows)
     : '';
+
+  // What discovery reads off the filter, and the rows a measure aggregates.
+  el('conjunctList').innerHTML = table(['leaf', 'at', 'compared', 'operator', 'value', 'type'],
+    (result.conjuncts ?? []).map(c => [c.location, c.start + '+' + c.length, c.compared, c.operator,
+      c.value === null ? '(null)' : c.value, c.type]));
+  el('measureCondition').textContent = result.measureCondition ?? '';
 }
 
 let pending;
@@ -126,7 +153,7 @@ async function start() {
   el('root').value = 'Invoice';
 
   for (const id of fields) { el(id).addEventListener('input', schedule); }
-  for (const id of ['aggregate', 'execute', 'root']) { el(id).addEventListener('change', inspect); }
+  for (const id of ['aggregate', 'execute', 'conjuncts', 'root']) { el(id).addEventListener('change', inspect); }
   await inspect();
 }
 

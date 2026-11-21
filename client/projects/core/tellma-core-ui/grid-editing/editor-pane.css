@@ -1,0 +1,57 @@
+/*
+ * Copyright (c) Tellma Ltd. All rights reserved.
+ *
+ * This source code is licensed under the Apache-2.0 license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/* tm-grid-editor-pane — a popup column's editor, over its cell. The pane is
+   a top-layer overlay hosted by the cell's editor box, so it inherits the
+   cell's text styles (nowrap, the row's line height, the cell's alignment
+   and cursor); an editor is a field, not a cell, and resets them. */
+
+:host {
+  display: contents;
+}
+
+.tm-grid__popup {
+  position: relative; /* anchors the draft's pending spinner */
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  /* The component writes the width (the cell's, or the column's least
+     width), the least height (the cell's) and the greatest height (the
+     column's, capped by the viewport); the viewport caps the width here.
+     The content scrolls inside beyond the greatest height. */
+  max-inline-size: calc(100vw - 2 * var(--popover-viewport-margin));
+  overflow: auto;
+  overscroll-behavior: contain;
+  background: var(--field-bg);
+  color: var(--text-body);
+  /* The active cell's ring, carried around the whole pane so the cell
+     reads as expanded; drawn as an inset outline, over the content as the
+     cell's inset ring is. */
+  outline: var(--focus-ring-width) solid var(--grid-selection-border);
+  outline-offset: calc(-1 * var(--focus-ring-width));
+  box-shadow: var(--shadow-md);
+  font-weight: normal;
+  line-height: var(--leading-ui);
+  text-align: start;
+  white-space: normal;
+  cursor: auto;
+}
+
+/* Out of the grid's view: invisible and inert to the pointer, but still
+   rendered, so the editor keeps its state and its focus. */
+.tm-grid__popup--hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+@media (forced-colors: active) {
+  .tm-grid__popup {
+    background: Field;
+    color: FieldText;
+    outline-color: Highlight;
+  }
+}

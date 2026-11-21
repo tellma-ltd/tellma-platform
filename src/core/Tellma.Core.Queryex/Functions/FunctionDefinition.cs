@@ -53,10 +53,15 @@ namespace Tellma.Core.Queryex.Functions
     ///     known, which still travels as a bound parameter.
     /// </param>
     /// <param name="Values">The accepted values, for a closed set.</param>
+    /// <param name="NamesCalendar">
+    ///     Whether the closed set is the calendar codes, among which a table calendar is accepted
+    ///     only where the schema maps its month table.
+    /// </param>
     internal sealed record ParameterConstraint(
         ParameterConstraintKind Kind,
         bool Consumed = false,
-        FrozenSet<string>? Values = null)
+        FrozenSet<string>? Values = null,
+        bool NamesCalendar = false)
     {
         /// <summary>No restriction.</summary>
         internal static ParameterConstraint None { get; } = new ParameterConstraint(ParameterConstraintKind.None);
@@ -86,6 +91,19 @@ namespace Tellma.Core.Queryex.Functions
                 ParameterConstraintKind.MemberOf,
                 Consumed: true,
                 values.ToFrozenSet(StringComparer.OrdinalIgnoreCase));
+        }
+
+        /// <summary>The argument has to be a literal calendar code.</summary>
+        /// <param name="values">Every code the language knows, matched case-insensitively.</param>
+        /// <returns>The restriction.</returns>
+        /// <remarks>
+        ///     A closed set like any other, except that a table calendar in it binds only against a
+        ///     schema that maps the calendar's month table; anywhere else it is refused as an unknown
+        ///     code is.
+        /// </remarks>
+        internal static ParameterConstraint CalendarCode(params string[] values)
+        {
+            return MemberOf(values) with { NamesCalendar = true };
         }
     }
 
@@ -129,6 +147,25 @@ namespace Tellma.Core.Queryex.Functions
         ImmutableArray<int> Indices,
         QueryexNullity Fixed = QueryexNullity.NotNull)
     {
+        /// <summary>
+        ///     The calendar argument whose table calendar makes the result possibly absent, when the
+        ///     signature has one.
+        /// </summary>
+        /// <remarks>
+        ///     A table calendar answers only for the dates its month table covers, so where the
+        ///     argument selects one the result may be absent whatever the operands are, and this
+        ///     overrides the rule's own answer.
+        /// </remarks>
+        internal int? TableCalendarSelector { get; init; }
+
+        /// <summary>This rule, overridden where a calendar argument selects a table calendar.</summary>
+        /// <param name="selector">The calendar argument's position.</param>
+        /// <returns>The rule.</returns>
+        internal NullityRule UnlessTableCalendar(int selector)
+        {
+            return this with { TableCalendarSelector = selector };
+        }
+
         /// <summary>Always present.</summary>
         internal static NullityRule AlwaysNotNull { get; } = new NullityRule(NullityRuleKind.AlwaysNotNull, []);
 

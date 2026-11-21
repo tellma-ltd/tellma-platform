@@ -32,7 +32,7 @@ namespace Tellma.Identity.IntegrationTests.Api
         [Fact]
         public async Task A_delivered_invitation_reports_what_the_provider_said()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "idstatus");
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idstatus");
             DistributionClientCredentials distribution = await TestData.ProvisionDistributionAsync(factory);
 
             string sub = await InviteAsync(factory, distribution, "reader@example.com");
@@ -48,7 +48,7 @@ namespace Tellma.Identity.IntegrationTests.Api
         [Fact]
         public async Task An_invitation_sent_by_a_transport_that_reports_nothing_says_so()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "idnoevents");
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idnoevents");
             DistributionClientCredentials distribution = await TestData.ProvisionDistributionAsync(factory);
 
             // The capturing sender in these tests reports no delivery events, exactly as an
@@ -66,7 +66,7 @@ namespace Tellma.Identity.IntegrationTests.Api
         [Fact]
         public async Task One_distribution_cannot_read_anothers_invitations()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "idscoped");
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idscoped");
             // Two genuinely different distributions: the default slug is shared, so provisioning
             // twice without naming them would make "theirs" the same client as "mine" and the
             // test would pass without ever exercising the scoping.
@@ -91,7 +91,7 @@ namespace Tellma.Identity.IntegrationTests.Api
         [Fact]
         public async Task Results_come_back_one_per_request_position_and_in_order()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "idstatusbulk");
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idstatusbulk");
             DistributionClientCredentials distribution = await TestData.ProvisionDistributionAsync(factory);
 
             string first = await InviteAsync(factory, distribution, "first@example.com");
@@ -114,7 +114,7 @@ namespace Tellma.Identity.IntegrationTests.Api
         [Fact]
         public async Task An_accepted_invitation_reports_accepted_whatever_the_provider_said()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "idaccepted");
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idaccepted");
             DistributionClientCredentials distribution = await TestData.ProvisionDistributionAsync(factory);
 
             string sub = await InviteAsync(factory, distribution, "opened@example.com");
@@ -129,11 +129,11 @@ namespace Tellma.Identity.IntegrationTests.Api
         [Fact]
         public async Task The_endpoint_refuses_a_caller_it_cannot_scope_to()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "idstatusauth");
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idstatusauth");
 
             using HttpClient client = factory.CreateClient();
             using HttpResponseMessage anonymous = await client.PostAsJsonAsync(
-                new Uri("/api/identity/invitations/delivery-status", UriKind.Relative),
+                new Uri("/api/identity/v1/invitations/delivery-status", UriKind.Relative),
                 new { subs = AnonymousProbe },
                 TestContext.Current.CancellationToken);
 
@@ -152,7 +152,7 @@ namespace Tellma.Identity.IntegrationTests.Api
                 new AuthenticationHeaderValue("Bearer", await TokenAsync(factory, distribution));
 
             using HttpResponseMessage response = await client.PostAsJsonAsync(
-                new Uri("/api/identity/invitations", UriKind.Relative),
+                new Uri("/api/identity/v1/invitations", UriKind.Relative),
                 new { users = new object[] { new { email, displayName = email, locale = "en" } } },
                 TestContext.Current.CancellationToken);
 
@@ -174,7 +174,7 @@ namespace Tellma.Identity.IntegrationTests.Api
                 new AuthenticationHeaderValue("Bearer", await TokenAsync(factory, distribution));
 
             using HttpResponseMessage response = await client.PostAsJsonAsync(
-                new Uri("/api/identity/invitations/delivery-status", UriKind.Relative),
+                new Uri("/api/identity/v1/invitations/delivery-status", UriKind.Relative),
                 new { subs },
                 TestContext.Current.CancellationToken);
 

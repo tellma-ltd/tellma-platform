@@ -8,6 +8,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Tellma.Identity.IntegrationTests.Infrastructure;
 using Tellma.Identity.Services.Provisioning;
+using Tellma.Identity.TestSupport;
 
 namespace Tellma.Identity.IntegrationTests.Flows
 {
@@ -23,12 +24,12 @@ namespace Tellma.Identity.IntegrationTests.Flows
         [Fact]
         public async Task Global_logout_notifies_the_distribution_and_stops_renewal()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "idbcl");
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idbcl");
             DistributionClientCredentials distribution = await TestData.ProvisionDistributionAsync(
                 factory, backchannelLogoutUri: new Uri("https://acme.app.tellma.com/backchannel-logout"));
             await TestData.CreateActiveUserAsync(factory, "grace@example.com");
 
-            using OidcFlowClient flow = new(factory);
+            using OidcFlowClient flow = factory.CreateFlowClient();
             (string verifier, string challenge) = OidcFlowClient.CreatePkcePair();
 
             // Sign in through the full flow so a session and a refresh token exist.
@@ -109,14 +110,14 @@ namespace Tellma.Identity.IntegrationTests.Flows
         [Fact]
         public async Task Global_logout_fans_out_to_every_distribution_under_one_sid()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "idbclmulti");
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idbclmulti");
             DistributionClientCredentials acme = await TestData.ProvisionDistributionAsync(
                 factory, "acme", new Uri("https://acme.app.tellma.com/backchannel-logout"));
             DistributionClientCredentials beta = await TestData.ProvisionDistributionAsync(
                 factory, "beta", new Uri("https://beta.app.tellma.com/backchannel-logout"));
             await TestData.CreateActiveUserAsync(factory, "grace@example.com");
 
-            using OidcFlowClient flow = new(factory);
+            using OidcFlowClient flow = factory.CreateFlowClient();
 
             // Sign in to acme through the full flow (establishes the SSO cookie and sid), then to
             // beta reusing the same browser session — both register under one sid.

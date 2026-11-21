@@ -72,8 +72,10 @@ namespace Tellma.Core.Queryex.Lowering
 
     /// <summary>A plan node consumed as a truth value.</summary>
     /// <remarks>
-    ///     Every form here is two-valued. Nothing the plan can express evaluates to the backend's
-    ///     third possibility, which is what makes wrapping any of them in a negation sound.
+    ///     Every form here is two-valued but one. Nothing else the plan can express evaluates to the
+    ///     backend's third possibility, which is what makes wrapping any of them in a negation sound;
+    ///     the key-set restriction is the exception, and lowering only ever conjoins it at the top of
+    ///     the row filter.
     /// </remarks>
     internal abstract class PlanPredicate : PlanNode
     {
@@ -93,12 +95,21 @@ namespace Tellma.Core.Queryex.Lowering
         /// <param name="span">Where the path sits in the input.</param>
         /// <param name="table">The join whose alias qualifies the column.</param>
         /// <param name="property">The property whose column is read.</param>
-        internal PlanColumn(QueryexSpan span, JoinNode table, PropertyDescriptor property)
+        /// <param name="origin">Where the reference was written.</param>
+        internal PlanColumn(QueryexSpan span, JoinNode table, PropertyDescriptor property, PlanOrigin origin)
             : base(span, BoundTypes.FromPublic(property.Type), StoreTypes.OfProperty(property))
         {
             Table = table;
             Property = property;
+            Origin = origin;
         }
+
+        /// <summary>Where the reference was written.</summary>
+        /// <remarks>
+        ///     What a join is blamed on when it pushes the join ceiling over: the first surviving
+        ///     reference that reads it, rather than whatever created it — which may have folded away.
+        /// </remarks>
+        internal PlanOrigin Origin { get; }
 
         /// <summary>The join whose alias qualifies the column.</summary>
         internal JoinNode Table { get; }
@@ -116,11 +127,21 @@ namespace Tellma.Core.Queryex.Lowering
         /// <summary>Initializes the node.</summary>
         /// <param name="span">Where the expression it came from sits in the input.</param>
         /// <param name="slot">The slot the host binds.</param>
-        internal PlanParameterRef(QueryexSpan span, ParameterSlot slot)
+        /// <param name="origin">Where the reference was written.</param>
+        internal PlanParameterRef(QueryexSpan span, ParameterSlot slot, PlanOrigin origin)
             : base(span, slot.Type, slot.StoreType)
         {
             Slot = slot;
+            Origin = origin;
         }
+
+        /// <summary>Where the reference was written.</summary>
+        /// <remarks>
+        ///     What a slot is blamed on when it pushes the parameter ceiling over: the first surviving
+        ///     reference to it, since equal values share one slot and the one that created it may have
+        ///     folded away.
+        /// </remarks>
+        internal PlanOrigin Origin { get; }
 
         /// <summary>The slot the host binds.</summary>
         internal ParameterSlot Slot { get; }
@@ -136,7 +157,7 @@ namespace Tellma.Core.Queryex.Lowering
         /// <param name="span">Where the expression it came from sits in the input.</param>
         /// <param name="variable">The variable.</param>
         internal PlanVariableRef(QueryexSpan span, HoistedVariable variable)
-            : base(span, variable.Type, StoreTypes.Default(variable.Type, null, 0, 0))
+            : base(span, variable.Type, variable.StoreType)
         {
             Variable = variable;
         }
@@ -165,6 +186,119 @@ namespace Tellma.Core.Queryex.Lowering
 
         /// <inheritdoc />
         internal override bool IsAtomic => true;
+    }
+
+    /// <summary>A column of a calendar lookup: a month's year, number, first day or end.</summary>
+    /// <remarks>
+    ///     Written as the lookup's alias and the column, whether the lookup is a lateral source of
+    ///     the statement or a level of a scalar lookup — the alias says which.
+    /// </remarks>
+    internal sealed class PlanLookupColumn : PlanValue
+    {
+        /// <summary>Initializes the node.</summary>
+        /// <param name="span">Where the call it serves sits in the input.</param>
+        /// <param name="lookup">The lookup.</param>
+        /// <param name="column">The column read.</param>
+        internal PlanLookupColumn(QueryexSpan span, CalendarLookup lookup, CalendarColumn column)
+            : base(span, TypeOf(column), StoreTypeOf(column))
+        {
+            Lookup = lookup;
+            Column = column;
+        }
+
+        /// <summary>The lookup.</summary>
+        internal CalendarLookup Lookup { get; }
+
+        /// <summary>The column read.</summary>
+        internal CalendarColumn Column { get; }
+
+        /// <inheritdoc />
+        internal override bool IsAtomic => true;
+
+        /// <summary>A month table column's type in the language.</summary>
+        /// <param name="column">The column.</param>
+        /// <returns>The type.</returns>
+        private static BoundType TypeOf(CalendarColumn column)
+        {
+            return column is CalendarColumn.Year or CalendarColumn.Month ? BoundType.Numeric : BoundType.Date;
+        }
+
+        /// <summary>A month table column's store type.</summary>
+        /// <param name="column">The column.</param>
+        /// <returns>The type.</returns>
+        private static QueryexStoreType StoreTypeOf(CalendarColumn column)
+        {
+            return column is CalendarColumn.Year or CalendarColumn.Month
+                ? QueryexStoreType.QxInt
+                : QueryexStoreType.QxDate;
+        }
+    }
+
+    /// <summary>
+    ///     A table calendar's answer computed in place, as a scalar subquery that nests one level per
+    ///     month it looks up.
+    /// </summary>
+    /// <remarks>
+    ///     <para>
+    ///         The form for a call whose operand aggregates, which no lateral source could compute,
+    ///         and for a statement with no row source; also a hoisted variable's initializer. Each
+    ///         level is one row of the month table, sought from the values outside it, and the
+    ///         innermost level selects the result, which can read every level around it.
+    ///     </para>
+    ///     <para>
+    ///         Any level that finds no row leaves the subquery with no row at all, and a scalar
+    ///         subquery with no row is the absent value — which is exactly the answer for a date the
+    ///         month table does not cover.
+    ///     </para>
+    /// </remarks>
+    internal sealed class PlanScalarLookup : PlanValue
+    {
+        /// <summary>Initializes the node.</summary>
+        /// <param name="span">Where the call sits in the input.</param>
+        /// <param name="levels">The lookups, outermost first, each able to read the ones before it.</param>
+        /// <param name="result">What the innermost level selects.</param>
+        internal PlanScalarLookup(QueryexSpan span, ImmutableArray<CalendarLookup> levels, PlanValue result)
+            : base(span, result.Type, result.StoreType)
+        {
+            Levels = levels;
+            Result = result;
+        }
+
+        /// <summary>The lookups, outermost first.</summary>
+        internal ImmutableArray<CalendarLookup> Levels { get; }
+
+        /// <summary>What the innermost level selects.</summary>
+        internal PlanValue Result { get; }
+    }
+
+    /// <summary>
+    ///     A value computed over operands named once inside it, as a scalar subquery.
+    /// </summary>
+    /// <remarks>
+    ///     The single-emission form for a pattern that writes an operand more than once where no
+    ///     lateral binding can name it: at group grain, in a constant statement, and in a hoisted
+    ///     declaration. Each operand is a one-row source of the subquery and the pattern reads it by
+    ///     name, so a call nested in another's operand is written once however many times the outer
+    ///     pattern mentions it, and what is emitted grows with the nesting rather than multiplying.
+    /// </remarks>
+    internal sealed class PlanNamedScalar : PlanValue
+    {
+        /// <summary>Initializes the node.</summary>
+        /// <param name="span">Where the call sits in the input.</param>
+        /// <param name="bindings">The operands, each named once, in the order they are written.</param>
+        /// <param name="result">The value computed over the names.</param>
+        internal PlanNamedScalar(QueryexSpan span, ImmutableArray<ValueBinding> bindings, PlanValue result)
+            : base(span, result.Type, result.StoreType)
+        {
+            Bindings = bindings;
+            Result = result;
+        }
+
+        /// <summary>The operands, each named once, in the order they are written.</summary>
+        internal ImmutableArray<ValueBinding> Bindings { get; }
+
+        /// <summary>The value computed over the names.</summary>
+        internal PlanValue Result { get; }
     }
 
     /// <summary>The absent value, typed.</summary>
@@ -290,6 +424,18 @@ namespace Tellma.Core.Queryex.Lowering
 
         /// <summary>The argument's type in the language.</summary>
         internal BoundType ArgumentType { get; }
+
+        /// <summary>
+        ///     The root's key, when nothing the aggregation reads is a column; null otherwise.
+        /// </summary>
+        /// <remarks>
+        ///     Written into the aggregation only where it sits inside a subquery of its own, such as
+        ///     the operand of a calendar call. The backend gives an aggregation there to the outer
+        ///     statement only when what it reads refers to the outer statement's rows, and one that
+        ///     reads no column refers to nothing: it would count the subquery's single row, or be
+        ///     refused. The root's key is never absent on a row, so reading it changes no answer.
+        /// </remarks>
+        internal PlanColumn? Anchor { get; init; }
 
         /// <summary>The type the backend holds an aggregation's result in.</summary>
         /// <param name="kind">Which aggregate is computed.</param>
@@ -694,5 +840,86 @@ namespace Tellma.Core.Queryex.Lowering
 
         /// <summary>The looked-up position.</summary>
         internal PlanValue Key { get; }
+    }
+
+    /// <summary>
+    ///     A semi-join: whether the subquery finds any row.
+    /// </summary>
+    /// <remarks>
+    ///     Two-valued however its predicate is written, since an existence test has no third answer,
+    ///     so it negates soundly. It reads the statement's row only through the correlation, which
+    ///     compares the searched row's foreign key with the current root's key.
+    /// </remarks>
+    internal sealed class PlanExists : PlanPredicate
+    {
+        /// <summary>Initializes the node.</summary>
+        /// <param name="subquery">The subquery, its predicate already lowered.</param>
+        internal PlanExists(PlanSubquery subquery)
+            : base(default)
+        {
+            Subquery = subquery;
+        }
+
+        /// <summary>The subquery.</summary>
+        internal PlanSubquery Subquery { get; }
+    }
+
+    /// <summary>
+    ///     A column of the root's source that the schema leaves out, read as it is stored.
+    /// </summary>
+    /// <remarks>
+    ///     The second place a host-authored column name enters the plan. Nothing but the select list
+    ///     ever holds one: no clause can name an undeclared column, so it claims no join, no binding
+    ///     and no parameter.
+    /// </remarks>
+    internal sealed class PlanUndeclaredColumn : PlanValue
+    {
+        /// <summary>Initializes the node.</summary>
+        /// <param name="table">The root, whose alias qualifies the column.</param>
+        /// <param name="column">The physical column name, unquoted.</param>
+        internal PlanUndeclaredColumn(JoinNode table, string column)
+            : base(default, BoundType.String, QueryexStoreType.QxNVarChar(null))
+        {
+            Table = table;
+            Column = column;
+        }
+
+        /// <summary>The root, whose alias qualifies the column.</summary>
+        internal JoinNode Table { get; }
+
+        /// <summary>The physical column name, unquoted.</summary>
+        internal string Column { get; }
+
+        /// <inheritdoc />
+        internal override bool IsAtomic => true;
+    }
+
+    /// <summary>
+    ///     A row's key tested against a table of keys the host supplies.
+    /// </summary>
+    /// <remarks>
+    ///     The one predicate here that is not two-valued: an absent key, or an absent key in the
+    ///     table, makes the backend's membership test neither true nor false. That is sound only
+    ///     because lowering never puts one anywhere but at the top of the row filter, conjoined with
+    ///     everything else, where neither true nor false keeps the row out exactly as false does — and
+    ///     a row whose key is absent is never in a key set.
+    /// </remarks>
+    internal sealed class PlanKeySetRestriction : PlanPredicate
+    {
+        /// <summary>Initializes the node.</summary>
+        /// <param name="key">The row's key.</param>
+        /// <param name="tableSource">The host's table of keys, written as it was supplied.</param>
+        internal PlanKeySetRestriction(PlanColumn key, string tableSource)
+            : base(default)
+        {
+            Key = key;
+            TableSource = tableSource;
+        }
+
+        /// <summary>The row's key.</summary>
+        internal PlanColumn Key { get; }
+
+        /// <summary>The host's table of keys, written as it was supplied.</summary>
+        internal string TableSource { get; }
     }
 }

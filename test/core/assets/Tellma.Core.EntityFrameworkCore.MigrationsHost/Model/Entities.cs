@@ -100,6 +100,24 @@ namespace Tellma.Core.EntityFrameworkCore.MigrationsHost.Model
         public short State { get; set; }
     }
 
+    /// <summary>
+    ///     A standalone table-type shape whose string key is compared with a binary-collated
+    ///     column (an identity provider's subject, say), so the registration gives that column the
+    ///     same collation through <c>UseCollation</c>: a mismatched comparison fails with Msg 468.
+    /// </summary>
+    [TableType(Name = "SubjectsList")]
+    public class SubjectEntry
+    {
+        /// <summary>The subject, compared ordinally; collated <c>Latin1_General_100_BIN2</c> by the registration.</summary>
+        [Key]
+        [MaxLength(255)]
+        public string Subject { get; set; } = null!;
+
+        /// <summary>A display name, in the database's collation.</summary>
+        [MaxLength(200)]
+        public string? DisplayName { get; set; }
+    }
+
     /// <summary>A table with no table type, proving the opt-in is per table.</summary>
     public class AppSetting
     {

@@ -130,7 +130,7 @@ namespace Tellma.Core.Queryex.Tests.Robustness
                 text,
                 new ValidationOptions
                 {
-                    LanguageVersion = QueryexLanguage.Version,
+                    QueryexVersion = QueryexLanguage.Version,
                     Schema = LedgerFixture.Schema,
                     Root = LedgerFixture.Invoice,
                     Mode = QueryexMode.Value,
@@ -140,7 +140,7 @@ namespace Tellma.Core.Queryex.Tests.Robustness
                 new QuerySpec { Root = LedgerFixture.Invoice, Select = text },
                 new QueryCompilationOptions
                 {
-                    LanguageVersion = QueryexLanguage.Version,
+                    QueryexVersion = QueryexLanguage.Version,
                     Schema = LedgerFixture.Schema,
                 });
 
@@ -272,7 +272,7 @@ namespace Tellma.Core.Queryex.Tests.Robustness
                 new QuerySpec { Root = LedgerFixture.Invoice, Select = "Id", Filter = tree },
                 new QueryCompilationOptions
                 {
-                    LanguageVersion = QueryexLanguage.Version,
+                    QueryexVersion = QueryexLanguage.Version,
                     Schema = LedgerFixture.Schema,
                 });
 
@@ -289,7 +289,7 @@ namespace Tellma.Core.Queryex.Tests.Robustness
             Assert.Throws<ArgumentNullException>(
                 () => new QueryCompilationOptions
                 {
-                    LanguageVersion = QueryexLanguage.Version,
+                    QueryexVersion = QueryexLanguage.Version,
                     Schema = LedgerFixture.Schema,
                     Limits = null!,
                 });
@@ -297,7 +297,7 @@ namespace Tellma.Core.Queryex.Tests.Robustness
             Assert.Throws<ArgumentNullException>(
                 () => new QueryCompilationOptions
                 {
-                    LanguageVersion = QueryexLanguage.Version,
+                    QueryexVersion = QueryexLanguage.Version,
                     Schema = LedgerFixture.Schema,
                     Parameters = null!,
                 });
@@ -315,7 +315,7 @@ namespace Tellma.Core.Queryex.Tests.Robustness
                 text,
                 new ValidationOptions
                 {
-                    LanguageVersion = QueryexLanguage.Version,
+                    QueryexVersion = QueryexLanguage.Version,
                     Schema = LedgerFixture.Schema,
                     Root = LedgerFixture.Invoice,
                     Mode = mode,

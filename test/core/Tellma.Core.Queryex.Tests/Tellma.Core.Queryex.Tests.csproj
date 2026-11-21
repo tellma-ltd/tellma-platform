@@ -11,4 +11,10 @@
     <PackageReference Include="xunit.runner.visualstudio" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- The time-zone database's location ids, checked in so the embedded zone table is tested
+         against a fixed release rather than against whatever the machine running the suite has. -->
+    <EmbeddedResource Include="Time\zone-tab-ids.txt" LogicalName="zone-tab-ids.txt" />
+  </ItemGroup>
+
 </Project>

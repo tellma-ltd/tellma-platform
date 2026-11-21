@@ -1,0 +1,111 @@
+/*
+ * Copyright (c) Tellma Ltd. All rights reserved.
+ *
+ * This source code is licensed under the Apache-2.0 license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/* The error dialog body: message, items, reference row, Details, in one
+   column. */
+.tm-error-dialog {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-3);
+  color: var(--text-body);
+  font-size: var(--modal-message-font-size);
+}
+
+.tm-error-dialog > * {
+  max-inline-size: 100%;
+}
+
+.tm-error-dialog__message,
+.tm-error-dialog__more {
+  margin: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-line;
+}
+
+.tm-error-dialog__items {
+  margin: 0;
+  padding-inline-start: var(--space-5);
+  overflow-wrap: anywhere;
+}
+
+/* The count of the items past the cap sits right under the list. */
+.tm-error-dialog__items + .tm-error-dialog__more {
+  margin-block-start: calc(-1 * var(--space-2));
+  color: var(--text-secondary);
+}
+
+/* The Details disclosure: a quiet text button with a leading chevron. */
+.tm-error-dialog__details {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  align-self: stretch;
+}
+
+.tm-error-dialog__toggle {
+  position: relative;
+  display: inline-flex;
+  align-self: flex-start;
+  align-items: center;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-link);
+  font: inherit;
+  font-weight: var(--weight-medium);
+  cursor: pointer;
+}
+
+/* The pointer target reaches 4 px beyond the line above and below. */
+.tm-error-dialog__toggle::after {
+  content: '';
+  position: absolute;
+  inset-block: calc(-1 * var(--space-1));
+  inset-inline: 0;
+}
+
+.tm-error-dialog__toggle:focus-visible {
+  /* A transparent real outline beneath the token ring: forced colors strip
+     box-shadows but repaint the outline. */
+  outline: var(--focus-ring-width) solid transparent;
+  outline-offset: var(--focus-ring-offset);
+  box-shadow: var(--focus-ring);
+}
+
+.tm-error-dialog__chevron {
+  flex: none;
+}
+
+.tm-error-dialog__region {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.tm-error-dialog__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+/* A footer button's label cell: the text and, invisibly, the pending
+   name in one grid cell, so the cell is as wide as the wider of the two. */
+.tm-error-dialog__label {
+  display: inline-grid;
+}
+
+.tm-error-dialog__label > * {
+  grid-area: 1 / 1;
+}
+
+.tm-error-dialog__label-reserve {
+  visibility: hidden;
+}

@@ -1,0 +1,83 @@
+{
+  "formatVersion": 1,
+  "distribution": {
+    "slug": "fixture",
+    "displayName": "Fixture",
+    "copyright": null,
+    "version": "1.0.0+fixture",
+    "platformVersion": "1.0.0+fixture"
+  },
+  "features": [
+    {
+      "key": "core",
+      "version": "1.0.0"
+    },
+    {
+      "key": "fixture",
+      "version": "1.0.0"
+    }
+  ],
+  "languages": [
+    {
+      "code": "en",
+      "nativeName": "English",
+      "dir": "ltr",
+      "region": "GB",
+      "regions": [
+        "GB"
+      ],
+      "nativeDigits": null
+    },
+    {
+      "code": "ar",
+      "nativeName": "العربية",
+      "dir": "rtl",
+      "region": "SA",
+      "regions": [
+        "SA"
+      ],
+      "nativeDigits": "arab"
+    }
+  ],
+  "calendars": [
+    "gc"
+  ],
+  "entities": [],
+  "securables": [],
+  "settingKeys": [],
+  "settingCategories": [],
+  "notificationTypes": [],
+  "notificationChannels": [],
+  "clientEvents": [],
+  "jobHandlers": [],
+  "widgetTypes": [],
+  "codedReports": [],
+  "routing": {
+    "serverFirstSegments": [
+      "api",
+      "bff",
+      "health",
+      "id",
+      "mcp",
+      "openapi",
+      "signin-oidc",
+      "signout-callback-oidc",
+      ".well-known"
+    ],
+    "serverTenantSegments": [
+      "api",
+      "hub",
+      "blobs",
+      "mcp"
+    ],
+    "spaFirstSegments": [
+      "tenants",
+      "signed-out"
+    ],
+    "spaTenantSegments": [
+      "settings",
+      "me",
+      "list"
+    ]
+  }
+}

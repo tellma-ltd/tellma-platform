@@ -140,9 +140,9 @@
    outlives focus, so the popover can come and go without the field ever
    looking valid in between. */
 .tm-form-field__error-icon {
-  flex: none;
-  inline-size: var(--field-error-icon-size);
-  block-size: var(--field-error-icon-size);
+  /* A tm-icon: pointing its size token at the field's error-icon size
+     keeps the box the mark always had. */
+  --icon-size: var(--field-error-icon-size);
   color: var(--error);
   /* Transparent to the pointer, so a press on the glyph lands on the chrome
      beneath it and focuses the control — which is what shows the message.

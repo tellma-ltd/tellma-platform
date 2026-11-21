@@ -26,6 +26,15 @@ export const Percent = {
   `,
 };
 
+/** Grouping off: a year, a code or a serial number reads "2026", never "2,026". */
+export const Ungrouped = {
+  template: `
+    <tm-form-field label="Fiscal year">
+      <input tmNumber [maxDecimals]="0" [grouping]="false" />
+    </tm-form-field>
+  `,
+};
+
 /** The bare directive — what a grid number cell mounts, no chrome to strip. */
 export const BareInGridCell = {
   template: `<input tmNumber placeholder="0" />`,

@@ -37,11 +37,12 @@ namespace Tellma.Core.Queryex.Lowering
             Parent = parent;
             Origin = origin;
 
-            // Inner only where the step cannot be missing and nothing above it can be either.
-            // Behind an optional step even a mandatory one may have no row, and an inner join there
-            // would silently drop rows whose optional ancestor is absent.
+            // Inner only where the step cannot be missing and nothing above it can be either. A
+            // step may be missing through a nullable foreign key or because the schema declares
+            // it optional. Behind an optional step even a mandatory one may have no row, and an
+            // inner join there would silently drop rows whose optional ancestor is absent.
             IsInner = parent is null
-                || (navigation is not null && navigation.ForeignKey.IsNotNull && parent.IsInner);
+                || (navigation is not null && !navigation.MayBeMissing && parent.IsInner);
         }
 
         /// <summary>The entity this node reads.</summary>
@@ -68,6 +69,12 @@ namespace Tellma.Core.Queryex.Lowering
         /// <summary>Whether anything that survived lowering reads this node.</summary>
         internal bool IsReferenced { get; set; }
 
+        /// <summary>
+        ///     Where the first surviving reference that reads this node was written, once one has;
+        ///     null for a root, which is read whatever survives.
+        /// </summary>
+        internal PlanOrigin? ReachedFrom { get; private set; }
+
         /// <summary>Finds or creates the step for a navigation.</summary>
         /// <param name="navigation">The navigation.</param>
         /// <param name="origin">Where the path taking the step was written.</param>
@@ -88,12 +95,18 @@ namespace Tellma.Core.Queryex.Lowering
         }
 
         /// <summary>Marks this node and everything above it as read.</summary>
-        internal void MarkReferenced()
+        /// <param name="origin">Where the reference that reads it was written.</param>
+        /// <remarks>
+        ///     A node already read keeps the reference that read it first, and so does everything
+        ///     above it; every node marked here is read on behalf of this reference.
+        /// </remarks>
+        internal void MarkReferenced(PlanOrigin origin)
         {
             JoinNode? current = this;
             while (current is not null && !current.IsReferenced)
             {
                 current.IsReferenced = true;
+                current.ReachedFrom = origin;
                 current = current.Parent;
             }
         }
@@ -165,43 +178,284 @@ namespace Tellma.Core.Queryex.Lowering
     }
 
     /// <summary>
+    ///     A one-row source applied to each row of a join tree: a value binding or a calendar
+    ///     lookup.
+    /// </summary>
+    /// <remarks>
+    ///     The two kinds are written in one sequence, in the order they were made. A lookup may read
+    ///     a binding made before it, and a later lookup may read an earlier one's month, so the order
+    ///     of creation is an order their dependencies already respect.
+    /// </remarks>
+    internal abstract class LateralSource
+    {
+        /// <summary>Initializes the source.</summary>
+        private protected LateralSource()
+        {
+        }
+
+        /// <summary>The alias this source is written under, assigned once the plan is settled.</summary>
+        internal string Alias { get; set; } = string.Empty;
+
+        /// <summary>The values the source reads, which keep whatever they read alive.</summary>
+        internal abstract ImmutableArray<PlanNode> Reads { get; }
+    }
+
+    /// <summary>
     ///     A value computed once per row and given a name, so the guards that need it more than once
     ///     do not have to recompute it.
     /// </summary>
-    /// <param name="Index">Its position among the bindings.</param>
-    /// <param name="Value">What it computes.</param>
-    /// <param name="Type">The value's type in the language.</param>
-    internal sealed record ValueBinding(int Index, PlanValue Value, BoundType Type)
+    internal sealed class ValueBinding : LateralSource
     {
-        /// <summary>The alias this binding is written under.</summary>
-        internal string Alias { get; set; } = string.Empty;
+        /// <summary>Initializes a binding.</summary>
+        /// <param name="value">What it computes.</param>
+        internal ValueBinding(PlanValue value)
+        {
+            Value = value;
+        }
+
+        /// <summary>What it computes.</summary>
+        internal PlanValue Value { get; }
+
+        /// <summary>The value's type in the language.</summary>
+        internal BoundType Type => Value.Type;
+
+        /// <inheritdoc />
+        internal override ImmutableArray<PlanNode> Reads => [Value];
+    }
+
+    /// <summary>A column of the host's month table, as a lookup reads it.</summary>
+    internal enum CalendarColumn
+    {
+        /// <summary>The calendar's year.</summary>
+        Year,
+
+        /// <summary>The calendar's month, from 1.</summary>
+        Month,
+
+        /// <summary>The month's first Gregorian day.</summary>
+        StartDate,
+
+        /// <summary>The day after the month's last.</summary>
+        EndDate,
+    }
+
+    /// <summary>
+    ///     One row of a table calendar's month table: the month a date falls in, or the month a
+    ///     year and a month number name.
+    /// </summary>
+    /// <remarks>
+    ///     <para>
+    ///         Written in one of two places. As a lateral source, it is an outer apply beside the
+    ///         statement's joins and bindings, read once per row. Inside a scalar lookup, it is one
+    ///         level of a nested subquery, and whatever the level names is bound inside it.
+    ///     </para>
+    ///     <para>
+    ///         A date is sought backward on (calendar, first day), which the host's unique index
+    ///         serves with a one-row seek; a year and month are an equality on (calendar, year,
+    ///         month). Either finds no row for a date or a month the table does not cover, and so
+    ///         answers with the absent value.
+    ///     </para>
+    /// </remarks>
+    internal sealed class CalendarLookup : LateralSource
+    {
+        /// <summary>Initializes a lookup of the month a date falls in.</summary>
+        /// <param name="source">The month table, as the host wrote it.</param>
+        /// <param name="calendar">The calendar code, as a bound parameter.</param>
+        /// <param name="date">The date, atomic: it is written twice.</param>
+        internal CalendarLookup(string source, PlanValue calendar, PlanValue date)
+        {
+            ArgumentNullException.ThrowIfNull(calendar);
+            ArgumentNullException.ThrowIfNull(date);
+            Source = source;
+            Calendar = calendar;
+            Date = date;
+        }
+
+        /// <summary>Initializes a lookup of the month a year and a month number name.</summary>
+        /// <param name="source">The month table, as the host wrote it.</param>
+        /// <param name="calendar">The calendar code, as a bound parameter.</param>
+        /// <param name="year">The year.</param>
+        /// <param name="month">The month number.</param>
+        internal CalendarLookup(string source, PlanValue calendar, PlanValue year, PlanValue month)
+        {
+            ArgumentNullException.ThrowIfNull(calendar);
+            ArgumentNullException.ThrowIfNull(year);
+            ArgumentNullException.ThrowIfNull(month);
+            Source = source;
+            Calendar = calendar;
+            Year = year;
+            Month = month;
+        }
+
+        /// <summary>The month table, as the host wrote it; checked by the schema builder.</summary>
+        internal string Source { get; }
+
+        /// <summary>The calendar code, as a bound parameter.</summary>
+        internal PlanValue Calendar { get; }
+
+        /// <summary>The date whose month is sought, for a lookup by date.</summary>
+        internal PlanValue? Date { get; }
+
+        /// <summary>The year, for a lookup by year and month.</summary>
+        internal PlanValue? Year { get; }
+
+        /// <summary>The month number, for a lookup by year and month.</summary>
+        internal PlanValue? Month { get; }
+
+        /// <summary>
+        ///     The values given a name inside the lookup, where it is a level of a scalar lookup; a
+        ///     lateral lookup's are the statement's own.
+        /// </summary>
+        internal List<ValueBinding> Bindings { get; } = [];
+
+        /// <inheritdoc />
+        internal override ImmutableArray<PlanNode> Reads =>
+            Date is not null ? [Calendar, Date] : [Calendar, Year!, Month!];
     }
 
     /// <summary>
     ///     A value computed once before the statement runs.
     /// </summary>
     /// <remarks>
-    ///     Reserved for the hierarchy lookups, which are the same for every row and expensive to
-    ///     repeat. Arithmetic over parameters is deliberately left where it is: the backend
-    ///     estimates how many rows a comparison will match by looking at a parameter's value, and
-    ///     cannot look inside a variable, so hoisting one would buy nothing and cost plan quality.
+    ///     Reserved for lookups that are the same for every row and expensive to repeat: the
+    ///     hierarchy nodes, and the table calendars' answers for operands that read no row.
+    ///     Arithmetic over parameters is deliberately left where it is: the backend estimates how
+    ///     many rows a comparison will match by looking at a parameter's value, and cannot look
+    ///     inside a variable, so hoisting one would buy nothing and cost plan quality.
     /// </remarks>
-    /// <param name="Index">Its position among the variables.</param>
-    /// <param name="Type">The value's type in the language.</param>
-    /// <param name="LookupEntity">The entity a node is looked up in.</param>
-    /// <param name="LookupProperty">The property a key is matched against.</param>
-    /// <param name="NodeProperty">The hierarchy-node property that is read.</param>
-    /// <param name="Key">The key to match.</param>
-    internal sealed record HoistedVariable(
-        int Index,
-        BoundType Type,
-        EntityDescriptor LookupEntity,
-        PropertyDescriptor LookupProperty,
-        PropertyDescriptor NodeProperty,
-        PlanValue Key)
+    internal abstract class HoistedVariable
     {
+        /// <summary>Initializes the variable.</summary>
+        /// <param name="type">The value's type in the language.</param>
+        /// <param name="storeType">The type the variable is declared as.</param>
+        private protected HoistedVariable(BoundType type, QueryexStoreType storeType)
+        {
+            Type = type;
+            StoreType = storeType;
+        }
+
+        /// <summary>The value's type in the language.</summary>
+        internal BoundType Type { get; }
+
+        /// <summary>The type the variable is declared as.</summary>
+        internal QueryexStoreType StoreType { get; }
+
         /// <summary>The name this variable is written under.</summary>
         internal string Name { get; set; } = string.Empty;
+
+        /// <summary>What the variable's initializer reads, which keeps whatever it reads alive.</summary>
+        internal abstract PlanNode Reads { get; }
+    }
+
+    /// <summary>A hierarchy node looked up once by a key.</summary>
+    internal sealed class NodeLookupVariable : HoistedVariable
+    {
+        /// <summary>Initializes the variable.</summary>
+        /// <param name="lookupEntity">The entity a node is looked up in.</param>
+        /// <param name="lookupProperty">The property a key is matched against.</param>
+        /// <param name="nodeProperty">The hierarchy-node property that is read.</param>
+        /// <param name="key">The key to match.</param>
+        internal NodeLookupVariable(
+            EntityDescriptor lookupEntity,
+            PropertyDescriptor lookupProperty,
+            PropertyDescriptor nodeProperty,
+            PlanValue key)
+            : base(BoundType.HierarchyId, StoreTypes.Default(BoundType.HierarchyId, null, 0, 0))
+        {
+            LookupEntity = lookupEntity;
+            LookupProperty = lookupProperty;
+            NodeProperty = nodeProperty;
+            Key = key;
+        }
+
+        /// <summary>The entity a node is looked up in.</summary>
+        internal EntityDescriptor LookupEntity { get; }
+
+        /// <summary>The property a key is matched against.</summary>
+        internal PropertyDescriptor LookupProperty { get; }
+
+        /// <summary>The hierarchy-node property that is read.</summary>
+        internal PropertyDescriptor NodeProperty { get; }
+
+        /// <summary>The key to match.</summary>
+        internal PlanValue Key { get; }
+
+        /// <inheritdoc />
+        internal override PlanNode Reads => Key;
+    }
+
+    /// <summary>A value computed once, by an initializer that reads no row.</summary>
+    internal sealed class ComputedVariable : HoistedVariable
+    {
+        /// <summary>Initializes the variable.</summary>
+        /// <param name="value">The initializer: a scalar subquery the declaration evaluates once.</param>
+        internal ComputedVariable(PlanValue value)
+            : base(value.Type, value.StoreType)
+        {
+            Value = value;
+        }
+
+        /// <summary>The initializer.</summary>
+        internal PlanValue Value { get; }
+
+        /// <inheritdoc />
+        internal override PlanNode Reads => Value;
+    }
+
+    /// <summary>
+    ///     The subquery of one semi-join: a join tree, lateral sources and a predicate of its own.
+    /// </summary>
+    /// <remarks>
+    ///     <para>
+    ///         A subquery reads another entity's rows, so its paths cannot share the statement's
+    ///         joins and its bindings and calendar lookups cannot sit in the statement's own source:
+    ///         each is computed against a row of the searched entity. The parameters and the hoisted lookups,
+    ///         which do not vary by row, stay the statement's.
+    ///     </para>
+    ///     <para>
+    ///         Its aliases continue the statement's sequences rather than starting again, so a name
+    ///         used inside never shadows one used outside — which matters, because the predicate inside
+    ///         refers to the row outside by its alias.
+    ///     </para>
+    /// </remarks>
+    internal sealed class PlanSubquery
+    {
+        /// <summary>Initializes a subquery.</summary>
+        /// <param name="entity">The entity whose rows it searches.</param>
+        /// <param name="origin">Where the semi-join was written, for the join ceiling.</param>
+        internal PlanSubquery(EntityDescriptor entity, PlanOrigin origin)
+        {
+            Root = new JoinNode(entity, null, null, origin) { IsReferenced = true };
+            Origin = origin;
+        }
+
+        /// <summary>The root of its join tree: the searched entity's own rows.</summary>
+        internal JoinNode Root { get; }
+
+        /// <summary>Where the semi-join was written.</summary>
+        /// <remarks>
+        ///     Its source is a table the statement reads, and counts toward the join ceiling like a
+        ///     join does; this is what the problem names when that count is what goes over.
+        /// </remarks>
+        internal PlanOrigin Origin { get; }
+
+        /// <summary>
+        ///     The lateral sources made while lowering the predicate, in the order they were made,
+        ///     before the ones nothing reads are dropped.
+        /// </summary>
+        internal List<LateralSource> Pending { get; } = [];
+
+        /// <summary>The predicate, once lowered: the correlation, then the criterion.</summary>
+        internal PlanPredicate? Where { get; set; }
+
+        /// <summary>Whether anything that survived lowering contains this subquery.</summary>
+        internal bool IsReferenced { get; set; }
+
+        /// <summary>The joins that survived, in the order their aliases were assigned.</summary>
+        internal ImmutableArray<JoinNode> Joins { get; set; } = [];
+
+        /// <summary>The lateral sources that survived, in the order they were made.</summary>
+        internal ImmutableArray<LateralSource> Laterals { get; set; } = [];
     }
 
     /// <summary>One item of the select list, lowered.</summary>
@@ -229,8 +483,11 @@ namespace Tellma.Core.Queryex.Lowering
     /// </summary>
     internal sealed record RelationalPlan
     {
-        /// <summary>The root of the join tree.</summary>
-        internal required JoinNode Root { get; init; }
+        /// <summary>
+        ///     The root of the join tree, or null for a statement with no row source — one that is
+        ///     its select list and nothing else, and always answers with exactly one row.
+        /// </summary>
+        internal required JoinNode? Root { get; init; }
 
         /// <summary>Every join that survived, in the order their aliases were assigned.</summary>
         internal required ImmutableArray<JoinNode> Joins { get; init; }
@@ -238,8 +495,8 @@ namespace Tellma.Core.Queryex.Lowering
         /// <summary>The values computed once before the statement runs.</summary>
         internal required ImmutableArray<HoistedVariable> Variables { get; init; }
 
-        /// <summary>The values computed once per row and given a name.</summary>
-        internal required ImmutableArray<ValueBinding> Bindings { get; init; }
+        /// <summary>The one-row sources applied to each row, in the order they were made.</summary>
+        internal required ImmutableArray<LateralSource> Laterals { get; init; }
 
         /// <summary>The parameters, in the order they were assigned.</summary>
         internal required ImmutableArray<ParameterSlot> Parameters { get; init; }

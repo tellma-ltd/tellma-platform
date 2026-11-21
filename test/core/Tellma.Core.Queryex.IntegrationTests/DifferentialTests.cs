@@ -24,10 +24,10 @@ namespace Tellma.Core.Queryex.IntegrationTests
     /// <param name="server">The server the fixture put the rows on.</param>
     [Collection(SqlServerGroup.Name)]
     [Trait("Category", "Integration")]
-    public sealed class DifferentialTests(SqlServerFixture server)
+    public sealed class DifferentialTests(LedgerDatabase server)
     {
         /// <summary>The server the fixture put the rows on.</summary>
-        private readonly SqlServerFixture _server = server;
+        private readonly LedgerDatabase _server = server;
 
         /// <summary>The engine under test.</summary>
         private readonly QueryexEngine _engine = new();
@@ -39,6 +39,16 @@ namespace Tellma.Core.Queryex.IntegrationTests
             {
                 ["From"] = QxValue.Date(new DateOnly(2024, 1, 1)),
                 ["To"] = QxValue.Date(new DateOnly(2025, 12, 31)),
+
+                // The parameters the cases about omission declare. Every one has a value, the ones a
+                // case leaves out included, so leaving one out is never the same as supplying it.
+                ["AsOf"] = QxValue.Date(new DateOnly(2024, 6, 15)),
+                ["Customer"] = QxValue.Number(2),
+                ["Main"] = QxValue.Number(1),
+                ["Other"] = QxValue.Number(3),
+                ["Root"] = QxValue.Text("Assets"),
+                ["Posted"] = QxValue.Flag(true),
+                ["Floor"] = QxValue.Number(100000),
             },
         };
 
@@ -89,7 +99,7 @@ namespace Tellma.Core.Queryex.IntegrationTests
                 spec,
                 new QueryCompilationOptions
                 {
-                    LanguageVersion = QueryexLanguage.Version,
+                    QueryexVersion = QueryexLanguage.Version,
                     Schema = LedgerFixture.Schema,
                 });
 
@@ -104,18 +114,18 @@ namespace Tellma.Core.Queryex.IntegrationTests
         public async Task Case_AnswersTheSameOnTheServer(string id)
         {
             QueryCase entry = QueryCorpus.All.Single(c => c.Id == id);
-            InterpreterContext context = entry.HasUser ? Context : Context with { UserId = null };
+
+            // The second reading leaves out what the compilation leaves out, and is still given a
+            // value for each of them: a reading that used one would answer differently.
+            InterpreterContext context = (entry.HasUser ? Context : Context with { UserId = null }) with
+            {
+                KeySets = entry.KeySets,
+                Omitted = entry.OmittedParameters.ToHashSet(StringComparer.OrdinalIgnoreCase),
+            };
 
             QueryexResult<CompiledQuery> result = _engine.CompileQuery(
                 entry.Spec,
-                new QueryCompilationOptions
-                {
-                    LanguageVersion = QueryexLanguage.Version,
-                    Schema = LedgerFixture.Schema,
-                    Parameters = entry.Parameters,
-                    HasUser = entry.HasUser,
-                    Limits = entry.Limits,
-                });
+                entry.Options(LedgerFixture.Schema));
 
             Assert.True(
                 result.Succeeded,
@@ -257,13 +267,13 @@ namespace Tellma.Core.Queryex.IntegrationTests
         /// <returns>The rows it returned.</returns>
         /// <remarks>Shared with the expression suite, which executes queries the same way.</remarks>
         internal static async Task<IReadOnlyList<IReadOnlyList<QxValue>>> ExecuteOn(
-            SqlServerFixture server,
+            LedgerDatabase server,
             CompiledQuery query,
             InterpreterContext context)
         {
             await using SqlConnection connection = await server.OpenAsync();
             await using SqlCommand command = connection.CreateCommand();
-            command.CommandText = query.Sql;
+            command.CommandText = KeySetDeclarations(context) + query.Sql;
             SqlBinding.Bind(command, query, context);
 
             List<IReadOnlyList<QxValue>> rows = [];
@@ -274,6 +284,20 @@ namespace Tellma.Core.Queryex.IntegrationTests
             }
 
             return rows;
+        }
+
+        /// <summary>
+        ///     The table variables a query's restrictions read, declared and filled the way a host
+        ///     would ahead of the statement.
+        /// </summary>
+        /// <param name="context">What the values depend on, the tables of keys included.</param>
+        /// <returns>The statements, or nothing when the query reads no table of keys.</returns>
+        /// <remarks>Shared with the suite that embeds compiled statements in SQL of its own.</remarks>
+        internal static string KeySetDeclarations(InterpreterContext context)
+        {
+            return string.Concat(context.KeySets
+                .OrderBy(table => table.Key, StringComparer.Ordinal)
+                .Select(table => table.Value.Declaration(table.Key)));
         }
 
         /// <summary>Whether two numbers are the same number, as far as the language says.</summary>

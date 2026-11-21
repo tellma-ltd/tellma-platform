@@ -23,34 +23,70 @@ namespace Tellma.Core.Queryex.Emit
         /// <summary>The prefix every result column's name shares.</summary>
         internal const string ColumnPrefix = "c";
 
+        /// <summary>The text that ends a statement written on its own.</summary>
+        internal const string Terminator = ";\n";
+
+        /// <summary>
+        ///     The clause that has the backend plan the statement afresh at each execution, against
+        ///     the values its declarations hold then.
+        /// </summary>
+        internal const string RecompileHint = "OPTION (RECOMPILE)\n";
+
+        /// <summary>Assembles the batch a statement is executed as on its own.</summary>
+        /// <param name="prologue">The declarations the statement depends on.</param>
+        /// <param name="body">The statement, without its terminator.</param>
+        /// <param name="recompile">Whether the statement is planned afresh at each execution.</param>
+        /// <returns>
+        ///     The declarations, the statement, the hint when there is one, and the terminator.
+        /// </returns>
+        /// <remarks>
+        ///     The hint is the statement's own clause and so follows the body rather than sitting in
+        ///     it: a body is embedded as a derived table or behind a condition, where the backend
+        ///     takes no hint, and a host that embeds it writes the one clause its own statement may
+        ///     carry.
+        /// </remarks>
+        internal static string Batch(string prologue, string body, bool recompile)
+        {
+            return prologue + body + (recompile ? RecompileHint : string.Empty) + Terminator;
+        }
+
         /// <summary>Writes one lowered query as SQL.</summary>
         /// <param name="plan">The plan.</param>
-        /// <returns>The batch.</returns>
-        internal static string Write(RelationalPlan plan)
+        /// <returns>
+        ///     The declarations the statement depends on, and the statement without its terminator.
+        ///     <see cref="Batch" /> assembles the whole batch from the two.
+        /// </returns>
+        /// <remarks>
+        ///     Written as two parts rather than cut out of one, so a host embedding the statement in
+        ///     its own SQL never has to find where the declarations end or strip a terminator — both
+        ///     of which are parsing compiled text, which nothing outside the engine may do.
+        /// </remarks>
+        internal static (string Prologue, string Body) Write(RelationalPlan plan)
         {
-            SqlWriter sql = new();
-            PlanEmitter emitter = new(sql);
-
+            // The hoisted declarations, then one empty line, or nothing at all.
+            SqlWriter prologue = new();
+            PlanEmitter declarations = new(prologue);
             foreach (HoistedVariable variable in plan.Variables)
             {
-                emitter.Declaration(variable);
+                declarations.Declaration(variable);
             }
 
             if (plan.Variables.Length > 0)
             {
-                sql.Line();
+                prologue.Line();
             }
 
-            WriteSelect(sql, emitter, plan);
-            WriteFrom(sql, emitter, plan);
-            WriteWhere(sql, emitter, plan);
-            WriteGrouping(sql, emitter, plan);
-            WriteOrdering(sql, emitter, plan);
-            WritePaging(sql, plan);
+            // The statement, clause by clause, each ending its own line.
+            SqlWriter body = new();
+            PlanEmitter emitter = new(body);
+            WriteSelect(body, emitter, plan);
+            WriteFrom(body, emitter, plan);
+            WriteWhere(body, emitter, plan);
+            WriteGrouping(body, emitter, plan);
+            WriteOrdering(body, emitter, plan);
+            WritePaging(body, plan);
 
-            sql.Write(';');
-            sql.Line();
-            return sql.ToString();
+            return (prologue.ToString(), body.ToString());
         }
 
         /// <summary>Writes the select list.</summary>
@@ -77,46 +113,36 @@ namespace Tellma.Core.Queryex.Emit
             }
         }
 
-        /// <summary>Writes the source, its joins, and its bindings.</summary>
+        /// <summary>Writes the source, its joins, and its one-row sources.</summary>
         /// <param name="sql">Where the SQL is collected.</param>
         /// <param name="emitter">The expression writer.</param>
         /// <param name="plan">The plan.</param>
         private static void WriteFrom(SqlWriter sql, PlanEmitter emitter, RelationalPlan plan)
         {
+            if (plan.Root is not JoinNode root)
+            {
+                // No row source, so no clause at all: the backend answers a select list on its own
+                // with one row. Nothing can join or apply here, since both read a row.
+                return;
+            }
+
             sql.Write("FROM ");
-            sql.Write(plan.Root.Entity.Source);
+            sql.Write(root.Entity.Source);
             sql.Write(" AS ");
-            sql.Quoted(plan.Root.Alias);
+            sql.Quoted(root.Alias);
             sql.Line();
 
+            // One join or one-row source per line; a subquery writes the same parts on one line of
+            // its own.
             foreach (JoinNode join in plan.Joins)
             {
-                sql.Write(join.IsInner ? "INNER JOIN " : "LEFT JOIN ");
-                sql.Write(join.Entity.Source);
-                sql.Write(" AS ");
-                sql.Quoted(join.Alias);
-                sql.Write(" ON ");
-                sql.Quoted(join.Alias);
-                sql.Write('.');
-                sql.Quoted(join.Entity.Key.Column);
-                sql.Write(" = ");
-                sql.Quoted(join.Parent!.Alias);
-                sql.Write('.');
-                sql.Quoted(join.Navigation!.ForeignKey.Column);
+                emitter.Join(join);
                 sql.Line();
             }
 
-            foreach (ValueBinding binding in plan.Bindings)
+            foreach (LateralSource lateral in plan.Laterals)
             {
-                // A one-row lateral source: it names a value the guards can mention as often as they
-                // need to without the expression behind it being written more than once.
-                sql.Write("CROSS APPLY (VALUES (");
-                emitter.Value(binding.Value);
-                sql.Write(")) AS ");
-                sql.Quoted(binding.Alias);
-                sql.Write(" (");
-                sql.Quoted(PlanEmitter.BindingColumn);
-                sql.Write(')');
+                emitter.Lateral(lateral);
                 sql.Line();
             }
         }

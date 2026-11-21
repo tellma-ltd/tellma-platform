@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <Using Include="Tellma.Testing.Support.Sql" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The web host, built in process as Program.cs builds it, on a test server. -->
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <ProjectReference Include="..\..\src\Tellma.Distro.Acme.Web\Tellma.Distro.Acme.Web.csproj" />
+    <!-- The migrator, run in process with the identity store's migrations, over Acme's own
+         configuration files, which its project copies beside the suite. -->
+    <ProjectReference Include="..\..\src\Tellma.Distro.Acme.Migrator\Tellma.Distro.Acme.Migrator.csproj" />
+    <!-- The capturing email transport, the shared SQL Server, and the OAuth/OIDC flow driver the
+         identity engine's own suite signs in with. -->
+    <ProjectReference Include="..\..\..\..\src\core\Tellma.Core.Testing\Tellma.Core.Testing.csproj" />
+    <ProjectReference Include="..\..\..\..\test\shared\Tellma.Testing.Support\Tellma.Testing.Support.csproj" />
+    <ProjectReference Include="..\..\..\..\test\apps\Tellma.Identity.TestSupport\Tellma.Identity.TestSupport.csproj" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
+    <PackageReference Include="Microsoft.AspNetCore.TestHost" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+  </ItemGroup>
+
+</Project>

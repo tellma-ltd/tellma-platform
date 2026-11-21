@@ -127,10 +127,14 @@ namespace Tellma.Identity.E2E
             await PlaywrightTracing.RunTracedAsync(context, nameof(The_consent_screen_is_accessible), async () =>
             {
                 IPage page = await NewPageAsync(context);
+
+                // Only scopes the client is permitted: the server refuses any other request before
+                // the consent screen, on the error page. Two scopes, so the list the screen renders
+                // is scanned with more than one item.
                 await page.GotoAsync(
                     "/connect/authorize?client_id=a11y-consent&response_type=code"
                     + "&redirect_uri=" + Uri.EscapeDataString(callbackUri)
-                    + "&scope=" + Uri.EscapeDataString("openid profile email tellma_api")
+                    + "&scope=" + Uri.EscapeDataString("openid profile email")
                     + "&code_challenge=E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM&code_challenge_method=S256");
                 await page.GetByRole(AriaRole.Heading, new() { Name = "Authorize application" }).WaitForAsync();
                 await AxeAssertions.AssertNoViolationsAsync(page, "consent");

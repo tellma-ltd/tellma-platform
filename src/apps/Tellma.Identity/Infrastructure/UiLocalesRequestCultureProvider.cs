@@ -20,8 +20,9 @@ namespace Tellma.Identity.Infrastructure
         {
             ArgumentNullException.ThrowIfNull(httpContext);
 
-            string? uiLocales = httpContext.Request.Query["ui_locales"];
-            if (string.IsNullOrWhiteSpace(uiLocales))
+            // Read through the one reader the pages carry the value with, so the language a page
+            // renders in and the value its links pass on are never two readings of the query.
+            if (CarriedQuery.Read(httpContext.Request).UiLocales is not { } uiLocales)
             {
                 return Task.FromResult<ProviderCultureResult?>(null);
             }
@@ -29,12 +30,9 @@ namespace Tellma.Identity.Infrastructure
             // ui_locales is an ordered preference list; returning every entry lets the localization
             // middleware pick the first one it actually supports (an unsupported leading tag does
             // not force the default).
-            List<StringSegment> cultures =
-                [.. uiLocales.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                    .Select(static culture => new StringSegment(culture))];
+            List<StringSegment> cultures = [.. uiLocales.Split(' ').Select(static culture => new StringSegment(culture))];
 
-            return Task.FromResult(
-                cultures.Count == 0 ? null : new ProviderCultureResult(cultures, cultures));
+            return Task.FromResult<ProviderCultureResult?>(new ProviderCultureResult(cultures, cultures));
         }
     }
 }

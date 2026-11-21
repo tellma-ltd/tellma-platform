@@ -101,6 +101,8 @@ export class TmFilePicker implements OnDestroy {
    * user picked a file or dismissed the dialog — and, belt and braces, on
    * the pick itself: an embedder that never returns focus to the window
    * would otherwise leave the control disabled for good.
+   *
+   * @tmWiring
    */
   readonly awaitingDialog = signal(false);
 

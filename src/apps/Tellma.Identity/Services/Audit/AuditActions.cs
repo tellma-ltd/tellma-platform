@@ -77,6 +77,13 @@ namespace Tellma.Identity.Services.Audit
         /// <summary>A token or grant was revoked.</summary>
         public const string TokenRevoked = "TokenRevoked";
 
+        /// <summary>
+        ///     A request named a <c>resource</c> its client does not hold, or one outside the grant
+        ///     it presented, and was answered <c>invalid_target</c>. The row names the client and
+        ///     the refused resource.
+        /// </summary>
+        public const string ResourceRefused = "ResourceRefused";
+
         /// <summary>An SSO session was established.</summary>
         public const string SessionCreated = "SessionCreated";
 
@@ -112,6 +119,14 @@ namespace Tellma.Identity.Services.Audit
 
         /// <summary>An OAuth client registration was deleted.</summary>
         public const string ClientDeleted = "ClientDeleted";
+
+        /// <summary>
+        ///     A distribution seed entry changed the store at startup: it created or rewrote one of
+        ///     the distribution's two clients, added its origin to the API audiences, or granted the
+        ///     origin to a seeded platform client. A start that finds everything converged records
+        ///     nothing.
+        /// </summary>
+        public const string DistributionSeedApplied = "DistributionSeedApplied";
 
         /// <summary>A temporary access pass was issued by an operator.</summary>
         public const string TapIssued = "TapIssued";
@@ -154,6 +169,19 @@ namespace Tellma.Identity.Services.Audit
 
         /// <summary>The break-glass administrator was seeded.</summary>
         public const string BootstrapAdminSeeded = "BootstrapAdminSeeded";
+
+        /// <summary>
+        ///     A document client's metadata document (and, for <c>private_key_jwt</c>, its key set)
+        ///     was fetched and passed validation. Details name the host.
+        /// </summary>
+        public const string ClientMetadataFetched = "ClientMetadataFetched";
+
+        /// <summary>
+        ///     A document client was refused: its client id, a fetch guard, the fetch itself, the
+        ///     document's validation or the row cap. Details carry the reason, one of the closed
+        ///     set the engine defines, and the host.
+        /// </summary>
+        public const string ClientMetadataRejected = "ClientMetadataRejected";
 
         /// <summary>The one-time setup token was used to bootstrap the break-glass administrator.</summary>
         public const string SetupTokenUsed = "SetupTokenUsed";

@@ -12,7 +12,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
     /// <summary>
     ///     RFC 8707 resource indicators are enforced per client: a caller can only mint tokens
     ///     for audiences it was explicitly granted, so a token for one distribution is not
-    ///     obtainable — let alone valid — at another.
+    ///     obtainable — let alone valid — at another. A refused resource is <c>invalid_target</c>.
     /// </summary>
     [Collection(SqlServerCollectionDefinition.Name)]
     [Trait("Category", "Integration")]
@@ -21,7 +21,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
         [Fact]
         public async Task Requesting_a_foreign_resource_is_rejected()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "idrsrc");
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idrsrc");
             using HttpClient client = factory.CreateClient();
 
             // Granted acme only; asks for globex.
@@ -43,13 +43,45 @@ namespace Tellma.Identity.IntegrationTests.Flows
             Assert.False(response.IsSuccessStatusCode);
             using var document = JsonDocument.Parse(
                 await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+            Assert.Equal("invalid_target", document.RootElement.GetProperty("error").GetString());
+        }
+
+        [Fact]
+        public async Task The_non_standard_audience_parameter_cannot_name_an_audience()
+        {
+            // Resource indicators are the only way to name an audience. OpenIddict's own audience
+            // parameter belongs to token exchange alone, and has no registered audience there
+            // either, so a client-credentials request carrying it is refused outright rather than
+            // having the value copied into its token.
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idrsrcaud");
+            using HttpClient client = factory.CreateClient();
+
+            ServiceAccountCredentials account = await ClientCredentialsTests.CreateServiceAccountAsync(
+                factory, ["https://acme.app.tellma.com"]);
+
+            using HttpResponseMessage response = await client.PostAsync(
+                new Uri("/connect/token", UriKind.Relative),
+                new FormUrlEncodedContent(new Dictionary<string, string>
+                {
+                    ["grant_type"] = "client_credentials",
+                    ["client_id"] = account.ClientId,
+                    ["client_secret"] = account.ClientSecret,
+                    ["scope"] = "tellma_api",
+                    ["resource"] = "https://acme.app.tellma.com",
+                    ["audience"] = "https://globex.app.tellma.com",
+                }),
+                TestContext.Current.CancellationToken);
+
+            Assert.False(response.IsSuccessStatusCode);
+            using var document = JsonDocument.Parse(
+                await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
             Assert.Equal("invalid_request", document.RootElement.GetProperty("error").GetString());
         }
 
         [Fact]
         public async Task Machine_caller_requesting_tellma_api_without_a_resource_is_rejected()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "idrsrc2");
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idrsrc2");
             using HttpClient client = factory.CreateClient();
 
             ServiceAccountCredentials account = await ClientCredentialsTests.CreateServiceAccountAsync(

@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <!-- The Azure web defaults, composed into the shared web test host as a distribution composes
+         them, against a real Azure SignalR Service instance. -->
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <ProjectReference Include="..\..\..\src\defaults\Tellma.Defaults.Azure.AspNetCore\Tellma.Defaults.Azure.AspNetCore.csproj" />
+    <ProjectReference Include="..\..\shared\Tellma.Testing.WebHost\Tellma.Testing.WebHost.csproj" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+  </ItemGroup>
+
+</Project>

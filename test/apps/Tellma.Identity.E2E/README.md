@@ -4,15 +4,19 @@ Browser end-to-end tests (`[Trait("Category", "E2E")]`) for the identity server 
 Playwright (Chromium):
 
 - The real `Tellma.Identity.Web` host runs in-process on Kestrel at an ephemeral port, against a
-  Testcontainers SQL Server; emails are captured in-process for code/link scraping.
+  Testcontainers SQL Server, or the server `TELLMA_TEST_SQL` names, where the shared end-of-suite
+  drop in `Tellma.Testing.Support` removes the run's database; emails are captured in-process for
+  code/link scraping.
 - Passkey ceremonies use the CDP **virtual authenticator** (`WebAuthn.addVirtualAuthenticator`,
   ctap2/internal, resident keys, user verification). The browser's conditional-mediation account
   chooser cannot be driven deterministically over CDP, so conditional-UI coverage asserts the wiring
   (autofill attribute + options request), not the chooser UX — verify that path manually.
 - Scenarios: passkey register/sign-in, email code, invitation acceptance, consent and step-up
   (each including that the browser follows the redirect back to the client, which the integration
-  suite cannot see), the device-bound tier refusal, logout, and branding (the token stylesheet
-  loads and resolves).
+  suite cannot see), the device-bound tier refusal, logout, branding (the token stylesheet
+  loads and resolves), a pushed request for Arabic through the email-code step (right to left on
+  every page, found by its Arabic control names), and the account entry with its link back to the
+  page the user left.
 - The redirect assertions above are the point of several of these. A browser applies the
   content-security policy's `form-action` directive to every hop of the navigation a form
   submission produces, and refuses the last one silently: the server issues a perfectly good

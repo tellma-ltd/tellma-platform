@@ -7,6 +7,7 @@
 import * as i0 from '@angular/core';
 import { InjectionToken } from '@angular/core';
 import { Observable } from 'rxjs';
+import { Signal } from '@angular/core';
 import { TemplateRef } from '@angular/core';
 import { Type } from '@angular/core';
 
@@ -15,7 +16,7 @@ export const TM_MODAL_DATA: InjectionToken<unknown>;
 
 // @public
 export class TmModal {
-    open<R = void>(content: Type<unknown> | TemplateRef<unknown>, config?: TmModalConfig): TmModalRef<R>;
+    open<R = void>(content: TemplateRef<unknown> | Type<unknown>, config?: TmModalConfig): TmModalRef<R>;
     static ɵfac: i0.ɵɵFactoryDeclaration<TmModal, never>;
     static ɵprov: i0.ɵɵInjectableDeclaration<TmModal>;
 }
@@ -25,8 +26,11 @@ export interface TmModalConfig {
     backdropDismiss?: boolean;
     canDismiss?: () => boolean | Promise<boolean>;
     data?: unknown;
+    describedBy?: string;
     escapeDismiss?: boolean;
     panelClass?: string;
+    placement?: 'center' | 'end';
+    role?: 'alertdialog' | 'dialog';
     showClose?: boolean;
     size?: TmModalSize;
     title?: string;
@@ -41,9 +45,11 @@ export class TmModalFooter {
 // @public
 export class TmModalRef<R = void> {
     // @internal
-    constructor(policy: DismissalPolicy);
+    constructor(policy: DismissalPolicy, title?: string);
     close(value?: R): void;
     readonly closed: Promise<TmModalResult<R>>;
+    // @internal
+    // @internal
     // @internal
     // @internal
 }
@@ -53,10 +59,10 @@ export type TmModalResult<R> = {
     via: 'api';
     value: R | undefined;
 } | {
-    via: 'close-button' | 'backdrop' | 'escape';
+    via: 'backdrop' | 'close-button' | 'escape';
 };
 
 // @public
-export type TmModalSize = 'sm' | 'md' | 'lg';
+export type TmModalSize = 'lg' | 'md' | 'sm';
 
 ```

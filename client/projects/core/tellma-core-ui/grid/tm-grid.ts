@@ -5,8 +5,8 @@
 
 import { Component } from '@angular/core';
 
-import { ɵTmGridBase } from './internal/grid-base';
 import { ɵTmGridView } from './internal/grid-view';
+import { TmGridBase } from './tm-grid-base';
 
 /**
  * Spreadsheet-grade data grid: virtualized rendering (100k-row readonly
@@ -51,4 +51,4 @@ import { ɵTmGridView } from './internal/grid-view';
     '[style.--grid-template]': 'core.gridTemplate()',
   },
 })
-export class TmGrid<T> extends ɵTmGridBase<T> {}
+export class TmGrid<T> extends TmGridBase<T> {}

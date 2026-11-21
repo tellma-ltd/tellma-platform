@@ -1,37 +1,40 @@
 /* To learn more about Typescript configuration file: https://www.typescriptlang.org/docs/handbook/tsconfig-json.html. */
 /* To learn more about Angular compiler options: https://angular.dev/reference/configs/angular-compiler-options. */
+/*
+ * The compiler and Angular options come from the preset every Tellma Angular
+ * project extends (@tellma/core-tools/tsconfig.json); this file adds the
+ * path mappings that resolve the workspace's own packages to their sources.
+ */
 {
+  "extends": "@tellma/core-tools/tsconfig.json",
   "compileOnSave": false,
   "compilerOptions": {
-    "strict": true,
     "paths": {
+      "@tellma/core": ["./projects/core/tellma-core/public-api.ts"],
+      "@tellma/core/*": ["./projects/core/tellma-core/*/public-api.ts"],
+      "@tellma/core-testing": ["./projects/core/tellma-core-testing/public-api.ts"],
+      "@tellma/core-testing/*": ["./projects/core/tellma-core-testing/*/public-api.ts"],
       "@tellma/core-ui": ["./projects/core/tellma-core-ui/public-api.ts"],
       "@tellma/core-ui/*": ["./projects/core/tellma-core-ui/*/public-api.ts"],
       "@tellma/core-ui-tokens": ["./projects/core/tellma-core-ui-tokens/public-api.ts"],
       "@tellma/core-ui-testing": ["./projects/core/tellma-core-ui-testing/public-api.ts"],
       "@tellma/locale-ar": ["./projects/locale/tellma-locale-ar/public-api.ts"]
-    },
-    "noImplicitOverride": true,
-    "noPropertyAccessFromIndexSignature": true,
-    "noImplicitReturns": true,
-    "noFallthroughCasesInSwitch": true,
-    "skipLibCheck": true,
-    "isolatedModules": true,
-    "experimentalDecorators": true,
-    "importHelpers": true,
-    "target": "ES2022",
-    "module": "preserve",
-    "resolveJsonModule": true
-  },
-  "angularCompilerOptions": {
-    "enableI18nLegacyMessageIdFormat": false,
-    "strictInjectionParameters": true,
-    "strictInputAccessModifiers": true,
-    "strictTemplates": true,
-    "typeCheckHostBindings": true
+    }
   },
   "files": [],
   "references": [
+    {
+      "path": "./projects/core/tellma-core/tsconfig.lib.json"
+    },
+    {
+      "path": "./projects/core/tellma-core/tsconfig.spec.json"
+    },
+    {
+      "path": "./projects/core/tellma-core-testing/tsconfig.lib.json"
+    },
+    {
+      "path": "./projects/core/tellma-core-testing/tsconfig.spec.json"
+    },
     {
       "path": "./projects/core/tellma-core-ui/tsconfig.lib.json"
     },

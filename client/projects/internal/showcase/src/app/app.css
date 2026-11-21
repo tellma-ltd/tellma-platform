@@ -18,7 +18,8 @@
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  block-size: var(--shell-header-height);
+  /* At least one row high; on a phone the controls wrap onto more rows. */
+  min-block-size: var(--shell-header-height);
   padding-block: var(--space-2);
   padding-inline: var(--space-4);
   background: var(--surface-subtle);
@@ -104,6 +105,8 @@
 
 .shell-controls {
   display: flex;
+  flex-wrap: wrap; /* never wider than a phone: the page must not scroll sideways */
+  justify-content: flex-end;
   align-items: center;
   gap: var(--space-2);
   margin-inline-start: auto;

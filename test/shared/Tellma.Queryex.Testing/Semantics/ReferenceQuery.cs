@@ -18,9 +18,16 @@ namespace Tellma.Queryex.Testing.Semantics
     ///     A whole query, answered from memory.
     /// </summary>
     /// <remarks>
-    ///     The other half of the differential check: the compiler turns a query into SQL a server
-    ///     answers, and this answers the same query from the same rows by following the rules
-    ///     directly. Where the two answers differ, one of them is wrong.
+    ///     <para>
+    ///         The other half of the differential check: the compiler turns a query into SQL a server
+    ///         answers, and this answers the same query from the same rows by following the rules
+    ///         directly. Where the two answers differ, one of them is wrong.
+    ///     </para>
+    ///     <para>
+    ///         Parameters the context leaves out are still bound here, every one of them: what
+    ///         leaving one out means is applied while the query is answered, never by rewriting it
+    ///         first, which is the compiler's way and so the one this must not share.
+    ///     </para>
     /// </remarks>
     public static class ReferenceQuery
     {
@@ -38,10 +45,35 @@ namespace Tellma.Queryex.Testing.Semantics
             IReadOnlyList<QueryexParameterDeclaration>? declarations = null)
         {
             ArgumentNullException.ThrowIfNull(spec);
-            ArgumentNullException.ThrowIfNull(context);
 
-            Plan plan = Prepare(spec, context, declarations ?? []);
-            IReadOnlyList<LedgerRow> rows = Filtered(spec, plan, context);
+            return Run(spec, context, LedgerFixture.Schema, LedgerData.Rows(spec.Root), declarations);
+        }
+
+        /// <summary>Answers one query from rows the caller supplies, bound against a schema of its own.</summary>
+        /// <param name="spec">The query.</param>
+        /// <param name="context">What the evaluation depends on besides the rows.</param>
+        /// <param name="schema">The schema the query is bound against.</param>
+        /// <param name="rows">The root entity's rows.</param>
+        /// <param name="declarations">The declared parameters.</param>
+        /// <returns>The rows, each a value per select item.</returns>
+        /// <remarks>
+        ///     For a table too large to write out as statements, which a suite generates on the server
+        ///     and here alike. Only the root's rows are supplied, so the query follows no navigation.
+        /// </remarks>
+        public static IReadOnlyList<IReadOnlyList<QxValue>> Run(
+            QuerySpec spec,
+            InterpreterContext context,
+            QueryexSchema schema,
+            IReadOnlyList<LedgerRow> rows,
+            IReadOnlyList<QueryexParameterDeclaration>? declarations = null)
+        {
+            ArgumentNullException.ThrowIfNull(spec);
+            ArgumentNullException.ThrowIfNull(context);
+            ArgumentNullException.ThrowIfNull(schema);
+            ArgumentNullException.ThrowIfNull(rows);
+
+            Plan plan = Prepare(spec, context, schema, declarations ?? []);
+            rows = Filtered(spec, plan, context, rows);
 
             List<Answer> answers = spec.Aggregate
                 ? Grouped(plan, context, rows)
@@ -63,21 +95,25 @@ namespace Tellma.Queryex.Testing.Semantics
         /// <param name="Having">The group-level predicate, when there is one.</param>
         /// <param name="OrderBy">The ordering list.</param>
         /// <param name="Keys">Which select items became grouping keys.</param>
+        /// <param name="Undeclared">The columns read after the select list that the schema leaves out.</param>
         private sealed record Plan(
             ImmutableArray<BoundItem> Select,
             TypedExpr? Filter,
             TypedExpr? Having,
             ImmutableArray<BoundItem> OrderBy,
-            IReadOnlyList<int> Keys);
+            IReadOnlyList<int> Keys,
+            IReadOnlyList<string> Undeclared);
 
         /// <summary>Binds every clause of a query.</summary>
         /// <param name="spec">The query.</param>
         /// <param name="context">What the evaluation depends on besides the rows.</param>
+        /// <param name="schema">The schema the query is bound against.</param>
         /// <param name="declarations">The declared parameters.</param>
         /// <returns>The bound clauses.</returns>
         private static Plan Prepare(
             QuerySpec spec,
             InterpreterContext context,
+            QueryexSchema schema,
             IReadOnlyList<QueryexParameterDeclaration> declarations)
         {
             DiagnosticSink sink = new();
@@ -92,7 +128,7 @@ namespace Tellma.Queryex.Testing.Semantics
                 out ExpressionListSyntax? syntax);
 
             bool grouped = spec.Aggregate && QueryCompiler.DerivesGroupingKeys(syntax!);
-            BindingContext value = Context(spec, context, declarations, grouped, spec.Aggregate
+            BindingContext value = Context(schema, spec, context, declarations, grouped, spec.Aggregate
                 ? QueryexMode.Aggregate
                 : QueryexMode.Value);
 
@@ -110,7 +146,7 @@ namespace Tellma.Queryex.Testing.Semantics
                 : FilterBinder.Bind(
                     Compiler,
                     spec.Filter,
-                    Context(spec, context, declarations, grouped, QueryexMode.Filter),
+                    Context(schema, spec, context, declarations, grouped, QueryexMode.Filter),
                     QueryexLimits.Default,
                     sink,
                     DiagnosticLocation.Clause(QueryexClause.Filter),
@@ -122,7 +158,7 @@ namespace Tellma.Queryex.Testing.Semantics
                 : FilterBinder.Bind(
                     Compiler,
                     spec.Having,
-                    Context(spec, context, declarations, grouped, QueryexMode.AggregateFilter),
+                    Context(schema, spec, context, declarations, grouped, QueryexMode.AggregateFilter),
                     QueryexLimits.Default,
                     sink,
                     DiagnosticLocation.Clause(QueryexClause.Having),
@@ -158,10 +194,11 @@ namespace Tellma.Queryex.Testing.Semantics
                 }
             }
 
-            return new Plan(select.Items, filter, having, ordering, keys);
+            return new Plan(select.Items, filter, having, ordering, keys, spec.UndeclaredColumns);
         }
 
         /// <summary>The binding context for one clause.</summary>
+        /// <param name="schema">The schema the query is bound against.</param>
         /// <param name="spec">The query.</param>
         /// <param name="context">What the evaluation depends on besides the rows.</param>
         /// <param name="declarations">The declared parameters.</param>
@@ -169,6 +206,7 @@ namespace Tellma.Queryex.Testing.Semantics
         /// <param name="mode">The position the clause is written for.</param>
         /// <returns>The context.</returns>
         private static BindingContext Context(
+            QueryexSchema schema,
             QuerySpec spec,
             InterpreterContext context,
             IReadOnlyList<QueryexParameterDeclaration> declarations,
@@ -177,7 +215,7 @@ namespace Tellma.Queryex.Testing.Semantics
         {
             return new BindingContext
             {
-                Schema = LedgerFixture.Schema,
+                Schema = schema,
                 Root = spec.Root,
                 Mode = mode,
                 HasUser = context.UserId is not null,
@@ -190,28 +228,71 @@ namespace Tellma.Queryex.Testing.Semantics
         /// <param name="spec">The query.</param>
         /// <param name="plan">The bound clauses.</param>
         /// <param name="context">What the evaluation depends on besides the rows.</param>
+        /// <param name="rows">The root entity's rows.</param>
         /// <returns>The rows.</returns>
         private static IReadOnlyList<LedgerRow> Filtered(
             QuerySpec spec,
             Plan plan,
-            InterpreterContext context)
+            InterpreterContext context,
+            IReadOnlyList<LedgerRow> rows)
         {
-            IReadOnlyList<LedgerRow> rows = LedgerData.Rows(spec.Root);
-            if (plan.Filter is null)
+            if (plan.Filter is null && spec.Restrictions.Count == 0)
             {
                 return rows;
             }
 
+            // A row is kept when the filter holds and every restriction's key is in its table: the
+            // restrictions are further conjuncts, read here straight from the rows rather than
+            // through anything the compiler built.
             List<LedgerRow> kept = [];
             foreach (LedgerRow row in rows)
             {
-                if (new Interpreter(row, context).Truth(plan.Filter))
+                bool passes = plan.Filter is null || new Interpreter(row, context).Decides(plan.Filter);
+                if (passes && spec.Restrictions.All(restriction => Holds(restriction, row, context)))
                 {
                     kept.Add(row);
                 }
             }
 
             return kept;
+        }
+
+        /// <summary>Whether a row's key is in the table a restriction names.</summary>
+        /// <param name="restriction">The restriction.</param>
+        /// <param name="row">The row.</param>
+        /// <param name="context">What the evaluation depends on, the tables of keys included.</param>
+        /// <returns>True when the row's key is present and held by the table.</returns>
+        /// <exception cref="InvalidOperationException">The case supplied no table by that name.</exception>
+        private static bool Holds(KeySetRestriction restriction, LedgerRow row, InterpreterContext context)
+        {
+            KeySet keys = context.KeySets.GetValueOrDefault(restriction.TableSource)
+                ?? throw new InvalidOperationException(
+                    "No key set named " + restriction.TableSource + " was supplied.");
+
+            return keys.Holds(KeyOf(row, restriction.Path));
+        }
+
+        /// <summary>Reads a restriction's key from a row, following each navigation by name.</summary>
+        /// <param name="row">The row.</param>
+        /// <param name="path">The restriction's dotted path.</param>
+        /// <returns>The key, or absence when a step along the way points at nothing.</returns>
+        private static QxValue KeyOf(LedgerRow row, string path)
+        {
+            string[] segments = path.Split('.');
+            LedgerRow? current = row;
+            foreach (string segment in segments[..^1])
+            {
+                NavigationDescriptor navigation = current.Entity.Navigations.Single(
+                    candidate => string.Equals(candidate.Name, segment, StringComparison.OrdinalIgnoreCase));
+
+                current = LedgerData.Find(navigation.Target, current[navigation.ForeignKey.Name]);
+                if (current is null)
+                {
+                    return QxValue.Absent(QueryexType.QxNumeric);
+                }
+            }
+
+            return current[segments[^1]];
         }
 
         /// <summary>Answers a grouped query.</summary>
@@ -290,7 +371,7 @@ namespace Tellma.Queryex.Testing.Semantics
 
             LedgerRow anchor = answer.Anchor ?? (rows.Count > 0 ? rows[0] : LedgerData.Rows(LedgerFixture.Invoice)[0]);
             Interpreter reading = new(anchor, context) { Group = rows };
-            return reading.Truth(plan.Having);
+            return reading.Decides(plan.Having);
         }
 
         /// <summary>Whether two grouping keys are the same key.</summary>
@@ -342,6 +423,12 @@ namespace Tellma.Queryex.Testing.Semantics
             foreach (BoundItem item in plan.Select)
             {
                 values.Add(interpreter.Evaluate(item.Expression));
+            }
+
+            // Read as stored, after everything compiled: the schema says nothing about these.
+            foreach (string column in plan.Undeclared)
+            {
+                values.Add(reading.Undeclared.GetValueOrDefault(column) ?? QxValue.Absent(QueryexType.QxString));
             }
 
             return new Answer(values, rows, anchor);

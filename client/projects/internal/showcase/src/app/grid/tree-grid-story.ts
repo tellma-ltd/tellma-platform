@@ -9,6 +9,8 @@ import { applyEach, form, required } from '@angular/forms/signals';
 import { TmGridColumn } from '@tellma/core-ui/grid';
 import { TmTreeGrid } from '@tellma/core-ui/tree-grid';
 
+import { HeldResponses, HeldResponsesControls } from '../held-responses';
+
 /** A chart-of-accounts line: a flat adjacency-list row. */
 interface Account {
   readonly id: number;
@@ -109,18 +111,37 @@ const LAZY_CHILDREN: readonly Account[] = [
   a(8003, LAZY_ROOT_ID, 'Lazy child three'),
 ];
 
+/** The two demo records the content toggle switches between. */
+type RecordName = 'a' | 'b';
+
+/**
+ * A record's own copy of the seeded accounts: each record owns its rows
+ * array and row objects, so no edit or lazily loaded child of one record
+ * ever shows in the other.
+ */
+function seedRecord(): Account[] {
+  return SEED_ACCOUNTS.map((account) => ({ ...account }));
+}
+
 /**
  * Editable tm-tree-grid demo host: a ~4-level accounts tree over a Signal
  * Forms field tree (name required), the new-row placeholder plus
- * insert-child through `newRow(parent)`, lazy loading behind a
- * configurable delay and failure toggle, the readonly flip, a
+ * insert-child through `newRow(parent)`, a lazy root whose children load
+ * at the bind of each content that expands it (it starts expanded) behind
+ * a configurable delay, a held-response gate and a failure toggle, the readonly flip, a
  * default-depth select, contentKey switching and unmount/remount buttons
  * to exercise expansion-state persistence, `searchable` (the find bar's
  * tree deep-search), and a live JSON model dump the Playwright battery
  * asserts against.
+ *
+ * Every contentKey change hands the grid a new rows array, as the grid's
+ * contentKey contract requires: the a/b toggle binds the other record's
+ * own rows (each record keeps its edits and loads its own lazy children),
+ * and a depth change re-binds the same record through a fresh copy of its
+ * array.
  */
 @Component({
-  imports: [TmTreeGrid, TmGridColumn],
+  imports: [TmTreeGrid, TmGridColumn, HeldResponsesControls],
   template: `
     <h2>Tree grid</h2>
 
@@ -153,6 +174,9 @@ const LAZY_CHILDREN: readonly Account[] = [
         />
         Fail lazy loads
       </label>
+      <!-- Holds lazy loads open, so the browser tests can assert the
+           in-flight state without racing the delay. -->
+      <app-held-responses [gate]="heldLoads" name="loader" />
       <label>
         Default depth
         <!-- Static options (first = the default): dynamic bindings inside
@@ -250,33 +274,55 @@ const LAZY_CHILDREN: readonly Account[] = [
   `,
 })
 export class TreeGridStory {
-  readonly model = signal({ accounts: [...SEED_ACCOUNTS] });
+  /** The bound record's accounts, the model the grid's field tree edits. */
+  readonly model = signal({ accounts: seedRecord() });
+  /** The Signal Forms field tree over {@link model}: every account's name is required. */
   readonly f = form(this.model, (p) => {
     applyEach(p.accounts, (account) => {
       required(account.name);
     });
   });
 
+  /** Whether the grid is readonly. */
   readonly readonly = signal(false);
+  /** How long a lazy load takes while the gate does not hold, in milliseconds. */
   readonly lazyDelay = signal(400);
+  /** Whether lazy loads reject. */
   readonly lazyFail = signal(false);
+  /** The latency gate of the lazy loader (see {@link HeldResponses}). */
+  readonly heldLoads = new HeldResponses();
+  /** The grid's default expanded depth; `undefined` expands fully. */
   readonly depth = signal<number | undefined>(undefined);
-  readonly contentName = signal<'a' | 'b'>('a');
+  /** The bound record. */
+  readonly contentName = signal<RecordName>('a');
+  /** Whether the grid is mounted. */
   readonly mounted = signal(true);
 
+  /**
+   * The accounts of the record that is not bound, kept while the other one
+   * is (the bound record's accounts live in {@link model}). Empty until the
+   * first switch: a record that was never bound starts from the seed.
+   */
+  private readonly parked = new Map<RecordName, Account[]>();
+
+  /** The next client-side temp id {@link newAccount} mints (negative, shared by both records). */
   private nextTempId = -1;
 
   /**
    * The content identity: switching either the a/b toggle or the depth
    * select starts a FRESH content slice, so a depth change re-seeds the
-   * expansion set while same-key returns restore the remembered one.
+   * expansion set while same-key returns restore the remembered one. Each
+   * change comes with a new rows array (see {@link switchContent} and
+   * {@link onDepthChange}).
    */
   readonly contentKey = computed(() => `${this.contentName()}:${this.depth() ?? 'all'}`);
 
   /** The live model dump the e2e battery parses (one JSON line). */
   readonly modelJson = computed(() => JSON.stringify(this.model().accounts));
 
+  /** Reads an account's row id. */
   readonly accountId = (account: Account): number => account.id;
+  /** Reads an account's parent id; `null` marks a root. */
   readonly accountParentId = (account: Account): number | null => account.parentId;
   /** Only the lazy root advertises unloaded children. */
   readonly hasChildren = (account: Account): boolean => account.id === LAZY_ROOT_ID;
@@ -292,47 +338,100 @@ export class TreeGridStory {
   });
 
   /**
-   * The lazy loader: waits the configured delay, rejects while the failure
-   * toggle is on, and otherwise appends the lazy children to the model
-   * array (once) — the grid re-derives the tree and expands over them.
+   * The lazy loader: takes each batch of expanded lazy rows in one call (the
+   * lazy root, at the bind of a content that expands it), waits the
+   * configured delay (or, while the gate holds, for its release), rejects
+   * while the failure toggle is on, and otherwise appends the lazy children
+   * to the rows of the record the batch came from (once) — the grid
+   * re-derives the tree beneath the already expanded root.
    */
-  readonly loadChildren = async (account: Account): Promise<void> => {
-    const delay = this.lazyDelay();
-    await new Promise((resolve) => setTimeout(resolve, delay));
+  readonly loadChildren = async (accounts: readonly Account[]): Promise<void> => {
+    // The grid asks only for the bound record's rows, so the record is
+    // captured now: a load that settles after the user switched away still
+    // lands in its own record (the grid ignores that settle, the record
+    // keeps the children), never in the record bound by then.
+    const record = this.contentName();
+    await this.heldLoads.wait(this.lazyDelay());
     if (this.lazyFail()) {
       throw new Error('lazy load failed (story toggle)');
     }
-    if (
-      account.id === LAZY_ROOT_ID &&
-      !this.model().accounts.some((candidate) => candidate.parentId === LAZY_ROOT_ID)
-    ) {
-      this.model.update((m) => ({ accounts: [...m.accounts, ...LAZY_CHILDREN] }));
+    if (!accounts.some((account) => account.id === LAZY_ROOT_ID)) {
+      return;
     }
+    this.updateRecord(record, (rows) =>
+      rows.some((candidate) => candidate.parentId === LAZY_ROOT_ID)
+        ? rows // already loaded (an earlier batch of this record won)
+        : [...rows, ...LAZY_CHILDREN.map((child) => ({ ...child }))],
+    );
   };
 
+  /** Mirrors the readonly checkbox. */
   onReadonlyChange(event: Event): void {
     this.readonly.set((event.target as HTMLInputElement).checked);
   }
 
+  /** Mirrors the lazy-delay input, clamping a non-number or negative entry to 0. */
   onDelayChange(event: Event): void {
     const value = Number((event.target as HTMLInputElement).value);
     this.lazyDelay.set(Number.isFinite(value) && value >= 0 ? value : 0);
   }
 
+  /** Mirrors the lazy-failure checkbox. */
   onLazyFailChange(event: Event): void {
     this.lazyFail.set((event.target as HTMLInputElement).checked);
   }
 
+  /**
+   * Applies the default-depth select. The depth is part of the contentKey,
+   * so the same record re-binds through a fresh copy of its array, in the
+   * same change as the key.
+   */
   onDepthChange(event: Event): void {
     const value = (event.target as HTMLSelectElement).value;
-    this.depth.set(value === 'all' ? undefined : Number(value));
+    const depth = value === 'all' ? undefined : Number(value);
+    if (depth === this.depth()) {
+      return; // the same key: nothing re-binds
+    }
+    this.depth.set(depth);
+    this.model.update((m) => ({ accounts: [...m.accounts] }));
   }
 
+  /**
+   * Toggles the bound record: parks the outgoing record's accounts and
+   * binds the incoming record's own (seeded on its first bind), in the same
+   * change as the key, so the incoming record's lazy rows load its own
+   * children.
+   */
   switchContent(): void {
-    this.contentName.update((name) => (name === 'a' ? 'b' : 'a'));
+    const outgoing = this.contentName();
+    const incoming: RecordName = outgoing === 'a' ? 'b' : 'a';
+    const rows = this.parked.get(incoming) ?? seedRecord();
+    this.parked.delete(incoming);
+    this.parked.set(outgoing, this.model().accounts);
+    this.contentName.set(incoming);
+    this.model.set({ accounts: rows });
   }
 
+  /** Mirrors the mounted checkbox (destroying or recreating the grid). */
   onMountedChange(event: Event): void {
     this.mounted.set((event.target as HTMLInputElement).checked);
+  }
+
+  /**
+   * Replaces a record's accounts: the model's when the record is bound,
+   * else its parked copy. A change that returns the same array is a no-op.
+   */
+  private updateRecord(record: RecordName, change: (rows: Account[]) => Account[]): void {
+    if (record === this.contentName()) {
+      this.model.update((m) => {
+        const rows = change(m.accounts);
+        return rows === m.accounts ? m : { accounts: rows };
+      });
+      return;
+    }
+    const parked = this.parked.get(record);
+    if (parked !== undefined) {
+      this.parked.set(record, change(parked));
+    }
   }
 }

@@ -10,7 +10,8 @@ import { storyUrl } from '../support/story-map';
 /**
  * Touch battery for tmTooltip (DoD 16, touch project): a long-press shows
  * the tooltip and it persists until the next tap; a plain tap never shows
- * it. Runs on the coarse-pointer device project only.
+ * it, except on a button disabled with a reason, whose tap shows the
+ * reason. Runs on the coarse-pointer device project only.
  */
 
 const PANEL = '.tm-tooltip__panel';
@@ -68,6 +69,25 @@ test('a long-press shows the tooltip until the next tap; a plain tap does not sh
   // It persists (no hover to sustain it) until the next tap anywhere.
   await page.waitForTimeout(400);
   await expect(panel).toBeVisible();
+  await page.touchscreen.tap(10, 10);
+  await expect(panel).toHaveCount(0);
+});
+
+test('a tap on a button disabled with a reason shows the reason until the next tap', async ({
+  page,
+}) => {
+  await page.goto(storyUrl('button'));
+  const button = page.getByTestId('reason-btn');
+  const panel = page.locator(PANEL);
+
+  // The tap does nothing else: the activation is swallowed. Tapped at its
+  // centre, because Playwright's tap() refuses an aria-disabled target.
+  await button.scrollIntoViewIfNeeded();
+  const box = (await button.boundingBox())!;
+  await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
+  await expect(panel).toHaveText('Needs the “Customers: Create and edit” permission.');
+  await expect(page.getByTestId('reason-click-count')).toHaveText('0');
+
   await page.touchscreen.tap(10, 10);
   await expect(panel).toHaveCount(0);
 });

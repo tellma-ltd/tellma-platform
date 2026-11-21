@@ -1,0 +1,74 @@
+/*
+ * Copyright (c) Tellma Ltd. All rights reserved.
+ *
+ * This source code is licensed under the Apache-2.0 license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/* tm-search-field — tm-form-field chrome around a magnifier, the search
+   input and a clear button. Unencapsulated (it styles the field's box), so
+   every selector is namespaced under .tm-search-field. */
+
+.tm-search-field {
+  display: block;
+}
+
+/* The magnifier: a muted lead glyph at the field's icon size. */
+.tm-search-field .tm-search-field__icon {
+  --icon-size: var(--space-4);
+  flex: none;
+  color: var(--field-icon);
+}
+
+/* The clear button: the same square trailing button the date picker
+   carries, so a search box and a date field end alike. */
+.tm-search-field .tm-search-field__clear {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  inline-size: var(--space-6);
+  block-size: var(--space-6);
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--field-icon);
+  cursor: pointer;
+  --icon-size: var(--space-4);
+}
+
+.tm-search-field .tm-search-field__clear:hover {
+  background: var(--surface-hover);
+  color: var(--field-text);
+}
+
+/* The token ring, with a transparent real outline beneath it: forced
+   colors strip box-shadows but repaint the outline. */
+.tm-search-field .tm-search-field__clear:focus-visible {
+  outline: var(--focus-ring-width) solid transparent;
+  outline-offset: var(--focus-ring-offset);
+  box-shadow: var(--focus-ring);
+}
+
+/* Hidden but still laid out: the slot is reserved so the text never
+   reflows when the button comes and goes. */
+.tm-search-field .tm-search-field__clear--hidden {
+  visibility: hidden;
+}
+
+/* The consumer's `invalid` flag carries no message, so the field (which
+   reddens only for a displayed message) is reddened from here. */
+.tm-search-field.tm-search-field--invalid .tm-form-field__box {
+  border-color: var(--field-border-invalid);
+}
+
+.tm-search-field.tm-search-field--invalid .tm-form-field__box:focus-within {
+  box-shadow: 0 0 0 var(--focus-ring-halo-width) var(--error-bg);
+}
+
+@media (forced-colors: active) {
+  .tm-search-field .tm-search-field__clear {
+    color: ButtonText;
+  }
+}

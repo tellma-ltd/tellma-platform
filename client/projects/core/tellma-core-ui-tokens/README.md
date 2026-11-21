@@ -14,6 +14,14 @@ preset, a tokens→CSS emitter, and a shipped validation gate.
   comfortable type and padding reads as a squeezed comfortable control.
   The shipped default is `sm`; `provideTellmaForms({ formFieldDefaults })`
   moves it, and each component's `size` input overrides one instance.
+- **Colour groups for data** — `categorical` (eight slots, each a solid
+  `mark` for chart series plus a `tint`/`onTint` pair for keyed avatars) and
+  `sequential` (a seven-step magnitude ramp over the brand teal, step 1 the
+  faintest). Both live in the scheme shape because the component tier emits
+  once, in `:root`, while these need their own values in dark. A slot keeps
+  its place across releases, so a series or an avatar keeps its colour; a
+  distribution re-brands a slot's values in `@layer tm.theme`, never the
+  order.
 - **Kebab hazard** — the emitter splits `heightSm` into `--field-height-sm`
   but leaves two ADJACENT capitals joined, so `paddingXSm` would emit
   `--field-padding-xsm`. Keys whose name would hit that are spelled the way
@@ -23,6 +31,14 @@ preset, a tokens→CSS emitter, and a shipped validation gate.
   computed-value time. **`tokens:check` gates this** — it scans every library
   stylesheet and fails on any `var(--…)` no token emits, because nothing else
   in the stack notices.
+- **Component variables are internal**, except the few a consumer may set:
+  `--icon-size` (a container sizing the icons inside it),
+  `--icon-stroke-width` (a host that needs a heavier glyph),
+  `--counter-halo` (the host of an overlay counter, set to the colour the
+  counter sits on), `--toast-offset-block-start` (the app shell, to keep
+  toasts clear of its top bar) and `--busy-overlay-delay` (how long the busy
+  overlay blocks invisibly before its scrim shows). The `--chip-*` group is
+  the one group a consumer may read, for chip-shaped controls of its own.
 - **Emitter** — `tmEmitCss(tokens)` produces a static stylesheet; every sheet
   opens with `@layer tm.base, tm.theme;` so load order can never change
   which layer wins. A distribution themes by emitting its delta into

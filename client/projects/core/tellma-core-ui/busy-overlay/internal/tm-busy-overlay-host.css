@@ -1,0 +1,73 @@
+/*
+ * Copyright (c) Tellma Ltd. All rights reserved.
+ *
+ * This source code is licensed under the Apache-2.0 license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/* The busy overlay: a top-layer popover over the whole viewport. Idle it
+   lets the pointer through and draws nothing; active it takes the pointer
+   with a progress cursor; with the scrim it veils the page and shows the
+   card. It never displaces content. */
+
+:host {
+  position: fixed;
+  inset: 0;
+  box-sizing: border-box;
+  inline-size: auto;
+  max-inline-size: none;
+  block-size: auto;
+  max-block-size: none;
+  margin: 0;
+  padding: var(--space-4);
+  border: 0;
+  overflow: hidden;
+  background: transparent;
+  color: var(--busy-overlay-text);
+  font-family: var(--font-ui);
+  pointer-events: none;
+}
+
+/* Display is set only while open: an author display would override the
+   UA rule that hides a closed popover. */
+:host(:popover-open) {
+  display: grid;
+  place-items: center;
+}
+
+:host(.tm-busy-overlay--active) {
+  cursor: progress;
+  pointer-events: auto;
+}
+
+:host(.tm-busy-overlay--scrim) {
+  background: var(--busy-overlay-scrim);
+}
+
+/* The card: present always, drawn only with the scrim. */
+.tm-busy-overlay__panel {
+  --spinner-size: var(--busy-overlay-spinner-size);
+
+  display: flex;
+  align-items: center;
+  gap: var(--busy-overlay-gap);
+  box-sizing: border-box;
+  max-inline-size: 100%;
+  padding-block: var(--busy-overlay-padding-y);
+  padding-inline: var(--busy-overlay-padding-x);
+  border: var(--border-width) solid var(--border-default);
+  border-radius: var(--busy-overlay-radius);
+  background: var(--busy-overlay-bg);
+  box-shadow: var(--shadow-lg);
+  font-size: var(--busy-overlay-font-size);
+  font-weight: var(--weight-medium);
+  opacity: 0;
+}
+
+:host(.tm-busy-overlay--scrim) .tm-busy-overlay__panel {
+  opacity: 1;
+}
+
+.tm-busy-overlay__label {
+  overflow-wrap: anywhere;
+}

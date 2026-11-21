@@ -28,6 +28,7 @@ namespace Tellma.Queryex.Testing.Probe
         /// <param name="spec">The query.</param>
         /// <param name="schema">The schema to compile against.</param>
         /// <param name="parameters">The declared parameters.</param>
+        /// <param name="omitted">The declared parameters the compilation leaves out.</param>
         /// <returns>One line per offending value, empty when there are none.</returns>
         /// <remarks>
         ///     <para>
@@ -38,33 +39,40 @@ namespace Tellma.Queryex.Testing.Probe
         ///     <para>
         ///         Counted per fragment. A grouping key appears in both the select list and the
         ///         grouping clause, and that is what the backend requires rather than a duplication
-        ///         anyone chose. Aggregations are excused too: at group grain there is no lateral
-        ///         binding to refer to, and the backend computes identical aggregations once however
-        ///         many times they are written.
+        ///         anyone chose. A bare aggregation is excused too: the backend computes identical
+        ///         aggregations once however many times they are written, and writing one again costs
+        ///         only its own text. Anything built over one is not, since copies of it multiply with
+        ///         every call nested around it.
         ///     </para>
         /// </remarks>
         public static IReadOnlyList<string> Duplicated(
             QuerySpec spec,
             QueryexSchema schema,
-            IReadOnlyList<QueryexParameterDeclaration>? parameters = null)
+            IReadOnlyList<QueryexParameterDeclaration>? parameters = null,
+            IReadOnlyCollection<string>? omitted = null)
         {
             ArgumentNullException.ThrowIfNull(spec);
             ArgumentNullException.ThrowIfNull(schema);
+
+            QueryCompilationOptions options = new()
+            {
+                QueryexVersion = QueryexLanguage.Version,
+                Schema = schema,
+                Parameters = parameters ?? [],
+                OmittedParameters = omitted ?? [],
+            };
 
             DiagnosticSink sink = new();
             CompilationBudget budget = new(QueryexLimits.Default);
             QueryClauses clauses = new(
                 new ExpressionCompiler(new QueryexEngineOptions()),
                 spec,
-                new QueryCompilationOptions
-                {
-                    LanguageVersion = QueryexLanguage.Version,
-                    Schema = schema,
-                    Parameters = parameters ?? [],
-                },
+                options,
                 sink,
                 budget,
-                new NullityMap());
+                new NullityMap(),
+                HostStructure.ResolveRestrictions(spec),
+                OmittedParameters.Resolve(options, nameof(omitted)));
 
             if (!clauses.TryBind())
             {
@@ -81,9 +89,14 @@ namespace Tellma.Queryex.Testing.Probe
             RelationalPlan plan = clauses.Lower();
             List<string> findings = [];
 
-            foreach (ValueBinding binding in plan.Bindings)
+            foreach (LateralSource lateral in plan.Laterals)
             {
-                Inspect(binding.Value, "binding " + binding.Index.ToString(Culture), findings);
+                InspectLateral(lateral, string.Empty, findings);
+            }
+
+            foreach (HoistedVariable variable in plan.Variables)
+            {
+                Inspect(variable.Reads, "variable " + variable.Name, findings);
             }
 
             foreach (PlanSelectItem item in plan.Select)
@@ -94,6 +107,16 @@ namespace Tellma.Queryex.Testing.Probe
             if (plan.Where is not null)
             {
                 Inspect(plan.Where, "filter", findings);
+
+                // A semi-join's one-row sources sit in its subquery's own source, each a fragment of
+                // its own.
+                foreach (PlanSubquery subquery in Subqueries(plan.Where))
+                {
+                    foreach (LateralSource lateral in subquery.Laterals)
+                    {
+                        InspectLateral(lateral, "subquery ", findings);
+                    }
+                }
             }
 
             if (plan.Having is not null)
@@ -116,6 +139,19 @@ namespace Tellma.Queryex.Testing.Probe
         private static System.Globalization.CultureInfo Culture =>
             System.Globalization.CultureInfo.InvariantCulture;
 
+        /// <summary>Counts what one one-row source writes more than once.</summary>
+        /// <param name="lateral">The source.</param>
+        /// <param name="scope">What the source belongs to, for the finding, ending in a space when not empty.</param>
+        /// <param name="findings">The findings so far.</param>
+        private static void InspectLateral(LateralSource lateral, string scope, List<string> findings)
+        {
+            string where = (lateral is ValueBinding ? "binding " : "lookup ") + lateral.Alias;
+            foreach (PlanNode read in lateral.Reads)
+            {
+                Inspect(read, scope + where, findings);
+            }
+        }
+
         /// <summary>Counts what one fragment writes more than once.</summary>
         /// <param name="fragment">The fragment.</param>
         /// <param name="where">Which fragment it is, for the finding.</param>
@@ -127,7 +163,7 @@ namespace Tellma.Queryex.Testing.Probe
 
             foreach ((PlanValue value, int occurrences) in counts)
             {
-                if (occurrences > 1 && !value.IsAtomic && !Aggregates(value))
+                if (occurrences > 1 && !value.IsAtomic && value is not PlanAggregate)
                 {
                     findings.Add(where + ": a " + value.GetType().Name
                         + " is written " + occurrences.ToString(Culture) + " times");
@@ -151,58 +187,35 @@ namespace Tellma.Queryex.Testing.Probe
             }
         }
 
-        /// <summary>Whether a value contains an aggregation anywhere.</summary>
-        /// <param name="node">The value.</param>
-        /// <returns>True when it does.</returns>
-        private static bool Aggregates(PlanNode node)
+        /// <summary>Every subquery under a node, nested ones included.</summary>
+        /// <param name="node">The node.</param>
+        /// <returns>The subqueries, outer ones first.</returns>
+        private static IEnumerable<PlanSubquery> Subqueries(PlanNode node)
         {
-            return node is PlanAggregate || Children(node).Any(Aggregates);
+            if (node is PlanExists exists)
+            {
+                yield return exists.Subquery;
+            }
+
+            foreach (PlanNode child in Children(node))
+            {
+                foreach (PlanSubquery nested in Subqueries(child))
+                {
+                    yield return nested;
+                }
+            }
         }
 
         /// <summary>What sits directly under one plan node.</summary>
         /// <param name="node">The node.</param>
         /// <returns>Its children.</returns>
+        /// <remarks>
+        ///     The engine's own reading of the plan's shape, shared rather than restated, so a node kind
+        ///     the plan gains is inspected here the day it is added.
+        /// </remarks>
         private static ImmutableArray<PlanNode> Children(PlanNode node)
         {
-            return node switch
-            {
-                PlanTemplateValue template => template.Operands,
-                PlanTemplatePredicate template => template.Operands,
-                PlanArithmetic arithmetic => [arithmetic.Left, arithmetic.Right],
-                PlanNegate negate => [negate.Operand],
-                PlanAggregate aggregate => Both(aggregate.Argument, aggregate.Condition),
-                PlanValueOfPredicate truth => [truth.Inner],
-                PlanPredicateOfValue truth => [truth.Inner],
-                PlanJunction junction => [.. junction.Operands.Cast<PlanNode>()],
-                PlanNegation negation => [negation.Operand],
-                PlanCompare compare => [compare.Left, compare.Right],
-                PlanIsNull test => [test.Value],
-                PlanIn membership => [membership.Value, .. membership.Elements.Cast<PlanNode>()],
-                PlanSetComparison set => [set.Left, set.Right],
-                PlanSetMembership set => [set.Value, .. set.Elements.Cast<PlanNode>()],
-                PlanHierarchyTest hierarchy => [hierarchy.Node, hierarchy.Key],
-                _ => [],
-            };
-        }
-
-        /// <summary>The children an aggregation has, skipping the ones it does not.</summary>
-        /// <param name="argument">The value aggregated, when there is one.</param>
-        /// <param name="condition">The per-row condition, when there is one.</param>
-        /// <returns>The children.</returns>
-        private static ImmutableArray<PlanNode> Both(PlanValue? argument, PlanPredicate? condition)
-        {
-            ImmutableArray<PlanNode>.Builder children = ImmutableArray.CreateBuilder<PlanNode>(2);
-            if (argument is not null)
-            {
-                children.Add(argument);
-            }
-
-            if (condition is not null)
-            {
-                children.Add(condition);
-            }
-
-            return children.ToImmutable();
+            return PlanWalk.Children(node);
         }
     }
 }

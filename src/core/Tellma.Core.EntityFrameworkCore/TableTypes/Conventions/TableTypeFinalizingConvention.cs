@@ -8,6 +8,7 @@ using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using Microsoft.EntityFrameworkCore.Metadata.Conventions;
 using Microsoft.EntityFrameworkCore.Storage;
+using System.Collections.Frozen;
 using System.Reflection;
 using Tellma.Core.EntityFrameworkCore.TableTypes.Json;
 
@@ -60,6 +61,13 @@ namespace Tellma.Core.EntityFrameworkCore.TableTypes.Conventions
         ///     <c>varchar(max)</c> JSON columns so non-Latin text round-trips losslessly.
         /// </summary>
         private const string JsonColumnCollation = "Latin1_General_100_BIN2_UTF8";
+
+        /// <summary>
+        ///     The base names of the store types that take a collation on a standalone column. Every
+        ///     other store type fails model finalization when a collation is configured for it.
+        /// </summary>
+        private static readonly FrozenSet<string> CharacterStoreTypes =
+            FrozenSet.Create(StringComparer.OrdinalIgnoreCase, "char", "varchar", "nchar", "nvarchar");
 
         /// <inheritdoc />
         public virtual void ProcessModelFinalizing(
@@ -769,6 +777,19 @@ namespace Tellma.Core.EntityFrameworkCore.TableTypes.Conventions
                         $"'{config.Name}' from CLR type '{clrType.Name}'. Specify an explicit store type.");
             }
 
+            // Only character columns take a collation (spec 0010 §G.1). Checked on the resolved store
+            // type, before the JSON rewrite below: SQL Server would refuse any other type at CREATE
+            // TYPE (Msg 447), and a json column's collation would otherwise be silently replaced by
+            // the wire form's.
+            if (column.Collation is not null && !IsCharacterStoreType(storeType))
+            {
+                string displayName = config.Schema is null ? $"[{config.Name}]" : $"[{config.Schema}].[{config.Name}]";
+                throw new InvalidOperationException(
+                    $"Column '{column.Name}' of standalone table type {displayName} has collation '{column.Collation}', " +
+                    $"but its store type '{storeType}' takes none. Only char, varchar, nchar and nvarchar columns take " +
+                    "a collation; remove the collation or change the column's type.");
+            }
+
             // A standalone column typed json is carried as the JSON wire form, like a derived one.
             (string columnStoreType, string? collation, bool isJson) =
                 NormalizeJsonColumn(storeType, column.Collation, config.IsMemoryOptimized);
@@ -785,6 +806,19 @@ namespace Tellma.Core.EntityFrameworkCore.TableTypes.Conventions
                 IsRowVersion = false,
                 IsJson = isJson,
             };
+        }
+
+        /// <summary>
+        ///     Whether a store type is one of the character types that take a collation —
+        ///     <c>char</c>, <c>varchar</c>, <c>nchar</c> or <c>nvarchar</c>, with or without a length
+        ///     facet (e.g. <c>nvarchar(450)</c>, <c>varchar(max)</c>). Matched on the base name,
+        ///     case-insensitively.
+        /// </summary>
+        private static bool IsCharacterStoreType(string storeType)
+        {
+            int facets = storeType.IndexOf('(', StringComparison.Ordinal);
+            string baseName = (facets < 0 ? storeType : storeType[..facets]).Trim();
+            return CharacterStoreTypes.Contains(baseName);
         }
 
         /// <summary>

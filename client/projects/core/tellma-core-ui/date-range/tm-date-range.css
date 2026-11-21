@@ -1,0 +1,39 @@
+/*
+ * Copyright (c) Tellma Ltd. All rights reserved.
+ *
+ * This source code is licensed under the Apache-2.0 license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/* tm-date-range — a labelled group of two date fields: one above the
+   other (stacked, the default) or side by side (inline). */
+
+:host {
+  display: flex;
+  flex-direction: column;
+  gap: var(--field-label-gap);
+  font-family: var(--font-ui);
+}
+
+.tm-date-range__label {
+  font-size: var(--field-label-font-size);
+  font-weight: var(--weight-medium);
+  color: var(--text-strong);
+}
+
+.tm-date-range__parts {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+:host(.tm-date-range--inline) .tm-date-range__parts {
+  flex-direction: row;
+  align-items: flex-end;
+  gap: var(--space-2);
+}
+
+.tm-date-range__part {
+  flex: 1 1 0;
+  min-inline-size: 0;
+}

@@ -43,6 +43,21 @@ else
 {
     @* The application's own registered name, isolated from the sentence around it. *@
     <p class="tmi-lead">@L["DeviceConfirmPrompt", Model.ApplicationName ?? string.Empty]</p>
+    @* Where the device's access applies, as on the consent screen: approving it is the user's
+       consent to these places, and a later authorization for the same ones is not asked again. *@
+    @if (Model.Targets.Count > 0)
+    {
+        <p class="tmi-lead">@L["ConsentTargets"]</p>
+        <ul class="tmi-scopes">
+            @foreach (string target in Model.Targets)
+            {
+                <li>
+                    <tmi-icon name="globe" />
+                    <div class="tmi-scope-title"><bdi dir="ltr">@target</bdi></div>
+                </li>
+            }
+        </ul>
+    }
     <form method="post" asp-controller="DeviceVerification" asp-action="Accept">
         <input type="hidden" name="user_code" value="@Model.UserCode" />
         <div class="tmi-actions">

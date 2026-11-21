@@ -53,7 +53,9 @@ test.describe('axe floor (menu OPEN, §10)', () => {
 });
 
 test.describe('context-menu invocation (tmContextMenuTrigger)', () => {
-  test('right-click opens the panel at the pointer', async ({ page }) => {
+  // Cross-engine: Firefox and WebKit raise `contextmenu` on the press, so
+  // the menu is already open when the button comes up; it must stay open.
+  test('@cross-engine right-click opens the panel at the pointer', async ({ page }) => {
     const area = page.getByTestId('menu-context-area');
     const areaBox = (await area.boundingBox())!;
     const offset = { x: 80, y: 30 };

@@ -15,6 +15,9 @@
 //      (IRowIdentityMapFactory, CommandBatchPreparerDependencies).
 //   2. SqlServerOptionsExtension (Microsoft.EntityFrameworkCore.SqlServer.Infrastructure.Internal)
 //      — used only as a type check to validate that UseTableTypes() accompanies UseSqlServer().
+//   3. SqlServerAnnotationProvider (Microsoft.EntityFrameworkCore.SqlServer.Metadata.Internal) —
+//      the base class of the relational annotation provider, which adds the lock escalation
+//      option to a table's relational annotations while keeping the provider's own.
 // ---------------------------------------------------------------------------------------------
 
 #pragma warning disable EF1001 // Internal EF Core API usage — quarantined in this file per Rule 1.
@@ -25,8 +28,10 @@ using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Migrations.Internal;
 using Microsoft.EntityFrameworkCore.Migrations.Operations;
 using Microsoft.EntityFrameworkCore.SqlServer.Infrastructure.Internal;
+using Microsoft.EntityFrameworkCore.SqlServer.Metadata.Internal;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.EntityFrameworkCore.Update.Internal;
+using Tellma.Core.EntityFrameworkCore.LockEscalation;
 using Tellma.Core.EntityFrameworkCore.TableTypes.Operations;
 
 namespace Tellma.Core.EntityFrameworkCore.TableTypes.Internal
@@ -106,6 +111,48 @@ namespace Tellma.Core.EntityFrameworkCore.TableTypes.Internal
         public override bool HasDifferences(IRelationalModel? source, IRelationalModel? target)
         {
             return base.HasDifferences(source, target) || TableTypeDiffer.HasDifferences(source?.Model, target?.Model);
+        }
+    }
+
+    /// <summary>
+    ///     The SQL Server provider's relational annotation provider, extended with a table's lock
+    ///     escalation option. Installed by <c>UseTableTypes()</c> in place of the provider's.
+    /// </summary>
+    /// <remarks>
+    ///     A table's relational annotations are what the migrations differ copies onto the
+    ///     <see cref="CreateTableOperation" /> and compares to emit an <see cref="AlterTableOperation" />,
+    ///     so the option rides EF's own table diffing: a new table carries it, and a changed
+    ///     declaration alters the table. Like the provider's own table annotations it is a design-time
+    ///     annotation only.
+    /// </remarks>
+    /// <param name="dependencies">The dependencies of the annotation provider; passes through to the provider's.</param>
+    public class TableTypesSqlServerAnnotationProvider(RelationalAnnotationProviderDependencies dependencies)
+        : SqlServerAnnotationProvider(dependencies)
+    {
+        /// <inheritdoc />
+        public override IEnumerable<IAnnotation> For(ITable table, bool designTime)
+        {
+            foreach (IAnnotation annotation in base.For(table, designTime))
+            {
+                yield return annotation;
+            }
+
+            if (!designTime)
+            {
+                yield break;
+            }
+
+            // Every entity type sharing the table (a sibling, a hierarchy) speaks for it; the first
+            // that declares an option wins, and a table where none does keeps SQL Server's default.
+            string? mode = table.EntityTypeMappings
+                .Select(static mapping => mapping.TypeBase)
+                .OfType<IEntityType>()
+                .Select(static entityType => entityType.GetLockEscalation())
+                .FirstOrDefault(static declared => declared is not null);
+            if (mode is not null)
+            {
+                yield return new Annotation(LockEscalationAnnotationNames.LockEscalation, mode);
+            }
         }
     }
 

@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Localization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
+using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Localization;
 using Tellma.Identity.Data;
 using Tellma.Identity.Infrastructure;
@@ -104,7 +105,13 @@ namespace Tellma.Identity.Areas.Identity.Pages.Manage
             // Re-render through a redirect: the culture cookie is read by request localization at
             // the start of a request, so the saved language only takes effect on the next one.
             TempData[StatusKeyName] = "Saved";
-            return RedirectToPage();
+
+            // A page opened with a requested language keeps that request on its links and
+            // redirects, where it outranks the cookie. The language saved here takes its place,
+            // or the page would come back in the language the user just changed away from.
+            return CarriedQuery.Read(Request).UiLocales is null
+                ? RedirectToPage()
+                : RedirectToPage(new RouteValueDictionary { [CarriedQuery.UiLocalesName] = user.Locale });
         }
     }
 }

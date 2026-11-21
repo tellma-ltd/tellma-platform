@@ -18,7 +18,8 @@ import { provideTellmaUi } from '@tellma/core-ui';
 import { ɵtmObserveLongPress, TmContextMenuTrigger } from '@tellma/core-ui/menu';
 import { TmMenuHarness } from '@tellma/core-ui-testing';
 
-import { TmMenu, type TmMenuEntry, type TmMenuItem } from './tm-menu';
+import { TmMenu } from './tm-menu';
+import type { TmMenuEntry, TmMenuItem } from './tm-menu-entries';
 
 @Component({
   imports: [TmMenu],
@@ -26,7 +27,7 @@ import { TmMenu, type TmMenuEntry, type TmMenuItem } from './tm-menu';
     <button type="button" #btn>Open menu</button>
 
     <ng-template #star>
-      <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <svg viewBox="0 0 16 16" width="16" height="16" fill="none" aria-hidden="true">
         <path d="M8 2l1.8 3.9L14 6.5l-3 3 .7 4.2L8 11.6l-3.7 2.1.7-4.2-3-3 4.2-.6z" fill="currentColor" />
       </svg>
     </ng-template>
@@ -118,7 +119,9 @@ describe('tm-menu', () => {
       ]);
 
       // The separator renders with role=separator, between Copy and the localized item.
-      const children = Array.from(list.children).map((child) =>
+      // (The rows sit in the row set's box-less host, directly under the list.)
+      expect(list.children.length).toBe(1);
+      const children = Array.from(list.children[0].children).map((child) =>
         child.classList.contains('tm-menu__separator') ? 'separator' : 'item',
       );
       expect(children).toEqual(['item', 'item', 'separator', 'item', 'item', 'item']);
@@ -196,10 +199,10 @@ describe('tm-menu', () => {
   describe('keyboard & focus', () => {
     // Version-locked guard for the parentless-@angular/aria seam tm-menu is
     // built on (aria 22.0.3): a Menu with no MenuTrigger/MenuItem parent
-    // reports visible()=true unconditionally, and its default-state effect
-    // activates the FIRST item once items render — tm-menu then focuses the
-    // list and keyboard interaction takes over from there. If an @angular/aria
-    // upgrade changes the parentless behavior, this spec is the tripwire.
+    // reports visible()=true unconditionally, so tm-menu can move focus onto
+    // its first row as soon as the rows render, and keyboard interaction
+    // takes over from there. If an @angular/aria upgrade changes the
+    // parentless behavior, this spec is the tripwire.
     it('after open, focus is inside the menu and the FIRST item is active (parentless-aria guard)', async () => {
       const { fixture, host } = await setup();
       host.menu().open({ x: 80, y: 90 });
@@ -467,6 +470,117 @@ class TriggerHost {
   ]);
 }
 
+describe('tmContextMenuTrigger right-click', () => {
+  async function setupTrigger() {
+    TestBed.configureTestingModule({ providers: [provideTellmaUi()] });
+    const fixture = TestBed.createComponent(TriggerHost);
+    await settle(fixture);
+    return { fixture, host: fixture.componentInstance };
+  }
+
+  /** The press half of a right-click on engines that raise `contextmenu` on the press. */
+  function rightPress(el: HTMLElement, init: MouseEventInit = {}): void {
+    el.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 2, ...init }));
+    el.dispatchEvent(
+      new MouseEvent('contextmenu', {
+        bubbles: true,
+        cancelable: true,
+        button: 2,
+        clientX: 30,
+        clientY: 30,
+        ...init,
+      }),
+    );
+  }
+
+  it('the release of the right-click that opened the menu does not close it', async () => {
+    const { fixture, host } = await setupTrigger();
+    const area = host.area().nativeElement;
+
+    // Firefox and WebKit: the press raises `contextmenu`, the menu opens
+    // with the button still down, and the release lands on the area as an
+    // `auxclick`, outside the panel.
+    rightPress(area);
+    await settle(fixture);
+    expect(host.menu().isOpen()).toBe(true);
+
+    area.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, button: 2 }));
+    area.dispatchEvent(new MouseEvent('auxclick', { bubbles: true, button: 2 }));
+    await settle(fixture);
+
+    expect(host.menu().isOpen()).toBe(true);
+    expect(panel()).not.toBeNull();
+  });
+
+  it('a second right-click elsewhere moves the menu and its release leaves it open', async () => {
+    const { fixture, host } = await setupTrigger();
+    const area = host.area().nativeElement;
+    rightPress(area);
+    await settle(fixture);
+    area.dispatchEvent(new MouseEvent('auxclick', { bubbles: true, button: 2 }));
+    await settle(fixture);
+
+    // The second press dismisses, its `contextmenu` reopens, and its
+    // release is again the tail of the opening gesture.
+    rightPress(area, { clientX: 60, clientY: 40 });
+    area.dispatchEvent(new MouseEvent('auxclick', { bubbles: true, button: 2 }));
+    await settle(fixture);
+
+    expect(host.menu().isOpen()).toBe(true);
+    expect(document.querySelectorAll('.tm-menu__panel').length).toBe(1);
+  });
+
+  it('the click Safari sends after a Ctrl+click opened the menu does not close it', async () => {
+    const { fixture, host } = await setupTrigger();
+    const area = host.area().nativeElement;
+
+    area.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, ctrlKey: true }));
+    area.dispatchEvent(
+      new MouseEvent('contextmenu', {
+        bubbles: true,
+        cancelable: true,
+        ctrlKey: true,
+        clientX: 30,
+        clientY: 30,
+      }),
+    );
+    await settle(fixture);
+    area.dispatchEvent(new MouseEvent('click', { bubbles: true, ctrlKey: true }));
+    await settle(fixture);
+
+    expect(host.menu().isOpen()).toBe(true);
+  });
+
+  it('an outside auxclick closes the menu once a press has begun since it opened', async () => {
+    const { fixture, host } = await setupTrigger();
+    const area = host.area().nativeElement;
+    rightPress(area);
+    await settle(fixture);
+
+    // A press inside the panel leaves the menu open, and ends the grace
+    // the opening gesture had.
+    panel()!.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 1 }));
+    expect(host.menu().isOpen()).toBe(true);
+    area.dispatchEvent(new MouseEvent('auxclick', { bubbles: true, button: 1 }));
+    await settle(fixture);
+
+    expect(host.menu().isOpen()).toBe(false);
+  });
+
+  it('a plain outside click with no press of its own still closes the menu', async () => {
+    const { fixture, host } = await setupTrigger();
+    const area = host.area().nativeElement;
+    rightPress(area);
+    await settle(fixture);
+
+    // A click made from the keyboard or from code has no press before it.
+    document.body.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await settle(fixture);
+
+    expect(host.menu().isOpen()).toBe(false);
+  });
+});
+
 describe('tmContextMenuTrigger long-press', () => {
   const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -545,8 +659,9 @@ describe('ɵtmObserveLongPress', () => {
 
   const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-  function touchDown(x = 50, y = 60): void {
-    element.dispatchEvent(
+  /** A primary touch pointerdown on `target` (the observed element by default), bubbling to it. */
+  function touchDown(x = 50, y = 60, target: Element = element): void {
+    target.dispatchEvent(
       new PointerEvent('pointerdown', {
         pointerType: 'touch',
         isPrimary: true,
@@ -589,6 +704,191 @@ describe('ɵtmObserveLongPress', () => {
     await sleep(80);
 
     expect(points).toEqual([]);
+  });
+
+  describe('scrolling', () => {
+    /** The long-press delay these tests observe with; fake timers advance past it. */
+    const DELAY = 30;
+
+    /** A scroller that holds the observed element. */
+    let ancestor: HTMLElement;
+    /** A scroller outside the observed element's ancestry: an auto-scrolling log, say. */
+    let unrelated: HTMLElement;
+    /** A scroller inside the observed element that holds the pressed node. */
+    let holding: HTMLElement;
+    /** A scroller inside the observed element beside the pressed node. */
+    let beside: HTMLElement;
+    /** The node the press lands on. */
+    let pressed: HTMLElement;
+    /** The points the observer fired with. */
+    let points: { x: number; y: number }[];
+
+    /** A 40px-tall scroller over 200px of content, so it can scroll. */
+    function scroller(): HTMLElement {
+      const box = document.createElement('div');
+      box.style.cssText = 'overflow: auto; height: 40px; width: 120px;';
+      const content = document.createElement('div');
+      content.style.height = '200px';
+      box.append(content);
+      return box;
+    }
+
+    /** Resolves on the next animation frame: the frame's scroll events are dispatched by then. */
+    function nextFrame(): Promise<void> {
+      return new Promise((resolve) => requestAnimationFrame(() => resolve()));
+    }
+
+    /**
+     * Scrolls `box` to `top` and resolves once the browser has dispatched the
+     * scroll event. The observer listens at window capture, so it has seen the
+     * event by the time this listener on the scroller runs.
+     */
+    async function scrollBox(box: HTMLElement, top: number): Promise<void> {
+      const dispatched = new Promise<void>((resolve) =>
+        box.addEventListener('scroll', () => resolve(), { once: true }),
+      );
+      box.scrollTop = top;
+      expect(box.scrollTop, 'the scroller moved').toBe(top);
+      await dispatched;
+    }
+
+    /** Scrolls the document to `top` and resolves once the browser has dispatched the scroll event. */
+    async function scrollDocument(top: number): Promise<void> {
+      const dispatched = new Promise<void>((resolve) =>
+        document.addEventListener('scroll', () => resolve(), { once: true }),
+      );
+      window.scrollTo(0, top);
+      expect(window.scrollY, 'the document moved').toBe(top);
+      await dispatched;
+    }
+
+    beforeEach(async () => {
+      // Only the timers are fake: the browser still renders frames and
+      // dispatches real scroll events, and the press's timer advances only
+      // when a test says so.
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+
+      // Layout: ancestor > element > (holding > pressed, beside); unrelated
+      // sits beside the ancestor.
+      ancestor = scroller();
+      unrelated = scroller();
+      holding = scroller();
+      beside = scroller();
+      pressed = document.createElement('span');
+      pressed.textContent = 'Pressed';
+      holding.prepend(pressed);
+      element.append(holding, beside);
+      ancestor.prepend(element);
+      document.body.append(ancestor, unrelated);
+
+      // Let any scroll still pending from earlier tests land before the
+      // press starts, so only each test's own scroll reaches the observer.
+      await nextFrame();
+
+      points = [];
+      stop = ɵtmObserveLongPress(element, (point) => points.push(point), { delayMs: DELAY });
+    });
+
+    afterEach(() => {
+      ancestor.remove();
+      unrelated.remove();
+      vi.useRealTimers();
+    });
+
+    it('a scroll of an unrelated scroller leaves the press alive', async () => {
+      touchDown(50, 60, pressed);
+      await scrollBox(unrelated, 50);
+      vi.advanceTimersByTime(DELAY);
+
+      expect(points).toEqual([{ x: 50, y: 60 }]);
+    });
+
+    it('a scroll of an ancestor of the observed element cancels the press', async () => {
+      touchDown(50, 60, pressed);
+      await scrollBox(ancestor, 50);
+      vi.advanceTimersByTime(DELAY);
+
+      expect(points).toEqual([]);
+    });
+
+    it('a scroll of the document cancels the press', async () => {
+      // A spacer makes the document itself scrollable for this test.
+      const spacer = document.createElement('div');
+      spacer.style.height = '300vh';
+      document.body.append(spacer);
+      try {
+        touchDown(50, 60, pressed);
+        await scrollDocument(100);
+        vi.advanceTimersByTime(DELAY);
+
+        expect(points).toEqual([]);
+      } finally {
+        // Scroll back and wait for that event too, so it cannot reach a
+        // later test's press.
+        if (window.scrollY !== 0) {
+          await scrollDocument(0);
+        }
+        spacer.remove();
+      }
+    });
+
+    it('a scroll of the observed element itself cancels the press', async () => {
+      // Its two 40px children overflow a 40px element, so it scrolls.
+      element.style.cssText = 'overflow: auto; height: 40px;';
+      touchDown(50, 60, pressed);
+      await scrollBox(element, 20);
+      vi.advanceTimersByTime(DELAY);
+
+      expect(points).toEqual([]);
+    });
+
+    it('a scroll inside the observed element that holds the pressed node cancels the press', async () => {
+      touchDown(50, 60, pressed);
+      await scrollBox(holding, 50);
+      vi.advanceTimersByTime(DELAY);
+
+      expect(points).toEqual([]);
+    });
+
+    it('a scroll inside the observed element beside the pressed node leaves the press alive', async () => {
+      touchDown(50, 60, pressed);
+      await scrollBox(beside, 50);
+      vi.advanceTimersByTime(DELAY);
+
+      expect(points).toEqual([{ x: 50, y: 60 }]);
+    });
+
+    it('a scroll of an ancestor cancels the press after the pressed node is detached', async () => {
+      touchDown(50, 60, pressed);
+      // A re-render replaces the pressed node while the finger is down.
+      pressed.remove();
+      await scrollBox(ancestor, 50);
+      vi.advanceTimersByTime(DELAY);
+
+      expect(points).toEqual([]);
+    });
+
+    it('a scroll of the observed element itself cancels the press after the pressed node is detached', async () => {
+      element.style.cssText = 'overflow: auto; height: 40px;';
+      touchDown(50, 60, pressed);
+      pressed.remove();
+      await scrollBox(element, 20);
+      vi.advanceTimersByTime(DELAY);
+
+      expect(points).toEqual([]);
+    });
+
+    it('a scroll of a light-DOM ancestor cancels the press on an element inside a shadow root', async () => {
+      // ancestor > shadow host > (shadow root) > element.
+      const shadowHost = document.createElement('div');
+      ancestor.prepend(shadowHost);
+      shadowHost.attachShadow({ mode: 'open' }).append(element);
+      touchDown(50, 60, pressed);
+      await scrollBox(ancestor, 50);
+      vi.advanceTimersByTime(DELAY);
+
+      expect(points).toEqual([]);
+    });
   });
 
   it('releasing before the delay cancels the press', async () => {

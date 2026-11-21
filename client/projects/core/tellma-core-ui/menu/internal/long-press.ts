@@ -10,22 +10,14 @@ export interface TmLongPressOptions {
   /** Movement tolerance before the press cancels. Defaults to 8px. */
   readonly slopPx?: number;
   /**
-   * Consulted when a press starts (and again when its timer elapses). While
-   * it returns `false` the press starts no timer and arms no suppression, so
-   * the platform's own long-press behavior is left intact. Defaults to
-   * always-enabled.
+   * Consulted with the press's `pointerdown` when it starts (and again when
+   * its timer elapses). While it returns `false` the press starts no timer
+   * and arms no suppression, so the platform's own long-press behavior — a
+   * link's menu, say — is left intact. Defaults to always-enabled.
    */
-  readonly enabled?: () => boolean;
+  readonly enabled?: (press: PointerEvent) => boolean;
 }
 
-/**
- * Observes touch/pen long-presses on an element (mouse presses never
- * qualify — right-click owns that path). The press cancels on movement
- * beyond the slop, on release, on cancellation, and on scrolling; when it
- * fires, the single trailing synthetic `click` or native `contextmenu` it
- * spawns is suppressed once so the page doesn't double-react. Returns the
- * cleanup function.
- */
 /**
  * Pointer ids whose CURRENT gesture already fired a long-press somewhere —
  * nested observers (a tooltip host inside a context-menu area) each run
@@ -34,6 +26,30 @@ export interface TmLongPressOptions {
  */
 const firedGestures = new Set<number>();
 
+/**
+ * Whether `ancestor` is `node` or one of its ancestors in the composed tree:
+ * the walk steps from a shadow root to its host, which `Node.contains` does
+ * not, so a light-DOM scroller around a shadow-hosted element counts.
+ */
+function composedContains(ancestor: Node, node: Node): boolean {
+  let current: Node | null = node;
+  while (current !== null && current !== ancestor) {
+    current = current instanceof ShadowRoot ? current.host : current.parentNode;
+  }
+  return current !== null;
+}
+
+/**
+ * Observes touch/pen long-presses on an element (mouse presses never
+ * qualify — right-click owns that path). The press cancels on movement
+ * beyond the slop, on release, on cancellation, and on a scroll that moves
+ * the pressed content: a scroll of the document, of the element or one of
+ * its ancestors, or of a scroller inside the element that holds the pressed
+ * node. A scroll anywhere else (an auto-scrolling log or a carousel beside
+ * the element) leaves the press alive. When the press fires, the single
+ * trailing synthetic `click` or native `contextmenu` it spawns is suppressed
+ * once so the page doesn't double-react. Returns the cleanup function.
+ */
 export function tmObserveLongPress(
   element: HTMLElement,
   onLongPress: (point: { x: number; y: number }) => void,
@@ -46,6 +62,10 @@ export function tmObserveLongPress(
   let startX = 0;
   let startY = 0;
   let pointerId: number | null = null;
+  /** The pointerdown of the press being timed, re-checked when its timer elapses. */
+  let press: PointerEvent | null = null;
+  /** The node the press being timed landed on; a scroll that moves it cancels the press. */
+  let pressNode: Node | null = null;
   /** Armed between a fired press and the single trailing event it spawns. */
   let suppressArmed = false;
   /** The node the firing press landed on; the trailing burst targets it, its subtree, or an ancestor. */
@@ -57,6 +77,8 @@ export function tmObserveLongPress(
     clearTimeout(timer);
     timer = undefined;
     pointerId = null;
+    press = null;
+    pressNode = null;
   };
 
   const disarm = (): void => {
@@ -67,7 +89,7 @@ export function tmObserveLongPress(
   };
 
   const onPointerDown = (event: PointerEvent): void => {
-    if (event.pointerType === 'mouse' || !event.isPrimary || !enabled()) {
+    if (event.pointerType === 'mouse' || !event.isPrimary || !enabled(event)) {
       return;
     }
     // A fresh press with a (reused) pointer id starts a NEW gesture — the
@@ -80,10 +102,12 @@ export function tmObserveLongPress(
     startX = event.clientX;
     startY = event.clientY;
     pointerId = event.pointerId;
-    pressedTarget = event.target instanceof Node ? event.target : element;
+    press = event;
+    pressNode = event.target instanceof Node ? event.target : element;
+    pressedTarget = pressNode;
     clearTimeout(timer);
     timer = setTimeout(() => {
-      if (pointerId === null || !enabled()) {
+      if (pointerId === null || press === null || !enabled(press)) {
         cancel();
         return;
       }
@@ -123,8 +147,30 @@ export function tmObserveLongPress(
     }
   };
 
-  const onScroll = (): void => {
-    cancel();
+  const onScroll = (event: Event): void => {
+    if (pressNode === null) {
+      return; // no press is being timed
+    }
+    // Window capture sees every scroll in the document, element scrolls
+    // included. Only one that moves the pressed content cancels: when the
+    // timer fires, the press's start point would then lie over something
+    // else. That is a scroll of the document (or of the window, for a
+    // non-node target), of the element or an ancestor of it, or of a
+    // scroller inside the element that holds the pressed node. Any other
+    // scroller, such as an auto-scrolling log or a carousel beside the
+    // element, leaves the press alive. The document needs no test of its
+    // own: it is a composed ancestor of every connected element. The
+    // element test still holds once the pressed node is detached (a
+    // re-rendered row), and both tests walk out of shadow roots to their
+    // hosts.
+    const scrolled = event.target;
+    if (
+      !(scrolled instanceof Node) ||
+      composedContains(scrolled, element) ||
+      composedContains(scrolled, pressNode)
+    ) {
+      cancel();
+    }
   };
 
   /** Suppresses the single event trailing a fired long-press. */

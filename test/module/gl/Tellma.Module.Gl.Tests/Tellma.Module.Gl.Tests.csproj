@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\..\src\module\gl\Tellma.Module.Gl\Tellma.Module.Gl.csproj" />
+    <!-- The validation contexts the rules are driven through. -->
+    <ProjectReference Include="..\..\..\..\src\core\Tellma.Core.Testing\Tellma.Core.Testing.csproj" />
+    <!-- The runtime, for one composition of the GL feature: the model whose conventional string
+         keys the resource audit reads. The package under test never references it; the closure
+         test walks the package's own dependencies, not this project's. -->
+    <ProjectReference Include="..\..\..\..\src\core\Tellma.Core\Tellma.Core.csproj" />
+    <!-- The resource audit every feature's suite runs over its own strings. -->
+    <ProjectReference Include="..\..\..\shared\Tellma.Testing.Resources\Tellma.Testing.Resources.csproj" />
+    <!-- This test app's deps.json, which the reference-closure test walks. -->
+    <PackageReference Include="Microsoft.Extensions.DependencyModel" />
+    <PackageReference Include="Microsoft.Extensions.Configuration" />
+    <!-- FakeLogger, which the step's log event is read back from. -->
+    <PackageReference Include="Microsoft.Extensions.Diagnostics.Testing" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+  </ItemGroup>
+
+</Project>

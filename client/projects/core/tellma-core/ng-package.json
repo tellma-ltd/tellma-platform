@@ -1,0 +1,12 @@
+{
+  "$schema": "../../../node_modules/ng-packagr/ng-package.schema.json",
+  "dest": "../../../dist/core",
+  "lib": {
+    "entryFile": "public-api.ts"
+  },
+  "assets": [
+    "boot/tm-boot.template.js",
+    "brand/*.svg",
+    "styles/*.css"
+  ]
+}

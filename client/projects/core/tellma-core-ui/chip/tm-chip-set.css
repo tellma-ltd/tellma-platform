@@ -1,0 +1,117 @@
+/*
+ * Copyright (c) Tellma Ltd. All rights reserved.
+ *
+ * This source code is licensed under the Apache-2.0 license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/* tm-chip-set — a flex row of chips. `wrap` wraps them; `collapse` keeps
+   one line, hides what does not fit and ends with a "+N" chip; `scroll`
+   keeps one line that scrolls sideways with no visible scrollbar. */
+
+:host {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--chip-set-gap);
+  min-inline-size: 0;
+}
+
+/* One line, clipped (collapse: the chips that do not fit are already out
+   of it) or scrolling sideways. The padding and the matching negative
+   margin leave room inside the clip for the chips' focus rings, without
+   moving the line. */
+:host([data-overflow='collapse']),
+:host([data-overflow='scroll']) {
+  flex-wrap: nowrap;
+  margin: calc(-1 * (var(--focus-ring-offset) + var(--focus-ring-width)));
+  padding: calc(var(--focus-ring-offset) + var(--focus-ring-width));
+  overflow: hidden;
+}
+
+:host([data-overflow='scroll']) {
+  overflow: auto hidden;
+  scrollbar-width: none;
+}
+
+:host([data-overflow='scroll'])::-webkit-scrollbar {
+  display: none;
+}
+
+/* The "+N" chip: the neutral chip's look at the step a chip of no
+   explicit size resolves to. */
+.tm-chip-set__more {
+  --tm-chip-height: var(--chip-height);
+  --tm-chip-padding: var(--chip-padding-x);
+  --tm-chip-font-size: var(--chip-font-size);
+
+  display: inline-flex;
+  flex: none;
+}
+
+.tm-chip-set__more[data-size='sm'] {
+  --tm-chip-height: var(--chip-height-sm);
+  --tm-chip-padding: var(--chip-padding-xsm);
+  --tm-chip-font-size: var(--chip-font-size-sm);
+}
+
+.tm-chip-set__more[data-size='lg'] {
+  --tm-chip-height: var(--chip-height-lg);
+  --tm-chip-padding: var(--chip-padding-xlg);
+  --tm-chip-font-size: var(--chip-font-size-lg);
+}
+
+/* With nothing hidden, the "+N" chip keeps its width for the fit but
+   leaves the line and is not drawn or read. */
+.tm-chip-set__more--idle {
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline-start: 0;
+  visibility: hidden;
+}
+
+.tm-chip-set__more-button {
+  position: relative;
+  display: inline-grid;
+  box-sizing: border-box;
+  block-size: var(--tm-chip-height);
+  margin: 0;
+  padding-block: 0;
+  padding-inline: var(--tm-chip-padding);
+  border: var(--border-width) solid var(--chip-neutral-border);
+  border-radius: var(--chip-radius);
+  background: var(--chip-neutral-bg);
+  color: var(--chip-text);
+  font-family: var(--font-ui);
+  font-size: var(--tm-chip-font-size);
+  font-weight: var(--weight-medium);
+  font-variant-numeric: tabular-nums;
+  line-height: normal;
+  white-space: nowrap;
+  cursor: default;
+  place-items: center;
+}
+
+/* The count and its widest form share one cell; only the count shows. */
+.tm-chip-set__more-count,
+.tm-chip-set__more-probe {
+  grid-area: 1 / 1;
+}
+
+.tm-chip-set__more-probe {
+  visibility: hidden;
+}
+
+/* A 24 px target, as for every chip control. */
+.tm-chip-set__more-button::after {
+  position: absolute;
+  inset: min(0px, calc((100% - var(--chip-target-size)) / 2));
+  content: '';
+}
+
+.tm-chip-set__more-button:focus-visible {
+  outline: var(--focus-ring-width) solid transparent;
+  outline-offset: var(--focus-ring-offset);
+  box-shadow: var(--focus-ring);
+}

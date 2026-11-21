@@ -180,7 +180,7 @@ namespace Tellma.Core.Queryex.Tests.Functions
         }
 
         [Fact]
-        public void Accepts_only_the_calendar_this_version_implements()
+        public void Accepts_the_calendars_this_version_implements()
         {
             ProbeFunction year = ProbeRegistry.Functions.Single(
                 static function => function.Name == "year");
@@ -188,7 +188,34 @@ namespace Tellma.Core.Queryex.Tests.Functions
             ProbeSignature withCalendar = year.Signatures.Single(
                 static signature => signature.Parameters.Count == 2);
 
-            Assert.Equal(["gc"], withCalendar.Parameters[1].AcceptedValues);
+            // The table calendar is listed too; whether a schema accepts it depends on whether the
+            // schema maps it to a month table, which binding checks.
+            Assert.Equal(["gc", "et", "uq"], withCalendar.Parameters[1].AcceptedValues);
+        }
+
+        [Theory]
+        [InlineData("year")]
+        [InlineData("quarter")]
+        [InlineData("month")]
+        [InlineData("day")]
+        [InlineData("week")]
+        [InlineData("startOfYear")]
+        [InlineData("startOfQuarter")]
+        [InlineData("startOfMonth")]
+        [InlineData("addYears")]
+        [InlineData("addMonths")]
+        [InlineData("diffYears")]
+        [InlineData("diffMonths")]
+        public void Counts_every_calendar_function_in_every_calendar(string name)
+        {
+            ProbeFunction function = ProbeRegistry.Functions.Single(candidate => candidate.Name == name);
+
+            // One overload counts in the default calendar and one names the calendar, as its last
+            // argument.
+            Assert.Equal(2, function.Signatures.Count);
+            ProbeSignature withCalendar = function.Signatures.MaxBy(static signature => signature.Parameters.Count)!;
+            Assert.Equal(["gc", "et", "uq"], withCalendar.Parameters[^1].AcceptedValues);
+            Assert.Equal("CalendarStrategy", withCalendar.Strategy);
         }
 
         /// <summary>Renders an overload's shape: what it would take to tell it from another.</summary>

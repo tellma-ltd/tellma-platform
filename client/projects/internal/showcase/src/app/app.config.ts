@@ -21,9 +21,12 @@ import {
   TM_CALENDAR,
   type TmControlSize,
 } from '@tellma/core-ui';
+import { provideTellmaIcons } from '@tellma/core-ui/icon';
 import { provideTellmaLocaleAr } from '@tellma/locale-ar';
 
+import { SHOWCASE_ICONS } from './icon/showcase-icons';
 import { ShowcaseCalendar } from './i18n/showcase-calendar';
+import { showcaseThemeFromQuery } from './showcase-theme';
 
 import { routes } from './app.routes';
 
@@ -44,9 +47,20 @@ export const appConfig: ApplicationConfig = {
     // Backs tm-image's default TM_BLOB_FETCHER.
     provideHttpClient(),
     // The zero-config default path + the reference Arabic pack (its font
-    // stylesheet rides the styles array in angular.json).
-    provideTellmaUi({ forms: { formFieldDefaults: { size: sizeFromUrl() } } }),
+    // stylesheet rides the styles array in angular.json). The theme is
+    // seeded from ?theme= the way a distribution seeds it from its stored
+    // choice, so it is painted at boot and the shell's first write is a
+    // no-op.
+    provideTellmaUi({
+      forms: { formFieldDefaults: { size: sizeFromUrl() } },
+      theme: {
+        initial: () =>
+          showcaseThemeFromQuery(new URLSearchParams(window.location.search).get('theme')),
+      },
+    }),
     provideTellmaLocaleAr(),
+    // The icon names the stories draw, registered the way a feature would.
+    provideTellmaIcons(SHOWCASE_ICONS),
     // The formatting-locale seam, exercised the way a distribution would:
     // UI language tags are bare (en/ar), but formatting nominates REGIONAL
     // locales — bare 'ar' resolves to Latin digits in ICU, ar-SA to

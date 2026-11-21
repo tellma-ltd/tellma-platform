@@ -5,6 +5,7 @@
 
 import { expect, type Locator, type Page } from '@playwright/test';
 
+import { appStable } from './settle';
 import { storyUrl, type StoryUrlOptions } from './story-map';
 
 /**
@@ -14,10 +15,17 @@ import { storyUrl, type StoryUrlOptions } from './story-map';
  * virtualization regardless of what happens to be rendered.
  */
 
-/** Navigates to a grid story and waits for the grid chrome to render. */
+/**
+ * Navigates to a grid story and waits for the grid chrome to render and the
+ * app to settle. An editable grid fetches its editing code on demand, and
+ * that load is a pending task, so a settled page has its editors in place: a
+ * test exercises the editor itself, not the draft a grid keeps while the code
+ * is on its way.
+ */
 export async function gotoGrid(page: Page, id: string, options: StoryUrlOptions = {}): Promise<void> {
   await page.goto(storyUrl(id, options));
   await expect(gridScroller(page)).toBeVisible();
+  await appStable(page);
 }
 
 /** The grid's scroll container (`role="grid"`, or `treegrid` on trees). */
@@ -90,9 +98,61 @@ export function findCounter(page: Page): Locator {
   return page.locator('[data-tm-find-counter]');
 }
 
-/** A cell's display text as the user sees it (visually-hidden text included). */
+/**
+ * A cell's display text as the user sees it (visually-hidden text included),
+ * read once the app is stable: a cell renders its new text on the pass after
+ * the change it reflects, so an immediate read could see the old text. Use
+ * it to capture a value; to assert one, use {@link expectCellText}, which
+ * waits for the text instead of reading it once.
+ */
 export async function cellText(page: Page, row: number, col: number): Promise<string> {
+  await appStable(page);
   return (await cell(page, row, col).innerText()).trim();
+}
+
+/** Options of {@link expectCellText}. */
+export interface ExpectCellTextOptions {
+  /**
+   * Compare whitespace inside the text exactly (tabs, newlines and runs of
+   * spaces must match), instead of the default whitespace-normalized
+   * comparison. Leading and trailing whitespace is ignored either way, as
+   * {@link cellText} trims it.
+   */
+  readonly exactWhitespace?: boolean;
+}
+
+/**
+ * Asserts, web-first, that a cell's display text (its `innerText`, as
+ * {@link cellText} reads it) is `expected`: the assertion retries until the
+ * cell shows it.
+ *
+ * By default the comparison is whitespace-normalized, as Playwright's
+ * `toHaveText` compares a string: on both sides, leading and trailing
+ * whitespace is dropped and every inner run of spaces, tabs and newlines
+ * counts as one space. So `'a  b'` and `'a\tb'` both match a cell showing
+ * `a b`. Pass `{ exactWhitespace: true }` when the whitespace is the point
+ * (a pasted tab, a two-space value). The text must then match exactly,
+ * apart from the leading and trailing whitespace that {@link cellText} trims.
+ */
+export async function expectCellText(
+  page: Page,
+  row: number,
+  col: number,
+  expected: string,
+  options: ExpectCellTextOptions = {},
+): Promise<void> {
+  // A regex is matched against the raw text (Playwright normalizes only
+  // string expectations), anchored so that only the surrounding whitespace
+  // is free.
+  const matcher = options.exactWhitespace
+    ? new RegExp(`^\\s*${escapeRegExp(expected.trim())}\\s*$`)
+    : expected;
+  await expect(cell(page, row, col)).toHaveText(matcher, { useInnerText: true });
+}
+
+/** Escapes `text` for use as a literal inside a regular expression. */
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 /** The resolved `--grid-row-height` in px, measured from the sticky header band. */
@@ -136,6 +196,40 @@ export async function centerOf(locator: Locator): Promise<{ x: number; y: number
   return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
 }
 
+/** A grid cell's computed paint: what a forced-colors assertion compares. */
+export interface CellPaint {
+  /** The computed background color. */
+  readonly background: string;
+  /** The computed ink (text) color. */
+  readonly ink: string;
+  /** The computed outline style (`none` when the cell draws no outline). */
+  readonly outline: string;
+  /** The computed outline color. */
+  readonly outlineColor: string;
+  /** The computed border color of the cell's clipboard-marquee pseudo-element. */
+  readonly marquee: string;
+}
+
+/**
+ * Reads a cell's computed paint once the app is stable. A gesture updates
+ * the grid's state at once but repaints its cells only on the following
+ * render, so an immediate read can see the paint from before the gesture;
+ * settling first makes the read reflect the state the test just set up.
+ */
+export async function cellPaint(page: Page, row: number, col: number): Promise<CellPaint> {
+  await appStable(page);
+  return cell(page, row, col).evaluate((el) => {
+    const style = getComputedStyle(el);
+    return {
+      background: style.backgroundColor,
+      ink: style.color,
+      outline: style.outlineStyle,
+      outlineColor: style.outlineColor,
+      marquee: getComputedStyle(el, '::after').borderTopColor,
+    };
+  });
+}
+
 /** Drags with real pointer events from one locator's center to another's. */
 export async function dragBetween(page: Page, from: Locator, to: Locator): Promise<void> {
   const start = await centerOf(from);
@@ -165,10 +259,16 @@ export function editor(page: Page): Locator {
 
 /**
  * The open editor's input (the built-in text editor, or any input-hosting
- * registered editor).
+ * registered editor) — never the draft input a grid shows while its editing
+ * code is on its way.
  */
 export function editorInput(page: Page): Locator {
-  return page.locator('[data-tm-editor] input');
+  return page.locator('[data-tm-editor] input:not([data-tm-draft])');
+}
+
+/** The draft input an editable grid shows while its editing code is on its way. */
+export function draftInput(page: Page): Locator {
+  return page.locator('input[data-tm-draft]');
 }
 
 /** The editable status bar's error tally chip. */
@@ -178,9 +278,12 @@ export function statusChip(page: Page): Locator {
 
 /**
  * Parses the story's live model dump (`data-testid="model-json"` — the
- * reactive JSON.stringify of the bound rows array).
+ * reactive JSON.stringify of the bound rows array), once the app is stable:
+ * the dump renders a beat after the write it reflects, so an immediate read
+ * could still see the model as it was before the last gesture.
  */
 export async function modelJson<T>(page: Page): Promise<T> {
+  await appStable(page);
   const text = await page.getByTestId('model-json').textContent();
   return JSON.parse(text ?? 'null') as T;
 }

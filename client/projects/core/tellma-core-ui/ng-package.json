@@ -5,12 +5,15 @@
     "entryFile": "public-api.ts"
   },
   "allowedNonPeerDependencies": [
-    "@internationalized/date"
+    "@internationalized/date",
+    "echarts",
+    "lucide"
   ],
   "assets": [
     "fonts/*.woff2",
     "fonts/*.css",
     "fonts/*.txt",
+    "layout/breakpoints.json",
     "styles/**/*.css"
   ]
 }

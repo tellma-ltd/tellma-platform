@@ -1,0 +1,40 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- The compiler loads analyzers into its own process, which every supported SDK and IDE can
+         host only from netstandard2.0. -->
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <!-- Never a package of its own: Tellma.Core.Abstractions packs the two assemblies as its
+         analyzer asset, so every project that references the contract runs them. -->
+    <IsPackable>false</IsPackable>
+    <EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
+    <Description>The platform's Roslyn analyzers, TELLMA0001 to TELLMA0006: no hard-coded table-valued parameter ordinals, no EF query or SaveChanges over the tenant context outside the runtime and the migrators, raw SQL only through IDataBatch.Sql with declared writes and ScriptDom-checked text, no direct call to an action method, no nested pipeline run from a pipeline participant, and no write into a stack-owned table by a type that is not its owner.</Description>
+    <!-- RS2008 asks for release-tracking files; the six identifiers and their conditions are listed
+         in the README and pinned by the analyzer suite instead. -->
+    <NoWarn>$(NoWarn);RS2008</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The compiler API, supplied at run time by the compiler that loads the analyzer, so never
+         copied or packed. On the version EF Core's design package pins for the whole repository. -->
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" PrivateAssets="all" />
+    <!-- The T-SQL parser TELLMA0003 and TELLMA0006 read raw statement text with. The compiler does
+         not resolve an analyzer's dependencies from NuGet, so its assembly is copied beside the
+         analyzer below and packed with it. -->
+    <PackageReference Include="Microsoft.SqlServer.TransactSql.ScriptDom" PrivateAssets="all" GeneratePathProperty="true" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The parser beside the analyzer in the output folder, which is what in-repo consumers load
+         both from (Directory.Build.targets) and what Tellma.Core.Abstractions packs. -->
+    <None Include="$(PkgMicrosoft_SqlServer_TransactSql_ScriptDom)/lib/netstandard2.0/Microsoft.SqlServer.TransactSql.ScriptDom.dll"
+          CopyToOutputDirectory="PreserveNewest"
+          Visible="false" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Tellma.Core.Analyzers.Tests" />
+  </ItemGroup>
+
+</Project>

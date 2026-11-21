@@ -85,19 +85,6 @@ namespace Tellma.Identity.TestSupport
             return sender.LatestFor(email)!.TextBody;
         }
 
-        /// <summary>Waits for mail to a recipient and returns the sign-in code in it.</summary>
-        /// <param name="sender">The capturing sender.</param>
-        /// <param name="email">The recipient's address.</param>
-        /// <param name="timeout">How long to wait; the default suits a local worker.</param>
-        /// <returns>The code.</returns>
-        public static async Task<string> WaitForCodeAsync(
-            this CapturingEmailSender sender, string email, TimeSpan? timeout = null)
-        {
-            string body = await sender.WaitForBodyAsync(email, timeout);
-            return Extract(body, CodePattern())
-                ?? throw new InvalidOperationException($"The message to {email} carries no sign-in code: {body}");
-        }
-
         /// <summary>
         ///     How many messages have reached a recipient so far. The baseline a test takes before
         ///     provoking another one, so the wait that follows can tell the new message from the one

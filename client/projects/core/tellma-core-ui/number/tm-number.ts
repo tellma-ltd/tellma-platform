@@ -69,6 +69,15 @@ let nextUniqueId = 0;
  * parses `75`, `75%` and `٧٥٪` alike to `0.75`; `min`/`max` validate the
  * model fraction (a `0..1` range bounds a percentage field).
  *
+ * With `grouping` off the text is written without group separators — a
+ * year or a serial number reads `2026` — while typed separators still
+ * parse (`2,026` is 2026).
+ *
+ * Bidi: the formatted text carries no direction mark, and `dir="auto"`
+ * resolves a number's base direction to left-to-right, so a minus shows
+ * at the left of its digits, Arabic-Indic digits included, whatever the
+ * page direction.
+ *
  * Inside a grid cell the grid owns the value channel and the parse; the
  * control's own commit loop stands down and it contributes the numeric
  * mobile keypad, the physical right alignment, and one control to theme.
@@ -87,6 +96,9 @@ let nextUniqueId = 0;
   providers: [{ provide: TM_FORM_FIELD_CONTROL, useExisting: TmNumber }],
   host: {
     class: 'tm-input tm-number',
+    // Digits and signs carry no strong direction, so `auto` resolves a
+    // number to LTR and its minus stays at the left (spec 0010 §D.14).
+    dir: 'auto',
     inputmode: 'decimal',
     '[id]': 'controlId()',
     '[class.tm-input--in-field]': '!!formField',
@@ -151,6 +163,12 @@ export class TmNumber implements TmFormFieldControl, TmCellEditor<number | null>
   readonly maxDecimals = input<number | undefined>(undefined);
   /** Percent mode: display `0.75` as `75%`; parse `75`/`75%`/`٧٥٪` to `0.75`. */
   readonly percent = input(false, { transform: booleanAttribute });
+  /**
+   * Whether the displayed text carries group separators. Default `true`
+   * (the locale's own grouping). `false` writes none — a year or a code
+   * reads `2026`, never `2,026`; typed separators still parse.
+   */
+  readonly grouping = input(true, { transform: booleanAttribute });
   /** Placeholder text shown while the input is empty. */
   readonly placeholder = input('');
   /**
@@ -168,6 +186,7 @@ export class TmNumber implements TmFormFieldControl, TmCellEditor<number | null>
     minDecimals: this.minDecimals(),
     maxDecimals: this.maxDecimals(),
     percent: this.percent(),
+    grouping: this.grouping(),
   }));
 
   /** Whether the input currently has focus (gates display rewrites). */

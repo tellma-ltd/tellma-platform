@@ -107,7 +107,7 @@ for (const copy of copies) {
   const normalize = (s: string) => s.replace(/\r\n/g, '\n');
   if (normalize(readFileSync(copy.actual, 'utf8')) !== normalize(copy.expected)) {
     console.error(
-      `tokens:check FAILED — ${copy.name} is stale; run \`pnpm run tokens:build-css\` and \`pnpm run fonts:copy-identity\`.`,
+      `tokens:check FAILED — ${copy.name} is stale; run \`pnpm run identity:copy-assets\`.`,
     );
     process.exit(1);
   }

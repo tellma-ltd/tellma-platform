@@ -4,6 +4,9 @@
 // LICENSE file in the root directory of this source tree.
 
 import { afterRenderEffect, Component, ElementRef, inject, input } from '@angular/core';
+import { CircleAlert } from 'lucide';
+
+import { TmIcon } from '@tellma/core-ui/icon';
 
 /**
  * The validation-message bubble: a card that has gone red at the edge,
@@ -24,6 +27,7 @@ import { afterRenderEffect, Component, ElementRef, inject, input } from '@angula
  */
 @Component({
   selector: 'tm-error-popover',
+  imports: [TmIcon],
   template: `
     <!-- The arrow is absolutely positioned, so it sits outside the flow of
          the message list. -->
@@ -34,20 +38,7 @@ import { afterRenderEffect, Component, ElementRef, inject, input } from '@angula
          and the next begins. -->
     @for (message of messages(); track $index) {
       <span class="tm-error-popover__message">
-        <svg
-          class="tm-error-popover__icon"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="1.75"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          aria-hidden="true"
-        >
-          <circle cx="12" cy="12" r="10" />
-          <line x1="12" x2="12" y1="8" y2="12" />
-          <line x1="12" x2="12.01" y1="16" y2="16" />
-        </svg>
+        <tm-icon class="tm-error-popover__icon" [svg]="errorIcon" />
         <span class="tm-error-popover__text">{{ message }}</span>
       </span>
     }
@@ -60,6 +51,9 @@ import { afterRenderEffect, Component, ElementRef, inject, input } from '@angula
   },
 })
 export class ɵTmErrorPopover {
+  /** The glyph bulleting each message. */
+  protected readonly errorIcon = CircleAlert;
+
   /** The messages to show, one per line. */
   readonly messages = input.required<readonly string[]>();
   /**

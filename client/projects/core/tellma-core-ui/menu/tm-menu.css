@@ -3,10 +3,27 @@
  * This source code is licensed under the Apache-2.0 license found in the
  * LICENSE file in the root directory of this source tree. */
 
+/* Unencapsulated: the rows and the submenu panels are stamped by internal
+   components, so every selector is scoped by a tm-menu class instead. */
+
+/* ---- Hosts ---- */
+
 /* The host renders nothing in-flow — the panel lives in the overlay. */
-:host {
+.tm-menu {
   display: block;
 }
+
+/* The row set adds no box of its own: its rows are the list's rows. */
+.tm-menu-rows {
+  display: contents;
+}
+
+/* A submenu's host holds only the anchor of its overlay. */
+.tm-menu-submenu {
+  display: none;
+}
+
+/* ---- Panel, header and list ---- */
 
 .tm-menu__panel {
   min-inline-size: var(--menu-min-width);
@@ -19,24 +36,54 @@
   font-family: var(--font-ui);
 }
 
+/* A submenu panel starts one panel inset above its anchor, so its first
+   row lines up with the row that opened it. */
+.tm-menu__panel--sub {
+  margin-block-start: calc(-1 * (var(--menu-panel-padding) + var(--border-width)));
+}
+
+/* A submenu's overlay stays attached while its parent row exists; the
+   panel shows only while that row is expanded. */
+.tm-menu__panel--closed {
+  display: none;
+}
+
+/* The header block: full-bleed above the rows, closed by a divider. */
+.tm-menu__header {
+  margin: calc(-1 * var(--menu-panel-padding));
+  margin-block-end: var(--menu-panel-padding);
+  padding: var(--space-2) calc(var(--menu-panel-padding) + var(--menu-item-padding-x));
+  border-block-end: var(--border-width) solid var(--divider);
+  font-size: var(--menu-item-font-size);
+  color: var(--text-body);
+}
+
 .tm-menu__list {
   display: flex;
   flex-direction: column;
-  /* The list receives programmatic focus; the ring belongs to the items. */
+  /* The list takes programmatic focus only as a last resort; the ring
+     belongs to the rows. */
   /* stylelint-disable-next-line declaration-property-value-disallowed-list --
-     focus is delegated to the active item via aria's activedescendant-style
-     roving pattern; the list itself must not double-ring. */
+     focus is delegated to the active row via aria's roving pattern; the
+     list itself must not double-ring. */
   outline: none;
 }
 
+/* ---- Rows ---- */
+
 /* A menu holds ONE dense row height rather than following the control size
    ladder: it is a pointer surface read in a single pass, not a control
-   sitting in a row of fields that have to line up with it. */
+   sitting in a row of fields that have to line up with it. The height is a
+   minimum so a row with a second line grows to hold it. */
 .tm-menu__item {
+  --icon-size: var(--menu-icon-size);
+
   display: flex;
   align-items: center;
   gap: var(--menu-item-gap);
-  block-size: var(--menu-item-height);
+  box-sizing: border-box;
+  min-block-size: var(--menu-item-height);
+  padding-block: var(--space-1);
   padding-inline: var(--menu-item-padding-x);
   border-radius: var(--menu-item-radius);
   font-size: var(--menu-item-font-size);
@@ -44,6 +91,8 @@
   cursor: default;
   user-select: none;
   white-space: nowrap;
+  /* A link row reads as a row, not as a hyperlink. */
+  text-decoration: none;
 }
 
 .tm-menu__item[data-active='true'] {
@@ -55,6 +104,8 @@
   color: var(--field-text-disabled);
 }
 
+/* The icon box is always present, so labels line up whether or not a row
+   has an icon or a check mark. */
 .tm-menu__icon {
   display: inline-flex;
   inline-size: var(--menu-icon-size);
@@ -70,22 +121,62 @@
   block-size: 100%;
 }
 
-.tm-menu__label {
+/* The label over its optional second line; flexes to fill the row, pushing
+   the trailing parts to the inline end. */
+.tm-menu__text {
+  display: flex;
   flex: 1;
+  flex-direction: column;
+  min-inline-size: 0;
 }
 
-/* Keyboard-shortcut hint: trailing, in the muted hint color, with a little
-   breathing room from the label (which flexes to fill the width between). */
+/* The second line: a description, or the reason a row is unavailable. It
+   keeps a readable color on a disabled row, where it is the one thing the
+   user needs to read. */
+.tm-menu__description {
+  font-size: var(--text-xs);
+  line-height: var(--leading-tight);
+  color: var(--text-secondary);
+  white-space: normal;
+}
+
+/* Trailing parts, in order: detail, new-tab glyph, shortcut caps, submenu
+   chevron. Each keeps a little breathing room from what precedes it. */
+.tm-menu__detail {
+  flex: none;
+  margin-inline-start: var(--space-4);
+  color: var(--text-secondary);
+}
+
 .tm-menu__shortcut {
   flex: none;
   margin-inline-start: var(--space-4);
-  font-family: var(--font-mono);
-  font-size: var(--menu-shortcut-font-size);
-  color: var(--text-muted);
 }
 
-.tm-menu__item[aria-disabled='true'] .tm-menu__shortcut {
+.tm-menu__external,
+.tm-menu__chevron {
+  color: var(--field-icon);
+}
+
+.tm-menu__item[aria-disabled='true'] .tm-menu__detail,
+.tm-menu__item[aria-disabled='true'] .tm-menu__external,
+.tm-menu__item[aria-disabled='true'] .tm-menu__chevron {
   color: inherit;
+}
+
+/* ---- Groups and separators ---- */
+
+/* A group needs no rule of its own: its heading and rows are block boxes
+   that stack exactly as the list's own rows do. */
+
+.tm-menu__heading {
+  padding: var(--space-1) var(--menu-item-padding-x);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  color: var(--text-secondary);
+  cursor: default;
+  user-select: none;
+  white-space: nowrap;
 }
 
 .tm-menu__separator {
@@ -94,6 +185,19 @@
   margin-inline: calc(-1 * var(--menu-panel-padding));
   border-block-start: var(--border-width) solid var(--divider);
 }
+
+/* ---- Touch rows ---- */
+
+/* Below the sm breakpoint rows are pressed with a finger, so they grow to a
+   touch target; type sizes stay as they are. A media query rather than a
+   container query: the panel lives in the overlay, outside any container. */
+@media (width < 576px) {
+  .tm-menu__item {
+    min-block-size: var(--menu-item-height-touch);
+  }
+}
+
+/* ---- Forced colors ---- */
 
 @media (forced-colors: active) {
   .tm-menu__panel {
@@ -110,13 +214,13 @@
     color: GrayText;
   }
 
-  /* The muted hint has no system-color analogue; GrayText keeps it legible
-     and distinct from the active/Highlight row. */
-  .tm-menu__shortcut {
-    color: GrayText;
-  }
-
-  .tm-menu__item[data-active='true'] .tm-menu__shortcut {
-    color: HighlightText;
+  /* The muted parts have no system-color analogue; they take the row's own
+     color, which is already the right one for its state. */
+  .tm-menu__description,
+  .tm-menu__detail,
+  .tm-menu__icon,
+  .tm-menu__external,
+  .tm-menu__chevron {
+    color: inherit;
   }
 }

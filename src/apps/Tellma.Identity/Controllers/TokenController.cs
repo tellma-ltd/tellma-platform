@@ -12,15 +12,17 @@ using OpenIddict.Abstractions;
 using OpenIddict.Server.AspNetCore;
 using System.Security.Claims;
 using Tellma.Identity.Data;
+using Tellma.Identity.Services;
 using Tellma.Identity.Services.AuthenticationPolicy;
 using static OpenIddict.Abstractions.OpenIddictConstants;
 
 namespace Tellma.Identity.Controllers
 {
     /// <summary>
-    ///     The token endpoint (pass-through): one action dispatching on grant type. OpenIddict has
-    ///     already authenticated the client and validated grant, scope, and resource permissions
-    ///     before the action runs; this controller shapes the principal each grant issues.
+    ///     The token endpoint (pass-through): one action dispatching on grant type. Before the
+    ///     action runs, OpenIddict has authenticated the client and validated the grant and scope
+    ///     permissions, and the engine's resource check has validated every <c>resource</c>
+    ///     parameter; this controller shapes the principal each grant issues.
     /// </summary>
     /// <param name="applicationManager">The OpenIddict application manager.</param>
     /// <param name="scopeManager">The OpenIddict scope manager.</param>
@@ -94,16 +96,16 @@ namespace Tellma.Identity.Controllers
             identity.SetClaim(Claims.Subject, subjectId);
             identity.SetScopes(requestedScopes.Length > 0 ? requestedScopes : subject.GetScopes());
 
-            List<string> resources = [.. request.GetResources()];
-            if (resources.Count == 0)
+            // The exchanged token's audiences follow the machine-token rule: the named resources
+            // (already validated against this client's grants) are the whole audience, and
+            // without one only platform audiences — never the distribution API scope's list of
+            // every distribution's origin.
+            IActionResult? failure = await SetMachineAudiencesAsync(identity, request);
+            if (failure is not null)
             {
-                await foreach (string resource in scopeManager.ListResourcesAsync(identity.GetScopes(), HttpContext.RequestAborted))
-                {
-                    resources.Add(resource);
-                }
+                return failure;
             }
 
-            identity.SetResources(resources);
             identity.SetDestinations(TellmaClaimDestinations.Resolve);
 
             return SignIn(new ClaimsPrincipal(identity), OpenIddictServerAspNetCoreDefaults.AuthenticationScheme);
@@ -287,41 +289,22 @@ namespace Tellma.Identity.Controllers
         }
 
         /// <summary>
-        ///     Derives the audiences of a machine token. Explicit <c>resource</c> parameters win
-        ///     (already validated against the client's resource permissions); otherwise audiences
-        ///     come from the requested scopes' fixed platform resources. The per-distribution
-        ///     <c>tellma_api</c> scope has no unambiguous audience for a machine caller, so it
-        ///     always requires an explicit resource.
+        ///     Sets the audiences of a machine token (<see cref="MachineTokenAudiences" />): an
+        ///     explicit <c>resource</c> — already validated against the client's grants — is the
+        ///     whole audience; without one, the token's scopes' platform audiences. The
+        ///     per-distribution <c>tellma_api</c> scope has no unambiguous audience for a machine
+        ///     caller, so it always requires an explicit resource.
         /// </summary>
         private async Task<IActionResult?> SetMachineAudiencesAsync(ClaimsIdentity identity, OpenIddictRequest request)
         {
-            List<string> resources = [.. request.GetResources()];
-            if (resources.Count == 0 && request.HasScope(TellmaIdentityConstants.ApiScope))
+            MachineAudienceResult audiences = await MachineTokenAudiences.ResolveAsync(
+                [.. identity.GetScopes()], [.. request.GetResources()], scopeManager, HttpContext.RequestAborted);
+            if (audiences.Error is not null)
             {
-                return Forbid(
-                    authenticationSchemes: OpenIddictServerAspNetCoreDefaults.AuthenticationScheme,
-                    properties: new AuthenticationProperties(new Dictionary<string, string?>
-                    {
-                        [OpenIddictServerAspNetCoreConstants.Properties.Error] = Errors.InvalidTarget,
-                        [OpenIddictServerAspNetCoreConstants.Properties.ErrorDescription] =
-                            "The tellma_api scope requires an explicit 'resource' parameter naming the target API.",
-                    }));
+                return ForbidGrant(Errors.InvalidTarget, audiences.Error);
             }
 
-            // Platform-scope audiences are unioned in unconditionally (mirroring the interactive
-            // path); tellma_api is excluded because its scope entity aggregates every
-            // distribution's audience — the target API must be named explicitly.
-            System.Collections.Immutable.ImmutableArray<string> platformScopes =
-                [.. identity.GetScopes().Where(static scope => scope != TellmaIdentityConstants.ApiScope)];
-            await foreach (string resource in scopeManager.ListResourcesAsync(platformScopes, HttpContext.RequestAborted))
-            {
-                if (!resources.Contains(resource, StringComparer.Ordinal))
-                {
-                    resources.Add(resource);
-                }
-            }
-
-            identity.SetResources(resources);
+            identity.SetResources(audiences.Audiences);
             return null;
         }
     }

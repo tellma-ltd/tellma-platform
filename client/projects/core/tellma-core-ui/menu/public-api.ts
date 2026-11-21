@@ -1,8 +1,9 @@
 /**
  * Public API Surface of @tellma/core-ui/menu — the tm-menu component (a
- * general-purpose menu on the aria menu pattern + CDK overlay) and the
- * tmContextMenuTrigger directive that opens it at the pointer, element, or
- * touch long-press.
+ * data-driven menu on the aria menu pattern + CDK overlay: items, links,
+ * submenus, groups and separators), the tmMenuTriggerFor directive that
+ * makes a button open it, and the tmContextMenuTrigger directive that opens
+ * it at the pointer, element, or touch long-press.
  *
  * @packageDocumentation
  */
@@ -12,5 +13,7 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 export * from './tm-menu';
+export * from './tm-menu-entries';
+export * from './tm-menu-trigger';
 export * from './tm-context-menu-trigger';
 export { tmObserveLongPress as ɵtmObserveLongPress } from './internal/long-press';

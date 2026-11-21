@@ -22,8 +22,10 @@ import {
   untracked,
 } from '@angular/core';
 import { Directionality } from '@angular/cdk/bidi';
+import { ChevronLeft, ChevronRight } from 'lucide';
 
 import { TM_UI_TRANSLATE } from '@tellma/core-ui';
+import { TmIcon, type TmIconSource } from '@tellma/core-ui/icon';
 import {
   tmFirstDayOfWeek,
   ɵtmFormatWithoutEra,
@@ -34,6 +36,15 @@ import {
 
 /** One cell of the month view; `null` pads the fixed five-row layout. */
 type MonthCell = { month: number; label: string; disabled: boolean } | null;
+
+/**
+ * The paging chevrons. Directional, so each mirrors under a right-to-left
+ * direction and follows a live flip: "previous" points to the inline start.
+ */
+const NAV_GLYPHS: { readonly previous: TmIconSource; readonly next: TmIconSource } = {
+  previous: { node: ChevronLeft, mirrorInRtl: true },
+  next: { node: ChevronRight, mirrorInRtl: true },
+};
 
 /** The hard ISO window (the intersection of ISO 8601 with SQL/BCL dates). */
 const MIN_ISO = '0001-01-01';
@@ -64,6 +75,7 @@ interface DayCell {
  */
 @Component({
   selector: 'tm-date-popup',
+  imports: [TmIcon],
   template: `
     <div
       class="tm-date-popup"
@@ -78,18 +90,7 @@ interface DayCell {
           [attr.aria-label]="prevLabel()"
           (click)="page(-1)"
         >
-          <svg
-            class="tm-date-popup__nav-glyph"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1.75"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            aria-hidden="true"
-          >
-            <path d="m15 18-6-6 6-6" />
-          </svg>
+          <tm-icon class="tm-date-popup__nav-glyph" [svg]="glyphs.previous" />
         </button>
         <button
           type="button"
@@ -105,18 +106,7 @@ interface DayCell {
           [attr.aria-label]="nextLabel()"
           (click)="page(1)"
         >
-          <svg
-            class="tm-date-popup__nav-glyph"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1.75"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            aria-hidden="true"
-          >
-            <path d="m9 18 6-6-6-6" />
-          </svg>
+          <tm-icon class="tm-date-popup__nav-glyph" [svg]="glyphs.next" />
         </button>
       </div>
 
@@ -236,6 +226,9 @@ export class ɵTmDatePopup {
   private readonly translate = inject(TM_UI_TRANSLATE);
   private readonly directionality = inject(Directionality);
   private readonly hostElement = inject(ElementRef).nativeElement as HTMLElement;
+
+  /** The paging chevrons' glyph data. */
+  protected readonly glyphs = NAV_GLYPHS;
 
   /** The display calendar. */
   readonly calendar = input.required<TmCalendar>();

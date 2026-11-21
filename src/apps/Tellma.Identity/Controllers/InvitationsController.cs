@@ -5,7 +5,6 @@
 
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using OpenIddict.Abstractions;
 using Tellma.Identity.Controllers.Api;
 using Tellma.Identity.Data;
 using Tellma.Identity.Infrastructure;
@@ -17,11 +16,13 @@ namespace Tellma.Identity.Controllers
     ///     The distribution-facing bulk-invitation API (machine-to-machine, <c>tellma_identity</c>
     ///     scope). The whole batch is one operation returning per-user status and <c>sub</c> — a
     ///     refused user carries a per-user error while the rest of the batch proceeds; the
-    ///     invitation link is never in the response, in any environment.
+    ///     invitation link is never in the response, in any environment. Mapped under version 1 of
+    ///     the management API (<c>api/identity/v1</c>).
     /// </summary>
     /// <param name="invitationService">The bulk invitation service.</param>
     /// <param name="deliveryStatusService">Reads what became of invitations already raised.</param>
     [ApiController]
+    [ManagementApi(ManagementApiVersions.V1)]
     [Authorize(AuthenticationSchemes = OpenIddict.Validation.AspNetCore.OpenIddictValidationAspNetCoreDefaults.AuthenticationScheme,
         Policy = ApiPolicies.IdentityScope)]
     public sealed class InvitationsController(
@@ -31,7 +32,8 @@ namespace Tellma.Identity.Controllers
         /// <summary>Invites a batch of users.</summary>
         /// <param name="request">The users to invite.</param>
         /// <returns>The per-user results.</returns>
-        [HttpPost("api/identity/invitations")]
+        [HttpPost("invitations")]
+        [ManagementApiEndpoint(ManagementApiEndpoints.Invite)]
         public async Task<ActionResult<InviteUsersResponse>> Invite([FromBody] InviteUsersRequest request)
         {
             ArgumentNullException.ThrowIfNull(request);
@@ -45,10 +47,10 @@ namespace Tellma.Identity.Controllers
                     // An unrecognized value is treated as unstated rather than refused: gender is
                     // optional, and a caller sending something we do not model should get a user
                     // addressed neutrally, not a failed invitation.
-                    Enum.TryParse(user.Gender, ignoreCase: true, out UserGender parsed) ? parsed : null))];
+                    Enum.TryParse(user.Gender, ignoreCase: true, out UserGender parsed) ? parsed : null,
+                    user.ExistingOnly))];
 
-            string? clientId = User.GetClaim(OpenIddictConstants.Claims.ClientId)
-                ?? User.GetClaim(OpenIddictConstants.Claims.Subject);
+            string? clientId = ManagementApiCaller.ClientIdOf(User);
 
             IReadOnlyList<InvitationResultItem> results =
                 await invitationService.InviteAsync(items, clientId, HttpContext.RequestAborted);
@@ -73,15 +75,15 @@ namespace Tellma.Identity.Controllers
         ///     about a page of users at once, and a per-user endpoint would turn that into a page
         ///     of round trips.
         /// </remarks>
-        [HttpPost("api/identity/invitations/delivery-status")]
+        [HttpPost("invitations/delivery-status")]
+        [ManagementApiEndpoint(ManagementApiEndpoints.DeliveryStatus)]
         public async Task<ActionResult<InvitationDeliveryStatusResponse>> DeliveryStatus(
             [FromBody] InvitationDeliveryStatusRequest request)
         {
             ArgumentNullException.ThrowIfNull(request);
 
             // Resolved exactly as the invite does, because it has to match what was recorded then.
-            string? clientId = User.GetClaim(OpenIddictConstants.Claims.ClientId)
-                ?? User.GetClaim(OpenIddictConstants.Claims.Subject);
+            string? clientId = ManagementApiCaller.ClientIdOf(User);
 
             // A token carrying the scope but naming no client would otherwise be scoped to rows
             // whose creating client is also null, which is every invitation raised without one.

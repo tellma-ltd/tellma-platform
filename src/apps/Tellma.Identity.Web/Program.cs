@@ -40,6 +40,17 @@ namespace Tellma.Identity.Web
                 .ReadFrom.Configuration(context.Configuration)
                 .ReadFrom.Services(services));
 
+            // No outbound HTTP client logs through the factory's default loggers. At Trace they put
+            // each header's raw value into the event's structured state (only the rendered message
+            // is redacted), so a credential any client sends would reach a structured sink that a
+            // Trace level for System.Net.Http enables. As a default it covers every client, the
+            // engine's and the email adapters' included, whenever it is registered. The trade is
+            // deliberate: the per-request "Start/End processing HTTP request" lines are no longer
+            // logged. Outbound requests stay observable through the HttpClient instrumentation
+            // below, as spans and metrics, once Azure Monitor export is configured; each sender
+            // logs its own failures.
+            builder.Services.ConfigureHttpClientDefaults(static http => http.RemoveAllLoggers());
+
             builder.Services.AddTellmaIdentity(builder.Configuration.GetSection("TellmaIdentity"));
 
             // Email. The engine asks for the platform's IEmailSender and knows nothing else; this is

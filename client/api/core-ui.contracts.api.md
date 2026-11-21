@@ -81,7 +81,7 @@ export interface TmGridRangeSnapshot {
     readonly anchorRowId: TmRowId | null;
     readonly focusColumnKey: string | null;
     readonly focusRowId: TmRowId | null;
-    readonly kind: 'cells' | 'rows' | 'cols' | 'all';
+    readonly kind: 'all' | 'cells' | 'cols' | 'rows';
 }
 
 // @public
@@ -100,9 +100,9 @@ export interface TmGridSelectionSnapshot {
 
 // @public
 export type TmLabelResolution<V> = {
-    value: V;
+    error: 'ambiguous' | 'notFound';
 } | {
-    error: 'notFound' | 'ambiguous';
+    value: V;
 };
 
 // @public
@@ -124,7 +124,7 @@ export interface TmPasteContext extends TmParseContext {
 }
 
 // @public
-export type TmRowId = string | number;
+export type TmRowId = number | string;
 
 // @public
 export interface WritableSignalLike<T> extends SignalLike<T> {

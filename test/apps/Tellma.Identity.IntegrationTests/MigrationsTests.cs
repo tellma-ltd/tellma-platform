@@ -3,12 +3,9 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-using Microsoft.AspNetCore.Identity;
 using Microsoft.Data.SqlClient;
-using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.DependencyInjection;
-using Tellma.Identity.Data;
 using Tellma.Identity.IntegrationTests.Infrastructure;
+using Tellma.Identity.Migrations;
 
 namespace Tellma.Identity.IntegrationTests
 {
@@ -24,21 +21,10 @@ namespace Tellma.Identity.IntegrationTests
         [Fact]
         public async Task Initial_migration_creates_the_full_schema()
         {
-            string connectionString = await fixture.CreateDatabaseAsync("idmig");
-
-            // Mirror the runtime model configuration (schema version 3) exactly.
-            ServiceCollection services = new();
-            services.Configure<IdentityOptions>(TellmaIdentityModelDefaults.ConfigureStoreOptions);
-            await using ServiceProvider provider = services.BuildServiceProvider();
-
-            DbContextOptionsBuilder<TellmaIdentityDbContext> builder = new();
-            builder.UseSqlServer(connectionString, static sql => sql.MigrationsAssembly(TellmaIdentityConstants.MigrationsAssemblyName));
-            builder.UseApplicationServiceProvider(provider);
-
-            await using (TellmaIdentityDbContext context = new(builder.Options))
-            {
-                await context.Database.MigrateAsync(TestContext.Current.CancellationToken);
-            }
+            // The migrator's entry, which builds the context exactly as the design-time factory
+            // does (schema version 3 included), against a database it creates itself.
+            string connectionString = fixture.ReserveDatabase("idmig");
+            await TellmaIdentityStore.MigrateAsync(connectionString, TestContext.Current.CancellationToken);
 
             await using SqlConnection connection = new(connectionString);
             await connection.OpenAsync(TestContext.Current.CancellationToken);

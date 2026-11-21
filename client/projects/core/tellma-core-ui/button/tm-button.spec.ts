@@ -5,11 +5,88 @@
 
 import { Component, signal } from '@angular/core';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
+import { HarnessPredicate } from '@angular/cdk/testing';
 import { TestbedHarnessEnvironment } from '@angular/cdk/testing/testbed';
 
-import { TmButtonHarness } from '@tellma/core-ui-testing';
+import { provideTellmaUi } from '@tellma/core-ui';
+import { TmButtonHarness, TmTooltipHarness } from '@tellma/core-ui-testing';
+import { TmTooltip } from '@tellma/core-ui/tooltip';
 
 import { TmButton } from './tm-button';
+
+/** Buttons disabled with a reason, a link, and a reason beside a tmTooltip. */
+@Component({
+  imports: [TmButton, TmTooltip],
+  template: `
+    <form (submit)="onSubmit($event)">
+      <button
+        tmButton
+        type="submit"
+        data-testid="reason"
+        style="--tooltip-delay: 0ms"
+        [disabledReason]="reason()"
+        (click)="clicks = clicks + 1"
+      >
+        Edit
+      </button>
+    </form>
+    <a tmButton data-testid="link" href="#target" variant="primary" size="sm">Open</a>
+    <button
+      tmButton
+      data-testid="with-tooltip"
+      aria-label="Delete"
+      tmTooltip="Delete"
+      style="--tooltip-delay: 0ms"
+      [disabledReason]="reason()"
+    >
+      <svg viewBox="0 0 16 16" aria-hidden="true"></svg>
+    </button>
+  `,
+})
+class ReasonHost {
+  readonly reason = signal<string | null>('Needs the Customers permission.');
+  clicks = 0;
+  submits = 0;
+
+  onSubmit(event: Event): void {
+    event.preventDefault();
+    this.submits += 1;
+  }
+}
+
+async function setupReason(): Promise<{
+  fixture: ComponentFixture<ReasonHost>;
+  host: ReasonHost;
+  get: (id: string) => HTMLElement;
+}> {
+  TestBed.configureTestingModule({ providers: [provideTellmaUi()] });
+  const fixture = TestBed.createComponent(ReasonHost);
+  await fixture.whenStable();
+  const root = fixture.nativeElement as HTMLElement;
+  return {
+    fixture,
+    host: fixture.componentInstance,
+    get: (id) => root.querySelector(`[data-testid="${id}"]`) as HTMLElement,
+  };
+}
+
+/** The texts of the host's descriptions. */
+function descriptions(element: Element): string[] {
+  return (element.getAttribute('aria-describedby') ?? '')
+    .split(' ')
+    .filter((id) => id !== '')
+    .map((id) => document.getElementById(id)?.textContent?.trim() ?? '');
+}
+
+/** The visible tooltip surface's text, or null. */
+function tooltipText(): string | null {
+  return document.querySelector('.tm-tooltip__panel')?.textContent?.trim() ?? null;
+}
+
+async function tick(fixture: ComponentFixture<unknown>, ms = 0): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, ms));
+  await fixture.whenStable();
+}
 
 @Component({
   imports: [TmButton],
@@ -186,5 +263,166 @@ describe('tmButton', () => {
     expect(await button.isPending()).toBe(true);
     await button.click();
     expect(host.clicks).toBe(1); // swallowed while pending
+  });
+});
+
+describe('tmButton disabledReason', () => {
+  it('renders aria-disabled, keeps focus and stays out of the native disabled state', async () => {
+    const { get } = await setupReason();
+    const button = get('reason') as HTMLButtonElement;
+    expect(button.getAttribute('aria-disabled')).toBe('true');
+    expect(button.disabled).toBe(false);
+    button.focus();
+    expect(document.activeElement).toBe(button);
+  });
+
+  it('swallows click, Enter and Space activation, submit included', async () => {
+    const { host, get } = await setupReason();
+    const button = get('reason') as HTMLButtonElement;
+    button.click();
+    // Enter and Space reach a native button as a synthesized click.
+    button.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    expect(host.clicks).toBe(0);
+    expect(host.submits).toBe(0);
+  });
+
+  it('describes the button with the reason, and shows it as a tooltip on hover', async () => {
+    const { fixture, get } = await setupReason();
+    const button = get('reason');
+    expect(descriptions(button)).toEqual(['Needs the Customers permission.']);
+    button.dispatchEvent(new PointerEvent('pointerenter', { pointerType: 'mouse' }));
+    await tick(fixture);
+    expect(tooltipText()).toBe('Needs the Customers permission.');
+  });
+
+  it('shows the reason on a touch tap, and hides it on the next tap elsewhere', async () => {
+    const { fixture, get } = await setupReason();
+    const button = get('reason');
+    const init = { pointerType: 'touch', isPrimary: true, pointerId: 3, bubbles: true };
+    button.dispatchEvent(new PointerEvent('pointerdown', init));
+    button.dispatchEvent(new PointerEvent('pointerup', init));
+    await tick(fixture);
+    expect(tooltipText()).toBe('Needs the Customers permission.');
+
+    document.body.dispatchEvent(new PointerEvent('pointerdown', { ...init, pointerId: 4 }));
+    await tick(fixture);
+    expect(tooltipText()).toBeNull();
+  });
+
+  it('clearing the reason restores activation and removes the description', async () => {
+    const { fixture, host, get } = await setupReason();
+    const button = get('reason') as HTMLButtonElement;
+    host.reason.set(null);
+    await fixture.whenStable();
+    expect(button.hasAttribute('aria-disabled')).toBe(false);
+    expect(descriptions(button)).toEqual([]);
+    expect(button.classList.contains('tm-tooltip-host')).toBe(false);
+    button.click();
+    expect(host.clicks).toBe(1);
+    expect(host.submits).toBe(1);
+  });
+
+  it('a blank reason disables nothing', async () => {
+    const { fixture, host, get } = await setupReason();
+    host.reason.set('   ');
+    await fixture.whenStable();
+    expect(get('reason').hasAttribute('aria-disabled')).toBe(false);
+  });
+
+  it('a tmTooltip on the same button shows its text, then the reason', async () => {
+    const { fixture, host, get } = await setupReason();
+    const button = get('with-tooltip');
+    // The name stays the label; the description is the reason (the label,
+    // equal to aria-label, is not described a second time).
+    expect(button.getAttribute('aria-label')).toBe('Delete');
+    expect(descriptions(button)).toEqual(['Needs the Customers permission.']);
+    button.dispatchEvent(new PointerEvent('pointerenter', { pointerType: 'mouse' }));
+    await tick(fixture);
+    expect(tooltipText()).toBe('Delete\nNeeds the Customers permission.');
+
+    host.reason.set(null);
+    await fixture.whenStable();
+    expect(tooltipText()).toBe('Delete');
+  });
+
+  it('reads the reason through TmButtonHarness and the tooltip harness', async () => {
+    const { fixture } = await setupReason();
+    const loader = TestbedHarnessEnvironment.loader(fixture);
+    const reason = await loader.getHarness(
+      new HarnessPredicate(TmButtonHarness, { selector: '[data-testid="reason"]' }),
+    );
+    expect(await reason.getDisabledReason()).toBe('Needs the Customers permission.');
+    expect(await reason.isDisabled()).toBe(false);
+    const tooltip = await loader.getHarness(
+      new HarnessPredicate(TmTooltipHarness, { selector: '[data-testid="reason"]' }),
+    );
+    expect(await tooltip.getDescription()).toBe('Needs the Customers permission.');
+
+    const link = await loader.getHarness(
+      new HarnessPredicate(TmButtonHarness, { selector: '[data-testid="link"]' }),
+    );
+    expect(await link.getDisabledReason()).toBeNull();
+    expect(await link.isLink()).toBe(true);
+  });
+});
+
+describe('a[tmButton]', () => {
+  it('applies the variant and size and nothing else', async () => {
+    const { fixture, get } = await setupReason();
+    const link = get('link') as HTMLAnchorElement;
+    expect(link.classList).toContain('tm-button');
+    expect(link.classList).toContain('tm-button--primary');
+    expect(link.classList).toContain('tm-button--sm');
+    expect(link.hasAttribute('type')).toBe(false);
+    const harness = await TestbedHarnessEnvironment.loader(fixture).getHarness(
+      new HarnessPredicate(TmButtonHarness, { selector: '[data-testid="link"]' }),
+    );
+    expect(await harness.getVariant()).toBe('primary');
+    expect(await harness.getSize()).toBe('sm');
+    expect(await harness.isDisabled()).toBe(false);
+  });
+
+  it('ignores pending and a reason, and stays a link', async () => {
+    @Component({
+      imports: [TmButton],
+      template: `<a tmButton href="#x" [pending]="true" [disabledReason]="'Nope'">Go</a>`,
+    })
+    class PendingLinkHost {}
+    TestBed.configureTestingModule({ providers: [provideTellmaUi()] });
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    try {
+      const fixture = TestBed.createComponent(PendingLinkHost);
+      await fixture.whenStable();
+      const link = (fixture.nativeElement as HTMLElement).querySelector('a') as HTMLAnchorElement;
+      expect(link.hasAttribute('aria-busy')).toBe(false);
+      expect(link.hasAttribute('aria-disabled')).toBe(false);
+      expect(link.classList.contains('tm-button--pending')).toBe(false);
+      expect(link.querySelector('.tm-button__spinner')).toBeNull();
+      // A link cannot be disabled: the reason is a development error.
+      expect(error.mock.calls.some(([message]) => String(message).includes('link'))).toBe(true);
+    } finally {
+      error.mockRestore();
+    }
+  });
+});
+
+describe('tmButton dev-mode reason checks', () => {
+  it('warns when disabled and a reason are both set', async () => {
+    @Component({
+      imports: [TmButton],
+      template: `<button tmButton disabled [disabledReason]="'No permission'">Edit</button>`,
+    })
+    class BothHost {}
+    TestBed.configureTestingModule({ providers: [provideTellmaUi()] });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    try {
+      const fixture = TestBed.createComponent(BothHost);
+      await fixture.whenStable();
+      expect(
+        warn.mock.calls.some(([message]) => String(message).includes('disabledReason')),
+      ).toBe(true);
+    } finally {
+      warn.mockRestore();
+    }
   });
 });

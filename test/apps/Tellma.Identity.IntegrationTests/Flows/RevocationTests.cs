@@ -9,6 +9,7 @@ using System.Text.Json;
 using Tellma.Identity.Data;
 using Tellma.Identity.IntegrationTests.Infrastructure;
 using Tellma.Identity.Services.Provisioning;
+using Tellma.Identity.TestSupport;
 
 namespace Tellma.Identity.IntegrationTests.Flows
 {
@@ -24,7 +25,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
         [Fact]
         public async Task Revoking_a_refresh_token_stops_it_and_is_audited_with_the_subject()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "idrevoke");
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idrevoke");
             DistributionClientCredentials distribution = await TestData.ProvisionDistributionAsync(factory);
             await TestData.CreateActiveUserAsync(factory, "frank@example.com");
 
@@ -88,7 +89,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
         private static async Task<(string RefreshToken, string ClientSecret)> SignInAndGetRefreshTokenAsync(
             StandaloneFactory factory, DistributionClientCredentials distribution)
         {
-            using OidcFlowClient flow = new(factory);
+            using OidcFlowClient flow = factory.CreateFlowClient();
             (string verifier, string challenge) = OidcFlowClient.CreatePkcePair();
 
             string requestUri = await flow.PushAuthorizationRequestAsync(new Dictionary<string, string>

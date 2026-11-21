@@ -14,8 +14,8 @@ namespace Tellma.Core.EntityFrameworkCore.MigrationsHost
     ///     The migrator-shaped host's context: a representative model exercising the table-types
     ///     feature surface — fluent and attribute opt-ins, pack→leaf attribute inheritance, column
     ///     exclusion, rowversion, computed-column exclusion, grants, standalone types (the
-    ///     platform's bulk shapes from Tellma.Core.Abstractions plus a custom one), per-table ID
-    ///     sequences, and reserved-band seed data.
+    ///     platform's bulk shapes from Tellma.Core.Abstractions plus two custom ones, one with a
+    ///     collated column), per-table ID sequences, and reserved-band seed data.
     /// </summary>
     /// <param name="options">The context options.</param>
     public class MigrationsHostContext(DbContextOptions<MigrationsHostContext> options) : DbContext(options)
@@ -33,6 +33,12 @@ namespace Tellma.Core.EntityFrameworkCore.MigrationsHost
         ///     this way — pick once, never derive it from a renamable symbol.
         /// </summary>
         public const string SweepScope = "k4Rm9Tq2Xv7Bp3N";
+
+        /// <summary>
+        ///     The collation of <see cref="SubjectEntry.Subject" /> in the <c>SubjectsList</c> type:
+        ///     binary, matching the column it is compared with.
+        /// </summary>
+        public const string SubjectCollation = "Latin1_General_100_BIN2";
 
         /// <summary>The customers (pack→leaf inheritance sample).</summary>
         public DbSet<Customer> Customers => Set<Customer>();
@@ -60,6 +66,14 @@ namespace Tellma.Core.EntityFrameworkCore.MigrationsHost
             // A custom standalone table type (spec 0001 §5) derived from a plain class: bulk state
             // updates without a paired table.
             modelBuilder.HasTableType<DocumentState>(buildAction: type => type.HasGrants("public"));
+
+            // A class-derived standalone type with a collated column: its Subject key joins a
+            // binary-collated column, so it carries that column's collation.
+            modelBuilder.HasTableType<SubjectEntry>(
+                schema: "dbo",
+                buildAction: type => type
+                    .UseCollation(nameof(SubjectEntry.Subject), SubjectCollation)
+                    .HasGrants("public"));
 
             modelBuilder.Entity<Customer>(entity =>
             {

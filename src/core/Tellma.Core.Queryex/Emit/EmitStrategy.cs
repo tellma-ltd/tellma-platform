@@ -94,62 +94,118 @@ namespace Tellma.Core.Queryex.Emit
         internal override EmitShape ResultShape { get; }
     }
 
+    /// <summary>What a calendar function computes, whichever calendar it counts in.</summary>
+    internal enum CalendarOperation
+    {
+        /// <summary>The year.</summary>
+        Year,
+
+        /// <summary>The quarter of the year.</summary>
+        Quarter,
+
+        /// <summary>The month of the year.</summary>
+        Month,
+
+        /// <summary>The day of the month.</summary>
+        Day,
+
+        /// <summary>The week of the year.</summary>
+        Week,
+
+        /// <summary>The first day of the year.</summary>
+        StartOfYear,
+
+        /// <summary>The first day of the quarter.</summary>
+        StartOfQuarter,
+
+        /// <summary>The first day of the month.</summary>
+        StartOfMonth,
+
+        /// <summary>A whole number of years later.</summary>
+        AddYears,
+
+        /// <summary>A whole number of months later.</summary>
+        AddMonths,
+
+        /// <summary>The whole years from one date to another.</summary>
+        DiffYears,
+
+        /// <summary>The whole months from one date to another.</summary>
+        DiffMonths,
+    }
+
     /// <summary>
-    ///     One of several templates, chosen by the value of a literal-only selector argument.
+    ///     A calendar function, whose SQL the calendar argument chooses.
     /// </summary>
     /// <remarks>
-    ///     How a calendar code picks its arithmetic. The selector's text is consumed here and never
-    ///     reaches the backend.
+    ///     <para>
+    ///         How a calendar code picks its arithmetic. An algorithmic calendar is one fixed
+    ///         template per code. A table calendar has no template: what it computes is lowered
+    ///         structurally into lookups on the host's month table, and only the operation is
+    ///         recorded here. The selector's text is consumed either way and never reaches the
+    ///         backend as SQL.
+    ///     </para>
+    ///     <para>
+    ///         The calendars do not have to agree on how often they read an argument — counting in
+    ///         one takes a single built-in function where another takes a page of arithmetic — so
+    ///         lowering reads the counts off the template the selector chose, never off the
+    ///         strategy.
+    ///     </para>
     /// </remarks>
-    internal sealed class SelectedStrategy : EmitStrategy
+    internal sealed class CalendarStrategy : EmitStrategy
     {
         /// <summary>Initializes the strategy.</summary>
-        /// <param name="selectorIndex">Which argument chooses the template.</param>
-        /// <param name="cases">The templates, by the selector value that chooses each.</param>
-        /// <param name="resultShape">Whether the call produces a truth value or a scalar.</param>
-        internal SelectedStrategy(
+        /// <param name="selectorIndex">Which argument names the calendar.</param>
+        /// <param name="operation">What the function computes.</param>
+        /// <param name="cases">The algorithmic calendars' templates, by the code that chooses each.</param>
+        internal CalendarStrategy(
             int selectorIndex,
-            FrozenDictionary<string, EmitTemplate> cases,
-            EmitShape resultShape)
+            CalendarOperation operation,
+            FrozenDictionary<string, EmitTemplate> cases)
         {
             SelectorIndex = selectorIndex;
+            Operation = operation;
             Cases = cases;
-            ResultShape = resultShape;
 
-            // Every case has to agree on how each argument is used, or lowering could not decide
-            // what to bind until after the selector was read.
-            EmitTemplate first = cases.Values[0];
-            UseCounts = first.UseCounts;
-            ArgumentShapes = first.ArgumentShapes;
-            foreach (EmitTemplate other in cases.Values)
+            // The most any calendar reads each argument, which is what a reader of the registry
+            // needs to know: a position no case reads at all is never emitted, whatever is chosen.
+            int arity = cases.Values.Max(static template => template.UseCounts.Length);
+            int[] counts = new int[arity];
+            foreach (EmitTemplate template in cases.Values)
             {
-                if (!other.UseCounts.SequenceEqual(first.UseCounts))
+                for (int index = 0; index < template.UseCounts.Length; index++)
                 {
-                    throw new ArgumentException(
-                        "Every case of a selected emit strategy must use its arguments the same number of times.",
-                        nameof(cases));
-                }
-
-                if (!other.ArgumentShapes.SequenceEqual(first.ArgumentShapes))
-                {
-                    throw new ArgumentException(
-                        "Every case of a selected emit strategy must consume its arguments the same way.",
-                        nameof(cases));
+                    counts[index] = Math.Max(counts[index], template.UseCounts[index]);
                 }
             }
+
+            UseCounts = [.. counts];
+            ArgumentShapes = [.. Enumerable.Repeat(EmitShape.Value, arity)];
         }
 
-        /// <summary>Which argument chooses the template.</summary>
+        /// <summary>Which argument names the calendar.</summary>
         internal int SelectorIndex { get; }
 
-        /// <summary>The templates, by the selector value that chooses each.</summary>
+        /// <summary>What the function computes.</summary>
+        internal CalendarOperation Operation { get; }
+
+        /// <summary>The algorithmic calendars' templates, by the code that chooses each.</summary>
         internal FrozenDictionary<string, EmitTemplate> Cases { get; }
 
         /// <inheritdoc />
+        /// <remarks>Null for a table calendar, whose SQL is not a fixed pattern.</remarks>
         internal override EmitTemplate? TemplateFor(ImmutableArray<string?> selectors)
         {
             string? selector = SelectorIndex < selectors.Length ? selectors[SelectorIndex] : null;
             return selector is not null ? Cases.GetValueOrDefault(selector) : null;
+        }
+
+        /// <summary>The calendar code a call chose.</summary>
+        /// <param name="selectors">The resolved value of each consumed selector, by parameter.</param>
+        /// <returns>The code as written, or null when the call names none.</returns>
+        internal string? CalendarOf(ImmutableArray<string?> selectors)
+        {
+            return SelectorIndex < selectors.Length ? selectors[SelectorIndex] : null;
         }
 
         /// <inheritdoc />
@@ -159,7 +215,7 @@ namespace Tellma.Core.Queryex.Emit
         internal override ImmutableArray<EmitShape> ArgumentShapes { get; }
 
         /// <inheritdoc />
-        internal override EmitShape ResultShape { get; }
+        internal override EmitShape ResultShape => EmitShape.Value;
     }
 
     /// <summary>

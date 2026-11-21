@@ -12,6 +12,8 @@ import type { TmEntityPick, TmEntitySearchResult } from '@tellma/core-ui/entity-
 import { TM_GRID_CONTEXT, TmGrid, TmGridColumn } from '@tellma/core-ui/grid';
 import { TmModalFooter, TmModalRef } from '@tellma/core-ui/modal';
 
+import { HeldResponses, HeldResponsesControls } from '../held-responses';
+
 interface Agent {
   readonly id: number;
   readonly name: string;
@@ -37,12 +39,33 @@ const AGENTS: readonly Agent[] = [
   { id: 7, name: 'Dana Reed', code: 'AG-007' },
 ];
 
+/** A cost center: a code, a name, and the parent that tells namesakes apart. */
+interface Center {
+  readonly id: number;
+  readonly code: string;
+  readonly name: string;
+  readonly parent: string | null;
+}
+
+/**
+ * The Center column's directory: two Centers named 'Jeddah' that only their
+ * code and parent tell apart, and a Latin code beside an Arabic name, which
+ * the display cell and the dropdown keep code-first in either direction.
+ */
+const CENTERS: readonly Center[] = [
+  { id: 1, code: 'JED-01', name: 'Jeddah', parent: 'Western Region' },
+  { id: 2, code: 'JED-02', name: 'Jeddah', parent: 'Logistics' },
+  { id: 3, code: 'INV-0011', name: 'نقد', parent: 'الأصول المتداولة' },
+  { id: 4, code: 'DMM-01', name: 'الدمام', parent: null },
+];
+
 interface OrderLine {
   readonly id: number;
   readonly description: string | null;
   readonly agentId: number | null;
   readonly otherId: number | null;
   readonly quantity: number | null;
+  readonly centerId: number | null;
 }
 
 /**
@@ -77,12 +100,14 @@ export class GridAgentPage {
  * Entity-column grid demo host: the Agent column mounts the built-in
  * `tm-entity-picker` editor (search + accessors + modal pages + the async
  * paste/typed-commit resolver); the Other column has search but NO resolver
- * (typed labels become invalid inputs directly). The toolbar tunes the
- * search and resolver latencies and counts their calls; the model dump is
- * the committed-value oracle.
+ * (typed labels become invalid inputs directly); the Center column shows
+ * two-line dropdown rows and code-first label parts, in its dropdown and in
+ * its display cells. The toolbar tunes the
+ * search and resolver latencies (or holds their responses until released)
+ * and counts their calls; the model dump is the committed-value oracle.
  */
 @Component({
-  imports: [TmGrid, TmGridColumn],
+  imports: [TmGrid, TmGridColumn, HeldResponsesControls],
   providers: [
     { provide: TM_GRID_CONTEXT, useValue: { tenantId: signal('t1'), distributionKey: 'd1' } },
   ],
@@ -100,6 +125,7 @@ export class GridAgentPage {
           (input)="onSearchDelayChange($event)"
         />
       </label>
+      <app-held-responses [gate]="heldSearches" name="search" />
       <span>Search calls: <span data-testid="search-calls">{{ searchCalls() }}</span></span>
       <label>
         Resolver delay (ms)
@@ -111,6 +137,7 @@ export class GridAgentPage {
           (input)="onResolverDelayChange($event)"
         />
       </label>
+      <app-held-responses [gate]="heldResolutions" name="resolver" />
       <span>Resolver calls: <span data-testid="resolver-calls">{{ resolverCalls() }}</span></span>
       <button type="button" data-testid="clear-history" (click)="clearHistory()">
         Clear history
@@ -151,6 +178,21 @@ export class GridAgentPage {
         [width]="160"
       />
       <tm-grid-column key="quantity" type="number" header="Qty" [width]="90" />
+      <!-- Two-line dropdown rows, and a code beside a name in another
+           script kept code-first in the dropdown and the display cell. -->
+      <tm-grid-column
+        key="centerId"
+        type="entity"
+        header="Center"
+        [search]="centerSearch"
+        [itemId]="centerIdOf"
+        [itemLabel]="centerLabelOf"
+        [itemDescription]="centerDescriptionOf"
+        [itemLabelParts]="centerPartsOf"
+        [format]="centerFormat"
+        [formatParts]="centerFormatParts"
+        [width]="200"
+      />
     </tm-grid>
 
     <h3>Model</h3>
@@ -190,12 +232,12 @@ export class GridAgentPage {
 export class GridEntityStory {
   readonly model = signal({
     lines: [
-      { id: 1, description: 'Consulting', agentId: 5, otherId: null, quantity: 3 },
-      { id: 2, description: 'Hardware', agentId: 3, otherId: null, quantity: 12 },
-      { id: 3, description: 'Freight', agentId: null, otherId: null, quantity: 1 },
-      { id: 4, description: 'Support', agentId: 6, otherId: null, quantity: 8 },
-      { id: 5, description: 'License', agentId: null, otherId: null, quantity: 2 },
-      { id: 6, description: 'Training', agentId: 7, otherId: null, quantity: 5 },
+      { id: 1, description: 'Consulting', agentId: 5, otherId: null, quantity: 3, centerId: 3 },
+      { id: 2, description: 'Hardware', agentId: 3, otherId: null, quantity: 12, centerId: 1 },
+      { id: 3, description: 'Freight', agentId: null, otherId: null, quantity: 1, centerId: null },
+      { id: 4, description: 'Support', agentId: 6, otherId: null, quantity: 8, centerId: 4 },
+      { id: 5, description: 'License', agentId: null, otherId: null, quantity: 2, centerId: null },
+      { id: 6, description: 'Training', agentId: 7, otherId: null, quantity: 5, centerId: 2 },
     ] as OrderLine[],
   });
   readonly f = form(this.model);
@@ -204,6 +246,10 @@ export class GridEntityStory {
   readonly searchCalls = signal(0);
   readonly resolverDelay = signal(150);
   readonly resolverCalls = signal(0);
+  /** The search's latency gate: the delay, or a hold until released. */
+  readonly heldSearches = new HeldResponses();
+  /** The resolver's latency gate: the delay, or a hold until released. */
+  readonly heldResolutions = new HeldResponses();
 
   private readonly grid = viewChild.required(TmGrid);
   private nextTempId = -1;
@@ -218,6 +264,7 @@ export class GridEntityStory {
     agentId: null,
     otherId: null,
     quantity: null,
+    centerId: null,
   });
 
   readonly agentPage = GridAgentPage;
@@ -226,7 +273,35 @@ export class GridEntityStory {
   readonly agentFormat = (value: number | null): string =>
     value === null ? '' : (AGENTS.find((agent) => agent.id === value)?.name ?? `#${String(value)}`);
 
-  /** Sync at delay 0 (the fast path); a delayed promise otherwise. */
+  readonly centerIdOf = (center: Center): number => center.id;
+  readonly centerLabelOf = (center: Center): string => `${center.code} - ${center.name}`;
+  readonly centerDescriptionOf = (center: Center): string | null => center.parent;
+  readonly centerPartsOf = (center: Center): readonly string[] => [center.code, center.name];
+  readonly centerFormat = (value: number | null): string => {
+    if (value === null) {
+      return '';
+    }
+    const center = CENTERS.find((candidate) => candidate.id === value);
+    return center === undefined ? `#${String(value)}` : this.centerLabelOf(center);
+  };
+  readonly centerFormatParts = (value: number | null): readonly string[] | null => {
+    const center = CENTERS.find((candidate) => candidate.id === value);
+    return center === undefined ? null : this.centerPartsOf(center);
+  };
+  /** A synchronous search over a Center's code, name and parent. */
+  readonly centerSearch = (query: string): readonly Center[] => {
+    const q = query.trim().toLowerCase();
+    return CENTERS.filter((center) =>
+      [center.code, center.name, center.parent ?? ''].some((text) =>
+        text.toLowerCase().includes(q),
+      ),
+    );
+  };
+
+  /**
+   * Sync at delay 0 (the fast path) unless searches are held; a delayed
+   * (or held) promise otherwise.
+   */
   readonly search = (
     query: string,
   ): TmEntitySearchResult<Agent> | Promise<TmEntitySearchResult<Agent>> => {
@@ -235,10 +310,10 @@ export class GridEntityStory {
     const matches =
       q === '' ? [...AGENTS] : AGENTS.filter((agent) => agent.name.toLowerCase().includes(q));
     const delay = this.searchDelay();
-    if (delay <= 0) {
+    if (delay <= 0 && !this.heldSearches.holding()) {
       return matches;
     }
-    return new Promise((resolve) => setTimeout(() => resolve(matches), delay));
+    return this.heldSearches.wait(delay).then(() => matches);
   };
 
   /**
@@ -251,7 +326,7 @@ export class GridEntityStory {
     labels: string[],
   ): Promise<ReadonlyMap<string, TmLabelResolution<number | null>>> => {
     this.resolverCalls.update((count) => count + 1);
-    await new Promise((resolve) => setTimeout(resolve, this.resolverDelay()));
+    await this.heldResolutions.wait(this.resolverDelay());
     const map = new Map<string, TmLabelResolution<number | null>>();
     for (const label of labels) {
       const key = label.trim().toLowerCase();

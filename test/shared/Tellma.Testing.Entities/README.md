@@ -1,0 +1,44 @@
+# Tellma.Testing.Entities
+
+The data layer's shared SQL fixture. Every integration suite of the runtime package that needs a
+tenant-shaped database references it. It holds the fixture schema and its job handlers, the
+fixture context with its migrations, and the helpers that create a fixture database and open a
+tenant over it. It references no test framework, so `dotnet test` never runs it.
+
+## What lives here
+
+| File | Contents |
+|---|---|
+| `FixtureEntities.cs` | Schema `fixture`: `Widgets` (top-level, system-versioned, activatable, natural key, multilingual name, write-once unique subject, an optional enum, a due date, JSON settings, an image reference), its child `WidgetParts` (with a drawing reference, a child table's blob column), its grandchild `WidgetPartNotes` and its sibling `WidgetExtras`; the tree `Nodes` (`MaxDepth = 8`) and its child `Links`, which has a second foreign key to its parent; `Shipments`, a job entity with a `long` key whose stack accepts enlisted writes (`StackOperations.Enlist`, which changes no table); `Exports`, a job entity with an `int` key, so a call can name rows of two job entity types; `Lookups`, a cacheable list (`MaxRows = 50`) searched by its code's prefix and anywhere in its name, whose writes move the version tags `entity:fixture.Lookup` and `entities`; `BlobOwners`, whose stack accepts enlisted writes, with a file (`fixture-file`) and a photo (`fixture-photo`) on one row, and its child `BlobOwnerFiles` with a file of its own (`fixture-child-file`), which the blob suites attach, replace and release (the child has no query surface, so its kind is owned by the owner's stack through `BlobOwner`); `BlobFolders`, a tree (`MaxDepth = 4`) whose rows each hold an icon (`fixture-folder-icon`), so a delete with descendants releases a subtree's blobs. |
+| `FixtureJobHandlers.cs` | The fixture's job handlers and their keys: `fixture.probe` (arguments only), `fixture.ship` over `Shipments` and `fixture.export` over `Exports`. The suites enqueue under these keys and write job rows naming them; each handler does nothing, so a job a suite runs through `JobPollDriver` succeeds. Core contributes the production job tables (`core.Jobs`, `core.Schedules`, `core.ScheduleStates`, `core.JobWorkerState`) beside its access tables (`core.Users`, `core.Roles`, `core.RoleMemberships`, `core.Permissions`, `core.UserStamps`, `core.UserPreferences`, with their seeds), `core.VersionTags`, `core.Blobs`, and the inbox tables `core.Notifications` and `core.NotificationPreferences`, so every audit, blob and job foreign key of the fixture resolves to a production table. |
+| `FixtureNotifications.cs` | The fixture's notification types and channel: `fixture.shipment.shipped` (mutable, targeting `fixture.Shipment`), `fixture.shipment.held` (a non-mutable warning), `fixture.shipment.texted` (channel-only), and `sms`, on by default. The fixture registers no sender; a host that delivers adds its own. |
+| `FixtureFeature.cs`, `FixtureComposition.cs` | The feature that contributes the fixture entities, job handlers, notification types and channel, and one built-in schedule (`ProbeScheduleId`, 500, running `fixture.probe` at 01:00, which the migrations seed into `core.Schedules` and `core.ScheduleStates`), and the composition a fixture host and the fixture context are both built from, so the two share one model and one storage fingerprint. The composition also adds the GL module (`Tellma.Module.Gl`), so every fixture database holds its `gl.Centers` tree and the suites exercise a module-owned stack. |
+| `TellmaFixtureDbContext.cs` | The fixture context, which builds the composition's tenant model as a tenant context builds it, under the table-type sweep scope `tellma.fixture`, and its design-time factory. |
+| `Migrations/` | The fixture migrations, scaffolded by `dotnet-ef` and never edited by hand. |
+| `FixtureDatabase.cs` | Creates a fixture database the way provisioning creates a tenant database: platform collation, read-committed snapshot, the `tellma_app` role, then the migrations, then change tracking on every table outside `dbo` except the history tables, then the fingerprint row the schema guard reads. The `CREATE DATABASE` itself goes through `Tellma.Testing.Support`'s `SqlDatabaseCreation`, which retries the `model` lock parallel creations queue on (SQL error 1807). |
+| `FixtureTenant.cs` | A fixture host bound to one fixture database as tenant `1`, created with read-committed snapshot on unless the caller turns it off. Its scopes carry a request context for the platform's own principal, so a scope's `ITenantDatabase` runs batches against the database, and `ITenantDatabaseFactory` opens handles to it. The host maps no table to a stack, so its batches write any table through `IDataBatch`'s public members as the table's own stack would; the refusal of a write to a stack's table from outside it is left to suites that run the pipeline over the full composition, or that put the registry's owners back. Its tenant registry holds the fixture tenant alone, so `ITenantScopeFactory` opens the background scopes the job machinery runs in, and `CreateAsync` takes a `compose` hook that adds features, such as a suite's job handlers, beside the fixture's. |
+| `JobPollDriver.cs` | A test-only stand-in for one poll of the job worker: one maintenance batch claims every handler's due jobs (each claim with its entity load) under fresh tokens, then each claim's jobs run and complete, and the call returns each job's end (`PolledJob`). Nothing polls on its own and no renewal loop runs, so a suite drives jobs from enqueue to completion one poll at a time; a cancelled host token stands in for the host stopping. |
+| `ChangeTrackingAudit.cs` | The test-mode audit the host registers. After every successful batch it compares the tables change tracking saw written with the batch's declared writes, and fails the batch on an undeclared write. It reads on connections of its own and is exact while one batch at a time writes the database. |
+
+## Regenerating the migrations
+
+After a fixture entity, or an entity of a module the composition adds, changes, remove the old
+migration and scaffold a fresh one. Scaffolding never connects to a database. `dotnet-ef` writes
+the files with a byte order mark and CRLF line ends; strip both, as the repository's files are
+UTF-8 without a BOM and LF.
+
+```bash
+dotnet tool restore
+dotnet ef migrations remove --project test/shared/Tellma.Testing.Entities --startup-project test/shared/Tellma.Testing.Entities
+dotnet ef migrations add Initial --project test/shared/Tellma.Testing.Entities --startup-project test/shared/Tellma.Testing.Entities --namespace Tellma.Testing.Entities.Migrations --output-dir Migrations
+```
+
+## Using it
+
+```csharp
+await using FixtureTenant tenant = await FixtureTenant.CreateAsync(masterConnectionString, uniqueDatabaseName);
+await using AsyncServiceScope scope = tenant.CreateScope();
+IDataBatch batch = scope.ServiceProvider.GetRequiredService<ITenantDatabase>().CreateBatch(BatchPurpose.Read);
+```
+
+The caller owns the database name and drops the database when its run ends.

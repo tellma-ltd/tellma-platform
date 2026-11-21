@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.WebUtilities;
 using System.Text.Json;
 using Tellma.Identity.IntegrationTests.Infrastructure;
 using Tellma.Identity.Services.Provisioning;
+using Tellma.Identity.TestSupport;
 
 namespace Tellma.Identity.IntegrationTests.Flows
 {
@@ -23,11 +24,11 @@ namespace Tellma.Identity.IntegrationTests.Flows
         [Fact]
         public async Task Bff_completes_the_authorization_code_flow_end_to_end()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "idflow");
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idflow");
             DistributionClientCredentials distribution = await TestData.ProvisionDistributionAsync(factory);
             await TestData.CreateActiveUserAsync(factory, "alice@example.com");
 
-            using OidcFlowClient flow = new(factory);
+            using OidcFlowClient flow = factory.CreateFlowClient();
             (string verifier, string challenge) = OidcFlowClient.CreatePkcePair();
 
             // 1. The BFF pushes the authorization parameters server-to-server (PAR), including
@@ -108,6 +109,13 @@ namespace Tellma.Identity.IntegrationTests.Flows
             {
                 Assert.False(claims.TryGetProperty(serverSideOnly, out _), $"{serverSideOnly} leaked into a token.");
             }
+
+            // The access token names the principal kind; the id token, which is for the client
+            // rather than a resource server, does not carry it.
+            Assert.Equal("individual", claims.GetProperty("tellma_kind").GetString());
+            using JsonDocument idToken = ClientCredentialsTests.DecodeJwtPayload(
+                tokens.RootElement.GetProperty("id_token").GetString()!);
+            Assert.False(idToken.RootElement.TryGetProperty("tellma_kind", out _), "tellma_kind leaked into the id token.");
         }
     }
 }

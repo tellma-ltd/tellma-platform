@@ -1,0 +1,186 @@
+// Copyright (c) Tellma Ltd. All rights reserved.
+//
+// This source code is licensed under the Apache-2.0 license found in the
+// LICENSE file in the root directory of this source tree.
+
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Routing;
+using Microsoft.Extensions.Logging;
+using System.Diagnostics;
+using System.Globalization;
+using Tellma.Core.Abstractions.Tenancy;
+using Tellma.Core.AspNetCore.Authentication;
+using Tellma.Core.AspNetCore.Realtime;
+using Tellma.Core.AspNetCore.Routing;
+using Tellma.Core.Data;
+using Tellma.Core.Tenancy;
+
+namespace Tellma.Core.AspNetCore.Tenancy
+{
+    /// <summary>
+    ///     Binds a tenant request's context: resolves the tenant the route names from the registry's
+    ///     snapshot, refuses one that is absent, retired or still provisioning, and binds the tenant and
+    ///     the authenticated principal in one write, and hands the request's aborted token to the
+    ///     scope's data access. On the hub it is also the access guard's front door. A request to an
+    ///     endpoint without tenant metadata proceeds tenantless.
+    /// </summary>
+    /// <param name="next">The rest of the pipeline.</param>
+    /// <param name="registry">The tenant registry.</param>
+    /// <param name="metrics">The tenancy instruments.</param>
+    /// <param name="hubDoor">The hub's front door.</param>
+    /// <param name="logger">The logger whose scope carries the tenant's members.</param>
+    internal sealed class TenantMiddleware(
+        RequestDelegate next,
+        ITenantRegistry registry,
+        TenancyMetrics metrics,
+        HubFrontDoor hubDoor,
+        ILogger<TenantMiddleware> logger)
+    {
+        /// <summary>The request activity's tag naming the tenant.</summary>
+        public const string TenantIdTag = "tellma.tenant.id";
+
+        /// <summary>Binds the tenant, then runs the rest of the pipeline inside the tenant's logger scope.</summary>
+        /// <param name="context">The request.</param>
+        /// <param name="holder">The request scope's context holder.</param>
+        /// <param name="guard">The request scope's access guard, for the hub's front door.</param>
+        /// <param name="cancellation">The request scope's data cancellation, which the request's aborted token is handed to.</param>
+        /// <returns>A task that completes when the request is answered.</returns>
+        public async Task InvokeAsync(HttpContext context, IRequestContextHolder holder, ITenantAccessGuard guard, DataCancellation cancellation)
+        {
+            ArgumentNullException.ThrowIfNull(context);
+            ArgumentNullException.ThrowIfNull(holder);
+            ArgumentNullException.ThrowIfNull(guard);
+            ArgumentNullException.ThrowIfNull(cancellation);
+
+            // Only an endpoint a tenant group stamped resolves a tenant. Any other endpoint, an
+            // anonymous one with a tenant id in its route included, stays tenantless and so cannot be
+            // used to learn whether a tenant exists.
+            TenantEndpointMetadata? metadata = context.GetEndpoint()?.Metadata.GetMetadata<TenantEndpointMetadata>();
+            if (metadata is null)
+            {
+                await next(context).ConfigureAwait(false);
+                return;
+            }
+
+            // --- The hub: a refusal from the tenant's resolution on is a refused connection attempt ---
+            bool hub = metadata.Surface == TenantSurface.Hub;
+            int tenantId;
+            TenantInfo tenant;
+            try
+            {
+                tenantId = TenantIdOf(context);
+                tenant = Resolve(tenantId);
+            }
+            catch (Exception exception) when (hub)
+            {
+                hubDoor.Refused(exception, context);
+                throw;
+            }
+
+            // --- One write: the tenant and the principal the endpoint's policy authenticated ---
+            PrincipalPart principal = await PrincipalBinding.BindAsync(context).ConfigureAwait(false);
+            RequestContext bound = holder.Current with
+            {
+                Tenant = tenant.Descriptor,
+                Kind = principal.Kind,
+                Subject = principal.Subject,
+                ClientId = principal.ClientId,
+                SessionId = principal.SessionId,
+                SessionHandle = principal.SessionHandle,
+                Assurance = principal.Assurance,
+            };
+            if (RequestInputs.ClientOf(context, metadata.Surface) is string client)
+            {
+                bound = bound with { Client = client };
+            }
+
+            holder.Set(bound);
+            _ = Activity.Current?.SetTag(TenantIdTag, tenantId);
+
+            // --- The data access of the request, from its first round trip (the guard's connect) on ---
+            // A client that goes away cancels its reads, validations and retry waits; a persist once
+            // sent still runs to completion (spec 0012 §6.1).
+            cancellation.Token = context.RequestAborted;
+            metrics.RecordScope(TenantScopeKind.Request);
+
+            using (logger.BeginScope(new TenantLogScope(holder)))
+            {
+                // --- The hub's front door: no endpoint filter reaches a hub's connection endpoints ---
+                // The guard, the prologue and the hub claims (spec 0011 §4.3, spec 0021 §6.1).
+                if (hub)
+                {
+                    try
+                    {
+                        await HubFrontDoor.EnterAsync(context, holder, guard).ConfigureAwait(false);
+                    }
+                    catch (Exception exception)
+                    {
+                        hubDoor.Refused(exception, context);
+                        throw;
+                    }
+                }
+
+                await next(context).ConfigureAwait(false);
+            }
+        }
+
+        /// <summary>The tenant id the route names.</summary>
+        /// <param name="context">The request.</param>
+        /// <returns>The id.</returns>
+        /// <exception cref="InvalidOperationException">The endpoint's route names none, which the endpoint audit refuses.</exception>
+        /// <exception cref="TenantNotFoundException">The segment is not a tenant id written in digits alone.</exception>
+        private int TenantIdOf(HttpContext context)
+        {
+            // A route without the parameter is a mapping the audit should have refused: fail closed.
+            if (context.GetRouteValue(TellmaEndpointAudit.TenantIdParameter) is not { } value)
+            {
+                throw new InvalidOperationException("A tenant endpoint was matched without a tenantId route value.");
+            }
+
+            // The route's int constraint also admits a sign and surrounding white space ("+1", "1 ").
+            // A tenant id is digits alone, so such a segment names no tenant and answers as one that
+            // does not exist, never as a server error.
+            if (int.TryParse(Convert.ToString(value, CultureInfo.InvariantCulture), NumberStyles.None, CultureInfo.InvariantCulture, out int id) && id > 0)
+            {
+                return id;
+            }
+
+            metrics.RecordResolution(TenantResolutionOutcome.NotFound);
+            throw new TenantNotFoundException(0);
+        }
+
+        /// <summary>Resolves a tenant from the snapshot, refusing one no request may reach.</summary>
+        /// <param name="tenantId">The tenant id.</param>
+        /// <returns>The tenant.</returns>
+        /// <exception cref="TenantNotFoundException">The tenant is unknown, retired or provisioning.</exception>
+        /// <exception cref="TenantUnavailableException">The snapshot is beyond its staleness bound.</exception>
+        private TenantInfo Resolve(int tenantId)
+        {
+            TenantInfo? tenant;
+            try
+            {
+                tenant = registry.Find(tenantId);
+            }
+            catch (TenantUnavailableException unavailable) when (unavailable.Code == TenantProblemCodes.CatalogUnavailable)
+            {
+                metrics.RecordResolution(TenantResolutionOutcome.CatalogUnavailable);
+                throw;
+            }
+
+            // A provisioning tenant answers exactly as an absent one; only the metric tells them apart.
+            if (tenant is null || tenant.Descriptor.State == TenantState.Retired)
+            {
+                metrics.RecordResolution(TenantResolutionOutcome.NotFound);
+                throw new TenantNotFoundException(tenantId);
+            }
+
+            if (tenant.Descriptor.State == TenantState.Provisioning)
+            {
+                metrics.RecordResolution(TenantResolutionOutcome.Provisioning);
+                throw new TenantNotFoundException(tenantId);
+            }
+
+            return tenant;
+        }
+    }
+}

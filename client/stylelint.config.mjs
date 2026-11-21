@@ -3,6 +3,8 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+import { tmAllowedBreakpoints } from '@tellma/core-tools/stylelint';
+
 import tmNoHardcodedSizing from './tools/stylelint/tm-no-hardcoded-sizing.mjs';
 
 /**
@@ -11,10 +13,13 @@ import tmNoHardcodedSizing from './tools/stylelint/tm-no-hardcoded-sizing.mjs';
  * - no hardcoded sizing (density/typography stay token-switchable)
  * - no bare `outline: none` (focus-visibility is never removed without a
  *   substitute; the substitute case is an explicit, justified disable)
+ * - every width query in range syntax at a platform breakpoint
+ *   (tm/allowed-breakpoints, over core, module and locale packages; the rule
+ *   ships to distributions in @tellma/core-tools' stylelint preset)
  * The internal showcase app is exempt (not shipped).
  */
 export default {
-  plugins: [tmNoHardcodedSizing],
+  plugins: [tmAllowedBreakpoints, tmNoHardcodedSizing],
   rules: {},
   overrides: [
     {
@@ -38,6 +43,12 @@ export default {
           },
         ],
         'tm/no-hardcoded-sizing': [true, { allow: ['1px'] }],
+      },
+    },
+    {
+      files: ['projects/core/**/*.css', 'projects/module/**/*.css', 'projects/locale/**/*.css'],
+      rules: {
+        'tm/allowed-breakpoints': true,
       },
     },
   ],

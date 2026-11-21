@@ -66,6 +66,7 @@ test.describe('forced-colors (DoD 17)', () => {
     await page.emulateMedia({ forcedColors: 'active' });
     await page.goto(storyUrl('alert'));
     const alerts = page.getByTestId('kinds').locator('tm-alert');
+    await expect(alerts).toHaveCount(4); // rendered, so the loop cannot run over none
     for (let i = 0; i < (await alerts.count()); i++) {
       const borderStyle = await alerts.nth(i).evaluate((el) => getComputedStyle(el).borderStyle);
       expect(borderStyle).toBe('solid');

@@ -53,3 +53,24 @@ export const Standalone = {
     />
   `,
 };
+
+/**
+ * Rows that tell namesakes apart: a description line under each label (a
+ * parent, say), and the label drawn in parts so a Latin code stays first
+ * beside a name in another script. The advanced-search page's `context`
+ * reaches the page untouched, so one page can serve many entities.
+ */
+export const TwoLineRows = {
+  template: `
+    <tm-form-field label="Cost center" style="max-width: 320px; display: block;">
+      <tm-entity-picker
+        [search]="searchCenters"
+        [itemId]="centerId"
+        [itemLabel]="centerLabel"
+        [itemLabelParts]="centerCodeAndName"
+        [itemDescription]="centerParent"
+        [advancedSearch]="{ component: searchPage, size: 'lg', context: { entity: 'Center' } }"
+      />
+    </tm-form-field>
+  `,
+};

@@ -1,0 +1,157 @@
+// Copyright (c) Tellma Ltd. All rights reserved.
+//
+// This source code is licensed under the Apache-2.0 license found in the
+// LICENSE file in the root directory of this source tree.
+
+using System.Text.Json;
+using Tellma.Core.Abstractions.Access;
+using Tellma.Core.Abstractions.Api;
+using Tellma.Core.Abstractions.Client;
+using Tellma.Core.Abstractions.Data;
+using Tellma.Core.Localization;
+
+namespace Tellma.Core.Access
+{
+    // The section is spec 0014 §10's; the label chains are spec 0032 §12.4's, keyed as spec 0013
+    // §10.1 names keys.
+    /// <summary>
+    ///     Writes the <c>securables</c> section of the Core chunk of the client metadata: one
+    ///     <see cref="ClientSecurable" /> per registered securable, in the registry's order, with the
+    ///     key of each label resolved, so the role editor renders every label with no request.
+    /// </summary>
+    /// <remarks>
+    ///     <para>Each label takes the first key of its chain that a neutral shared resource declares:</para>
+    ///     <list type="bullet">
+    ///         <item>an entity's resource: <c>&lt;Schema&gt;_&lt;Entity&gt;_Plural</c>, then <c>&lt;Schema&gt;_&lt;Entity&gt;</c>;</item>
+    ///         <item>
+    ///             a settings resource: <c>SettingCategory_general</c> for <c>core.Settings.General</c>,
+    ///             <c>SettingCategory_&lt;category&gt;</c> for <c>core.Settings.&lt;category&gt;</c>;
+    ///         </item>
+    ///         <item>any other resource: <c>Securable_&lt;resource&gt;</c>, its dots written <c>_</c>;</item>
+    ///         <item>an action: <c>&lt;Schema&gt;_&lt;Resource&gt;_Action_&lt;Action&gt;</c>, then <c>Action_&lt;Action&gt;</c>;</item>
+    ///         <item>a feature: <c>Feature_&lt;feature&gt;</c>, its dots written <c>_</c>.</item>
+    ///     </list>
+    ///     <para>
+    ///         With no key of a chain declared, the label carries the chain's first key and humanized
+    ///         English: the resource's last segment (in the plural for an entity, whose first key is
+    ///         its plural one; a settings category's name), the action, the feature's name.
+    ///     </para>
+    /// </remarks>
+    /// <param name="registry">The securable registry.</param>
+    /// <param name="metadata">The model's entity metadata, which says which resources are entities.</param>
+    /// <param name="strings">The keys the neutral shared resources declare.</param>
+    internal sealed class SecurablesClientAssetContributor(ISecurableRegistry registry, IEntityMetadataProvider metadata, INeutralStringKeys strings) : IClientAssetContributor
+    {
+        /// <summary>The section's name.</summary>
+        public const string Section = "securables";
+
+        /// <summary>The category whose resource is <c>core.Settings.General</c>.</summary>
+        private const string GeneralCategory = "general";
+
+        /// <inheritdoc />
+        public void Contribute(ClientAssetContext context)
+        {
+            ArgumentNullException.ThrowIfNull(context);
+
+            // The platform's JSON rules: camelCase members, nulls omitted, so a fallback is present
+            // only when no resource declares its label's key.
+            List<ClientSecurable> securables = [.. registry.All.Select(Describe)];
+            context.Section(ClientMetadataChunk.Core, Section, writer => JsonSerializer.Serialize(writer, securables, TellmaJson.Options));
+        }
+
+        /// <summary>One securable with its label keys.</summary>
+        /// <param name="securable">The securable.</param>
+        /// <returns>Its client description.</returns>
+        internal ClientSecurable Describe(SecurableDescriptor securable)
+        {
+            (string resourceKey, string? resourceFallback) = ResourceLabel(securable.Resource);
+            (string actionKey, string? actionFallback) = Resolve(
+                [
+                    StringKeyConventions.KeyPrefix(securable.Resource) + StringKeyConventions.ActionInfix + StringKeyConventions.ActionSegment(securable.Action),
+                    StringKeyConventions.ActionPrefix + StringKeyConventions.ActionSegment(securable.Action),
+                ],
+                NameHumanizer.Humanize(securable.Action));
+            (string featureKey, string? featureFallback) = Resolve([$"Feature_{securable.Feature.Replace('.', '_')}"], NameHumanizer.Humanize(securable.Feature));
+
+            return new ClientSecurable(
+                securable.Resource,
+                securable.Action,
+                securable.FilterRoot,
+                securable.IsSensitive,
+                securable.Feature,
+                securable.Owner,
+                resourceKey,
+                resourceFallback,
+                actionKey,
+                actionFallback,
+                featureKey,
+                featureFallback);
+        }
+
+        /// <summary>
+        ///     The key chain of a resource's label, by the kind of resource, and its fallback. The
+        ///     conventional key list derives a resource's keys from the same chain, so the audit
+        ///     accepts exactly the keys this section looks up.
+        /// </summary>
+        /// <param name="resource">The resource.</param>
+        /// <param name="metadata">The model's entity metadata, which says which resources are entities.</param>
+        /// <returns>The keys, most specific first, and the label when no key is declared.</returns>
+        internal static (string[] Chain, string Fallback) ResourceLabelChain(string resource, IEntityMetadataProvider metadata)
+        {
+            ArgumentNullException.ThrowIfNull(resource);
+            ArgumentNullException.ThrowIfNull(metadata);
+
+            // --- An entity: its plural label, then its singular one; the fallback goes with the
+            // plural key, so it is plural too ---
+            if (metadata.All.Any(entity => string.Equals(entity.Name, resource, StringComparison.OrdinalIgnoreCase)))
+            {
+                string prefix = StringKeyConventions.KeyPrefix(resource);
+                return ([prefix + StringKeyConventions.PluralSuffix, prefix], NameHumanizer.Pluralize(NameHumanizer.Humanize(StringKeyConventions.LastSegment(resource))));
+            }
+
+            // --- A settings category: its tab's label; the general settings are the general category ---
+            if (resource.StartsWith(CoreResources.SettingsPrefix, StringComparison.OrdinalIgnoreCase))
+            {
+                string category = resource[CoreResources.SettingsPrefix.Length..];
+                if (string.Equals(resource, CoreResources.SettingsGeneral, StringComparison.OrdinalIgnoreCase))
+                {
+                    category = GeneralCategory;
+                }
+
+                if (!category.Contains('.', StringComparison.Ordinal))
+                {
+                    return ([$"SettingCategory_{category}"], NameHumanizer.Humanize(category));
+                }
+            }
+
+            // --- Any other resource: its own key ---
+            return ([$"Securable_{resource.Replace('.', '_')}"], NameHumanizer.Humanize(StringKeyConventions.LastSegment(resource)));
+        }
+
+        /// <summary>The key of a resource's label, by the chain its kind takes, and its fallback.</summary>
+        /// <param name="resource">The resource.</param>
+        /// <returns>The key, and the fallback when no resource declares a key of the chain.</returns>
+        private (string Key, string? Fallback) ResourceLabel(string resource)
+        {
+            (string[] chain, string fallback) = ResourceLabelChain(resource, metadata);
+            return Resolve(chain, fallback);
+        }
+
+        /// <summary>The first key of a chain a neutral shared resource declares; else the chain's first key with a fallback.</summary>
+        /// <param name="chain">The keys, most specific first.</param>
+        /// <param name="fallback">The label when no key is declared.</param>
+        /// <returns>The key, and the fallback when no key is declared.</returns>
+        private (string Key, string? Fallback) Resolve(string[] chain, string fallback)
+        {
+            foreach (string key in chain)
+            {
+                if (strings.Declares(key))
+                {
+                    return (key, null);
+                }
+            }
+
+            return (chain[0], fallback);
+        }
+    }
+}

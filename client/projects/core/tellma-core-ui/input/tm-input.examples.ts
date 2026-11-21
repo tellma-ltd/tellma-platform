@@ -17,24 +17,15 @@ export const InField = {
   `,
 };
 
+/**
+ * A leading glyph projected as the field's prefix: a `tm-icon`, where
+ * `searchIcon` is the `Search` data from `lucide` (or use `name` with a
+ * registered icon).
+ */
 export const WithAdornments = {
   template: `
     <tm-form-field label="Search">
-      <svg
-        tmPrefix
-        width="16"
-        height="16"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="1.75"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-        aria-hidden="true"
-      >
-        <circle cx="11" cy="11" r="8" />
-        <path d="m21 21-4.3-4.3" />
-      </svg>
+      <tm-icon tmPrefix [svg]="searchIcon" />
       <input tmInput placeholder="Search records" />
     </tm-form-field>
   `,

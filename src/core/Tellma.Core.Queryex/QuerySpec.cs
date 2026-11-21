@@ -47,6 +47,11 @@ namespace Tellma.Core.Queryex
         /// <summary>
         ///     The group-level predicate. A caller error unless <see cref="Aggregate" /> is set.
         /// </summary>
+        /// <remarks>
+        ///     It sees groups rather than rows, so neither a <see cref="FilterTree.ViaNode" /> nor a
+        ///     <see cref="FilterTree.ExistsNode" /> may appear in it: both read rows, and are a caller
+        ///     error here.
+        /// </remarks>
         public FilterTree? Having { get; init; }
 
         /// <summary>
@@ -66,6 +71,78 @@ namespace Tellma.Core.Queryex
         /// <summary>Maximum rows to return. Paging requires an explicit ordering.</summary>
         /// <remarks>Zero is a caller error: the backend's paging clause rejects it.</remarks>
         public int? Take { get; init; }
+
+        /// <summary>
+        ///     The key sets the root's rows are restricted to, each conjoined after
+        ///     <see cref="Filter" />.
+        /// </summary>
+        /// <remarks>
+        ///     Host structure rather than user text, so a restriction that does not fit the schema is
+        ///     a caller error rather than a diagnostic: a path that does not resolve, that ends at a
+        ///     navigation, or that ends at a property whose values cannot be compared for equality.
+        ///     Empty, the statement is exactly what it would be without this member.
+        /// </remarks>
+        /// <exception cref="ArgumentNullException">The list, or an item of it, is null.</exception>
+        public IReadOnlyList<KeySetRestriction> Restrictions
+        {
+            get;
+            init
+            {
+                ArgumentNullException.ThrowIfNull(value);
+
+                // Copied rather than captured: the list is part of what a cached compilation is
+                // keyed on, and a caller that kept a mutable one could change it afterwards.
+                KeySetRestriction[] copy = [.. value];
+                foreach (KeySetRestriction restriction in copy)
+                {
+                    ArgumentNullException.ThrowIfNull(restriction, nameof(value));
+                }
+
+                field = copy;
+            }
+        } = [];
+
+        /// <summary>
+        ///     Physical columns of the root's source that the schema leaves out on purpose, read as
+        ///     text after the select list.
+        /// </summary>
+        /// <remarks>
+        ///     <para>
+        ///         For the columns a schema omits by design, such as opaque JSON text, which a host
+        ///         still wants in the statement that reads the rest of the row. Each name is an
+        ///         unquoted column of the root's source, written as a letter or underscore and then
+        ///         letters, digits or underscores; it is read on the root row and reported as a
+        ///         nullable text column after the compiled ones, in list order.
+        ///     </para>
+        ///     <para>
+        ///         The engine cannot look a name up — the schema omits it — so that the column exists
+        ///         and holds text is the host's obligation. Like the schema's own sources and
+        ///         columns, the names are host-authored text that reaches SQL, and must never be
+        ///         derived from anything a user supplied. No clause can mention one, so the joins,
+        ///         parameters and ordering are those of the same query without the list.
+        ///     </para>
+        ///     <para>
+        ///         Row grain only: a caller error in a grouped query, as is a name not of the
+        ///         accepted form or one listed twice ignoring case.
+        ///     </para>
+        /// </remarks>
+        /// <exception cref="ArgumentNullException">The list, or an item of it, is null.</exception>
+        public IReadOnlyList<string> UndeclaredColumns
+        {
+            get;
+            init
+            {
+                ArgumentNullException.ThrowIfNull(value);
+
+                string[] copy = [.. value];
+                foreach (string name in copy)
+                {
+                    ArgumentNullException.ThrowIfNull(name, nameof(value));
+                }
+
+                field = copy;
+            }
+        } = [];
     }
 
     /// <summary>
@@ -90,11 +167,23 @@ namespace Tellma.Core.Queryex
 
         /// <summary>
         ///     The group-level predicate, when present. A caller error unless
-        ///     <see cref="Aggregate" /> is set.
+        ///     <see cref="Aggregate" /> is set, or when it holds a rebase or a semi-join.
         /// </summary>
         public FilterTree? Having { get; init; }
 
         /// <summary>The ordering list, when present.</summary>
         public string? OrderBy { get; init; }
+
+        /// <summary>
+        ///     True to have the row-level predicate's top-level restrictions reported, each as a
+        ///     compared path or expression, an operator and a literal value.
+        /// </summary>
+        /// <remarks>
+        ///     Off by default, and with it off discovery answers exactly as it would without it. With
+        ///     it on, <see cref="DiscoveryResult.Conjuncts" /> holds what was found, which is how a
+        ///     list opened from a bare link can describe the filter it runs from that filter's own
+        ///     parse rather than from text carried beside it.
+        /// </remarks>
+        public bool Conjuncts { get; init; }
     }
 }

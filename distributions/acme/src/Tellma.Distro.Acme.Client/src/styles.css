@@ -1,0 +1,28 @@
+/*
+ * Copyright (c) Tellma Ltd. All rights reserved.
+ *
+ * This source code is licensed under the Apache-2.0 license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/*
+ * Acme's global styles. The platform's stylesheets (the tokens, the fonts of
+ * Latin and Arabic, the directive and boot-page styles) come first, through
+ * angular.json; this file holds only Acme's deltas, each in the theme layer
+ * so it wins over the tokens whatever the order of the files.
+ */
+
+/* The page: the platform's surface, text colour and face. */
+body {
+  margin: 0;
+  background: var(--surface-page);
+  color: var(--text-strong);
+  font-family: var(--font-ui);
+}
+
+/* Acme's one theme delta: teal as the primary colour. */
+@layer tm.theme {
+  :root {
+    --color-primary: var(--teal-700);
+  }
+}

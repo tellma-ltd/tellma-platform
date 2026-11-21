@@ -5,6 +5,7 @@
 
 import { TM_PARSE_ERROR } from '@tellma/core-ui/contracts';
 
+import { TM_BIDI_CONTROLS } from './tm-bidi';
 import {
   TM_NUMBER_MAX_DIGITS,
   tmFormatNumber,
@@ -77,6 +78,76 @@ describe('tm-number-codec', () => {
 
   it('floors maxDecimals at minDecimals so an inverted pair never throws', () => {
     expect(tmFormatNumber(1.23, 'en', { minDecimals: 3, maxDecimals: 1 })).toBe('1.230');
+  });
+
+  describe('grouping', () => {
+    it('writes no group separators when grouping is off', () => {
+      expect(tmFormatNumber(2026, 'en', { grouping: false })).toBe('2026');
+      expect(tmFormatNumber(1234567.5, 'en', { grouping: false })).toBe('1234567.5');
+      expect(tmFormatNumber(1234567, 'de', { grouping: false })).toBe('1234567');
+      expect(tmFormatNumber(-1234567, 'en', { grouping: false })).toBe('-1234567');
+      // The decimals and the percent mode still apply.
+      expect(tmFormatNumber(1234.5, 'en', { grouping: false, minDecimals: 2 })).toBe('1234.50');
+      expect(tmFormatNumber(12.5, 'en', { grouping: false, percent: true })).toBe('1250%');
+    });
+
+    it('groups by default, and under an explicit true', () => {
+      expect(tmFormatNumber(2026, 'en')).toBe('2,026');
+      expect(tmFormatNumber(2026, 'en', {})).toBe('2,026');
+      expect(tmFormatNumber(2026, 'en', { grouping: true })).toBe('2,026');
+      expect(tmFormatNumber(12.5, 'en', { percent: true })).toBe('1,250%');
+    });
+
+    it("keeps the locale's digits when grouping is off", () => {
+      expect(tmFormatNumber(2026, 'ar-SA', { grouping: false })).toBe('٢٠٢٦');
+      expect(tmFormatNumber(2026, 'ar-SA')).toBe('٢٬٠٢٦');
+    });
+
+    it("keeps the locale's minimum grouping digits when grouping is on", () => {
+      // Spanish groups from five digits.
+      expect(tmFormatNumber(1234, 'es')).toBe('1234');
+      expect(tmFormatNumber(12345, 'es')).toBe('12.345');
+      expect(tmFormatNumber(12345, 'es', { grouping: false })).toBe('12345');
+    });
+
+    it('formats the two settings apart, whichever was asked first', () => {
+      // One cached formatter per setting: neither answers for the other.
+      expect(tmFormatNumber(987654, 'fr', { grouping: false })).toBe('987654');
+      expect(tmFormatNumber(987654, 'fr')).not.toBe('987654');
+      expect(tmFormatNumber(987654, 'fr', { grouping: false })).toBe('987654');
+    });
+
+    it('parses grouped text whatever the setting', () => {
+      expect(tmParseNumber('2,026', 'en')).toBe(2026);
+      expect(tmParseNumber(tmFormatNumber(2026, 'en', { grouping: false }), 'en')).toBe(2026);
+    });
+  });
+
+  describe('bidirectional controls', () => {
+    it('formats a negative with no mark beside its sign', () => {
+      expect(tmFormatNumber(-1234.5, 'ar')).toBe('-1,234.5');
+      expect(tmFormatNumber(-1234.5, 'ar-SA-u-nu-latn')).toBe('-1,234.5');
+      expect(tmFormatNumber(-12, 'he')).toBe('-12');
+    });
+
+    it('formats every sign and percent without a mark, in right-to-left locales', () => {
+      for (const locale of ['ar', 'ar-SA', 'ar-EG', 'fa', 'he', 'ur']) {
+        for (const options of [{}, { percent: true }, { grouping: false }]) {
+          for (const value of [-1234.5, 0.25, -0.25]) {
+            const text = tmFormatNumber(value, locale, options);
+            expect(
+              [...text.matchAll(TM_BIDI_CONTROLS)],
+              `${locale} ${JSON.stringify(options)} ${value}`,
+            ).toEqual([]);
+            // The marks were never information: the text reads back.
+            expect(
+              tmParseNumber(text, locale, { percent: options.percent === true }),
+              `${locale} ${text}`,
+            ).toBe(value);
+          }
+        }
+      }
+    });
   });
 
   describe('percent mode', () => {

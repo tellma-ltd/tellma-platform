@@ -7,30 +7,111 @@
 import { BaseHarnessFilters } from '@angular/cdk/testing';
 import { ComponentHarness } from '@angular/cdk/testing';
 import { HarnessPredicate } from '@angular/cdk/testing';
+import { ModifierKeys } from '@angular/cdk/testing';
 import { TestElement } from '@angular/cdk/testing';
 import { TestKey } from '@angular/cdk/testing';
 
 // @public
 export class TmAlertHarness extends ComponentHarness {
     getHeading(): Promise<string | null>;
-    getKind(): Promise<'info' | 'success' | 'warning' | 'error'>;
+    getKind(): Promise<'error' | 'info' | 'success' | 'warning'>;
     getRole(): Promise<string | null>;
     getText(): Promise<string>;
     static hostSelector: string;
 }
 
 // @public
+export class TmAvatarHarness extends ComponentHarness {
+    getAccessibleName(): Promise<string | null>;
+    getInitials(): Promise<string>;
+    getSize(): Promise<string>;
+    getTone(): Promise<number | null>;
+    hasPhoto(): Promise<boolean>;
+    static hostSelector: string;
+    isDecorative(): Promise<boolean>;
+    isShowingGlyph(): Promise<boolean>;
+}
+
+// @public
+export class TmBannerBarHarness extends ComponentHarness {
+    clickAction(): Promise<void>;
+    dismiss(): Promise<void>;
+    getActionLabel(): Promise<string | null>;
+    getButtonLabels(): Promise<Array<string | null>>;
+    getMessage(): Promise<string>;
+    getPosition(): Promise<string | null>;
+    getTone(): Promise<string | null>;
+    getTonePrefix(): Promise<string>;
+    static hostSelector: string;
+    isDismissible(): Promise<boolean>;
+    next(): Promise<void>;
+    previous(): Promise<void>;
+}
+
+// @public
+export class TmBusyOverlayHarness extends ComponentHarness {
+    getLabel(): Promise<string>;
+    hasSpinner(): Promise<boolean>;
+    static hostSelector: string;
+    isActive(): Promise<boolean>;
+    isScrimShown(): Promise<boolean>;
+}
+
+// @public
 export class TmButtonHarness extends ComponentHarness {
     click(): Promise<void>;
     focus(): Promise<void>;
-    getSize(): Promise<'sm' | 'md' | 'lg'>;
+    getDisabledReason(): Promise<string | null>;
+    getSize(): Promise<'lg' | 'md' | 'sm'>;
     getText(): Promise<string>;
-    getVariant(): Promise<'primary' | 'secondary' | 'ghost' | 'danger'>;
+    getVariant(): Promise<'danger' | 'ghost' | 'primary' | 'secondary'>;
     static hostSelector: string;
     isDisabled(): Promise<boolean>;
     isFocused(): Promise<boolean>;
+    isLink(): Promise<boolean>;
     isPending(): Promise<boolean>;
 }
+
+// @public
+export class TmCardHarness extends ComponentHarness {
+    getCount(): Promise<string | null>;
+    getHeading(): Promise<string | null>;
+    getHeadingLevel(): Promise<number | null>;
+    getHeadingName(): Promise<string | null>;
+    getSubtitle(): Promise<string | null>;
+    static hostSelector: string;
+    isBodyInert(): Promise<boolean>;
+    isBodyRendered(): Promise<boolean>;
+    isCollapsible(): Promise<boolean>;
+    isExpanded(): Promise<boolean>;
+    isInvalid(): Promise<boolean>;
+    reservesErrorDot(): Promise<boolean>;
+    toggle(): Promise<void>;
+}
+
+// @public
+export class TmChartHarness extends ComponentHarness {
+    activateCard(modifiers?: ModifierKeys): Promise<void>;
+    getCardBadge(): Promise<string | null>;
+    getCardLabel(): Promise<string | null>;
+    getCardValue(): Promise<string | null>;
+    getDescription(): Promise<string>;
+    getName(): Promise<string>;
+    getTable(): Promise<TmGridHarness | null>;
+    getView(): Promise<TmChartView>;
+    hasCanvas(): Promise<boolean>;
+    static hostSelector: string;
+    isCardActivatable(): Promise<boolean>;
+    static with(options?: TmChartHarnessFilters): HarnessPredicate<TmChartHarness>;
+}
+
+// @public
+export interface TmChartHarnessFilters extends BaseHarnessFilters {
+    name?: string | RegExp;
+}
+
+// @public
+export type TmChartView = 'card' | 'empty' | 'plot' | 'table';
 
 // @public
 export class TmCheckboxHarness extends ComponentHarness {
@@ -43,6 +124,77 @@ export class TmCheckboxHarness extends ComponentHarness {
     isIndeterminate(): Promise<boolean>;
     isRequired(): Promise<boolean>;
     toggle(): Promise<void>;
+}
+
+// @public
+export class TmChipHarness extends ComponentHarness {
+    activate(): Promise<void>;
+    getHref(): Promise<string | null>;
+    getKind(): Promise<'button' | 'link' | 'text'>;
+    getLabel(): Promise<string>;
+    getRemoveLabel(): Promise<string | null>;
+    getSize(): Promise<string | null>;
+    getText(): Promise<string>;
+    getTone(): Promise<string | null>;
+    static hostSelector: string;
+    isCollapsed(): Promise<boolean>;
+    isFocused(): Promise<boolean>;
+    isRemovable(): Promise<boolean>;
+    pressDelete(): Promise<void>;
+    remove(): Promise<void>;
+    static with(filters?: TmChipHarnessFilters): HarnessPredicate<TmChipHarness>;
+}
+
+// @public
+export interface TmChipHarnessFilters extends BaseHarnessFilters {
+    readonly label?: string;
+}
+
+// @public
+export class TmChipSetHarness extends ComponentHarness {
+    getAriaLabel(): Promise<string | null>;
+    getChips(filters?: TmChipHarnessFilters): Promise<TmChipHarness[]>;
+    getMoreLabel(): Promise<string | null>;
+    getMoreText(): Promise<string | null>;
+    getOverflow(): Promise<string | null>;
+    getTabStopCount(): Promise<number>;
+    getVisibleChips(): Promise<TmChipHarness[]>;
+    static hostSelector: string;
+}
+
+// @public
+export class TmConfirmHarness extends ComponentHarness {
+    choose(label: string): Promise<void>;
+    close(): Promise<void>;
+    getChoiceLabels(): Promise<string[]>;
+    getFocusedChoiceLabel(): Promise<string | null>;
+    getIcon(): Promise<string | null>;
+    getMessage(): Promise<string>;
+    getTitle(): Promise<string>;
+    static hostSelector: string;
+    pressEscape(): Promise<void>;
+}
+
+// @public
+export class TmCopyButtonHarness extends ComponentHarness {
+    click(): Promise<void>;
+    getAnnouncement(): Promise<string>;
+    getLabel(): Promise<string>;
+    getManualPrompt(): Promise<string | null>;
+    getManualText(): Promise<string | null>;
+    static hostSelector: string;
+    isCopied(): Promise<boolean>;
+    isShowingManualCopy(): Promise<boolean>;
+}
+
+// @public
+export class TmCounterHarness extends ComponentHarness {
+    getPlacement(): Promise<'inline' | 'overlay'>;
+    getText(): Promise<string>;
+    getTone(): Promise<'accent' | 'attention' | 'neutral'>;
+    static hostSelector: string;
+    isHiddenFromAssistiveTechnology(): Promise<boolean>;
+    isShown(): Promise<boolean>;
 }
 
 // @public
@@ -64,11 +216,54 @@ export class TmDatePickerHarness extends ComponentHarness {
 }
 
 // @public
+export class TmDateRangeHarness extends ComponentHarness {
+    getFrom(): Promise<TmDatePickerHarness>;
+    getFromField(): Promise<TmFormFieldHarness>;
+    getLabel(): Promise<string | null>;
+    getTo(): Promise<TmDatePickerHarness>;
+    getToField(): Promise<TmFormFieldHarness>;
+    static hostSelector: string;
+}
+
+// @public
+export class TmDateTimeFieldHarness extends ComponentHarness {
+    getDate(): Promise<TmDatePickerHarness>;
+    getDateField(): Promise<TmFormFieldHarness>;
+    getLabel(): Promise<string | null>;
+    getTime(): Promise<TmTimeFieldHarness>;
+    getTimeField(): Promise<TmFormFieldHarness>;
+    getZoneLabel(): Promise<string>;
+    static hostSelector: string;
+}
+
+// @public
 export class TmDropzoneHarness extends ComponentHarness {
     focus(): Promise<void>;
     getHintText(): Promise<string>;
     getMetaLines(): Promise<string[]>;
     static hostSelector: string;
+}
+
+// @public
+export class TmEmptyStateHarness extends ComponentHarness {
+    getDetail(): Promise<string>;
+    getHeading(): Promise<string>;
+    getSize(): Promise<'page' | 'panel'>;
+    getTone(): Promise<'error' | 'neutral'>;
+    hasIcon(): Promise<boolean>;
+    static hostSelector: string;
+    isAnnounced(): Promise<boolean>;
+}
+
+// @public
+export class TmEntityMultiPickerHarness extends ComponentHarness {
+    getChipLabels(): Promise<string[]>;
+    getCountBadge(): Promise<string | null>;
+    getPicker(): Promise<TmEntityPickerHarness>;
+    static hostSelector: string;
+    pick(label: string): Promise<void>;
+    removeChip(label: string): Promise<void>;
+    search(text: string): Promise<void>;
 }
 
 // @public
@@ -96,11 +291,45 @@ export class TmEntityPickerHarness extends ComponentHarness {
 // @public
 export class TmEntityPickerOptionHarness extends ComponentHarness {
     click(): Promise<void>;
+    getDescription(): Promise<string | null>;
+    getLabelParts(): Promise<string[]>;
     getText(): Promise<string>;
     static hostSelector: string;
     isAction(): Promise<boolean>;
     isActive(): Promise<boolean>;
     isSelected(): Promise<boolean>;
+}
+
+// @public
+export interface TmErrorDialogButtonState {
+    readonly ariaLabel: string | null;
+    readonly disabled: boolean;
+    readonly key: string;
+    readonly label: string;
+    readonly pending: boolean;
+}
+
+// @public
+export class TmErrorDialogHarness extends ComponentHarness {
+    clickButton(key: 'close' | 'primary' | 'secondary'): Promise<void>;
+    getActionLabels(): Promise<string[]>;
+    getButtons(): Promise<TmErrorDialogButtonState[]>;
+    getDetails(): Promise<{
+        label: string;
+        value: string;
+    }[]>;
+    getFocusedButtonKey(): Promise<string | null>;
+    getItems(): Promise<string[]>;
+    getMessage(): Promise<string>;
+    getMoreText(): Promise<string | null>;
+    getTitle(): Promise<string>;
+    hasDetails(): Promise<boolean>;
+    hasReference(): Promise<boolean>;
+    static hostSelector: string;
+    isDetailsOpen(): Promise<boolean>;
+    pressEscape(): Promise<void>;
+    runAction(label: string): Promise<void>;
+    toggleDetails(): Promise<void>;
 }
 
 // @public
@@ -165,7 +394,17 @@ export type TmGridEditorCommitVia = 'enter' | 'tab';
 export type TmGridEditorOpenVia = 'enter' | 'f2' | 'type';
 
 // @public
+export class TmGridEditorPopupHarness extends ComponentHarness {
+    getLabel(): Promise<string | null>;
+    static hostSelector: string;
+    isGroup(): Promise<boolean>;
+    isHidden(): Promise<boolean>;
+    isReadonly(): Promise<boolean>;
+}
+
+// @public
 export class TmGridHarness extends ComponentHarness {
+    activateRow(rowIndex: number): Promise<void>;
     cancelEditor(): Promise<void>;
     clickCell(rowIndex: number, colIndex: number): Promise<void>;
     clickColumnHeader(colIndex: number): Promise<void>;
@@ -173,30 +412,45 @@ export class TmGridHarness extends ComponentHarness {
     clickRowHeader(rowIndex: number): Promise<void>;
     commitEditor(via?: TmGridEditorCommitVia): Promise<void>;
     getActiveCell(): Promise<TmGridCellCoordinate | null>;
+    getActiveRowIndex(): Promise<number | null>;
     getCell(rowIndex: number, colIndex: number): Promise<TmGridCellHarness>;
     getCellText(rowIndex: number, colIndex: number): Promise<string>;
     getColCount(): Promise<number>;
+    getEditorPopup(): Promise<TmGridEditorPopupHarness | null>;
     getEditorText(): Promise<string>;
     getEmptyText(): Promise<string | null>;
     getErrorCount(): Promise<number>;
+    getFocusedHeader(): Promise<string | null>;
     getHeaderTexts(): Promise<string[]>;
     getPendingCount(): Promise<number>;
     getRenderedRowCount(): Promise<number>;
     getRowCount(): Promise<number>;
+    getSort(): Promise<TmGridHarnessSort | null>;
     protected readonly gridElement: () => Promise<TestElement>;
     hasPlaceholderRow(): Promise<boolean>;
     static hostSelector: string;
     isEditorOpen(): Promise<boolean>;
     isLoading(): Promise<boolean>;
+    isRowEndActive(): Promise<boolean>;
+    isRowFlashing(rowIndex: number): Promise<boolean>;
     modClickCell(rowIndex: number, colIndex: number): Promise<void>;
     openContextMenu(rowIndex?: number, colIndex?: number): Promise<TmMenuHarness>;
     openEditor(rowIndex: number, colIndex: number, via?: TmGridEditorOpenVia, seed?: string): Promise<void>;
+    openHeaderAction(key: string): Promise<void>;
+    openRowEndAction(): Promise<void>;
     pressKeys(...keys: (string | TestKey)[]): Promise<void>;
     selectRange(from: TmGridCellCoordinate, to: TmGridCellCoordinate): Promise<void>;
     shiftClickCell(rowIndex: number, colIndex: number): Promise<void>;
+    sortBy(key: string, direction?: 'asc' | 'desc'): Promise<void>;
     tallyNext(): Promise<void>;
     tallyPrevious(): Promise<void>;
     typeInEditor(text: string): Promise<void>;
+}
+
+// @public
+export interface TmGridHarnessSort {
+    readonly direction: 'asc' | 'desc';
+    readonly key: string;
 }
 
 // @public
@@ -242,29 +496,78 @@ export class TmInputHarness extends ComponentHarness {
 }
 
 // @public
+export class TmMenuGroupHarness extends ComponentHarness {
+    getItemLabels(): Promise<string[]>;
+    getItems(): Promise<TmMenuItemHarness[]>;
+    getLabel(): Promise<string | null>;
+    static hostSelector: string;
+}
+
+// @public
 export class TmMenuHarness extends ComponentHarness {
     clickItem(label: string): Promise<void>;
+    getDisabledReason(label: string): Promise<string | null>;
+    getGroups(): Promise<TmMenuGroupHarness[]>;
+    getHeaderText(): Promise<string | null>;
     getItemLabels(): Promise<string[]>;
     getItems(filter?: HarnessPredicate<TmMenuItemHarness>): Promise<TmMenuItemHarness[]>;
+    getLinkHref(label: string): Promise<string | null>;
+    getListId(): Promise<string | null>;
     static hostSelector: string;
+    isChecked(label: string): Promise<boolean>;
+    openSubmenu(label: string): Promise<TmMenuHarness>;
 }
 
 // @public
 export class TmMenuItemHarness extends ComponentHarness {
     click(): Promise<void>;
+    getDescription(): Promise<string | null>;
+    getDetail(): Promise<string | null>;
+    getHref(): Promise<string | null>;
     getText(): Promise<string>;
+    hasSubmenu(): Promise<boolean>;
     static hostSelector: string;
     isActive(): Promise<boolean>;
+    isChecked(): Promise<boolean | null>;
     isDisabled(): Promise<boolean>;
+    isExpanded(): Promise<boolean>;
+}
+
+// @public
+export class TmMenuTriggerHarness extends ComponentHarness {
+    close(): Promise<void>;
+    getMenu(): Promise<TmMenuHarness>;
+    getText(): Promise<string>;
+    static hostSelector: string;
+    isOpen(): Promise<boolean>;
+    open(): Promise<void>;
+    toggle(): Promise<void>;
 }
 
 // @public
 export class TmModalHarness extends ComponentHarness {
     close(): Promise<void>;
     getBodyText(): Promise<string>;
+    getPlacement(): Promise<'center' | 'end'>;
     getTitle(): Promise<string | null>;
     hasCloseButton(): Promise<boolean>;
     static hostSelector: string;
+}
+
+// @public
+export class TmMultiSelectHarness extends ComponentHarness {
+    close(): Promise<void>;
+    getGroups(): Promise<TmOptionGroupHarness[]>;
+    getOptions(filter?: HarnessPredicate<TmOptionHarness>): Promise<TmOptionHarness[]>;
+    getValueText(): Promise<string>;
+    static hostSelector: string;
+    isDisabled(): Promise<boolean>;
+    isOpen(): Promise<boolean>;
+    isOptionSelected(label: string): Promise<boolean>;
+    isPlaceholderShown(): Promise<boolean>;
+    open(): Promise<void>;
+    sendTriggerKeys(...keys: (string | TestKey)[]): Promise<void>;
+    toggle(label: string): Promise<void>;
 }
 
 // @public
@@ -280,6 +583,13 @@ export class TmNumberHarness extends ComponentHarness {
 }
 
 // @public
+export class TmOptionGroupHarness extends ComponentHarness {
+    getLabel(): Promise<string>;
+    getOptions(): Promise<TmOptionHarness[]>;
+    static hostSelector: string;
+}
+
+// @public
 export class TmOptionHarness extends ComponentHarness {
     click(): Promise<void>;
     getText(): Promise<string>;
@@ -290,16 +600,207 @@ export class TmOptionHarness extends ComponentHarness {
 }
 
 // @public
+export class TmPagerHarness extends ComponentHarness {
+    getMode(): Promise<'item' | 'range'>;
+    getNextLabel(): Promise<string | null>;
+    getPreviousLabel(): Promise<string | null>;
+    getSizeSelect(): Promise<TmSelectHarness | null>;
+    getStatusSentence(): Promise<string | null>;
+    getStatusText(): Promise<string | null>;
+    static hostSelector: string;
+    isNextDisabled(): Promise<boolean>;
+    isPreviousDisabled(): Promise<boolean>;
+    next(): Promise<void>;
+    previous(): Promise<void>;
+}
+
+// @public
+export class TmPivotCellHarness extends ComponentHarness {
+    click(modifiers?: ModifierKeys): Promise<void>;
+    fitWidth(): Promise<void>;
+    focus(): Promise<void>;
+    getColumn(): Promise<number>;
+    getRole(): Promise<TmPivotCellRole>;
+    getRow(): Promise<number>;
+    getStyle(): Promise<TmPivotCellStyle | null>;
+    getText(): Promise<string>;
+    getWidth(): Promise<number>;
+    static hostSelector: string;
+    isActivatable(): Promise<boolean>;
+    isExpandable(): Promise<boolean>;
+    isExpanded(): Promise<boolean>;
+    isFocused(): Promise<boolean>;
+    isRefused(): Promise<boolean>;
+    isResizable(): Promise<boolean>;
+    isSticky(): Promise<boolean>;
+    isTabStop(): Promise<boolean>;
+    press(key: TmPivotKey, modifiers?: ModifierKeys): Promise<void>;
+    toggle(): Promise<void>;
+    static with(options?: TmPivotCellHarnessFilters): HarnessPredicate<TmPivotCellHarness>;
+}
+
+// @public
+export interface TmPivotCellHarnessFilters extends BaseHarnessFilters {
+    column?: number;
+    role?: TmPivotCellRole;
+    row?: number;
+    text?: string | RegExp;
+}
+
+// @public
+export type TmPivotCellRole = 'columnheader' | 'gridcell' | 'rowheader';
+
+// @public
+export type TmPivotCellStyle = 'leaf' | 'phantom' | 'subtotal-1' | 'subtotal-2' | 'total';
+
+// @public
+export class TmPivotHarness extends ComponentHarness {
+    getAttributeCount(): Promise<number>;
+    getCell(filter?: TmPivotCellHarnessFilters): Promise<TmPivotCellHarness>;
+    getCells(filter?: TmPivotCellHarnessFilters): Promise<TmPivotCellHarness[]>;
+    getColumnCount(): Promise<number>;
+    getHeaderRowCount(): Promise<number>;
+    getHeaderTexts(): Promise<string[][]>;
+    getLabel(): Promise<string>;
+    getRowCount(): Promise<number>;
+    getRowLabels(): Promise<string[]>;
+    getStickyColumnCount(): Promise<number>;
+    getTabStop(): Promise<TmPivotCellHarness>;
+    getValueCell(rowLabel: string | RegExp, dataColumn: number): Promise<TmPivotCellHarness>;
+    static hostSelector: string;
+    press(key: TmPivotKey, modifiers?: ModifierKeys): Promise<void>;
+    static with(options?: TmPivotHarnessFilters): HarnessPredicate<TmPivotHarness>;
+}
+
+// @public
+export interface TmPivotHarnessFilters extends BaseHarnessFilters {
+    label?: string | RegExp;
+}
+
+// @public
+export type TmPivotKey = 'ArrowDown' | 'ArrowLeft' | 'ArrowRight' | 'ArrowUp' | 'End' | 'Enter' | 'Home' | 'PageDown' | 'PageUp' | 'Space' | 'c';
+
+// @public
 export class TmPopoverHarness extends ComponentHarness {
     getAriaLabel(): Promise<string | null>;
+    getSize(): Promise<'auto' | 'lg' | 'md' | 'sm'>;
     getText(): Promise<string>;
     static hostSelector: string;
     isFocused(): Promise<boolean>;
 }
 
 // @public
+export class TmProgressBarHarness extends ComponentHarness {
+    getLabel(): Promise<string | null>;
+    getTone(): Promise<'accent' | 'error' | 'success' | 'warning'>;
+    getValue(): Promise<number | null>;
+    static hostSelector: string;
+    isIndeterminate(): Promise<boolean>;
+    isShown(): Promise<boolean>;
+}
+
+// @public
+export class TmRadioGroupHarness extends ComponentHarness {
+    check(label: string | RegExp): Promise<void>;
+    getAriaLabel(): Promise<string | null>;
+    getAriaLabelledby(): Promise<string | null>;
+    getCheckedLabel(): Promise<string | null>;
+    getRadios(filters?: TmRadioHarnessFilters): Promise<TmRadioHarness[]>;
+    static hostSelector: string;
+    isInvalid(): Promise<boolean>;
+}
+
+// @public
+export class TmRadioHarness extends ComponentHarness {
+    check(): Promise<void>;
+    focus(): Promise<void>;
+    getHint(): Promise<string | null>;
+    getLabel(): Promise<string>;
+    static hostSelector: string;
+    isChecked(): Promise<boolean>;
+    isDisabled(): Promise<boolean>;
+    isFocused(): Promise<boolean>;
+    isTabStop(): Promise<boolean>;
+    press(key: TestKey): Promise<void>;
+    static with(options?: TmRadioHarnessFilters): HarnessPredicate<TmRadioHarness>;
+}
+
+// @public
+export interface TmRadioHarnessFilters extends BaseHarnessFilters {
+    readonly label?: string | RegExp;
+}
+
+// @public
+export class TmReferenceHarness extends ComponentHarness {
+    copy(): Promise<void>;
+    getCopyButton(): Promise<TmCopyButtonHarness>;
+    getLabel(): Promise<string>;
+    getValue(): Promise<string>;
+    static hostSelector: string;
+}
+
+// @public
+export class TmRelativeTimeHarness extends ComponentHarness {
+    getAbsoluteText(): Promise<string | null>;
+    getDateTime(): Promise<string | null>;
+    getText(): Promise<string>;
+    static hostSelector: string;
+}
+
+// @public
+export type TmReorderKey = 'ArrowDown' | 'ArrowUp' | 'End' | 'Enter' | 'Escape' | 'Home' | 'Space' | 'Tab';
+
+// @public
+export class TmReorderListHarness extends ComponentHarness {
+    clickHandle(index: number): Promise<void>;
+    focusHandle(index: number): Promise<void>;
+    getFocusedHandleIndex(): Promise<number>;
+    getGrabbedIndex(): Promise<number>;
+    getHandleLabels(): Promise<(string | null)[]>;
+    getInstructions(): Promise<string>;
+    getItemTexts(): Promise<string[]>;
+    getLabel(): Promise<string | null>;
+    static hostSelector: string;
+    isMoveMenuOpen(index: number): Promise<boolean>;
+    openMoveMenu(index: number): Promise<TmMenuHarness>;
+    press(index: number, key: TmReorderKey, modifiers?: ModifierKeys): Promise<void>;
+    pressFocused(key: TmReorderKey, modifiers?: ModifierKeys): Promise<void>;
+}
+
+// @public
+export class TmSearchFieldHarness extends ComponentHarness {
+    clear(): Promise<void>;
+    focus(): Promise<void>;
+    getAriaLabel(): Promise<string | null>;
+    getPlaceholder(): Promise<string>;
+    getValue(): Promise<string>;
+    static hostSelector: string;
+    isClearVisible(): Promise<boolean>;
+    isFocused(): Promise<boolean>;
+    isInvalid(): Promise<boolean>;
+    press(key: TestKey): Promise<void>;
+    setValue(text: string): Promise<void>;
+}
+
+// @public
+export class TmSegmentedHarness extends ComponentHarness {
+    check(label: string): Promise<void>;
+    focus(label: string): Promise<void>;
+    getAriaLabel(): Promise<string | null>;
+    getCheckedLabel(): Promise<string | null>;
+    getFocusedLabel(): Promise<string | null>;
+    getLabels(): Promise<string[]>;
+    getSegmentAriaLabel(label: string): Promise<string | null>;
+    static hostSelector: string;
+    isDisabled(label: string): Promise<boolean>;
+    isTabStop(label: string): Promise<boolean>;
+    press(label: string, key: TestKey): Promise<void>;
+}
+
+// @public
 export class TmSelectHarness extends ComponentHarness {
     close(): Promise<void>;
+    getGroups(): Promise<TmOptionGroupHarness[]>;
     getOptions(filter?: HarnessPredicate<TmOptionHarness>): Promise<TmOptionHarness[]>;
     getTriggerText(): Promise<string>;
     static hostSelector: string;
@@ -313,11 +814,42 @@ export class TmSelectHarness extends ComponentHarness {
 }
 
 // @public
+export class TmSplitterHarness extends ComponentHarness {
+    focus(): Promise<void>;
+    getControlledPaneId(): Promise<string | null>;
+    getLabel(): Promise<string | null>;
+    getMaxValue(): Promise<number | null>;
+    getMinValue(): Promise<number | null>;
+    getOrientation(): Promise<'horizontal' | 'vertical'>;
+    getPaneSize(side: 'end' | 'start'): Promise<number>;
+    getValue(): Promise<number | null>;
+    static hostSelector: string;
+    isFocused(): Promise<boolean>;
+    press(key: TmSplitterKey, shift?: boolean): Promise<void>;
+}
+
+// @public
+export type TmSplitterKey = 'ArrowDown' | 'ArrowLeft' | 'ArrowRight' | 'ArrowUp' | 'End' | 'Home';
+
+// @public
+export class TmSwitchHarness extends ComponentHarness {
+    blur(): Promise<void>;
+    focus(): Promise<void>;
+    getLabelText(): Promise<string>;
+    static hostSelector: string;
+    isChecked(): Promise<boolean>;
+    isDisabled(): Promise<boolean>;
+    isInvalid(): Promise<boolean>;
+    toggle(): Promise<void>;
+}
+
+// @public
 export class TmTabGroupHarness extends ComponentHarness {
     getActivePanelText(): Promise<string>;
     getSelectedTab(): Promise<TmTabHarness | null>;
     getTabs(): Promise<TmTabHarness[]>;
     static hostSelector: string;
+    isInstantiated(id: string): Promise<boolean>;
     selectTab(label: string): Promise<void>;
 }
 
@@ -328,6 +860,100 @@ export class TmTabHarness extends ComponentHarness {
     isDisabled(): Promise<boolean>;
     isSelected(): Promise<boolean>;
     select(): Promise<void>;
+}
+
+// @public
+export type TmTileCorner = 'bottomEnd' | 'bottomStart' | 'topEnd';
+
+// @public
+export class TmTileHarness extends ComponentHarness {
+    click(modifiers?: ModifierKeys): Promise<void>;
+    focus(): Promise<void>;
+    getCheckboxLabel(): Promise<string | null>;
+    getCornerText(corner: TmTileCorner): Promise<string | null>;
+    getHref(): Promise<string | null>;
+    getIndex(): Promise<number>;
+    getLevel(): Promise<number>;
+    getTitle(): Promise<string>;
+    hasClass(name: string): Promise<boolean>;
+    hasCornerBadge(corner: TmTileCorner): Promise<boolean>;
+    static hostSelector: string;
+    isActive(): Promise<boolean>;
+    isExpandable(): Promise<boolean>;
+    isExpanded(): Promise<boolean>;
+    isFocused(): Promise<boolean>;
+    isLoading(): Promise<boolean>;
+    isSelected(): Promise<boolean>;
+    isTabStop(): Promise<boolean>;
+    press(key: TmTilesKey, modifiers?: ModifierKeys): Promise<void>;
+    toggle(): Promise<void>;
+    toggleSelected(): Promise<void>;
+    static with(options?: TmTileHarnessFilters): HarnessPredicate<TmTileHarness>;
+}
+
+// @public
+export interface TmTileHarnessFilters extends BaseHarnessFilters {
+    index?: number;
+    title?: string | RegExp;
+}
+
+// @public
+export class TmTilesHarness extends ComponentHarness {
+    getActiveTile(): Promise<TmTileHarness | null>;
+    getColumnCount(): Promise<number>;
+    getEmptyText(): Promise<string | null>;
+    getLabel(): Promise<string | null>;
+    getLayout(): Promise<string | null>;
+    getLineCount(): Promise<number>;
+    getTile(filter: TmTileHarnessFilters): Promise<TmTileHarness>;
+    getTiles(filter?: TmTileHarnessFilters): Promise<TmTileHarness[]>;
+    getTileTitles(): Promise<string[]>;
+    static hostSelector: string;
+    isBusy(): Promise<boolean>;
+    isShowingSkeleton(): Promise<boolean>;
+    isTree(): Promise<boolean>;
+    press(key: TmTilesKey, modifiers?: ModifierKeys): Promise<void>;
+}
+
+// @public
+export type TmTilesKey = 'ArrowDown' | 'ArrowLeft' | 'ArrowRight' | 'ArrowUp' | 'End' | 'Enter' | 'Home' | 'PageDown' | 'PageUp' | 'Space';
+
+// @public
+export class TmTimeFieldHarness extends ComponentHarness {
+    blur(): Promise<void>;
+    focus(): Promise<void>;
+    getDescribedBy(): Promise<string | null>;
+    getText(): Promise<string>;
+    static hostSelector: string;
+    isInvalid(): Promise<boolean>;
+    press(key: TestKey): Promise<void>;
+    setText(text: string): Promise<void>;
+}
+
+// @public
+export class TmToastHarness extends ComponentHarness {
+    close(): Promise<void>;
+    getActionLabel(): Promise<string | null>;
+    getCloseLabel(): Promise<string | null>;
+    getDetail(): Promise<string | null>;
+    getTitle(): Promise<string>;
+    getTone(): Promise<string | null>;
+    static hostSelector: string;
+    isFocused(): Promise<boolean>;
+    pressEscape(): Promise<void>;
+    runAction(): Promise<void>;
+}
+
+// @public
+export class TmToastStackHarness extends ComponentHarness {
+    clickPill(): Promise<void>;
+    getAssertiveAnnouncement(): Promise<string>;
+    getPillText(): Promise<string | null>;
+    getPoliteAnnouncement(): Promise<string>;
+    getToasts(): Promise<TmToastHarness[]>;
+    static hostSelector: string;
+    hover(): Promise<void>;
+    unhover(): Promise<void>;
 }
 
 // @public
@@ -345,11 +971,59 @@ export class TmTreeGridHarness extends TmGridHarness {
     clickExpander(rowIndex: number): Promise<void>;
     collapse(rowIndex: number): Promise<void>;
     expand(rowIndex: number): Promise<void>;
+    getExpandedIds(): Promise<Array<number | string>>;
     getLevel(rowIndex: number): Promise<number>;
     getVisibleRowCount(): Promise<number>;
     static hostSelector: string;
     isExpanded(rowIndex: number): Promise<boolean>;
     isLoadingChildren(rowIndex: number): Promise<boolean>;
+}
+
+// @public
+export class TmTreeHarness extends ComponentHarness {
+    getActiveNode(): Promise<TmTreeNodeHarness | null>;
+    getLabel(): Promise<string | null>;
+    getNode(filter: TmTreeNodeHarnessFilters): Promise<TmTreeNodeHarness>;
+    getNodes(filter?: TmTreeNodeHarnessFilters): Promise<TmTreeNodeHarness[]>;
+    getNodeTexts(): Promise<string[]>;
+    static hostSelector: string;
+    isMultiSelectable(): Promise<boolean>;
+    press(key: TmTreeKey, modifiers?: ModifierKeys): Promise<void>;
+}
+
+// @public
+export type TmTreeKey = 'ArrowDown' | 'ArrowLeft' | 'ArrowRight' | 'ArrowUp' | 'End' | 'Enter' | 'Home' | 'Space';
+
+// @public
+export class TmTreeNodeHarness extends ComponentHarness {
+    click(modifiers?: ModifierKeys): Promise<void>;
+    collapse(): Promise<void>;
+    doubleClick(): Promise<void>;
+    expand(): Promise<void>;
+    focus(): Promise<void>;
+    getKey(): Promise<string | null>;
+    getLevel(): Promise<number>;
+    getText(): Promise<string>;
+    hasSpinner(): Promise<boolean>;
+    static hostSelector: string;
+    isActive(): Promise<boolean>;
+    isContext(): Promise<boolean>;
+    isDraggable(): Promise<boolean>;
+    isExpandable(): Promise<boolean>;
+    isExpanded(): Promise<boolean>;
+    isFocused(): Promise<boolean>;
+    isLoading(): Promise<boolean>;
+    isSelected(): Promise<boolean>;
+    press(key: TmTreeKey, modifiers?: ModifierKeys): Promise<void>;
+    toggle(): Promise<void>;
+    type(text: string): Promise<void>;
+    static with(options?: TmTreeNodeHarnessFilters): HarnessPredicate<TmTreeNodeHarness>;
+}
+
+// @public
+export interface TmTreeNodeHarnessFilters extends BaseHarnessFilters {
+    key?: string;
+    text?: string | RegExp;
 }
 
 ```

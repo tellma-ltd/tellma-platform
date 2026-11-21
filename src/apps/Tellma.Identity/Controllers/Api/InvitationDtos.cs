@@ -39,6 +39,16 @@ namespace Tellma.Identity.Controllers.Api
 
         /// <summary>Where the accepted invitation returns the user (validated against the client).</summary>
         public string? ReturnUrl { get; init; }
+
+        /// <summary>
+        ///     Turns the item into a lookup by email that never creates a user, never issues a link
+        ///     and never sends an email, whatever the rest of the batch does. A user who holds a
+        ///     credential answers <c>Active</c> with their <c>sub</c>; a user without one answers
+        ///     the error <c>existing_user_has_no_credential</c>; an address that belongs to no user
+        ///     answers <c>unknown_email</c>; a disabled or purged user is refused as an ordinary
+        ///     invite refuses them. <see cref="ReturnUrl" /> is ignored, since no link carries it.
+        /// </summary>
+        public bool ExistingOnly { get; init; }
     }
 
     /// <summary>The bulk delivery-status request body.</summary>
@@ -127,7 +137,12 @@ namespace Tellma.Identity.Controllers.Api
         /// </summary>
         public string? Status { get; init; }
 
-        /// <summary>Why the user was refused (the batch continues past it); null on success.</summary>
+        /// <summary>
+        ///     Why the user was refused (the batch continues past it); null on success. For an
+        ///     <see cref="InviteUserItem.ExistingOnly" /> item it is one of the stable codes
+        ///     <c>unknown_email</c> and <c>existing_user_has_no_credential</c>, or the refusal any
+        ///     invite gives a disabled or purged user.
+        /// </summary>
         public string? Error { get; init; }
     }
 }

@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "projects": {
+    "acme": {
+      "projectType": "application",
+      "root": "",
+      "sourceRoot": "src",
+      "prefix": "acme"
+    }
+  }
+}

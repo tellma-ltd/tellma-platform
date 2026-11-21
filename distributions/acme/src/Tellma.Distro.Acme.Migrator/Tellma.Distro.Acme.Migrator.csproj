@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <Description>The Acme reference distribution's migrator: a one-line Program.cs over TellmaMigrator, the design-time factory dotnet ef builds the tenant model from, and the tenant model's migrations. Also migrates the in-proc identity engine's store. Builds no client and needs no Node.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Tellma.Distro.Acme\Tellma.Distro.Acme.csproj" />
+    <!-- The migration host: the commands, the catalog migrations, the design-time factory and the
+         EF Design packages with the table-type design-time services. -->
+    <ProjectReference Include="..\..\..\..\src\core\Tellma.Core.Migrator\Tellma.Core.Migrator.csproj" />
+    <!-- Acme can select the in-proc identity mode, whose store migrate applies. -->
+    <ProjectReference Include="..\..\..\..\src\apps\Tellma.Identity.Migrations\Tellma.Identity.Migrations.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- One configuration for both hosts: the web project's files, so the catalog, the SQL
+         profiles, the identity mode and the seed tenants are written once. -->
+    <Content Include="..\Tellma.Distro.Acme.Web\appsettings.json" Link="appsettings.json" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\Tellma.Distro.Acme.Web\appsettings.Development.json" Link="appsettings.Development.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

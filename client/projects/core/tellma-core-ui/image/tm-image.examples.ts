@@ -32,6 +32,25 @@ export const CustomPlaceholder = {
   `,
 };
 
+/**
+ * An avatar that falls back to its initials: while the photo loads, when
+ * there is none, and when it fails to load.
+ */
+export const PlaceholderOnError = {
+  template: `
+    <tm-image
+      src="/api/tenants/101/agents/42/image"
+      alt="Lina Hakim"
+      shape="circle"
+      [width]="40"
+      [height]="40"
+      placeholderOnError
+    >
+      <ng-template tmImagePlaceholder>LH</ng-template>
+    </tm-image>
+  `,
+};
+
 /** Edit mode: replace / adjust (via the stored original) / remove. */
 export const EditMode = {
   template: `

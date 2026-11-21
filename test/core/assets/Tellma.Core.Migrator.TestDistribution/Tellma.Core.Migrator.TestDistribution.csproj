@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TellmaTestAsset>true</TellmaTestAsset>
+    <Description>A distribution's migrator project in miniature, for the migrator's suites: a composition with one probe feature, its design-time factory, its dotnet-ef-scaffolded tenant migrations, and a Program that runs TellmaMigrator. Regenerate its migration with: dotnet ef migrations add Initial --project test/core/assets/Tellma.Core.Migrator.TestDistribution --startup-project test/core/assets/Tellma.Core.Migrator.TestDistribution --namespace Tellma.Core.Migrator.TestDistribution.Migrations --output-dir Migrations</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The migrator brings the runtime, the EF Design packages and the table-type design-time
+         services, exactly as a distribution's migrator project gets them. -->
+    <ProjectReference Include="..\..\..\..\src\core\Tellma.Core.Migrator\Tellma.Core.Migrator.csproj" />
+  </ItemGroup>
+
+</Project>

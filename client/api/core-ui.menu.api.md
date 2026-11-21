@@ -25,56 +25,128 @@ export class TmContextMenuTrigger {
 // @public
 export class TmMenu {
     constructor();
-    protected readonly anchored: _tellma_core_ui_private.TmAnchoredOverlay;
+    protected readonly anchored: _tellma_core_ui_overlay.TmAnchoredOverlay;
     readonly ariaLabel: _angular_core.InputSignal<string | null>;
     close(options?: {
         restoreFocus?: boolean;
     }): void;
     readonly closed: _angular_core.OutputEmitterRef<void>;
     protected readonly expanded: _angular_core.WritableSignal<boolean>;
+    protected readonly header: Signal<TmMenuHeaderDef | undefined>;
+    protected readonly headerId: string;
     readonly isOpen: Signal<boolean>;
-    protected isSeparator(entry: TmMenuEntry): entry is TmMenuSeparator;
     readonly items: _angular_core.InputSignal<readonly TmMenuEntry[]>;
     readonly itemSelected: _angular_core.OutputEmitterRef<TmMenuItem>;
-    protected labelOf(item: TmMenuItem): Signal<string>;
-    protected onItemSelected(id: string): void;
+    protected readonly listId: string;
+    protected onItemSelected(entry: TmMenuItem | TmMenuLink): void;
+    protected onPanelContextMenu(event: MouseEvent): void;
     protected onPanelKeydown(event: KeyboardEvent): void;
     open(anchor: TmMenuAnchor, options?: TmMenuOpenOptions): void;
     readonly opened: _angular_core.OutputEmitterRef<void>;
     protected readonly overlayOrigin: _angular_core.WritableSignal<TmMenuAnchor | null>;
     protected readonly positions: ConnectedPosition[];
-    static ɵcmp: _angular_core.ɵɵComponentDeclaration<TmMenu, "tm-menu", never, { "items": { "alias": "items"; "required": true; "isSignal": true; }; "ariaLabel": { "alias": "aria-label"; "required": false; "isSignal": true; }; }, { "opened": "opened"; "closed": "closed"; "itemSelected": "itemSelected"; }, never, never, true, never>;
+    // @internal
+    static ɵcmp: _angular_core.ɵɵComponentDeclaration<TmMenu, "tm-menu", never, { "items": { "alias": "items"; "required": true; "isSignal": true; }; "ariaLabel": { "alias": "aria-label"; "required": false; "isSignal": true; }; }, { "opened": "opened"; "closed": "closed"; "itemSelected": "itemSelected"; }, ["header"], never, true, never>;
     static ɵfac: _angular_core.ɵɵFactoryDeclaration<TmMenu, never>;
+    // @internal
+    // @internal
+    // @internal
 }
 
 // @public
-export type TmMenuAnchor = Element | DOMRect | {
+export type TmMenuAnchor = DOMRect | Element | {
     readonly x: number;
     readonly y: number;
 };
 
 // @public
-export type TmMenuEntry = TmMenuItem | TmMenuSeparator;
+export type TmMenuEntry = TmMenuGroup | TmMenuItem | TmMenuLink | TmMenuSeparator | TmMenuSubmenu;
+
+// @public
+export interface TmMenuGroup {
+    readonly group: true;
+    readonly items: readonly (TmMenuItem | TmMenuLink | TmMenuSubmenu)[];
+    readonly label?: string;
+    readonly labelKey?: string;
+}
+
+// @public
+export class TmMenuHeaderDef {
+    readonly template: TemplateRef<void>;
+    static ɵdir: _angular_core.ɵɵDirectiveDeclaration<TmMenuHeaderDef, "ng-template[tmMenuHeader]", never, {}, {}, never, never, true, never>;
+    static ɵfac: _angular_core.ɵɵFactoryDeclaration<TmMenuHeaderDef, never>;
+}
+
+// @public
+export type TmMenuIcon = string | TemplateRef<void> | TmIconSource;
 
 // @public
 export interface TmMenuItem {
     action(): void;
+    readonly checked?: boolean;
+    readonly description?: string;
+    readonly detail?: string;
     readonly disabled?: boolean;
-    readonly icon?: TemplateRef<void>;
+    readonly disabledReason?: string;
+    readonly icon?: TmMenuIcon;
+    readonly id: string;
+    readonly keepOpen?: boolean;
+    readonly label?: string;
+    readonly labelKey?: string;
+    readonly lang?: string;
+    readonly role?: 'checkbox' | 'radio';
+    readonly shortcut?: TmKeys;
+}
+
+// @public
+export interface TmMenuLink {
+    action?(): void;
+    readonly detail?: string;
+    readonly disabled?: boolean;
+    readonly disabledReason?: string;
+    readonly href: string;
+    readonly icon?: TmMenuIcon;
     readonly id: string;
     readonly label?: string;
     readonly labelKey?: string;
-    readonly shortcut?: string;
+    readonly shortcut?: TmKeys;
+    readonly target?: '_blank';
 }
 
 // @public
 export interface TmMenuOpenOptions {
+    readonly initialFocus?: 'first' | 'last';
     readonly restoreFocus?: HTMLElement;
 }
 
 // @public
 export interface TmMenuSeparator {
     readonly separator: true;
+}
+
+// @public
+export interface TmMenuSubmenu {
+    readonly detail?: string;
+    readonly disabled?: boolean;
+    readonly disabledReason?: string;
+    readonly icon?: TmMenuIcon;
+    readonly id: string;
+    readonly items: readonly (TmMenuGroup | TmMenuItem | TmMenuLink | TmMenuSeparator)[];
+    readonly label?: string;
+    readonly labelKey?: string;
+    readonly shortcut?: TmKeys;
+}
+
+// @public
+export class TmMenuTrigger {
+    constructor();
+    protected controls(): string | null;
+    protected expanded(): boolean;
+    protected onKeydown(event: KeyboardEvent): void;
+    readonly tmMenuTriggerFor: _angular_core.InputSignal<TmMenu>;
+    protected toggle(): void;
+    static ɵdir: _angular_core.ɵɵDirectiveDeclaration<TmMenuTrigger, "button[tmMenuTriggerFor]", never, { "tmMenuTriggerFor": { "alias": "tmMenuTriggerFor"; "required": true; "isSignal": true; }; }, {}, never, never, true, never>;
+    static ɵfac: _angular_core.ɵɵFactoryDeclaration<TmMenuTrigger, never>;
 }
 
 ```

@@ -1,0 +1,308 @@
+stack core.User
+  segment: users
+  entity: Tellma.Core.Abstractions.Access.User
+  service: Tellma.Core.Users.UserService<Tellma.Core.Abstractions.Access.User>
+  key: int
+  description: -
+  operations: Save, Delete, Import, Read, Enlist
+  capabilities: activatable, temporal, multilingual, blobs, searchable, excel
+  properties: Id:ServerOwned, CreatedAt:ServerOwned, CreatedById:ServerOwned, ModifiedAt:ServerOwned, ModifiedById:ServerOwned, Kind:WriteOnce, Subject:ServerOwned, Email:Editable, State:DatabaseOwned, InvitedAt:ServerOwned, InviteStatus:ServerOwned, LastInviteError:ServerOwned, JoinedAt:ServerOwned, Name:Editable, Name2:Editable, Name3:Editable, ImageId:Editable, SignatureId:Editable, PreferredLanguage:Editable, PreferredCalendar:Editable, PreferredTimeZone:Editable, PreferredRegion:Editable, PreferredDigits:Editable, Gender:Editable, ContactEmail:Editable, ContactMobile:Editable, IsActive:ServerOwned
+  children: RoleMemberships(RoleMembership by UserId, max 10000)
+  searchable: Email:Contains, Name:Contains
+  natural-keys: Email, Subject
+  default-select: Id, Email, Subject, Name, Name2, Name3, IsActive, CreatedAt, CreatedById, ModifiedAt, ModifiedById
+  related-select: Id, Name, Name2, Name3, ImageId
+  details-expand: CreatedBy, ModifiedBy, Image, Signature, RoleMemberships.Role
+  default-order-by: -
+  display-name: Name group Name prefix -
+  extras: permissions
+  named-filters: -
+  limits: default
+  mcp: Full, revision 0
+  feature: core
+  action activate: entity Activate built-in filtered args -; mutation, idempotent; result EntitiesResult<User>; mcp Full, revision 0; -
+  action deactivate: entity Activate built-in filtered args -; mutation, idempotent; result EntitiesResult<User>; mcp Full, revision 0; -
+  action issue-credentials: entity Credentials filtered single args -; mutation; result CredentialsResult; mcp Full, revision 0; Issue or rotate a service account's client credentials
+  action invite: entity Invite filtered args -; mutation; result IReadOnlyList<InviteResult>; mcp Full, revision 0; Invite users through the identity server
+  action invitation-status: api core.User:Read body IdsRequest handler UserService<User>; idempotent; result IReadOnlyList<InvitationStatus>; mcp Full, revision 0; -
+stack core.Role
+  segment: roles
+  entity: Tellma.Core.Abstractions.Access.Role
+  service: Tellma.Core.Users.RoleService<Tellma.Core.Abstractions.Access.Role>
+  key: int
+  description: -
+  operations: Save, Delete, Import, Read
+  capabilities: activatable, temporal, multilingual, searchable, excel
+  properties: Id:ServerOwned, CreatedAt:ServerOwned, CreatedById:ServerOwned, ModifiedAt:ServerOwned, ModifiedById:ServerOwned, Name:Editable, Name2:Editable, Name3:Editable, Code:Editable, IsPublic:Editable, IsActive:ServerOwned
+  children: Permissions(Permission by RoleId, max 10000)
+  searchable: Name:Contains
+  natural-keys: Code, Name, Name2, Name3
+  default-select: Id, Code, Name, Name2, Name3, IsActive, CreatedAt, CreatedById, ModifiedAt, ModifiedById
+  related-select: Id, Name, Name2, Name3, Code
+  details-expand: CreatedBy, ModifiedBy
+  default-order-by: -
+  display-name: Name group Name prefix -
+  extras: permissions
+  named-filters: -
+  limits: default
+  mcp: Full, revision 0
+  feature: core
+  action activate: entity Activate built-in filtered args -; mutation, idempotent; result EntitiesResult<Role>; mcp Full, revision 0; -
+  action deactivate: entity Activate built-in filtered args -; mutation, idempotent; result EntitiesResult<Role>; mcp Full, revision 0; -
+stack core.Notification
+  segment: notifications
+  entity: Tellma.Core.Abstractions.Notifications.Notification
+  service: Tellma.Core.Crud.DefaultEntityService<Tellma.Core.Abstractions.Notifications.Notification, int>
+  key: int
+  description: -
+  operations: Query, Details
+  capabilities: -
+  properties: Id:ServerOwned, UserId:ServerOwned, Type:ServerOwned, Severity:ServerOwned, ArgumentsJson:ServerOwned, TargetResource:ServerOwned, TargetId:ServerOwned, ActorUserId:ServerOwned, DedupKey:ServerOwned, CreatedAt:ServerOwned, ReadAt:ServerOwned
+  children: -
+  searchable: -
+  natural-keys: -
+  default-select: Id,Type,Severity,ArgumentsJson,TargetResource,TargetId,ActorUserId,CreatedAt,ReadAt
+  related-select: Id
+  details-expand: User, ActorUser
+  default-order-by: -
+  display-name: Id group - prefix -
+  extras: -
+  named-filters: -
+  limits: default
+  mcp: Full, revision 0
+  feature: core
+stack core.OutgoingEmail
+  segment: outgoing-emails
+  entity: Tellma.Core.Abstractions.Email.OutgoingEmail
+  service: Tellma.Core.Outbox.OutgoingEmailService
+  key: int
+  description: -
+  operations: Query, Details, Delete, Enlist
+  capabilities: blobs, job-entity
+  properties: Id:ServerOwned, CreatedAt:ServerOwned, CreatedById:ServerOwned, ModifiedAt:ServerOwned, ModifiedById:ServerOwned, JobId:ServerOwned, State:ServerOwned, Audience:WriteOnce, From:WriteOnce, ReplyTo:WriteOnce, To:WriteOnce, Cc:WriteOnce, Bcc:WriteOnce, Subject:WriteOnce, TextBody:WriteOnce, HtmlBody:WriteOnce, RecipientUserId:WriteOnce, RegardingEntity:WriteOnce, RegardingId:WriteOnce, SendAfter:WriteOnce, AttemptCount:ServerOwned, SentAt:ServerOwned, ProviderMessageId:ServerOwned, ExpectsDeliveryEvents:ServerOwned, ErrorCode:ServerOwned, ErrorDetail:ServerOwned, DeliveryStatus:ServerOwned, DeliveryAt:ServerOwned, DeliveryRecipient:ServerOwned, DeliveryReason:ServerOwned, LastProviderEventId:ServerOwned
+  children: OutgoingEmailAttachments(OutgoingEmailAttachment by OutgoingEmailId, max 20)
+  searchable: -
+  natural-keys: -
+  default-select: Id,JobId,State,Audience,From,ReplyTo,To,Subject,RecipientUserId,RegardingEntity,RegardingId,SendAfter,AttemptCount,SentAt,ExpectsDeliveryEvents,ErrorCode,ErrorDetail,DeliveryStatus,DeliveryAt,DeliveryRecipient,DeliveryReason,CreatedAt,CreatedById,ModifiedAt,ModifiedById
+  related-select: Id, Subject
+  details-expand: CreatedBy, ModifiedBy, Job, RecipientUser, OutgoingEmailAttachments.File
+  default-order-by: CreatedAt desc
+  display-name: Subject group - prefix -
+  extras: permissions
+  named-filters: -
+  limits: default
+  mcp: ReadOnly, revision 0
+  feature: core
+stack core.Job
+  segment: jobs
+  entity: Tellma.Core.Abstractions.Jobs.Job
+  service: Tellma.Core.Jobs.JobService
+  key: int
+  description: -
+  operations: Query, Details
+  capabilities: -
+  properties: Id:ServerOwned, HandlerKey:ServerOwned, LabelKey:ServerOwned, LabelArgumentsJson:ServerOwned, Status:ServerOwned, DueAt:ServerOwned, Attempts:ServerOwned, LeaseExpiresAt:ServerOwned, LeaseOwner:ServerOwned, StartedAt:ServerOwned, CompletedAt:ServerOwned, CancelRequestedAt:ServerOwned, ArgumentsJson:ServerOwned, ProgressPercent:ServerOwned, ProgressKey:ServerOwned, ProgressArgumentsJson:ServerOwned, ErrorCode:ServerOwned, ErrorArgumentsJson:ServerOwned, ErrorTraceId:ServerOwned, PendingConfirmationsJson:ServerOwned, TraceParent:ServerOwned, RunAsUserId:ServerOwned, RequestedById:ServerOwned, ScheduleId:ServerOwned, ScheduledFor:ServerOwned, CreatedAt:ServerOwned
+  children: -
+  searchable: -
+  natural-keys: -
+  default-select: Id,HandlerKey,LabelKey,LabelArgumentsJson,Status,DueAt,Attempts,LeaseExpiresAt,StartedAt,CompletedAt,CancelRequestedAt,ProgressPercent,ProgressKey,ProgressArgumentsJson,ErrorCode,ErrorArgumentsJson,ErrorTraceId,RunAsUserId,RequestedById,ScheduleId,ScheduledFor,CreatedAt
+  related-select: Id, HandlerKey, Status, ProgressPercent, LabelKey, LabelArgumentsJson, CompletedAt
+  details-expand: RunAsUser, RequestedBy, Schedule
+  default-order-by: -
+  display-name: Id group - prefix -
+  extras: permissions
+  named-filters: -
+  limits: default
+  mcp: Full, revision 0
+  feature: core
+  action retry: entity Retry filtered args -; mutation; result EntitiesResult<Job>; mcp Full, revision 0; Runs each failed job again, from its first attempt.
+  action cancel: entity Cancel filtered args -; mutation, read-only-ok, destructive; result EntitiesResult<Job>; mcp Full, revision 0; Stops each job that has not ended.
+  action resume: entity Resume filtered args -; mutation; result EntitiesResult<Job>; mcp Full, revision 0; Lets each paused job run.
+  action confirm: entity Confirm filtered args ConfirmJobArguments; mutation; result EntitiesResult<Job>; mcp Hidden, revision 0; Confirms the warnings each job waits on, so it runs on.
+stack core.Schedule
+  segment: schedules
+  entity: Tellma.Core.Abstractions.Jobs.Schedule
+  service: Tellma.Core.Jobs.ScheduleService<Tellma.Core.Abstractions.Jobs.Schedule>
+  key: int
+  description: -
+  operations: Save, Delete, Import, Read
+  capabilities: activatable, temporal, multilingual, searchable, excel
+  properties: Id:ServerOwned, CreatedAt:ServerOwned, CreatedById:ServerOwned, ModifiedAt:ServerOwned, ModifiedById:ServerOwned, Code:Editable, Name:Editable, Name2:Editable, Name3:Editable, HandlerKey:WriteOnce, ArgumentsJson:Editable, CronExpression:Editable, TimeZoneId:Editable, MissedPolicy:Editable, OverlapPolicy:Editable, CatchUpWindowMinutes:Editable, RunAsUserId:ServerOwned, PausedReason:ServerOwned, IsActive:ServerOwned
+  children: -
+  searchable: Code:Contains, Name:Contains
+  natural-keys: Code
+  default-select: Id,Code,Name,Name2,Name3,HandlerKey,CronExpression,TimeZoneId,MissedPolicy,OverlapPolicy,CatchUpWindowMinutes,RunAsUserId,PausedReason,IsActive,CreatedAt,CreatedById,ModifiedAt,ModifiedById
+  related-select: Id, Name, Name2, Name3, Code
+  details-expand: CreatedBy, ModifiedBy, RunAsUser
+  default-order-by: -
+  display-name: Name group Name prefix -
+  extras: state, permissions
+  named-filters: -
+  limits: default
+  mcp: Full, revision 0
+  feature: core
+  action activate: entity Activate built-in filtered args -; mutation, idempotent; result EntitiesResult<Schedule>; mcp Full, revision 0; -
+  action deactivate: entity Activate built-in filtered args -; mutation, idempotent; result EntitiesResult<Schedule>; mcp Full, revision 0; -
+  action take-over: entity Save filtered args -; mutation; result EntitiesResult<Schedule>; mcp Full, revision 0; Makes the caller the user each schedule's jobs run as.
+  action run-now: entity Save filtered single args -; mutation; result JobAccepted; mcp Full, revision 0; Runs the schedule's job once, now.
+stack sm.SmGadget
+  segment: gadgets
+  entity: Tellma.Core.Tests.Crud.SmGadget
+  service: Tellma.Core.Tests.Crud.GadgetService<Tellma.Core.Tests.Crud.SmGadget>
+  key: int
+  description: -
+  operations: All
+  capabilities: activatable, multilingual, searchable, excel
+  properties: Id:ServerOwned, CreatedAt:ServerOwned, CreatedById:ServerOwned, ModifiedAt:ServerOwned, ModifiedById:ServerOwned, Code:Editable, Name:Editable, Name2:Editable, Name3:Editable, GizmoId:Editable, IsActive:ServerOwned
+  children: Parts(SmGadgetPart by GadgetId, max 10000)
+  searchable: Name:Contains
+  natural-keys: Code
+  default-select: Id, Code, Name, Name2, Name3, IsActive, CreatedAt, CreatedById, ModifiedAt, ModifiedById
+  related-select: Id, Name, Name2, Name3, Code
+  details-expand: CreatedBy, ModifiedBy, Gizmo, Parts.Gizmo
+  default-order-by: -
+  display-name: Name group Name prefix -
+  extras: history, lineage, permissions
+  named-filters: active=(IsActive), on-gizmo=via Gizmo (Name != ''), with-parts=exists sm.SmGadgetPart.Gadget (Name != '')
+  limits: default
+  mcp: Full, revision 0
+  feature: sm
+  action activate: entity Activate built-in filtered args -; mutation, idempotent; result EntitiesResult<SmGadget>; mcp Full, revision 0; -
+  action deactivate: entity Activate built-in filtered args -; mutation, idempotent; result EntitiesResult<SmGadget>; mcp Full, revision 0; -
+  action archive: entity Archive filtered args -; mutation, idempotent; result EntitiesResult<SmGadget>; mcp Full, revision 0; Archives the gadgets.
+  action prices/reprice: entity Reprice children args RepriceArguments; mutation, long; result int; mcp Full, revision 0; -
+  action summary: api sm.SmGadget:Read body SummaryRequest handler GadgetService<SmGadget>; idempotent; result string; mcp Full, revision 0; -
+  action export: api sm.SmGadget:Export body - handler GadgetOperations<SmGadget>; -; result void; mcp Full, revision 0; -
+  action count: api member-only body - handler GadgetOperations<SmGadget>; -; result int; mcp Full, revision 0; -
+stack sm.SmGizmo
+  segment: gizmos
+  entity: Tellma.Core.Tests.Crud.SmGizmo
+  service: Tellma.Core.Crud.DefaultEntityService<Tellma.Core.Tests.Crud.SmGizmo, int>
+  key: int
+  description: -
+  operations: Enlist, All
+  capabilities: excel
+  properties: Id:ServerOwned, CreatedAt:ServerOwned, CreatedById:ServerOwned, ModifiedAt:ServerOwned, ModifiedById:ServerOwned, Name:Editable
+  children: -
+  searchable: -
+  natural-keys: -
+  default-select: Id, Name, CreatedAt, CreatedById, ModifiedAt, ModifiedById
+  related-select: Id
+  details-expand: CreatedBy, ModifiedBy
+  default-order-by: -
+  display-name: Id group - prefix -
+  extras: permissions
+  named-filters: -
+  limits: default
+  mcp: Full, revision 0
+  feature: sm
+stack sm.SmSprocket
+  segment: sprockets
+  entity: Tellma.Core.Tests.Crud.SmSprocket
+  service: Tellma.Core.Crud.DefaultEntityService<Tellma.Core.Tests.Crud.SmSprocket, int>
+  key: int
+  description: -
+  operations: Enlist, All
+  capabilities: excel
+  properties: Id:ServerOwned, CreatedAt:ServerOwned, CreatedById:ServerOwned, ModifiedAt:ServerOwned, ModifiedById:ServerOwned, Name:Editable
+  children: -
+  searchable: -
+  natural-keys: -
+  default-select: Id, Name, CreatedAt, CreatedById, ModifiedAt, ModifiedById
+  related-select: Id
+  details-expand: CreatedBy, ModifiedBy
+  default-order-by: -
+  display-name: Id group - prefix -
+  extras: permissions
+  named-filters: -
+  limits: default
+  mcp: Full, revision 0
+  feature: sm
+child core.RoleMembership
+  segment: role-memberships
+  entity: Tellma.Core.Abstractions.Access.RoleMembership
+  owner: core.User through User, collection RoleMemberships
+  searchable: -
+  default-select: Id, UserId
+  related-select: Id
+  default-order-by: Id desc
+  exportable: yes
+  limits: default
+  mcp: Full
+child core.Permission
+  segment: permissions
+  entity: Tellma.Core.Abstractions.Access.Permission
+  owner: core.Role through Role, collection Permissions
+  searchable: -
+  default-select: Id, RoleId
+  related-select: Id
+  default-order-by: Id desc
+  exportable: yes
+  limits: default
+  mcp: Full
+child core.OutgoingEmailAttachment
+  segment: outgoing-email-attachments
+  entity: Tellma.Core.Abstractions.Email.OutgoingEmailAttachment
+  owner: core.OutgoingEmail through OutgoingEmail, collection OutgoingEmailAttachments
+  searchable: -
+  default-select: Id, OutgoingEmailId
+  related-select: Id
+  default-order-by: Id desc
+  exportable: no
+  limits: default
+  mcp: ReadOnly
+child sm.SmGadgetPart
+  segment: gadget-parts
+  entity: Tellma.Core.Tests.Crud.SmGadgetPart
+  owner: sm.SmGadget through Gadget, collection Parts
+  searchable: Name:Contains
+  default-select: Id, GadgetId, Name
+  related-select: Id
+  default-order-by: Id desc
+  exportable: yes
+  limits: default
+  mcp: Full
+child sm.SmGadgetPartNote
+  segment: part-notes
+  entity: Tellma.Core.Tests.Crud.SmGadgetPartNote
+  owner: sm.SmGadgetPart through GadgetPart, collection Notes
+  searchable: -
+  default-select: Id, GadgetPartId
+  related-select: Id
+  default-order-by: Id desc
+  exportable: yes
+  limits: default
+  mcp: Full
+service settings
+  class: Tellma.Core.Settings.SettingsService
+  feature: core
+  action client: api member-only body - handler SettingsService; idempotent; result ValueTuple<byte[], string>; mcp Hidden, revision 0; -
+  action entity-tags: api member-only body - handler SettingsService; idempotent; result IReadOnlyDictionary<string, string>; mcp Full, revision 0; -
+  action details: api member-only body - handler SettingsService; idempotent; result TenantSettingsDetails; mcp Hidden, revision 0; -
+  action refresh-caches: api core.Settings.General:Save body - handler SettingsService; mutation, idempotent; result void; mcp Hidden, revision 0; -
+  action save: api member-only body TenantSettingsPatch handler SettingsService; mutation; result SettingsSaveResult; mcp Hidden, revision 0; -
+service queryex
+  class: Tellma.Core.Api.QueryexService
+  feature: core
+  action discover: api member-only body QueryexDiscoverRequest handler QueryexService; idempotent; result QueryexDiscoverResult; mcp Hidden, revision 0; -
+service inbox
+  class: Tellma.Core.Notifications.InboxService
+  feature: core
+  action summary: api member-only body - handler InboxService; idempotent; result InboxSummary; mcp Hidden, revision 0; -
+  action seen: api member-only body - handler InboxService; mutation, read-only-ok, idempotent; result InboxVerbResult; mcp Hidden, revision 0; -
+  action read: api member-only body IdsRequest handler InboxService; mutation, read-only-ok, idempotent; result InboxVerbResult; mcp Hidden, revision 0; -
+  action read-all: api member-only body - handler InboxService; mutation, read-only-ok, idempotent; result InboxVerbResult; mcp Hidden, revision 0; -
+  action clear: api member-only body IdsRequest handler InboxService; mutation, read-only-ok, idempotent, destructive; result InboxVerbResult; mcp Hidden, revision 0; -
+  action clear-read: api member-only body - handler InboxService; mutation, read-only-ok, idempotent, destructive; result InboxVerbResult; mcp Hidden, revision 0; -
+service notification-preferences
+  class: Tellma.Core.Notifications.NotificationPreferencesService
+  feature: core
+  action get: api member-only body - handler NotificationPreferencesService; idempotent; result IReadOnlyList<NotificationPreference>; mcp Hidden, revision 0; -
+  action save: api member-only body IReadOnlyList<NotificationPreference> handler NotificationPreferencesService; mutation, read-only-ok; result IReadOnlyList<NotificationPreference>; mcp Hidden, revision 0; -
+service sm-inbox
+  class: Tellma.Core.Tests.Crud.InboxService
+  feature: sm
+  action mark-read: api member-only body - handler InboxService; mutation; result void; mcp Full, revision 0; -
+  action purge: api sm.Inbox:Purge body - handler InboxService; mutation, destructive; result int; mcp Full, revision 0; -
+enlistment Tellma.Core.Users.UserService<Tellma.Core.Abstractions.Access.User> -> core.User
+enlistment Tellma.Core.Outbox.EmailOutbox -> core.OutgoingEmail

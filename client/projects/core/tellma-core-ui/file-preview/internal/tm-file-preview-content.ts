@@ -5,9 +5,11 @@
 
 import { Component, computed, ElementRef, inject, type OnDestroy, signal } from '@angular/core';
 import { DomSanitizer, type SafeResourceUrl } from '@angular/platform-browser';
+import { CircleX, FileText } from 'lucide';
 
-import { TM_FORM_FIELD_DEFAULTS, TM_UI_TRANSLATE, TmL10n } from '@tellma/core-ui';
+import { TM_UI_TRANSLATE, TmL10n } from '@tellma/core-ui';
 import { TmButton } from '@tellma/core-ui/button';
+import { TmIcon } from '@tellma/core-ui/icon';
 import { TM_MODAL_DATA, TmModalFooter } from '@tellma/core-ui/modal';
 import { TmSpinner } from '@tellma/core-ui/spinner';
 
@@ -31,7 +33,7 @@ const TEXT_CAP_BYTES = 1024 * 1024;
  */
 @Component({
   selector: 'tm-file-preview-content',
-  imports: [TmButton, TmModalFooter, TmSpinner],
+  imports: [TmButton, TmIcon, TmModalFooter, TmSpinner],
   template: `
     <div class="tm-preview" [attr.aria-busy]="state() === 'loading'">
       @switch (state()) {
@@ -42,20 +44,7 @@ const TEXT_CAP_BYTES = 1024 * 1024;
           <div class="tm-preview__card">
             <!-- Circle-x, not circle-!: the fetch failed and there is
                  nothing here for the reader to correct. -->
-            <svg
-              class="tm-preview__card-icon tm-preview__card-icon--error"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.75"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              aria-hidden="true"
-            >
-              <circle cx="12" cy="12" r="10" />
-              <path d="m15 9-6 6" />
-              <path d="m9 9 6 6" />
-            </svg>
+            <tm-icon class="tm-preview__card-icon tm-preview__card-icon--error" [svg]="glyphs.error" />
             <p class="tm-preview__card-title">{{ loadErrorLabel() }}</p>
           </div>
         }
@@ -103,22 +92,7 @@ const TEXT_CAP_BYTES = 1024 * 1024;
               <div class="tm-preview__card">
                 <!-- A document glyph, not an error one: nothing went wrong,
                      this kind simply has no viewer. -->
-                <svg
-                  class="tm-preview__card-icon"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="1.75"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  aria-hidden="true"
-                >
-                  <path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" />
-                  <path d="M14 2v4a2 2 0 0 0 2 2h4" />
-                  <path d="M10 9H8" />
-                  <path d="M16 13H8" />
-                  <path d="M16 17H8" />
-                </svg>
+                <tm-icon class="tm-preview__card-icon" [svg]="glyphs.noPreview" />
                 <div>
                   <p class="tm-preview__card-title">{{ unsupportedLabel() }}</p>
                   <p class="tm-preview__card-hint">{{ unsupportedHintLabel() }}</p>
@@ -149,15 +123,15 @@ const TEXT_CAP_BYTES = 1024 * 1024;
           </button>
         }
         @if (downloadUrl(); as url) {
-          <!-- An anchor, because the download attribute needs one, but
-               wearing the button classes rather than a hand-copied
-               reproduction of them: the classes come from tmButton's own
-               global stylesheet, and the SIZE class is derived from the
-               same injected workspace default the Print tmButton beside it
-               resolves — so the two actions stay the same height under any
-               workspace size. -->
+          <!-- An anchor, because the download attribute needs one, hosting
+               tmButton itself: the directive gives a link the variant and
+               the size and nothing else, so it resolves its size exactly as
+               the Print button beside it does — the two actions stay the
+               same height under any workspace size and at any viewport
+               width — and the link keeps its native behaviour. -->
           <a
-            [class]="downloadClasses"
+            tmButton
+            variant="primary"
             data-tm-preview-action="download"
             [href]="url"
             [download]="file.name"
@@ -173,26 +147,13 @@ const TEXT_CAP_BYTES = 1024 * 1024;
 })
 export class ɵTmFilePreviewContent implements OnDestroy {
   private readonly translate = inject(TM_UI_TRANSLATE);
+
+  /** The cards' glyph data: a failed load, and a kind with no viewer. */
+  protected readonly glyphs = { error: CircleX, noPreview: FileText } as const;
   private readonly sanitizer = inject(DomSanitizer);
   private readonly l10n = inject(TmL10n);
 
   protected readonly file = inject<TmPreviewFile>(TM_MODAL_DATA);
-
-  private readonly defaults = inject(TM_FORM_FIELD_DEFAULTS);
-  /**
-   * The download anchor's button classes. An anchor cannot BE a tmButton
-   * (the directive's selector is button-only), so its size class is
-   * computed from the workspace default exactly the way TmButton's host
-   * bindings compute theirs — hard-coding a step here is how the two
-   * footer actions once drifted apart under a non-default size.
-   */
-  protected readonly downloadClasses =
-    'tm-button tm-button--primary' +
-    (this.defaults.size === 'sm'
-      ? ' tm-button--sm'
-      : this.defaults.size === 'lg'
-        ? ' tm-button--lg'
-        : '');
 
   protected readonly loadErrorLabel = this.translate('preview.loadError');
   protected readonly unsupportedLabel = this.translate('preview.unsupported');

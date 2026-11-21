@@ -10,7 +10,7 @@
  * one fetch; the MCP server is the interactive path. Both derive from the
  * same components.json, so they never diverge.
  */
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
@@ -49,31 +49,53 @@ if (leaking.length > 0 || SPEC_REF.test(JSON.stringify(doc))) {
   process.exit(1);
 }
 
-writeFileSync(join(outDir, 'components.json'), JSON.stringify(doc, null, 2) + '\n');
-writeFileSync(
+/**
+ * Writes a generated file only on a real change: an identical rewrite still
+ * moves the file's mtime, and everything under projects/ is a build input
+ * whose mtime decides whether the e2e run may reuse an existing production
+ * bundle (scripts/prod-build.mjs).
+ */
+function writeIfChanged(path: string, text: string): void {
+  if (!existsSync(path) || readFileSync(path, 'utf8') !== text) {
+    writeFileSync(path, text);
+  }
+}
+
+writeIfChanged(join(outDir, 'components.json'), JSON.stringify(doc, null, 2) + '\n');
+writeIfChanged(
   join(outDir, 'components.schema.json'),
   JSON.stringify(z.toJSONSchema(componentsJson, { target: 'draft-7' }), null, 2) + '\n',
 );
 
 function llmsSection(component: ComponentDoc): string {
   const lines = [
-    `## ${component.name} (\`${component.selector}\`)`,
+    // A service has no selector: its heading names the kind instead.
+    `## ${component.name} (${component.selector === null ? component.kind : `\`${component.selector}\``})`,
     '',
     component.description,
     '',
     `- Kind: ${component.kind} | Group: ${component.group} | Status: ${component.status}`,
     `- Import: \`${component.entryPoint}\``,
-    `- Forms: ${component.formControl ?? 'not a form control'}`,
+    ...(component.kind === 'service'
+      ? [`- Inject: \`inject(${component.name})\` (a root service)`]
+      : [`- Forms: ${component.formControl ?? 'not a form control'}`]),
     component.harness
       ? `- Harness: \`${component.harness}\` (@tellma/core-ui-testing)`
       : '- Harness: none',
   ];
+  if (component.a11y.notes) {
+    lines.push(`- Accessibility: ${component.a11y.notes.replace(/\s*\n\s*/g, ' ')}`);
+  }
   if (component.inputs.length > 0) {
     lines.push('', '### Inputs', '');
     for (const input of component.inputs) {
       lines.push(
         `- \`${input.name}\` (${input.signal}): \`${input.type}\`` +
-          (input.required ? ' — required' : input.default ? ` — default \`${input.default}\`` : '') +
+          (input.required
+            ? ' — required'
+            : input.default
+              ? ` — default \`${input.default}\``
+              : '') +
           (input.description ? ` — ${input.description.split('\n')[0]}` : ''),
       );
     }
@@ -84,6 +106,15 @@ function llmsSection(component: ComponentDoc): string {
       lines.push(
         `- \`${output.name}\`: \`${output.type}\`` +
           (output.description ? ` — ${output.description.split('\n')[0]}` : ''),
+      );
+    }
+  }
+  if (component.members.length > 0) {
+    lines.push('', '### Members', '');
+    for (const member of component.members) {
+      lines.push(
+        `- \`${member.signature}\`` +
+          (member.description ? ` — ${member.description.split('\n')[0]}` : ''),
       );
     }
   }
@@ -100,7 +131,8 @@ function llmsSection(component: ComponentDoc): string {
     }
   }
   if (component.examples.length > 0) {
-    lines.push('', '### Example', '', '```html', component.examples[0].code, '```');
+    const [example] = component.examples;
+    lines.push('', '### Example', '', '```' + example.language, example.code, '```');
   }
   lines.push('', `Tokens read: ${component.tokens.join(', ') || '(none)'}`, '');
   return lines.join('\n');
@@ -118,7 +150,7 @@ const llms = [
   ...doc.components.map(llmsSection),
 ].join('\n');
 
-writeFileSync(join(outDir, 'llms.txt'), llms);
+writeIfChanged(join(outDir, 'llms.txt'), llms);
 
 console.log(`docs:build OK — ${doc.components.length} components ->`);
 for (const file of ['components.json', 'components.schema.json', 'llms.txt']) {

@@ -5,6 +5,7 @@
 ```ts
 
 import * as _angular_core from '@angular/core';
+import * as lucide from 'lucide';
 import { Signal } from '@angular/core';
 import { ValidationError } from '@angular/forms/signals';
 
@@ -16,6 +17,7 @@ export class TmCheckbox implements TmFormFieldControl {
     readonly ariaDescribedby: _angular_core.InputSignal<string | null>;
     readonly ariaLabel: _angular_core.InputSignal<string | null>;
     readonly checked: _angular_core.ModelSignal<boolean>;
+    protected readonly checkIcon: lucide.IconNode;
     readonly controlId: Signal<string>;
     protected readonly describedByAttr: Signal<string | null>;
     readonly describedByIds: Signal<readonly string[]>;
@@ -26,6 +28,7 @@ export class TmCheckbox implements TmFormFieldControl {
     readonly indeterminate: _angular_core.ModelSignal<boolean>;
     readonly invalid: _angular_core.InputSignalWithTransform<boolean, unknown>;
     readonly localizedErrors: () => readonly TmFieldError[];
+    protected readonly minusIcon: lucide.IconNode;
     onContainerClick(): void;
     protected onNativeChange(event: Event): void;
     readonly ownsChrome = true;

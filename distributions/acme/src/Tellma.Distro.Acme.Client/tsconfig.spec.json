@@ -1,0 +1,9 @@
+/* The unit tests' TypeScript configuration: every spec, with Vitest's globals. */
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "outDir": "./out-tsc/spec"
+  },
+  "include": ["src/**/*.spec.ts", "generated/*.d.ts"]
+}

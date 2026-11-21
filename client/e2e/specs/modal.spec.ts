@@ -138,13 +138,16 @@ test.describe('focus (DoD 15)', () => {
     await page.goto(storyUrl('modal'));
     await openBasic(page);
 
-    // Initial focus lands inside the dialog.
+    // Initial focus lands inside the dialog. The dialog moves it there on
+    // the render after it attaches, which can be after the shell is already
+    // visible, so the first check waits for it; the Tab checks below are
+    // synchronous (the trap redirects focus within the key's own task).
     const inDialog = () =>
       page.evaluate(() => {
         const container = document.querySelector('cdk-dialog-container');
         return container !== null && container.contains(document.activeElement);
       });
-    expect(await inDialog()).toBe(true);
+    await expect.poll(inDialog).toBe(true);
 
     // Tabbing cycles within the trap: it never leaves the dialog.
     for (let i = 0; i < 6; i += 1) {

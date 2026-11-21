@@ -6,6 +6,7 @@
 using System.Collections.Immutable;
 using Tellma.Core.Queryex;
 using Tellma.Queryex.Testing.Schema;
+using Tellma.Queryex.Testing.Semantics;
 
 namespace Tellma.Queryex.Testing.Corpus
 {
@@ -18,7 +19,7 @@ namespace Tellma.Queryex.Testing.Corpus
     ///     file, which is the only way a change in emission gets looked at rather than merely
     ///     re-recorded.
     /// </remarks>
-    public static class QueryCorpus
+    public static partial class QueryCorpus
     {
         /// <summary>Every case, in a stable order.</summary>
         public static ImmutableArray<QueryCase> All { get; } = Build();
@@ -27,8 +28,149 @@ namespace Tellma.Queryex.Testing.Corpus
         /// <returns>The cases.</returns>
         private static ImmutableArray<QueryCase> Build()
         {
-            IEnumerable<QueryCase> all = Shapes().Concat(Emission()).Concat(Refusals());
+            IEnumerable<QueryCase> all = Shapes()
+                .Concat(Emission())
+                .Concat(Composition())
+                .Concat(Structure())
+                .Concat(Omitted())
+                .Concat(Calendars())
+                .Concat(Refusals())
+                .Concat(StructureRefusals())
+                .Concat(OmittedRefusals());
             return [.. all];
+        }
+
+        /// <summary>
+        ///     The members a host composes a query from beside its text: restrictions to key sets it
+        ///     holds, paging, and the columns its schema leaves out.
+        /// </summary>
+        /// <returns>The cases.</returns>
+        private static IEnumerable<QueryCase> Composition()
+        {
+            // Invoices 1 to 6; the optional customer is present on the odd ones only (2, 1 and 3
+            // for invoices 1, 3 and 5), and the posted ones are the odd ones.
+            KeySet invoices = Numbers(1, 2, 4);
+            KeySet parties = Numbers(2, 3);
+
+            yield return Query("query-restriction", new QuerySpec
+            {
+                Root = LedgerFixture.Invoice,
+                Select = "Id, Code",
+                Restrictions = [new KeySetRestriction("Id", "@tb0_invoices")],
+            }) with
+            {
+                KeySets = KeySets(("@tb0_invoices", invoices)),
+            };
+
+            // An optional key: the rows with no customer are never in the set.
+            yield return Query("query-restriction-filtered", new QuerySpec
+            {
+                Root = LedgerFixture.Invoice,
+                Select = "Id",
+                Filter = FilterTree.Leaf("IsPosted"),
+                Restrictions = [new KeySetRestriction("CustomerId", "@tb0_parties")],
+            }) with
+            {
+                KeySets = KeySets(("@tb0_parties", parties)),
+            };
+
+            // Through a navigation the select list also reads, so the two share one join.
+            yield return Query("query-restrictions-two", new QuerySpec
+            {
+                Root = LedgerFixture.Invoice,
+                Select = "Id, Customer.Name",
+                Filter = FilterTree.Or([FilterTree.Leaf("Amount > 0"), FilterTree.Leaf("IsPosted")]),
+                OrderBy = "Customer.Name desc",
+                Restrictions =
+                [
+                    new KeySetRestriction("customer.id", "@tb0_parties"),
+                    new KeySetRestriction("Id", "@tb0_invoices"),
+                ],
+            }) with
+            {
+                KeySets = KeySets(("@tb0_parties", parties), ("@tb0_invoices", Numbers(1, 3, 5, 6))),
+            };
+
+            // In a grouped query a restriction filters the rows that enter the groups.
+            yield return Query("query-restriction-aggregate", new QuerySpec
+            {
+                Root = LedgerFixture.Invoice,
+                Aggregate = true,
+                Select = "Centre.Name, count(), sum(Amount)",
+                Restrictions = [new KeySetRestriction("Id", "@tb0_invoices")],
+            }) with
+            {
+                KeySets = KeySets(("@tb0_invoices", invoices)),
+            };
+
+            // A filter that is already false keeps every row out, so the restriction and the join
+            // its path needs are left out of the statement.
+            yield return Query("query-restriction-denied", new QuerySpec
+            {
+                Root = LedgerFixture.Invoice,
+                Select = "Id",
+                Filter = FilterTree.Or([]),
+                Restrictions = [new KeySetRestriction("Customer.Id", "@tb0_parties")],
+            }) with
+            {
+                KeySets = KeySets(("@tb0_parties", parties)),
+                MatchesNothing = true,
+            };
+
+            yield return Query("query-take-only", new QuerySpec
+            {
+                Root = LedgerFixture.Invoice,
+                Select = "Code",
+                OrderBy = "Code desc",
+                Take = 2,
+            });
+
+            yield return Query("query-undeclared", new QuerySpec
+            {
+                Root = LedgerFixture.Invoice,
+                Select = "Id, Amount, Customer.Name",
+                UndeclaredColumns = ["ExtrasJson"],
+            });
+
+            yield return Query("query-undeclared-paged", new QuerySpec
+            {
+                Root = LedgerFixture.Invoice,
+                Select = "Code, PostingDate",
+                OrderBy = "PostingDate desc",
+                Skip = 1,
+                Take = 4,
+                UndeclaredColumns = ["ExtrasJson", "AuditJson"],
+            });
+
+            yield return Query("emit-level", new QuerySpec
+            {
+                Root = LedgerFixture.Invoice,
+                Select = "level(Account.Node), level(AltNode), level(Account.Parent.Node)",
+                Filter = FilterTree.Leaf("level(Account.Node) <= 2"),
+            });
+
+            yield return Query("emit-level-root", new QuerySpec
+            {
+                Root = LedgerFixture.Account,
+                Select = "Concept, level(Node)",
+                Filter = FilterTree.Leaf("level(Node) <= 1"),
+            });
+        }
+
+        /// <summary>A table of whole-number keys.</summary>
+        /// <param name="keys">The keys.</param>
+        /// <returns>The table.</returns>
+        private static KeySet Numbers(params int[] keys)
+        {
+            return new KeySet(QueryexStoreType.QxInt, [.. keys.Select(key => QxValue.Number(key))]);
+        }
+
+        /// <summary>The tables a case's restrictions read, by name.</summary>
+        /// <param name="tables">The names and the tables.</param>
+        /// <returns>The map.</returns>
+        private static Dictionary<string, KeySet> KeySets(params (string Name, KeySet Keys)[] tables)
+        {
+            return tables.ToDictionary(table => table.Name, table => table.Keys, StringComparer.OrdinalIgnoreCase);
         }
 
         /// <summary>The shapes a query can take.</summary>

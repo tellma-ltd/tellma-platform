@@ -4,6 +4,7 @@
 // LICENSE file in the root directory of this source tree.
 
 using Tellma.Identity.IntegrationTests.Infrastructure;
+using Tellma.Identity.TestSupport;
 
 namespace Tellma.Identity.IntegrationTests.Flows
 {
@@ -27,7 +28,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
         [Fact]
         public async Task A_linked_row_names_the_account_and_an_unlinked_one_offers_to_link()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(
                 fixture, "idfedpage", ProviderSeed);
             await TestData.CreateActiveUserAsync(factory, "fedpage@example.com");
             await TestData.AddExternalLoginAsync(
@@ -50,7 +51,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
         [Fact]
         public async Task A_link_made_before_the_account_was_recorded_shows_no_subtitle()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(
                 fixture, "idfedlegacy", ProviderSeed);
             await TestData.CreateActiveUserAsync(factory, "fedlegacy@example.com");
 
@@ -70,13 +71,13 @@ namespace Tellma.Identity.IntegrationTests.Flows
         [Fact]
         public async Task Unlinking_the_only_sign_in_method_is_refused_as_a_warning()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(
                 fixture, "idfedrefuse", ProviderSeed);
             await TestData.CreateActiveUserAsync(factory, "fedrefuse@example.com");
             await TestData.AddExternalLoginAsync(
                 factory, "fedrefuse@example.com", "Google", "google-subject", "only@example.com");
 
-            using OidcFlowClient flow = new(factory);
+            using OidcFlowClient flow = factory.CreateFlowClient();
             await flow.SignInWithEmailCodeAsync("fedrefuse@example.com", "/Identity/Account/Login");
 
             using HttpResponseMessage page = await flow.Browser.GetAsync(
@@ -101,7 +102,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
         [Fact]
         public async Task A_deployment_with_no_provider_explains_itself_instead_of_rendering_nothing()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "idfedempty");
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idfedempty");
             await TestData.CreateActiveUserAsync(factory, "fedempty@example.com");
 
             string html = await PageHtmlAsync(factory, "fedempty@example.com");
@@ -113,7 +114,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
         /// <summary>Signs the user in and returns the rendered external-logins page.</summary>
         private static async Task<string> PageHtmlAsync(StandaloneFactory factory, string email)
         {
-            using OidcFlowClient flow = new(factory);
+            using OidcFlowClient flow = factory.CreateFlowClient();
             await flow.SignInWithEmailCodeAsync(email, "/Identity/Account/Login");
 
             using HttpResponseMessage page = await flow.Browser.GetAsync(

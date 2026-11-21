@@ -23,14 +23,14 @@ namespace Tellma.Identity.IntegrationTests.Api
         [Fact]
         public async Task Create_returns_the_secret_once_and_the_account_can_authenticate()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "idsvcacct");
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idsvcacct");
             using HttpClient client = factory.CreateClient();
             client.DefaultRequestHeaders.Authorization =
                 new AuthenticationHeaderValue("Bearer", await GetIdentityScopeTokenAsync(factory));
 
             string[] resources = ["https://acme.app.tellma.com"];
             using HttpResponseMessage createResponse = await client.PostAsJsonAsync(
-                new Uri("/api/identity/service-accounts", UriKind.Relative),
+                new Uri("/api/identity/v1/service-accounts", UriKind.Relative),
                 new { displayName = "Nightly job", resources },
                 TestContext.Current.CancellationToken);
 
@@ -43,7 +43,7 @@ namespace Tellma.Identity.IntegrationTests.Api
 
             // The metadata endpoint never returns the secret.
             using HttpResponseMessage getResponse = await client.GetAsync(
-                new Uri($"/api/identity/service-accounts/{clientId}", UriKind.Relative), TestContext.Current.CancellationToken);
+                new Uri($"/api/identity/v1/service-accounts/{clientId}", UriKind.Relative), TestContext.Current.CancellationToken);
             string metadata = await getResponse.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
             Assert.DoesNotContain(clientSecret, metadata, StringComparison.Ordinal);
             Assert.DoesNotContain("secret", metadata, StringComparison.OrdinalIgnoreCase);
@@ -67,14 +67,14 @@ namespace Tellma.Identity.IntegrationTests.Api
         [Fact]
         public async Task Another_distribution_cannot_read_or_delete_the_account()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "idsvcacctown");
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idsvcacctown");
 
             // acme creates a service account.
             using HttpClient acmeClient = factory.CreateClient();
             acmeClient.DefaultRequestHeaders.Authorization =
                 new AuthenticationHeaderValue("Bearer", await GetIdentityScopeTokenAsync(factory));
             using HttpResponseMessage createResponse = await acmeClient.PostAsJsonAsync(
-                new Uri("/api/identity/service-accounts", UriKind.Relative),
+                new Uri("/api/identity/v1/service-accounts", UriKind.Relative),
                 new { displayName = "Acme job", resources = Array.Empty<string>() },
                 TestContext.Current.CancellationToken);
             Assert.Equal(HttpStatusCode.Created, createResponse.StatusCode);
@@ -89,27 +89,27 @@ namespace Tellma.Identity.IntegrationTests.Api
                 new AuthenticationHeaderValue("Bearer", await GetIdentityScopeTokenAsync(factory, slug: "beta"));
 
             using HttpResponseMessage foreignGet = await betaClient.GetAsync(
-                new Uri($"/api/identity/service-accounts/{clientId}", UriKind.Relative), TestContext.Current.CancellationToken);
+                new Uri($"/api/identity/v1/service-accounts/{clientId}", UriKind.Relative), TestContext.Current.CancellationToken);
             Assert.Equal(HttpStatusCode.NotFound, foreignGet.StatusCode);
 
             using HttpResponseMessage foreignDelete = await betaClient.DeleteAsync(
-                new Uri($"/api/identity/service-accounts/{clientId}", UriKind.Relative), TestContext.Current.CancellationToken);
+                new Uri($"/api/identity/v1/service-accounts/{clientId}", UriKind.Relative), TestContext.Current.CancellationToken);
             Assert.Equal(HttpStatusCode.NotFound, foreignDelete.StatusCode);
 
             // The owner still reads and deletes it.
             using HttpResponseMessage ownerGet = await acmeClient.GetAsync(
-                new Uri($"/api/identity/service-accounts/{clientId}", UriKind.Relative), TestContext.Current.CancellationToken);
+                new Uri($"/api/identity/v1/service-accounts/{clientId}", UriKind.Relative), TestContext.Current.CancellationToken);
             Assert.Equal(HttpStatusCode.OK, ownerGet.StatusCode);
 
             using HttpResponseMessage ownerDelete = await acmeClient.DeleteAsync(
-                new Uri($"/api/identity/service-accounts/{clientId}", UriKind.Relative), TestContext.Current.CancellationToken);
+                new Uri($"/api/identity/v1/service-accounts/{clientId}", UriKind.Relative), TestContext.Current.CancellationToken);
             Assert.Equal(HttpStatusCode.NoContent, ownerDelete.StatusCode);
         }
 
         [Fact]
         public async Task The_control_plane_administers_any_distributions_service_account()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(
                 fixture,
                 "idsvcacctop",
                 new Dictionary<string, string?>
@@ -124,7 +124,7 @@ namespace Tellma.Identity.IntegrationTests.Api
             acmeClient.DefaultRequestHeaders.Authorization =
                 new AuthenticationHeaderValue("Bearer", await GetIdentityScopeTokenAsync(factory));
             using HttpResponseMessage createResponse = await acmeClient.PostAsJsonAsync(
-                new Uri("/api/identity/service-accounts", UriKind.Relative),
+                new Uri("/api/identity/v1/service-accounts", UriKind.Relative),
                 new { displayName = "Acme job", resources = Array.Empty<string>() },
                 TestContext.Current.CancellationToken);
             Assert.Equal(HttpStatusCode.Created, createResponse.StatusCode);
@@ -135,23 +135,36 @@ namespace Tellma.Identity.IntegrationTests.Api
             // The control plane holds no distribution origin, so ownership scoping alone would
             // leave it — and therefore everyone — unable to clean the account up. Holding the
             // control-plane scope is what makes it the operator.
+            // Its token is the one it asks for without a resource, carrying the control-plane
+            // audience beside the management one. A token it narrowed to the management audience
+            // alone holds the scope but not that audience, so it is an ordinary caller there and
+            // finds nothing it does not own.
+            using (HttpClient narrowedClient = factory.CreateClient())
+            {
+                narrowedClient.DefaultRequestHeaders.Authorization =
+                    new AuthenticationHeaderValue("Bearer", await GetControlPlaneTokenAsync(factory, resource: "urn:tellma:identity"));
+                using HttpResponseMessage narrowedGet = await narrowedClient.GetAsync(
+                    new Uri($"/api/identity/v1/service-accounts/{clientId}", UriKind.Relative), TestContext.Current.CancellationToken);
+                Assert.Equal(HttpStatusCode.NotFound, narrowedGet.StatusCode);
+            }
+
             using HttpClient operatorClient = factory.CreateClient();
             operatorClient.DefaultRequestHeaders.Authorization =
                 new AuthenticationHeaderValue("Bearer", await GetControlPlaneTokenAsync(factory));
 
             using HttpResponseMessage operatorGet = await operatorClient.GetAsync(
-                new Uri($"/api/identity/service-accounts/{clientId}", UriKind.Relative), TestContext.Current.CancellationToken);
+                new Uri($"/api/identity/v1/service-accounts/{clientId}", UriKind.Relative), TestContext.Current.CancellationToken);
             Assert.Equal(HttpStatusCode.OK, operatorGet.StatusCode);
 
             using HttpResponseMessage operatorDelete = await operatorClient.DeleteAsync(
-                new Uri($"/api/identity/service-accounts/{clientId}", UriKind.Relative), TestContext.Current.CancellationToken);
+                new Uri($"/api/identity/v1/service-accounts/{clientId}", UriKind.Relative), TestContext.Current.CancellationToken);
             Assert.Equal(HttpStatusCode.NoContent, operatorDelete.StatusCode);
         }
 
         [Fact]
         public async Task Create_rejects_a_foreign_distribution_audience()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "idsvcacctforeign");
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idsvcacctforeign");
             using HttpClient client = factory.CreateClient();
             client.DefaultRequestHeaders.Authorization =
                 new AuthenticationHeaderValue("Bearer", await GetIdentityScopeTokenAsync(factory));
@@ -159,7 +172,7 @@ namespace Tellma.Identity.IntegrationTests.Api
             // The caller (acme's backend) names a different distribution's origin as an audience.
             string[] resources = ["https://evil.app.tellma.com"];
             using HttpResponseMessage response = await client.PostAsJsonAsync(
-                new Uri("/api/identity/service-accounts", UriKind.Relative),
+                new Uri("/api/identity/v1/service-accounts", UriKind.Relative),
                 new { displayName = "Cross-tenant job", resources },
                 TestContext.Current.CancellationToken);
 
@@ -169,20 +182,25 @@ namespace Tellma.Identity.IntegrationTests.Api
         /// <summary>The seeded control-plane client's secret for the operator-path test.</summary>
         private const string ControlPlaneSecret = "control-plane-test-secret-0123456789";
 
-        /// <summary>Obtains a token carrying both the control-plane and identity scopes.</summary>
-        private static async Task<string> GetControlPlaneTokenAsync(StandaloneFactory factory)
+        /// <summary>Obtains a token carrying both the control-plane and identity scopes, optionally naming a resource.</summary>
+        private static async Task<string> GetControlPlaneTokenAsync(StandaloneFactory factory, string? resource = null)
         {
+            Dictionary<string, string> parameters = new()
+            {
+                ["grant_type"] = "client_credentials",
+                ["client_id"] = "tellma-control-plane",
+                ["client_secret"] = ControlPlaneSecret,
+                ["scope"] = "tellma_control_plane tellma_identity",
+            };
+            if (resource is not null)
+            {
+                parameters["resource"] = resource;
+            }
+
             using HttpClient client = factory.CreateClient();
             using HttpResponseMessage response = await client.PostAsync(
                 new Uri("/connect/token", UriKind.Relative),
-                new FormUrlEncodedContent(new Dictionary<string, string>
-                {
-                    ["grant_type"] = "client_credentials",
-                    ["client_id"] = "tellma-control-plane",
-                    ["client_secret"] = ControlPlaneSecret,
-                    ["scope"] = "tellma_control_plane tellma_identity",
-                    ["resource"] = "http://localhost",
-                }),
+                new FormUrlEncodedContent(parameters),
                 TestContext.Current.CancellationToken);
 
             string body = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
@@ -205,7 +223,7 @@ namespace Tellma.Identity.IntegrationTests.Api
                     ["client_id"] = distribution.ServiceClientId,
                     ["client_secret"] = distribution.ServiceClientSecret,
                     ["scope"] = "tellma_identity",
-                    ["resource"] = "http://localhost",
+                    ["resource"] = "urn:tellma:identity",
                 }),
                 TestContext.Current.CancellationToken);
 

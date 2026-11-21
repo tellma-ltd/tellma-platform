@@ -55,7 +55,7 @@ namespace Tellma.Core.EntityFrameworkCore.TableTypes
         /// <param name="modelBuilder">The model builder.</param>
         /// <param name="name">Overrides the type's name (default: <c>[TableType]</c>, else the class name).</param>
         /// <param name="schema">Overrides the type's schema (default: <c>[TableType]</c>, else the database default).</param>
-        /// <param name="buildAction">Optionally adds grants, memory-optimization, a key override, or extra columns.</param>
+        /// <param name="buildAction">Optionally adds grants, memory-optimization, a key override, extra columns, or column collations (<see cref="TableTypeBuilder.UseCollation" />).</param>
         /// <returns>The same builder instance so that multiple calls can be chained.</returns>
         public static ModelBuilder HasTableType<T>(
             this ModelBuilder modelBuilder,
@@ -72,7 +72,7 @@ namespace Tellma.Core.EntityFrameworkCore.TableTypes
         /// <param name="clrType">The class describing the type's shape.</param>
         /// <param name="name">Overrides the type's name (default: <c>[TableType]</c>, else the class name).</param>
         /// <param name="schema">Overrides the type's schema (default: <c>[TableType]</c>, else the database default).</param>
-        /// <param name="buildAction">Optionally adds grants, memory-optimization, a key override, or extra columns.</param>
+        /// <param name="buildAction">Optionally adds grants, memory-optimization, a key override, extra columns, or column collations (<see cref="TableTypeBuilder.UseCollation" />).</param>
         public static ModelBuilder HasTableType(
             this ModelBuilder modelBuilder,
             Type clrType,

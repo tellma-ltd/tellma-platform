@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <!-- The neutral (English) messages the localizer tests render. -->
+  <data name="Greeting" xml:space="preserve">
+    <value>Hello</value>
+  </data>
+  <data name="Items" xml:space="preserve">
+    <value>{count, plural, one {# item} other {# items}}</value>
+  </data>
+  <data name="Invitation" xml:space="preserve">
+    <value>{gender, select, female {She invited you} male {He invited you} other {They invited you}}</value>
+  </data>
+  <data name="Total" xml:space="preserve">
+    <value>Total: {amount, number}</value>
+  </data>
+  <data name="Template" xml:space="preserve">
+    <value>Hello {name}</value>
+  </data>
+  <data name="Possessive" xml:space="preserve">
+    <value>It’s {name}’s turn</value>
+  </data>
+  <data name="Malformed" xml:space="preserve">
+    <value>Hello {name</value>
+  </data>
+  <data name="Date" xml:space="preserve">
+    <value>{d, date}</value>
+  </data>
+  <data name="Date_short" xml:space="preserve">
+    <value>{d, date, short}</value>
+  </data>
+  <data name="Date_medium" xml:space="preserve">
+    <value>{d, date, medium}</value>
+  </data>
+  <data name="Date_long" xml:space="preserve">
+    <value>{d, date, long}</value>
+  </data>
+  <data name="Date_full" xml:space="preserve">
+    <value>{d, date, full}</value>
+  </data>
+  <data name="Time" xml:space="preserve">
+    <value>{t, time}</value>
+  </data>
+  <data name="Time_short" xml:space="preserve">
+    <value>{t, time, short}</value>
+  </data>
+  <data name="Level" xml:space="preserve">
+    <value>neutral</value>
+  </data>
+  <data name="LanguageLevel" xml:space="preserve">
+    <value>neutral</value>
+  </data>
+  <data name="NeutralLevel" xml:space="preserve">
+    <value>neutral</value>
+  </data>
+</root>

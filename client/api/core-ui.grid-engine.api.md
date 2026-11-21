@@ -40,7 +40,7 @@ export class TmGridCellAnnotations {
     isPending(rowId: TmRowId, columnId: string): boolean;
     readonly pendingCount: Signal<number>;
     pendingLabel(rowId: TmRowId, columnId: string): string | null;
-    prune(model: Pick<TmGridDataModel, 'modelIndexOfRow' | 'columnIndexOf'>): void;
+    prune(model: Pick<TmGridDataModel, 'columnIndexOf' | 'modelIndexOfRow'>): void;
     setInvalid(rowId: TmRowId, columnId: string, entry: TmGridInvalidInput | null): void;
     setPending(rowId: TmRowId, columnId: string, pending: boolean, label?: string | null): void;
 }
@@ -115,7 +115,7 @@ export interface TmGridClipboardOptions<T = unknown> {
 }
 
 // @public
-export type TmGridColumnType = 'text' | 'number' | 'boolean' | 'date' | 'enum' | 'entity' | 'custom';
+export type TmGridColumnType = 'boolean' | 'custom' | 'date' | 'entity' | 'enum' | 'number' | 'text';
 
 // @public
 export interface TmGridCompoundHandle {
@@ -344,7 +344,7 @@ export interface TmGridHistoryOptions<T = unknown> {
     readonly editable?: SignalLike<boolean>;
     readonly host?: Pick<TmGridEngineHost<T>, 'onNotice' | 'onWarn'>;
     readonly model: TmGridDataModel<T>;
-    onReveal?(reveal: TmGridHistoryReveal, direction: 'undo' | 'redo'): void;
+    onReveal?(reveal: TmGridHistoryReveal, direction: 'redo' | 'undo'): void;
     snapshotSelection?(): unknown;
     readonly writer?: TmGridModelWriter<T>;
 }
@@ -368,7 +368,7 @@ export interface TmGridInvalidInput {
 }
 
 // @public
-export type TmGridInvalidInputReason = 'parse' | 'precision' | 'notFound' | 'ambiguous' | 'resolutionFailed';
+export type TmGridInvalidInputReason = 'ambiguous' | 'notFound' | 'parse' | 'precision' | 'resolutionFailed';
 
 // @public
 export interface TmGridMarquee {
@@ -392,7 +392,7 @@ export interface TmGridModelWriter<T = unknown> {
 }
 
 // @public
-export type TmGridMotion = 'up' | 'down' | 'left' | 'right' | 'inlineStart' | 'inlineEnd' | 'pageUp' | 'pageDown' | 'rowStart' | 'rowEnd' | 'gridStart' | 'gridEnd';
+export type TmGridMotion = 'down' | 'gridEnd' | 'gridStart' | 'inlineEnd' | 'inlineStart' | 'left' | 'pageDown' | 'pageUp' | 'right' | 'rowEnd' | 'rowStart' | 'up';
 
 // @public
 export class TmGridNav {
@@ -405,7 +405,7 @@ export class TmGridNav {
     setActive(cell: TmRowCol | null, opts?: {
         keepTabRun?: boolean;
     }): void;
-    tab(backward: boolean): TmRowCol | 'exit' | null;
+    tab(backward: boolean): 'exit' | TmRowCol | null;
     get tabRunOriginCol(): number | null;
     target(motion: TmGridMotion, from: TmRowCol, jump: boolean): TmRowCol;
 }
@@ -423,6 +423,10 @@ export interface TmGridNavOptions {
 export type TmGridNotice = {
     readonly kind: 'copyRefusedMisaligned';
 } | {
+    readonly kind: 'editorCancelledRowRemoved';
+} | {
+    readonly kind: 'moveIntoDescendantRejected';
+} | {
     readonly kind: 'pasteComplete';
     readonly cells: number;
     readonly errors: number;
@@ -430,38 +434,34 @@ export type TmGridNotice = {
     readonly rowsMaterialized: number;
     readonly rowsDropped: number;
 } | {
+    readonly kind: 'redoApplied';
+    readonly opKind: TmGridOpKind;
+    readonly skippedRows: number;
+} | {
+    readonly kind: 'redoSkippedMissingRows';
+} | {
     readonly kind: 'resolutionComplete';
     readonly resolved: number;
     readonly errors: number;
+} | {
+    readonly kind: 'rowsDeleted';
+    readonly count: number;
+} | {
+    readonly kind: 'rowsInserted';
+    readonly count: number;
+} | {
+    readonly kind: 'rowsMoved';
+    readonly count: number;
 } | {
     readonly kind: 'undoApplied';
     readonly opKind: TmGridOpKind;
     readonly skippedRows: number;
 } | {
-    readonly kind: 'redoApplied';
-    readonly opKind: TmGridOpKind;
-    readonly skippedRows: number;
-} | {
     readonly kind: 'undoSkippedMissingRows';
-} | {
-    readonly kind: 'redoSkippedMissingRows';
-} | {
-    readonly kind: 'moveIntoDescendantRejected';
-} | {
-    readonly kind: 'editorCancelledRowRemoved';
-} | {
-    readonly kind: 'rowsInserted';
-    readonly count: number;
-} | {
-    readonly kind: 'rowsDeleted';
-    readonly count: number;
-} | {
-    readonly kind: 'rowsMoved';
-    readonly count: number;
 };
 
 // @public
-export type TmGridOpKind = 'cellEdit' | 'clear' | 'paste' | 'fillDown' | 'cutMove' | 'rowInsert' | 'rowDelete' | 'rowMove' | 'transaction';
+export type TmGridOpKind = 'cellEdit' | 'clear' | 'cutMove' | 'fillDown' | 'paste' | 'rowDelete' | 'rowInsert' | 'rowMove' | 'transaction';
 
 // @public
 export interface TmGridOrderSnapshot {
@@ -513,7 +513,7 @@ export interface TmGridRange {
 }
 
 // @public
-export type TmGridRangeKind = 'cells' | 'rows' | 'cols' | 'all';
+export type TmGridRangeKind = 'all' | 'cells' | 'cols' | 'rows';
 
 // @public
 export interface TmGridRect {
@@ -641,7 +641,7 @@ export interface TmSerializeHtmlTableArgs {
     readonly rawValues?: ReadonlyArray<ReadonlyArray<{
         readonly value: unknown;
     } | undefined>>;
-    readonly rowIds?: ReadonlyArray<string | number>;
+    readonly rowIds?: ReadonlyArray<number | string>;
 }
 
 // @public

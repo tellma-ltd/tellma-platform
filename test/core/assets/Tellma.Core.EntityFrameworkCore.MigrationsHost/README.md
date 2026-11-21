@@ -7,9 +7,10 @@ design-time target of CI's `design-e2e` job (the Phase-1 `ProjectReference` disc
 
 Its model is a representative sample of the table-types feature surface: fluent and attribute
 opt-ins, pack→leaf attribute inheritance, column exclusion, rowversion, computed-column
-exclusion, grants, built-in primitive types, per-table `sq_*` sequences starting above the
-reserved seed band, and in-band `HasData` rows. There is deliberately **no IDENTITY column
-anywhere** (IDs are app-assigned from sequences per the architecture).
+exclusion, grants, built-in primitive types, standalone types (one with a `UseCollation`
+column), per-table `sq_*` sequences starting above the reserved seed band, and in-band
+`HasData` rows. There is deliberately **no IDENTITY column anywhere** (IDs are app-assigned
+from sequences per the architecture).
 
 Used by:
 

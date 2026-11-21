@@ -1,0 +1,14 @@
+<Project>
+  <!-- SkiaSharp.NativeAssets.Win32 ships libSkiaSharp.pdb, about 100 MB, beside each Windows
+       native library, and NuGet copies it as a native asset into the build output, the deps.json
+       and every publish. Symbols are no runtime asset: removing them from the resolved copy-local
+       items after package assets resolve keeps them out of all three, while the native libraries
+       themselves still load. Every project that resolves the package transitively runs this, which
+       is why it ships as buildTransitive and why the repository imports it for in-repo consumers. -->
+  <Target Name="TellmaDropSkiaNativeSymbols" AfterTargets="ResolvePackageAssets">
+    <ItemGroup>
+      <RuntimeTargetsCopyLocalItems Remove="@(RuntimeTargetsCopyLocalItems)" Condition="'%(Extension)' == '.pdb' and '%(NuGetPackageId)' == 'SkiaSharp.NativeAssets.Win32'" />
+      <NativeCopyLocalItems Remove="@(NativeCopyLocalItems)" Condition="'%(Extension)' == '.pdb' and '%(NuGetPackageId)' == 'SkiaSharp.NativeAssets.Win32'" />
+    </ItemGroup>
+  </Target>
+</Project>
