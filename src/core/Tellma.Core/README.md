@@ -1258,10 +1258,49 @@ a call with attachments, so a channel sender's tenantless gate scope needs neith
 `MaxMessageBytes` (7 MiB, 1 KiB to 20 MiB) and `MaxRecipients` (50, 1 to 1000). The outgoing
 emails' stack (route segment `outgoing-emails`) serves the query, the details and the delete by
 ids, read-only to MCP; a delete of a row that may still be sent (unsettled, with a live job) is
-refused as `Email.NotDeletable` at `Ids[i]`. The `core.outgoing-email` handler (25 jobs a claim,
-one claim at a time, twelve attempts backing off from one minute to two hours, run in a read-only
-tenant, failure notices to the inbox alone) is registered so the enqueue can name it; its dispatch
-is not built yet, so every claim fails without sending and each row stays `Pending`.
+refused as `Email.NotDeletable` at `Ids[i]`. A request's `Source` is `api` or `notification`; any
+other is refused before anything is staged. Each enlisted call counts its rows on
+`tellma.outbox.enqueued` (meter `Tellma.Core`, tag `source`).
+
+`OutgoingEmailHandler` runs `core.outgoing-email` (25 jobs a claim, one claim at a time per tenant,
+twelve attempts backing off from one minute to two hours, run in a read-only tenant, failure notices
+to the inbox alone). Each claim:
+
+1. **Triages** the rows as the claim loaded them: a settled row succeeds unsent; a row still
+   `Sending` was interrupted after it may have reached the provider, so it settles `Failed` with
+   `Email.Interrupted` (logged as `OutboxSendInterrupted`) rather than being sent twice; a pending
+   row whose job is being cancelled is left alone, so its job ends cancelled.
+2. **Loads** the pending rows' attachments in one read round trip joined to their blobs, then reads
+   each object whole from the store; a row whose object is missing is unsendable
+   (`Email.AttachmentMissing`), as is one whose stored addresses no longer parse
+   (`Email.InvalidMessage`).
+3. **Pre-marks** the pending rows `Sending` and counts the attempt, in one maintenance round trip
+   that returns the rows now sending, so a re-run returns the same rows. A claim whose host is
+   stopping or whose lease was lost stops before it, every row still pending.
+4. **Sends** the sendable rows in one call to the email sender with no cancellation, each message
+   correlated as `(outbox, rowId, tenantId)`. A sender that throws sent nothing, so every message
+   failed transiently (logged as `OutboxSendFailed` with the exception's type alone); a sender that
+   answers another number of results than messages fails the claim with the rows still sending, so
+   the next claim fails them rather than send any twice.
+5. **Settles** every verdict in one maintenance round trip, matched on `State = 'Sending'`, before
+   any job is marked: `Sent` keeps the provider's id and whether delivery events follow; `Sandboxed`
+   keeps neither; `Rejected` keeps the provider's detail; a transient failure returns the row to
+   `Pending` and retries its job with `Email.TransientFailure` while attempts remain, and fails it
+   with `Email.AttemptsExhausted` on the twelfth. Every settled row is counted on
+   `tellma.outbox.settled` (tag `state`), and each sent or sandboxed row's wait from its enqueue to
+   its send, on the database clock, on `tellma.outbox.latency` (seconds).
+6. **Notifies** the tenant's administrators once when any row settled rejected or failed:
+   `core.email.failed` (an error, toasted, `{count}` emails, on the first such row), inbox-only and
+   deduplicated on its type so an unread notice is replaced. A failed administrator lookup is logged
+   as `OutboxNoticeRecipientsFailed` and loses only the notice.
+
+An exception anywhere before the settle leaves every job unmarked, so the job machinery retries the
+claim and the next triage meets the rows as this one left them. The startup check `outbox.sender`
+reports a host whose job worker runs with no email sender registered (the handler resolves the
+sender on each claim, so such a host still builds, and a claim it runs fails before it writes
+anything, every row still pending); the queries in
+`infra/monitoring/outbox` alert on interrupted sends, the failure rate and the latency's 95th
+percentile.
 
 `EmailNotificationChannel` is the `email` channel's sender: each addressed recipient gets one
 internal email, to their contact address or else their sign-in address (a recipient with neither
@@ -2184,7 +2223,15 @@ never called for an action that will not persist):
   action committed, the users who gained an account are recorded in the membership directory. A
   prefix the identity server answered is recorded and raised as `partial-failure` with the ids never
   attempted. A recompose of the persist replays the write-back and never calls the identity server
-  again.
+  again, unless the caller's permission set moved under a welcome email the action enlisted: the
+  outbox's validated rows then fail the re-entry closed as stale, nothing commits, and the admin
+  invites again. Every answered user with a status whose loaded row holds no account or the one answered is
+  sent a welcome email through the outbox with the action's frame, so it commits with the write-back:
+  to their contact address, else their sign-in address, in their own negotiated language and content
+  slot (`Email_UserAdded_Subject`, `_Text` and `_Html` in Core's server resources, naming the tenant,
+  the caller and the tenant's link, and telling an invited or reinvited user to set up their sign-in
+  first). A user whose address the outbox would refuse is skipped and logged as
+  `WelcomeEmailSkipped`; the invite stands.
 - **`issue-credentials`** (single target) creates a client, joins the account on its first
   credentials, links it to the client only while it is still active and still names the client it was
   loaded with (else `Users.Inactive` or `Users.CredentialsConcurrent`, and nothing commits), and

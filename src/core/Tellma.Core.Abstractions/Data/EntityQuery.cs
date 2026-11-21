@@ -43,8 +43,10 @@ namespace Tellma.Core.Abstractions.Data
         public IReadOnlyList<string> Children { get; set; } = [];
 
         /// <summary>
-        ///     Select every mapped property of the root and of each loaded collection, the JSON columns
-        ///     included.
+        ///     Select every mapped property of each loaded collection, the JSON columns included, and add
+        ///     the root's JSON columns to its <see cref="Select" />. The root's other columns are only
+        ///     those the select names, so a caller that wants the whole row names every declared
+        ///     property there.
         /// </summary>
         public bool AllProperties { get; set; }
 

@@ -8,6 +8,7 @@ using Tellma.Core.Abstractions.Notifications;
 using Tellma.Core.Calendars;
 using Tellma.Core.Localization;
 using Tellma.Core.Notifications;
+using Tellma.Core.Outbox;
 
 namespace Tellma.Core.Tests.Outbox
 {
@@ -43,12 +44,12 @@ namespace Tellma.Core.Tests.Outbox
         [Fact]
         public void A_subject_is_one_line_and_one_that_is_too_long_is_cut_with_an_ellipsis()
         {
-            Assert.Equal("Acme: a  b", EmailNotificationChannel.FitSubject(" Acme: a\r\tb "));
+            Assert.Equal("Acme: a  b", OutgoingEmailText.FitSubject(" Acme: a\r\tb "));
 
             string exact = new('s', 500);
-            Assert.Equal(exact, EmailNotificationChannel.FitSubject(exact));
+            Assert.Equal(exact, OutgoingEmailText.FitSubject(exact));
 
-            string cut = EmailNotificationChannel.FitSubject(new string('s', 600));
+            string cut = OutgoingEmailText.FitSubject(new string('s', 600));
             Assert.Equal(500, cut.Length);
             Assert.EndsWith("…", cut, StringComparison.Ordinal);
         }
@@ -59,7 +60,7 @@ namespace Tellma.Core.Tests.Outbox
             // The 499th and 500th characters are one emoji: the cut keeps neither half of it.
             string subject = new string('s', 498) + "\U0001F4E6" + new string('t', 10);
 
-            string cut = EmailNotificationChannel.FitSubject(subject);
+            string cut = OutgoingEmailText.FitSubject(subject);
 
             Assert.Equal(new string('s', 498) + "…", cut);
             Assert.All(cut, static c => Assert.False(char.IsSurrogate(c)));

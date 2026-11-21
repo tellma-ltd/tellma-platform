@@ -4,28 +4,40 @@
 // LICENSE file in the root directory of this source tree.
 
 using Microsoft.Data.SqlClient;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Hosting.Internal;
+using Microsoft.Extensions.Logging;
 using System.Globalization;
 using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Caching;
 using Tellma.Core.Abstractions.Crud;
+using Tellma.Core.Abstractions.Email;
 using Tellma.Core.Abstractions.Notifications;
+using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.Crud;
 using Tellma.Core.Data.Batches;
+using Tellma.Core.Email;
 using Tellma.Core.IntegrationTests.Jobs;
 using Tellma.Core.Notifications;
 using Tellma.Core.Testing.Blobs;
+using Tellma.Core.Testing.Email;
 using Tellma.Testing.Entities;
+using Tellma.Testing.Support.Logging;
+using Tellma.Testing.Support.Tenancy;
 
 namespace Tellma.Core.IntegrationTests.Outbox
 {
     /// <summary>
     ///     One fixture database for the outbox's tests, created once with its users and reset before
     ///     each test. Its host stores blobs in memory, sends notification email through the platform's
-    ///     email channel and sms through a sender a test can make throw, runs the scripted job handlers
-    ///     whose frames enqueue, lets the stacks own their tables as in production, and audits every
-    ///     batch's writes against change tracking.
+    ///     email channel and sms through a sender a test can make throw, sends the sending jobs'
+    ///     emails through the platform's email pipeline onto a capturing transport a test scripts,
+    ///     under a sandbox switch a test can turn on, runs the scripted job handlers whose frames
+    ///     enqueue, keeps every log event, lets the stacks own their tables as in production, and
+    ///     audits every batch's writes against change tracking.
     /// </summary>
     public sealed class OutboxDatabase : IAsyncLifetime
     {
@@ -90,6 +102,15 @@ namespace Tellma.Core.IntegrationTests.Outbox
         /// <summary>The host's blob store.</summary>
         public InMemoryBlobStore Blobs { get; private set; } = new();
 
+        /// <summary>The email pipeline's transport: every message the router passes on captured, each result scripted.</summary>
+        public CapturingEmailSender Sender { get; private set; } = new();
+
+        /// <summary>Whether the email pipeline routes the tenant's mail as a sandbox tenant's.</summary>
+        public StubSandboxContext Sandbox { get; } = new();
+
+        /// <summary>Every log event of the host, with every structured value.</summary>
+        public StateCapturingLoggerProvider Logs { get; } = new();
+
         /// <summary>What the scripted handlers do, set by each test.</summary>
         public JobRunScript Script { get; } = new();
 
@@ -112,6 +133,19 @@ namespace Tellma.Core.IntegrationTests.Outbox
                     _ = services.AddScoped<INotificationChannel, EmailNotificationChannel>();
                     _ = services.AddSingleton(Sms);
                     _ = services.AddScoped<INotificationChannel, SwitchableSms>();
+
+                    // --- The email pipeline over the capturing transport, outside Development so
+                    // only the configured transport sends, under the sandbox switch ---
+                    _ = services.AddSingleton<IConfiguration>(new ConfigurationBuilder()
+                        .AddInMemoryCollection(new Dictionary<string, string?> { ["Email:Provider"] = CapturingEmailServiceCollectionExtensions.TransportName })
+                        .Build());
+                    _ = services.AddSingleton<IHostEnvironment>(new HostingEnvironment { EnvironmentName = Environments.Production, ApplicationName = "Tellma.Core.IntegrationTests" });
+                    _ = services.AddTellmaEmail();
+                    Sender = services.AddCapturingEmail(CapturingEmailMode.Transport);
+                    _ = services.Replace(ServiceDescriptor.Scoped<ISandboxContext>(_ => Sandbox));
+
+                    // --- The log that keeps every event ---
+                    _ = services.AddSingleton<ILoggerProvider>(Logs);
 
                     // --- The scripted handlers' script and the one administrator ---
                     _ = services.AddSingleton(Script);
@@ -136,20 +170,33 @@ namespace Tellma.Core.IntegrationTests.Outbox
                 UserInsert(AdministratorId, "Admin", contactEmail: null, timeZone: null));
         }
 
-        /// <summary>Deletes every row a test may have written, the users kept, and forgets the script and the sms switch.</summary>
+        /// <summary>
+        ///     Deletes every row a test may have written, the users kept, and forgets the script, the
+        ///     sms and sandbox switches and the captured emails; the transport sends every email again. The log keeps
+        ///     every test's events, so a test finds its own by the ids it wrote.
+        /// </summary>
         /// <returns>A task that completes when the database is reset.</returns>
         public async Task ResetAsync()
         {
             await SqlServerFixture.ExecuteAsync(ConnectionString, ResetText);
             Script.Reset();
             Sms.Fails = false;
+            Sandbox.IsSandbox = false;
+            Sender.Clear();
+            Sender.OnSending(static (_, ordinal) => new EmailSendResult(
+                EmailSendOutcome.Sent, string.Create(CultureInfo.InvariantCulture, $"capture-{ordinal}"), ExpectsDeliveryEvents: true));
         }
 
         /// <inheritdoc />
-        public ValueTask DisposeAsync()
+        public async ValueTask DisposeAsync()
         {
             GC.SuppressFinalize(this);
-            return _tenant?.DisposeAsync() ?? ValueTask.CompletedTask;
+            if (_tenant is not null)
+            {
+                await _tenant.DisposeAsync();
+            }
+
+            Logs.Dispose();
         }
 
         /// <summary>A user's sign-in address.</summary>

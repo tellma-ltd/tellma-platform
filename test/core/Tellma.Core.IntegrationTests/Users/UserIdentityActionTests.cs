@@ -28,7 +28,8 @@ namespace Tellma.Core.IntegrationTests.Users
     ///     the invite's write-back and its transitions, the invitation status under the caller's read
     ///     decision, service credentials issued, rotated and revoked, refused when the account changed
     ///     while its client was created, an invite answered in part, a recomposed persist that calls the
-    ///     identity server once, an unconfirmed warning that calls it never, the round-trip budgets of
+    ///     identity server once, the welcome emails committed with the invite's write-back, an
+    ///     unconfirmed warning that calls it never, the round-trip budgets of
     ///     the users' writes, no transaction open while the identity server is called, and a user delete
     ///     that takes the rows its keys cascade to.
     /// </summary>
@@ -173,6 +174,7 @@ namespace Tellma.Core.IntegrationTests.Users
             int ada = await SeedNewAsync("Ada");
             int bob = await SeedNewAsync("Bob");
             await WarmAsync(admin);
+            await WarmInviteAsync(admin);
             ConcurrentQueue<int> open = new();
             _identity.OnInvite = async (invitations, cancellationToken) =>
             {
@@ -197,9 +199,11 @@ namespace Tellma.Core.IntegrationTests.Users
             await WarmAsync(admin);
             _identity.OnInvite = async (invitations, _) =>
             {
-                // The caller's permissions move while the identity server answers, so the persist's guard refuses the first send.
+                // The caller's permissions move while the identity server answers, so the persist's guard
+                // refuses the first send. The answer is a refusal, which welcomes nobody, so the persist
+                // carries no enlisted group and its re-entry replays the write-back.
                 await fixture.BumpPermissionsAsync(ann);
-                return [.. invitations.Select(static invitation => new IdentityInvitationResult(invitation.Email, ScriptedIdentityClient.SubjectOf(invitation.Email), InviteStatus.Invited, null))];
+                return [.. invitations.Select(static invitation => new IdentityInvitationResult(invitation.Email, null, null, "account_disabled"))];
             };
 
             await using AsyncServiceScope scope = await fixture.SteppedUpScopeAsync(admin, Instance);
@@ -207,11 +211,86 @@ namespace Tellma.Core.IntegrationTests.Users
             int start = access.RoundTrips;
             IReadOnlyList<InviteResult> results = await scope.Users().ExecuteActionAsync<IReadOnlyList<InviteResult>>("invite", [ada], null, new ActionOptions(), Token);
 
-            Assert.Equal([new InviteResult(ada, InviteStatus.Invited, null)], results);
+            Assert.Equal([new InviteResult(ada, null, "account_disabled")], results);
             Assert.Equal(3, access.RoundTrips - start);
             Assert.Single(_identity.Invites);
-            Assert.Equal("Invited", (await RowAsync(ada)).State);
-            Assert.Single(_memberships.Hints());
+            Assert.Equal("account_disabled", (await RowAsync(ada)).LastInviteError);
+            Assert.Empty(await WelcomesAsync(ada));
+        }
+
+        [Fact]
+        public async Task A_permission_move_under_an_enlisted_welcome_fails_the_invite_closed_and_commits_nothing()
+        {
+            (int ann, string admin) = await fixture.SeedAdministratorAsync("Ann");
+            int ada = await SeedNewAsync("Ada");
+            await WarmInviteAsync(admin);
+            _identity.OnInvite = async (invitations, _) =>
+            {
+                // The caller's permissions move while the identity server answers. The welcome's group
+                // was validated under the set before, so the persist's re-entry refuses to commit it.
+                await fixture.BumpPermissionsAsync(ann);
+                return [.. invitations.Select(static invitation => new IdentityInvitationResult(invitation.Email, ScriptedIdentityClient.SubjectOf(invitation.Email), InviteStatus.Invited, null))];
+            };
+
+            _ = await Assert.ThrowsAsync<StaleContextException>(() => InviteAsync(admin, ada));
+
+            // The identity server was asked once; neither the write-back nor the welcome committed.
+            Assert.Single(_identity.Invites);
+            Assert.Null((await RowAsync(ada)).Subject);
+            Assert.Empty(await WelcomesAsync(ada));
+            Assert.Empty(_memberships.Hints());
+        }
+
+        // --- The welcome email ---
+
+        [Fact]
+        public async Task An_invite_commits_each_added_user_s_welcome_email_and_its_sending_job_with_the_write_back()
+        {
+            (_, string admin) = await fixture.SeedAdministratorAsync("Ann");
+            int ada = await SeedNewAsync("Ada");
+            int bob = await SeedNewAsync("Bob");
+            int cal = await SeedNewAsync("Cal");
+            InviteStatus[] statuses = [InviteStatus.Invited, InviteStatus.Reinvited, InviteStatus.Active];
+            _identity.OnInvite = (invitations, _) => Task.FromResult<IReadOnlyList<IdentityInvitationResult>>(
+                [.. invitations.Select((invitation, index) => new IdentityInvitationResult(invitation.Email, ScriptedIdentityClient.SubjectOf(invitation.Email), statuses[index], null))]);
+
+            _ = await InviteAsync(admin, ada, bob, cal);
+
+            // --- One pending row per user, to their address, regarding them, from the caller ---
+            IReadOnlyList<IReadOnlyDictionary<string, object?>> emails = await WelcomesAsync(ada, bob, cal);
+            Assert.Equal([ada, bob, cal], emails.Select(static email => (int)email["RecipientUserId"]!));
+            for (int index = 0; index < emails.Count; index++)
+            {
+                IReadOnlyDictionary<string, object?> email = emails[index];
+                int user = (int)email["RecipientUserId"]!;
+                Assert.Equal(
+                    ("Pending", "Internal", (object?)CoreResources.User, (object?)(long)user),
+                    (email["State"], email["Audience"], email["RegardingEntity"], email["RegardingId"]));
+                Assert.Contains(Email(user), (string)email["To"]!, StringComparison.Ordinal);
+                Assert.StartsWith("You have been added to ", (string)email["Subject"]!, StringComparison.Ordinal);
+                Assert.StartsWith("Ann added you to ", (string)email["TextBody"]!, StringComparison.Ordinal);
+
+                // Only the invited and the reinvited are told to set up their sign-in first.
+                Assert.Equal(index < 2, ((string)email["TextBody"]!).Contains("sign-in service", StringComparison.Ordinal));
+                Assert.Equal(("core.outgoing-email", "Pending"), (email["HandlerKey"], email["JobStatus"]));
+            }
+        }
+
+        [Fact]
+        public async Task A_refused_or_mismatched_user_receives_no_welcome_email()
+        {
+            (_, string admin) = await fixture.SeedAdministratorAsync("Ann");
+            int ada = await SeedNewAsync("Ada");
+            int bob = await SeedNewAsync("Bob");
+            _identity.OnInvite = static (invitations, _) => Task.FromResult<IReadOnlyList<IdentityInvitationResult>>(
+                [
+                    new(invitations[0].Email, ScriptedIdentityClient.SubjectOf(invitations[0].Email), InviteStatus.Invited, null),
+                    new(invitations[1].Email, null, null, "account_disabled"),
+                ]);
+
+            _ = await InviteAsync(admin, ada, bob);
+
+            Assert.Equal([ada], (await WelcomesAsync(ada, bob)).Select(static email => (int)email["RecipientUserId"]!));
         }
 
         [Fact]
@@ -221,6 +300,7 @@ namespace Tellma.Core.IntegrationTests.Users
             int ada = await SeedNewAsync("Ada");
             int bob = await SeedNewAsync("Bob");
             await WarmAsync(admin);
+            await WarmInviteAsync(admin);
             ConcurrentQueue<int> open = new();
             _identity.OnInvite = async (invitations, cancellationToken) =>
             {
@@ -648,6 +728,20 @@ namespace Tellma.Core.IntegrationTests.Users
             _ = await scope.Users().QueryAsync(new QueryRequest { Select = "Id" }, Token);
         }
 
+        /// <summary>
+        ///     Invites a user of its own once, which warms the id buffers the welcome email's row and
+        ///     its sending job draw from, as a budget counts them; then forgets the invitation and the
+        ///     hint it recorded.
+        /// </summary>
+        /// <param name="subject">The caller.</param>
+        /// <returns>A task that completes when the invite committed.</returns>
+        private async Task WarmInviteAsync(string subject)
+        {
+            _ = await InviteAsync(subject, await SeedNewAsync("Warm"));
+            _identity.Invites.Clear();
+            _memberships.Clear();
+        }
+
         /// <summary>Seeds an active individual of the first tenant who has never been invited.</summary>
         /// <param name="name">The user's name.</param>
         /// <param name="lastError">The last invitation's error; null for none.</param>
@@ -720,6 +814,38 @@ namespace Tellma.Core.IntegrationTests.Users
                 reader.GetInt32(7));
         }
 
+        /// <summary>The welcome emails of users with their sending jobs' handler and status, by recipient then id.</summary>
+        /// <param name="ids">The users.</param>
+        /// <returns>The emails' columns.</returns>
+        private async Task<IReadOnlyList<IReadOnlyDictionary<string, object?>>> WelcomesAsync(params int[] ids)
+        {
+            await using SqlConnection connection = new(fixture.ConnectionString(ConnectDatabase.TenantA));
+            await connection.OpenAsync(Token);
+            await using SqlCommand command = connection.CreateCommand();
+            command.CommandText = Invariant(
+                $"""
+                SELECT e.[RecipientUserId], e.[State], e.[Audience], e.[RegardingEntity], e.[RegardingId], e.[To], e.[Subject], e.[TextBody],
+                       j.[HandlerKey], j.[Status] AS [JobStatus]
+                FROM [core].[OutgoingEmails] AS e JOIN [core].[Jobs] AS j ON j.[Id] = e.[JobId]
+                WHERE e.[RecipientUserId] IN ({string.Join(", ", ids)}) AND e.[RegardingEntity] = N'{CoreResources.User}'
+                ORDER BY e.[RecipientUserId], e.[Id];
+                """);
+            await using SqlDataReader reader = await command.ExecuteReaderAsync(Token);
+            List<IReadOnlyDictionary<string, object?>> rows = [];
+            while (await reader.ReadAsync(Token))
+            {
+                Dictionary<string, object?> row = new(StringComparer.Ordinal);
+                for (int column = 0; column < reader.FieldCount; column++)
+                {
+                    row[reader.GetName(column)] = reader.IsDBNull(column) ? null : reader.GetValue(column);
+                }
+
+                rows.Add(row);
+            }
+
+            return rows;
+        }
+
         /// <summary>Counts a user's row and the rows that reference it through a cascading key.</summary>
         /// <param name="id">The user.</param>
         /// <returns>The user rows, stamps, preferences and notification preferences.</returns>
@@ -790,6 +916,12 @@ namespace Tellma.Core.IntegrationTests.Users
             public IReadOnlyList<(int TenantId, string Subject, bool IsActive)> Records()
             {
                 return [.. _recorded.Select(static record => (record.TenantId, record.Subject, record.IsActive))];
+            }
+
+            /// <summary>Forgets every hint recorded so far.</summary>
+            public void Clear()
+            {
+                _recorded.Clear();
             }
 
             /// <inheritdoc />

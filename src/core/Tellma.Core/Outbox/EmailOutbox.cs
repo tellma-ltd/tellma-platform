@@ -43,7 +43,9 @@ namespace Tellma.Core.Outbox
     /// <param name="services">The scope's services, which the blob service and store are resolved from when a call has attachments.</param>
     /// <param name="accessor">The scope's request context, which names the tenant whose store a copied blob is read from.</param>
     /// <param name="options">The outbox's limits.</param>
-    internal sealed class EmailOutbox(IServiceProvider services, IRequestContextAccessor accessor, IOptions<OutboxOptions> options) : IEmailOutbox, IEnlists<OutgoingEmail>
+    /// <param name="metrics">The outbox's instruments, which count the rows each enlisted save takes.</param>
+    internal sealed class EmailOutbox(IServiceProvider services, IRequestContextAccessor accessor, IOptions<OutboxOptions> options, OutboxMetrics metrics)
+        : IEmailOutbox, IEnlists<OutgoingEmail>
     {
         /// <summary>The arguments of a code that has none.</summary>
         private static readonly IReadOnlyDictionary<string, object?> NoArguments = FrozenDictionary<string, object?>.Empty;
@@ -63,6 +65,14 @@ namespace Tellma.Core.Outbox
                 if (requests[index]?.Message is null)
                 {
                     throw new ArgumentException($"The request at {index} is null or carries no message.", nameof(requests));
+                }
+
+                // The source tags the enqueue counter, whose values are a closed set.
+                if (requests[index].Source is not (EmailEnqueueRequest.ApiSource or EmailEnqueueRequest.NotificationSource))
+                {
+                    throw new ArgumentException(
+                        $"The request at {index} names the source '{requests[index].Source}'; a request's source is '{EmailEnqueueRequest.ApiSource}' or '{EmailEnqueueRequest.NotificationSource}'.",
+                        nameof(requests));
                 }
             }
 
@@ -101,7 +111,10 @@ namespace Tellma.Core.Outbox
             }
 
             // --- Enlist with the caller's frame: the rows, their blobs and their jobs commit with it ---
-            return await this.EnlistSaveAsync(host, rows).ConfigureAwait(false);
+            // Spec 0022 §9.2 counts one per row, by its request's source, once the frame took them.
+            EnlistedSave<OutgoingEmail> enlisted = await this.EnlistSaveAsync(host, rows).ConfigureAwait(false);
+            metrics.RecordEnqueued(requests);
+            return enlisted;
         }
 
         /// <summary>
