@@ -384,6 +384,15 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-177 (orchestrator, 2026-11-21): PC-149 fix 1
+
+- PC-149 fix 1 (6fba6f4c): R1-1 to R1-4 fixed.
+  - R1-2 took the narrow option: a new internal IPayloadScopedValidator lets BlobReferenceValidator report that it judged nothing when no row at any depth holds a blob reference. Grant-dependent validators and hooks still count. The 0018 §9 recompose pin is restored, with warm-buffer and cold-buffer tests that both commit.
+  - R1-3: tellma.outbox.enqueued is counted after commit by an OutboxEnqueuedEffect.
+  - The renamed Acme sandbox-invite test passed 5 of 5 runs.
+- Merge-tree against ba6d6bab shows three content conflicts with PC-090 in the Users area (UserServiceDependencies.cs, UsersRuntimeComposition.cs and UsersKit.cs), for resolution at integration.
+- Note: the outbox address-list parser takes any comma-free token as a bare address, so a garbage To reaches the sender, and address validation is left to the 0007 email pipeline. Carry to PC-143 (the email channel's SendTestAsync and the D-061 check): confirm that the pipeline refuses such an address and the outbox records the refusal.
+
 ### D-176 (orchestrator, 2026-11-21): PC-174 Review 1 rulings
 
 - PC-174 Review 1 (Opus high, dc83114f): 0 blocking, 2 major, 3 minor.

@@ -110,7 +110,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-F65 | pc-f | pc/PC-F65 | impl | flake root cause (D-171); high; one review | fix item | 2026-11-21 |
 | PC-174 | pc-2 | pc/PC-174 | fix1 | impl dc83114f; R1 0/2/3; fix1 (last) then hold behind PC-090, PC-089, PC-149; D-176 | 0015-j; R1 only | 2026-11-21 |
 | PC-181 | pc-f2 | pc/PC-181 | impl | T3 fill under D-140/D-173; high; R2 inherit xhigh (complex) | 0010-f6 | 2026-11-21 |
-| PC-149 | pc-4 | pc/PC-149 | fix1 | impl 7418f050; R1 0/2/2; fix1 (last) then hold behind PC-090, PC-089; D-170, D-174 | 0022-b; R1 only | 2026-11-21 |
+| PC-149 | pc-4 | pc/PC-149 | held | impl 7418f050; R1 0/2/2; fix1 6fba6f4c (all fixed; IPayloadScopedValidator, OutboxEnqueuedEffect); held behind PC-089 (merge-tree: 3 conflicts in Users with PC-090); D-170, D-174 | 0022-b; R1 only | 2026-11-21 |
 
 ## Fix items
 
@@ -444,7 +444,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-140 | MVP | 1 | todo | | | |
 | PC-141 | 0011-h | 2 | done (478b0ab0; CI 43879675326 green) | bb2a2d6, 15d1369 (pc/PC-141) | | |
 | PC-142 | 0015-k | 2 | done (eba471bf; green 44642487470) | e86138b6, 76ee772e, e6f1d0b2, 3083d411, eba471bf | | D-131, D-132, D-134 |
-| PC-143 | 0018-f | 2 | todo | | | carry (D-164): register EmailNotificationChannel in CoreFeature only once PC-149 (dispatch) is on platform-core, else opted-in email piles up as Pending rows whose jobs fail closed; finish SendTestAsync; drop OutboxDatabase.cs's explicit channel registration (it would clash in NotificationChannelsCheck); confirm the gate can build the channel without a tenant (D-061) with its ITenantSettingsCache and IEmailSender dependencies |
+| PC-143 | 0018-f | 2 | todo | | | carry (D-164): register EmailNotificationChannel in CoreFeature only once PC-149 (dispatch) is on platform-core, else opted-in email piles up as Pending rows whose jobs fail closed; finish SendTestAsync; drop OutboxDatabase.cs's explicit channel registration (it would clash in NotificationChannelsCheck); confirm the gate can build the channel without a tenant (D-061) with its ITenantSettingsCache and IEmailSender dependencies; carry (D-177): confirm a garbage To address (the outbox parser accepts any comma-free token) is refused by the 0007 pipeline and the refusal recorded on the outbox row |
 | PC-144 | 0020-e | 2 | done (711641ab; pc 44771340622 green; PR 44774613660 green) | 7d470e81, 8e457c6b, 711641ab | | D-150, D-152, D-154 |
 | PC-145 | 0020-f | 2 | done (3c61aac3; pc 44858269311 green) | 1226a7c1, e244b0f9, 3c61aac3 | | D-158; carry (D-153): add core.Job to AccessEvaluationTests' list of self-scoped securables (Filtered with no grants); carry (D-156): the core.job-retention and core.file-retention DELETE of core.Jobs must declare core.ScheduleStates (FK_ScheduleStates_LastJobId SET NULL) and every IJobEntity table (FK_<Table>_JobId SET NULL), from ForeignKeyActions.WrittenByDeleting once PC-F62 is on platform-core (whichever of PC-145 and PC-F62 lands second wires it) |
 | PC-146 | 0021-c | 2 | done (d7ebba3c; pc 44840986549 green) | 5efa9448, 261870b7, 33c39b3f, d7ebba3c | | D-151, D-153; carry from PC-099 r1 closed (Notification self-scope added) |
