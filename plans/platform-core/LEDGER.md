@@ -107,11 +107,11 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC | Slot | Branch | Step | Implementer agent (name / id) | Reviewer agent (name / id) | Started (UTC) |
 |---|---|---|---|---|---|---|
 | PC-096 | pc-1 | pc/PC-096 | impl | launched after PC-089 done; xhigh | 0025-b; R1 + R2 inherit xhigh | 2026-11-21 |
-| PC-091 | pc-3 | pc/PC-091 | integrating | impl 059dbd0e (7 deviations accepted); R1 0/0/2; fix1 f2eaf519 (access actions MCP Hidden; filter-too-complex tests via BatchScript.Refuses); released after PC-F65 done; D-180 | 0018-e; R1 only | 2026-11-21 |
+| PC-091 | pc-3 | pc/PC-091 | ci-pending | impl 059dbd0e; R1 0/0/2; fix1 f2eaf519; integrate 65375312 (no conflicts; goldens regenerated, no diff); pc run 44949147181; D-180 | 0018-e; R1 only | 2026-11-21 |
 | PC-175 | pc-2 | pc/PC-175 | impl | launched after PC-174 done; T3 fill (D-173); high | 0019-b; R1 only | 2026-11-21 |
 | PC-212 | pc-4 | pc/PC-212 | impl | launched after PC-149 done; T3 fill (D-173); high | 0017-e; R1 only | 2026-11-21 |
 | PC-214 | pc-f | pc/PC-214 | impl | launched after PC-F65 done; T3 fill (D-173); high | 0022-c; R1 only | 2026-11-21 |
-| PC-181 | pc-f2 | pc/PC-181 | fix2 | impl 19eb6762; R1 0/2/4; fix1 651abb4c; R2 inherit xhigh 0/1/3 (keyless measures count; LEN of parameters; QX4011; null tests on parameters); fix2 then hold behind PC-F65, PC-091; D-181, D-182 | 0010-f6 | 2026-11-21 |
+| PC-181 | pc-f2 | pc/PC-181 | held | impl 19eb6762; R1 0/2/4; fix1 651abb4c; R2 inherit xhigh 0/1/3; fix2 efec0cc6 (all fixed; length() emits CAST(LEN(x) AS int); null-test exemption covers declarable parameter types); held behind PC-091 (merge-tree clean); D-181, D-182 | 0010-f6 | 2026-11-21 |
 
 ## Fix items
 
@@ -181,6 +181,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-F63 | Nightly client-e2e: 3 WebKit chart-bidi canvas tests fail; dotnet job OS deps unavailable (nightly 44745573605) | done (247691dc; pc 44845403533 green; root cause WebKit drawBidiText carries a cursive final's GPOS y-offset onto later runs; ALM closes Arabic-script words in chart canvas text; D-155, D-160, D-161) | | |
 | PC-F64 | Nightly integration-windows: TenantScopeTests cross-instance suspension refresh failed (nightly 44745573605) | done (97475bd4; pc 44823811836 green; root causes: TenantScopeTests 30 s setup bound under a LocalDB CREATE DATABASE convoy, SMTP tests localhost vs 0.0.0.0, RequestTimeoutTests timer firing before the access guard; D-151, D-155) | | |
 | PC-F65 | Load-starved fixed waits in Core.AspNetCore.Tests (RequestTimeoutTests x2, RateLimitingTests x1 under four-lane local load; D-171) | done (9e21bb68; pc 44945741967 green on 90110751) | d10f3b46, 36592e58, 4dc7053d, 90110751, 9e21bb68 | carry: BlobEndpointTests fixed 10 s/30 s waits and 200 ms delay onto Patience/TestClock (D-183) | pc-f |
+| PC-F66 | CI build-test (windows-latest): vstest.console failed to connect to a testhost within 90 s and aborted that assembly's run while every reported test passed (PR run 44947728191 on 9e21bb68; Windows runner starved by parallel test hosts). Root-cause and fix in ci.yml or the test setup, no retries (D-184) | todo (next free slot) | | | |
 | PC-F02 | systemic e2e flakiness: CI 42456030333 red on 5250c6c (plans-only) with 4 NEW flaky tests | done (R1 1/1/2; CI 42471952389 green), pc-f free | 2c91df4, 4c36d45, 4c89ae1 | 11.32M | grid bundle at its 38 KB ceiling; picker same-frame Enter race open | root-cause all 9; un-quarantine the fixed PC-F01 five |
 
 ## Batch reviews (one per phase)
@@ -223,6 +224,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 
 | Test | Since | Tracking |
 |---|---|---|
+| CI windows-latest unit step: vstest testhost connect timeout (90 s) aborts one assembly under parallel load (PR run 44947728191) | 2026-11-21 | PC-F66 |
 | tellma-core-tools build.spec "stops with exit 3 …" (local load-only timeout) | 2026-11-14 | D-085 |
 | integration fixtures: CREATE DATABASE fails with SQL 1807 (model locked) under concurrent slots (local only) | 2026-11-15 | PC-F47 |
 | Identity InvitationDeliveryStatusApiTests.A_delivered_invitation_reports_what_the_provider_said (expectsDeliveryEvents) under load; passed alone 6/6 | 2026-11-15 | watch |
