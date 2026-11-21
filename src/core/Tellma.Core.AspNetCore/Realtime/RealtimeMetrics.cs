@@ -25,6 +25,12 @@ namespace Tellma.Core.AspNetCore.Realtime
         /// <summary>The outcome of a client invocation, which the hub always refuses.</summary>
         public const string InvocationRefusedOutcome = "invocation-refused";
 
+        /// <summary>The told tag of a close whose <c>session.ended</c> was handed to the transport first.</summary>
+        public const string ToldValue = "true";
+
+        /// <summary>The told tag of a close whose <c>session.ended</c> send failed or did not finish in time.</summary>
+        public const string UntoldValue = "false";
+
         private readonly UpDownCounter<long> _connections;
         private readonly Counter<long> _connects;
         private readonly Counter<long> _closes;
@@ -47,7 +53,7 @@ namespace Tellma.Core.AspNetCore.Realtime
             _closes = meter.CreateCounter<long>(
                 RealtimeTelemetryNames.Closes,
                 unit: "{connection}",
-                description: "Hub connections the server closed, by why.");
+                description: "Hub connections the server closed, by why and whether they were told first.");
             _events = meter.CreateCounter<long>(
                 ApiTelemetryNames.RealtimeEvents,
                 unit: "{event}",
@@ -84,11 +90,15 @@ namespace Tellma.Core.AspNetCore.Realtime
         /// <summary>Records connections the server closed.</summary>
         /// <param name="reason">Why: a <c>session.ended</c> reason.</param>
         /// <param name="count">How many.</param>
-        public void RecordClosed(string reason, int count)
+        /// <param name="told">Whether their <c>session.ended</c> was handed to the transport before the close.</param>
+        public void RecordClosed(string reason, int count, bool told)
         {
             if (count > 0)
             {
-                _closes.Add(count, new KeyValuePair<string, object?>(RealtimeTelemetryNames.ReasonTag, reason));
+                _closes.Add(
+                    count,
+                    new KeyValuePair<string, object?>(RealtimeTelemetryNames.ReasonTag, reason),
+                    new KeyValuePair<string, object?>(RealtimeTelemetryNames.ToldTag, told ? ToldValue : UntoldValue));
             }
         }
 

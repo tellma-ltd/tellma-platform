@@ -38,27 +38,46 @@ namespace Tellma.Core.AspNetCore.Realtime
     ///         every connection once per instance.
     ///     </para>
     ///     <para>
-    ///         An ended session, a revoked (tenant, subject) and an unavailable tenant are remembered
-    ///         for <see cref="MemoLifetime" />, and a connection that joins under one of them is
-    ///         refused: its front door may have passed before the close was recorded. The memo and
-    ///         the admission share one lock, so a connection is either seen by the close's snapshot or
-    ///         refused by the memo.
+    ///         An ended session, a revoked (tenant, subject) and an unavailable tenant are remembered,
+    ///         and a connection that joins under one of them is refused: its front door may have
+    ///         passed before the close was recorded. On Azure SignalR Service the door is the
+    ///         negotiate, whose token opens a connection for <see cref="AzureMemoLifetime" />;
+    ///         self-hosted the connect request passes the door itself, so the memo only covers the
+    ///         moment between the door and the admission (<see cref="SelfHostedMemoLifetime" />). The
+    ///         memo and the admission share one lock, so a connection is either seen by the close's
+    ///         snapshot or refused by the memo.
     ///     </para>
     ///     <para>
     ///         The connections this instance hosts are told one by one rather than through the
     ///         group, and the group is told without them: on Azure SignalR Service a send to a
     ///         connection this instance hosts travels on that connection's own server connection, the
     ///         one its abort's close follows, so the event cannot be overtaken by the close; and a
-    ///         connection admitted but still joining its groups is told all the same.
+    ///         connection admitted but still joining its groups is told all the same. The sends run
+    ///         side by side, each bounded by <see cref="SendBound" />, so a client that stopped
+    ///         reading delays no other connection's close. Each close is counted as told or untold.
     ///     </para>
     /// </remarks>
     internal sealed class HubConnectionTracker : ISessionTerminationListener, ITenantStateListener
     {
         /// <summary>
-        ///     How long a close is remembered against new connections: the five minutes for which an
-        ///     Azure SignalR Service token can open a connection after its negotiate passed.
+        ///     How long a close is remembered against new connections on Azure SignalR Service: the
+        ///     five minutes for which the Azure web defaults' token can open a connection after its
+        ///     negotiate passed.
         /// </summary>
-        public static readonly TimeSpan MemoLifetime = TimeSpan.FromMinutes(5);
+        public static readonly TimeSpan AzureMemoLifetime = TimeSpan.FromMinutes(5);
+
+        /// <summary>
+        ///     How long a close is remembered against new connections when the hub is self-hosted:
+        ///     long enough to cover a connect between its front door and its admission, short enough
+        ///     that a member reactivated at once is not refused for long.
+        /// </summary>
+        public static readonly TimeSpan SelfHostedMemoLifetime = TimeSpan.FromSeconds(10);
+
+        /// <summary>
+        ///     How long a close waits for its <c>session.ended</c> sends: one still pending then counts
+        ///     as untold, and its connection is aborted with the rest.
+        /// </summary>
+        public static readonly TimeSpan SendBound = TimeSpan.FromSeconds(2);
 
         /// <summary>The <c>cache.changed</c> tag of the tenant's own state.</summary>
         public const string TenantCacheTag = "tenant";
@@ -191,18 +210,19 @@ namespace Tellma.Core.AspNetCore.Realtime
             }
 
             // --- Told first, in every tenant; then closed here, group by group ---
+            HashSet<string> untold = new(StringComparer.Ordinal);
             foreach (int tenantId in tenants)
             {
                 foreach (string handle in handles.Order(StringComparer.Ordinal))
                 {
                     List<TrackedConnection> told = [.. local.Where(c => c.Claims.TenantId == tenantId && c.Claims.SessionHandle == handle)];
-                    await TellAsync(HubGroups.Session(tenantId, handle), tenantId, told, SessionEndedEvent.SessionTerminated, throughGroup: true).ConfigureAwait(false);
+                    untold.UnionWith(await TellAsync(HubGroups.Session(tenantId, handle), tenantId, told, SessionEndedEvent.SessionTerminated, throughGroup: true).ConfigureAwait(false));
                 }
             }
 
             foreach (IGrouping<string, TrackedConnection> group in local.GroupBy(static c => HubGroups.Session(c.Claims.TenantId, c.Claims.SessionHandle)))
             {
-                Close(group.Key, [.. group], SessionEndedEvent.SessionTerminated);
+                Close(group.Key, [.. group], SessionEndedEvent.SessionTerminated, untold);
             }
         }
 
@@ -219,8 +239,8 @@ namespace Tellma.Core.AspNetCore.Realtime
             Remember(_revokedSubjects, [(tenantId, subject)]);
             List<TrackedConnection> local = Snapshot(c => c.Claims.TenantId == tenantId && c.Claims.Subject == subject);
             string group = HubGroups.Subject(tenantId, subject);
-            await TellAsync(group, tenantId, local, SessionEndedEvent.AccessRevoked, throughGroup: true).ConfigureAwait(false);
-            Close(group, local, SessionEndedEvent.AccessRevoked);
+            IReadOnlySet<string> untold = await TellAsync(group, tenantId, local, SessionEndedEvent.AccessRevoked, throughGroup: true).ConfigureAwait(false);
+            Close(group, local, SessionEndedEvent.AccessRevoked, untold);
         }
 
         /// <inheritdoc />
@@ -298,12 +318,18 @@ namespace Tellma.Core.AspNetCore.Realtime
         /// <summary>Whether the hub is on; with it off no connection exists to track or close.</summary>
         private bool Enabled => _options.Value.Enabled;
 
+        /// <summary>
+        ///     How long a close is remembered in this hosting mode: <see cref="AzureMemoLifetime" /> on
+        ///     Azure SignalR Service, <see cref="SelfHostedMemoLifetime" /> otherwise.
+        /// </summary>
+        private TimeSpan MemoLifetime => _hosting.Mode == RealtimeMode.Azure ? AzureMemoLifetime : SelfHostedMemoLifetime;
+
         /// <summary>Whether a remembered close is still in force.</summary>
         /// <typeparam name="TKey">The memo's key.</typeparam>
         /// <param name="memo">The memo.</param>
         /// <param name="key">The key.</param>
         /// <param name="now">The time now.</param>
-        /// <returns>True when the key was closed less than <see cref="MemoLifetime" /> ago.</returns>
+        /// <returns>True when the key was closed less than the mode's memo lifetime ago.</returns>
         private static bool Live<TKey>(Dictionary<TKey, DateTimeOffset> memo, TKey key, DateTimeOffset now)
             where TKey : notnull
         {
@@ -354,79 +380,107 @@ namespace Tellma.Core.AspNetCore.Realtime
             string group = HubGroups.Tenant(tenantId);
 
             // Every instance runs this close, so each tells its own connections alone.
-            await TellAsync(group, tenantId, local, SessionEndedEvent.TenantUnavailable, throughGroup: false).ConfigureAwait(false);
-            Close(group, local, SessionEndedEvent.TenantUnavailable);
+            IReadOnlySet<string> untold = await TellAsync(group, tenantId, local, SessionEndedEvent.TenantUnavailable, throughGroup: false).ConfigureAwait(false);
+            Close(group, local, SessionEndedEvent.TenantUnavailable, untold);
         }
 
         /// <summary>
         ///     Sends <c>session.ended</c> to a group of one tenant: to the connections this instance
-        ///     hosts one by one, then, when asked and the mode reaches every instance, to the rest of
-        ///     the group. Each send stands alone, so one that fails leaves the others told.
+        ///     hosts, each on its own connection and all at once, and, when asked and the mode reaches
+        ///     every instance, to the rest of the group. Each send stands alone and waits at most
+        ///     <see cref="SendBound" />, so one that fails or stalls leaves the others told.
         /// </summary>
         /// <param name="group">The group.</param>
         /// <param name="tenantId">The group's tenant, which the envelope names.</param>
         /// <param name="local">The group's connections on this instance, which the close aborts next.</param>
         /// <param name="reason">Why the connections close.</param>
         /// <param name="throughGroup">Whether the other instances' connections are told through the group.</param>
-        /// <returns>A task that never faults.</returns>
-        private async Task TellAsync(string group, int tenantId, IReadOnlyList<TrackedConnection> local, string reason, bool throughGroup)
+        /// <returns>The ids of this instance's connections whose send failed or did not finish in time; it never faults.</returns>
+        private async Task<IReadOnlySet<string>> TellAsync(string group, int tenantId, IReadOnlyList<TrackedConnection> local, string reason, bool throughGroup)
         {
             ClientEventEnvelope envelope = new(SessionEndedEvent.Name, tenantId, new SessionEndedPayload(reason));
             string[] localIds = [.. local.Select(static c => c.Context.ConnectionId)];
-            bool told = false;
 
-            // --- This instance's, each on its own connection, ahead of its abort ---
+            // --- This instance's, each on its own connection, ahead of its abort, side by side ---
             // A connection whose send fails is closed untold: the client sees the connection end, and
             // the ticket's expiry and the front door hold the rest.
-            foreach (string connectionId in localIds)
-            {
-                told |= await TrySendAsync(_hub.Clients.Client(connectionId), envelope).ConfigureAwait(false);
-            }
+            Task<bool>[] direct = [.. localIds.Select(id => TrySendAsync(_hub.Clients.Client(id), envelope))];
 
             // --- The other instances' connections, through the group, when the mode reaches them ---
-            if (throughGroup && _hosting.ReachesEveryInstance)
+            Task<bool> grouped = throughGroup && _hosting.ReachesEveryInstance
+                ? TrySendAsync(_hub.Clients.GroupExcept(group, localIds), envelope)
+                : Task.FromResult(false);
+            bool[] results = await Task.WhenAll(direct).ConfigureAwait(false);
+            bool groupTold = await grouped.ConfigureAwait(false);
+
+            // --- Counted only when every connection here was told, or, with none here, the group was ---
+            HashSet<string> untold = new(StringComparer.Ordinal);
+            for (int i = 0; i < localIds.Length; i++)
             {
-                told |= await TrySendAsync(_hub.Clients.GroupExcept(group, localIds), envelope).ConfigureAwait(false);
+                if (!results[i])
+                {
+                    _ = untold.Add(localIds[i]);
+                }
             }
 
-            if (told)
+            if (localIds.Length > 0 ? untold.Count == 0 : groupTold)
             {
                 _metrics.RecordEvent(envelope.Name);
             }
+
+            return untold;
         }
 
-        /// <summary>Sends an envelope through a proxy, logging a failure.</summary>
+        /// <summary>Sends an envelope through a proxy within <see cref="SendBound" />, logging a failure.</summary>
         /// <param name="proxy">The connections addressed.</param>
         /// <param name="envelope">The envelope.</param>
-        /// <returns>True when the send succeeded.</returns>
+        /// <returns>True when the send succeeded in time.</returns>
         private async Task<bool> TrySendAsync(IClientProxy proxy, ClientEventEnvelope envelope)
         {
+            // The bound is the real clock's: it is the transport the send waits on.
+            using CancellationTokenSource bound = new(SendBound);
+            Task? send = null;
             try
             {
-                await proxy.SendAsync(TellmaHub.EventMethod, envelope).ConfigureAwait(false);
+                send = proxy.SendAsync(TellmaHub.EventMethod, envelope, bound.Token);
+                await send.WaitAsync(bound.Token).ConfigureAwait(false);
                 return true;
             }
             catch (Exception exception) when (exception is not OutOfMemoryException)
             {
+                // A send abandoned at the bound may fault later; its fault is observed, never left
+                // to the finalizer.
+                _ = send?.ContinueWith(
+                    static task => _ = task.Exception,
+                    CancellationToken.None,
+                    TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
+                    TaskScheduler.Default);
                 NotificationsLog.ClientEventFailed(_logger, exception, envelope.Name);
                 return false;
             }
         }
 
-        /// <summary>Aborts a group's connections this instance hosts, counting and logging them.</summary>
+        /// <summary>Aborts a group's connections this instance hosts, counting them as told or untold and logging them.</summary>
         /// <param name="group">The group told.</param>
         /// <param name="connections">Its connections on this instance.</param>
         /// <param name="reason">Why.</param>
-        private void Close(string group, IReadOnlyList<TrackedConnection> connections, string reason)
+        /// <param name="untold">The ids of the connections whose <c>session.ended</c> was not handed to the transport.</param>
+        private void Close(string group, IReadOnlyList<TrackedConnection> connections, string reason, IReadOnlySet<string> untold)
         {
+            int unheard = 0;
             foreach (TrackedConnection connection in connections)
             {
                 // The abort ends the hub's side in every mode; Azure SignalR Service's SDK then closes
                 // the client's connection at the service.
                 connection.Context.Abort();
+                if (untold.Contains(connection.Context.ConnectionId))
+                {
+                    unheard++;
+                }
             }
 
-            _metrics.RecordClosed(reason, connections.Count);
+            _metrics.RecordClosed(reason, connections.Count - unheard, told: true);
+            _metrics.RecordClosed(reason, unheard, told: false);
             RealtimeLog.HubConnectionsClosed(_logger, group, connections.Count, reason);
         }
 

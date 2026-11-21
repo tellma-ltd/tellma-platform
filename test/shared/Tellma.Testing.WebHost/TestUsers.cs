@@ -25,6 +25,9 @@ namespace Tellma.Testing.WebHost
         /// <summary>The subjects a fresh read finds deactivated, by tenant.</summary>
         public ConcurrentDictionary<(int TenantId, string Subject), bool> Deactivated { get; } = new();
 
+        /// <summary>What every guarded round trip throws, as an unreachable tenant database would; null for none.</summary>
+        public Exception? Failure { get; set; }
+
         /// <summary>How many guarded round trips ran.</summary>
         public int Prologues => Volatile.Read(ref _prologues);
 
@@ -47,7 +50,7 @@ namespace Tellma.Testing.WebHost
     /// <summary>
     ///     The guarded batch runner, as one round trip's prologue sees the tenant's users: a subject
     ///     <see cref="TestUsers.Deactivated" /> lists is refused as no longer a member; any other's
-    ///     batch runs empty and reads nothing.
+    ///     batch runs empty and reads nothing, unless <see cref="TestUsers.Failure" /> fails them all.
     /// </summary>
     /// <param name="users">The scripted users.</param>
     /// <param name="accessor">The scope's request context.</param>
@@ -61,6 +64,11 @@ namespace Tellma.Testing.WebHost
             CancellationToken cancellationToken = default)
         {
             users.CountPrologue();
+            if (users.Failure is { } failure)
+            {
+                throw failure;
+            }
+
             RequestContext context = accessor.Current;
             int tenantId = context.RequireTenant().Id;
             if (context.Subject is { } subject && users.Deactivated.ContainsKey((tenantId, subject)))

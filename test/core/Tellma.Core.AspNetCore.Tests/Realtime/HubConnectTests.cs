@@ -271,6 +271,26 @@ namespace Tellma.Core.AspNetCore.Tests.Realtime
             Assert.Equal(RealtimeMetrics.RefusedOutcome, refused.Tags[RealtimeTelemetryNames.OutcomeTag]);
         }
 
+        [Theory]
+        [InlineData(false, HttpStatusCode.InternalServerError)]
+        [InlineData(true, HttpStatusCode.ServiceUnavailable)]
+        public async Task A_server_failure_at_the_front_door_is_no_refused_connection(bool catalogUnavailable, HttpStatusCode status)
+        {
+            // An outage answers every reconnect with a server error; none of them is a client refused.
+            CapturingLoggerProvider logs = new();
+            await using TellmaTestHost host = await RealtimeTestHost.StartAsync(options => CaptureDebug(options, logs));
+            using MetricCollector<long> connects = Collect(host, RealtimeTelemetryNames.Connects);
+            host.Users.Failure = catalogUnavailable
+                ? new TenantUnavailableException(RealtimeTestHost.Active, state: null, TenantProblemCodes.CatalogUnavailable, TimeSpan.FromSeconds(10))
+                : new TimeoutException("The tenant database is unreachable.");
+
+            using HttpResponseMessage response = await RealtimeTestHost.NegotiateAsync(host, RealtimeTestHost.Active, host.Cookie());
+
+            Assert.Equal(status, response.StatusCode);
+            Assert.Empty(connects.GetMeasurementSnapshot());
+            Assert.DoesNotContain(logs.Events, static e => e.EventName == "HubConnectionRefused");
+        }
+
         [Fact]
         public async Task A_connection_closes_when_its_session_ticket_expires()
         {

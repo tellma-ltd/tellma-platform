@@ -14,7 +14,7 @@ namespace Tellma.Core.AspNetCore.Tests.Realtime
     /// <summary>
     ///     The realtime hub's checked-in alert queries, checked back against its instruments: every
     ///     metric, dimension and compared value resolves to something the hub can emit, and every
-    ///     instrument but the connection gauge backs an alert.
+    ///     instrument but the connection gauge and the event counter backs an alert.
     /// </summary>
     public sealed class RealtimeAlertQueryTests
     {
@@ -47,9 +47,10 @@ namespace Tellma.Core.AspNetCore.Tests.Realtime
         }
 
         [Fact]
-        public void Every_instrument_but_the_connection_gauge_backs_an_alert()
+        public void Every_instrument_but_the_connection_gauge_and_the_event_counter_backs_an_alert()
         {
-            Assert.Equal([RealtimeTelemetryNames.Connections], AlertQueries.Uncovered(Queries, Instruments));
+            // The untold-revocation alert reads each close's own told tag, not the event counter.
+            Assert.Equal([RealtimeTelemetryNames.Connections, ApiTelemetryNames.RealtimeEvents], AlertQueries.Uncovered(Queries, Instruments));
         }
     }
 }

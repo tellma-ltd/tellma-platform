@@ -15,7 +15,7 @@ Service instance). Its types are internal, visible to those three.
 |---|---|
 | [TellmaTestHost](TellmaTestHost.cs) | The host and its options (`TestHostOptions`): the environment, the settings (sound ones by default, the realtime hub off), the catalog rows, the composition and web composition delegates, extra services, and what is mapped. It mints session cookies over stored rows, bearer tokens against the test issuer's key, and the SPA's requests. |
 | [ProbeEndpoints](ProbeEndpoints.cs) | Endpoints on every surface that answer the request context they ran under. |
-| [TestUsers](TestUsers.cs) | The scripted user connection: user ids, deactivations and the count of prologue round trips. |
+| [TestUsers](TestUsers.cs) | The scripted user connection: user ids, deactivations, a failure every prologue round trip throws, and the count of those round trips. |
 | [InMemorySessionRows](InMemorySessionRows.cs) | The session table in memory, with its renewals counted. |
 | [FakeMembershipDirectory](FakeMembershipDirectory.cs) | The membership hints in memory, a failure every read throws, and a count of the reads. |
 | [FakeReconcileStore](FakeReconcileStore.cs) | The membership reconciliation's store in memory. |

@@ -31,7 +31,9 @@ namespace Tellma.Core.AspNetCore.Realtime
     ///     <para>
     ///         A refusal at any step, or at the tenant's resolution before it, is counted as a refused
     ///         connection attempt and logged with its problem code, then answered by the problem
-    ///         mapping as the web surface's read would be. So is a request to the hub that the
+    ///         mapping as the web surface's read would be. A server failure there (an answer of 500
+    ///         or above: an unreachable catalog or tenant database, a schema behind) is no refusal,
+    ///         and is left to the error handling alone. So is a request to the hub that the
     ///         pipeline refused before the door, with a 401 from authentication or a 403 from
     ///         authorization or the CSRF control.
     ///     </para>
@@ -105,7 +107,10 @@ namespace Tellma.Core.AspNetCore.Realtime
             RealtimeLog.HubConnectionRefused(logger, reason);
         }
 
-        /// <summary>Counts and logs a refused connection attempt; a request its client abandoned is neither.</summary>
+        /// <summary>
+        ///     Counts and logs a refused connection attempt. A request its client abandoned is neither,
+        ///     and nor is a server failure, which the problem mapping answers 500 or above.
+        /// </summary>
         /// <param name="exception">What refused it.</param>
         /// <param name="context">The request.</param>
         public void Refused(Exception exception, HttpContext context)
@@ -113,6 +118,12 @@ namespace Tellma.Core.AspNetCore.Realtime
             ArgumentNullException.ThrowIfNull(exception);
             ArgumentNullException.ThrowIfNull(context);
             if (exception is OperationCanceledException && context.RequestAborted.IsCancellationRequested)
+            {
+                return;
+            }
+
+            // An outage would otherwise read as clients refused at the door, every reconnect a count.
+            if (ProblemMapper.Map(exception, ProblemMappingContext.Default).Status >= StatusCodes.Status500InternalServerError)
             {
                 return;
             }

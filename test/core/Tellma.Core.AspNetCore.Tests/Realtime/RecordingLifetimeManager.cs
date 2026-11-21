@@ -15,7 +15,8 @@ namespace Tellma.Core.AspNetCore.Tests.Realtime
 {
     /// <summary>
     ///     The framework's in-process lifetime manager, recording the group sends made through it and
-    ///     failing them on request, as a backplane or the service can fail a group send on its own.
+    ///     failing them on request, as a backplane or the service can fail a group send on its own;
+    ///     and stalling the sends to chosen connections, as a client that stopped reading would.
     /// </summary>
     internal sealed class RecordingLifetimeManager : HubLifetimeManager<TellmaHub>
     {
@@ -26,6 +27,9 @@ namespace Tellma.Core.AspNetCore.Tests.Realtime
 
         /// <summary>Whether a group or group-except send throws after it is recorded.</summary>
         public bool FailGroupSends { get; set; }
+
+        /// <summary>The connections a send to which never completes, by connection id.</summary>
+        public ConcurrentDictionary<string, bool> StalledConnections { get; } = new(StringComparer.Ordinal);
 
         /// <summary>
         ///     Composes the manager into a host and makes the tracker see a mode that reaches every
@@ -79,7 +83,10 @@ namespace Tellma.Core.AspNetCore.Tests.Realtime
         /// <inheritdoc />
         public override Task SendConnectionAsync(string connectionId, string methodName, object?[] args, CancellationToken cancellationToken = default)
         {
-            return _inner.SendConnectionAsync(connectionId, methodName, args, cancellationToken);
+            // A stalled send ignores its token too, as a transport write waiting on a full buffer does.
+            return StalledConnections.ContainsKey(connectionId)
+                ? new TaskCompletionSource().Task
+                : _inner.SendConnectionAsync(connectionId, methodName, args, cancellationToken);
         }
 
         /// <inheritdoc />

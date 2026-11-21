@@ -388,7 +388,9 @@ session's ticket expires. The hub reads the claims from the connection's princip
 request context, which SignalR leaves tenantless: a connection without each claim exactly once is
 refused. A refusal counts `connects{outcome=refused}` and logs `HubConnectionRefused` with its
 problem code, and so does a hub request that authentication (`unauthenticated`), authorization or
-the CSRF control (`csrf-rejected`) answered 401 or 403 before the door.
+the CSRF control (`csrf-rejected`) answered 401 or 403 before the door. A server failure at the
+door (an answer of 500 or above: an unreachable catalog or tenant database, a schema behind) is no
+refusal, and is left to the error handling, so an outage does not read as clients turned away.
 
 **Groups.** A connection joins `t{tid}`, `t{tid}.u{uid}`, `t{tid}.s{subject}` and `t{tid}.x{handle}`,
 every one its tenant's, so the same user or session in another tenant shares no group. The
@@ -402,10 +404,13 @@ other tenant-state change sends `cache.changed` with the `tenant` tag to the ten
 on the instance and closes nothing. A session's end and a revoked access are recorded on one
 instance, so in a mode that reaches every instance they also go to their group (`GroupExcept` the
 instance's own), in every tenant the subject belongs to; a tenant's state change runs on every
-instance, so each tells its own connections alone. Each send stands alone: one that fails leaves
-the others told. A close is remembered for five minutes, so a connection whose negotiate passed
-before it is told `session.ended` with the close's reason and refused at its connect. With
-`Enabled` false the tracker does nothing.
+instance, so each tells its own connections alone. The sends run side by side and each stands
+alone, waiting at most two seconds: one that fails or stalls leaves the others told and delays no
+abort past that bound. A close is remembered, so a connection whose front door passed before it is
+told `session.ended` with the close's reason and refused at its connect: for five minutes on Azure
+SignalR Service, the life of a negotiate's service token, and for ten seconds self-hosted, where
+the connect passes the front door itself, so a user reactivated at once is admitted again within
+seconds. With `Enabled` false the tracker does nothing.
 
 **Hosting modes.** `AddTellmaRealtime(configure)` hands the SignalR builder to the hosting bundle:
 in-process by default, Azure SignalR Service from the Azure web defaults, or a Redis backplane.
@@ -417,7 +422,7 @@ with a letter), and an in-process hub with `Tellma:Jobs:Enabled` false
 or `ExpectedInstances` says several instances share no backplane.
 
 The meter `Tellma.Core.AspNetCore` carries `tellma.realtime.connections` (by `mode`),
-`tellma.realtime.connects` (by `outcome`), `tellma.realtime.closes` (by `reason`) and
+`tellma.realtime.connects` (by `outcome`), `tellma.realtime.closes` (by `reason` and `told`, whether that connection's own `session.ended` reached the transport first) and
 `tellma.realtime.events` (by `event`); `infra/monitoring/realtime` holds the alert queries.
 
 ## CSRF

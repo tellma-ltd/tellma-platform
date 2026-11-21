@@ -6,7 +6,7 @@ on the web host's meter (`Tellma.Core.AspNetCore`).
 | File | Alerts on |
 |---|---|
 | `connects-refused.kql` | An instance refusing more than 30 hub connection attempts a minute for five minutes: a stale SPA build, or someone probing tenants. |
-| `access-revoked-untold.kql` | A window in which an instance closed connections for a revoked access without handing any `session.ended` to the transport. |
+| `access-revoked-untold.kql` | A window in which an instance closed any connection for a revoked access whose own `session.ended` did not reach the transport (`told` false). |
 
 The other instrument backs no alert, by design: `tellma.realtime.connections` sizes the workload
 (the connections each instance holds open, by hosting mode).

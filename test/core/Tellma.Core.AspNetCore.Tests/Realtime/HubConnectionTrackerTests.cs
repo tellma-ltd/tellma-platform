@@ -3,12 +3,15 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Diagnostics.Metrics.Testing;
 using Microsoft.Extensions.Logging;
+using System.Diagnostics;
 using System.Text.Json;
+using Tellma.Core.Abstractions.Api;
 using Tellma.Core.Abstractions.Realtime;
 using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.AspNetCore.Realtime;
@@ -215,30 +218,69 @@ namespace Tellma.Core.AspNetCore.Tests.Realtime
         }
 
         [Fact]
-        public async Task A_remembered_close_expires_after_five_minutes()
+        public async Task Self_hosted_a_remembered_close_expires_after_ten_seconds()
         {
+            // The connect itself passes the front door, so the memo covers only the door's moment.
             await using TellmaTestHost host = await RealtimeTestHost.StartAsync();
-            TestSession session = host.Session("ann");
-            HubConnectionTracker tracker = host.Services.GetRequiredService<HubConnectionTracker>();
-            await tracker.SessionsTerminatedAsync("ann", [session.Handle]);
-            await tracker.TenantAccessRevokedAsync(RealtimeTestHost.Active, "ann");
-            TenantDescriptor tenant = host.Services.GetRequiredService<ITenantRegistry>().Find(RealtimeTestHost.Active)!.Descriptor;
-            await tracker.OnStateChangedAsync(tenant with { State = TenantState.Suspended }, TenantState.Active);
+            Assert.Equal(TimeSpan.FromSeconds(10), HubConnectionTracker.SelfHostedMemoLifetime);
+            await AssertMemosExpireAsync(host, HubConnectionTracker.SelfHostedMemoLifetime);
+        }
 
-            // --- Just inside the lifetime: still refused ---
-            host.Time.Advance(HubConnectionTracker.MemoLifetime - TimeSpan.FromSeconds(1));
-            await using (HubClient refused = await RealtimeTestHost.ConnectAsync(host, RealtimeTestHost.Active, session.Cookie))
+        [Fact]
+        public async Task On_Azure_SignalR_Service_a_remembered_close_lasts_the_service_token_s_five_minutes()
+        {
+            // A negotiate's service token opens a connection without passing the door again. The
+            // hosting check would refuse an Azure mode over the in-process manager; the tracker reads
+            // the mode alone.
+            await using TellmaTestHost host = await RealtimeTestHost.StartAsync(static options =>
+                options.ConfigureServices += static services =>
+                {
+                    _ = services.Replace(ServiceDescriptor.Singleton(new RealtimeHosting(RealtimeMode.Azure, typeof(DefaultHubLifetimeManager<TellmaHub>), azureOptionsType: null)));
+                    foreach (ServiceDescriptor check in services.Where(static d => d.ImplementationType == typeof(RealtimeHostingCheck)).ToList())
+                    {
+                        _ = services.Remove(check);
+                    }
+                });
+            Assert.Equal(TimeSpan.FromMinutes(5), HubConnectionTracker.AzureMemoLifetime);
+            await AssertMemosExpireAsync(host, HubConnectionTracker.AzureMemoLifetime);
+        }
+
+        [Fact]
+        public async Task A_stalled_send_delays_no_other_connection_s_close_and_is_counted_untold()
+        {
+            CapturingLoggerProvider logs = new();
+            RecordingLifetimeManager? manager = null;
+            await using TellmaTestHost host = await RealtimeTestHost.StartAsync(options =>
             {
-                Assert.Equal("session-terminated", Envelope.Payload(await refused.NextAsync(), "reason"));
-                _ = await refused.ClosedAsync();
+                HubConnectTests.CaptureDebug(options, logs);
+                manager = RecordingLifetimeManager.Compose(options);
+            });
+            using MetricCollector<long> closes = HubConnectTests.Collect(host, RealtimeTelemetryNames.Closes);
+            using MetricCollector<long> events = HubConnectTests.Collect(host, ApiTelemetryNames.RealtimeEvents);
+            string ann = host.Cookie("ann");
+            await using HubClient live = await RealtimeTestHost.ConnectAsync(host, RealtimeTestHost.Active, ann);
+            await using HubClient first = await RealtimeTestHost.ConnectAsync(host, RealtimeTestHost.Active, ann);
+            await using HubClient second = await RealtimeTestHost.ConnectAsync(host, RealtimeTestHost.Active, ann);
+            manager!.StalledConnections[first.Connection.ConnectionId!] = true;
+            manager.StalledConnections[second.Connection.ConnectionId!] = true;
+
+            // --- Two sends that never complete wait out their bounds side by side, not one after the other ---
+            var elapsed = Stopwatch.StartNew();
+            await host.Services.GetRequiredService<HubConnectionTracker>().TenantAccessRevokedAsync(RealtimeTestHost.Active, "ann");
+            elapsed.Stop();
+            Assert.True(elapsed.Elapsed < HubConnectionTracker.SendBound * 2, $"The close took {elapsed.Elapsed}.");
+
+            // --- The live connection told, every connection closed, the stalled ones counted untold ---
+            Assert.Equal("access-revoked", Envelope.Payload(await live.NextAsync(), "reason"));
+            foreach (HubClient client in new[] { live, first, second })
+            {
+                _ = await client.ClosedAsync();
             }
 
-            // --- Past it: every memo has expired, and the connection is admitted ---
-            host.Time.Advance(TimeSpan.FromSeconds(2));
-            await using HubClient admitted = await RealtimeTestHost.ConnectAsync(host, RealtimeTestHost.Active, session.Cookie);
-            Assert.Equal(HubConnectionState.Connected, admitted.Connection.State);
-            Assert.False(admitted.HasUnread());
-            Assert.Equal(1, tracker.Count);
+            Assert.Equal(1, Closed(closes, "access-revoked", RealtimeMetrics.ToldValue));
+            Assert.Equal(2, Closed(closes, "access-revoked", RealtimeMetrics.UntoldValue));
+            Assert.Empty(events.GetMeasurementSnapshot());
+            Assert.Equal(2, logs.Events.Count(static e => e.EventName == "ClientEventFailed"));
         }
 
         [Fact]
@@ -304,7 +346,8 @@ namespace Tellma.Core.AspNetCore.Tests.Realtime
             Assert.Equal(HubConnectionState.Connected, colleague.Connection.State);
             Assert.False(elsewhere.HasUnread());
             Assert.False(colleague.HasUnread());
-            Assert.Contains(closes.GetMeasurementSnapshot(), static m => m.Value == 1 && Equals(m.Tags[RealtimeTelemetryNames.ReasonTag], "access-revoked"));
+            Assert.Equal(1, Closed(closes, "access-revoked", RealtimeMetrics.ToldValue));
+            Assert.Equal(0, Closed(closes, "access-revoked", RealtimeMetrics.UntoldValue));
         }
 
         [Theory]
@@ -361,6 +404,47 @@ namespace Tellma.Core.AspNetCore.Tests.Realtime
             Assert.Equal(HubConnectionState.Connected, client.Connection.State);
             Assert.False(other.HasUnread());
             Assert.Empty(closes.GetMeasurementSnapshot());
+        }
+
+        /// <summary>Records a close of each kind, then connects just inside and just past a memo lifetime.</summary>
+        /// <param name="host">The host.</param>
+        /// <param name="lifetime">The memo lifetime the host's mode keeps.</param>
+        /// <returns>A task that completes when both connects were checked.</returns>
+        private static async Task AssertMemosExpireAsync(TellmaTestHost host, TimeSpan lifetime)
+        {
+            TestSession session = host.Session("ann");
+            HubConnectionTracker tracker = host.Services.GetRequiredService<HubConnectionTracker>();
+            await tracker.SessionsTerminatedAsync("ann", [session.Handle]);
+            await tracker.TenantAccessRevokedAsync(RealtimeTestHost.Active, "ann");
+            TenantDescriptor tenant = host.Services.GetRequiredService<ITenantRegistry>().Find(RealtimeTestHost.Active)!.Descriptor;
+            await tracker.OnStateChangedAsync(tenant with { State = TenantState.Suspended }, TenantState.Active);
+
+            // --- Just inside the lifetime: still refused ---
+            host.Time.Advance(lifetime - TimeSpan.FromSeconds(1));
+            await using (HubClient refused = await RealtimeTestHost.ConnectAsync(host, RealtimeTestHost.Active, session.Cookie))
+            {
+                Assert.Equal("session-terminated", Envelope.Payload(await refused.NextAsync(), "reason"));
+                _ = await refused.ClosedAsync();
+            }
+
+            // --- Past it: every memo has expired, and the connection is admitted ---
+            host.Time.Advance(TimeSpan.FromSeconds(2));
+            await using HubClient admitted = await RealtimeTestHost.ConnectAsync(host, RealtimeTestHost.Active, session.Cookie);
+            Assert.Equal(HubConnectionState.Connected, admitted.Connection.State);
+            Assert.False(admitted.HasUnread());
+            Assert.Equal(1, tracker.Count);
+        }
+
+        /// <summary>The connections counted closed for a reason, told or untold.</summary>
+        /// <param name="closes">The closes collected.</param>
+        /// <param name="reason">The reason.</param>
+        /// <param name="told">The told tag.</param>
+        /// <returns>How many.</returns>
+        private static long Closed(MetricCollector<long> closes, string reason, string told)
+        {
+            return closes.GetMeasurementSnapshot()
+                .Where(m => Equals(m.Tags[RealtimeTelemetryNames.ReasonTag], reason) && Equals(m.Tags[RealtimeTelemetryNames.ToldTag], told))
+                .Sum(static m => m.Value);
         }
     }
 }
