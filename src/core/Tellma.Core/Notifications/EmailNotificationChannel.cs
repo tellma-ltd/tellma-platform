@@ -225,7 +225,8 @@ namespace Tellma.Core.Notifications
 
         /// <inheritdoc />
         /// <exception cref="DependencyUnavailableException">
-        ///     The transport failed or refused the message, or the sender threw before it answered.
+        ///     The transport failed or refused the message, or the sender threw before it answered; a
+        ///     refusal carries a <see cref="TestMessageRejectedException" /> as its inner exception.
         /// </exception>
         public async Task<TestNotificationResult> SendTestAsync(CancellationToken cancellationToken = default)
         {
@@ -290,7 +291,8 @@ namespace Tellma.Core.Notifications
                 Audience = EmailAudience.Internal,
             };
 
-            // --- One send; anything but an accepted message is an unavailable dependency ---
+            // --- One send; anything but an accepted message is an unavailable dependency, a
+            // refusal marked as one so that it is counted apart from an outage ---
             IReadOnlyList<EmailSendResult> results;
             try
             {
@@ -311,7 +313,10 @@ namespace Tellma.Core.Notifications
             }
 
             NotificationsLog.TestEmailNotSent(_logger, result.Outcome, result.Error);
-            throw new DependencyUnavailableException(EmailDependency, null, null);
+            throw new DependencyUnavailableException(
+                EmailDependency,
+                null,
+                result.Outcome == EmailSendOutcome.Rejected ? new TestMessageRejectedException() : null);
         }
 
         /// <summary>The address a recipient's email goes to: their contact address, else their sign-in address; null for neither.</summary>

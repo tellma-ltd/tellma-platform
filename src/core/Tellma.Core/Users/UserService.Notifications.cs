@@ -99,9 +99,13 @@ namespace Tellma.Core.Users
             {
                 result = await sender.SendTestAsync(cancellationToken).ConfigureAwait(false);
             }
-            catch (DependencyUnavailableException)
+            catch (DependencyUnavailableException unavailable)
             {
-                _dependencies.Metrics.RecordTestNotification(key, UsersTelemetryNames.TestNotificationUnavailable);
+                // A platform channel marks a message its transport refused outright, so that a bad
+                // address is not counted as an outage; the caller's answer is the same.
+                _dependencies.Metrics.RecordTestNotification(
+                    key,
+                    unavailable.InnerException is TestMessageRejectedException ? UsersTelemetryNames.TestNotificationRejected : UsersTelemetryNames.TestNotificationUnavailable);
                 throw;
             }
 

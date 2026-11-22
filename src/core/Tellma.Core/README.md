@@ -1393,7 +1393,8 @@ language and calendar but in the tenant's time zone (`Email_TestNotification_Sub
 or one the outbox would refuse, answers `NoContactAddress`; a host with no email sender answers
 `NotConfigured`; a sent or sandboxed message answers `Sent`. A transport that throws, rejects the
 message or fails transiently is raised as the `email` dependency unavailable, logged as
-`TestEmailFailed` or `TestEmailNotSent` with the transport's detail and never the address.
+`TestEmailFailed` or `TestEmailNotSent` with the transport's detail (the channel adds no address
+of its own, but the detail may quote one).
 
 ## Entity stacks
 
@@ -2409,7 +2410,7 @@ Every member reaches their own row without a role grant, through the users' memb
 | `me/save` | 3 | loads the caller's row with every mapped column and the last modifier's names, refuses a moved stamp as a conflict before anything is enlisted (unless `Override`), copies the request's eight members onto the stored row with the memberships left out, and enlists it through the action's open frame, its paths without the row index, so the users' rules run and no `Save` grant is asked |
 | `me/locale` | 1 | validates in memory (`Users.LocaleEmpty` at `language`, `Users.LocaleResetConflict` at `reset`, then the save's locale rules, each value stored as its set spells it), then one persist batch: the access guards' lock, the update of the caller's row (each member set, `NULL` for each reset; an unchanged value writes no row), the invariants and the stored values; a read-only tenant admits it |
 | `me/preferences/set`, `me/preferences/delete` | 1 | checks the keys and values in memory (paths `items[i].key`, `keys[i]`), then the bag's statement with the key cap asserted inside it (`Users.TooManyPreferenceKeys` at the request), then the bag; the answer carries the caller's moved preferences tag; a read-only tenant admits them |
-| `me/test-notification` | 0 | refuses the `inbox` (`Users.ChannelNotTestable`) and an unregistered channel (`Notifications.UnknownChannel`), both at `channel`; answers `NotConfigured` for a channel with no sender, else the sender's `SendTestAsync` from the connected user (a due connect prologue runs alone first); each answer and each unavailable transport is counted on `tellma.users.test_notifications` (tags `channel`, `outcome`: `Sent`, `NoContactAddress`, `NotConfigured`, `Unavailable`) |
+| `me/test-notification` | 0 | refuses the `inbox` (`Users.ChannelNotTestable`) and an unregistered channel (`Notifications.UnknownChannel`), both at `channel`; answers `NotConfigured` for a channel with no sender, else the sender's `SendTestAsync` from the connected user (a due connect prologue runs alone first); each answer and each unavailable transport is counted on `tellma.users.test_notifications` (tags `channel`, `outcome`: `Sent`, `NoContactAddress`, `NotConfigured`, `Unavailable`, and `Rejected` for a message a platform channel's transport refused outright, still answered as the dependency unavailable) |
 
 `client/sync` (`Client/ClientSyncService`, member-only, idempotent, hidden from agents) is the one
 call a browser tab revalidates a tenant's cached documents with. It takes the tags the tab holds

@@ -356,6 +356,12 @@ namespace Tellma.Core.IntegrationTests.Users
             Assert.Null(untouched.InvitedAt);
             Assert.Equal("New", untouched.State);
             Assert.Equal([(ConnectDatabase.TenantA, ScriptedIdentityClient.SubjectOf(Email(ada)))], _memberships.Hints());
+
+            // --- The answered user's notice and welcome email rode the prefix; the other has neither ---
+            _ = Assert.Single(await NoticesAsync(ada));
+            _ = Assert.Single(await WelcomesAsync(ada));
+            Assert.Empty(await NoticesAsync(bob));
+            Assert.Empty(await WelcomesAsync(bob));
         }
 
         // --- The invitation status ---

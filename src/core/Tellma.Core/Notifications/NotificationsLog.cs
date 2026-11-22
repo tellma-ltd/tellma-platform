@@ -87,7 +87,8 @@ namespace Tellma.Core.Notifications
 
         /// <summary>
         ///     A user's test email did not go out: the transport answered a transient failure or
-        ///     refused the message. The address is not logged; the transport's detail is.
+        ///     refused the message. The channel adds no address of its own; the transport's detail,
+        ///     which is logged, may quote one.
         /// </summary>
         /// <param name="logger">The logger.</param>
         /// <param name="outcome">What the transport answered.</param>

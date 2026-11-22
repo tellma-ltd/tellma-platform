@@ -208,8 +208,8 @@ namespace Tellma.Core.Users
         }
 
         /// <summary>
-        ///     The sender of one notification channel, resolved when a test message needs it: the
-        ///     host's other senders are never created for it.
+        ///     The sender of one notification channel, resolved only when a test message needs it;
+        ///     the host's other senders are created in the scope too, but not used.
         /// </summary>
         /// <param name="key">The channel's key.</param>
         /// <returns>The sender; null when the host registers none for the channel.</returns>

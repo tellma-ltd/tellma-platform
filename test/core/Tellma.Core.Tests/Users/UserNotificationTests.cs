@@ -15,6 +15,7 @@ using Tellma.Core.Abstractions.Identity;
 using Tellma.Core.Abstractions.Notifications;
 using Tellma.Core.Abstractions.Validation;
 using Tellma.Core.Jobs;
+using Tellma.Core.Notifications;
 using Tellma.Core.Tests.Access;
 using Tellma.Core.Users;
 using Tellma.Testing.Support.Identity;
@@ -127,6 +128,17 @@ namespace Tellma.Core.Tests.Users
             _ = await Assert.ThrowsAsync<DependencyUnavailableException>(() => kit.Service.RunSendTestNotificationAsync(new TestNotificationRequest("email")));
 
             Assert.Equal([("email", "Unavailable")], Counted(kit.TestNotifications));
+        }
+
+        [Fact]
+        public async Task A_message_the_transport_refused_is_counted_as_rejected_and_raised_as_unavailable()
+        {
+            ScriptedChannel email = new("email", TestNotificationResult.Sent) { Failure = new DependencyUnavailableException("email", null, new TestMessageRejectedException()) };
+            UsersKit kit = Kit(senders: [email]);
+
+            _ = await Assert.ThrowsAsync<DependencyUnavailableException>(() => kit.Service.RunSendTestNotificationAsync(new TestNotificationRequest("email")));
+
+            Assert.Equal([("email", "Rejected")], Counted(kit.TestNotifications));
         }
 
         // --- The invitation's notice ---

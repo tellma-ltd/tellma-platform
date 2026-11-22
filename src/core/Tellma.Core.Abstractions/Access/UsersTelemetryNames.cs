@@ -47,8 +47,11 @@ namespace Tellma.Core.Abstractions.Access
         /// <summary>The test-notification outcome of a channel with no sender, or whose transport this instance does not configure.</summary>
         public const string TestNotificationNotConfigured = "NotConfigured";
 
-        /// <summary>The test-notification outcome of a send the channel's transport failed or refused.</summary>
+        /// <summary>The test-notification outcome of a send the channel's transport failed to take.</summary>
         public const string TestNotificationUnavailable = "Unavailable";
+
+        /// <summary>The test-notification outcome of a message the channel's transport refused outright, such as one to an address it will not deliver to.</summary>
+        public const string TestNotificationRejected = "Rejected";
 
         /// <summary>The invite outcome of a user the identity server created and sent an invitation to.</summary>
         public const string InviteInvited = "Invited";

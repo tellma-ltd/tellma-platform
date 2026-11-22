@@ -134,7 +134,7 @@ namespace Tellma.Core.Tests.Outbox
         [Theory]
         [InlineData(EmailSendOutcome.TransientFailure)]
         [InlineData(EmailSendOutcome.Rejected)]
-        public async Task A_transport_that_fails_or_refuses_is_an_unavailable_email_dependency_logged_without_the_address(EmailSendOutcome outcome)
+        public async Task A_transport_that_fails_or_refuses_is_an_unavailable_email_dependency_a_refusal_marked_and_logged_with_no_address_of_its_own(EmailSendOutcome outcome)
         {
             CapturingEmailSender sender = _registrations.AddCapturingEmail();
             sender.OnSending((_, _) => new EmailSendResult(outcome, Error: "550 mailbox unavailable"));
@@ -143,6 +143,16 @@ namespace Tellma.Core.Tests.Outbox
                 () => Channel(Profile("ada@example.com", null)).SendTestAsync(TestContext.Current.CancellationToken));
 
             Assert.Equal("email", refused.Dependency);
+            if (outcome == EmailSendOutcome.Rejected)
+            {
+                _ = Assert.IsType<TestMessageRejectedException>(refused.InnerException);
+            }
+            else
+            {
+                Assert.Null(refused.InnerException);
+            }
+
+            // The channel adds no address of its own to the warning; the transport's detail is there.
             FakeLogRecord warning = Assert.Single(Logged("TestEmailNotSent"));
             Assert.Equal(LogLevel.Warning, warning.Level);
             Assert.Contains("550 mailbox unavailable", warning.Message, StringComparison.Ordinal);
