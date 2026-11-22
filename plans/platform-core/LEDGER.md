@@ -109,7 +109,6 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC | Slot | Branch | Step | Implementer agent (name / id) | Reviewer agent (name / id) | Started (UTC) |
 |---|---|---|---|---|---|---|
 | PC-092 | pc-3 | pc/PC-092 | held | impl b657cb74 (9 deviations accepted; Development subject binding for Ahmad); R1 0/1/5; fix1 5ddb17c5 held (1 sub-point pushed back, accepted; deviation 10 seeder-only Production test); 3 merge-tree conflicts (ARCHITECTURE.md keep both; Acme InitialTenant pair regenerate); released first after PC-096; D-192, D-194 | 0018-g; R1 only | 2026-11-21 |
-| PC-096 | pc-1 | pc/PC-096 | integrating | impl f7e4a8f6; R1 0/1/7; fix1 922c883b; R2 0/1/2; fix2 70c18c62 (deviation 18; @tellma/core 20.36/20.44 KB, 0025 share 8.14/9 KB); integrate 158c2a51 red (client-windows: own spec timer boundary; integration: SaveEmitterTests app-lock poll counted other databases); CI fixes 42071b8c, pc run 44972680448 pending; PC-F67 after landing; D-185, D-189 | 0025-b; R1 + R2 inherit xhigh | 2026-11-21 |
 | PC-175 | pc-2 | pc/PC-175 | held | impl df9e5804 (16 deviations accepted); R1 0/1/4; fix1 6eb3f3c9 held (R1-3 inverted via IPlatformCompanions, no deviation); 5 merge-tree conflicts (README + 4 goldens, regenerate); released after PC-214; D-188, D-193 | 0019-b; R1 only | 2026-11-21 |
 | PC-214 | pc-f | pc/PC-214 | held | impl 3e264e5e (deviations 2, 4-10 accepted); R1 0/1/5 (conditional-update test; retry refuses; ModifiedAt stamp; per-event unmatched; retention paging tests); fix1 then hold behind PC-212; D-187; fix1 2b2a3562 held (deviation 11; new ActionContext.Update refusing overload + UpdateSpec.ByIds.StampUnchanged confirmed); 8 merge-tree conflicts (3 migration pairs regenerate, 2 tests); released after PC-096 lands; D-191 | 0022-c; R1 only | 2026-11-21 |
 
@@ -402,7 +401,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-093 | 0018-h | 1 | todo | | | |
 | PC-094 | 0024-f | 1 | done (c4796b36; CI 43929225344 green, new acme-client jobs green) | 0213664, da754e8 (pc/PC-094) | | |
 | PC-095 | 0016-f | 1 | todo | | | |
-| PC-096 | 0025-b | 1 | in progress | | | |
+| PC-096 | 0025-b | 1 | done (42071b8c; pc 44972680448 green on 42071b8c) | f7e4a8f6, 922c883b, 70c18c62, 158c2a51, 42071b8c | | |
 | PC-097 | 0020-b | 1 | done a90b368 (CI 43515001627 green) | bf01975, fb0abb0, 262b849, a90b368 (pc) |  |  |
 | PC-098 | 0020-c | 1 | done (92307211; green 44632808005) | 06ceb5dd, 46456458, 10ac40b1, 15f0e6a7, 92307211 | | D-128, D-129 (R1-4 for Ahmad), D-139 |
 | PC-099 | 0021-b | 1 | done (integrated 183e772, CI 43618488320 green) | 2e7dfd1, 2de32d7, f5174b3, 11a57e0 (pc), 69c009b, 183e772 (pc) |  |  |
