@@ -384,6 +384,14 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-238 (orchestrator, 2026-11-22): Windows build-test timeout opens blocking PC-F74, which preempts PC-F72
+
+- After PC-182 landed, both platform-core PR runs (45078227216 on 491ca1b3 and 45078365461 on 8d8c3050) were cancelled. build-test (windows-latest) hit timeout-minutes 30 while Tellma.Core.AspNetCore.Tests was still running ProblemMappingTests.
+- The green pc/PC-182 run's job took 25 minutes, of which the assembly took 19.5. The assembly's time ranges from 15 to 22 minutes across recent runs, and ProblemMappingTests' 68 cases run one after another at 5 to 14 s each.
+- That cost predates PC-F70, since e14934f0 shows the same pattern. So it is a standing per-case host cost, not a new regression. It now threatens every pc/** integration run.
+- PC-F74 is classed blocking. Under D-229 it goes ahead of the non-blocking PC-F72, which pauses and lends pc-f2 to it, keeping its work as a local commit, and resumes after.
+- PR runs do not gate done (D-154). PC-182 stays done.
+
 ### D-237 (orchestrator, 2026-11-22): PC-105 fix 1 accepted; one verification runs alongside integration
 
 - Fix 1 (8162da65) fixes R1-1 to R1-5 with none pushed back. It is about 460 lines against about 4,240 in the implementation, so it is not an escalation under section 4.4.
