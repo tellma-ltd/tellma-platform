@@ -12,9 +12,9 @@ import { DOCUMENT, inject, InjectionToken } from '@angular/core';
 //   `Accept-Language` string and the calendar; until then the document's
 //   language goes out, and no calendar, so the server falls back to the
 //   user's preference;
-// - the cache refresher (spec 0025 §5.3): `TmCacheRefresher` provides
-//   `observe` and `refresh`; until then no document is cached, so there is
-//   nothing to revalidate;
+// - the cache refresher (spec 0025 §5.3): `provideTellma` provides
+//   `TmCacheRefresher`'s `observe` and `refresh`; without it, as in an HTTP
+//   test, no document is cached, so there is nothing to revalidate;
 // - the worker's update check (spec 0024 §5.5): `TmUpdates` provides
 //   `check()`; until then no worker controls the page, which is exactly what
 //   `disabled` says.

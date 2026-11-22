@@ -9,6 +9,7 @@ using Tellma.Core.Abstractions.Jobs;
 using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.Data.Batches;
 using Tellma.Core.Jobs;
+using Tellma.Core.Tenancy;
 
 namespace Tellma.Testing.Entities
 {
@@ -39,6 +40,10 @@ namespace Tellma.Testing.Entities
     ///     (each claim with its entity load), then each claim's jobs run and complete. Nothing polls
     ///     on its own, no renewal loop runs, and nothing is claimed again within the call.
     /// </summary>
+    /// <remarks>
+    ///     Like the worker, a poll of a tenant the registry holds as read-only claims only the handlers
+    ///     that run on a read-only tenant.
+    /// </remarks>
     public static class JobPollDriver
     {
         /// <summary>Polls a fixture host's tenant once.</summary>
@@ -66,7 +71,10 @@ namespace Tellma.Testing.Entities
         {
             ArgumentNullException.ThrowIfNull(services);
             JobRunner runner = services.GetRequiredService<JobRunner>();
-            JobHandlerRegistration[] handlers = [.. services.GetRequiredService<JobHandlerRegistry>().Handlers.Where(handler => keys is null || keys.Contains(handler.Key))];
+            // --- The handlers asked for, less those a read-only tenant does not run, as the worker's poll filters them ---
+            bool readOnly = services.GetRequiredService<ITenantRegistry>().Find(tenantId)?.Descriptor.State == TenantState.ReadOnly;
+            JobHandlerRegistration[] handlers = [.. services.GetRequiredService<JobHandlerRegistry>().Handlers
+                .Where(handler => (keys is null || keys.Contains(handler.Key)) && (!readOnly || handler.Options.RunsWhenReadOnly))];
             if (handlers.Length == 0)
             {
                 return [];

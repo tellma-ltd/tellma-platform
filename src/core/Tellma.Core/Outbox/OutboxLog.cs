@@ -9,8 +9,9 @@ namespace Tellma.Core.Outbox
 {
     /// <summary>Source-generated log messages of the email outbox.</summary>
     /// <remarks>
-    ///     The tenant's id reaches these events through the job's log scope, never as a parameter, and
-    ///     no event carries an address, a subject or a body: an email is named by its row's id.
+    ///     The sending job's events take the tenant's id from the job's log scope; the delivery
+    ///     events' handler runs outside any tenant, so its events name the tenant themselves. No event
+    ///     carries an address, a subject or a body: an email is named by its row's id.
     /// </remarks>
     internal static partial class OutboxLog
     {
@@ -58,5 +59,71 @@ namespace Tellma.Core.Outbox
             Level = LogLevel.Warning,
             Message = "The administrators could not be read, so {Count} outgoing emails that settled rejected or failed raise no notice.")]
         public static partial void OutboxNoticeRecipientsFailed(ILogger logger, Exception exception, int count);
+
+        /// <summary>
+        ///     A delivery event names an outgoing email that does not exist: it was deleted, or the
+        ///     correlation is malformed or foreign. The event is counted unmatched and dropped.
+        /// </summary>
+        /// <param name="logger">The logger.</param>
+        /// <param name="tenantId">The tenant the correlation names; null when it names none.</param>
+        /// <param name="reference">The correlation's reference, the email's id as text.</param>
+        [LoggerMessage(
+            EventName = "OutboxDeliveryEventUnmatched",
+            Level = LogLevel.Warning,
+            Message = "A delivery event names the outgoing email {Reference} of tenant {TenantId}, which does not exist; the event is dropped.")]
+        public static partial void OutboxDeliveryEventUnmatched(ILogger logger, int? tenantId, string reference);
+
+        /// <summary>
+        ///     A tenant's delivery events were dropped because the tenant is missing, still being
+        ///     provisioned, or retired, so it has no outgoing email to update.
+        /// </summary>
+        /// <param name="logger">The logger.</param>
+        /// <param name="tenantId">The tenant.</param>
+        /// <param name="state">The tenant's state, or <c>Missing</c> when the registry does not hold it.</param>
+        /// <param name="count">The events dropped.</param>
+        [LoggerMessage(
+            EventName = "OutboxDeliveryTenantSkipped",
+            Level = LogLevel.Warning,
+            Message = "{Count} delivery events of tenant {TenantId} were dropped: the tenant is {State}.")]
+        public static partial void OutboxDeliveryTenantSkipped(ILogger logger, int tenantId, string state, int count);
+
+        /// <summary>
+        ///     Some of a tenant's delivery events changed nothing: each repeats an event already
+        ///     applied, or is no stronger than what its email records.
+        /// </summary>
+        /// <param name="logger">The logger.</param>
+        /// <param name="tenantId">The tenant.</param>
+        /// <param name="count">The events.</param>
+        [LoggerMessage(
+            EventName = "OutboxDeliveryEventsStale",
+            Level = LogLevel.Debug,
+            Message = "{Count} delivery events of tenant {TenantId} were repeats or no stronger than what their emails record.")]
+        public static partial void OutboxDeliveryEventsStale(ILogger logger, int tenantId, int count);
+
+        /// <summary>
+        ///     A frozen tenant's delivery events were left for the provider to deliver again, since its
+        ///     database refuses writes; the webhook call fails once every other tenant's were applied.
+        /// </summary>
+        /// <param name="logger">The logger.</param>
+        /// <param name="tenantId">The tenant.</param>
+        /// <param name="count">The events left.</param>
+        [LoggerMessage(
+            EventName = "OutboxDeliveryTenantFrozen",
+            Level = LogLevel.Information,
+            Message = "{Count} delivery events of the frozen tenant {TenantId} wait for the provider to deliver them again.")]
+        public static partial void OutboxDeliveryTenantFrozen(ILogger logger, int tenantId, int count);
+
+        /// <summary>
+        ///     A retention page's delete was refused because a row changed after the page was read,
+        ///     such as an email an administrator retried, so the page is read again and retried once.
+        /// </summary>
+        /// <param name="logger">The logger.</param>
+        /// <param name="exception">The refusal.</param>
+        /// <param name="count">The ids the refused delete named.</param>
+        [LoggerMessage(
+            EventName = "OutboxRetentionPageReread",
+            Level = LogLevel.Information,
+            Message = "The retention's delete of {Count} outgoing emails was refused after the page was read; the page is read again.")]
+        public static partial void OutboxRetentionPageReread(ILogger logger, Exception exception, int count);
     }
 }

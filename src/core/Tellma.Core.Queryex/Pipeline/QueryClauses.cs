@@ -9,6 +9,7 @@ using Tellma.Core.Queryex.Binding;
 using Tellma.Core.Queryex.Diagnostics;
 using Tellma.Core.Queryex.Emit;
 using Tellma.Core.Queryex.Lowering;
+using Tellma.Core.Queryex.Measures;
 using Tellma.Core.Queryex.Nullity;
 using Tellma.Core.Queryex.Syntax;
 
@@ -85,6 +86,18 @@ namespace Tellma.Core.Queryex.Pipeline
         /// <summary>Whether the select list derives at least one grouping key.</summary>
         private bool _hasGroupingKeys;
 
+        /// <summary>The bound measures, when there are any.</summary>
+        private BoundExpression? _measures;
+
+        /// <summary>The measures' nullity as a grand total has it, which their evaluation trees fold by.</summary>
+        private NullityMap? _measureNullity;
+
+        /// <summary>The measures' evaluation trees and the partials they read, once planned.</summary>
+        private MeasureTreeBuilder? _measureTrees;
+
+        /// <summary>Each measure's evaluation tree, parallel to the bound measures.</summary>
+        private ImmutableArray<MeasureNode> _measureRoots = [];
+
         /// <summary>Initializes the clauses of one compilation.</summary>
         /// <param name="compiler">The stage runner, which remembers what it has already done.</param>
         /// <param name="spec">The query.</param>
@@ -141,6 +154,7 @@ namespace Tellma.Core.Queryex.Pipeline
             BindSelect(select, folding, selectAt);
             BindHaving();
             BindOrderBy();
+            BindMeasures();
 
             if (_sink.Count > 0)
             {
@@ -150,8 +164,17 @@ namespace Tellma.Core.Queryex.Pipeline
             DeriveKeys();
             CheckOrdering();
             CheckPaging();
-            return _sink.Count == 0;
+            if (_sink.Count > 0)
+            {
+                return false;
+            }
+
+            PlanMeasures();
+            return true;
         }
+
+        /// <summary>The measures, compiled; null until the clauses are lowered, and when there are none.</summary>
+        internal CompiledMeasures? Measures { get; private set; }
 
         /// <summary>Lowers every clause into one plan.</summary>
         /// <returns>The plan.</returns>
@@ -162,6 +185,10 @@ namespace Tellma.Core.Queryex.Pipeline
 
             PlanPredicate? filter = LowerFilter(lowerer);
             (ImmutableArray<PlanSelectItem> select, ImmutableArray<PlanValue> groupBy) = LowerSelect(lowerer);
+
+            // The partials straight after the select items they follow, so their parameters are
+            // numbered after the select list's and before every later clause's.
+            select = select.AddRange(LowerPartials(lowerer, select));
             PlanPredicate? having = LowerHaving(lowerer);
             ImmutableArray<PlanOrderItem> orderBy = LowerOrdering(lowerer, select);
 
@@ -222,6 +249,22 @@ namespace Tellma.Core.Queryex.Pipeline
             }
 
             ImmutableArray<JoinNode> joins = lowerer.Complete(fragments, paging);
+
+            // An aggregate query that aggregates something and has no key is a grand total, one
+            // group, which an aggregation or a group-level predicate in the statement tells the
+            // backend (spec 0008 §2.1). Once every aggregation written has folded away and there
+            // is no such predicate, nothing does, and the statement says it with a predicate every
+            // group passes. A select list that never aggregated anything is the degenerate shape
+            // that answers row by row, and stays as written.
+            bool aggregated = _select.Items.Any(static item => item.Expression.ContainsAggregate)
+                || _measures is not null;
+            bool groupsAsOne = _spec.Aggregate
+                && aggregated
+                && groupBy.Length == 0
+                && having is null
+                && !select.Any(static item => PlanWalk.Aggregates(item.Value))
+                && !orderBy.Any(static term => term.Value is not null && PlanWalk.Aggregates(term.Value));
+
             return new RelationalPlan
             {
                 Root = lowerer.Root,
@@ -234,6 +277,7 @@ namespace Tellma.Core.Queryex.Pipeline
                 Select = select,
                 Where = where,
                 GroupBy = groupBy,
+                GroupsAsOne = groupsAsOne,
                 Having = having,
                 OrderBy = orderBy,
                 Skip = skip,
@@ -250,8 +294,9 @@ namespace Tellma.Core.Queryex.Pipeline
 
         /// <summary>The context for one mode.</summary>
         /// <param name="mode">The mode.</param>
+        /// <param name="measures">Whether the items are measures.</param>
         /// <returns>The context.</returns>
-        private BindingContext Context(QueryexMode mode)
+        private BindingContext Context(QueryexMode mode, bool measures = false)
         {
             return new BindingContext
             {
@@ -261,6 +306,7 @@ namespace Tellma.Core.Queryex.Pipeline
                 QueryexVersion = _options.QueryexVersion,
                 HasUser = _options.HasUser,
                 HasGroupingKeys = _hasGroupingKeys,
+                Measures = measures,
                 Parameters = _symbols,
             };
         }
@@ -371,6 +417,234 @@ namespace Tellma.Core.Queryex.Pipeline
             _orderBy = bound;
             _nullity.Absorb(bound.Nullity);
             _budget.TryConsumeTypedNodes(bound.NodeCount, default, _sink.Scope(location));
+        }
+
+        /// <summary>Binds the measures.</summary>
+        /// <remarks>
+        ///     Each item binds as a select measure does, at a site of its own. They never become
+        ///     grouping keys: the keys come from the select list alone.
+        /// </remarks>
+        private void BindMeasures()
+        {
+            if (string.IsNullOrWhiteSpace(_spec.Measures))
+            {
+                return;
+            }
+
+            var location = DiagnosticLocation.Clause(QueryexClause.Measures);
+            if (!_compiler.TryParse(
+                _spec.Measures,
+                _options.Limits,
+                _sink,
+                location,
+                out ExpressionListSyntax? syntax))
+            {
+                return;
+            }
+
+            // A measure is a value: an omitted parameter outside its aggregations is the typed
+            // absent value, and inside one folds into the aggregation's condition.
+            ExpressionListSyntax items = _omitted.FoldValues(syntax!, out AppliedFolding? folding);
+            BoundExpression bound = _compiler.Bind(
+                _spec.Measures,
+                items,
+                Context(QueryexMode.Aggregate, measures: true),
+                directions: false,
+                _options.Limits,
+                _sink,
+                location,
+                folding);
+
+            _measures = bound;
+            _nullity.Absorb(bound.Nullity);
+            _budget.TryConsumeTypedNodes(bound.NodeCount, default, _sink.Scope(location));
+        }
+
+        /// <summary>Builds the measures' evaluation trees, and with them the partials they read.</summary>
+        private void PlanMeasures()
+        {
+            if (_measures is null)
+            {
+                return;
+            }
+
+            // A measure is evaluated over cells a host combines, and a cell may combine no row: its
+            // nullity is a grand total's, whatever the statement groups by. The partial columns keep
+            // the statement's own.
+            _measureNullity = new NullityAnalyzer(_options.HasUser, hasGroupingKeys: false).Analyze(_measures.Items);
+            MeasureTreeBuilder trees = new(_measureNullity, _nullity);
+            ImmutableArray<MeasureNode>.Builder roots = ImmutableArray.CreateBuilder<MeasureNode>(_measures.Items.Length);
+            for (int index = 0; index < _measures.Items.Length; index++)
+            {
+                roots.Add(trees.Build(_measures.Items[index].Expression, index));
+            }
+
+            _measureTrees = trees;
+            _measureRoots = roots.MoveToImmutable();
+        }
+
+        /// <summary>
+        ///     Lowers the partials the measures read that no select item already computes, and
+        ///     compiles the measures.
+        /// </summary>
+        /// <param name="lowerer">The lowering.</param>
+        /// <param name="select">The lowered select list.</param>
+        /// <returns>One appended select item per partial no select item computes, in first-use order.</returns>
+        private ImmutableArray<PlanSelectItem> LowerPartials(Lowerer lowerer, ImmutableArray<PlanSelectItem> select)
+        {
+            if (_measureTrees is null || _measures is null)
+            {
+                return [];
+            }
+
+            var location = DiagnosticLocation.Clause(QueryexClause.Measures);
+            IReadOnlyList<TypedCall> calls = _measureTrees.Partials;
+            ImmutableArray<PlanSelectItem>.Builder appended = ImmutableArray.CreateBuilder<PlanSelectItem>();
+            ImmutableArray<MeasurePartial>.Builder partials = ImmutableArray.CreateBuilder<MeasurePartial>(calls.Count);
+            ImmutableArray<PartialPlan>.Builder plans = ImmutableArray.CreateBuilder<PartialPlan>(calls.Count);
+
+            for (int index = 0; index < calls.Count; index++)
+            {
+                TypedCall call = calls[index];
+                MeasurePartialKind kind = PartialKindOf(call);
+                QueryexType type = kind is MeasurePartialKind.Sum or MeasurePartialKind.Count
+                    ? QueryexType.QxNumeric
+                    : BoundTypes.ToPublic(call.Type);
+
+                // A select item that is the same aggregation already computes the partial, so its
+                // column is read rather than a second copy appended.
+                int ordinal = MatchingSelectItem(call);
+                PlanValue value;
+                if (ordinal >= 0)
+                {
+                    value = select[ordinal].Value;
+                }
+                else
+                {
+                    // Lowered as a select measure is: no lateral binding outside the aggregation, and
+                    // folding on, so an omitted parameter folds inside the condition as it would there.
+                    lowerer.Begin(
+                        _nullity,
+                        location.Item(_measureTrees.FirstUses[index]),
+                        bindingsAllowed: false,
+                        folding: true);
+
+                    value = lowerer.LowerValue(call);
+                    ordinal = select.Length + appended.Count;
+                    appended.Add(new PlanSelectItem(
+                        value,
+                        StatementEmitter.ColumnName(ordinal),
+                        new QueryexColumn(ordinal, PartialText(call), type, _nullity[call], null, false)));
+                }
+
+                partials.Add(new MeasurePartial(ordinal, kind, type));
+                plans.Add(PlanOf(kind, call, value));
+            }
+
+            ImmutableArray<CompiledMeasure>.Builder items = ImmutableArray.CreateBuilder<CompiledMeasure>(_measures.Items.Length);
+            foreach (BoundItem item in _measures.Items)
+            {
+                items.Add(new CompiledMeasure(
+                    _spec.Measures!.Substring(item.Span.Start, item.Span.Length),
+                    BoundTypes.ToPublic(item.Expression.Type),
+                    _measureNullity![item.Expression]));
+            }
+
+            Measures = new CompiledMeasures(
+                partials.MoveToImmutable(),
+                items.MoveToImmutable(),
+                plans.MoveToImmutable(),
+                _measureRoots,
+                _measureTrees.NodeCount);
+
+            return appended.ToImmutable();
+        }
+
+        /// <summary>Which aggregation a partial is.</summary>
+        /// <param name="call">The partial's aggregation.</param>
+        /// <returns>The kind.</returns>
+        private static MeasurePartialKind PartialKindOf(TypedCall call)
+        {
+            return call.Definition.Name.ToUpperInvariant() switch
+            {
+                "SUM" => MeasurePartialKind.Sum,
+                "COUNT" => MeasurePartialKind.Count,
+                "MIN" => MeasurePartialKind.Min,
+                "MAX" => MeasurePartialKind.Max,
+                _ => throw new InvalidOperationException(
+                    "The aggregation '" + call.Definition.Name + "' is not a partial, and binding refuses it."),
+            };
+        }
+
+        /// <summary>How a partial is held, from the type the statement computes it at.</summary>
+        /// <param name="kind">Which aggregation it is.</param>
+        /// <param name="call">The partial's aggregation.</param>
+        /// <param name="value">The lowered aggregation, which carries the backend type.</param>
+        /// <returns>The plan.</returns>
+        /// <remarks>
+        ///     A least or greatest number is held as the whole type the plan computes it at, or as a
+        ///     decimal whose precision and scale the reader reports: precision alone cannot tell an
+        ///     <c>int</c> from a <c>decimal(10, 0)</c>, and the backend's arithmetic treats them
+        ///     differently.
+        /// </remarks>
+        private static PartialPlan PlanOf(MeasurePartialKind kind, TypedCall call, PlanValue value)
+        {
+            if (kind == MeasurePartialKind.Sum)
+            {
+                return new PartialPlan(kind, PartialStorage.Sum, default);
+            }
+
+            if (kind == MeasurePartialKind.Count)
+            {
+                return new PartialPlan(kind, PartialStorage.Count, default);
+            }
+
+            WholeWidth? width = WidthOf(value.StoreType.Family);
+            PartialStorage storage = call.Type switch
+            {
+                BoundType.Bool => PartialStorage.Bool,
+                BoundType.Numeric => width is null ? PartialStorage.Decimal : PartialStorage.Whole,
+                BoundType.Date => PartialStorage.Date,
+                BoundType.DateTime => PartialStorage.DateTime,
+                BoundType.DateTimeOffset => PartialStorage.DateTimeOffset,
+                BoundType.String => PartialStorage.Text,
+                BoundType.HierarchyId => PartialStorage.Path,
+
+                // Neither is ordered, and neither the absent value nor a failed node reaches a plan.
+                BoundType.Guid or BoundType.Geography or BoundType.Null or BoundType.Error => throw new InvalidOperationException(
+                    "A least or greatest " + BoundTypes.Name(call.Type) + " is not a partial, and binding refuses it."),
+                _ => throw new InvalidOperationException("The type is not known."),
+            };
+
+            return new PartialPlan(kind, storage, storage == PartialStorage.Whole ? width!.Value : default);
+        }
+
+        /// <summary>The whole type a stored type is, when it is one.</summary>
+        /// <param name="family">The stored type's family.</param>
+        /// <returns>The whole type, or null for any other family.</returns>
+        private static WholeWidth? WidthOf(QueryexStoreFamily family)
+        {
+            return family is QueryexStoreFamily.QxTinyInt ? WholeWidth.TinyInt
+                : family is QueryexStoreFamily.QxSmallInt ? WholeWidth.SmallInt
+                : family is QueryexStoreFamily.QxInt ? WholeWidth.Int
+                : family is QueryexStoreFamily.QxBigInt ? WholeWidth.BigInt
+                : null;
+        }
+
+        /// <summary>The text a partial's column is described by.</summary>
+        /// <param name="call">The partial's aggregation.</param>
+        /// <returns>The text: the aggregation as written, or for a part of an average, the part written out.</returns>
+        private string PartialText(TypedCall call)
+        {
+            string measures = _spec.Measures!;
+            if (!_measureTrees!.IsSynthesized(call))
+            {
+                return measures.Substring(call.Span.Start, call.Span.Length);
+            }
+
+            IEnumerable<string> arguments = call.Arguments.Select(
+                argument => measures.Substring(argument.Span.Start, argument.Span.Length));
+            return call.Definition.Name + "(" + string.Join(", ", arguments) + ")";
         }
 
         /// <summary>Works out which select items become grouping keys.</summary>

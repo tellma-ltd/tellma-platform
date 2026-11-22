@@ -231,7 +231,7 @@ namespace Tellma.Core.Tests.Users
                 new AccessDecision("gl.Center", "Save", AccessOutcome.Unrestricted, null, [], []),
             ];
 
-            MeResult result = UserService<User>.Envelope(UserService<User>.View(StoredRow()), new Dictionary<string, string>(), tenant, caller, decisions, new UserAccess { TenantId = UsersKit.TenantId, UserId = UsersKit.CallerId }, UsersKit.Now);
+            MeResult result = MeEnvelope.Compose(MeEnvelope.View(StoredRow()), new Dictionary<string, string>(), tenant, caller, decisions, new UserAccess { TenantId = UsersKit.TenantId, UserId = UsersKit.CallerId }, UsersKit.Now);
 
             Assert.Equal(string.Join(", ", result.Tags.Select(static tag => $"{tag.Key}={tag.Value}")), VersionTagWire.HeaderValue(tenant, caller));
             Assert.Equal([VersionTagWire.SettingsItem, VersionTagWire.PermissionsItem, VersionTagWire.PreferencesItem, VersionTagWire.EntitiesItem], result.Tags.Keys);

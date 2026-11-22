@@ -185,6 +185,16 @@ namespace Tellma.Core.Queryex.Emit
                 sql.Line();
             }
 
+            if (plan.GroupsAsOne)
+            {
+                // A grand total that no aggregation marks as one. A group-level predicate with no
+                // grouping makes every row one group, which answers one row even when no row is
+                // read; an empty grouping would answer none then.
+                sql.Write("HAVING (1 = 1)");
+                sql.Line();
+                return;
+            }
+
             if (plan.Having is null)
             {
                 return;

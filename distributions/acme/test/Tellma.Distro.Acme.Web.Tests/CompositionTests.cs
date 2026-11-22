@@ -7,9 +7,12 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.Extensions.DependencyInjection;
+using Tellma.Core.Abstractions.Crud;
 using Tellma.Core.Data;
 using Tellma.Core.Testing.Database;
+using Tellma.Distro.Acme.Entities;
 using Tellma.Distro.Acme.Migrator;
+using Tellma.Distro.Acme.Services;
 using Tellma.Distro.Acme.Web.Tests.Infrastructure;
 
 namespace Tellma.Distro.Acme.Web.Tests
@@ -35,6 +38,31 @@ namespace Tellma.Distro.Acme.Web.Tests
             Assert.Equal(
                 migrator.Model.ToDebugString(MetadataDebugStringOptions.LongDefault),
                 served.ToDebugString(MetadataDebugStringOptions.LongDefault));
+        }
+
+        /// <summary>
+        ///     The surfaces the client specs rely on: Acme's stacks with their actions and extra, the
+        ///     invoice lines' child query surface, and GL's centers served over Acme's leaf.
+        /// </summary>
+        /// <returns>A task that completes when the registry is read.</returns>
+        [Fact]
+        public async Task The_acme_and_gl_surfaces_the_client_reads_are_composed_over_acme_s_types()
+        {
+            await using WebApplication app = AcmeWebApplication.Build("Development");
+            IStackRegistry stacks = app.Services.GetRequiredService<IStackRegistry>();
+
+            // --- Each stack over its entity, with Acme's own actions and the invoices' extra ---
+            Assert.Equal(typeof(Currency), stacks.Find("acme.Currency")?.EntityType);
+            StackDescriptor customers = stacks.Find("acme.Customer")!;
+            Assert.Equal(typeof(CustomerService), customers.ServiceType);
+            Assert.Contains(customers.Actions.OfType<EntityActionDescriptor>(), static action => action is { Name: CustomerService.SetCreditLimitAction, Action: "SetCreditLimit" } && action.ArgumentsType == typeof(SetCreditLimitArguments));
+            StackDescriptor invoices = stacks.Find("acme.SalesInvoice")!;
+            Assert.Contains(invoices.Actions.OfType<EntityActionDescriptor>(), static action => action is { Name: SalesInvoiceService.CloseAction, Action: "Close", ArgumentsType: null });
+            Assert.Contains(RelatedDocumentsContributor.RelatedDocumentsExtra, invoices.Extras);
+
+            // --- The lines' child surface under the invoices, and the centers over Acme's leaf ---
+            Assert.Equal("acme.SalesInvoice", stacks.FindChildQuery("acme.SalesInvoiceLine")?.OwnerResource);
+            Assert.Equal(typeof(MyCenter), stacks.Find("gl.Center")?.EntityType);
         }
 
         [Fact]

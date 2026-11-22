@@ -38,13 +38,19 @@ namespace Tellma.Core.Abstractions.Data
         ///     Whether every id must be readable under <paramref name="ReadFilter" /> and pass
         ///     <paramref name="Filter" /> before anything is updated.
         /// </param>
+        /// <param name="StampUnchanged">
+        ///     Whether a selected row that already holds every assigned value is written and stamped
+        ///     too, as for a command applied to each row; otherwise it is skipped, unstamped. True only
+        ///     with <paramref name="Stamp" />.
+        /// </param>
         public sealed record ByIds(
             IReadOnlyList<object> Ids,
             FilterTree? ReadFilter,
             FilterTree? Filter,
             IReadOnlyDictionary<string, object?> Assignments,
             bool Stamp = true,
-            bool AllOrNothing = false) : UpdateSpec<TEntity>;
+            bool AllOrNothing = false,
+            bool StampUnchanged = false) : UpdateSpec<TEntity>;
 
         /// <summary>The rows a query selects, capped and count-verified.</summary>
         /// <param name="Filter">The query's filter, conjoined with the access filter.</param>

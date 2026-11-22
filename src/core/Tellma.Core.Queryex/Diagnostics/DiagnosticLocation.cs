@@ -27,6 +27,13 @@ namespace Tellma.Core.Queryex.Diagnostics
         ///     be named in is a ceiling its joins push over.
         /// </summary>
         Restrictions = 4,
+
+        /// <summary>
+        ///     The measures a host evaluates over rolled-up groups. Each item is reported at a
+        ///     location of its own; only a problem that precedes the items, such as one parsing the
+        ///     list, is reported at the clause.
+        /// </summary>
+        Measures = 5,
     }
 
     /// <summary>A logical connective inside a filter tree.</summary>

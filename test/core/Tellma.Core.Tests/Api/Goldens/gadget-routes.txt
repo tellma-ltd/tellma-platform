@@ -34,6 +34,8 @@ POST /{tenantId}/api/web/outgoing-emails/query | query | core.OutgoingEmail | - 
 POST /{tenantId}/api/web/outgoing-emails/get | get | core.OutgoingEmail | - | GetRequest | EntitiesResult<OutgoingEmail> | core.OutgoingEmail:Read | idempotent | 55wqT2jEWaFQ
 POST /{tenantId}/api/web/outgoing-emails/get-by-ids | get-by-ids | core.OutgoingEmail | - | GetByIdsRequest | EntitiesResult<OutgoingEmail> | core.OutgoingEmail:Read | idempotent | gKbNur9DjZV-
 POST /{tenantId}/api/web/outgoing-emails/delete | delete | core.OutgoingEmail | - | IdsRequest | AffectedResult | core.OutgoingEmail:Delete | mutation | lisU15N3Oj5S
+POST /{tenantId}/api/web/outgoing-emails/retry | retry | core.OutgoingEmail | entity | EntityActionRequest | EntitiesResult<OutgoingEmail> | core.OutgoingEmail:Retry | mutation | tFKwacIESP2v
+POST /{tenantId}/api/web/outgoing-emails/cancel | cancel | core.OutgoingEmail | entity | EntityActionRequest | EntitiesResult<OutgoingEmail> | core.OutgoingEmail:Cancel | mutation, read-only | tFKwacIESP2v
 POST /{tenantId}/api/web/jobs/query | query | core.Job | - | QueryRequest | RowPage | core.Job:Read | idempotent | PqV1-faRenCx
 POST /{tenantId}/api/web/jobs/get | get | core.Job | - | GetRequest | EntitiesResult<Job> | core.Job:Read | idempotent | -MjFr5wa1iWK
 POST /{tenantId}/api/web/jobs/get-by-ids | get-by-ids | core.Job | - | GetByIdsRequest | EntitiesResult<Job> | core.Job:Read | idempotent | BX5mwxCckWCS
@@ -92,11 +94,14 @@ POST /{tenantId}/api/web/gadget-parts/query | query | sm.SmGadgetPart | - | Quer
 POST /{tenantId}/api/web/gadget-parts/export | export | sm.SmGadgetPart | api | ExportRequest | ExportOutcome | sm.SmGadgetPart:Read | long, idempotent | Fy5vEZu1-Mqy
 POST /{tenantId}/api/web/part-notes/query | query | sm.SmGadgetPartNote | - | QueryRequest | RowPage | sm.SmGadgetPartNote:Read | idempotent | PqV1-faRenCx
 POST /{tenantId}/api/web/part-notes/export | export | sm.SmGadgetPartNote | api | ExportRequest | ExportOutcome | sm.SmGadgetPartNote:Read | long, idempotent | Fy5vEZu1-Mqy
+POST /{tenantId}/api/web/access/check | check | - | api | AccessCheckRequest | IReadOnlyList<AccessDecision> | member-only | idempotent | BY0Dt98gYpu2
+POST /{tenantId}/api/web/access/holders | holders | - | api | AccessHoldersRequest | AccessHolders | member-only | idempotent | 2outbY8RcBPf
 POST /{tenantId}/api/web/settings/client | client | - | api | - | ValueTuple<byte[], string> | member-only | idempotent | JjXeFFL8XHtK
 POST /{tenantId}/api/web/settings/entity-tags | entity-tags | - | api | - | IReadOnlyDictionary<string, string> | member-only | idempotent | mtZdmhBQ5vWx
 POST /{tenantId}/api/web/settings/details | details | - | api | - | TenantSettingsDetails | member-only | idempotent | Ue6a3BcH7zii
 POST /{tenantId}/api/web/settings/refresh-caches | refresh-caches | - | api | - | void | core.Settings.General:Save | mutation, idempotent | lYZxNIK2Qbw7
 POST /{tenantId}/api/web/settings/save | save | - | api | TenantSettingsPatch | SettingsSaveResult | member-only | mutation | 2FgBFQi1n4Jw
+POST /{tenantId}/api/web/client/sync | sync | - | api | ClientSyncRequest | ClientSyncResult | member-only | idempotent | 1UjYUCJx3WE2
 POST /{tenantId}/api/web/queryex/discover | discover | - | api | QueryexDiscoverRequest | QueryexDiscoverResult | member-only | idempotent | Q9rAN9qhOkVv
 POST /{tenantId}/api/web/inbox/summary | summary | - | api | - | InboxSummary | member-only | idempotent | o9p0wbvTAosb
 POST /{tenantId}/api/web/inbox/seen | seen | - | api | - | InboxVerbResult | member-only | mutation, read-only, idempotent | pXR_mrC6LMxV

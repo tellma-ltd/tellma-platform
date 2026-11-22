@@ -51,6 +51,9 @@
     <!-- The outbox alert queries, cross-checked the same way against the outbox's instruments, tags
          and log events. -->
     <Content Include="..\..\..\infra\monitoring\outbox\*.kql" Link="OutboxAlertQueries/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <!-- The blob alert queries, cross-checked the same way against the blob instruments, tags and
+         tag values. -->
+    <Content Include="..\..\..\infra\monitoring\blobs\*.kql" Link="BlobAlertQueries/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

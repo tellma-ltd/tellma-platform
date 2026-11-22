@@ -74,7 +74,7 @@ namespace Tellma.Core.Tests.Access
                     (typeof(User), typeof(UserAccessRules<User>), ComponentKind.Validator),
                     (typeof(Role), typeof(RoleAccessRules<Role>), ComponentKind.Validator),
                     (typeof(User), typeof(UserStampsCompanion<User>), ComponentKind.PersistEffect),
-                    (typeof(User), typeof(BootstrapSubjectEffect<User>), ComponentKind.PersistEffect),
+                    (typeof(User), typeof(DevelopmentSubjectsEffect<User>), ComponentKind.PersistEffect),
                     (typeof(User), typeof(UserActivityContributor<User>), ComponentKind.DetailsContributor),
                 ],
                 record.Components.Where(static component => component.EntityType == typeof(User) || component.EntityType == typeof(Role))

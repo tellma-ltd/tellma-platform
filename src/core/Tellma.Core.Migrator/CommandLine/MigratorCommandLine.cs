@@ -14,6 +14,7 @@ namespace Tellma.Core.Migrator.CommandLine
         /// <summary>The usage text printed with every usage error.</summary>
         public const string Usage = """
             Usage:
+              blobs verify --tenant <id> [--delete-orphans]
               emit-client-assets <dir>
               migrate [--catalog-only] [--tenant <id>]... [--all-tenants] [--parallelism <n>]
               provision [--tenant <id>] [--name <name>] [--category Live|Sandbox] [--live-tenant <id>]
@@ -40,6 +41,7 @@ namespace Tellma.Core.Migrator.CommandLine
             var options = Options.Read([.. args.Skip(1)]);
             return args[0] switch
             {
+                "blobs" => ParseBlobs(options),
                 "emit-client-assets" => ParseEmit(options),
                 "migrate" => ParseMigrate(options),
                 "provision" => ParseProvision(options),
@@ -47,6 +49,21 @@ namespace Tellma.Core.Migrator.CommandLine
                 "status" => ParseStatus(options),
                 _ => throw new MigratorUsageException($"'{args[0]}' is not a migrator command."),
             };
+        }
+
+        /// <summary>Parses <c>blobs verify</c>, the one <c>blobs</c> command.</summary>
+        /// <param name="options">The arguments after the command.</param>
+        /// <returns>The command.</returns>
+        private static BlobsVerifyCommandLine ParseBlobs(Options options)
+        {
+            if (options.Operands is not ["verify"])
+            {
+                throw new MigratorUsageException("blobs takes one subcommand, verify.");
+            }
+
+            options.Allow("--tenant", "--delete-orphans");
+            int tenant = options.Single("--tenant") is string id ? TenantId("--tenant", id) : throw new MigratorUsageException("blobs verify needs --tenant.");
+            return new BlobsVerifyCommandLine(tenant, options.Flag("--delete-orphans"));
         }
 
         /// <summary>Parses <c>emit-client-assets &lt;dir&gt;</c>.</summary>
@@ -173,7 +190,7 @@ namespace Tellma.Core.Migrator.CommandLine
         private sealed class Options
         {
             /// <summary>The options that take no value.</summary>
-            private static readonly HashSet<string> Flags = new(StringComparer.Ordinal) { "--catalog-only", "--all-tenants" };
+            private static readonly HashSet<string> Flags = new(StringComparer.Ordinal) { "--catalog-only", "--all-tenants", "--delete-orphans" };
 
             private readonly List<(string Name, string? Value)> _options = [];
 
@@ -281,6 +298,11 @@ namespace Tellma.Core.Migrator.CommandLine
             }
         }
     }
+
+    /// <summary><c>blobs verify</c>.</summary>
+    /// <param name="Tenant">The tenant whose storage is compared with its blob rows.</param>
+    /// <param name="DeleteOrphans">Whether the objects no row references are deleted.</param>
+    internal sealed record BlobsVerifyCommandLine(int Tenant, bool DeleteOrphans) : MigratorCommandLine;
 
     /// <summary><c>emit-client-assets &lt;dir&gt;</c>.</summary>
     /// <param name="Directory">The generated folder the files are written into.</param>

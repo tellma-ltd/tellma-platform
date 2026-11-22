@@ -45,6 +45,9 @@ namespace Tellma.Core.Queryex.IntegrationTests
             await Execute(database, LedgerDdl.Create());
             await Execute(database, LedgerData.Insert());
 
+            // The facts measures are combined over, apart from the ledger's own tables.
+            await Execute(database, MeasureFixture.Create());
+
             // Two centuries of days for the calendar sweep, generated on the server in one
             // statement rather than sent row by row.
             await Execute(database, CalendarDays.Create());

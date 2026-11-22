@@ -171,7 +171,7 @@ Format, one entry per ruling:
 - Revisit if: .NET ships a portable create-only move.
 
 ### D-025 (orchestrator, 2026-11-08): TellmaJson refuses undefined enum values
-- Spec: 0016 §3.1 (enum wire form via JsonStringEnumConverter<TEnum>).
+- Spec: 0016 §3.1 (enum wire form via `JsonStringEnumConverter<TEnum>`).
 - Situation: PC-015's Review 2 showed that the spec'd converter reads comma lists on non-[Flags] enums. "ReadOnly, Hidden" becomes an undefined McpExposure 3, and "B, C" silently becomes D. Spec 0012 stores enums as varchar with no CHECK constraint, and writing an undefined value back throws, so a single save would turn every later read of that row into a 500.
 - Ruling: the TellmaJson enum converter refuses any value that is not a defined member, in both Read and ReadAsPropertyName. For [Flags] enums it refuses any undeclared bit, and a non-[Flags] enum refuses a comma list outright. A refused value is a normal JSON binding error (400).
 - **Spec clarification for Ahmad:** 0016 §3.1 should state this rule. As written, the spec's converter choice allows the hole.
@@ -217,10 +217,10 @@ Format, one entry per ruling:
   - Situation: Gregorian month names and date patterns come from the host's ICU, so Windows and Ubuntu differ. For example, the en-GB full date has a comma on only one of them, and am-ET month spellings differ.
   - Ruling: server text is host-independent. PC-019's negotiated culture clone pins the CLDR names and patterns for every supported language (planner note). Until then, PC-016's goldens run over pinned culture clones.
 - Accepted from PC-016:
-  - The calendar contribution item, Calendar<T>(), its realizer and the CoreFeature registrations landed in PC-016, because no checkpoint listed them.
+  - The calendar contribution item, `Calendar<T>`(), its realizer and the CoreFeature registrations landed in PC-016, because no checkpoint listed them.
   - StaleContextException (0013 §2.9) joins the closed exception set.
 - **Spec error for Ahmad:** Appendix A's prose rule ("12 September in the year before a Gregorian leap year") is wrong for 2099. 1 Meskerem 2092 falls on 2099-09-12 (ICU agrees with the code). The code follows the arithmetic, not the prose.
-- Addendum (PC-016 Review 1): array setting values are ImmutableArray<T> rather than T[], a deviation from 0013 §5.3. A tenant snapshot is then shared safely without copying. The client's Umm al-Qura fallback outside the table is islamic-tbla, which equals .NET's HijriCalendar with adjustment 0.
+- Addendum (PC-016 Review 1): array setting values are `ImmutableArray<T>` rather than T[], a deviation from 0013 §5.3. A tenant snapshot is then shared safely without copying. The client's Umm al-Qura fallback outside the table is islamic-tbla, which equals .NET's HijriCalendar with adjustment 0.
 - Addendum (PC-016 fix 1): the server's Umm al-Qura calendar is UmAlQuraExtendedCalendar. It is the .NET table, plus the tabular calendar (adjustment 0) outside AH 1318-1500, and it is valid from AD 622-07-18. Muharram 1501 begins 2077-11-17 and has 29 days, so the table wins the one overlap. A date before a calendar's epoch renders as "yyyy-MM-dd gc", which TryParse refuses.
 - Addendum (PC-F09): CI's ubuntu-latest is now ubuntu-26.04 with libicu 78.2. From ICU 78, ar-SA's default calendar is Gregorian, with Umm al-Qura only optional. Other CLDR data moved too: en-GB's full date has its comma again, and ti-ET's short date is M/d/yyyy. Calendar tests therefore build their culture clones explicitly and never rely on host defaults. Local Linux checks use mcr.microsoft.com/dotnet/sdk:10.0-resolute (ICU 78) as well as sdk:10.0 (ICU 74). PC-019's pinned culture data must be chosen independently of either ICU.
 - Revisit if: the client must convert dates outside .NET's Umm al-Qura range (AH 1318-1500).
@@ -363,8 +363,8 @@ Format, one entry per ruling:
 
 - PC-088 Review 2 (fable, ed00f3de..8caf7211): 0 blocking, 1 major, 5 minor, all from code reading. R2-1 (major, latent): invite and issue-credentials check only errors after ValidatedAsync, so an unconfirmed warning lets the identity call run, then ConfirmationRequiredException persists nothing and the confirmed resend emails everyone again; fixed by also stopping on unconfirmed warnings and the tenant-state verdict. R2-2: R1-4's keep-on-unknown-commit gains nothing (the secret is never delivered on a 503) and leaves an orphan when the persist did not commit; replaced by a read-back if within budget, else reverted to delete on any fault. R2-3 (a cancel after the identity answer loses the whole write-back) and R2-4 (three races between the round trips, none opening access) are fixed where contained, else recorded as open risks. R2-5 recorded in WATCHLIST 0018. R2-6: the open-transaction probe gets a positive control. Secrets, authority (self-scoped Read is the owner filter rebased through the navigation), failure-path convergence, the probe and the budgets were confirmed. Review 1's fixes hold. PC-088 holds behind PC-145 after fix 2 (D-087).
 - Carry to PC-190: tellma_action refuses the sensitive invite and issue-credentials actions (both mcp Full today).
-- PC-088 fix 2 (c1574599): ActionContext.ValidatedAsync now returns Task<bool> (false on errors, unconfirmed warnings or a tenant-state refusal); the R1-4 keep-on-unknown-commit change is withdrawn and 0018 §3.8 holds as written; a new error code Users.CredentialsConcurrent (en and ar) answers the losing concurrent issue-credentials; the probe has a positive control; R2-5 is in WATCHLIST 0018. R2-3 is left as documented behaviour (a cancel after the identity answer loses the write-back, and a retry re-emails) pending Ahmad's answer below; it opens no access. Its one local RequestTimeoutTests failure is the pre-PC-F64 test (7/7 on rerun). PC-088 holds behind PC-145.
-- For Ahmad (fix 2 additions): (4) ValidatedAsync returning Task<bool> is a public contract change to 0015 §11.2, alongside item (1). (5) 0018's error-code table should gain Users.CredentialsConcurrent. (6) R2-3 needs a choice: the persist ignores cancellation once an action has called out, or 0018 §3.3 states that a cancelled invite re-emails on retry.
+- PC-088 fix 2 (c1574599): ActionContext.ValidatedAsync now returns `Task<bool>` (false on errors, unconfirmed warnings or a tenant-state refusal); the R1-4 keep-on-unknown-commit change is withdrawn and 0018 §3.8 holds as written; a new error code Users.CredentialsConcurrent (en and ar) answers the losing concurrent issue-credentials; the probe has a positive control; R2-5 is in WATCHLIST 0018. R2-3 is left as documented behaviour (a cancel after the identity answer loses the write-back, and a retry re-emails) pending Ahmad's answer below; it opens no access. Its one local RequestTimeoutTests failure is the pre-PC-F64 test (7/7 on rerun). PC-088 holds behind PC-145.
+- For Ahmad (fix 2 additions): (4) ValidatedAsync returning `Task<bool>` is a public contract change to 0015 §11.2, alongside item (1). (5) 0018's error-code table should gain Users.CredentialsConcurrent. (6) R2-3 needs a choice: the persist ignores cancellation once an action has called out, or 0018 §3.3 states that a cancelled invite re-emails on retry.
 - For Ahmad: (1) 0015 §11.2 / deviation 1: the ValidatedAsync contract covers unconfirmed warnings and the tenant-state verdict, not only errors. (2) 0018 §3.3: a request cancelled after the identity server answered loses the whole write-back, and a retry re-emails; a pipeline or spec answer is needed. (3) 0018: service-client deletes are distribution-wide, so a cloned sandbox tenant could delete the live tenant's client (not reachable today).
 
 ### D-158 (orchestrator, 2026-11-20): PC-145 Review 1 rulings
@@ -383,6 +383,192 @@ Format, one entry per ruling:
 - PC-F62 fix 1 (c3309b0f): R1-1 capture reads WITH (UPDLOCK, HOLDLOCK); R1-2 the SET DEFAULT and save-reach shapes fail core.version-tags at startup, plan-time backstops kept; R1-3 a unit golden through a child node's scope (no executed case: no fixture entity keys a child table, and adding one would need a new fixture migration). Its one local RequestTimeoutTests failure ran the pre-PC-F64 test (pc-2 does not contain 5c27e84d), so it is the PC-F64 root cause, not a new flake. Holds behind PC-F63.
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
+
+### D-197 (orchestrator, 2026-11-22): PC-F67 implementation; PC-F68 opened for a local LastAdministrator failure
+
+PC-F67's implementation (0dabb9cc) restores ClientSyncResult.Me as MeResult and drops PreSerializedJson.Of. The web OpenAPI document builds its schemas under its own limit, WebOpenApi.SchemaMaxDepth = 128, through a second, document-only JsonOptions instance; the wire keeps MaxDepth 16. The wire, fingerprint, route and stack goldens and the client types are unchanged, and 7 tests fail without the fix. Review 1 is running.
+
+For Ahmad (D-185 item 2): the document-only JsonOptions copy goes against 0016 §3.1's "No other copy exists". Either §3.1 should allow a document-only copy for the OpenAPI schema writer, or the wire limit should rise. Follow-up, not scheduled: client/sync's settings stay "any value" in the document (PreSerializedJson). A schema transformer could describe them.
+
+PC-F68 opened: UserSelfServiceTests.Another_user_s_bag_is_read_set_and_deleted_under_the_preferences_filter_within_its_budgets throws Access.LastAdministrator on preferences/set.
+- Seen locally on Windows at 2026-11-22 03:18 UTC, alone on a fresh fixture database.
+- It fails the same way on PC-F67's base, so platform-core already has it.
+- It passed in PC-096 on 2026-11-21, so a date or time dependence is possible.
+- The latest PR-tier CI integration run (on 87a9066c) was green.
+
+It may be a product bug in the last-administrator guard, so it is root-caused, not retried (D-011/D-113). It takes the first slot that frees after PC-F11 has pc-f, which is likely pc-2 once PC-175 lands, unless T1/T2 work is ready.
+
+### D-196 (orchestrator, 2026-11-22): PC-093 takes pc-3; PC-F11 moves to pc-f
+
+PC-092 landed (87a9066c), and PC-093 (0018-h, T1) became ready just as pc-3 freed. D-140/D-173 put ready T1 work ahead of fills, and PC-F11 is a before-GA fill (D-195), so PC-093 takes pc-3 at implementer high with R1 only. PC-F11 takes the fix slot pc-f as soon as PC-214 lands, ahead of PC-175's release. Its brief has already been retargeted to pc-f.
+
+A local, unpushed pc/PC-F11 branch was created in pc-3 before the swap. pc-f reuses it, fast-forwarded to origin/platform-core. No branch is deleted.
+
+### D-195 (Ahmad, 2026-11-22): start PC-F11 and PC-F17 to use the reset
+
+Situation: at 02:10 UTC usage was 15% at about 1 pt/h, below D-178's target of about 1.5. Nothing beyond PC-103 was ready, and pc-4 was idle. I proposed the two before-GA fix items, and Ahmad answered "Yes, start both".
+
+Ruling:
+- PC-F17 (grid scroll budget) starts at once in pc-4, implementer inherit high, with one review.
+- PC-F11 (PDF worker filesystem confinement) takes pc-3 as soon as PC-092 lands. No other slot is free: PC-214 and PC-175 hold theirs, and adding a slot would need new ports and a DB_SUFFIX (D-035).
+- PC-F11 is security-bound, so it runs at implementer xhigh with Review 1 and Review 2 on fable (PROCESS §3).
+- Both integrate in the normal release order, after PC-214 and PC-175.
+
+Revisit if usage stays below about 1.2 pts/h with a free slot and nothing ready.
+
+### D-194 (orchestrator, 2026-11-22): PC-092 fix1 held; it integrates ahead of PC-214 and PC-175
+
+PC-092's fix1 (5ddb17c5) fixed R1-1..R1-6. Its pushback on R1-1's "read denied, extra dropped" sub-point is accepted. Every grant implies Read with the same filter (0014 §5.2 step 2), and DetailsPlanner.Compose throws Forbidden before any contributor runs, so the branch cannot be reached through the stack. The contributor keeps it as a guard. The tests pin the Forbidden and a filtered Save's implied read, and no leak was found.
+
+New deviation, accepted: R1-4's case runs only the seeder under a Production IHostEnvironment, because a full Production host cannot start in memory.
+
+merge-tree shows 3 conflicts:
+- ARCHITECTURE.md's migrator paragraph: keep both sentences.
+- The Acme InitialTenant migration pair (rename/rename): regenerate it and the model snapshot with dotnet-ef at integration, never hand-merge.
+
+Release order after PC-096 lands: PC-092 (T1), then PC-214 and PC-175 (both T3, in the order they held). PC-092 held before PC-214 was released, so D-193 and D-140/D-173 put it first. The D-192 question for Ahmad stands.
+
+### D-193 (orchestrator, 2026-11-22): PC-175 fix1 held; its AspNetCore load timeouts predate PC-F65
+
+PC-175's fix1 (6eb3f3c9) is held. R1-1, R1-2 and R1-4 are fixed. R1-3 is fixed by inversion: the pipeline owns Crud/IPlatformCompanions, ExcelCompanions.Instance implements it, and CompositionPipeline hands it to CrudComposition.Register. Crud/ and Abstractions now name no Tellma.Core.Excel type, so 0019 §1.1 holds with no deviation. R1-5 is unchanged (D-188).
+
+The new by-query editable round-trip test leaves out widget 1. Its 60 parts overflow MaxTake and would add 0015 §16.2's follow-up read.
+
+merge-tree shows 5 content conflicts, all to be regenerated with TELLMA_UPDATE_GOLDENS=1 at integration, together with the auto-merged client entities-chunk.json:
+- the IntegrationTests README;
+- the fixture and gadget route goldens;
+- the fixture and gadget stack goldens.
+
+The full Core.AspNetCore.Tests run failed two load timeouts (RequestTimeout, RateLimiting) and passed on rerun. This is not a new flake. pc/PC-175 does not yet contain PC-F65 (9e21bb68), which root-caused those exact load-starved waits. The integration merge brings the fix in, so no new fix item is opened. A recurrence on a branch that contains 9e21bb68 would open one.
+
+Release order after PC-096 lands: PC-214, then PC-175, then PC-092 when it holds. T1 items go ahead of PC-214's T3 fill only when they hold before PC-214 is released.
+
+### D-192 (orchestrator, 2026-11-22): PC-092 Review 1 rulings
+
+Review 1 found 0/1/5 and accepted all 9 deviations. The reviewer verified that the `IDevelopmentSubjects` seam and the `TellmaIdentity:Seed:DevUsers` seeding are guarded by the host environment and the system scope, not by an option. The dev-admin bootstrap keeps its guarantees. The service account has no credentials, and sandbox@ is in tenant 2 only. The ARCHITECTURE.md edits match the code. The resource audit in Acme Web.Tests is accepted, and the PC-094 stand-in is extended in place.
+
+Fixed in fix1:
+- R1-1: member-scoped tests for the related-documents extra's own access guard (a filtered invoice read on the rows and in the customer join; the extra dropped on denied read and above 128 targets), fixing any leak they expose.
+- R1-2: the sample users' tenant hints are recorded on every run.
+- R1-3: the `{number}` placeholder in `Acme_Settings_NextNumber` (en, ar).
+- R1-4: a test that the development users are seeded only in Development.
+- R1-5: the derived-label check covers `Gl_Center_ManagerId` and `SettingCategory_*`.
+- R1-6: the commit's test list is corrected.
+
+For Ahmad: in Development, the e2e principals (sales@, centers@ and sandbox@localhost) are bound to fixed subjects instead of being invited. This departs from 0018 §6.3 and 0024 §13, and ARCHITECTURE.md now describes it.
+
+PC-092 holds after fix1. PC-096 is integrating and PC-214 is held.
+
+### D-191 (orchestrator, 2026-11-22): PC-214 fix1 accepted and held behind PC-096
+
+Fix1 (2b2a3562) fixed R1-1..R1-6 per D-187 and added deviation 11.
+
+Confirmed:
+- The second public `ActionContext.Update` overload (assignments, condition, refusalCode).
+- The data-layer option `UpdateSpec.ByIds.StampUnchanged`.
+
+D-187's all-or-nothing retry needs both. The plain update would reset a target cancelled between the rounds back to Pending, and would leave a retried row whose columns were already clear unstamped. The new overload is pinned in the Abstractions Validation API golden.
+
+Deviation 11 is accepted: a target deleted between the rounds is refused with Email.NotRetryable, not reported as not found. The refusal is whole, so either answer leaves nothing changed, and one code keeps the client path simple.
+
+merge-tree shows 8 conflicts:
+- three regenerated migration pairs (Acme InitialTenant, the Core migrator test distribution and Testing.Entities);
+- two test files (AccessModelTests, JobLabelsTests).
+
+At integration, the migrations are regenerated, never hand-merged. PC-214 is released right after PC-096's platform-core push (D-087, D-190), and PC-175 follows it.
+
+### D-190 (orchestrator, 2026-11-22): PC-096 integrates ahead of PC-214 and PC-175
+
+PC-096's fix2 (70c18c62) held with a clean merge-tree while PC-214 and PC-175 were still in fix1 and nothing was integrating. D-087 releases one held item at a time; it does not make a held item wait for items that are not yet held. PC-096 is also T1 against PC-214's T3 fill (D-140/D-173). It was released at once. PC-214 and PC-175 integrate next, in the order they report held, after PC-096's platform-core push.
+
+Deviation 18 (client/sync never stamps activity, 0016 §4.3 kept against 0025 §5.3 step 5) stands as D-189's question for Ahmad. The 0025 size share is 8.14 of 9 KB, and @tellma/core is 20.36 of 20.44 KB.
+
+### D-189 (orchestrator, 2026-11-22): PC-096 Review 2 rulings
+
+Review 2 found 0/1/2 and judged deviations 14-17, the budget raise (+0.16 KB, within D-031) and the `ɵshow`/`ɵwrite` paths sound. R1-7's pushback reason did not hold, but the outcome stands through the WATCHLIST hand-off to PC-110.
+
+Fixed in fix2:
+- R2-1: a tenant's queued sync run is dropped when its controller aborts, `ɵenter` never returns an entry from before a leave, and the abort is re-checked before the 2 s throttle wait. Add a leave-and-re-enter test.
+- R2-2: the re-read inside the lock covers `tenant` too (a fix1 regression). Add a two-cold-tabs test.
+- R2-3: the code keeps following 0016 §4.3 (client/sync never stamps activity). Record a named deviation against 0025 §5.3 step 5, and rename the over-claiming test.
+
+For Ahmad: 0025 §5.3 step 5 says a cold sync stamps activity, while 0016 §4.3 says client/sync never does. Either amend 0025, or have the server honour a foreground client/sync.
+
+PC-096 holds after fix2, behind PC-214 and PC-175.
+
+### D-188 (orchestrator, 2026-11-22): PC-175 Review 1 rulings
+
+Review 1 found 0/1/4 and accepted all 16 deviations. The ScratchDirectory reuse, the unlocalized Remedy (its 413 body carries arguments.remedy) and the per-stack ExcelOperations wiring are accepted. IStackExcelRows is not exposed; its golden line is a renderer artifact.
+
+Fixed in fix1:
+- R1-1: assert the §14.3 export metrics and log events.
+- R1-2: unique display headers (§3.3).
+- R1-3: invert the pipeline-to-Excel dependency (0019 §1.1) if a small seam does it, otherwise record a named deviation.
+- R1-4: the three missing tests.
+
+R1-5 is D-176's open question for Ahmad (Q2), with no code change: an unsorted display export runs in ascending Id. That follows 0019 §2.1 and 0015 §15's formula, but not 0019 §4.1 or 0015 §2.2's DefaultOrderBy ?? "Id desc".
+
+PC-175 holds after fix1, behind PC-214.
+
+### D-187 (orchestrator, 2026-11-22): PC-214 Review 1 rulings
+
+Review 1 found 0/1/5, all fixed in fix1. The reviewer confirmed that D-132 still forces the missing delete-by-query (waiting on Ahmad's (a)/(b)), that the D-177 carry adds no throw path, and that the three migrations are pure dotnet-ef output.
+- R1-1: a two-target pipeline test for the conditional update.
+- R1-2: retry refuses, rather than skips, a target its conditional update would pass over. Otherwise a row cancelled between rounds would get a new JobId and a no-op job. Cancel keeps skip semantics (0022 §7.1 "filtered by the grant and the precondition", as 0020's job verbs).
+- R1-3: the doc states exactly when a target is skipped and when PostCheck refuses it. No receipt API yet, since no caller needs one.
+- R1-4: retry stamps ModifiedAt even when the reset columns already hold their values (0022 §10).
+- R1-5: unmatched is counted per event.
+- R1-6: retention paging tests.
+
+PC-214 holds after fix1, behind PC-212.
+
+### D-186 (orchestrator, 2026-11-21): PC-212 Review 1 rulings
+
+Review 1 found 0/0/3, all fixed in fix1: tests for sweep cancellation, the purge-failure log and meter, and out-of-grammar rows; README wording. The reviewer also judged three things sound:
+- the shared JobPollDriver/FixtureTenant harness change (every consumer passes);
+- the reconcile test's audit suspension (SuspendableAudit, as tree-verify does), a correct test seam;
+- the migrations, which are pure dotnet-ef output.
+
+Harness carry for the async export/import checkpoints (0019 jobs): a handler that reports percent progress renews in the background and trips the fixture change-tracking audit as a false positive. Suites that run such handlers through the worker harness suspend the audit the same way, or the harness learns to ignore renewal writes. Whichever checkpoint first hits it records which. PC-212 holds after fix1, behind PC-181.
+
+For Ahmad (spec text only):
+1. 0017 §10.2 should list the BlobSweepStoreFailed Warning event.
+2. 0017 §10.1 should say that a failed purge counts in tellma.blobs.sweep.failures (D-128 precedent).
+
+### D-185 (orchestrator, 2026-11-21): PC-096 Review 1 rulings
+
+Review 1 found 0/1/7.
+- R1-1 (major) is fixed in fix1: a future sync.at, after the device clock moves back, stalled every sync and write inside the lock for the whole skew. It is now treated as unknown, with the wait clamped to 2 s.
+- R1-2 to R1-5 are fixed in fix1.
+- R1-6 is verified. Under MaxDepth 16 (0016 §3.1), the OpenAPI writer fails the whole /openapi/web.json once a schema nests 17 deep. MeResult's schema nests 15 deep, and 17 inside a result record. PC-096 keeps the `PreSerializedJson<MeResult>` workaround (same wire and fingerprint, but me shows as any value in OpenAPI). Fix item PC-F67 then decouples the OpenAPI schema writer's depth from the wire MaxDepth and restores the typed Me. It takes a free slot after PC-096 is on platform-core.
+- R1-7: the PC-096 -> PC-110 hand-off for ɵTM_SYNC_ERRORS goes in WATCHLIST on the branch.
+- R2 (inherit, xhigh) follows fix1.
+
+For Ahmad:
+1. Spec 0025's 9 KB primary-services share is effectively spent: 7.98 KB used after PC-096. About 1 KB is left for TmLeader, TmPreferences, TmPageState, TmDrafts, TmTreeExpansion and TmRecents. The @tellma/core "." ceiling rose 16.59 -> 20.28 KB within D-031. Either the share grows, or later services must find savings.
+2. 0016 §3.1 (MaxDepth 16) vs §12.1 (OpenAPI schemas are the real types): PC-F67 decouples them. Confirm that the OpenAPI document may use its own depth limit.
+
+### D-184 (orchestrator, 2026-11-21): platform-core PR run red on a vstest connect timeout, fix item PC-F66
+
+PR run 44947728191 on 9e21bb68 (PC-F65's platform-core push) was red on build-test (windows-latest) only. Every test that reported passed, but vstest.console logged "failed to connect to testhost process after 90 seconds" while Tellma.Core.Tests and Tellma.Core.AspNetCore.Tests saturated the runner, and that assembly's run aborted. PC-F65's own pc run on 90110751 (same code) was green. This is runner starvation, not a code fault. Under D-011/D-113 it is root-caused, with no retry. The same build-test job gates every pc integration run, so it is fix item PC-F66 and takes the next free slot ahead of T3 fill. Expected fix options, decided by the fix agent with evidence: bound the number of test hosts the Windows unit step runs at once, or raise VSTEST_CONNECTION_TIMEOUT with a reason. Per D-154 and Ahmad's ruling, done items are gated on the push run, so this PR red changes no item's status. It is not a §9 notification event. Second occurrence an hour later: PC-091's pc run 44949147181 on 65375312 was red on the same job. "Tellma.Core.Queryex.Tests: Test process did not respond within 60 seconds" (xUnit v3 launcher), and every reported test passed. That red blocks PC-091's gate, and PC-090's CI fixes already set the precedent of a ci.yml change inside an item's CI-fix round. So PC-091's CI fixes absorb PC-F66: bound the Windows unit step's concurrent test hosts at the cause, with a comment in ci.yml, and raise timeouts only with a written reason.
+
+### D-183 (orchestrator, 2026-11-21): BlobEndpointTests waits carry
+
+PC-F65 is done at 9e21bb68. PC-089's BlobEndpointTests still use fixed 10 s/30 s waits and a 200 ms delay. They are flake candidates of the same class that PC-F65 root-caused. The carry goes to PC-212, which works in the blobs test area: at its integration step (after the merge brings in PC-F65's Patience/TestClock helpers), it moves those waits onto the helpers and runs BlobEndpointTests. This is a code change at integration, kept to that one test file. Running its tests falls within D-175's "tests the merge touches". Only PC-214 (T3) was ready for the freed pc-f slot, so it launched there under D-173.
+
+### D-182 (orchestrator, 2026-11-21): PC-181 Review 2 rulings
+
+Review 2 (inherit, xhigh) found 0/1/3. It confirmed on LocalDB that R1-4's `HAVING (1 = 1)` departure from D-181 is correct and that the interpreter change matches 0008 §2.1. All four findings are fixed in fix2:
+- R2-1: keep Measures in the grouped count spec, so a measures page with a keyless select counts one row.
+- R2-2: plan non-column text as the host binds it, so length() of a parameter is int.
+- R2-3: level(max(Node)) is QX4011.
+- R2-4: null tests over parameters of any type are exempt from the measure type check.
+
+PC-181 holds after fix2, behind PC-F65 and PC-091.
+
+### D-181 (orchestrator, 2026-11-21): PC-181 Review 1 rulings
+
+Review 1 found 0/2/4. All of R1-1 (measures take grand-total nullity, with an empty-cell test), R1-2 (LEN typed int, bigint only for (max) text; plan width checked against the server column type), R1-3, R1-5 and R1-6 are fixed in fix1. R1-4 is the implementer's pre-existing engine issue: an Aggregate query whose every aggregation folds away emits no GROUP BY and returns one row per fact row, which violates 0008 §2.1/§11.3. It is fixed in PC-181 rather than as a separate fix item, because PC-181 owns that emitter path: emit `GROUP BY ()` with no grouping keys and pin it with a corpus case. Deviation 9 (a column-less count() inside an INTERSECT subquery is anchored to the root key) is verified correct on LocalDB. The 16 LEAST calendar failures are environmental (LocalDB 2019). R2 (inherit, xhigh) follows fix1. Fix1 (651abb4c) departed on R1-4 with reason. On SQL Server, `GROUP BY ()` returns zero rows over empty input, so the emitter writes `HAVING (1 = 1)` when no key, no group predicate and no surviving aggregation remain but one was written. The reference interpreter now answers 0008 §2.1's degenerate shape (no key, no aggregation, no having) once per row. R2 verifies both.
 
 ### D-180 (orchestrator, 2026-11-21): PC-091 Review 1 rulings
 
@@ -535,13 +721,13 @@ For Ahmad:
 
 ### D-164 (orchestrator, 2026-11-20): PC-148 Review 1 rulings; carries to PC-149 and PC-143
 
-- PC-148 Review 1 (Opus high, b01932b6): 0 blocking, 1 major, 4 minor. R1-1 (major): EmailNotificationChannel sends every recipient into one EnqueueAsync, so one address the outbox refuses (e.g. ContactEmail "Ada <a@x>", which MailAddress accepts) or a name with a control character throws ValidationException and fails the whole delivery batch with no retry; fixed by per-recipient validation. The D-151 carry landed (EnlistmentFrame.Admit admits EmailOutbox, with the commit/rollback test). All 9 deviations accepted. PC-148 holds behind PC-088 after fix 1.
+- PC-148 Review 1 (Opus high, b01932b6): 0 blocking, 1 major, 4 minor. R1-1 (major): EmailNotificationChannel sends every recipient into one EnqueueAsync, so one address the outbox refuses (e.g. ContactEmail "Ada `<a@x>`", which MailAddress accepts) or a name with a control character throws ValidationException and fails the whole delivery batch with no retry; fixed by per-recipient validation. The D-151 carry landed (EnlistmentFrame.Admit admits EmailOutbox, with the commit/rollback test). All 9 deviations accepted. PC-148 holds behind PC-088 after fix 1.
 - Carries: the 0018 §3.3 welcome email has no owner (PC-088 excludes it, PC-143 defers to 0022, PC-148 does not wire it); assigned to PC-149, whose done-when already has welcome emails leaving through the sender, and which starts after PC-088 lands. PC-143 registers EmailNotificationChannel only once PC-149 is on platform-core, or opted-in email piles up as Pending rows whose jobs fail closed over 12 attempts. PC-149 also emits tellma.outbox.enqueued.
 - For Ahmad: under D-132 option (b), outgoing-emails gets delete-by-query back (0022 §8 lists it).
 
 ### D-163 (orchestrator, 2026-11-20): PC-147 Review 1 rulings; live SignalR suite deferred until provisioned
 
-- PC-147 Review 1 (Opus high, dac43255): 0 blocking, 0 major, 9 minor. Security confirmed sound: only the front door mints hub claims (each exactly once, a principal already carrying one is refused, a fresh ticket per request); every group is tenant-qualified and families cannot collide; the publisher sends only to the scope's tenant; clients can subscribe to nothing; session.ended reaches no other tenant or session. AddHubOptions is required (ASP.NET Core 10 uses HubOptions<THub> only when registered) and is pinned by every realtime test. The deviation-2 ordering claim is confirmed in Azure SignalR SDK 1.33.1 source. Findings: R1-1 the live suite and offline Azure test sit in the core unit project (ARCHITECTURE.md test layout, 0021 §12), moved to Defaults.Azure.Tests and a new Defaults.Azure.AspNetCore.IntegrationTests; R1-2..R1-9 (weak 404 assertion, untested 4 KB limit, TellAsync try scope, needless catalog reads, digit-led deployment id throws a bare exception, uncounted 401/403, memo refusals untested and unexplained, N-instance fan-out of state changes) fixed or recorded in fix 1.
+- PC-147 Review 1 (Opus high, dac43255): 0 blocking, 0 major, 9 minor. Security confirmed sound: only the front door mints hub claims (each exactly once, a principal already carrying one is refused, a fresh ticket per request); every group is tenant-qualified and families cannot collide; the publisher sends only to the scope's tenant; clients can subscribe to nothing; session.ended reaches no other tenant or session. AddHubOptions is required (ASP.NET Core 10 uses `HubOptions<THub>` only when registered) and is pinned by every realtime test. The deviation-2 ordering claim is confirmed in Azure SignalR SDK 1.33.1 source. Findings: R1-1 the live suite and offline Azure test sit in the core unit project (ARCHITECTURE.md test layout, 0021 §12), moved to Defaults.Azure.Tests and a new Defaults.Azure.AspNetCore.IntegrationTests; R1-2..R1-9 (weak 404 assertion, untested 4 KB limit, TellAsync try scope, needless catalog reads, digit-led deployment id throws a bare exception, uncounted 401/403, memo refusals untested and unexplained, N-instance fan-out of state changes) fixed or recorded in fix 1.
 - Nightly signalr-live: the require step keeps failing like the other live connector jobs (a skip would report green), and gets a job-level `if: vars.SIGNALR_LIVE_ENABLED == 'true'` gate so an unprovisioned suite is off, not red by design. The "Nightly live connector suites" workflow is disabled_manually and scheduled runs come from main, so it runs nowhere until platform-core merges. Deferred (PLAN §6): the live suite has never run, so its Azure-specific assertions are unverified.
 - For Ahmad: (1) provisioning the live SignalR suite needs a GitHub environment live-realtime-tests with secret SIGNALR_TEST_CONNECTIONSTRING (a test Azure SignalR Service instance) and the variable SIGNALR_LIVE_ENABLED=true. (2) 0021 §6.2: the session group is t{tid}.x{handle}, not x{handle}. (3) 0021 §6.5: session.ended goes to local connections directly plus GroupExcept to the rest, since only a direct local send is ordered before the abort's close; §6.5 also omits OnRemovedAsync, and (if R1-9 is not fixed) every instance publishes each state change to the whole tenant group. (4) 0021 §6.6/§11: the host. prefix on the realtime-hosting problem code. (5) 0021 §6.6 / 0007: deployment ids may start with a digit or hyphen, which the Azure application name cannot.
 
@@ -615,7 +801,7 @@ For Ahmad:
 
 ### D-148 (orchestrator, 2026-11-20): PC-087 Review 1 rulings, and PC-144/PC-146 launched as Tier 2
 
-- PC-087 (0018-b) Review 1 at e2ed8550: 0 blocking, 0 major, 6 minor. The reviewer accepted all six deviations the implementer flagged: DeleteContext<TEntity>.WithDescendants (needed because 0015 §10.3 reruns the §10.1 hook round with the same context), DeploymentIdentity.IsDevelopment (built from the same IHostEnvironment.EnvironmentName), Center served without DeleteByQuery (required by D-132's registry refusal), the refined HasChildren and type-change rules, the hidden-parent non-leak, and the regenerated fixture migration (dotnet-ef has-pending-model-changes clean, gl objects only). Held after fix 1 behind PC-F61 (D-087).
+- PC-087 (0018-b) Review 1 at e2ed8550: 0 blocking, 0 major, 6 minor. The reviewer accepted all six deviations the implementer flagged: `DeleteContext<TEntity>.WithDescendants` (needed because 0015 §10.3 reruns the §10.1 hook round with the same context), DeploymentIdentity.IsDevelopment (built from the same IHostEnvironment.EnvironmentName), Center served without DeleteByQuery (required by D-132's registry refusal), the refined HasChildren and type-change rules, the hidden-parent non-leak, and the regenerated fixture migration (dotnet-ef has-pending-model-changes clean, gl objects only). Held after fix 1 behind PC-F61 (D-087).
 - For Ahmad: (a) spec 0015's DeleteContext contract should list WithDescendants; (b) 0018 §5.5's centers route list depends on the D-132 choice: under option (b) centers get delete-by-query back; (c) both 0018 §5.4 rows (HasChildren, type change) need rewording, since the literal rules refuse valid saves (WATCHLIST 0018 lead). Fix 1 (0d6e317a) adds two more: the first 0018 §5.4 row should judge a stored parent only when the row is new or moves, and its select should drop SubtreeCount. It also found that a hidden parent stays hidden only when every gl.Center grant carries the row filter: a Save grant implies reading what it reaches (0014 §5.2 step 2), so with Read filtered and Save unfiltered the parent is readable and ParentMustBeGrouping is the right answer.
 - After PC-100 landed no Tier 1 checkpoint was ready (check_deps: PC-144, PC-146 at T2; PC-174, PC-181 at T3), so PC-144 (0020-e) went to pc-3 and PC-146 (0021-c) to pc-4 from f4e6120b, both R1 only. T3 stays queued (D-140).
 
@@ -638,7 +824,7 @@ For Ahmad:
 
 - Situation: a local integration gate took about 45-100 min (PC-142 ~50, PC-098 ~55, PC-102 ~100) on a host shared by 4-6 slots, against about 17 min for CI, and the D-087 release queue serialised that cost.
 - Ruling: this replaces D-105's local integration gate and closes D-105's open item "CI on pc/** branches". D-105's other open items (docs:build to nightly, profiling slow .NET tests, pipelined or batched integrations) stay open.
-  - ci.yml runs on push to main and `pc/**`, but on a pc/** push every job (all-checks-passed included) skips unless the head commit message contains ": integrate". Pull-request runs (PR #18) and pushes to main are unaffected. Implementation and fix-round commits never carry the marker, so their pushes start only a run that concludes `skipped` (every job skipped), which never counts as green. Integration merges use `--no-ff`, so a fast-forward cannot drop the marker (PC-F60 R1). CI on the pc/{PC} integration commit is the gate. The concurrency group becomes ci-<event>-<ref>-<sha> (PC-F60, accepted): the same sha pushed to two refs no longer shares a group, so one branch can never cancel another's run. PR #18's run on every platform-core push is the re-confirmation, and a red there still stops the line (PROCESS.md §8.3).
+  - ci.yml runs on push to main and `pc/**`, but on a pc/** push every job (all-checks-passed included) skips unless the head commit message contains ": integrate". Pull-request runs (PR #18) and pushes to main are unaffected. Implementation and fix-round commits never carry the marker, so their pushes start only a run that concludes `skipped` (every job skipped), which never counts as green. Integration merges use `--no-ff`, so a fast-forward cannot drop the marker (PC-F60 R1). CI on the pc/{PC} integration commit is the gate. The concurrency group becomes `ci-<event>-<ref>-<sha>` (PC-F60, accepted): the same sha pushed to two refs no longer shares a group, so one branch can never cancel another's run. PR #18's run on every platform-core push is the re-confirmation, and a red there still stops the line (PROCESS.md §8.3).
   - Implementation and fix rounds: build the touched projects in the inner loop and the whole solution once at the end (0 warnings, "Build succeeded"), run `dotnet format --verify-no-changes`, and run only the unit and integration tests the change touches. No full unit filter, no full integration suites, no full client e2e, and never an unfiltered `dotnet test Tellma.slnx` (PLAN.md §7.1 items 2-4).
   - Integration: fetch, merge origin/platform-core with `-m "{PC}: integrate (merge platform-core)"` (regenerate lockfiles, goldens, snapshots and migrations, never hand-merge), or, if platform-core is already an ancestor, `git commit --allow-empty -m "{PC}: integrate"`, so every integration ends on a marked commit. Build and format locally, push only pc/{PC}, and return status=ci-pending with `git rev-parse HEAD`. The orchestrator watches that run and resumes the agent.
     - Green: the agent confirms HEAD still equals the green commit and pushes `HEAD:platform-core` (fast-forward only). If rejected, it fetches; plans-only commits in between are re-merged and pushed without a new CI wait; anything else is re-merged, pushed to pc/{PC} and waits for CI again.
@@ -655,7 +841,7 @@ For Ahmad:
 
 - Interim internal McpLimitOptions binds Tellma:Mcp (ToolCallsPerMinutePerUser 120, ToolTimeout 60 s) for the tellma-mcp policy until Tellma.Core.Mcp owns McpOptions; that checkpoint absorbs it.
 - ARCHITECTURE.md (framework line) now lists the rate limiter, request timeouts, response compression, output caching and Microsoft.AspNetCore.OpenApi (Development document).
-- Pre-existing: MapTellma reads IOptions<ApiOptions>.Value eagerly while mapping, so an invalid Tellma:Api surfaces as an OptionsValidationException from MapTellma, not the startup gate. Left as is; a candidate for a later cleanup.
+- Pre-existing: MapTellma reads `IOptions<ApiOptions>.Value` eagerly while mapping, so an invalid Tellma:Api surfaces as an OptionsValidationException from MapTellma, not the startup gate. Left as is; a candidate for a later cleanup.
 - New flake candidate: Core JobRunLockingTests claim seek failed once under load in PC-082's gate and passed alone. Same treatment as D-139: if it recurs it becomes a PC-Fnn item.
 
 ### D-142 — PC-100 Review 1 rulings (2026-11-20)
@@ -714,7 +900,7 @@ For Ahmad:
 
 ### D-132 Delete-by-query bypasses delete validators: fail closed (2026-11-19)
 
-- Situation: PC-142 R2-1. DeleteRun never runs ValidateDeleteAsync on a delete by query (spec 0015 §10.2: one Persist round trip), and every TopLevelEntity stack serves DeleteByQuery by default. Only security tables are gated (D-119). So a stack whose deletes are judged can have its delete rules bypassed by query; e.g. spec 0020's ScheduleService refuses deleting built-in schedules, yet DeleteByQueryAsync("Id = <built-in>") would delete one.
+- Situation: PC-142 R2-1. DeleteRun never runs ValidateDeleteAsync on a delete by query (spec 0015 §10.2: one Persist round trip), and every TopLevelEntity stack serves DeleteByQuery by default. Only security tables are gated (D-119). So a stack whose deletes are judged can have its delete rules bypassed by query; e.g. spec 0020's ScheduleService refuses deleting built-in schedules, yet DeleteByQueryAsync("Id = `<built-in>`") would delete one.
 - Interim ruling (fail closed, as D-119): the stack registry refuses at startup a stack that validates deletes and still serves StackOperations.DeleteByQuery. Delete by query stays one round trip for stacks that do not judge deletes. Implemented in PC-142's last round, with a unit test and a conformance-base assertion.
 - For Ahmad: choose between (a) this gate, or (b) a judged delete by query running a validation round (2 round trips, changing spec 0015 §10.2 and §16.2). This supersedes D-131's "wording alignment" note on §16.2's delete-by-query row.
 
@@ -729,7 +915,7 @@ For Ahmad:
 
 - R1-3: the client entity model emits each blob kind's MaxSize, not a cap from the emitting machine's Tellma:Blobs:MaxUploadSize (a deployment setting must not leak into a public, immutable chunk); recorded as a deviation.
 - Fix1 outcome: an enum's emitted name now comes from its home schema (the ordinally smallest schema among sites declared in the enum's own assembly, else among all sites), replacing the first-site rule (R1-1). R1-5 pushed back: the metadata builder refuses a parent key with no navigation, pinned by a test.
-- Accepted deviations: one emitted name per C# enum type (<schema>.<Type>), with SettingKeyDescriptor.EnumType qualified (spec 0032 §7.3 already uses the qualified form); [EntityRef] action-field label keys drop the Id suffix (spec 0029 §2.4); the .d.ts golden is checked in as .txt because API Extractor crashes on the @tellma/core augmentation.
+- Accepted deviations: one emitted name per C# enum type (`<schema>.<Type>`), with SettingKeyDescriptor.EnumType qualified (spec 0032 §7.3 already uses the qualified form); [EntityRef] action-field label keys drop the Id suffix (spec 0029 §2.4); the .d.ts golden is checked in as .txt because API Extractor crashes on the @tellma/core augmentation.
 
 ### D-129 PC-098 R1-4 deferred (2026-11-19)
 
@@ -1111,7 +1297,7 @@ Ahmad asked for PC-064's re-merge to start now, over the D-028 cap of five heavy
 ### D-079 (2026-11-14): PC-062 contract placement and signature conventions
 
 - **Golden placement.** The pipeline public-API goldens live in Tellma.Core.Abstractions.Tests/PublicApi, beside the existing Abstractions goldens. They do not live in Tellma.Core.Tests/Crud, which spec 0015 §1.1/§18.1 names: the contracts ship in Tellma.Core.Abstractions, so their surface is pinned where the assembly is tested.
-- **TKey constraint.** Where a contract sketch closes over Entity<TKey>, TKey carries `struct, IBinaryInteger<TKey>`, the constraint Entity<TKey> itself declares.
+- **TKey constraint.** Where a contract sketch closes over `Entity<TKey>`, TKey carries `struct, IBinaryInteger<TKey>`, the constraint `Entity<TKey>` itself declares.
 - **Cancellation.** Every async contract member takes a trailing `CancellationToken cancellationToken = default`, even where the sketch omits it.
 - **Closed hierarchies.** ActionDescriptor and ExportSource are closed with an internal abstract member, following the PathSegment precedent (review R1-1).
 - **For Ahmad:** spec 0015 §1.1/§18.1 still name Tellma.Core.Tests/Crud for the golden, and its sketches omit the TKey constraint and the cancellation tokens; bring the spec in line.
@@ -1131,7 +1317,7 @@ Ahmad asked for PC-064's re-merge to start now, over the D-028 cap of five heavy
 
 ### D-076 (PC-044, 2026-11-13): cacheable-entity entries are keyed by the tenant's multilingual shape
 
-- Ruling: CacheableEntityKey (and so the single-flight key) carries the tenant's MultilingualShape. A language change gives a fresh key, and the old shape's entries age out. The `entities` and `entity:*` tags do not move on a language change. A Persist-batch FromCache miss takes a lock-only guard row on entity:<Name> (NULL expected tag), so a concurrent write is serialised as it is on a hit.
+- Ruling: CacheableEntityKey (and so the single-flight key) carries the tenant's MultilingualShape. A language change gives a fresh key, and the old shape's entries age out. The `entities` and `entity:*` tags do not move on a language change. A Persist-batch FromCache miss takes a lock-only guard row on `entity:<Name>` (NULL expected tag), so a concurrent write is serialised as it is on a hit.
 - Why: the cached column list follows the shape, so a tag-only check would serve the old columns until someone wrote the table, and a mixed-shape single flight would hand one caller the other shape's rows. Keying is cheaper than bumping every entity tag tenant-wide.
 - For Ahmad: spec 0013 §6.3 is silent on language changes. The server side is closed by the key, but the client's entity wire tags do not move, so PC-049 (carry) must make the client notice. Spec 0013 §4.4 should also say that a Persist miss still guards the tag.
 
@@ -1168,8 +1354,8 @@ Ahmad asked for PC-064's re-merge to start now, over the D-028 cap of five heavy
 
 ### D-070 (PC-057, 2026-11-13): unbound entity labels are bidi-isolated in both the picker and the grid
 
-- Context: spec 0010 §E.1 says both "One-line rows do the same" (wrap the label in <bdi>) and "unbound, rows render as today"; §E.4 repeats the contradiction for the grid display cell. PC-057 commit 1 resolved the picker one way (<bdi>, dir=auto) and the grid the other (plain span), so in RTL an unbound column drew code-first in the cell and name-first in its own dropdown (Review 1, R1-2).
-- Ruling: isolate in both. An unbound label renders inside one <bdi> in picker rows and in the grid's unbound display cell, matching the input's dir="auto"; an RTL test pins the agreement. Also accepted from review 1: maxItems' Done-disabled string belongs to PC-058; label parts render only when they join with " - " to the display text (picker and grid alike); the hidden ", " accessible-name separator stays a literal.
+- Context: spec 0010 §E.1 says both "One-line rows do the same" (wrap the label in `<bdi>`) and "unbound, rows render as today"; §E.4 repeats the contradiction for the grid display cell. PC-057 commit 1 resolved the picker one way (`<bdi>`, dir=auto) and the grid the other (plain span), so in RTL an unbound column drew code-first in the cell and name-first in its own dropdown (Review 1, R1-2).
+- Ruling: isolate in both. An unbound label renders inside one `<bdi>` in picker rows and in the grid's unbound display cell, matching the input's dir="auto"; an RTL test pins the agreement. Also accepted from review 1: maxItems' Done-disabled string belongs to PC-058; label parts render only when they join with " - " to the display text (picker and grid alike); the hidden ", " accessible-name separator stays a literal.
 - For Ahmad: pick one reading of §E.1/§E.4 (this ruling chose isolation).
 
 ### D-069 (PC-038, 2026-11-13): version-tag guard locking, corrected twice by review
@@ -1222,7 +1408,7 @@ Ahmad asked for PC-064's re-merge to start now, over the D-028 cap of five heavy
 - For Ahmad:
   - (1) Spec 0024 §2.6/§2.1 do not say how tellma-client serve delivers tm-boot.js and the brand files; without them the boot script 404s under serve. PC-073 adds it; the spec needs a clause.
   - (2) Until PC-094 lands the @tellma/core/brand defaults, every distribution must override all four brand SVGs.
-  - (3) Spec 0024 §4.1's index.html sketch has no <base href="/">: deep-link reloads under /<tenant>/ resolve scripts relative to the path and 404. PC-073 makes it part of the build contract (review 2); the spec needs it.
+  - (3) Spec 0024 §4.1's index.html sketch has no `<base href="/">`: deep-link reloads under `/<tenant>`/ resolve scripts relative to the path and 404. PC-073 makes it part of the build contract (review 2); the spec needs it.
 
 ### D-064 (PC-026, 2026-11-12): error-dialog budget and confirm label
 - Spec: 0023 §5.5, §5.6, §10, §1 budgets.
@@ -1266,7 +1452,7 @@ Ahmad asked for PC-064's re-merge to start now, over the D-028 cap of five heavy
 ### D-060 (PC-F21, 2026-11-12): lazy grid editing — the draft window, budgets and Save
 - Spec: 0010 §C.11, §C.15; 0004 §8.4, §11; 0006 §7.4.
 - Situation: ./grid exceeded its 42 KB ceiling (D-057). PC-F21 moves the editors and the editing key resolver into a lazy ./grid-editing chunk, preloaded when the browser is idle once an editable grid renders. Two designs failed review (hold-and-replay keys in R1; a keyed draft in R2: modifiers, dead keys and IME broke it).
-- Ruling: during the load window the cell shows a real bare <input> draft. The browser owns its text, and the user's own gestures commit it (Enter, Tab, blur, press on another cell); Escape cancels it. When the editor arrives it takes over the text, caret and selection. A failed or stalled load never commits; it reports once per grid. Entity drafts stay pending until the editor's own search resolves them. Ceilings: ./grid 39.25 KB (measured 38.99; 3 KB under the spec's 42 left for the list-page work), ./grid-editing 6.5 KB (6.44).
+- Ruling: during the load window the cell shows a real bare `<input>` draft. The browser owns its text, and the user's own gestures commit it (Enter, Tab, blur, press on another cell); Escape cancels it. When the editor arrives it takes over the text, caret and selection. A failed or stalled load never commits; it reports once per grid. Entity drafts stay pending until the editor's own search resolves them. Ceilings: ./grid 39.25 KB (measured 38.99; 3 KB under the spec's 42 left for the list-page work), ./grid-editing 6.5 KB (6.44).
 - Escalation: one §4.4 verification confirmed the R2 blocking and major findings fixed in a real browser with trusted input. Minor V-1 (Tab from the last cell's draft) is fixed at integration.
 - For Ahmad:
   - (1) V-2: an entity typed in the window and saved before the editor arrives leaves the cell pending (value null). A screen that gates Save on errorCount alone saves null. The TSDoc now says Save must also wait for pendingCount. Should the grid also retry the load while a request is pending?
@@ -1401,7 +1587,7 @@ Ahmad asked for PC-064's re-merge to start now, over the D-028 cap of five heavy
 - Revisit if: Ahmad wants the sign-in-page switch to win over a pending authorization request too.
 
 ### D-046 (orchestrator, 2026-11-11): PC-019 language rulings
-- Ruling: (1) the satellite rule of spec 0013 §1.3 stays a startup failure: an offered non-English language without a Tellma.Core satellite stops the host (Reviewer 1 agreed: §7.2's fallback covers missing keys, not a missing Core language); the remedy text names adding the satellite. (2) The negotiated culture is named <language>-<region> and carries pinned Latin-digit Gregorian formats field by field, not a -u-nu-latn clone (§9.2 contradicts itself; a clone would read the host's ICU, against D-029). (3) Culture data is pinned from CLDR 48 via ICU 78.2 with two corrections (om/ti day-first numeric dates; '%' for ar-SA/ar-SO), generated by eng/culture-data; the CI Ubuntu leg turns the reproducibility skip into a failure. (4) ILanguageCatalog.All is an accepted additive contract change. (5) The om/ti day-first rule is routed to the client's 0024 §7.7 fallback and the enum-clash check's wider scope to the 0029 emit (WATCHLIST.md).
+- Ruling: (1) the satellite rule of spec 0013 §1.3 stays a startup failure: an offered non-English language without a Tellma.Core satellite stops the host (Reviewer 1 agreed: §7.2's fallback covers missing keys, not a missing Core language); the remedy text names adding the satellite. (2) The negotiated culture is named `<language>-<region>` and carries pinned Latin-digit Gregorian formats field by field, not a -u-nu-latn clone (§9.2 contradicts itself; a clone would read the host's ICU, against D-029). (3) Culture data is pinned from CLDR 48 via ICU 78.2 with two corrections (om/ti day-first numeric dates; '%' for ar-SA/ar-SO), generated by eng/culture-data; the CI Ubuntu leg turns the reproducibility skip into a failure. (4) ILanguageCatalog.All is an accepted additive contract change. (5) The om/ti day-first rule is routed to the client's 0024 §7.7 fallback and the enum-clash check's wider scope to the 0029 emit (WATCHLIST.md).
 - Why: Reviewer 1 verified the readings and the 51 changed calendar goldens; the corrections keep server and client date orders aligned.
 - Misalignment: spec 0013 §1.3 vs AddLanguage, and §9.2's culture naming; recorded under LEDGER.md merge-time tasks for Ahmad.
 - Revisit if: Ahmad wants AddLanguage languages offerable before their Core satellite exists.
@@ -1430,7 +1616,7 @@ Ahmad asked for PC-064's re-merge to start now, over the D-028 cap of five heavy
 - Revisit if: a later menu feature pushes ./menu past 8.5.
 
 ### D-041 (orchestrator, 2026-11-11): PC-F08 host-memory vector is not a residual
-- Ruling: PC-F08 Review 2 (R2-1) found that on Linux a compromised PDF worker can reopen the host's W^X doublemapper memfd through /proc/<host>/fd for writing and read /proc/<host>/environ; kernel.yama.ptrace_scope does not gate either path, so D-030 addendum 5's warning does not close the vector. It is fixed in PC-F08 fix2, not accepted: by default prctl(PR_SET_DUMPABLE, 0) in the host on Linux whenever PDF thumbnails are enabled, verified in the sdk:10.0 container (including a uid-0 host), with probes that assert both paths are refused. The ptrace_scope guidance is corrected. Losing core dumps of the host is accepted.
+- Ruling: PC-F08 Review 2 (R2-1) found that on Linux a compromised PDF worker can reopen the host's W^X doublemapper memfd through `/proc/<host>/fd` for writing and read `/proc/<host>/environ`; kernel.yama.ptrace_scope does not gate either path, so D-030 addendum 5's warning does not close the vector. It is fixed in PC-F08 fix2, not accepted: by default prctl(PR_SET_DUMPABLE, 0) in the host on Linux whenever PDF thumbnails are enabled, verified in the sdk:10.0 container (including a uid-0 host), with probes that assert both paths are refused. The ptrace_scope guidance is corrected. Losing core dumps of the host is accepted.
 - Why: host code execution and secret reads from a PDF are the exact threat PC-F08 exists for; the fix is cheap and needs no extra privileges, unlike a distinct worker uid or a PID namespace.
 - Revisit if: verification shows non-dumpable does not close both paths, or it breaks a diagnostics path operators rely on beyond core dumps.
 

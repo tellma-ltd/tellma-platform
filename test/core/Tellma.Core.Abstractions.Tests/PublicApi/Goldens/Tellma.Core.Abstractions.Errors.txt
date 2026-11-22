@@ -99,6 +99,7 @@ public static class LimitNames
     public const string MaxRowsPerSave = "MaxRowsPerSave"
     public const string MaxSaveCount = "MaxSaveCount"
     public const string MaxSearchLength = "MaxSearchLength"
+    public const string MaxSecurables = "MaxSecurables"
     public const string MaxTake = "MaxTake"
     public const string SkipWindow = "skipWindow"
 

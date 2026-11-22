@@ -16,19 +16,54 @@ namespace Tellma.Core.Testing.Blobs
     /// </summary>
     /// <remarks>
     ///     Thread-safe. Writes are atomic per object, so it leaves no incomplete artefacts and the
-    ///     purge is a no-op. <see cref="FailWrites" /> makes every later write throw, for testing what
-    ///     a caller does when the store fails.
+    ///     purge stores nothing; <see cref="Purges" /> records each purge's cut-off.
+    ///     <see cref="FailWrites" /> makes every later write throw, <see cref="FailDeletes" /> keeps
+    ///     the objects it matches and <see cref="FailPurges" /> makes every later purge throw, for
+    ///     testing what a caller does when the store fails; <see cref="Deleting" /> lets a test act
+    ///     while a delete is under way.
     /// </remarks>
     public sealed class InMemoryBlobStore : IBlobStore
     {
         // Each tenant's objects by name; a tenant without an entry has no storage.
         private readonly ConcurrentDictionary<int, ConcurrentDictionary<string, StoredObject>> _tenants = new();
 
+        // Each purge's tenant and cut-off, in call order.
+        private readonly ConcurrentQueue<(int TenantId, DateTimeOffset OlderThan)> _purges = new();
+
         /// <summary>
         ///     The failure every later <see cref="WriteAsync" /> throws after validating its arguments
         ///     and before storing anything; null (the default) for none.
         /// </summary>
         public Exception? FailWrites { get; set; }
+
+        /// <summary>
+        ///     The names every later <see cref="DeleteAsync" /> fails to delete: the call deletes the
+        ///     others, then throws a <see cref="BlobStoreException" /> when it kept any; null (the
+        ///     default) for none.
+        /// </summary>
+        public Func<string, bool>? FailDeletes { get; set; }
+
+        /// <summary>
+        ///     Awaited by every later <see cref="DeleteAsync" /> with its names after validating its
+        ///     arguments and before deleting anything, which goes ahead whatever the callback did to
+        ///     the call's cancellation; null (the default) for none.
+        /// </summary>
+        public Func<IReadOnlyList<string>, Task>? Deleting { get; set; }
+
+        /// <summary>
+        ///     The failure every later <see cref="PurgeIncompleteAsync" /> throws after validating its
+        ///     arguments and recording the call in <see cref="Purges" />; null (the default) for none.
+        /// </summary>
+        public Exception? FailPurges { get; set; }
+
+        /// <summary>Each <see cref="PurgeIncompleteAsync" /> call's tenant and cut-off, in call order.</summary>
+        public IReadOnlyList<(int TenantId, DateTimeOffset OlderThan)> Purges => [.. _purges];
+
+        /// <summary>Forgets every purge <see cref="Purges" /> recorded, for a test that reuses the store.</summary>
+        public void ClearPurges()
+        {
+            _purges.Clear();
+        }
 
         /// <summary>Whether the tenant's storage exists.</summary>
         /// <param name="tenantId">The tenant.</param>
@@ -169,15 +204,41 @@ namespace Tellma.Core.Testing.Blobs
                 }
             }
 
+            // --- The test's callback first, when it set one ---
+            Func<IReadOnlyList<string>, Task>? deleting = Deleting;
+            return deleting is null ? DeleteCore(tenantId, names) : DeleteAfterAsync(deleting, tenantId, names);
+        }
+
+        /// <summary>Awaits the test's callback, then deletes.</summary>
+        /// <param name="deleting">The callback.</param>
+        /// <param name="tenantId">The tenant.</param>
+        /// <param name="names">The validated names.</param>
+        /// <returns>A task that completes when deleted, or fails as <see cref="DeleteCore" /> does.</returns>
+        private async Task DeleteAfterAsync(Func<IReadOnlyList<string>, Task> deleting, int tenantId, IReadOnlyList<string> names)
+        {
+            await deleting(names).ConfigureAwait(false);
+            await DeleteCore(tenantId, names).ConfigureAwait(false);
+        }
+
+        /// <summary>Deletes each object but the failing ones, then fails when any was kept.</summary>
+        /// <param name="tenantId">The tenant.</param>
+        /// <param name="names">The validated names.</param>
+        /// <returns>A completed task, or a task failed with a <see cref="BlobStoreException" />.</returns>
+        private Task DeleteCore(int tenantId, IReadOnlyList<string> names)
+        {
+            Func<string, bool>? fail = FailDeletes;
+            List<string> kept = [.. names.Where(name => fail?.Invoke(name) == true)];
             if (_tenants.TryGetValue(tenantId, out ConcurrentDictionary<string, StoredObject>? objects))
             {
-                foreach (string name in names)
+                foreach (string name in names.Except(kept, StringComparer.Ordinal))
                 {
                     _ = objects.TryRemove(name, out _);
                 }
             }
 
-            return Task.CompletedTask;
+            return kept.Count == 0
+                ? Task.CompletedTask
+                : Task.FromException(new BlobStoreException($"Deleting {kept.Count} blob objects failed.", null));
         }
 
         /// <inheritdoc />
@@ -193,9 +254,11 @@ namespace Tellma.Core.Testing.Blobs
         /// <inheritdoc />
         public Task PurgeIncompleteAsync(int tenantId, DateTimeOffset olderThan, CancellationToken cancellationToken)
         {
-            // Writes are atomic per object, so nothing incomplete is ever left.
+            // Writes are atomic per object, so nothing incomplete is ever left; the call is recorded,
+            // then fails when the test asked for it.
             ArgumentOutOfRangeException.ThrowIfNegativeOrZero(tenantId);
-            return Task.CompletedTask;
+            _purges.Enqueue((tenantId, olderThan));
+            return FailPurges is Exception failure ? Task.FromException(failure) : Task.CompletedTask;
         }
 
         /// <summary>The tenant's objects, its storage created when missing.</summary>

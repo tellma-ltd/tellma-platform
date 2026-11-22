@@ -219,6 +219,7 @@ namespace Tellma.Queryex.Testing.Probe
                 queryexVersion,
                 hasUser: true,
                 hasGroupingKeys: false,
+                measures: false,
                 directions: false,
                 QueryexLimits.Default,
                 [],

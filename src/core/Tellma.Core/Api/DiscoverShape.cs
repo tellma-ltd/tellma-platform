@@ -11,7 +11,7 @@ using Tellma.Core.Queryex;
 namespace Tellma.Core.Api
 {
     // The admission is spec 0029 §9 step 1; a having clause without an aggregation is refused as
-    // the query refuses it (spec 0015 §5.2 step 2), and the measures wait for the pivot's engine.
+    // the query refuses it (spec 0015 §5.2 step 2), and so are measures without one.
     /// <summary>
     ///     A discovery request admitted against its profile, read once: the clauses that carry text,
     ///     each filter with its index in the request, and the confirmed parameter types by name.
@@ -39,6 +39,9 @@ namespace Tellma.Core.Api
         /// <summary>The ordering; null when none was sent.</summary>
         public string? OrderBy { get; private init; }
 
+        /// <summary>The measures of an aggregate query; null when none were sent.</summary>
+        public string? Measures { get; private init; }
+
         /// <summary>Whether the select is an aggregation.</summary>
         public bool Aggregate { get; private init; }
 
@@ -52,7 +55,7 @@ namespace Tellma.Core.Api
         /// <param name="request">The request.</param>
         /// <returns>The shape.</returns>
         /// <exception cref="BadRequestException">
-        ///     An undefined profile; measures; a having clause without an aggregation; a confirmed
+        ///     An undefined profile; measures or a having clause without an aggregation; a confirmed
         ///     parameter without a name, with a type no parameter takes, or named twice; or, for a
         ///     permission filter, more than one filter or any other clause or parameter.
         /// </exception>
@@ -68,6 +71,7 @@ namespace Tellma.Core.Api
             string? select = Text(request.Select);
             string? having = Text(request.Having);
             string? orderBy = Text(request.OrderBy);
+            string? measures = Text(request.Measures);
             List<(int, string)> filters = [];
             for (int index = 0; index < (request.Filters?.Count ?? 0); index++)
             {
@@ -77,12 +81,10 @@ namespace Tellma.Core.Api
                 }
             }
 
-            // --- The measures: an aggregate's alone, and none supported yet ---
-            if (Text(request.Measures) is not null)
+            // --- The group clauses: an aggregate's alone ---
+            if (measures is not null && !request.Aggregate)
             {
-                throw new BadRequestException(request.Aggregate
-                    ? "Measures are not supported yet."
-                    : "Measures apply to an aggregate query only.");
+                throw new BadRequestException("Measures apply to an aggregate query only.");
             }
 
             if (having is not null && !request.Aggregate)
@@ -91,7 +93,7 @@ namespace Tellma.Core.Api
             }
 
             // --- A permission filter: one filter and nothing else, as a role save stores it ---
-            bool beyondFilter = (request.Filters?.Count ?? 0) > 1 || select is not null || having is not null || orderBy is not null
+            bool beyondFilter = (request.Filters?.Count ?? 0) > 1 || select is not null || having is not null || orderBy is not null || measures is not null
                 || request.Aggregate || request.Parameters is { Count: > 0 };
             return request.Profile == QueryexProfile.Permission && beyondFilter
                 ? throw new BadRequestException("A permission filter is one filter, with no other clause, no aggregation and no parameter.")
@@ -102,6 +104,7 @@ namespace Tellma.Core.Api
                     Filters = filters,
                     Having = having,
                     OrderBy = orderBy,
+                    Measures = measures,
                     Aggregate = request.Aggregate,
                     Conjuncts = request.Conjuncts,
                     Confirmed = ConfirmedTypes(request.Parameters),

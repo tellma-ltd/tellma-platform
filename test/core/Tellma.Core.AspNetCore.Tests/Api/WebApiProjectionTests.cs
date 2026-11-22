@@ -128,6 +128,8 @@ namespace Tellma.Core.AspNetCore.Tests.Api
                 { "pj-inbox/purge", "pj.Inbox:Purge", true, false, false, false, false, "Service" },
                 // Core's own inbox summary is polled, so it stamps no activity.
                 { "inbox/summary", null, false, false, false, true, false, "Service" },
+                // So is the client's sync of its cached documents.
+                { "client/sync", null, false, false, false, true, false, "Service" },
                 { "users/save", "core.User:Save", true, false, false, false, true, "Stack" },
             };
         }
@@ -450,7 +452,7 @@ namespace Tellma.Core.AspNetCore.Tests.Api
             // --- The bytes, then the outcome disposed once the response completed ---
             Assert.Equal(PipelineLog.WorkbookBytes.ToArray(), await response.Content.ReadAsByteArrayAsync(TestContext.Current.CancellationToken));
             ObservedStream workbook = Assert.Single(host.Services.GetRequiredService<PipelineLog>().Workbooks);
-            await workbook.Disposed.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+            await Patience.WaitAsync(workbook.Disposed);
         }
 
         [Theory]

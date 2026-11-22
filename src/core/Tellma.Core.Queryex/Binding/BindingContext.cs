@@ -54,6 +54,16 @@ namespace Tellma.Core.Queryex.Binding
         /// <summary>Whether the enclosing query groups by anything.</summary>
         internal bool HasGroupingKeys { get; init; }
 
+        /// <summary>
+        ///     Whether the items are measures a host evaluates over rolled-up groups rather than
+        ///     select items the backend computes.
+        /// </summary>
+        /// <remarks>
+        ///     A measure has to aggregate, and outside its aggregations it may use only what the
+        ///     host's evaluator computes exactly; both rules are checked only where this is set.
+        /// </remarks>
+        internal bool Measures { get; init; }
+
         /// <summary>The declared parameters, by name.</summary>
         internal FrozenDictionary<string, ParameterSymbol> Parameters { get; init; } =
             FrozenDictionary<string, ParameterSymbol>.Empty;

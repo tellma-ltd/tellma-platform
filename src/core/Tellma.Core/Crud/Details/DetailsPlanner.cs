@@ -124,8 +124,18 @@ namespace Tellma.Core.Crud.Details
 
             // --- Steps 1 and 2: the main ids, the rows, their collections and what they point at ---
             DetailsProjection projection = projections.For(stack, map.Schema, map.Declared(entity));
+            // The producers decide what their extras show from the same set and at the same instant.
             DetailsComposition<TEntity, TKey> composition = new(
-                batch, behavior, request, ids, root, read.Filter, idsSource, projection, new DetailsMaterials(map, root, materializer, metadata));
+                batch,
+                behavior,
+                request,
+                ids,
+                root,
+                read.Filter,
+                idsSource,
+                projection,
+                new DetailsMaterials(map, root, materializer, metadata),
+                (resource, action) => Decide(user, resource, action, now));
 
             // --- Step 3: the extras, each producer held to the names it declares ---
             HashSet<string> requested = new(request.Include, StringComparer.Ordinal);
@@ -156,7 +166,7 @@ namespace Tellma.Core.Crud.Details
             return composition;
         }
 
-        /// <summary>Asks each producer that declares a requested extra to add it, then refuses a requested extra none added.</summary>
+        /// <summary>Asks each producer that declares a requested extra to add or omit it, then refuses a requested extra none added or omitted.</summary>
         /// <typeparam name="TEntity">The stack's entity type.</typeparam>
         /// <typeparam name="TKey">The stack's key type.</typeparam>
         /// <param name="behavior">The service's hooks.</param>
@@ -165,7 +175,7 @@ namespace Tellma.Core.Crud.Details
         /// <param name="ids">The ids in request order; null when every row is read.</param>
         /// <param name="composition">The composition.</param>
         /// <param name="requested">The requested extras the producers serve.</param>
-        /// <exception cref="InvalidOperationException">A producer declares a requested extra and does not add it.</exception>
+        /// <exception cref="InvalidOperationException">A producer declares a requested extra and neither adds nor omits it.</exception>
         private void Contribute<TEntity, TKey>(
             IEntityBehavior<TEntity, TKey> behavior,
             DetailsRequest request,
@@ -199,12 +209,12 @@ namespace Tellma.Core.Crud.Details
                 }
             }
 
-            // --- A requested extra a producer declares but did not add: an authoring bug ---
+            // --- A requested extra a producer declares but neither added nor omitted: an authoring bug ---
             if (requested.FirstOrDefault(name => !composition.Has(name)) is string missing)
             {
                 string declaredBy = string.Join(", ", producers.Where(producer => DetailsExtrasNames.Of(producer).Contains(missing)).Select(static producer => producer.Name));
                 throw new InvalidOperationException(
-                    $"The details extra '{missing}' was requested and declared by {(declaredBy.Length == 0 ? "no producer" : declaredBy)}, but none added it. A class that declares an extra adds it whenever it is requested.");
+                    $"The details extra '{missing}' was requested and declared by {(declaredBy.Length == 0 ? "no producer" : declaredBy)}, but none added or omitted it. A class that declares an extra adds it, or omits it, whenever it is requested.");
             }
 
             // The plan each producer sees: the same request, context and ids, its own sink.

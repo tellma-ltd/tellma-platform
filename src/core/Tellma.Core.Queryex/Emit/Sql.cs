@@ -41,11 +41,15 @@ namespace Tellma.Core.Queryex.Emit
         /// <summary>A value held in whatever type one of its arguments is held in.</summary>
         /// <param name="pattern">The emission pattern.</param>
         /// <param name="argument">The argument whose type the result takes.</param>
+        /// <param name="following">How the result's type follows that argument's.</param>
         /// <returns>The strategy.</returns>
-        internal static EmitStrategy ValueLike(string pattern, int argument)
+        internal static EmitStrategy ValueLike(
+            string pattern,
+            int argument,
+            ResultFollowing following = ResultFollowing.Same)
         {
             return new TemplateStrategy(
-                EmitTemplate.Parse(pattern, result: null, follows: argument),
+                EmitTemplate.Parse(pattern, result: null, follows: argument, following),
                 EmitShape.Value);
         }
 

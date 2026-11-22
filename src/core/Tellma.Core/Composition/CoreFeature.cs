@@ -122,7 +122,7 @@ namespace Tellma.Core.Composition
                 .Validator<User, UserAccessRules<User>>()
                 .Validator<Role, RoleAccessRules<Role>>()
                 .PersistEffect<User, UserStampsCompanion<User>>()
-                .PersistEffect<User, BootstrapSubjectEffect<User>>()
+                .PersistEffect<User, DevelopmentSubjectsEffect<User>>()
                 .ProvisioningStep<BootstrapAdministratorStep>()
                 .Model(typeof(UserConfiguration<>))
                 .Model(typeof(RoleConfiguration<>))
@@ -138,6 +138,9 @@ namespace Tellma.Core.Composition
                 .Singleton<IAccessCriteriaProvider, UserAccessCriteria>()
                 .DetailsContributor<User, UserActivityContributor<User>>()
                 .TableType<UserInvitationOutcome>();
+
+            // --- The access endpoints: a user's decisions and a securable's holders (spec 0018 §3.7) ---
+            _ = contribution.ApiService<AccessService>();
 
             // --- The identity-server client, one per distribution (spec 0018 §1.2, §2) ---
             // Its options and named HTTP client are registered with the platform's options.
@@ -194,16 +197,26 @@ namespace Tellma.Core.Composition
                 .Singleton<SettingsPatchMerger, SettingsPatchMerger>()
                 .ApiService<SettingsService>();
 
+            // --- The client's one revalidation of a tenant's cached documents: settings, the caller's
+            // envelope, the lists' tags and the tenant's facts in one Read batch (spec 0025 §5.1) ---
+            _ = contribution.ApiService<ClientSyncService>();
+
             // --- The Queryex authoring endpoint: an editor's text checked as a query or a role save compiles it (spec 0029 §9) ---
             _ = contribution.ApiService<QueryexService>();
 
             // --- The Umm al-Qura month table the query language's calendar map reads (spec 0013 §8.2) ---
             _ = contribution.Model<CalendarMonthRowConfiguration>();
 
-            // --- Blobs: the table every blob reference resolves to (never a stack), and the tenant's container at provisioning ---
+            // --- Blobs: the table every blob reference resolves to (never a stack), the tenant's container at provisioning ---
+            // and the sweep and reconcile jobs with their built-in schedules (spec 0017 §7.4): the
+            // sweep every 15 minutes, the reconcile on Saturday at 02:00, inside both weekends.
             _ = contribution
                 .Model<BlobConfiguration>()
-                .ProvisioningStep<BlobContainerStep>();
+                .ProvisioningStep<BlobContainerStep>()
+                .JobHandler<BlobSweepHandler>()
+                .BuiltInSchedule(BlobSweepHandler.ScheduleId, BlobSweepHandler.Key, BlobSweepHandler.Cron)
+                .JobHandler<BlobReconcileHandler>()
+                .BuiltInSchedule(BlobReconcileHandler.ScheduleId, BlobReconcileHandler.Key, BlobReconcileHandler.Cron);
 
             // --- Notifications: the tables, the notifier and renderer, the registries, the client metadata and the catalogue Core owns ---
             // spec 0021 §11. Notification is a read-only stack with the platform's default service,
@@ -240,12 +253,15 @@ namespace Tellma.Core.Composition
                 .ClientEvent(SessionEndedEvent.Name);
 
             // --- The email outbox: the rows and their stack, the outbox, the sending jobs' handler and
-            // its failure notice, the attachments' blob kind and the two table types ---
-            // spec 0022 §9.3. OutgoingEmail is a Query | Details | Delete | Enlist stack whose rows
-            // arrive only through the outbox; its registration as a scoped service gives the registry
-            // the outbox's enlistment pair. An email attachment needs no preview, so its kind renders
-            // no thumbnail; the kind itself comes from the attachment's blob reference. The commit
-            // effect counts the rows a frame committed (spec 0022 §9.2).
+            // its failure notice, the delivery events' handler, the nightly retention, the attachments'
+            // blob kind and the two table types ---
+            // spec 0022 §6, §7.3, §9.3. OutgoingEmail is a Query | Details | Delete | Enlist stack
+            // whose rows arrive only through the outbox, with the retry and cancel actions; its
+            // registration as a scoped service gives the registry the outbox's enlistment pair. The
+            // delivery handler answers the "outbox" owner key on spec 0007's webhook path, writing
+            // through a tenant database handle of its own. An email attachment needs no preview, so
+            // its kind renders no thumbnail; the kind itself comes from the attachment's blob
+            // reference. The commit effect counts the rows a frame committed (spec 0022 §9.2).
             _ = contribution
                 .Entity<OutgoingEmail, OutgoingEmailService>()
                 .PersistEffect<OutgoingEmail, OutboxEnqueuedEffect>()
@@ -253,6 +269,11 @@ namespace Tellma.Core.Composition
                 .Scoped<IEmailOutbox, EmailOutbox>()
                 .JobHandler<OutgoingEmailHandler>()
                 .NotificationType(OutgoingEmailHandler.FailedDescriptor)
+                .Scoped<IOutboxDeliveryWriter, OutboxDeliveryWriter>()
+                .Scoped<IEmailDeliveryEventHandler, OutgoingEmailDeliveryHandler>()
+                .Scoped<IOutboxRetentionPages, OutboxRetentionPages>()
+                .JobHandler<OutgoingEmailRetentionHandler>()
+                .BuiltInSchedule(OutgoingEmailRetentionHandler.ScheduleId, OutgoingEmailRetentionHandler.Key, OutgoingEmailRetentionHandler.Cron)
                 .BlobKind(OutgoingEmailAttachment.BlobKind, static policy => policy with { Thumbnail = null })
                 .TableType<OutgoingEmailOutcomeList>()
                 .TableType<EmailDeliveryEventList>();

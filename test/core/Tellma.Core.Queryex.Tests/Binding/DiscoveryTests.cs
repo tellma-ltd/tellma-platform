@@ -249,6 +249,68 @@ namespace Tellma.Core.Queryex.Tests.Binding
             Assert.Equal(rebased.Paths[0].Site, rebased.Paths[1].Site);
         }
 
+        /// <summary>
+        ///     Measures are bound as compilation binds them, and their parameters, paths and problems
+        ///     are each reported at the site of the measure they are written in.
+        /// </summary>
+        [Fact]
+        public void DiscoverQuery_ReportsEachMeasureAtItsOwnSite()
+        {
+            DiscoveryResult result = Engine.DiscoverQuery(
+                new QueryDiscoverySpec
+                {
+                    Aggregate = true,
+                    Select = "Centre.Name",
+                    Measures = "sum(Amount, PostingDate >= @From), sum(Amount) + Rate, max(Code) || @Suffix",
+                },
+                new DiscoveryOptions { Schema = LedgerFixture.Schema, Root = LedgerFixture.Invoice });
+
+            ParameterUse from = Assert.Single(result.Parameters, use => use.Name == "From");
+            Assert.Equal(QueryexType.QxDate, from.InferredType);
+            Assert.Equal("Measures[0]", Assert.Single(from.Occurrences).Location);
+
+            ParameterUse suffix = Assert.Single(result.Parameters, use => use.Name == "Suffix");
+            Assert.Equal("Measures[2]", Assert.Single(suffix.Occurrences).Location);
+
+            Assert.Equal(
+                ["Measures[0]", "Measures[0]", "Measures[1]", "Measures[1]", "Measures[2]"],
+                result.Paths.Where(path => path.Site.Location!.StartsWith("Measures", StringComparison.Ordinal))
+                    .Select(path => path.Site.Location));
+
+            // The same problems compilation reports, at the same sites and spans.
+            QueryexDiagnostic stray = Assert.Single(result.Diagnostics, d => d.Code == "QX4011");
+            Assert.Equal("Measures[1]", stray.Location);
+            Assert.Equal(new QueryexSpan(35, 18), stray.Span);
+
+            QueryexDiagnostic joined = Assert.Single(result.Diagnostics, d => d.Code == "QX4010");
+            Assert.Equal("Measures[2]", joined.Location);
+            Assert.Equal(new KeyValuePair<string, string>("construct", "||"), Assert.Single(joined.Arguments));
+            Assert.DoesNotContain(result.Diagnostics, d => d.Code == "QX4007");
+        }
+
+        /// <summary>Measures on a query that does not group are a caller mistake, in compilation and discovery alike.</summary>
+        [Fact]
+        public void Measures_WithoutGrouping_AreACallerMistake()
+        {
+            ArgumentException discovered = Assert.Throws<ArgumentException>(() => Engine.DiscoverQuery(
+                new QueryDiscoverySpec { Select = "Id", Measures = "count()" },
+                new DiscoveryOptions { Schema = LedgerFixture.Schema, Root = LedgerFixture.Invoice }));
+
+            ArgumentException compiled = Assert.Throws<ArgumentException>(() => Engine.CompileQuery(
+                new QuerySpec { Root = LedgerFixture.Invoice, Select = "Id", Measures = "count()" },
+                new QueryCompilationOptions { QueryexVersion = QueryexLanguage.Version, Schema = LedgerFixture.Schema }));
+
+            Assert.Equal("spec", discovered.ParamName);
+            Assert.Equal("spec", compiled.ParamName);
+
+            // A list with nothing in it is no measures at all.
+            QueryexResult<CompiledQuery> blank = Engine.CompileQuery(
+                new QuerySpec { Root = LedgerFixture.Invoice, Select = "Id", Measures = "  " },
+                new QueryCompilationOptions { QueryexVersion = QueryexLanguage.Version, Schema = LedgerFixture.Schema });
+            Assert.True(blank.Succeeded);
+            Assert.Null(blank.Value.Measures);
+        }
+
         /// <summary>A root without its schema is a caller mistake, not a diagnostic.</summary>
         [Fact]
         public void Discovery_WithARootButNoSchema_IsACallerMistake()

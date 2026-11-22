@@ -33,6 +33,26 @@ export const TM_DOC_FORMATS: Readonly<Record<string, number>>;
 export const TM_NOW: InjectionToken<() => number>;
 
 // @public
+export interface TmAccessProblem {
+    readonly action: string;
+    readonly code: string;
+    readonly diagnostics: readonly TmJson[];
+    readonly permissionId: number;
+    readonly resource: string;
+    readonly roleId: number;
+}
+
+// @public
+export interface TmAccessSummary {
+    readonly formatVersion: number;
+    readonly isSystem: boolean;
+    readonly problems: readonly TmAccessProblem[];
+    readonly securables: readonly TmSecurableSummary[];
+    readonly tag: string;
+    readonly validUntil?: string;
+}
+
+// @public
 export interface TmActionField {
     readonly labelFallback?: string;
     readonly labelKey: string;
@@ -58,6 +78,17 @@ export interface TmActionMetadata {
     readonly result: 'entities' | 'none' | 'own';
     readonly singleTarget: boolean;
     readonly supportsFilter: boolean;
+}
+
+// @public
+export interface TmAdoptedDocs {
+    readonly locale?: TmMeLocaleResult;
+    readonly me?: TmMeResult;
+    readonly preferences?: TmPreferencesResult;
+    readonly settings?: {
+        readonly data: TmTenantSettingsForClient;
+        readonly tag: string;
+    };
 }
 
 // @public
@@ -228,6 +259,30 @@ export interface TmBusEnvelope {
 export type TmBusMessage = TmDraftsQueryMessage | TmDraftsReplyMessage | TmHubEventMessage | TmHubStatusMessage | TmLeaderProbeMessage | TmPrefsChangedMessage | TmSessionMessage | TmStoreChangedMessage;
 
 // @public
+export interface TmCacheChangedEvent {
+    readonly tag: string;
+    readonly value?: string;
+}
+
+// @public
+export interface TmCachedEntitySet<T = TmJson> {
+    readonly byId: ReadonlyMap<TmId, T>;
+    readonly items: readonly T[];
+    readonly stale: boolean;
+}
+
+// @public
+export class TmCacheRefresher {
+    constructor();
+    adopt(tenantId: number, docs: TmAdoptedDocs): void;
+    readonly lastSyncAt: Signal<number | null>;
+    observe(tenantId: number, tags: Readonly<Record<string, string>>, trigger: 'event' | 'header'): void;
+    refresh(tenantId: number, docs: readonly string[], trigger: TmSyncTrigger): Promise<void>;
+    static ɵfac: i0.ɵɵFactoryDeclaration<TmCacheRefresher, never>;
+    static ɵprov: i0.ɵɵInjectableDeclaration<TmCacheRefresher>;
+}
+
+// @public
 export interface TmCalendarDefinition {
     readonly code: string;
     readonly load: () => Promise<TmCalendar>;
@@ -354,6 +409,9 @@ export type TmDeclarationKey = `${'appBar' | 'entry' | 'page' | 'section' | 'set
 
 // @public
 export type TmDeclarationPatch = TmCodedReportDeclaration | TmEntityDeclaration | TmOverride | TmPageDeclaration | TmWidgetTypeDeclaration;
+
+// @public
+export type TmDigitStyle = 'Latin' | 'Native';
 
 // @public
 export interface TmDisplayNameRule {
@@ -632,6 +690,14 @@ export interface TmLanguageDefinition {
 }
 
 // @public
+export interface TmLanguageInfo {
+    readonly code: string;
+    readonly isRightToLeft: boolean;
+    readonly nativeName: string;
+    readonly symbol: string;
+}
+
+// @public
 export interface TmLanguageMetadata {
     readonly code: string;
     readonly dir: 'ltr' | 'rtl';
@@ -650,6 +716,28 @@ export class TmLaunch {
     takeAutomatic(tenantId: number): boolean;
     static ɵfac: i0.ɵɵFactoryDeclaration<TmLaunch, never>;
     static ɵprov: i0.ɵɵInjectableDeclaration<TmLaunch>;
+}
+
+// @public
+export class TmLaunchCache {
+    constructor();
+    readonly distribution: Signal<TmDistributionInfo | undefined>;
+    readonly docs: {
+        readonly [K in keyof TmLaunchDocs]: Signal<TmLaunchDocs[K] | undefined>;
+    };
+    entitySet<T = TmJson>(name: string): Signal<TmCachedEntitySet<T> | undefined>;
+    revalidateUser(): Promise<void>;
+    readonly tenants: Signal<readonly TmMembership[] | undefined>;
+    readonly warm: Signal<boolean>;
+    static ɵfac: i0.ɵɵFactoryDeclaration<TmLaunchCache, never>;
+    static ɵprov: i0.ɵɵInjectableDeclaration<TmLaunchCache>;
+}
+
+// @public
+export interface TmLaunchDocs {
+    readonly me: TmMeResult;
+    readonly settings: TmTenantSettingsForClient;
+    readonly tenant: TmTenantFacts;
 }
 
 // @public
@@ -674,6 +762,17 @@ export interface TmLoginMark {
 }
 
 // @public
+export interface TmMeLocaleResult {
+    readonly modifiedAt: string;
+    readonly preferencesTag: string;
+    readonly preferredCalendar?: string;
+    readonly preferredDigits?: TmDigitStyle;
+    readonly preferredLanguage?: string;
+    readonly preferredRegion?: string;
+    readonly preferredTimeZone?: string;
+}
+
+// @public
 export interface TmMembership {
     readonly category: TmTenantCategory;
     readonly id: number;
@@ -684,6 +783,15 @@ export interface TmMembership {
     readonly name2: string | null;
     readonly name3: string | null;
     readonly state: TmTenantState;
+}
+
+// @public
+export interface TmMeResult {
+    readonly access: TmAccessSummary;
+    readonly preferences: Readonly<Record<string, string>>;
+    readonly preferencesTag: string;
+    readonly tags: Readonly<Record<string, string>>;
+    readonly user: TmUserProfileView;
 }
 
 // @public
@@ -816,6 +924,12 @@ export type TmPartition = {
     readonly kind: 'user';
     readonly sub: string;
 };
+
+// @public
+export interface TmPreferencesResult {
+    readonly preferences: Readonly<Record<string, string>>;
+    readonly preferencesTag: string;
+}
 
 // @public
 export interface TmPrefsChangedMessage {
@@ -1012,6 +1126,13 @@ export interface TmSecurableOwnerMetadata {
 export type TmSecurableRef = readonly [resource: string, action: string];
 
 // @public
+export interface TmSecurableSummary {
+    readonly action: string;
+    readonly hasFilter: boolean;
+    readonly resource: string;
+}
+
+// @public
 export interface TmSendOptions {
     readonly background?: boolean;
 }
@@ -1148,6 +1269,9 @@ export type TmSweepRule = 'session-ended' | {
 };
 
 // @public
+export type TmSyncTrigger = 'boundary' | 'cold' | 'event' | 'header' | 'leader' | 'list' | 'poll' | 'terminal';
+
+// @public
 export abstract class TmTabBus {
     abstract readonly messages: Observable<TmBusMessage>;
     abstract post(message: TmBusMessage): void;
@@ -1189,6 +1313,27 @@ export type TmTelemetryProps = Readonly<Record<string, boolean | number | string
 export type TmTenantCategory = 'Live' | 'Sandbox';
 
 // @public
+export interface TmTenantFacts {
+    readonly category: TmTenantCategory;
+    readonly id: number;
+    readonly liveTenantId?: number;
+    readonly realtime: boolean;
+    readonly state: 'Active' | 'Frozen' | 'ReadOnly';
+}
+
+// @public
+export interface TmTenantSettingsForClient {
+    readonly calendars: readonly string[];
+    readonly digits?: TmDigitStyle;
+    readonly entries: Readonly<Record<string, TmJson>>;
+    readonly languages: readonly TmLanguageInfo[];
+    readonly names: readonly (string | null)[];
+    readonly region?: string;
+    readonly tenantId: number;
+    readonly timeZone: string;
+}
+
+// @public
 export type TmTenantState = 'Active' | 'Frozen' | 'Provisioning' | 'ReadOnly' | 'Retired' | 'Suspended';
 
 // @public
@@ -1197,6 +1342,28 @@ export interface TmUploadOptions {
     readonly onProgress?: (fraction: number) => void;
     readonly signal: AbortSignal;
     readonly tenantId?: number;
+}
+
+// @public
+export interface TmUserProfileView {
+    readonly contactEmail?: string;
+    readonly contactMobile?: string;
+    readonly email?: string;
+    readonly gender?: 'Female' | 'Male';
+    readonly id: number;
+    readonly imageId?: number;
+    readonly kind: 'Individual' | 'Service' | 'System';
+    readonly modifiedAt: string;
+    readonly name: string;
+    readonly name2?: string;
+    readonly name3?: string;
+    readonly preferredCalendar?: string;
+    readonly preferredDigits?: TmDigitStyle;
+    readonly preferredLanguage?: string;
+    readonly preferredRegion?: string;
+    readonly preferredTimeZone?: string;
+    readonly signatureId?: number;
+    readonly state: 'Invited' | 'Joined' | 'New';
 }
 
 // @public

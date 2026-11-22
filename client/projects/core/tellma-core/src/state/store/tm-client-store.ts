@@ -132,10 +132,18 @@ interface TmMirrorEntry {
   readonly stored: WritableSignal<TmStoredDoc<unknown> | undefined>;
   /** The view `doc()` hands out, made at its first call. */
   view?: Signal<TmStoredDoc<unknown> | undefined>;
+  /** The updates `ɵshow` shows until released, which a write meanwhile makes again on its copy. */
+  shown?: Set<TmDocUpdate>;
 }
 
 /** How long the database may take to open before the tab runs in memory. */
 const OPEN_TIMEOUT_MS = 3_000;
+
+/**
+ * Makes a document's new copy from its stored one, or `undefined` to leave it
+ * as it is. Internal: the cache refresher's writes.
+ */
+export type TmDocUpdate = (current: TmStoredDoc<unknown> | undefined) => TmStoredDoc<unknown> | undefined;
 
 /** The idle window when the stored distribution names none: 7 days. */
 const DEFAULT_IDLE_DAYS = 7;
@@ -196,6 +204,8 @@ export class TmClientStore {
   readonly #mirror = new Map<string, TmMirrorEntry>();
   /** The documents this tab is writing, whose own commit settles their mirror. */
   readonly #pending = new Map<string, number>();
+  /** The `readAll` that read each partition, by partition key. */
+  readonly #read = new Map<string, Promise<void>>();
   #mode: 'indexeddb' | 'memory' = 'indexeddb';
   /**
    * Whether the browser's database may still hold documents this tab cannot
@@ -274,9 +284,19 @@ export class TmClientStore {
    *   rejects: when the storage fails, the store runs in memory from then on
    *   and the mirror keeps what it held.
    */
-  async readAll(...partitions: TmPartition[]): Promise<void> {
+  readAll(...partitions: TmPartition[]): Promise<void> {
     const keys = partitions.map((partition) => tmPartitionKey(partition));
     const since = this.#sweeps.length;
+    const read = this.#readAll(partitions, keys, since);
+    // Remembered, so a later entry into the partition reads it no second time.
+    for (const p of keys) {
+      this.#read.set(p, read);
+    }
+    return read;
+  }
+
+  /** The transaction of `readAll`. */
+  async #readAll(partitions: TmPartition[], keys: string[], since: number): Promise<void> {
     await this.#transact('readonly', (store) => {
       partitions.forEach((partition, index) => {
         const p = keys[index]!;
@@ -345,7 +365,7 @@ export class TmClientStore {
     if ((untracked(entry.stored)?.savedAt ?? -Infinity) <= doc.savedAt) {
       entry.stored.set(doc);
     }
-    await this.#write(partition, p, n, 'put', (store, fail) => {
+    await this.#write(partition, p, [n], 'put', (store, fail) => {
       let written = false;
       const request = store.get([p, n]);
       request.onsuccess = () => {
@@ -366,7 +386,7 @@ export class TmClientStore {
           fail(error);
         }
       };
-      return () => written;
+      return () => (written ? [n] : []);
     });
   }
 
@@ -416,7 +436,7 @@ export class TmClientStore {
     await this.#write(
       partition,
       p,
-      n,
+      [n],
       'patch',
       (store, fail) => {
         let written = false;
@@ -440,7 +460,7 @@ export class TmClientStore {
           }
           mirror(doc);
         };
-        return () => written;
+        return () => (written ? [n] : []);
       },
       // In memory, from the start or since the storage failed before the
       // read: the update runs on the mirrored copy.
@@ -535,8 +555,22 @@ export class TmClientStore {
    */
   async ɵstart(tenantId: number | null): Promise<void> {
     const profile = untracked(() => this.#injector.get(TmSession).profile());
-    await Promise.all([this.#database(), this.#bus.ɵopened]);
+    // Step 2's partitions are known now: an entry into one of them before
+    // the read waits for it, rather than reading the partition again.
+    const partitions: TmPartition[] = [{ kind: 'device' }];
+    if (profile !== null) {
+      partitions.push({ kind: 'user', sub: profile.sub });
+      if (tenantId !== null) {
+        partitions.push({ kind: 'tenant', sub: profile.sub, tenantId });
+      }
+    }
+    let settle!: () => void;
+    const read = new Promise<void>((resolve) => (settle = resolve));
+    for (const partition of partitions) {
+      this.#read.set(tmPartitionKey(partition), read);
+    }
     try {
+      await Promise.all([this.#database(), this.#bus.ɵopened]);
       // Spec 0025 §2.6, step 1: the boot script resets the record whenever
       // its user differs from the profile's, so a record naming no user is a
       // cold path. It backs up the boot script's time-boxed expiry delete,
@@ -546,13 +580,6 @@ export class TmClientStore {
       const swept = backstop ? await this.sweep('session-ended') : true;
 
       // Step 2: one readAll.
-      const partitions: TmPartition[] = [{ kind: 'device' }];
-      if (profile !== null) {
-        partitions.push({ kind: 'user', sub: profile.sub });
-        if (tenantId !== null) {
-          partitions.push({ kind: 'tenant', sub: profile.sub, tenantId });
-        }
-      }
       await this.readAll(...partitions);
       if (profile === null) {
         return;
@@ -571,6 +598,8 @@ export class TmClientStore {
       // start: the store is only a cache, so the tab starts cold.
       this.#fault(error);
       return;
+    } finally {
+      settle();
     }
 
     // At idle after the first render, the user's other sessions go.
@@ -588,6 +617,177 @@ export class TmClientStore {
       },
       { injector: this.#injector },
     );
+  }
+
+  /**
+   * Reads a partition into the mirror unless a `readAll` already has, such
+   * as the boot step's. Internal: entering a tenant inside the app.
+   *
+   * @param partition - The partition.
+   * @returns The read's promise; it never rejects.
+   */
+  ɵreadOnce(partition: TmPartition): Promise<void> {
+    return this.#read.get(tmPartitionKey(partition)) ?? this.readAll(partition);
+  }
+
+  /**
+   * Reads named documents of a partition again from storage, in one readonly
+   * transaction, so the mirror holds what any tab committed last; a document
+   * this tab is writing keeps its mirror. Internal: the cache refresher's
+   * check inside the sync lock.
+   *
+   * @param partition - The documents' partition.
+   * @param names - The document names.
+   * @returns A promise that resolves once the mirror holds them; in memory, at once.
+   */
+  ɵreread(partition: TmPartition, names: readonly string[]): Promise<void> {
+    const p = tmPartitionKey(partition);
+    const stored = names.map((name) => this.#entry(p, this.#storedName(name)).n);
+    return this.#reread((entry) => entry.p === p && stored.includes(entry.n));
+  }
+
+  /**
+   * The names of the documents this tab mirrors in a partition whose names
+   * start with a prefix, such as `entity:`. Internal: the lists a tab holds.
+   *
+   * @param partition - The partition.
+   * @param prefix - The prefix.
+   * @returns The document names, without their formats.
+   */
+  ɵnames(partition: TmPartition, prefix: string): string[] {
+    const p = tmPartitionKey(partition);
+    return [...this.#mirror.values()]
+      .filter((entry) => entry.p === p && entry.n.startsWith(prefix))
+      .map((entry) => entry.n.slice(0, entry.n.lastIndexOf('@')));
+  }
+
+  /**
+   * Writes documents of one partition in one readwrite transaction, each as
+   * its update makes it from the stored copy, and posts one `store.changed`
+   * naming the documents written. An update that returns `undefined` leaves
+   * its document as it is. The mirror shows the new copies together, once
+   * every update has run, each with the change of a `ɵshow` still holding
+   * it made again; in memory, the updates run on the mirrored copies.
+   * A write the browser's quota refuses is dropped and kept in this tab's
+   * mirror; so is a write the storage fails, and the store runs in memory
+   * from then on. Internal: the cache refresher's one transaction per sync
+   * and per adoption.
+   *
+   * @param partition - The documents' partition.
+   * @param updates - Each document's update, by document name; each runs synchronously.
+   * @returns A promise that resolves once the write commits, or once it is
+   *   dropped and kept in the mirror alone.
+   * @throws TmStoreRefusedError when the write guard refuses.
+   * @throws Whatever an update throws, and DOMException `DataCloneError` when
+   *   IndexedDB cannot store a value; either way nothing is written.
+   */
+  async ɵwrite(partition: TmPartition, updates: Readonly<Record<string, TmDocUpdate>>): Promise<void> {
+    this.#guard(partition);
+    const p = tmPartitionKey(partition);
+    const items = Object.entries(updates).map(([name, update]) => [this.#entry(p, this.#storedName(name)), update] as const);
+    const since = this.#sweeps.length;
+    // Sets every new copy at once, unless a sweep started after this call emptied the partition.
+    let mirrored = false;
+    const mirror = (docs: readonly (TmStoredDoc<unknown> | undefined)[]): void => {
+      mirrored = true;
+      if (!this.#sweptSince(p, since)) {
+        items.forEach(([entry, update], index) => {
+          let doc = docs[index];
+          // A copy shown ahead of its own write stays shown: its change is
+          // made again on this copy, unless this is that write.
+          for (const shown of entry.shown ?? []) {
+            if (doc !== undefined && shown !== update) {
+              doc = shown(doc) ?? doc;
+            }
+          }
+          if (doc !== undefined) {
+            entry.stored.set(doc);
+          }
+        });
+      }
+    };
+    await this.#write(
+      partition,
+      p,
+      items.map(([entry]) => entry.n),
+      'patch',
+      (store, fail) => {
+        const docs: (TmStoredDoc<unknown> | undefined)[] = [];
+        let read = 0;
+        items.forEach(([entry, update], index) => {
+          const request = store.get([p, entry.n]);
+          request.onsuccess = () => {
+            try {
+              const doc = (docs[index] = update(toDoc(request.result)));
+              if (doc !== undefined) {
+                store.put({ p, n: entry.n, ...doc } satisfies TmDocRecord);
+              }
+            } catch (error) {
+              // What an update threw, or a value IndexedDB cannot clone: nothing is written.
+              fail(error);
+              return;
+            }
+            if (++read === items.length) {
+              mirror(docs);
+            }
+          };
+        });
+        return () => items.filter((_, index) => docs[index] !== undefined).map(([entry]) => entry.n);
+      },
+      // In memory, from the start or since the storage failed before the
+      // reads: the updates run on the mirrored copies, where a shown one
+      // already shows.
+      () => {
+        if (!mirrored) {
+          mirror(
+            items.map(([entry, update]) =>
+              entry.shown?.has(update) ? undefined : update(untracked(entry.stored)),
+            ),
+          );
+        }
+      },
+    );
+  }
+
+  /**
+   * Shows new copies of documents in this tab's mirror at once, ahead of the
+   * write that stores them, and keeps them shown until the returned function
+   * is called: no read sets their mirror, and a `ɵwrite` of them meanwhile
+   * shows its copy with the same update made again on it, unless the
+   * `ɵwrite` passes that update itself. An update that returns `undefined`
+   * leaves its document as it is. Internal: an adoption, which shows a
+   * write's result in the caller's task and stores it under the sync lock,
+   * passing the same updates to `ɵwrite`.
+   *
+   * @param partition - The documents' partition.
+   * @param updates - Each document's update, by document name; each runs synchronously on the mirrored copy.
+   * @returns Lets reads and writes set the documents' mirror again; call it once the write has settled.
+   * @throws TmStoreRefusedError when the write guard refuses, and whatever an
+   *   update throws; either way nothing is shown.
+   */
+  ɵshow(partition: TmPartition, updates: Readonly<Record<string, TmDocUpdate>>): () => void {
+    this.#guard(partition);
+    const p = tmPartitionKey(partition);
+    const shown = Object.entries(updates).map(([name, update]) => {
+      const entry = this.#entry(p, this.#storedName(name));
+      return [entry, update, update(untracked(entry.stored))] as const;
+    });
+    for (const [entry, update, doc] of shown) {
+      if (doc !== undefined) {
+        entry.stored.set(doc);
+      }
+      (entry.shown ??= new Set()).add(update);
+    }
+    const release = this.#hold(
+      p,
+      shown.map(([entry]) => entry.n),
+    );
+    return () => {
+      release();
+      for (const [entry, update] of shown) {
+        entry.shown?.delete(update);
+      }
+    };
   }
 
   /**
@@ -689,27 +889,27 @@ export class TmClientStore {
   }
 
   /**
-   * Runs one write of a document: it counts as pending until it settles, a
-   * commit posts `store.changed` and, after the first tenant write, asks the
-   * browser to keep the site's storage, and a quota refusal is dropped. In
-   * memory, `offline` keeps the write in the mirror alone.
+   * Runs one write of documents of a partition: each counts as pending until
+   * it settles, a commit posts one `store.changed` naming the documents it
+   * wrote and, after the first tenant write, asks the browser to keep the
+   * site's storage, and a quota refusal is dropped. In memory, `offline`
+   * keeps the write in the mirror alone.
    */
   async #write(
     partition: TmPartition,
     p: string,
-    n: string,
+    names: readonly string[],
     kind: 'put' | 'patch',
-    work: (store: IDBObjectStore, fail: (error: unknown) => void) => () => boolean,
+    work: (store: IDBObjectStore, fail: (error: unknown) => void) => () => readonly string[],
     offline?: () => void,
   ): Promise<void> {
-    const key = mirrorKey(p, n);
-    this.#pending.set(key, (this.#pending.get(key) ?? 0) + 1);
+    const release = this.#hold(p, names);
     try {
       const result = await this.#transact('readwrite', work);
       if (result === null) {
         offline?.();
-      } else if (result.value) {
-        this.#bus.post({ type: 'store.changed', partition: p, names: [n] });
+      } else if (result.value.length > 0) {
+        this.#bus.post({ type: 'store.changed', partition: p, names: result.value });
         if (partition.kind === 'tenant' && !this.#persistAsked) {
           // Spec 0025 §2.7: once, after the first tenant-partition write.
           this.#persistAsked = true;
@@ -723,13 +923,31 @@ export class TmClientStore {
       // The write is dropped; the value stays in this tab's mirror.
       this.#telemetry.event('tm.store.quota', { reason: kind });
     } finally {
-      const count = this.#pending.get(key)! - 1;
-      if (count === 0) {
-        this.#pending.delete(key);
-      } else {
-        this.#pending.set(key, count);
-      }
+      release();
     }
+  }
+
+  /**
+   * Counts documents as pending, so no read sets their mirror, until the
+   * returned function is first called.
+   */
+  #hold(p: string, names: readonly string[]): () => void {
+    let keys = names.map((n) => mirrorKey(p, n));
+    for (const key of keys) {
+      this.#pending.set(key, (this.#pending.get(key) ?? 0) + 1);
+    }
+    return () => {
+      const held = keys;
+      keys = [];
+      for (const key of held) {
+        const count = this.#pending.get(key)! - 1;
+        if (count === 0) {
+          this.#pending.delete(key);
+        } else {
+          this.#pending.set(key, count);
+        }
+      }
+    };
   }
 
   /** Re-reads what this tab mirrors of another tab's commit. */

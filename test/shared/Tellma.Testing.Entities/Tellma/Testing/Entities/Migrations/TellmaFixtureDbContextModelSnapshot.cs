@@ -1167,6 +1167,40 @@ namespace Tellma.Testing.Entities.Migrations
                     b.HasData(
                         new
                         {
+                            Id = 4,
+                            CatchUpWindowMinutes = 1440,
+                            Code = "core.blob-sweep",
+                            CreatedAt = new DateTimeOffset(new DateTime(2000, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            CreatedById = 1,
+                            CronExpression = "*/15 * * * *",
+                            HandlerKey = "core.blob-sweep",
+                            IsActive = true,
+                            MissedPolicy = "Coalesce",
+                            ModifiedAt = new DateTimeOffset(new DateTime(2000, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            ModifiedById = 1,
+                            Name = "core.blob-sweep",
+                            OverlapPolicy = "Skip",
+                            RunAsUserId = 1
+                        },
+                        new
+                        {
+                            Id = 5,
+                            CatchUpWindowMinutes = 1440,
+                            Code = "core.blob-reconcile",
+                            CreatedAt = new DateTimeOffset(new DateTime(2000, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            CreatedById = 1,
+                            CronExpression = "0 2 * * 6",
+                            HandlerKey = "core.blob-reconcile",
+                            IsActive = true,
+                            MissedPolicy = "Coalesce",
+                            ModifiedAt = new DateTimeOffset(new DateTime(2000, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            ModifiedById = 1,
+                            Name = "core.blob-reconcile",
+                            OverlapPolicy = "Skip",
+                            RunAsUserId = 1
+                        },
+                        new
+                        {
                             Id = 2,
                             CatchUpWindowMinutes = 1440,
                             Code = "core.notification-retention",
@@ -1179,6 +1213,23 @@ namespace Tellma.Testing.Entities.Migrations
                             ModifiedAt = new DateTimeOffset(new DateTime(2000, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
                             ModifiedById = 1,
                             Name = "core.notification-retention",
+                            OverlapPolicy = "Skip",
+                            RunAsUserId = 1
+                        },
+                        new
+                        {
+                            Id = 7,
+                            CatchUpWindowMinutes = 1440,
+                            Code = "core.outgoing-email-retention",
+                            CreatedAt = new DateTimeOffset(new DateTime(2000, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            CreatedById = 1,
+                            CronExpression = "45 3 * * *",
+                            HandlerKey = "core.outgoing-email-retention",
+                            IsActive = true,
+                            MissedPolicy = "Coalesce",
+                            ModifiedAt = new DateTimeOffset(new DateTime(2000, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            ModifiedById = 1,
+                            Name = "core.outgoing-email-retention",
                             OverlapPolicy = "Skip",
                             RunAsUserId = 1
                         },
@@ -19317,7 +19368,19 @@ namespace Tellma.Testing.Entities.Migrations
                     b.HasData(
                         new
                         {
+                            ScheduleId = 4
+                        },
+                        new
+                        {
+                            ScheduleId = 5
+                        },
+                        new
+                        {
                             ScheduleId = 2
+                        },
+                        new
+                        {
+                            ScheduleId = 7
                         },
                         new
                         {

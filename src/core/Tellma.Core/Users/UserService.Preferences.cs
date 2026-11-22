@@ -123,7 +123,7 @@ namespace Tellma.Core.Users
                     return ValueTask.CompletedTask;
                 },
                 (_, _) => visible is { Value.Entities.Count: 1 } && bag is { } read
-                    ? new UserPreferencesResult(Bag(read.Value))
+                    ? new UserPreferencesResult(MeEnvelope.Bag(read.Value))
                     : throw new NotFoundException(CoreResources.User, missing),
                 cancellationToken).ConfigureAwait(false);
         }
@@ -223,7 +223,7 @@ namespace Tellma.Core.Users
                     (caller, batch) =>
                     {
                         _ = write(batch);
-                        bag = ComposeOwnBag(batch, idempotent: false);
+                        bag = MeEnvelope.ComposeBag(batch, idempotent: false);
                         return ValueTask.CompletedTask;
                     },
                     static (_, outcome) => outcome,
@@ -236,7 +236,7 @@ namespace Tellma.Core.Users
                 throw new ValidationException([new ValidationError(ValidationPath.Root, AccessCodes.TooManyPreferenceKeys, new Dictionary<string, object?>(StringComparer.Ordinal))]);
             }
 
-            return new PreferencesResult(Bag(bag!.Value), VersionTagWire.Preferences(CallerTags(outcome.UserVersionTags).Preferences));
+            return new PreferencesResult(MeEnvelope.Bag(bag!.Value), VersionTagWire.Preferences(MeEnvelope.CallerTags(outcome.UserVersionTags).Preferences));
         }
 
         /// <summary>
@@ -253,7 +253,7 @@ namespace Tellma.Core.Users
             BatchResult<RawResult> bag = ComposeBagOf(context.Batch, target, idempotent: false);
             await context.Persisted.ConfigureAwait(false);
             UsersLog.UserPreferencesChangedByAdministrator(_dependencies.Logger, target, PreferencesArea);
-            return new UserPreferencesResult(Bag(bag.Value));
+            return new UserPreferencesResult(MeEnvelope.Bag(bag.Value));
         }
 
         /// <summary>Appends the read of a user's preference bag, in key order.</summary>

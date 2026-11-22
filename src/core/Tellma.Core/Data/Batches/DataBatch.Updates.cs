@@ -19,7 +19,8 @@ namespace Tellma.Core.Data.Batches
 {
     // The update statement of spec 0012 §9.1: the keys captured (by ids under the grant filter, or
     // by query, capped and count-verified), then one UPDATE that skips the rows already holding the
-    // assigned values; AllOrNothing applies §9.2's not-found and row-security rules first, and an
+    // assigned values (unless the ids' update stamps them too, for an action's command over each
+    // target); AllOrNothing applies §9.2's not-found and row-security rules first, and an
     // activatable tree recounts over the keys (§10.3).
     /// <content>The update statement: the same values assigned to every selected row, in one statement.</content>
     internal sealed partial class DataBatch
@@ -43,12 +44,17 @@ namespace Tellma.Core.Data.Batches
             (EntityMetadata metadata, EntityDescriptor root) = WriteTarget<TEntity>(nameof(Update));
 
             // --- The shape's assignments and stamp, checked before anything is compiled ---
-            (IReadOnlyDictionary<string, object?> assignments, bool stamp) = spec switch
+            (IReadOnlyDictionary<string, object?> assignments, bool stamp, bool stampUnchanged) = spec switch
             {
-                UpdateSpec<TEntity>.ByIds byIds => (byIds.Assignments, byIds.Stamp),
-                UpdateSpec<TEntity>.ByQuery byQuery => (byQuery.Assignments, byQuery.Stamp),
+                UpdateSpec<TEntity>.ByIds byIds => (byIds.Assignments, byIds.Stamp, byIds.StampUnchanged),
+                UpdateSpec<TEntity>.ByQuery byQuery => (byQuery.Assignments, byQuery.Stamp, false),
                 _ => throw new ArgumentException($"The update spec {spec.GetType().Name} is not one of the shapes of {nameof(UpdateSpec<>)}.", nameof(spec)),
             };
+            if (stampUnchanged && !stamp)
+            {
+                throw new ArgumentException("An update that stamps the rows already holding its values must stamp the rows it writes.", nameof(spec));
+            }
+
             List<(PropertyMetadata Property, object? Value)> assigned = Assigned(metadata, assignments, nameof(spec));
             (PropertyMetadata ModifiedAt, PropertyMetadata ModifiedById)? stamps = stamp ? Stamps(metadata, nameof(spec)) : null;
 
@@ -167,7 +173,7 @@ namespace Tellma.Core.Data.Batches
                 _ = text.Append(UserIdCapture.Declaration(userCapture, isLong ? "bigint" : "int", userColumns)).Append('\n');
             }
 
-            WriteUpdate(text, metadata, assigned, stamps, ordinal, keysTable, now, recompile, userCapture is null ? null : (userCapture, userColumns));
+            WriteUpdate(text, metadata, assigned, stamps, stampUnchanged, ordinal, keysTable, now, recompile, userCapture is null ? null : (userCapture, userColumns));
             bool recount = metadata.Tree is { ActiveSubtreeCount: not null }
                 && assigned.Exists(static item => string.Equals(item.Property.Name, nameof(IActivatable.IsActive), StringComparison.Ordinal));
             if (recount)
@@ -396,13 +402,15 @@ namespace Tellma.Core.Data.Batches
 
         /// <summary>
         ///     Writes the update itself: the assigned values and the stamps on every captured row that
-        ///     does not already hold the values (compared null-safe, character columns as binary),
-        ///     the updated ids its result set.
+        ///     does not already hold the values (compared null-safe, character columns as binary), or
+        ///     on every captured row when the unchanged ones are stamped too, the updated ids its
+        ///     result set.
         /// </summary>
         /// <param name="text">Where the text is written.</param>
         /// <param name="metadata">The entity.</param>
         /// <param name="assigned">The assigned properties, bound as the first scalars.</param>
         /// <param name="stamps">The stamp properties, or null when not stamping.</param>
+        /// <param name="stampUnchanged">Whether a row already holding every value is written and stamped too.</param>
         /// <param name="ordinal">The statement's ordinal.</param>
         /// <param name="keys">The keys table.</param>
         /// <param name="now">The stamp variable.</param>
@@ -413,6 +421,7 @@ namespace Tellma.Core.Data.Batches
             EntityMetadata metadata,
             List<(PropertyMetadata Property, object? Value)> assigned,
             (PropertyMetadata ModifiedAt, PropertyMetadata ModifiedById)? stamps,
+            bool stampUnchanged,
             int ordinal,
             string keys,
             string now,
@@ -445,11 +454,16 @@ namespace Tellma.Core.Data.Batches
                 _ = text.Append(CultureInfo.InvariantCulture, $"OUTPUT {UserIdCapture.Values("inserted.[Id]", "deleted", "inserted", capture.Columns)} INTO {capture.Capture} ({UserIdCapture.Targets(capture.Columns)})\n");
             }
 
+            // A row already holding every value is skipped, unstamped, unless the update stamps it too.
             _ = text.Append("OUTPUT inserted.[Id]\n")
                 .Append(CultureInfo.InvariantCulture, $"FROM {metadata.Table.Delimited} AS t\n")
-                .Append(CultureInfo.InvariantCulture, $"WHERE t.[Id] IN (SELECT [Id] FROM {keys})\n")
-                .Append(CultureInfo.InvariantCulture, $"  AND EXISTS (SELECT {string.Join(", ", stored)} EXCEPT SELECT {string.Join(", ", values)})")
-                .Append(Hint(recompile))
+                .Append(CultureInfo.InvariantCulture, $"WHERE t.[Id] IN (SELECT [Id] FROM {keys})");
+            if (!stampUnchanged)
+            {
+                _ = text.Append(CultureInfo.InvariantCulture, $"\n  AND EXISTS (SELECT {string.Join(", ", stored)} EXCEPT SELECT {string.Join(", ", values)})");
+            }
+
+            _ = text.Append(Hint(recompile))
                 .Append(";\n");
         }
 
