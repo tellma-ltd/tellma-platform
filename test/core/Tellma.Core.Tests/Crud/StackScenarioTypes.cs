@@ -320,6 +320,29 @@ namespace Tellma.Core.Tests.Crud
     public sealed class IdleOperations<TGadget>
         where TGadget : SmGadget;
 
+    /// <summary>A feature's companion declaring the workbook segments, which only the platform's companion takes.</summary>
+    /// <typeparam name="TGadget">The gadget leaf.</typeparam>
+    [SuppressMessage("Performance", "CA1822:Mark members as static", Justification = "The fixture's actions are instance methods by contract.")]
+    public sealed class WorkbookOperations<TGadget>
+        where TGadget : SmGadget
+    {
+        /// <summary>The display export's segment.</summary>
+        /// <returns>A task.</returns>
+        [ApiAction("export", Mutation = false)]
+        public Task ExportAsync()
+        {
+            return Task.CompletedTask;
+        }
+
+        /// <summary>The editable export's segment.</summary>
+        /// <returns>A task.</returns>
+        [ApiAction("export-for-import", Mutation = false)]
+        public Task ExportForImportAsync()
+        {
+            return Task.CompletedTask;
+        }
+    }
+
     /// <summary>A routed service with no route.</summary>
     public sealed class UnroutedService;
 

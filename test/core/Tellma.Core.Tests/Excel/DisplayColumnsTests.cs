@@ -136,6 +136,35 @@ namespace Tellma.Core.Tests.Excel
         }
 
         [Fact]
+        public void A_derived_header_that_coincides_with_another_gets_its_expression_and_a_supplied_one_stays_as_sent()
+        {
+            using ExportScope scope = new(composition.Services, "en", "en");
+            string code = scope.Context.Labels.PropertyLabel(typeof(Widget), "Code");
+            string price = scope.Context.Labels.PropertyLabel(typeof(Widget), "Price");
+            ExportColumn[] request =
+            [
+                new("Code", null),
+                new("Price", code.ToUpperInvariant()),
+                new("Price", null),
+                new(" Price ", null),
+                new("CreatedBy", null),
+            ];
+
+            var columns = DisplayColumns.Expand(scope.Metadata.Get(typeof(Widget)), request, scope.Context, Engine, Schema(MultilingualShape.Primary), DisplayNames);
+
+            // Coinciding ignores case; the supplied header and the unique one are untouched.
+            Assert.Equal(
+                [
+                    $"{code} (Code)",
+                    code.ToUpperInvariant(),
+                    $"{price} (Price)",
+                    $"{price} (Price)",
+                    Label(scope, typeof(Widget), "CreatedBy"),
+                ],
+                columns.Specs.Select(static spec => spec.Header));
+        }
+
+        [Fact]
         public void A_path_or_expression_takes_the_engines_type_and_a_bare_decimal_its_scale()
         {
             using ExportScope scope = new(composition.Services, "en", "en");

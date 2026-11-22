@@ -2682,7 +2682,9 @@ are SpreadsheetML packages written with `DocumentFormat.OpenXml` (MIT), forward-
   reads the content slot's twin with the first slot behind a blank one; any other path or expression
   is typed by `QueryexEngine.Validate` and written as itself; every select term is read once, and
   `FoldingRowSource` folds each row back to one value per column. A header the request leaves blank
-  is the labels of the path joined by ` / `, or the expression as sent. The editable plan's parent
+  is the labels of the path joined by ` / `, or the expression as sent; a derived header that
+  coincides with another column's, ignoring case, gets the expression in parentheses, while a header
+  the request supplied stays as sent. The editable plan's parent
   sheet is `Id`, `Stamp` (from `ModifiedAt`, when the entity has it), then every property the import
   writes in declaration order (never one the server owns or derives, a blob reference, a JSON
   document, a binary, a hierarchy path or one excluded from Excel): a multilingual group as one
@@ -2696,7 +2698,9 @@ are SpreadsheetML packages written with `DocumentFormat.OpenXml` (MIT), forward-
   companions, to every stack that serves `Export` or `Import`, and projects `export` under `Export`
   and `export-for-import` under `Import`, each under the stack's `Read`; `ChildExportOperations<TChild>`
   is the `export` action of every exportable child query surface, under the child's `Read`. Both are
-  scoped and built by their own factories over the stack's service or the child query service. A
+  scoped and built by their own factories over the stack's service or the child query service. The
+  stack composition reaches them only through `IPlatformCompanions`, which the composition root fills
+  with `ExcelCompanions`, so the pipeline names no Excel type. A
   request names its rows by `Ids` alone or by the grid's clauses (`ExportSources`): ids beside a
   clause, an empty id list outside the editable template, or named filters on a child surface are a
   `BadRequestException`, as are none or more than 100 display columns and a header over 255
@@ -2716,7 +2720,7 @@ are SpreadsheetML packages written with `DocumentFormat.OpenXml` (MIT), forward-
 | `Composition/` | `AddTellma`, `TellmaBuilder`, `TellmaComposition.Validate`, `CoreFeature`, `IContributionRealizer<T>`, `RealizationContext`, `TellmaStartupGate`; internally the pipeline, the feature graph, the composition record the checks and later runtimes read, Core's model contributions, and the link builder with its stack-route source. |
 | `Composition/Realizers/` | One realizer per item kind the platform understands: services, standalone table types, shape requirements, Core's model configurations, calendar systems, value sets, notification types and channels, client events, securables, entities, stack companions, stack components, routed API services, confirmations and provisioning steps. Each spec that adds an item kind adds its realizer to `ContributionRealizerSet.CreateBuiltIn`. |
 | `Composition/Checks/` | The built-in startup checks above. |
-| `Crud/` | Internally: the stack composition (each stack with its service, companions and components, closed over its leaf), the descriptor builder, `StackRegistry` (`IStackRegistry` and `IStackRouteSource`), the stacks' securable contributor, the platform's default service, the registrations `CrudComposition` makes, the action-method reader, and the entity pipeline with its factory, its operation frame and its instruments, and the reads of reference and lookup targets (`TargetReads`). |
+| `Crud/` | Internally: the stack composition (each stack with its service, companions and components, closed over its leaf), the descriptor builder, `StackRegistry` (`IStackRegistry` and `IStackRouteSource`), the stacks' securable contributor, the platform's default service, the registrations `CrudComposition` makes, the action-method reader, and the entity pipeline with its factory, its operation frame and its instruments, and the reads of reference and lookup targets (`TargetReads`), and the seam the platform's companions attach through (`IPlatformCompanions`). |
 | `Crud/Query/` | Internally: the query path of [Entity stacks](#the-entity-pipeline-and-the-query-path): the surfaces, the admission, the planner, the search, the argument discovery and binding, the diagnostics' locations and their wire form, the traversal rule, the query operation (with the rows of a tree by parent) and the child query service. |
 | `Crud/ExcelRows/` | Internally: [the Excel row source](#the-excel-row-source): the operation, the admitted query tree, one round trip's composition and its chunks, and the row source with its pages and lookups. |
 | `Crud/Details/` | Internally: the details reads of [Entity stacks](#the-entity-pipeline-and-the-query-path): the projections, the planner and its composition with the extras' name rules and the record permissions, and the details operation with the cached list. |

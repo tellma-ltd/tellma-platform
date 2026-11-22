@@ -9,6 +9,7 @@ using Tellma.Core.Abstractions.Api;
 using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.Abstractions.Crud;
 using Tellma.Core.Abstractions.Data;
+using Tellma.Core.Abstractions.Excel;
 using Tellma.Core.Composition;
 using Tellma.Core.Crud;
 using Tellma.Core.Excel;
@@ -87,6 +88,35 @@ namespace Tellma.Core.Tests.Crud
 
             Assert.Equal(StackOperations.Details | StackOperations.Save, registry.Find(StackModel.Gadgets)!.Operations);
             Assert.Null(registry.FindChildQuery(StackModel.Parts));
+        }
+
+        [Fact]
+        public async Task An_export_only_stack_projects_the_display_export_on_itself_and_its_child_surfaces()
+        {
+            await using ServiceProvider provider = Compose(StackOperations.Query | StackOperations.Details | StackOperations.Export);
+            IStackRegistry registry = provider.GetRequiredService<IStackRegistry>();
+
+            Assert.Equal(["export"], WorkbookActions(registry.Find(StackModel.Gadgets)!));
+            ChildQueryDescriptor parts = registry.FindChildQuery(StackModel.Parts)!;
+            Assert.True(parts.Exportable);
+            Assert.Equal(["export"], parts.Actions.Select(static action => action.Name));
+        }
+
+        [Fact]
+        public async Task An_import_only_stack_projects_the_editable_export_and_its_child_surfaces_export_nothing()
+        {
+            await using ServiceProvider provider = Compose(StackOperations.Query | StackOperations.Details | StackOperations.Save | StackOperations.Import);
+            IStackRegistry registry = provider.GetRequiredService<IStackRegistry>();
+
+            Assert.Equal(["export-for-import"], WorkbookActions(registry.Find(StackModel.Gadgets)!));
+            ChildQueryDescriptor parts = registry.FindChildQuery(StackModel.Parts)!;
+            Assert.False(parts.Exportable);
+            Assert.Empty(parts.Actions);
+
+            // The editable export reads through the stack's row source, which an import-only stack serves.
+            await using AsyncServiceScope scope = provider.CreateAsyncScope();
+            IExcelRowSource rows = ((IStackExcelRows)scope.ServiceProvider.GetRequiredService<GadgetService<SmGadget>>()).ExcelRowSource(new ExportSource.ByIds([], OrderBy: null));
+            Assert.NotNull(rows);
         }
 
         [Fact]
@@ -268,6 +298,29 @@ namespace Tellma.Core.Tests.Crud
             Assert.Equal(
                 ["Read", "Retry", "Cancel", "Resume", "Confirm"],
                 securables.ForResource("core.Job").Select(static securable => securable.Action));
+        }
+
+        /// <summary>Composes the gadget stack, with its parts and notes, serving the given operations.</summary>
+        /// <param name="operations">The stack's operations.</param>
+        /// <returns>The provider.</returns>
+        private static ServiceProvider Compose(StackOperations operations)
+        {
+            return TestComposition.Compose(tellma => tellma
+                .AddFeature(new TestFeature<Tag.D>("sm", contribute: contribution => contribution
+                    .Add(new StackContributionItem(typeof(SmGadget), typeof(GadgetService<SmGadget>), operations))
+                    .Entity<SmGizmo>())))
+                .BuildServiceProvider(validateScopes: true);
+        }
+
+        /// <summary>The names of a stack's actions the platform's Excel companion declares.</summary>
+        /// <param name="stack">The stack.</param>
+        /// <returns>The names, in projection order.</returns>
+        private static IEnumerable<string> WorkbookActions(StackDescriptor stack)
+        {
+            return stack.Actions
+                .OfType<ApiActionDescriptor>()
+                .Where(static action => action.HandlerType.IsConstructedGenericType && action.HandlerType.GetGenericTypeDefinition() == typeof(ExcelOperations<>))
+                .Select(static action => action.Name);
         }
     }
 }

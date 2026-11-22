@@ -7,6 +7,10 @@ using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Spreadsheet;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Diagnostics.Metrics.Testing;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Testing;
+using System.Diagnostics.Metrics;
 using System.Globalization;
 using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Crud;
@@ -14,6 +18,7 @@ using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Errors;
 using Tellma.Core.Abstractions.Excel;
 using Tellma.Core.Blobs;
+using Tellma.Core.Excel;
 using Tellma.Core.IntegrationTests.Crud;
 
 namespace Tellma.Core.IntegrationTests.Excel
@@ -136,6 +141,26 @@ namespace Tellma.Core.IntegrationTests.Excel
         }
 
         [Fact]
+        public async Task An_editable_export_by_query_counts_and_reads_every_sheet_in_one_round_trip()
+        {
+            (_, string subject) = await fixture.SeedCallerAsync((Widgets, AccessActions.Read, null));
+            ExportForImportRequest request = new() { Filters = ["Id > 1", "Id <= 7"] };
+
+            await WarmAsync(subject, scope => ExportForImportAsync(scope, request));
+            await using AsyncServiceScope scope = await fixture.Connect.ScopeAsync(subject);
+            (ExportOutcome outcome, int roundTrips) = await MeasureAsync(scope, () => ExportForImportAsync(scope, request));
+            await using (outcome)
+            {
+                // The capped parent count, the parents and their collections ride the first page's read;
+                // the first widget, whose parts overflow the take ceiling, is left out.
+                int[] ids = [.. Enumerable.Range(2, 6).Where(static id => !ExcelRowSourceDatabase.IsInactive(id))];
+                Assert.Equal(1, roundTrips);
+                Assert.Equal(ids.Length, outcome.Rows);
+                Assert.Equal(ids.Select(static id => id.ToString(CultureInfo.InvariantCulture)), Sheet(outcome.Workbook, 0).Skip(1).Select(static row => row["A"]));
+            }
+        }
+
+        [Fact]
         public async Task An_empty_id_list_exports_the_template_of_every_sheet_without_a_row()
         {
             (_, string subject) = await fixture.SeedCallerAsync((Widgets, AccessActions.Read, null));
@@ -207,6 +232,78 @@ namespace Tellma.Core.IntegrationTests.Excel
             Assert.Contains("export/start", refused.Message, StringComparison.Ordinal);
             Assert.Equal("export-for-import/start", refusedEditable.Remedy);
             Assert.False(Directory.Exists(missing));
+        }
+
+        // --- The instruments and the log events ---
+
+        [Fact]
+        public async Task Each_written_export_records_its_rows_and_duration_and_each_refusal_its_rejection_and_both_are_logged()
+        {
+            (_, string subject) = await fixture.SeedCallerAsync((Widgets, AccessActions.Read, null));
+
+            // An instance of its own, so its meter and log carry this test's exports alone.
+            await using ServiceProvider instance = fixture.Connect.CreateInstance(configure: static services =>
+            {
+                _ = services.AddFakeLogging();
+                _ = services.PostConfigure<ExcelOptions>(static options => options.MaxSynchronousExportRows = 10);
+            });
+            IMeterFactory meters = instance.GetRequiredService<IMeterFactory>();
+            using MetricCollector<long> rows = new(meters, ExcelTelemetryNames.MeterName, ExcelTelemetryNames.ExportRows);
+            using MetricCollector<double> durations = new(meters, ExcelTelemetryNames.MeterName, ExcelTelemetryNames.ExportDuration);
+            using MetricCollector<long> rejected = new(meters, ExcelTelemetryNames.MeterName, ExcelTelemetryNames.ExportRejected);
+            int active = Enumerable.Range(1, 10).Count(static id => !ExcelRowSourceDatabase.IsInactive(id));
+
+            await using (AsyncServiceScope scope = await fixture.Connect.ScopeAsync(subject, services: instance))
+            {
+                await using (ExportOutcome display = await ExportAsync(scope, new ExportRequest { Filters = ["Id <= 10"], Columns = [new("Code", null)] }))
+                {
+                    Assert.Equal(active, display.Rows);
+                }
+
+                await using (ExportOutcome editable = await ExportForImportAsync(scope, new ExportForImportRequest { Ids = [6, 3] }))
+                {
+                    Assert.Equal(2, editable.Rows);
+                }
+
+                _ = await Assert.ThrowsAsync<LimitExceededException>(() => ExportAsync(scope, new ExportRequest { Filters = ["Id <= 30"], Columns = [new("Code", null)] }));
+                _ = await Assert.ThrowsAsync<LimitExceededException>(() => ExportForImportAsync(scope, new ExportForImportRequest { Filters = ["Id <= 30"] }));
+            }
+
+            // --- Rows and duration per written export, tagged by entity, shape and route ---
+            Assert.Equal(
+                [(active, Widgets, ExcelTelemetryNames.DisplayShape, false), (2L, Widgets, ExcelTelemetryNames.ForImportShape, false)],
+                rows.GetMeasurementSnapshot().Select(static measurement => (measurement.Value, Tag(measurement.Tags, ExcelTelemetryNames.EntityTag), Tag(measurement.Tags, ExcelTelemetryNames.ShapeTag), measurement.Tags[ExcelTelemetryNames.BackgroundTag] is true)));
+            IReadOnlyList<CollectedMeasurement<double>> timed = durations.GetMeasurementSnapshot();
+            Assert.Equal([ExcelTelemetryNames.DisplayShape, ExcelTelemetryNames.ForImportShape], timed.Select(static measurement => Tag(measurement.Tags, ExcelTelemetryNames.ShapeTag)));
+            Assert.All(timed, static measurement => Assert.True(measurement.Value > 0));
+
+            // --- One rejection per refusal, tagged by entity and shape ---
+            Assert.Equal(
+                [(1L, Widgets, ExcelTelemetryNames.DisplayShape), (1L, Widgets, ExcelTelemetryNames.ForImportShape)],
+                rejected.GetMeasurementSnapshot().Select(static measurement => (measurement.Value, Tag(measurement.Tags, ExcelTelemetryNames.EntityTag), Tag(measurement.Tags, ExcelTelemetryNames.ShapeTag))));
+
+            // --- The log events, at Information, carrying the entity and the counts ---
+            FakeLogRecord[] logged = [.. instance.GetFakeLogCollector().GetSnapshot().Where(static record => record.Category == ExcelLog.Category)];
+            Assert.All(logged, static record => Assert.Equal(LogLevel.Information, record.Level));
+            (string?, string?, string?, string?)[] events =
+            [
+                ("ExportCompleted", Widgets, active.ToString(CultureInfo.InvariantCulture), null),
+                ("ExportCompleted", Widgets, "2", null),
+                ("ExportRejected", Widgets, "11", "10"),
+                ("ExportRejected", Widgets, "11", "10"),
+            ];
+            Assert.Equal(
+                events,
+                logged.Select(static record => (record.Id.Name, record.GetStructuredStateValue("Entity"), record.GetStructuredStateValue("Rows"), record.GetStructuredStateValue("Cap"))));
+        }
+
+        /// <summary>A measurement's tag as text.</summary>
+        /// <param name="tags">The measurement's tags.</param>
+        /// <param name="name">The tag's name.</param>
+        /// <returns>The value.</returns>
+        private static string? Tag(IReadOnlyDictionary<string, object?> tags, string name)
+        {
+            return tags.GetValueOrDefault(name) as string;
         }
 
         /// <summary>Runs an export once in a scope of its own, so the measured one finds every cache warm.</summary>

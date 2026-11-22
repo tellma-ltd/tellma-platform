@@ -4,19 +4,22 @@
 // LICENSE file in the root directory of this source tree.
 
 using Microsoft.Extensions.DependencyInjection;
+using System.Collections.Frozen;
 using System.Reflection;
 using Tellma.Core.Abstractions.Api;
 using Tellma.Core.Abstractions.Crud;
+using Tellma.Core.Crud;
 using Tellma.Core.Data;
 
 namespace Tellma.Core.Excel
 {
     /// <summary>
-    ///     Where the stack composition meets the Excel operations: which stacks carry the platform's
-    ///     companion, the classes closed over a stack's leaf and its exportable child entities, and the
-    ///     scoped registrations that build them. The pipeline knows the operations only through here.
+    ///     The Excel feature's platform companions: <see cref="ExcelOperations{TEntity}" /> on every
+    ///     stack that exports or imports, <see cref="ChildExportOperations{TChild}" /> on every
+    ///     exportable child query surface, and the scoped registrations that build them. The
+    ///     composition root hands this to the stack composition, which names no Excel type itself.
     /// </summary>
-    internal static class ExcelCompanions
+    internal sealed class ExcelCompanions : IPlatformCompanions
     {
         /// <summary>The operations that give a stack the Excel companion.</summary>
         private const StackOperations Workbooks = StackOperations.Export | StackOperations.Import;
@@ -24,51 +27,49 @@ namespace Tellma.Core.Excel
         /// <summary>The name of the static factory each closed operations class declares.</summary>
         private const string FactoryName = "Create";
 
-        /// <summary>Whether a stack with these operations carries the Excel companion: it exports or imports.</summary>
-        /// <param name="operations">The stack's operations.</param>
-        /// <returns>True when it does.</returns>
-        public static bool Serves(StackOperations operations)
+        /// <summary>The standard segments the Excel companion declares.</summary>
+        private static readonly FrozenSet<string> WorkbookSegments = FrozenSet.Create(
+            StringComparer.Ordinal,
+            "export", "export/start", "export-for-import", "export-for-import/start", "inspect-import", "import", "import/start");
+
+        /// <summary>Creates the companions; the composition root uses the one instance.</summary>
+        private ExcelCompanions()
         {
-            return (operations & Workbooks) != 0;
         }
 
-        /// <summary>The Excel companion closed over a stack's leaf.</summary>
-        /// <param name="leaf">The leaf.</param>
-        /// <returns>The closed class.</returns>
-        public static Type OperationsOf(Type leaf)
+        /// <summary>The one instance.</summary>
+        public static ExcelCompanions Instance { get; } = new();
+
+        /// <inheritdoc />
+        public IReadOnlySet<string> Segments => WorkbookSegments;
+
+        /// <inheritdoc />
+        public Type? CompanionOf(Type leaf, StackOperations operations)
         {
             ArgumentNullException.ThrowIfNull(leaf);
-            return typeof(ExcelOperations<>).MakeGenericType(leaf);
+            return (operations & Workbooks) != 0 ? typeof(ExcelOperations<>).MakeGenericType(leaf) : null;
         }
 
-        /// <summary>Whether a companion is the platform's Excel companion, closed over some leaf.</summary>
-        /// <param name="companion">The companion's closed class.</param>
-        /// <returns>True when it is.</returns>
-        public static bool IsOperations(Type companion)
+        /// <inheritdoc />
+        public bool IsCompanion(Type companion)
         {
             ArgumentNullException.ThrowIfNull(companion);
             return companion.IsConstructedGenericType && companion.GetGenericTypeDefinition() == typeof(ExcelOperations<>);
         }
 
-        /// <summary>The child export operations closed over a child entity.</summary>
-        /// <param name="child">The child entity's class, as the entity metadata maps it.</param>
-        /// <returns>The closed class.</returns>
-        public static Type ChildOperationsOf(Type child)
+        /// <inheritdoc />
+        public Type ChildOperationsOf(Type child)
         {
             ArgumentNullException.ThrowIfNull(child);
             return typeof(ChildExportOperations<>).MakeGenericType(child);
         }
 
-        /// <summary>
-        ///     The child export operations of every exportable child query surface under a stack: one
-        ///     per child collection at any depth when the stack serves queries and exports, except
+        /// <inheritdoc />
+        /// <remarks>
+        ///     One per child collection at any depth when the stack serves queries and exports, except
         ///     under a child type that opts out of its query surface, whose own children have none.
-        /// </summary>
-        /// <param name="leaf">The stack's leaf.</param>
-        /// <param name="operations">The stack's operations.</param>
-        /// <param name="leafOf">Resolves a declared child type to the leaf the model maps.</param>
-        /// <returns>The closed classes, depth first in collection order.</returns>
-        public static IEnumerable<Type> ChildOperationsUnder(Type leaf, StackOperations operations, Func<Type, Type> leafOf)
+        /// </remarks>
+        public IEnumerable<Type> ChildOperationsUnder(Type leaf, StackOperations operations, Func<Type, Type> leafOf)
         {
             ArgumentNullException.ThrowIfNull(leaf);
             ArgumentNullException.ThrowIfNull(leafOf);
@@ -81,6 +82,7 @@ namespace Tellma.Core.Excel
             Collect(leaf, leafOf, [], handlers);
             return handlers;
 
+            // Depth first: each child surface, then the surfaces under it; a cycle stops at its repeat.
             static void Collect(Type parent, Func<Type, Type> leafOf, HashSet<Type> visiting, List<Type> handlers)
             {
                 if (!visiting.Add(parent))
@@ -96,7 +98,7 @@ namespace Tellma.Core.Excel
                         continue;
                     }
 
-                    handlers.Add(ChildOperationsOf(child));
+                    handlers.Add(typeof(ChildExportOperations<>).MakeGenericType(child));
                     Collect(child, leafOf, visiting, handlers);
                 }
 
@@ -104,15 +106,13 @@ namespace Tellma.Core.Excel
             }
         }
 
-        /// <summary>
-        ///     The scoped registration of a closed operations class, built by its own static factory:
-        ///     the class's constructor takes the codec's internal collaborators, which the container
-        ///     cannot see.
-        /// </summary>
-        /// <param name="closed">The closed class: an Excel companion or a child export operations class.</param>
-        /// <returns>The registration.</returns>
+        /// <inheritdoc />
+        /// <remarks>
+        ///     Each class is built by its own static factory: its constructor takes the codec's
+        ///     internal collaborators, which the container cannot see.
+        /// </remarks>
         /// <exception cref="ArgumentException">The class declares no factory taking the scope's services.</exception>
-        public static ServiceDescriptor Scoped(Type closed)
+        public ServiceDescriptor Scoped(Type closed)
         {
             ArgumentNullException.ThrowIfNull(closed);
             MethodInfo factory = closed.GetMethod(FactoryName, BindingFlags.NonPublic | BindingFlags.Static, [typeof(IServiceProvider)])

@@ -145,7 +145,7 @@ namespace Tellma.Core.Crud
                 return Contents.Empty(problems);
             }
 
-            StackDescriptorBuilder builder = new(root, problems);
+            StackDescriptorBuilder builder = new(root, problems, composition.Platform);
             List<StackDescriptor> stacks = [];
             List<ChildQueryDescriptor> children = [];
             Dictionary<(string Schema, string Name), StackDescriptor> byTable = new(TableComparer.Instance);

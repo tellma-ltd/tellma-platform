@@ -15,7 +15,6 @@ using Tellma.Core.Abstractions.Entities;
 using Tellma.Core.Composition;
 using Tellma.Core.Composition.Checks;
 using Tellma.Core.Data;
-using Tellma.Core.Excel;
 using Tellma.Core.Queryex;
 
 namespace Tellma.Core.Crud
@@ -28,7 +27,8 @@ namespace Tellma.Core.Crud
     /// </summary>
     /// <param name="root">The root service provider, from which each named filter contributor is created once.</param>
     /// <param name="problems">Receives the problems.</param>
-    internal sealed class StackDescriptorBuilder(IServiceProvider root, List<CompositionProblem> problems)
+    /// <param name="platform">The platform's companions: which companion takes the segments it declares, and each exportable child surface's operations.</param>
+    internal sealed class StackDescriptorBuilder(IServiceProvider root, List<CompositionProblem> problems, IPlatformCompanions platform)
     {
         /// <summary>The platform's details extra: the abilities each row refuses.</summary>
         public const string PermissionsExtra = "permissions";
@@ -41,12 +41,6 @@ namespace Tellma.Core.Crud
 
         /// <summary>The audit columns of a top-level entity, in the order the default select lists them.</summary>
         private static readonly string[] AuditColumns = ["CreatedAt", "CreatedById", "ModifiedAt", "ModifiedById"];
-
-        /// <summary>The standard segments the platform's Excel companion declares, which it alone takes.</summary>
-        private static readonly HashSet<string> ExcelSegments = new(StringComparer.Ordinal)
-        {
-            "export", "export/start", "export-for-import", "export-for-import/start", "inspect-import", "import", "import/start",
-        };
 
         /// <summary>The method behind each declared action, keyed by the descriptor instance the registry owns.</summary>
         public Dictionary<ActionDescriptor, ActionMethod> Methods { get; } = new(ReferenceEqualityComparer.Instance);
@@ -323,10 +317,10 @@ namespace Tellma.Core.Crud
                         "Mark the companion's operations with [ApiAction], or remove the companion.");
                 }
 
-                // The platform's Excel companion takes the workbook segments the stack projects;
+                // The platform's companion takes the segments it declares that the stack projects;
                 // every other companion, like the service, takes no projected segment.
-                bool platformExcel = ExcelCompanions.IsOperations(companion);
-                HashSet<string> reserved = platformExcel ? [.. projected.Where(static segment => !ExcelSegments.Contains(segment))] : projected;
+                bool platformCompanion = platform.IsCompanion(companion);
+                HashSet<string> reserved = platformCompanion ? [.. projected.Where(segment => !platform.Segments.Contains(segment))] : projected;
                 foreach (MethodInfo method in methods)
                 {
                     string described = ActionMethods.Describe(companion, method);
@@ -338,10 +332,10 @@ namespace Tellma.Core.Crud
                         continue;
                     }
 
-                    // The platform's Excel companion declares every workbook method; a stack projects
-                    // only those its operations name (spec 0019 §2.2): the exports under Export, the
+                    // The platform's companion declares every workbook method; a stack projects only
+                    // those its operations name (spec 0019 §2.2): the exports under Export, the
                     // editable export and the imports under Import.
-                    if (platformExcel && !projected.Contains(apiAction.Name))
+                    if (platformCompanion && !projected.Contains(apiAction.Name))
                     {
                         continue;
                     }
@@ -729,7 +723,7 @@ namespace Tellma.Core.Crud
         /// <returns>The actions, in declaration order.</returns>
         private ReadOnlyCollection<ApiActionDescriptor> ChildExports(EntityMetadata child)
         {
-            Type handler = ExcelCompanions.ChildOperationsOf(child.ClrType);
+            Type handler = platform.ChildOperationsOf(child.ClrType);
             List<ApiActionDescriptor> actions = [];
             foreach (MethodInfo method in ActionMethods.Declared(handler))
             {

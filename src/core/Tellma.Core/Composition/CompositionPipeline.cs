@@ -189,7 +189,7 @@ namespace Tellma.Core.Composition
             services.TryAddSingleton<ProvisioningStepRunner>();
 
             // --- Stacks: the registry, its route source, the services and components it closes, its securables (spec 0015 §2) ---
-            CrudComposition.Register(services, _record);
+            CrudComposition.Register(services, _record, ExcelCompanions.Instance);
 
             // --- Excel: the options, the exporter, the export runner, the instruments and the Excel checks (spec 0019 §1.2) ---
             ExcelComposition.Register(services, _record, options);

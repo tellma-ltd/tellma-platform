@@ -122,7 +122,38 @@ namespace Tellma.Core.Excel
                 }
             }
 
-            return diagnostics.Count > 0 ? throw new InvalidQueryException(diagnostics) : expansion;
+            if (diagnostics.Count > 0)
+            {
+                throw new InvalidQueryException(diagnostics);
+            }
+
+            expansion.Disambiguate(columns);
+            return expansion;
+        }
+
+        /// <summary>
+        ///     Makes the derived headers unique: a derived header that coincides with another column's,
+        ///     ignoring case, gets the column's expression in parentheses. A header the request
+        ///     supplied stays as sent.
+        /// </summary>
+        /// <param name="columns">The request's columns, parallel to the specs.</param>
+        private void Disambiguate(IReadOnlyList<ExportColumn> columns)
+        {
+            // Spec 0019 §3.3: headers that coincide within a sheet get the technical path.
+            Dictionary<string, int> counts = new(StringComparer.OrdinalIgnoreCase);
+            foreach (ExcelColumnSpec spec in _specs)
+            {
+                counts[spec.Header] = counts.GetValueOrDefault(spec.Header) + 1;
+            }
+
+            for (int index = 0; index < _specs.Count; index++)
+            {
+                ExcelColumnSpec spec = _specs[index];
+                if (string.IsNullOrWhiteSpace(columns[index].Header) && counts[spec.Header] > 1)
+                {
+                    _specs[index] = spec with { Header = $"{spec.Header} ({columns[index].Expression.Trim()})" };
+                }
+            }
         }
 
         /// <summary>Folds one row of select terms into one value per column.</summary>
