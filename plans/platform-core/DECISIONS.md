@@ -384,6 +384,17 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-207 (orchestrator, 2026-11-22): PC-F11 Review 2 rulings
+
+Review 2 (fable) found 0/0/4. It found no escape path for reads or file changes on Linux. It closed R1-1, R1-2, R1-4, R1-5 and R1-6 by measurement, and R1-3 by reading.
+
+- R2-1: refuse the POSIX message-queue syscalls and flock. Under Landlock, a queue is created despite EACCES and outlives the worker, and flock on a read-only descriptor can cause sharing violations for the host. Refuse flock only if the worker still renders with flock answering EPERM; otherwise record the residual.
+- R2-2: a failed ACE grant on a Windows Development host's own files falls back to unconfined with the warning, as D-204 ruled for the runtime's installation. Startup never fails where it rendered before. Widen the catch, and correct the README sentence.
+- R2-3: the worker's own /proc entries expose the host's shared namespaces (/proc/self/net/*, mountinfo). Landlock cannot carve these out, so they are recorded as a residual.
+- R2-4: tests for stage 2's checks, the Windows CanConfine fallback and text, and the access-list forms.
+
+PC-F11 holds after fix2. It integrates after PC-F17, behind the T1 items (D-194, D-206).
+
 ### D-206 (orchestrator, 2026-11-22): PC-103 fix2 accepted; held
 
 Fix2 (155d35a1) closes R2-1..R2-10 with tests. The merge-tree against origin/platform-core is clean.
