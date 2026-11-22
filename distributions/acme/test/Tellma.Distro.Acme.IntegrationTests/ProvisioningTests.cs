@@ -9,6 +9,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using System.Globalization;
 using System.Net;
 using Tellma.Core.Abstractions.Access;
@@ -32,15 +33,18 @@ namespace Tellma.Distro.Acme.IntegrationTests
     ///     first sign-in; and a deployed-style <c>provision --admin-email</c> inviting its
     ///     administrator through the in-process identity engine, queueing the welcome email and
     ///     inviting again when rerun, while a sandbox's administrator without an account is refused
-    ///     with nobody created or emailed.
+    ///     with nobody created or emailed; and, in a Development deployment whose hosts hold no
+    ///     service-client secret, the administrator left uninvited with a warning that names the
+    ///     command that invites them.
     /// </summary>
     /// <remarks>
     ///     The class migrates one deployment and starts its web host once. The administrator's sign-in
     ///     writes into tenant 1 alone, and each provisioning registers a tenant of its own.
     /// </remarks>
+    /// <param name="sql">The shared SQL Server, for the deployment without a secret.</param>
     /// <param name="deployment">The class's migrated deployment and its running web host.</param>
     [Trait("Category", "Integration")]
-    public sealed class ProvisioningTests(ProvisioningTests.Deployment deployment) : IClassFixture<ProvisioningTests.Deployment>
+    public sealed class ProvisioningTests(SqlServerFixture sql, ProvisioningTests.Deployment deployment) : IClassFixture<ProvisioningTests.Deployment>
     {
         /// <summary>The live seed tenant.</summary>
         private const int Live = 1;
@@ -182,6 +186,39 @@ namespace Tellma.Distro.Acme.IntegrationTests
             // --- The engine created no account and sent no mail ---
             Assert.Null(await AccountAsync(host, Stranger));
             Assert.Equal(0, host.Emails.CountFor(Stranger));
+        }
+
+        [Fact]
+        public async Task A_development_provision_whose_hosts_hold_no_secret_activates_the_tenant_invites_nobody_and_names_the_recovery()
+        {
+            const string Owner = "nosecret@example.com";
+
+            // --- A developer's checkout as it comes: in-process identity, no service-client secret ---
+            AcmeMigrator acme = new(sql, "acme_nosecret");
+            _ = await acme.MigrateAsync();
+            await using AcmeHost host = await AcmeHost.StartAsync(acme.Values);
+            using WarningLog warnings = new();
+            acme.Services = services => services.AddLogging(logging => logging.AddProvider(warnings));
+
+            MigratorResult provisioned = await acme.RunAsync("provision", "--name", "Acme Labs", "--category", "Live", "--admin-email", Owner);
+
+            // --- The tenant converges and turns active; its administrator is made but not invited ---
+            Assert.True(provisioned.ExitCode == MigratorExitCodes.Converged, $"{provisioned}\n{warnings}");
+            int tenantId = RegisteredTenant(provisioned);
+            Assert.Equal("Active", await acme.StateAsync(tenantId));
+            Assert.Equal("New||", await ScalarAsync<string>(
+                acme.TenantConnectionString(tenantId),
+                $"SELECT CONCAT([State], '|', [InviteStatus], '|', [Subject] COLLATE DATABASE_DEFAULT) FROM [core].[Users] WHERE [Email] = N'{Owner}';"));
+            Assert.Equal(1, await ScalarAsync<int>(
+                acme.TenantConnectionString(tenantId), $"SELECT COUNT(*) FROM [core].[Users] WHERE [Email] = N'{Owner}' AND [Subject] IS NULL;"));
+
+            // --- The engine created no account and sent no mail, and the warning names the recovery with its values ---
+            Assert.Null(await AccountAsync(host, Owner));
+            Assert.Equal(0, host.Emails.CountFor(Owner));
+            string recovery = string.Create(CultureInfo.InvariantCulture, $"run provision --tenant {tenantId} --admin-email {Owner}, or");
+            Assert.Contains(warnings.ToString().Split('\n'), line => line.Contains("was not invited", StringComparison.Ordinal)
+                && line.Contains("Tellma:Identity:ServiceClientSecret", StringComparison.Ordinal)
+                && line.Contains(recovery, StringComparison.Ordinal));
         }
 
         // --- Helpers ---

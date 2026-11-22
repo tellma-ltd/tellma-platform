@@ -92,9 +92,11 @@ namespace Tellma.Core.Users
                     CultureInfo.InvariantCulture,
                     $"Tenant {tenantId} holds no user with the first administrator's email address, which the administrator bootstrap makes before the invitation."));
 
+            // The warning names the run that invites once the secret is configured: the bootstrap
+            // finds the administrator it made, and the invitation follows.
             if (plan == InvitationPlan.NoSecret)
             {
-                UsersLog.TenantAdministratorNotInvited(_logger, tenantId, userId);
+                UsersLog.TenantAdministratorNotInvited(_logger, tenantId, userId, Recovery(tenantId, email));
                 return;
             }
 
@@ -141,6 +143,15 @@ namespace Tellma.Core.Users
             return string.IsNullOrWhiteSpace(email) || subject is not null ? InvitationPlan.None
                 : string.IsNullOrWhiteSpace(serviceClientSecret) ? InvitationPlan.NoSecret
                 : InvitationPlan.Invite;
+        }
+
+        /// <summary>The migrator command that invites a tenant's administrator, run once the host holds the secret.</summary>
+        /// <param name="tenantId">The tenant.</param>
+        /// <param name="email">The administrator's normalised email address.</param>
+        /// <returns>The command line.</returns>
+        internal static string Recovery(int tenantId, string email)
+        {
+            return string.Create(CultureInfo.InvariantCulture, $"provision --tenant {tenantId} --admin-email {email}");
         }
 
         /// <summary>The id of the user of an email address, if any.</summary>

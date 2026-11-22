@@ -39,5 +39,11 @@ namespace Tellma.Core.Tests.Users
         {
             Assert.Equal(InvitationPlan.Invite, TenantAdministratorInviter<User>.Plan("owner@example.com", null, "secret"));
         }
+
+        [Fact]
+        public void The_recovery_a_host_without_the_secret_names_is_the_provision_that_invites_the_tenant_s_administrator()
+        {
+            Assert.Equal("provision --tenant 1000 --admin-email owner@example.com", TenantAdministratorInviter<User>.Recovery(1000, "owner@example.com"));
+        }
     }
 }

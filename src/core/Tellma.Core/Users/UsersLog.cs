@@ -123,16 +123,18 @@ namespace Tellma.Core.Users
 
         /// <summary>
         ///     A provisioning run did not invite the tenant's first administrator because the host holds
-        ///     no service-client secret, which only an in-process Development host may lack.
+        ///     no service-client secret, which only an in-process Development host may lack. The tenant
+        ///     turns active with an administrator nobody can sign in as until one is invited.
         /// </summary>
         /// <param name="logger">The logger.</param>
         /// <param name="tenantId">The tenant.</param>
         /// <param name="userId">The administrator's user id.</param>
+        /// <param name="recovery">The command that invites the administrator once the secret is configured, with its values filled in.</param>
         [LoggerMessage(
             EventName = "TenantAdministratorNotInvited",
             Level = LogLevel.Warning,
-            Message = "The first administrator of tenant {TenantId}, user {UserId}, was not invited: this host holds no service-client secret (Tellma:Identity:ServiceClientSecret). Configure the secret the running web host shares, name the administrator's subject in Development, or invite the user from the users' page.")]
-        public static partial void TenantAdministratorNotInvited(ILogger logger, int tenantId, int userId);
+            Message = "The first administrator of tenant {TenantId}, user {UserId}, was not invited: this host holds no service-client secret (Tellma:Identity:ServiceClientSecret), so the tenant is active with an administrator nobody can sign in as. Configure the secret the running web host shares and run {Recovery}, or invite the user from the users' page.")]
+        public static partial void TenantAdministratorNotInvited(ILogger logger, int tenantId, int userId, string recovery);
 
         /// <summary>A provisioning run did not invite the tenant's first administrator, who has joined the tenant already.</summary>
         /// <param name="logger">The logger.</param>

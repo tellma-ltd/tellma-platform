@@ -2475,8 +2475,9 @@ bootstrap. Nobody is invited when the run names no address, when it names a subj
 bootstrap bound one), or when the administrator has joined already (logged
 `TenantAdministratorAlreadyJoined`). A host holding no service-client secret, which only an in-process
 Development host may, cannot authenticate to the identity server: it logs
-`TenantAdministratorNotInvited` (a warning naming `Tellma:Identity:ServiceClientSecret`) and invites
-nobody. An invitation the identity server refuses, a sandbox's `Users.SandboxRequiresExistingIdentity`
+`TenantAdministratorNotInvited` (a warning naming `Tellma:Identity:ServiceClientSecret` and the
+`provision --tenant <id> --admin-email <address>` that invites the administrator once the secret is
+configured, with the tenant's values) and invites nobody; the tenant still turns active. An invitation the identity server refuses, a sandbox's `Users.SandboxRequiresExistingIdentity`
 among them, throws `InvalidOperationException` with the refusal, which fails the tenant with its steps
 recorded; a success logs `TenantAdministratorInvited` with the status.
 
