@@ -18,6 +18,9 @@ Unit tests of the Acme distribution's shape, needing no database:
   `ACME_CLIENT` line wins;
 - `Program.cs` of each host holds exactly the platform's calls;
 - the collation pin over Acme's tenant migrations;
+- the tenant migrations against the composed model: no pending model change, one migration named
+  `InitialTenant` until the first release, and its script creating `gl.Centers` and no identity
+  column, row version, trigger or `MERGE`;
 - the Development provisioning trigger's process and its Production replacement.
 - the resource audit over Acme's strings: every key derived from the web host's composition,
   spelled in the distribution's source or pending, every Arabic key declared in English, and every

@@ -4,6 +4,7 @@
 // LICENSE file in the root directory of this source tree.
 
 using Microsoft.Extensions.Logging;
+using Tellma.Core.Abstractions.Access;
 
 namespace Tellma.Core.Users
 {
@@ -108,6 +109,40 @@ namespace Tellma.Core.Users
             Level = LogLevel.Warning,
             Message = "{Count} tenant membership hint(s) could not be recorded; the reconciliation repairs them.")]
         public static partial void MembershipHintFailed(ILogger logger, Exception exception, int count);
+
+        /// <summary>A provisioning run invited the tenant's first administrator through the identity server.</summary>
+        /// <param name="logger">The logger.</param>
+        /// <param name="tenantId">The tenant.</param>
+        /// <param name="userId">The administrator's user id.</param>
+        /// <param name="status">How the identity server answered: invited, invited again, or already holding a credential.</param>
+        [LoggerMessage(
+            EventName = "TenantAdministratorInvited",
+            Level = LogLevel.Information,
+            Message = "The first administrator of tenant {TenantId}, user {UserId}, was invited: {Status}.")]
+        public static partial void TenantAdministratorInvited(ILogger logger, int tenantId, int userId, InviteStatus status);
+
+        /// <summary>
+        ///     A provisioning run did not invite the tenant's first administrator because the host holds
+        ///     no service-client secret, which only an in-process Development host may lack.
+        /// </summary>
+        /// <param name="logger">The logger.</param>
+        /// <param name="tenantId">The tenant.</param>
+        /// <param name="userId">The administrator's user id.</param>
+        [LoggerMessage(
+            EventName = "TenantAdministratorNotInvited",
+            Level = LogLevel.Warning,
+            Message = "The first administrator of tenant {TenantId}, user {UserId}, was not invited: this host holds no service-client secret (Tellma:Identity:ServiceClientSecret). Configure the secret the running web host shares, name the administrator's subject in Development, or invite the user from the users' page.")]
+        public static partial void TenantAdministratorNotInvited(ILogger logger, int tenantId, int userId);
+
+        /// <summary>A provisioning run did not invite the tenant's first administrator, who has joined the tenant already.</summary>
+        /// <param name="logger">The logger.</param>
+        /// <param name="tenantId">The tenant.</param>
+        /// <param name="userId">The administrator's user id.</param>
+        [LoggerMessage(
+            EventName = "TenantAdministratorAlreadyJoined",
+            Level = LogLevel.Information,
+            Message = "The first administrator of tenant {TenantId}, user {UserId}, has joined the tenant already and needs no invitation.")]
+        public static partial void TenantAdministratorAlreadyJoined(ILogger logger, int tenantId, int userId);
 
         /// <summary>
         ///     An administrator changed another user's preferences, which keep no history of their

@@ -4,17 +4,21 @@
 // LICENSE file in the root directory of this source tree.
 
 using Microsoft.Data.SqlClient;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Globalization;
 using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.Abstractions.Hosting;
+using Tellma.Core.Abstractions.Identity;
 using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.Composition;
 using Tellma.Core.IntegrationTests.Infrastructure;
 using Tellma.Core.Migrator;
 using Tellma.Core.Migrator.Sql;
 using Tellma.Core.Tenancy;
+using Tellma.Testing.Support.Identity;
 
 namespace Tellma.Core.IntegrationTests.Migrator
 {
@@ -232,6 +236,10 @@ namespace Tellma.Core.IntegrationTests.Migrator
             string tenant = migrator.TenantConnectionString(1);
             const string Recorded = "SELECT COUNT(*) FROM [dbo].[__TellmaProvisioning] WHERE [Step] = N'core.bootstrap-administrator';";
 
+            // Each administrator a run names is invited after the bootstrap; the identity server answers from a script.
+            ScriptedIdentityClient identity = new();
+            migrator.Services = services => services.Replace(ServiceDescriptor.Singleton<IIdentityServerClient>(identity));
+
             // --- No administrator named: the bootstrap neither ran nor was recorded as done ---
             _ = await migrator.RunConvergedAsync("migrate");
             Assert.Equal(0, await SqlServerFixture.ScalarAsync<int>(tenant, Recorded));
@@ -259,6 +267,11 @@ namespace Tellma.Core.IntegrationTests.Migrator
             Assert.Contains("tenant 1: provisioned (already; 1 administrator step(s))", (await migrator.RunConvergedAsync("provision", "--tenant", "1", "--admin-email", "third@acme.example")).Lines);
             Assert.Equal(1, await AdministratorsAsync(tenant, "third@acme.example"));
             Assert.Equal("ReadOnly", await StateAsync(migrator, 1));
+
+            // --- Each run that named an administrator invited that administrator, once ---
+            Assert.Equal(
+                ["owner@acme.example", "second@acme.example", "third@acme.example"],
+                identity.Invites.Select(static invitations => Assert.Single(invitations).Email));
         }
 
         [Fact]

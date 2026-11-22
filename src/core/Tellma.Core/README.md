@@ -2466,6 +2466,20 @@ has), and a run that names one runs it whatever the tenant records. `provision -
 --admin-email <address>` on an active or read-only tenant runs it alone, which is how a tenant
 provisioned without an administrator, or left without one, gets one.
 
+`ITenantAdministratorInviter` (`TenantAdministratorInviter<TUser>`, scoped, closed over the user leaf
+by `UsersRuntimeComposition`) invites that administrator after the run's steps, in the platform's own
+scope of the tenant, through the users' `invite` action, so the identity call, the write-back, the
+`core.user.added` notice, the welcome email and the membership hint are the action's own. It runs in a
+provisioning frame named `core.invite-administrator`, so a read-only tenant admits it as it admits the
+bootstrap. Nobody is invited when the run names no address, when it names a subject (the Development
+bootstrap bound one), or when the administrator has joined already (logged
+`TenantAdministratorAlreadyJoined`). A host holding no service-client secret, which only an in-process
+Development host may, cannot authenticate to the identity server: it logs
+`TenantAdministratorNotInvited` (a warning naming `Tellma:Identity:ServiceClientSecret`) and invites
+nobody. An invitation the identity server refuses, a sandbox's `Users.SandboxRequiresExistingIdentity`
+among them, throws `InvalidOperationException` with the refusal, which fails the tenant with its steps
+recorded; a success logs `TenantAdministratorInvited` with the status.
+
 ### The drift scan
 
 `IPermissionDriftScanner` (`PermissionDriftScanner`, scoped, in the platform's own scope of the tenant)
