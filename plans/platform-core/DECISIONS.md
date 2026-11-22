@@ -384,6 +384,22 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-239 (orchestrator, 2026-11-22): PC-105 verification found defects, fixed at integration
+
+- The section 4.4 verification (D-237) of 8162da65 reported 1 major and 2 minor findings, plus a side note:
+  - V-1 (major): the bounded TmPath and TmOrderInput unions still grow quadratically through their template-literal members, and tmEntity pays that cost through its constraint. At 60 entities x 100 scalars x 25 navigations, each declaration with a deep orderBy adds about 6.7 s of type-checking.
+  - V-2 (minor): annotated values skip the deep check, and spec 0029 section 3 promises exact checking of three navigation steps.
+  - V-3 (minor): the child-root fail-closed contradicts spec 0029 section 7's own example.
+  - V-4 (minor, the side note): a read-only root is emitted with a projected key that the server does not project.
+- Rulings, applied as "PC-105: integrate" fix commits:
+  - V-1: a cheap constraint, with TmCheckedDeclaration doing all the checking; a one-level annotation union; a cost regression test at about 100 x 25 that includes orderBy.
+  - V-2: a TSDoc correction only. The build check's unknown-path still catches what annotations miss.
+  - V-4: fixed if small, else carried.
+- For Ahmad:
+  - Spec 0029 section 3 should say that annotations check one level and tmEntity checks every literal segment, and that annotated values skip the deep check.
+  - Spec 0029 section 7's child-root example (a line reaching Invoice.PostingDate under a filtered Read) follows whichever way the D-237 direct-flag question is decided.
+- Correction: my verification brief cited spec 0027 for the registry. The registry is spec 0029.
+
 ### D-238 (orchestrator, 2026-11-22): Windows build-test timeout opens blocking PC-F74, which preempts PC-F72
 
 - After PC-182 landed, both platform-core PR runs (45078227216 on 491ca1b3 and 45078365461 on 8d8c3050) were cancelled. build-test (windows-latest) hit timeout-minutes 30 while Tellma.Core.AspNetCore.Tests was still running ProblemMappingTests.
