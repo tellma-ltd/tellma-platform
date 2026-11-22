@@ -109,7 +109,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC | Slot | Branch | Step | Implementer agent (name / id) | Reviewer agent (name / id) | Started (UTC) |
 |---|---|---|---|---|---|---|
 | PC-092 | pc-3 | pc/PC-092 | held | impl b657cb74 (9 deviations accepted; Development subject binding for Ahmad); R1 0/1/5; fix1 5ddb17c5 held (1 sub-point pushed back, accepted; deviation 10 seeder-only Production test); 3 merge-tree conflicts (ARCHITECTURE.md keep both; Acme InitialTenant pair regenerate); released first after PC-096; D-192, D-194 | 0018-g; R1 only | 2026-11-21 |
-| PC-096 | pc-1 | pc/PC-096 | integrating | impl f7e4a8f6; R1 0/1/7; fix1 922c883b; R2 0/1/2; fix2 70c18c62 (deviation 18; @tellma/core 20.36/20.44 KB, 0025 share 8.14/9 KB); integrating ahead of PC-214, PC-175 (D-190); PC-F67 after landing; D-185, D-189 | 0025-b; R1 + R2 inherit xhigh | 2026-11-21 |
+| PC-096 | pc-1 | pc/PC-096 | integrating | impl f7e4a8f6; R1 0/1/7; fix1 922c883b; R2 0/1/2; fix2 70c18c62 (deviation 18; @tellma/core 20.36/20.44 KB, 0025 share 8.14/9 KB); integrate 158c2a51 red (client-windows: own spec timer boundary; integration: SaveEmitterTests app-lock poll counted other databases); CI fixes 42071b8c, pc run 44972680448 pending; PC-F67 after landing; D-185, D-189 | 0025-b; R1 + R2 inherit xhigh | 2026-11-21 |
 | PC-175 | pc-2 | pc/PC-175 | held | impl df9e5804 (16 deviations accepted); R1 0/1/4; fix1 6eb3f3c9 held (R1-3 inverted via IPlatformCompanions, no deviation); 5 merge-tree conflicts (README + 4 goldens, regenerate); released after PC-214; D-188, D-193 | 0019-b; R1 only | 2026-11-21 |
 | PC-214 | pc-f | pc/PC-214 | held | impl 3e264e5e (deviations 2, 4-10 accepted); R1 0/1/5 (conditional-update test; retry refuses; ModifiedAt stamp; per-event unmatched; retention paging tests); fix1 then hold behind PC-212; D-187; fix1 2b2a3562 held (deviation 11; new ActionContext.Update refusing overload + UpdateSpec.ByIds.StampUnchanged confirmed); 8 merge-tree conflicts (3 migration pairs regenerate, 2 tests); released after PC-096 lands; D-191 | 0022-c; R1 only | 2026-11-21 |
 
@@ -226,6 +226,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | Test | Since | Tracking |
 |---|---|---|
 | CI windows-latest unit step: vstest testhost connect timeout (90 s) aborts one assembly under parallel load (PR run 44947728191) | 2026-11-21 | PC-F66 (fixed 39ab3f1b) |
+| Core IntegrationTests SaveEmitterTests.Two_racing_saves_of_one_row_produce_exactly_one_conflict: first poll counted other databases' app-lock waits (e.g. AdministratorGuardTests) (pc run 44969051977) | 2026-11-22 | fixed in PC-096 CI fixes 42071b8c |
 | tellma-core-tools build.spec "stops with exit 3 …" (local load-only timeout) | 2026-11-14 | D-085 |
 | integration fixtures: CREATE DATABASE fails with SQL 1807 (model locked) under concurrent slots (local only) | 2026-11-15 | PC-F47 |
 | Identity InvitationDeliveryStatusApiTests.A_delivered_invitation_reports_what_the_provider_said (expectsDeliveryEvents) under load; passed alone 6/6 | 2026-11-15 | watch |
