@@ -13,9 +13,10 @@ namespace Tellma.Core.AspNetCore.IntegrationTests.Stacks
     /// <summary>
     ///     Every projected user operation end to end on the reference distribution's live tenant: an
     ///     administrator, stepped up as a user change requires, saving, reading, inviting, deactivating,
-    ///     reactivating and deleting users, reading and changing another user's preferences and issuing
-    ///     a service account's credentials; and a member reading and changing their own profile, locale
-    ///     and preferences. Each case works on users of its own.
+    ///     reactivating and deleting users, reading and changing another user's preferences and
+    ///     notification settings and issuing a service account's credentials; and a member reading and
+    ///     changing their own profile, locale and preferences and sending themselves a test email. Each
+    ///     case works on users of its own.
     /// </summary>
     /// <param name="deployment">The suite's deployment.</param>
     [Trait("Category", "Integration")]
@@ -107,6 +108,41 @@ namespace Tellma.Core.AspNetCore.IntegrationTests.Stacks
         }
 
         [Fact]
+        public async Task A_member_sends_themselves_a_test_email_and_the_inbox_cannot_be_tested()
+        {
+            Member self = await InvitedMemberAsync("tester@example.com", "Test Sender");
+            using SpaClient client = await deployment.SignInAsync(self);
+
+            // --- The email channel: one uncorrelated message straight through the transport, to the member ---
+            int before = TestEmails(self.Email);
+            JsonNode sent = (await client.PostAsync(Tenant, "users/me/test-notification", new JsonObject { ["channel"] = "email" })).Expect(HttpStatusCode.OK);
+            Assert.Equal("Sent", sent.GetValue<string>());
+            Assert.Equal(before + 1, TestEmails(self.Email));
+
+            // --- The inbox, which has no transport to test ---
+            _ = (await client.PostAsync(Tenant, "users/me/test-notification", new JsonObject { ["channel"] = "inbox" }))
+                .ExpectProblem(HttpStatusCode.UnprocessableEntity, "validation");
+        }
+
+        [Fact]
+        public async Task An_administrator_reads_and_changes_another_user_s_notification_settings()
+        {
+            using SpaClient admin = await deployment.SteppedUpAsync(deployment.Administrator);
+            int id = await CreateAsync(admin, "notices@example.com", "Notices User", roleId: null);
+
+            // --- The save answers the stored deviation from the channel's default; the read answers it again ---
+            JsonObject preference = new() { ["type"] = "core.user.added", ["channel"] = "email", ["enabled"] = true };
+            JsonNode saved = (await admin.PostAsync(Tenant, "users/notification-preferences/save", new JsonObject
+            {
+                ["id"] = id,
+                ["arguments"] = new JsonObject { ["preferences"] = new JsonArray(preference.DeepClone()) },
+            })).Expect(HttpStatusCode.OK);
+            Assert.True(JsonNode.DeepEquals(new JsonArray(preference.DeepClone()), saved), saved.ToJsonString());
+            JsonNode read = (await admin.PostAsync(Tenant, "users/notification-preferences/get", new JsonObject { ["userId"] = id })).Expect(HttpStatusCode.OK);
+            Assert.True(JsonNode.DeepEquals(new JsonArray(preference.DeepClone()), read), read.ToJsonString());
+        }
+
+        [Fact]
         public async Task A_service_account_is_issued_client_credentials_through_the_identity_engine()
         {
             using SpaClient admin = await deployment.SteppedUpAsync(deployment.Administrator);
@@ -153,6 +189,15 @@ namespace Tellma.Core.AspNetCore.IntegrationTests.Stacks
             int id = await CreateAsync(admin, email, name, roleId: null);
             _ = (await admin.PostAsync(Tenant, "users/invite", Wire.Ids(id))).Expect(HttpStatusCode.OK);
             return await deployment.MemberAsync(Tenant, email);
+        }
+
+        /// <summary>The emails the host's transport took for an address outside the outbox: the test messages, which carry no correlation.</summary>
+        /// <param name="address">The address.</param>
+        /// <returns>Their count.</returns>
+        private int TestEmails(string address)
+        {
+            return deployment.Host.Emails.Captured.Count(email => email.Message.Correlation is null
+                && email.Message.To.Any(to => string.Equals(to.Address, address, StringComparison.OrdinalIgnoreCase)));
         }
 
         /// <summary>A preference bag's write: <c>{ "items": [{ "key", "value" }] }</c>.</summary>

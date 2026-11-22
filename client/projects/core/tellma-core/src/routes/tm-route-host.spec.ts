@@ -199,7 +199,7 @@ describe('the route host', () => {
     const harness = await tmNavigate('/17/approvals');
     await tmSettle();
     const error = harness.fixture.debugElement.query(By.directive(TmRouteError));
-    expect((error.componentInstance as TmRouteError).view().title[0]).toBe('tm.errors.forbidden.title');
+    expect((error.componentInstance as TmRouteError).view().title).toBe('tm.errors.forbidden.title');
     expect((error.nativeElement as HTMLElement).textContent).toContain('acme.Approval · Read');
     expect(can).toHaveBeenCalledWith('acme.Approval', 'Read');
     expect(hostElement(harness).querySelector('tm-test-page')).toBeNull();

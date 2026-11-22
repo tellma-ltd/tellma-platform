@@ -19,8 +19,8 @@ namespace Tellma.Core.Imaging.Tests.Workers
     ///     What a worker may do, probed from inside the real worker's sandbox by the stand-in: the
     ///     operating system stops it at its memory limit (native and managed memory alike, and on
     ///     Linux shared memory too, with room to spare for what an honest render maps) and at its
-    ///     CPU limit; it cannot start a process, write a file, or open the host's process to read
-    ///     or change it, and on Linux cannot open a socket, signal the host (by a signal of its own
+    ///     CPU limit; it cannot start a process, write a file, or open the host's process to read,
+    ///     change or end it, and on Linux cannot open a socket, signal the host (by a signal of its own
     ///     or by having the kernel signal a descriptor's owner), push input into a terminal, change
     ///     the host's limits or scheduling, create SysV objects or hold a capability, from any of
     ///     its threads, nor open the descriptors, environment, memory or debugger pipes of its
@@ -188,7 +188,12 @@ namespace Tellma.Core.Imaging.Tests.Workers
             using var client = new PdfWorkerClient(new PdfWorkerLauncher(TestWorkers.StandInPath, ["host-debugger-pipes", Path.GetTempPath()]), Limit);
 
             // Whoever opens a runtime's debugger pipes is its debugger; the host removed its own.
-            Assert.Equal("host-debugger-pipes: none", Probe(client));
+            // A confined worker cannot even list the directories they would be in.
+            string probe = Probe(client);
+            string[] unlisted = [.. new[] { Path.GetTempPath(), "/tmp" }.Select(static folder => folder.Length > 1 ? folder.TrimEnd('/') : folder).Distinct(StringComparer.Ordinal).Select(static folder => $"{folder}=unlisted")];
+            Assert.True(
+                probe == "host-debugger-pipes: none" || (client.Launcher.Confines && probe == $"host-debugger-pipes: {string.Join(',', unlisted)}"),
+                probe);
         }
 
         [Fact]
@@ -222,15 +227,10 @@ namespace Tellma.Core.Imaging.Tests.Workers
             using PdfWorkerClient client = TestWorkers.StandIn("open-host");
 
             // On Linux the host's memory file is closed to the worker because the host is not
-            // dumpable, whatever Yama's ptrace scope. On Windows the worker's low integrity level
-            // denies it every right that reads the host's memory, writes it, starts a thread in it,
-            // takes its handles or changes it. The right to end the host is one the integrity
-            // policy does not withhold, which is why a Windows host renders PDF thumbnails only in
-            // Development.
-            string probe = Probe(client);
-            Assert.True(
-                probe == "open-host: refused" || (OperatingSystem.IsWindows() && probe == "open-host: opened (terminate)"),
-                probe);
+            // dumpable, whatever Yama's ptrace scope. On Windows the worker's AppContainer denies
+            // it every right on the host's process, even to ask after it: the process grants
+            // nothing to an AppContainer.
+            Assert.Equal("open-host: refused", Probe(client));
         }
 
         [Fact]
@@ -265,7 +265,7 @@ namespace Tellma.Core.Imaging.Tests.Workers
         }
 
         [Fact]
-        public void A_file_write_by_a_worker_is_refused_on_windows_and_ends_the_worker_on_linux()
+        public void A_worker_cannot_write_a_file()
         {
             Assert.SkipWhen(OperatingSystem.IsMacOS(), "A worker on macOS runs under no operating-system limit.");
 
@@ -273,25 +273,14 @@ namespace Tellma.Core.Imaging.Tests.Workers
             DirectoryInfo folder = Directory.CreateTempSubdirectory("tellma-worker-write-");
             try
             {
+                // On Windows the worker's integrity level and its AppContainer each deny it a write
+                // to the host's files; on Linux its filter refuses an open for writing, as Landlock
+                // does where the kernel offers it.
                 using var client = new PdfWorkerClient(new PdfWorkerLauncher(TestWorkers.StandInPath, ["write-file", folder.FullName]), Limit);
-                using var budget = new CancellationTokenSource(Patience);
-                if (OperatingSystem.IsWindows())
-                {
-                    // The worker's low integrity level denies it a write to the host's files.
-                    ImageFailure report = Assert.Throws<ImageFailure>(() => client.Render(DocumentFixtures.HalfBlackPage(100, 100), Size, CpuTime, budget.Token));
-                    Assert.Equal("write-file: refused (access)", report.Message);
-                }
-                else
-                {
-                    // A write past the zero file-size limit raises SIGXFSZ (25), which ends the worker.
-                    PdfWorkerException exception = Assert.Throws<PdfWorkerException>(
-                        () => client.Render(DocumentFixtures.HalfBlackPage(100, 100), Size, CpuTime, budget.Token));
-                    Assert.Equal(PdfWorkerFailure.Exited, exception.Failure);
-                    Assert.Equal(128 + 25, exception.ExitCode);
-                }
+                Assert.Equal("write-file: refused (access)", Probe(client));
 
-                // Nothing was written; on Linux the worker may have created the file, empty.
-                Assert.All(folder.GetFiles(), static file => Assert.Equal(0, file.Length));
+                // Nothing was written, nor created.
+                Assert.Empty(folder.GetFileSystemInfos());
             }
             finally
             {

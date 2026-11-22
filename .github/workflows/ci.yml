@@ -59,7 +59,9 @@ jobs:
       # The Linux runner carries the ICU release the pinned culture data was generated from
       # (eng/culture-data), so the test that regenerates the data must run there. The variable
       # turns its skip on any other ICU release into a failure: a runner image that moves on is
-      # noticed here rather than silently dropping the guard.
+      # noticed here rather than silently dropping the guard. Its kernel offers Landlock, so the
+      # tests that probe a PDF worker's filesystem confinement must run there too: the second
+      # variable turns their skip on a kernel without Landlock into a failure.
       # Every dotnet test step here logs at normal verbosity with xUnit's diagnostic messages on.
       # The default verbosity prints a failed fixture cleanup as its exception type alone, and
       # drops the lines a fixture writes outside a test (a database drop it had to retry, say):
@@ -76,6 +78,7 @@ jobs:
       - run: dotnet test Tellma.slnx -c Release --no-build ${{ runner.os == 'Windows' && '-m:2' || '' }} --filter "Category!=Integration&Category!=E2E&Category!=Nightly&Live!=true" --logger "console;verbosity=normal" -- xUnit.DiagnosticMessages=true
         env:
           TELLMA_REQUIRE_PINNED_ICU: ${{ runner.os == 'Linux' && '1' || '0' }}
+          TELLMA_REQUIRE_LANDLOCK: ${{ runner.os == 'Linux' && '1' || '0' }}
 
   # Code style and formatting: the full IDE code-style surface (whitespace, imports, IDE00xx) that
   # the compiler build does not run even with EnforceCodeStyleInBuild. Same analyzers and

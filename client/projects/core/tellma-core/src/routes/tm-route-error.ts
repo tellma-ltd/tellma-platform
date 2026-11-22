@@ -7,7 +7,7 @@ import { ChangeDetectionStrategy, Component, computed, DOCUMENT, inject, input, 
 import { TmButton } from '@tellma/core-ui/button';
 import { TmEmptyState } from '@tellma/core-ui/empty-state';
 
-import { TmPlatformText } from '../app/tm-platform-text';
+import { TmLocalization } from '../l10n/tm-localization';
 
 // The route's own error views (spec 0024 §11), each 0023's empty state,
 // inline where the page would be: a page whose chunk failed to load
@@ -18,38 +18,39 @@ import { TmPlatformText } from '../app/tm-platform-text';
 /** The error views a route renders when a chunk does not load. */
 export type TmRouteErrorKind = 'client-outdated' | 'offline';
 
-/** One error view: the keys and the English of its title and message, its one action, and its tone. */
+/** One error view: the keys of its title and message, its one action, and its tone. */
 export interface TmRouteErrorView {
-  /** The title's key and its English. */
-  readonly title: readonly [key: string, english: string];
-  /** The message's key and its English. */
-  readonly message: readonly [key: string, english: string];
-  /** The action's name, its label's key and the label's English. */
-  readonly action?: readonly [name: 'reload' | 'retry', key: string, english: string];
+  /** The title's key. */
+  readonly title: string;
+  /** The message's key. */
+  readonly message: string;
+  /** The action's name and its label's key. */
+  readonly action?: readonly [name: 'reload' | 'retry', key: string];
   /** The empty state's tone; `error` when absent. */
   readonly tone?: 'neutral' | 'error';
 }
 
-// The strings are worded as spec 0024 §11's table words them.
+// The English strings, in the platform's English table, are worded as spec
+// 0024 §11's table words them.
 /** The route's error views: a chunk that did not load, a page the user may not open, and a path no route matches. */
 export const TM_ROUTE_ERROR_VIEWS: Readonly<Record<TmRouteErrorKind | 'forbidden' | 'not-found', TmRouteErrorView>> = {
   'client-outdated': {
-    title: ['tm.errors.clientOutdated.title', '{displayName} was updated'],
-    message: ['tm.errors.clientOutdated.message', 'Reload to continue. Your unsaved changes come back after the reload.'],
-    action: ['reload', 'tm.errors.reload', 'Reload'],
+    title: 'tm.errors.clientOutdated.title',
+    message: 'tm.errors.clientOutdated.message',
+    action: ['reload', 'tm.errors.reload'],
   },
   offline: {
-    title: ['tm.errors.offline.title', "You're offline"],
-    message: ['tm.errors.offline.message', "Check your connection. We'll keep trying."],
-    action: ['retry', 'tm.errors.retry', 'Try again'],
+    title: 'tm.errors.offline.title',
+    message: 'tm.errors.offline.message',
+    action: ['retry', 'tm.errors.retry'],
   },
   forbidden: {
-    title: ['tm.errors.forbidden.title', "You don't have permission for this"],
-    message: ['tm.errors.forbidden.message', 'It needs “{permission}”. Ask your administrator to grant it.'],
+    title: 'tm.errors.forbidden.title',
+    message: 'tm.errors.forbidden.message',
   },
   'not-found': {
-    title: ['tm.errors.notFound.title', 'Page not found'],
-    message: ['tm.errors.notFound.message', 'Check the address, or go back to the start.'],
+    title: 'tm.errors.notFound.title',
+    message: 'tm.errors.notFound.message',
     tone: 'neutral',
   },
 };
@@ -70,7 +71,7 @@ export const TM_ROUTE_ERROR_VIEWS: Readonly<Record<TmRouteErrorKind | 'forbidden
   `,
 })
 export class TmRouteError {
-  readonly #text = inject(TmPlatformText);
+  readonly #l10n = inject(TmLocalization);
   readonly #document = inject(DOCUMENT);
 
   /** Which view. */
@@ -83,18 +84,18 @@ export class TmRouteError {
   readonly retry = output();
 
   /** The view's placeholders. */
-  readonly #params = computed(() => ({ displayName: this.#text.displayName(), ...this.params() }));
+  readonly #params = computed(() => ({ displayName: this.#l10n.displayName(), ...this.params() }));
 
   /** The heading. */
-  protected readonly title = computed(() => this.#text.text(...this.view().title, this.#params())());
+  protected readonly title = computed(() => this.#l10n.ɵtext(this.view().title, this.#params())());
 
   /** The message. */
-  protected readonly message = computed(() => this.#text.text(...this.view().message, this.#params())());
+  protected readonly message = computed(() => this.#l10n.ɵtext(this.view().message, this.#params())());
 
   /** The action's label. */
   protected readonly label = computed(() => {
     const action = this.view().action;
-    return action ? this.#text.text(action[1], action[2])() : '';
+    return action ? this.#l10n.ɵtext(action[1])() : '';
   });
 
   /**

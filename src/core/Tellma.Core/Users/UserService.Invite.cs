@@ -9,11 +9,13 @@ using Tellma.Core.Abstractions.Crud;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Errors;
 using Tellma.Core.Abstractions.Identity;
+using Tellma.Core.Abstractions.Localization;
 using Tellma.Core.Abstractions.Settings;
 using Tellma.Core.Abstractions.TableTypes;
 using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.Abstractions.Validation;
 using Tellma.Core.Data.Batches;
+using Tellma.Core.Outbox;
 
 namespace Tellma.Core.Users
 {
@@ -23,8 +25,9 @@ namespace Tellma.Core.Users
     // once per chunk, composes the write-back onto the deferred persist batch, and reads the
     // statement's mismatch set once the action committed. A recompose of round trip 2 replays the
     // composed write-back and never invokes the method, so the identity server is called once.
-    // The welcome emails of §3.3 step 3 are enlisted with the action's frame after the write-back is
-    // composed; the core.user.added notice joins with spec 0021's contribution.
+    // The core.user.added notices of §3.3 step 3 are appended to the same batch, and the welcome
+    // emails enlisted with the action's frame, after the write-back is composed, so all three commit
+    // together and a recompose replays them with it.
     public partial class UserService<TUser>
     {
         /// <summary>The identity server's per-user error for an unknown address on a lookup that may not create users.</summary>
@@ -92,8 +95,18 @@ namespace Tellma.Core.Users
             UserInvitationOutcome[] outcomes = [.. answered.Select((result, index) => Outcome(targets[index].Id, result, existingOnly))];
             BatchResult<RawResult>? written = outcomes.Length > 0 ? ComposeWriteBack(context.Batch, outcomes) : null;
 
-            // --- The welcome emails, enlisted with the action's frame so they commit with the write-back ---
-            await EnqueueWelcomeAsync(context, targets, outcomes, answered, settings, returnUrl).ConfigureAwait(false);
+            // --- The notices and the welcome emails of the users the invite added, committed with the write-back ---
+            List<(TUser User, InviteStatus Status)> added = Added(targets, outcomes, answered);
+            if (added.Count > 0)
+            {
+                // The caller is connected by the action's first round trip, and the tenant's names
+                // are the cached settings, so neither costs a load.
+                ConnectedUser caller = await _dependencies.Connection.CurrentAsync(context.CancellationToken).ConfigureAwait(false);
+                LocalizedText tenantName = OutgoingEmailText.TenantName(settings, request.RequireTenant());
+                LocalizedText actorName = new(caller.Profile.Name, caller.Profile.Name2, caller.Profile.Name3);
+                NotifyAdded(context, [.. added.Select(static pair => pair.User.Id)], request.IsSystem ? null : caller.UserId, tenantName, actorName);
+                await EnqueueWelcomeAsync(context, added, settings, tenantName, actorName, returnUrl).ConfigureAwait(false);
+            }
 
             // --- Phase 4: the commit, then the statement's mismatches ---
             await context.Persisted.ConfigureAwait(false);

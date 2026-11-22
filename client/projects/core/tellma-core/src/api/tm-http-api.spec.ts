@@ -1356,6 +1356,15 @@ describe('TmHttpApi', () => {
   });
 
   describe('send', () => {
+    it("sends to the caller's tenant, even from a tenantless page", async () => {
+      const rig = await setUp({ url: '/tenants' });
+      rig.api.send('users/me/locale', { language: 'ar' }, { tenantId: 18 });
+      await flush();
+      expect(rig.host.last().url).toBe('/18/api/web/users/me/locale');
+      rig.host.last().fail();
+      await flush();
+    });
+
     it('sends a keepalive POST whose answer is never read', async () => {
       const rig = await setUp();
       rig.api.send('users/me/preferences', { theme: 'dark' }, { background: true });
@@ -1367,6 +1376,15 @@ describe('TmHttpApi', () => {
       expect(request.header('Content-Type')).toBe('application/json');
       expect(request.header('traceparent')).toMatch(TRACEPARENT);
       request.fail();
+      await flush();
+    });
+
+    it('goes to the tenant it names rather than the routed one', async () => {
+      const rig = await setUp();
+      rig.api.send('users/me/preferences/set', { items: [] }, { tenantId: 18 });
+      await flush();
+      expect(rig.host.last().url).toBe('/18/api/web/users/me/preferences/set');
+      rig.host.last().fail();
       await flush();
     });
 

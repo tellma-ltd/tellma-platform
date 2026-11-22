@@ -42,6 +42,7 @@ export {
   tmFormatDate,
   tmParseDate,
   ɵtmFormatWithoutEra,
+  type ɵTmOwnDate,
   type TmDateFormatOptions,
   type TmDateParseOptions,
   type TmDateStyle,

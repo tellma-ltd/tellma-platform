@@ -633,7 +633,10 @@
     <value>أدخل رقم الجوال بالصيغة الدولية، مثل ‎+971501234567.</value>
   </data>
   <data name="Users_NotIndividual" xml:space="preserve">
-    <value>يمكن دعوة المستخدمين الأفراد فقط.</value>
+    <value>ينطبق هذا على المستخدمين الأفراد فقط، لا على حسابات الخدمة.</value>
+  </data>
+  <data name="Users_ChannelNotTestable" xml:space="preserve">
+    <value>لا يمكن إرسال رسالة تجريبية إلى صندوق الوارد. اختر قناة أخرى.</value>
   </data>
   <data name="Users_NotService" xml:space="preserve">
     <value>لا يمكن إصدار بيانات الاعتماد إلا لحسابات الخدمة.</value>

@@ -121,8 +121,10 @@ namespace Tellma.Core.IntegrationTests.Notifications
                 _sql.NewDatabaseName(ReadCommittedSnapshot ? "fx_inbox" : "fx_inbox_locking"),
                 services =>
                 {
-                    // --- The recording senders, events and administrator; small retention pages; the log ---
+                    // --- The recording senders in place of the platform's email sender, events and
+                    // administrator; small retention pages; the log ---
                     _ = services.AddSingleton(Deliveries);
+                    _ = services.RemoveAll<INotificationChannel>();
                     _ = services.AddScoped<INotificationChannel, RecordingEmail>();
                     _ = services.AddScoped<INotificationChannel, RecordingSms>();
                     _ = services.Replace(ServiceDescriptor.Scoped<IClientEventPublisher>(_ => Events));

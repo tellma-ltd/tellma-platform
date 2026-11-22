@@ -398,7 +398,7 @@ export class TmHttpApi implements TmApi {
     let tenantId: number | null;
     let url: string;
     try {
-      tenantId = this.#tenantOf(route, undefined);
+      tenantId = this.#tenantOf(route, options.tenantId);
       url = this.#urlOf(route, tenantId);
     } catch (error) {
       if (error instanceof TmApiError) {

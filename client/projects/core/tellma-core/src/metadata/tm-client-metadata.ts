@@ -3,7 +3,7 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-import { Injectable, InjectionToken, inject } from '@angular/core';
+import { Injectable, InjectionToken, inject, signal, type Signal } from '@angular/core';
 
 import type { TmJobHandlerMetadata, TmSecurableMetadata, TmSettingCategoryMetadata, TmSettingKeyMetadata } from '../admin/tm-admin-metadata';
 import type { TmNotificationTypeMetadata } from '../attention/tm-notification-metadata';
@@ -142,7 +142,14 @@ export interface TmContracts {
 @Injectable({ providedIn: 'root' })
 export class TmClientMetadataStore {
   /** The loaded Core chunk, or `null` before the boot sequence loads it. */
-  #core: TmClientMetadata | null = null;
+  readonly #core = signal<TmClientMetadata | null>(null);
+
+  /**
+   * The loaded Core chunk, or `null` before the boot sequence loads it, as a
+   * signal: a service created before the chunk loads, such as the
+   * localization service, reads it here and follows its arrival.
+   */
+  readonly current: Signal<TmClientMetadata | null> = this.#core.asReadonly();
 
   /** Resolves {@link TmClientMetadataStore.loaded}. */
   #resolve!: (core: TmClientMetadata) => void;
@@ -160,7 +167,7 @@ export class TmClientMetadataStore {
    * @param core - The chunk, as its loader returned it.
    */
   set(core: TmClientMetadata): void {
-    this.#core = core;
+    this.#core.set(core);
     this.#resolve(core);
   }
 
@@ -173,7 +180,7 @@ export class TmClientMetadataStore {
    * @returns The chunk, or `null`.
    */
   peek(): TmClientMetadata | null {
-    return this.#core;
+    return this.#core();
   }
 
   /**
@@ -183,12 +190,13 @@ export class TmClientMetadataStore {
    * @throws Error when the chunk is not loaded yet.
    */
   get(): TmClientMetadata {
-    if (this.#core === null) {
+    const core = this.#core();
+    if (core === null) {
       throw new Error(
         'The client metadata is not loaded yet. Inject TM_CLIENT_METADATA only once the app has started, never in an initializer or while providers are created.',
       );
     }
-    return this.#core;
+    return core;
   }
 }
 

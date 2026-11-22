@@ -4,6 +4,7 @@
 // LICENSE file in the root directory of this source tree.
 
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using System.Collections.Concurrent;
 using System.Globalization;
 using Tellma.Core.Abstractions.Access;
@@ -104,7 +105,9 @@ namespace Tellma.Core.IntegrationTests.Notifications
                 _sql.NewDatabaseName(ReadCommittedSnapshot ? "fx_notify" : "fx_notify_locking"),
                 services =>
                 {
-                    // --- Senders for email and sms, so both deliver; the events are recorded ---
+                    // --- Senders for email, in place of the platform's own, and sms, so both deliver;
+                    // the events are recorded ---
+                    _ = services.RemoveAll<INotificationChannel>();
                     _ = services.AddScoped<INotificationChannel>(static _ => new NamingSender(CoreFeature.EmailChannel));
                     _ = services.AddScoped<INotificationChannel>(static _ => new NamingSender(FixtureNotifications.SmsChannel));
                     _ = services.AddScoped<IClientEventPublisher>(_ => Events);

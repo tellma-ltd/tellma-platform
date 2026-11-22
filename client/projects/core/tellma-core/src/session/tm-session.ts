@@ -8,9 +8,10 @@ import { inject, Injectable, signal, untracked, type Signal } from '@angular/cor
 import { TM_NOW } from '../app/tm-now';
 import { TM_BOOT_RESULT } from '../boot/tm-boot-result';
 import { TmTelemetry } from '../observe/tm-telemetry';
+import { tmRemoveDrafts } from '../state/memory/tm-draft-keys';
 import { tmIsLocalPath, tmLoginUrl, tmRemoveLoginMark, tmWriteLoginMark } from './tm-login-mark';
 import { tmParseProfileCookie, type TmProfile } from './tm-profile';
-import { TM_SESSION_HOST, type TmSessionStorage } from './tm-session-host';
+import { TM_SESSION_HOST } from './tm-session-host';
 import { TmSessionPaths, type TmSessionState } from './tm-session-paths';
 
 // The tab's session (spec 0024 §8.1-§8.3). The profile cookie is the
@@ -44,9 +45,6 @@ export interface TmSignInOptions {
   /** The stronger authentication a call asked for; omitted for a plain sign-in. */
   readonly stepUp?: TmStepUpChallenge;
 }
-
-/** The prefix of the session-storage keys of a user's drafts. */
-const DRAFT_KEY_PREFIX = 'tm.draft:';
 
 /**
  * The tab's session: the signed-in user, where the session stands, and the
@@ -186,30 +184,7 @@ export class TmSession {
       this.#telemetry.event('tm.session.expired', { source: 'boot' });
     }
     if (mark.sub !== null && mark.sub !== profile.sub) {
-      removeDrafts(this.#host.sessionStorage, mark.sub);
+      tmRemoveDrafts(this.#host.sessionStorage, mark.sub);
     }
-  }
-}
-
-/** Removes a user's drafts from session storage; a refusing storage is ignored. */
-function removeDrafts(storage: TmSessionStorage | null, sub: string): void {
-  if (storage === null) {
-    return;
-  }
-  const prefix = `${DRAFT_KEY_PREFIX}${sub}:`;
-  try {
-    // Keys are collected first, since removing an item shifts the indexes.
-    const keys: string[] = [];
-    for (let i = 0; i < storage.length; i++) {
-      const key = storage.key(i);
-      if (key?.startsWith(prefix)) {
-        keys.push(key);
-      }
-    }
-    for (const key of keys) {
-      storage.removeItem(key);
-    }
-  } catch {
-    // Nothing to do: a storage that refuses holds no drafts this tab can reach.
   }
 }

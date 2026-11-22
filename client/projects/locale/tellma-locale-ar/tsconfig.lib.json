@@ -7,6 +7,9 @@
     "declarationMap": true,
     "types": [],
     "paths": {
+      "@tellma/core": [
+        "../../../dist/core"
+      ],
       "@tellma/core-ui": [
         "../../../dist/core-ui"
       ],

@@ -633,7 +633,10 @@
     <value>Enter the mobile number in international format, such as +971501234567.</value>
   </data>
   <data name="Users_NotIndividual" xml:space="preserve">
-    <value>Only individual users can be invited.</value>
+    <value>This applies to individual users only, not to service accounts.</value>
+  </data>
+  <data name="Users_ChannelNotTestable" xml:space="preserve">
+    <value>The inbox can’t be sent a test message. Choose another channel.</value>
   </data>
   <data name="Users_NotService" xml:space="preserve">
     <value>Credentials can only be issued to service accounts.</value>

@@ -384,6 +384,78 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-225 (orchestrator, 2026-11-22): PC-104 landed; "." at 38.5 KB; PC-F69 launched; PC-F71 released
+
+PC-104 landed at 5bfbd41c. After the merge, "." measured 38.49 KB, so its ceiling was set to 38.5 KB, within D-224's 39 KB cap.
+
+The other entry points measured:
+- the lazy locale-write chunk: 1.50/2
+- ./memory: 2.54/2.6
+- ./recents: 1.53/1.6
+- core-ui l10n: 9.96/10
+
+PC-F69 starts in pc-1, the slot PC-104 freed, ahead of other T1/T2 work (D-214). It re-splits "." by spec family into secondary entry points, so that each spec's services leave the first frame unless the shell needs them at boot.
+
+Goals:
+- "." falls back to its 31 KB pre-raise level, or as close to it as the boot path honestly allows.
+- Each new entry point gets its own honest ceiling.
+- The static-graph check proves "." does not reach the new entry points.
+- Consumers (Acme, showcase) import from the new entry points.
+
+Any first-frame figure that rises is reported.
+
+PC-F71 integrates next, carrying D-224's three items: the AH 9666 vector rows, a lengths array asserted on both sides, and a client daysIn bounded at AH 9666. PC-F70 follows.
+
+### D-224 (orchestrator, 2026-11-22): PC-107 landed; PC-104 released; the AH 9666 carries move to PC-F71
+
+PC-107 landed at 5a41bd43. After its merge, "." measured 33.82/34 KB, ./memory 2.54/2.6, ./recents 1.53/1.6, and the first frame ≈33.14 KB.
+
+PC-104 integrates next, and it integrates second of the pair, so under D-214 it re-measures "." after the merge. The combined ceiling is the measured figure rounded up to 0.5 KB. It may not exceed 34 KB plus PC-104's own reviewed raise (36 - 31 = 5 KB), so 39 KB at most. Anything above that stops and is reported. PC-104 also merges the two TmSendOptions.tenantId copies into one.
+
+D-221 and D-222 gave PC-104's integration three carries for PC-F71's 9666 range: the vector rows, a lengths array asserted on both sides, and a bounded client daysIn. All three require PC-F71's server change to be on platform-core, and PC-F71 integrates after PC-104. They therefore move to PC-F71's integration, which merges PC-104's client and lands the binding test with the server change it binds.
+
+### D-223 (orchestrator, 2026-11-22): PC-F70 Review 1 rulings; PC-F71 held
+
+PC-F70 Review 1 found 0/0/2 and accepted the three implementer deviations. The event is logged once per refusal; a crashing check still logs CheckThrew at Error; the migrator never registers the check.
+
+Fix1 rulings:
+- R1-1: stay within the fix item. MapTellma's problems are not moved into the gate, because that changes startup behaviour. If the throwing project already references OpenTelemetry, force-flush a registered LoggerProvider before the throw, adding no dependency; otherwise document that a MapTellma refusal reaches synchronous sinks only. If spec 0016 turns out to require deferral into the gate, the implementer flags it and it goes to Ahmad.
+- R1-2: pin Count and the "; " join with a two-violation case.
+
+PC-F70 holds after fix1.
+
+PC-F71's fix1 (492510e3) is held, and merge-tree is clean. Release order: PC-143, PC-107, PC-104, PC-F71, PC-F70. PC-104's integration still carries D-222's lengths array and daysIn bound.
+
+### D-222 (orchestrator, 2026-11-22): PC-F71 Review 1 rulings
+
+Review 1 found 0/0/2. The fix is consistent with D-029, 0013 §8.2-8.3, 0008 §10.4 and 0024 §7.4. The client's lengths for AH 9666 months 5-12 on pc/PC-104 match the server's.
+
+Fix1 rulings:
+- R1-1: the binding test of the two sides' lengths lands at PC-104's integration, as a lengths array in umalqura-vectors.json asserted by both the server and the client. PC-F71 amends its implementer note to say so.
+- R1-2: GetDaysInMonth checks the year first and names year for an out-of-range year, like every other year-level member and EthiopianCalendar. The test expects year.
+
+PC-F71 holds after fix1.
+
+Carry for PC-104's integration: the client daysIn has no upper year (daysIn(9667, m) is 30 on the client and 0 on the server). Bound it at AH 9666 like the server, or record why not.
+
+### D-221 (orchestrator, 2026-11-22): PC-104 fix2 accepted; held
+
+Fix2 (7f087f0d) fixed R2-1..R2-7 and applied D-214: TmLocaleWrite now loads with import(). Sizes: "." 35.45/36, the write chunk 1.50/2, core-ui l10n 9.96/10. The merge-tree is clean.
+
+Accepted deviations:
+- A new tab-bus message, l10n.switched (TmLanguageSwitchedMessage), beyond 0025 §6.2's catalogue. Other tabs follow a real switch, never a settle.
+- Locale-write retries for offline-like failures while online stay true stop after 4 tries (5 s doubling, capped at 30 s). After that the state is 'failed', and the user's choices stay applied.
+- The formatting locale carries a private-use subtag (for example en-US-x-om) when the winning tag belongs to another language. The core-ui date engine reads the requested language from it, so the om/ti day-first rule survives the browser fallback.
+
+PC-104 holds. Release order once PC-F11 lands: PC-143, PC-107, PC-104.
+
+PC-104's integration, after PC-107 lands, must:
+- merge the two TmSendOptions.tenantId copies;
+- re-measure "." (D-214);
+- add PC-F71's AH 9666 vector rows, if PC-F71 has landed.
+
+For Ahmad: 0025 §6.2's tab-bus catalogue gains l10n.switched.
+
 ### D-220 (orchestrator, 2026-11-22): PC-107 fix2 accepted; held
 
 Fix2 (a0919af3) fixed R2-1..R2-7. The merge-tree is clean.
