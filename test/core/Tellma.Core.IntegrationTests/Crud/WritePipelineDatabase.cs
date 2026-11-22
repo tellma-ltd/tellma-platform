@@ -12,6 +12,7 @@ using Tellma.Core.Abstractions.Crud;
 using Tellma.Core.Abstractions.Validation;
 using Tellma.Core.IntegrationTests.Access;
 using Tellma.Core.IntegrationTests.Data;
+using Tellma.Core.Queryex;
 using Tellma.Testing.Entities;
 
 namespace Tellma.Core.IntegrationTests.Crud
@@ -159,6 +160,12 @@ namespace Tellma.Core.IntegrationTests.Crud
         /// <summary>What the rename action composes onto its batch after its update; nothing when null.</summary>
         public Action<ActionContext<Widget, int>>? Compose { get; set; }
 
+        /// <summary>The condition the rename's update repeats when the persist runs; null for an update of every target.</summary>
+        public FilterTree? Condition { get; set; }
+
+        /// <summary>The code a target failing <see cref="Condition" /> refuses the rename with; null to skip such a target.</summary>
+        public string? RefusalCode { get; set; }
+
         /// <summary>The names of the targets the rename action saw, by the order it saw them; empty until it runs.</summary>
         public List<string> Renamed { get; } = [];
 
@@ -168,6 +175,8 @@ namespace Tellma.Core.IntegrationTests.Crud
             ValidateDelete = null;
             ValidateAction = null;
             Compose = null;
+            Condition = null;
+            RefusalCode = null;
             Renamed.Clear();
         }
     }
@@ -183,8 +192,8 @@ namespace Tellma.Core.IntegrationTests.Crud
 
     /// <summary>
     ///     The widget stack's service: its delete and action validation hooks run what the probe
-    ///     arms, and it declares the rename action, which renames the target widgets and composes
-    ///     what the probe arms.
+    ///     arms, and it declares the rename action, which renames the target widgets, under the
+    ///     condition the probe arms, and composes what the probe arms.
     /// </summary>
     /// <param name="factory">The pipeline factory.</param>
     /// <param name="probe">The probe.</param>
@@ -200,10 +209,24 @@ namespace Tellma.Core.IntegrationTests.Crud
             ArgumentNullException.ThrowIfNull(context);
             ArgumentNullException.ThrowIfNull(arguments);
 
-            // --- The targets load with the first round; the update composes after it ---
+            // --- The targets load with the first round; the update composes after it, under the
+            // probe's condition, skipping or refusing a target that fails it ---
             await context.Loader.LoadAsync();
             probe.Renamed.AddRange(context.Entities.Select(static widget => widget.Name));
-            context.Update(new Dictionary<string, object?>(StringComparer.Ordinal) { [nameof(Widget.Name)] = arguments.Name });
+            Dictionary<string, object?> assignments = new(StringComparer.Ordinal) { [nameof(Widget.Name)] = arguments.Name };
+            if (probe.Condition is not FilterTree condition)
+            {
+                context.Update(assignments);
+            }
+            else if (probe.RefusalCode is string code)
+            {
+                context.Update(assignments, condition, code);
+            }
+            else
+            {
+                context.Update(assignments, condition);
+            }
+
             probe.Compose?.Invoke(context);
         }
 

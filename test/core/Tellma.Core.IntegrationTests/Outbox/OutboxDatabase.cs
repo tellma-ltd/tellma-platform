@@ -14,6 +14,7 @@ using System.Globalization;
 using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Caching;
 using Tellma.Core.Abstractions.Crud;
+using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Email;
 using Tellma.Core.Abstractions.Notifications;
 using Tellma.Core.Abstractions.Tenancy;
@@ -22,6 +23,7 @@ using Tellma.Core.Data.Batches;
 using Tellma.Core.Email;
 using Tellma.Core.IntegrationTests.Jobs;
 using Tellma.Core.Notifications;
+using Tellma.Core.Tenancy;
 using Tellma.Core.Testing.Blobs;
 using Tellma.Core.Testing.Email;
 using Tellma.Testing.Entities;
@@ -38,7 +40,10 @@ namespace Tellma.Core.IntegrationTests.Outbox
     ///     under a sandbox switch a test can turn on, answers through a sender a test can make answer
     ///     short, reaches an administrator directory a test can make fail, runs the scripted job
     ///     handlers whose frames enqueue, keeps every log event, lets the stacks own their tables as in production, and
-    ///     audits every batch's writes against change tracking.
+    ///     audits every batch's writes against change tracking. A test may arm a write that races an
+    ///     action, run once the action's persist is composed and before it is sent. Its administrator
+    ///     may read, delete, retry and cancel every outgoing email, through a request scope a test
+    ///     opens for them.
     /// </summary>
     public sealed class OutboxDatabase : IAsyncLifetime
     {
@@ -54,7 +59,7 @@ namespace Tellma.Core.IntegrationTests.Outbox
         /// <summary>A member whose name holds a control character.</summary>
         public const int EveId = 105;
 
-        /// <summary>The administrator the failure notices reach.</summary>
+        /// <summary>The administrator the failure notices reach, who may read, delete, retry and cancel every outgoing email.</summary>
         public const int AdministratorId = 111;
 
         /// <summary>The address <see cref="CyId" /> prefers to be written to.</summary>
@@ -79,6 +84,9 @@ namespace Tellma.Core.IntegrationTests.Outbox
             DELETE FROM [core].[Jobs];
             UPDATE [core].[JobWorkerState] SET [LastTickAt] = NULL, [LastTickOwner] = NULL;
             """;
+
+        /// <summary>The actions the administrator's role grants over the outgoing emails.</summary>
+        private static readonly string[] AdministratorActions = [AccessActions.Read, AccessActions.Delete, AccessActions.Retry, AccessActions.Cancel];
 
         /// <summary>The suite's server.</summary>
         private readonly SqlServerFixture _sql;
@@ -120,6 +128,9 @@ namespace Tellma.Core.IntegrationTests.Outbox
 
         /// <summary>How the email sender's answers and the administrator lookup misbehave, set by each test.</summary>
         public DispatchFaults Faults { get; } = new();
+
+        /// <summary>The write a test arms to race an action between its validation round and its persist.</summary>
+        public PersistRace Race { get; } = new();
 
         /// <summary>The cancellation token of the running test.</summary>
         private static CancellationToken Token => TestContext.Current.CancellationToken;
@@ -165,11 +176,20 @@ namespace Tellma.Core.IntegrationTests.Outbox
 
                     // --- The stacks' tables are theirs again, as in production: a raw write to one is refused ---
                     _ = services.Replace(ServiceDescriptor.Singleton<IStackTableOwners>(static provider => new StackTableOwners(provider.GetRequiredService<StackRegistry>())));
+
+                    // --- The race: a persist batch's prologue marks it due, and the scope's next
+                    // connection, the persist's own, opens only once the armed write ran ---
+                    _ = services.AddSingleton(Race);
+                    _ = services.AddScoped<IDataBatchContributor, PersistRaceMarker>();
+                    Func<IServiceProvider, object> open = services.Last(static descriptor => descriptor.ServiceType == typeof(ITenantConnectionProvider)).ImplementationFactory
+                        ?? throw new InvalidOperationException("The fixture composes its tenant connection provider from a factory.");
+                    _ = services.Replace(ServiceDescriptor.Scoped<ITenantConnectionProvider>(scope => new RacingConnectionProvider((ITenantConnectionProvider)open(scope), Race)));
                 },
                 compose: static tellma => tellma.AddFeature(new JobRunFeature()),
                 cancellationToken: Token);
 
-            // --- The tenant's settings and version tags, then the users with their stamps ---
+            // --- The tenant's settings and version tags, then the users with their stamps, then the
+            // administrator's role over the outgoing emails ---
             string tags = string.Join(", ", Tenant.Services.GetRequiredService<IVersionTagRegistry>().Names.Select(static name => $"(N'{name}')"));
             await SqlServerFixture.ExecuteAsync(
                 ConnectionString,
@@ -179,7 +199,8 @@ namespace Tellma.Core.IntegrationTests.Outbox
                 UserInsert(CyId, "Cy", CyContactEmail, CyTimeZone),
                 UserInsert(DeeId, "Dee", DeeContactEmail, timeZone: null),
                 UserInsert(EveId, EveName, contactEmail: null, timeZone: null),
-                UserInsert(AdministratorId, "Admin", contactEmail: null, timeZone: null));
+                UserInsert(AdministratorId, "Admin", contactEmail: null, timeZone: null),
+                AdministratorRoleInsert());
         }
 
         /// <summary>
@@ -196,6 +217,7 @@ namespace Tellma.Core.IntegrationTests.Outbox
             Sandbox.IsSandbox = false;
             Faults.Answer = null;
             Faults.AdministratorsFail = false;
+            Race.Reset();
             Sender.Clear();
             Sender.OnSending(static (_, ordinal) => new EmailSendResult(
                 EmailSendOutcome.Sent, string.Create(CultureInfo.InvariantCulture, $"capture-{ordinal}"), ExpectsDeliveryEvents: true));
@@ -211,6 +233,48 @@ namespace Tellma.Core.IntegrationTests.Outbox
             }
 
             Logs.Dispose();
+        }
+
+        /// <summary>
+        ///     A request scope of the fixture tenant for one of its users, whose session stepped up a
+        ///     moment ago, completed by the initializers as a request's is.
+        /// </summary>
+        /// <param name="userId">The user, one of the fixture's.</param>
+        /// <param name="state">The tenant's state the request sees; the registered one when null.</param>
+        /// <returns>The scope; the caller disposes it.</returns>
+        public async Task<AsyncServiceScope> UserScopeAsync(int userId, TenantState? state = null)
+        {
+            AsyncServiceScope scope = Tenant.Services.CreateAsyncScope();
+            try
+            {
+                // --- The request as the tenant middleware binds it: the tenant, the caller's subject and a fresh step-up ---
+                DateTimeOffset now = DateTimeOffset.UtcNow;
+                IRequestContextHolder holder = scope.ServiceProvider.GetRequiredService<IRequestContextHolder>();
+                TenantDescriptor tenant = Tenant.Services.GetRequiredService<ITenantRegistry>().Get(FixtureTenant.TenantId).Descriptor;
+                RequestContext context = holder.Current with
+                {
+                    Tenant = tenant with { State = state ?? tenant.State },
+                    Kind = PrincipalKind.User,
+                    Subject = Subject(userId),
+                    UserId = null,
+                    Assurance = new AuthenticationAssurance(AssuranceTiers.Aal2, now, now),
+                };
+                holder.Set(context);
+
+                // --- Then the initializers: the connection, which binds the user, and the locale ---
+                _ = await RequestContextInitialization.RunAsync(
+                    holder,
+                    scope.ServiceProvider.GetServices<IRequestContextInitializer>(),
+                    context,
+                    new RequestContextInputs(null, null, null, null, null, null, SuppressActivityStamp: true),
+                    Token);
+                return scope;
+            }
+            catch
+            {
+                await scope.DisposeAsync();
+                throw;
+            }
         }
 
         /// <summary>A user's sign-in address.</summary>
@@ -272,7 +336,7 @@ namespace Tellma.Core.IntegrationTests.Outbox
         /// <returns>The statement.</returns>
         private static string UserInsert(int id, string name, string? contactEmail, string? timeZone)
         {
-            string subject = string.Create(CultureInfo.InvariantCulture, $"fx-outbox-{id}");
+            string subject = Subject(id);
             string contact = contactEmail is null ? "NULL" : $"N'{contactEmail}'";
             string zone = timeZone is null ? "NULL" : $"N'{timeZone}'";
             int system = WellKnownIds.SystemUserId;
@@ -282,6 +346,37 @@ namespace Tellma.Core.IntegrationTests.Outbox
                 INSERT INTO [core].[Users] ([Id], [Kind], [Subject], [Email], [ContactEmail], [InvitedAt], [JoinedAt], [Name], [PreferredTimeZone], [IsActive], [CreatedAt], [CreatedById], [ModifiedAt], [ModifiedById])
                 VALUES ({id}, '{UserKind.Individual}', '{subject}', N'{SignInEmail(id)}', {contact}, SYSDATETIMEOFFSET(), SYSDATETIMEOFFSET(), N'{name}', {zone}, 1, SYSDATETIMEOFFSET(), {system}, SYSDATETIMEOFFSET(), {system});
                 INSERT INTO [core].[UserStamps] ([UserId]) VALUES ({id});
+                """);
+        }
+
+        /// <summary>A user's subject.</summary>
+        /// <param name="id">The user's id.</param>
+        /// <returns>The subject.</returns>
+        private static string Subject(int id)
+        {
+            return string.Create(CultureInfo.InvariantCulture, $"fx-outbox-{id}");
+        }
+
+        /// <summary>The insert of the role that lets the administrator read, delete, retry and cancel every outgoing email.</summary>
+        /// <returns>The statement.</returns>
+        private static string AdministratorRoleInsert()
+        {
+            // --- One permission per action, over every row ---
+            int system = WellKnownIds.SystemUserId;
+            string permissions = string.Join(
+                Environment.NewLine,
+                AdministratorActions.Select(static action => string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"INSERT INTO [core].[Permissions] ([Id], [RoleId], [Resource], [Action], [Filter], [FilterQueryexVersion]) VALUES (NEXT VALUE FOR [core].[sq_Permissions], @role, N'{CoreResources.OutgoingEmail}', N'{action}', NULL, NULL);")));
+
+            // --- The role, its permissions and its one member ---
+            return string.Create(
+                CultureInfo.InvariantCulture,
+                $"""
+                DECLARE @role int = NEXT VALUE FOR [core].[sq_Roles];
+                INSERT INTO [core].[Roles] ([Id], [Name], [CreatedAt], [CreatedById], [ModifiedAt], [ModifiedById]) VALUES (@role, N'Email administrators', SYSDATETIMEOFFSET(), {system}, SYSDATETIMEOFFSET(), {system});
+                {permissions}
+                INSERT INTO [core].[RoleMemberships] ([Id], [UserId], [RoleId]) VALUES (NEXT VALUE FOR [core].[sq_RoleMemberships], {AdministratorId}, @role);
                 """);
         }
 
@@ -308,6 +403,40 @@ namespace Tellma.Core.IntegrationTests.Outbox
             {
                 IReadOnlyList<EmailSendResult> results = await router.SendAsync(messages, cancellationToken);
                 return faults.Answer is { } answer ? answer(results) : results;
+            }
+        }
+
+        /// <summary>Marks the race due once a persist batch's prologue is composed.</summary>
+        /// <param name="race">The race.</param>
+        private sealed class PersistRaceMarker(PersistRace race) : IDataBatchContributor
+        {
+            /// <inheritdoc />
+            public int Order => int.MaxValue;
+
+            /// <inheritdoc />
+            public void Contribute(IDataBatch batch, DataBatchStage stage)
+            {
+                ArgumentNullException.ThrowIfNull(batch);
+                if (stage == DataBatchStage.Prologue && batch.Purpose == BatchPurpose.Persist)
+                {
+                    race.MarkDue();
+                }
+            }
+        }
+
+        /// <summary>A scope's tenant connections, each opened once the race, when due, ran.</summary>
+        /// <param name="inner">The fixture's provider.</param>
+        /// <param name="race">The race.</param>
+        private sealed class RacingConnectionProvider(ITenantConnectionProvider inner, PersistRace race) : ITenantConnectionProvider
+        {
+            /// <inheritdoc />
+            public TenantInfo Tenant => inner.Tenant;
+
+            /// <inheritdoc />
+            public async Task<SqlConnection> OpenAsync(CancellationToken cancellationToken = default)
+            {
+                await race.RunIfDueAsync();
+                return await inner.OpenAsync(cancellationToken);
             }
         }
 
@@ -341,6 +470,75 @@ namespace Tellma.Core.IntegrationTests.Outbox
 
         /// <summary>Whether reading the administrators throws.</summary>
         public bool AdministratorsFail { get; set; }
+    }
+
+    /// <summary>
+    ///     A write that races an action: armed by a test, it runs once, on its own connection, after the
+    ///     action's persist batch is composed and before that batch opens its connection, as another
+    ///     administrator's or a job's write between the action's two rounds would.
+    /// </summary>
+    public sealed class PersistRace
+    {
+        /// <summary>Guards the armed write and whether it is due.</summary>
+        private readonly Lock _gate = new();
+
+        /// <summary>The armed write; null when none is armed or it ran.</summary>
+        private Func<Task>? _write;
+
+        /// <summary>Whether a persist batch was composed since the write was armed.</summary>
+        private bool _due;
+
+        /// <summary>Whether the armed write ran.</summary>
+        public bool Ran { get; private set; }
+
+        /// <summary>Arms a write, which runs before the next persist batch opens its connection.</summary>
+        /// <param name="write">The write.</param>
+        public void Arm(Func<Task> write)
+        {
+            ArgumentNullException.ThrowIfNull(write);
+            lock (_gate)
+            {
+                (_write, _due, Ran) = (write, false, false);
+            }
+        }
+
+        /// <summary>Disarms the race.</summary>
+        public void Reset()
+        {
+            lock (_gate)
+            {
+                (_write, _due, Ran) = (null, false, false);
+            }
+        }
+
+        /// <summary>Marks the armed write due: a persist batch was composed.</summary>
+        internal void MarkDue()
+        {
+            lock (_gate)
+            {
+                _due = _write is not null;
+            }
+        }
+
+        /// <summary>Runs the armed write once it is due, then disarms it.</summary>
+        /// <returns>A task that completes when the write ran, or at once when none is due.</returns>
+        internal async Task RunIfDueAsync()
+        {
+            Func<Task>? write;
+            lock (_gate)
+            {
+                write = _due ? _write : null;
+                if (write is not null)
+                {
+                    (_write, _due, Ran) = (null, false, true);
+                }
+            }
+
+            if (write is not null)
+            {
+                await write();
+            }
+        }
     }
 
     /// <summary>Whether the outbox database's sms sender throws.</summary>

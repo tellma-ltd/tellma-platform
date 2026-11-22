@@ -383,7 +383,8 @@ victim's re-run meets the fence.
 
 `IDataBatch.Update` assigns the same values to every row it selects, in one statement that skips
 the rows already holding them (null-safe, character columns compared binary), so a repeated
-activation writes no history row; the updated ids are the receipt. By ids it captures the ids the
+activation writes no history row; the updated ids are the receipt. By ids, `StampUnchanged` writes
+and stamps those rows too, for an action's command over each target. By ids it captures the ids the
 grant filter passes, the others skipped; all-or-nothing first selects the ids the read filter does
 not show (absent and hidden alike) and throws `50404` with them, then throws `50403` unless every
 id passes the grant filter. By query it captures at most the cap plus one keys and throws `50413`
@@ -1291,9 +1292,20 @@ a call with attachments, so a channel sender's tenantless gate scope needs neith
 
 `OutboxOptions` (`Tellma:Outbox`) holds `Retention` (180 days, one day to ten years),
 `MaxMessageBytes` (7 MiB, 1 KiB to 20 MiB) and `MaxRecipients` (50, 1 to 1000). The outgoing
-emails' stack (route segment `outgoing-emails`) serves the query, the details and the delete by
-ids, read-only to MCP; a delete of a row that may still be sent (unsettled, with a live job) is
-refused as `Email.NotDeletable` at `Ids[i]`. A request's `Source` is `api` or `notification`; any
+emails' stack (route segment `outgoing-emails`) serves the query, the details, the delete by ids
+and two actions, read-only to MCP, under the securables `core.OutgoingEmail` × `Read`, `Delete`,
+`Retry` and `Cancel`; it serves no delete by query, since a delete is validated row by row. A delete
+of a row that may still be sent (unsettled, with a live job) is refused as `Email.NotDeletable` at
+`Ids[i]`. `retry` sends again each row that failed, or that is unsettled with no live job: it
+returns the row to `Pending` with its send and delivery columns cleared and enqueues a new sending
+job, refusing any other row as `Email.NotRetryable`. `cancel` settles each `Pending` row
+`Cancelled`, in a read-only tenant too, and refuses any other as `Email.NotCancellable`; its job then
+meets a settled row and succeeds unsent. Both stamp the rows they change. `cancel` repeats its
+precondition in the update, so a row the sending job reached since the validation is left as it
+is, unstamped. `retry` holds every target to its precondition again in the persist, so a row
+another administrator cancelled since the validation refuses the whole retry as
+`Email.NotRetryable` and no job is enqueued; it stamps every target, one whose columns already held
+their cleared values included. A request's `Source` is `api` or `notification`; any
 other is refused before anything is staged. The rows are counted on `tellma.outbox.enqueued`
 (meter `Tellma.Core`, tag `source`) once the frame they were enlisted with commits them, by the
 stack's commit effect (`OutboxEnqueuedEffect`); a frame that rolls back counts nothing.
@@ -1335,8 +1347,31 @@ claim and the next triage meets the rows as this one left them. The startup chec
 reports a host whose job worker runs with no email sender registered (the handler resolves the
 sender on each claim, so such a host still builds, and a claim it runs fails before it writes
 anything, every row still pending); the queries in
-`infra/monitoring/outbox` alert on interrupted sends, the failure rate and the latency's 95th
-percentile.
+`infra/monitoring/outbox` alert on interrupted sends, the failure rate, the latency's 95th
+percentile and unmatched delivery events.
+
+`OutgoingEmailDeliveryHandler` answers the `outbox` owner key's delivery events on the email
+pipeline's tenantless webhook path. Opens, clicks and unclassified events are dropped; of the rest,
+each row keeps only its strongest event (the higher status, then the later time). Each tenant is
+looked up in the registry: a missing, provisioning or retired tenant's events are dropped
+(`OutboxDeliveryTenantSkipped`); an active, read-only or suspended tenant's are applied; a frozen
+tenant's wait for the provider to deliver them again, the call failing once every other tenant's
+were applied, as does a tenant whose update failed. The update is one idempotent maintenance round
+trip on a tenant database handle outside any tenant scope: a row moves only to a stronger status, or
+to a later event of the same one, and an event already applied is skipped, whatever the row's
+state. An event naming no row is logged as `OutboxDeliveryEventUnmatched`. Every event is counted
+on `tellma.outbox.delivery_updates` by `result`: `applied`, `stale` (a repeat, no stronger, or
+replaced by a stronger event of the same row), `unmatched` (each event of a row that does not
+exist, or that names no row) or `tenant_skipped`.
+
+`OutgoingEmailRetentionHandler` runs `core.outgoing-email-retention` nightly at 03:45 on built-in
+schedule 7, as the system user and in a read-only tenant too. Each page reads up to 500 ids of rows
+created longer ago than `Retention`, on the database clock, that are settled, or unsettled with no
+live job, and deletes them through the stack's delete by ids, so the delete's own rules run and the
+attachments' blobs are released to the sweep; a page whose delete is refused because a row changed
+in between is read again once. The pages run until one is short, or until a full page deletes
+nothing, which would otherwise be read again for ever. The rows deleted are counted on
+`tellma.outbox.retained`.
 
 `EmailNotificationChannel` is the `email` channel's sender: each addressed recipient gets one
 internal email, to their contact address or else their sign-in address (a recipient with neither
@@ -1796,7 +1831,12 @@ no row and every id is not found.
   targets and checks them under the grant beside the validators' first loads; the validation hook,
   the components and the method run over one `ActionContext` with their rounds; then one persist:
   the method's and the components' recorded appends, the stamped `Update`s of the targets, the
-  post-check when the action asks for it, and the read-back. A method composes before the persist
+  post-check when the action asks for it, and the read-back. An `Update` with a condition repeats
+  the action's precondition: a target that no longer meets it, the read filter or the grant's
+  filter is skipped, unstamped (yet a post-check still refuses a target that left the grant's
+  filter), and the action's other appends still see it; one with a refusal code instead counts the
+  targets meeting the condition first, and fails the action with that code at the root unless every
+  target does, then writes and stamps every target. A method composes before the persist
   batch exists: its table-valued parameters and declared tables are named by the recording
   (`ReservedSqlNames.RecordingPrefix`, `@tm_rec<n>_…`) and keep those names wherever the recording
   lands, one recording's per batch, while an append that answers at once from its batch (a raw save or delete, a cache read) is

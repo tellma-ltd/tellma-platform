@@ -35,7 +35,8 @@ namespace Tellma.Core.Tests.Outbox
             HashSet<string> tags = AlertQueries.Constants([typeof(OutboxTelemetryNames)], static name => name.EndsWith("Tag", StringComparison.Ordinal));
             _ = tags.Add("EventName");
 
-            // The values: every state the settled counter tags, every source, and every event the log emits.
+            // The values: every state the settled counter tags, every source, every delivery update's
+            // result, and every event the log emits.
             HashSet<string> values = AlertQueries.LogEventNames(typeof(OutboxLog));
             foreach (OutgoingEmailState state in Enum.GetValues<OutgoingEmailState>())
             {
@@ -43,14 +44,23 @@ namespace Tellma.Core.Tests.Outbox
             }
 
             values.UnionWith([EmailEnqueueRequest.ApiSource, EmailEnqueueRequest.NotificationSource]);
+            values.UnionWith(OutboxMetrics.Results);
 
             Assert.Empty(AlertQueries.Unresolved(queries, Instruments, tags, values));
         }
 
         [Fact]
-        public void Every_instrument_but_the_one_that_sizes_the_workload_is_covered_by_at_least_one_query()
+        public void Every_instrument_but_the_two_that_size_the_workload_and_the_turnover_is_covered_by_at_least_one_query()
         {
-            Assert.Equal([OutboxTelemetryNames.Enqueued], AlertQueries.Uncovered(Queries, Instruments));
+            Assert.Equal([OutboxTelemetryNames.Enqueued, OutboxTelemetryNames.Retained], AlertQueries.Uncovered(Queries, Instruments));
+        }
+
+        [Fact]
+        public void The_unmatched_delivery_events_query_reads_the_unmatched_result()
+        {
+            AlertQuery query = Assert.Single(Queries, static query => query.FileName == "unmatched-delivery-events.kql");
+
+            Assert.Contains(OutboxMetrics.UnmatchedResult, AlertQueries.Values(query));
         }
 
         [Fact]
