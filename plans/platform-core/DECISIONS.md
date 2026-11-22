@@ -384,6 +384,19 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-210 (orchestrator, 2026-11-22): PC-F68 closed, fixed through PC-143
+
+PC-F68's diagnosis (94759c2e, on pc/PC-F68, review file only) finds an order dependence, not a date dependence and not a platform bug:
+- UserSelfServiceTests shares one database across its tests, and its fixture seeds no administrator.
+- preferences/set is a users'-stack entity action, so its persist joins the guards over the stack's tables (0015 §6.7 step 4) and asserts L1.
+- The bag test passed only when an earlier test had seeded an administrator.
+- xUnit v3 orders a class's tests by a SHA-256 of the test assembly's absolute path, so whether the test runs first depends on the checkout path. The model predicts every observation in D-197. It also predicts that the GitHub Windows runner path runs the test first, so the nightly integration-windows job may fail on it until PC-143 lands.
+- The guard itself matches 0014 §8.3 and has no time window.
+
+PC-143 seeds the administrator in that test and in its two new tests. PC-F68 changes no code, needs no review and does not integrate. Its branch keeps the diagnosis for the record. PC-F68 is closed when PC-143 lands.
+
+For Ahmad: 0014 §8.3 says the guards join a persist "whose WrittenTables meets" a security table, but 0015 §6.7 step 4 widens this to "the stack's tables", which the code follows. So every users'-stack action (preferences/set and delete, notification-preferences/save) takes the security lock and asserts L1-L3. That is harmless while L1 holds, but the two specs should state one rule.
+
 ### D-209 (orchestrator, 2026-11-22): PC-095 fix1 accepted; Review 2 launched; PC-F70 opened
 
 Fix1 (0672df4c) fixed R1-1..R1-8 and pushed none back.
