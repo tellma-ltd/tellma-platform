@@ -384,6 +384,23 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-211 (orchestrator, 2026-11-22): PC-143 Review 1 rulings
+
+Review 1 found 0/0/4 and accepted all 8 deviations.
+- D-177 is confirmed: the transport refuses a garbage recipient, not the 0007 pipeline, and the outbox records it as Rejected. Refusing at enqueue would be a 0022 change.
+- The Rejected test send answered as a 503 is acceptable.
+- Core registering EmailNotificationChannel in every composition has no harmful side effects.
+
+Fix1 rulings:
+- R1-1: assert the System-scope notice and its null ActorUserId.
+- R1-2: extend the partial-failure test.
+- R1-3: count outcome=Rejected separately, as a named deviation.
+- R1-4: correct the two XML docs and the README sentence.
+
+PC-143 holds after fix1. It integrates after PC-F11 (D-190).
+
+For Ahmad: 0021 §4.4's TestNotificationResult has no Rejected value. With one, the SPA could tell a user to check their address instead of saying email is unavailable.
+
 ### D-210 (orchestrator, 2026-11-22): PC-F68 closed, fixed through PC-143
 
 PC-F68's diagnosis (94759c2e, on pc/PC-F68, review file only) finds an order dependence, not a date dependence and not a platform bug:
