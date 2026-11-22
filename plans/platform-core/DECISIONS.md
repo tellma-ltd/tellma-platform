@@ -384,6 +384,29 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-200 (orchestrator, 2026-11-22): PC-103 Review 1 rulings; escalated to Review 2; PC-F69 opened for the @tellma/core primary re-split
+
+Review 1 found 0/4/8. Four majors meet PROCESS §4.4's escalation rule, so PC-103 gets Review 2 (inherit, xhigh) after fix1. This is recorded in LEDGER.md.
+
+Fixed in fix1:
+- R1-1: a tenant switch (/17 to /18) must take the cold entry. The reused route host kept rendering tenant 17's page.
+- R1-2: the focus hold leaked when the host was destroyed during the `#warm()` wait.
+- R1-3: moving between My settings sections skipped the section's leave guard (0032 §8.1).
+- R1-4: move the not-found page, the launch-redirect component and the forbidden and not-found error views out of ".". Re-set the ceiling to the new measurement plus 0.5 KB, with a per-spec split in budgetNotes. TmEntities is attributed to 0029's share.
+- R1-5..R1-12: tmRoutedTenant's safe-integer check; tm.launch.cold|warm reading the tenant's launch documents; §4.3 step 4's Contracts-chunk load (or a deviation); parallel startup loads within each language; a compiler-checked shell export lookup with one shared tsconfig path; the missing startup and describe tests; the warm-tenant seeding helper moved to @tellma/core-testing.
+- A WATCHLIST hand-off to PC-104 for deviation 4 and the English fallbacks.
+
+Accepted as reviewed:
+- The Planner-note ruling (one placeholder behind TM_ROUTE_HOSTS; canDeactivate skips only declared in-place parameters).
+- The TmEntities and TM_ROUTE_PERMISSIONS seams (`can()` matches 0029 §7, so PC-105 can useExisting it).
+- The rig finding (0025 §2.4's idle rule).
+
+Budget. Review 1 verified the "." raise from 20.44 to 30.3 KB (measured 30.20, +9.85 KB) as spec'd growth within D-031's cap: no new dependency and only small duplicates. Spec 0024's own services are about 22 KB against their 14 KB §12 share. The ceiling has risen seven times, four of them under D-031, so D-031's re-split clause now applies.
+
+PC-F69 is opened to re-split @tellma/core's primary entry point by spec family, so each spec's §12 share can be measured on its own. It takes a free fix slot after PC-103 lands. It is not ahead of ready T1/T2 work.
+
+For Ahmad: confirm the larger 0024 share, or name what 0024 §12 should leave out of the first frame. Moving the query parsers, describe and preload would need a §9.4 amendment.
+
 ### D-199 (orchestrator, 2026-11-22): PC-F17 Review 1 rulings
 
 Review 1 found 0/1/3. It confirmed:
