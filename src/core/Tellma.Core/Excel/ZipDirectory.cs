@@ -8,10 +8,11 @@ using System.Buffers.Binary;
 namespace Tellma.Core.Excel
 {
     /// <summary>
-    ///     Reads a zip archive's end-of-central-directory record, and its zip64 counterpart, before the
-    ///     archive is opened: the entry count and the directory's size, which the archive reader
-    ///     would otherwise load into memory whole. A workbook holds tens of parts, so a directory of
-    ///     millions of entries is refused before a byte of it is parsed.
+    ///     Reads a zip archive's end-of-central-directory record, and its zip64 counterpart whenever
+    ///     one is located, before the archive is opened: the disks, the entry counts and the
+    ///     directory's size, which the archive reader would otherwise load into memory whole. A
+    ///     workbook holds tens of parts, so a directory of millions of entries is refused before a
+    ///     byte of it is parsed, whichever record the archive reader would take it from.
     /// </summary>
     internal static class ZipDirectory
     {
@@ -78,44 +79,48 @@ namespace Tellma.Core.Excel
                 ReadOnlySpan<byte> record = tail.AsSpan(end, EndLength);
                 ushort disk = BinaryPrimitives.ReadUInt16LittleEndian(record[4..]);
                 ushort directoryDisk = BinaryPrimitives.ReadUInt16LittleEndian(record[6..]);
-                ulong entries = BinaryPrimitives.ReadUInt16LittleEndian(record[10..]);
-                ulong directoryBytes = BinaryPrimitives.ReadUInt32LittleEndian(record[12..]);
+                ushort entries = BinaryPrimitives.ReadUInt16LittleEndian(record[10..]);
+                uint directoryBytes = BinaryPrimitives.ReadUInt32LittleEndian(record[12..]);
+                uint directoryOffset = BinaryPrimitives.ReadUInt32LittleEndian(record[16..]);
 
-                // --- A field at its maximum defers to the zip64 record the locator points at ---
-                if (entries == ushort.MaxValue || directoryBytes == uint.MaxValue || disk == ushort.MaxValue || directoryDisk == ushort.MaxValue)
+                // --- The end record's own fields, each unless it is at its maximum and so defers to the zip64 record ---
+                if ((disk != 0 && disk != ushort.MaxValue)
+                    || (directoryDisk != 0 && directoryDisk != ushort.MaxValue)
+                    || (directoryBytes != uint.MaxValue && directoryBytes > MaxDirectoryBytes))
                 {
-                    long recordAt = length - tailLength + end;
-                    if (recordAt < Zip64LocatorLength)
-                    {
-                        throw ImportFaults.Malformed(ImportFaults.ZipReason);
-                    }
-
-                    byte[] locator = Read(archive, recordAt - Zip64LocatorLength, Zip64LocatorLength);
-                    if (BinaryPrimitives.ReadUInt32LittleEndian(locator) != Zip64LocatorSignature)
-                    {
-                        throw ImportFaults.Malformed(ImportFaults.ZipReason);
-                    }
-
-                    ulong zip64At = BinaryPrimitives.ReadUInt64LittleEndian(locator.AsSpan(8));
-                    if (zip64At > (ulong)(length - Zip64EndLength))
-                    {
-                        throw ImportFaults.Malformed(ImportFaults.ZipReason);
-                    }
-
-                    byte[] zip64 = Read(archive, (long)zip64At, Zip64EndLength);
-                    if (BinaryPrimitives.ReadUInt32LittleEndian(zip64) != Zip64EndSignature)
-                    {
-                        throw ImportFaults.Malformed(ImportFaults.ZipReason);
-                    }
-
-                    disk = (ushort)Math.Min(BinaryPrimitives.ReadUInt32LittleEndian(zip64.AsSpan(16)), ushort.MaxValue);
-                    directoryDisk = (ushort)Math.Min(BinaryPrimitives.ReadUInt32LittleEndian(zip64.AsSpan(20)), ushort.MaxValue);
-                    entries = BinaryPrimitives.ReadUInt64LittleEndian(zip64.AsSpan(32));
-                    directoryBytes = BinaryPrimitives.ReadUInt64LittleEndian(zip64.AsSpan(40));
+                    throw ImportFaults.Malformed(ImportFaults.ZipReason);
                 }
 
-                // --- The bounds: one disk, a workbook's count of parts, a directory that fits in memory ---
-                if (disk != 0 || directoryDisk != 0 || entries > MaxEntries || directoryBytes > MaxDirectoryBytes)
+                // --- The zip64 record, whenever its locator precedes the end record: the archive reader
+                // may take any of its fields over the end record's, so both are held to the bounds. A
+                // field at its maximum, the directory's offset among them, needs the zip64 record ---
+                long recordAt = length - tailLength + end;
+                bool deferred = entries == ushort.MaxValue || directoryBytes == uint.MaxValue || directoryOffset == uint.MaxValue
+                    || disk == ushort.MaxValue || directoryDisk == ushort.MaxValue;
+                byte[]? locator = recordAt >= Zip64LocatorLength ? Read(archive, recordAt - Zip64LocatorLength, Zip64LocatorLength) : null;
+                if (locator is null || BinaryPrimitives.ReadUInt32LittleEndian(locator) != Zip64LocatorSignature)
+                {
+                    if (deferred)
+                    {
+                        throw ImportFaults.Malformed(ImportFaults.ZipReason);
+                    }
+
+                    return;
+                }
+
+                ulong zip64At = BinaryPrimitives.ReadUInt64LittleEndian(locator.AsSpan(8));
+                if (zip64At > (ulong)(length - Zip64EndLength))
+                {
+                    throw ImportFaults.Malformed(ImportFaults.ZipReason);
+                }
+
+                byte[] zip64 = Read(archive, (long)zip64At, Zip64EndLength);
+                if (BinaryPrimitives.ReadUInt32LittleEndian(zip64) != Zip64EndSignature
+                    || BinaryPrimitives.ReadUInt32LittleEndian(zip64.AsSpan(16)) != 0
+                    || BinaryPrimitives.ReadUInt32LittleEndian(zip64.AsSpan(20)) != 0
+                    || BinaryPrimitives.ReadUInt64LittleEndian(zip64.AsSpan(24)) > MaxEntries
+                    || BinaryPrimitives.ReadUInt64LittleEndian(zip64.AsSpan(32)) > MaxEntries
+                    || BinaryPrimitives.ReadUInt64LittleEndian(zip64.AsSpan(40)) > MaxDirectoryBytes)
                 {
                     throw ImportFaults.Malformed(ImportFaults.ZipReason);
                 }

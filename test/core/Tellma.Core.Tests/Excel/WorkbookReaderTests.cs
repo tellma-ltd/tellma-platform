@@ -4,6 +4,7 @@
 // LICENSE file in the root directory of this source tree.
 
 using System.Buffers.Binary;
+using System.Diagnostics;
 using System.IO.Compression;
 using System.Text;
 using Tellma.Core.Abstractions.Excel;
@@ -23,8 +24,11 @@ namespace Tellma.Core.Tests.Excel
         /// <summary>How many distinct names a name flood holds: some fifteen times what the name table's bound admits.</summary>
         private const int NameFloodCount = 400_000;
 
-        /// <summary>The most a refused name flood may allocate, its package's bytes aside; unbounded, its names alone would take several times this.</summary>
+        /// <summary>The most a refused name or node flood may allocate, its package's bytes aside; unbounded, either would take several times this.</summary>
         private const long MaxFloodAllocation = 16L << 20;
+
+        /// <summary>How many 1 KiB blocks a node flood holds: six times the run bound.</summary>
+        private const int NodeFloodBlocks = 24 * 1024;
 
         /// <summary>Bounds roomy enough for every well-formed test package.</summary>
         private static readonly WorkbookLimits Roomy = new(MaxCompressedBytes: 64L << 20, MaxUncompressedBytes: 256L << 20, SharedStringBudget: 64L << 20, MaxSharedStringEntries: 1_000_000);
@@ -390,20 +394,111 @@ namespace Tellma.Core.Tests.Excel
         }
 
         [Fact]
-        public void A_sheet_whose_text_passes_the_sheet_budget_is_a_malformed_sheet_once_the_budget_is_passed()
+        public void The_text_of_every_read_of_every_sheet_is_charged_to_one_workbook_budget()
         {
-            SyntheticWorkbook workbook = new(Producer.Excel, RawSheet.OfText("Data", ["a"]));
-            workbook.Parts["xl/worksheets/sheet1.xml"] = Worksheet(InlineRow(1, 20, 20) + InlineRow(2, 20, 20) + InlineRow(3, 20, 20));
-            using WorkbookReader reader = Open(workbook.Build(), Roomy with { SheetTextBudget = 200 });
-            using SheetReader sheet = reader.OpenSheet(reader.Sheets[0]);
+            SyntheticWorkbook workbook = new(Producer.Excel, RawSheet.OfText("Data", ["a"]), RawSheet.OfText("Other", ["b"]));
+            workbook.Parts["xl/worksheets/sheet1.xml"] = Worksheet(InlineRow(1, 20, 20) + InlineRow(2, 20, 20));
+            workbook.Parts["xl/worksheets/sheet2.xml"] = Worksheet(InlineRow(1, 20, 20));
+            using WorkbookReader reader = Open(workbook.Build(), Roomy with { WorkbookTextBudget = 200 });
             List<SheetCell> cells = [];
 
-            // Each row is 80 bytes: the third takes the sheet to 240, past its 200.
-            Assert.True(sheet.Read(cells, out _));
-            Assert.True(sheet.Read(cells, out _));
-            ImportException refused = Assert.Throws<ImportException>(() => sheet.Read(cells, out _));
+            // Each row is 80 bytes: two on the first sheet leave 40, so the second sheet's row passes the budget.
+            using (SheetReader first = reader.OpenSheet(reader.Sheets[0]))
+            {
+                Assert.True(first.Read(cells, out _));
+                Assert.True(first.Read(cells, out _));
+            }
 
-            AssertCellsRefused(refused);
+            using SheetReader second = reader.OpenSheet(reader.Sheets[1]);
+            ImportException refused = Assert.Throws<ImportException>(() => second.Read(cells, out _));
+
+            ImportError error = Assert.Single(refused.Errors);
+            Assert.Equal((ExcelErrorCodes.ImportMalformedWorkbook, "Other", ImportFaults.CellsReason), (error.Code, error.Sheet, (string?)error.Arguments["reason"]));
+        }
+
+        [Theory]
+        [InlineData("shared string", ImportFaults.CellsReason)]
+        [InlineData("shared string character data", ImportFaults.XmlReason)]
+        [InlineData("workbook properties attribute", ImportFaults.XmlReason)]
+        [InlineData("row attribute", ImportFaults.XmlReason)]
+        [InlineData("cell value", ImportFaults.CellsReason)]
+        public void A_node_far_past_the_run_bound_is_refused_holding_little_memory_wherever_its_delimiters_fall(string vector, string reason)
+        {
+            // Each node is a flood of 1 KiB blocks, each ending in a delimiter its node may hold: a '>'
+            // in text and attribute values, a '<' inside a character data section. A text node read in
+            // chunks is refused at the longest a cell may hold, before the run bound; the rest at the bound.
+            SyntheticWorkbook workbook = new(Producer.Excel, RawSheet.OfText("Data", ["a"]));
+            const string Main = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
+            switch (vector)
+            {
+                case "shared string":
+                    workbook.Parts["xl/sharedStrings.xml"] = $"<sst xmlns=\"{Main}\"><si><t>{Flood('>')}</t></si></sst>";
+                    break;
+                case "shared string character data":
+                    workbook.Parts["xl/sharedStrings.xml"] = $"<sst xmlns=\"{Main}\"><si><t><![CDATA[{Flood('<')}]]></t></si></sst>";
+                    break;
+                case "workbook properties attribute":
+                    workbook.Parts["xl/workbook.xml"] = $"<workbook xmlns=\"{Main}\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\">"
+                        + $"<workbookPr codeName=\"{Flood('>')}\"/><sheets><sheet name=\"Data\" sheetId=\"1\" r:id=\"rId1\"/></sheets></workbook>";
+                    break;
+                case "row attribute":
+                    workbook.Parts["xl/worksheets/sheet1.xml"] = Worksheet($"<row r=\"1\" spans=\"{Flood('>')}\"><c><v>1</v></c></row>");
+                    break;
+                default:
+                    workbook.Parts["xl/worksheets/sheet1.xml"] = Worksheet($"<row r=\"1\"><c t=\"str\"><v>{Flood('>')}</v></c></row>");
+                    break;
+            }
+
+            byte[] package = workbook.Build();
+
+            // Unbounded, the node alone would allocate several times the ceiling: 24 MiB of text is 48 MiB of characters.
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            ImportException refused = Assert.Throws<ImportException>(() =>
+            {
+                using WorkbookReader reader = Open(package);
+                using SheetReader sheet = reader.OpenSheet(reader.Sheets[0]);
+                while (sheet.Read([], out _))
+                {
+                }
+            });
+            long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+            Assert.Equal(reason, (string?)Assert.Single(refused.Errors).Arguments["reason"]);
+            Assert.InRange(allocated, 0, MaxFloodAllocation);
+        }
+
+        [Fact]
+        public void A_text_longer_than_a_cell_may_hold_is_refused_before_it_is_read_whole()
+        {
+            // Within the run bound, but past the longest text one cell may hold.
+            SyntheticWorkbook workbook = new(Producer.Excel, RawSheet.OfText("Data", ["a"]));
+            workbook.Parts["xl/worksheets/sheet1.xml"] = Worksheet($"<row r=\"1\"><c t=\"str\"><v>{new string('a', XlsxXml.MaxTextLength + 1)}</v></c></row>");
+            using WorkbookReader reader = Open(workbook.Build());
+            using SheetReader sheet = reader.OpenSheet(reader.Sheets[0]);
+
+            AssertCellsRefused(Assert.Throws<ImportException>(() => sheet.Read([], out _)));
+        }
+
+        [Fact]
+        public void Sixty_four_sheets_over_one_part_are_refused_at_open_before_any_sheet_is_read()
+        {
+            // The first sheet's part is large; every sheet's relationship names it.
+            RawSheet[] sheets = [.. Enumerable.Range(1, 64).Select(static i => RawSheet.OfText($"S{i}", ["a"]))];
+            SyntheticWorkbook workbook = new(Producer.Excel, sheets);
+            workbook.Parts["xl/worksheets/sheet1.xml"] = Worksheet(string.Concat(Enumerable.Range(1, 20_000).Select(static row => $"<row r=\"{row}\"><c><v>{row}</v></c></row>")));
+            workbook.Parts["xl/_rels/workbook.xml.rels"] = Relationships(
+                string.Concat(Enumerable.Range(1, 64).Select(static i => $"<Relationship Id=\"rId{i}\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet\" Target=\"worksheets/sheet1.xml\"/>"))
+                + "<Relationship Id=\"rId65\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings\" Target=\"sharedStrings.xml\"/>"
+                + "<Relationship Id=\"rId66\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles\" Target=\"styles.xml\"/>");
+            byte[] package = workbook.Build();
+
+            var watch = Stopwatch.StartNew();
+            ImportException refused = Refuse(package);
+            watch.Stop();
+
+            ImportError error = Assert.Single(refused.Errors);
+            Assert.Equal((ImportFaults.RelationshipsReason, "S2"), ((string?)error.Arguments["reason"], error.Sheet));
+            Assert.InRange(watch.Elapsed, TimeSpan.Zero, TimeSpan.FromSeconds(5));
         }
 
         [Fact]
@@ -506,6 +601,48 @@ namespace Tellma.Core.Tests.Excel
         }
 
         [Theory]
+        [InlineData(true, false)]
+        [InlineData(false, false)]
+        [InlineData(false, true)]
+        public void An_end_record_whose_offset_defers_to_a_zip64_record_is_held_to_that_records_bounds(bool locator, bool offsetTrigger)
+        {
+            // The end record claims one entry of a 47-byte directory; the zip64 record behind it, two million.
+            byte[] archive = new byte[56 + 20 + 22];
+            Span<byte> zip64 = archive.AsSpan(0, 56);
+            BinaryPrimitives.WriteUInt32LittleEndian(zip64, 0x06064b50);
+            BinaryPrimitives.WriteUInt64LittleEndian(zip64[24..], 2_000_000);
+            BinaryPrimitives.WriteUInt64LittleEndian(zip64[32..], 2_000_000);
+            BinaryPrimitives.WriteUInt64LittleEndian(zip64[40..], 47);
+            if (locator)
+            {
+                BinaryPrimitives.WriteUInt32LittleEndian(archive.AsSpan(56), 0x07064b50);
+            }
+
+            Span<byte> end = archive.AsSpan(76, 22);
+            BinaryPrimitives.WriteUInt32LittleEndian(end, 0x06054b50);
+            BinaryPrimitives.WriteUInt16LittleEndian(end[8..], 1);
+            BinaryPrimitives.WriteUInt16LittleEndian(end[10..], 1);
+            BinaryPrimitives.WriteUInt32LittleEndian(end[12..], 47);
+            BinaryPrimitives.WriteUInt32LittleEndian(end[16..], offsetTrigger ? uint.MaxValue : 0);
+
+            // With its locator the zip64 record is held to the bounds whatever triggers it; without one,
+            // the offset at its maximum names a record that is not there.
+            CheckDirectory(archive, accepted: !locator && !offsetTrigger);
+        }
+
+        [Fact]
+        public void An_end_record_whose_offset_defers_and_whose_zip64_record_is_absent_is_refused()
+        {
+            byte[] archive = new byte[22];
+            BinaryPrimitives.WriteUInt32LittleEndian(archive, 0x06054b50);
+            BinaryPrimitives.WriteUInt16LittleEndian(archive.AsSpan(8), 1);
+            BinaryPrimitives.WriteUInt16LittleEndian(archive.AsSpan(10), 1);
+            BinaryPrimitives.WriteUInt32LittleEndian(archive.AsSpan(16), uint.MaxValue);
+
+            CheckDirectory(archive, accepted: false);
+        }
+
+        [Theory]
         [InlineData(1_000L, true)]
         [InlineData(17L << 20, false)]
         public void A_plain_directory_is_held_to_the_directory_bound(long directoryBytes, bool accepted)
@@ -540,6 +677,21 @@ namespace Tellma.Core.Tests.Excel
         private static string NameFlood()
         {
             return string.Concat(Enumerable.Range(0, NameFloodCount).Select(static i => $"<n{i}/>"));
+        }
+
+        /// <summary>A node's flood: 1 KiB blocks of text, each ending in a delimiter, enough to pass the run bound many times over.</summary>
+        /// <param name="delimiter">The delimiter each block ends in.</param>
+        /// <returns>The flood.</returns>
+        private static string Flood(char delimiter)
+        {
+            StringBuilder builder = new(NodeFloodBlocks * 1024);
+            string block = new string('a', 1023) + delimiter;
+            for (int i = 0; i < NodeFloodBlocks; i++)
+            {
+                _ = builder.Append(block);
+            }
+
+            return builder.ToString();
         }
 
         /// <summary>A row of inline strings, one per length, each of that many characters.</summary>

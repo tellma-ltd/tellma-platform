@@ -18,6 +18,9 @@ namespace Tellma.Core.Tests.Excel
     /// <param name="composition">The fixture model with its labels, composed once for the class.</param>
     public sealed class ImportManifestTests(FixtureLabelsComposition composition) : IClassFixture<FixtureLabelsComposition>, IDisposable
     {
+        /// <summary>A header-block row whose key repeats, so it is never kept twice.</summary>
+        private static readonly string?[] RepeatedRow = ["Repeated", "v"];
+
         /// <summary>The kit over the composition.</summary>
         private readonly ImportKit _kit = new(composition.Services);
 
@@ -65,9 +68,22 @@ namespace Tellma.Core.Tests.Excel
 
             ImportManifest manifest = Read(Manifest(rows))!;
 
+            // The repeated key spends a row of the cap as any row does.
             Assert.Equal("fixture.Widget", manifest.Entity);
-            Assert.Equal(ImportManifest.MaxHeaderRows, manifest.Header.Count);
+            Assert.Equal(ImportManifest.MaxHeaderRows - 1, manifest.Header.Count);
             Assert.Empty(manifest.Columns);
+        }
+
+        [Fact]
+        public void A_header_block_of_repeated_rows_stops_at_its_cap_of_rows_read()
+        {
+            string?[][] rows = [[ExcelManifest.VersionKey, "1"], .. Enumerable.Repeat(RepeatedRow, 2_048), [ExcelManifest.EntityKey, "fixture.Widget"]];
+
+            ImportManifest manifest = Read(Manifest(rows))!;
+
+            // The version and the one kept repeated key; the entity row lies past the cap.
+            Assert.Null(manifest.Entity);
+            Assert.Equal(2, manifest.Header.Count);
         }
 
         [Fact]

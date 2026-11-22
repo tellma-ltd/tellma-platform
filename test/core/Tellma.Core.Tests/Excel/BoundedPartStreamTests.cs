@@ -10,8 +10,8 @@ using Tellma.Core.Excel;
 namespace Tellma.Core.Tests.Excel
 {
     /// <summary>
-    ///     The bounds every part is read through: its declared length, and the longest run between
-    ///     two markup delimiters, wherever the reads happen to split it.
+    ///     The bounds every part is read through: its declared length, and the longest run from one
+    ///     '&lt;' to the next, a markup section counted whole, wherever the reads happen to split it.
     /// </summary>
     public sealed class BoundedPartStreamTests
     {
@@ -41,9 +41,45 @@ namespace Tellma.Core.Tests.Excel
         [InlineData(BoundedPartStream.MaxTokenBytes + 4096)]
         public void A_run_at_the_bound_is_read(int chunk)
         {
-            byte[] part = Encoding.UTF8.GetBytes("<a>" + new string(' ', BoundedPartStream.MaxTokenBytes) + "</a><b>" + new string(' ', BoundedPartStream.MaxTokenBytes) + "</b>");
+            // A run counts from its '<': the tag's three bytes and the text after them reach the bound exactly.
+            byte[] part = Encoding.UTF8.GetBytes("<a>" + new string(' ', BoundedPartStream.MaxTokenBytes - 3) + "</a><b>" + new string(' ', BoundedPartStream.MaxTokenBytes - 3) + "</b>");
 
             Assert.Equal(part.Length, Drain(part, chunk));
+        }
+
+        [Theory]
+        [InlineData(4096)]
+        [InlineData(BoundedPartStream.MaxTokenBytes + 4096)]
+        public void A_greater_than_sign_in_text_or_an_attribute_ends_no_run(int chunk)
+        {
+            string flood = string.Concat(Enumerable.Repeat(new string('a', 1023) + ">", (BoundedPartStream.MaxTokenBytes / 1024) + 1));
+
+            _ = Assert.Throws<ImportException>(() => Drain(Encoding.UTF8.GetBytes($"<a>{flood}</a>"), chunk));
+            _ = Assert.Throws<ImportException>(() => Drain(Encoding.UTF8.GetBytes($"<a b=\"{flood}\"/>"), chunk));
+        }
+
+        [Theory]
+        [InlineData("<![CDATA[", "]]>")]
+        [InlineData("<!--", "-->")]
+        [InlineData("<?pi ", "?>")]
+        public void A_section_is_one_run_from_its_opener_to_its_terminator_whatever_it_holds(string opener, string terminator)
+        {
+            string flood = string.Concat(Enumerable.Repeat(new string('a', 1023) + "<", (BoundedPartStream.MaxTokenBytes / 1024) + 1));
+            string small = string.Concat(Enumerable.Repeat(new string('a', 1023) + "<", 64));
+
+            _ = Assert.Throws<ImportException>(() => Drain(Encoding.UTF8.GetBytes($"<a>{opener}{flood}{terminator}</a>"), 4096));
+
+            // A section within the bound closes, and the runs after it are counted afresh.
+            byte[] closed = Encoding.UTF8.GetBytes($"<a>{opener}{small}{terminator}</a><b>" + new string(' ', BoundedPartStream.MaxTokenBytes - 3) + "</b>");
+            Assert.Equal(closed.Length, Drain(closed, 4096));
+        }
+
+        [Fact]
+        public void An_opener_that_breaks_off_is_a_tag_whose_next_less_than_sign_starts_a_run()
+        {
+            byte[] part = Encoding.UTF8.GetBytes("<a><![CDAT<b>" + new string(' ', BoundedPartStream.MaxTokenBytes - 3) + "</b></a>");
+
+            Assert.Equal(part.Length, Drain(part, 4096));
         }
 
         [Fact]

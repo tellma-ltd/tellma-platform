@@ -25,9 +25,11 @@ namespace Tellma.Core.AspNetCore.IntegrationTests.Stacks
         [Fact]
         public async Task A_member_without_a_grant_reads_and_deletes_its_own_exports_and_never_another_members()
         {
+            // Each record was last modified by the other member, so only its creator owns it.
             int me = UserId(deployment.Restricted);
-            int mine = await SeedExportAsync(me);
-            int theirs = await SeedExportAsync(UserId(deployment.Editor));
+            int other = UserId(deployment.Editor);
+            int mine = await SeedExportAsync(me, modifiedBy: other);
+            int theirs = await SeedExportAsync(other, modifiedBy: me);
             using SpaClient restricted = await deployment.SteppedUpAsync(deployment.Restricted);
 
             await AssertOwnRowsAsync(restricted, "exports", me, mine, theirs);
@@ -42,10 +44,12 @@ namespace Tellma.Core.AspNetCore.IntegrationTests.Stacks
         [Fact]
         public async Task A_member_without_a_grant_reads_its_own_imports_and_deletes_one_only_once_its_job_has_ended()
         {
+            // Each record was last modified by the other member, so only its creator owns it.
             int me = UserId(deployment.Restricted);
-            int live = await SeedImportAsync(me, "Held");
-            int ended = await SeedImportAsync(me, "Succeeded");
-            int theirs = await SeedImportAsync(UserId(deployment.Editor), "Succeeded");
+            int other = UserId(deployment.Editor);
+            int live = await SeedImportAsync(me, other, "Held");
+            int ended = await SeedImportAsync(me, other, "Succeeded");
+            int theirs = await SeedImportAsync(other, me, "Succeeded");
             using SpaClient restricted = await deployment.SteppedUpAsync(deployment.Restricted);
 
             await AssertOwnRowsAsync(restricted, "imports", me, live, theirs);
@@ -89,24 +93,26 @@ namespace Tellma.Core.AspNetCore.IntegrationTests.Stacks
             return member.UserId ?? throw new InvalidOperationException($"{member.Email} has no user in the live tenant.");
         }
 
-        /// <summary>Seeds a display export record created by a user.</summary>
+        /// <summary>Seeds a display export record created by one user and last modified by another.</summary>
         /// <param name="userId">The creator.</param>
+        /// <param name="modifiedBy">The last modifier.</param>
         /// <returns>The record's id.</returns>
-        private async Task<int> SeedExportAsync(int userId)
+        private async Task<int> SeedExportAsync(int userId, int modifiedBy)
         {
             return await deployment.ScalarAsync<int>(Tenant, string.Create(CultureInfo.InvariantCulture, $"""
                 DECLARE @id int = NEXT VALUE FOR [core].[sq_Exports];
                 INSERT INTO [core].[Exports] ([Id], [Resource], [Kind], [ExpiresAt], [CreatedAt], [CreatedById], [ModifiedAt], [ModifiedById])
-                VALUES (@id, 'gl.Center', 'Display', DATEADD(day, 7, SYSUTCDATETIME()), SYSUTCDATETIME(), {userId}, SYSUTCDATETIME(), {userId});
+                VALUES (@id, 'gl.Center', 'Display', DATEADD(day, 7, SYSUTCDATETIME()), SYSUTCDATETIME(), {userId}, SYSUTCDATETIME(), {modifiedBy});
                 SELECT @id;
                 """));
         }
 
-        /// <summary>Seeds an import record created by a user, with its job in a status no worker claims.</summary>
+        /// <summary>Seeds an import record created by one user and last modified by another, with its job in a status no worker claims.</summary>
         /// <param name="userId">The creator.</param>
+        /// <param name="modifiedBy">The last modifier.</param>
         /// <param name="status">The job's status: held, or one that has ended.</param>
         /// <returns>The record's id.</returns>
-        private async Task<int> SeedImportAsync(int userId, string status)
+        private async Task<int> SeedImportAsync(int userId, int modifiedBy, string status)
         {
             string completedAt = status == "Held" ? "NULL" : "SYSUTCDATETIME()";
             return await deployment.ScalarAsync<int>(Tenant, string.Create(CultureInfo.InvariantCulture, $"""
@@ -115,7 +121,7 @@ namespace Tellma.Core.AspNetCore.IntegrationTests.Stacks
                 VALUES (@job, N'suite.probe', '{status}', SYSUTCDATETIME(), {userId}, SYSUTCDATETIME(), {completedAt});
                 DECLARE @id int = NEXT VALUE FOR [core].[sq_Imports];
                 INSERT INTO [core].[Imports] ([Id], [Resource], [Mode], [ExpiresAt], [JobId], [CreatedAt], [CreatedById], [ModifiedAt], [ModifiedById])
-                VALUES (@id, 'gl.Center', 'Insert', DATEADD(day, 7, SYSUTCDATETIME()), @job, SYSUTCDATETIME(), {userId}, SYSUTCDATETIME(), {userId});
+                VALUES (@id, 'gl.Center', 'Insert', DATEADD(day, 7, SYSUTCDATETIME()), @job, SYSUTCDATETIME(), {userId}, SYSUTCDATETIME(), {modifiedBy});
                 SELECT @id;
                 """));
         }

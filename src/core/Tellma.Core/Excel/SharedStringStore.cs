@@ -203,6 +203,28 @@ namespace Tellma.Core.Excel
             return text;
         }
 
+        /// <summary>The length of the string at an index, without reading it back.</summary>
+        /// <param name="index">The zero-based index.</param>
+        /// <returns>The length, in characters; null for an index the table lacks.</returns>
+        public int? LengthOf(int index)
+        {
+            if (index < 0 || index >= Count)
+            {
+                return null;
+            }
+
+            if (_resident is not null)
+            {
+                return _resident[index].Length;
+            }
+
+            // --- Spilled: the length its index entry records ---
+            Span<byte> entry = stackalloc byte[IndexWidth];
+            _index!.Position = (long)index * IndexWidth;
+            _index.ReadExactly(entry);
+            return BinaryPrimitives.ReadInt32LittleEndian(entry[sizeof(long)..]);
+        }
+
         /// <summary>Whether the string at an index holds more than white space, without reading it back.</summary>
         /// <param name="index">The zero-based index.</param>
         /// <returns>True when it does; null for an index the table lacks.</returns>

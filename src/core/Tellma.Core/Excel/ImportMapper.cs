@@ -365,8 +365,9 @@ namespace Tellma.Core.Excel
                 }
 
                 // --- The rows below it: the dimension's, unless it ends at or before the header row (a
-                // placeholder a streaming writer never patched); else counted, each row skimmed ---
-                if (headerRow > 0)
+                // placeholder a streaming writer never patched); else counted, each row skimmed. A
+                // duplicate sheet imports no row, so its rows are not counted ---
+                if (headerRow > 0 && binding.Status != ImportSheetStatus.Duplicate)
                 {
                     if (reader.DimensionLastRow is int last && last > headerRow)
                     {

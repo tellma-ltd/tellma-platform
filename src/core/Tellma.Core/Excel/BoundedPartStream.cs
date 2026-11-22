@@ -7,20 +7,26 @@ namespace Tellma.Core.Excel
 {
     /// <summary>
     ///     A part of a workbook's package, read: it counts the decompressed bytes against the length
-    ///     the archive's directory declares, and the longest run of bytes between two markup
-    ///     delimiters (<c>&lt;</c> and <c>&gt;</c>) against a bound. Every token an XML reader
-    ///     materialises, a text node, a tag or an attribute value, lies inside such a run, so the
-    ///     bound caps what one token costs in memory however the part was crafted.
+    ///     the archive's directory declares, and the longest run of bytes from one <c>&lt;</c> to
+    ///     the next against a bound. Neither character data nor an attribute value may hold a
+    ///     literal <c>&lt;</c>, and a character data section, a comment or a processing
+    ///     instruction, which may, counts as one run from its opener to its terminator. So every
+    ///     node an XML reader materialises, a start tag with all its attributes, a text node or a
+    ///     section, lies inside one run, and the bound caps what one node costs in memory however
+    ///     the part was crafted.
     /// </summary>
     /// <remarks>
-    ///     The delimiters are found in UTF-8, and in UTF-16 of either byte order when the part opens
+    ///     The markup is found in UTF-8, and in UTF-16 of either byte order when the part opens
     ///     with a byte order mark or an unmarked <c>&lt;</c>; XML allows no other encoding without a
     ///     declaration, and a workbook's producers write UTF-8.
     /// </remarks>
     internal sealed class BoundedPartStream : Stream
     {
-        /// <summary>The longest run of bytes between two markup delimiters a part may hold.</summary>
+        /// <summary>The longest run of bytes from one <c>&lt;</c> to the next a part may hold, a markup section counted whole.</summary>
         public const int MaxTokenBytes = 4 * 1024 * 1024;
+
+        /// <summary>The rest of a character data section's opener after <c>&lt;![</c>.</summary>
+        private const string CharacterDataOpener = "CDATA[";
 
         /// <summary>The part's stream, owned.</summary>
         private readonly Stream _inner;
@@ -31,8 +37,14 @@ namespace Tellma.Core.Excel
         /// <summary>The bytes read so far.</summary>
         private long _read;
 
-        /// <summary>The bytes read since the last delimiter.</summary>
+        /// <summary>The bytes of the current run: since the last <c>&lt;</c> outside a markup section, that one included.</summary>
         private long _run;
+
+        /// <summary>Where the scan stands in the markup.</summary>
+        private ScanState _state;
+
+        /// <summary>The characters of an opener or a terminator matched so far.</summary>
+        private int _matched;
 
         /// <summary>The width of a code unit once the encoding is known: 1 for UTF-8, 2 for UTF-16; 0 before the first byte.</summary>
         private int _width;
@@ -54,6 +66,34 @@ namespace Tellma.Core.Excel
             _inner = inner ?? throw new ArgumentNullException(nameof(inner));
             ArgumentOutOfRangeException.ThrowIfNegative(declared);
             _declared = declared;
+        }
+
+        /// <summary>Where the scan stands in the markup.</summary>
+        private enum ScanState
+        {
+            /// <summary>In content or inside a tag, where only a <c>&lt;</c> starts a run.</summary>
+            Content,
+
+            /// <summary>Just after a <c>&lt;</c>.</summary>
+            Open,
+
+            /// <summary>Just after <c>&lt;!</c>.</summary>
+            Bang,
+
+            /// <summary>Just after <c>&lt;!-</c>.</summary>
+            Dash,
+
+            /// <summary>After <c>&lt;![</c>, matching the rest of a character data section's opener.</summary>
+            CharacterDataOpener,
+
+            /// <summary>Inside a character data section, until <c>]]&gt;</c>.</summary>
+            CharacterData,
+
+            /// <summary>Inside a comment, until <c>--&gt;</c>.</summary>
+            Comment,
+
+            /// <summary>Inside a processing instruction, until <c>?&gt;</c>.</summary>
+            Instruction,
         }
 
         /// <inheritdoc />
@@ -137,7 +177,7 @@ namespace Tellma.Core.Excel
             base.Dispose(disposing);
         }
 
-        /// <summary>Counts bytes just read and scans them for delimiters.</summary>
+        /// <summary>Counts bytes just read and scans them for the markup that bounds a run.</summary>
         /// <param name="bytes">The bytes.</param>
         /// <exception cref="Abstractions.Excel.ImportException">The part ran past its declared length, or a run exceeds the bound.</exception>
         private void Account(ReadOnlySpan<byte> bytes)
@@ -149,7 +189,7 @@ namespace Tellma.Core.Excel
                 throw ImportFaults.TooLarge(_read, _declared);
             }
 
-            // --- UTF-8, once known, scans a chunk at a time; until then, and in UTF-16, byte by byte ---
+            // --- UTF-8, once known, skips to each '<' a chunk at a time; until then, and in UTF-16, unit by unit ---
             for (int index = 0; index < bytes.Length; index++)
             {
                 if (_width == 1)
@@ -162,40 +202,34 @@ namespace Tellma.Core.Excel
             }
         }
 
-        /// <summary>Advances the delimiter scan over UTF-8 bytes: the run is what follows their last delimiter, or grows by them.</summary>
+        /// <summary>Advances the scan over UTF-8 bytes.</summary>
         /// <param name="bytes">The bytes.</param>
-        /// <exception cref="Abstractions.Excel.ImportException">The run exceeds the bound.</exception>
+        /// <exception cref="Abstractions.Excel.ImportException">A run exceeds the bound.</exception>
         private void ScanUtf8(ReadOnlySpan<byte> bytes)
         {
-            // --- No delimiter: the run carried in grows by the whole chunk ---
-            int first = bytes.IndexOfAny((byte)'<', (byte)'>');
-            if (first < 0)
+            // In content only a '<' changes the state, so the bytes before it are counted whole; a
+            // multi-byte character holds no byte below 0x80, so an ASCII byte is always that character.
+            int index = 0;
+            while (index < bytes.Length)
             {
-                _run += bytes.Length;
-                Bound();
-                return;
-            }
-
-            // --- The run carried in ends at the chunk's first delimiter ---
-            _run += first;
-            Bound();
-
-            // --- Runs wholly inside the chunk: none can exceed the bound unless the chunk itself does ---
-            int last = bytes.LastIndexOfAny((byte)'<', (byte)'>');
-            if (bytes.Length > MaxTokenBytes)
-            {
-                for (int start = first + 1; start <= last;)
+                if (_state == ScanState.Content)
                 {
-                    int next = bytes[start..].IndexOfAny((byte)'<', (byte)'>');
-                    _run = next;
-                    Bound();
-                    start += next + 1;
-                }
-            }
+                    int next = bytes[index..].IndexOf((byte)'<');
+                    if (next < 0)
+                    {
+                        _run += bytes.Length - index;
+                        Bound();
+                        return;
+                    }
 
-            // --- The run carried out starts after the chunk's last delimiter ---
-            _run = bytes.Length - last - 1;
-            Bound();
+                    _run += next;
+                    Bound();
+                    index += next;
+                }
+
+                Unit(bytes[index]);
+                index++;
+            }
         }
 
         /// <summary>Refuses the part once the current run exceeds the bound.</summary>
@@ -208,7 +242,7 @@ namespace Tellma.Core.Excel
             }
         }
 
-        /// <summary>Advances the delimiter scan by one byte.</summary>
+        /// <summary>Advances the scan by one byte.</summary>
         /// <param name="b">The byte.</param>
         private void Scan(byte b)
         {
@@ -259,19 +293,97 @@ namespace Tellma.Core.Excel
             }
         }
 
-        /// <summary>Counts one code unit into the current run, ending it at a delimiter.</summary>
+        /// <summary>Counts one code unit into the current run; a <c>&lt;</c> outside a markup section starts the next.</summary>
         /// <param name="unit">The code unit.</param>
         /// <exception cref="Abstractions.Excel.ImportException">The run exceeds the bound.</exception>
         private void Unit(int unit)
         {
-            if (unit is '<' or '>')
-            {
-                _run = 0;
-                return;
-            }
-
-            _run += _width;
+            _run = Advance(unit) ? _width : _run + _width;
             Bound();
+        }
+
+        /// <summary>
+        ///     Moves the scan by one code unit: past the opener of a character data section, a comment
+        ///     or a processing instruction into it, and past its terminator back out.
+        /// </summary>
+        /// <param name="unit">The code unit.</param>
+        /// <returns>True when the unit is a <c>&lt;</c> that starts a run.</returns>
+        private bool Advance(int unit)
+        {
+            switch (_state)
+            {
+                // --- After a '<': '?' opens an instruction, '!' perhaps a comment or a character data section ---
+                case ScanState.Open when unit == '?':
+                    (_state, _matched) = (ScanState.Instruction, 0);
+                    return false;
+                case ScanState.Open when unit == '!':
+                    _state = ScanState.Bang;
+                    return false;
+                case ScanState.Bang when unit == '-':
+                    _state = ScanState.Dash;
+                    return false;
+                case ScanState.Dash when unit == '-':
+                    (_state, _matched) = (ScanState.Comment, 0);
+                    return false;
+                case ScanState.Bang when unit == '[':
+                    (_state, _matched) = (ScanState.CharacterDataOpener, 0);
+                    return false;
+                case ScanState.CharacterDataOpener when unit == CharacterDataOpener[_matched]:
+                    _matched++;
+                    if (_matched == CharacterDataOpener.Length)
+                    {
+                        (_state, _matched) = (ScanState.CharacterData, 0);
+                    }
+
+                    return false;
+
+                // --- Inside a section a '<' is content; only the section's terminator closes it ---
+                case ScanState.CharacterData:
+                    Close(unit, ']', needed: 2);
+                    return false;
+                case ScanState.Comment:
+                    Close(unit, '-', needed: 2);
+                    return false;
+                case ScanState.Instruction:
+                    Close(unit, '?', needed: 1);
+                    return false;
+
+                // --- Anything else after a '<' is a tag, and in content or a tag a '<' starts the next run ---
+                case ScanState.Content:
+                case ScanState.Open:
+                case ScanState.Bang:
+                case ScanState.Dash:
+                case ScanState.CharacterDataOpener:
+                default:
+                    if (unit == '<')
+                    {
+                        _state = ScanState.Open;
+                        return true;
+                    }
+
+                    _state = ScanState.Content;
+                    return false;
+            }
+        }
+
+        /// <summary>Tracks a section's terminator: at least a number of one mark, then <c>&gt;</c>.</summary>
+        /// <param name="unit">The code unit.</param>
+        /// <param name="mark">The terminator's mark: <c>]</c> for character data, <c>-</c> for a comment, <c>?</c> for an instruction.</param>
+        /// <param name="needed">How many marks must precede the <c>&gt;</c>.</param>
+        private void Close(int unit, char mark, int needed)
+        {
+            if (unit == mark)
+            {
+                _matched++;
+            }
+            else if (unit == '>' && _matched >= needed)
+            {
+                (_state, _matched) = (ScanState.Content, 0);
+            }
+            else
+            {
+                _matched = 0;
+            }
         }
     }
 }

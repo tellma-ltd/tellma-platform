@@ -100,11 +100,13 @@ namespace Tellma.Core.Excel
                 return null;
             }
 
-            // --- The header block: key and value per row, up to the first blank row ---
+            // --- The header block: key and value per row, up to the first blank row, and at most its
+            // cap of rows read, a row it drops or repeats counted too ---
             Dictionary<string, string> header = new(StringComparer.Ordinal) { [ExcelManifest.VersionKey] = Text(cells, 1)! };
             int last = row;
+            int read = 1;
             bool more = sheet.Read(cells, out row);
-            while (more && row == last + 1 && cells.Count > 0 && header.Count < MaxHeaderRows)
+            while (more && row == last + 1 && cells.Count > 0 && read++ < MaxHeaderRows)
             {
                 if (Text(cells, 0) is string key && Text(cells, 1) is string value && key.Length <= MaxFieldLength && value.Length <= MaxFieldLength)
                 {
@@ -140,10 +142,10 @@ namespace Tellma.Core.Excel
                     // Each kept row is charged its fields' text, so the table's memory stays bounded whatever its rows hold.
                     HashSet<(string Sheet, string Header)> seen = new(SheetHeaderComparer.Instance);
                     long charged = 0;
-                    int read = 0;
-                    while (sheet.Read(cells, out _) && read++ < MaxColumnRows)
+                    int tableRows = 0;
+                    while (sheet.Read(cells, out _) && tableRows++ < MaxColumnRows)
                     {
-                        if (read % CancellationStride == 0)
+                        if (tableRows % CancellationStride == 0)
                         {
                             cancellationToken.ThrowIfCancellationRequested();
                         }

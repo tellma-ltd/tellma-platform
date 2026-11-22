@@ -285,12 +285,15 @@ namespace Tellma.Core.Tests.Excel
         public async Task Two_sheets_bound_to_one_target_by_name_and_override_are_both_duplicates()
         {
             using ExportScope scope = new(composition.Services, "en", "en");
-            byte[] workbook = new SyntheticWorkbook(Producer.Excel, RawSheet.OfText("Contraptions", ["Code"]), RawSheet.OfText("More", ["Code"]), RawSheet.OfText("Parts", ["Ordinal"])).Build();
+            RawSheet[] sheets = [RawSheet.OfText("Contraptions", ["Code"], ["W-1"]), RawSheet.OfText("More", ["Code"], ["W-2"], ["W-3"]), RawSheet.OfText("Parts", ["Ordinal"])];
+            byte[] workbook = new SyntheticWorkbook(Producer.Excel, sheets).Build();
 
             ImportPlan plan = await _kit.InspectAsync<Widget>(workbook, scope.Context, new InspectImportRequest { FileId = 1, SheetMappings = [new("More", "")] });
 
+            // A duplicate imports no row, so its rows are neither counted nor read.
             Assert.Equal([ImportSheetStatus.Duplicate, ImportSheetStatus.Duplicate, ImportSheetStatus.Child], plan.Sheets.Select(static sheet => sheet.Status));
             Assert.Equal(["", "", "Parts"], plan.Sheets.Select(static sheet => sheet.Collection));
+            Assert.Equal([0L, 0L, 0L], plan.Sheets.Select(static sheet => sheet.Rows));
             Assert.Equal(0, plan.TotalRows);
             Assert.Empty(plan.RowKeyCandidates);
         }

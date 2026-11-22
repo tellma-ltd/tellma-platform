@@ -56,7 +56,7 @@ namespace Tellma.Core.Excel
                 options.MaxInMemorySharedStringBytes,
                 options.MaxSharedStringEntries,
                 RowTextBudget: options.MaxInMemorySharedStringBytes,
-                SheetTextBudget: options.MaxImportUncompressedBytes);
+                WorkbookTextBudget: options.MaxImportUncompressedBytes);
         }
 
         /// <summary>The largest package an import accepts: the codec's limit, or the import-file kind's smaller one.</summary>

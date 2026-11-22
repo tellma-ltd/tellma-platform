@@ -25,6 +25,9 @@ namespace Tellma.Core.Excel
         /// <summary>The longest text one string item or cell value may join to, in characters.</summary>
         public const int MaxTextLength = 1_048_576;
 
+        /// <summary>The characters a text read takes from the reader at a time.</summary>
+        private const int TextChunkLength = 4096;
+
         /// <summary>The content types namespace, shared by both dialects.</summary>
         public const string ContentTypesNamespace = "http://schemas.openxmlformats.org/package/2006/content-types";
 
@@ -74,6 +77,10 @@ namespace Tellma.Core.Excel
             "http://purl.oclc.org/ooxml/officeDocument/relationships/",
             "http://schemas.microsoft.com/office/2006/relationships/",
         ];
+
+        /// <summary>The chunk a text read on this thread goes through; made on the thread's first read.</summary>
+        [ThreadStatic]
+        private static char[]? _threadChunk;
 
         /// <summary>
         ///     Opens a reader over a part, with document types prohibited, no resolver, and a name
@@ -141,20 +148,23 @@ namespace Tellma.Core.Excel
         /// </summary>
         /// <param name="reader">The reader, on the item's start.</param>
         /// <param name="sheet">The sheet to blame for a text above the bound; null for the shared strings.</param>
+        /// <param name="limit">The most characters the text may join to, at most <see cref="MaxTextLength" />.</param>
         /// <returns>The text.</returns>
-        /// <exception cref="Abstractions.Excel.ImportException">The text joins to more than <see cref="MaxTextLength" /> characters.</exception>
-        public static string ReadStringItem(XmlReader reader, string? sheet)
+        /// <exception cref="Abstractions.Excel.ImportException">The text joins to more than <paramref name="limit" /> characters; it is refused before more is read.</exception>
+        public static string ReadStringItem(XmlReader reader, string? sheet, int limit = MaxTextLength)
         {
             ArgumentNullException.ThrowIfNull(reader);
+            ArgumentOutOfRangeException.ThrowIfNegative(limit);
             if (reader.IsEmptyElement)
             {
                 return string.Empty;
             }
 
-            // --- The item's t, or each run's t; a phonetic run is a reading aid and is skipped ---
+            // --- The item's t, or each run's t, each read within what the runs before it left; a phonetic run is a reading aid and is skipped ---
             int depth = reader.Depth;
             string? single = null;
             StringBuilder? joined = null;
+            int length = 0;
             bool more = reader.Read();
             while (more && !(reader.NodeType == XmlNodeType.EndElement && reader.Depth == depth))
             {
@@ -167,7 +177,8 @@ namespace Tellma.Core.Excel
 
                 if (IsSpreadsheet(reader, "t"))
                 {
-                    string text = ReadText(reader, sheet);
+                    string text = ReadText(reader, sheet, limit - length);
+                    length += text.Length;
                     if (single is null && joined is null)
                     {
                         single = text;
@@ -175,11 +186,6 @@ namespace Tellma.Core.Excel
                     else
                     {
                         joined ??= new StringBuilder(single);
-                        if (joined.Length + text.Length > MaxTextLength)
-                        {
-                            throw ImportFaults.Malformed(ImportFaults.CellsReason, sheet);
-                        }
-
                         _ = joined.Append(text);
                         single = null;
                     }
@@ -193,24 +199,30 @@ namespace Tellma.Core.Excel
 
         /// <summary>
         ///     Reads an element's text: every text, white space and character data node it holds, its
-        ///     child elements skipped. The reader is left on the element's end, or on the element
-        ///     itself when it is empty.
+        ///     child elements skipped. The text is read a chunk at a time, so one longer than the
+        ///     limit is refused before it is held whole. The reader is left on the element's end, or
+        ///     on the element itself when it is empty.
         /// </summary>
         /// <param name="reader">The reader, on the element's start.</param>
         /// <param name="sheet">The sheet to blame for a text above the bound; null for a part of no sheet.</param>
+        /// <param name="limit">The most characters the text may hold, at most <see cref="MaxTextLength" />.</param>
         /// <returns>The text, escapes not undone.</returns>
-        /// <exception cref="Abstractions.Excel.ImportException">The text is longer than <see cref="MaxTextLength" /> characters.</exception>
-        public static string ReadText(XmlReader reader, string? sheet)
+        /// <exception cref="Abstractions.Excel.ImportException">The text is longer than <paramref name="limit" /> characters.</exception>
+        public static string ReadText(XmlReader reader, string? sheet, int limit = MaxTextLength)
         {
             ArgumentNullException.ThrowIfNull(reader);
+            ArgumentOutOfRangeException.ThrowIfNegative(limit);
             if (reader.IsEmptyElement)
             {
                 return string.Empty;
             }
 
-            int depth = reader.Depth;
-            string? single = null;
+            // The chunk is the thread's own and reused, so a short text costs only its string. It is
+            // flushed while room for a surrogate pair remains, since a chunk read never splits one.
+            char[] chunk = _threadChunk ??= new char[TextChunkLength];
+            int held = 0;
             StringBuilder? joined = null;
+            int depth = reader.Depth;
             bool more = reader.Read();
             while (more && !(reader.NodeType == XmlNodeType.EndElement && reader.Depth == depth))
             {
@@ -222,31 +234,46 @@ namespace Tellma.Core.Excel
                     continue;
                 }
 
-                // --- Text, white space and character data join, within the bound ---
+                // --- Text, white space and character data join, a chunk at a time, within the limit ---
                 if (reader.NodeType is XmlNodeType.Text or XmlNodeType.CDATA or XmlNodeType.Whitespace or XmlNodeType.SignificantWhitespace)
                 {
-                    string value = reader.Value;
-                    if (single is null && joined is null)
+                    // A reader that cannot read in chunks has the node whole already, bounded by its run.
+                    if (!reader.CanReadValueChunk)
                     {
-                        single = value;
-                    }
-                    else
-                    {
-                        joined ??= new StringBuilder(single);
-                        _ = joined.Append(value);
-                        single = null;
+                        joined ??= new StringBuilder();
+                        _ = joined.Append(chunk, 0, held).Append(reader.Value);
+                        held = 0;
+                        if (joined.Length > limit)
+                        {
+                            throw ImportFaults.Malformed(ImportFaults.CellsReason, sheet);
+                        }
+
+                        more = reader.Read();
+                        continue;
                     }
 
-                    if ((single?.Length ?? joined!.Length) > MaxTextLength)
+                    int read;
+                    while ((read = reader.ReadValueChunk(chunk, held, chunk.Length - held)) > 0)
                     {
-                        throw ImportFaults.Malformed(ImportFaults.CellsReason, sheet);
+                        held += read;
+                        if ((joined?.Length ?? 0) + held > limit)
+                        {
+                            throw ImportFaults.Malformed(ImportFaults.CellsReason, sheet);
+                        }
+
+                        if (chunk.Length - held < 2)
+                        {
+                            joined ??= new StringBuilder();
+                            _ = joined.Append(chunk, 0, held);
+                            held = 0;
+                        }
                     }
                 }
 
                 more = reader.Read();
             }
 
-            return joined?.ToString() ?? single ?? string.Empty;
+            return joined is null ? new string(chunk, 0, held) : joined.Append(chunk, 0, held).ToString();
         }
 
         /// <summary>

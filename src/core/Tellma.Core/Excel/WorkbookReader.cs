@@ -37,8 +37,11 @@ namespace Tellma.Core.Excel
         /// <summary>The package's parts by name, compared ignoring case as part names are.</summary>
         private readonly Dictionary<string, ZipArchiveEntry> _parts;
 
-        /// <summary>The bounds the workbook is read within, whose text budgets each sheet's reader keeps.</summary>
+        /// <summary>The bounds the workbook is read within, whose row budget each sheet's reader keeps.</summary>
         private readonly WorkbookLimits _limits;
+
+        /// <summary>The text every sheet's reader may still decode, shared by all of them however often each sheet is read.</summary>
+        private readonly TextBudget _text;
 
         /// <summary>Creates the reader over a checked archive.</summary>
         /// <param name="zip">The archive.</param>
@@ -51,6 +54,7 @@ namespace Tellma.Core.Excel
             _zip = zip;
             _parts = parts;
             _limits = limits;
+            _text = new TextBudget(limits.WorkbookTextBudget);
             CompressedBytes = compressed;
             UncompressedBytes = uncompressed;
         }
@@ -163,7 +167,7 @@ namespace Tellma.Core.Excel
         {
             ArgumentNullException.ThrowIfNull(sheet);
             string part = sheet.Part ?? throw new ArgumentException($"The sheet '{sheet.Name}' holds no cells.", nameof(sheet));
-            return SheetReader.Open(OpenPart(part), sheet.Name, SharedStrings, _limits.RowTextBudget, _limits.SheetTextBudget);
+            return SheetReader.Open(OpenPart(part), sheet.Name, SharedStrings, _limits.RowTextBudget, _text);
         }
 
         /// <inheritdoc />
@@ -339,6 +343,7 @@ namespace Tellma.Core.Excel
         {
             List<WorkbookSheet> sheets = [];
             HashSet<string> names = new(StringComparer.OrdinalIgnoreCase);
+            HashSet<string> parts = new(StringComparer.OrdinalIgnoreCase);
             using XmlReader reader = XlsxXml.Open(OpenPart(workbook));
             while (reader.Read())
             {
@@ -380,6 +385,12 @@ namespace Tellma.Core.Excel
                     part = relationship.Target is string target && _parts.ContainsKey(target)
                         ? target
                         : throw ImportFaults.Malformed(ImportFaults.RelationshipsReason, name);
+
+                    // No producer writes two sheets over one part, and each would read it again.
+                    if (!parts.Add(part))
+                    {
+                        throw ImportFaults.Malformed(ImportFaults.RelationshipsReason, name);
+                    }
                 }
 
                 sheets.Add(new WorkbookSheet(sheets.Count, name, state, part));
@@ -404,13 +415,17 @@ namespace Tellma.Core.Excel
     ///     One worksheet, read forward-only: its declared dimension, then its rows in ascending order,
     ///     each with its stored cells in ascending column order. A row or cell without a reference
     ///     takes the next in sequence; one out of order, out of range, or naming another row is a
-    ///     malformed sheet. The text a row decodes to is bounded, and so is the text the whole sheet
-    ///     decodes to; a row may instead be skimmed, told blank or not without its text decoded.
+    ///     malformed sheet. The text a row decodes to is bounded, and so is the text every sheet of the
+    ///     workbook decodes to together, each value refused before it is read past what is left; a row
+    ///     may instead be skimmed, told blank or not without its text decoded.
     /// </summary>
     internal sealed class SheetReader : IDisposable
     {
         /// <summary>The characters a skim reads of a text node at a time.</summary>
         private const int ScanChunk = 1024;
+
+        /// <summary>The longest shared-string index a skim reads: an index has at most ten digits, so a longer value is refused unread.</summary>
+        private const int MaxIndexLength = 16;
 
         /// <summary>The part's reader, owned.</summary>
         private readonly XmlReader _reader;
@@ -424,14 +439,17 @@ namespace Tellma.Core.Excel
         /// <summary>The most UTF-16 bytes of text one row's cells may decode to.</summary>
         private readonly long _rowBudget;
 
-        /// <summary>The most UTF-16 bytes of text the sheet's cells may decode to.</summary>
-        private readonly long _sheetBudget;
+        /// <summary>The text the workbook's sheets may still decode, this one among them.</summary>
+        private readonly TextBudget _text;
+
+        /// <summary>The shared-string lookup a cell read decodes through, each string refused above <see cref="_lookupLimit" /> before it is read.</summary>
+        private readonly Func<int, string?> _lookup;
 
         /// <summary>The buffer a skim scans text through; made on the first skim.</summary>
         private char[]? _scan;
 
-        /// <summary>The UTF-16 bytes of text the sheet's cells decoded to so far.</summary>
-        private long _sheetCharged;
+        /// <summary>The most characters the shared string a cell read looks up may hold.</summary>
+        private int _lookupLimit;
 
         /// <summary>The depth of the rows: the children of the sheet data element.</summary>
         private int _rowDepth = -1;
@@ -447,14 +465,15 @@ namespace Tellma.Core.Excel
         /// <param name="sheet">The sheet's name.</param>
         /// <param name="strings">The workbook's shared strings.</param>
         /// <param name="rowBudget">The most UTF-16 bytes of text one row's cells may decode to.</param>
-        /// <param name="sheetBudget">The most UTF-16 bytes of text the sheet's cells may decode to.</param>
-        private SheetReader(XmlReader reader, string sheet, SharedStringStore strings, long rowBudget, long sheetBudget)
+        /// <param name="text">The text the workbook's sheets may still decode.</param>
+        private SheetReader(XmlReader reader, string sheet, SharedStringStore strings, long rowBudget, TextBudget text)
         {
             _reader = reader;
             _sheet = sheet;
             _strings = strings;
             _rowBudget = rowBudget;
-            _sheetBudget = sheetBudget;
+            _text = text;
+            _lookup = Lookup;
         }
 
         /// <summary>The last row the sheet's dimension declares; null when the sheet declares none.</summary>
@@ -465,15 +484,15 @@ namespace Tellma.Core.Excel
         /// <param name="sheet">The sheet's name.</param>
         /// <param name="strings">The workbook's shared strings.</param>
         /// <param name="rowBudget">The most UTF-16 bytes of text one row's cells may decode to.</param>
-        /// <param name="sheetBudget">The most UTF-16 bytes of text the sheet's cells may decode to.</param>
+        /// <param name="text">The text the workbook's sheets may still decode, charged by this sheet's reads too.</param>
         /// <returns>The reader.</returns>
         /// <exception cref="Abstractions.Excel.ImportException">The part is not well-formed.</exception>
-        public static SheetReader Open(Stream part, string sheet, SharedStringStore strings, long rowBudget, long sheetBudget)
+        public static SheetReader Open(Stream part, string sheet, SharedStringStore strings, long rowBudget, TextBudget text)
         {
             ArgumentNullException.ThrowIfNull(strings);
+            ArgumentNullException.ThrowIfNull(text);
             ArgumentOutOfRangeException.ThrowIfNegative(rowBudget);
-            ArgumentOutOfRangeException.ThrowIfNegative(sheetBudget);
-            SheetReader reader = new(XlsxXml.Open(part), sheet, strings, rowBudget, sheetBudget);
+            SheetReader reader = new(XlsxXml.Open(part), sheet, strings, rowBudget, text);
             try
             {
                 reader.Start();
@@ -645,17 +664,18 @@ namespace Tellma.Core.Excel
                     continue;
                 }
 
-                ExcelRawCell value = ReadCell();
+                // --- The cell, read no further than what the row's and the workbook's budgets have left ---
+                long left = Math.Min(_rowBudget - rowCharged, _text.Remaining) / sizeof(char);
+                ExcelRawCell value = ReadCell((int)Math.Min(left, XlsxXml.MaxTextLength));
                 if (value.Kind == ExcelCellKind.Blank)
                 {
                     continue;
                 }
 
-                // --- The cell's text, charged to the row's and the sheet's budgets before it is kept ---
+                // --- Its text, charged to both budgets before it is kept ---
                 long charge = (long)value.Text.Length * sizeof(char);
                 rowCharged += charge;
-                _sheetCharged += charge;
-                if (rowCharged > _rowBudget || _sheetCharged > _sheetBudget)
+                if (rowCharged > _rowBudget || !_text.Charge(charge))
                 {
                     throw ImportFaults.Malformed(ImportFaults.CellsReason, _sheet);
                 }
@@ -668,8 +688,10 @@ namespace Tellma.Core.Excel
         }
 
         /// <summary>Reads a cell, the reader on its start and left on its end: its cached value or its inline string, the formula skipped.</summary>
+        /// <param name="limit">The most characters its value, inline string or shared string may hold; a longer one is refused before it is read whole.</param>
         /// <returns>The cell.</returns>
-        private ExcelRawCell ReadCell()
+        /// <exception cref="Abstractions.Excel.ImportException">A text is longer than the limit, or names a shared string the table lacks.</exception>
+        private ExcelRawCell ReadCell(int limit)
         {
             string? type = _reader.GetAttribute("t");
             string? value = null;
@@ -682,11 +704,11 @@ namespace Tellma.Core.Excel
                 {
                     if (XlsxXml.IsSpreadsheet(_reader, "v"))
                     {
-                        value = XlsxXml.ReadText(_reader, _sheet);
+                        value = XlsxXml.ReadText(_reader, _sheet, limit);
                     }
                     else if (XlsxXml.IsSpreadsheet(_reader, "is"))
                     {
-                        inline = XlsxXml.ReadStringItem(_reader, _sheet);
+                        inline = XlsxXml.ReadStringItem(_reader, _sheet, limit);
                     }
                     else if (_reader.NodeType == XmlNodeType.Element)
                     {
@@ -701,13 +723,23 @@ namespace Tellma.Core.Excel
 
             try
             {
-                return CellReader.Read(type, value, inline, _strings.Get);
+                _lookupLimit = limit;
+                return CellReader.Read(type, value, inline, _lookup);
             }
             catch (FormatException)
             {
                 // A shared string index the table lacks.
                 throw ImportFaults.Malformed(ImportFaults.CellsReason, _sheet);
             }
+        }
+
+        /// <summary>A shared string a cell names, refused unread when it is longer than the current read's limit.</summary>
+        /// <param name="index">The zero-based index.</param>
+        /// <returns>The string; null for an index the table lacks.</returns>
+        /// <exception cref="Abstractions.Excel.ImportException">The string is longer than the limit.</exception>
+        private string? Lookup(int index)
+        {
+            return _strings.LengthOf(index) > _lookupLimit ? throw ImportFaults.Malformed(ImportFaults.CellsReason, _sheet) : _strings.Get(index);
         }
 
         /// <summary>
@@ -752,7 +784,7 @@ namespace Tellma.Core.Excel
         private bool SharedStringFilled()
         {
             // An index is a handful of digits; one the table lacks is a malformed cell, as a read refuses it.
-            string text = XlsxXml.ReadText(_reader, _sheet);
+            string text = XlsxXml.ReadText(_reader, _sheet, MaxIndexLength);
             return int.TryParse(text, NumberStyles.None, CultureInfo.InvariantCulture, out int index) && _strings.IsFilled(index) is bool filled
                 ? filled
                 : throw ImportFaults.Malformed(ImportFaults.CellsReason, _sheet);

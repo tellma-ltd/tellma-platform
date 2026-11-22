@@ -2866,11 +2866,13 @@ are SpreadsheetML packages written with `DocumentFormat.OpenXml` (MIT), forward-
   and directory size), the declared uncompressed sum and its structure (content types, one workbook
   part, no external link or relationship) are checked before any sheet is parsed; every part is read
   through `BoundedPartStream`, which refuses bytes beyond the part's declared length and any run
-  between two markup delimiters over 4 MiB; no reader processes a DTD, and each reader's name table
+  over 4 MiB from one `<` to the next (a CDATA section, comment or processing instruction counted
+  whole), so every node a reader materialises is bounded; text is read in chunks and refused before
+  it is read whole once it passes what a cell may hold; two sheets may not name one part; no reader processes a DTD, and each reader's name table
   (`BoundedNameTable`) refuses a part whose distinct names pass 1 MiB. Shared strings
   (`SharedStringStore`) are charged against a budget and spill to a scratch file beyond it, and their
-  entry count is capped. A sheet's decoded cell text is charged against a per-row and a per-sheet
-  budget, and a sheet's rows are counted, when its dimension cannot be trusted, by skimming each row
+  entry count is capped. Decoded cell text is charged against a per-row budget and one budget for
+  the whole workbook, and a sheet's rows are counted, when its dimension cannot be trusted, by skimming each row
   for a filled cell without decoding its text. Every loop checks the inspection's cancellation.
   `ImportManifest` reads the hidden manifest sheet as untrusted, dropping any row it cannot use or
   whose field passes 255 characters, and stops its column table at a byte bound. `HeaderIndex` matches headers by every form an export writes them in, rendered in
