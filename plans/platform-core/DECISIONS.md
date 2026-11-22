@@ -384,6 +384,18 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-222 (orchestrator, 2026-11-22): PC-F71 Review 1 rulings
+
+Review 1 found 0/0/2. The fix is consistent with D-029, 0013 §8.2-8.3, 0008 §10.4 and 0024 §7.4. The client's lengths for AH 9666 months 5-12 on pc/PC-104 match the server's.
+
+Fix1 rulings:
+- R1-1: the binding test of the two sides' lengths lands at PC-104's integration, as a lengths array in umalqura-vectors.json asserted by both the server and the client. PC-F71 amends its implementer note to say so.
+- R1-2: GetDaysInMonth checks the year first and names year for an out-of-range year, like every other year-level member and EthiopianCalendar. The test expects year.
+
+PC-F71 holds after fix1.
+
+Carry for PC-104's integration: the client daysIn has no upper year (daysIn(9667, m) is 30 on the client and 0 on the server). Bound it at AH 9666 like the server, or record why not.
+
 ### D-221 (orchestrator, 2026-11-22): PC-104 fix2 accepted; held
 
 Fix2 (7f087f0d) fixed R2-1..R2-7 and applied D-214: TmLocaleWrite now loads with import(). Sizes: "." 35.45/36, the write chunk 1.50/2, core-ui l10n 9.96/10. The merge-tree is clean.
