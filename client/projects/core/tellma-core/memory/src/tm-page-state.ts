@@ -4,13 +4,16 @@
 // LICENSE file in the root directory of this source tree.
 
 import { effect, inject, Injectable, Injector, signal, untracked } from '@angular/core';
-
-import { tmRoutedTenant } from '../../launch/tm-routed-tenant';
-import { TmSession } from '../../session/tm-session';
-import { TmUrls } from '../../urls/tm-urls';
-import type { TmMeResult, TmTenantSettingsForClient } from '../launch/tm-launch-docs';
-import { TmClientStore } from '../store/tm-client-store';
-import type { TmTenantPartition } from '../store/tm-store-layout';
+import {
+  TmClientStore,
+  type TmMeResult,
+  type TmPartition,
+  TmSession,
+  type TmTenantSettingsForClient,
+  TmUrls,
+  ɵTM_STATE_PARTS,
+  ɵtmRoutedTenant,
+} from '@tellma/core';
 
 // Page state (spec 0025 §10): what a page needs to look as it did when the
 // user returns within the app, kept per tab and in memory only, by the page's
@@ -97,6 +100,8 @@ export class TmPageState {
 
   /** Creates the service, which watches the grants and languages of every tenant it holds entries of. */
   constructor() {
+    inject(ɵTM_STATE_PARTS).pageState = () => this.ɵkeys();
+
     // --- A permissions move marks the tenant's entries stale; a languages change forgets them ---
     effect(() => {
       for (const t of this.#tenants()) {
@@ -138,7 +143,7 @@ export class TmPageState {
     if (this.#entries.size > CAPACITY) {
       this.#entries.delete(this.#entries.keys().next().value!);
     }
-    const t = tmRoutedTenant(key);
+    const t = ɵtmRoutedTenant(key);
     if (t !== null && !this.#marks.has(t)) {
       // The tenant's facts now are the ones its entries were held under.
       this.#marks.set(t, untracked(() => this.#read(t)));
@@ -180,7 +185,7 @@ export class TmPageState {
    */
   markStale(scope: { readonly tenantId: number; readonly entity?: string }): void {
     for (const [key, entry] of this.#entries) {
-      if (tmRoutedTenant(key) === scope.tenantId && (scope.entity === undefined || this.#entity(key) === scope.entity)) {
+      if (ɵtmRoutedTenant(key) === scope.tenantId && (scope.entity === undefined || this.#entity(key) === scope.entity)) {
         // Replaced in place, so the entry keeps its place in the order.
         this.#entries.set(key, { ...entry, stale: true });
       }
@@ -218,7 +223,7 @@ export class TmPageState {
     if (sub === undefined) {
       return { permissions: undefined, languages: undefined };
     }
-    const partition: TmTenantPartition = { kind: 'tenant', sub, tenantId: t };
+    const partition: TmPartition = { kind: 'tenant', sub, tenantId: t };
     return {
       permissions: this.#store.doc<TmMeResult>(partition, 'me')()?.data.access.tag,
       languages: this.#store
@@ -231,7 +236,7 @@ export class TmPageState {
   /** Forgets every entry of a tenant. */
   #forgetTenant(t: number): void {
     for (const key of [...this.#entries.keys()]) {
-      if (tmRoutedTenant(key) === t) {
+      if (ɵtmRoutedTenant(key) === t) {
         this.#entries.delete(key);
       }
     }
@@ -240,7 +245,7 @@ export class TmPageState {
 
   /** Points the watch at the tenants that have entries now; a tenant with none keeps no marks. */
   #follow(): void {
-    const tenants = [...new Set([...this.#entries.keys()].map(tmRoutedTenant))].filter((t): t is number => t !== null);
+    const tenants = [...new Set([...this.#entries.keys()].map(ɵtmRoutedTenant))].filter((t): t is number => t !== null);
     for (const t of this.#marks.keys()) {
       if (!tenants.includes(t)) {
         this.#marks.delete(t);

@@ -4,16 +4,12 @@
 // LICENSE file in the root directory of this source tree.
 
 import { TestBed } from '@angular/core/testing';
+import { TM_NOW, type TmDecimal, TmSession, TmTelemetry, ɵTM_API_HOST } from '@tellma/core';
 
-import { TM_API_HOST } from '../../api/tm-api-host';
-import { TmFakeApiHost } from '../../api/tm-api.testing.util';
-import { TM_NOW } from '../../app/tm-now';
-import type { TmDecimal } from '../../json/tm-json';
-import { TmTelemetry } from '../../observe/tm-telemetry';
-import { tmProfileCookies } from '../../session/tm-profile.testing.util';
-import { TmSession } from '../../session/tm-session';
-import { TmFakeSessionHost, TmRecordingTelemetry, tmSessionTestingProviders } from '../../session/tm-session.testing.util';
-import { TmFakeStorage } from '../tm-storage.testing.util';
+import { TmFakeApiHost } from '../../src/api/tm-api.testing.util';
+import { tmProfileCookies } from '../../src/session/tm-profile.testing.util';
+import { TmFakeSessionHost, TmRecordingTelemetry, tmSessionTestingProviders } from '../../src/session/tm-session.testing.util';
+import { TmFakeStorage } from '../../src/state/tm-storage.testing.util';
 import { TmDrafts } from './tm-drafts';
 
 // Drafts over the real session and a faked browser: its session storage,
@@ -74,7 +70,7 @@ function launch(tab: TmTab): TmRig {
   TestBed.configureTestingModule({
     providers: [
       tmSessionTestingProviders(tab.session, null, NOW),
-      { provide: TM_API_HOST, useValue: tab.page },
+      { provide: ɵTM_API_HOST, useValue: tab.page },
       { provide: TM_NOW, useValue: () => clock },
     ],
   });

@@ -527,6 +527,108 @@ describe('TmPreferences', () => {
       expect(rig.prefs.get(BAR)()).toBe(false);
     });
 
+    it('retries a cancelled write as a transient failure, after 10 s', async () => {
+      const rig = await setUp();
+      let calls = 0;
+      rig.api.respond('users/me/preferences/set', () => {
+        if (++calls === 1) {
+          throw new TmApiError({ kind: 'cancelled' });
+        }
+        return { preferences: { 'nav.pinnedBarVisible': 'false' }, preferencesTag: 'P2' };
+      });
+      rig.prefs.set(BAR, false);
+      await flush();
+      expect(rig.items('tm.prefs.flush-failed')).toEqual([{ kind: 'cancelled' }]);
+      expect(rig.prefs.ɵdirty()).toEqual(['nav.pinnedBarVisible']);
+      await vi.advanceTimersByTimeAsync(10_000);
+      await flush();
+      expect(rig.writes()).toHaveLength(2);
+      expect(rig.prefs.ɵdirty()).toEqual([]);
+      expect(rig.items('tm.prefs.dropped')).toEqual([]);
+    });
+
+    it.each(['unauthenticated', 'step-up', 'client-outdated'] as const)(
+      'keeps the keys after %s without retrying them, until the next set of the key or the server is back',
+      async (kind) => {
+        const rig = await setUp();
+        let fail = true;
+        rig.api.respond('users/me/preferences/set', (call: TmFakeApiCall) => {
+          if (fail) {
+            throw new TmApiError({ kind });
+          }
+          const items = (call.body as { items: { key: string; value: string }[] }).items;
+          return { preferences: Object.fromEntries(items.map((item) => [item.key, item.value])), preferencesTag: 'P2' };
+        });
+        const pinned = rig.prefs.get(PINNED);
+        rig.prefs.set(PINNED, [1]);
+        await flush();
+        expect(rig.items('tm.prefs.flush-failed')).toEqual([{ kind }]);
+        await vi.advanceTimersByTimeAsync(60_000);
+        await flush();
+        expect(rig.writes()).toHaveLength(1);
+        expect(rig.prefs.ɵdirty()).toEqual(['nav.pinned']);
+        expect(pinned()).toEqual([1]);
+        expect(rig.items('tm.prefs.dropped')).toEqual([]);
+
+        // The next set of the key sends it again.
+        rig.prefs.set(PINNED, [1, 2]);
+        await flush();
+        expect(rig.writes()).toHaveLength(2);
+
+        // So does the server's return.
+        rig.api.setOnline(false);
+        await flush();
+        fail = false;
+        rig.api.setOnline(true);
+        await flush();
+        expect(rig.writes()).toHaveLength(3);
+        expect(rig.prefs.ɵdirty()).toEqual([]);
+        expect(pinned()).toEqual([1, 2]);
+      },
+    );
+
+    it('drops a write that fails with a kind it has no rule for as rejected', async () => {
+      const rig = await setUp();
+      rig.api.respond('users/me/preferences/set', () => {
+        throw new TmApiError({ kind: 'forbidden', status: 403 });
+      });
+      const bar = rig.prefs.get(BAR);
+      rig.prefs.set(BAR, false);
+      await flush();
+      expect(bar()).toBe(true);
+      expect(rig.items('tm.prefs.flush-failed')).toEqual([{ kind: 'forbidden' }]);
+      expect(rig.items('tm.prefs.dropped')).toEqual([{ reason: 'rejected' }]);
+      expect(rig.prefs.ɵdirty()).toEqual([]);
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(rig.writes()).toHaveLength(1);
+    });
+
+    it("drops only the key a delete's validation error names by its keys[i] path, and deletes the rest again", async () => {
+      const rig = await setUp({ bag: { 'nav.pinnedBarVisible': 'false', 'notifications.toasts': 'false' } });
+      let calls = 0;
+      rig.api.respond('users/me/preferences/delete', (call: TmFakeApiCall) => {
+        if (++calls === 1) {
+          throw failure('validation', [{ code: 'Users.PreferenceKeyInvalid', path: 'keys[1]' }]);
+        }
+        const keys = (call.body as { keys: string[] }).keys;
+        keys.forEach((key) => delete rig.bag[key]);
+        return { preferences: { ...rig.bag }, preferencesTag: 'P2' };
+      });
+      const bar = rig.prefs.get(BAR);
+      const toasts = rig.prefs.get(TOASTS);
+      rig.prefs.set(BAR, true);
+      rig.prefs.set(TOASTS, true);
+      await flush();
+      expect(rig.writes().map((call) => call.body)).toEqual([
+        { keys: ['nav.pinnedBarVisible', 'notifications.toasts'] },
+        { keys: ['nav.pinnedBarVisible'] },
+      ]);
+      expect(rig.items('tm.prefs.dropped')).toEqual([{ reason: 'rejected' }]);
+      // The dropped key shows the stored string again; the other is deleted.
+      expect([bar(), toasts()]).toEqual([true, false]);
+      expect(rig.prefs.ɵdirty()).toEqual([]);
+    });
+
     it('holds every flush while the tenant is frozen, then flushes once a sync reports it active', async () => {
       const rig = await setUp({ state: 'Frozen' });
       rig.prefs.set(BAR, false);
@@ -567,6 +669,39 @@ describe('TmPreferences', () => {
         ],
         ['users/me/preferences/delete', { keys: ['search.gl.Center.view'] }, { tenantId: 17 }],
       ]);
+    });
+
+    it("sends each tenant's keys to that tenant, all of them under one 16 KB cut", async () => {
+      const rig = await setUp();
+      const T18: TmTenantPartition = { kind: 'tenant', sub: SUB, tenantId: 18 };
+      const stored = <T>(data: T, tag: string | null = null): TmStoredDoc<T> => ({ tag, savedAt: NOW - 60_000, data });
+      await rig.store.ɵwrite(T18, {
+        settings: () => stored({ ...SETTINGS, tenantId: 18 }, 'S1'),
+        me: () => stored(me({})),
+        tenant: () => stored<TmTenantFacts>({ id: 18, category: 'Live', state: 'Active', realtime: true }),
+        sync: () => stored({ at: NOW, entities: 'E1', entityTags: {} }),
+      });
+      const agent = tmPreferenceKey('search.gl.Agent.view', 'write-behind', {});
+      const unit = tmPreferenceKey('search.gl.Unit.view', 'write-behind', {});
+      // Tenant 17's keys first, then tenant 18's, each newer than the last.
+      rig.prefs.set(VIEW, { wide: 'x'.repeat(7_000) });
+      await vi.advanceTimersByTimeAsync(100);
+      rig.prefs.set(THRESHOLD, 80);
+      await vi.advanceTimersByTimeAsync(100);
+      await TestBed.inject(Router).navigateByUrl('/18/centers');
+      await flush();
+      rig.prefs.set(agent, { wide: 'y'.repeat(7_000) });
+      await vi.advanceTimersByTimeAsync(100);
+      rig.prefs.set(unit, { wide: 'z'.repeat(7_000) });
+      rig.host.fire('window', 'pagehide');
+      const sends = rig.writes().filter((call) => call.kind === 'send');
+      expect(sends.map((call) => [(call.body as { items: { key: string }[] }).items.map((item) => item.key), call.options])).toEqual([
+        [['search.gl.Unit.view', 'search.gl.Agent.view'], { tenantId: 18 }],
+        // Tenant 17's view would fit under a cut of its own; under the shared one it is the oldest, and drops.
+        [['acme.creditReview.threshold'], { tenantId: 17 }],
+      ]);
+      expect(sends.reduce((total, call) => total + JSON.stringify(call.body).length, 0)).toBeLessThanOrEqual(16_384);
+      expect(rig.items('tm.prefs.dropped')).toEqual([{ reason: 'pagehide-cap' }]);
     });
 
     it('keeps both bodies within 16 KB, dropping the older keys with pagehide-cap', async () => {

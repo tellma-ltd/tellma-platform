@@ -28,6 +28,7 @@ import type { TmMeResult, TmPreferencesResult, TmTenantFacts } from '../launch/t
 import { TmClientStore } from '../store/tm-client-store';
 import type { TmTenantPartition } from '../store/tm-store-layout';
 import { TmCacheRefresher } from '../sync/tm-cache-refresher';
+import { TM_STATE_PARTS } from '../tm-state-dump';
 import type { TmPreferenceKey, TmPreferenceKind } from './tm-preference-key';
 
 // The user's preferences (spec 0025 §9). The server's bag, `me.preferences`,
@@ -170,12 +171,15 @@ export class TmPreferences {
   readonly #parsed = new Map<string, unknown>();
   /** The keys and strings already reported invalid. */
   readonly #invalid = new Set<string>();
-  /** When the tab last flushed write-behind keys; `nav.recent` too. */
+  /** When the tab last flushed write-behind keys, in epoch milliseconds. */
   #lastFlush = -Infinity;
+  /** When the tab last flushed `nav.recent`, in epoch milliseconds. */
   #lastRecent = -Infinity;
 
   /** Creates the service, which follows the other tabs, the page's life and the server's reach. */
   constructor() {
+    inject(TM_STATE_PARTS).preferences = () => this.ɵdirty();
+
     // --- Another tab's choice replaces this tab's ---
     const subscription = this.#bus.messages.subscribe((message) => {
       if (message.type === 'prefs.changed') {

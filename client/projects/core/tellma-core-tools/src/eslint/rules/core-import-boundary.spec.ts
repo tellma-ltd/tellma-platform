@@ -125,8 +125,22 @@ describe('tm/core-import-boundary', () => {
 
   it('refuses relative imports across entry points and imports of its own entry point by name', () => {
     tester.run('tm/core-import-boundary', tmCoreImportBoundary as never, {
-      valid: [],
+      valid: [
+        // A test file reaches another entry point's test rigs: no build ships either.
+        { code: "import { rig } from '../../src/api/x.testing.util';", filename: core('search/src/a.spec.ts') },
+        { code: "import { rig } from '../src/x.testing.util';", filename: core('shell/b.testing.util.ts') },
+      ],
       invalid: [
+        {
+          code: "import { x } from '../../src/api/x';",
+          filename: core('search/src/a.spec.ts'),
+          errors: [{ messageId: 'relativeAcross' }],
+        },
+        {
+          code: "import { rig } from '../src/x.testing.util';",
+          filename: core('shell/a.ts'),
+          errors: [{ messageId: 'relativeAcross' }],
+        },
         {
           code: "import { s } from '../shell';",
           filename: core('src/a.ts'),

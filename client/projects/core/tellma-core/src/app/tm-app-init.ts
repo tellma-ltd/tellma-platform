@@ -12,6 +12,7 @@ import {
   Injector,
   provideAppInitializer,
   provideEnvironmentInitializer,
+  type Type,
 } from '@angular/core';
 import { NavigationEnd, Router } from '@angular/router';
 
@@ -24,7 +25,6 @@ import { TmTelemetry } from '../observe/tm-telemetry';
 import { TmPageFocus } from '../routes/tm-page-focus';
 import { TmLaunchTimer } from '../routes/tm-route-host';
 import { TmSession } from '../session/tm-session';
-import { TmRecents } from '../state/memory/tm-recents';
 import { TmClientStore } from '../state/store/tm-client-store';
 import { TmUrls } from '../urls/tm-urls';
 import type { TmAppConfig } from './tm-app-config';
@@ -38,8 +38,14 @@ import { TmPlatformText, type TmLoadedStrings } from './tm-platform-text';
 // boot page `load-failed`, and the app never starts. Beside them, the router
 // wiring: the routed tenant's `lastTenantId`, focus after navigation and the
 // launch's timing; and
-// after first render, at idle, the Contracts chunk, so the first API call
-// does not wait for it.
+// after first render, the recent pages' entry point, and at idle the
+// Contracts chunk, so the first API call does not wait for it.
+
+/** The recent pages' entry point, as far as the startup reads it. */
+interface TmRecentsModule {
+  /** The service that counts visits once created. */
+  readonly TmRecents: Type<unknown>;
+}
 
 /** A promise that never settles: the app does not start under the boot page. */
 const NEVER = new Promise<never>(() => undefined);
@@ -101,19 +107,31 @@ export function tmStartup(config: TmAppConfig): EnvironmentProviders[] {
       const store = inject(TmClientStore);
       const injector = inject(Injector);
       const window = inject(DOCUMENT).defaultView;
+      const telemetry = inject(TmTelemetry);
       // Created now, so the routed tenant is known before the first page's links.
       inject(TmUrls);
       inject(TmPageFocus).ɵstart();
       inject(TmLaunchTimer).ɵstart();
       // After first render: the recent pages' visit count; at idle, the
       // Contracts chunk, which the HTTP layer keeps.
-      // An app torn down before its idle moment loads nothing.
+      // An app torn down before either moment starts nothing.
       let alive = true;
       inject(DestroyRef).onDestroy(() => (alive = false));
       afterNextRender(
         () => {
           // Recent pages count visits from the first page on (spec 0025 §13).
-          injector.get(TmRecents);
+          // Their entry point loads now, off the first frame; the specifier is
+          // cast so that the package build does not report the import back as
+          // a cycle, as with the shell. A failed load counts no visits until
+          // the next launch, and nothing else depends on it.
+          (import('@tellma/core/recents' as string) as Promise<TmRecentsModule>).then(
+            (recents) => {
+              if (alive) {
+                injector.get(recents.TmRecents);
+              }
+            },
+            (error: unknown) => telemetry.error(error, { source: 'tm-recents' }),
+          );
           const load = (): void => {
             const api = alive ? injector.get(TmApi) : null;
             if (api instanceof TmHttpApi) {

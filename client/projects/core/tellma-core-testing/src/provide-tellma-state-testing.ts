@@ -76,8 +76,9 @@ export function tmMemoryStoreProvider(): Provider {
  * {@link TmFakeTabBus} in place of `TmTabBus`, {@link TmFakeLocks} in place
  * of the browser's locks, a {@link TmFakeSession} in place of `TmSession`,
  * signed in and active, so the store's write guard passes until the test
- * changes the session, and `TmDrafts` over a session storage of its own, so
- * no draft outlives the test. Use it beside `provideTellmaTesting()`.
+ * changes the session, and `@tellma/core/memory`'s `TmDrafts` over a session
+ * storage of its own, so no draft outlives the test. Use it beside
+ * `provideTellmaTesting()`.
  *
  * @example
  * ```ts

@@ -3,30 +3,27 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-import { computed, DestroyRef, inject, Injectable, InjectionToken, Injector, signal, untracked, type Signal } from '@angular/core';
-
-import { TM_API_HOST } from '../../api/tm-api-host';
-import { TM_NOW } from '../../app/tm-now';
-import type { TmId, TmJson } from '../../json/tm-json';
-import { TmTelemetry } from '../../observe/tm-telemetry';
-import { TmSession } from '../../session/tm-session';
-import { TM_SESSION_HOST, type TmSessionStorage } from '../../session/tm-session-host';
-import { TM_DRAFT_KEY_PREFIX, tmDraftPrefix, tmRemoveDrafts, tmStorageKeys } from './tm-draft-keys';
+import { computed, DestroyRef, inject, Injectable, Injector, signal, untracked, type Signal } from '@angular/core';
+import {
+  TM_NOW,
+  type TmId,
+  type TmJson,
+  TmSession,
+  TmTelemetry,
+  ɵTM_API_HOST,
+  ɵTM_DRAFT_KEY_PREFIX,
+  ɵTM_DRAFTS_STORAGE,
+  ɵTM_STATE_PARTS,
+  ɵtmDraftPrefix,
+  ɵtmRemoveDrafts,
+  ɵtmStorageKeys,
+} from '@tellma/core';
 
 // Drafts (spec 0025 §11): a tab's unsaved form copies in session storage, so
 // a reload or a re-authentication returns the user to edit mode with nothing
 // lost, while a new tab starts clean. Saves are debounced and flushed
 // synchronously when the page hides; a full storage gives up this tab's
 // oldest other drafts before the draft lives in memory alone.
-
-/**
- * The session storage drafts live in: the tab's own unless a test provides
- * another. Internal.
- */
-export const TM_DRAFTS_STORAGE = new InjectionToken<TmSessionStorage | null>('TM_DRAFTS_STORAGE', {
-  providedIn: 'root',
-  factory: () => inject(TM_SESSION_HOST).sessionStorage,
-});
 
 /** A draft as stored: its format, when it was written, and the form's copy. */
 interface TmStoredDraft {
@@ -73,7 +70,7 @@ function isQuota(error: unknown): boolean {
 @Injectable({ providedIn: 'root' })
 export class TmDrafts {
   readonly #injector = inject(Injector);
-  readonly #storage = inject(TM_DRAFTS_STORAGE);
+  readonly #storage = inject(ɵTM_DRAFTS_STORAGE);
   readonly #now = inject(TM_NOW);
   readonly #telemetry = inject(TmTelemetry);
 
@@ -82,7 +79,8 @@ export class TmDrafts {
   /** The drafts the storage could not take, by key, which live in this tab's memory alone. */
   readonly #memory = new Map<string, TmStoredDraft>();
   /** Every draft key this tab holds, stored, pending or in memory. */
-  readonly #keys = signal<ReadonlySet<string>>(new Set(tmStorageKeys(this.#storage, TM_DRAFT_KEY_PREFIX)));
+  readonly #keys = signal<ReadonlySet<string>>(new Set(ɵtmStorageKeys(this.#storage, ɵTM_DRAFT_KEY_PREFIX)));
+  /** The debounce's timer, while saves wait for it. */
   #timer: ReturnType<typeof setTimeout> | undefined;
 
   /** The number of this tab's drafts of the signed-in user. */
@@ -93,7 +91,8 @@ export class TmDrafts {
 
   /** Creates the service, which flushes the saves when the page hides. */
   constructor() {
-    const host = inject(TM_API_HOST);
+    inject(ɵTM_STATE_PARTS).drafts = () => this.ɵkeys();
+    const host = inject(ɵTM_API_HOST);
     const stops = [
       host.listen('window', 'pagehide', () => this.flush()),
       host.listen('document', 'visibilitychange', () => {
@@ -117,7 +116,7 @@ export class TmDrafts {
    * @returns The key, such as `tm.draft:<sub>:17:gl.Center:5`.
    */
   key(tenantId: number, entity: string, id: TmId | 'new'): string {
-    return `${tmDraftPrefix(this.#sub() ?? '')}${tenantId}:${entity}:${id}`;
+    return `${ɵtmDraftPrefix(this.#sub() ?? '')}${tenantId}:${entity}:${id}`;
   }
 
   /**
@@ -175,14 +174,14 @@ export class TmDrafts {
    * @param sub - The user's subject.
    */
   clearAll(sub: string): void {
-    const prefix = tmDraftPrefix(sub);
+    const prefix = ɵtmDraftPrefix(sub);
     for (const key of [...this.#pending.keys(), ...this.#memory.keys()]) {
       if (key.startsWith(prefix)) {
         this.#pending.delete(key);
         this.#memory.delete(key);
       }
     }
-    tmRemoveDrafts(this.#storage, sub);
+    ɵtmRemoveDrafts(this.#storage, sub);
     this.#drop((key) => key.startsWith(prefix));
   }
 
@@ -203,7 +202,7 @@ export class TmDrafts {
    * @returns The keys, such as `17:gl.Center:5`.
    */
   ɵkeys(): string[] {
-    return [...this.#keys()].map((key) => key.slice(key.indexOf(':', TM_DRAFT_KEY_PREFIX.length) + 1));
+    return [...this.#keys()].map((key) => key.slice(key.indexOf(':', ɵTM_DRAFT_KEY_PREFIX.length) + 1));
   }
 
   /** The signed-in user's subject, or `null`. */
@@ -214,7 +213,7 @@ export class TmDrafts {
   /** The signed-in user's draft prefix, or `null` with no user. */
   #prefix(): string | null {
     const sub = this.#sub();
-    return sub === null ? null : tmDraftPrefix(sub);
+    return sub === null ? null : ɵtmDraftPrefix(sub);
   }
 
   /** Whether a key is a draft of the signed-in user. */
@@ -276,7 +275,7 @@ export class TmDrafts {
    */
   #evict(key: string, length: number): void {
     const storage = this.#storage!;
-    const others = tmStorageKeys(storage, TM_DRAFT_KEY_PREFIX)
+    const others = ɵtmStorageKeys(storage, ɵTM_DRAFT_KEY_PREFIX)
       .filter((other) => other !== key)
       .map((other) => {
         const text = storage.getItem(other) ?? '';

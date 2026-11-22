@@ -4,20 +4,22 @@
 // LICENSE file in the root directory of this source tree.
 
 import { TestBed } from '@angular/core/testing';
+import { provideTellmaStateTesting, provideTellmaTesting } from '@tellma/core-testing';
 
 import { tmAppRig, tmNavigate, TM_T17 } from '../routes/tm-app.testing.util';
-import { TmDrafts } from './memory/tm-drafts';
-import { TmPageState, tmPageStateKey } from './memory/tm-page-state';
 import { tmPreferenceKey } from './prefs/tm-preference-key';
 import { TmPreferences } from './prefs/tm-preferences';
-import { TmStateDump } from './tm-state-dump';
+import { TM_STATE_PARTS, TmStateDump } from './tm-state-dump';
 
-// The state's dump section in a whole test app, warm in tenant 17.
+// The state's dump section, in a whole test app warm in tenant 17 and on its
+// own. The tab's memory is another entry point's, which a page loads with
+// import().
 
 describe('TmStateDump', () => {
   it('lists names and tags, never values', async () => {
     const rig = await tmAppRig();
     await tmNavigate('/17/centers');
+    const { TmDrafts, TmPageState, tmPageStateKey } = await import('@tellma/core/memory');
     await rig.store.put({ kind: 'device' }, 'zone', { tag: null, savedAt: 1, data: { auto: true } });
     rig.api.respond('users/me/preferences/set', () => new Promise(() => undefined));
     TestBed.inject(TmPreferences).set(tmPreferenceKey('nav.pinnedBarVisible', 'curated', true), false);
@@ -39,5 +41,14 @@ describe('TmStateDump', () => {
     expect(dump.drafts).toEqual(['17:gl.Center:5']);
     expect(dump.pageState).toEqual(['/17/centers']);
     expect(JSON.stringify(dump)).not.toMatch(/Secret|auto/);
+  });
+
+  it('reads the parts of services not yet created as empty, and creates none of them', () => {
+    TestBed.configureTestingModule({ providers: [provideTellmaTesting(), provideTellmaStateTesting()] });
+    const parts = TestBed.inject(TM_STATE_PARTS);
+    const dump = TestBed.inject(TmStateDump).read();
+    expect(dump).toEqual(expect.objectContaining({ preferences: { dirty: [] }, drafts: [], pageState: [] }));
+    // No service reported, so none was created by the read.
+    expect(parts).toEqual({});
   });
 });

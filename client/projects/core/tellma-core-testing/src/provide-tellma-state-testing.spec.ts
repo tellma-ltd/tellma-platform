@@ -6,13 +6,13 @@
 import { TestBed } from '@angular/core/testing';
 import {
   TmClientStore,
-  TmDrafts,
   TmSession,
   TmStoreRefusedError,
   TmTabBus,
   type TmBusMessage,
   type TmPartition,
 } from '@tellma/core';
+import { TmDrafts } from '@tellma/core/memory';
 
 import { provideTellmaStateTesting } from './provide-tellma-state-testing';
 import { provideTellmaTesting } from './provide-tellma-testing';

@@ -4,9 +4,9 @@
 // LICENSE file in the root directory of this source tree.
 
 import { TestBed } from '@angular/core/testing';
+import type { TmMeResult, TmTenantSettingsForClient } from '@tellma/core';
 
-import { tmAppRig, tmSettle, TM_T17, TM_T17_DOCS, type TmAppRig } from '../../routes/tm-app.testing.util';
-import type { TmMeResult, TmTenantSettingsForClient } from '../launch/tm-launch-docs';
+import { tmAppRig, tmSettle, TM_T17, TM_T17_DOCS, type TmAppRig } from '../../src/routes/tm-app.testing.util';
 import { TmPageState, tmPageStateKey } from './tm-page-state';
 
 // Page state in a whole test app, whose route table classifies the keys, over

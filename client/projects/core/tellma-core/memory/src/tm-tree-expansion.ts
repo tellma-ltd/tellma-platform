@@ -4,13 +4,7 @@
 // LICENSE file in the root directory of this source tree.
 
 import { computed, DestroyRef, inject, Injectable, Injector, signal, untracked, type Signal, type WritableSignal } from '@angular/core';
-
-import { TM_API_HOST } from '../../api/tm-api-host';
-import type { TmId } from '../../json/tm-json';
-import { TmTelemetry } from '../../observe/tm-telemetry';
-import { TmSession } from '../../session/tm-session';
-import { TmClientStore, TmStoreRefusedError } from '../store/tm-client-store';
-import type { TmPartition } from '../store/tm-store-layout';
+import { TmClientStore, type TmId, type TmPartition, TmSession, TmStoreRefusedError, TmTelemetry, ɵTM_API_HOST } from '@tellma/core';
 
 // Tree expansion memory (spec 0025 §12): a tree search page's expanded nodes,
 // kept in the sign-in session's partition of the store, so every tab sees
@@ -30,8 +24,10 @@ type TmTreeChange =
 
 /** A page's view and its changes not yet written. */
 interface TmTreePage {
-  /** The changes not yet written, oldest first. */
+  /** The changes not yet written, oldest first, including those a write has in flight. */
   readonly pending: WritableSignal<readonly TmTreeChange[]>;
+  /** The pending changes a write has in flight, which the next flush leaves to it. */
+  readonly sending: Set<TmTreeChange>;
   /** The expanded ids, as stored with the pending changes made. */
   readonly view: Signal<ReadonlySet<TmId>>;
 }
@@ -84,11 +80,12 @@ export class TmTreeExpansion {
 
   /** Each page's view and pending changes, by the page's path. */
   readonly #pages = new Map<string, TmTreePage>();
+  /** The debounce's timer, while changes wait for it. */
   #timer: ReturnType<typeof setTimeout> | undefined;
 
   /** Creates the service, which writes what is pending when the page hides. */
   constructor() {
-    const stop = inject(TM_API_HOST).listen('window', 'pagehide', () => this.#flush());
+    const stop = inject(ɵTM_API_HOST).listen('window', 'pagehide', () => this.#flush());
     inject(DestroyRef).onDestroy(() => {
       stop();
       clearTimeout(this.#timer);
@@ -143,7 +140,7 @@ export class TmTreeExpansion {
         const stored = partition === null ? undefined : this.#store.doc<TmTreeDoc>(partition, `tree:${page}`)();
         return new Set(apply(idsOf(stored?.data), pending())) as ReadonlySet<TmId>;
       });
-      entry = { pending, view };
+      entry = { pending, sending: new Set(), view };
       this.#pages.set(page, entry);
       // The partition is read at the first use, unless the boot step read it.
       const partition = untracked(() => this.#partition());
@@ -164,18 +161,26 @@ export class TmTreeExpansion {
     this.#timer = setTimeout(() => this.#flush(), DEBOUNCE_MS);
   }
 
-  /** Writes every page's pending changes; each patch makes them on the stored copy. */
+  /**
+   * Writes every page's pending changes that no write has in flight; each
+   * patch makes them on the stored copy.
+   */
   #flush(): void {
     clearTimeout(this.#timer);
     const partition = untracked(() => this.#partition());
-    for (const [page, { pending }] of this.#pages) {
-      const changes = untracked(pending);
+    for (const [page, { pending, sending }] of this.#pages) {
+      const changes = untracked(pending).filter((change) => !sending.has(change));
       if (partition === null || changes.length === 0) {
         continue;
       }
-      // The changes leave the pending list once the write settles, so the
-      // view never shows the stored copy without them in between.
-      const settle = (): void => pending.update((list) => list.slice(changes.length));
+      // The changes leave the pending list once their own write settles, so
+      // the view never shows the stored copy without them in between, and a
+      // write that lands after a later flush started removes only its own.
+      changes.forEach((change) => sending.add(change));
+      const settle = (): void => {
+        changes.forEach((change) => sending.delete(change));
+        pending.update((list) => list.filter((change) => !changes.includes(change)));
+      };
       this.#store
         .patch<TmTreeDoc>(partition, `tree:${page}`, (current) => ({ ids: apply(idsOf(current), changes) }))
         .then(settle, (error: unknown) => {

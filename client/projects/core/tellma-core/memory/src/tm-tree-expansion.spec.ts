@@ -4,13 +4,10 @@
 // LICENSE file in the root directory of this source tree.
 
 import { TestBed } from '@angular/core/testing';
+import { TmClientStore, type TmId, type TmPartition, ɵTM_API_HOST } from '@tellma/core';
 import { provideTellmaStateTesting, provideTellmaTesting, TmFakeSession } from '@tellma/core-testing';
 
-import { TM_API_HOST } from '../../api/tm-api-host';
-import { TmFakeApiHost } from '../../api/tm-api.testing.util';
-import type { TmId } from '../../json/tm-json';
-import { TmClientStore } from '../store/tm-client-store';
-import type { TmPartition } from '../store/tm-store-layout';
+import { TmFakeApiHost } from '../../src/api/tm-api.testing.util';
 import { TmTreeExpansion } from './tm-tree-expansion';
 
 // Tree expansion over an in-memory store and faked timers: the session
@@ -27,7 +24,7 @@ describe('TmTreeExpansion', () => {
   beforeEach(() => {
     host = new TmFakeApiHost();
     TestBed.configureTestingModule({
-      providers: [provideTellmaTesting(), provideTellmaStateTesting(), { provide: TM_API_HOST, useValue: host }],
+      providers: [provideTellmaTesting(), provideTellmaStateTesting(), { provide: ɵTM_API_HOST, useValue: host }],
     });
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     trees = TestBed.inject(TmTreeExpansion);
@@ -86,6 +83,35 @@ describe('TmTreeExpansion', () => {
     trees.replace(PAGE, Array.from({ length: 600 }, (_, i) => i + 1));
     expect(trees.expanded(PAGE)().size).toBe(500);
     expect([...trees.expanded(PAGE)()][0]).toBe(101);
+  });
+
+  it('keeps a change made while two slow writes are in flight, each write settling only its own', async () => {
+    // Every write waits for the gate, then commits in order, as one
+    // transaction queued behind a slow one does.
+    const patch = store.patch.bind(store);
+    let open!: () => void;
+    let queue = new Promise<void>((resolve) => (open = resolve));
+    const writes = vi.spyOn(store, 'patch').mockImplementation(((...args: Parameters<typeof patch>) => {
+      queue = queue.then(() => patch(...args));
+      return queue;
+    }) as typeof patch);
+    trees.toggle(PAGE, 1, true);
+    await vi.advanceTimersByTimeAsync(250);
+    trees.toggle(PAGE, 2, true);
+    await vi.advanceTimersByTimeAsync(250);
+    // The second write sends only the change the first does not carry.
+    expect(writes).toHaveBeenCalledTimes(2);
+    expect(writes.mock.calls[1]![2](undefined)).toEqual({ ids: [2] });
+    trees.toggle(PAGE, 3, true);
+    await vi.advanceTimersByTimeAsync(100);
+    open();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(stored()).toEqual([1, 2]);
+    expect([...trees.expanded(PAGE)()]).toEqual([1, 2, 3]);
+    await vi.advanceTimersByTimeAsync(150);
+    expect(writes).toHaveBeenCalledTimes(3);
+    expect(stored()).toEqual([1, 2, 3]);
+    expect([...trees.expanded(PAGE)()]).toEqual([1, 2, 3]);
   });
 
   it('writes what is pending at once when the page goes away', async () => {

@@ -3,12 +3,23 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-import type { TmSessionStorage } from '../../session/tm-session-host';
+import { inject, InjectionToken } from '@angular/core';
 
-// The session-storage keys of drafts (spec 0025 §11): `tm.draft:<sub>:...`.
-// Plain code shared by the drafts service and the session, which removes a
-// previous user's drafts after another user signs in, so neither imports the
-// other.
+import { TM_SESSION_HOST, type TmSessionStorage } from '../../session/tm-session-host';
+
+// The session storage of drafts (spec 0025 §11) and its keys,
+// `tm.draft:<sub>:...`: plain code shared by the drafts service, which lives
+// in a lazily loaded entry point, and the session, which removes a previous
+// user's drafts after another user signs in, so neither imports the other.
+
+/**
+ * The session storage drafts live in: the tab's own unless a test provides
+ * another. Internal.
+ */
+export const TM_DRAFTS_STORAGE = new InjectionToken<TmSessionStorage | null>('TM_DRAFTS_STORAGE', {
+  providedIn: 'root',
+  factory: () => inject(TM_SESSION_HOST).sessionStorage,
+});
 
 /** The prefix of every draft's session-storage key. */
 export const TM_DRAFT_KEY_PREFIX = 'tm.draft:';

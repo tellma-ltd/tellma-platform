@@ -15,18 +15,18 @@ import {
   type Signal,
 } from '@angular/core';
 import { type ActivatedRouteSnapshot, NavigationEnd, Router } from '@angular/router';
-
-import { TM_API_HOST } from '../../api/tm-api-host';
-import { TM_NOW } from '../../app/tm-now';
-import type { TmRouteData } from '../../app/tm-route-data';
-import type { TmPageKind } from '../../context/tm-page-kind';
-import { TmTitleStrategy } from '../../routes/tm-title-strategy';
-import type { TmRouteDataInternal } from '../../routes/tm-routes';
-import { TmUrls } from '../../urls/tm-urls';
-import { tmPreferenceKey } from '../prefs/tm-preference-key';
-import { TmPreferences } from '../prefs/tm-preferences';
-import { TmCacheRefresher } from '../sync/tm-cache-refresher';
-import { tmPageStateKey } from './tm-page-state';
+import {
+  TM_NOW,
+  TmCacheRefresher,
+  type TmPageKind,
+  TmPreferences,
+  tmPreferenceKey,
+  type TmRouteData,
+  TmTitleStrategy,
+  TmUrls,
+  ɵTM_API_HOST,
+  type ɵTmRouteDataInternal,
+} from '@tellma/core';
 
 // Recently visited pages (spec 0025 §13): the pages the user last visited in
 // the routed tenant, at most ten, kept in the write-behind preference
@@ -103,7 +103,7 @@ export const TM_ROUTED_PAGE = new InjectionToken<Signal<TmRoutedPage | null>>('T
       while (route.firstChild !== null) {
         route = route.firstChild;
       }
-      const data = route.data as Partial<TmRouteData & TmRouteDataInternal>;
+      const data = route.data as Partial<TmRouteData & ɵTmRouteDataInternal>;
       page.set(data.kind === undefined ? null : { url: router.url, kind: data.kind, list: data.ɵentity === 'list', title });
     };
     const subscription = router.events.subscribe((event) => {
@@ -170,9 +170,14 @@ function isVisits(value: unknown): value is readonly TmStoredVisit[] {
 /** The platform's `nav.recent` key. */
 const NAV_RECENT = tmPreferenceKey<readonly TmStoredVisit[]>('nav.recent', 'write-behind', [], isVisits);
 
+/** A router URL's path, without its query or fragment. */
+function pathOf(url: string): string {
+  return url.split(/[?#]/, 1)[0]!;
+}
+
 /** The tenant-relative path of a router URL: `/17/reports/42?x=1` reads `reports/42`. */
 function relative(url: string): string {
-  return tmPageStateKey(url).split('/').slice(2).join('/');
+  return pathOf(url).split('/').slice(2).join('/');
 }
 
 /**
@@ -209,16 +214,18 @@ export class TmRecents {
           .filter((page) => this.#navigation.resolve(page.url) === 'ok');
   });
 
-  /** The page whose dwell is timed or counted: its path, and whether the document is visible. */
+  /** The path whose dwell is being timed, or `null` while none is. */
   #armed: string | null = null;
-  /** The routed page's path, and whether its visit counted. */
+  /** The routed page's path, when it is of a kind that counts. */
   #path: string | null = null;
+  /** Whether the routed page's visit already counted. */
   #counted = false;
+  /** The dwell's timer, while one runs. */
   #timer: ReturnType<typeof setTimeout> | undefined;
 
   /** Creates the service, which counts the routed page's visits from now on. */
   constructor() {
-    const host = inject(TM_API_HOST);
+    const host = inject(ɵTM_API_HOST);
     const page = inject(TM_ROUTED_PAGE);
     const visible = signal(host.visible());
     const stop = host.listen('document', 'visibilitychange', () => visible.set(host.visible()));
@@ -230,7 +237,7 @@ export class TmRecents {
       const routed = page();
       const shown = visible();
       untracked(() => {
-        const path = routed !== null && !routed.list && KINDS.includes(routed.kind) ? tmPageStateKey(routed.url) : null;
+        const path = routed !== null && !routed.list && KINDS.includes(routed.kind) ? pathOf(routed.url) : null;
         if (path !== this.#path) {
           this.#path = path;
           this.#counted = false;

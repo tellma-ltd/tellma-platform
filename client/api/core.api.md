@@ -505,20 +505,6 @@ export interface TmDownloadOptions extends TmReadOptions {
 }
 
 // @public
-export class TmDrafts {
-    constructor();
-    clear(key: string): void;
-    clearAll(sub: string): void;
-    readonly dirtyCount: Signal<number>;
-    flush(): void;
-    key(tenantId: number, entity: string, id: 'new' | TmId): string;
-    load(key: string): TmJson | undefined;
-    save(key: string, value: TmJson): void;
-    static ɵfac: i0.ɵɵFactoryDeclaration<TmDrafts, never>;
-    static ɵprov: i0.ɵɵInjectableDeclaration<TmDrafts>;
-}
-
-// @public
 export interface TmDraftsQueryMessage {
     readonly replyTo: string;
     readonly type: 'drafts.query';
@@ -955,29 +941,6 @@ export interface TmPageDefinition {
 export type TmPageKind = 'access' | 'custom' | 'dashboard' | 'details' | 'home' | 'report' | 'search' | 'settings' | 'studio';
 
 // @public
-export class TmPageState {
-    constructor();
-    forget(key: TmPageStateKey): void;
-    isStale(key: TmPageStateKey): boolean;
-    markStale(scope: {
-        readonly tenantId: number;
-        readonly entity?: string;
-    }): void;
-    recall<T>(key: TmPageStateKey): T | undefined;
-    remember<T>(key: TmPageStateKey, state: T, options?: TmRememberOptions): void;
-    static ɵfac: i0.ɵɵFactoryDeclaration<TmPageState, never>;
-    static ɵprov: i0.ɵɵInjectableDeclaration<TmPageState>;
-}
-
-// @public
-export type TmPageStateKey = string & {
-    readonly __tmPageStateKey: true;
-};
-
-// @public
-export function tmPageStateKey(path: string): TmPageStateKey;
-
-// @public
 export function tmParseProfileCookie(cookies: string): TmProfile | null;
 
 // @public
@@ -1090,28 +1053,6 @@ export interface TmReadOptions {
     readonly priority?: 'low';
     readonly signal: AbortSignal;
     readonly tenantId?: number;
-}
-
-// @public
-export interface TmRecentPage {
-    readonly icon: string | null;
-    readonly kind: TmPageKind;
-    readonly title: Signal<string>;
-    readonly url: string;
-    readonly visitedAt: number;
-}
-
-// @public
-export class TmRecents {
-    constructor();
-    readonly pages: Signal<readonly TmRecentPage[]>;
-    static ɵfac: i0.ɵɵFactoryDeclaration<TmRecents, never>;
-    static ɵprov: i0.ɵɵInjectableDeclaration<TmRecents>;
-}
-
-// @public
-export interface TmRememberOptions {
-    readonly keepStale?: boolean;
 }
 
 // @public
@@ -1520,16 +1461,6 @@ export class TmTitleStrategy extends TitleStrategy {
     updateTitle(snapshot: RouterStateSnapshot): void;
     static ɵfac: i0.ɵɵFactoryDeclaration<TmTitleStrategy, never>;
     static ɵprov: i0.ɵɵInjectableDeclaration<TmTitleStrategy>;
-}
-
-// @public
-export class TmTreeExpansion {
-    constructor();
-    expanded(page: string): Signal<ReadonlySet<TmId>>;
-    replace(page: string, ids: Iterable<TmId>): void;
-    toggle(page: string, id: TmId, open: boolean): void;
-    static ɵfac: i0.ɵɵFactoryDeclaration<TmTreeExpansion, never>;
-    static ɵprov: i0.ɵɵInjectableDeclaration<TmTreeExpansion>;
 }
 
 // @public

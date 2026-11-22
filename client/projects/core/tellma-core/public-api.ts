@@ -216,19 +216,11 @@ export {
   type TmSyncTrigger,
 } from './src/state/sync/tm-cache-refresher';
 
-// The user's preferences, and the tab's memory: page state, drafts, tree
-// expansion and recently visited pages.
+// The user's preferences. The tab's memory (page state, drafts and tree
+// expansion) is @tellma/core/memory's, and recently visited pages are
+// @tellma/core/recents'.
 export { tmPreferenceKey, type TmPreferenceKey, type TmPreferenceKind } from './src/state/prefs/tm-preference-key';
 export { TmPreferences } from './src/state/prefs/tm-preferences';
-export {
-  TmPageState,
-  tmPageStateKey,
-  type TmPageStateKey,
-  type TmRememberOptions,
-} from './src/state/memory/tm-page-state';
-export { TmDrafts } from './src/state/memory/tm-drafts';
-export { TmTreeExpansion } from './src/state/memory/tm-tree-expansion';
-export { TmRecents, type TmRecentPage } from './src/state/memory/tm-recents';
 
 // The client metadata's holder, which @tellma/core-testing loads, and the
 // client store's browser, which it replaces; not for app code.
@@ -240,19 +232,27 @@ export type { TmSyncDoc as ɵTmSyncDoc } from './src/state/launch/tm-launch-docs
 // error presenter, which the app's error presenter provides; not for app code.
 export { TmLocks as ɵTmLocks } from './src/state/sync/tm-locks';
 export { TM_SYNC_ERRORS as ɵTM_SYNC_ERRORS, type TmSyncErrors as ɵTmSyncErrors } from './src/state/sync/tm-cache-refresher';
-// The drafts' storage, which @tellma/core-testing replaces; the routed page
-// and the launcher's answers that recents read until the page context and
-// the launcher land; and the state's section of the support dump. Not for
-// app code.
-export { TM_DRAFTS_STORAGE as ɵTM_DRAFTS_STORAGE } from './src/state/memory/tm-drafts';
+// What @tellma/core/memory and @tellma/core/recents build on: the browser
+// seams, the routed tenant of a URL, the route data the route table adds, the
+// drafts' storage (which @tellma/core-testing replaces) and keys (which the
+// session's sign-in sweep shares), and the state's section of the support
+// dump with the parts the services report to it. Not for app code.
+export { TM_API_HOST as ɵTM_API_HOST, type TmApiHost as ɵTmApiHost } from './src/api/tm-api-host';
+export { tmRoutedTenant as ɵtmRoutedTenant } from './src/launch/tm-routed-tenant';
+export type { TmRouteDataInternal as ɵTmRouteDataInternal } from './src/routes/tm-routes';
 export {
-  TM_RECENTS_NAVIGATION as ɵTM_RECENTS_NAVIGATION,
-  TM_ROUTED_PAGE as ɵTM_ROUTED_PAGE,
-  type TmRecentsEntry as ɵTmRecentsEntry,
-  type TmRecentsNavigation as ɵTmRecentsNavigation,
-  type TmRoutedPage as ɵTmRoutedPage,
-} from './src/state/memory/tm-recents';
-export { TmStateDump as ɵTmStateDump, type TmStateDumpSection as ɵTmStateDumpSection } from './src/state/tm-state-dump';
+  TM_DRAFT_KEY_PREFIX as ɵTM_DRAFT_KEY_PREFIX,
+  TM_DRAFTS_STORAGE as ɵTM_DRAFTS_STORAGE,
+  tmDraftPrefix as ɵtmDraftPrefix,
+  tmRemoveDrafts as ɵtmRemoveDrafts,
+  tmStorageKeys as ɵtmStorageKeys,
+} from './src/state/memory/tm-draft-keys';
+export {
+  TM_STATE_PARTS as ɵTM_STATE_PARTS,
+  TmStateDump as ɵTmStateDump,
+  type TmStateDumpSection as ɵTmStateDumpSection,
+  type TmStateParts as ɵTmStateParts,
+} from './src/state/tm-state-dump';
 export type { TmStoredDocInfo as ɵTmStoredDocInfo } from './src/state/store/tm-client-store';
 
 // The launch: the single-membership rule and the automatic-entry mark.

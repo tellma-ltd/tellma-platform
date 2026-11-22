@@ -6,16 +6,11 @@
 import { Component, signal, type WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { provideRouter, Router } from '@angular/router';
+import { TM_NOW, TmClientStore, type TmMeResult, type TmPageKind, type TmPartition, type TmStoredDoc, type TmTenantFacts, ɵTM_API_HOST } from '@tellma/core';
 import { provideTellmaStateTesting, provideTellmaTesting, TmFakeApi } from '@tellma/core-testing';
 
-import { TM_API_HOST } from '../../api/tm-api-host';
-import { TmFakeApiHost } from '../../api/tm-api.testing.util';
-import { TM_NOW } from '../../app/tm-now';
-import type { TmPageKind } from '../../context/tm-page-kind';
-import { tmAppRig, tmNavigate, tmSettle, TM_T17_DOCS } from '../../routes/tm-app.testing.util';
-import type { TmMeResult, TmTenantFacts } from '../launch/tm-launch-docs';
-import { TmClientStore, type TmStoredDoc } from '../store/tm-client-store';
-import type { TmTenantPartition } from '../store/tm-store-layout';
+import { TmFakeApiHost } from '../../src/api/tm-api.testing.util';
+import { tmAppRig, tmNavigate, tmSettle, TM_T17_DOCS } from '../../src/routes/tm-app.testing.util';
 import {
   TM_RECENTS_NAVIGATION,
   TM_ROUTED_PAGE,
@@ -33,7 +28,7 @@ import {
 class TmPage {}
 
 const NOW = 1_792_400_000_000;
-const T17: TmTenantPartition = { kind: 'tenant', sub: 'test-user', tenantId: 17 };
+const T17: TmPartition = { kind: 'tenant', sub: 'test-user', tenantId: 17 };
 
 /** What a spec drives and inspects. */
 interface TmRig {
@@ -64,7 +59,7 @@ async function setUp(bag: Readonly<Record<string, string>> = {}): Promise<TmRig>
       provideTellmaTesting(),
       provideTellmaStateTesting(),
       provideRouter([{ path: '**', component: TmPage }]),
-      { provide: TM_API_HOST, useValue: host },
+      { provide: ɵTM_API_HOST, useValue: host },
       { provide: TM_NOW, useValue: () => Date.now() },
       { provide: TM_ROUTED_PAGE, useValue: page.asReadonly() },
       { provide: TM_RECENTS_NAVIGATION, useValue: navigation },
