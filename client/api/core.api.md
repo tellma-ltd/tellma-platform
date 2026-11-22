@@ -991,6 +991,7 @@ export interface TmPreferencesResult {
 
 // @public
 export interface TmPrefsChangedMessage {
+    readonly revert?: true;
     readonly tenantId: number;
     readonly type: 'prefs.changed';
     readonly values: Readonly<Record<string, string | null>>;

@@ -451,12 +451,76 @@ describe('TmPreferences', () => {
       expect([pinned(), toasts()]).toEqual([[1], true]);
       expect(rig.items('tm.prefs.dropped')).toEqual([{ reason: 'key-cap' }]);
       expect(rig.items('tm.prefs.flush-failed')).toEqual([{ kind: 'validation' }]);
+      // The other tabs hear the refused values as a revert, never as a later choice.
       expect(rig.posted().at(-1)).toEqual({
         type: 'prefs.changed',
         tenantId: 17,
-        values: { 'nav.pinned': '[1]', 'notifications.toasts': null },
+        values: { 'nav.pinned': '[1,2]', 'notifications.toasts': 'false' },
+        revert: true,
       });
       expect(rig.prefs.ɵdirty()).toEqual([]);
+    });
+
+    it.each([
+      ['the key cap', () => failure('validation', [{ code: 'Users.TooManyPreferenceKeys', path: '' }])],
+      ['a kind it has no rule for', () => new TmApiError({ kind: 'forbidden', status: 403 })],
+    ])('keeps a value set while a write refused for %s was in flight, and saves it again', async (_, refusal) => {
+      const rig = await setUp();
+      let refuse!: () => void;
+      let calls = 0;
+      rig.api.respond('users/me/preferences/set', (call: TmFakeApiCall) => {
+        if (++calls === 1) {
+          return new Promise((_, reject) => (refuse = () => reject(refusal())));
+        }
+        const items = (call.body as { items: { key: string; value: string }[] }).items;
+        return { preferences: Object.fromEntries(items.map((item) => [item.key, item.value])), preferencesTag: 'P2' };
+      });
+      const pinned = rig.prefs.get(PINNED);
+      rig.prefs.set(PINNED, [1]);
+      await flush();
+      rig.prefs.set(PINNED, [1, 2]);
+      const posts = rig.posted().length;
+      refuse();
+      await flush();
+      expect(rig.writes().map((call) => call.body)).toEqual([
+        { items: [{ key: 'nav.pinned', value: '[1]' }] },
+        { items: [{ key: 'nav.pinned', value: '[1,2]' }] },
+      ]);
+      expect(pinned()).toEqual([1, 2]);
+      expect(rig.prefs.ɵdirty()).toEqual([]);
+      // Nothing was dropped, so nothing was taken back from the other tabs.
+      expect(rig.items('tm.prefs.dropped')).toEqual([]);
+      expect(rig.posted()).toHaveLength(posts);
+    });
+
+    it("never keeps another tab's revert as a later choice, and takes back only the refused value it shows", async () => {
+      const rig = await setUp();
+      let land!: () => void;
+      rig.api.respond('users/me/preferences/set', (call: TmFakeApiCall) => {
+        const items = (call.body as { items: { key: string; value: string }[] }).items;
+        const result = { preferences: Object.fromEntries(items.map((item) => [item.key, item.value])), preferencesTag: 'P2' };
+        return new Promise((resolve) => (land = () => resolve(result)));
+      });
+      const pinned = rig.prefs.get(PINNED);
+      const toasts = rig.prefs.get(TOASTS);
+      rig.prefs.set(PINNED, [1]);
+      await flush();
+      // Another tab's write of the same key was refused while this tab's is in flight.
+      rig.bus.receive({ type: 'prefs.changed', tenantId: 17, values: { 'nav.pinned': '[9]' }, revert: true });
+      expect(pinned()).toEqual([1]);
+      land();
+      await flush();
+      expect(rig.writes()).toHaveLength(1);
+      expect(rig.prefs.ɵdirty()).toEqual([]);
+      expect(pinned()).toEqual([1]);
+
+      // A refused value this tab shows goes; one it does not show changes nothing.
+      rig.receive({ 'notifications.toasts': 'false' });
+      expect(toasts()).toBe(false);
+      rig.bus.receive({ type: 'prefs.changed', tenantId: 17, values: { 'notifications.toasts': 'true' }, revert: true });
+      expect(toasts()).toBe(false);
+      rig.bus.receive({ type: 'prefs.changed', tenantId: 17, values: { 'notifications.toasts': 'false' }, revert: true });
+      expect(toasts()).toBe(true);
     });
 
     it('drops only the keys another validation code names, and saves the rest again', async () => {

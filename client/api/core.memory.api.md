@@ -13,7 +13,6 @@ export class TmDrafts {
     clear(key: string): void;
     clearAll(sub: string): void;
     readonly dirtyCount: Signal<number>;
-    flush(): void;
     key(tenantId: number, entity: string, id: 'new' | TmId): string;
     load(key: string): TmJson | undefined;
     save(key: string, value: TmJson): void;

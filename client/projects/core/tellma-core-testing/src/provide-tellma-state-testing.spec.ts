@@ -68,7 +68,7 @@ describe('provideTellmaStateTesting', () => {
     const drafts = TestBed.inject(TmDrafts);
     const key = drafts.key(17, 'gl.Center', 5);
     drafts.save(key, { name: 'Jeddah' });
-    drafts.flush();
+    drafts.ɵflush();
     expect(drafts.load(key)).toEqual({ name: 'Jeddah' });
     expect(drafts.dirtyCount()).toBe(1);
     expect(sessionStorage.getItem(key)).toBeNull();

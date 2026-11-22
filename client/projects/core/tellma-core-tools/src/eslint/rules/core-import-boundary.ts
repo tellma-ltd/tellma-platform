@@ -85,9 +85,13 @@ function entryPointOf(root: string, path: string): string | null {
   }
 }
 
-/** Whether a path names a test file: a spec or a shared test rig, which no build ships. */
-function isTestFile(path: string): boolean {
-  return /\.(spec|testing\.util)(\.ts)?$/.test(path);
+/**
+ * Whether a path names a spec. Only a spec may borrow another entry point's
+ * test rig: a rig is a source file like any other, so a rig that borrowed one
+ * would let a production file reach across entry points through it.
+ */
+function isSpec(path: string): boolean {
+  return /\.spec\.ts$/.test(path);
 }
 
 /** The folder a relative specifier names: the path itself when it is a folder, else its parent. */
@@ -115,8 +119,9 @@ type Options = [{ readonly allowPrivate?: boolean }];
  * relative path, and follows the entry-point graph; a type-only or dynamic
  * import crosses any boundary. Everywhere, an import names an entry point and
  * nothing below one, and only platform packages (`allowPrivate`) may import
- * `@tellma/core/private`. A test file may reach another entry point's test
- * rigs (`*.testing.util`) by a relative path, since no build ships either.
+ * `@tellma/core/private`. A spec (`*.spec.ts`) may reach another entry
+ * point's test rigs (`*.testing.util`) by a relative path, since no build
+ * ships either; no other file may.
  */
 export const tmCoreImportBoundary = tmCreateRule<Options, string>({
   name: 'core-import-boundary',
@@ -165,11 +170,11 @@ export const tmCoreImportBoundary = tmCreateRule<Options, string>({
         context.report({ node: source, messageId, data });
 
       // A relative path inside the package must stay within its own entry
-      // point, except a test file's path to another entry point's test rig.
+      // point, except a spec's path to another entry point's test rig.
       if (inside && ownEntryPoint !== null && specifier.startsWith('.')) {
         const resolved = resolve(dirname(filename), specifier);
         const target = entryPointOf(owner.root, targetFolder(resolved));
-        const testRig = isTestFile(filename) && /\.testing\.util(\.ts)?$/.test(resolved);
+        const testRig = isSpec(filename) && /\.testing\.util(\.ts)?$/.test(resolved);
         if (target !== null && target !== ownEntryPoint && !testRig) {
           report('relativeAcross', {
             target,

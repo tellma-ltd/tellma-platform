@@ -94,10 +94,10 @@ export class TmDrafts {
     inject(ɵTM_STATE_PARTS).drafts = () => this.ɵkeys();
     const host = inject(ɵTM_API_HOST);
     const stops = [
-      host.listen('window', 'pagehide', () => this.flush()),
+      host.listen('window', 'pagehide', () => this.ɵflush()),
       host.listen('document', 'visibilitychange', () => {
         if (!host.visible()) {
-          this.flush();
+          this.ɵflush();
         }
       }),
     ];
@@ -133,7 +133,7 @@ export class TmDrafts {
     this.#pending.set(key, value);
     this.#hold(key);
     clearTimeout(this.#timer);
-    this.#timer = setTimeout(() => this.flush(), DEBOUNCE_MS);
+    this.#timer = setTimeout(() => this.ɵflush(), DEBOUNCE_MS);
   }
 
   /**
@@ -186,7 +186,7 @@ export class TmDrafts {
   }
 
   /** Writes every pending save now. Internal: the page's hiding, and the debounce. */
-  flush(): void {
+  ɵflush(): void {
     clearTimeout(this.#timer);
     const pending = [...this.#pending];
     this.#pending.clear();

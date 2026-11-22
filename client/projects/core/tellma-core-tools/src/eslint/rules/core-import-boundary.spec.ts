@@ -126,11 +126,22 @@ describe('tm/core-import-boundary', () => {
   it('refuses relative imports across entry points and imports of its own entry point by name', () => {
     tester.run('tm/core-import-boundary', tmCoreImportBoundary as never, {
       valid: [
-        // A test file reaches another entry point's test rigs: no build ships either.
+        // A spec reaches another entry point's test rigs: no build ships either.
         { code: "import { rig } from '../../src/api/x.testing.util';", filename: core('search/src/a.spec.ts') },
-        { code: "import { rig } from '../src/x.testing.util';", filename: core('shell/b.testing.util.ts') },
+        { code: "import { rig } from '../src/x.testing.util';", filename: core('shell/b.spec.ts') },
       ],
       invalid: [
+        // A rig is no spec: a production file could reach across entry points through it.
+        {
+          code: "import { rig } from '../src/x.testing.util';",
+          filename: core('shell/b.testing.util.ts'),
+          errors: [{ messageId: 'relativeAcross' }],
+        },
+        {
+          code: "import { rig } from '../../src/routes/tm-app.testing.util';",
+          filename: core('search/src/y.testing.util.ts'),
+          errors: [{ messageId: 'relativeAcross' }],
+        },
         {
           code: "import { x } from '../../src/api/x';",
           filename: core('search/src/a.spec.ts'),

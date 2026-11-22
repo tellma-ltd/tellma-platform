@@ -403,7 +403,11 @@ export class TmPreferences {
     return tenant;
   }
 
-  /** Another tab's values: each replaces the overlay entry and drops this tab's unsent value. */
+  /**
+   * Another tab's values: each replaces the overlay entry and drops this
+   * tab's unsent value. A revert only takes back the refused value where the
+   * overlay shows it, and never touches this tab's own unsaved values.
+   */
   #received(message: TmPrefsChangedMessage): void {
     const { tenantId: t, values } = message;
     if (typeof t !== 'number' || typeof values !== 'object' || values === null) {
@@ -411,6 +415,16 @@ export class TmPreferences {
     }
     const entries = Object.entries(values).filter(([, text]) => text === null || typeof text === 'string');
     const dirty = this.#tenants.get(t)?.dirty;
+    if (message.revert === true) {
+      const shown = untracked(this.#overlay)[t] ?? {};
+      const refused = entries
+        .filter(([key, text]) => dirty?.has(key) !== true && Object.hasOwn(shown, key) && shown[key] === text)
+        .map(([key]) => key);
+      if (refused.length > 0) {
+        this.#settle(t, undefined, refused);
+      }
+      return;
+    }
     for (const [key, text] of entries) {
       const mine = dirty?.get(key);
       if (mine?.sending) {
@@ -549,13 +563,13 @@ export class TmPreferences {
       this.#version.update((version) => version + 1);
       this.#telemetry.timing('tm.prefs.flush', performance.now() - started, { kind, keys: bucket(keys.length) });
     } catch (error) {
-      this.#failed(tenant, keys, error);
+      this.#failed(tenant, keys, sent, error);
     }
     this.#schedule(tenant.t);
   }
 
-  /** Handles a failed write by its kind. */
-  #failed(tenant: TmTenantPrefs, keys: readonly string[], error: unknown): void {
+  /** Handles a failed write of the values sent by its kind. */
+  #failed(tenant: TmTenantPrefs, keys: readonly string[], sent: ReadonlyMap<string, TmStoredText>, error: unknown): void {
     // Spec 0025 §9.4's outcomes, each counted in telemetry and none shown.
     const kind = error instanceof TmApiError ? error.kind : 'server';
     if (!(error instanceof TmApiError)) {
@@ -578,12 +592,12 @@ export class TmPreferences {
       // the server's return, or the page's end.
       keep(keys, Infinity);
     } else if (kind === 'read-only') {
-      this.#drop(tenant, keys, 'read-only');
+      this.#drop(tenant, keys, sent, 'read-only');
     } else if (kind === 'validation' && error instanceof TmApiError) {
       // The key cap drops the whole write; any other code drops the keys it names.
       const errors = (error.problem?.['errors'] ?? []) as readonly { readonly code?: unknown; readonly path?: unknown }[];
       if (errors.some((item) => item.code === KEY_CAP)) {
-        this.#drop(tenant, keys, 'key-cap');
+        this.#drop(tenant, keys, sent, 'key-cap');
         return;
       }
       const named = new Set<string>();
@@ -596,29 +610,42 @@ export class TmPreferences {
       }
       // A refusal that names no key of the write drops all of them; the
       // keys it does not name are saved again at once.
-      this.#drop(tenant, named.size > 0 ? [...named] : keys, 'rejected');
+      this.#drop(tenant, named.size > 0 ? [...named] : keys, sent, 'rejected');
       keep(
         keys.filter((key) => named.size > 0 && !named.has(key)),
         0,
       );
     } else {
-      this.#drop(tenant, keys, 'rejected');
+      this.#drop(tenant, keys, sent, 'rejected');
     }
   }
 
-  /** Drops keys: they leave the dirty map and the overlay, and every tab returns to the stored strings. */
-  #drop(tenant: TmTenantPrefs, keys: readonly string[], reason: string): void {
-    this.#telemetry.event('tm.prefs.dropped', { reason });
-    const partition = this.#partition(tenant.t);
-    const bag = partition === null ? undefined : untracked(() => this.#bag(partition));
-    const values: Record<string, TmStoredText> = {};
+  /**
+   * Drops the keys of a refused write: they leave the dirty map and the
+   * overlay, and every tab showing the refused values returns to its stored
+   * strings. A key whose value changed after it was sent holds a later
+   * choice, which is saved again instead.
+   */
+  #drop(tenant: TmTenantPrefs, keys: readonly string[], sent: ReadonlyMap<string, TmStoredText>, reason: string): void {
+    const refused: Record<string, TmStoredText> = {};
     for (const key of keys) {
-      tenant.dirty.delete(key);
-      values[key] = bag?.[key] ?? null;
+      const dirty = tenant.dirty.get(key);
+      if (dirty !== undefined && dirty.value !== sent.get(key)) {
+        // A set here, or another tab's choice, arrived while the write was in flight.
+        Object.assign(dirty, { sending: false, retryAt: 0 });
+      } else {
+        tenant.dirty.delete(key);
+        refused[key] = sent.get(key) ?? null;
+      }
     }
     this.#version.update((version) => version + 1);
-    this.#settle(tenant.t, bag, keys);
-    this.#bus.post({ type: 'prefs.changed', tenantId: tenant.t, values });
+    const dropped = Object.keys(refused);
+    if (dropped.length > 0) {
+      this.#telemetry.event('tm.prefs.dropped', { reason });
+      this.#settle(tenant.t, undefined, dropped);
+      // A revert, never a later choice: a tab with its own write of the key in flight keeps it.
+      this.#bus.post({ type: 'prefs.changed', tenantId: tenant.t, values: refused, revert: true });
+    }
   }
 
   /**

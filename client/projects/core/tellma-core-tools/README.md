@@ -16,7 +16,7 @@ package, built with `tsc -b` into `dist/`, and nothing in it ships to the browse
 
 | Rule | Refuses |
 |---|---|
-| `tm/core-import-boundary` | Inside `@tellma/core`, a static import that leaves the entry-point graph or crosses entry points by a relative path (but for a test file's path to another entry point's `*.testing.util` rig); everywhere, an import below an entry point, and `@tellma/core/private` outside platform packages |
+| `tm/core-import-boundary` | Inside `@tellma/core`, a static import that leaves the entry-point graph or crosses entry points by a relative path (but for a spec's path to another entry point's `*.testing.util` rig); everywhere, an import below an entry point, and `@tellma/core/private` outside platform packages |
 | `tm/no-raw-http` | `fetch`, `XMLHttpRequest` and Angular's `HttpClient`: every request goes through `TmApi` |
 | `tm/no-web-storage` | `localStorage`, `sessionStorage`, `indexedDB` and `caches`: the platform's client store keeps data per user |
 | `tm/lazy-layouts` | In `tmEntity`, `tmPage`, `tmFeature`, `tmWidget`, `tmOverride` and `tmCodedReport`, a layout member (`details`, `page`, `create`, `search`, `component`, `display`, `dialog`, `home`, `settingsEditor`, `panel`) that is not an inline `() => import('…')`; an entity's `details` may be an object whose `page` and `create` are checked instead, and `icons` and `providers` are not entered |

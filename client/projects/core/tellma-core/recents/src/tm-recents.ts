@@ -33,7 +33,10 @@ import {
 // `nav.recent` so they follow the user to every tab and browser. A visit is a
 // page of a listed kind that stays current for 2 s while the document is
 // visible. The launcher entry of a page names and draws it; access filters
-// the list on read, so a page whose access returns comes back.
+// the list on read, so a page whose access returns comes back. A tab keeps
+// its own visits while they are among the ten and merges them back into a
+// list that lacks them, so a tab that started from an older stored list
+// cannot erase them.
 
 /** A recently visited page, as the launcher and the home page list it. */
 export interface TmRecentPage {
@@ -175,6 +178,26 @@ function pathOf(url: string): string {
   return url.split(/[?#]/, 1)[0]!;
 }
 
+/**
+ * The newest visits of the lists, by path: a path keeps its latest visit,
+ * the first list's on a tie, newest first and at most ten.
+ */
+function merge(...lists: readonly (readonly TmStoredVisit[])[]): TmStoredVisit[] {
+  const latest = new Map<string, TmStoredVisit>();
+  for (const visit of lists.flat()) {
+    const held = latest.get(visit.p);
+    if (held === undefined || visit.t > held.t) {
+      latest.set(visit.p, visit);
+    }
+  }
+  return [...latest.values()].sort((a, b) => b.t - a.t).slice(0, CAPACITY);
+}
+
+/** Whether two lists hold the same visits in the same order. */
+function sameVisits(a: readonly TmStoredVisit[], b: readonly TmStoredVisit[]): boolean {
+  return a.length === b.length && a.every((visit, i) => visit.p === b[i]!.p && visit.t === b[i]!.t);
+}
+
 /** The tenant-relative path of a router URL: `/17/reports/42?x=1` reads `reports/42`. */
 function relative(url: string): string {
   return pathOf(url).split('/').slice(2).join('/');
@@ -222,6 +245,8 @@ export class TmRecents {
   #counted = false;
   /** The dwell's timer, while one runs. */
   #timer: ReturnType<typeof setTimeout> | undefined;
+  /** This tab's own visits by tenant, newest first, while the list's ten still hold them. */
+  readonly #own = new Map<number, readonly TmStoredVisit[]>();
 
   /** Creates the service, which counts the routed page's visits from now on. */
   constructor() {
@@ -257,6 +282,21 @@ export class TmRecents {
       });
     });
 
+    // --- Another tab's list that lacks this tab's visits gets them back ---
+    // A tab opened after this tab's visits builds on the stored list, which
+    // may not hold them yet, and its list replaces this tab's unsaved one:
+    // this tab sets the two merged, which every tab then shows and keeps.
+    effect(() => {
+      const list = this.#stored();
+      const t = this.#refresher.ɵpartition()?.tenantId;
+      untracked(() => {
+        const own = t === undefined ? undefined : this.#own.get(t);
+        if (own !== undefined) {
+          this.#keep(t!, own, list);
+        }
+      });
+    });
+
     inject(DestroyRef).onDestroy(() => {
       stop();
       clearTimeout(this.#timer);
@@ -265,9 +305,31 @@ export class TmRecents {
 
   /** Records a visit at the front of the list; a revisit moves its entry, and the eleventh falls off. */
   #visit(page: TmRoutedPage): void {
+    const t = untracked(this.#refresher.ɵpartition)?.tenantId;
+    if (t === undefined) {
+      return;
+    }
     const p = relative(page.url);
     const visit: TmStoredVisit = { p, k: page.kind, t: Math.floor(this.#now() / 1_000), n: untracked(page.title) };
-    const others = untracked(this.#stored).filter((stored) => stored.p !== p);
-    this.#prefs.set(NAV_RECENT, [visit, ...others].slice(0, CAPACITY));
+    const own = [visit, ...(this.#own.get(t) ?? []).filter((held) => held.p !== p)];
+    this.#keep(t, own, untracked(this.#stored));
+  }
+
+  /**
+   * Sets the tenant's list to the shown one with this tab's visits merged in,
+   * when it lacks any of them; the visits the merged ten no longer hold are
+   * forgotten.
+   */
+  #keep(t: number, own: readonly TmStoredVisit[], list: readonly TmStoredVisit[]): void {
+    const merged = merge(own, list);
+    const kept = own.filter((visit) => merged.includes(visit));
+    if (kept.length > 0) {
+      this.#own.set(t, kept);
+    } else {
+      this.#own.delete(t);
+    }
+    if (!sameVisits(merged, list)) {
+      this.#prefs.set(NAV_RECENT, merged);
+    }
   }
 }

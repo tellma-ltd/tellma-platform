@@ -7,7 +7,7 @@ import { Component, signal, type WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { provideRouter, Router } from '@angular/router';
 import { TM_NOW, TmClientStore, type TmMeResult, type TmPageKind, type TmPartition, type TmStoredDoc, type TmTenantFacts, ɵTM_API_HOST } from '@tellma/core';
-import { provideTellmaStateTesting, provideTellmaTesting, TmFakeApi } from '@tellma/core-testing';
+import { provideTellmaStateTesting, provideTellmaTesting, TmFakeApi, TmFakeTabBus } from '@tellma/core-testing';
 
 import { TmFakeApiHost } from '../../src/api/tm-api.testing.util';
 import { tmAppRig, tmNavigate, tmSettle, TM_T17_DOCS } from '../../src/routes/tm-app.testing.util';
@@ -219,6 +219,43 @@ describe('TmRecents', () => {
     expect(urls(rig)).toEqual(['/17/reports/42', '/17/centers']);
     expect(rig.stored()).toEqual(stored);
     expect(rig.api.calls()).toEqual([]);
+  });
+
+  it("keeps this tab's unsaved visits when a tab opened later sets a list without them", async () => {
+    const rig = await setUp();
+    const bus = TestBed.inject(TmFakeTabBus);
+    const at = (ms: number): number => Math.floor((NOW + ms) / 1_000);
+    // Centers counts at 2 s and is saved 2 s later; nav.recent's 5 minutes then hold the next ones.
+    rig.visit('/17/centers', 'search', 'Centers');
+    await tick(4_000);
+    expect(rig.stored()).toEqual([{ p: 'centers', k: 'search', t: at(2_000), n: 'Centers' }]);
+    rig.visit('/17/agents', 'search', 'Agents');
+    await tick(30_000);
+    rig.visit('/17/reports/42', 'report', 'Report 42');
+    await tick(30_000);
+    expect(urls(rig)).toEqual(['/17/reports/42', '/17/agents', '/17/centers']);
+
+    // A tab opened since starts from the stored list, and its first visit sets it with Units in front.
+    const other = [
+      { p: 'units', k: 'search', t: at(64_000), n: 'Units' },
+      { p: 'centers', k: 'search', t: at(2_000), n: 'Centers' },
+    ];
+    const posts = bus.posted().length;
+    bus.receive({ type: 'prefs.changed', tenantId: 17, values: { 'nav.recent': JSON.stringify(other) } });
+    await tick(0);
+    expect(urls(rig)).toEqual(['/17/units', '/17/reports/42', '/17/agents', '/17/centers']);
+    // This tab sets the merged list, which the other tab adopts as is, since it holds that tab's visit.
+    const merged = bus.posted().slice(posts).filter((message) => message.type === 'prefs.changed');
+    expect(merged).toHaveLength(1);
+    expect(JSON.parse((merged[0] as { values: Record<string, string> }).values['nav.recent']!)).toEqual([
+      other[0],
+      { p: 'reports/42', k: 'report', t: at(36_000), n: 'Report 42' },
+      { p: 'agents', k: 'search', t: at(6_000), n: 'Agents' },
+      other[1],
+    ]);
+    // The merged list is what this tab saves once the 5 minutes are over.
+    await tick(300_000);
+    expect((rig.stored() as { p: string }[]).map((visit) => visit.p)).toEqual(['units', 'reports/42', 'agents', 'centers']);
   });
 
   it('reads an invalid stored list as empty', async () => {

@@ -124,7 +124,7 @@ describe('TmDrafts', () => {
     const key = drafts.key(17, 'acme.SalesInvoice', '9007199254740993' as TmDecimal);
     const value = { id: '9007199254740993', amount: '1234.5600', lines: [{ qty: '2', note: null }], ok: true };
     drafts.save(key, value);
-    drafts.flush();
+    drafts.ɵflush();
     expect(drafts.load(key)).toEqual(value);
   });
 
@@ -134,7 +134,7 @@ describe('TmDrafts', () => {
     const { drafts, storage } = launch(tab);
     expect(drafts.load(`tm.draft:${SARA}:17:gl.Center:5`)).toBeUndefined();
     drafts.save(`tm.draft:${SARA}:17:gl.Center:6`, { name: 'x' });
-    drafts.flush();
+    drafts.ɵflush();
     expect(storage.getItem(`tm.draft:${SARA}:17:gl.Center:6`)).toBeNull();
     expect(drafts.dirtyCount()).toBe(0);
     drafts.save(drafts.key(17, 'gl.Center', 5), { name: 'Farah' });
@@ -148,13 +148,13 @@ describe('TmDrafts', () => {
     const one = drafts.key(17, 'gl.Center', 5);
     const two = drafts.key(17, 'gl.Center', 6);
     drafts.save(one, { name: 'a' });
-    drafts.flush();
+    drafts.ɵflush();
     drafts.save(two, { name: 'b' });
     expect(drafts.dirtyCount()).toBe(2);
     drafts.clear(one);
     expect([drafts.load(one), storage.getItem(one), drafts.dirtyCount()]).toEqual([undefined, null, 1]);
     drafts.clearAll(FARAH);
-    drafts.flush();
+    drafts.ɵflush();
     expect([drafts.load(two), storage.getItem(two), drafts.dirtyCount()]).toEqual([undefined, null, 0]);
     // Another user's drafts stay for their own clean-up.
     expect(storage.getItem(`tm.draft:${SARA}:17:gl.Center:5`)).toBe('{}');
@@ -165,13 +165,13 @@ describe('TmDrafts', () => {
     const keys = [1, 2, 3].map((id) => drafts.key(17, 'gl.Center', id));
     for (const key of keys) {
       drafts.save(key, { name: 'x'.repeat(100) });
-      drafts.flush();
+      drafts.ɵflush();
       tick(1_000);
     }
     storage.capacity = storage.getItem(keys[0]!)!.length * 3 + keys[0]!.length * 3 + 10;
     const fourth = drafts.key(17, 'gl.Center', 4);
     drafts.save(fourth, { name: 'y'.repeat(100) });
-    drafts.flush();
+    drafts.ɵflush();
     expect(storage.getItem(keys[0]!)).toBeNull();
     expect([keys[1], keys[2], fourth].map((key) => storage.getItem(key!) !== null)).toEqual([true, true, true]);
     // The given-up draft still loads in this tab.
@@ -185,7 +185,7 @@ describe('TmDrafts', () => {
     storage.capacity = 50;
     const key = drafts.key(17, 'gl.Center', 5);
     drafts.save(key, { name: 'x'.repeat(100) });
-    drafts.flush();
+    drafts.ɵflush();
     expect(storage.getItem(key)).toBeNull();
     expect(drafts.load(key)).toEqual({ name: 'x'.repeat(100) });
     expect(telemetry.events).toEqual([{ name: 'tm.drafts.quota-exceeded', props: undefined }]);
