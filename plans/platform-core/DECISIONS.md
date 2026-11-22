@@ -384,6 +384,28 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-225 (orchestrator, 2026-11-22): PC-104 landed; "." at 38.5 KB; PC-F69 launched; PC-F71 released
+
+PC-104 landed at 5bfbd41c. After the merge, "." measured 38.49 KB, so its ceiling was set to 38.5 KB, within D-224's 39 KB cap.
+
+The other entry points measured:
+- the lazy locale-write chunk: 1.50/2
+- ./memory: 2.54/2.6
+- ./recents: 1.53/1.6
+- core-ui l10n: 9.96/10
+
+PC-F69 starts in pc-1, the slot PC-104 freed, ahead of other T1/T2 work (D-214). It re-splits "." by spec family into secondary entry points, so that each spec's services leave the first frame unless the shell needs them at boot.
+
+Goals:
+- "." falls back to its 31 KB pre-raise level, or as close to it as the boot path honestly allows.
+- Each new entry point gets its own honest ceiling.
+- The static-graph check proves "." does not reach the new entry points.
+- Consumers (Acme, showcase) import from the new entry points.
+
+Any first-frame figure that rises is reported.
+
+PC-F71 integrates next, carrying D-224's three items: the AH 9666 vector rows, a lengths array asserted on both sides, and a client daysIn bounded at AH 9666. PC-F70 follows.
+
 ### D-224 (orchestrator, 2026-11-22): PC-107 landed; PC-104 released; the AH 9666 carries move to PC-F71
 
 PC-107 landed at 5a41bd43. After its merge, "." measured 33.82/34 KB, ./memory 2.54/2.6, ./recents 1.53/1.6, and the first frame ≈33.14 KB.
