@@ -215,6 +215,7 @@ namespace Tellma.Core.Tests.Composition
                 ["blobs"] = false,
                 ["blobs.deployment"] = true,
                 ["outbox.sender"] = true,
+                ["core.shareables"] = false,
             };
 
             Assert.Equal(expected, checks);

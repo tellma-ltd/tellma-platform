@@ -220,6 +220,9 @@
   <data name="Access_Reason_self" xml:space="preserve">
     <value>سجلاتهم الخاصة</value>
   </data>
+  <data name="Access_Reason_share" xml:space="preserve">
+    <value>السجلات المشتركة معهم</value>
+  </data>
   <data name="Core_User_Plural" xml:space="preserve">
     <value>المستخدمون</value>
   </data>
@@ -837,6 +840,39 @@
   </data>
   <data name="Core_Report_DefaultTitle" xml:space="preserve">
     <value>{entity} – {kind, select, List {قائمة} Summary {ملخص} Pivot {جدول محوري} other {مخطط}}</value>
+  </data>
+  <data name="Core_Report_Plural" xml:space="preserve">
+    <value>التقارير</value>
+  </data>
+  <data name="Report_UnknownMember" xml:space="preserve">
+    <value>يحتوي تعريف التقرير على عنصر غير معروف أو بشكل غير صحيح، في {pointer}.</value>
+  </data>
+  <data name="Report_CodeReserved" xml:space="preserve">
+    <value>الرموز التي تبدأ بـ «{prefix}» محجوزة للتقارير القياسية.</value>
+  </data>
+  <data name="Report_InUse" xml:space="preserve">
+    <value>{named, plural, =0 {يظهر هذا التقرير في {others, plural, one {لوحة معلومات} two {لوحتي معلومات} few {# لوحات معلومات} many {# لوحة معلومات} other {# لوحة معلومات}}؛ أزله منها قبل حذفه.} other {يظهر هذا التقرير في {dashboards}{others, plural, =0 {} one { ولوحة معلومات أخرى} two { ولوحتي معلومات أخريين} few { و# لوحات معلومات أخرى} many { و# لوحة معلومات أخرى} other { و# لوحة معلومات أخرى}}؛ أزله منها قبل حذفه.}}</value>
+  </data>
+  <data name="Sharing_StandardReadOnly" xml:space="preserve">
+    <value>يمكن مشاركة السجلات القياسية ونشرها، لكن لا يمكن تغييرها أو حذفها أو نقل ملكيتها.</value>
+  </data>
+  <data name="Sharing_BasedOnInvisible" xml:space="preserve">
+    <value>السجل الذي يستند إليه هذا السجل غير موجود، أو لا يمكنك رؤيته.</value>
+  </data>
+  <data name="Sharing_UserInvalid" xml:space="preserve">
+    <value>لا يمكن المشاركة إلا مع الأعضاء الأفراد النشطين.</value>
+  </data>
+  <data name="Sharing_RoleInvalid" xml:space="preserve">
+    <value>لا يمكن النشر إلا للأدوار النشطة.</value>
+  </data>
+  <data name="Sharing_OwnerIsImplicit" xml:space="preserve">
+    <value>يملك المالك وصولًا كاملًا بالفعل.</value>
+  </data>
+  <data name="Sharing_TooManyGrants" xml:space="preserve">
+    <value>{kind, select, user {يمكن مشاركة السجل مع {max} مستخدم على الأكثر.} other {يمكن نشر السجل إلى {max} دور على الأكثر.}}</value>
+  </data>
+  <data name="Sharing_OwnerInvalid" xml:space="preserve">
+    <value>يجب أن يكون المالك الجديد عضوًا فرديًا نشطًا.</value>
   </data>
   <data name="Core_Dashboard_DefaultTitle" xml:space="preserve">
     <value>لوحة معلومات بلا عنوان</value>
