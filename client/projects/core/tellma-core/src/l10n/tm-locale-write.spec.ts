@@ -19,8 +19,8 @@ import { TmLocaleWrite } from './tm-locale-write';
 
 /** A write's answer the test settles when it chooses. */
 interface Held {
-  /** Lands the write. */
-  readonly land: () => void;
+  /** Lands the write, with the server's usual result unless the test gives one. */
+  readonly land: (result?: TmMeLocaleResult) => void;
   /** Fails the write. */
   readonly fail: (error: unknown) => void;
 }
@@ -69,7 +69,7 @@ function hold(api: TmFakeApi): Held[] {
     'users/me/locale',
     () =>
       new Promise((resolve, reject) => {
-        held.push({ land: () => resolve(RESULT), fail: reject });
+        held.push({ land: (result = RESULT) => resolve(result), fail: reject });
       }),
   );
   return held;
@@ -109,15 +109,15 @@ describe('TmLocaleWrite', () => {
   it("never merges one tenant's members into another's, even behind a write in flight", async () => {
     const { write, api, routed } = rig();
     const held = hold(api);
-    write.queue(17, { region: 'US' });
+    write.queue(17, { region: 'US' }, {});
     await later();
     // A second change in tenant 17 waits behind its write.
-    write.queue(17, { digits: 'Latin' });
+    write.queue(17, { digits: 'Latin' }, {});
 
     // The tab enters tenant 18 and changes a member there.
     routed.set(18);
     await settle();
-    write.queue(18, { language: 'ar' });
+    write.queue(18, { language: 'ar' }, {});
     await later();
 
     // Tenant 17's first write lands; its queued change follows, to tenant 17.
@@ -143,11 +143,11 @@ describe('TmLocaleWrite', () => {
     });
     api.setOnline(false);
     await settle();
-    write.queue(17, { region: 'US' });
+    write.queue(17, { region: 'US' }, {});
     await later();
     expect(write.state()).toBe('saving');
 
-    write.queue(18, { language: 'ar' });
+    write.queue(18, { language: 'ar' }, {});
     await later();
     api.setOnline(true);
     await settle();
@@ -165,14 +165,14 @@ describe('TmLocaleWrite', () => {
     api.respond('users/me/locale', () => {
       throw new TmApiError({ kind: 'offline' });
     });
-    write.queue(17, { region: 'US' });
+    write.queue(17, { region: 'US' }, {});
     await later();
 
     // The server answers again without the tab seeing an offline spell.
     const held = hold(api);
-    write.queue(17, { timeZone: 'Africa/Cairo' });
+    write.queue(17, { timeZone: 'Africa/Cairo' }, {});
     await later();
-    write.queue(17, { digits: 'Latin' });
+    write.queue(17, { digits: 'Latin' }, {});
     await later();
     held[0].land();
     await settle();
@@ -188,9 +188,87 @@ describe('TmLocaleWrite', () => {
     expect(write.state()).toBe('saved');
   });
 
+  it('tries an offline write again on a backoff while the server still counts as reachable, and then saves', async () => {
+    const { write, api } = rig();
+    let attempts = 0;
+    api.respond('users/me/locale', () => {
+      // The watchdog's outcome-unknown leaves the server counted reachable.
+      if (++attempts < 3) {
+        throw new TmApiError({ kind: 'offline', code: 'outcome-unknown' });
+      }
+      return RESULT;
+    });
+    write.queue(17, { region: 'US' }, {});
+    await later();
+    expect(api.online()).toBe(true);
+    expect(sent(api)).toHaveLength(1);
+
+    // The first try again comes after 5 s, the second after 10 s more.
+    await later(4_999);
+    expect(sent(api)).toHaveLength(1);
+    await later(1);
+    expect(sent(api)).toHaveLength(2);
+    await later(10_000);
+
+    expect(sent(api).map((call) => call.body)).toEqual([{ region: 'US' }, { region: 'US' }, { region: 'US' }]);
+    expect(write.state()).toBe('saved');
+  });
+
+  it('reports a failure once the tries are spent, and keeps the members for the next change', async () => {
+    const { write, api } = rig();
+    api.respond('users/me/locale', () => {
+      throw new TmApiError({ kind: 'offline', code: 'outcome-unknown' });
+    });
+    write.queue(17, { region: 'US' }, {});
+    await later();
+    for (const wait of [5_000, 10_000, 20_000, 30_000]) {
+      await later(wait);
+    }
+    expect(sent(api)).toHaveLength(5);
+    expect(write.state()).toBe('failed');
+    await later(60_000);
+    expect(sent(api)).toHaveLength(5);
+
+    // The next change carries the members the failure kept.
+    api.respond('users/me/locale', RESULT);
+    write.queue(17, { digits: 'Latin' }, {});
+    await later();
+    expect(sent(api).at(-1)?.body).toEqual({ region: 'US', digits: 'Latin' });
+    expect(write.state()).toBe('saved');
+  });
+
+  it('keeps the latest choice standing when an earlier write of the member lands, and after a later one fails', async () => {
+    const { write, api } = rig();
+    const held = hold(api);
+    const effective = (stored: Readonly<Record<string, string>>): string | undefined => write.overlay(17, stored).language;
+    write.queue(17, { language: 'ar' }, {});
+    expect(effective({})).toBe('ar');
+    await later();
+    write.queue(17, { language: 'en' }, {});
+    expect(effective({})).toBe('en');
+
+    // The first write lands, storing Arabic: the later choice still stands.
+    held[0].land({ ...RESULT, preferredLanguage: 'ar' });
+    await settle();
+    expect(effective({ language: 'ar' })).toBe('en');
+    await later();
+    expect(effective({ language: 'ar' })).toBe('en');
+
+    // The second write is refused: the choice stands on what the first one stored.
+    expect(held).toHaveLength(2);
+    held[1].fail(new TmApiError({ kind: 'validation' }));
+    await settle();
+    expect(write.state()).toBe('failed');
+    expect(effective({ language: 'ar' })).toBe('en');
+    // Another device's change moves the stored value: the choice no longer stands, and is forgotten.
+    expect(effective({ language: 'fr' })).toBe('fr');
+    write.release(17, { language: 'fr' });
+    expect(effective({ language: 'ar' })).toBe('ar');
+  });
+
   it('sends each queue to its own tenant when the page hides, and then shows nothing saving', async () => {
     const { write, api } = rig();
-    write.queue(18, { language: 'ar' });
+    write.queue(18, { language: 'ar' }, {});
     await settle();
     window.dispatchEvent(new Event('pagehide'));
 
@@ -204,9 +282,9 @@ describe('TmLocaleWrite', () => {
   it('keeps saving after a pagehide while a write is still in flight, until it lands', async () => {
     const { write, api } = rig();
     const held = hold(api);
-    write.queue(17, { region: 'US' });
+    write.queue(17, { region: 'US' }, {});
     await later();
-    write.queue(17, { digits: 'Latin' });
+    write.queue(17, { digits: 'Latin' }, {});
     window.dispatchEvent(new Event('pagehide'));
     expect(write.state()).toBe('saving');
 

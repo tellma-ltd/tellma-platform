@@ -190,6 +190,7 @@ export type {
   TmDraftsReplyMessage,
   TmHubEventMessage,
   TmHubStatusMessage,
+  TmLanguageSwitchedMessage,
   TmLeaderProbeMessage,
   TmPrefsChangedMessage,
   TmSessionMessage,

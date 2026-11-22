@@ -4,7 +4,8 @@
 // LICENSE file in the root directory of this source tree.
 
 import type { TmLanguageMetadata } from '../metadata/tm-client-metadata';
-import type { TmDigitStyle } from '../state/launch/tm-launch-docs';
+import type { TmDigitStyle, TmMeLocaleResult, TmUserProfileView } from '../state/launch/tm-launch-docs';
+import type { TmLocaleMember } from './tm-locale-write';
 
 // The resolution rules of the localization service (spec 0024 §7.1, §7.7),
 // as pure functions of their inputs, so the service only wires signals to
@@ -12,6 +13,15 @@ import type { TmDigitStyle } from '../state/launch/tm-launch-docs';
 // region and its locale string, the browser check of that string, the
 // content slot and the calendar code. The server resolves the same values in
 // the same order (spec 0013 §9.2), so both ends format alike.
+
+/** The members of the locale write, and the fields of the user's profile and of a write's result that store them. */
+export const TM_LOCALE_FIELDS: Readonly<Record<TmLocaleMember, keyof TmUserProfileView & keyof TmMeLocaleResult>> = {
+  language: 'preferredLanguage',
+  calendar: 'preferredCalendar',
+  timeZone: 'preferredTimeZone',
+  region: 'preferredRegion',
+  digits: 'preferredDigits',
+};
 
 /** A language's subtag, lower-cased: `ar` for `ar`, `ar-SA` and `AR`. */
 export function tmLanguageSubtag(code: string): string {
@@ -204,7 +214,8 @@ export interface TmFormattingLocale {
 /**
  * The browser check: `<language>-<region>` when the browser resolves it,
  * else the language with its default region, else the default language's
- * locale. The digits choice applies to whichever tag wins.
+ * locale, which then names the active language in a private-use subtag,
+ * such as `en-US-x-om`. The digits choice applies to whichever tag wins.
  *
  * @param language - The active language's metadata.
  * @param region - The resolved region.
@@ -220,8 +231,10 @@ export function tmFormattingLocale(
 ): TmFormattingLocale {
   const candidates = [`${language.code}-${region}`, `${language.code}-${language.region}`, `${fallback.code}-${fallback.region}`];
   const tag = candidates.find(tmBrowserResolves) ?? candidates[2];
-  return {
-    locale: tmLocaleString(tag, digits, tag.startsWith(`${language.code}-`) ? language.nativeDigits : fallback.nativeDigits),
-    fellBack: tag !== candidates[0],
-  };
+  const own = tag.startsWith(`${language.code}-`);
+  const locale = tmLocaleString(tag, digits, own ? language.nativeDigits : fallback.nativeDigits);
+  // Another language's locale names the active language in a private-use
+  // subtag, which Intl ignores and the date engine reads, so a rule keyed on
+  // the language (the day-first numeric dates) survives the fallback.
+  return { locale: own ? locale : `${locale}-x-${tmLanguageSubtag(language.code)}`, fellBack: tag !== candidates[0] };
 }

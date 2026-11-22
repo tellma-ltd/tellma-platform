@@ -159,8 +159,21 @@ class TmDayFirstFormat extends Intl.DateTimeFormat {
 }
 
 /**
+ * The language a locale formats for: the one its private-use subtag names,
+ * as `en-US-x-om` does when the browser lacks Oromo, else its own.
+ */
+function requestedLanguage(locale: string): string {
+  const subtags = locale.toLowerCase().split(/[-_]/);
+  // `x` is the private-use singleton: no other subtag is a lone `x`.
+  const privateUse = subtags.indexOf('x');
+  return privateUse > 0 && privateUse < subtags.length - 1 ? subtags[privateUse + 1] : subtags[0];
+}
+
+/**
  * A date formatter: Intl's, except that a numeric date in a day-first
- * language writes its fields as `dd/MM/yyyy`, as the server does.
+ * language writes its fields as `dd/MM/yyyy`, as the server does. The
+ * language is the one the locale formats for, so a fallback locale such as
+ * `en-US-x-om` writes day-first too.
  *
  * @param locale - The locale.
  * @param options - The fields and the zone.
@@ -169,8 +182,7 @@ class TmDayFirstFormat extends Intl.DateTimeFormat {
  */
 export function ɵtmDateTimeFormat(locale: string, options: Intl.DateTimeFormatOptions): Intl.DateTimeFormat {
   const numeric = options.year === 'numeric' && options.month === 'numeric' && options.day === 'numeric';
-  const language = locale.split(/[-_]/)[0].toLowerCase();
-  return numeric && DAY_FIRST_LANGUAGES.has(language)
+  return numeric && DAY_FIRST_LANGUAGES.has(requestedLanguage(locale))
     ? new TmDayFirstFormat(locale, options)
     : new Intl.DateTimeFormat(locale, options);
 }

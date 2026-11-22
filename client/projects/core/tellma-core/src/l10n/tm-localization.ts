@@ -26,11 +26,13 @@ import { ɵTM_APP_CONFIG, type TmLanguageDefinition } from '../app/tm-app-config
 import { TM_DEV_MODE } from '../app/tm-dev-mode';
 import { TmClientMetadataStore } from '../metadata/tm-client-metadata';
 import { TmTelemetry } from '../observe/tm-telemetry';
+import { TmTabBus } from '../state/bus/tm-tab-bus';
 import { TmLaunchCache } from '../state/launch/tm-launch-cache';
-import type { TmDigitStyle, TmUserProfileView } from '../state/launch/tm-launch-docs';
+import type { TmDigitStyle } from '../state/launch/tm-launch-docs';
 import { TmClientStore } from '../state/store/tm-client-store';
 import { TmCacheRefresher } from '../state/sync/tm-cache-refresher';
 import {
+  TM_LOCALE_FIELDS,
   tmContentSlot,
   tmFormattingLocale,
   tmLocaleString,
@@ -40,7 +42,7 @@ import {
   tmResolveRegion,
   tmSwitchLanguages,
 } from './tm-locale-resolution';
-import { TmLocaleWrite, type TmLocaleMember, type TmLocaleQueue, type TmLocaleSave } from './tm-locale-write';
+import type { TmLocaleMember, TmLocaleQueue, TmLocaleSave, TmLocaleStored, TmLocaleWrite } from './tm-locale-write';
 
 // The localization service (spec 0024 §7.1–§7.4, §7.7): the active language,
 // region, digits, locale, direction, calendar, content slot and display zone,
@@ -49,11 +51,13 @@ import { TmLocaleWrite, type TmLocaleMember, type TmLocaleQueue, type TmLocaleSa
 // locale write. A switch loads what it needs first (the language's strings,
 // the calendar's entry point), then applies everything in one change-detection
 // pass. A change the user makes stands at once, ahead of the write that saves
-// it: a local override of the member covers the stored preference until the
-// stored value moves, which the write's adopted result or another tab's
-// change does. The service is also the app's message resolver: platform
-// (`tm.`) keys and server keys resolve through Transloco, fall back to
-// English, and carry no bidi control character (§7.3, §7.9).
+// it: the locale write keeps the member's latest choice over the stored
+// preference while its write is pending, and after that until the stored
+// value moves through another tab's or device's change. The writer loads with
+// the first change it saves, so the first frame never carries it. The
+// service is also the app's message resolver: platform (`tm.`) keys and
+// server keys resolve through Transloco, fall back to English, and carry no
+// bidi control character (§7.3, §7.9).
 
 /**
  * A change of the user's language and regional formats, as the Language &
@@ -73,28 +77,8 @@ export interface TmLocaleChange {
   readonly digits?: TmDigitStyle | null;
 }
 
-/** A change the user made, standing until the stored preference it was made over moves. */
-interface TmOverride {
-  /** The member's new value; `null` for the tenant's default. */
-  readonly value: string | null;
-  /** The stored preference when the change was made. */
-  readonly base: string | undefined;
-}
-
-/** The user's effective preferences: the stored ones under the changes standing over them. */
-type TmPreferences = Partial<Record<TmLocaleMember, string>>;
-
 /** Angular's development-mode flag, which a production build defines as false. */
 declare const ngDevMode: unknown;
-
-/** The members of the locale write, and the profile fields that store them. */
-const FIELDS: Readonly<Record<TmLocaleMember, keyof TmUserProfileView>> = {
-  language: 'preferredLanguage',
-  calendar: 'preferredCalendar',
-  timeZone: 'preferredTimeZone',
-  region: 'preferredRegion',
-  digits: 'preferredDigits',
-};
 
 /** The platform's calendars that load from entry points of their own. */
 const CALENDAR_LOADERS: Readonly<Record<string, () => Promise<TmCalendar>>> = {
@@ -128,11 +112,12 @@ export class TmLocalization {
   readonly #devMode = inject(TM_DEV_MODE);
   readonly #root = inject(DOCUMENT).documentElement;
   readonly #injector = inject(Injector);
+  readonly #bus = inject(TmTabBus);
 
   // The services that reach the router are resolved at first use: the
   // router's own title strategy reads this service, so its construction
   // must not need the router.
-  readonly #lazy: { launch?: TmLaunchCache; refresher?: TmCacheRefresher; telemetry?: TmTelemetry; write?: TmLocaleWrite } = {};
+  readonly #lazy: { launch?: TmLaunchCache; refresher?: TmCacheRefresher; telemetry?: TmTelemetry } = {};
 
   /** The launch documents. */
   get #launch(): TmLaunchCache {
@@ -149,19 +134,17 @@ export class TmLocalization {
     return (this.#lazy.telemetry ??= this.#injector.get(TmTelemetry));
   }
 
-  /** The locale write, created with the first change it saves. */
-  get #write(): TmLocaleWrite {
-    return (this.#lazy.write ??= this.#injector.get(TmLocaleWrite));
-  }
-
   /** The offered languages' codes; the first is the distribution's default. */
   readonly #offered: readonly string[] = this.#config.languages.map((language) => language.code);
 
   /** The boot record's language, which another tab's switch moves too. */
   readonly #bootLang = signal(this.#store.boot.read().lang);
 
-  /** The changes standing over the stored preferences, by tenant. */
-  readonly #overrides = signal<ReadonlyMap<number, Partial<Record<TmLocaleMember, TmOverride>>>>(new Map());
+  /** The locale write, once the first change it saves has loaded it. */
+  readonly #writer = signal<TmLocaleWrite | undefined>(undefined);
+
+  /** The locale write's load, while it runs or once it succeeded. */
+  #writerLoad: Promise<TmLocaleWrite> | undefined;
 
   /** The languages whose strings have loaded. */
   readonly #loadedLanguages = signal<ReadonlySet<string>>(new Set());
@@ -171,9 +154,6 @@ export class TmLocalization {
 
   /** The loads started, by language or calendar code, so each loads once. */
   readonly #loads = new Map<string, Promise<void>>();
-
-  /** Whether a change was queued, so the locale write exists. */
-  readonly #writing = signal(false);
 
   /** Bumped by every language switch and string load, so messages resolve again. */
   readonly #version = signal(0);
@@ -202,24 +182,30 @@ export class TmLocalization {
   /** The tenant's content languages, primary first, or `undefined` outside a tenant. */
   readonly #contentLanguages = computed(() => this.#settings()?.languages.map((language) => language.code));
 
-  /** The user's effective preferences in the routed tenant; empty outside one. */
-  readonly #preferences = computed<TmPreferences>(() => {
-    const tenantId = this.#tenantId();
-    if (tenantId === null || this.#settings() === undefined) {
+  /** The user's stored preferences in the routed tenant; empty outside one. */
+  readonly #stored = computed<TmLocaleStored>(() => {
+    if (this.#tenantId() === null || this.#settings() === undefined) {
       return {};
     }
     const user = this.#launch.docs.me()?.user;
-    const overrides = this.#overrides().get(tenantId) ?? {};
-    const preferences: TmPreferences = {};
-    for (const member of Object.keys(FIELDS) as TmLocaleMember[]) {
-      const stored = user?.[FIELDS[member]] as string | undefined;
-      const override = overrides[member];
-      const value = override !== undefined && override.base === stored ? (override.value ?? undefined) : stored;
+    const stored: Partial<Record<TmLocaleMember, string>> = {};
+    for (const member of Object.keys(TM_LOCALE_FIELDS) as TmLocaleMember[]) {
+      const value = user?.[TM_LOCALE_FIELDS[member]];
       if (value !== undefined) {
-        preferences[member] = value;
+        stored[member] = value;
       }
     }
-    return preferences;
+    return stored;
+  });
+
+  /** The user's effective preferences in the routed tenant: the stored ones under the latest choices that stand. */
+  readonly #preferences = computed<TmLocaleStored>(() => {
+    const tenantId = this.#tenantId();
+    const writer = this.#writer();
+    if (tenantId === null || this.#settings() === undefined || writer === undefined) {
+      return this.#stored();
+    }
+    return writer.overlay(tenantId, this.#stored());
   });
 
   /** The language the inputs resolve to, whether or not its strings have loaded. */
@@ -331,7 +317,7 @@ export class TmLocalization {
   readonly calendars: Signal<readonly string[]> = computed(() => this.#settings()?.calendars ?? ['gc']);
 
   /** The locale write's state: `saving` from the first queued change, `saved` once it lands, `failed` after a refusal. */
-  readonly localeSave: Signal<TmLocaleSave> = computed(() => (this.#writing() ? this.#write.state() : 'idle'));
+  readonly localeSave: Signal<TmLocaleSave> = computed(() => this.#writer()?.state() ?? 'idle');
 
   /** Creates the service, which follows its inputs, the boot record and the page. */
   constructor() {
@@ -347,7 +333,13 @@ export class TmLocalization {
     });
 
     // --- Another tab's language switch moves the boot record's language here too ---
-    const bootChanges = this.#store.boot.changes.subscribe((record) => this.#bootLang.set(record.lang));
+    // Only a switch: another tab's settled preference also writes the boot
+    // record, for that tab's next launch, and must not move this tab.
+    const switches = this.#bus.messages.subscribe((message) => {
+      if (message.type === 'l10n.switched' && typeof message.lang === 'string') {
+        this.#bootLang.set(message.lang);
+      }
+    });
 
     // --- The device's zone, read again when the page shows: no browser event reports a change ---
     const host = inject(TM_API_HOST);
@@ -360,7 +352,7 @@ export class TmLocalization {
       this.#destroyed = true;
       languageChanges.unsubscribe();
       loads.unsubscribe();
-      bootChanges.unsubscribe();
+      switches.unsubscribe();
       stops.forEach((stop) => stop());
     });
 
@@ -374,10 +366,20 @@ export class TmLocalization {
       untracked(() => void this.#loadCalendar(code).catch(() => undefined));
     });
 
+    // --- A choice the stored value moved from under no longer stands, and is forgotten ---
+    effect(() => {
+      const writer = this.#writer();
+      const tenantId = this.#tenantId();
+      const stored = this.#stored();
+      if (writer !== undefined && tenantId !== null && untracked(this.#settings) !== undefined) {
+        untracked(() => writer.release(tenantId, stored));
+      }
+    });
+
     // --- The document, Transloco and the boot record follow the active language ---
     // The boot record follows whatever settles the language, a switch here
     // or a preference adopted from another device, so the next warm launch
-    // starts in it.
+    // starts in it. Other tabs follow only a switch, which the bus carries.
     effect(() => {
       const language = this.#language();
       const dir = this.dir();
@@ -452,7 +454,14 @@ export class TmLocalization {
       this.#refuse('calendar', change.calendar, this.calendars());
       return;
     }
-    this.#applying = this.#applying.then(() => this.#apply(change)).catch((error: unknown) => this.#telemetry.error(error, { where: 'tm.l10n.switch' }));
+    this.#applying = this.#applying
+      .then(() => this.#apply(change))
+      .catch((error: unknown) => {
+        // A switch that fails after the app's end has no telemetry to tell.
+        if (!this.#destroyed) {
+          this.#telemetry.error(error, { where: 'tm.l10n.switch' });
+        }
+      });
   }
 
   /**
@@ -554,43 +563,45 @@ export class TmLocalization {
     const settings = this.#settings();
     const inTenant = tenantId !== null && settings !== undefined;
 
-    // --- 1. Load: nothing changes until the language's strings and the calendar arrive ---
+    // --- 1. Load: nothing changes until the language's strings, the calendar and the writer arrive ---
     const primary = tmOfferedLanguage(this.#offered, settings?.languages[0]?.code) ?? this.#offered[0];
     const language = change.language === undefined ? undefined : (change.language ?? primary);
     const calendar = !inTenant || change.calendar === undefined ? undefined : (change.calendar ?? settings.calendars[0] ?? 'gc');
-    await Promise.all([
+    const queue: TmLocaleQueue = {};
+    for (const member of Object.keys(TM_LOCALE_FIELDS) as TmLocaleMember[]) {
+      const value = change[member];
+      if (inTenant && value !== undefined) {
+        queue[member] = value;
+      }
+    }
+    const [writer] = await Promise.all([
+      Object.keys(queue).length > 0 ? this.#loadWriter() : undefined,
       language === undefined ? undefined : this.#loadLanguage(language),
       calendar === undefined ? undefined : this.#loadCalendar(calendar),
     ]);
+    if (this.#destroyed) {
+      return;
+    }
 
     // --- 2. Apply, in one pass: the members, then the document and Transloco ---
     const from = { language: this.#language(), calendar: this.#calendarCode() };
     if (language !== undefined) {
       this.#bootLang.set(language);
     }
-    const queue: TmLocaleQueue = {};
-    if (inTenant) {
-      const user = this.#launch.docs.me()?.user;
-      const overrides = { ...this.#overrides().get(tenantId) };
-      for (const member of Object.keys(FIELDS) as TmLocaleMember[]) {
-        const value = change[member];
-        if (value !== undefined) {
-          overrides[member] = { value, base: user?.[FIELDS[member]] as string | undefined };
-          queue[member] = value;
-        }
-      }
-      this.#overrides.update((all) => new Map(all).set(tenantId, overrides));
+    if (inTenant && writer !== undefined) {
+      // The queue makes each member's latest choice, which stands over the stored one at once.
+      writer.queue(tenantId, queue, this.#stored());
+      this.#writer.set(writer);
     }
     this.#applyDocument(this.#language(), this.dir());
 
-    // --- 3. Save: the boot record keeps the language, the locale write the members ---
+    // --- 3. Save: the boot record and the other tabs keep the language; the locale write saves the members ---
     const record = this.#store.boot.read();
     if (record.lang !== this.#language() || record.dir !== this.dir()) {
       this.#store.boot.patch({ lang: this.#language(), dir: this.dir() });
     }
-    if (inTenant && Object.keys(queue).length > 0) {
-      this.#write.queue(tenantId, queue);
-      this.#writing.set(true);
+    if (language !== undefined) {
+      this.#bus.post({ type: 'l10n.switched', lang: this.#language() });
     }
     if (from.language !== this.#language()) {
       this.#telemetry.event('tm.l10n.language-changed', { from: from.language, to: this.#language() });
@@ -598,6 +609,18 @@ export class TmLocalization {
     if (from.calendar !== this.#calendarCode()) {
       this.#telemetry.event('tm.l10n.calendar-changed', { from: from.calendar, to: this.#calendarCode() });
     }
+  }
+
+  /** Loads the locale write's chunk once and creates the writer; a failed load is tried again on the next change. */
+  #loadWriter(): Promise<TmLocaleWrite> {
+    this.#writerLoad ??= import('./tm-locale-write').then(
+      ({ TmLocaleWrite: writer }) => this.#injector.get(writer),
+      (error: unknown) => {
+        this.#writerLoad = undefined;
+        throw error;
+      },
+    );
+    return this.#writerLoad;
   }
 
   /** Points Transloco and `<html lang dir>` at a language. */

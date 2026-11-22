@@ -272,7 +272,7 @@ export interface TmBusEnvelope {
 }
 
 // @public
-export type TmBusMessage = TmDraftsQueryMessage | TmDraftsReplyMessage | TmHubEventMessage | TmHubStatusMessage | TmLeaderProbeMessage | TmPrefsChangedMessage | TmSessionMessage | TmStoreChangedMessage;
+export type TmBusMessage = TmDraftsQueryMessage | TmDraftsReplyMessage | TmHubEventMessage | TmHubStatusMessage | TmLanguageSwitchedMessage | TmLeaderProbeMessage | TmPrefsChangedMessage | TmSessionMessage | TmStoreChangedMessage;
 
 // @public
 export interface TmCacheChangedEvent {
@@ -736,6 +736,12 @@ export interface TmLanguageMetadata {
     readonly nativeName: string;
     readonly region: string;
     readonly regions: readonly string[];
+}
+
+// @public
+export interface TmLanguageSwitchedMessage {
+    readonly lang: string;
+    readonly type: 'l10n.switched';
 }
 
 // @public

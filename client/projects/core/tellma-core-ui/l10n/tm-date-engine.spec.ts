@@ -336,6 +336,17 @@ describe('day-first languages', () => {
     }
   });
 
+  it("keeps the order on another language's locale that names a day-first language, as a browser that lacks it gets", () => {
+    // A distribution whose default language is US English: the fallback is month-first on its own.
+    expect(tmFormatDate('2026-03-05', 'en-US')).toBe('3/5/2026');
+    expect(tmFormatDate('2026-03-05', 'en-US-x-om')).toBe('05/03/2026');
+    expect(tmParseDate('05/03/2026', 'en-US-x-om', { today: TODAY })).toBe('2026-03-05');
+    expect(tmFormatDate('2026-11-22', 'en-US-u-nu-latn-x-ti')).toBe('22/11/2026');
+    expect(tmFormatDateTime('2026-03-05T07:42:00Z', 'en-US-x-om', { timeZone: 'UTC' })).toMatch(/^05\/03\/2026\D/);
+    // A private-use subtag naming another language changes nothing.
+    expect(tmFormatDate('2026-03-05', 'en-US-x-ar')).toBe('3/5/2026');
+  });
+
   it('writes the date of a numeric date-time day-first, and leaves the named styles alone', () => {
     expect(tmFormatDateTime('2026-03-05T07:42:00Z', 'om-ET', { timeZone: 'UTC' })).toMatch(/^05\/03\/2026\D/);
     expect(tmFormatDate('2026-03-05', 'om-ET', { dateStyle: 'long' })).toBe(

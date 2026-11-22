@@ -115,10 +115,12 @@ describe('the locale resolution', () => {
       expect(tmFormattingLocale(ENGLISH, 'ZZ', null, ENGLISH)).toEqual({ locale: 'en-GB', fellBack: true });
     });
 
-    it("falls back to the default language's locale when the browser lacks the language, with that locale's digits", () => {
+    it("falls back to the default language's locale when the browser lacks the language, with that locale's digits, naming the language", () => {
       const unknown: TmLanguageMetadata = { ...ARABIC, code: 'qaa', region: 'SA', regions: ['SA'] };
+      const american: TmLanguageMetadata = { ...ENGLISH, region: 'US', regions: ['US'] };
 
-      expect(tmFormattingLocale(unknown, 'SA', 'Native', ENGLISH)).toEqual({ locale: 'en-GB', fellBack: true });
+      expect(tmFormattingLocale(unknown, 'SA', 'Native', ENGLISH)).toEqual({ locale: 'en-GB-x-qaa', fellBack: true });
+      expect(tmFormattingLocale(unknown, 'SA', null, american)).toEqual({ locale: 'en-US-x-qaa', fellBack: true });
     });
 
     it('keeps the digits choice on the fallback tag', () => {

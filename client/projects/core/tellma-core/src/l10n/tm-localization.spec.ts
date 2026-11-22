@@ -4,19 +4,21 @@
 // LICENSE file in the root directory of this source tree.
 
 import { provideLocationMocks } from '@angular/common/testing';
-import { ApplicationInitStatus, effect, type EnvironmentProviders, type Provider } from '@angular/core';
+import { ApplicationInitStatus, Component, effect, inject, type EnvironmentProviders, type Provider } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { TranslocoService } from '@jsverse/transloco';
 import {
   provideTellmaStateTesting,
   provideTellmaTesting,
   TmFakeApi,
+  TmFakeTabBus,
   TmFakeTelemetry,
   tmTestMetadata,
   tmWarmTenant,
 } from '@tellma/core-testing';
 import { TM_ACTIVE_LOCALE, TM_CALENDAR, TM_TIME_ZONE, TmTheme } from '@tellma/core-ui';
 import { tmUmalquraCalendar } from '@tellma/core-ui/calendar-umalqura';
+import { tmFormatDate } from '@tellma/core-ui/l10n';
 
 import { TmApiError, type TmProblem, type TmProblemError } from '../api/tm-api-error';
 import { TM_API_LOCALE, TM_API_UPDATES } from '../api/tm-api-seams';
@@ -24,12 +26,14 @@ import { provideTellma } from '../app/provide-tellma';
 import type { TmAppConfig, TmCalendarDefinition, TmLanguageDefinition } from '../app/tm-app-config';
 import { TM_DEV_MODE } from '../app/tm-dev-mode';
 import type { TmClientMetadata } from '../metadata/tm-client-metadata';
-import { TM_T17, tmNavigate, tmRouteTestConfig, tmSettle } from '../routes/tm-app.testing.util';
+import { TM_T17, tmLoadTestPage, tmNavigate, tmRouteTestConfig, tmSettle } from '../routes/tm-app.testing.util';
 import { TmLaunchCache } from '../state/launch/tm-launch-cache';
 import type { TmLaunchDocs, TmMeLocaleResult, TmMeResult, TmTenantSettingsForClient } from '../state/launch/tm-launch-docs';
 import { TmClientStore } from '../state/store/tm-client-store';
+import { TM_STORE_HOST, type TmStoreHost } from '../state/store/tm-store-host';
 import { TmCacheRefresher } from '../state/sync/tm-cache-refresher';
 import { tmEnglish } from './tm-english';
+import { tmBrowserResolves } from './tm-locale-resolution';
 import { TmLocalization } from './tm-localization';
 import { TmServerText } from './tm-server-text';
 
@@ -85,8 +89,46 @@ interface Rig {
   readonly l10n: TmLocalization;
   readonly api: TmFakeApi;
   readonly store: TmClientStore;
+  readonly bus: TmFakeTabBus;
   readonly telemetry: TmFakeTelemetry;
   readonly warnings: { readonly mock: { readonly calls: readonly unknown[][] } };
+}
+
+/** A device's local storage and its events, which a test writes as another tab would. */
+interface Device {
+  /** The local storage's items. */
+  readonly items: Map<string, string>;
+  /** Where the storage events fire. */
+  readonly events: EventTarget;
+  /** The client store's browser over them. */
+  readonly host: TmStoreHost;
+}
+
+/** A device whose `<html>` carries a language: the boot record starts from it. */
+function device(lang = 'en'): Device {
+  const items = new Map<string, string>();
+  const events = new EventTarget();
+  const host: TmStoreHost = {
+    memory: true,
+    indexedDB: null,
+    localStorage: {
+      getItem: (key) => items.get(key) ?? null,
+      setItem: (key, value) => void items.set(key, value),
+      removeItem: (key) => void items.delete(key),
+    },
+    caches: null,
+    events,
+    documentLanguage: () => ({ lang, dir: 'ltr' }),
+    persist: () => undefined,
+  };
+  return { items, events, host };
+}
+
+/** Writes the boot record as another tab does, and fires the storage event this tab hears. */
+function writeBootElsewhere(target: Device, lang: string, dir: 'ltr' | 'rtl'): void {
+  const record = JSON.parse(target.items.get('tm.boot') ?? 'null') as Record<string, unknown> | null;
+  target.items.set('tm.boot', JSON.stringify({ v: 1, theme: 'system', sub: null, lastTenantId: null, ...record, lang, dir }));
+  target.events.dispatchEvent(new StorageEvent('storage', { key: 'tm.boot' }));
 }
 
 /** What a test changes in the app's configuration. */
@@ -142,8 +184,8 @@ const PROVIDERS: (Provider | EnvironmentProviders)[] = [
 ];
 
 /** Tenant 17's launch documents for a user with the given preferences. */
-function launchDocs(preferences: Partial<TmMeResult['user']> = {}): TmLaunchDocs {
-  return { settings: SETTINGS, me: me(preferences), tenant: { id: 17, category: 'Live', state: 'Active', realtime: true } };
+function launchDocs(preferences: Partial<TmMeResult['user']> = {}, settings = SETTINGS): TmLaunchDocs {
+  return { settings, me: me(preferences), tenant: { id: 17, category: 'Live', state: 'Active', realtime: true } };
 }
 
 /** A promise a test settles when it chooses. */
@@ -153,29 +195,56 @@ function deferred(): { readonly promise: Promise<void>; readonly resolve: () => 
   return { promise, resolve };
 }
 
+/** What a test changes in the rig beyond the app's configuration. */
+interface RigOptions extends ConfigOptions {
+  /** The user's stored preferences in tenant 17. */
+  readonly preferences?: Partial<TmMeResult['user']>;
+  /** Tenant 17's settings, {@link SETTINGS} when omitted. */
+  readonly settings?: TmTenantSettingsForClient;
+  /** Whether the rig routes into tenant 17; it does when omitted. */
+  readonly tenant?: boolean;
+  /** The device, an in-memory one whose `<html>` is English when omitted. */
+  readonly device?: Device;
+}
+
 /** Starts the app, warms tenant 17 with the user's preferences and, unless told otherwise, routes into it. */
-async function rig(
-  options: ConfigOptions & { readonly preferences?: Partial<TmMeResult['user']>; readonly tenant?: boolean } = {},
-): Promise<Rig> {
+async function rig(options: RigOptions = {}): Promise<Rig> {
   const warnings = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
-  TestBed.configureTestingModule({ providers: [provideTellma(config(options)), ...PROVIDERS] });
+  const host: Provider[] = options.device ? [{ provide: TM_STORE_HOST, useValue: options.device.host }] : [];
+  TestBed.configureTestingModule({ providers: [provideTellma(config(options)), ...PROVIDERS, ...host] });
   await TestBed.inject(ApplicationInitStatus).donePromise;
   const store = TestBed.inject(TmClientStore);
-  const docs = launchDocs(options.preferences);
+  const docs = launchDocs(options.preferences, options.settings);
   await tmWarmTenant(store, TM_T17, docs);
   const api = TestBed.inject(TmFakeApi);
-  api.respond('client/sync', { tenant: docs.tenant, tags: me().tags, settings: SETTINGS, me: docs.me, staleEntities: [] });
+  api.respond('client/sync', { tenant: docs.tenant, tags: me().tags, settings: docs.settings, me: docs.me, staleEntities: [] });
   if (options.tenant !== false) {
     await tmNavigate('/17');
   }
   await TestBed.inject(TmLocalization).ɵready();
   await tmSettle();
-  return { l10n: TestBed.inject(TmLocalization), api, store, telemetry: TestBed.inject(TmFakeTelemetry), warnings };
+  const bus = TestBed.inject(TmFakeTabBus);
+  return { l10n: TestBed.inject(TmLocalization), api, store, bus, telemetry: TestBed.inject(TmFakeTelemetry), warnings };
 }
 
 /** The write result of a locale write that stored the given members. */
 function written(members: Partial<TmMeLocaleResult>): TmMeLocaleResult {
   return { modifiedAt: '2026-11-02T00:00:00.0000000+00:00', preferencesTag: 'P2', ...members };
+}
+
+/** A deferred Arabic: its strings arrive when the test resolves the promise. */
+function deferredArabic(strings: Promise<void>): TmLanguageDefinition {
+  return { ...ARABIC, strings: () => strings.then(() => ARABIC.strings()) };
+}
+
+/** A deferred Umm al-Qura calendar: its entry point arrives when the test resolves the promise. */
+function deferredUmalqura(load: Promise<void>): TmCalendarDefinition {
+  return { code: 'uq', load: () => load.then(() => tmUmalquraCalendar()) };
+}
+
+/** The switches the tab announced to the other tabs. */
+function switches(bus: TmFakeTabBus): unknown[] {
+  return bus.posted().filter((message) => message.type === 'l10n.switched');
 }
 
 /** Waits past the locale write's coalescing delay, and lets its answer land. */
@@ -248,12 +317,80 @@ describe('TmLocalization', () => {
     });
 
     it('takes the tenant primary when the user has no language and the boot record names none offered', async () => {
-      const { l10n } = await rig();
+      // The device's boot record names French, which the distribution does not offer.
+      const arabicFirst: TmTenantSettingsForClient = { ...SETTINGS, languages: [...SETTINGS.languages].reverse() };
+      const { l10n } = await rig({ device: device('fr'), settings: arabicFirst });
 
-      expect(l10n.language()).toBe('en');
-      expect(l10n.locale()).toBe('en-AE');
+      // The default language is English: Arabic comes from the tenant's primary alone.
+      expect(l10n.language()).toBe('ar');
+      expect(l10n.locale()).toBe('ar-AE');
       expect(l10n.calendarCode()).toBe('gc');
       expect(l10n.contentSlot()).toBe(1);
+    });
+
+    it("takes the boot record's language over the tenant primary when the user has none", async () => {
+      const arabicFirst: TmTenantSettingsForClient = { ...SETTINGS, languages: [...SETTINGS.languages].reverse() };
+      const { l10n } = await rig({ settings: arabicFirst });
+
+      expect(l10n.language()).toBe('en');
+      expect(l10n.contentSlot()).toBe(2);
+    });
+
+    it('changes nothing until what an adopted preference needs loads, then each part in one pass', async () => {
+      const strings = deferred();
+      const load = deferred();
+      const { l10n } = await rig({ languages: [tmEnglish(), deferredArabic(strings.promise)], calendars: [deferredUmalqura(load.promise)] });
+      const transloco = TestBed.inject(TranslocoService);
+      const requests = TestBed.inject(TM_API_LOCALE);
+      const retry = l10n.ɵtext('tm.errors.retry');
+      const root = document.documentElement;
+      const sample = (): string =>
+        [l10n.language(), l10n.dir(), root.dir, transloco.getActiveLang(), retry(), l10n.calendarCode(), l10n.calendar().id, requests.calendarCode()].join(' | ');
+      const seen: string[] = [];
+      const watch = TestBed.runInInjectionContext(() => effect(() => seen.push(sample())));
+      await tmSettle();
+      const start = 'en | ltr | ltr | en | Try again | gc | gregory | gc';
+      expect(sample()).toBe(start);
+
+      // Another device's change arrives as an adoption: the inputs move, not a setter.
+      TestBed.inject(TmCacheRefresher).adopt(17, { locale: written({ preferredLanguage: 'ar', preferredCalendar: 'uq' }) });
+      await tmSettle();
+      expect(sample()).toBe(start);
+
+      load.resolve();
+      await tmSettle();
+      const hijri = 'en | ltr | ltr | en | Try again | uq | islamic-umalqura | uq';
+      expect(sample()).toBe(hijri);
+
+      strings.resolve();
+      await tmSettle();
+      const arabic = 'ar | rtl | rtl | ar | حاول مرة أخرى | uq | islamic-umalqura | uq';
+      expect(sample()).toBe(arabic);
+      expect(new Set(seen)).toEqual(new Set([start, hijri, arabic]));
+      watch.destroy();
+    });
+
+    it("formats a day-first language's numeric dates day-first on the default language's locale too", async () => {
+      // A distribution whose default language is US English, and Oromo, which Chromium lacks.
+      const metadata = tmTestMetadata({
+        languages: [
+          { code: 'en', nativeName: 'English', dir: 'ltr', region: 'US', regions: ['US'], nativeDigits: null },
+          { code: 'om', nativeName: 'Afaan Oromoo', dir: 'ltr', region: 'ET', regions: ['ET'], nativeDigits: null },
+        ],
+        calendars: ['gc'],
+      });
+      const oromo: TmLanguageDefinition = { code: 'om', dir: 'ltr', strings: () => Promise.resolve({ tm: {}, tmUi: {} }) };
+      const settings: TmTenantSettingsForClient = {
+        ...SETTINGS,
+        languages: [SETTINGS.languages[0], { code: 'om', nativeName: 'Afaan Oromoo', symbol: 'Om', isRightToLeft: false }],
+        calendars: ['gc'],
+      };
+      const { l10n } = await rig({ core: () => Promise.resolve(metadata), languages: [tmEnglish(), oromo], settings, preferences: { preferredLanguage: 'om' } });
+
+      expect(l10n.locale()).toBe(tmBrowserResolves('om-ET') ? 'om-ET' : 'en-US-x-om');
+      expect(TestBed.inject(TM_API_LOCALE).acceptLanguage()).toBe('om-ET');
+      expect(tmFormatDate('2026-03-05', l10n.locale())).toBe('05/03/2026');
+      expect(tmFormatDate('2026-03-05', TestBed.inject(TM_ACTIVE_LOCALE)())).toBe('05/03/2026');
     });
   });
 
@@ -292,6 +429,94 @@ describe('TmLocalization', () => {
         watch.destroy();
       } finally {
         history.replaceState(history.state, '', address);
+      }
+    });
+  });
+
+  describe('entering a tenant', () => {
+    it("creates the page only once the tenant's language and calendar have loaded, so its first frame and read use them", async () => {
+      const strings = deferred();
+      const load = deferred();
+      const { l10n } = await rig({
+        tenant: false,
+        preferences: { preferredLanguage: 'ar', preferredCalendar: 'uq' },
+        languages: [tmEnglish(), deferredArabic(strings.promise)],
+        calendars: [deferredUmalqura(load.promise)],
+      });
+      expect(l10n.language()).toBe('en');
+      const seen: string[] = [];
+      // The service itself never shows a part ahead of its load either.
+      const transloco = TestBed.inject(TranslocoService);
+      const retry = l10n.ɵtext('tm.errors.retry');
+      const states: string[] = [];
+      const sample = (): string =>
+        [l10n.language(), l10n.dir(), transloco.getActiveLang(), retry(), l10n.calendarCode(), l10n.calendar().id].join(' | ');
+      const watch = TestBed.runInInjectionContext(() => effect(() => states.push(sample())));
+
+      /** A page that records what it sees from its creation on. */
+      @Component({ selector: 'tm-sampling-page', template: '' })
+      class SamplingPage {
+        /** Records the language, the calendar and what a read would send, at creation and on every change. */
+        constructor() {
+          const requests = inject(TM_API_LOCALE);
+          effect(() => seen.push(`${l10n.language()} ${l10n.calendarCode()} ${requests.acceptLanguage()} ${requests.calendarCode()}`));
+          seen.push(`${l10n.language()} ${l10n.calendarCode()} ${requests.acceptLanguage()} ${requests.calendarCode()}`);
+        }
+      }
+      tmLoadTestPage.mockImplementationOnce(() => Promise.resolve(SamplingPage));
+
+      await tmNavigate('/17/credit-review');
+      await tmSettle();
+      expect(seen).toEqual([]);
+      load.resolve();
+      await tmSettle();
+      expect(seen).toEqual([]);
+
+      strings.resolve();
+      await tmSettle();
+      expect(seen.length).toBeGreaterThan(0);
+      expect(new Set(seen)).toEqual(new Set(['ar uq ar-AE uq']));
+      expect(new Set(states)).toEqual(
+        new Set([
+          'en | ltr | en | Try again | gc | gregory',
+          'en | ltr | en | Try again | uq | islamic-umalqura',
+          'ar | rtl | ar | حاول مرة أخرى | uq | islamic-umalqura',
+        ]),
+      );
+      watch.destroy();
+    });
+  });
+
+  describe('the other tabs', () => {
+    it("announces a switch to the other tabs, never a preference that settles the language", async () => {
+      const { l10n, store, bus } = await rig({ preferences: { preferredLanguage: 'ar' } });
+      // The stored preference settled Arabic: the boot record keeps it for this tab's next launch.
+      expect(store.boot.read().lang).toBe('ar');
+      expect(switches(bus)).toEqual([]);
+
+      l10n.setLanguage('en');
+      await tmSettle();
+
+      expect(switches(bus)).toEqual([{ type: 'l10n.switched', lang: 'en' }]);
+    });
+
+    it("leaves a tenantless tab and a tenant tab with no preference as they are when another tab settles a preference, and follows a switch", async () => {
+      for (const tenant of [false, true]) {
+        const here = device();
+        const { l10n } = await rig({ tenant, device: here });
+        expect(l10n.language()).toBe('en');
+
+        // Another tab opens an Arabic-preferring tenant: its settled language reaches the boot record.
+        writeBootElsewhere(here, 'ar', 'rtl');
+        await tmSettle();
+        expect(l10n.language(), `tenant: ${tenant}`).toBe('en');
+        expect(document.documentElement.dir).toBe('ltr');
+
+        // Another tab's switch is followed.
+        TestBed.inject(TmFakeTabBus).receive({ type: 'l10n.switched', lang: 'ar' });
+        await tmSettle();
+        expect(l10n.language(), `tenant: ${tenant}`).toBe('ar');
+        TestBed.resetTestingModule();
       }
     });
   });
@@ -445,6 +670,39 @@ describe('TmLocalization', () => {
       expect(user?.preferredDigits).toBeUndefined();
       expect(l10n.locale()).toBe('ar-EG');
       expect(l10n.digits()).toBeNull();
+    });
+
+    it('never lets an earlier write that lands undo a later change of the member, and the change stands when its own write is refused', async () => {
+      const { l10n, api, store } = await rig();
+      const answers: { readonly land: (result: TmMeLocaleResult) => void; readonly fail: (error: unknown) => void }[] = [];
+      api.respond(
+        'users/me/locale',
+        () => new Promise<TmMeLocaleResult>((resolve, reject) => void answers.push({ land: resolve, fail: reject })),
+      );
+      l10n.setLanguage('ar');
+      await afterTheWrite();
+      expect(answers).toHaveLength(1);
+
+      // Back to English while the Arabic write is in flight.
+      l10n.setLanguage('en');
+      await tmSettle();
+      const seen: string[] = [];
+      const watch = TestBed.runInInjectionContext(() => effect(() => seen.push(l10n.language())));
+      await tmSettle();
+
+      answers[0].land(written({ preferredLanguage: 'ar' }));
+      await tmSettle();
+      expect(TestBed.inject(TmLaunchCache).docs.me()?.user.preferredLanguage).toBe('ar');
+      await afterTheWrite();
+      expect(answers).toHaveLength(2);
+      answers[1].fail(new TmApiError({ kind: 'validation' }));
+      await tmSettle();
+
+      expect(l10n.localeSave()).toBe('failed');
+      expect(new Set(seen)).toEqual(new Set(['en']));
+      expect(l10n.language()).toBe('en');
+      expect(store.boot.read().lang).toBe('en');
+      watch.destroy();
     });
 
     it('keeps an offline write queued and retries it once the server is reachable', async () => {
