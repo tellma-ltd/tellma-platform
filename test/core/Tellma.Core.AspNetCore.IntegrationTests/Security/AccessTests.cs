@@ -3,6 +3,7 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+using System.Globalization;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Text.Json.Nodes;
@@ -16,7 +17,7 @@ namespace Tellma.Core.AspNetCore.IntegrationTests.Security
     ///     Who reaches what on the web surface, each a real request through the composed host: the
     ///     credentials it accepts and refuses, a stranger and a former member answered alike, the
     ///     sandbox's member kept to the sandbox, the grants that refuse a save or a delete and the
-    ///     filter that refuses a save, an API action without its grant, the step-up a user change
+    ///     filter that refuses a save of a new row and of a stored one, an API action without its grant, the step-up a user change
     ///     requires, and the restricted member's navigation paths.
     /// </summary>
     /// <param name="deployment">The suite's deployment.</param>
@@ -84,6 +85,38 @@ namespace Tellma.Core.AspNetCore.IntegrationTests.Security
                 Assert.DoesNotContain("Center Readers", text, StringComparison.OrdinalIgnoreCase);
                 Assert.DoesNotContain("CenterType", text, StringComparison.Ordinal);
             }
+        }
+
+        [Fact]
+        public async Task A_save_of_a_stored_row_outside_the_filtered_save_grant_is_refused_and_leaves_the_row_unchanged()
+        {
+            using SpaClient admin = await deployment.SignInAsync(deployment.Administrator);
+            using SpaClient editor = await deployment.SignInAsync(deployment.Editor);
+            int root = await CenterOperationTests.RootAsync(admin);
+
+            // --- A service center the administrator stores: the editor reads it, but its Save grant covers sale centers only ---
+            JsonNode created = (await admin.PostAsync(Tenant, "centers/save", Wire.Save(CenterOperationTests.Center(0, "AC-S", "Stored service", "Service", root))))
+                .Expect(HttpStatusCode.OK);
+            int id = Assert.Single(Wire.IdsOf(created));
+            JsonObject stored = Assert.Single(Wire.Entities((await editor.PostAsync(Tenant, "centers/get-by-ids", Wire.Ids(id))).Expect(HttpStatusCode.OK)));
+
+            // --- Renamed, and retyped into the filter: the after image of the second passes the
+            // filter, so only the check of the stored row before the write can refuse it ---
+            var renamed = (JsonObject)stored.DeepClone();
+            renamed["name"] = "Renamed by the editor";
+            var retyped = (JsonObject)stored.DeepClone();
+            retyped["name"] = "Taken over by the editor";
+            retyped["centerType"] = "Sale";
+            foreach (JsonObject attempt in new[] { renamed, retyped })
+            {
+                JsonNode refused = (await editor.PostAsync(Tenant, "centers/save", Wire.Save(attempt))).ExpectProblem(HttpStatusCode.Forbidden, "forbidden");
+                Assert.Equal(("Save", "outside-filter"), Reason(refused));
+            }
+
+            // --- The row is as the administrator stored it ---
+            Assert.Equal(
+                "Stored service|Service",
+                await deployment.ScalarAsync<string>(Tenant, string.Create(CultureInfo.InvariantCulture, $"SELECT CONCAT([Name], N'|', [CenterType]) FROM [gl].[Centers] WHERE [Id] = {id};")));
         }
 
         [Fact]

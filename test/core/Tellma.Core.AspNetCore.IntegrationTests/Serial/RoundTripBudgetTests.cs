@@ -133,19 +133,34 @@ namespace Tellma.Core.AspNetCore.IntegrationTests.Serial
                 "access/check", new JsonObject { ["userId"] = deployment.Sales.UserId, ["securables"] = securables.DeepClone() }, "access:check", 2);
             _ = await budget.MeasureAsync("access/holders", new JsonObject { ["resource"] = "gl.Center", ["action"] = "Read" }, "access:holders", 1);
 
-            // --- The caller's notification preferences: one read, and a save that writes them in one persist ---
-            JsonNode preferences = await budget.MeasureAsync("notification-preferences/get", null, "notification-preferences:get", 1);
-            JsonArray changed = preferences.DeepClone().AsArray();
-            if (changed.Count > 0)
-            {
-                changed[0]!["enabled"] = !changed[0]!["enabled"]!.GetValue<bool>();
-            }
+            // --- The caller's notification preferences: a save writes the caller's deviations from
+            // each channel's default in one persist however many rows it touches, and a read answers
+            // the stored ones. The first save inserts two; the second keeps one, deletes the other and
+            // inserts a third. A stored deviation can only flip back to its default, which drops it, so
+            // a save never runs the statement's update on a reference composition ---
+            JsonArray first = Preferences(("core.user.added", "email", true), ("core.user.added", "inbox", false));
+            JsonArray second = Preferences(("core.job.failed", "email", true), ("core.user.added", "email", true));
+            _ = await budget.MeasureAsync("notification-preferences/save", first, "notification-preferences:save", 2);
+            JsonNode stored = await budget.MeasureAsync("notification-preferences/get", null, "notification-preferences:get", 1);
+            Assert.True(JsonNode.DeepEquals(first, stored), $"The stored preferences differ from the saved ones: {stored.ToJsonString()}");
+            _ = await budget.MeasureAsync("notification-preferences/save", second, "notification-preferences:save", 2);
+            stored = await budget.SetUpAsync("notification-preferences/get", null, "notification-preferences:get");
+            Assert.True(JsonNode.DeepEquals(second, stored), $"The stored preferences differ from the saved ones: {stored.ToJsonString()}");
 
-            _ = await budget.MeasureAsync("notification-preferences/save", changed, "notification-preferences:save", 2);
+            // The defaults again, so no other case's notification reaches the administrator's email.
+            _ = await budget.SetUpAsync("notification-preferences/save", new JsonArray(), "notification-preferences:save");
 
             // Every measurement goes to the test's output, so a run shows how close each operation is to its budget.
             TestContext.Current.TestOutputHelper?.WriteLine(budget.All.ToString());
             Assert.True(budget.Over.Length == 0, "Operations above their round-trip budget:\n" + budget.Over + "\nAll measured:\n" + budget.All);
+        }
+
+        /// <summary>A set of notification preferences as the wire carries it, in the order the server answers them.</summary>
+        /// <param name="rows">Each preference's type, channel and whether it is enabled.</param>
+        /// <returns>The preferences.</returns>
+        private static JsonArray Preferences(params (string Type, string Channel, bool Enabled)[] rows)
+        {
+            return [.. rows.Select(static row => (JsonNode)new JsonObject { ["type"] = row.Type, ["channel"] = row.Channel, ["enabled"] = row.Enabled })];
         }
 
         /// <summary>Measures operations one at a time and keeps those above their budget.</summary>

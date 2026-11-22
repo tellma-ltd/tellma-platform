@@ -27,9 +27,11 @@ They are written against Application Insights' `customMetrics` table, where the 
 instruments land through the Azure Monitor exporter. A histogram lands there as per-interval sums,
 counts, minimums and maximums rather than buckets, so the round-trip query compares the hour's
 worst unit of work with a ceiling instead of a percentile with the budget. A kind's ceiling is its
-warm budget plus what a cold connect cache or a stale tag adds (a read's one more, a save's or an
-entity action's dependent-round maximum of four), and every kind without a row of its own, a
-distribution's API actions among them, is held to the save ceiling. A mean would let one save at
+warm budget, an overridden validation included, plus the one round trip a cold connect cache or a
+stale tag adds: two for a read, three for a delete (whose stack validation makes its warm budget
+two) and for a cached table read in full (two beyond its row limit), and four for a save or an
+entity action, its dependent-round maximum. Every kind without a row of its own, a distribution's
+API actions among them, is held to the save ceiling. A mean would let one save at
 five round trips pass among the twos; the price is that a transient failure's retry, a round trip of
 its own, can fire the alert alone, so it is one to look at rather than to page on. Jobs,
 provisioning steps, an Excel export's rows (one round trip per page) and units of work outside any
