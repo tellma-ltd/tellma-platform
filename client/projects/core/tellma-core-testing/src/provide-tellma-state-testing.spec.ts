@@ -6,6 +6,7 @@
 import { TestBed } from '@angular/core/testing';
 import {
   TmClientStore,
+  TmDrafts,
   TmSession,
   TmStoreRefusedError,
   TmTabBus,
@@ -61,6 +62,16 @@ describe('provideTellmaStateTesting', () => {
       .recent()
       .filter((item) => item.name === 'tm.store.refused');
     expect(refusals.map((item) => item.props['reason'])).toEqual(['cookie', 'session']);
+  });
+
+  it("keeps drafts in a session storage of the test's own, never the browser's", () => {
+    const drafts = TestBed.inject(TmDrafts);
+    const key = drafts.key(17, 'gl.Center', 5);
+    drafts.save(key, { name: 'Jeddah' });
+    drafts.flush();
+    expect(drafts.load(key)).toEqual({ name: 'Jeddah' });
+    expect(drafts.dirtyCount()).toBe(1);
+    expect(sessionStorage.getItem(key)).toBeNull();
   });
 });
 

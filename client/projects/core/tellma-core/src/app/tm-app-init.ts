@@ -24,6 +24,7 @@ import { TmTelemetry } from '../observe/tm-telemetry';
 import { TmPageFocus } from '../routes/tm-page-focus';
 import { TmLaunchTimer } from '../routes/tm-route-host';
 import { TmSession } from '../session/tm-session';
+import { TmRecents } from '../state/memory/tm-recents';
 import { TmClientStore } from '../state/store/tm-client-store';
 import { TmUrls } from '../urls/tm-urls';
 import type { TmAppConfig } from './tm-app-config';
@@ -104,12 +105,15 @@ export function tmStartup(config: TmAppConfig): EnvironmentProviders[] {
       inject(TmUrls);
       inject(TmPageFocus).ɵstart();
       inject(TmLaunchTimer).ɵstart();
-      // After first render, at idle: the Contracts chunk, which the HTTP layer keeps.
+      // After first render: the recent pages' visit count; at idle, the
+      // Contracts chunk, which the HTTP layer keeps.
       // An app torn down before its idle moment loads nothing.
       let alive = true;
       inject(DestroyRef).onDestroy(() => (alive = false));
       afterNextRender(
         () => {
+          // Recent pages count visits from the first page on (spec 0025 §13).
+          injector.get(TmRecents);
           const load = (): void => {
             const api = alive ? injector.get(TmApi) : null;
             if (api instanceof TmHttpApi) {

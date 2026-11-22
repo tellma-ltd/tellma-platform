@@ -1370,6 +1370,15 @@ describe('TmHttpApi', () => {
       await flush();
     });
 
+    it('goes to the tenant it names rather than the routed one', async () => {
+      const rig = await setUp();
+      rig.api.send('users/me/preferences/set', { items: [] }, { tenantId: 18 });
+      await flush();
+      expect(rig.host.last().url).toBe('/18/api/web/users/me/preferences/set');
+      rig.host.last().fail();
+      await flush();
+    });
+
     it('throws over 16 KB in development and drops the body in production', async () => {
       const rig = await setUp();
       const large = { text: 'x'.repeat(16 * 1024) };

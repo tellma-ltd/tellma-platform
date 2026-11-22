@@ -63,6 +63,8 @@ export interface TmUploadOptions {
 export interface TmSendOptions {
   /** Marks the send as background work, which renews no session. */
   readonly background?: boolean;
+  /** The tenant to send to; the routed tenant when omitted. Ignored on a tenantless route. */
+  readonly tenantId?: number;
 }
 
 /** A downloaded file. */

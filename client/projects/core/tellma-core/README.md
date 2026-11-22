@@ -113,8 +113,8 @@ The layout is frozen: the boot script's expiry delete uses it too, and both test
   committed (or nothing is on disk), and `false` when the store runs in memory while a database it
   could not reach may hold documents.
 - **The boot step**, `ɵstart(tenantId)`, an initializer of the app's start: it waits for the tab
-  bus, sweeps every user when the boot record names none or another user, reads the device, user
-  and routed tenant partitions in one readonly transaction (a warm launch's only store access),
+  bus, sweeps every user when the boot record names none or another user, reads the device, user,
+  current session and routed tenant partitions in one readonly transaction (a warm launch's only store access),
   records the user in the boot record (unless its sweep could not reach the disk, so the next launch
   sweeps again), and sweeps the user's other sessions at idle after the first render. It never
   rejects: a storage fault after the open puts the tab in memory, cold.
@@ -179,6 +179,65 @@ in flight reports it), and a stale list keeps serving until the newer one
 lands. A refused list stores nothing and is tried again once the caller's grants move. The user's
 tenants and the distribution are read again in the background once per launch, at idle, and the
 tenants on every tenantless route.
+
+### Preferences
+
+`TmPreferences` (`src/state/prefs/`) gives pages typed per-tenant preferences, each declared once
+with `tmPreferenceKey(key, kind, fallback, validate?)`. In development the declaration checks the
+server's key grammar, and the first `get` or `set` checks that the first segment is a platform
+segment (`nav`, `search`, `report`, `dashboard`, `home`, `announcements`, `notifications`, `tm`) or
+a composed feature's key.
+
+- **Reading.** `get(key)` follows the routed tenant: the overlay (the last value this browser set
+  that this tab has seen), else the stored bag `me.preferences`, else the fallback. Values are
+  stored as `JSON.stringify`; each distinct string is parsed once, and one that is not JSON, or
+  fails `validate`, reads as the fallback with `tm.prefs.invalid { family }`.
+- **Setting.** `set` changes the overlay in the same frame, posts `prefs.changed` with the stored
+  string, and schedules the flush; a value deep-equal to the fallback deletes the key, and `reset`
+  does the same. A stored form over 32 KB is refused before it applies (`tm.prefs.dropped
+  too-large`; it throws in development). Outside a tenant, `get` returns the fallback and `set` does
+  nothing. Another tab's value replaces the overlay entry and drops this tab's unsent one; while
+  this tab's write of the key is in flight, the later value stays dirty and is saved after it, so the
+  bag ends on the later choice. An overlay entry ends once the bag holds its string and this tab has
+  nothing unsaved for it.
+- **Flushing.** Curated keys flush at the end of the task, coalesced; write-behind keys 2 s after
+  their last change and at most once per 10 s, at once when the page hides or the stored form
+  exceeds 8 KB; `nav.recent` at most every 5 min, the hidden flush included. A flush writes
+  `users/me/preferences/set` and `/delete` through `TmApi.write` and adopts each result. On
+  `pagehide`, every unsaved key, in-flight ones included, goes through `TmApi.send`, newest first,
+  both bodies within 16 KB (`pagehide-cap` drops the rest). Nothing flushes, and `pagehide` sends
+  nothing, while the tenant's stored state is `Frozen`; the keys flush once it leaves it.
+- **Failures** are silent. `offline`, `unavailable` and `server` keep the keys and retry after 10 s,
+  or at once when `TmApi.online` turns true; `read-only` drops them (`read-only`); the bag's key cap
+  drops the write (`key-cap`); another validation code drops the keys it names (`rejected`) and saves
+  the rest again; a dropped key leaves the overlay and every tab hears its stored string again.
+
+### The tab's memory
+
+`src/state/memory/` holds what a tab remembers beyond the store.
+
+- **`TmPageState`** remembers, in memory, up to 20 pages' state by canonical path
+  (`tmPageStateKey`), least recently used out first. `markStale({ tenantId, entity? })` marks the
+  pages `TmUrls.describe` maps to the entity (a hatch's extra segment maps by its host), or every page
+  of the tenant; a move of the tenant's held `permissions` tag does the same, and a change of its
+  languages forgets the tenant's pages. `remember(key, state, { keepStale: true })` keeps a stale
+  mark a write set while the page was away.
+- **`TmDrafts`** keeps unsaved form copies in session storage under `tm.draft:<sub>:<t>:<entity>:<id>`,
+  as `{ v: 1, at, data }`: written 300 ms after the last save and at once when the page hides, refused
+  for another user's key, and counted in `dirtyCount`. A full storage moves this tab's oldest other
+  drafts into memory and retries once; failing that, the draft lives in memory
+  (`tm.drafts.quota-exceeded`).
+- **`TmTreeExpansion`** keeps a tree page's expanded ids in the session partition's `tree:<page>`,
+  oldest first and at most 500, written 250 ms after the last change. The boot step reads the
+  session partition with the others, so a tree's first load finds them.
+- **`TmRecents`** lists the routed tenant's ten most recent pages from the write-behind key
+  `nav.recent`. A visit is a search, report, dashboard, settings, access or custom page, not the
+  drill-through list, current for 2 s while visible. Until the page context and the launcher land,
+  the routed page comes from `ɵTM_ROUTED_PAGE` (the deepest route's data and the displayed title)
+  and titles, icons and access from `ɵTM_RECENTS_NAVIGATION`; the access filter runs on read.
+- **The dump.** `ɵTmStateDump.read()` builds the state's support-dump section: the mirrored
+  documents' partition kinds, stored names and tags, the last sync, and the unsaved preference,
+  draft and page-state keys, never a value.
 
 ## The HTTP layer
 
