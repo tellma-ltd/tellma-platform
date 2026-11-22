@@ -25,6 +25,14 @@ namespace Tellma.Core.Calendars
     ///         Safar 1501 on, every date is the tabular calendar's.
     ///     </para>
     ///     <para>Beyond the table every conversion is an approximation of the observed calendar.</para>
+    ///     <para>
+    ///         The calendar converts every day from AD 622-07-18 to <see cref="DateOnly.MaxValue" />,
+    ///         AD 9999-12-31, which is AH 9666-04-03. Month and year lengths follow the tabular rule
+    ///         to the end of AH 9666: month 4 of 9666 has its 29 days and months 5 to 12 their
+    ///         lengths, but no day after 9666-04-03 converts. <see cref="Compose" /> answers null for
+    ///         such a day, and every member that takes or returns one throws
+    ///         <see cref="ArgumentOutOfRangeException" />.
+    ///     </para>
     /// </remarks>
     internal sealed class UmAlQuraExtendedCalendar : Calendar
     {
@@ -64,8 +72,11 @@ namespace Tellma.Core.Calendars
         /// <summary>The tabular date of the table's last day: the tabular month the table overlaps and how many of its days it takes.</summary>
         private static (int Year, int Month, int Day) Overlap { get; } = TabularDate(TableEnd);
 
-        /// <summary>The last year the tabular calendar converts.</summary>
-        private static int MaxYear { get; } = Tabular.GetYear(Tabular.MaxSupportedDateTime);
+        /// <summary>The date of the last day the calendar converts, <see cref="DateOnly.MaxValue" />: AH 9666-04-03.</summary>
+        private static (int Year, int Month, int Day) LastDate { get; } = TabularDate(DateOnly.MaxValue);
+
+        /// <summary>The last year the calendar has, the year of its last day: AH 9666.</summary>
+        private static int MaxYear { get; } = LastDate.Year;
 
         /// <inheritdoc />
         public override DateTime MinSupportedDateTime => Tabular.MinSupportedDateTime;
@@ -130,9 +141,12 @@ namespace Tellma.Core.Calendars
         }
 
         /// <summary>The number of days in a month; 0 for a month the calendar lacks.</summary>
-        /// <param name="year">The year.</param>
-        /// <param name="month">The month.</param>
-        /// <returns>The days.</returns>
+        /// <param name="year">The year, 1 to 9666.</param>
+        /// <param name="month">The month, 1 to 12.</param>
+        /// <returns>
+        ///     The days, 29 or 30 (or 29 for Muharram 1501). Every month of AH 9666 has its length,
+        ///     although no day after 9666-04-03 converts.
+        /// </returns>
         public static int DaysIn(int year, int month)
         {
             if (year < 1 || year > MaxYear || month is < 1 or > 12)
@@ -145,7 +159,7 @@ namespace Tellma.Core.Calendars
                 return Table.GetDaysInMonth(year, month);
             }
 
-            int days = Tabular.GetDaysInMonth(year, month);
+            int days = TabularDaysIn(year, month);
             return (year, month) == (Overlap.Year, Overlap.Month) ? days - Overlap.Day : days;
         }
 
@@ -153,26 +167,25 @@ namespace Tellma.Core.Calendars
         /// <param name="year">The year.</param>
         /// <param name="month">The month.</param>
         /// <param name="day">The day.</param>
-        /// <returns>The date, or null when the three do not name a day the calendar converts.</returns>
+        /// <returns>
+        ///     The date, or null when the three do not name a day the calendar converts: a day the
+        ///     month lacks, or one after AH 9666-04-03, the last day a <see cref="DateOnly" /> holds.
+        /// </returns>
         public static DateOnly? Compose(int year, int month, int day)
         {
-            if (day < 1 || day > DaysIn(year, month))
+            if (day < 1 || day > DaysIn(year, month) || IsAfterLastDate(year, month, day))
             {
                 return null;
             }
 
-            try
+            if (year >= TableFirstYear && year <= TableLastYear)
             {
-                return year >= TableFirstYear && year <= TableLastYear
-                    ? DateOnly.FromDateTime(Table.ToDateTime(year, month, day, 0, 0, 0, 0))
-                    : DateOnly.FromDateTime(Tabular.ToDateTime(
-                        year, month, (year, month) == (Overlap.Year, Overlap.Month) ? day + Overlap.Day : day, 0, 0, 0, 0));
+                return DateOnly.FromDateTime(Table.ToDateTime(year, month, day, 0, 0, 0, 0));
             }
-            catch (ArgumentOutOfRangeException)
-            {
-                // Within the tabular calendar's last year (AH 9666), past its last day.
-                return null;
-            }
+
+            // After the table, the tabular month it overlaps lost its first days to the table.
+            int tabularDay = (year, month) == (Overlap.Year, Overlap.Month) ? day + Overlap.Day : day;
+            return DateOnly.FromDateTime(Tabular.ToDateTime(year, month, tabularDay, 0, 0, 0, 0));
         }
 
         /// <inheritdoc />
@@ -293,6 +306,31 @@ namespace Tellma.Core.Calendars
                 ? new TimeSpan(0, hour, minute, second, millisecond)
                 : throw new ArgumentOutOfRangeException(null, "The time of day is not valid.");
             return Compose(year, month, day)!.Value.ToDateTime(TimeOnly.MinValue) + timeOfDay;
+        }
+
+        /// <summary>The length of a month of the tabular calendar, by its rule.</summary>
+        /// <param name="year">The year, 1 to 9666.</param>
+        /// <param name="month">The month, 1 to 12.</param>
+        /// <returns>30 for an odd month and for Dhu al-Hijjah of a leap year; 29 otherwise.</returns>
+        /// <remarks>
+        ///     The rule itself, not <see cref="HijriCalendar.GetDaysInMonth(int, int, int)" />: the
+        ///     framework refuses the months of AH 9666 that begin after <see cref="DateTime.MaxValue" />,
+        ///     although its year 9666, and so its leap rule, extends to the year's end.
+        /// </remarks>
+        private static int TabularDaysIn(int year, int month)
+        {
+            return month % 2 == 1 || (month == 12 && Tabular.IsLeapYear(year)) ? 30 : 29;
+        }
+
+        /// <summary>Whether a year, month and day fall after the last day the calendar converts.</summary>
+        /// <param name="year">The year.</param>
+        /// <param name="month">The month.</param>
+        /// <param name="day">The day.</param>
+        /// <returns>True after AH 9666-04-03.</returns>
+        private static bool IsAfterLastDate(int year, int month, int day)
+        {
+            // Tuples compare item by item: the year, then the month, then the day.
+            return (year, month, day).CompareTo(LastDate) > 0;
         }
 
         /// <summary>The tabular calendar's date of a Gregorian date on or after AH 1-01-01.</summary>
