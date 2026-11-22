@@ -31,7 +31,7 @@ namespace Tellma.Core.Abstractions.Crud
     /// </remarks>
     /// <typeparam name="TEntity">The stack's entity type.</typeparam>
     /// <typeparam name="TKey">The stack's key type.</typeparam>
-    public abstract class EntityService<TEntity, TKey> : IEntityBehavior<TEntity, TKey>
+    public abstract class EntityService<TEntity, TKey> : IEntityBehavior<TEntity, TKey>, IStackExcelRows
         where TEntity : Entity<TKey>
         where TKey : struct, IBinaryInteger<TKey>
     {

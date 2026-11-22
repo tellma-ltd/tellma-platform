@@ -18,6 +18,7 @@ using Tellma.Core.Composition.Realizers;
 using Tellma.Core.Crud;
 using Tellma.Core.Data;
 using Tellma.Core.Data.Batches;
+using Tellma.Core.Excel;
 using Tellma.Core.Identity;
 using Tellma.Core.Jobs;
 using Tellma.Core.Localization;
@@ -188,13 +189,16 @@ namespace Tellma.Core.Composition
             services.TryAddSingleton<ProvisioningStepRunner>();
 
             // --- Stacks: the registry, its route source, the services and components it closes, its securables (spec 0015 §2) ---
-            CrudComposition.Register(services, _record);
+            CrudComposition.Register(services, _record, ExcelCompanions.Instance);
+
+            // --- Excel: the options, the exporter, the export runner, the instruments and the Excel checks (spec 0019 §1.2) ---
+            ExcelComposition.Register(services, _record, options);
 
             // --- Blobs: the options, the kind registry, the staging service and the blobs check (spec 0017 §1.3, §9) ---
             BlobsRuntimeComposition.Register(services, _record, options);
 
-            // --- The users' and roles' stacks: the instruments and the services' collaborators (spec 0018 §3, §4) ---
-            UsersRuntimeComposition.Register(services);
+            // --- The users' and roles' stacks: the instruments, the services' collaborators and the administrator's invitation (spec 0018 §3, §4, §6.1) ---
+            UsersRuntimeComposition.Register(services, _record);
 
             // --- Server-built links (spec 0011 §5.10), over the stack registry's routes ---
             services.AddSingleton<ITellmaLinks, TellmaLinks>();

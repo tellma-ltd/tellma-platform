@@ -43,8 +43,16 @@ namespace Tellma.Core.Crud
         /// <param name="problems">The problems, each sourced to its check.</param>
         /// <param name="leafOf">Resolves an entity to the leaf registered for it.</param>
         /// <param name="otherWriters">The classes outside the stacks that may declare enlistments: the routed services, the job handlers, the provisioning steps and the contributed services.</param>
-        private StackComposition(List<ComposedStack> stacks, List<ComposedApiService> apiServices, List<CompositionProblem> problems, Func<Type, Type> leafOf, IReadOnlyList<Type> otherWriters)
+        /// <param name="platform">The platform's companions.</param>
+        private StackComposition(
+            List<ComposedStack> stacks,
+            List<ComposedApiService> apiServices,
+            List<CompositionProblem> problems,
+            Func<Type, Type> leafOf,
+            IReadOnlyList<Type> otherWriters,
+            IPlatformCompanions platform)
         {
+            Platform = platform;
             Stacks = stacks;
             ApiServices = apiServices;
             Problems = problems;
@@ -52,6 +60,9 @@ namespace Tellma.Core.Crud
             _otherWriters = otherWriters;
             _byLeaf = stacks.ToDictionary(static stack => stack.Leaf);
         }
+
+        /// <summary>The platform's companions, which the registrations and the descriptors reach through here.</summary>
+        public IPlatformCompanions Platform { get; }
 
         /// <summary>Every stack, in the order its entity was first registered.</summary>
         public IReadOnlyList<ComposedStack> Stacks { get; }
@@ -98,10 +109,12 @@ namespace Tellma.Core.Crud
 
         /// <summary>Settles the stacks of a realised composition.</summary>
         /// <param name="record">The realised composition.</param>
+        /// <param name="platform">The platform's companions.</param>
         /// <returns>The stacks.</returns>
-        public static StackComposition Build(TellmaCompositionRecord record)
+        public static StackComposition Build(TellmaCompositionRecord record, IPlatformCompanions platform)
         {
             ArgumentNullException.ThrowIfNull(record);
+            ArgumentNullException.ThrowIfNull(platform);
             List<CompositionProblem> problems = [];
             List<ComposedStack> stacks = Register(record, problems);
             foreach (ComposedStack stack in stacks)
@@ -111,6 +124,17 @@ namespace Tellma.Core.Crud
 
             var byLeaf = stacks.ToDictionary(static stack => stack.Leaf);
             AttachCompanions(record, byLeaf, problems);
+
+            // --- The platform's companion, ahead of every feature's, on every stack whose operations it serves (spec 0019 §1.2) ---
+            foreach (ComposedStack stack in stacks.Where(static stack => stack.ServiceType is not null))
+            {
+                if (platform.CompanionOf(stack.Leaf, stack.Operations) is Type companion)
+                {
+                    _ = stack.Companions.Remove(companion);
+                    stack.Companions.Insert(0, companion);
+                }
+            }
+
             AttachComponents(record, stacks, problems);
 
             // --- The blob pair, ahead of every other component, on every stack whose aggregate references a blob (spec 0017 §4.2) ---
@@ -118,7 +142,7 @@ namespace Tellma.Core.Crud
 
             // --- Routed services: no leaf to close over, recorded once each ---
             List<ComposedApiService> apiServices = [.. record.ApiServices.Select(static service => new ComposedApiService(service.ServiceType, service.Owner))];
-            return new StackComposition(stacks, apiServices, problems, record.LeafOf, OtherWriters(record, apiServices));
+            return new StackComposition(stacks, apiServices, problems, record.LeafOf, OtherWriters(record, apiServices), platform);
         }
 
         /// <summary>
@@ -451,6 +475,9 @@ namespace Tellma.Core.Crud
 
         /// <summary>The operations the holding registration names, overriding the entity's declaration; null to keep it.</summary>
         public StackOperations? DeclaredOperations { get; set; }
+
+        /// <summary>The operations the stack serves: the holding registration's, else the leaf's <see cref="StackAttribute" />'s, else all.</summary>
+        public StackOperations Operations => DeclaredOperations ?? EntityShapes.GetAttribute<StackAttribute>(Leaf)?.Operations ?? StackOperations.All;
 
         /// <summary>The key type; null when the leaf is not a keyed entity.</summary>
         public Type? KeyType { get; set; }

@@ -7,6 +7,7 @@ using System.Runtime.CompilerServices;
 using Tellma.Core.Abstractions.Notifications;
 using Tellma.Core.Abstractions.Tests.Crud;
 using Tellma.Core.Abstractions.Validation;
+using Tellma.Core.Queryex;
 
 namespace Tellma.Core.Abstractions.Tests.Validation
 {
@@ -115,7 +116,9 @@ namespace Tellma.Core.Abstractions.Tests.Validation
             update["Name"] = "changed after the call";
 
             Assert.Equal([row], action.SavedRows);
-            Assert.Equal(["IsActive"], Assert.Single(action.Updates).Keys);
+            ComposedUpdate composed = Assert.Single(action.Updates);
+            Assert.Equal(["IsActive"], composed.Assignments.Keys);
+            Assert.Null(composed.Condition);
             _ = Assert.Throws<ArgumentException>(() => action.Save([null!]));
             _ = Assert.Throws<ArgumentException>(() => action.Update(new Dictionary<string, object?>()));
 
@@ -125,6 +128,41 @@ namespace Tellma.Core.Abstractions.Tests.Validation
             Assert.Contains("already assembled", late.Message, StringComparison.Ordinal);
             _ = Assert.Throws<InvalidOperationException>(() => action.Update(new Dictionary<string, object?> { ["IsActive"] = true }));
             Assert.Single(action.SavedRows);
+        }
+
+        [Fact]
+        public void An_update_composed_with_a_condition_keeps_the_condition_beside_its_assignments()
+        {
+            ActionContext<Widget, int> action = Action();
+            var condition = FilterTree.Leaf("IsActive = true");
+
+            action.Update(new Dictionary<string, object?> { ["IsActive"] = false }, condition);
+
+            ComposedUpdate composed = Assert.Single(action.Updates);
+            Assert.Equal(["IsActive"], composed.Assignments.Keys);
+            Assert.Same(condition, composed.Condition);
+            Assert.Null(composed.RefusalCode);
+            _ = Assert.Throws<ArgumentNullException>(() => action.Update(new Dictionary<string, object?> { ["IsActive"] = true }, null!));
+            _ = Assert.Throws<ArgumentException>(() => action.Update(new Dictionary<string, object?>(), condition));
+        }
+
+        [Fact]
+        public void An_update_composed_with_a_refusing_condition_keeps_the_condition_and_the_code_beside_its_assignments()
+        {
+            ActionContext<Widget, int> action = Action();
+            var condition = FilterTree.Leaf("IsActive = true");
+
+            action.Update(new Dictionary<string, object?> { ["IsActive"] = false }, condition, "Widget.NotDeactivatable");
+
+            ComposedUpdate composed = Assert.Single(action.Updates);
+            Assert.Equal(["IsActive"], composed.Assignments.Keys);
+            Assert.Same(condition, composed.Condition);
+            Assert.Equal("Widget.NotDeactivatable", composed.RefusalCode);
+            _ = Assert.Throws<ArgumentNullException>(() => action.Update(new Dictionary<string, object?> { ["IsActive"] = true }, null!, "Widget.NotDeactivatable"));
+            _ = Assert.Throws<ArgumentNullException>(() => action.Update(new Dictionary<string, object?> { ["IsActive"] = true }, condition, null!));
+            _ = Assert.Throws<ArgumentException>(() => action.Update(new Dictionary<string, object?> { ["IsActive"] = true }, condition, " "));
+            _ = Assert.Throws<ArgumentException>(() => action.Update(new Dictionary<string, object?>(), condition, "Widget.NotDeactivatable"));
+            Assert.Single(action.Updates);
         }
 
         [Fact]

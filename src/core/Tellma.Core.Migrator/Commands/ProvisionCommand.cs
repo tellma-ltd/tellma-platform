@@ -91,9 +91,13 @@ namespace Tellma.Core.Migrator.Commands
                 context.WriteLine(reportLine);
             }
 
+            // The resume names the line's administrator again: a resume that names none would turn
+            // the tenant active without the invitation that failed.
             if (outcome.IsFailure && line.Name is not null && line.Tenant is null)
             {
-                context.WriteLine(string.Create(CultureInfo.InvariantCulture, $"provision: resume it with provision --tenant {tenantId}; rerunning this line registers another tenant"));
+                string administrator = (line.AdminEmail is null ? string.Empty : $" --admin-email {line.AdminEmail}")
+                    + (line.AdminSubject is null ? string.Empty : $" --admin-subject {line.AdminSubject}");
+                context.WriteLine(string.Create(CultureInfo.InvariantCulture, $"provision: resume it with provision --tenant {tenantId}{administrator}; rerunning this line registers another tenant"));
             }
 
             return outcome.IsFailure ? MigratorExitCodes.PartialFailure : MigratorExitCodes.Converged;

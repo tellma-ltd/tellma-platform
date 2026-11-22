@@ -98,12 +98,12 @@ namespace Tellma.Core.Client
                 tags[VersionTagWire.SettingsItem] = wire;
             }
 
-            // --- The envelope, composed exactly as me composes it, and serialized as me writes it ---
-            PreSerializedJson<MeResult>? me = null;
+            // --- The envelope, composed exactly as me composes it ---
+            MeResult? me = null;
             if (!Holds(held, VersionTagWire.PreferencesItem, tags[VersionTagWire.PreferencesItem])
                 || !Holds(held, VersionTagWire.PermissionsItem, tags[VersionTagWire.PermissionsItem]))
             {
-                me = PreSerializedJson<MeResult>.Of(MeEnvelope.Of(
+                me = MeEnvelope.Of(
                     MeEnvelope.View(caller),
                     MeEnvelope.Bag(bag!.Value),
                     outcome.VersionTags,
@@ -111,7 +111,7 @@ namespace Tellma.Core.Client
                     caller.Access,
                     securables,
                     evaluator,
-                    time.GetUtcNow()));
+                    time.GetUtcNow());
             }
 
             // --- The lists: every list's tag when the composite moved, and the held lists that moved ---

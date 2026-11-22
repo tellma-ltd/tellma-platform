@@ -26,7 +26,8 @@ namespace Tellma.Core.Crud.Actions
     // appended beside the invariants once every write is declared), the emitter for the rows Save
     // marked (ConcurrencyMode.Override: an action is a command over rows it just loaded), the
     // updates over the target ids under the caller's Read filter and the action grant, all or
-    // nothing (the built-in action's own, then those Update composed), the statements the hook, the
+    // nothing (the built-in action's own, then those Update composed; an update composed with a
+    // condition instead skips a target that no longer meets it), the statements the hook, the
     // components and the method appended, the participants over an ActionPersistContext, the guards'
     // invariants, the post-check when the action asks for it, and the read-back when the action
     // answers the target ids. A re-entered compose re-runs the validators in memory, recomposes the
@@ -41,8 +42,8 @@ namespace Tellma.Core.Crud.Actions
         /// <summary>The rows the context's Save marked, each once, in marking order.</summary>
         private TEntity[] _marked = [];
 
-        /// <summary>The updates of the target ids, each an assignment: the built-in action's own, then those Update composed.</summary>
-        private List<IReadOnlyDictionary<string, object?>> _updates = [];
+        /// <summary>The updates of the target ids: the built-in action's own, then those Update composed, each with its condition.</summary>
+        private List<ComposedUpdate> _updates = [];
 
         /// <summary>The times the runner entered the persist's compose.</summary>
         private int _entries;
@@ -63,10 +64,10 @@ namespace Tellma.Core.Crud.Actions
         /// <param name="context">The context they composed on; null on the one-round-trip path.</param>
         private void Compose(ActionContext<TEntity, TKey>? context)
         {
-            List<IReadOnlyDictionary<string, object?>> updates = [];
+            List<ComposedUpdate> updates = [];
             if (_descriptor.IsBuiltIn)
             {
-                updates.Add(BuiltInAssignment());
+                updates.Add(new ComposedUpdate(BuiltInAssignment(), Condition: null));
             }
 
             if (context is not null)
@@ -223,7 +224,7 @@ namespace Tellma.Core.Crud.Actions
             SaveHandle? saved = _marked.Length > 0 ? batch.Save(_marked, ConcurrencyMode.Override) : null;
             _saved = saved;
             SqlIdentifier affected = KeyTables.Bind(batch, _ids);
-            ComposeUpdates(batch, user, granted);
+            ComposeUpdates(batch, user, granted, affected);
 
             // --- The statements the hook, the components and the method appended, in their order ---
             _recording?.Replay(batch);
@@ -274,8 +275,9 @@ namespace Tellma.Core.Crud.Actions
         /// <param name="batch">The batch.</param>
         /// <param name="user">The connected user.</param>
         /// <param name="granted">The action's decision.</param>
+        /// <param name="affected">The target ids' table.</param>
         /// <exception cref="NotFoundException">The connected user reads no row of the stack.</exception>
-        private void ComposeUpdates(IDataBatch batch, ConnectedUser user, AccessDecision granted)
+        private void ComposeUpdates(IDataBatch batch, ConnectedUser user, AccessDecision granted, SqlIdentifier affected)
         {
             if (_updates.Count == 0)
             {
@@ -289,10 +291,50 @@ namespace Tellma.Core.Crud.Actions
             }
 
             IReadOnlyList<object> ids = [.. _ids.Select(static id => (object)id)];
-            foreach (IReadOnlyDictionary<string, object?> assignments in _updates)
+            foreach ((IReadOnlyDictionary<string, object?> assignments, FilterTree? condition, string? refusalCode) in _updates)
             {
-                _ = batch.Update(new UpdateSpec<TEntity>.ByIds(ids, read.Filter, granted.Filter, assignments, Stamp: true, AllOrNothing: true));
+                if (condition is null)
+                {
+                    _ = batch.Update(new UpdateSpec<TEntity>.ByIds(ids, read.Filter, granted.Filter, assignments, Stamp: true, AllOrNothing: true));
+                }
+                else if (refusalCode is not null)
+                {
+                    // A refusing condition: every target, existing, must still meet it, or the batch
+                    // fails with the action's code; then the update is all or nothing as an
+                    // unconditioned one, and stamps every target. Its filter keeps the condition, so a
+                    // target changed between the count and the update fails the row-security count
+                    // rather than being overwritten.
+                    EntityDescriptor root = _map.Descriptor(_root);
+                    string key = root.Key.Name;
+                    batch.Assert(
+                        new QuerySpec { Root = root, Select = key, Filter = condition, Restrictions = [new KeySetRestriction(key, affected.Name)] },
+                        arguments: null,
+                        expected: _ids.Length,
+                        TellmaSqlErrors.Invariant,
+                        refusalCode);
+                    _ = batch.Update(new UpdateSpec<TEntity>.ByIds(
+                        ids, read.Filter, Conjoin(read: null, granted.Filter, condition), assignments, Stamp: true, AllOrNothing: true, StampUnchanged: true));
+                }
+                else
+                {
+                    // A skipping condition repeats the action's precondition: a target that changed
+                    // since the first round, and no longer meets it, the caller's Read filter or the
+                    // grant, is skipped rather than refused; the first round already reported the
+                    // missing and the forbidden targets.
+                    _ = batch.Update(new UpdateSpec<TEntity>.ByIds(ids, read.Filter, Conjoin(read.Filter, granted.Filter, condition), assignments, Stamp: true, AllOrNothing: false));
+                }
             }
+        }
+
+        /// <summary>The caller's Read filter, the grant's filter and an update's condition, all of which a target must meet.</summary>
+        /// <param name="read">The caller's Read filter; null for an unrestricted read.</param>
+        /// <param name="grant">The action grant's filter; null for an unrestricted grant.</param>
+        /// <param name="condition">The update's condition.</param>
+        /// <returns>The conjunction of the filters that restrict.</returns>
+        private static FilterTree Conjoin(FilterTree? read, FilterTree? grant, FilterTree condition)
+        {
+            FilterTree[] filters = [.. new[] { read, grant }.OfType<FilterTree>(), condition];
+            return filters.Length == 1 ? condition : FilterTree.And(filters);
         }
 
         // Spec 0015 §9.3: an action with PostCheck asserts, after every write and before the tag

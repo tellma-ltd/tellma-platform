@@ -18,16 +18,26 @@ namespace Tellma.Core.Excel
         /// <summary>Plans a display export: one sheet with one column per requested column, and the manifest.</summary>
         /// <param name="entity">The exported entity.</param>
         /// <param name="columns">The sheet's columns, in request order.</param>
+        /// <param name="query">
+        ///     The sheet's query: the columns' expanded select terms, the request's ordering, and the
+        ///     take and capped count of the export's cap. The row source the plan is written from
+        ///     folds its terms back into one value per column.
+        /// </param>
         /// <param name="context">The request's context.</param>
         /// <returns>The plan.</returns>
-        ExcelWorkbookPlan PlanDisplay(EntityMetadata entity, IReadOnlyList<ExcelColumnSpec> columns, ExcelContext context);
+        ExcelWorkbookPlan PlanDisplay(EntityMetadata entity, IReadOnlyList<ExcelColumnSpec> columns, ExcelQuery query, ExcelContext context);
 
         /// <summary>Plans an editable export: the parent sheet, a sheet per selected collection at every depth, and the manifest.</summary>
         /// <param name="entity">The exported entity.</param>
-        /// <param name="request">The request's columns, reference keys and collections.</param>
+        /// <param name="request">The request's columns, reference keys, collections, ids and ordering.</param>
+        /// <param name="cap">The most parent rows the export writes: the synchronous cap, or a background export's.</param>
         /// <param name="context">The request's context.</param>
         /// <returns>The plan.</returns>
-        ExcelWorkbookPlan PlanEditable(EntityMetadata entity, ExportForImportRequest request, ExcelContext context);
+        /// <exception cref="Abstractions.Errors.BadRequestException">
+        ///     A listed column is not editable, a reference key names no reference or no scalar of its
+        ///     target, or a collection is unknown or repeated among its siblings.
+        /// </exception>
+        ExcelWorkbookPlan PlanEditable(EntityMetadata entity, ExportForImportRequest request, int cap, ExcelContext context);
 
         /// <summary>
         ///     Writes a planned workbook, pulling the parent sheet's query page by page with each child

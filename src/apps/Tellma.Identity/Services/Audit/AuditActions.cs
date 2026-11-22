@@ -167,6 +167,9 @@ namespace Tellma.Identity.Services.Audit
         /// <summary>The development admin identity was seeded.</summary>
         public const string DevAdminSeeded = "DevAdminSeeded";
 
+        /// <summary>A development user identity was seeded.</summary>
+        public const string DevUserSeeded = "DevUserSeeded";
+
         /// <summary>The break-glass administrator was seeded.</summary>
         public const string BootstrapAdminSeeded = "BootstrapAdminSeeded";
 

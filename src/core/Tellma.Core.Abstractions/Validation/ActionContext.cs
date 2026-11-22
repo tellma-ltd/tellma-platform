@@ -9,6 +9,7 @@ using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Internal;
 using Tellma.Core.Abstractions.Notifications;
 using Tellma.Core.Abstractions.Tenancy;
+using Tellma.Core.Queryex;
 
 namespace Tellma.Core.Abstractions.Validation
 {
@@ -21,7 +22,7 @@ namespace Tellma.Core.Abstractions.Validation
     /// <remarks>
     ///     <para>
     ///         The hook and the method run as a validator and a mutator over one context: errors
-    ///         collect in <see cref="Errors" />; <see cref="Save" /> and <see cref="Update" /> compose
+    ///         collect in <see cref="Errors" />; <see cref="Save" /> and <see cref="Update(IReadOnlyDictionary{string, object})" /> compose
     ///         the writes to the stack's own rows; <see cref="Batch" /> takes statements with declared
     ///         writes; <see cref="Notify" />, <see cref="Withdraw" /> and <see cref="Assignments" />
     ///         append to the same batch; <see cref="Host" /> takes enlisted writes into other stacks.
@@ -38,8 +39,8 @@ namespace Tellma.Core.Abstractions.Validation
         /// <summary>The rows marked for the emitter, in marking order.</summary>
         private readonly List<TEntity> _saved = [];
 
-        /// <summary>The update assignments composed, in order.</summary>
-        private readonly List<IReadOnlyDictionary<string, object?>> _updates = [];
+        /// <summary>The updates composed, in order.</summary>
+        private readonly List<ComposedUpdate> _updates = [];
 
         /// <summary>Whether composing has closed: the persist batch is being assembled.</summary>
         private bool _closed;
@@ -101,7 +102,7 @@ namespace Tellma.Core.Abstractions.Validation
         ///     or key table is named when it is appended, and keeps that name in the persist batch. An
         ///     append that answers at once from the batch it lands in (a raw save or delete, a cache read)
         ///     is refused: the stack's rows are written through <see cref="Save" /> and
-        ///     <see cref="Update" />.
+        ///     <see cref="Update(IReadOnlyDictionary{string, object})" />.
         /// </remarks>
         /// <exception cref="ArgumentNullException">Set to null.</exception>
         public required IDataBatch Batch
@@ -227,8 +228,8 @@ namespace Tellma.Core.Abstractions.Validation
             }
         }
 
-        /// <summary>The assignments <see cref="Update" /> composed, in order.</summary>
-        internal IReadOnlyList<IReadOnlyDictionary<string, object?>> Updates
+        /// <summary>The updates the two <c>Update</c> overloads composed, in order.</summary>
+        internal IReadOnlyList<ComposedUpdate> Updates
         {
             get
             {
@@ -275,19 +276,63 @@ namespace Tellma.Core.Abstractions.Validation
         /// <exception cref="InvalidOperationException">Composing has closed, or the calling flow read <see cref="Persisted" />.</exception>
         public void Update(IReadOnlyDictionary<string, object?> assignments)
         {
-            ArgumentNullException.ThrowIfNull(assignments);
-            if (assignments.Count == 0)
-            {
-                throw new ArgumentException("An update assigns at least one property.", nameof(assignments));
-            }
+            Compose(assignments, condition: null, refusalCode: null);
+        }
 
-            IReadOnlyDictionary<string, object?> copy = ReadOnlyCopies.Of(assignments);
-            ComposeGuard?.Invoke();
-            lock (_gate)
-            {
-                ThrowIfClosed();
-                _updates.Add(copy);
-            }
+        /// <summary>
+        ///     Composes one update of the target rows that still meet a condition when the persist runs,
+        ///     with stamping, as when the action's precondition is repeated in its statement. The first
+        ///     round already found every target and counted it under the action grant. A target that
+        ///     changed since, so that it no longer meets <paramref name="condition" />, the caller's read
+        ///     filter or the grant's filter, or that already holds the values, is left as it is,
+        ///     unstamped, and the action still succeeds; but an action that post-checks its writes
+        ///     still refuses, as outside the grant, a target that left the grant's filter.
+        /// </summary>
+        /// <remarks>
+        ///     Every other statement the action composes, such as an enqueue or a notification, still
+        ///     sees every target, the skipped ones included. When one must not act on a skipped target,
+        ///     use <see cref="Update(IReadOnlyDictionary{string, object?}, FilterTree, string)" />, which
+        ///     refuses instead.
+        /// </remarks>
+        /// <param name="assignments">The new values, by property name; at least one.</param>
+        /// <param name="condition">The filter, over the stack's entity, that a target must still meet to be updated.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="assignments" /> or <paramref name="condition" /> is null.</exception>
+        /// <exception cref="ArgumentException"><paramref name="assignments" /> is empty.</exception>
+        /// <exception cref="InvalidOperationException">Composing has closed, or the calling flow read <see cref="Persisted" />.</exception>
+        public void Update(IReadOnlyDictionary<string, object?> assignments, FilterTree condition)
+        {
+            ArgumentNullException.ThrowIfNull(condition);
+            Compose(assignments, condition, refusalCode: null);
+        }
+
+        /// <summary>
+        ///     Composes one update of the target rows, all or nothing, that every target must still meet
+        ///     a condition for when the persist runs, with stamping. A target that changed since the
+        ///     first round, so that it no longer meets <paramref name="condition" />, or that was
+        ///     deleted since, fails the action with a validation error at the root carrying
+        ///     <paramref name="refusalCode" />, and nothing the action composed is written; a target
+        ///     the caller can no longer read is not found and one outside the grant's filter is
+        ///     forbidden, as with <see cref="Update(IReadOnlyDictionary{string, object?})" />. Every
+        ///     target is written and stamped, one that already holds the values included, since the
+        ///     action acted on each.
+        /// </summary>
+        /// <param name="assignments">The new values, by property name; at least one.</param>
+        /// <param name="condition">The filter, over the stack's entity, that every target must still meet.</param>
+        /// <param name="refusalCode">
+        ///     The validation code of the refusal when a target no longer meets
+        ///     <paramref name="condition" />: letters, digits, dots, underscores and hyphens, such as the
+        ///     code the action's validation refuses that target with.
+        /// </param>
+        /// <exception cref="ArgumentNullException">
+        ///     <paramref name="assignments" />, <paramref name="condition" /> or <paramref name="refusalCode" /> is null.
+        /// </exception>
+        /// <exception cref="ArgumentException"><paramref name="assignments" /> is empty, or <paramref name="refusalCode" /> is blank.</exception>
+        /// <exception cref="InvalidOperationException">Composing has closed, or the calling flow read <see cref="Persisted" />.</exception>
+        public void Update(IReadOnlyDictionary<string, object?> assignments, FilterTree condition, string refusalCode)
+        {
+            ArgumentNullException.ThrowIfNull(condition);
+            ArgumentException.ThrowIfNullOrWhiteSpace(refusalCode);
+            Compose(assignments, condition, refusalCode);
         }
 
         /// <summary>Appends a notification to <see cref="Batch" />; it is raised when the action commits.</summary>
@@ -312,7 +357,7 @@ namespace Tellma.Core.Abstractions.Validation
             ContextNotifier.Require(Notifier).Withdraw(Batch, [request]);
         }
 
-        /// <summary>Closes composing: the pipeline is assembling the persist batch, so a later <see cref="Save" /> or <see cref="Update" /> is refused.</summary>
+        /// <summary>Closes composing: the pipeline is assembling the persist batch, so a later <see cref="Save" /> or <see cref="Update(IReadOnlyDictionary{string, object})" /> is refused.</summary>
         internal void Close()
         {
             lock (_gate)
@@ -348,6 +393,30 @@ namespace Tellma.Core.Abstractions.Validation
             return true;
         }
 
+        /// <summary>Records one update, once its assignments are checked and copied.</summary>
+        /// <param name="assignments">The new values, by property name; at least one.</param>
+        /// <param name="condition">The filter a target must still meet; null for every target, all or nothing.</param>
+        /// <param name="refusalCode">The code a target failing <paramref name="condition" /> refuses the action with; null to skip it.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="assignments" /> is null.</exception>
+        /// <exception cref="ArgumentException"><paramref name="assignments" /> is empty.</exception>
+        /// <exception cref="InvalidOperationException">Composing has closed, or the calling flow read <see cref="Persisted" />.</exception>
+        private void Compose(IReadOnlyDictionary<string, object?> assignments, FilterTree? condition, string? refusalCode)
+        {
+            ArgumentNullException.ThrowIfNull(assignments);
+            if (assignments.Count == 0)
+            {
+                throw new ArgumentException("An update assigns at least one property.", nameof(assignments));
+            }
+
+            IReadOnlyDictionary<string, object?> copy = ReadOnlyCopies.Of(assignments);
+            ComposeGuard?.Invoke();
+            lock (_gate)
+            {
+                ThrowIfClosed();
+                _updates.Add(new ComposedUpdate(copy, condition, refusalCode));
+            }
+        }
+
         /// <summary>Refuses a write composed after the persist batch was assembled.</summary>
         /// <exception cref="InvalidOperationException">Composing has closed.</exception>
         private void ThrowIfClosed()
@@ -373,4 +442,17 @@ namespace Tellma.Core.Abstractions.Validation
             init => field = value ?? throw new ArgumentNullException(nameof(Ids));
         }
     }
+
+    /// <summary>One update an action composed over its target rows.</summary>
+    /// <param name="Assignments">The new values, by property name.</param>
+    /// <param name="Condition">
+    ///     The filter a target must still meet when the persist runs; null for an update of every
+    ///     target, all or nothing.
+    /// </param>
+    /// <param name="RefusalCode">
+    ///     The validation code the action fails with when a target no longer meets
+    ///     <paramref name="Condition" />, every target then written and stamped; null when such a
+    ///     target is skipped instead.
+    /// </param>
+    internal sealed record ComposedUpdate(IReadOnlyDictionary<string, object?> Assignments, FilterTree? Condition, string? RefusalCode = null);
 }

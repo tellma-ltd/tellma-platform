@@ -32,14 +32,14 @@ namespace Tellma.Core.Access
     /// <param name="database">The tenant's database, which the email address is looked up in.</param>
     /// <param name="accessor">The scope's request context, which must be the platform's own.</param>
     /// <param name="environment">The tenancy's environment; a subject is accepted in development only.</param>
-    /// <param name="subject">The scope's held subject, which the users' stack records on the created user.</param>
+    /// <param name="subjects">The scope's held subjects, from which the users' stack records the subject on the created user.</param>
     /// <param name="time">The host's clock, which tells a started membership from a future one.</param>
     internal sealed class TenantBootstrapper<TUser>(
         EntityService<TUser, int> users,
         ITenantDatabase database,
         IRequestContextAccessor accessor,
         TenancyEnvironment environment,
-        BootstrapSubject subject,
+        DevelopmentSubjects subjects,
         TimeProvider time) : ITenantBootstrapper
         where TUser : User, new()
     {
@@ -98,7 +98,9 @@ namespace Tellma.Core.Access
                 RoleMemberships = [new RoleMembership { RoleId = WellKnownIds.AdministratorRoleId }],
             };
 
-            using IDisposable? hold = request.Subject is string held ? subject.Hold(email, held) : null;
+            using IDisposable? hold = request.Subject is string held
+                ? subjects.Hold(new Dictionary<string, string>(StringComparer.Ordinal) { [email] = held })
+                : null;
             EntitiesResult<TUser> saved = await users.SaveAsync([created], options, cancellationToken).ConfigureAwait(false);
             return checked((int)saved.Ids[0]);
         }
