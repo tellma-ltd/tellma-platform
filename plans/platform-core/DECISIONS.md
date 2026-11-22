@@ -384,6 +384,18 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-223 (orchestrator, 2026-11-22): PC-F70 Review 1 rulings; PC-F71 held
+
+PC-F70 Review 1 found 0/0/2 and accepted the three implementer deviations. The event is logged once per refusal; a crashing check still logs CheckThrew at Error; the migrator never registers the check.
+
+Fix1 rulings:
+- R1-1: stay within the fix item. MapTellma's problems are not moved into the gate, because that changes startup behaviour. If the throwing project already references OpenTelemetry, force-flush a registered LoggerProvider before the throw, adding no dependency; otherwise document that a MapTellma refusal reaches synchronous sinks only. If spec 0016 turns out to require deferral into the gate, the implementer flags it and it goes to Ahmad.
+- R1-2: pin Count and the "; " join with a two-violation case.
+
+PC-F70 holds after fix1.
+
+PC-F71's fix1 (492510e3) is held, and merge-tree is clean. Release order: PC-143, PC-107, PC-104, PC-F71, PC-F70. PC-104's integration still carries D-222's lengths array and daysIn bound.
+
 ### D-222 (orchestrator, 2026-11-22): PC-F71 Review 1 rulings
 
 Review 1 found 0/0/2. The fix is consistent with D-029, 0013 §8.2-8.3, 0008 §10.4 and 0024 §7.4. The client's lengths for AH 9666 months 5-12 on pc/PC-104 match the server's.
