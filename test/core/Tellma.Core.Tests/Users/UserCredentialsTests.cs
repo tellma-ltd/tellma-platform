@@ -46,7 +46,7 @@ namespace Tellma.Core.Tests.Users
             (string displayName, IdentityServiceAccount account) = Assert.Single(_kit.Identity.Created);
             Assert.Equal("Robot", displayName);
             Assert.Equal(new CredentialsResult(3, account.ClientId, account.ClientSecret), result);
-            KeyValuePair<string, object?> unchanged = Assert.Single(Assert.Single(context.Updates));
+            KeyValuePair<string, object?> unchanged = Assert.Single(Assert.Single(context.Updates).Assignments);
             Assert.Equal((nameof(User.LastInviteError), null), (unchanged.Key, unchanged.Value));
             FormattableString swap = Assert.Single(recorder.Statements).Sql;
             Assert.Contains("[Subject] IS NULL", swap.Format, StringComparison.Ordinal);

@@ -95,6 +95,15 @@ namespace Tellma.Distro.Acme.IntegrationTests.Infrastructure
         /// <summary>A further composition every run adds to Acme's.</summary>
         public Action<TellmaBuilder>? Compose { get; set; }
 
+        /// <summary>
+        ///     A further change every run makes to the host's services, after the composition is
+        ///     realised, such as the route its identity-server client takes to a test's web host.
+        /// </summary>
+        public Action<IServiceCollection>? Services { get; set; }
+
+        /// <summary>The environment every run runs in: Development, as a developer's checkout runs, unless a test names another.</summary>
+        public string EnvironmentName { get; set; } = "Development";
+
         /// <summary>The connection string each run handed the identity store's migration, in order.</summary>
         public ConcurrentQueue<string> IdentityStoreConnectionStrings { get; } = new();
 
@@ -123,6 +132,7 @@ namespace Tellma.Distro.Acme.IntegrationTests.Infrastructure
             using StringWriter error = new(CultureInfo.InvariantCulture);
             Dictionary<string, string?> values = new(Values, StringComparer.OrdinalIgnoreCase);
             Action<TellmaBuilder>? extra = Compose;
+            Action<IServiceCollection>? services = Services;
 
             int code = await TellmaMigrator.RunAsync(
                 args,
@@ -143,7 +153,7 @@ namespace Tellma.Distro.Acme.IntegrationTests.Infrastructure
                     MigrationsAssembly = typeof(AcmeDesignTimeFactory).Assembly,
                     Out = output,
                     Error = error,
-                    EnvironmentName = "Development",
+                    EnvironmentName = EnvironmentName,
 
                     // Acme's appsettings.json and appsettings.Development.json, which the migrator
                     // project links and copies beside the suite.
@@ -151,9 +161,13 @@ namespace Tellma.Distro.Acme.IntegrationTests.Infrastructure
                     ConfigureConfiguration = configuration => configuration.AddInMemoryCollection(values),
                     // Blobs in memory, so the container step and the startup gate's probe never write
                     // under the developer's application data.
-                    ConfigureServices = static services => services
-                        .AddLogging(static logging => logging.ClearProviders())
-                        .AddInMemoryBlobs(),
+                    ConfigureServices = collection =>
+                    {
+                        _ = collection
+                            .AddLogging(static logging => logging.ClearProviders())
+                            .AddInMemoryBlobs();
+                        services?.Invoke(collection);
+                    },
                 },
                 TestContext.Current.CancellationToken);
 

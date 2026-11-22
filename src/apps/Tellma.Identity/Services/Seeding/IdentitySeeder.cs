@@ -87,6 +87,7 @@ namespace Tellma.Identity.Services.Seeding
             await WarnOfDisabledClientsStillRegisteredAsync(engineOptions.Seed, cancellationToken);
 
             await EnsureDevAdminAsync(engineOptions, cancellationToken);
+            await EnsureDevUsersAsync(engineOptions, cancellationToken);
             await EnsureBootstrapAdminAsync(engineOptions, cancellationToken);
         }
 
@@ -261,6 +262,54 @@ namespace Tellma.Identity.Services.Seeding
             await auditLogger.LogAsync(
                 new AuditEventEntry { Action = AuditActions.DevAdminSeeded, Subject = user.Id },
                 cancellationToken);
+        }
+
+        /// <summary>
+        ///     Seeds the Development-only user identities, each with its fixed subject: an account
+        ///     whose email address the store already holds is left as it is, as the dev admin's is.
+        /// </summary>
+        private async Task EnsureDevUsersAsync(TellmaIdentityOptions engineOptions, CancellationToken cancellationToken)
+        {
+            // Strictly Development, like the dev admin: no deployed store ever holds these accounts.
+            if (engineOptions.Seed.DevUsers.Count == 0 || !environment.IsDevelopment())
+            {
+                return;
+            }
+
+            foreach (TellmaIdentityDevUserOptions entry in engineOptions.Seed.DevUsers)
+            {
+                // The options validator requires both; a direct caller that skipped it fails here.
+                string email = entry.Email ?? throw new InvalidOperationException("A development user seed entry has no email address.");
+                string subject = entry.Subject ?? throw new InvalidOperationException($"The development user seed entry '{email}' has no subject.");
+                if (await userManager.FindByEmailAsync(email) is not null)
+                {
+                    continue;
+                }
+
+                int at = email.LastIndexOf('@');
+                TellmaIdentityUser user = new()
+                {
+                    Id = subject,
+                    UserName = email,
+                    Email = email,
+                    EmailConfirmed = true,
+                    DisplayName = string.IsNullOrWhiteSpace(entry.DisplayName) ? (at > 0 ? email[..at] : email) : entry.DisplayName,
+                    Locale = "en",
+                    LifecycleState = UserLifecycleState.Active,
+                    CreatedUtc = timeProvider.GetUtcNow(),
+                };
+
+                IdentityResult result = await userManager.CreateAsync(user);
+                if (!result.Succeeded)
+                {
+                    throw new InvalidOperationException(
+                        $"Failed to seed the development user '{email}': " + string.Join("; ", result.Errors.Select(static e => e.Description)));
+                }
+
+                await auditLogger.LogAsync(
+                    new AuditEventEntry { Action = AuditActions.DevUserSeeded, Subject = user.Id },
+                    cancellationToken);
+            }
         }
 
         /// <summary>Seeds the break-glass administrator into an empty user store.</summary>

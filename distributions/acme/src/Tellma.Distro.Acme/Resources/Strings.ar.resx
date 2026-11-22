@@ -1,0 +1,217 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <!-- The feature, as a securable's feature label shows it -->
+  <data name="Feature_acme" xml:space="preserve">
+    <value>أكمي</value>
+  </data>
+  <!-- Currencies -->
+  <data name="Acme_Currency" xml:space="preserve">
+    <value>العملة</value>
+  </data>
+  <data name="Acme_Currency_Plural" xml:space="preserve">
+    <value>العملات</value>
+  </data>
+  <data name="Acme_Currency_Code" xml:space="preserve">
+    <value>الرمز</value>
+  </data>
+  <data name="Acme_Currency_Name" xml:space="preserve">
+    <value>الاسم</value>
+  </data>
+  <!-- Customers and their contacts -->
+  <data name="Acme_Customer" xml:space="preserve">
+    <value>العميل</value>
+  </data>
+  <data name="Acme_Customer_Plural" xml:space="preserve">
+    <value>العملاء</value>
+  </data>
+  <data name="Acme_Customer_Code" xml:space="preserve">
+    <value>الرمز</value>
+  </data>
+  <data name="Acme_Customer_Name" xml:space="preserve">
+    <value>الاسم</value>
+  </data>
+  <data name="Acme_Customer_CustomerType" xml:space="preserve">
+    <value>النوع</value>
+  </data>
+  <data name="Acme_Customer_CurrencyId" xml:space="preserve">
+    <value>العملة</value>
+  </data>
+  <data name="Acme_Customer_CreditLimit" xml:space="preserve">
+    <value>حد الائتمان</value>
+  </data>
+  <data name="Acme_Customer_ImageId" xml:space="preserve">
+    <value>الصورة</value>
+  </data>
+  <data name="Acme_Customer_IsActive" xml:space="preserve">
+    <value>نشط</value>
+  </data>
+  <data name="Acme_Customer_Contacts" xml:space="preserve">
+    <value>جهات الاتصال</value>
+  </data>
+  <data name="Acme_CustomerContact" xml:space="preserve">
+    <value>جهة الاتصال</value>
+  </data>
+  <data name="Acme_CustomerContact_Plural" xml:space="preserve">
+    <value>جهات الاتصال</value>
+  </data>
+  <data name="Acme_CustomerContact_CustomerId" xml:space="preserve">
+    <value>العميل</value>
+  </data>
+  <data name="Acme_CustomerContact_Name" xml:space="preserve">
+    <value>الاسم</value>
+  </data>
+  <data name="Acme_CustomerContact_Email" xml:space="preserve">
+    <value>البريد الإلكتروني</value>
+  </data>
+  <data name="Acme_CustomerContact_Mobile" xml:space="preserve">
+    <value>الجوال</value>
+  </data>
+  <!-- Customer types -->
+  <data name="Acme_CustomerType_Retail" xml:space="preserve">
+    <value>تجزئة</value>
+  </data>
+  <data name="Acme_CustomerType_Corporate" xml:space="preserve">
+    <value>شركات</value>
+  </data>
+  <data name="Acme_CustomerType_Government" xml:space="preserve">
+    <value>حكومي</value>
+  </data>
+  <!-- The customers' set-credit-limit action and its argument -->
+  <data name="Acme_Customer_Action_SetCreditLimit" xml:space="preserve">
+    <value>تعيين حد الائتمان</value>
+  </data>
+  <data name="Acme_Customer_Action_SetCreditLimit_CreditLimit" xml:space="preserve">
+    <value>حد الائتمان الجديد</value>
+  </data>
+  <!-- Sales invoices, their lines and their attachments -->
+  <data name="Acme_SalesInvoice" xml:space="preserve">
+    <value>فاتورة المبيعات</value>
+  </data>
+  <data name="Acme_SalesInvoice_Plural" xml:space="preserve">
+    <value>فواتير المبيعات</value>
+  </data>
+  <data name="Acme_SalesInvoice_SerialNumber" xml:space="preserve">
+    <value>الرقم</value>
+  </data>
+  <data name="Acme_SalesInvoice_PostingDate" xml:space="preserve">
+    <value>تاريخ الترحيل</value>
+  </data>
+  <data name="Acme_SalesInvoice_CustomerId" xml:space="preserve">
+    <value>العميل</value>
+  </data>
+  <data name="Acme_SalesInvoice_IsClosed" xml:space="preserve">
+    <value>مغلقة</value>
+  </data>
+  <data name="Acme_SalesInvoice_IsPosted" xml:space="preserve">
+    <value>مرحّلة</value>
+  </data>
+  <data name="Acme_SalesInvoice_Lines" xml:space="preserve">
+    <value>البنود</value>
+  </data>
+  <data name="Acme_SalesInvoice_Attachments" xml:space="preserve">
+    <value>المرفقات</value>
+  </data>
+  <data name="Acme_SalesInvoice_Action_Close" xml:space="preserve">
+    <value>إغلاق</value>
+  </data>
+  <data name="Acme_SalesInvoiceLine" xml:space="preserve">
+    <value>بند الفاتورة</value>
+  </data>
+  <data name="Acme_SalesInvoiceLine_Plural" xml:space="preserve">
+    <value>بنود الفواتير</value>
+  </data>
+  <data name="Acme_SalesInvoiceLine_InvoiceId" xml:space="preserve">
+    <value>الفاتورة</value>
+  </data>
+  <data name="Acme_SalesInvoiceLine_CenterId" xml:space="preserve">
+    <value>المركز</value>
+  </data>
+  <data name="Acme_SalesInvoiceLine_Description" xml:space="preserve">
+    <value>الوصف</value>
+  </data>
+  <data name="Acme_SalesInvoiceLine_Amount" xml:space="preserve">
+    <value>المبلغ</value>
+  </data>
+  <data name="Acme_SalesInvoiceAttachment" xml:space="preserve">
+    <value>المرفق</value>
+  </data>
+  <data name="Acme_SalesInvoiceAttachment_Plural" xml:space="preserve">
+    <value>المرفقات</value>
+  </data>
+  <data name="Acme_SalesInvoiceAttachment_InvoiceId" xml:space="preserve">
+    <value>الفاتورة</value>
+  </data>
+  <data name="Acme_SalesInvoiceAttachment_FileId" xml:space="preserve">
+    <value>الملف</value>
+  </data>
+  <!-- The member Acme's center leaf adds to GL's centers -->
+  <data name="Gl_Center_ManagerId" xml:space="preserve">
+    <value>المدير</value>
+  </data>
+  <!-- Settings: the categories, then each key's label and description -->
+  <data name="SettingCategory_invoicing" xml:space="preserve">
+    <value>الفوترة</value>
+  </data>
+  <data name="SettingCategory_sales" xml:space="preserve">
+    <value>المبيعات</value>
+  </data>
+  <data name="SettingCategory_integration" xml:space="preserve">
+    <value>التكامل</value>
+  </data>
+  <data name="Setting_acme_invoicing_prefix" xml:space="preserve">
+    <value>بادئة رقم الفاتورة</value>
+  </data>
+  <data name="Setting_acme_invoicing_prefix_Description" xml:space="preserve">
+    <value>النص الذي يسبق كل رقم فاتورة، مثل INV-.</value>
+  </data>
+  <data name="Setting_acme_invoicing_padding" xml:space="preserve">
+    <value>عدد أرقام الفاتورة</value>
+  </data>
+  <data name="Setting_acme_invoicing_padding_Description" xml:space="preserve">
+    <value>عدد الأرقام التي يظهر بها رقم الفاتورة، مع إكمالها بأصفار على اليسار.</value>
+  </data>
+  <data name="Setting_acme_sales_defaultCurrencyId" xml:space="preserve">
+    <value>العملة الافتراضية</value>
+  </data>
+  <data name="Setting_acme_sales_defaultCurrencyId_Description" xml:space="preserve">
+    <value>العملة التي يبدأ بها العميل الجديد.</value>
+  </data>
+  <data name="Setting_acme_sales_allowedCustomerTypes" xml:space="preserve">
+    <value>أنواع العملاء المسموح بها</value>
+  </data>
+  <data name="Setting_acme_sales_allowedCustomerTypes_Description" xml:space="preserve">
+    <value>الأنواع التي يمكن أن يكون عليها العميل.</value>
+  </data>
+  <data name="Setting_acme_integration_marminApiKey" xml:space="preserve">
+    <value>مفتاح واجهة برمجة Marmin</value>
+  </data>
+  <data name="Setting_acme_integration_marminApiKey_Description" xml:space="preserve">
+    <value>المفتاح الذي توقّع به أكمي طلباتها إلى Marmin.</value>
+  </data>
+  <!-- The invoicing settings tab's own labels -->
+  <data name="Acme_Settings_Numbering" xml:space="preserve">
+    <value>الترقيم</value>
+  </data>
+  <data name="Acme_Settings_NextNumber" xml:space="preserve">
+    <value>رقم الفاتورة التالي: {number}</value>
+  </data>
+  <!-- Validation -->
+  <data name="Acme_Customers_NegativeCreditLimit" xml:space="preserve">
+    <value>لا يمكن أن يكون حد الائتمان سالبًا.</value>
+  </data>
+  <data name="Acme_Settings_InvoicePaddingOutOfRange" xml:space="preserve">
+    <value>يظهر رقم الفاتورة بعدد أرقام بين 1 و12.</value>
+  </data>
+</root>

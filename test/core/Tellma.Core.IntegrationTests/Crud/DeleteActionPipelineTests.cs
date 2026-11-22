@@ -16,6 +16,7 @@ using Tellma.Core.Abstractions.TableTypes;
 using Tellma.Core.Abstractions.Validation;
 using Tellma.Core.IntegrationTests.Access;
 using Tellma.Core.IntegrationTests.Data;
+using Tellma.Core.Queryex;
 using Tellma.Testing.Entities;
 
 namespace Tellma.Core.IntegrationTests.Crud
@@ -30,8 +31,10 @@ namespace Tellma.Core.IntegrationTests.Crud
     ///     caller confirmed; a subtree with a row outside the delete grant is refused whole; a row still
     ///     referenced is in use; a delete compares the stamps it is given; the built-in actions
     ///     stamp the rows they change, skip those already in the state, and answer alike on either path;
-    ///     a custom action whose permissions move before its persist commits once, recomposed; and a
-    ///     method's own table, named before the persist batch exists, carries its users' tag bump.
+    ///     an update under a condition skips, unstamped, a target that fails it, or refuses the whole
+    ///     action and stamps every target; a custom action whose permissions move before its persist
+    ///     commits once, recomposed; and a method's own table, named before the persist batch exists,
+    ///     carries its users' tag bump.
     /// </summary>
     /// <param name="fixture">The seeded tenant databases.</param>
     [Trait("Category", "Integration")]
@@ -54,6 +57,9 @@ namespace Tellma.Core.IntegrationTests.Crud
 
         /// <summary>The securable action the widgets' custom action requires.</summary>
         private const string RenameGrant = "Rename";
+
+        /// <summary>The code a refusing conditional rename fails with.</summary>
+        private const string NotRenamable = "Fixture.NotRenamable";
 
         /// <summary>The users' preferences table, which carries a user-level tag.</summary>
         private static readonly TableName UserPreferences = new("core", "UserPreferences");
@@ -343,6 +349,74 @@ namespace Tellma.Core.IntegrationTests.Crud
             Assert.All(widgets.Entities, static widget => Assert.False(widget.IsActive));
         }
 
+        // --- An update under a condition the persist repeats ---
+
+        [Fact]
+        public async Task A_conditional_update_writes_and_stamps_the_targets_still_meeting_its_condition_and_leaves_the_others_as_they_are()
+        {
+            fixture.Probe.Reset();
+            await SeedWidgetsAsync(561, 562);
+            (int userId, string subject) = await fixture.SeedCallerAsync((Widgets, AccessActions.Read, null), (Widgets, RenameGrant, null));
+            fixture.Probe.Condition = FilterTree.Leaf("Code = 'W-561'");
+            (string? matching, string? other) = (await WidgetStampAsync(561), await WidgetStampAsync(562));
+
+            (EntitiesResult<Widget> renamed, _) = await CountedAsync(
+                subject,
+                scope => WidgetService(scope).ExecuteActionAsync(Rename, [561, 562], new WidgetRename { Name = "Conditional" }, new ActionOptions(), Token));
+
+            // --- The action commits for both targets; only the one meeting the condition changed ---
+            Assert.Equal([561L, 562L], renamed.Ids);
+            Assert.Equal(1, await CountAsync(Invariant($"[fixture].[Widgets] WHERE [Id] = 561 AND [Name] = N'Conditional' AND [ModifiedById] = {userId}")));
+            Assert.NotEqual(matching, await WidgetStampAsync(561));
+            Assert.Equal(1, await CountAsync("[fixture].[Widgets] WHERE [Id] = 562 AND [Name] = N'W-562'"));
+            Assert.Equal(other, await WidgetStampAsync(562));
+        }
+
+        [Fact]
+        public async Task A_refusing_conditional_update_fails_the_action_with_its_code_when_a_target_no_longer_meets_it_and_writes_nothing()
+        {
+            fixture.Probe.Reset();
+            await SeedWidgetsAsync(563, 564);
+            (_, string subject) = await fixture.SeedCallerAsync((Widgets, AccessActions.Read, null), (Widgets, RenameGrant, null));
+            fixture.Probe.Condition = FilterTree.Leaf("Code = 'W-563'");
+            fixture.Probe.RefusalCode = NotRenamable;
+            (string? first, string? second) = (await WidgetStampAsync(563), await WidgetStampAsync(564));
+
+            (ValidationException refused, _) = await RefusedAsync<ValidationException>(
+                subject,
+                scope => WidgetService(scope).ExecuteActionAsync(Rename, [563, 564], new WidgetRename { Name = "Refused" }, new ActionOptions(), Token));
+
+            ValidationError error = Assert.Single(refused.Errors);
+            Assert.Equal((NotRenamable, ValidationPath.Root), (error.Code, error.Path));
+            Assert.Equal(0, await CountAsync("[fixture].[Widgets] WHERE [Id] IN (563, 564) AND [Name] = N'Refused'"));
+            Assert.Equal((first, second), (await WidgetStampAsync(563), await WidgetStampAsync(564)));
+        }
+
+        [Fact]
+        public async Task A_refusing_conditional_update_stamps_a_target_already_holding_its_values_which_a_skipping_one_leaves_unstamped()
+        {
+            fixture.Probe.Reset();
+            await SeedWidgetsAsync(565, 566);
+            (int userId, string subject) = await fixture.SeedCallerAsync((Widgets, AccessActions.Read, null), (Widgets, RenameGrant, null));
+            (string? refusing, string? skipping) = (await WidgetStampAsync(565), await WidgetStampAsync(566));
+
+            // --- The same name again: once under a refusing condition, once under a skipping one ---
+            fixture.Probe.Condition = FilterTree.Leaf("Code = 'W-565'");
+            fixture.Probe.RefusalCode = NotRenamable;
+            _ = await CountedAsync(
+                subject,
+                scope => WidgetService(scope).ExecuteActionAsync(Rename, [565], new WidgetRename { Name = "W-565" }, new ActionOptions(), Token));
+            fixture.Probe.Condition = FilterTree.Leaf("Code = 'W-566'");
+            fixture.Probe.RefusalCode = null;
+            _ = await CountedAsync(
+                subject,
+                scope => WidgetService(scope).ExecuteActionAsync(Rename, [566], new WidgetRename { Name = "W-566" }, new ActionOptions(), Token));
+
+            Assert.NotEqual(refusing, await WidgetStampAsync(565));
+            Assert.Equal(1, await CountAsync(Invariant($"[fixture].[Widgets] WHERE [Id] = 565 AND [Name] = N'W-565' AND [ModifiedById] = {userId}")));
+            Assert.Equal(skipping, await WidgetStampAsync(566));
+        }
+
         // --- A re-entry: the persist recomposed for a moved permission ---
 
         [Fact]
@@ -492,6 +566,14 @@ namespace Tellma.Core.IntegrationTests.Crud
         private Task<string?> StampAsync(int id)
         {
             return fixture.Connect.ScalarAsync<string>(ConnectDatabase.TenantA, Invariant($"SELECT CONVERT(nvarchar(40), [ModifiedAt], 127) FROM [fixture].[Lookups] WHERE [Id] = {id};"));
+        }
+
+        /// <summary>A widget's stored stamp, as text with every fractional digit.</summary>
+        /// <param name="id">The widget's id.</param>
+        /// <returns>The stamp.</returns>
+        private Task<string?> WidgetStampAsync(int id)
+        {
+            return fixture.Connect.ScalarAsync<string>(ConnectDatabase.TenantA, Invariant($"SELECT CONVERT(nvarchar(40), [ModifiedAt], 127) FROM [fixture].[Widgets] WHERE [Id] = {id};"));
         }
 
         /// <summary>A delete by query's arguments, each a name and a string value.</summary>

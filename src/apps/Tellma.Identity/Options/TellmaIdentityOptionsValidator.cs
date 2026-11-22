@@ -155,6 +155,7 @@ namespace Tellma.Identity.Options
             if (environment is not null)
             {
                 ValidateSeedClients(options.Seed, environment, failures);
+                ValidateDevUsers(options.Seed, environment, failures);
             }
 
             return failures.Count > 0 ? ValidateOptionsResult.Fail(failures) : ValidateOptionsResult.Success;
@@ -236,6 +237,53 @@ namespace Tellma.Identity.Options
                     {
                         failures.Add($"{entry}: an interim client must be a Native entry with ThirdParty set.");
                     }
+                }
+            }
+        }
+
+        /// <summary>
+        ///     Validates the development user seeds, in Development only (elsewhere they are never
+        ///     seeded): every entry has an email address and a subject, and no address or subject is
+        ///     another seeded identity's, the enabled dev admin's included. Every failure names its
+        ///     entry.
+        /// </summary>
+        private static void ValidateDevUsers(TellmaIdentitySeedOptions seed, IHostEnvironment environment, List<string> failures)
+        {
+            if (!environment.IsDevelopment())
+            {
+                return;
+            }
+
+            // Addresses compare as the user store normalises them, ignoring case; subjects are the
+            // store's keys, compared as its case-insensitive collation compares them.
+            Dictionary<string, string> emails = new(StringComparer.OrdinalIgnoreCase);
+            Dictionary<string, string> subjects = new(StringComparer.OrdinalIgnoreCase);
+            if (seed.DevAdmin.Enabled)
+            {
+                emails[seed.DevAdmin.Email] = "TellmaIdentity:Seed:DevAdmin";
+                subjects[seed.DevAdmin.Subject] = "TellmaIdentity:Seed:DevAdmin";
+            }
+
+            for (int index = 0; index < seed.DevUsers.Count; index++)
+            {
+                string entry = $"TellmaIdentity:Seed:DevUsers:{index}";
+                TellmaIdentityDevUserOptions user = seed.DevUsers[index];
+                if (string.IsNullOrWhiteSpace(user.Email))
+                {
+                    failures.Add($"{entry}: Email is required.");
+                }
+                else if (!emails.TryAdd(user.Email, entry))
+                {
+                    failures.Add($"{entry}: Email '{user.Email}' is already seeded by {emails[user.Email]}.");
+                }
+
+                if (string.IsNullOrWhiteSpace(user.Subject))
+                {
+                    failures.Add($"{entry}: Subject is required.");
+                }
+                else if (!subjects.TryAdd(user.Subject, entry))
+                {
+                    failures.Add($"{entry}: Subject '{user.Subject}' is already seeded by {subjects[user.Subject]}.");
                 }
             }
         }

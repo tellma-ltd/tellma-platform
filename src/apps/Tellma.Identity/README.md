@@ -344,6 +344,16 @@ redirect list is applied and audited as `DistributionSeedApplied`. The seeder ne
 application, and never generates a secret: an entry needs both secrets outside Development, where
 startup validation also requires a slug of at most 15 lowercase characters and an `https` origin.
 
+The bootstrap identities are, in Development only, the dev admin (`Seed:DevAdmin`, `admin@localhost`
+under the fixed subject `00000000-0000-0000-0000-000000000001`) and the **development users** of
+`Seed:DevUsers`, each an `Email`, a fixed `Subject` and an optional `DisplayName`, seeded as active
+accounts with a confirmed address so they sign in with an email code; then, anywhere, the
+break-glass administrator of `Seed:Bootstrap` into an empty store. A distribution's development data
+binds its tenant users to the same subjects, so those users sign in from a fresh checkout with no
+invitation. An account whose address the store already holds is left as it is, and each one seeded
+is audited (`DevAdminSeeded`, `DevUserSeeded`). Startup validation requires every development user's
+address and subject, and refuses one another seeded identity already uses.
+
 Every seeded registration — scopes, platform clients and distributions — and onboarding go through
 `ClientRegistrationConverger`, which writes only what differs. Several instances start together when
 a secret is rotated or a deployment first comes up, and converge the same rows at once; a write lost

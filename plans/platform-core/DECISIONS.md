@@ -384,6 +384,160 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-204 (orchestrator, 2026-11-22): PC-F11 Review 1 rulings
+
+Review 1 found 0/1/6. It confirmed:
+- Landlock's ABI detection and its per-ABI rights match the kernel header, and the ruleset is in place before any upload is read.
+- No configuration runs an unconfined worker in production.
+- On Windows, the capability SID, the handle lifetimes and inheritance, and the refusals of the host, other workers and loopback hold.
+- The ACE grants read+execute only and is idempotent.
+- seccomp TSYNC, RLIMIT_DATA, non-dumpable and setsid are intact and in order. Confinement also closes D-043 (2)'s dumpable window against other workers.
+- Refusing /tmp and /dev/shm costs nothing.
+
+Fixed in fix1:
+- R1-1 (major): the seccomp ioctl deny-list missed FS_IOC_ENABLE_VERITY (and the same class: FS_IOC_SET_ENCRYPTION_POLICY, BTRFS_IOC_SUBVOL_SETFLAGS). Through it, a compromised worker could make a host allowance file permanently refuse writes. Refuse ioctl types 'f', 'X' and 0x94 outright, or at least those three requests, with hostile tests.
+- R1-2: a test for the client refusing an unreported confinement bit.
+- R1-3: a Windows Development host whose .NET runtime the AppContainer cannot read must not fail startup. Grant the runtime directory the ACE where it can, or else fall back unconfined with the warning. The exit message names Windows causes.
+- R1-4: refuse inotify, fanotify and the path-based xattr calls where the runtime allows it. Record whatever stays as a residual.
+- R1-5: close_range as syscall 436 directly, for glibc older than 2.34.
+- R1-6: a Compose guard against a host installed under a directory the worker may read in full.
+
+R1-7 is a merge-time task for Ahmad: verify that the production target (App Service Linux) offers Landlock. Without it, production PDF thumbnails are silently disabled.
+
+Review 2 on fable follows fix1 (security-bound, PROCESS §3).
+
+### D-203 (orchestrator, 2026-11-22): PC-175 steps back into the hold queue after a second red run; PC-093 released
+
+Situation: PC-175's integration went red twice, on both build-test jobs (runs 44986216771 and 44990079169). Meanwhile PC-093 (T1) was held with a clean merge-tree, and PC-F67 and PC-F17 were held behind it. D-087 releases one item at a time, so a pc branch that keeps failing CI was holding up the whole queue.
+
+Ruling:
+- PC-175 fixes its CI failures without the ": integrate" marker and returns to held.
+- PC-093 is released at once.
+- PC-175 is re-released after PC-093 lands, ahead of PC-F67 and PC-F17, because it is older and has already merged platform-core once.
+- PC-175's second round also runs every unit project the build-test job runs and its change could reach, in full, once, with the unit filter. Two red rounds justify that beyond D-175.
+
+Revisit if a pc branch's third CI round goes red: escalate it to a Review 2 of the integration fixes (§4.4).
+
+### D-202 (orchestrator, 2026-11-22): PC-175 CI fixes accepted
+
+PC-175's integration run 44986216771 was red, with two root causes. Both fixes are in 6ced57c6.
+
+1. Merge interplay, both OSes:
+   - The failing check is AcmeResourceAuditTests.Every_label_the_acme_model_derives_in_its_own_schema_is_shipped, from PC-092.
+   - Cause: PC-175's workbook actions attach to every Acme stack and derive `Acme_<Resource>_Action_Export` and ExportForImport keys that Acme does not ship.
+   - Accepted: Core owns the shared workbook-action and request-field labels (Strings.resx and Strings.ar.resx), and the audit's shared-suffix list reads them from ExportRequest and ExportForImportRequest by reflection, as it does for the platform's other actions.
+   - For Ahmad: the Arabic labels were written by the agent and want a native review.
+2. A flake that predates PC-175, Windows only:
+   - The failing test is HostShapeTests.Development_provisions_through_the_local_migrator.
+   - Cause: Identity's DevelopmentCertificateSource raced. One host loaded dev-signing.pfx while another replaced it with File.Move, which is a sharing violation on Windows.
+   - Accepted, landing through PC-175 because it is the item the flake blocked: every read and replacement now holds an exclusive `<pfx>.lock` gate with a 30 s bounded retry, and the in-memory fallback is kept. DevelopmentCertificateSourceTests pins 16 concurrent loads.
+
+Both are recorded as deviations in the commit. New pc run 44990079169.
+
+Addendum (PC-093 held at dbd42f37; clean merge-tree): the release order after PC-175 is PC-093 (T1), then PC-F67 and PC-F17 (fix items) in the order they held. PC-093 held before PC-F67 was released, so D-140/D-173 and D-194 put it first. This supersedes the order in D-201.
+
+### D-201 (orchestrator, 2026-11-22): PC-093 Review 1 rulings
+
+Review 1 found 0/0/2 and accepted all 6 deviations. Its findings on the reviewer's checks:
+- Without a secret, the warn-and-keep path is reachable only in in-proc Development. Anywhere else, `core.options` fails and the migrator exits 3 before any command runs. Recovery is a rerun of `provision --tenant N --admin-email X` once a secret is configured.
+- The `core.invite-administrator` frame grants nothing beyond the invite. It admits ReadOnly tenants only (Frozen is still refused) and adds no securable.
+- PC-092's Development path is unchanged.
+- InitialTenant passes the hand-review list (28 tables, 37 UDTTs, no Sql(), IDENTITY, rowversion, trigger or MERGE).
+- The parity pins plus CompositionTests catch drift on both OSes, and nothing is OS-sensitive.
+
+The CI smoke deployment deferral follows PLAN §6's Deferred row and is now recorded in LEDGER.md's Deferred tests.
+
+Fixed in fix1:
+- R1-1: an Acme ProvisioningTests case for no secret in Development, and a warning that names the recovery command.
+- R1-2: ARCHITECTURE.md narrowed to say that the seeded administrator is not invited in Development.
+
+PC-093 holds after fix1. Release order: PC-175 (CI fixes), PC-F67, then PC-093 (T1) ahead of PC-F17 (fix item) if both are held.
+
+### D-200 (orchestrator, 2026-11-22): PC-103 Review 1 rulings; escalated to Review 2; PC-F69 opened for the @tellma/core primary re-split
+
+Review 1 found 0/4/8. Four majors meet PROCESS §4.4's escalation rule, so PC-103 gets Review 2 (inherit, xhigh) after fix1. This is recorded in LEDGER.md.
+
+Fixed in fix1:
+- R1-1: a tenant switch (/17 to /18) must take the cold entry. The reused route host kept rendering tenant 17's page.
+- R1-2: the focus hold leaked when the host was destroyed during the `#warm()` wait.
+- R1-3: moving between My settings sections skipped the section's leave guard (0032 §8.1).
+- R1-4: move the not-found page, the launch-redirect component and the forbidden and not-found error views out of ".". Re-set the ceiling to the new measurement plus 0.5 KB, with a per-spec split in budgetNotes. TmEntities is attributed to 0029's share.
+- R1-5..R1-12: tmRoutedTenant's safe-integer check; tm.launch.cold|warm reading the tenant's launch documents; §4.3 step 4's Contracts-chunk load (or a deviation); parallel startup loads within each language; a compiler-checked shell export lookup with one shared tsconfig path; the missing startup and describe tests; the warm-tenant seeding helper moved to @tellma/core-testing.
+- A WATCHLIST hand-off to PC-104 for deviation 4 and the English fallbacks.
+
+Accepted as reviewed:
+- The Planner-note ruling (one placeholder behind TM_ROUTE_HOSTS; canDeactivate skips only declared in-place parameters).
+- The TmEntities and TM_ROUTE_PERMISSIONS seams (`can()` matches 0029 §7, so PC-105 can useExisting it).
+- The rig finding (0025 §2.4's idle rule).
+
+Budget. Review 1 verified the "." raise from 20.44 to 30.3 KB (measured 30.20, +9.85 KB) as spec'd growth within D-031's cap: no new dependency and only small duplicates. Spec 0024's own services are about 22 KB against their 14 KB §12 share. The ceiling has risen seven times, four of them under D-031, so D-031's re-split clause now applies.
+
+PC-F69 is opened to re-split @tellma/core's primary entry point by spec family, so each spec's §12 share can be measured on its own. It takes a free fix slot after PC-103 lands. It is not ahead of ready T1/T2 work.
+
+For Ahmad: confirm the larger 0024 share, or name what 0024 §12 should leave out of the first frame. Moving the query parsers, describe and preload would need a §9.4 amendment.
+
+### D-199 (orchestrator, 2026-11-22): PC-F17 Review 1 rulings
+
+Review 1 found 0/1/3. It confirmed:
+- no per-row state leaks between rows that share a slot, and keyed consumer views stay with their row;
+- window coverage and slice ordering are sound, and programmatic scrolls never slice;
+- the probes are honest (40 steps, 50 ms unchanged);
+- the ARCHITECTURE.md edit matches the code;
+- the ./grid raise to 41.23 KB (measured 41.14) is within D-031.
+
+Fixed in fix1:
+- R1-1 (major): pressing a checkbox, scrolling with the wheel while held, then releasing can toggle another row's selection, or check a range with Shift. A replay put the pressed element under the pointer on another row in about 7% of 100 px notches and 28% of screen-sized steps. Guard it the way the tiles' `pressedElsewhere` does, with a failing-first unit test.
+- R1-2: give the `window` computed an `equal`, so the slice-ending timeout stops re-rendering every row, and re-measure.
+- R1-3: a grid-level test for the active-row slot retire.
+- R1-4: the probes stay unthrottled, like the existing tree and tiles probes, recorded as a named deviation.
+- Deviation 1's citation is corrected from 0004 §5 to §4.
+
+For Ahmad: 0004 §16 measures the scroll budget under a mid-tier mobile CPU throttle, but none of the three @perf probes (tree, tiles, flat grid) applies one. Either drop the throttle from §16, or have a later item add a throttled probe and fund the cuts it would need. Also, §4 says tracking rows by id reuses row views, but in fact it re-creates them, so §4 should describe slot tracking.
+
+PC-F17 holds after fix1. Release order: PC-175 (in CI), then PC-F67, then PC-F17.
+
+### D-198 (orchestrator, 2026-11-22): PC-F67 Review 1 rulings
+
+Review 1 found 0/0/2 and judged the fix sound. In Microsoft.AspNetCore.OpenApi 10.0.11, exactly one service takes the HTTP JSON options, and it is the one replaced. The depth-128 options never reach bodies, answers or the hub (SignalR has its own options), so all of those stay at 16. A package bump fails startup or the document tests. The wire and the fingerprint (1UjYUCJx3WE2) are unchanged, and the diff does not touch PC-F68's path.
+
+Fixed in fix1:
+- R1-1: restate the SchemaMaxDepth bound in terms of type nesting, add a polymorphic level to the depth fixture, and add a Development startup check on contract-type depth if that is cheap.
+- R1-2: replace the self-comparing `me` wire assertion with an independent oracle, or drop it.
+
+PC-F67 holds after fix1, behind PC-175, which is integrating. D-185 item 2 stays with Ahmad.
+
+### D-197 (orchestrator, 2026-11-22): PC-F67 implementation; PC-F68 opened for a local LastAdministrator failure
+
+PC-F67's implementation (0dabb9cc) restores ClientSyncResult.Me as MeResult and drops PreSerializedJson.Of. The web OpenAPI document builds its schemas under its own limit, WebOpenApi.SchemaMaxDepth = 128, through a second, document-only JsonOptions instance; the wire keeps MaxDepth 16. The wire, fingerprint, route and stack goldens and the client types are unchanged, and 7 tests fail without the fix. Review 1 is running.
+
+For Ahmad (D-185 item 2): the document-only JsonOptions copy goes against 0016 §3.1's "No other copy exists". Either §3.1 should allow a document-only copy for the OpenAPI schema writer, or the wire limit should rise. Follow-up, not scheduled: client/sync's settings stay "any value" in the document (PreSerializedJson). A schema transformer could describe them.
+
+PC-F68 opened: UserSelfServiceTests.Another_user_s_bag_is_read_set_and_deleted_under_the_preferences_filter_within_its_budgets throws Access.LastAdministrator on preferences/set.
+- Seen locally on Windows at 2026-11-22 03:18 UTC, alone on a fresh fixture database.
+- It fails the same way on PC-F67's base, so platform-core already has it.
+- It passed in PC-096 on 2026-11-21, so a date or time dependence is possible.
+- The latest PR-tier CI integration run (on 87a9066c) was green.
+
+It may be a product bug in the last-administrator guard, so it is root-caused, not retried (D-011/D-113). It takes the first slot that frees after PC-F11 has pc-f, which is likely pc-2 once PC-175 lands, unless T1/T2 work is ready.
+
+### D-196 (orchestrator, 2026-11-22): PC-093 takes pc-3; PC-F11 moves to pc-f
+
+PC-092 landed (87a9066c), and PC-093 (0018-h, T1) became ready just as pc-3 freed. D-140/D-173 put ready T1 work ahead of fills, and PC-F11 is a before-GA fill (D-195), so PC-093 takes pc-3 at implementer high with R1 only. PC-F11 takes the fix slot pc-f as soon as PC-214 lands, ahead of PC-175's release. Its brief has already been retargeted to pc-f.
+
+A local, unpushed pc/PC-F11 branch was created in pc-3 before the swap. pc-f reuses it, fast-forwarded to origin/platform-core. No branch is deleted.
+
+### D-195 (Ahmad, 2026-11-22): start PC-F11 and PC-F17 to use the reset
+
+Situation: at 02:10 UTC usage was 15% at about 1 pt/h, below D-178's target of about 1.5. Nothing beyond PC-103 was ready, and pc-4 was idle. I proposed the two before-GA fix items, and Ahmad answered "Yes, start both".
+
+Ruling:
+- PC-F17 (grid scroll budget) starts at once in pc-4, implementer inherit high, with one review.
+- PC-F11 (PDF worker filesystem confinement) takes pc-3 as soon as PC-092 lands. No other slot is free: PC-214 and PC-175 hold theirs, and adding a slot would need new ports and a DB_SUFFIX (D-035).
+- PC-F11 is security-bound, so it runs at implementer xhigh with Review 1 and Review 2 on fable (PROCESS §3).
+- Both integrate in the normal release order, after PC-214 and PC-175.
+
+Revisit if usage stays below about 1.2 pts/h with a free slot and nothing ready.
+
 ### D-194 (orchestrator, 2026-11-22): PC-092 fix1 held; it integrates ahead of PC-214 and PC-175
 
 PC-092's fix1 (5ddb17c5) fixed R1-1..R1-6. Its pushback on R1-1's "read denied, extra dropped" sub-point is accepted. Every grant implies Read with the same filter (0014 §5.2 step 2), and DetailsPlanner.Compose throws Forbidden before any contributor runs, so the branch cannot be reached through the stack. The contributor keeps it as a guard. The tests pin the Forbidden and a filtered Save's implied read, and no leak was found.
