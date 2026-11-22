@@ -12,11 +12,13 @@ using Microsoft.AspNetCore.Routing.Patterns;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging;
 using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.Abstractions.Crud;
 using Tellma.Core.Access;
 using Tellma.Core.AspNetCore.Routing;
+using Tellma.Core.AspNetCore.Tests.Infrastructure;
 using Tellma.Core.Composition;
 using Tellma.Testing.WebHost;
 
@@ -28,6 +30,9 @@ namespace Tellma.Core.AspNetCore.Tests.Routing
     /// </summary>
     public sealed class EndpointAuditTests
     {
+        /// <summary>The name of the event a refused audit logs before startup throws.</summary>
+        private const string FailureEvent = "ApiSecurableAuditFailed";
+
         /// <summary>A handler that answers nothing.</summary>
         private static readonly RequestDelegate Nothing = static _ => Task.CompletedTask;
 
@@ -347,6 +352,53 @@ namespace Tellma.Core.AspNetCore.Tests.Routing
         }
 
         [Fact]
+        public async Task The_gate_s_audit_logs_its_refusal_at_critical_with_every_problem_before_startup_throws()
+        {
+            // A securable no feature registers passes MapTellma's own run and fails the realised gate.
+            CapturingLoggerProvider logs = new();
+            (WebApplication app, _, _) = TellmaTestHost.Build(options =>
+            {
+                options.ConfigureServices = services => services.AddSingleton<ILoggerProvider>(logs);
+                options.Map = static (application, endpoints) => MapViolation(application, endpoints, "unregistered-securable");
+            });
+            await using (app)
+            {
+                Assert.DoesNotContain(logs.Events, static captured => captured.EventName == FailureEvent);
+                TellmaCompositionException exception = await Assert.ThrowsAsync<TellmaCompositionException>(
+                    () => app.StartAsync(TestContext.Current.CancellationToken));
+
+                CompositionProblem problem = Assert.Single(exception.Problems, static problem => problem.Source == TellmaEndpointAudit.CheckName);
+                Assert.Contains("requires the securable 'acme.Missing:Read', which no feature registers.", problem.Problem, StringComparison.Ordinal);
+                AssertFailureLogged(logs, problem);
+            }
+        }
+
+        [Fact]
+        public void MapTellma_logs_its_refusal_at_critical_with_every_problem_before_it_throws()
+        {
+            // An endpoint mapped ahead of MapTellma fails it there, before the host is built.
+            CapturingLoggerProvider logs = new();
+            TellmaCompositionException exception = Assert.Throws<TellmaCompositionException>(
+                () => TellmaTestHost.Build(options =>
+                {
+                    options.ConfigureServices = services => services.AddSingleton<ILoggerProvider>(logs);
+                    options.BeforeMapTellma = static app => app.MapGet("/plain", Nothing);
+                }));
+
+            AssertFailureLogged(logs, Assert.Single(exception.Problems));
+        }
+
+        [Fact]
+        public async Task A_host_whose_endpoints_pass_the_audit_logs_no_refusal()
+        {
+            CapturingLoggerProvider logs = new();
+            await using TellmaTestHost host = await TellmaTestHost.StartAsync(options =>
+                options.ConfigureServices = services => services.AddSingleton<ILoggerProvider>(logs));
+
+            Assert.DoesNotContain(logs.Events, static captured => captured.EventName == FailureEvent);
+        }
+
+        [Fact]
         public void MapTellma_refuses_a_pipeline_UseTellma_did_not_install()
         {
             InvalidOperationException exception = Assert.Throws<InvalidOperationException>(
@@ -362,6 +414,23 @@ namespace Tellma.Core.AspNetCore.Tests.Routing
             {
                 _ = Assert.Throws<InvalidOperationException>(app.MapTellma);
             }
+        }
+
+        /// <summary>
+        ///     Asserts the audit's refusal was logged once, at Critical, under its event name, with the
+        ///     problem the startup exception carries as its count and its one-line rendering.
+        /// </summary>
+        /// <param name="logs">The captured events.</param>
+        /// <param name="problem">The one problem the audit found.</param>
+        private static void AssertFailureLogged(CapturingLoggerProvider logs, CompositionProblem problem)
+        {
+            CapturedEvent logged = Assert.Single(logs.Events, static captured => captured.EventName == FailureEvent);
+            Assert.Equal(LogLevel.Critical, logged.Level);
+            Assert.Equal("1", logged.Members["Count"]);
+            Assert.Equal(problem.Describe(), logged.Members["Problems"]);
+            // The host's Serilog pipeline quotes a string member where it renders it in the message.
+            Assert.StartsWith("The endpoint audit found 1 problem(s), so the host does not start: ", logged.Message, StringComparison.Ordinal);
+            Assert.Contains(problem.Describe(), logged.Message, StringComparison.Ordinal);
         }
 
         /// <summary>Maps one violation.</summary>

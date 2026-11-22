@@ -10,6 +10,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Api;
@@ -145,7 +146,14 @@ namespace Tellma.Core.AspNetCore
                     .GetAwaiter()
                     .GetResult(),
             ];
-            return problems.Count > 0 ? throw new TellmaCompositionException(problems) : groups;
+            if (problems.Count > 0)
+            {
+                // Logged ahead of the throw, so the host's logs name the problems as well as its exception.
+                TellmaEndpointAudit.LogFailure(app.Services.GetRequiredService<ILoggerFactory>().CreateLogger(ApiLog.Category), problems);
+                throw new TellmaCompositionException(problems);
+            }
+
+            return groups;
         }
 
         /// <summary>Maps a tenant route group under its surface's policy, its filter and its final stamp.</summary>
