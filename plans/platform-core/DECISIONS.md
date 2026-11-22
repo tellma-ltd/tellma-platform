@@ -384,6 +384,24 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-215 (orchestrator, 2026-11-22): PC-104 Review 1 rulings; escalated to Review 2
+
+Review 1 found 0/6/5. It confirmed the following, and accepted deviations 1, 3, 5, 6, 7 and 8:
+- The "." raise is honest (+4.74 KB, rounded to 36, all 0024 §1 primary API).
+- The Umm al-Qura table conforms to D-029, checked by a scratch run of 65,700 days and 438,018 round trips.
+- ar-AE digits match CLDR.
+
+Fix1 rulings:
+- R1-1: seed the startup tenant from the path, so a uq/et tenant never shows a Gregorian first frame. Patch the boot record whenever the active language settles.
+- R1-2: implement D-046's om/ti day-first rule on the client.
+- R1-3: give the locale write a queue per tenant, and name the tenant on the pagehide send.
+- R1-4: rewrite the atomicity test so it can fail.
+- R1-5: test the Accept-Language fallback rule and the locale-fallback event.
+- R1-6: move tmArabic()'s tables to a secondary entry point that loads on the first switch (§7.3).
+- R1-7 to R1-11: the adopt pin, the core-ui-tokens peer, the gap-language check, the three Chromium e2e specs, and the date popup's own-conversion pins.
+
+Per PROCESS §4.4, 6 majors escalate PC-104 to Review 2 (inherit, xhigh) after fix1.
+
 ### D-214 (orchestrator, 2026-11-22): the @tellma/core "." entry point; PC-F69 promoted
 
 PC-104 (0024-h) and PC-107 (0025-e) each raise the "." ceiling from 31 KB, by about 4.7 KB and 5.1 KB. Once both land, "." passes 41 KB.
