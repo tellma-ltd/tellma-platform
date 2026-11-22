@@ -30,7 +30,7 @@ namespace Tellma.Core.AspNetCore.IntegrationTests.Stacks
         /// <summary>
         ///     Every route the operation cases drive, after <c>/{tenantId}/api/web/</c>: the center
         ///     cases, the user cases (the membership's child surface among them), the role cases
-        ///     (the permission's child surface among them), and the export cases.
+        ///     (the permission's child surface among them), the export cases and the import cases.
         /// </summary>
         private static readonly string[] Driven =
         [
@@ -44,6 +44,7 @@ namespace Tellma.Core.AspNetCore.IntegrationTests.Stacks
             "role-memberships/query", "permissions/query",
             "centers/export", "centers/export-for-import", "users/export", "users/export-for-import", "roles/export", "roles/export-for-import",
             "permissions/export", "role-memberships/export",
+            "centers/inspect-import", "users/inspect-import", "roles/inspect-import",
         ];
 
         [Fact]

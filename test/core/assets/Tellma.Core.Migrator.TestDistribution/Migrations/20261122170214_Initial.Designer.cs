@@ -5,17 +5,16 @@ using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
-using Microsoft.SqlServer.Types;
 using Tellma.Core.Data;
 using Tellma.Core.EntityFrameworkCore.TableTypes;
 
 #nullable disable
 
-namespace Tellma.Distro.Acme.Migrator.Migrations.Tenant
+namespace Tellma.Core.Migrator.TestDistribution.Migrations
 {
     [DbContext(typeof(TellmaDbContext))]
-    [Migration("20261122025536_InitialTenant")]
-    partial class InitialTenant
+    [Migration("20261122170214_Initial")]
+    partial class Initial
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -32,16 +31,13 @@ namespace Tellma.Distro.Acme.Migrator.Migrations.Tenant
             modelBuilder.HasSequence<int>("sq_Blobs", "core")
                 .StartsAt(1000L);
 
-            modelBuilder.HasSequence<int>("sq_Centers", "gl")
+            modelBuilder.HasSequence<int>("sq_Exports", "core")
                 .StartsAt(1000L);
 
-            modelBuilder.HasSequence<int>("sq_Currencies", "acme")
+            modelBuilder.HasSequence<int>("sq_Gadgets", "probe")
                 .StartsAt(1000L);
 
-            modelBuilder.HasSequence<int>("sq_CustomerContacts", "acme")
-                .StartsAt(1000L);
-
-            modelBuilder.HasSequence<int>("sq_Customers", "acme")
+            modelBuilder.HasSequence<int>("sq_Imports", "core")
                 .StartsAt(1000L);
 
             modelBuilder.HasSequence<int>("sq_Jobs", "core")
@@ -63,15 +59,6 @@ namespace Tellma.Distro.Acme.Migrator.Migrations.Tenant
                 .StartsAt(1000L);
 
             modelBuilder.HasSequence<int>("sq_Roles", "core")
-                .StartsAt(1000L);
-
-            modelBuilder.HasSequence<int>("sq_SalesInvoiceAttachments", "acme")
-                .StartsAt(1000L);
-
-            modelBuilder.HasSequence<int>("sq_SalesInvoiceLines", "acme")
-                .StartsAt(1000L);
-
-            modelBuilder.HasSequence<int>("sq_SalesInvoices", "acme")
                 .StartsAt(1000L);
 
             modelBuilder.HasSequence<int>("sq_Schedules", "core")
@@ -837,6 +824,168 @@ namespace Tellma.Distro.Acme.Migrator.Migrations.Tenant
                     b.ToTable("OutgoingEmailAttachments", "core", t =>
                         {
                             t.HasCheckConstraint("CK_OutgoingEmailAttachments_Id", "[Id] > 0");
+                        });
+
+                    b
+                        .HasAnnotation("Tellma:TableType:Enabled", true)
+                        .HasAnnotation("Tellma:TableType:Grants", "[\"tellma_app\"]");
+                });
+
+            modelBuilder.Entity("Tellma.Core.Abstractions.Excel.Export", b =>
+                {
+                    b.Property<int>("Id")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasPrecision(7)
+                        .HasColumnType("datetimeoffset(7)");
+
+                    b.Property<int>("CreatedById")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset>("ExpiresAt")
+                        .HasPrecision(3)
+                        .HasColumnType("datetimeoffset(3)");
+
+                    b.Property<int?>("FileId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("FileName")
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
+
+                    b.Property<int?>("JobId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(9)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(9)");
+
+                    b.Property<DateTimeOffset>("ModifiedAt")
+                        .HasPrecision(7)
+                        .HasColumnType("datetimeoffset(7)");
+
+                    b.Property<int>("ModifiedById")
+                        .HasColumnType("int");
+
+                    b.Property<string>("RequestJson")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Resource")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("varchar(128)");
+
+                    b.Property<int?>("RowCount")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id")
+                        .HasName("PK_Exports");
+
+                    b.HasIndex("ExpiresAt")
+                        .HasDatabaseName("IX_Exports_ExpiresAt");
+
+                    b.HasIndex("FileId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_Exports_FileId")
+                        .HasFilter("[FileId] IS NOT NULL");
+
+                    b.HasIndex("JobId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_Exports_JobId")
+                        .HasFilter("[JobId] IS NOT NULL");
+
+                    b.HasIndex("CreatedById", "CreatedAt")
+                        .IsDescending(false, true)
+                        .HasDatabaseName("IX_Exports_CreatedBy");
+
+                    b.ToTable("Exports", "core", t =>
+                        {
+                            t.HasCheckConstraint("CK_Exports_Id", "[Id] > 0");
+                        });
+
+                    b
+                        .HasAnnotation("Tellma:TableType:Enabled", true)
+                        .HasAnnotation("Tellma:TableType:Grants", "[\"tellma_app\"]");
+                });
+
+            modelBuilder.Entity("Tellma.Core.Abstractions.Excel.Import", b =>
+                {
+                    b.Property<int>("Id")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasPrecision(7)
+                        .HasColumnType("datetimeoffset(7)");
+
+                    b.Property<int>("CreatedById")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("ErrorCount")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset>("ExpiresAt")
+                        .HasPrecision(3)
+                        .HasColumnType("datetimeoffset(3)");
+
+                    b.Property<int?>("FileId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("JobId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Mode")
+                        .IsRequired()
+                        .HasMaxLength(8)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(8)");
+
+                    b.Property<DateTimeOffset>("ModifiedAt")
+                        .HasPrecision(7)
+                        .HasColumnType("datetimeoffset(7)");
+
+                    b.Property<int>("ModifiedById")
+                        .HasColumnType("int");
+
+                    b.Property<string>("RequestJson")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Resource")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("varchar(128)");
+
+                    b.Property<string>("ResultJson")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int?>("RowCount")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id")
+                        .HasName("PK_Imports");
+
+                    b.HasIndex("ExpiresAt")
+                        .HasDatabaseName("IX_Imports_ExpiresAt");
+
+                    b.HasIndex("FileId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_Imports_FileId")
+                        .HasFilter("[FileId] IS NOT NULL");
+
+                    b.HasIndex("JobId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_Imports_JobId")
+                        .HasFilter("[JobId] IS NOT NULL");
+
+                    b.HasIndex("CreatedById", "CreatedAt")
+                        .IsDescending(false, true)
+                        .HasDatabaseName("IX_Imports_CreatedBy");
+
+                    b.ToTable("Imports", "core", t =>
+                        {
+                            t.HasCheckConstraint("CK_Imports_Id", "[Id] > 0");
                         });
 
                     b
@@ -19363,6 +19512,43 @@ namespace Tellma.Distro.Acme.Migrator.Migrations.Tenant
                         });
                 });
 
+            modelBuilder.Entity("Tellma.Core.Migrator.TestDistribution.Gadget", b =>
+                {
+                    b.Property<int>("Id")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasPrecision(7)
+                        .HasColumnType("datetimeoffset(7)");
+
+                    b.Property<int>("CreatedById")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset>("ModifiedAt")
+                        .HasPrecision(7)
+                        .HasColumnType("datetimeoffset(7)");
+
+                    b.Property<int>("ModifiedById")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
+
+                    b.HasKey("Id")
+                        .HasName("PK_Gadgets");
+
+                    b.ToTable("Gadgets", "probe", t =>
+                        {
+                            t.HasCheckConstraint("CK_Gadgets_Id", "[Id] > 0");
+                        });
+
+                    b
+                        .HasAnnotation("Tellma:TableType:Enabled", true)
+                        .HasAnnotation("Tellma:TableType:Grants", "[\"tellma_app\"]");
+                });
+
             modelBuilder.Entity("Tellma.Core.Notifications.NotificationPreferenceRow", b =>
                 {
                     b.Property<int>("UserId")
@@ -19384,413 +19570,6 @@ namespace Tellma.Distro.Acme.Migrator.Migrations.Tenant
                         .HasName("PK_NotificationPreferences");
 
                     b.ToTable("NotificationPreferences", "core");
-                });
-
-            modelBuilder.Entity("Tellma.Distro.Acme.Entities.Currency", b =>
-                {
-                    b.Property<int>("Id")
-                        .HasColumnType("int");
-
-                    b.Property<string>("Code")
-                        .IsRequired()
-                        .HasMaxLength(3)
-                        .HasColumnType("nvarchar(3)");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasPrecision(7)
-                        .HasColumnType("datetimeoffset(7)");
-
-                    b.Property<int>("CreatedById")
-                        .HasColumnType("int");
-
-                    b.Property<DateTimeOffset>("ModifiedAt")
-                        .HasPrecision(7)
-                        .HasColumnType("datetimeoffset(7)");
-
-                    b.Property<int>("ModifiedById")
-                        .HasColumnType("int");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(255)
-                        .HasColumnType("nvarchar(255)");
-
-                    b.Property<string>("Name2")
-                        .HasMaxLength(255)
-                        .HasColumnType("nvarchar(255)");
-
-                    b.Property<string>("Name3")
-                        .HasMaxLength(255)
-                        .HasColumnType("nvarchar(255)");
-
-                    b.HasKey("Id")
-                        .HasName("PK_Currencies");
-
-                    b.HasIndex("Code")
-                        .IsUnique()
-                        .HasDatabaseName("UX_Currencies_Code");
-
-                    b.ToTable("Currencies", "acme", t =>
-                        {
-                            t.HasCheckConstraint("CK_Currencies_Id", "[Id] > 0");
-                        });
-
-                    b
-                        .HasAnnotation("Tellma:TableType:Enabled", true)
-                        .HasAnnotation("Tellma:TableType:Grants", "[\"tellma_app\"]");
-                });
-
-            modelBuilder.Entity("Tellma.Distro.Acme.Entities.Customer", b =>
-                {
-                    b.Property<int>("Id")
-                        .HasColumnType("int");
-
-                    b.Property<string>("Code")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("nvarchar(50)");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasPrecision(7)
-                        .HasColumnType("datetimeoffset(7)");
-
-                    b.Property<int>("CreatedById")
-                        .HasColumnType("int");
-
-                    b.Property<decimal>("CreditLimit")
-                        .HasColumnType("decimal(19,4)");
-
-                    b.Property<int?>("CurrencyId")
-                        .HasColumnType("int");
-
-                    b.Property<string>("CustomerType")
-                        .IsRequired()
-                        .HasMaxLength(10)
-                        .IsUnicode(false)
-                        .HasColumnType("varchar(10)");
-
-                    b.Property<int?>("ImageId")
-                        .HasColumnType("int");
-
-                    b.Property<bool>("IsActive")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bit")
-                        .HasDefaultValue(true, "DF_Customers_IsActive");
-
-                    b.Property<DateTimeOffset>("ModifiedAt")
-                        .HasPrecision(7)
-                        .HasColumnType("datetimeoffset(7)");
-
-                    b.Property<int>("ModifiedById")
-                        .HasColumnType("int");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(255)
-                        .HasColumnType("nvarchar(255)");
-
-                    b.Property<string>("Name2")
-                        .HasMaxLength(255)
-                        .HasColumnType("nvarchar(255)");
-
-                    b.Property<string>("Name3")
-                        .HasMaxLength(255)
-                        .HasColumnType("nvarchar(255)");
-
-                    b.HasKey("Id")
-                        .HasName("PK_Customers");
-
-                    b.HasIndex("Code")
-                        .IsUnique()
-                        .HasDatabaseName("UX_Customers_Code");
-
-                    b.HasIndex("CurrencyId")
-                        .HasDatabaseName("IX_Customers_CurrencyId");
-
-                    b.HasIndex("ImageId")
-                        .IsUnique()
-                        .HasDatabaseName("UX_Customers_ImageId")
-                        .HasFilter("[ImageId] IS NOT NULL");
-
-                    b.HasIndex("IsActive", "Name")
-                        .HasDatabaseName("IX_Customers_IsActive_Name");
-
-                    b.ToTable("Customers", "acme", t =>
-                        {
-                            t.HasCheckConstraint("CK_Customers_Id", "[Id] > 0");
-                        });
-
-                    b
-                        .HasAnnotation("Tellma:TableType:Enabled", true)
-                        .HasAnnotation("Tellma:TableType:Grants", "[\"tellma_app\"]");
-                });
-
-            modelBuilder.Entity("Tellma.Distro.Acme.Entities.CustomerContact", b =>
-                {
-                    b.Property<int>("Id")
-                        .HasColumnType("int");
-
-                    b.Property<int>("CustomerId")
-                        .HasColumnType("int");
-
-                    b.Property<string>("Email")
-                        .HasMaxLength(255)
-                        .HasColumnType("nvarchar(255)");
-
-                    b.Property<string>("Mobile")
-                        .HasMaxLength(50)
-                        .HasColumnType("nvarchar(50)");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(255)
-                        .HasColumnType("nvarchar(255)");
-
-                    b.HasKey("Id")
-                        .HasName("PK_CustomerContacts");
-
-                    b.HasIndex("CustomerId")
-                        .HasDatabaseName("IX_CustomerContacts_CustomerId");
-
-                    SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("CustomerId"), new[] { "Id" });
-
-                    b.ToTable("CustomerContacts", "acme", t =>
-                        {
-                            t.HasCheckConstraint("CK_CustomerContacts_Id", "[Id] > 0");
-                        });
-
-                    b
-                        .HasAnnotation("Tellma:TableType:Enabled", true)
-                        .HasAnnotation("Tellma:TableType:Grants", "[\"tellma_app\"]");
-                });
-
-            modelBuilder.Entity("Tellma.Distro.Acme.Entities.MyCenter", b =>
-                {
-                    b.Property<int>("Id")
-                        .HasColumnType("int");
-
-                    b.Property<int>("ActiveSubtreeCount")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int")
-                        .HasDefaultValue(1, "DF_Centers_ActiveSubtreeCount");
-
-                    b.Property<string>("CenterType")
-                        .IsRequired()
-                        .HasMaxLength(12)
-                        .IsUnicode(false)
-                        .HasColumnType("varchar(12)");
-
-                    b.Property<string>("Code")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("nvarchar(50)");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasPrecision(7)
-                        .HasColumnType("datetimeoffset(7)");
-
-                    b.Property<int>("CreatedById")
-                        .HasColumnType("int");
-
-                    b.Property<bool>("IsActive")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bit")
-                        .HasDefaultValue(true, "DF_Centers_IsActive");
-
-                    b.Property<int?>("ManagerId")
-                        .HasColumnType("int");
-
-                    b.Property<DateTimeOffset>("ModifiedAt")
-                        .HasPrecision(7)
-                        .HasColumnType("datetimeoffset(7)");
-
-                    b.Property<int>("ModifiedById")
-                        .HasColumnType("int");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(255)
-                        .HasColumnType("nvarchar(255)");
-
-                    b.Property<string>("Name2")
-                        .HasMaxLength(255)
-                        .HasColumnType("nvarchar(255)");
-
-                    b.Property<string>("Name3")
-                        .HasMaxLength(255)
-                        .HasColumnType("nvarchar(255)");
-
-                    b.Property<SqlHierarchyId>("Node")
-                        .HasColumnType("hierarchyid")
-                        .HasAnnotation("Tellma:TableType:Excluded", true);
-
-                    b.Property<int?>("ParentId")
-                        .HasColumnType("int");
-
-                    b.Property<int>("SubtreeCount")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int")
-                        .HasDefaultValue(1, "DF_Centers_SubtreeCount");
-
-                    b.HasKey("Id")
-                        .HasName("PK_Centers");
-
-                    b.HasIndex("Code")
-                        .IsUnique()
-                        .HasDatabaseName("UX_Centers_Code");
-
-                    b.HasIndex("ManagerId")
-                        .HasDatabaseName("IX_Centers_ManagerId");
-
-                    b.HasIndex("Node")
-                        .IsUnique()
-                        .HasDatabaseName("UX_Centers_Node");
-
-                    b.HasIndex("ParentId")
-                        .HasDatabaseName("IX_Centers_ParentId");
-
-                    b.HasIndex("IsActive", "Name")
-                        .HasDatabaseName("IX_Centers_IsActive_Name");
-
-                    b.ToTable("Centers", "gl", t =>
-                        {
-                            t.HasCheckConstraint("CK_Centers_Id", "[Id] > 0");
-                        });
-
-                    b
-                        .HasAnnotation("Tellma:TableType:Enabled", true)
-                        .HasAnnotation("Tellma:TableType:Grants", "[\"tellma_app\"]")
-                        .HasAnnotation("Tellma:Tree:MaxDepth", 32);
-                });
-
-            modelBuilder.Entity("Tellma.Distro.Acme.Entities.SalesInvoice", b =>
-                {
-                    b.Property<int>("Id")
-                        .HasColumnType("int");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasPrecision(7)
-                        .HasColumnType("datetimeoffset(7)");
-
-                    b.Property<int>("CreatedById")
-                        .HasColumnType("int");
-
-                    b.Property<int>("CustomerId")
-                        .HasColumnType("int");
-
-                    b.Property<bool>("IsClosed")
-                        .HasColumnType("bit");
-
-                    b.Property<bool>("IsPosted")
-                        .HasColumnType("bit");
-
-                    b.Property<DateTimeOffset>("ModifiedAt")
-                        .HasPrecision(7)
-                        .HasColumnType("datetimeoffset(7)");
-
-                    b.Property<int>("ModifiedById")
-                        .HasColumnType("int");
-
-                    b.Property<DateOnly>("PostingDate")
-                        .HasColumnType("date");
-
-                    b.Property<int>("SerialNumber")
-                        .HasColumnType("int");
-
-                    b.HasKey("Id")
-                        .HasName("PK_SalesInvoices");
-
-                    b.HasIndex("CustomerId")
-                        .HasDatabaseName("IX_SalesInvoices_CustomerId");
-
-                    b.HasIndex("SerialNumber")
-                        .IsUnique()
-                        .HasDatabaseName("UX_SalesInvoices_SerialNumber");
-
-                    b.HasIndex("CustomerId", "PostingDate")
-                        .HasDatabaseName("IX_SalesInvoices_CustomerId_PostingDate");
-
-                    b.ToTable("SalesInvoices", "acme", t =>
-                        {
-                            t.HasCheckConstraint("CK_SalesInvoices_Id", "[Id] > 0");
-                        });
-
-                    b
-                        .HasAnnotation("Tellma:TableType:Enabled", true)
-                        .HasAnnotation("Tellma:TableType:Grants", "[\"tellma_app\"]");
-                });
-
-            modelBuilder.Entity("Tellma.Distro.Acme.Entities.SalesInvoiceAttachment", b =>
-                {
-                    b.Property<int>("Id")
-                        .HasColumnType("int");
-
-                    b.Property<int?>("FileId")
-                        .HasColumnType("int");
-
-                    b.Property<int>("InvoiceId")
-                        .HasColumnType("int");
-
-                    b.HasKey("Id")
-                        .HasName("PK_SalesInvoiceAttachments");
-
-                    b.HasIndex("FileId")
-                        .IsUnique()
-                        .HasDatabaseName("UX_SalesInvoiceAttachments_FileId")
-                        .HasFilter("[FileId] IS NOT NULL");
-
-                    b.HasIndex("InvoiceId")
-                        .HasDatabaseName("IX_SalesInvoiceAttachments_InvoiceId");
-
-                    SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("InvoiceId"), new[] { "Id" });
-
-                    b.ToTable("SalesInvoiceAttachments", "acme", t =>
-                        {
-                            t.HasCheckConstraint("CK_SalesInvoiceAttachments_Id", "[Id] > 0");
-                        });
-
-                    b
-                        .HasAnnotation("Tellma:TableType:Enabled", true)
-                        .HasAnnotation("Tellma:TableType:Grants", "[\"tellma_app\"]");
-                });
-
-            modelBuilder.Entity("Tellma.Distro.Acme.Entities.SalesInvoiceLine", b =>
-                {
-                    b.Property<int>("Id")
-                        .HasColumnType("int");
-
-                    b.Property<decimal>("Amount")
-                        .HasColumnType("decimal(19,4)");
-
-                    b.Property<int>("CenterId")
-                        .HasColumnType("int");
-
-                    b.Property<string>("Description")
-                        .HasMaxLength(255)
-                        .HasColumnType("nvarchar(255)");
-
-                    b.Property<int>("InvoiceId")
-                        .HasColumnType("int");
-
-                    b.HasKey("Id")
-                        .HasName("PK_SalesInvoiceLines");
-
-                    b.HasIndex("CenterId")
-                        .HasDatabaseName("IX_SalesInvoiceLines_CenterId");
-
-                    b.HasIndex("InvoiceId")
-                        .HasDatabaseName("IX_SalesInvoiceLines_InvoiceId");
-
-                    SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("InvoiceId"), new[] { "Id" });
-
-                    b.ToTable("SalesInvoiceLines", "acme", t =>
-                        {
-                            t.HasCheckConstraint("CK_SalesInvoiceLines_Id", "[Id] > 0");
-                        });
-
-                    b
-                        .HasAnnotation("Tellma:TableType:Enabled", true)
-                        .HasAnnotation("Tellma:TableType:Grants", "[\"tellma_app\"]");
                 });
 
             modelBuilder.Entity("Tellma.Core.Abstractions.Access.Permission", b =>
@@ -19919,6 +19698,64 @@ namespace Tellma.Distro.Acme.Migrator.Migrations.Tenant
                         .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired()
                         .HasConstraintName("FK_OutgoingEmailAttachments_OutgoingEmailId");
+                });
+
+            modelBuilder.Entity("Tellma.Core.Abstractions.Excel.Export", b =>
+                {
+                    b.HasOne("Tellma.Core.Abstractions.Access.User", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("FK_Exports_CreatedById");
+
+                    b.HasOne("Tellma.Core.Abstractions.Blobs.Blob", null)
+                        .WithOne()
+                        .HasForeignKey("Tellma.Core.Abstractions.Excel.Export", "FileId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("FK_Exports_FileId");
+
+                    b.HasOne("Tellma.Core.Abstractions.Jobs.Job", null)
+                        .WithOne()
+                        .HasForeignKey("Tellma.Core.Abstractions.Excel.Export", "JobId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("FK_Exports_JobId");
+
+                    b.HasOne("Tellma.Core.Abstractions.Access.User", null)
+                        .WithMany()
+                        .HasForeignKey("ModifiedById")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("FK_Exports_ModifiedById");
+                });
+
+            modelBuilder.Entity("Tellma.Core.Abstractions.Excel.Import", b =>
+                {
+                    b.HasOne("Tellma.Core.Abstractions.Access.User", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("FK_Imports_CreatedById");
+
+                    b.HasOne("Tellma.Core.Abstractions.Blobs.Blob", null)
+                        .WithOne()
+                        .HasForeignKey("Tellma.Core.Abstractions.Excel.Import", "FileId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("FK_Imports_FileId");
+
+                    b.HasOne("Tellma.Core.Abstractions.Jobs.Job", null)
+                        .WithOne()
+                        .HasForeignKey("Tellma.Core.Abstractions.Excel.Import", "JobId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("FK_Imports_JobId");
+
+                    b.HasOne("Tellma.Core.Abstractions.Access.User", null)
+                        .WithMany()
+                        .HasForeignKey("ModifiedById")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("FK_Imports_ModifiedById");
                 });
 
             modelBuilder.Entity("Tellma.Core.Abstractions.Jobs.Job", b =>
@@ -20053,6 +19890,23 @@ namespace Tellma.Distro.Acme.Migrator.Migrations.Tenant
                         .HasConstraintName("FK_ScheduleStates_ScheduleId");
                 });
 
+            modelBuilder.Entity("Tellma.Core.Migrator.TestDistribution.Gadget", b =>
+                {
+                    b.HasOne("Tellma.Core.Abstractions.Access.User", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("FK_Gadgets_CreatedById");
+
+                    b.HasOne("Tellma.Core.Abstractions.Access.User", null)
+                        .WithMany()
+                        .HasForeignKey("ModifiedById")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("FK_Gadgets_ModifiedById");
+                });
+
             modelBuilder.Entity("Tellma.Core.Notifications.NotificationPreferenceRow", b =>
                 {
                     b.HasOne("Tellma.Core.Abstractions.Access.User", null)
@@ -20063,217 +19917,36 @@ namespace Tellma.Distro.Acme.Migrator.Migrations.Tenant
                         .HasConstraintName("FK_NotificationPreferences_UserId");
                 });
 
-            modelBuilder.Entity("Tellma.Distro.Acme.Entities.Currency", b =>
-                {
-                    b.HasOne("Tellma.Core.Abstractions.Access.User", null)
-                        .WithMany()
-                        .HasForeignKey("CreatedById")
-                        .OnDelete(DeleteBehavior.NoAction)
-                        .IsRequired()
-                        .HasConstraintName("FK_Currencies_CreatedById");
-
-                    b.HasOne("Tellma.Core.Abstractions.Access.User", null)
-                        .WithMany()
-                        .HasForeignKey("ModifiedById")
-                        .OnDelete(DeleteBehavior.NoAction)
-                        .IsRequired()
-                        .HasConstraintName("FK_Currencies_ModifiedById");
-                });
-
-            modelBuilder.Entity("Tellma.Distro.Acme.Entities.Customer", b =>
-                {
-                    b.HasOne("Tellma.Core.Abstractions.Access.User", null)
-                        .WithMany()
-                        .HasForeignKey("CreatedById")
-                        .OnDelete(DeleteBehavior.NoAction)
-                        .IsRequired()
-                        .HasConstraintName("FK_Customers_CreatedById");
-
-                    b.HasOne("Tellma.Distro.Acme.Entities.Currency", null)
-                        .WithMany()
-                        .HasForeignKey("CurrencyId")
-                        .OnDelete(DeleteBehavior.NoAction)
-                        .HasConstraintName("FK_Customers_CurrencyId");
-
-                    b.HasOne("Tellma.Core.Abstractions.Blobs.Blob", null)
-                        .WithOne()
-                        .HasForeignKey("Tellma.Distro.Acme.Entities.Customer", "ImageId")
-                        .OnDelete(DeleteBehavior.NoAction)
-                        .HasConstraintName("FK_Customers_ImageId");
-
-                    b.HasOne("Tellma.Core.Abstractions.Access.User", null)
-                        .WithMany()
-                        .HasForeignKey("ModifiedById")
-                        .OnDelete(DeleteBehavior.NoAction)
-                        .IsRequired()
-                        .HasConstraintName("FK_Customers_ModifiedById");
-                });
-
-            modelBuilder.Entity("Tellma.Distro.Acme.Entities.CustomerContact", b =>
-                {
-                    b.HasOne("Tellma.Distro.Acme.Entities.Customer", null)
-                        .WithMany()
-                        .HasForeignKey("CustomerId")
-                        .OnDelete(DeleteBehavior.NoAction)
-                        .IsRequired()
-                        .HasConstraintName("FK_CustomerContacts_CustomerId");
-                });
-
-            modelBuilder.Entity("Tellma.Distro.Acme.Entities.MyCenter", b =>
-                {
-                    b.HasOne("Tellma.Core.Abstractions.Access.User", null)
-                        .WithMany()
-                        .HasForeignKey("CreatedById")
-                        .OnDelete(DeleteBehavior.NoAction)
-                        .IsRequired()
-                        .HasConstraintName("FK_Centers_CreatedById");
-
-                    b.HasOne("Tellma.Core.Abstractions.Access.User", null)
-                        .WithMany()
-                        .HasForeignKey("ManagerId")
-                        .OnDelete(DeleteBehavior.NoAction)
-                        .HasConstraintName("FK_Centers_ManagerId");
-
-                    b.HasOne("Tellma.Core.Abstractions.Access.User", null)
-                        .WithMany()
-                        .HasForeignKey("ModifiedById")
-                        .OnDelete(DeleteBehavior.NoAction)
-                        .IsRequired()
-                        .HasConstraintName("FK_Centers_ModifiedById");
-
-                    b.HasOne("Tellma.Distro.Acme.Entities.MyCenter", null)
-                        .WithMany()
-                        .HasForeignKey("ParentId")
-                        .OnDelete(DeleteBehavior.NoAction)
-                        .HasConstraintName("FK_Centers_ParentId");
-                });
-
-            modelBuilder.Entity("Tellma.Distro.Acme.Entities.SalesInvoice", b =>
-                {
-                    b.HasOne("Tellma.Core.Abstractions.Access.User", null)
-                        .WithMany()
-                        .HasForeignKey("CreatedById")
-                        .OnDelete(DeleteBehavior.NoAction)
-                        .IsRequired()
-                        .HasConstraintName("FK_SalesInvoices_CreatedById");
-
-                    b.HasOne("Tellma.Distro.Acme.Entities.Customer", null)
-                        .WithMany()
-                        .HasForeignKey("CustomerId")
-                        .OnDelete(DeleteBehavior.NoAction)
-                        .IsRequired()
-                        .HasConstraintName("FK_SalesInvoices_CustomerId");
-
-                    b.HasOne("Tellma.Core.Abstractions.Access.User", null)
-                        .WithMany()
-                        .HasForeignKey("ModifiedById")
-                        .OnDelete(DeleteBehavior.NoAction)
-                        .IsRequired()
-                        .HasConstraintName("FK_SalesInvoices_ModifiedById");
-                });
-
-            modelBuilder.Entity("Tellma.Distro.Acme.Entities.SalesInvoiceAttachment", b =>
-                {
-                    b.HasOne("Tellma.Core.Abstractions.Blobs.Blob", null)
-                        .WithOne()
-                        .HasForeignKey("Tellma.Distro.Acme.Entities.SalesInvoiceAttachment", "FileId")
-                        .OnDelete(DeleteBehavior.NoAction)
-                        .HasConstraintName("FK_SalesInvoiceAttachments_FileId");
-
-                    b.HasOne("Tellma.Distro.Acme.Entities.SalesInvoice", null)
-                        .WithMany()
-                        .HasForeignKey("InvoiceId")
-                        .OnDelete(DeleteBehavior.NoAction)
-                        .IsRequired()
-                        .HasConstraintName("FK_SalesInvoiceAttachments_InvoiceId");
-                });
-
-            modelBuilder.Entity("Tellma.Distro.Acme.Entities.SalesInvoiceLine", b =>
-                {
-                    b.HasOne("Tellma.Distro.Acme.Entities.MyCenter", null)
-                        .WithMany()
-                        .HasForeignKey("CenterId")
-                        .OnDelete(DeleteBehavior.NoAction)
-                        .IsRequired()
-                        .HasConstraintName("FK_SalesInvoiceLines_CenterId");
-
-                    b.HasOne("Tellma.Distro.Acme.Entities.SalesInvoice", null)
-                        .WithMany()
-                        .HasForeignKey("InvoiceId")
-                        .OnDelete(DeleteBehavior.NoAction)
-                        .IsRequired()
-                        .HasConstraintName("FK_SalesInvoiceLines_InvoiceId");
-                });
-
-            modelBuilder.HasTableTypeDefinition("CurrenciesList", "acme", type => type
-                .ForTable("Currencies", "acme")
+            modelBuilder.HasTableTypeDefinition("ExportsList", "core", type => type
+                .ForTable("Exports", "core")
                 .Column(name: "Id", storeType: "int")
-                .Column(name: "Code", storeType: "nvarchar(3)", maxLength: 3)
-                .Column(name: "Name", storeType: "nvarchar(255)", maxLength: 255)
-                .Column(name: "Name2", storeType: "nvarchar(255)", nullable: true, maxLength: 255)
-                .Column(name: "Name3", storeType: "nvarchar(255)", nullable: true, maxLength: 255)
-                .Column(name: "CreatedAt", storeType: "datetimeoffset(7)", precision: 7)
-                .Column(name: "CreatedById", storeType: "int")
-                .Column(name: "ModifiedAt", storeType: "datetimeoffset(7)", precision: 7)
-                .Column(name: "ModifiedById", storeType: "int")
-                .HasKey("Id")
-                .HasGrants("tellma_app"));
-
-            modelBuilder.HasTableTypeDefinition("CustomerContactsList", "acme", type => type
-                .ForTable("CustomerContacts", "acme")
-                .Column(name: "Id", storeType: "int")
-                .Column(name: "CustomerId", storeType: "int")
-                .Column(name: "Name", storeType: "nvarchar(255)", maxLength: 255)
-                .Column(name: "Email", storeType: "nvarchar(255)", nullable: true, maxLength: 255)
-                .Column(name: "Mobile", storeType: "nvarchar(50)", nullable: true, maxLength: 50)
-                .HasKey("Id")
-                .HasGrants("tellma_app"));
-
-            modelBuilder.HasTableTypeDefinition("CustomersList", "acme", type => type
-                .ForTable("Customers", "acme")
-                .Column(name: "Id", storeType: "int")
-                .Column(name: "Code", storeType: "nvarchar(50)", maxLength: 50)
-                .Column(name: "Name", storeType: "nvarchar(255)", maxLength: 255)
-                .Column(name: "Name2", storeType: "nvarchar(255)", nullable: true, maxLength: 255)
-                .Column(name: "Name3", storeType: "nvarchar(255)", nullable: true, maxLength: 255)
-                .Column(name: "CustomerType", storeType: "varchar(10)", maxLength: 10)
-                .Column(name: "CurrencyId", storeType: "int", nullable: true)
-                .Column(name: "CreditLimit", storeType: "decimal(19,4)")
-                .Column(name: "ImageId", storeType: "int", nullable: true)
-                .Column(name: "IsActive", storeType: "bit")
-                .Column(name: "CreatedAt", storeType: "datetimeoffset(7)", precision: 7)
-                .Column(name: "CreatedById", storeType: "int")
-                .Column(name: "ModifiedAt", storeType: "datetimeoffset(7)", precision: 7)
-                .Column(name: "ModifiedById", storeType: "int")
-                .HasKey("Id")
-                .HasGrants("tellma_app"));
-
-            modelBuilder.HasTableTypeDefinition("SalesInvoiceAttachmentsList", "acme", type => type
-                .ForTable("SalesInvoiceAttachments", "acme")
-                .Column(name: "Id", storeType: "int")
-                .Column(name: "InvoiceId", storeType: "int")
+                .Column(name: "JobId", storeType: "int", nullable: true)
+                .Column(name: "Resource", storeType: "varchar(128)", maxLength: 128)
+                .Column(name: "Kind", storeType: "varchar(9)", maxLength: 9)
+                .Column(name: "RequestJson", storeType: "nvarchar(max)", nullable: true)
+                .Column(name: "FileName", storeType: "nvarchar(255)", nullable: true, maxLength: 255)
                 .Column(name: "FileId", storeType: "int", nullable: true)
+                .Column(name: "RowCount", storeType: "int", nullable: true)
+                .Column(name: "ExpiresAt", storeType: "datetimeoffset(3)", precision: 3)
+                .Column(name: "CreatedAt", storeType: "datetimeoffset(7)", precision: 7)
+                .Column(name: "CreatedById", storeType: "int")
+                .Column(name: "ModifiedAt", storeType: "datetimeoffset(7)", precision: 7)
+                .Column(name: "ModifiedById", storeType: "int")
                 .HasKey("Id")
                 .HasGrants("tellma_app"));
 
-            modelBuilder.HasTableTypeDefinition("SalesInvoiceLinesList", "acme", type => type
-                .ForTable("SalesInvoiceLines", "acme")
+            modelBuilder.HasTableTypeDefinition("ImportsList", "core", type => type
+                .ForTable("Imports", "core")
                 .Column(name: "Id", storeType: "int")
-                .Column(name: "InvoiceId", storeType: "int")
-                .Column(name: "CenterId", storeType: "int")
-                .Column(name: "Description", storeType: "nvarchar(255)", nullable: true, maxLength: 255)
-                .Column(name: "Amount", storeType: "decimal(19,4)")
-                .HasKey("Id")
-                .HasGrants("tellma_app"));
-
-            modelBuilder.HasTableTypeDefinition("SalesInvoicesList", "acme", type => type
-                .ForTable("SalesInvoices", "acme")
-                .Column(name: "Id", storeType: "int")
-                .Column(name: "SerialNumber", storeType: "int")
-                .Column(name: "PostingDate", storeType: "date")
-                .Column(name: "CustomerId", storeType: "int")
-                .Column(name: "IsClosed", storeType: "bit")
-                .Column(name: "IsPosted", storeType: "bit")
+                .Column(name: "JobId", storeType: "int", nullable: true)
+                .Column(name: "Resource", storeType: "varchar(128)", maxLength: 128)
+                .Column(name: "Mode", storeType: "varchar(8)", maxLength: 8)
+                .Column(name: "RequestJson", storeType: "nvarchar(max)", nullable: true)
+                .Column(name: "FileId", storeType: "int", nullable: true)
+                .Column(name: "ResultJson", storeType: "nvarchar(max)", nullable: true)
+                .Column(name: "RowCount", storeType: "int", nullable: true)
+                .Column(name: "ErrorCount", storeType: "int", nullable: true)
+                .Column(name: "ExpiresAt", storeType: "datetimeoffset(3)", precision: 3)
                 .Column(name: "CreatedAt", storeType: "datetimeoffset(7)", precision: 7)
                 .Column(name: "CreatedById", storeType: "int")
                 .Column(name: "ModifiedAt", storeType: "datetimeoffset(7)", precision: 7)
@@ -20647,23 +20320,14 @@ namespace Tellma.Distro.Acme.Migrator.Migrations.Tenant
                 .HasKey("Name")
                 .HasGrants("tellma_app"));
 
-            modelBuilder.HasTableTypeDefinition("CentersList", "gl", type => type
-                .ForTable("Centers", "gl")
+            modelBuilder.HasTableTypeDefinition("GadgetsList", "probe", type => type
+                .ForTable("Gadgets", "probe")
                 .Column(name: "Id", storeType: "int")
-                .Column(name: "ManagerId", storeType: "int", nullable: true)
+                .Column(name: "Name", storeType: "nvarchar(255)", maxLength: 255)
                 .Column(name: "CreatedAt", storeType: "datetimeoffset(7)", precision: 7)
                 .Column(name: "CreatedById", storeType: "int")
                 .Column(name: "ModifiedAt", storeType: "datetimeoffset(7)", precision: 7)
                 .Column(name: "ModifiedById", storeType: "int")
-                .Column(name: "ParentId", storeType: "int", nullable: true)
-                .Column(name: "SubtreeCount", storeType: "int")
-                .Column(name: "IsActive", storeType: "bit")
-                .Column(name: "ActiveSubtreeCount", storeType: "int")
-                .Column(name: "CenterType", storeType: "varchar(12)", maxLength: 12)
-                .Column(name: "Name", storeType: "nvarchar(255)", maxLength: 255)
-                .Column(name: "Name2", storeType: "nvarchar(255)", nullable: true, maxLength: 255)
-                .Column(name: "Name3", storeType: "nvarchar(255)", nullable: true, maxLength: 255)
-                .Column(name: "Code", storeType: "nvarchar(50)", maxLength: 50)
                 .HasKey("Id")
                 .HasGrants("tellma_app"));
 #pragma warning restore 612, 618

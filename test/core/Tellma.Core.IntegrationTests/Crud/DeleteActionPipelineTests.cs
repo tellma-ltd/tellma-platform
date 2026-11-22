@@ -49,8 +49,8 @@ namespace Tellma.Core.IntegrationTests.Crud
         /// <summary>The lookups' resource, activatable, whose service validates nothing.</summary>
         private const string Lookups = "fixture.Lookup";
 
-        /// <summary>The exports' resource, whose service validates nothing.</summary>
-        private const string Exports = "fixture.Export";
+        /// <summary>The parcels' resource, whose service validates nothing.</summary>
+        private const string Parcels = "fixture.Parcel";
 
         /// <summary>The widgets' custom action.</summary>
         private const string Rename = "rename";
@@ -207,30 +207,30 @@ namespace Tellma.Core.IntegrationTests.Crud
         {
             await fixture.Connect.ExecuteAsync(
                 ConnectDatabase.TenantA,
-                DataQueryDatabase.Stamped("fixture.Exports", "[Id], [Name]", "(900001, N'by-query')", "(900002, N'by-query')"));
-            (_, string subject) = await fixture.SeedCallerAsync((Exports, AccessActions.Read, null), (Exports, AccessActions.Delete, null));
-            await WarmAsync<Export>(subject);
+                DataQueryDatabase.Stamped("fixture.Parcels", "[Id], [Name]", "(900001, N'by-query')", "(900002, N'by-query')"));
+            (_, string subject) = await fixture.SeedCallerAsync((Parcels, AccessActions.Read, null), (Parcels, AccessActions.Delete, null));
+            await WarmAsync<Parcel>(subject);
 
             // --- A blank filter would delete every row: the caller's mistake ---
-            _ = await RefusedAsync<BadRequestException>(subject, scope => ExportService(scope).DeleteByQueryAsync(new DeleteByQueryRequest(" ", null, 1), Token));
+            _ = await RefusedAsync<BadRequestException>(subject, scope => ParcelService(scope).DeleteByQueryAsync(new DeleteByQueryRequest(" ", null, 1), Token));
 
             // --- More rows than the cap: refused inside the transaction, nothing deleted ---
             (LimitExceededException capped, _) = await RefusedAsync<LimitExceededException>(
-                subject, scope => ExportService(scope).DeleteByQueryAsync(new DeleteByQueryRequest($"Name = '{WritePipelineDatabase.BulkName}'", null, WritePipelineDatabase.BulkExports), Token));
-            Assert.Equal((LimitNames.MaxDeleteByQueryRows, WritePipelineDatabase.BulkExports, WritePipelineDatabase.BulkExports - 1), (capped.Limit, capped.Actual, capped.Maximum));
-            Assert.Equal(WritePipelineDatabase.BulkExports, await CountAsync($"[fixture].[Exports] WHERE [Name] = N'{WritePipelineDatabase.BulkName}'"));
+                subject, scope => ParcelService(scope).DeleteByQueryAsync(new DeleteByQueryRequest($"Name = '{WritePipelineDatabase.BulkName}'", null, WritePipelineDatabase.BulkParcels), Token));
+            Assert.Equal((LimitNames.MaxDeleteByQueryRows, WritePipelineDatabase.BulkParcels, WritePipelineDatabase.BulkParcels - 1), (capped.Limit, capped.Actual, capped.Maximum));
+            Assert.Equal(WritePipelineDatabase.BulkParcels, await CountAsync($"[fixture].[Parcels] WHERE [Name] = N'{WritePipelineDatabase.BulkName}'"));
 
             // --- Another count than the caller confirmed: refused with the count matched, nothing deleted ---
             (CountMismatchException mismatch, _) = await RefusedAsync<CountMismatchException>(
-                subject, scope => ExportService(scope).DeleteByQueryAsync(new DeleteByQueryRequest("Name = @name", Arguments(("name", "by-query")), 3), Token));
+                subject, scope => ParcelService(scope).DeleteByQueryAsync(new DeleteByQueryRequest("Name = @name", Arguments(("name", "by-query")), 3), Token));
             Assert.Equal((3, 2), (mismatch.Expected, mismatch.Actual));
-            Assert.Equal(2, await CountAsync("[fixture].[Exports] WHERE [Name] = N'by-query'"));
+            Assert.Equal(2, await CountAsync("[fixture].[Parcels] WHERE [Name] = N'by-query'"));
 
             // --- The confirmed count: deleted on one round trip ---
             (AffectedResult deleted, int trips) = await CountedAsync(
-                subject, scope => ExportService(scope).DeleteByQueryAsync(new DeleteByQueryRequest("Name = @name", Arguments(("name", "by-query")), 2), Token));
+                subject, scope => ParcelService(scope).DeleteByQueryAsync(new DeleteByQueryRequest("Name = @name", Arguments(("name", "by-query")), 2), Token));
             Assert.Equal((2, 1), (deleted.Count, trips));
-            Assert.Equal(0, await CountAsync("[fixture].[Exports] WHERE [Name] = N'by-query'"));
+            Assert.Equal(0, await CountAsync("[fixture].[Parcels] WHERE [Name] = N'by-query'"));
         }
 
         // --- A delete with descendants ---
@@ -625,12 +625,12 @@ namespace Tellma.Core.IntegrationTests.Crud
             return scope.ServiceProvider.GetRequiredService<EntityService<Node, int>>();
         }
 
-        /// <summary>A scope's export service.</summary>
+        /// <summary>A scope's parcel service.</summary>
         /// <param name="scope">The scope.</param>
         /// <returns>The service.</returns>
-        private static EntityService<Export, int> ExportService(AsyncServiceScope scope)
+        private static EntityService<Parcel, int> ParcelService(AsyncServiceScope scope)
         {
-            return scope.ServiceProvider.GetRequiredService<EntityService<Export, int>>();
+            return scope.ServiceProvider.GetRequiredService<EntityService<Parcel, int>>();
         }
 
         /// <summary>A scope's widget service.</summary>

@@ -130,15 +130,15 @@ namespace Tellma.Core.IntegrationTests.Jobs
         {
             await SqlServerFixture.ExecuteAsync(
                 fixture.ConnectionString,
-                "INSERT INTO [fixture].[Exports] ([Id], [Name], [CreatedAt], [CreatedById], [ModifiedAt], [ModifiedById]) VALUES (7, N'Ledger', SYSDATETIMEOFFSET(), 1, SYSDATETIMEOFFSET(), 1);");
-            Export export = new() { Id = 7 };
+                "INSERT INTO [fixture].[Parcels] ([Id], [Name], [CreatedAt], [CreatedById], [ModifiedAt], [ModifiedById]) VALUES (7, N'Ledger', SYSDATETIMEOFFSET(), 1, SYSDATETIMEOFFSET(), 1);");
+            Parcel parcel = new() { Id = 7 };
 
             await using AsyncServiceScope scope = fixture.Tenant.CreateScope();
-            IReadOnlyList<int> ids = await Queue(scope).EnqueueAsync([new JobRequest(FixtureJobKeys.Export, null, null, null, null, export)], Token);
+            IReadOnlyList<int> ids = await Queue(scope).EnqueueAsync([new JobRequest(FixtureJobKeys.Parcel, null, null, null, null, parcel)], Token);
 
             int id = Assert.Single(ids);
-            Assert.Equal(id, export.JobId);
-            Assert.Equal(id, await SqlServerFixture.ScalarAsync<int>(fixture.ConnectionString, "SELECT [JobId] FROM [fixture].[Exports] WHERE [Id] = 7;"));
+            Assert.Equal(id, parcel.JobId);
+            Assert.Equal(id, await SqlServerFixture.ScalarAsync<int>(fixture.ConnectionString, "SELECT [JobId] FROM [fixture].[Parcels] WHERE [Id] = 7;"));
         }
 
         [Fact]
@@ -275,7 +275,7 @@ namespace Tellma.Core.IntegrationTests.Jobs
             InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() => Queue(scope).Enqueue(batch,
             [
                 new JobRequest(FixtureJobKeys.Ship, null, null, null, null, new Shipment { Id = FirstShipmentId }),
-                new JobRequest(FixtureJobKeys.Export, null, null, null, null, new Export { Id = 7 }),
+                new JobRequest(FixtureJobKeys.Parcel, null, null, null, null, new Parcel { Id = 7 }),
             ]));
 
             Assert.Contains("one call enqueues the rows of one entity type", exception.Message, StringComparison.Ordinal);

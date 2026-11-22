@@ -2858,6 +2858,28 @@ are SpreadsheetML packages written with `DocumentFormat.OpenXml` (MIT), forward-
   binds `Tellma:Excel`, registers the exporter, the context builder from the request context and the
   export runner, and the two checks: `excel` warns about each server-owned property excluded from
   Excel, and `excel.deployment` refuses a scratch directory that does not exist or takes no file.
+- **The import intake.** `inspect-import` (under the stack's `Save`, attached beside the exports when
+  the stack serves `Import`) checks the request's sheet and column overrides by form, then resolves
+  the caller's own staged `import-file` upload in the one round trip the connect prologue rides and
+  copies it, bounded, to a delete-on-close scratch file. `WorkbookReader` reads that copy: the
+  package's compressed size, its central directory (read by `ZipDirectory`, one disk, bounded entries
+  and directory size), the declared uncompressed sum and its structure (content types, one workbook
+  part, no external link or relationship) are checked before any sheet is parsed; every part is read
+  through `BoundedPartStream`, which refuses bytes beyond the part's declared length and any run
+  between two markup delimiters over 4 MiB; no reader processes a DTD. Shared strings
+  (`SharedStringStore`) are charged against a budget and spill to a scratch file beyond it, and their
+  entry count is capped. `ImportManifest` reads the hidden manifest sheet as untrusted, dropping any
+  row it cannot use. `HeaderIndex` matches headers by every form an export writes them in, rendered in
+  the reader's culture, each tenant language's and English, NFC-composed, white space collapsed and
+  case ignored; a key two paths give matches neither and is offered as a suggestion. `ImportMapper`
+  binds sheets (override, manifest, sheet names, then the first visible sheet when there is no
+  manifest) and columns (override, manifest, header index) to `ImportPaths`, gates the identity
+  columns of a file from another tenant or deployment, and answers the `ImportPlan`: each sheet's and
+  column's status, the row keys, the totals and whether the import must run in the background.
+- **The records.** `core.Exports` and `core.Imports` record each workbook operation, each row its
+  creator's alone (`ExportAccessCriteria`, `ImportAccessCriteria`), with its file a blob of the
+  `export-file` or `import-file` kind and its job a `core.Jobs` row. Both stacks serve query, details
+  and delete; an import whose job may still run cannot be deleted (`Imports.JobActive`).
 
 ## Layout
 

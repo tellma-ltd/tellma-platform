@@ -5,6 +5,7 @@
 
 using Microsoft.Extensions.DependencyInjection;
 using Tellma.Core.Abstractions.Api;
+using Tellma.Core.Abstractions.Blobs;
 using Tellma.Core.Abstractions.Crud;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Excel;
@@ -22,8 +23,9 @@ namespace Tellma.Core.Testing.Crud
         ///     Each read takes its round-trip budget, measured over two rows so a statement per row
         ///     shows: one for a query (with its count, and with its ancestors on a tree), a details
         ///     read, a read by parent ids, a child surface's query, an Excel page with every
-        ///     collection at every depth, an Excel lookup and an exportable child surface's Excel page;
-        ///     none for a cached list, or two on a table beyond the list's row limit.
+        ///     collection at every depth, an Excel lookup, an exportable child surface's Excel page and
+        ///     an import's inspection of the caller's upload; none for a cached list, or two on a
+        ///     table beyond the list's row limit.
         /// </summary>
         /// <returns>A task that completes when the case ran.</returns>
         [Fact]
@@ -82,6 +84,17 @@ namespace Tellma.Core.Testing.Crud
                     ExcelQuery page = new(child.Resource, ["Id"], null, null, null, Take: 2, CountCap: 2, null);
                     reads.Add(($"an Excel page of {child.Resource}", 1, scope => ExcelRowsAsync(scope.GetRequiredService<IChildQueryService>().ExcelRowSource(child.Resource, source), page)));
                 }
+            }
+
+            // --- An import's inspection (spec 0019 §7.1): the caller's staged upload, an editable
+            // export of the two rows, resolved in one round trip and read locally after it ---
+            ApiActionDescriptor[] workbookActions = [.. Stack.Actions.OfType<ApiActionDescriptor>()];
+            if (workbookActions.FirstOrDefault(static action => action.RequestType == typeof(InspectImportRequest)) is ApiActionDescriptor inspect
+                && workbookActions.FirstOrDefault(static action => action.RequestType == typeof(ExportForImportRequest)) is ApiActionDescriptor editable)
+            {
+                int fileId = (await CountedAsync(writer, scope => StageEditableExportAsync(scope, editable, ids))).Result;
+                InspectImportRequest request = new() { FileId = fileId };
+                reads.Add(("an import inspection of an editable export", 1, scope => scope.GetRequiredService<IApiActionInvoker>().InvokeAsync(inspect, request, Token)));
             }
 
             // --- Each read once to warm its caller, its plan and its caches, then counted ---
@@ -253,6 +266,23 @@ namespace Tellma.Core.Testing.Crud
 
             // --- The rows its collections hold, each under its own parent key ---
             return entity.Children.Any(collection => collection.Getter(row)?.Any(child => Loads(collection.Child, child, collection.ParentKey)) == true);
+        }
+
+        /// <summary>Writes an editable export of some rows and stages it as the caller's upload of an import file.</summary>
+        /// <param name="scope">The caller's scope.</param>
+        /// <param name="editable">The stack's export-for-import action.</param>
+        /// <param name="ids">The rows.</param>
+        /// <returns>The staged upload's id.</returns>
+        private static async Task<int> StageEditableExportAsync(IServiceProvider scope, ApiActionDescriptor editable, TKey[] ids)
+        {
+            ExportForImportRequest request = new() { Ids = [.. ids.Select(static id => long.CreateChecked(id))] };
+            object? result = await scope.GetRequiredService<IApiActionInvoker>().InvokeAsync(editable, request, Token);
+            await using ExportOutcome outcome = Assert.IsType<ExportOutcome>(result);
+            using MemoryStream workbook = new();
+            await outcome.Workbook.CopyToAsync(workbook, Token);
+            workbook.Position = 0;
+            BlobStageRequest stage = new(Import.FileKind, workbook, workbook.Length, BlobContentTypes.Xlsx, outcome.FileName);
+            return (await scope.GetRequiredService<IBlobService>().StageAsync(stage, Token)).Id;
         }
     }
 }

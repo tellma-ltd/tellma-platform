@@ -43,7 +43,7 @@ namespace Tellma.Core.Tests.Data
 
             Assert.Equal(
                 [
-                    "core.Blobs", "core.CalendarMonths", "core.JobWorkerState", "core.Jobs", "core.NotificationPreferences", "core.Notifications", "core.OutgoingEmailAttachments", "core.OutgoingEmails", "core.Permissions",
+                    "core.Blobs", "core.CalendarMonths", "core.Exports", "core.Imports", "core.JobWorkerState", "core.Jobs", "core.NotificationPreferences", "core.Notifications", "core.OutgoingEmailAttachments", "core.OutgoingEmails", "core.Permissions",
                     "core.RoleMemberships", "core.Roles", "core.ScheduleStates", "core.Schedules", "core.SettingEntries", "core.Settings",
                     "core.UserPreferences", "core.UserStamps", "core.Users", "core.VersionTags",
                     "dbo.__TellmaProvisioning", "dbo.__TellmaSchema",

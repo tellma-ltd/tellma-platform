@@ -1,0 +1,397 @@
+// Copyright (c) Tellma Ltd. All rights reserved.
+//
+// This source code is licensed under the Apache-2.0 license found in the
+// LICENSE file in the root directory of this source tree.
+
+using System.Buffers.Binary;
+using System.IO.Compression;
+using System.Text;
+using Tellma.Core.Abstractions.Excel;
+using Tellma.Core.Excel;
+using Tellma.Core.Tests.Excel.Corpus;
+
+namespace Tellma.Core.Tests.Excel
+{
+    /// <summary>
+    ///     The workbook reader over well-formed packages of each producer and over hostile ones: the
+    ///     package and part limits, the structure checks, the shared-string cap and spill, and the
+    ///     faults of misaddressed cells, each refusing the workbook whole with its reason.
+    /// </summary>
+    public sealed class WorkbookReaderTests : IDisposable
+    {
+        /// <summary>Bounds roomy enough for every well-formed test package.</summary>
+        private static readonly WorkbookLimits Roomy = new(MaxCompressedBytes: 64L << 20, MaxUncompressedBytes: 256L << 20, SharedStringBudget: 64L << 20, MaxSharedStringEntries: 1_000_000);
+
+        /// <summary>The scratch directory spilled strings go to.</summary>
+        private readonly string _scratch = Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), "tellma-reader-tests", Guid.NewGuid().ToString("N"))).FullName;
+
+        [Theory]
+        [InlineData(nameof(Producer.Excel), 2)]
+        [InlineData(nameof(Producer.LibreOffice), 2)]
+        [InlineData(nameof(Producer.GoogleSheets), null)]
+        [InlineData(nameof(Producer.Strict), 2)]
+        public void Each_producers_package_reads_its_sheets_and_cells(string producer, int? dimension)
+        {
+            SyntheticWorkbook workbook = new(
+                Enum.Parse<Producer>(producer),
+                new RawSheet("Data", [[RawCell.Text("Code"), RawCell.InlineText("Name"), null, RawCell.Number(1.5)], [RawCell.Text("W-1"), RawCell.Error("#N/A"), RawCell.Uncalculated("A1&B1"), RawCell.Number(-2)]]),
+                RawSheet.OfText("Hidden", ["x"]) with { State = "hidden" },
+                RawSheet.OfText("Secret", ["y"]) with { State = "veryHidden" });
+
+            using WorkbookReader reader = Open(workbook.Build());
+
+            Assert.Equal(
+                [(0, "Data", WorkbookSheetState.Visible), (1, "Hidden", WorkbookSheetState.Hidden), (2, "Secret", WorkbookSheetState.VeryHidden)],
+                reader.Sheets.Select(static sheet => (sheet.Position, sheet.Name, sheet.State)));
+            Assert.All(reader.Sheets, static sheet => Assert.NotNull(sheet.Part));
+            Assert.False(reader.Date1904);
+
+            using SheetReader sheet = reader.OpenSheet(reader.Sheets[0]);
+            Assert.Equal(dimension, sheet.DimensionLastRow);
+            List<SheetCell> cells = [];
+            Assert.True(sheet.Read(cells, out int first));
+            Assert.Equal(1, first);
+            Assert.Equal(
+                [(0, ExcelCellKind.Text, "Code"), (1, ExcelCellKind.Text, "Name"), (3, ExcelCellKind.Number, "1.5")],
+                cells.Select(static cell => (cell.Column, cell.Value.Kind, cell.Value.Text)));
+
+            // The formula without a cached value is blank, so it is not stored.
+            Assert.True(sheet.Read(cells, out int second));
+            Assert.Equal(2, second);
+            Assert.Equal(
+                [(0, ExcelCellKind.Text, "W-1"), (1, ExcelCellKind.Error, "#N/A"), (3, ExcelCellKind.Number, "-2")],
+                cells.Select(static cell => (cell.Column, cell.Value.Kind, cell.Value.Text)));
+            Assert.False(sheet.Read(cells, out _));
+        }
+
+        [Fact]
+        public void A_macro_enabled_workbook_of_the_1904_date_system_reads()
+        {
+            using WorkbookReader reader = Open(new SyntheticWorkbook(Producer.Excel, RawSheet.OfText("Data", ["a"])) { MacroEnabled = true, Date1904 = true }.Build());
+
+            Assert.True(reader.Date1904);
+            Assert.Equal("Data", Assert.Single(reader.Sheets).Name);
+        }
+
+        [Fact]
+        public void Rows_and_cells_without_references_take_the_next_in_sequence()
+        {
+            SyntheticWorkbook workbook = new(Producer.Excel, RawSheet.OfText("Data", ["a"]));
+            workbook.Parts["xl/worksheets/sheet1.xml"] = Worksheet("<row><c t=\"inlineStr\"><is><t>a</t></is></c><c t=\"inlineStr\"><is><t>b</t></is></c></row><row r=\"4\"><c><v>1</v></c></row>");
+
+            using WorkbookReader reader = Open(workbook.Build());
+            using SheetReader sheet = reader.OpenSheet(reader.Sheets[0]);
+
+            List<SheetCell> cells = [];
+            Assert.True(sheet.Read(cells, out int first));
+            Assert.Equal(1, first);
+            Assert.Equal([0, 1], cells.Select(static cell => cell.Column));
+            Assert.True(sheet.Read(cells, out int second));
+            Assert.Equal(4, second);
+            Assert.Null(sheet.DimensionLastRow);
+        }
+
+        [Fact]
+        public void A_package_above_the_compressed_limit_is_refused_before_it_is_opened()
+        {
+            byte[] package = new SyntheticWorkbook(Producer.Excel, RawSheet.OfText("Data", ["a"])).Build();
+
+            ImportException refused = Refuse(package, Roomy with { MaxCompressedBytes = package.Length - 1 });
+
+            ImportError error = Assert.Single(refused.Errors);
+            Assert.Equal((ExcelErrorCodes.ImportPackageTooLarge, package.Length, package.Length - 1), (error.Code, (long)error.Arguments["bytes"]!, (long)error.Arguments["max"]!));
+        }
+
+        [Fact]
+        public void A_package_whose_parts_sum_above_the_uncompressed_limit_is_refused_with_the_whole_sum()
+        {
+            SyntheticWorkbook workbook = new(Producer.Excel, RawSheet.OfText("Data", ["a"]));
+            workbook.Parts["xl/media/padding.xml"] = new string(' ', 200_000);
+            byte[] package = workbook.Build();
+            using ZipArchive zip = new(new MemoryStream(package), ZipArchiveMode.Read);
+            long sum = zip.Entries.Sum(static entry => entry.Length);
+
+            ImportException refused = Refuse(package, Roomy with { MaxUncompressedBytes = 100_000 });
+
+            ImportError error = Assert.Single(refused.Errors);
+            Assert.Equal((ExcelErrorCodes.ImportPackageTooLarge, sum, 100_000L), (error.Code, (long)error.Arguments["bytes"]!, (long)error.Arguments["max"]!));
+        }
+
+        [Fact]
+        public void Bytes_that_are_not_a_zip_are_a_malformed_workbook()
+        {
+            Assert.Equal(ImportFaults.ZipReason, Reason(Refuse(Encoding.UTF8.GetBytes("Code,Name\nW-1,One\n"))));
+        }
+
+        [Fact]
+        public void An_archive_that_claims_to_span_disks_is_refused_from_its_directory()
+        {
+            byte[] package = new SyntheticWorkbook(Producer.Excel, RawSheet.OfText("Data", ["a"])).Build();
+            int end = package.Length - 22;
+            Assert.Equal(0x06054b50u, BinaryPrimitives.ReadUInt32LittleEndian(package.AsSpan(end)));
+            BinaryPrimitives.WriteUInt16LittleEndian(package.AsSpan(end + 4), 1);
+
+            Assert.Equal(ImportFaults.ZipReason, Reason(Refuse(package)));
+        }
+
+        [Fact]
+        public void An_archive_whose_directory_claims_more_entries_than_a_workbook_holds_is_refused()
+        {
+            byte[] package = new SyntheticWorkbook(Producer.Excel, RawSheet.OfText("Data", ["a"])).Build();
+            int end = package.Length - 22;
+
+            // The count at its maximum defers to a zip64 record the archive lacks.
+            BinaryPrimitives.WriteUInt16LittleEndian(package.AsSpan(end + 10), ushort.MaxValue);
+
+            Assert.Equal(ImportFaults.ZipReason, Reason(Refuse(package)));
+        }
+
+        [Fact]
+        public void A_package_without_content_types_is_refused()
+        {
+            SyntheticWorkbook workbook = new(Producer.Excel, RawSheet.OfText("Data", ["a"]));
+            _ = workbook.Omitted.Add("[Content_Types].xml");
+
+            Assert.Equal(ImportFaults.ContentTypesReason, Reason(Refuse(workbook.Build())));
+        }
+
+        [Fact]
+        public void A_package_without_its_relationships_is_refused()
+        {
+            SyntheticWorkbook workbook = new(Producer.Excel, RawSheet.OfText("Data", ["a"]));
+            _ = workbook.Omitted.Add("_rels/.rels");
+
+            Assert.Equal(ImportFaults.RelationshipsReason, Reason(Refuse(workbook.Build())));
+        }
+
+        [Fact]
+        public void A_package_declaring_a_link_to_another_workbook_is_refused()
+        {
+            SyntheticWorkbook workbook = new(Producer.Excel, RawSheet.OfText("Data", ["a"]));
+            workbook.Parts["[Content_Types].xml"] = ContentTypes(
+                "<Override PartName=\"/xl/workbook.xml\" ContentType=\"" + SyntheticWorkbook.WorkbookContentType + "\"/>"
+                + "<Override PartName=\"/xl/externalLinks/externalLink1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.externalLink+xml\"/>");
+
+            Assert.Equal(ImportFaults.ExternalLinkReason, Reason(Refuse(workbook.Build())));
+        }
+
+        [Fact]
+        public void A_package_of_two_workbook_parts_is_refused()
+        {
+            SyntheticWorkbook workbook = new(Producer.Excel, RawSheet.OfText("Data", ["a"]));
+            workbook.Parts["[Content_Types].xml"] = ContentTypes(
+                "<Override PartName=\"/xl/workbook.xml\" ContentType=\"" + SyntheticWorkbook.WorkbookContentType + "\"/>"
+                + "<Override PartName=\"/xl/workbook2.xml\" ContentType=\"" + SyntheticWorkbook.MacroWorkbookContentType + "\"/>");
+
+            Assert.Equal(ImportFaults.WorkbookReason, Reason(Refuse(workbook.Build())));
+        }
+
+        [Fact]
+        public void A_relationship_that_leaves_the_package_is_refused()
+        {
+            SyntheticWorkbook workbook = new(Producer.Excel, RawSheet.OfText("Data", ["a"]));
+            workbook.Parts["xl/_rels/workbook.xml.rels"] = Relationships(
+                "<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet\" Target=\"worksheets/sheet1.xml\"/>"
+                + "<Relationship Id=\"rId9\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink\" Target=\"https://example.test/\" TargetMode=\"External\"/>");
+
+            Assert.Equal(ImportFaults.ExternalRelationshipReason, Reason(Refuse(workbook.Build())));
+        }
+
+        [Fact]
+        public void A_workbook_relationship_to_an_external_link_part_is_refused()
+        {
+            SyntheticWorkbook workbook = new(Producer.Excel, RawSheet.OfText("Data", ["a"]));
+            workbook.Parts["xl/externalLinks/externalLink1.xml"] = "<externalLink xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"/>";
+            workbook.Parts["xl/_rels/workbook.xml.rels"] = Relationships(
+                "<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet\" Target=\"worksheets/sheet1.xml\"/>"
+                + "<Relationship Id=\"rId2\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/externalLink\" Target=\"externalLinks/externalLink1.xml\"/>");
+
+            Assert.Equal(ImportFaults.ExternalLinkReason, Reason(Refuse(workbook.Build())));
+        }
+
+        [Fact]
+        public void A_part_declaring_a_document_type_is_refused_as_malformed_xml()
+        {
+            SyntheticWorkbook workbook = new(Producer.Excel, RawSheet.OfText("Data", ["a"]));
+            workbook.Parts["xl/sharedStrings.xml"] = "<?xml version=\"1.0\"?><!DOCTYPE sst [<!ENTITY a \"aaaaaaaaaa\"><!ENTITY b \"&a;&a;&a;&a;&a;\">]>"
+                + "<sst xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><si><t>&b;</t></si></sst>";
+
+            Assert.Equal(ImportFaults.XmlReason, Reason(Refuse(workbook.Build())));
+        }
+
+        [Fact]
+        public void A_single_token_longer_than_the_token_bound_is_refused_as_malformed_xml()
+        {
+            // A run of white space between two elements: no cell text the cell-length check would catch first.
+            SyntheticWorkbook workbook = new(Producer.Excel, RawSheet.OfText("Data", ["a"]));
+            workbook.Parts["xl/sharedStrings.xml"] = "<sst xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><si><t>a</t></si>"
+                + new string(' ', BoundedPartStream.MaxTokenBytes + 1024) + "</sst>";
+
+            Assert.Equal(ImportFaults.XmlReason, Reason(Refuse(workbook.Build())));
+        }
+
+        [Fact]
+        public void Two_sheets_of_one_name_ignoring_case_are_refused()
+        {
+            SyntheticWorkbook workbook = new(Producer.Excel, RawSheet.OfText("Data", ["a"]), RawSheet.OfText("DATA", ["b"]));
+
+            Assert.Equal(ImportFaults.SheetsReason, Reason(Refuse(workbook.Build())));
+        }
+
+        [Fact]
+        public void A_shared_string_table_declaring_more_entries_than_the_cap_is_refused_before_it_is_read()
+        {
+            SyntheticWorkbook workbook = new(Producer.Excel, RawSheet.OfText("Data", ["a", "b", "c"]));
+
+            ImportException refused = Refuse(workbook.Build(), Roomy with { MaxSharedStringEntries = 2 });
+
+            ImportError error = Assert.Single(refused.Errors);
+            Assert.Equal((ExcelErrorCodes.ImportTooManySharedStrings, 3L, 2), (error.Code, (long)error.Arguments["entries"]!, (int)error.Arguments["max"]!));
+        }
+
+        [Fact]
+        public void A_shared_string_flood_without_a_declared_count_is_counted_whole_and_refused()
+        {
+            SyntheticWorkbook workbook = new(Producer.Excel, RawSheet.OfText("Data", ["a"]));
+            workbook.Parts["xl/sharedStrings.xml"] = "<sst xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">"
+                + string.Concat(Enumerable.Range(0, 5_000).Select(static i => $"<si><t>{i}</t></si>")) + "</sst>";
+
+            ImportException refused = Refuse(workbook.Build(), Roomy with { MaxSharedStringEntries = 1_000 });
+
+            ImportError error = Assert.Single(refused.Errors);
+            Assert.Equal((ExcelErrorCodes.ImportTooManySharedStrings, 5_000L, 1_000), (error.Code, (long)error.Arguments["entries"]!, (int)error.Arguments["max"]!));
+        }
+
+        [Fact]
+        public void Shared_strings_above_the_budget_spill_to_scratch_and_still_read_back()
+        {
+            string[] texts = [.. Enumerable.Range(0, 300).Select(static i => $"text number {i} " + new string('x', 64))];
+            SyntheticWorkbook workbook = new(Producer.Excel, RawSheet.OfText("Data", texts));
+
+            using WorkbookReader reader = Open(workbook.Build(), Roomy with { SharedStringBudget = 4_096 });
+
+            Assert.True(reader.SharedStrings.Spilled);
+            Assert.Equal(300, reader.SharedStrings.Count);
+            Assert.True(reader.SharedStrings.ChargedBytes > 4_096);
+            using SheetReader sheet = reader.OpenSheet(reader.Sheets[0]);
+            List<SheetCell> cells = [];
+            Assert.True(sheet.Read(cells, out _));
+            Assert.Equal(texts, cells.Select(static cell => cell.Value.Text));
+        }
+
+        [Fact]
+        public void Shared_strings_within_the_budget_stay_in_memory()
+        {
+            using WorkbookReader reader = Open(new SyntheticWorkbook(Producer.Excel, RawSheet.OfText("Data", ["a", "b"])).Build());
+
+            Assert.False(reader.SharedStrings.Spilled);
+            Assert.Equal(2, reader.SharedStrings.Count);
+        }
+
+        [Theory]
+        [InlineData("<row r=\"1\"><c r=\"B1\"><v>1</v></c><c r=\"A1\"><v>2</v></c></row>")]
+        [InlineData("<row r=\"1\"><c r=\"A2\"><v>1</v></c></row>")]
+        [InlineData("<row r=\"2\"><c><v>1</v></c></row><row r=\"1\"><c><v>1</v></c></row>")]
+        [InlineData("<row r=\"1\"><c r=\"A1\" t=\"s\"><v>99</v></c></row>")]
+        [InlineData("<row r=\"1\"><c r=\"XFE1\"><v>1</v></c></row>")]
+        [InlineData("<row r=\"1048577\"><c><v>1</v></c></row>")]
+        public void A_misaddressed_row_or_cell_or_a_shared_string_the_table_lacks_is_a_malformed_sheet(string rows)
+        {
+            SyntheticWorkbook workbook = new(Producer.Excel, RawSheet.OfText("Data", ["a"]));
+            workbook.Parts["xl/worksheets/sheet1.xml"] = Worksheet(rows);
+            using WorkbookReader reader = Open(workbook.Build());
+            using SheetReader sheet = reader.OpenSheet(reader.Sheets[0]);
+
+            ImportException refused = Assert.Throws<ImportException>(() =>
+            {
+                List<SheetCell> cells = [];
+                while (sheet.Read(cells, out _))
+                {
+                }
+            });
+
+            ImportError error = Assert.Single(refused.Errors);
+            Assert.Equal((ExcelErrorCodes.ImportMalformedWorkbook, "Data", ImportFaults.CellsReason), (error.Code, error.Sheet, (string?)error.Arguments["reason"]));
+        }
+
+        [Fact]
+        public void A_sheet_part_that_is_not_well_formed_blames_its_sheet()
+        {
+            SyntheticWorkbook workbook = new(Producer.Excel, RawSheet.OfText("Data", ["a"]));
+            workbook.Parts["xl/worksheets/sheet1.xml"] = Worksheet("<row r=\"1\"><c><v>1</v></row>");
+            using WorkbookReader reader = Open(workbook.Build());
+            using SheetReader sheet = reader.OpenSheet(reader.Sheets[0]);
+
+            ImportException refused = Assert.Throws<ImportException>(() => sheet.Read([], out _));
+
+            Assert.Equal(("Data", ImportFaults.XmlReason), (refused.Errors[0].Sheet, Reason(refused)));
+        }
+
+        /// <inheritdoc />
+        public void Dispose()
+        {
+            try
+            {
+                Directory.Delete(_scratch, recursive: true);
+            }
+            catch (IOException)
+            {
+                // A spilled file still open on a slow host is left for the system's temp cleanup.
+            }
+        }
+
+        /// <summary>A worksheet part of the given rows.</summary>
+        /// <param name="rows">The sheet data's content.</param>
+        /// <returns>The part.</returns>
+        private static string Worksheet(string rows)
+        {
+            return $"<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><sheetData>{rows}</sheetData></worksheet>";
+        }
+
+        /// <summary>A content types part of the defaults and the given overrides.</summary>
+        /// <param name="overrides">The overrides.</param>
+        /// <returns>The part.</returns>
+        private static string ContentTypes(string overrides)
+        {
+            return "<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">"
+                + "<Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/><Default Extension=\"xml\" ContentType=\"application/xml\"/>"
+                + overrides + "</Types>";
+        }
+
+        /// <summary>A relationships part of the given relationships.</summary>
+        /// <param name="relationships">The relationships.</param>
+        /// <returns>The part.</returns>
+        private static string Relationships(string relationships)
+        {
+            return $"<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">{relationships}</Relationships>";
+        }
+
+        /// <summary>The reason of a refusal's one malformed-workbook error.</summary>
+        /// <param name="refused">The refusal.</param>
+        /// <returns>The reason.</returns>
+        private static string? Reason(ImportException refused)
+        {
+            ImportError error = Assert.Single(refused.Errors);
+            Assert.Equal(ExcelErrorCodes.ImportMalformedWorkbook, error.Code);
+            return (string?)error.Arguments["reason"];
+        }
+
+        /// <summary>Opens a package.</summary>
+        /// <param name="package">The package's bytes.</param>
+        /// <param name="limits">The bounds; roomy when null.</param>
+        /// <returns>The reader.</returns>
+        private WorkbookReader Open(byte[] package, WorkbookLimits? limits = null)
+        {
+            return WorkbookReader.Open(new MemoryStream(package, writable: false), limits ?? Roomy, _scratch);
+        }
+
+        /// <summary>Opens a package that the reader refuses.</summary>
+        /// <param name="package">The package's bytes.</param>
+        /// <param name="limits">The bounds; roomy when null.</param>
+        /// <returns>The refusal.</returns>
+        private ImportException Refuse(byte[] package, WorkbookLimits? limits = null)
+        {
+            return Assert.Throws<ImportException>(() => Open(package, limits).Dispose());
+        }
+    }
+}

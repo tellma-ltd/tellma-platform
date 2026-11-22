@@ -10,6 +10,7 @@ using Tellma.Core.Abstractions.Client;
 using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Email;
+using Tellma.Core.Abstractions.Excel;
 using Tellma.Core.Abstractions.Identity;
 using Tellma.Core.Abstractions.Jobs;
 using Tellma.Core.Abstractions.Localization;
@@ -25,6 +26,7 @@ using Tellma.Core.Caching;
 using Tellma.Core.Calendars;
 using Tellma.Core.Client;
 using Tellma.Core.Data;
+using Tellma.Core.Excel;
 using Tellma.Core.Identity;
 using Tellma.Core.Jobs;
 using Tellma.Core.Localization;
@@ -277,6 +279,19 @@ namespace Tellma.Core.Composition
                 .BlobKind(OutgoingEmailAttachment.BlobKind, static policy => policy with { Thumbnail = null })
                 .TableType<OutgoingEmailOutcomeList>()
                 .TableType<EmailDeliveryEventList>();
+
+            // --- The Excel artifacts: the exports' and imports' rows and their stacks, each self-scoped ---
+            // spec 0019 §12.1. Both are Query | Details | Delete | Enlist stacks: a row is only ever
+            // written by a save its start or its job enlists, so neither registers a save securable.
+            // Every member reads and deletes the rows they created; an import whose job may still run
+            // refuses a delete. The two blob kinds come from the rows' blob references.
+            _ = contribution
+                .Entity<Export, ExportService>()
+                .Model<ExportConfiguration>()
+                .Singleton<IAccessCriteriaProvider, ExportAccessCriteria>()
+                .Entity<Import, ImportService>()
+                .Model<ImportConfiguration>()
+                .Singleton<IAccessCriteriaProvider, ImportAccessCriteria>();
 
             // --- Background jobs: the job and schedule tables, their machinery's tables and table types,
             // and the notices and client event a completion raises ---

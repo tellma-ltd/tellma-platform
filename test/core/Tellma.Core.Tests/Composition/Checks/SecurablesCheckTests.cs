@@ -38,6 +38,10 @@ namespace Tellma.Core.Tests.Composition.Checks
             // The stacks' securables, the typed settings' read and save, then the stamps' Core registers itself; a child surface's read is owned.
             Assert.Equal(
                 [
+                    new SecurableDescriptor("core.Export", "Read", "core.Export", false, "core", null),
+                    new SecurableDescriptor("core.Export", "Delete", "core.Export", false, "core", null),
+                    new SecurableDescriptor("core.Import", "Read", "core.Import", false, "core", null),
+                    new SecurableDescriptor("core.Import", "Delete", "core.Import", false, "core", null),
                     new SecurableDescriptor("core.Job", "Read", "core.Job", false, "core", null),
                     new SecurableDescriptor("core.Job", "Retry", "core.Job", false, "core", null),
                     new SecurableDescriptor("core.Job", "Cancel", "core.Job", false, "core", null),
@@ -123,13 +127,13 @@ namespace Tellma.Core.Tests.Composition.Checks
             IReadOnlyList<CompositionProblem> problems = await CheckAsync(static builder => builder
                 .Add("fixture.Report", "Read", null, feature: "nowhere")
                 .Add("fixture.Report", "Save", null, feature: "nowhere")
-                .Add("fixture.Export", "Read", null, feature: "elsewhere")
+                .Add("fixture.Parcel", "Read", null, feature: "elsewhere")
                 .MarkSensitive("fixture.Missing", "Read"));
 
             Assert.Equal(
                 [
                     "The feature 'fixture' marks 'fixture.Missing:Read' sensitive, which is not a registered securable.",
-                    "The securable 'fixture.Export:Read' belongs to the feature 'elsewhere', which is not composed.",
+                    "The securable 'fixture.Parcel:Read' belongs to the feature 'elsewhere', which is not composed.",
                     "The securable 'fixture.Report:Read' and 1 more belong to the feature 'nowhere', which is not composed.",
                 ],
                 problems.Select(static problem => problem.Problem));
@@ -171,14 +175,14 @@ namespace Tellma.Core.Tests.Composition.Checks
         [Fact]
         public void The_securables_of_a_resource_that_take_a_filter_share_one_filter_root()
         {
-            // Report shares its root, spelt two ways, beside an action that takes none; Export does not.
+            // Report shares its root, spelt two ways, beside an action that takes none; Parcel does not.
             SecurableRegistry registry = SecurableRegistryTests.Compose(("fixture", static builder => builder
                 .Add("fixture.Report", "Read", "core.User")
                 .Add("fixture.Report", "Save", "CORE.USER")
                 .Add("fixture.Report", "Approve", null)
-                .Add("fixture.Export", "Read", "core.User")
-                .Add("fixture.Export", "Save", "core.Role")
-                .Add("fixture.Export", "Delete", "core.Role")
+                .Add("fixture.Parcel", "Read", "core.User")
+                .Add("fixture.Parcel", "Save", "core.Role")
+                .Add("fixture.Parcel", "Delete", "core.Role")
                 .Add("fixture.Audit", "Approve", null)));
 
             List<CompositionProblem> problems = [];
@@ -186,7 +190,7 @@ namespace Tellma.Core.Tests.Composition.Checks
 
             CompositionProblem problem = Assert.Single(problems);
             Assert.Equal(
-                "The securables of the resource 'fixture.Export' take different filter roots: 'core.User' ('fixture.Export:Read'), 'core.Role' ('fixture.Export:Save', 'fixture.Export:Delete').",
+                "The securables of the resource 'fixture.Parcel' take different filter roots: 'core.User' ('fixture.Parcel:Read'), 'core.Role' ('fixture.Parcel:Save', 'fixture.Parcel:Delete').",
                 problem.Problem);
             Assert.Equal(Check, problem.Source);
         }

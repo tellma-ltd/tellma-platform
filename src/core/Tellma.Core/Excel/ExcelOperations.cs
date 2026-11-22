@@ -34,15 +34,25 @@ namespace Tellma.Core.Excel
         /// <summary>What the exports read: the stack's entity and its service's row source.</summary>
         private readonly ExportTarget _target;
 
+        /// <summary>The scope's import runner.</summary>
+        private readonly ExcelImports _imports;
+
+        /// <summary>The stack's limits, whose save sizes bound a synchronous and an atomic import.</summary>
+        private readonly StackLimits _limits;
+
         /// <summary>Binds the operations to the stack's service.</summary>
         /// <param name="exports">The scope's export runner.</param>
+        /// <param name="imports">The scope's import runner.</param>
         /// <param name="service">The stack's service, as the Excel operations reach it.</param>
         /// <param name="entity">The stack's entity metadata.</param>
-        internal ExcelOperations(ExcelExports exports, IStackExcelRows service, EntityMetadata entity)
+        /// <param name="limits">The stack's limits.</param>
+        internal ExcelOperations(ExcelExports exports, ExcelImports imports, IStackExcelRows service, EntityMetadata entity, StackLimits limits)
         {
             ArgumentNullException.ThrowIfNull(service);
             ArgumentNullException.ThrowIfNull(entity);
             _exports = exports ?? throw new ArgumentNullException(nameof(exports));
+            _imports = imports ?? throw new ArgumentNullException(nameof(imports));
+            _limits = limits ?? throw new ArgumentNullException(nameof(limits));
             _target = new ExportTarget(entity, service.ExcelRowSource, Child: false);
         }
 
@@ -83,6 +93,29 @@ namespace Tellma.Core.Excel
             return _exports.EditableAsync(_target, request, cancellationToken);
         }
 
+        /// <summary>
+        ///     Reads the caller's uploaded workbook and reports how an import would map it: each
+        ///     sheet's binding and data rows, each header's path and status, the row keys it offers,
+        ///     and whether it must run in the background. Nothing is written, and the upload stays
+        ///     staged for the import that follows.
+        /// </summary>
+        /// <param name="request">The upload, and the sheet and column overrides to apply.</param>
+        /// <param name="cancellationToken">Cancels the read.</param>
+        /// <returns>The plan.</returns>
+        /// <exception cref="BadRequestException">The file id or an override is malformed, or an override names a collection the entity lacks.</exception>
+        /// <exception cref="NotFoundException">The file is not the caller's own staged upload of an import file.</exception>
+        /// <exception cref="ImportException">
+        ///     The workbook is above a size limit or unreadable, its manifest names another entity, or
+        ///     an override names a sheet, column or path the workbook or entity lacks.
+        /// </exception>
+        [ApiAction("inspect-import", Action = AccessActions.Save, Mutation = false, Idempotent = true, Long = true)]
+        [RatePolicy(TellmaRatePolicies.Import)]
+        public Task<ImportPlan> InspectImportAsync(InspectImportRequest request, CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(request);
+            return _imports.InspectAsync(_target.Entity, _limits, request, cancellationToken);
+        }
+
         /// <summary>Creates the operations of the scope's stack over <typeparamref name="TEntity" />.</summary>
         /// <param name="services">The scope's services.</param>
         /// <returns>The operations.</returns>
@@ -94,7 +127,7 @@ namespace Tellma.Core.Excel
                 ?? throw new InvalidOperationException($"No stack has {typeof(TEntity).Name} as its leaf, so its Excel operations have no service.");
             var service = (IStackExcelRows)services.GetRequiredService(stack.ServiceType);
             EntityMetadata entity = services.GetRequiredService<IEntityMetadataProvider>().Get(typeof(TEntity));
-            return new ExcelOperations<TEntity>(services.GetRequiredService<ExcelExports>(), service, entity);
+            return new ExcelOperations<TEntity>(services.GetRequiredService<ExcelExports>(), services.GetRequiredService<ExcelImports>(), service, entity, stack.Limits);
         }
     }
 }
