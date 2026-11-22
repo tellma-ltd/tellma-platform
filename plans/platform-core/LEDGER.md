@@ -108,9 +108,11 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 
 | PC | Slot | Branch | Step | Implementer agent (name / id) | Reviewer agent (name / id) | Started (UTC) |
 |---|---|---|---|---|---|---|
-| PC-092 | pc-3 | pc/PC-092 | held | impl b657cb74 (9 deviations accepted; Development subject binding for Ahmad); R1 0/1/5; fix1 5ddb17c5 held (1 sub-point pushed back, accepted; deviation 10 seeder-only Production test); 3 merge-tree conflicts (ARCHITECTURE.md keep both; Acme InitialTenant pair regenerate); released first after PC-096; D-192, D-194 | 0018-g; R1 only | 2026-11-21 |
+| PC-092 | pc-3 | pc/PC-092 | integrating | impl b657cb74 (9 deviations accepted; Development subject binding for Ahmad); R1 0/1/5; fix1 5ddb17c5 held (1 sub-point pushed back, accepted; deviation 10 seeder-only Production test); 3 merge-tree conflicts (ARCHITECTURE.md keep both; Acme InitialTenant pair regenerate); integrating after PC-096 landed; D-192, D-194 | 0018-g; R1 only | 2026-11-21 |
 | PC-175 | pc-2 | pc/PC-175 | held | impl df9e5804 (16 deviations accepted); R1 0/1/4; fix1 6eb3f3c9 held (R1-3 inverted via IPlatformCompanions, no deviation); 5 merge-tree conflicts (README + 4 goldens, regenerate); released after PC-214; D-188, D-193 | 0019-b; R1 only | 2026-11-21 |
 | PC-214 | pc-f | pc/PC-214 | held | impl 3e264e5e (deviations 2, 4-10 accepted); R1 0/1/5 (conditional-update test; retry refuses; ModifiedAt stamp; per-event unmatched; retention paging tests); fix1 then hold behind PC-212; D-187; fix1 2b2a3562 held (deviation 11; new ActionContext.Update refusing overload + UpdateSpec.ByIds.StampUnchanged confirmed); 8 merge-tree conflicts (3 migration pairs regenerate, 2 tests); released after PC-096 lands; D-191 | 0022-c; R1 only | 2026-11-21 |
+| PC-103 | pc-1 | pc/PC-103 | impl | impl launched (high; R1 only); replaces PC-094 client interims; @tellma/core 20.36/20.44 KB | 0024-g; R1 only | 2026-11-22 |
+| PC-F67 | pc-f2 | pc/PC-F67 | impl | fix item (D-185): OpenAPI schema writer depth decoupled from wire MaxDepth; restore ClientSyncResult.Me as MeResult | fix; R1 only | 2026-11-22 |
 
 ## Fix items
 
@@ -181,7 +183,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-F64 | Nightly integration-windows: TenantScopeTests cross-instance suspension refresh failed (nightly 44745573605) | done (97475bd4; pc 44823811836 green; root causes: TenantScopeTests 30 s setup bound under a LocalDB CREATE DATABASE convoy, SMTP tests localhost vs 0.0.0.0, RequestTimeoutTests timer firing before the access guard; D-151, D-155) | | |
 | PC-F65 | Load-starved fixed waits in Core.AspNetCore.Tests (RequestTimeoutTests x2, RateLimitingTests x1 under four-lane local load; D-171) | done (9e21bb68; pc 44945741967 green on 90110751) | d10f3b46, 36592e58, 4dc7053d, 90110751, 9e21bb68 | carry: BlobEndpointTests fixed 10 s/30 s waits and 200 ms delay onto Patience/TestClock (D-183) | pc-f |
 | PC-F66 | CI build-test (windows-latest): vstest.console failed to connect to a testhost within 90 s and aborted that assembly's run while every reported test passed (PR run 44947728191 on 9e21bb68; Windows runner starved by parallel test hosts). Root-cause and fix in ci.yml or the test setup, no retries (D-184) | done in PC-091 CI fixes (39ab3f1b, ci.yml Windows unit step -m:2; pc 44952666444 green, Windows build-test 17 min) | | | |
-| PC-F67 | OpenAPI schema writer fails /openapi/web.json once a schema nests past MaxDepth 16 (0016 §3.1 vs §12.1); decouple the schema writer's depth from the wire limit and restore ClientSyncResult.Me as MeResult (D-185) | todo (after PC-096 lands) | | | |
+| PC-F67 | OpenAPI schema writer fails /openapi/web.json once a schema nests past MaxDepth 16 (0016 §3.1 vs §12.1); decouple the schema writer's depth from the wire limit and restore ClientSyncResult.Me as MeResult (D-185) | in progress (pc-f2) | | | |
 | PC-F02 | systemic e2e flakiness: CI 42456030333 red on 5250c6c (plans-only) with 4 NEW flaky tests | done (R1 1/1/2; CI 42471952389 green), pc-f free | 2c91df4, 4c36d45, 4c89ae1 | 11.32M | grid bundle at its 38 KB ceiling; picker same-frame Enter race open | root-cause all 9; un-quarantine the fixed PC-F01 five |
 
 ## Batch reviews (one per phase)
