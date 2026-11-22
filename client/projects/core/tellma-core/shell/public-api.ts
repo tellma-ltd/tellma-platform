@@ -1,0 +1,23 @@
+/**
+ * Public API Surface of @tellma/core/shell — the app's shells: the tenant
+ * picker, the signed-out page and the tenant shell, which the route table
+ * loads with the app.
+ *
+ * Each is a plain stand-in for now, enough for the app to boot, route and
+ * render its pages; the shells with their app bars, launcher and pins
+ * replace them.
+ *
+ * @packageDocumentation
+ */
+
+// Copyright (c) Tellma Ltd. All rights reserved.
+//
+// This source code is licensed under the Apache-2.0 license found in the
+// LICENSE file in the root directory of this source tree.
+
+export { TmTenantShell } from './src/tm-tenant-shell';
+export { TmTenantPicker } from './src/tm-tenant-picker';
+export { TmSignedOutPage } from './src/tm-signed-out-page';
+
+// The page the route families without a host of their own render; not for app code.
+export { TmPagePlaceholder as ɵTmPagePlaceholder } from './src/tm-page-placeholder';

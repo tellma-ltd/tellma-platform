@@ -8,5 +8,10 @@
   "compilerOptions": {
     "types": []
   },
-  "files": ["src/main.ts"]
+  /*
+   * The shell entry point is listed too: the framework loads it with
+   * import() through a specifier the compiler does not follow, and a build
+   * from sources compiles only what the program holds.
+   */
+  "files": ["src/main.ts", "../../../tellma-core/shell/public-api.ts"]
 }

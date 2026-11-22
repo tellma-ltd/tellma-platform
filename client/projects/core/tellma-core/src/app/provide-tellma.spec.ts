@@ -5,7 +5,7 @@
 
 import { type ApplicationConfig, provideZonelessChangeDetection } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { tmTestMetadata } from '@tellma/core-testing';
+import { provideTellmaStateTesting, provideTellmaTesting, tmTestEntitiesChunk, tmTestMetadata } from '@tellma/core-testing';
 
 import { tmFeature } from '../declarations/tm-feature';
 import { tmEntity } from '../entity/tm-entity-declaration';
@@ -15,24 +15,24 @@ import { provideTellma, tmAppConfigOf } from './provide-tellma';
 import type { TmAppConfig } from './tm-app-config';
 import { TM_APP_DECLARATIONS } from './tm-app-declarations';
 
-/** Loaders a test never calls. */
-const unusedLoaders: TmMetadataLoaders = {
-  core: () => Promise.reject(new Error('not loaded in tests')),
-  entities: () => Promise.reject(new Error('not loaded in tests')),
-  contracts: () => Promise.reject(new Error('not loaded in tests')),
+/** Loaders over the test metadata, which the startup initializer calls. */
+const loaders: TmMetadataLoaders = {
+  core: () => Promise.resolve(tmTestMetadata()),
+  entities: () => Promise.resolve(tmTestEntitiesChunk()),
+  contracts: () => Promise.resolve({ fingerprints: {}, long: [], idempotent: [] }),
   strings: {},
 };
 
 /** An app configuration with one feature. */
 const config: TmAppConfig = {
-  metadata: unusedLoaders,
+  metadata: loaders,
   languages: [{ code: 'en', dir: 'ltr', strings: () => Promise.resolve({ tm: {}, tmUi: {} }) }],
   features: [tmFeature({ key: 'acme', entities: [tmEntity('acme.Customer', { order: 1 })] })],
 };
 
 describe('provideTellma', () => {
   it('provides the merged declarations, built from the loaded metadata', () => {
-    TestBed.configureTestingModule({ providers: [provideTellma(config)] });
+    TestBed.configureTestingModule({ providers: [provideTellma(config), provideTellmaTesting(), provideTellmaStateTesting()] });
     TestBed.inject(TmClientMetadataStore).set(tmTestMetadata());
 
     const declarations = TestBed.inject(TM_APP_DECLARATIONS);

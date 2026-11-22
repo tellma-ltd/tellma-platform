@@ -43,6 +43,9 @@ export type ɵTmMergeProblemCode =
   | 'coded-report-not-registered'
   | 'coded-report-redeclared';
 
+/** The server facts the merge reads from the Core chunk. */
+type TmMergeFacts = Pick<TmClientMetadata, 'entities' | 'codedReports'>;
+
 /** One problem the merge found, before it is worded. */
 export interface ɵTmMergeProblem {
   /** What is wrong. */
@@ -176,8 +179,8 @@ class Merge {
   /** The home page's body, from the last feature that set one. */
   #home: TmLazyComponent | null = null;
 
-  /** The Core chunk. */
-  readonly #metadata: TmClientMetadata;
+  /** The server facts the merge reads. */
+  readonly #metadata: TmMergeFacts;
   /** The Core chunk's entity summaries, by name. */
   readonly #summaries: ReadonlyMap<string, TmClientMetadata['entities'][number]>;
   /** The Core chunk's coded reports, by key. */
@@ -186,9 +189,9 @@ class Merge {
   /**
    * Starts a merge against the metadata's server facts.
    *
-   * @param metadata - The Core chunk.
+   * @param metadata - The Core chunk's entities and coded reports.
    */
-  constructor(metadata: TmClientMetadata) {
+  constructor(metadata: TmMergeFacts) {
     this.#metadata = metadata;
     this.#summaries = new Map(metadata.entities.map((summary) => [summary.name, summary]));
     this.#reports = new Map(metadata.codedReports.map((report) => [report.key, report]));
@@ -692,13 +695,15 @@ class Merge {
  * on. Lazy members are copied, never called.
  *
  * @param features - The app's features, packs first and the distribution last.
- * @param metadata - The Core chunk: the server's entities and coded reports.
+ * @param metadata - The Core chunk's server facts: its entities and coded
+ * reports. The pages merge without them, so empty lists yield the merged
+ * pages before the chunk loads.
  * @param core - The platform's implicit feature.
  * @returns The merged declarations, the problems found, and their provenance.
  */
 export function ɵtmMergeAppDeclarations(
   features: readonly TmFeature[],
-  metadata: TmClientMetadata,
+  metadata: TmMergeFacts,
   core: TmFeature = TM_CORE_FEATURE,
 ): ɵTmMergeResult {
   const merge = new Merge(metadata);

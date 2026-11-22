@@ -8,7 +8,7 @@ and one theme delta. Everything else, from the routes to the service worker, the
 |---|---|
 | `src/app.config.ts` | `appConfig`: one `provideTellma` call with the emitted metadata, the languages (English, the default, then Arabic) and the features, Acme's last |
 | `src/app/acme.feature.ts` | `acmeFeature`, the client side of the server's `acme` feature (`AcmeFeature`); it declares nothing yet |
-| `src/main.ts`, `src/app/acme-app.ts` | The entry point and its root component in `<tm-app>` (below) |
+| `src/main.ts` | The entry point: `bootstrapTellma(appConfig)`, which starts the framework's root component in `<tm-app>` |
 | `src/index.html` | `<base href="/">`, the manifest, the colour-scheme meta and `tm-boot.js` as the first script |
 | `src/styles.css` | Acme's one theme delta, `--color-primary` in `@layer tm.theme` |
 | `public/` | `manifest.webmanifest`, the favicon and the three PNG icons (192, 512, maskable 512) |
@@ -51,12 +51,9 @@ assembly, makes MSBuild build the Migrator first, which the emit then runs witho
 
 ## Stand-ins
 
-Three pieces of the framework that a distribution's scaffold names are not there yet, so the app
+Two pieces of the framework that a distribution's scaffold names are not there yet, so the app
 stands in for them, each in the place the scaffold puts it:
 
-- `main.ts` starts its own root component, `AcmeApp`, which shows the distribution's name, in place
-  of `bootstrapTellma(appConfig)` and the framework's root component. Like `bootstrapTellma`, it
-  starts nothing while the boot script redirects or shows its boot page.
 - `app.config.ts` defines English and Arabic with empty client string tables, in place of
   `tmEnglish()` and `tmArabic()`.
 - `angular.json` lists the platform's stylesheets (the tokens, the fonts of Latin and Arabic, the

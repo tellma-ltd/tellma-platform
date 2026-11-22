@@ -5,5 +5,6 @@
     "noEmit": false,
     "outDir": "./out-tsc/spec"
   },
-  "include": ["src/**/*.spec.ts", "generated/*.d.ts"]
+  /* Inside the platform's repository, the shell entry point too, as tsconfig.app.json says. */
+  "include": ["src/**/*.spec.ts", "generated/*.d.ts", "../../../../client/projects/core/tellma-core/shell/public-api.ts"]
 }

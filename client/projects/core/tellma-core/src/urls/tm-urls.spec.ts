@@ -1,0 +1,187 @@
+// Copyright (c) Tellma Ltd. All rights reserved.
+//
+// This source code is licensed under the Apache-2.0 license found in the
+// LICENSE file in the root directory of this source tree.
+
+import { Location } from '@angular/common';
+import { TestBed } from '@angular/core/testing';
+
+import type { TmDecimal } from '../json/tm-json';
+import { tmAppRig, tmLoadTestPage, tmNavigate, tmSettle, type TmAppRig } from '../routes/tm-app.testing.util';
+import { tmParseListPayload } from './tm-search-query';
+
+describe('TmUrls', () => {
+  let rig: TmAppRig;
+
+  beforeEach(async () => {
+    rig = await tmAppRig();
+    await tmNavigate('/17/centers');
+  });
+
+  afterEach(() => vi.restoreAllMocks());
+
+  describe('the builders', () => {
+    it('use the routed tenant', () => {
+      expect(rig.urls.tenantId()).toBe(17);
+      expect(rig.urls.home()).toBe('/17');
+      expect(rig.urls.search('gl.Center')).toBe('/17/centers');
+      expect(rig.urls.details('gl.Center', 5)).toBe('/17/centers/5');
+      expect(rig.urls.details('gl.Center', 5, { collection: 'Lines', id: 42 })).toBe('/17/centers/5?child=Lines:42');
+      expect(rig.urls.create('gl.Center')).toBe('/17/centers/new');
+      expect(rig.urls.create('gl.Center', { clone: 5 })).toBe('/17/centers/new?clone=5');
+      expect(rig.urls.page('me')).toBe('/17/me');
+      expect(rig.urls.page('settings/general')).toBe('/17/settings/general');
+      expect(rig.urls.blob('customer-image', 88, { variant: 'thumb' })).toBe('/17/blobs/customer-image/88?variant=thumb');
+      expect(rig.urls.blob('customer-image', 88, { download: true })).toBe('/17/blobs/customer-image/88?download=true');
+    });
+
+    it('follow the routed tenant into another tenant', async () => {
+      await rig.router.navigateByUrl('/18/centers');
+      expect(rig.urls.tenantId()).toBe(18);
+      expect(rig.urls.home()).toBe('/18');
+    });
+
+    it('build into any tenant with forTenant', () => {
+      const other = rig.urls.forTenant(18);
+      expect(other.home()).toBe('/18');
+      expect(other.search('gl.Center', { q: 'jed' })).toBe('/18/centers?q=jed');
+      expect(other.details('acme.Customer', '9007199254740993' as TmDecimal)).toBe('/18/customers/9007199254740993');
+    });
+
+    it('leave out the search page defaults the declaration sets', () => {
+      expect(rig.urls.search('gl.Center', { tab: 'all', cols: ['Code', 'Name'], size: 50, page: 1, q: 'jed' })).toBe('/17/centers?q=jed');
+      expect(rig.urls.search('gl.Center', { tab: 'mine', cols: ['Name'], size: 100 })).toBe('/17/centers?tab=mine&cols=Name&size=100');
+      expect(rig.urls.search('gl.Center', { filter: 'Code > 1' })).toBe('/17/centers#d=eyJmaWx0ZXIiOiJDb2RlID4gMSJ9');
+    });
+
+    it('throw in development outside a tenant', async () => {
+      await rig.router.navigateByUrl('/tenants');
+      expect(rig.urls.tenantId()).toBeNull();
+      expect(() => rig.urls.home()).toThrow(/outside a tenant route/);
+      expect(rig.urls.forTenant(17).home()).toBe('/17');
+    });
+
+    it('throw in development for an entity with no route', () => {
+      expect(() => rig.urls.search('acme.Nothing')).toThrow(/acme.Nothing/);
+      expect(() => rig.urls.details('core.Blob', 1)).toThrow(/core.Blob/);
+    });
+
+    it('build the tenantless pages', () => {
+      expect(rig.urls.picker()).toBe('/tenants');
+      expect(rig.urls.picker({ notice: 'tenant-not-found', from: 17 })).toBe('/tenants?notice=tenant-not-found&from=17');
+      expect(rig.urls.signedOut()).toBe('/signed-out');
+    });
+  });
+
+  describe('target', () => {
+    it('opens the details page of a stack that has one', () => {
+      expect(rig.urls.target('gl.Center', 5)).toBe('/17/centers/5');
+      expect(rig.urls.target('GL.center', 5)).toBe('/17/centers/5');
+    });
+
+    it('is null for a stack whose declaration has no details page, a child or a read-only root', () => {
+      expect(rig.urls.target('acme.Currency', 5)).toBeNull();
+      expect(rig.urls.target('acme.SalesInvoiceLine', 5)).toBeNull();
+      expect(rig.urls.target('core.Blob', 5)).toBeNull();
+      expect(rig.urls.target('acme.Nothing', 5)).toBeNull();
+    });
+  });
+
+  describe('the drill-through list', () => {
+    it('carries its payload in the fragment, never its filter or columns in the query', () => {
+      const url = rig.urls.list('sales-invoice-lines', { filter: 'Amount > 0', cols: ['Code'] }, { q: 'x', filter: 'ignored', cols: ['Name'] });
+      expect(url).toMatch(/^\/17\/list\/sales-invoice-lines\?q=x#d=[A-Za-z0-9_-]+$/);
+      expect(rig.urls.parseList(new URLSearchParams('q=x'), url.slice(url.indexOf('#')))).toEqual({
+        payload: { filter: 'Amount > 0', cols: ['Code'] },
+        query: { q: 'x' },
+      });
+    });
+
+    it('parses a malformed d to a null payload', () => {
+      expect(rig.urls.parseList(new URLSearchParams(''), '#d=!!')).toEqual({ payload: null, query: {} });
+    });
+
+    it('keeps a payload with Arabic text and & through navigateByUrl, to parse from the raw hash', async () => {
+      const payload = { filter: "Customer.Name = 'مؤسسة جدة & أبناؤه'" };
+      const url = rig.urls.list('sales-invoice-lines', payload);
+      expect(await rig.router.navigateByUrl(url)).toBe(true);
+      const address = TestBed.inject(Location).path(true);
+      expect(address).toBe(url);
+      expect(tmParseListPayload(address.slice(address.indexOf('#')))).toEqual(payload);
+    });
+  });
+
+  describe('describe', () => {
+    it.each([
+      ['/', { kind: 'launch', template: '/', pinnable: false }],
+      ['/tenants', { kind: 'picker', template: '/tenants', pinnable: false }],
+      ['/signed-out', { kind: 'signed-out', template: '/signed-out', pinnable: false }],
+      ['/17', { kind: 'home', tenantId: 17, template: '/:t', pinnable: true }],
+      ['/17/settings', { kind: 'core', tenantId: 17, template: '/:t/settings', pinnable: true }],
+      ['/17/settings/general', { kind: 'core', tenantId: 17, template: '/:t/settings/:category', pinnable: true }],
+      ['/17/me/region', { kind: 'core', tenantId: 17, template: '/:t/me/region', pinnable: true }],
+      ['/17/reports/acme-credit-exposure', { kind: 'report', tenantId: 17, key: 'acme-credit-exposure', securable: ['acme.Customer', 'Read'], template: '/:t/reports/:key', pinnable: true }],
+      ['/17/centers?q=jed', { kind: 'search', tenantId: 17, entity: 'gl.Center', template: '/:t/centers', pinnable: true }],
+      ['/17/centers/new', { kind: 'create', tenantId: 17, entity: 'gl.Center', template: '/:t/centers/new', pinnable: true }],
+      ['/17/centers/5', { kind: 'details', tenantId: 17, entity: 'gl.Center', id: 5, template: '/:t/centers/:id', pinnable: true }],
+    ])('classifies %s', (url, expected) => {
+      expect(rig.urls.describe(url)).toEqual(expected);
+    });
+
+    it('classifies pages and lists', () => {
+      expect(rig.urls.describe('/17/centers/5/map')).toMatchObject({ kind: 'page', template: '/:t/centers/:id/map', page: { path: 'centers/:id/map' } });
+      expect(rig.urls.describe('/17/approvals')).toMatchObject({ kind: 'page', securable: ['acme.Approval', 'Read'] });
+      expect(rig.urls.describe('/17/list/sales-invoice-lines')).toEqual({
+        kind: 'list',
+        tenantId: 17,
+        entity: 'acme.SalesInvoiceLine',
+        template: '/:t/list/sales-invoice-lines',
+        pinnable: true,
+      });
+    });
+
+    it('tells two lists of one segment apart by d', () => {
+      const one = rig.urls.describe(rig.urls.list('sales-invoice-lines', { filter: 'Amount > 0' }))!;
+      const two = rig.urls.describe(rig.urls.list('sales-invoice-lines', { filter: 'Amount < 0' }))!;
+      expect(one.template).toBe(two.template);
+      expect(one.hash).toMatch(/^#d=/);
+      expect(one.hash).not.toBe(two.hash);
+    });
+
+    it.each(['/17/currencies/5', '/017', '/17/Centers', '/17/centers/05', '/17/me/unknown', '/17/reports/unknown', '/17/nope'])(
+      'reaches no page at %s',
+      (url) => {
+        expect(rig.urls.describe(url)).toBeNull();
+      },
+    );
+  });
+
+  describe('preload', () => {
+    it('loads a route’s chunks once at idle and runs no guard', async () => {
+      const idle: (() => void)[] = [];
+      vi.spyOn(window, 'requestIdleCallback').mockImplementation((callback) => {
+        idle.push(() => callback({ didTimeout: false, timeRemaining: () => 50 }));
+        return idle.length;
+      });
+      // Guards run only inside a navigation, so no navigation event means no guard ran.
+      const events: string[] = [];
+      const subscription = rig.router.events.subscribe((event) => events.push(event.constructor.name));
+      tmLoadTestPage.mockClear();
+
+      rig.urls.preload('/17/centers/5');
+      expect(tmLoadTestPage).not.toHaveBeenCalled();
+      idle.splice(0).forEach((run) => run());
+      await tmSettle();
+      expect(tmLoadTestPage).toHaveBeenCalledTimes(1);
+
+      rig.urls.preload('/17/centers/6');
+      rig.urls.preload('/17/centers/new');
+      idle.splice(0).forEach((run) => run());
+      await tmSettle();
+      // The details page is loaded, and create is the same layout here.
+      expect(tmLoadTestPage).toHaveBeenCalledTimes(1);
+      expect(events).toEqual([]);
+      subscription.unsubscribe();
+    });
+  });
+});

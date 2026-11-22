@@ -1,5 +1,5 @@
-/* The application build's TypeScript configuration: the app from its entry file. */
+/* The application build's TypeScript configuration: the app from its entry file, and the shell entry point (see tsconfig.json). */
 {
   "extends": "./tsconfig.json",
-  "files": ["src/main.ts"]
+  "files": ["src/main.ts", "../../../tellma-core/shell/public-api.ts"]
 }

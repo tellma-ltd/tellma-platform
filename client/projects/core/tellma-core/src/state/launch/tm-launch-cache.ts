@@ -121,8 +121,12 @@ export class TmLaunchCache {
     const window = inject(DOCUMENT).defaultView;
     afterNextRender(
       () => {
-        const read = (): void =>
-          void this.#revalidate((['tenants', 'distribution'] as const).filter((name) => !this.#fetched.has(name)));
+        // An app torn down before its idle moment reads nothing.
+        const read = (): void => {
+          if (!this.#life.signal.aborted) {
+            void this.#revalidate((['tenants', 'distribution'] as const).filter((name) => !this.#fetched.has(name)));
+          }
+        };
         if (window?.requestIdleCallback) {
           window.requestIdleCallback(read);
         } else {

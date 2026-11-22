@@ -6,5 +6,7 @@
     "outDir": "../../../out-tsc/spec",
     "types": ["vitest/globals"]
   },
-  "include": ["**/*.spec.ts"]
+  // The shell is listed too: the primary loads it with a cast specifier,
+  // which the compiler does not follow.
+  "include": ["**/*.spec.ts", "shell/public-api.ts"]
 }

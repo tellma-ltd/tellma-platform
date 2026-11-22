@@ -1,0 +1,292 @@
+// Copyright (c) Tellma Ltd. All rights reserved.
+//
+// This source code is licensed under the Apache-2.0 license found in the
+// LICENSE file in the root directory of this source tree.
+
+import { NgComponentOutlet } from '@angular/common';
+import {
+  afterNextRender,
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  DestroyRef,
+  effect,
+  inject,
+  Injectable,
+  Injector,
+  reflectComponentType,
+  signal,
+  type Signal,
+  type Type,
+  untracked,
+} from '@angular/core';
+import { toSignal } from '@angular/core/rxjs-interop';
+import { ActivatedRoute } from '@angular/router';
+
+import { TM_API_UPDATES } from '../api/tm-api-seams';
+import type { TmRouteData } from '../app/tm-route-data';
+import { TM_BOOT_RESULT } from '../boot/tm-boot-result';
+import { provideTmPageScope } from '../context/tm-page-scope';
+import type { TmLazyComponent } from '../declarations/tm-declaration-types';
+import { TmEntities } from '../entity/tm-entities';
+import { TmTelemetry } from '../observe/tm-telemetry';
+import { TmLaunchCache } from '../state/launch/tm-launch-cache';
+import { TmLeaveChecks } from './tm-leave-checks';
+import { TmPageFocus } from './tm-page-focus';
+import { TmPageSkeleton } from './tm-page-skeleton';
+import { TmRouteError } from './tm-route-error';
+import { TM_ROUTE_HOSTS } from './tm-route-hosts';
+import { TM_ROUTE_PERMISSIONS } from './tm-route-permissions';
+import { TmRouteRules, tmTenantSegment } from './tm-route-rules';
+import type { TmRouteDataInternal } from './tm-routes';
+
+// The route host (spec 0024 §4.4): the component of every page route. It
+// draws the page's skeleton in the click's frame, then loads the page's
+// component (and, on an entity route, the Entities chunk) while a cold
+// tenant entry runs its refresh, and creates the page only once the launch
+// documents are current. A `tmPage` whose permission the user lacks renders
+// the forbidden view in place. A chunk that fails to load asks the service
+// worker for an update: a newer version shows `client-outdated`, anything
+// else `offline`. Each page gets a page scope and a leave-check registry.
+
+/** Where the host stands: the skeleton, the page, or an error view in its place. */
+type TmHostState =
+  | { readonly view: 'loading' }
+  | { readonly view: 'page'; readonly component: Type<unknown> }
+  | { readonly view: 'error'; readonly error: 'client-outdated' | 'offline' };
+
+/**
+ * The component a lazy component's module holds.
+ *
+ * @param load - The lazy component.
+ * @returns The component.
+ */
+async function resolveComponent(load: TmLazyComponent): Promise<Type<unknown>> {
+  const loaded = await load();
+  return typeof loaded === 'function' ? loaded : loaded.default;
+}
+
+/** Times the document's launch: from navigation start to the first page rendered. */
+@Injectable({ providedIn: 'root' })
+export class TmLaunchTimer {
+  readonly #telemetry = inject(TmTelemetry);
+  readonly #cold = inject(TM_BOOT_RESULT)?.cold ?? true;
+
+  /** Whether the launch was timed. */
+  #timed = false;
+
+  /**
+   * Emits the launch's timing at the first page rendered.
+   *
+   * @param routeKind - The page's family.
+   */
+  rendered(routeKind: string): void {
+    if (!this.#timed) {
+      this.#timed = true;
+      this.#telemetry.timing(this.#cold ? 'tm.launch.cold' : 'tm.launch.warm', performance.now(), { routeKind });
+    }
+  }
+}
+
+/** The component of every page route: skeleton, then the page, in one page scope. */
+@Component({
+  selector: 'tm-route-host',
+  imports: [NgComponentOutlet, TmPageSkeleton, TmRouteError],
+  providers: [provideTmPageScope(), TmLeaveChecks],
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  template: `
+    @switch (state().view) {
+      @case ('page') {
+        <!-- The page, behind its permission gate. -->
+        @if (allowed()) {
+          <ng-container *ngComponentOutlet="component(); inputs: inputs()" />
+        } @else {
+          <tm-route-error kind="forbidden" [securable]="data().securable" />
+        }
+      }
+      @case ('error') {
+        <!-- The page's chunk failed to load. -->
+        <tm-route-error [kind]="error()" (retry)="load()" />
+      }
+      @default {
+        <!-- The page's skeleton, from the click's frame until the page renders. -->
+        <tm-page-skeleton [kind]="data().skeleton" />
+      }
+    }
+  `,
+  styles: `
+    :host {
+      display: block;
+    }
+  `,
+  host: { '[attr.aria-busy]': "state().view === 'loading' ? 'true' : null" },
+})
+export class TmRouteHost {
+  readonly #injector = inject(Injector);
+  readonly #rules = inject(TmRouteRules);
+  readonly #entities = inject(TmEntities);
+  readonly #launch = inject(TmLaunchCache);
+  readonly #updates = inject(TM_API_UPDATES);
+  readonly #permissions = inject(TM_ROUTE_PERMISSIONS);
+  readonly #focus = inject(TmPageFocus);
+  readonly #timer = inject(TmLaunchTimer);
+  readonly #leave = inject(TmLeaveChecks);
+
+  /** The route's data. */
+  protected readonly data: Signal<TmRouteData & TmRouteDataInternal>;
+
+  /** The route's parameters, the tenant's included. */
+  readonly #params: Signal<Readonly<Record<string, string>>>;
+
+  /** The route's query parameters. */
+  readonly #query: Signal<Readonly<Record<string, string>>>;
+
+  /** Where the host stands. */
+  readonly #state = signal<TmHostState>({ view: 'loading' });
+
+  /** Where the host stands. */
+  protected readonly state: Signal<TmHostState> = this.#state.asReadonly();
+
+  /** The page's component, once loaded. */
+  protected readonly component = computed(() => {
+    const state = this.#state();
+    return state.view === 'page' ? state.component : null;
+  });
+
+  /** The error view in the page's place. */
+  protected readonly error = computed(() => {
+    const state = this.#state();
+    return state.view === 'error' ? state.error : 'offline';
+  });
+
+  /** The routed entity's name, on an entity route. */
+  readonly #entity = computed(() => {
+    const data = this.data();
+    const segment = this.#params()['segment'];
+    if (data.ɵentity === undefined || segment === undefined) {
+      return undefined;
+    }
+    return (data.ɵentity === 'list' ? this.#rules.list(segment) : this.#rules.stack(segment))?.name;
+  });
+
+  /** The page's component loader: the route's own, else its family's host. */
+  readonly #loader = computed(() => {
+    const data = this.data();
+    return data.load ?? (data.ɵentity === 'details' || data.ɵentity === 'create' ? TM_ROUTE_HOSTS.details : TM_ROUTE_HOSTS.search);
+  });
+
+  /** Whether the user may open the page: always, unless the route names a securable. */
+  protected readonly allowed = computed(() => {
+    const securable = this.data().securable;
+    return securable === undefined || this.#permissions.can(securable[0], securable[1])();
+  });
+
+  /**
+   * The page's inputs: the route's parameters and query parameters, and the
+   * entity on an entity route, each only when the page declares it.
+   */
+  protected readonly inputs = computed(() => {
+    const component = this.component();
+    const declared = new Set((component && reflectComponentType(component)?.inputs.map((input) => input.templateName)) ?? []);
+    const entity = this.#entity();
+    const values: Record<string, unknown> = { ...this.#query(), ...this.#params(), ...(entity && { entity }) };
+    return Object.fromEntries(Object.entries(values).filter(([name]) => declared.has(name)));
+  });
+
+  /** The current load, so a superseded one stops; a destroyed host has none. */
+  #run = 0;
+
+  /** Whether the host is destroyed. */
+  #destroyed = false;
+
+  /** Creates the host, which loads its page now and again whenever the routed page changes in place. */
+  constructor() {
+    const route = inject(ActivatedRoute);
+    inject(DestroyRef).onDestroy(() => {
+      this.#destroyed = true;
+      this.#run++;
+    });
+    this.data = toSignal(route.data, { requireSync: true }) as Signal<TmRouteData & TmRouteDataInternal>;
+    this.#params = toSignal(route.params, { requireSync: true });
+    this.#query = toSignal(route.queryParams, { requireSync: true });
+    // A reused route, such as another entity's search page, loads its page anew.
+    effect(() => {
+      this.#loader();
+      this.#entity();
+      untracked(() => void this.load());
+    });
+  }
+
+  /**
+   * Whether the page may be left: the leave checks its page registered.
+   * Internal: the page route's `canDeactivate` asks it.
+   *
+   * @returns Whether the navigation may go on.
+   */
+  ɵleave(): boolean | Promise<boolean> {
+    return this.#leave.run();
+  }
+
+  /**
+   * Loads the page: its component and, on an entity route, the Entities
+   * chunk, beside a cold tenant entry's refresh, then shows the page.
+   *
+   * @returns A promise that settles once the page or an error view shows.
+   */
+  protected async load(): Promise<void> {
+    const run = ++this.#run;
+    const release = this.#focus.ɵhold();
+    const current = (): boolean => run === this.#run;
+    this.#state.set({ view: 'loading' });
+
+    // --- The cold entry's refresh, the page's chunk and the Entities chunk, in parallel ---
+    const tenantId = tmTenantSegment(this.#params()['t']);
+    const entered = tenantId === null ? Promise.resolve(true) : this.#launch.ɵenter(tenantId).then(() => true, () => false);
+    let component: Type<unknown>;
+    try {
+      [component] = await Promise.all([resolveComponent(this.#loader()), this.#entity() === undefined ? null : this.#entities.load()]);
+    } catch {
+      // A chunk that fails to load: a newer version is the likely cause.
+      const update = await this.#updates.check();
+      if (current()) {
+        this.#state.set({ view: 'error', error: update === 'ready' || update === 'failed' ? 'client-outdated' : 'offline' });
+      }
+      this.#rendered(release);
+      return;
+    }
+
+    // --- A failed refresh keeps the skeleton until the documents arrive: the shell shows the failure ---
+    if (!(await entered) && current()) {
+      await this.#warm();
+    }
+    if (current()) {
+      this.#state.set({ view: 'page', component });
+      this.#timer.rendered(this.data().kind);
+    }
+    this.#rendered(release);
+  }
+
+  /** Releases the focus hold once the host's new view has rendered, or at once when the host is gone. */
+  #rendered(release: () => void): void {
+    if (this.#destroyed) {
+      release();
+    } else {
+      afterNextRender({ read: release }, { injector: this.#injector });
+    }
+  }
+
+  /** Resolves once the routed tenant's launch documents are current. */
+  #warm(): Promise<void> {
+    return new Promise((resolve) => {
+      const watch = effect(
+        () => {
+          if (this.#launch.warm()) {
+            watch.destroy();
+            resolve();
+          }
+        },
+        { injector: this.#injector },
+      );
+    });
+  }
+}
