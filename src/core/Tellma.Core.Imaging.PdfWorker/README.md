@@ -76,7 +76,9 @@ On Linux the worker puts that in place itself, through Landlock:
   the kernel ties a rule to an inode that lasts only while something holds it. Every other
   process's entries, and the listing of `/proc`, are refused. Landlock also refuses a restricted
   process the `ptrace` family of access to any process outside its restriction, whatever Yama's
-  `ptrace_scope` is.
+  `ptrace_scope` is. Some of the worker's own entries describe what it shares with its host rather
+  than itself, its network and mount namespaces (`net/tcp`, `net/unix`, `mountinfo`), and Landlock
+  cannot refuse those beneath a directory it grants.
 - **The check.** The second start finds that descriptor (`--confined <n>`), checks that it is its
   own `/proc/<pid>`, and checks that `/` cannot be read; otherwise it stops.
 
@@ -85,7 +87,8 @@ Landlock has, which covers what Landlock does not govern at all: modes, owners, 
 attributes and `ioctl` on a file. It also refuses what Landlock leaves open to a path it refuses
 to read: watching it with inotify or fanotify, and reading or listing its extended attributes by
 name. What a path lookup tells, that a path exists and its size, owner and times (`stat`, `access`,
-`readlink`), stays open: closing it would take a mount namespace of the worker's own.
+`readlink`), stays open, as do the namespace entries under the worker's own `/proc/<pid>`: closing
+either would take a mount and network namespace of the worker's own.
 
 On Windows the host starts the worker in an AppContainer of its own (a lowbox token over its
 restricted, low-integrity one), holding one capability that the host's files of the allowance grant
@@ -115,8 +118,10 @@ code that took over the renderer would want:
   the filter when it is installed, since a worker never forks, so the runtime's own signals and
   the C library's limit queries keep working while the host, its process group and every other
   process are out of reach.
-- **SysV shared memory, semaphores and message queues**, whose objects outlive the process and
-  escape its memory limits.
+- **SysV shared memory, semaphores and message queues, and POSIX message queues** (`mq_open`,
+  `mq_unlink`, `mq_timedsend`, `mq_timedreceive`, `mq_notify`, `mq_getsetattr`), whose objects
+  outlive the process and escape its memory limits. Landlock does not stop a queue being made,
+  only its opening once made, nor one being removed.
 - **The parent-death signal**: `prctl(PR_SET_PDEATHSIG)`, which would withdraw the worker's request
   to die with its host. Every other `prctl` is allowed.
 - **Signals sent by the kernel on the worker's word**: `fcntl`'s `F_SETOWN`, `F_SETOWN_EX` and
@@ -140,6 +145,10 @@ code that took over the renderer would want:
   for writing, so the worker's only writable descriptors are its pipes and the runtime's anonymous
   memory files. Every other `fcntl` and `ioctl` is allowed: another filesystem's own `ioctl` types
   are not refused one by one, and changes through them rest on the kernel's own checks.
+- **Locking a file**: `flock`, which needs no write access, so that a worker holding a file of its
+  allowance locked would make every .NET process of the account that opens it fail, the host's
+  next start among them. .NET treats a refused lock as no lock, so the worker's own opens work as
+  before. `fcntl`'s record locks stay, since .NET takes none on opening a file.
 - **Watching or describing a file by name**: `inotify_init`, `inotify_init1`, `inotify_add_watch`,
   `fanotify_init` and `fanotify_mark`, which Landlock does not govern and would tell when the host
   reads or writes a file; and `getxattr`, `lgetxattr`, `listxattr`, `llistxattr`, `getxattrat` and

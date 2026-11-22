@@ -23,7 +23,8 @@ namespace Tellma.Core.Imaging.Tests.Workers
     ///     in place, through an open or a shared mapping, nor truncating, renaming, linking to or
     ///     deleting it, nor making anything beside it, nor changing a file's attributes through a
     ///     descriptor opened for reading; on Linux it neither watches a file nor reads its extended
-    ///     attributes by name; it reads nothing of another process under
+    ///     attributes by name, makes or removes no message queue, and locks no file, while .NET
+    ///     still opens its files; it reads nothing of another process under
     ///     <c>/proc</c>, its host's, another worker's or the first process's, and lists no process,
     ///     while its own entries stay open to it; it reaches no network; it opens neither its host's
     ///     process nor another worker's; and a thread it started before its sandbox is held alike.
@@ -59,15 +60,17 @@ namespace Tellma.Core.Imaging.Tests.Workers
             "write-victim", "read-write-victim", "append-victim", "truncate-open", "truncate",
             "rename", "link", "symlink", "delete", "create", "create-temp", "mkdir", "rmdir", "mkfifo",
             "chmod", "set-times", "watch", "notify", "get-xattr", "list-xattr",
+            "mq-create", "mq-unlink", "lock",
             "map-shared-write", "mprotect-shared-write", "get-flags", "enable-verity", "get-fsxattr", "clone-into",
         ];
 
         // The attempts on Linux that Landlock does not govern, which the system-call filter alone
         // refuses: a file's mode and times, watching it, reading its extended attributes by name,
-        // and ioctls on a descriptor opened for reading.
+        // message queues, locks, and ioctls on a descriptor opened for reading.
         private static readonly string[] FilterOnlyAttempts =
         [
-            "chmod", "set-times", "watch", "notify", "get-xattr", "list-xattr", "get-flags", "enable-verity", "get-fsxattr", "clone-into",
+            "chmod", "set-times", "watch", "notify", "get-xattr", "list-xattr", "mq-create", "mq-unlink", "lock",
+            "get-flags", "enable-verity", "get-fsxattr", "clone-into",
         ];
 
         private static readonly string[] WindowsAttempts =
@@ -109,6 +112,10 @@ namespace Tellma.Core.Imaging.Tests.Workers
             Dictionary<string, string> outcomes = Outcomes(Probe(new PdfWorkerLauncher(TestWorkers.StandInPath, ["files-before-filter", victim.Folder, victim.Beside]), "files-before-filter"));
             string[] governed = [.. LinuxAttempts.Except(FilterOnlyAttempts, StringComparer.Ordinal)];
             Assert.All(governed, name => Assert.Equal((name, "EACCES"), (name, outcomes[name])));
+
+            // Section: an exclusive lock on a file the worker may read needs no right Landlock
+            // knows, which is why the filter refuses it.
+            Assert.Equal("done", outcomes["lock"]);
 
             // Section: a file's mode and times, watches and extended attributes, and ioctls on a
             // readable file are not Landlock's to govern, which is why the filter refuses them; here,
@@ -259,7 +266,7 @@ namespace Tellma.Core.Imaging.Tests.Workers
             // .NET installation in a user's profile does not; this host's own installation
             // grants every AppContainer read already, or has been granted the workers' capability.
             Assert.False(WindowsAppContainer.Grants(new DirectoryInfo(victim.Folder).GetAccessControl(), directory: true));
-            Assert.Null(WindowsAppContainer.GrantRuntime(new PdfWorkerLauncher().Files.Muxer));
+            Assert.Null(WindowsAppContainer.GrantRuntime(new PdfWorkerLauncher().Files.Muxer, WindowsAppContainer.GrantReadAndExecute));
 
             // Section: granted, as the host grants such an installation, the directory and what lies
             // beneath it are readable to a confined worker.
@@ -274,6 +281,39 @@ namespace Tellma.Core.Imaging.Tests.Workers
             Assert.All(outcomes.Where(static outcome => outcome.Key is not ("read-victim" or "list-folder")), static outcome =>
                 Assert.True(IsRefusal(outcome.Value), $"{outcome.Key} was not refused: {outcome.Value}"));
             victim.AssertUnchanged();
+        }
+
+        [Fact]
+        [SupportedOSPlatform("linux")]
+        public void A_filtered_worker_still_opens_its_files_as_dotnet_does_though_it_may_not_lock_them_on_linux()
+        {
+            Assert.SkipUnless(OperatingSystem.IsLinux(), "The system-call filter is Linux's.");
+
+            // Section: .NET takes a shared or an exclusive flock beside every open, and treats a
+            // refusal other than a lock held elsewhere as no lock: the filter's refusal leaves every
+            // open, its own assembly's and the runtime's, as it was, confined or not.
+            Dictionary<string, string> outcomes = Outcomes(Probe(new PdfWorkerLauncher(TestWorkers.StandInPath, ["file-streams"]), "file-streams"));
+            Assert.Equal("EPERM", outcomes["lock-shared"]);
+            Assert.Equal("EPERM", outcomes["lock-exclusive"]);
+            Assert.Equal("done", outcomes["stream-shared"]);
+            Assert.Equal("done", outcomes["stream-exclusive"]);
+            Assert.Equal("done", outcomes["read-all"]);
+        }
+
+        [Fact]
+        [SupportedOSPlatform("linux")]
+        public void A_worker_told_it_was_started_over_confined_when_it_was_not_refuses_to_run_on_linux()
+        {
+            Assert.SkipUnless(OperatingSystem.IsLinux(), "Landlock is Linux's.");
+
+            // Section: an unconfined start that claims the second stage, with a descriptor that is
+            // not the worker's own /proc directory: the worker stops before its ready frame.
+            using var client = new PdfWorkerClient(new PdfWorkerLauncher(arguments: [WorkerConfinement.ConfinedArgument, "3"], confine: false), Limit);
+            using var budget = new CancellationTokenSource(Patience);
+            PdfWorkerException refused = Assert.Throws<PdfWorkerException>(() => client.Render(DocumentFixtures.HalfBlackPage(100, 100), 64, CpuTime, budget.Token));
+            Assert.Equal(PdfWorkerFailure.Exited, refused.Failure);
+            Assert.Equal(WorkerExitCodes.SandboxFailed, refused.ExitCode);
+            Assert.Contains("/proc anchor is not its own /proc directory", refused.Message, StringComparison.Ordinal);
         }
 
         [Fact]

@@ -90,9 +90,9 @@ bounds what it can take.
    input among them) to the host's other workers, dropped every capability, and installed a
    seccomp filter on all its threads that refuses sockets, new programs and processes, SysV
    objects, every call that would signal, trace, read or re-limit another process or have the
-   kernel signal one on the worker's word, input pushed into a terminal, the calls that change a
-   file, watching a file or reading its extended attributes by name, and the kernel interfaces
-   exploits favour (the host refuses a Linux worker without the filter).
+   kernel signal one on the worker's word, input pushed into a terminal, the calls that change or
+   lock a file, POSIX message queues, watching a file or reading its extended attributes by name,
+   and the kernel interfaces exploits favour (the host refuses a Linux worker without the filter).
    Only then does the host cap it from outside: on Windows, the job's
    committed-memory limit (the baseline plus `PdfWorkerMemoryLimit`), user-mode CPU time, one
    process, no crash dialog, no desktop or clipboard, and death with the host's handle; on Linux,
@@ -192,24 +192,30 @@ launcher, from what it runs on itself:
 - on Linux, the system's library directory (the C library's), any other library the host has
   mapped, by name, the dynamic loader's cache, and the font directories PDFium looks in
   (`/usr/share/fonts`, `/usr/local/share/fonts`, `/usr/share/X11/fonts/Type1` and `TTF`); and the
-  worker's own `/proc/<pid>`, which the runtime reads;
+  worker's own `/proc/<pid>`, which the runtime reads, and whose `net/` and `mountinfo` entries
+  describe the network and mount namespaces it shares with its host;
 - on Windows, the system's files, which grant every AppContainer read.
 
 Nothing else: not the host's configuration files or temporary directory, not the account's home,
 not another process's `/proc` entries, not `/proc` itself, not a terminal. A Windows host adds an
 access-control entry granting the workers' capability (`tellmaPdfWorker`) read and execute to each
 of its own files in the allowance, once, and leaves it in place; only processes that hold that
-capability, its workers, gain anything by it. The host must therefore be allowed to change those
-files' permissions, as the account that built or deployed them is.
+capability, its workers, gain anything by it. A file that already lets every AppContainer read it,
+as one under Program Files does, is left alone. The host must therefore be allowed to change the
+other files' permissions, as the account that built or deployed them is; a Development host whose
+account may not (a build made by another account, say) runs its workers unconfined, and the
+`core.imaging` check logs `BlobPdfWorkerUnconfined` naming the file.
 
 A worker reads the runtime's `host` and `shared` directories, the system's library directory and
 the font directories in full, so a host installed beneath one of them (a package under
 `/usr/lib/<app>`, say, where the system's libraries are in `/usr/lib`) would hand its configuration
 to its workers. Such a host starts no confined worker, and the `core.imaging` check fails at
-startup with the fix: install the host in a directory of its own. A Windows worker also reads whatever
-grants every AppContainer read, which Program Files does throughout; a Development host installed
-under Program Files hands its configuration to its workers, and is not refused. A build's output
-and a user's profile grant AppContainers nothing.
+startup with the fix: install the host in a directory of its own. A Windows worker also reads
+whatever grants every AppContainer read, which Program Files does throughout, so a Development host
+installed under Program Files hands its configuration to its workers. It is not refused, since
+before its workers were confined they read all the account could; the `core.imaging` check logs
+`BlobPdfWorkerReadsHostDirectory` at Warning instead, naming the directory. A build's output and a
+user's profile grant AppContainers nothing.
 
 ## Where PDF thumbnails render
 
@@ -220,7 +226,7 @@ thumbnails only where that hold is good enough for production, and for developer
 |---|---|
 | Linux with glibc, on a kernel that offers Landlock | Rendered, in every environment. This is the production host. |
 | Linux with glibc, without Landlock | Rendered only in the Development environment, with unconfined workers; the check logs `BlobPdfWorkerUnconfined` at Warning. Landlock is in Linux 5.13 and later, enabled where it is listed in `/sys/kernel/security/lsm`; a container's system-call filter must allow its three calls, as Docker's default profile did when measured. |
-| Windows | Rendered only in the Development environment (`IHostEnvironment.IsDevelopment()`). The worker is confined in an AppContainer, made through `NtCreateLowBoxToken`, an undocumented system call, and not yet verified under the Windows hosting environments. On a .NET installation outside Program Files that the host's account may not grant the workers' capability read on, workers run unconfined and the check logs `BlobPdfWorkerUnconfined` at Warning, naming the installation. |
+| Windows | Rendered only in the Development environment (`IHostEnvironment.IsDevelopment()`). The worker is confined in an AppContainer, made through `NtCreateLowBoxToken`, an undocumented system call, and not yet verified under the Windows hosting environments. Where the host's account may not grant the workers' capability read on the .NET installation or on one of its own files, workers run unconfined and the check logs `BlobPdfWorkerUnconfined` at Warning, naming the installation or the file. |
 | macOS | Rendered only in the Development environment. A macOS worker runs under no operating-system limit, and the check logs `BlobPdfWorkerUnconfined`. |
 | Linux with another C library (musl, as on Alpine) | Never. The .NET runtime there signals its threads with `tkill`, which the worker's filter refuses. |
 
@@ -278,6 +284,13 @@ worker. On Linux, the production host:
   or uploads. The host's command line it can read in its own `/proc` entries only as its own; the
   host's it cannot. A terminal the host was started from is closed to it: it cannot open the
   device.
+- **What its own `/proc` entries tell of its host.** Some of the worker's own entries describe
+  the namespaces it shares with its host, not the worker: `net/tcp`, `net/tcp6`, `net/udp`,
+  `net/unix` and `net/arp` list the address and port of every connection the host holds (its
+  database, its cache, its identity provider), its Unix sockets and its network neighbours, and
+  `mountinfo` the mount table, which on a file share names the storage account. None is a
+  credential. Landlock cannot refuse them beneath a directory it grants, and closing them takes a
+  network and mount namespace of the worker's own, the same work as closing `stat`.
 - **What the kernel's Landlock does not govern.** Landlock decides on opening, listing, executing
   and changing files, not on looking them up: a worker can still learn whether a path exists, and
   a file's size, owner and times (`stat`, `access`), and a link's target (`readlink`). It cannot

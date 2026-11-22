@@ -103,9 +103,10 @@ namespace Tellma.Core.Imaging
         /// <summary>
         ///     Written once, at startup, by a Development host whose PDF workers run without
         ///     filesystem confinement, since its operating system cannot confine them: a Linux kernel
-        ///     without Landlock, or macOS. A worker taken over by a hostile document could read
-        ///     whatever the host's account can. PDF thumbnails still render; outside Development such
-        ///     a Linux host renders none.
+        ///     without Landlock, macOS, or a Windows host whose account may not grant its workers'
+        ///     AppContainer read on the .NET installation or on its own files. A worker taken over by
+        ///     a hostile document could read whatever the host's account can. PDF thumbnails still
+        ///     render; outside Development such a host renders none.
         /// </summary>
         /// <param name="logger">The logger.</param>
         /// <param name="detail">Why the workers are not confined.</param>
@@ -114,6 +115,20 @@ namespace Tellma.Core.Imaging
             Level = LogLevel.Warning,
             Message = "PDF workers on this host run without filesystem confinement ({Detail}): a worker taken over by a hostile document could read whatever the host's account can read. Only a Development host renders PDF thumbnails so.")]
         public static partial void PdfWorkerUnconfined(ILogger logger, string detail);
+
+        /// <summary>
+        ///     Written once, at startup, by a Windows host whose own directory lets every AppContainer
+        ///     read it and everything beneath it, as Program Files does: its confined PDF workers
+        ///     read its configuration and whatever else lies beside its assemblies. A worker taken
+        ///     over by a hostile document could read them. PDF thumbnails still render.
+        /// </summary>
+        /// <param name="logger">The logger.</param>
+        /// <param name="directory">The host's directory.</param>
+        [LoggerMessage(
+            EventName = "BlobPdfWorkerReadsHostDirectory",
+            Level = LogLevel.Warning,
+            Message = "The host's directory {Directory} lets every AppContainer read it, as Program Files does, so a PDF worker taken over by a hostile document could read the host's configuration and anything else beside its assemblies. Run the host from a directory of its own, outside Program Files.")]
+        public static partial void PdfWorkerReadsHostDirectory(ILogger logger, string directory);
 
         /// <summary>
         ///     Written once, at startup, by a Linux host whose PDF workers run unconfined and whose

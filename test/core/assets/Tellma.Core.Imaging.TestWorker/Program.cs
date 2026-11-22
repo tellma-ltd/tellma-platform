@@ -223,6 +223,7 @@ namespace Tellma.Core.Imaging.TestWorker
                     "proc-reads" => $"proc-reads: {ProcessReads(argument)}",
                     "files" => $"files: {Files(argument, second)}",
                     "files-before-filter" => $"files-before-filter: {beforeFilter ?? "not run"}",
+                    "file-streams" => $"file-streams: {FileStreams()}",
                     "connect" => $"connect: {Connect(argument)}",
                     "descriptors" => $"descriptors: {Descriptors(argument)}",
                     "host-debugger-pipes" => $"host-debugger-pipes: {HostDebuggerPipes(host, argument)}",
@@ -646,9 +647,10 @@ namespace Tellma.Core.Imaging.TestWorker
         ///     by an open for writing or through a shared mapping, truncating it, renaming it, linking
         ///     to it and deleting it; making files, directories, links and pipes beside it, removing a
         ///     directory there, and changing the file's permissions and times; on Linux also watching
-        ///     the file, reading its extended attributes by name, and asking after or changing a
-        ///     readable file's attributes through a descriptor opened for reading. Whatever an
-        ///     attempt opens is closed again at once, and nothing is written through it.
+        ///     the file, reading its extended attributes by name, making and removing a POSIX message
+        ///     queue, locking a readable file, and asking after or changing a readable file's
+        ///     attributes through a descriptor opened for reading. Whatever an attempt opens or makes
+        ///     is closed or removed again at once, and nothing is written through it.
         /// </summary>
         /// <param name="directory">A directory of the host's, holding <c>victim.txt</c> and an empty directory <c>empty</c>.</param>
         /// <param name="beside">A file beside the worker's own assembly.</param>
@@ -748,6 +750,12 @@ namespace Tellma.Core.Imaging.TestWorker
                 Called("get-xattr", Native.GetAttribute(victim, "user.tellma", 0, 0)),
                 Called("list-xattr", Native.ListAttributes(victim, 0, 0)),
 
+                // Section: a POSIX message queue made, which would outlive the worker, and one
+                // removed; and a file the worker may read, its own assembly, locked exclusively.
+                Called("mq-create", QueueMade($"tellma-worker-{worker}")),
+                Called("mq-unlink", Native.NamedCall(QueueCall(unlink: true), $"tellma-worker-{worker}-absent", 0, 0, 0)),
+                Called("lock", Locked(own, exclusive: true)),
+
                 // Section: a file the worker may read, its own assembly, mapped shared for writing,
                 // directly or by changing a read-only shared mapping's protection, and its
                 // attributes asked after or changed through a descriptor opened for reading.
@@ -803,6 +811,96 @@ namespace Tellma.Core.Imaging.TestWorker
             {
                 _ = Native.Close(descriptor);
             }
+        }
+
+        /// <summary>The number of <c>mq_open</c>, or of <c>mq_unlink</c>, on this architecture.</summary>
+        /// <param name="unlink">Whether the call is <c>mq_unlink</c>.</param>
+        /// <returns>The system call's number.</returns>
+        private static long QueueCall(bool unlink)
+        {
+            // arch/x86/entry/syscalls/syscall_64.tbl and include/uapi/asm-generic/unistd.h.
+            long open = RuntimeInformation.ProcessArchitecture == Architecture.X64 ? 240 : 180;
+            return unlink ? open + 1 : open;
+        }
+
+        /// <summary>
+        ///     Makes a POSIX message queue of its own name, and removes it again whatever the
+        ///     answer, since a kernel may make the queue before it refuses to open it; keeps the
+        ///     making's result and <c>errno</c>.
+        /// </summary>
+        /// <param name="name">The queue's name, without the C library's leading slash.</param>
+        /// <returns>The queue's descriptor, closed again; -1 with <c>errno</c> set on failure.</returns>
+        [UnsupportedOSPlatform("windows")]
+        private static int QueueMade(string name)
+        {
+            const int readWrite = 2, create = 0x40, exclusive = 0x80, closeOnExec = 0x80000;
+            const uint ownerOnly = 0x180;
+            int queue = (int)Native.NamedCall(QueueCall(unlink: false), name, readWrite | create | exclusive | closeOnExec, ownerOnly, 0);
+            int error = Marshal.GetLastPInvokeError();
+            if (queue >= 0)
+            {
+                _ = Native.Close(queue);
+            }
+
+            _ = Native.NamedCall(QueueCall(unlink: true), name, 0, 0, 0);
+            Marshal.SetLastPInvokeError(error);
+            return queue;
+        }
+
+        /// <summary>
+        ///     Locks a file with <c>flock</c>, without waiting, through a descriptor opened only for
+        ///     reading, and closes it again, which releases the lock; keeps the lock's result and
+        ///     <c>errno</c>.
+        /// </summary>
+        /// <param name="path">A file the worker may read.</param>
+        /// <param name="exclusive">Whether the lock is exclusive rather than shared.</param>
+        /// <returns>0; -1 with <c>errno</c> set on failure.</returns>
+        [UnsupportedOSPlatform("windows")]
+        private static int Locked(string path, bool exclusive)
+        {
+            const int readOnly = 0, closeOnExec = 0x80000, shared = 1, sole = 2, noWait = 4;
+            int descriptor = Native.Open(path, readOnly | closeOnExec);
+            if (descriptor < 0)
+            {
+                return descriptor;
+            }
+
+            int locked = Native.Lock(descriptor, (exclusive ? sole : shared) | noWait);
+            int error = Marshal.GetLastPInvokeError();
+            _ = Native.Close(descriptor);
+            Marshal.SetLastPInvokeError(error);
+            return locked;
+        }
+
+        /// <summary>
+        ///     On Linux, opens the worker's own assembly as .NET opens a file, which takes a shared
+        ///     or exclusive <c>flock</c> beside the open, and reads from it, beside locking it
+        ///     directly: the filter refuses the lock, and a .NET open must still succeed.
+        /// </summary>
+        /// <returns><c>lock-shared=...,lock-exclusive=...,stream-shared=...,stream-exclusive=...,read-all=...</c>; <c>not linux</c> elsewhere.</returns>
+        private static string FileStreams()
+        {
+            if (!OperatingSystem.IsLinux())
+            {
+                return "not linux";
+            }
+
+            string own = typeof(Program).Assembly.Location;
+            return string.Join(
+                ',',
+                Called("lock-shared", Locked(own, exclusive: false)),
+                Called("lock-exclusive", Locked(own, exclusive: true)),
+                Attempt("stream-shared", () =>
+                {
+                    using var stream = new FileStream(own, FileMode.Open, FileAccess.Read, FileShare.Read);
+                    _ = stream.ReadByte();
+                }),
+                Attempt("stream-exclusive", () =>
+                {
+                    using var stream = new FileStream(own, FileMode.Open, FileAccess.Read, FileShare.None);
+                    _ = stream.ReadByte();
+                }),
+                Attempt("read-all", () => _ = File.ReadAllBytes(own)));
         }
 
         /// <summary>

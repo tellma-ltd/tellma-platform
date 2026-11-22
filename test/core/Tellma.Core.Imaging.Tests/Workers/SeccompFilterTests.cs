@@ -37,17 +37,18 @@ namespace Tellma.Core.Imaging.Tests.Workers
         // that a number changed in either shows. x64: socket, socketpair; execve, execveat, fork,
         // vfork; ptrace, process_vm_readv, process_vm_writev, kcmp, pidfd_getfd; pidfd_open,
         // pidfd_send_signal, tkill; ioprio_set, migrate_pages, move_pages; shmget, shmat, shmctl;
-        // semget, semop, semctl, semtimedop; msgget, msgsnd, msgrcv, msgctl; io_uring_setup,
+        // semget, semop, semctl, semtimedop; msgget, msgsnd, msgrcv, msgctl; mq_open, mq_unlink,
+        // mq_timedsend, mq_timedreceive; mq_notify, mq_getsetattr; io_uring_setup,
         // io_uring_enter, io_uring_register, userfaultfd, perf_event_open; bpf, unshare, setns;
         // add_key, request_key, keyctl. Then the calls that change a file by name or through a
         // descriptor opened for reading: truncate, creat, open_by_handle_at; rename, renameat,
         // renameat2, link, linkat; symlink, symlinkat, unlink, unlinkat; mkdir, mkdirat, rmdir,
         // mknod, mknodat; chmod, fchmod, fchmodat, fchmodat2; chown, fchown, lchown, fchownat;
         // utime, utimes, futimesat, utimensat; setxattr, lsetxattr, fsetxattr, setxattrat;
-        // removexattr, lremovexattr, fremovexattr, removexattrat; file_setattr. Then the calls
-        // that watch a file or read its extended attributes by name: inotify_init,
-        // inotify_init1, inotify_add_watch, fanotify_init, fanotify_mark; getxattr, lgetxattr,
-        // listxattr, llistxattr; getxattrat, listxattrat.
+        // removexattr, lremovexattr, fremovexattr, removexattrat; file_setattr; and flock, which
+        // locks a file it may only read. Then the calls that watch a file or read its extended
+        // attributes by name: inotify_init, inotify_init1, inotify_add_watch, fanotify_init,
+        // fanotify_mark; getxattr, lgetxattr, listxattr, llistxattr; getxattrat, listxattrat.
         private static readonly uint[] RefusedX64 =
         [
             41, 53,
@@ -58,6 +59,8 @@ namespace Tellma.Core.Imaging.Tests.Workers
             29, 30, 31,
             64, 65, 66, 220,
             68, 69, 70, 71,
+            240, 241, 242, 243,
+            244, 245,
             425, 426, 427, 323, 298,
             321, 272, 308,
             248, 249, 250,
@@ -71,6 +74,7 @@ namespace Tellma.Core.Imaging.Tests.Workers
             188, 189, 190, 463,
             197, 198, 199, 466,
             469,
+            73,
             253, 294, 254, 300, 301,
             191, 192, 194, 195,
             464, 465,
@@ -88,6 +92,8 @@ namespace Tellma.Core.Imaging.Tests.Workers
             194, 196, 195,
             190, 193, 191, 192,
             186, 189, 188, 187,
+            180, 181, 182, 183,
+            184, 185,
             425, 426, 427, 282, 241,
             280, 97, 268,
             217, 218, 219,
@@ -101,6 +107,7 @@ namespace Tellma.Core.Imaging.Tests.Workers
             5, 6, 7, 463,
             14, 15, 16, 466,
             469,
+            32,
             26, 27, 262, 263,
             8, 9, 11, 12,
             464, 465,

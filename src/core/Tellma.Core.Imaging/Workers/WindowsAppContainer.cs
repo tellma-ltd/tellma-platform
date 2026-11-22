@@ -41,7 +41,10 @@ namespace Tellma.Core.Imaging.Workers
     ///         The grants are access-control entries for the capability on each file, added once and
     ///         left in place: they let only processes holding this capability, the host's workers,
     ///         read the file, and a file a later build writes anew is granted again on the next
-    ///         start.
+    ///         start. A file that already lets every AppContainer read it, as one under Program
+    ///         Files does, is left alone. Where the host's account may not change a file's access
+    ///         list, its workers cannot be confined, which a Development host reports and runs them
+    ///         unconfined.
     ///     </para>
     /// </remarks>
     [SupportedOSPlatform("windows")]
@@ -73,21 +76,74 @@ namespace Tellma.Core.Imaging.Workers
         ///     beneath, where this account may change its permissions.
         /// </remarks>
         /// <param name="muxer">The <c>dotnet</c> executable workers are started with.</param>
+        /// <param name="grant">Grants read and execute on a file or a directory, as <see cref="GrantReadAndExecute" /> does.</param>
         /// <returns>Null when a worker's AppContainer can read the installation; otherwise why it cannot.</returns>
-        public static string? GrantRuntime(string muxer)
+        public static string? GrantRuntime(string muxer, Action<string, bool> grant)
         {
             ArgumentNullException.ThrowIfNull(muxer);
+            ArgumentNullException.ThrowIfNull(grant);
             string root = Path.GetDirectoryName(Path.GetFullPath(muxer))!;
             try
             {
-                GrantReadAndExecute(muxer, directory: false);
-                GrantReadAndExecute(Path.Combine(root, "host"), directory: true);
-                GrantReadAndExecute(Path.Combine(root, "shared"), directory: true);
+                grant(muxer, false);
+                grant(Path.Combine(root, "host"), true);
+                grant(Path.Combine(root, "shared"), true);
                 return null;
             }
-            catch (Exception exception) when (exception is UnauthorizedAccessException or IOException or PrivilegeNotHeldException)
+            catch (Exception exception) when (IsGrantFailure(exception))
             {
                 return $"its AppContainer cannot read the .NET installation at {root}, and this account cannot grant it read there ({exception.Message})";
+            }
+        }
+
+        /// <summary>
+        ///     Makes each of the host's own files of a worker's allowance readable to its
+        ///     AppContainer, where it is not already.
+        /// </summary>
+        /// <param name="files">The files; one that is missing is skipped, for starting a worker to report.</param>
+        /// <param name="grant">Grants read and execute on a file, as <see cref="GrantReadAndExecute" /> does.</param>
+        /// <returns>Null when a worker's AppContainer can read every one; otherwise why it cannot read the first it cannot.</returns>
+        public static string? GrantRead(IReadOnlyList<string> files, Action<string, bool> grant)
+        {
+            ArgumentNullException.ThrowIfNull(files);
+            ArgumentNullException.ThrowIfNull(grant);
+            foreach (string file in files)
+            {
+                if (!File.Exists(file))
+                {
+                    continue;
+                }
+
+                try
+                {
+                    grant(file, false);
+                }
+                catch (Exception exception) when (IsGrantFailure(exception))
+                {
+                    return $"its AppContainer cannot read the host's file {file}, and this account cannot grant it read there ({exception.Message})";
+                }
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        ///     Whether every AppContainer, or the workers' capability, may read a directory and
+        ///     everything beneath it, as Program Files lets every AppContainer: a host installed in
+        ///     one hands its configuration to its workers.
+        /// </summary>
+        /// <param name="directory">The directory.</param>
+        /// <returns>True when they may; false when they may not, or its access list cannot be read.</returns>
+        public static bool ReadsInFull(string directory)
+        {
+            ArgumentNullException.ThrowIfNull(directory);
+            try
+            {
+                return Grants(new DirectoryInfo(directory).GetAccessControl(AccessControlSections.Access), directory: true);
+            }
+            catch (Exception exception) when (IsGrantFailure(exception))
+            {
+                return false;
             }
         }
 
@@ -173,45 +229,43 @@ namespace Tellma.Core.Imaging.Workers
                 || (mask & (genericRead | genericExecute)) == (genericRead | genericExecute);
         }
 
-        /// <summary>Grants the workers' capability read and execute on each file, unless the file already grants it.</summary>
+        /// <summary>
+        ///     Grants the workers' capability read and execute on each file, unless the file already
+        ///     lets every AppContainer or the capability read it, as a worker starts.
+        /// </summary>
         /// <param name="files">The files.</param>
         /// <exception cref="PdfWorkerException">A file's access control could not be read or changed.</exception>
         public static void GrantRead(IReadOnlyList<string> files)
         {
+            // Section: each file once per process: one granted here, or found granting, is
+            // recorded, and not asked after again.
             ArgumentNullException.ThrowIfNull(files);
-            SecurityIdentifier capability = CapabilitySid;
-            foreach (string file in files)
+            string[] pending = [.. files.Where(static file => !Granted.ContainsKey(file))];
+            if (GrantRead(pending, GrantOnce) is string failure)
             {
-                if (Granted.ContainsKey(file) || !File.Exists(file))
-                {
-                    continue;
-                }
-
-                try
-                {
-                    // Section: an explicit entry that already allows read and execute is enough;
-                    // otherwise one is added, and only the access list is written back.
-                    var info = new FileInfo(file);
-                    FileSecurity security = info.GetAccessControl(AccessControlSections.Access);
-                    bool granted = security.GetAccessRules(includeExplicit: true, includeInherited: false, typeof(SecurityIdentifier))
-                        .OfType<FileSystemAccessRule>()
-                        .Any(rule => rule.AccessControlType == AccessControlType.Allow
-                            && capability.Equals(rule.IdentityReference)
-                            && (rule.FileSystemRights & FileSystemRights.ReadAndExecute) == FileSystemRights.ReadAndExecute);
-                    if (!granted)
-                    {
-                        security.AddAccessRule(new FileSystemAccessRule(capability, FileSystemRights.ReadAndExecute, AccessControlType.Allow));
-                        info.SetAccessControl(security);
-                    }
-
-                    _ = Granted.TryAdd(file, 0);
-                }
-                catch (Exception exception) when (exception is UnauthorizedAccessException or IOException or PrivilegeNotHeldException)
-                {
-                    throw new PdfWorkerException(
-                        PdfWorkerFailure.Start, $"A worker's AppContainer could not be granted read on {file}: {exception.Message}", exception);
-                }
+                throw new PdfWorkerException(PdfWorkerFailure.Start, $"A worker cannot be confined: {failure}.");
             }
+        }
+
+        /// <summary>Grants read and execute on a file as <see cref="GrantReadAndExecute" /> does, and records it as granted.</summary>
+        /// <param name="file">The file.</param>
+        /// <param name="directory">False: a file.</param>
+        private static void GrantOnce(string file, bool directory)
+        {
+            GrantReadAndExecute(file, directory);
+            _ = Granted.TryAdd(file, 0);
+        }
+
+        /// <summary>
+        ///     Whether an exception is one that reading or changing an access list throws: no access,
+        ///     a path that cannot be reached, a missing privilege, a volume without access lists, or
+        ///     the capability that could not be derived.
+        /// </summary>
+        /// <param name="exception">The exception.</param>
+        /// <returns>True when it is.</returns>
+        private static bool IsGrantFailure(Exception exception)
+        {
+            return exception is UnauthorizedAccessException or IOException or InvalidOperationException or NotSupportedException or PdfWorkerException;
         }
 
         /// <summary>

@@ -42,7 +42,11 @@ namespace Tellma.Core.Imaging.PdfWorker
     ///     <para>
     ///         <c>/proc/&lt;pid&gt;</c> is granted through a descriptor that stays open for the
     ///         process's life: the kernel ties a rule to the inode it names, and the inode of a
-    ///         process's <c>/proc</c> directory lasts only while something holds it.
+    ///         process's <c>/proc</c> directory lasts only while something holds it. A rule grants
+    ///         everything beneath its directory, so the entries there that describe the network and
+    ///         mount namespaces the worker shares with its host (<c>net/tcp</c>, <c>net/unix</c>,
+    ///         <c>mountinfo</c>) stay readable with the rest, as a path's existence, size, owner and
+    ///         times do through <c>stat</c>.
     ///     </para>
     ///     <para>
     ///         On Windows the host starts the worker in an AppContainer of its own, which reads

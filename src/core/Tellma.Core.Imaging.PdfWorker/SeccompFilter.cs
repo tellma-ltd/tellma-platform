@@ -17,23 +17,25 @@ namespace Tellma.Core.Imaging.PdfWorker
     ///         It refuses, with <c>EPERM</c>, what rendering a PDF never needs and a compromised
     ///         renderer would want: creating sockets (so no network, the cloud metadata endpoint
     ///         included); running a program or starting a process (threads are still allowed); SysV
-    ///         shared memory, semaphores and message queues, whose objects outlive the process and
-    ///         escape its memory limits; reading, writing or signalling another process, or changing
-    ///         its resource limits, scheduling, priority or memory placement (signals,
-    ///         <c>prlimit64</c> and the scheduling calls are allowed on the worker's own process only,
-    ///         and pidfds, <c>tkill</c>, I/O priorities and page migration not at all); having the
-    ///         kernel signal someone on the worker's word, by naming a descriptor's owner or signal
-    ///         or by asking for signal-driven I/O with <c>fcntl</c> or <c>ioctl</c>, since the
-    ///         kernel asks only that the owner be of the caller's account, and a terminal's owner
-    ///         is whoever runs in its foreground; pushing input into a terminal with <c>ioctl</c>;
-    ///         clearing the parent-death signal that ends the worker with its host; and the kernel
-    ///         interfaces exploits favour (io_uring, userfaultfd, perf events, BPF, namespaces, the
-    ///         key store).
+    ///         shared memory, semaphores and message queues, and POSIX message queues, whose
+    ///         objects outlive the process and escape its memory limits; reading, writing or
+    ///         signalling another process, or changing its resource limits, scheduling, priority or
+    ///         memory placement (signals, <c>prlimit64</c> and the scheduling calls are allowed on
+    ///         the worker's own process only, and pidfds, <c>tkill</c>, I/O priorities and page
+    ///         migration not at all); having the kernel signal someone on the worker's word, by
+    ///         naming a descriptor's owner or signal or by asking for signal-driven I/O with
+    ///         <c>fcntl</c> or <c>ioctl</c>, since the kernel asks only that the owner be of the
+    ///         caller's account, and a terminal's owner is whoever runs in its foreground; pushing
+    ///         input into a terminal with <c>ioctl</c>; clearing the parent-death signal that ends
+    ///         the worker with its host; and the kernel interfaces exploits favour (io_uring,
+    ///         userfaultfd, perf events, BPF, namespaces, the key store).
     ///     </para>
     ///     <para>
     ///         It also refuses the calls that change a file: opening one for writing, creating or
     ///         truncating it, renaming, linking or removing it, making a directory, device or
-    ///         symbolic link, and changing its mode, owner, times or extended attributes; and every
+    ///         symbolic link, and changing its mode, owner, times or extended attributes; locking
+    ///         one with <c>flock</c>, which takes no write access and would hold a file the worker
+    ///         may read against every .NET process of the account that opens it; and every
     ///         <c>ioctl</c> of the families that change a file's attributes or state through a
     ///         descriptor opened only for reading (the VFS's and ext4's, XFS's, Btrfs's with the
     ///         VFS's clone and dedupe calls, and f2fs's), whatever the request. That holds whatever
@@ -45,7 +47,10 @@ namespace Tellma.Core.Imaging.PdfWorker
     ///         It refuses what would watch or describe files Landlock keeps the worker from reading:
     ///         inotify and fanotify, and the path forms of reading and listing extended attributes.
     ///         What a path lookup tells (that a path exists, and its size, owner and times, through
-    ///         <c>stat</c>, <c>access</c> or <c>readlink</c>) stays open.
+    ///         <c>stat</c>, <c>access</c> or <c>readlink</c>) stays open, as do the entries of the
+    ///         worker's own <c>/proc/&lt;pid&gt;</c> that describe the network and mount namespaces
+    ///         it shares with its host (<c>net/tcp</c>, <c>net/unix</c>, <c>mountinfo</c>): only
+    ///         namespaces of the worker's own would close them.
     ///     </para>
     ///     <para>
     ///         <c>clone3</c> and <c>openat2</c> answer <c>ENOSYS</c>, because their flags sit behind
@@ -165,6 +170,8 @@ namespace Tellma.Core.Imaging.PdfWorker
                     29, 30, 31,                 // shmget, shmat, shmctl
                     64, 65, 66, 220,            // semget, semop, semctl, semtimedop
                     68, 69, 70, 71,             // msgget, msgsnd, msgrcv, msgctl
+                    240, 241, 242, 243,         // mq_open, mq_unlink, mq_timedsend, mq_timedreceive
+                    244, 245,                   // mq_notify, mq_getsetattr
                     425, 426, 427, 323, 298,    // io_uring_setup, io_uring_enter, io_uring_register, userfaultfd, perf_event_open
                     321, 272, 308,              // bpf, unshare, setns
                     248, 249, 250,              // add_key, request_key, keyctl
@@ -178,6 +185,7 @@ namespace Tellma.Core.Imaging.PdfWorker
                     188, 189, 190, 463,         // setxattr, lsetxattr, fsetxattr, setxattrat
                     197, 198, 199, 466,         // removexattr, lremovexattr, fremovexattr, removexattrat
                     469,                        // file_setattr
+                    73,                         // flock
                     253, 294, 254, 300, 301,    // inotify_init, inotify_init1, inotify_add_watch, fanotify_init, fanotify_mark
                     191, 192, 194, 195,         // getxattr, lgetxattr, listxattr, llistxattr
                     464, 465,                   // getxattrat, listxattrat
@@ -191,6 +199,8 @@ namespace Tellma.Core.Imaging.PdfWorker
                     194, 196, 195,              // shmget, shmat, shmctl
                     190, 193, 191, 192,         // semget, semop, semctl, semtimedop
                     186, 189, 188, 187,         // msgget, msgsnd, msgrcv, msgctl
+                    180, 181, 182, 183,         // mq_open, mq_unlink, mq_timedsend, mq_timedreceive
+                    184, 185,                   // mq_notify, mq_getsetattr
                     425, 426, 427, 282, 241,    // io_uring_setup, io_uring_enter, io_uring_register, userfaultfd, perf_event_open
                     280, 97, 268,               // bpf, unshare, setns
                     217, 218, 219,              // add_key, request_key, keyctl
@@ -204,6 +214,7 @@ namespace Tellma.Core.Imaging.PdfWorker
                     5, 6, 7, 463,               // setxattr, lsetxattr, fsetxattr, setxattrat
                     14, 15, 16, 466,            // removexattr, lremovexattr, fremovexattr, removexattrat
                     469,                        // file_setattr
+                    32,                         // flock
                     26, 27, 262, 263,           // inotify_init1, inotify_add_watch, fanotify_init, fanotify_mark
                     8, 9, 11, 12,               // getxattr, lgetxattr, listxattr, llistxattr
                     464, 465,                   // getxattrat, listxattrat

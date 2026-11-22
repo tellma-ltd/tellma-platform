@@ -208,6 +208,30 @@ namespace Tellma.Core.Imaging.TestWorker
         [UnsupportedOSPlatform("windows")]
         public static partial long SystemCall(long number, long argument1, long argument2, long argument3);
 
+        /// <summary>
+        ///     <c>long syscall(long, ...)</c> with a name and three numbers, for the message-queue
+        ///     calls, which the C library wraps outside libc before glibc 2.34.
+        /// </summary>
+        /// <param name="number">The system call.</param>
+        /// <param name="name">Its first argument, a name without the C library's leading slash.</param>
+        /// <param name="argument2">Its second argument.</param>
+        /// <param name="argument3">Its third argument.</param>
+        /// <param name="argument4">Its fourth argument.</param>
+        /// <returns>The call's result; -1 with <c>errno</c> set on failure.</returns>
+        [LibraryImport("libc", EntryPoint = "syscall", SetLastError = true, StringMarshalling = StringMarshalling.Utf8)]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.SafeDirectories)]
+        [UnsupportedOSPlatform("windows")]
+        public static partial long NamedCall(long number, string name, long argument2, long argument3, long argument4);
+
+        /// <summary><c>int flock(int, int)</c>.</summary>
+        /// <param name="descriptor">The file.</param>
+        /// <param name="operation"><c>LOCK_SH</c> or <c>LOCK_EX</c>, with <c>LOCK_NB</c>.</param>
+        /// <returns>0; -1 with <c>errno</c> set on failure.</returns>
+        [LibraryImport("libc", EntryPoint = "flock", SetLastError = true)]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.SafeDirectories)]
+        [UnsupportedOSPlatform("windows")]
+        public static partial int Lock(int descriptor, int operation);
+
         /// <summary><c>void* mmap(void*, size_t, int, int, int, off_t)</c>.</summary>
         /// <param name="address">Null.</param>
         /// <param name="length">The length.</param>

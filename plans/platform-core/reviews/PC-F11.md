@@ -546,3 +546,304 @@ rulings. Runs, on the final tree:
     grant AppContainers nothing.
 - R1-7: no code change, as ruled. The orchestrator records the App Service Linux Landlock check as
   a merge-time task for Ahmad.
+
+## Review 2
+
+Scope: commits c4a8cac1 and 9446fd17 together (the tree at 25cd8cb3), against the LEDGER PC-F11
+row, D-030 (addenda 3-5), D-040 (2), D-043 (2)-(4), D-195 and D-204. PC-F11 is a fix item, so
+CHECKPOINTS.md has no entry for it; the LEDGER row and those decisions are the scope.
+
+Runs by the reviewer, all on 25cd8cb3:
+
+- Windows: `dotnet build` of `Tellma.Core.Imaging.Tests` (Build succeeded, 0 warnings), then its
+  `Workers` and `Composition` namespaces: 295 total, 0 failed, 21 skipped (Linux-only).
+- Linux: `mcr.microsoft.com/dotnet/sdk:10.0` on Docker Desktop's WSL2 kernel 6.18 (Landlock ABI 7),
+  from `git archive` in a volume of its own, `TELLMA_REQUIRE_LANDLOCK=1`, the same namespaces: 295
+  total, 0 failed, 2 skipped (Windows-only). The container runs as root.
+- Linux, the same image, three scratch programs:
+  1. A thread restricted under a ruleset that handles every right and grants none, then `mq_open`,
+     and `fgetxattr`, `flistxattr`, `fcntl(F_NOTIFY)` and `flock` on an `O_PATH` descriptor (R2-1).
+  2. The same with the worker's one rule on `/proc/self`, then opens under `/proc/self/net` and of
+     `mountinfo`, and `mq_unlink` of a queue made before the restriction (R2-1, R2-3).
+  3. A console application built under `/usr/lib/x86_64-linux-gnu` and started through `/lib/...`
+     and through a symbolic link to its directory, printing `APP_CONTEXT_DEPS_FILES` (R1-6's guard).
+- CI: both pc/PC-F11 pushes show as skipped (CI runs at integration), so there is no run to cite.
+
+Checked, with no finding:
+
+- **The `ioctl` type filter.** The mask is `0xFF00` on the low word of argument 1, which is where
+  the kernel reads the request's type. I recomputed every jump of the block: a refused request
+  skips `requests - index + types` to the refusal, a refused type `types - 1 - index`, the last
+  type steps over the refusal to the allowance, and any other call skips `requests + types + 4`.
+  All land where they should. `FIONREAD`, `FIOCLEX`, `FIONBIO` and the terminal calls are type
+  `'T'` and stay allowed. Types `'f'`, `'X'`, `0x94` and `0xF5` cover ext4, XFS, Btrfs, f2fs and
+  overlayfs (which passes the `'f'` and `'X'` attribute calls down). The residual for other
+  filesystems is stated in both READMEs and `ARCHITECTURE.md` as it is.
+- **The refused numbers.** I checked every number added in fix1 against both tables, the x64 and
+  the arm64: inotify, fanotify, the path forms of the xattr reads, and the earlier write-path
+  calls. All are right.
+- **The xattr descriptor forms that stay open.** `fgetxattr` and `flistxattr` answer `EBADF` on an
+  `O_PATH` descriptor (measured), and a readable descriptor needs Landlock's leave. So they give
+  nothing the path forms were refused for. `fcntl(F_NOTIFY)` and `flock` on an `O_PATH`
+  descriptor are `EBADF` too, so a directory the worker cannot list cannot be watched that way.
+- **`close_range` as call 436.** The arguments match the kernel's (`unsigned`, `unsigned`,
+  `unsigned`), and `CLOSE_RANGE_CLOEXEC` (5.11) predates Landlock (5.13).
+- **The restart.** Stage 1 reads nothing of the upload. The command line comes from
+  `/proc/self/cmdline` and is checked against the worker's own arguments. No allowance path or
+  `--close-fd` target can be taken for an argument name: paths must start with `/`, and names
+  match whole. Stage 1 drops the `--close-fd` triples because every descriptor from 3 up is marked
+  close-on-exec, which is stronger.
+- **The Compose guard.** The comparison is by path segment, so `/usr/lib64/app` is not beneath
+  `/usr/lib`, and the test pins that. The guard compares text, not inodes, but the muxer resolves
+  symbolic links before it names the host's files: started through `/lib/...` or through a link to
+  its directory, the application reported its `.deps.json`, base directory and assemblies under
+  the resolved `/usr/lib/x86_64-linux-gnu/...` (measured). The kernel reports libc's path resolved
+  too. So a linked layout does not get past the guard.
+- **Production confinement.** The policy and the launcher read the same cached answer. On Windows
+  the policy never asks `CanConfine` (`linux &&` comes first), and the startup check returns
+  before `Confines` on a host that renders none. So a Windows production host changes no access
+  list.
+- **The ready-unconfined refusal.** The test passes on both systems here, and R1 saw it fail with
+  the client's check removed.
+- **The Windows fallback.** It is reached only when the runtime grant throws, and only a
+  Development host renders then. An unconfined Windows worker is what every Windows worker was
+  before this checkpoint.
+- **The runtime ACE.** It grants read and execute only, to the one capability, on the muxer and
+  the `host` and `shared` directories. It persists by design, and the READMEs say so.
+- **Residual statements.** `stat`, `access`, `readlink`, other filesystems' `ioctl`s, shared
+  memory and the Windows reads are stated as they are. Two statements are not accurate; see R2-2
+  and R2-3.
+
+Review 1's findings, as they now stand:
+
+- R1-1, R1-2, R1-4, R1-5 and R1-6 are closed. I found no way around any of them.
+- R1-3 is closed for the runtime's installation, by reading; the implementer did not run it end
+  to end and says so. The same failure remains for the host's own files (R2-2).
+- **The pushback on a Development host under Program Files** (recorded, not guarded) holds in
+  part. Not refusing such a host is right: Windows is Development-only, and before this checkpoint
+  the worker read everything the account could. But the README's claim that it "is not refused" is
+  true only when the account may rewrite those files' access lists, and a warning would cost
+  nothing where a refusal was ruled out. R2-2 covers both.
+
+### Findings
+
+**Blocking:** none.
+
+**Major:** none.
+
+**Minor**
+
+- **R2-1. The filter leaves POSIX message queues open, and `flock`.**
+  - **Where:** `src/core/Tellma.Core.Imaging.PdfWorker/SeccompFilter.cs:158-210` (the refused
+    calls), and the worker README's "SysV shared memory, semaphores and message queues" line
+    (`src/core/Tellma.Core.Imaging.PdfWorker/README.md:118`).
+  - **Measured.** Under a Landlock domain that handles every right and grants none:
+    - `mq_open(name, O_CREAT|O_RDWR)` answers `EACCES`, but the queue is created first and stays
+      in `/dev/mqueue` after the process exits. The seccomp open-flag test does not see it: it is
+      another call (x64 240, arm64 180).
+    - `mq_unlink` (x64 241, arm64 181) of a queue the account already had succeeds.
+  - **Failure scenario.** A compromised worker leaves named kernel objects that outlive it. Each
+    is charged to the account's `RLIMIT_MSGQUEUE`, so about nine exhaust the default for the
+    host's account until a reboot. It can also delete any queue another process of the account
+    uses. This is what the filter refuses SysV objects for, and it contradicts "it may write,
+    create, rename or delete nothing".
+  - **`flock`, by reading.** `flock(LOCK_EX)` needs no write access, so a worker can lock every
+    file of its allowance exclusively for as long as it lives. .NET's `FileStream` takes a shared
+    `flock` on every open and throws a sharing violation on a conflict. So a .NET process that
+    opens one of those files meanwhile fails: the host reading its `.deps.json`, or a second
+    instance starting on the same files. It ends with the worker, and a new upload starts another.
+  - **Fix.** Add `mq_open`, `mq_unlink`, `mq_timedsend`, `mq_timedreceive`, `mq_notify` and
+    `mq_getsetattr` (x64 240-245, arm64 180-185) and `flock` (x64 73, arm64 32) to the refused
+    calls. Check that the Linux suite still renders: .NET ignores a failed `flock` unless the
+    error is `EWOULDBLOCK`. Add `mq-create` and `lock` attempts to the `files` probe, and the
+    numbers to `SeccompFilterTests`. If `flock` must stay, record it as a residual.
+
+- **R2-2. A Windows host's own files have no fallback, and files that already grant every
+  AppContainer read are still rewritten.**
+  - **Where:** `src/core/Tellma.Core.Imaging/Workers/WindowsAppContainer.cs:179-215` (`GrantRead`),
+    and the Imaging README (`src/core/Tellma.Core.Imaging/README.md:209-212`).
+  - **The gap.** `GrantRead` looks only for an explicit entry for the capability. It does not use
+    `Grants`, which `GrantReadAndExecute` uses and which accepts an inherited entry and
+    `ALL APPLICATION PACKAGES`. A file that lacks the explicit entry gets `SetAccessControl`, and
+    a failure there is a `PdfWorkerException(Start)`, with no fallback.
+  - **Failure scenarios**, by reading:
+    - A Development host under Program Files, run by an account that is not elevated. Its files
+      already grant every AppContainer read, yet the host tries to add an entry, is denied, and
+      `core.imaging` fails startup. The README says such a host "is not refused". Elevated, it
+      starts and stamps every file.
+    - A build made from an elevated shell outside the user's profile and run unelevated. The
+      account can modify the files but does not own them, so it cannot change their access lists.
+  - **Why it matters.** Both hosts rendered before PC-F11. D-204's ruling on R1-3 is that a
+    Windows Development host must not fail startup where it rendered before. Fix1 applied that to
+    the runtime's installation only.
+  - **Also.** `GrantRuntime` and `GrantRead` catch `UnauthorizedAccessException`, `IOException`
+    and `PrivilegeNotHeldException`. The access-control classes also throw
+    `InvalidOperationException` and `NotSupportedException`, for a volume without access lists,
+    say. Either escapes `CanConfine` unwrapped. `Lazy` then caches it, and the startup check's
+    `_launcher.Confines` (`ImagingStartupCheck.cs:129`) rethrows it outside the probe's handling.
+    Not exercised.
+  - **Fix.**
+    - In `GrantRead`, skip a file that `Grants` already accepts.
+    - Treat a failed grant on the host's own files like a failed runtime grant: `CanConfine`
+      false with the cause in `Unconfinable`, so a Development host runs unconfined with the
+      warning. A sturdier form is to start one confined worker when `CanConfine` is first asked,
+      and fall back when it does not reach its ready frame. That also covers a `Grants` that is
+      wrong about what lies beneath a directory.
+    - Catch the wider exception types in both methods.
+    - For the Program Files host: log a warning when `AppContext.BaseDirectory` grants every
+      AppContainer read, and correct the README's sentence.
+    - `ImagingLog.PdfWorkerUnconfined`'s summary (`ImagingLog.cs:104-108`) names only Linux
+      without Landlock and macOS; add the Windows cause.
+
+- **R2-3. A worker's own `/proc` entries tell more than the residuals say.**
+  - **Where:** `src/core/Tellma.Core.Imaging.PdfWorker/WorkerConfinement.cs:143-149` (the rule on
+    `/proc/self`), and the Imaging README's residual risks
+    (`src/core/Tellma.Core.Imaging/README.md:270-290`).
+  - **Measured.** With that one rule, a restricted process opens `/proc/self/net/tcp`,
+    `/proc/net/tcp`, `/proc/self/net/arp`, `/proc/self/net/unix` and `/proc/self/mountinfo`, while
+    `/proc/1/status` is `EACCES`.
+  - **Effect.** Those files describe the namespaces the worker shares with its host, not the
+    worker. A compromised worker can read the address and port of every TCP connection the host
+    holds (its SQL Server, its cache, its identity provider), the neighbours and Unix socket
+    paths, and the mount table, which on a share names the storage account. None is a credential.
+    It is more than the "existence, sizes, owners, times and link targets" the residuals list, and
+    the README says the own entries hold only the worker's own.
+  - **Fix.** Landlock cannot carve these out of a directory it grants. Record them beside `stat`
+    in the Imaging README and `ARCHITECTURE.md`. Closing them takes a network and mount namespace
+    of the worker's own, which is the same work as closing `stat`.
+
+- **R2-4. Three rules have no test that would fail if they broke.**
+  - **Where:** `WorkerConfinement.TakeConfined` (`WorkerConfinement.cs:226-246`),
+    `PdfWorkerLauncher.CanConfine` and `Unconfinable` (`PdfWorkerLauncher.cs:61-85`), and
+    `WindowsAppContainer.Grants` (`WindowsAppContainer.cs:141-160`).
+  - **The gaps.**
+    - Stage 2's two checks: the anchor is the worker's own `/proc/<pid>`, and `/` is closed.
+      Removing either fails nothing, because every test that passes `--confined` is really
+      confined.
+    - The Windows fallback: a failed runtime grant makes `CanConfine` false and the warning names
+      the installation. The implementer notes say this branch was not run.
+    - `Grants` is tested only through this machine's Program Files and one directory the test
+      grants itself. Nothing pins an inherit-only entry alone (not the directory itself), an
+      entry with `NoPropagateInherit`, or generic rights.
+  - **Fix.**
+    - On Linux, start the real worker unconfined with `--confined 3` appended and assert exit 65
+      with the anchor message.
+    - Unit-test `Grants` over `DirectorySecurity` objects built in memory, one per form.
+    - Give `GrantRuntime` a seam for the grant, so a test can make it throw and assert
+      `Unconfinable` and the warning's detail.
+
+### Responses
+
+The orchestrator ruled on every finding before this round (D-207). This round follows those
+rulings. Runs, on the final tree:
+
+- Windows: `dotnet build Tellma.slnx` (Build succeeded, 0 warnings), `dotnet format Tellma.slnx
+  --verify-no-changes` (clean), then the `Workers`, `Composition` and `Thumbnails` namespaces of
+  `Tellma.Core.Imaging.Tests`: 408 total, 0 failed, 28 skipped (Linux-only).
+- Linux: `mcr.microsoft.com/dotnet/sdk:10.0` on Docker Desktop's WSL2 kernel, with
+  `TELLMA_REQUIRE_LANDLOCK=1`, the same namespaces: 408 total, 0 failed, 27 skipped
+  (Windows-only).
+
+- R2-1: fixed in the review 2 fixes commit.
+  - **Refused.** The filter refuses `mq_open`, `mq_unlink`, `mq_timedsend`, `mq_timedreceive`,
+    `mq_notify` and `mq_getsetattr` (x64 240-245, arm64 180-185), and `flock` (x64 73, arm64 32).
+    `SeccompFilterTests` lists every one as refused on both architectures.
+  - **The `flock` measurement.** A new stand-in mode, `file-streams`, runs under the filter. It
+    calls `flock` on its own assembly, shared and exclusive, then opens it as .NET does: a
+    `FileStream` with `FileShare.Read` (which takes `LOCK_SH`), one with `FileShare.None`
+    (`LOCK_EX`), and `File.ReadAllBytes`. On Linux both locks answer `EPERM`, and all three opens
+    succeed and read. .NET treats only `EWOULDBLOCK` as a sharing violation, as expected. The
+    runtime's own opens and PDFium's run under the same filter in every confined test of the run,
+    the hostile documents and the budgets among them, with 0 failures. So `flock` is refused, and
+    no sharing-violation residual remains. `fcntl`'s record locks stay open: .NET takes none on
+    opening a file. That is stated in the worker README.
+  - **Probes.** The `files` probe adds three attempts:
+    - `mq-create`: `mq_open` with `O_CREAT|O_EXCL`, which always unlinks the queue afterwards,
+      since Landlock lets the kernel make it before refusing the open;
+    - `mq-unlink`;
+    - `lock`: `flock(LOCK_EX)` on the worker's own assembly, opened for reading.
+
+    Confined, all three are `EPERM`. Under Landlock alone, before the filter, `lock` is `done`,
+    which shows the filter is what refuses it.
+  - **Docs.** Updated to match: the worker README (the POSIX queues beside SysV, and a "Locking a
+    file" bullet), the Imaging README, `ARCHITECTURE.md` and the filter's XML docs.
+- R2-2: fixed in the review 2 fixes commit.
+  - **The host's own files.** `PdfWorkerLauncher.CanConfine` on Windows now asks
+    `WindowsBlocker`. It grants the runtime as before, then the host's own files of the PDF
+    worker's allowance, through the new `WindowsAppContainer.GrantRead(files, grant)`.
+    - When either grant fails, `CanConfine` is false. `Unconfinable` names the installation, or
+      the first host file that could not be granted, with the error. A Development host then runs
+      its workers unconfined and logs `BlobPdfWorkerUnconfined` with that cause; startup does not
+      fail.
+    - A file `Grants` already accepts (every AppContainer, or the capability, by an inherited
+      entry or an explicit one) is left alone. So an unelevated host under Program Files writes
+      nothing.
+    - `GrantRead(files)`, at a worker's start, keeps its `Start` failure, for what `CanConfine`
+      did not cover: a launcher told to confine, or one starting another worker, as tests do.
+      The default launcher has already passed through the fallback by then.
+  - **The exceptions.** One predicate, `IsGrantFailure`, covers what reading or changing an
+    access list throws, in `GrantRuntime`, `GrantRead` and `ReadsInFull`:
+    `UnauthorizedAccessException` (with `PrivilegeNotHeldException`), `IOException`,
+    `InvalidOperationException`, `NotSupportedException` and `PdfWorkerException` (the capability
+    not derived). `WindowsBlocker` returns null when a file is missing, so starting a worker
+    reports that. The `Lazy` behind it therefore never throws and never caches a failure. The
+    startup check now reads the launcher's new `Unconfined` (the reason, or null), so it no longer
+    reads `Confines` and `Unconfinable` separately.
+  - **Program Files.** The README's "is not refused" sentence now says why such a host is not
+    refused. The `core.imaging` check logs a new warning, `BlobPdfWorkerReadsHostDirectory`,
+    naming the directory, when the host's directory lets every AppContainer (or the capability)
+    read what lies beneath it. `PdfWorkerUnconfined`'s summary names the Windows cause.
+    `ARCHITECTURE.md` matches.
+  - **The probe-start form was not taken.** The ruling prescribes the grant-based fallback, and
+    `Grants` is now pinned form by form (R2-4). A worker that cannot read its files still fails
+    the startup probe with `ExitFix`'s Windows causes, never silently.
+  - **Tests.**
+    - `WindowsAppContainerTests`: the fallback for the installation and for the host's own files,
+      the message of each grant failure type, success when every grant is made, a file that
+      already grants every AppContainer left alone, and `ReadsInFull`.
+    - In `ImagingCompositionTests`:
+      - `A_windows_host_whose_account_may_not_grant_its_workers_read_runs_them_unconfined_and_says_why`
+        starts and logs one `BlobPdfWorkerUnconfined` naming the installation and the refusal.
+      - `A_windows_host_in_a_directory_every_appcontainer_reads_says_its_workers_read_its_configuration`
+        logs one `BlobPdfWorkerReadsHostDirectory`.
+  - **Not exercised.** An unelevated host under Program Files, and a build owned by another
+    account, were not run end to end. Their branches are driven through the grant seam.
+- R2-3: fixed in the review 2 fixes commit, with no code change, as ruled. The worker's own
+  `/proc/<pid>` entries that describe the network and mount namespaces it shares with its host
+  (`net/tcp`, `net/tcp6`, `net/udp`, `net/unix`, `net/arp`, `mountinfo`) are recorded as a
+  residual beside `stat`, `access` and `readlink`. They appear in:
+  - `ARCHITECTURE.md`;
+  - the Imaging README, both under "What a worker may read" and as a new "What its own `/proc`
+    entries tell of its host" residual;
+  - the worker README;
+  - the XML docs of `SeccompFilter` and `WorkerConfinement`.
+
+  The record states what they show (the host's connections and Unix sockets, its neighbours, the
+  mount table), that none is a credential, and that closing them takes namespaces of the worker's
+  own.
+- R2-4: fixed in the review 2 fixes commit.
+  - **Stage 2's checks, on Linux.**
+    - In process: `PdfWorkerLauncherTests.The_second_stage_refuses_an_anchor_that_is_not_the_workers_own_proc_directory_on_linux`
+      passes an `O_PATH` descriptor of `/tmp`.
+    - In process: `The_second_stage_refuses_a_process_the_root_directory_is_open_to_on_linux`
+      passes the process's own `/proc/self`, with `/` still open to it.
+    - In process: `A_malformed_second_stage_argument_is_refused_on_linux` covers a descriptor below
+      3, a negative one, and a non-number.
+    - End to end: `WorkerConfinementTests.A_worker_told_it_was_started_over_confined_when_it_was_not_refuses_to_run_on_linux`
+      starts the real worker unconfined with `--confined 3`, and asserts exit 65 with the anchor
+      message.
+
+    Removing either check fails one of these.
+  - **The Windows fallback.** `PdfWorkerLauncher` has a new `unconfinable` seam, and
+    `WindowsBlocker` takes the grant as a parameter. With them, the tests above drive a failed
+    grant on the installation and on a host file. They assert `Unconfinable`'s text and the
+    warning's detail.
+    `A_launcher_confines_its_workers_where_the_operating_system_can_and_says_why_not_where_it_cannot`
+    pins `Confines` and `Unconfined` for `confine: true`, `confine: false` and the seam.
+  - **`Grants`.**
+    `WindowsAppContainerTests.Only_an_access_list_that_lets_every_appcontainer_or_the_capability_read_and_execute_counts`
+    builds 13 access lists in memory and checks each as a directory's and as a file's.
+    - Accepted: the Program Files split, a single `OICI` entry with `RX` or `GA`, and the
+      capability.
+    - Refused: the folder alone (a file only), inherit-only alone, `NP`, `CI` and `OI` alone,
+      `GR`, `FR`, a deny, and another trustee.

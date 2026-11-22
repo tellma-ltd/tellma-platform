@@ -35,12 +35,16 @@ namespace Tellma.Core.Imaging
     ///         cannot run in fails startup with the fix, never hangs it.
     ///     </para>
     ///     <para>
-    ///         Three conditions are warnings in the host's log, not problems, since the host serves
+    ///         Four conditions are warnings in the host's log, not problems, since the host serves
     ///         everything else as well without their fix. A host that renders no PDF thumbnails (on
     ///         Windows or macOS outside Development, on Linux without glibc, or on Linux outside
     ///         Development without Landlock) writes <c>BlobPdfThumbnailsDisabled</c> and starts no
     ///         worker, here or later. A Development host whose workers run without filesystem
-    ///         confinement writes <c>BlobPdfWorkerUnconfined</c>. And such a host on Linux whose
+    ///         confinement writes <c>BlobPdfWorkerUnconfined</c>; on Windows that is a host whose
+    ///         account may not grant its workers' AppContainer read on the .NET installation or its
+    ///         own files. A Windows host whose own directory every AppContainer may read, as one
+    ///         under Program Files, writes <c>BlobPdfWorkerReadsHostDirectory</c>: its confined
+    ///         workers read its configuration. And a Development host on Linux whose
     ///         kernel lets a process open the memory of any other process of its account (Yama's
     ///         <c>ptrace_scope</c> is 0, or Yama is not enabled) writes
     ///         <c>BlobPdfWorkerPtraceUnrestricted</c>: the host closes itself to its workers, but an
@@ -53,8 +57,9 @@ namespace Tellma.Core.Imaging
     /// <param name="launcher">Starts the probe's worker; the PDF worker when null.</param>
     /// <param name="pdfThumbnails">Whether the host renders PDF thumbnails; decided from the host's environment when null.</param>
     /// <param name="readPtraceScope">Reads Yama's ptrace scope, null where the kernel has none; the kernel's own file when null.</param>
+    /// <param name="hostDirectory">The directory the host's files are in; the application's base directory when null.</param>
     internal sealed class ImagingStartupCheck(
-        PdfWorkerLauncher? launcher = null, PdfThumbnailSupport? pdfThumbnails = null, Func<string?>? readPtraceScope = null) : IStartupCheck
+        PdfWorkerLauncher? launcher = null, PdfThumbnailSupport? pdfThumbnails = null, Func<string?>? readPtraceScope = null, string? hostDirectory = null) : IStartupCheck
     {
         /// <summary>The check's name.</summary>
         public const string CheckName = "core.imaging";
@@ -125,10 +130,16 @@ namespace Tellma.Core.Imaging
             }
 
             // Section: a host whose workers its operating system cannot confine (a Development host,
-            // since the policy disables thumbnails outside one) says so.
-            if (!_launcher.Confines)
+            // since the policy disables thumbnails outside one) says so. A confined Windows worker
+            // still reads whatever every AppContainer may, so a host installed where that is the
+            // host's own directory, as under Program Files, says that.
+            if (_launcher.Unconfined is string unconfined)
             {
-                ImagingLog.PdfWorkerUnconfined(logger, UnconfinedDetail());
+                ImagingLog.PdfWorkerUnconfined(logger, unconfined);
+            }
+            else if (OperatingSystem.IsWindows() && WindowsAppContainer.ReadsInFull(hostDirectory ?? AppContext.BaseDirectory))
+            {
+                ImagingLog.PdfWorkerReadsHostDirectory(logger, hostDirectory ?? AppContext.BaseDirectory);
             }
 
             // Section: PDFium, in a worker, through the whole path a thumbnail takes.
@@ -166,13 +177,6 @@ namespace Tellma.Core.Imaging
                 : !int.TryParse(scope.AsSpan().Trim(), NumberStyles.None, CultureInfo.InvariantCulture, out int value)
                     ? "kernel.yama.ptrace_scope is not a number"
                     : value >= 1 ? null : "kernel.yama.ptrace_scope is 0";
-        }
-
-        /// <summary>Why this host's workers are not confined, for the warning.</summary>
-        /// <returns>The reason.</returns>
-        private static string UnconfinedDetail()
-        {
-            return PdfWorkerLauncher.Unconfinable ?? "the image processor's launcher does not confine them";
         }
 
         /// <summary>Reads the kernel's ptrace scope.</summary>

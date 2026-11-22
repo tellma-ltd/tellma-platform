@@ -10,6 +10,9 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Logging.Testing;
 using Microsoft.Extensions.Options;
+using System.Runtime.Versioning;
+using System.Security.AccessControl;
+using System.Security.Principal;
 using Tellma.Core.Abstractions.Blobs;
 using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.Imaging.Tests.Infrastructure;
@@ -22,7 +25,9 @@ namespace Tellma.Core.Imaging.Tests.Composition
     ///     from a plain container, and the startup check that proves the natives load; and where a
     ///     host renders PDF thumbnails at all, which the processor and the check decide alike from
     ///     the host's environment, the check saying so in the log, as it says when the host's
-    ///     workers run without filesystem confinement.
+    ///     workers run without filesystem confinement, and why (on Windows, a grant the host's
+    ///     account may not make), and when a Windows host's own directory is one every
+    ///     AppContainer reads.
     /// </summary>
     [Collection(SerialSuites.Name)]
     public sealed class ImagingCompositionTests
@@ -292,6 +297,66 @@ namespace Tellma.Core.Imaging.Tests.Composition
             Assert.Equal("BlobPdfWorkerUnconfined", record.Id.Name);
             Assert.Equal(LogLevel.Warning, record.Level);
             Assert.Contains("without filesystem confinement (the image processor's launcher does not confine them)", record.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        [SupportedOSPlatform("windows")]
+        public async Task A_windows_host_whose_account_may_not_grant_its_workers_read_runs_them_unconfined_and_says_why()
+        {
+            Assert.SkipUnless(OperatingSystem.IsWindows(), "The AppContainer is Windows's.");
+            string root = new PdfWorkerLauncher().Files.Root;
+
+            // Section: the host's account may not grant the workers' AppContainer read on the .NET
+            // installation, as on one in another user's profile.
+            var launcher = new PdfWorkerLauncher(unconfinable: static () => PdfWorkerLauncher.WindowsBlocker(static (_, _) => throw new UnauthorizedAccessException("Access is denied.")));
+            var check = new ImagingStartupCheck(launcher, PdfThumbnailSupport.Enabled, static () => "1");
+            var logger = new FakeLogger<SkiaImageProcessor>();
+            using ServiceProvider provider = new ServiceCollection().AddSingleton<ILogger<SkiaImageProcessor>>(logger).BuildServiceProvider();
+
+            IReadOnlyList<CompositionProblem> problems = await check.CheckAsync(provider, TestContext.Current.CancellationToken);
+
+            // Section: the host starts, its unconfined worker renders the probe, and the warning
+            // names the installation and the refusal.
+            Assert.Empty(problems);
+            FakeLogRecord record = Assert.Single(logger.Collector.GetSnapshot());
+            Assert.Equal("BlobPdfWorkerUnconfined", record.Id.Name);
+            Assert.Equal(LogLevel.Warning, record.Level);
+            Assert.Contains($"cannot read the .NET installation at {root}", record.Message, StringComparison.Ordinal);
+            Assert.Contains("Access is denied.", record.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        [SupportedOSPlatform("windows")]
+        public async Task A_windows_host_in_a_directory_every_appcontainer_reads_says_its_workers_read_its_configuration()
+        {
+            Assert.SkipUnless(OperatingSystem.IsWindows(), "The AppContainer is Windows's.");
+            Assert.SkipUnless(PdfWorkerLauncher.CanConfine, "This host's workers cannot be confined.");
+            DirectoryInfo folder = Directory.CreateTempSubdirectory("tellma-host-");
+            try
+            {
+                // Section: a host directory that lets every AppContainer read what lies beneath it,
+                // as Program Files does.
+                DirectorySecurity security = folder.GetAccessControl(AccessControlSections.Access);
+                security.AddAccessRule(new FileSystemAccessRule(
+                    new SecurityIdentifier("S-1-15-2-1"), FileSystemRights.ReadAndExecute, InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit, PropagationFlags.None, AccessControlType.Allow));
+                folder.SetAccessControl(security);
+                var check = new ImagingStartupCheck(pdfThumbnails: PdfThumbnailSupport.Enabled, readPtraceScope: static () => "1", hostDirectory: folder.FullName);
+                var logger = new FakeLogger<SkiaImageProcessor>();
+                using ServiceProvider provider = new ServiceCollection().AddSingleton<ILogger<SkiaImageProcessor>>(logger).BuildServiceProvider();
+
+                IReadOnlyList<CompositionProblem> problems = await check.CheckAsync(provider, TestContext.Current.CancellationToken);
+
+                // Section: a warning, never a problem: the confined worker rendered the probe.
+                Assert.Empty(problems);
+                FakeLogRecord record = Assert.Single(logger.Collector.GetSnapshot());
+                Assert.Equal("BlobPdfWorkerReadsHostDirectory", record.Id.Name);
+                Assert.Equal(LogLevel.Warning, record.Level);
+                Assert.Equal(folder.FullName, record.GetStructuredStateValue("Directory"));
+            }
+            finally
+            {
+                folder.Delete(recursive: true);
+            }
         }
 
         [Fact]

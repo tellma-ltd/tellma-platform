@@ -3,6 +3,9 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+using System.Globalization;
+using System.Runtime.InteropServices;
+using System.Runtime.Versioning;
 using Tellma.Core.Imaging.PdfWorker;
 using Tellma.Core.Imaging.Workers;
 
@@ -15,12 +18,18 @@ namespace Tellma.Core.Imaging.Tests.Workers
     ///     and with a command line that splits back into exactly its arguments; what a confined
     ///     worker may read, which is the runtime, the host's assemblies and native libraries by
     ///     name, the system's libraries and fonts, and nothing else of the host's, which is why a
-    ///     host installed beneath a directory a worker reads in full is refused; and how the
-    ///     worker's sandbox reads the descriptors it must close, the host it must die with and the
-    ///     allowance it confines itself to.
+    ///     host installed beneath a directory a worker reads in full is refused; whether a
+    ///     launcher's workers are confined, and why not; and how the worker's sandbox reads the
+    ///     descriptors it must close, the host it must die with and the allowance it confines itself
+    ///     to, and refuses a second stage whose anchor is not its own <c>/proc</c> directory or whose
+    ///     root directory is open.
     /// </summary>
-    public sealed class PdfWorkerLauncherTests
+    public sealed partial class PdfWorkerLauncherTests
     {
+        // open(2) flags (asm-generic/fcntl.h): O_PATH and O_CLOEXEC.
+        private const int PathOnly = 0x20_0000;
+        private const int CloseOnExec = 0x8_0000;
+
         // A Linux host's files, as the composition sees them: the runtime's installation, and the
         // host's own directory, which holds its configuration beside its assemblies.
         private static readonly PdfWorkerFiles LinuxFiles = new(
@@ -32,7 +41,7 @@ namespace Tellma.Core.Imaging.Tests.Workers
             var launcher = new PdfWorkerLauncher(arguments: ["extra"], confine: false);
             PdfWorkerFiles files = launcher.Files;
 
-            string host = Environment.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            string host = Environment.ProcessId.ToString(CultureInfo.InvariantCulture);
             Assert.False(launcher.Confines);
             Assert.Equal(
                 ["exec", "--runtimeconfig", files.RuntimeConfiguration, "--depsfile", files.Dependencies, files.Worker, WorkerSandbox.HostProcessArgument, host, "extra"],
@@ -47,7 +56,7 @@ namespace Tellma.Core.Imaging.Tests.Workers
 
             // Section: on Linux the worker confines itself, so its allowance is on its command
             // line; a Windows worker's AppContainer is the launcher's doing.
-            string host = Environment.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            string host = Environment.ProcessId.ToString(CultureInfo.InvariantCulture);
             List<string> allowance = OperatingSystem.IsLinux() ? launcher.Allowance.Arguments() : [];
             Assert.True(launcher.Confines);
             Assert.Equal(
@@ -182,6 +191,84 @@ namespace Tellma.Core.Imaging.Tests.Workers
                 [@"D:\app\Host.deps.json", @"D:\app\Host.dll", @"D:\app\Host.runtimeconfig.json", @"D:\app\libSkiaSharp.dll", @"D:\app\pdfium.dll", @"D:\app\Tellma.Core.Imaging.PdfWorker.dll"],
                 allowance.WindowsFiles);
             Assert.Equal(allowance.WindowsFiles, allowance.Read);
+        }
+
+        [Fact]
+        public void A_launcher_confines_its_workers_where_the_operating_system_can_and_says_why_not_where_it_cannot()
+        {
+            // Section: told nothing, a launcher confines where nothing stands in the way, and where
+            // something does it says what, as the host's warning will.
+            Assert.True(new PdfWorkerLauncher(unconfinable: static () => null).Confines);
+            var blocked = new PdfWorkerLauncher(unconfinable: static () => "the reason");
+            Assert.False(blocked.Confines);
+            Assert.Equal("the reason", blocked.Unconfined);
+
+            // Section: told, it does as told, whatever the operating system can do.
+            Assert.True(new PdfWorkerLauncher(confine: true, unconfinable: static () => "the reason").Confines);
+            var unconfined = new PdfWorkerLauncher(confine: false, unconfinable: static () => null);
+            Assert.False(unconfined.Confines);
+            Assert.Equal("the image processor's launcher does not confine them", unconfined.Unconfined);
+
+            // Section: this host's own answer agrees with itself.
+            Assert.Equal(PdfWorkerLauncher.CanConfine, PdfWorkerLauncher.Unconfinable is null);
+            Assert.Equal(PdfWorkerLauncher.CanConfine, new PdfWorkerLauncher().Confines);
+        }
+
+        [Fact]
+        [SupportedOSPlatform("linux")]
+        public void The_second_stage_refuses_an_anchor_that_is_not_the_workers_own_proc_directory_on_linux()
+        {
+            Assert.SkipUnless(OperatingSystem.IsLinux(), "Landlock is Linux's.");
+
+            // Section: a descriptor of another directory, as a start that names the wrong descriptor
+            // hands the second stage.
+            int other = Open("/tmp", PathOnly | CloseOnExec);
+            Assert.True(other >= 3, $"/tmp could not be opened (errno {Marshal.GetLastPInvokeError()}).");
+            try
+            {
+                InvalidOperationException refused = Assert.Throws<InvalidOperationException>(
+                    () => WorkerConfinement.TakeConfined(["mode", WorkerConfinement.ConfinedArgument, other.ToString(CultureInfo.InvariantCulture)]));
+                Assert.Contains("/proc anchor is not its own /proc directory", refused.Message, StringComparison.Ordinal);
+            }
+            finally
+            {
+                _ = Close(other);
+            }
+        }
+
+        [Fact]
+        [SupportedOSPlatform("linux")]
+        public void The_second_stage_refuses_a_process_the_root_directory_is_open_to_on_linux()
+        {
+            Assert.SkipUnless(OperatingSystem.IsLinux(), "Landlock is Linux's.");
+
+            // Section: this process's own /proc directory, as the first stage hands it on, in a
+            // process no Landlock restricts: the anchor holds, but the root directory is open.
+            int anchor = Open("/proc/self", PathOnly | CloseOnExec);
+            Assert.True(anchor >= 3, $"/proc/self could not be opened (errno {Marshal.GetLastPInvokeError()}).");
+            try
+            {
+                List<string> arguments = ["mode", WorkerConfinement.ConfinedArgument, anchor.ToString(CultureInfo.InvariantCulture)];
+                InvalidOperationException refused = Assert.Throws<InvalidOperationException>(() => WorkerConfinement.TakeConfined(arguments));
+                Assert.Contains("the root directory is open to it", refused.Message, StringComparison.Ordinal);
+                Assert.Equal(["mode"], arguments);
+            }
+            finally
+            {
+                _ = Close(anchor);
+            }
+        }
+
+        [Theory]
+        [InlineData("2")]
+        [InlineData("-3")]
+        [InlineData("anchor")]
+        [SupportedOSPlatform("linux")]
+        public void A_malformed_second_stage_argument_is_refused_on_linux(string anchor)
+        {
+            Assert.SkipUnless(OperatingSystem.IsLinux(), "Landlock is Linux's.");
+            Assert.Throws<ArgumentException>(() => WorkerConfinement.TakeConfined([WorkerConfinement.ConfinedArgument, anchor]));
+            Assert.Throws<ArgumentException>(() => WorkerConfinement.TakeConfined([WorkerConfinement.ConfinedArgument]));
         }
 
         [Fact]
@@ -334,5 +421,20 @@ namespace Tellma.Core.Imaging.Tests.Workers
             Assert.Throws<ArgumentException>(() => WorkerSandbox.TakeInheritedDescriptors([WorkerSandbox.CloseDescriptorArgument, descriptor, target]));
             Assert.Throws<ArgumentException>(() => WorkerSandbox.TakeInheritedDescriptors([WorkerSandbox.CloseDescriptorArgument, "7"]));
         }
+
+        /// <summary><c>int open(const char*, int)</c>.</summary>
+        /// <param name="path">The path.</param>
+        /// <param name="flags">The flags.</param>
+        /// <returns>The descriptor; -1 with <c>errno</c> set on failure.</returns>
+        [LibraryImport("libc", EntryPoint = "open", SetLastError = true, StringMarshalling = StringMarshalling.Utf8)]
+        [UnsupportedOSPlatform("windows")]
+        private static partial int Open(string path, int flags);
+
+        /// <summary><c>int close(int)</c>.</summary>
+        /// <param name="descriptor">The descriptor.</param>
+        /// <returns>0; -1 with <c>errno</c> set on failure.</returns>
+        [LibraryImport("libc", EntryPoint = "close", SetLastError = true)]
+        [UnsupportedOSPlatform("windows")]
+        private static partial int Close(int descriptor);
     }
 }
