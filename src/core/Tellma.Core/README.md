@@ -2866,16 +2866,21 @@ are SpreadsheetML packages written with `DocumentFormat.OpenXml` (MIT), forward-
   and directory size), the declared uncompressed sum and its structure (content types, one workbook
   part, no external link or relationship) are checked before any sheet is parsed; every part is read
   through `BoundedPartStream`, which refuses bytes beyond the part's declared length and any run
-  between two markup delimiters over 4 MiB; no reader processes a DTD. Shared strings
+  between two markup delimiters over 4 MiB; no reader processes a DTD, and each reader's name table
+  (`BoundedNameTable`) refuses a part whose distinct names pass 1 MiB. Shared strings
   (`SharedStringStore`) are charged against a budget and spill to a scratch file beyond it, and their
-  entry count is capped. `ImportManifest` reads the hidden manifest sheet as untrusted, dropping any
-  row it cannot use. `HeaderIndex` matches headers by every form an export writes them in, rendered in
+  entry count is capped. A sheet's decoded cell text is charged against a per-row and a per-sheet
+  budget, and a sheet's rows are counted, when its dimension cannot be trusted, by skimming each row
+  for a filled cell without decoding its text. Every loop checks the inspection's cancellation.
+  `ImportManifest` reads the hidden manifest sheet as untrusted, dropping any row it cannot use or
+  whose field passes 255 characters, and stops its column table at a byte bound. `HeaderIndex` matches headers by every form an export writes them in, rendered in
   the reader's culture, each tenant language's and English, NFC-composed, white space collapsed and
   case ignored; a key two paths give matches neither and is offered as a suggestion. `ImportMapper`
   binds sheets (override, manifest, sheet names, then the first visible sheet when there is no
   manifest) and columns (override, manifest, header index) to `ImportPaths`, gates the identity
   columns of a file from another tenant or deployment, and answers the `ImportPlan`: each sheet's and
-  column's status, the row keys, the totals and whether the import must run in the background.
+  column's status, the row keys, the totals and whether the import must run in the background. A
+  header past 255 characters is kept cut and maps only by an override.
 - **The records.** `core.Exports` and `core.Imports` record each workbook operation, each row its
   creator's alone (`ExportAccessCriteria`, `ImportAccessCriteria`), with its file a blob of the
   `export-file` or `import-file` kind and its job a `core.Jobs` row. Both stacks serve query, details

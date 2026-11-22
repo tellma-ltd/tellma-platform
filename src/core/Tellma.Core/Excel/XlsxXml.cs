@@ -75,7 +75,10 @@ namespace Tellma.Core.Excel
             "http://schemas.microsoft.com/office/2006/relationships/",
         ];
 
-        /// <summary>Opens a reader over a part, with document types prohibited and no resolver.</summary>
+        /// <summary>
+        ///     Opens a reader over a part, with document types prohibited, no resolver, and a name
+        ///     table of its own that bounds the part's distinct names.
+        /// </summary>
         /// <param name="part">The part's stream; closed with the reader.</param>
         /// <returns>The reader.</returns>
         public static XmlReader Open(Stream part)
@@ -84,6 +87,7 @@ namespace Tellma.Core.Excel
             {
                 DtdProcessing = DtdProcessing.Prohibit,
                 XmlResolver = null,
+                NameTable = new BoundedNameTable(),
                 IgnoreComments = true,
                 IgnoreProcessingInstructions = true,
                 CloseInput = true,
@@ -243,6 +247,103 @@ namespace Tellma.Core.Excel
             }
 
             return joined?.ToString() ?? single ?? string.Empty;
+        }
+
+        /// <summary>
+        ///     Whether an element's own text holds a character other than white space, scanned in
+        ///     chunks so none of it is kept. The reader is left on the element's end, or on the
+        ///     element itself when it is empty; the text of child elements is not scanned.
+        /// </summary>
+        /// <param name="reader">The reader, on the element's start.</param>
+        /// <param name="buffer">The buffer the text is scanned through.</param>
+        /// <returns>True when it does.</returns>
+        public static bool HasText(XmlReader reader, char[] buffer)
+        {
+            ArgumentNullException.ThrowIfNull(reader);
+            ArgumentNullException.ThrowIfNull(buffer);
+            if (reader.IsEmptyElement)
+            {
+                return false;
+            }
+
+            int depth = reader.Depth;
+            bool found = false;
+            while (reader.Read() && !(reader.NodeType == XmlNodeType.EndElement && reader.Depth == depth))
+            {
+                // A white-space node is white space by its kind; text and character data are scanned once a character is still to find.
+                if (!found && reader.Depth == depth + 1 && reader.NodeType is XmlNodeType.Text or XmlNodeType.CDATA)
+                {
+                    found = Scan(reader, buffer);
+                }
+            }
+
+            return found;
+        }
+
+        /// <summary>
+        ///     Whether a string item's text holds a character other than white space: its <c>t</c>, or
+        ///     its runs' <c>t</c>, a phonetic run skipped, as <see cref="ReadStringItem" /> joins them.
+        ///     The reader is left on the item's end, or on the item itself when it is empty.
+        /// </summary>
+        /// <param name="reader">The reader, on the item's start.</param>
+        /// <param name="buffer">The buffer the text is scanned through.</param>
+        /// <returns>True when it does.</returns>
+        public static bool HasStringItemText(XmlReader reader, char[] buffer)
+        {
+            ArgumentNullException.ThrowIfNull(reader);
+            ArgumentNullException.ThrowIfNull(buffer);
+            if (reader.IsEmptyElement)
+            {
+                return false;
+            }
+
+            int depth = reader.Depth;
+            bool found = false;
+            bool more = reader.Read();
+            while (more && !(reader.NodeType == XmlNodeType.EndElement && reader.Depth == depth))
+            {
+                if (IsSpreadsheet(reader, "rPh"))
+                {
+                    reader.Skip();
+                    more = !reader.EOF;
+                    continue;
+                }
+
+                if (IsSpreadsheet(reader, "t"))
+                {
+                    found |= HasText(reader, buffer);
+                }
+
+                more = reader.Read();
+            }
+
+            return found;
+        }
+
+        /// <summary>Scans the text node the reader is on for a character other than white space, a chunk at a time.</summary>
+        /// <param name="reader">The reader, on a text or character data node.</param>
+        /// <param name="buffer">The buffer the text is scanned through.</param>
+        /// <returns>True when it holds one; the rest of the node is left for the reader to pass over.</returns>
+        private static bool Scan(XmlReader reader, char[] buffer)
+        {
+            if (!reader.CanReadValueChunk)
+            {
+                return !string.IsNullOrWhiteSpace(reader.Value);
+            }
+
+            int read;
+            while ((read = reader.ReadValueChunk(buffer, 0, buffer.Length)) > 0)
+            {
+                foreach (char character in buffer.AsSpan(0, read))
+                {
+                    if (!char.IsWhiteSpace(character))
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
         }
 
         /// <summary>Resolves a relationship's target against the part that declares it.</summary>

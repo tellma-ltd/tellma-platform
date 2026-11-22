@@ -25,6 +25,9 @@ namespace Tellma.Core.Excel
         /// <summary>The width of one entry of the spilled index: the text's offset and its length in characters.</summary>
         private const int IndexWidth = sizeof(long) + sizeof(int);
 
+        /// <summary>How many entries the load reads between two checks of its cancellation.</summary>
+        private const int CancellationStride = 4096;
+
         /// <summary>How many spilled strings the lookup keeps, by index modulo this size.</summary>
         private const int CacheSize = 4096;
 
@@ -42,6 +45,12 @@ namespace Tellma.Core.Excel
 
         /// <summary>The recent spilled strings, by index modulo the cache size; null until the table spills.</summary>
         private (int Index, string? Text)[]? _cache;
+
+        /// <summary>
+        ///     One bit per entry, set when its text holds more than white space, so a row can be told
+        ///     blank without its text being read back: a bit per entry, whatever the table spills.
+        /// </summary>
+        private ulong[] _filled = [];
 
         /// <summary>Creates an empty table.</summary>
         private SharedStringStore()
@@ -69,12 +78,14 @@ namespace Tellma.Core.Excel
         /// <param name="budget">The bytes the entries may be charged before the table spills.</param>
         /// <param name="maxEntries">The most entries the table may hold.</param>
         /// <param name="scratchDirectory">The directory the spilled files go to.</param>
+        /// <param name="cancellationToken">Stops the load between entries.</param>
         /// <returns>The table.</returns>
         /// <exception cref="Abstractions.Excel.ImportException">
         ///     The part holds more than <paramref name="maxEntries" /> entries, is not well-formed, or an
         ///     entry joins to more text than one string may hold.
         /// </exception>
-        public static SharedStringStore Load(Stream part, long budget, int maxEntries, string scratchDirectory)
+        /// <exception cref="OperationCanceledException">The load was cancelled.</exception>
+        public static SharedStringStore Load(Stream part, long budget, int maxEntries, string scratchDirectory, CancellationToken cancellationToken = default)
         {
             ArgumentNullException.ThrowIfNull(part);
             ArgumentException.ThrowIfNullOrWhiteSpace(scratchDirectory);
@@ -103,6 +114,11 @@ namespace Tellma.Core.Excel
 
                     // --- Each entry: kept until the cap, then only counted, so the refusal says how many there are ---
                     entries++;
+                    if (entries % CancellationStride == 0)
+                    {
+                        cancellationToken.ThrowIfCancellationRequested();
+                    }
+
                     if (entries > maxEntries)
                     {
                         reader.Skip();
@@ -112,6 +128,10 @@ namespace Tellma.Core.Excel
                             {
                                 entries++;
                                 reader.Skip();
+                                if (entries % CancellationStride == 0)
+                                {
+                                    cancellationToken.ThrowIfCancellationRequested();
+                                }
                             }
                             else
                             {
@@ -183,6 +203,14 @@ namespace Tellma.Core.Excel
             return text;
         }
 
+        /// <summary>Whether the string at an index holds more than white space, without reading it back.</summary>
+        /// <param name="index">The zero-based index.</param>
+        /// <returns>True when it does; null for an index the table lacks.</returns>
+        public bool? IsFilled(int index)
+        {
+            return index < 0 || index >= Count ? null : (_filled[index >> 6] & (1UL << (index & 63))) != 0;
+        }
+
         /// <inheritdoc />
         public void Dispose()
         {
@@ -220,6 +248,17 @@ namespace Tellma.Core.Excel
             else
             {
                 Write(text);
+            }
+
+            // --- The entry's bit: set when the text is not white space alone, the bits grown by doubling ---
+            if (Count >> 6 >= _filled.Length)
+            {
+                Array.Resize(ref _filled, Math.Max(16, _filled.Length * 2));
+            }
+
+            if (!string.IsNullOrWhiteSpace(text))
+            {
+                _filled[Count >> 6] |= 1UL << (Count & 63);
             }
 
             Count++;

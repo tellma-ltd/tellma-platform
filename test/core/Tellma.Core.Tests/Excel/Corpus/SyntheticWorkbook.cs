@@ -85,6 +85,9 @@ namespace Tellma.Core.Tests.Excel.Corpus
         /// <summary>Whether the sheet declares its dimension; null for the producer's habit.</summary>
         public bool? Dimension { get; init; }
 
+        /// <summary>The range the declared dimension states in place of the sheet's own; null for the sheet's own.</summary>
+        public string? DimensionReference { get; init; }
+
         /// <summary>A sheet of text rows.</summary>
         /// <param name="name">The sheet's name.</param>
         /// <param name="rows">The rows, each its texts; a null text is an absent cell.</param>
@@ -276,7 +279,7 @@ namespace Tellma.Core.Tests.Excel.Corpus
             bool dimension = sheet.Dimension ?? (Producer != Producer.GoogleSheets);
             if (dimension)
             {
-                string reference = sheet.Rows.Count == 0 || width == 0 ? "A1" : $"A1:{Letter(width - 1)}{sheet.Rows.Count}";
+                string reference = sheet.DimensionReference ?? (sheet.Rows.Count == 0 || width == 0 ? "A1" : $"A1:{Letter(width - 1)}{sheet.Rows.Count}");
                 _ = builder.Append(CultureInfo.InvariantCulture, $"<dimension ref=\"{reference}\"/>");
             }
 

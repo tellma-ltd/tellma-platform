@@ -12,7 +12,8 @@ namespace Tellma.Core.Tests.Excel.Corpus
     /// <summary>
     ///     The import plan of the same hand-made workbook as each producer saves it: every producer's
     ///     package maps to the same sheets, columns and row counts, whether or not it declares a
-    ///     dimension, and whatever elements of other namespaces it carries.
+    ///     dimension or declares a placeholder one, and whatever elements of other namespaces it
+    ///     carries.
     /// </summary>
     /// <param name="composition">The fixture model with its labels, composed once for the class.</param>
     public sealed class CorpusTests(FixtureLabelsComposition composition) : IClassFixture<FixtureLabelsComposition>, IDisposable
@@ -51,6 +52,20 @@ namespace Tellma.Core.Tests.Excel.Corpus
             Assert.Equal(expected, plan.Sheets[0].Rows);
             Assert.Equal(1, plan.Sheets[1].Rows);
             Assert.Equal(["Code"], plan.RowKeyCandidates);
+        }
+
+        [Theory]
+        [InlineData("A1")]
+        [InlineData("A1:B1")]
+        public async Task A_placeholder_dimension_ending_at_the_header_row_is_ignored_and_the_rows_are_counted(string reference)
+        {
+            // A streaming writer declares the dimension before its rows and may never patch it.
+            using ExportScope scope = new(composition.Services, "en", "en");
+            RawSheet sheet = RawSheet.OfText("Contraptions", ["Code", "Price"], ["W-1", "1"], [], ["W-2", "2"]) with { DimensionReference = reference };
+
+            ImportPlan plan = await _kit.InspectAsync<Widget>(new SyntheticWorkbook(Producer.Excel, sheet).Build(), scope.Context, options: new ExcelOptions { MaxSynchronousImportRows = 1 });
+
+            Assert.Equal((2L, 2L, true), (plan.Sheets[0].Rows, plan.TotalRows, plan.RequiresBackground));
         }
 
         /// <inheritdoc />

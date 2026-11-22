@@ -13,6 +13,7 @@ using Microsoft.Extensions.Logging.Testing;
 using System.Diagnostics.Metrics;
 using System.Globalization;
 using Tellma.Core.Abstractions.Access;
+using Tellma.Core.Abstractions.Blobs;
 using Tellma.Core.Abstractions.Crud;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Errors;
@@ -29,7 +30,8 @@ namespace Tellma.Core.IntegrationTests.Excel
     ///     through the stack's row source at one round trip per page with every collection riding
     ///     it, the template of an empty id list, a child surface's export under a filtered grant on
     ///     its owner, and an export above the synchronous cap refused at its first page, before any
-    ///     file is opened, naming the background route.
+    ///     file is opened, naming the background route; and both shapes on an instance without a blob
+    ///     store, where only an inspection fails.
     /// </summary>
     /// <param name="fixture">The seeded tenant databases.</param>
     [Trait("Category", "Integration")]
@@ -232,6 +234,31 @@ namespace Tellma.Core.IntegrationTests.Excel
             Assert.Contains("export/start", refused.Message, StringComparison.Ordinal);
             Assert.Equal("export-for-import/start", refusedEditable.Remedy);
             Assert.False(Directory.Exists(missing));
+        }
+
+        // --- An instance without a blob store ---
+
+        [Fact]
+        public async Task An_instance_without_a_blob_store_writes_exports_and_fails_only_an_inspection()
+        {
+            (_, string subject) = await fixture.SeedCallerAsync((Widgets, AccessActions.Read, null), (Widgets, AccessActions.Save, null));
+            await using AsyncServiceScope scope = await fixture.Connect.ScopeAsync(subject);
+            Assert.Null(scope.ServiceProvider.GetService<IBlobStore>());
+
+            await using (ExportOutcome outcome = await ExportAsync(scope, new ExportRequest { Filters = ["Id <= 3"], Columns = [new("Code", null)] }))
+            {
+                Assert.Equal(Enumerable.Range(1, 3).Count(static id => !ExcelRowSourceDatabase.IsInactive(id)), outcome.Rows);
+            }
+
+            await using (ExportOutcome outcome = await ExportForImportAsync(scope, new ExportForImportRequest { Ids = [1] }))
+            {
+                Assert.Equal(1, outcome.Rows);
+            }
+
+            // Only the inspection needs the store, so only it fails to activate.
+            InvalidOperationException refused = await Assert.ThrowsAsync<InvalidOperationException>(async () =>
+                await scope.ServiceProvider.GetRequiredService<IApiActionInvoker>().InvokeAsync(StackAction(scope, "inspect-import"), new InspectImportRequest { FileId = 1 }, Token));
+            Assert.Contains(nameof(IBlobStore), refused.Message, StringComparison.Ordinal);
         }
 
         // --- The instruments and the log events ---

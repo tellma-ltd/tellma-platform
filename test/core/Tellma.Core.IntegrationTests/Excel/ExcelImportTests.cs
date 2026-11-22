@@ -11,6 +11,7 @@ using Tellma.Core.Abstractions.Crud;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Errors;
 using Tellma.Core.Abstractions.Excel;
+using Tellma.Core.Abstractions.Jobs;
 using Tellma.Core.Excel;
 using Tellma.Core.IntegrationTests.Access;
 using Tellma.Core.IntegrationTests.Crud;
@@ -23,7 +24,8 @@ namespace Tellma.Core.IntegrationTests.Excel
     ///     runner and evaluator: an editable export, staged as the caller's upload, inspected back in
     ///     one round trip; another user's upload, a committed one and a missing one indistinguishable;
     ///     malformed overrides refused before the upload is resolved; and the delete of an import
-    ///     whose job may still run refused until the job ends.
+    ///     whose job may still run refused, and of one whose job ended allowed, to its creator
+    ///     holding no stored grant.
     /// </summary>
     /// <param name="fixture">The seeded tenant databases.</param>
     [Trait("Category", "Integration")]
@@ -136,13 +138,25 @@ namespace Tellma.Core.IntegrationTests.Excel
             Assert.Equal(ExcelErrorCodes.ImportMalformedWorkbook, Assert.Single(refused.Errors).Code);
         }
 
-        [Fact]
-        public async Task An_import_whose_job_may_still_run_cannot_be_deleted_until_the_job_ends()
+        [Theory]
+        [InlineData(nameof(JobStatus.Pending), false)]
+        [InlineData(nameof(JobStatus.Running), false)]
+        [InlineData(nameof(JobStatus.Held), false)]
+        [InlineData(nameof(JobStatus.PendingConfirmation), false)]
+        [InlineData(nameof(JobStatus.Succeeded), true)]
+        [InlineData(nameof(JobStatus.Failed), true)]
+        [InlineData(nameof(JobStatus.Cancelled), true)]
+        public async Task An_import_whose_job_may_still_run_cannot_be_deleted_by_its_creator_and_one_whose_job_ended_can(string status, bool ended)
         {
-            (int userId, string subject) = await fixture.SeedCallerAsync((CoreResources.Import, AccessActions.Read, null), (CoreResources.Import, AccessActions.Delete, null));
+            // The caller holds no stored grant: the imports' own-rows criteria alone let it delete its own.
+            (int userId, string subject) = await fixture.SeedCallerAsync();
+            string lease = status == nameof(JobStatus.Running) ? "NEWID(), DATEADD(minute, 5, SYSUTCDATETIME())" : "NULL, NULL";
+            string confirmations = status == nameof(JobStatus.PendingConfirmation) ? "N'[]'" : "NULL";
+            string completedAt = ended ? "SYSUTCDATETIME()" : "NULL";
             int jobId = await fixture.Connect.ScalarAsync<int>(ConnectDatabase.TenantA, string.Create(CultureInfo.InvariantCulture, $"""
                 DECLARE @id int = NEXT VALUE FOR [core].[sq_Jobs];
-                INSERT INTO [core].[Jobs] ([Id], [HandlerKey], [Status], [DueAt], [RunAsUserId], [CreatedAt], [LeaseToken], [LeaseExpiresAt]) VALUES (@id, N'fixture.probe', 'Running', SYSUTCDATETIME(), {userId}, SYSUTCDATETIME(), NEWID(), DATEADD(minute, 5, SYSUTCDATETIME()));
+                INSERT INTO [core].[Jobs] ([Id], [HandlerKey], [Status], [DueAt], [RunAsUserId], [CreatedAt], [CompletedAt], [LeaseToken], [LeaseExpiresAt], [PendingConfirmationsJson])
+                VALUES (@id, N'fixture.probe', '{status}', SYSUTCDATETIME(), {userId}, SYSUTCDATETIME(), {completedAt}, {lease}, {confirmations});
                 SELECT @id;
                 """));
             int importId = await fixture.Connect.ScalarAsync<int>(ConnectDatabase.TenantA, string.Create(CultureInfo.InvariantCulture, $"""
@@ -152,21 +166,21 @@ namespace Tellma.Core.IntegrationTests.Excel
                 SELECT @id;
                 """));
 
-            // --- Refused while the job runs, at the target's own position ---
-            await using (AsyncServiceScope scope = await ScopeAsync(subject))
-            {
-                ValidationException refused = await Assert.ThrowsAsync<ValidationException>(() => Imports(scope).DeleteByIdsAsync([importId], cancellationToken: Token));
-                Assert.Equal(ExcelErrorCodes.ImportsJobActive, Assert.Single(refused.Errors).Code);
-            }
-
-            // --- Deleted once the job has ended ---
-            await fixture.Connect.ExecuteAsync(ConnectDatabase.TenantA, string.Create(CultureInfo.InvariantCulture, $"UPDATE [core].[Jobs] SET [Status] = 'Failed', [CompletedAt] = SYSUTCDATETIME(), [LeaseToken] = NULL, [LeaseExpiresAt] = NULL WHERE [Id] = {jobId};"));
-            await using (AsyncServiceScope scope = await ScopeAsync(subject))
+            await using AsyncServiceScope scope = await ScopeAsync(subject);
+            if (ended)
             {
                 _ = await Imports(scope).DeleteByIdsAsync([importId], cancellationToken: Token);
             }
+            else
+            {
+                // Refused at the target's own position in the request.
+                ValidationException refused = await Assert.ThrowsAsync<ValidationException>(() => Imports(scope).DeleteByIdsAsync([importId], cancellationToken: Token));
+                ValidationError error = Assert.Single(refused.Errors);
+                Assert.Equal((ExcelErrorCodes.ImportsJobActive, "Ids[0]"), (error.Code, error.Path.ToString()));
+            }
 
-            Assert.Equal(0, await fixture.Connect.ScalarAsync<int>(ConnectDatabase.TenantA, string.Create(CultureInfo.InvariantCulture, $"SELECT COUNT(*) FROM [core].[Imports] WHERE [Id] = {importId};")));
+            int remaining = await fixture.Connect.ScalarAsync<int>(ConnectDatabase.TenantA, string.Create(CultureInfo.InvariantCulture, $"SELECT COUNT(*) FROM [core].[Imports] WHERE [Id] = {importId};"));
+            Assert.Equal(ended ? 0 : 1, remaining);
         }
 
         /// <summary>A caller's scope on the instance.</summary>

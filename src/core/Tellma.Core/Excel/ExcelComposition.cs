@@ -66,7 +66,8 @@ namespace Tellma.Core.Excel
             services.TryAddScoped<ExcelExports>();
 
             // A factory, as the store is the host's to register: a composition without one still
-            // builds, and only an import fails to activate.
+            // builds and validates, and the operations resolve the runner only when an inspection
+            // runs, so only an import fails to activate there.
             services.TryAddScoped(static provider => ActivatorUtilities.CreateInstance<ExcelImports>(provider));
 
             // --- The checks, after the built-in checks registered before them: the model's, then the deployment's ---

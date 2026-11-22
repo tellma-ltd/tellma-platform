@@ -35,6 +35,15 @@ namespace Tellma.Core.Excel
         /// <summary>The reason of an identity column ignored on a file without a manifest.</summary>
         public const string NoManifestReason = "NoManifest";
 
+        /// <summary>
+        ///     The longest header the mapping matches, in characters, as no export writes a longer one.
+        ///     A longer header is kept cut to this length and is unmapped unless an override maps it.
+        /// </summary>
+        public const int MaxHeaderLength = 255;
+
+        /// <summary>How many rows the mapping reads between two checks of its cancellation.</summary>
+        private const int CancellationStride = 1024;
+
         /// <summary>The stack's entity.</summary>
         private readonly EntityMetadata _entity = entity ?? throw new ArgumentNullException(nameof(entity));
 
@@ -63,16 +72,22 @@ namespace Tellma.Core.Excel
         /// <param name="workbook">The opened workbook.</param>
         /// <param name="sheetMappings">The sheet overrides, already checked against the entity.</param>
         /// <param name="columnMappings">The column overrides, already checked for form.</param>
+        /// <param name="cancellationToken">Stops the mapping between sheets and between rows.</param>
         /// <returns>The mapping.</returns>
         /// <exception cref="ImportException">The manifest names another entity, an override names a sheet, column or path the workbook or entity lacks, or a part read is malformed.</exception>
-        public ImportMapping Map(WorkbookReader workbook, IReadOnlyList<ImportSheetMapping> sheetMappings, IReadOnlyList<ImportColumnMapping> columnMappings)
+        /// <exception cref="OperationCanceledException">The mapping was cancelled.</exception>
+        public ImportMapping Map(
+            WorkbookReader workbook,
+            IReadOnlyList<ImportSheetMapping> sheetMappings,
+            IReadOnlyList<ImportColumnMapping> columnMappings,
+            CancellationToken cancellationToken = default)
         {
             ArgumentNullException.ThrowIfNull(workbook);
             ArgumentNullException.ThrowIfNull(sheetMappings);
             ArgumentNullException.ThrowIfNull(columnMappings);
 
             // --- The manifest, read and checked for its entity before anything is bound ---
-            ImportManifest? manifest = ReadManifest(workbook);
+            ImportManifest? manifest = ReadManifest(workbook, cancellationToken);
             bool sameSource = ExcelManifest.IsSameSource(manifest?.Header, _context.DeploymentId, _context.TenantId);
 
             // --- The overrides that name a sheet the workbook lacks ---
@@ -97,9 +112,10 @@ namespace Tellma.Core.Excel
             List<ImportMappedSheet> sheets = [];
             foreach (Binding binding in bindings)
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 List<ImportColumnMapping> own = overrides.GetValueOrDefault(binding.Sheet.Name) ?? [];
                 sheets.Add(binding.Entity is EntityMetadata sheetEntity
-                    ? MapSheet(workbook, binding, sheetEntity, manifest, own)
+                    ? MapSheet(workbook, binding, sheetEntity, manifest, own, cancellationToken)
                     : Unbound(binding, own));
             }
 
@@ -147,9 +163,10 @@ namespace Tellma.Core.Excel
 
         /// <summary>Reads the workbook's manifest, refusing one that names another entity.</summary>
         /// <param name="workbook">The workbook.</param>
+        /// <param name="cancellationToken">Stops the read between rows.</param>
         /// <returns>The manifest; null when the workbook has no manifest sheet, or one this codec does not read.</returns>
         /// <exception cref="ImportException">The manifest names another entity, or none.</exception>
-        private ImportManifest? ReadManifest(WorkbookReader workbook)
+        private ImportManifest? ReadManifest(WorkbookReader workbook, CancellationToken cancellationToken)
         {
             if (workbook.Sheets.FirstOrDefault(static sheet => IsManifestSheet(sheet) && sheet.Part is not null) is not WorkbookSheet sheet)
             {
@@ -159,7 +176,7 @@ namespace Tellma.Core.Excel
             ImportManifest? manifest;
             using (SheetReader reader = workbook.OpenSheet(sheet))
             {
-                manifest = ImportManifest.Read(reader);
+                manifest = ImportManifest.Read(reader, cancellationToken);
             }
 
             return manifest is not null && !string.Equals(manifest.Entity, _entity.Name, StringComparison.Ordinal)
@@ -311,41 +328,60 @@ namespace Tellma.Core.Excel
         /// <param name="sheetEntity">The entity of the sheet's rows.</param>
         /// <param name="manifest">The manifest; null for none.</param>
         /// <param name="overrides">The sheet's column overrides.</param>
+        /// <param name="cancellationToken">Stops the read between rows.</param>
         /// <returns>The sheet.</returns>
-        private ImportMappedSheet MapSheet(WorkbookReader workbook, Binding binding, EntityMetadata sheetEntity, ImportManifest? manifest, List<ImportColumnMapping> overrides)
+        private ImportMappedSheet MapSheet(
+            WorkbookReader workbook,
+            Binding binding,
+            EntityMetadata sheetEntity,
+            ImportManifest? manifest,
+            List<ImportColumnMapping> overrides,
+            CancellationToken cancellationToken)
         {
             WorkbookSheet sheet = binding.Sheet;
             ChildCollectionMetadata? collection = binding.Collection?.Collection;
 
-            // --- The header row: the first row holding a cell that is not blank; then the rows below it ---
-            List<(int Column, string Header)> headers = [];
+            // --- The header row: the first row holding a cell that is not blank, each header kept within its bound ---
+            List<(int Column, string Header, bool Overlong)> headers = [];
             int headerRow = 0;
             long rows = 0;
             using (SheetReader reader = workbook.OpenSheet(sheet))
             {
                 List<SheetCell> cells = [];
+                int read = 0;
                 while (reader.Read(cells, out int row))
                 {
                     if (cells.Any(static cell => !IsBlank(cell)))
                     {
                         headerRow = row;
-                        headers.AddRange(cells.Where(static cell => !IsBlank(cell)).Select(static cell => (cell.Column, CellCodec.AsText(cell.Value))));
+                        headers.AddRange(cells.Where(static cell => !IsBlank(cell)).Select(static cell => Header(cell.Column, CellCodec.AsText(cell.Value))));
                         break;
+                    }
+
+                    if (++read % CancellationStride == 0)
+                    {
+                        cancellationToken.ThrowIfCancellationRequested();
                     }
                 }
 
-                // The dimension, when declared, counts the rows without reading them; else they are counted.
+                // --- The rows below it: the dimension's, unless it ends at or before the header row (a
+                // placeholder a streaming writer never patched); else counted, each row skimmed ---
                 if (headerRow > 0)
                 {
-                    if (reader.DimensionLastRow is int last)
+                    if (reader.DimensionLastRow is int last && last > headerRow)
                     {
-                        rows = Math.Max(0, last - headerRow);
+                        rows = last - headerRow;
                     }
                     else
                     {
-                        while (reader.Read(cells, out _))
+                        int skimmed = 0;
+                        while (reader.Skim(out _, out bool filled))
                         {
-                            rows += cells.Any(static cell => !IsBlank(cell)) ? 1 : 0;
+                            rows += filled ? 1 : 0;
+                            if (++skimmed % CancellationStride == 0)
+                            {
+                                cancellationToken.ThrowIfCancellationRequested();
+                            }
                         }
                     }
                 }
@@ -379,9 +415,9 @@ namespace Tellma.Core.Excel
 
             HeaderIndex index = _cache.Headers(sheetEntity, collection, _context);
             List<ImportMappedColumn> columns = [];
-            foreach ((int column, string header) in headers)
+            foreach ((int column, string header, bool overlong) in headers)
             {
-                columns.Add(MapColumn(sheet, headerRow, sheetEntity, collection, column, header, byColumn.GetValueOrDefault(column), recorded, index));
+                columns.Add(MapColumn(sheet, headerRow, sheetEntity, collection, column, header, overlong, byColumn.GetValueOrDefault(column), recorded, index));
             }
 
             columns = Deduplicate(columns);
@@ -394,7 +430,8 @@ namespace Tellma.Core.Excel
         /// <param name="sheetEntity">The sheet's entity.</param>
         /// <param name="collection">The collection a child sheet stands for; null for the parent sheet.</param>
         /// <param name="column">The column.</param>
-        /// <param name="header">The header.</param>
+        /// <param name="header">The header, cut to <see cref="MaxHeaderLength" />.</param>
+        /// <param name="overlong">Whether the header was cut, so that only an override maps it.</param>
         /// <param name="mapping">The column's override; null for none.</param>
         /// <param name="recorded">The manifest's columns of the sheet, by header.</param>
         /// <param name="index">The header index of the sheet's entity.</param>
@@ -406,6 +443,7 @@ namespace Tellma.Core.Excel
             ChildCollectionMetadata? collection,
             int column,
             string header,
+            bool overlong,
             ImportColumnMapping? mapping,
             Dictionary<string, ImportManifestColumn> recorded,
             HeaderIndex index)
@@ -427,6 +465,12 @@ namespace Tellma.Core.Excel
                     _errors.Add(Error(sheet.Name, headerRow, ColumnLetters.Of(column), header, ExcelErrorCodes.ImportUnknownPath, new() { ["path"] = path }));
                     return new ImportMappedColumn(column, header, Path: null, ImportColumnStatus.Unmapped, Language: null, []);
                 }
+            }
+
+            // --- A header longer than any export writes matches nothing, and is offered no suggestion ---
+            if (resolution.IsUnknown && overlong)
+            {
+                return new ImportMappedColumn(column, header, Path: null, ImportColumnStatus.Unmapped, Language: null, []);
             }
 
             // --- The manifest's column table by exact header, then the header index; a path the entity lacks falls through ---
@@ -593,9 +637,11 @@ namespace Tellma.Core.Excel
                 rowKeys.Add(ImportPaths.Id);
             }
 
+            // A multilingual key is one key named after its group's primary member (spec 0019 §6.2), so a
+            // column of any of the group's slots covers it.
             foreach (NaturalKeyMetadata natural in _entity.NaturalKeys)
             {
-                if (parentColumns.Any(column => column.Path!.Kind is ImportPathKind.Property or ImportPathKind.Reference && column.Path.Property.Name == natural.Property.Name)
+                if (parentColumns.Any(column => column.Path!.Kind is ImportPathKind.Property or ImportPathKind.Reference && Covers(column.Path.Property.Name, natural.Property.Name))
                     && !rowKeys.Contains(natural.Property.Name, StringComparer.Ordinal))
                 {
                     rowKeys.Add(natural.Property.Name);
@@ -631,6 +677,26 @@ namespace Tellma.Core.Excel
                 requiresBackground,
                 atomicAllowed,
                 _warnings);
+        }
+
+        /// <summary>Whether a column writing a property covers a natural key: the key itself, or another slot of the key's multilingual group.</summary>
+        /// <param name="property">The property the column writes.</param>
+        /// <param name="key">The natural key's property.</param>
+        /// <returns>True when it does.</returns>
+        private bool Covers(string property, string key)
+        {
+            return string.Equals(property, key, StringComparison.Ordinal)
+                || (ImportPaths.Slot(_entity, property) is (MultilingualGroup group, _)
+                    && string.Equals(group.Primary.Name, key, StringComparison.Ordinal));
+        }
+
+        /// <summary>A header cell as the mapping keeps it: cut to <see cref="MaxHeaderLength" />, and whether it was.</summary>
+        /// <param name="column">The cell's column.</param>
+        /// <param name="text">The cell's text.</param>
+        /// <returns>The header.</returns>
+        private static (int Column, string Header, bool Overlong) Header(int column, string text)
+        {
+            return text.Length > MaxHeaderLength ? (column, text[..MaxHeaderLength], true) : (column, text, false);
         }
 
         /// <summary>Whether a stored cell is blank: no value, or text of white space alone.</summary>

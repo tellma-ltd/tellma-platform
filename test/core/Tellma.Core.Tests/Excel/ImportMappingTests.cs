@@ -3,7 +3,14 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Diagnostics.Metrics.Testing;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Testing;
+using System.Diagnostics.Metrics;
+using System.Globalization;
 using Tellma.Core.Abstractions.Crud;
+using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Excel;
 using Tellma.Core.Excel;
 using Tellma.Core.Tests.Excel.Corpus;
@@ -16,7 +23,8 @@ namespace Tellma.Core.Tests.Excel
     ///     The import plan of editable exports and of hand-made workbooks: sheets bound by the
     ///     manifest, by name and by the fallback; columns by the manifest, the header index and the
     ///     overrides; multilingual columns through the target tenant's slots; the same-source gate on
-    ///     identity columns; the faults an override raises; and the sizes against the limits.
+    ///     identity columns; the faults an override raises; the row keys; the bounds on headers; the
+    ///     cancellation; the spill's telemetry; and the sizes against the limits.
     /// </summary>
     /// <param name="composition">The fixture model with its labels, composed once for the class.</param>
     public sealed class ImportMappingTests(FixtureLabelsComposition composition) : IClassFixture<FixtureLabelsComposition>, IDisposable
@@ -351,6 +359,114 @@ namespace Tellma.Core.Tests.Excel
             Assert.Equal(ImportColumnStatus.Duplicate, plan.Sheets[0].Columns[3].Status);
             Assert.Equal("Node.Id", plan.Sheets[1].Columns[0].Path);
             Assert.Equal(["OtherNode.Id", "OtherNode.Code"], plan.Sheets[1].Columns.Skip(2).Select(static column => column.Path));
+        }
+
+        [Fact]
+        public async Task A_header_longer_than_any_export_writes_is_cut_and_unmapped_unless_an_override_maps_it()
+        {
+            using ExportScope scope = new(composition.Services, "en", "en");
+            string header = $"Price {new string('x', ImportMapper.MaxHeaderLength)}";
+            byte[] workbook = new SyntheticWorkbook(Producer.Excel, RawSheet.OfText("Data", ["Code", header])).Build();
+
+            ImportPlan plan = await _kit.InspectAsync<Widget>(workbook, scope.Context);
+            ImportPlan mapped = await _kit.InspectAsync<Widget>(workbook, scope.Context, new InspectImportRequest { FileId = 1, ColumnMappings = [new("Data", "B", "Price")] });
+
+            ImportPlanColumn column = plan.Sheets[0].Columns[1];
+            Assert.Equal((header[..ImportMapper.MaxHeaderLength], null, ImportColumnStatus.Unmapped), (column.Header, column.Path, column.Status));
+            Assert.Empty(column.Suggestions);
+            Assert.Equal(("Price", ImportColumnStatus.Mapped), (mapped.Sheets[0].Columns[1].Path, mapped.Sheets[0].Columns[1].Status));
+        }
+
+        [Fact]
+        public async Task A_manifest_of_another_schema_fingerprint_is_read_but_does_not_match()
+        {
+            using ExportScope scope = new(composition.Services, "en", "en");
+            string?[][] rows = [[ExcelManifest.VersionKey, "1"], [ExcelManifest.EntityKey, "fixture.Widget"], [ExcelManifest.SchemaFingerprintKey, "0000000000000000"]];
+            RawSheet manifest = RawSheet.OfText(SheetNames.Manifest, rows) with { State = "veryHidden" };
+            byte[] workbook = new SyntheticWorkbook(Producer.Excel, RawSheet.OfText("Data", ["Code"], ["W-1"]), manifest).Build();
+
+            ImportPlan plan = await _kit.InspectAsync<Widget>(workbook, scope.Context);
+
+            Assert.Equal(("fixture.Widget", true, false), (plan.Entity, plan.ManifestPresent, plan.SchemaFingerprintMatches));
+        }
+
+        [Fact]
+        public async Task A_multilingual_natural_key_mapped_only_through_another_slot_is_a_row_key_candidate()
+        {
+            // The fixture model has no multilingual natural key, so the widget is described again with its title as one.
+            EntityMetadata widget = _kit.Entity<Widget>();
+            PropertyMetadata name = Assert.Single(widget.Properties, static property => property.Name == "Name");
+            EntityMetadata keyed = new(
+                widget.ClrType,
+                widget.Name,
+                widget.Table,
+                widget.TableTypePhysicalName,
+                widget.Key,
+                widget.Properties,
+                [.. widget.NaturalKeys, new NaturalKeyMetadata(name, IsDeclared: true, Order: widget.NaturalKeys.Count)],
+                widget.MultilingualGroups,
+                widget.UniqueIndexes,
+                widget.IsTopLevel,
+                widget.IsTemporal,
+                widget.IsActivatable,
+                widget.IsJobEntity,
+                widget.IsCacheable,
+                widget.Tree,
+                widget.BlobReferences,
+                widget.DisplayName,
+                () => Activator.CreateInstance(widget.ClrType)!,
+                _ => widget.Children,
+                _ => widget.References,
+                _ => widget.SchemaFingerprint);
+            using ExportScope scope = new(composition.Services, "en", "en", "ar");
+            byte[] workbook = new SyntheticWorkbook(Producer.Excel, RawSheet.OfText("Data", ["Name2", "Price"], ["واحد", "1"])).Build();
+
+            ImportPlan plan = await _kit.InspectAsync(keyed, workbook, scope.Context);
+            ImportPlan unkeyed = await _kit.InspectAsync(widget, workbook, scope.Context);
+
+            Assert.Equal(("Name2", "ar"), (plan.Sheets[0].Columns[0].Path, plan.Sheets[0].Columns[0].Language));
+            Assert.Equal(["Name"], plan.RowKeyCandidates);
+            Assert.Equal("Name", plan.DefaultRowKey);
+            Assert.Empty(unkeyed.RowKeyCandidates);
+        }
+
+        [Fact]
+        public void A_cancelled_mapping_stops_before_it_reads_a_sheet()
+        {
+            using ExportScope scope = new(composition.Services, "en", "en");
+            byte[] workbook = new SyntheticWorkbook(Producer.Excel, RawSheet.OfText("Data", ["Code"], ["W-1"])).Build();
+            using var reader = WorkbookReader.Open(new MemoryStream(workbook, writable: false), new WorkbookLimits(1 << 24, 1 << 26, 1 << 24, 100_000), _kit.Scratch, TestContext.Current.CancellationToken);
+            ImportMapper mapper = new(_kit.Entity<Widget>(), StackLimits.Default, new ExcelOptions(), scope.Context, new HeaderIndexCache());
+            using CancellationTokenSource source = new();
+            source.Cancel();
+
+            _ = Assert.Throws<OperationCanceledException>(() => mapper.Map(reader, [], [], source.Token));
+        }
+
+        [Fact]
+        public async Task A_workbook_whose_shared_strings_spill_is_counted_and_logged_once_and_one_within_the_budget_is_neither()
+        {
+            using ExportScope scope = new(composition.Services, "en", "en");
+            string[] texts = [.. Enumerable.Range(0, 300).Select(static i => $"text number {i} " + new string('x', 64))];
+            byte[] spilling = new SyntheticWorkbook(Producer.Excel, RawSheet.OfText("Data", [["Code"], .. texts.Select(static text => new string?[] { text })])).Build();
+            byte[] within = new SyntheticWorkbook(Producer.Excel, RawSheet.OfText("Data", ["Code"], ["W-1"])).Build();
+            using MetricCollector<long> spilled = new(composition.Services.GetRequiredService<IMeterFactory>(), ExcelTelemetryNames.MeterName, ExcelTelemetryNames.SharedStringsSpilled);
+            FakeLoggerProvider logs = new();
+            using LoggerFactory loggers = new([logs]);
+            ExcelOptions lowered = new() { MaxInMemorySharedStringBytes = 4_096 };
+
+            _ = await _kit.InspectAsync<Widget>(within, scope.Context, options: lowered, loggers: loggers);
+
+            Assert.Empty(spilled.GetMeasurementSnapshot());
+            Assert.DoesNotContain(logs.Collector.GetSnapshot(), static record => record.Id.Name == "SharedStringsSpilled");
+
+            _ = await _kit.InspectAsync<Widget>(spilling, scope.Context, options: lowered, loggers: loggers);
+
+            Assert.Equal(1L, Assert.Single(spilled.GetMeasurementSnapshot()).Value);
+            FakeLogRecord record = Assert.Single(logs.Collector.GetSnapshot(), static record => record.Id.Name == "SharedStringsSpilled");
+            Assert.Equal(LogLevel.Information, record.Level);
+            string? bytes = Assert.Single(record.StructuredState!, static pair => pair.Key == "Bytes").Value;
+            Assert.True(long.Parse(bytes!, CultureInfo.InvariantCulture) > lowered.MaxInMemorySharedStringBytes);
         }
 
         /// <inheritdoc />

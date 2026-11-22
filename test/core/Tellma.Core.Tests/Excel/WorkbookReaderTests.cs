@@ -14,11 +14,18 @@ namespace Tellma.Core.Tests.Excel
 {
     /// <summary>
     ///     The workbook reader over well-formed packages of each producer and over hostile ones: the
-    ///     package and part limits, the structure checks, the shared-string cap and spill, and the
-    ///     faults of misaddressed cells, each refusing the workbook whole with its reason.
+    ///     package, part, directory and name limits, the structure checks, the shared-string cap and
+    ///     spill, the row and sheet text budgets, the skim, and the faults of misaddressed cells, each
+    ///     refusing the workbook whole with its reason.
     /// </summary>
     public sealed class WorkbookReaderTests : IDisposable
     {
+        /// <summary>How many distinct names a name flood holds: some fifteen times what the name table's bound admits.</summary>
+        private const int NameFloodCount = 400_000;
+
+        /// <summary>The most a refused name flood may allocate, its package's bytes aside; unbounded, its names alone would take several times this.</summary>
+        private const long MaxFloodAllocation = 16L << 20;
+
         /// <summary>Bounds roomy enough for every well-formed test package.</summary>
         private static readonly WorkbookLimits Roomy = new(MaxCompressedBytes: 64L << 20, MaxUncompressedBytes: 256L << 20, SharedStringBudget: 64L << 20, MaxSharedStringEntries: 1_000_000);
 
@@ -327,6 +334,191 @@ namespace Tellma.Core.Tests.Excel
             Assert.Equal(("Data", ImportFaults.XmlReason), (refused.Errors[0].Sheet, Reason(refused)));
         }
 
+        [Fact]
+        public void A_sheet_of_distinct_element_names_is_refused_once_its_names_pass_their_bound_and_holds_little_memory()
+        {
+            SyntheticWorkbook workbook = new(Producer.Excel, RawSheet.OfText("Data", ["a"]));
+            workbook.Parts["xl/worksheets/sheet1.xml"] = "<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">"
+                + NameFlood() + "<sheetData><row r=\"1\"><c><v>1</v></c></row></sheetData></worksheet>";
+            using WorkbookReader reader = Open(workbook.Build());
+
+            // The names alone, unbounded, would allocate several times the ceiling below.
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            ImportException refused = Assert.Throws<ImportException>(() =>
+            {
+                using SheetReader sheet = reader.OpenSheet(reader.Sheets[0]);
+                while (sheet.Read([], out _))
+                {
+                }
+            });
+            long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+            AssertNamesTooLarge(refused);
+            Assert.InRange(allocated, 0, MaxFloodAllocation);
+        }
+
+        [Fact]
+        public void A_shared_string_table_of_distinct_element_names_is_refused_at_open_and_holds_little_memory()
+        {
+            SyntheticWorkbook workbook = new(Producer.Excel, RawSheet.OfText("Data", ["a"]));
+            workbook.Parts["xl/sharedStrings.xml"] = "<sst xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><si><t>a</t></si>" + NameFlood() + "</sst>";
+            byte[] package = workbook.Build();
+
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            ImportException refused = Refuse(package);
+            long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+            AssertNamesTooLarge(refused);
+            Assert.InRange(allocated, 0, MaxFloodAllocation);
+        }
+
+        [Fact]
+        public void A_row_whose_text_passes_the_row_budget_is_a_malformed_sheet_and_a_row_within_it_reads()
+        {
+            SyntheticWorkbook workbook = new(Producer.Excel, RawSheet.OfText("Data", ["a"]));
+            workbook.Parts["xl/worksheets/sheet1.xml"] = Worksheet(InlineRow(1, 20, 20) + InlineRow(2, 40, 40));
+            using WorkbookReader reader = Open(workbook.Build(), Roomy with { RowTextBudget = 100 });
+            using SheetReader sheet = reader.OpenSheet(reader.Sheets[0]);
+            List<SheetCell> cells = [];
+
+            // Two cells of 20 characters are 80 bytes; two of 40 are 160, past the row's 100.
+            Assert.True(sheet.Read(cells, out int row));
+            Assert.Equal((1, 2), (row, cells.Count));
+            ImportException refused = Assert.Throws<ImportException>(() => sheet.Read(cells, out _));
+
+            AssertCellsRefused(refused);
+        }
+
+        [Fact]
+        public void A_sheet_whose_text_passes_the_sheet_budget_is_a_malformed_sheet_once_the_budget_is_passed()
+        {
+            SyntheticWorkbook workbook = new(Producer.Excel, RawSheet.OfText("Data", ["a"]));
+            workbook.Parts["xl/worksheets/sheet1.xml"] = Worksheet(InlineRow(1, 20, 20) + InlineRow(2, 20, 20) + InlineRow(3, 20, 20));
+            using WorkbookReader reader = Open(workbook.Build(), Roomy with { SheetTextBudget = 200 });
+            using SheetReader sheet = reader.OpenSheet(reader.Sheets[0]);
+            List<SheetCell> cells = [];
+
+            // Each row is 80 bytes: the third takes the sheet to 240, past its 200.
+            Assert.True(sheet.Read(cells, out _));
+            Assert.True(sheet.Read(cells, out _));
+            ImportException refused = Assert.Throws<ImportException>(() => sheet.Read(cells, out _));
+
+            AssertCellsRefused(refused);
+        }
+
+        [Fact]
+        public void A_skim_tells_each_row_filled_as_a_read_would_without_charging_its_text()
+        {
+            SyntheticWorkbook workbook = new(Producer.Excel, RawSheet.OfText("Data", ["a"]));
+            workbook.Parts["xl/sharedStrings.xml"] = "<sst xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">"
+                + "<si><t xml:space=\"preserve\"> </t></si><si><t>x</t></si></sst>";
+            workbook.Parts["xl/worksheets/sheet1.xml"] = Worksheet(
+                "<row r=\"1\"><c t=\"inlineStr\"><is><t xml:space=\"preserve\">   </t></is></c></row>"
+                + "<row r=\"2\"><c t=\"inlineStr\"><is><t>a long text past the row budget</t></is></c></row>"
+                + "<row r=\"3\"><c t=\"s\"><v>0</v></c></row>"
+                + "<row r=\"4\"><c t=\"s\"><v>1</v></c></row>"
+                + "<row r=\"5\"><c><v>12</v></c></row>"
+                + "<row r=\"6\"><c><f>A5</f></c></row>"
+                + "<row r=\"7\"><c t=\"inlineStr\"><is><r><t xml:space=\"preserve\"> </t></r><rPh sb=\"0\" eb=\"1\"><t>ヨミ</t></rPh></is></c></row>"
+                + "<row r=\"8\"/>"
+                + "<row r=\"9\"><c t=\"str\"><f>A1</f><v xml:space=\"preserve\">  </v></c></row>"
+                + "<row r=\"10\"><c><f>A1</f></c><c t=\"b\"><v>0</v></c></row>");
+            byte[] package = workbook.Build();
+            using WorkbookReader reader = Open(package, Roomy with { RowTextBudget = 8 });
+
+            List<(int Row, bool Filled)> skimmed = [];
+            using (SheetReader sheet = reader.OpenSheet(reader.Sheets[0]))
+            {
+                while (sheet.Skim(out int row, out bool filled))
+                {
+                    skimmed.Add((row, filled));
+                }
+            }
+
+            Assert.Equal(
+                [(1, false), (2, true), (3, false), (4, true), (5, true), (6, false), (7, false), (8, false), (9, false), (10, true)],
+                skimmed);
+
+            // The rows read under a roomy budget agree, and the row the skim passed is refused by a read under its own.
+            using WorkbookReader roomy = Open(package);
+            using SheetReader read = roomy.OpenSheet(roomy.Sheets[0]);
+            List<SheetCell> cells = [];
+            List<bool> filledByRead = [];
+            while (read.Read(cells, out _))
+            {
+                filledByRead.Add(cells.Any(static cell => !string.IsNullOrWhiteSpace(cell.Value.Text)));
+            }
+
+            Assert.Equal(skimmed.Select(static row => row.Filled), filledByRead);
+            using SheetReader budgeted = reader.OpenSheet(reader.Sheets[0]);
+            Assert.True(budgeted.Read(cells, out _));
+            AssertCellsRefused(Assert.Throws<ImportException>(() => budgeted.Read(cells, out _)));
+        }
+
+        [Fact]
+        public void Empty_shared_strings_spill_by_their_entry_charge_alone()
+        {
+            SyntheticWorkbook workbook = new(Producer.Excel, RawSheet.OfText("Data", ["a"]));
+            workbook.Parts["xl/sharedStrings.xml"] = "<sst xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">"
+                + string.Concat(Enumerable.Repeat("<si/>", 1_000)) + "</sst>";
+            byte[] package = workbook.Build();
+
+            // A thousand entries of no text are charged their overhead alone: 16,000 bytes.
+            using WorkbookReader spilled = Open(package, Roomy with { SharedStringBudget = 8_000 });
+            using WorkbookReader kept = Open(package, Roomy with { SharedStringBudget = 20_000 });
+
+            Assert.Equal((true, 1_000L * SharedStringStore.EntryOverhead), (spilled.SharedStrings.Spilled, spilled.SharedStrings.ChargedBytes));
+            Assert.False(kept.SharedStrings.Spilled);
+        }
+
+        [Fact]
+        public void A_cancelled_shared_string_load_stops_between_entries()
+        {
+            byte[] part = Encoding.UTF8.GetBytes("<sst xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">"
+                + string.Concat(Enumerable.Range(0, 5_000).Select(static i => $"<si><t>{i}</t></si>")) + "</sst>");
+            using CancellationTokenSource source = new();
+            source.Cancel();
+
+            _ = Assert.Throws<OperationCanceledException>(() => SharedStringStore.Load(new MemoryStream(part, writable: false), 64L << 20, 1_000_000, _scratch, source.Token).Dispose());
+        }
+
+        [Theory]
+        [InlineData(100L, 1_000L, true)]
+        [InlineData(70_000L, 1_000L, false)]
+        [InlineData(100L, 17L << 20, false)]
+        public void A_zip64_directory_is_held_to_the_entry_and_directory_bounds(long entries, long directoryBytes, bool accepted)
+        {
+            // The zip64 end record, its locator, then the end record whose entry count defers to it.
+            byte[] archive = new byte[56 + 20 + 22];
+            Span<byte> zip64 = archive.AsSpan(0, 56);
+            BinaryPrimitives.WriteUInt32LittleEndian(zip64, 0x06064b50);
+            BinaryPrimitives.WriteUInt64LittleEndian(zip64[32..], (ulong)entries);
+            BinaryPrimitives.WriteUInt64LittleEndian(zip64[40..], (ulong)directoryBytes);
+            Span<byte> locator = archive.AsSpan(56, 20);
+            BinaryPrimitives.WriteUInt32LittleEndian(locator, 0x07064b50);
+            BinaryPrimitives.WriteUInt64LittleEndian(locator[8..], 0);
+            Span<byte> end = archive.AsSpan(76, 22);
+            BinaryPrimitives.WriteUInt32LittleEndian(end, 0x06054b50);
+            BinaryPrimitives.WriteUInt16LittleEndian(end[8..], ushort.MaxValue);
+            BinaryPrimitives.WriteUInt16LittleEndian(end[10..], ushort.MaxValue);
+
+            CheckDirectory(archive, accepted);
+        }
+
+        [Theory]
+        [InlineData(1_000L, true)]
+        [InlineData(17L << 20, false)]
+        public void A_plain_directory_is_held_to_the_directory_bound(long directoryBytes, bool accepted)
+        {
+            byte[] archive = new byte[22];
+            BinaryPrimitives.WriteUInt32LittleEndian(archive, 0x06054b50);
+            BinaryPrimitives.WriteUInt16LittleEndian(archive.AsSpan(8), 3);
+            BinaryPrimitives.WriteUInt16LittleEndian(archive.AsSpan(10), 3);
+            BinaryPrimitives.WriteUInt32LittleEndian(archive.AsSpan(12), (uint)directoryBytes);
+
+            CheckDirectory(archive, accepted);
+        }
+
         /// <inheritdoc />
         public void Dispose()
         {
@@ -338,6 +530,57 @@ namespace Tellma.Core.Tests.Excel
             {
                 // A spilled file still open on a slow host is left for the system's temp cleanup.
             }
+        }
+
+        /// <summary>
+        ///     A run of distinct empty elements, each a new name for the reader's name table: enough
+        ///     that their names, unbounded, would be charged many times the table's bound.
+        /// </summary>
+        /// <returns>The elements.</returns>
+        private static string NameFlood()
+        {
+            return string.Concat(Enumerable.Range(0, NameFloodCount).Select(static i => $"<n{i}/>"));
+        }
+
+        /// <summary>A row of inline strings, one per length, each of that many characters.</summary>
+        /// <param name="row">The row's number.</param>
+        /// <param name="lengths">The cells' lengths.</param>
+        /// <returns>The row element.</returns>
+        private static string InlineRow(int row, params int[] lengths)
+        {
+            return $"<row r=\"{row}\">" + string.Concat(lengths.Select(static length => $"<c t=\"inlineStr\"><is><t>{new string('x', length)}</t></is></c>")) + "</row>";
+        }
+
+        /// <summary>Asserts a refusal is the package-too-large error of the name table's bound.</summary>
+        /// <param name="refused">The refusal.</param>
+        private static void AssertNamesTooLarge(ImportException refused)
+        {
+            ImportError error = Assert.Single(refused.Errors);
+            Assert.Equal((ExcelErrorCodes.ImportPackageTooLarge, BoundedNameTable.MaxBytes), (error.Code, (long)error.Arguments["max"]!));
+            Assert.True((long)error.Arguments["bytes"]! > BoundedNameTable.MaxBytes);
+        }
+
+        /// <summary>Asserts a refusal is the malformed-cells error of the test sheet.</summary>
+        /// <param name="refused">The refusal.</param>
+        private static void AssertCellsRefused(ImportException refused)
+        {
+            ImportError error = Assert.Single(refused.Errors);
+            Assert.Equal((ExcelErrorCodes.ImportMalformedWorkbook, "Data", ImportFaults.CellsReason), (error.Code, error.Sheet, (string?)error.Arguments["reason"]));
+        }
+
+        /// <summary>Checks an archive's directory records, expecting them accepted or refused as malformed.</summary>
+        /// <param name="archive">The archive's bytes.</param>
+        /// <param name="accepted">Whether the check should pass.</param>
+        private static void CheckDirectory(byte[] archive, bool accepted)
+        {
+            using MemoryStream stream = new(archive, writable: false);
+            if (accepted)
+            {
+                ZipDirectory.Check(stream);
+                return;
+            }
+
+            Assert.Equal(ImportFaults.ZipReason, Reason(Assert.Throws<ImportException>(() => ZipDirectory.Check(stream))));
         }
 
         /// <summary>A worksheet part of the given rows.</summary>

@@ -37,15 +37,20 @@ namespace Tellma.Core.Excel
         /// <summary>The package's parts by name, compared ignoring case as part names are.</summary>
         private readonly Dictionary<string, ZipArchiveEntry> _parts;
 
+        /// <summary>The bounds the workbook is read within, whose text budgets each sheet's reader keeps.</summary>
+        private readonly WorkbookLimits _limits;
+
         /// <summary>Creates the reader over a checked archive.</summary>
         /// <param name="zip">The archive.</param>
         /// <param name="parts">The parts by name.</param>
+        /// <param name="limits">The bounds.</param>
         /// <param name="compressed">The package's size.</param>
         /// <param name="uncompressed">The sum of its parts' lengths.</param>
-        private WorkbookReader(ZipArchive zip, Dictionary<string, ZipArchiveEntry> parts, long compressed, long uncompressed)
+        private WorkbookReader(ZipArchive zip, Dictionary<string, ZipArchiveEntry> parts, WorkbookLimits limits, long compressed, long uncompressed)
         {
             _zip = zip;
             _parts = parts;
+            _limits = limits;
             CompressedBytes = compressed;
             UncompressedBytes = uncompressed;
         }
@@ -69,9 +74,11 @@ namespace Tellma.Core.Excel
         /// <param name="package">The package: readable and seekable, positioned anywhere; left open.</param>
         /// <param name="limits">The bounds.</param>
         /// <param name="scratchDirectory">The directory shared strings spill to.</param>
+        /// <param name="cancellationToken">Stops the shared strings' load between entries.</param>
         /// <returns>The reader.</returns>
         /// <exception cref="Abstractions.Excel.ImportException">The package is above a limit, or is not a readable workbook.</exception>
-        public static WorkbookReader Open(Stream package, WorkbookLimits limits, string scratchDirectory)
+        /// <exception cref="OperationCanceledException">The open was cancelled.</exception>
+        public static WorkbookReader Open(Stream package, WorkbookLimits limits, string scratchDirectory, CancellationToken cancellationToken = default)
         {
             ArgumentNullException.ThrowIfNull(package);
             ArgumentNullException.ThrowIfNull(limits);
@@ -127,8 +134,8 @@ namespace Tellma.Core.Excel
                     }
                 }
 
-                WorkbookReader reader = new(zip, parts, compressed, uncompressed);
-                reader.ReadStructure(limits, scratchDirectory);
+                WorkbookReader reader = new(zip, parts, limits, compressed, uncompressed);
+                reader.ReadStructure(scratchDirectory, cancellationToken);
                 return reader;
             }
             catch (XmlException)
@@ -156,7 +163,7 @@ namespace Tellma.Core.Excel
         {
             ArgumentNullException.ThrowIfNull(sheet);
             string part = sheet.Part ?? throw new ArgumentException($"The sheet '{sheet.Name}' holds no cells.", nameof(sheet));
-            return SheetReader.Open(OpenPart(part), sheet.Name, SharedStrings.Get);
+            return SheetReader.Open(OpenPart(part), sheet.Name, SharedStrings, _limits.RowTextBudget, _limits.SheetTextBudget);
         }
 
         /// <inheritdoc />
@@ -184,9 +191,9 @@ namespace Tellma.Core.Excel
         }
 
         /// <summary>Checks the package's structure, reads the workbook part and loads the shared strings.</summary>
-        /// <param name="limits">The bounds.</param>
         /// <param name="scratchDirectory">The directory shared strings spill to.</param>
-        private void ReadStructure(WorkbookLimits limits, string scratchDirectory)
+        /// <param name="cancellationToken">Stops the shared strings' load between entries.</param>
+        private void ReadStructure(string scratchDirectory, CancellationToken cancellationToken)
         {
             // --- The content types: present, one workbook part, no link to another workbook ---
             if (!_parts.ContainsKey(ContentTypesPart))
@@ -261,7 +268,7 @@ namespace Tellma.Core.Excel
                 string table = tables[0].Target is string target && _parts.ContainsKey(target)
                     ? target
                     : throw ImportFaults.Malformed(ImportFaults.RelationshipsReason);
-                SharedStrings = SharedStringStore.Load(OpenPart(table), limits.SharedStringBudget, limits.MaxSharedStringEntries, scratchDirectory);
+                SharedStrings = SharedStringStore.Load(OpenPart(table), _limits.SharedStringBudget, _limits.MaxSharedStringEntries, scratchDirectory, cancellationToken);
             }
         }
 
@@ -397,10 +404,14 @@ namespace Tellma.Core.Excel
     ///     One worksheet, read forward-only: its declared dimension, then its rows in ascending order,
     ///     each with its stored cells in ascending column order. A row or cell without a reference
     ///     takes the next in sequence; one out of order, out of range, or naming another row is a
-    ///     malformed sheet.
+    ///     malformed sheet. The text a row decodes to is bounded, and so is the text the whole sheet
+    ///     decodes to; a row may instead be skimmed, told blank or not without its text decoded.
     /// </summary>
     internal sealed class SheetReader : IDisposable
     {
+        /// <summary>The characters a skim reads of a text node at a time.</summary>
+        private const int ScanChunk = 1024;
+
         /// <summary>The part's reader, owned.</summary>
         private readonly XmlReader _reader;
 
@@ -408,7 +419,19 @@ namespace Tellma.Core.Excel
         private readonly string _sheet;
 
         /// <summary>The workbook's shared strings.</summary>
-        private readonly Func<int, string?> _sharedString;
+        private readonly SharedStringStore _strings;
+
+        /// <summary>The most UTF-16 bytes of text one row's cells may decode to.</summary>
+        private readonly long _rowBudget;
+
+        /// <summary>The most UTF-16 bytes of text the sheet's cells may decode to.</summary>
+        private readonly long _sheetBudget;
+
+        /// <summary>The buffer a skim scans text through; made on the first skim.</summary>
+        private char[]? _scan;
+
+        /// <summary>The UTF-16 bytes of text the sheet's cells decoded to so far.</summary>
+        private long _sheetCharged;
 
         /// <summary>The depth of the rows: the children of the sheet data element.</summary>
         private int _rowDepth = -1;
@@ -422,12 +445,16 @@ namespace Tellma.Core.Excel
         /// <summary>Creates the reader, positioned on the sheet data's first row.</summary>
         /// <param name="reader">The part's reader.</param>
         /// <param name="sheet">The sheet's name.</param>
-        /// <param name="sharedString">The workbook's shared strings.</param>
-        private SheetReader(XmlReader reader, string sheet, Func<int, string?> sharedString)
+        /// <param name="strings">The workbook's shared strings.</param>
+        /// <param name="rowBudget">The most UTF-16 bytes of text one row's cells may decode to.</param>
+        /// <param name="sheetBudget">The most UTF-16 bytes of text the sheet's cells may decode to.</param>
+        private SheetReader(XmlReader reader, string sheet, SharedStringStore strings, long rowBudget, long sheetBudget)
         {
             _reader = reader;
             _sheet = sheet;
-            _sharedString = sharedString;
+            _strings = strings;
+            _rowBudget = rowBudget;
+            _sheetBudget = sheetBudget;
         }
 
         /// <summary>The last row the sheet's dimension declares; null when the sheet declares none.</summary>
@@ -436,12 +463,17 @@ namespace Tellma.Core.Excel
         /// <summary>Opens a sheet's part and reads up to its first row.</summary>
         /// <param name="part">The part's stream; owned.</param>
         /// <param name="sheet">The sheet's name.</param>
-        /// <param name="sharedString">The workbook's shared strings.</param>
+        /// <param name="strings">The workbook's shared strings.</param>
+        /// <param name="rowBudget">The most UTF-16 bytes of text one row's cells may decode to.</param>
+        /// <param name="sheetBudget">The most UTF-16 bytes of text the sheet's cells may decode to.</param>
         /// <returns>The reader.</returns>
         /// <exception cref="Abstractions.Excel.ImportException">The part is not well-formed.</exception>
-        public static SheetReader Open(Stream part, string sheet, Func<int, string?> sharedString)
+        public static SheetReader Open(Stream part, string sheet, SharedStringStore strings, long rowBudget, long sheetBudget)
         {
-            SheetReader reader = new(XlsxXml.Open(part), sheet, sharedString);
+            ArgumentNullException.ThrowIfNull(strings);
+            ArgumentOutOfRangeException.ThrowIfNegative(rowBudget);
+            ArgumentOutOfRangeException.ThrowIfNegative(sheetBudget);
+            SheetReader reader = new(XlsxXml.Open(part), sheet, strings, rowBudget, sheetBudget);
             try
             {
                 reader.Start();
@@ -458,12 +490,47 @@ namespace Tellma.Core.Excel
         /// <param name="cells">Cleared, then given the row's stored cells that are not blank, in column order.</param>
         /// <param name="row">The row's one-based number.</param>
         /// <returns>False once the rows are exhausted.</returns>
-        /// <exception cref="Abstractions.Excel.ImportException">The part is not well-formed, or a row or cell is misaddressed.</exception>
+        /// <exception cref="Abstractions.Excel.ImportException">
+        ///     The part is not well-formed, a row or cell is misaddressed, or the row's or the sheet's
+        ///     text passes its budget.
+        /// </exception>
         public bool Read(List<SheetCell> cells, out int row)
         {
             ArgumentNullException.ThrowIfNull(cells);
-            cells.Clear();
+            return Next(cells, out row, out _);
+        }
+
+        /// <summary>
+        ///     Skims the next row that holds a row element: whether a cell of it holds more than white
+        ///     space, told without its text decoded. An inline or formula string of escaped white
+        ///     space alone counts as filled.
+        /// </summary>
+        /// <param name="row">The row's one-based number.</param>
+        /// <param name="filled">Whether a cell of the row holds more than white space.</param>
+        /// <returns>False once the rows are exhausted.</returns>
+        /// <exception cref="Abstractions.Excel.ImportException">The part is not well-formed, or a row or cell is misaddressed.</exception>
+        public bool Skim(out int row, out bool filled)
+        {
+            _scan ??= new char[ScanChunk];
+            return Next(cells: null, out row, out filled);
+        }
+
+        /// <inheritdoc />
+        public void Dispose()
+        {
+            _reader.Dispose();
+        }
+
+        /// <summary>Reads or skims the next row.</summary>
+        /// <param name="cells">Receives the row's cells when it is read; null when it is skimmed.</param>
+        /// <param name="row">The row's one-based number.</param>
+        /// <param name="filled">Whether a cell of the row holds more than white space.</param>
+        /// <returns>False once the rows are exhausted.</returns>
+        private bool Next(List<SheetCell>? cells, out int row, out bool filled)
+        {
+            cells?.Clear();
             row = 0;
+            filled = false;
             try
             {
                 // --- The next row element, at the rows' depth, until the sheet data ends ---
@@ -483,7 +550,7 @@ namespace Tellma.Core.Excel
                     _lastRow = row;
                     if (!_reader.IsEmptyElement)
                     {
-                        ReadCells(row, cells);
+                        filled = ReadCells(row, cells);
                     }
 
                     return true;
@@ -500,12 +567,6 @@ namespace Tellma.Core.Excel
             {
                 throw ImportFaults.Malformed(ImportFaults.ZipReason, _sheet);
             }
-        }
-
-        /// <inheritdoc />
-        public void Dispose()
-        {
-            _reader.Dispose();
         }
 
         /// <summary>Reads up to the sheet data, capturing the dimension on the way.</summary>
@@ -539,13 +600,16 @@ namespace Tellma.Core.Excel
             }
         }
 
-        /// <summary>Reads a row's cells, the reader on the row's start and left on its end.</summary>
+        /// <summary>Reads or skims a row's cells, the reader on the row's start and left on its end.</summary>
         /// <param name="row">The row's number.</param>
-        /// <param name="cells">Receives the cells that are not blank.</param>
-        private void ReadCells(int row, List<SheetCell> cells)
+        /// <param name="cells">Receives the cells that are not blank; null to skim them.</param>
+        /// <returns>Whether a cell of the row holds more than white space.</returns>
+        private bool ReadCells(int row, List<SheetCell>? cells)
         {
             int depth = _reader.Depth;
             int lastColumn = -1;
+            long rowCharged = 0;
+            bool filled = false;
             while (_reader.Read() && !(_reader.NodeType == XmlNodeType.EndElement && _reader.Depth == depth))
             {
                 if (_reader.Depth != depth + 1 || !XlsxXml.IsSpreadsheet(_reader, "c"))
@@ -573,12 +637,34 @@ namespace Tellma.Core.Excel
                 }
 
                 lastColumn = column;
-                ExcelRawCell value = ReadCell();
-                if (value.Kind != ExcelCellKind.Blank)
+
+                // --- A skim tells the cell filled or not and keeps nothing ---
+                if (cells is null)
                 {
-                    cells.Add(new SheetCell(column, value));
+                    filled |= SkimCell();
+                    continue;
                 }
+
+                ExcelRawCell value = ReadCell();
+                if (value.Kind == ExcelCellKind.Blank)
+                {
+                    continue;
+                }
+
+                // --- The cell's text, charged to the row's and the sheet's budgets before it is kept ---
+                long charge = (long)value.Text.Length * sizeof(char);
+                rowCharged += charge;
+                _sheetCharged += charge;
+                if (rowCharged > _rowBudget || _sheetCharged > _sheetBudget)
+                {
+                    throw ImportFaults.Malformed(ImportFaults.CellsReason, _sheet);
+                }
+
+                cells.Add(new SheetCell(column, value));
+                filled = filled || !string.IsNullOrWhiteSpace(value.Text);
             }
+
+            return filled;
         }
 
         /// <summary>Reads a cell, the reader on its start and left on its end: its cached value or its inline string, the formula skipped.</summary>
@@ -615,13 +701,61 @@ namespace Tellma.Core.Excel
 
             try
             {
-                return CellReader.Read(type, value, inline, _sharedString);
+                return CellReader.Read(type, value, inline, _strings.Get);
             }
             catch (FormatException)
             {
                 // A shared string index the table lacks.
                 throw ImportFaults.Malformed(ImportFaults.CellsReason, _sheet);
             }
+        }
+
+        /// <summary>
+        ///     Skims a cell, the reader on its start and left on its end: whether its value holds more
+        ///     than white space, by the rules a read decodes it with. Text is scanned in chunks and
+        ///     never kept, and a shared string is told by its bit.
+        /// </summary>
+        /// <returns>Whether the cell holds more than white space.</returns>
+        private bool SkimCell()
+        {
+            string? type = _reader.GetAttribute("t");
+            if (_reader.IsEmptyElement)
+            {
+                return false;
+            }
+
+            int depth = _reader.Depth;
+            bool filled = false;
+            while (_reader.Read() && !(_reader.NodeType == XmlNodeType.EndElement && _reader.Depth == depth))
+            {
+                if (_reader.Depth != depth + 1)
+                {
+                    continue;
+                }
+
+                // --- An inline string's own element; any other kind's cached value, a shared string's an index ---
+                if (type == CellReader.InlineStringType)
+                {
+                    filled |= XlsxXml.IsSpreadsheet(_reader, "is") && XlsxXml.HasStringItemText(_reader, _scan!);
+                }
+                else if (XlsxXml.IsSpreadsheet(_reader, "v"))
+                {
+                    filled |= type == CellReader.SharedStringType ? SharedStringFilled() : XlsxXml.HasText(_reader, _scan!);
+                }
+            }
+
+            return filled;
+        }
+
+        /// <summary>Whether the shared string a cell's value names holds more than white space, the reader on the value's start and left on its end.</summary>
+        /// <returns>True when it does.</returns>
+        private bool SharedStringFilled()
+        {
+            // An index is a handful of digits; one the table lacks is a malformed cell, as a read refuses it.
+            string text = XlsxXml.ReadText(_reader, _sheet);
+            return int.TryParse(text, NumberStyles.None, CultureInfo.InvariantCulture, out int index) && _strings.IsFilled(index) is bool filled
+                ? filled
+                : throw ImportFaults.Malformed(ImportFaults.CellsReason, _sheet);
         }
 
         /// <summary>A row's number: its reference's, else the next; ascending and within the sheet.</summary>

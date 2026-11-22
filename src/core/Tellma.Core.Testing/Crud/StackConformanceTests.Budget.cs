@@ -23,9 +23,9 @@ namespace Tellma.Core.Testing.Crud
         ///     Each read takes its round-trip budget, measured over two rows so a statement per row
         ///     shows: one for a query (with its count, and with its ancestors on a tree), a details
         ///     read, a read by parent ids, a child surface's query, an Excel page with every
-        ///     collection at every depth, an Excel lookup, an exportable child surface's Excel page and
-        ///     an import's inspection of the caller's upload; none for a cached list, or two on a
-        ///     table beyond the list's row limit.
+        ///     collection at every depth, an Excel lookup, an exportable child surface's Excel page, a
+        ///     display and an editable export of the two rows, and an import's inspection of the
+        ///     caller's upload; none for a cached list, or two on a table beyond the list's row limit.
         /// </summary>
         /// <returns>A task that completes when the case ran.</returns>
         [Fact]
@@ -86,9 +86,24 @@ namespace Tellma.Core.Testing.Crud
                 }
             }
 
+            // --- The two exports (spec 0019 §1.4): one round trip per page of the take ceiling, so
+            // one for the two rows, the editable shape's collections riding it ---
+            ApiActionDescriptor[] workbookActions = [.. Stack.Actions.OfType<ApiActionDescriptor>()];
+            long[] exported = [.. ids.Select(static id => long.CreateChecked(id))];
+            if (workbookActions.FirstOrDefault(static action => action.Name == "export") is ApiActionDescriptor displayExport)
+            {
+                ExportRequest request = new() { Ids = exported, Columns = [new(Metadata.Key.Name, null)] };
+                reads.Add(("a display export of the two rows", 1, scope => ExportAsync(scope, displayExport, request)));
+            }
+
+            if (workbookActions.FirstOrDefault(static action => action.Name == "export-for-import") is ApiActionDescriptor editableExport)
+            {
+                ExportForImportRequest request = new() { Ids = exported };
+                reads.Add(("an editable export of the two rows", 1, scope => ExportAsync(scope, editableExport, request)));
+            }
+
             // --- An import's inspection (spec 0019 §7.1): the caller's staged upload, an editable
             // export of the two rows, resolved in one round trip and read locally after it ---
-            ApiActionDescriptor[] workbookActions = [.. Stack.Actions.OfType<ApiActionDescriptor>()];
             if (workbookActions.FirstOrDefault(static action => action.RequestType == typeof(InspectImportRequest)) is ApiActionDescriptor inspect
                 && workbookActions.FirstOrDefault(static action => action.RequestType == typeof(ExportForImportRequest)) is ApiActionDescriptor editable)
             {
@@ -266,6 +281,17 @@ namespace Tellma.Core.Testing.Crud
 
             // --- The rows its collections hold, each under its own parent key ---
             return entity.Children.Any(collection => collection.Getter(row)?.Any(child => Loads(collection.Child, child, collection.ParentKey)) == true);
+        }
+
+        /// <summary>Invokes one of the stack's exports through the action invoker and disposes the workbook it answers.</summary>
+        /// <param name="scope">The caller's scope.</param>
+        /// <param name="action">The stack's export or export-for-import action.</param>
+        /// <param name="request">The action's request.</param>
+        /// <returns>A task that completes when the workbook is written and disposed.</returns>
+        private static async Task ExportAsync(IServiceProvider scope, ApiActionDescriptor action, object request)
+        {
+            object? result = await scope.GetRequiredService<IApiActionInvoker>().InvokeAsync(action, request, Token);
+            await using ExportOutcome outcome = Assert.IsType<ExportOutcome>(result);
         }
 
         /// <summary>Writes an editable export of some rows and stages it as the caller's upload of an import file.</summary>

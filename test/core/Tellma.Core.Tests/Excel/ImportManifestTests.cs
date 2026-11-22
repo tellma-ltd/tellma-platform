@@ -97,6 +97,28 @@ namespace Tellma.Core.Tests.Excel
         }
 
         [Fact]
+        public void Header_and_column_rows_holding_a_field_longer_than_the_cap_are_dropped()
+        {
+            string overlong = new('x', ImportManifest.MaxFieldLength + 1);
+            string?[][] rows =
+            [
+                [ExcelManifest.VersionKey, "1"],
+                [ExcelManifest.EntityKey, "fixture.Widget"],
+                [ExcelManifest.DeploymentKey, overlong],
+                [],
+                ["Sheet", "Collection", "Column", "Header", "Path", "Language"],
+                ["Data", null, "A", "Code", "Code", null],
+                ["Data", null, "B", overlong, "Name", "en"],
+                ["Data", null, "C", "Price", "Price", null],
+            ];
+
+            ImportManifest manifest = Read(Manifest(rows))!;
+
+            Assert.Equal(("fixture.Widget", null), (manifest.Entity, manifest.Deployment));
+            Assert.Equal(["Code", "Price"], manifest.Columns.Select(static column => column.Header));
+        }
+
+        [Fact]
         public void A_column_table_without_its_required_fields_reads_as_no_columns()
         {
             ImportManifest manifest = Read(Manifest([ExcelManifest.VersionKey, "1"], [], ["Sheet", "Header", "Path"], ["Data", "Code", "Code"]))!;

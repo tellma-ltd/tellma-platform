@@ -4,6 +4,7 @@
 // LICENSE file in the root directory of this source tree.
 
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using System.Runtime.CompilerServices;
 using Tellma.Core.Abstractions.Blobs;
@@ -60,10 +61,11 @@ namespace Tellma.Core.Tests.Excel
         /// <param name="request">The overrides; none when null.</param>
         /// <param name="options">The codec's options; the defaults when null.</param>
         /// <param name="limits">The stack's limits; the defaults when null.</param>
+        /// <param name="loggers">The importer's loggers; none when null.</param>
         /// <returns>The plan.</returns>
-        public Task<ImportPlan> InspectAsync<TEntity>(byte[] workbook, ExcelContext context, InspectImportRequest? request = null, ExcelOptions? options = null, StackLimits? limits = null)
+        public Task<ImportPlan> InspectAsync<TEntity>(byte[] workbook, ExcelContext context, InspectImportRequest? request = null, ExcelOptions? options = null, StackLimits? limits = null, ILoggerFactory? loggers = null)
         {
-            return InspectAsync(Entity<TEntity>(), workbook, context, request, options, limits);
+            return InspectAsync(Entity<TEntity>(), workbook, context, request, options, limits, loggers);
         }
 
         /// <summary>Inspects a workbook against an entity.</summary>
@@ -73,19 +75,21 @@ namespace Tellma.Core.Tests.Excel
         /// <param name="request">The overrides; none when null.</param>
         /// <param name="options">The codec's options; the defaults when null.</param>
         /// <param name="limits">The stack's limits; the defaults when null.</param>
+        /// <param name="loggers">The importer's loggers; none when null.</param>
         /// <returns>The plan.</returns>
-        public async Task<ImportPlan> InspectAsync(EntityMetadata entity, byte[] workbook, ExcelContext context, InspectImportRequest? request = null, ExcelOptions? options = null, StackLimits? limits = null)
+        public async Task<ImportPlan> InspectAsync(EntityMetadata entity, byte[] workbook, ExcelContext context, InspectImportRequest? request = null, ExcelOptions? options = null, StackLimits? limits = null, ILoggerFactory? loggers = null)
         {
             request ??= new InspectImportRequest { FileId = 1 };
             ImportRequests.Check(entity, request.FileId, request.SheetMappings, request.ColumnMappings);
             using MemoryStream stream = new(workbook, writable: false);
-            return await Importer(options).InspectAsync(stream, entity, limits ?? StackLimits.Default, request, context, TestContext.Current.CancellationToken);
+            return await Importer(options, loggers).InspectAsync(stream, entity, limits ?? StackLimits.Default, request, context, TestContext.Current.CancellationToken);
         }
 
         /// <summary>An importer over the composition's blob kinds and metrics, with its own header cache.</summary>
         /// <param name="options">The codec's options; the defaults when null.</param>
+        /// <param name="loggers">The importer's loggers; none when null.</param>
         /// <returns>The importer.</returns>
-        public ExcelImporter Importer(ExcelOptions? options = null)
+        public ExcelImporter Importer(ExcelOptions? options = null, ILoggerFactory? loggers = null)
         {
             return new ExcelImporter(
                 options ?? new ExcelOptions(),
@@ -93,7 +97,7 @@ namespace Tellma.Core.Tests.Excel
                 services.GetRequiredService<IBlobKindRegistry>(),
                 new HeaderIndexCache(),
                 services.GetRequiredService<ExcelMetrics>(),
-                NullLoggerFactory.Instance);
+                loggers ?? NullLoggerFactory.Instance);
         }
 
         /// <summary>A context for a tenant: the exporting scope's, with another tenant, deployment, languages or culture.</summary>

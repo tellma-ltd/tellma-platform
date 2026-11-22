@@ -26,6 +26,15 @@ namespace Tellma.Core.Excel
         /// <summary>The most rows of the column table read; the rest are ignored.</summary>
         public const int MaxColumnRows = 65_536;
 
+        /// <summary>The longest value a header row or a column table field may hold, in characters; a longer one drops its row.</summary>
+        public const int MaxFieldLength = 255;
+
+        /// <summary>The most UTF-16 bytes of text the kept column table rows may hold; the rows past it are dropped.</summary>
+        public const long MaxColumnTableBytes = 32L * 1024 * 1024;
+
+        /// <summary>How many rows the read passes between two checks of its cancellation.</summary>
+        private const int CancellationStride = 1024;
+
         /// <summary>The column table's headers the reader needs, without which the table is ignored.</summary>
         private static readonly string[] RequiredColumns = ["Sheet", "Column", "Header", "Path"];
 
@@ -73,9 +82,11 @@ namespace Tellma.Core.Excel
 
         /// <summary>Reads a manifest sheet.</summary>
         /// <param name="sheet">The sheet's reader, before its first row.</param>
+        /// <param name="cancellationToken">Stops the read between rows.</param>
         /// <returns>The manifest; null when the sheet is no manifest of the format this codec reads.</returns>
         /// <exception cref="Abstractions.Excel.ImportException">The sheet's part is not well-formed.</exception>
-        public static ImportManifest? Read(SheetReader sheet)
+        /// <exception cref="OperationCanceledException">The read was cancelled.</exception>
+        public static ImportManifest? Read(SheetReader sheet, CancellationToken cancellationToken = default)
         {
             ArgumentNullException.ThrowIfNull(sheet);
             List<SheetCell> cells = [];
@@ -95,7 +106,7 @@ namespace Tellma.Core.Excel
             bool more = sheet.Read(cells, out row);
             while (more && row == last + 1 && cells.Count > 0 && header.Count < MaxHeaderRows)
             {
-                if (Text(cells, 0) is string key && Text(cells, 1) is string value)
+                if (Text(cells, 0) is string key && Text(cells, 1) is string value && key.Length <= MaxFieldLength && value.Length <= MaxFieldLength)
                 {
                     _ = header.TryAdd(key, value);
                 }
@@ -105,9 +116,14 @@ namespace Tellma.Core.Excel
             }
 
             // --- The column table: its header row located by name, then one row per data column ---
+            int skipped = 0;
             while (more && cells.Count == 0)
             {
                 more = sheet.Read(cells, out row);
+                if (++skipped % CancellationStride == 0)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                }
             }
 
             List<ImportManifestColumn> columns = [];
@@ -121,14 +137,30 @@ namespace Tellma.Core.Excel
 
                 if (RequiredColumns.All(at.ContainsKey))
                 {
+                    // Each kept row is charged its fields' text, so the table's memory stays bounded whatever its rows hold.
                     HashSet<(string Sheet, string Header)> seen = new(SheetHeaderComparer.Instance);
+                    long charged = 0;
                     int read = 0;
                     while (sheet.Read(cells, out _) && read++ < MaxColumnRows)
                     {
-                        if (Column(cells, at) is ImportManifestColumn column && seen.Add((column.Sheet, column.Header)))
+                        if (read % CancellationStride == 0)
                         {
-                            columns.Add(column);
+                            cancellationToken.ThrowIfCancellationRequested();
                         }
+
+                        if (Column(cells, at) is not ImportManifestColumn column || seen.Contains((column.Sheet, column.Header)))
+                        {
+                            continue;
+                        }
+
+                        charged += Charge(column);
+                        if (charged > MaxColumnTableBytes)
+                        {
+                            break;
+                        }
+
+                        _ = seen.Add((column.Sheet, column.Header));
+                        columns.Add(column);
                     }
                 }
             }
@@ -142,6 +174,12 @@ namespace Tellma.Core.Excel
         /// <returns>The row.</returns>
         private static ImportManifestColumn? Column(List<SheetCell> cells, Dictionary<string, int> at)
         {
+            // A row holding a value longer than any field takes is not one an export wrote.
+            if (cells.Any(static cell => CellCodec.AsText(cell.Value).Length > MaxFieldLength))
+            {
+                return null;
+            }
+
             string? sheet = Field(cells, at, "Sheet");
             string? letter = Field(cells, at, "Column");
             string? header = Field(cells, at, "Header", trim: false);
@@ -164,6 +202,20 @@ namespace Tellma.Core.Excel
                 Field(cells, at, "KeyKind"),
                 Field(cells, at, "DateEncoding"),
                 Field(cells, at, "DatePattern"));
+        }
+
+        /// <summary>The bytes a kept column table row is charged: its fields' UTF-16 text plus a fixed overhead each.</summary>
+        /// <param name="column">The row.</param>
+        /// <returns>The charge.</returns>
+        private static long Charge(ImportManifestColumn column)
+        {
+            const int FieldOverhead = 16;
+            string?[] fields =
+            [
+                column.Sheet, column.Collection, column.Header, column.Path, column.Language, column.Role,
+                column.Type, column.ReferenceEntity, column.KeyKind, column.DateEncoding, column.DatePattern,
+            ];
+            return fields.Sum(static field => ((long)(field?.Length ?? 0) * sizeof(char)) + FieldOverhead);
         }
 
         /// <summary>A field of a column table row.</summary>

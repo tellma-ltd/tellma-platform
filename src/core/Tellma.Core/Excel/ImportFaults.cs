@@ -46,7 +46,10 @@ namespace Tellma.Core.Excel
         public const string EntityReason = "entity";
 
         /// <summary>A package above a size limit.</summary>
-        /// <param name="bytes">The size found, or the bytes read when a part ran past its declared length.</param>
+        /// <param name="bytes">
+        ///     The size found; the bytes read when a part ran past its declared length; or the bytes
+        ///     a part's distinct names were charged when they passed their bound.
+        /// </param>
         /// <param name="max">The limit.</param>
         /// <returns>The exception.</returns>
         public static ImportException TooLarge(long bytes, long max)

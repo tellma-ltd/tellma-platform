@@ -22,7 +22,7 @@ namespace Tellma.Core.Excel
         /// <param name="limits">The stack's limits, whose save sizes decide whether the file fits a synchronous or an atomic import.</param>
         /// <param name="request">The caller's sheet and column overrides, already checked against the entity.</param>
         /// <param name="context">The request's context: the target tenant, its languages, the culture and the labels.</param>
-        /// <param name="cancellationToken">Stops the read between parts.</param>
+        /// <param name="cancellationToken">Stops the read between shared strings, sheets and rows.</param>
         /// <returns>The plan.</returns>
         /// <exception cref="ImportException">
         ///     The package is above a size limit or not a readable workbook, its manifest names another

@@ -50,7 +50,13 @@ namespace Tellma.Core.Excel
             _metrics = metrics ?? throw new ArgumentNullException(nameof(metrics));
             _logger = loggers.CreateLogger(ExcelLog.Category);
 
-            _limits = new WorkbookLimits(MaxPackageBytes(options, kinds), options.MaxImportUncompressedBytes, options.MaxInMemorySharedStringBytes, options.MaxSharedStringEntries);
+            _limits = new WorkbookLimits(
+                MaxPackageBytes(options, kinds),
+                options.MaxImportUncompressedBytes,
+                options.MaxInMemorySharedStringBytes,
+                options.MaxSharedStringEntries,
+                RowTextBudget: options.MaxInMemorySharedStringBytes,
+                SheetTextBudget: options.MaxImportUncompressedBytes);
         }
 
         /// <summary>The largest package an import accepts: the codec's limit, or the import-file kind's smaller one.</summary>
@@ -84,19 +90,19 @@ namespace Tellma.Core.Excel
             ArgumentNullException.ThrowIfNull(context);
             cancellationToken.ThrowIfCancellationRequested();
 
-            // --- The package within its limits, its shared strings loaded, then the mapping ---
-            using WorkbookReader reader = Open(workbook);
-            cancellationToken.ThrowIfCancellationRequested();
-            ImportMapping mapping = new ImportMapper(entity, limits, _options, context, _cache).Map(reader, request.SheetMappings, request.ColumnMappings);
+            // --- The package within its limits, its shared strings loaded, then the mapping; each checks the token as it reads ---
+            using WorkbookReader reader = Open(workbook, cancellationToken);
+            ImportMapping mapping = new ImportMapper(entity, limits, _options, context, _cache).Map(reader, request.SheetMappings, request.ColumnMappings, cancellationToken);
             return Task.FromResult(mapping.Plan);
         }
 
         /// <summary>Opens a workbook within the limits, recording a spill of its shared strings.</summary>
         /// <param name="workbook">The workbook's stream.</param>
+        /// <param name="cancellationToken">Stops the shared strings' load between entries.</param>
         /// <returns>The reader.</returns>
-        private WorkbookReader Open(Stream workbook)
+        private WorkbookReader Open(Stream workbook, CancellationToken cancellationToken)
         {
-            var reader = WorkbookReader.Open(workbook, _limits, _scratchDirectory);
+            var reader = WorkbookReader.Open(workbook, _limits, _scratchDirectory, cancellationToken);
             if (reader.SharedStrings.Spilled)
             {
                 _metrics.SharedStringsSpilled();
