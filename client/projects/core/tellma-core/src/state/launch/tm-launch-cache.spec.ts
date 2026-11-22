@@ -10,6 +10,7 @@ import {
   provideTellmaStateTesting,
   provideTellmaTesting,
   TmFakeApi,
+  TmFakeLocks,
   TmFakeTelemetry,
   type TmFakeApiCall,
 } from '@tellma/core-testing';
@@ -141,7 +142,7 @@ describe('TmLaunchCache', () => {
   afterEach(() => vi.restoreAllMocks());
 
   describe('entering a tenant', () => {
-    it('renders a cold entry after one sync, which stamps activity', async () => {
+    it('renders a cold entry after one sync, sent in the foreground', async () => {
       const rig = await setUp({ cold: true });
       expect(rig.launch.warm()).toBe(false);
       await rig.launch.ɵenter(17);
@@ -179,6 +180,24 @@ describe('TmLaunchCache', () => {
       const rig = await setUp({ cold: true });
       await settle();
       expect(rig.calls('client/sync')).toHaveLength(1);
+      await rig.launch.ɵenter(17);
+      expect(rig.calls('client/sync')).toHaveLength(1);
+      expect(rig.launch.warm()).toBe(true);
+    });
+
+    it('syncs once for a tenant left and entered again while its cold sync waited for the lock', async () => {
+      const rig = await setUp({ cold: true });
+      const router = TestBed.inject(Router);
+      // Another tab holds the lock meanwhile.
+      let release!: () => void;
+      void TestBed.inject(TmFakeLocks).run('tm:acme:test-user:17:sync', () => new Promise<void>((resolve) => (release = resolve)));
+      await settle();
+      await router.navigateByUrl('/');
+      await settle();
+      await router.navigateByUrl('/17/centers');
+      await settle();
+
+      release();
       await rig.launch.ɵenter(17);
       expect(rig.calls('client/sync')).toHaveLength(1);
       expect(rig.launch.warm()).toBe(true);

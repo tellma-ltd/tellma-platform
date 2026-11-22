@@ -79,8 +79,13 @@ export class TmLaunchCache {
   readonly #fetched = new Set<TmUserDoc>();
   /** Aborts the user documents' reads when the app is destroyed. */
   readonly #life = new AbortController();
-  /** The entry into a tenant in flight. */
-  #entry: { readonly tenantId: number; readonly sub: string; readonly done: Promise<void> } | null = null;
+  /** The entry into a tenant in flight, with the signal that aborts when the tab leaves the tenant. */
+  #entry: {
+    readonly tenantId: number;
+    readonly sub: string;
+    readonly signal: AbortSignal;
+    readonly done: Promise<void>;
+  } | null = null;
 
   /** The routed tenant's launch documents; each reads `undefined` while absent. */
   readonly docs: { readonly [K in keyof TmLaunchDocs]: Signal<TmLaunchDocs[K] | undefined> } = {
@@ -180,10 +185,11 @@ export class TmLaunchCache {
    * Enters a tenant: reads its partition into the store unless the boot
    * step or an earlier entry has, then, when `settings`, `me` or `tenant` is
    * missing, runs a cold sync, which the tenant's page awaits. A call while
-   * an entry into the same tenant is in flight returns its promise; a later
-   * one checks the documents again, so an entry after they went absent (a
-   * sweep, the idle rule) syncs them. Internal: the tenant route calls it
-   * before it creates the page.
+   * an entry into the same tenant is in flight returns its promise, unless
+   * the tab left the tenant since; any other call checks the documents
+   * again, so an entry after they went absent (a sweep, the idle rule)
+   * syncs them. Internal: the tenant route calls it before it creates the
+   * page.
    *
    * @param tenantId - The tenant.
    * @returns A promise that settles once the tenant's chrome can render; it
@@ -194,8 +200,9 @@ export class TmLaunchCache {
     if (sub === undefined) {
       return Promise.resolve();
     }
+    // An entry from before a leave is never joined: leaving aborted its sync.
     const entry = this.#entry;
-    if (entry?.tenantId === tenantId && entry.sub === sub) {
+    if (entry?.tenantId === tenantId && entry.sub === sub && !entry.signal.aborted) {
       return entry.done;
     }
     const partition: TmTenantPartition = { kind: 'tenant', sub, tenantId };
@@ -205,7 +212,7 @@ export class TmLaunchCache {
         await this.#refresher.refresh(tenantId, LAUNCH, 'cold');
       }
     })();
-    const current = { tenantId, sub, done };
+    const current = { tenantId, sub, signal: this.#refresher.ɵsignal(tenantId), done };
     this.#entry = current;
     // Only an entry in flight is joined.
     const settled = (): void => {

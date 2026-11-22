@@ -203,6 +203,7 @@ export class TmCacheRefresher {
   /** Creates the refresher, which follows the routed tenant and the page's life. */
   constructor() {
     // --- The routed tenant: leaving a tenant aborts its syncs and list loads ---
+    // An aborted run is no longer joinable: a call after the abort starts a new one.
     const router = inject(Router);
     const route = (url: string): void => {
       const tenantId = tmRoutedTenant(url);
@@ -211,6 +212,7 @@ export class TmCacheRefresher {
         if (other !== tenantId) {
           controller.abort();
           this.#aborts.delete(other);
+          this.#pending.delete(other);
         }
       }
     };
@@ -228,6 +230,7 @@ export class TmCacheRefresher {
       this.#host.listen('window', 'pagehide', () => {
         this.#aborts.forEach((controller) => controller.abort());
         this.#aborts.clear();
+        this.#pending.clear();
       }),
       this.#host.listen('document', 'visibilitychange', () => this.#arm()),
     ];
@@ -566,11 +569,14 @@ export class TmCacheRefresher {
     try {
       // --- Step 2: queue on the lock, never `ifAvailable` ---
       await this.#locks.run(this.#lock(partition), async () => {
+        // --- Step 3: another tab may have synced while this one queued ---
+        // The re-read covers every document a needless test reads. A tab
+        // that left the tenant while queuing, or during the re-read, ends
+        // here, so the throttle never waits for an aborted run.
+        await this.#store.ɵreread(partition, ['settings', 'me', 'tenant', 'sync']);
         if (signal.aborted) {
           throw new TmApiError({ kind: 'cancelled' });
         }
-        // --- Step 3: another tab may have synced while this one queued ---
-        await this.#store.ɵreread(partition, ['settings', 'me', 'sync']);
         if (run.needless.every((needless) => needless())) {
           close();
           return;
@@ -621,7 +627,9 @@ export class TmCacheRefresher {
     const result = await this.#api.read<TmSyncResult>(
       'client/sync',
       { held },
-      // Only a cold entry stamps activity and renews the session.
+      // Only a cold entry goes in the foreground, which renews the session.
+      // The server never stamps activity for client/sync, a polling route
+      // (spec 0016 §4.3), although spec 0025 §5.3 step 5 says a cold one does.
       { signal, background: run.trigger !== 'cold', tenantId: partition.tenantId },
     );
     const { tenant, tags, settings, me, staleEntities } = result;

@@ -425,7 +425,7 @@ describe('TmCacheRefresher', () => {
       expect(items(rig, 'tm.sync.completed')).toEqual([expect.objectContaining({ trigger: 'leader', changed: 'none' })]);
     });
 
-    it('makes a run cold when a cold call joins it, so it stamps activity and rejects on failure', async () => {
+    it('makes a run cold when a cold call joins it, so it is sent in the foreground and rejects on failure', async () => {
       const rig = await setUp({ at: NOW - 500 });
       rig.api.respond('client/sync', () => Promise.reject(new TmApiError({ kind: 'offline' })));
       const header = rig.refresher.refresh(17, ['tenant'], 'header');
@@ -494,6 +494,46 @@ describe('TmCacheRefresher', () => {
       await flush();
       rig.host.fire('window', 'pagehide');
       expect((rig.syncs()[0]?.options as { signal: AbortSignal }).signal.aborted).toBe(true);
+    });
+
+    it('starts a new run for a tenant left and entered again while its run waited for the lock', async () => {
+      const rig = await setUp();
+      const router = TestBed.inject(Router);
+      // Another tab holds the lock meanwhile.
+      const elsewhere = gate();
+      void rig.locks.run(LOCK, () => elsewhere.promise);
+      rig.api.respond('client/sync', answer({ tags: { preferences: 'P2' }, me: me({ preferencesTag: 'P2' }) }));
+      rig.refresher.observe(17, { preferences: 'P2' }, 'header');
+      await flush();
+      void router.navigateByUrl('/');
+      await flush();
+      void router.navigateByUrl('/17/centers');
+      await flush();
+
+      // The aborted run ends when the lock is granted; this call is not joined to it.
+      rig.refresher.observe(17, { preferences: 'P2' }, 'header');
+      elsewhere.resolve(undefined);
+      await flush();
+      expect(rig.syncs()).toHaveLength(1);
+      expect(rig.doc<TmMeResult>('me')?.data.preferencesTag).toBe('P2');
+    });
+
+    it('ends a run whose page was hidden for good during its re-read, before the throttle', async () => {
+      const rig = await setUp({ at: NOW - 500 });
+      rig.api.respond('client/sync', answer());
+      const reread = rig.store.ɵreread.bind(rig.store);
+      vi.spyOn(rig.store, 'ɵreread').mockImplementation((partition, names) => {
+        rig.host.fire('window', 'pagehide');
+        return reread(partition, names);
+      });
+      const done = rig.refresher.refresh(17, ['tenant'], 'leader');
+      await flush();
+
+      // The run released the lock at once rather than wait out the throttle.
+      expect(rig.locks.held()).toEqual([]);
+      await vi.advanceTimersByTimeAsync(2_000);
+      await done;
+      expect(rig.syncs()).toEqual([]);
     });
   });
 
@@ -782,7 +822,31 @@ describe('TmCacheRefresher', () => {
     beforeEach(tmDeleteStoreDatabase);
     afterEach(tmDeleteStoreDatabase);
 
-    it("ends the second tab's run at the check, from what it re-reads before any message tells it", async () => {
+    /** One tab: its own store and mirror over the one database, and its own refresher. */
+    interface TmTab {
+      readonly injector: EnvironmentInjector;
+      readonly store: TmClientStore;
+      readonly refresher: TmCacheRefresher;
+    }
+
+    /** What a two-tab spec drives and inspects. */
+    interface TmTwoTabs {
+      readonly first: TmTab;
+      readonly second: TmTab;
+      /** Settles the first `client/sync`. */
+      readonly sync: TmGate<unknown>;
+      /** The `client/sync` calls so far. */
+      syncs(): TmFakeApiCall[];
+      /** Resolves once both tabs' runs have ended, since it queues behind them. */
+      settled(): Promise<void>;
+    }
+
+    /**
+     * Configures two tabs on `/17/centers`, sharing the locks and the API.
+     * Each tab bus delivers nothing, so only the re-read inside the lock can
+     * show the second tab what the first stored.
+     */
+    async function twoTabs(): Promise<TmTwoTabs> {
       TestBed.configureTestingModule({
         providers: [
           provideTellmaTesting(),
@@ -793,10 +857,7 @@ describe('TmCacheRefresher', () => {
         ],
       });
       await TestBed.inject(Router).navigateByUrl('/17/centers');
-      // Each tab has its own store and mirror over the one database, and a
-      // tab bus that delivers nothing: only the re-read inside the lock can
-      // show the second tab what the first stored. The locks are shared.
-      const tab = (): { readonly injector: EnvironmentInjector; readonly store: TmClientStore; readonly refresher: TmCacheRefresher } => {
+      const tab = (): TmTab => {
         const injector = createEnvironmentInjector(
           [
             { provide: TM_STORE_HOST, useValue: { ...tmMemoryStoreHost(), memory: false, indexedDB } },
@@ -808,8 +869,20 @@ describe('TmCacheRefresher', () => {
         );
         return { injector, store: injector.get(TmClientStore), refresher: injector.get(TmCacheRefresher) };
       };
-      const first = tab();
-      const second = tab();
+      const api = TestBed.inject(TmFakeApi);
+      const sync = gate();
+      api.respond('client/sync', () => sync.promise);
+      return {
+        first: tab(),
+        second: tab(),
+        sync,
+        syncs: () => api.calls().filter((call) => call.route === 'client/sync'),
+        settled: () => TestBed.inject(TmFakeLocks).run(LOCK, () => Promise.resolve()),
+      };
+    }
+
+    it("ends the second tab's run at the check, from what it re-reads before any message tells it", async () => {
+      const { first, second, sync, syncs, settled } = await twoTabs();
       const stored = <T>(data: T, tag: string | null = null): TmStoredDoc<T> => ({ tag, savedAt: Date.now() - 60_000, data });
       await first.store.ɵwrite(T17, {
         settings: () => stored(SETTINGS, 'S1'),
@@ -818,20 +891,31 @@ describe('TmCacheRefresher', () => {
         sync: () => stored<TmSyncDoc>({ at: Date.now() - 60_000, entities: 'E1', entityTags: {} }),
       });
       await second.store.readAll(T17);
-      const api = TestBed.inject(TmFakeApi);
-      const syncs = (): TmFakeApiCall[] => api.calls().filter((call) => call.route === 'client/sync');
-      const sync = gate();
-      api.respond('client/sync', () => sync.promise);
 
       first.refresher.observe(17, { preferences: 'P2' }, 'header');
       second.refresher.observe(17, { preferences: 'P2' }, 'header');
       await vi.waitFor(() => expect(syncs()).toHaveLength(1));
       sync.resolve(answer({ tags: { preferences: 'P2' }, me: me({ preferencesTag: 'P2' }) }));
-      // Queued behind both tabs' runs, so it is granted once the second has ended.
-      await TestBed.inject(TmFakeLocks).run(LOCK, () => Promise.resolve());
+      await settled();
 
       expect(syncs()).toHaveLength(1);
       expect(second.store.doc<TmMeResult>(T17, 'me')()?.data.preferencesTag).toBe('P2');
+      first.injector.destroy();
+      second.injector.destroy();
+    });
+
+    it("ends the second cold tab's run at the check once the first stored every launch document", async () => {
+      const { first, second, sync, syncs, settled } = await twoTabs();
+      await second.store.readAll(T17);
+      const launch = ['settings', 'me', 'tenant'];
+      const cold = [first.refresher.refresh(17, launch, 'cold'), second.refresher.refresh(17, launch, 'cold')];
+      await vi.waitFor(() => expect(syncs()).toHaveLength(1));
+      sync.resolve(answer({ settings: SETTINGS, me: me() }));
+      await settled();
+      await Promise.all(cold);
+
+      expect(syncs()).toHaveLength(1);
+      expect(second.store.doc(T17, 'tenant')()?.data).toEqual(TENANT);
       first.injector.destroy();
       second.injector.destroy();
     });

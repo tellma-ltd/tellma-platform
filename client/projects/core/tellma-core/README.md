@@ -149,10 +149,11 @@ HTTP layer's cache seam, so every response's version-tags header reaches `observ
   `cold` call ends early once `settings`, `me` and `tenant` are all present. It rejects only for
   `cold`.
 - **A run.** Calls join the tenant's pending run (a `cold` call makes it cold). The run queues on
-  the Web Lock `tm:<slug>:<sub>:<t>:sync`, re-reads `settings`, `me` and `sync`, and ends there when
-  every joined call is needless; otherwise it waits out a 2 s throttle since the tenant's last sync
-  in any tab (2 s at most), then sends one background read (a cold one stamps activity) and stores the answer in
-  one transaction, `sync.at` being the send time. A list the server calls stale while the held tags
+  the Web Lock `tm:<slug>:<sub>:<t>:sync`, re-reads `settings`, `me`, `tenant` and `sync`, and ends
+  there when every joined call is needless; otherwise it waits out a 2 s throttle since the tenant's
+  last sync in any tab (2 s at most), then sends one background read (a cold one goes in the
+  foreground, which renews the session; the server never stamps activity for `client/sync`) and
+  stores the answer in one transaction, `sync.at` being the send time. A list the server calls stale while the held tags
   say otherwise loses its tag and the composite, so the next sync reports every list's.
 - **`adopt(t, docs)`** stores a write's own results (a settings save, a profile save, a preferences
   or locale write) as server truth: the tab shows them at once and the store writes them under the
@@ -163,7 +164,8 @@ HTTP layer's cache seam, so every response's version-tags header reaches `observ
   clock running ahead) backs off from 30 s, doubling to 10 min.
 - **Failures.** `tenant-not-found` and `tenant-unavailable` go to the error presenter seam, even from
   a background sync; a cancel, a session end and an outdated client are left to their owners;
-  anything else is reported as `tm.sync.failed`. Leaving the tenant or the page aborts its syncs.
+  anything else is reported as `tm.sync.failed`. Leaving the tenant or the page aborts its syncs,
+  and a call after that starts a new one.
   Each sync records `tm.sync.completed` with its trigger and what it changed.
 
 `TmLaunchCache` (`src/state/launch/`) serves what the chrome renders from: the routed tenant's
