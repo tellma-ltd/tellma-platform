@@ -27,6 +27,11 @@ namespace Tellma.Core.Mcp.Hosting
     ///         A refusal is kept, not thrown: the caller decides what it means. A tool call answers
     ///         it as an error result; the server's identity answers without the tenant's name.
     ///     </para>
+    ///     <para>
+    ///         A decision reached after the request was cancelled is no decision: the cancellation is
+    ///         thrown instead, so a request its timeout outran is answered by the timeout, before
+    ///         anything of the server's answer is written.
+    ///     </para>
     /// </remarks>
     /// <param name="accessor">The request's context.</param>
     /// <param name="guard">The request's access guard.</param>
@@ -42,7 +47,7 @@ namespace Tellma.Core.Mcp.Hosting
         /// <summary>Runs the door once, and answers its decision on every call after.</summary>
         /// <param name="cancellationToken">Cancels the decision.</param>
         /// <returns>Null when the caller may proceed; the refusal otherwise.</returns>
-        /// <exception cref="OperationCanceledException">The request was abandoned.</exception>
+        /// <exception cref="OperationCanceledException">The request was abandoned or timed out, whatever the door decided.</exception>
         public Task<Exception?> EnsureAsync(CancellationToken cancellationToken)
         {
             return _decision ??= DecideAsync(cancellationToken);
@@ -77,15 +82,26 @@ namespace Tellma.Core.Mcp.Hosting
                 Client: RequestInputs.McpClient,
                 MessageLanguage: language,
                 MessageCalendar: language is null ? null : GregorianCode);
+            Exception? refusal = null;
             try
             {
                 await guard.EnsureAccessAsync(new TenantAccessRequirement(IsMutation: false, Assurance: null), inputs, cancellationToken).ConfigureAwait(false);
-                return null;
             }
-            catch (Exception refusal) when (refusal is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+            catch (Exception exception) when (exception is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
             {
-                return refusal;
+                refusal = exception;
             }
+
+            // --- A decision the request's cancellation outran ---
+            // A wait inside the guard that does not end with the token (a cold connect's command
+            // timeout and retries answered as a 503, a pool wait, an admission) can finish after the
+            // request's timeout fired. Kept as a decision, the request would go on with its token
+            // cancelled: the SDK starts its event stream and ends it unanswered, and the timeout stage
+            // then aborts the started response, so the client gets no reply at all. Thrown as the
+            // cancellation, nothing has been written yet and the timeout answers 504 timeout.
+            return cancellationToken.IsCancellationRequested
+                ? throw new OperationCanceledException("The request was cancelled before its front door decided.", refusal, cancellationToken)
+                : refusal;
         }
     }
 }
