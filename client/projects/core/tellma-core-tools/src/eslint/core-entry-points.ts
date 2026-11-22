@@ -51,10 +51,12 @@ export const TM_CORE_ENTRY_POINTS: Readonly<Record<string, TmEntryPointRule>> = 
   './report-studio': { load: 'lazy', imports: [] },
   './dashboards': { load: 'lazy', imports: [] },
   './config-check': { load: 'lazy', imports: [] },
-  // Spec 0025's tab memory and recent pages, which spec 0025 §1 places in the
-  // primary; they load with the page hosts and after first render instead.
+  // Spec 0025's tab memory, recent pages and leader election, which spec 0025
+  // §1 places in the primary; they load with the page hosts and after first
+  // render instead.
   './memory': { load: 'lazy', imports: [] },
   './recents': { load: 'lazy', imports: [] },
+  './leader': { load: 'lazy', imports: [] },
 });
 
 /**

@@ -39,11 +39,11 @@ import type { TmAppConfig } from './tm-app-config';
 // documents are in, the language and calendar they resolve to load too, so
 // the first frame shows them and never another first. None awaits the API,
 // so a warm launch has no network wait. A chunk or boot-language load that
-// fails shows the boot page `load-failed`, and the app never starts. Beside them, the router
-// wiring: the routed tenant's `lastTenantId`, focus after navigation and the
-// launch's timing; and
-// after first render, the recent pages' entry point, and at idle the
-// Contracts chunk, so the first API call does not wait for it.
+// fails shows the boot page `load-failed`, and the app never starts. Beside
+// them, the router wiring: the routed tenant's `lastTenantId`, focus after
+// navigation and the launch's timing; after first render, the entry points of
+// the recent pages and the leader election; and at idle the Contracts chunk,
+// so the first API call does not wait for it.
 
 /** The recent pages' entry point, as far as the startup reads it. Internal. */
 export interface TmRecentsModule {
@@ -59,6 +59,23 @@ export interface TmRecentsModule {
 export const TM_RECENTS_LOAD = new InjectionToken<() => Promise<TmRecentsModule>>('TM_RECENTS_LOAD', {
   providedIn: 'root',
   factory: () => () => import('@tellma/core/recents' as string) as Promise<TmRecentsModule>,
+});
+
+/** The leader election's entry point, as far as the startup reads it. Internal. */
+export interface TmLeaderModule {
+  /** The service that runs the election once created. */
+  readonly ɵTmLeaderElection: Type<unknown>;
+}
+
+/**
+ * Loads the leader election's entry point, or nothing, as in a test app,
+ * which has no other tabs and no hub. Internal: the startup's seam, which
+ * the state testing providers replace. The specifier is cast as the recent
+ * pages' is.
+ */
+export const TM_LEADER_LOAD = new InjectionToken<() => Promise<TmLeaderModule | null>>('TM_LEADER_LOAD', {
+  providedIn: 'root',
+  factory: () => () => import('@tellma/core/leader' as string) as Promise<TmLeaderModule>,
 });
 
 /** A promise that never settles: the app does not start under the boot page. */
@@ -122,26 +139,34 @@ export function tmStartup(config: TmAppConfig): EnvironmentProviders[] {
       inject(TmUrls);
       inject(TmPreferences);
       const loadRecents = inject(TM_RECENTS_LOAD);
+      const loadLeader = inject(TM_LEADER_LOAD);
       inject(TmPageFocus).ɵstart();
       inject(TmLaunchTimer).ɵstart();
-      // After first render: the recent pages' visit count; at idle, the
-      // Contracts chunk, which the HTTP layer keeps.
+      // After first render: the recent pages' visit count and the leader
+      // election; at idle, the Contracts chunk, which the HTTP layer keeps.
       // An app torn down before either moment starts nothing.
       let alive = true;
       inject(DestroyRef).onDestroy(() => (alive = false));
       afterNextRender(
         () => {
-          // Recent pages count visits from the first page on (spec 0025 §13).
-          // Their entry point loads now, off the first frame. A failed load,
-          // or a service that fails to start, counts no visits until the next
-          // launch, and nothing else depends on it.
-          loadRecents()
-            .then((recents) => {
-              if (alive) {
-                injector.get(recents.TmRecents);
-              }
-            })
-            .catch((error: unknown) => telemetry.error(error, { source: 'tm-recents' }));
+          // Recent pages count visits from the first page on (spec 0025 §13),
+          // and the election revalidates a warm launch and connects the hub
+          // (§7.2), neither of which the first frame waits for. Their entry
+          // points load now, off the first frame. A failed load, or a service
+          // that fails to start, goes without until the next launch: no
+          // visits count, or the tab neither leads nor hears hub events, and
+          // nothing else depends on either.
+          const start = <M>(load: () => Promise<M | null>, type: (loaded: M) => Type<unknown>, source: string): void => {
+            load()
+              .then((loaded) => {
+                if (alive && loaded !== null) {
+                  injector.get(type(loaded));
+                }
+              })
+              .catch((error: unknown) => telemetry.error(error, { source }));
+          };
+          start(loadRecents, (recents) => recents.TmRecents, 'tm-recents');
+          start(loadLeader, (leader) => leader.ɵTmLeaderElection, 'tm-leader');
           const load = (): void => {
             const api = alive ? injector.get(TmApi) : null;
             if (api instanceof TmHttpApi) {

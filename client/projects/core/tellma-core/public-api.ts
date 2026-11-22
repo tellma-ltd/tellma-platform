@@ -9,8 +9,8 @@
  * routes' data, title strategy and URLs with the search query codec, the
  * entity registry's summaries, the client metadata's types and loaders, the
  * HTTP layer with its error and plain-JSON value types, the exact decimal
- * helpers, the client store and the tab bus, and the seams through which
- * telemetry, the request log and page scopes are provided.
+ * helpers, the client store, the tab bus and the leader tab, and the seams
+ * through which telemetry, the request log and page scopes are provided.
  *
  * @packageDocumentation
  */
@@ -196,7 +196,22 @@ export type {
   TmSessionMessage,
   TmStoreChangedMessage,
 } from './src/state/bus/tm-bus-messages';
-export type { TmClientEvent, TmHubState } from './src/state/leader/tm-hub-types';
+export type {
+  TmClientEvent,
+  TmHubConnection,
+  TmHubSink,
+  TmHubState,
+  TmHubStatus,
+} from './src/state/leader/tm-hub-types';
+
+// The leader tab: whether this tab leads the routed tenant, the leader's
+// realtime connection and the tenant's hub events, and the documents only the
+// leader refreshes. The election itself is @tellma/core/leader's, which the
+// startup loads after the first render; the state testing providers replace
+// its loader.
+export { TmLeader } from './src/state/leader/tm-leader';
+export { TM_LEADER_DOCUMENTS, type TmLeaderDocument } from './src/state/leader/tm-leader-documents';
+export { TM_LEADER_LOAD as ɵTM_LEADER_LOAD, type TmLeaderModule as ɵTmLeaderModule } from './src/app/tm-app-init';
 
 // The launch documents and their cache: the routed tenant's settings,
 // envelope and facts, the cacheable lists, and the one path that syncs them.

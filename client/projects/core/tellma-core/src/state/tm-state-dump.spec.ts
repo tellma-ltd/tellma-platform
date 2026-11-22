@@ -7,6 +7,7 @@ import { TestBed } from '@angular/core/testing';
 import { provideTellmaStateTesting, provideTellmaTesting } from '@tellma/core-testing';
 
 import { tmAppRig, tmNavigate, TM_T17 } from '../routes/tm-app.testing.util';
+import { TmLeader } from './leader/tm-leader';
 import { tmPreferenceKey } from './prefs/tm-preference-key';
 import { TmPreferences } from './prefs/tm-preferences';
 import { TM_STATE_PARTS, TmStateDump } from './tm-state-dump';
@@ -36,6 +37,7 @@ describe('TmStateDump', () => {
         expect.objectContaining({ partition: 'tenant', name: 'settings@1' }),
       ]),
     );
+    expect(dump.leader).toEqual({ isLeader: false, hubStatus: TestBed.inject(TmLeader).hubStatus() });
     expect(dump.refresher.lastSyncAt).toBe(rig.store.doc<{ at: number }>(TM_T17, 'sync')()?.data.at);
     expect(dump.preferences).toEqual({ dirty: ['nav.pinnedBarVisible'] });
     expect(dump.drafts).toEqual(['17:gl.Center:5']);
@@ -43,11 +45,23 @@ describe('TmStateDump', () => {
     expect(JSON.stringify(dump)).not.toMatch(/Secret|auto/);
   });
 
+  it("reports the leader as the election last wrote it: whether this tab leads, and the leader's connection", () => {
+    TestBed.configureTestingModule({ providers: [provideTellmaTesting(), provideTellmaStateTesting()] });
+    const leader = TestBed.inject(TmLeader);
+    leader.ɵisLeader.set(true);
+    leader.ɵhubStatus.set({ state: 'reconnecting', since: 1_700_000_000_000, leaderVisible: false });
+    expect(TestBed.inject(TmStateDump).read().leader).toEqual({
+      isLeader: true,
+      hubStatus: { state: 'reconnecting', since: 1_700_000_000_000, leaderVisible: false },
+    });
+  });
+
   it('reads the parts of services not yet created as empty, and creates none of them', () => {
     TestBed.configureTestingModule({ providers: [provideTellmaTesting(), provideTellmaStateTesting()] });
     const parts = TestBed.inject(TM_STATE_PARTS);
     const dump = TestBed.inject(TmStateDump).read();
     expect(dump).toEqual(expect.objectContaining({ preferences: { dirty: [] }, drafts: [], pageState: [] }));
+    expect(dump.leader).toEqual({ isLeader: false, hubStatus: { state: 'connecting', since: expect.any(Number), leaderVisible: true } });
     // No service reported, so none was created by the read.
     expect(parts).toEqual({});
   });

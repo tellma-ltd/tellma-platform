@@ -3,7 +3,9 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-import { InjectionToken } from '@angular/core';
+import { inject, InjectionToken } from '@angular/core';
+
+import { TM_LEADER_DOCUMENTS } from '../leader/tm-leader-documents';
 
 // The client formats of the stored documents (spec 0025 §2.4). A format is
 // bumped whenever a document's stored shape changes, a server FormatVersion
@@ -38,13 +40,12 @@ export const TM_STORE_FORMATS = new InjectionToken<Readonly<Record<string, numbe
 });
 
 /**
- * The formats of documents other features register with the store, such as
- * the leader documents, by exact name. Internal: empty until those features
- * provide it.
+ * The formats of documents other features register with the store, by exact
+ * name: each leader document's own `formatVersion`. Internal.
  */
 export const TM_STORE_EXTRA_FORMATS = new InjectionToken<Readonly<Record<string, number>>>('TM_STORE_EXTRA_FORMATS', {
   providedIn: 'root',
-  factory: () => ({}),
+  factory: () => Object.fromEntries(inject(TM_LEADER_DOCUMENTS).map((doc) => [doc.name, doc.formatVersion])),
 });
 
 /**
