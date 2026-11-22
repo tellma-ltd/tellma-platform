@@ -116,6 +116,28 @@ PC-104's:
 - The lower side is left as it was: `toParts` deliberately gives years of 0 and below for ISO
   dates before AH 1, and the date popup lays out those months with `daysInMonth`.
 
+### At integration: the red client test (D-226)
+
+CI run 45046747313 failed one test, and it was not this item's. `tm-localization.spec.ts`, "resolves
+the address's tenant before the first render ...", failed with `expected 'ltr' to be 'rtl'`.
+platform-core at 08ebc1cc fails it the same way.
+- Root cause: the test read `<html dir>` right after `ApplicationInitStatus.donePromise`, but that
+  attribute is written by a root effect. A root effect runs only in an `ApplicationRef` tick, and
+  TestBed never bootstraps, so nothing ticks. The test passed only while a macrotask happened to fall
+  between the language switch and the init promise, which let the zoneless scheduler's own tick run
+  first.
+- Evidence: reproduced locally with `ng run core:test`, alone and in the full run. At the failing
+  assertion, `l10n.dir()` was `rtl` and `language()` was `ar`, while `<html>` was still `en`/`ltr`,
+  Transloco was `en` and the boot record was `en`/`ltr`: the document effect had not run. With a
+  50 ms wait before the assertion, it passed.
+- No fixed timestamp or expiry is involved. `tmWarmTenant` stamps `Date.now()`, and grep finds no
+  dated fixture.
+- The product is right. `ApplicationRef.synchronizeOnce` flushes the root effects before it
+  refreshes any view, and bootstrap's `_loadComponent` ticks. So the real first frame already has
+  `<html lang dir>`.
+- Fix: the test calls `TestBed.tick()` once after the init promise, modelling the bootstrap's first
+  tick, then asserts as before. The assertion is not weakened and there is no wait loop.
+
 ### Deviations
 
 None from the specs. One behaviour change: `GetDaysInMonth(9666, 5..12)`, `GetDaysInYear(9666)` and
