@@ -384,6 +384,27 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-219 (orchestrator, 2026-11-22): PC-104 Review 2 rulings
+
+Review 2 (inherit, xhigh) found 0/3/4.
+- It closed R1-5, R1-6 and R1-8 to R1-11, and closed R1-1 to R1-4 apart from the gaps below.
+- Both budgets are honest.
+- The Arabic strings load on the first switch with no flash.
+
+Fix2 rulings:
+- R2-1 (major): other tabs follow only a real user switch, never a boot-record settle.
+- R2-2 (major): a member's override holds while its write is queued or in flight (§7.2).
+- R2-3 (major): every tenant entry awaits ɵready() before showing the page.
+- R2-4: offline-like failures retry while online stays true.
+- R2-5: the om/ti day-first rule is keyed on the requested language, so the Chromium fallback is covered too.
+- R2-6: guard tests that can fail.
+- R2-7: the commit's Tests lines are complete.
+- Also, per D-214: TmLocaleWrite loads with import() on the first change, if nothing needs it at boot.
+
+PC-104 holds after fix2.
+
+Integration order once PC-095 lands (D-190, D-213): PC-F11, then PC-143, then PC-104 and PC-107 in the order they hold. Whichever of PC-104 and PC-107 integrates second merges the two TmSendOptions.tenantId copies and re-measures "." (D-214).
+
 ### D-218 (orchestrator, 2026-11-22): PC-107 Review 2 rulings; carries
 
 Review 2 (inherit, xhigh) found 0/1/6. R1-1..R1-4 are closed, there is no race in the lazy loads, and the ɵ seams are minimal.
