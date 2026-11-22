@@ -384,6 +384,27 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-235 (orchestrator, 2026-11-22): PC-106 Review 1 rulings
+
+PC-106 Review 1 found 0/0/3.
+
+What the review confirmed:
+- The +2.13 KB raise of "." is honest: register must refuse synchronously, and TmShell and TmShellMain belong in the primary under 0027 §1.
+- All 9 deviations are sound. Mod+Enter's exemption settles D-057 item 4.
+- Accessibility: no single-character shortcuts (WCAG 2.1.4), IME composition respected, no focus trap.
+- With PC-105, "." comes to about 44.5 KB. Whichever of the two integrates second re-measures it (D-214).
+
+Rulings:
+- R1-1: a tm. id uses its reserved combination on both platforms.
+- R1-2: the size gate guards ./search-normalize from ./shell and ./attention, not only from ".".
+- R1-3: assert the frame CSS order.
+
+PC-106 holds after fix1.
+
+For Ahmad, from PC-106:
+- 0027 §1 and ARCHITECTURE.md should say that tmSearchNormalize lives in the shared @tellma/core/search-normalize entry point, not the primary.
+- WATCHLIST ## 0035 should note that 0035's Escape shortcut must use the id dashboard.exit-presentation.
+
 ### D-234 (orchestrator, 2026-11-22): PC-189 fix1 accepted; held
 
 Fix1 (ed5d0edc) fixed all six findings under D-232. While writing the tests, the implementer found a real bug: distribution ToolTypes were never registered, because WithTools(Type[]) bound to the SDK's generic WithTools<T>(T target). It is fixed and covered by a test.
