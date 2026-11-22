@@ -384,6 +384,12 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-190 (orchestrator, 2026-11-22): PC-096 integrates ahead of PC-214 and PC-175
+
+PC-096's fix2 (70c18c62) held with a clean merge-tree while PC-214 and PC-175 were still in fix1 and nothing was integrating. D-087 releases one held item at a time; it does not make a held item wait for items that are not yet held. PC-096 is also T1 against PC-214's T3 fill (D-140/D-173). It was released at once. PC-214 and PC-175 integrate next, in the order they report held, after PC-096's platform-core push.
+
+Deviation 18 (client/sync never stamps activity, 0016 §4.3 kept against 0025 §5.3 step 5) stands as D-189's question for Ahmad. The 0025 size share is 8.14 of 9 KB, and @tellma/core is 20.36 of 20.44 KB.
+
 ### D-189 (orchestrator, 2026-11-22): PC-096 Review 2 rulings
 
 Review 2 found 0/1/2 and judged deviations 14-17, the budget raise (+0.16 KB, within D-031) and the `ɵshow`/`ɵwrite` paths sound. R1-7's pushback reason did not hold, but the outcome stands through the WATCHLIST hand-off to PC-110.
