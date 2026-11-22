@@ -384,6 +384,21 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-193 (orchestrator, 2026-11-22): PC-175 fix1 held; its AspNetCore load timeouts predate PC-F65
+
+PC-175's fix1 (6eb3f3c9) is held. R1-1, R1-2 and R1-4 are fixed. R1-3 is fixed by inversion: the pipeline owns Crud/IPlatformCompanions, ExcelCompanions.Instance implements it, and CompositionPipeline hands it to CrudComposition.Register. Crud/ and Abstractions now name no Tellma.Core.Excel type, so 0019 §1.1 holds with no deviation. R1-5 is unchanged (D-188).
+
+The new by-query editable round-trip test leaves out widget 1. Its 60 parts overflow MaxTake and would add 0015 §16.2's follow-up read.
+
+merge-tree shows 5 content conflicts, all to be regenerated with TELLMA_UPDATE_GOLDENS=1 at integration, together with the auto-merged client entities-chunk.json:
+- the IntegrationTests README;
+- the fixture and gadget route goldens;
+- the fixture and gadget stack goldens.
+
+The full Core.AspNetCore.Tests run failed two load timeouts (RequestTimeout, RateLimiting) and passed on rerun. This is not a new flake. pc/PC-175 does not yet contain PC-F65 (9e21bb68), which root-caused those exact load-starved waits. The integration merge brings the fix in, so no new fix item is opened. A recurrence on a branch that contains 9e21bb68 would open one.
+
+Release order after PC-096 lands: PC-214, then PC-175, then PC-092 when it holds. T1 items go ahead of PC-214's T3 fill only when they hold before PC-214 is released.
+
 ### D-192 (orchestrator, 2026-11-22): PC-092 Review 1 rulings
 
 Review 1 found 0/1/5 and accepted all 9 deviations. The reviewer verified that the `IDevelopmentSubjects` seam and the `TellmaIdentity:Seed:DevUsers` seeding are guarded by the host environment and the system scope, not by an option. The dev-admin bootstrap keeps its guarantees. The service account has no credentials, and sandbox@ is in tenant 2 only. The ARCHITECTURE.md edits match the code. The resource audit in Acme Web.Tests is accepted, and the PC-094 stand-in is extended in place.
