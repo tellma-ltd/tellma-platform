@@ -66,12 +66,20 @@ Why each family stays on the first frame, by what reaches it at boot:
   `TmPreferences` are all injected by `provideTellma`, the startup or the route host.
 - **spec 0029**: `TmEntities` is used by the route host.
 
-Split by spec, Acme's production build (approximate, as gzip shares its dictionary):
-- spec 0024's own services about 23.8 KB (14 KB share);
-- spec 0025's primary services about 11.3 KB (9 KB share);
-- spec 0029's `TmEntities` about 0.45 KB;
-- spec 0026's seams about 0.26 KB;
-- the platform icon names about 0.16 KB, beside their lucide data.
+Split by spec (approximate, as gzip shares its dictionary), on two bases (corrected in review 1).
+The proportions come from Acme's production build:
+
+| Family | Acme source build (35.93 KB) | Scaled to the gate's 38.49 KB | Share |
+|---|---|---|---|
+| spec 0024's own services | about 23.8 KB | about 25.5 KB | 14 KB |
+| spec 0025's primary services | about 11.3 KB | about 12.1 KB | 9 KB |
+| spec 0029's `TmEntities` | about 0.45 KB | about 0.5 KB | — |
+| spec 0026's seams | about 0.26 KB | about 0.3 KB | — |
+
+The platform icon names come to about 0.16 KB in Acme, beside their lucide data. The earlier
+budgetNotes figure for spec 0024 (26.7 KB) is on the gate's measure. It was the residual after the
+other shares and the icon data, so it also held the seams and the exports that boot does not reach.
+Nothing moved between the two bases.
 
 ### What was built
 
@@ -115,21 +123,27 @@ minified. Each is a candidate for a ruling:
    - `TmUrls`' builders (`search`, `list`) and `parse`/`parseList` are synchronous and use it.
    - Making them async, or moving them to the page families, is an **API change** of spec 0024
      §9.4/§9.5.
-3. **The not-found page, the forbidden view and the launch redirect's page**, about 0.9 KB
-   (`tm-route-error.ts` 1.7 KB and `tm-launch-redirect.ts` 1.1 KB minified; the offline and
-   client-outdated views must stay eager).
-   - These would get a lazy chunk of their own (D-205/D-206 left "a chunk of their own" to this
-     item).
-   - Their first render becomes asynchronous, and the launch page at `/` would add a fetch to every
-     launch there, so only the not-found and forbidden views are plausible.
+3. **The not-found page**, about 0.1–0.2 KB: `TmNotFoundPage` (`src/routes/tm-routes.ts`) and the
+   `not-found` entry of `TM_ROUTE_ERROR_VIEWS`. This is estimated from the FESM, not measured alone.
+   (Corrected in review 1 from 0.9 KB, which had counted all of `tm-route-error.ts` and
+   `tm-launch-redirect.ts`.)
+   - It would get a lazy chunk of its own (D-205/D-206 left "a chunk of their own" to this item).
+     Its first render becomes asynchronous.
+   - `TmRouteError` cannot move. It is the one data-driven component that also renders the offline
+     and client-outdated views, which must stay eager.
+   - The forbidden view is not a component either. It is `<tm-route-error [view]="views.forbidden">`
+     inside `TmRouteHost`'s template, so only its four strings could move.
+   - The launch redirect renders at `/` on launches, so a chunk of its own would add a fetch to
+     every launch there.
 4. **TmHttpApi's rarely used transports** (the XHR upload, download streaming and the blob
    fetcher), not measured separately, inside 12.4 KB minified.
    - They would load with `import()` on first use.
    - That is a timing change only, but it touches the call pipeline that every request shares.
 
-Even with all four, "." would land near 34–35 KB, not 31. What remains is boot code that the specs
+Even with all four, "." would land near 35 KB, not 31. What remains is boot code that the specs
 place in the primary, which leaves one choice:
-- the shares grow (spec 0024 about 24 KB against 14; spec 0025 about 11.3 against 9);
+- the shares grow (on the gate's measure, spec 0024 about 25.5 KB against 14 and spec 0025 about
+  12.1 against 9);
 - or the specs move named services behind `import()`.
 
 ### Deviations
@@ -168,3 +182,142 @@ None against a spec. Against the brief:
 - Whether the pure annotation is safe: `Object.freeze` on a fresh literal has no observable effect
   other than the frozen result, so dropping an unused one is sound.
 - The measurement caveat about Acme (source build) against an app over the published package.
+
+## Review 1
+
+Reviewed commit be5219bc against 0024 §1, §10.4 and §12, 0025 §1 and §9.4, D-205 R2-6, D-214,
+D-216 and D-225. Run locally on that commit: `ng build core` (green); `size:check` (gate OK, "."
+38.49 of 38.5, the new line "ships none of which is not a decimal, which is not a finite number");
+`ng test core --include=src/json/**/*.spec.ts` (2 files, 26 tests passed). The pc/PC-F69 CI run
+(45052328715) was skipped, so there is no CI evidence.
+
+Independent checks, with my own probes (scratchpad `r1f69/`), not the implementer's:
+- **What boot reaches.** An esbuild split build of an app importing Acme's five names from the
+  built FESM, with the Angular linker, the CLI's optimization plugins and production defines. The
+  first frame (the entry plus its static chunks) is 36.63 KB gzip with `lucide` external, and
+  37.30 KB with the annotation stripped from a copy of the FESM. That is −0.67 KB, which matches
+  the claimed −0.69. I attributed every top-level declaration of the FESM to its source file
+  through the FESM's source map and checked which ones survive unminified. The only declarations
+  boot drops are `TmServerText` with its helpers, `tmPreferenceKey`, `TmStateDump`, `tmAppConfigOf`,
+  the declaration functions (`tmPage`, `tmOverride`, `tmEntity`, `tmWidget`, `tmCodedReport`), the
+  `ɵtmMergeAppDeclarations` alias, the boot-record and login-mark readers, `tmUserKeyBounds`,
+  `ɵTM_DRAFTS_STORAGE` and `TmDecimals`. Every service class is kept. The lazy entry points import
+  from "." only `tmPreferenceKey` and the draft keys beyond what boot already reaches, so resolving
+  them changes nothing material. The claim holds: no sizable service of "." is unreached at boot,
+  and none can move to a secondary entry point without becoming asynchronous.
+- **The annotation.** `Object.freeze` on a fresh object literal of methods has no effect beyond its
+  result, so dropping an unused call loses nothing. When the helpers are used, the call stays, and
+  the object is frozen as before. Angular's application builder runs `markTopLevelPure` with
+  `topLevelSafeMode: true` for every package outside `node_modules/@angular`
+  (`javascript-transformer-worker.js:106-108` in `@angular/build` 22.0.5). So without the
+  annotation, a real app over the FESM keeps the call, and the saving is real for published
+  consumers.
+- **The check can fail.** I ran the gate's own `createProductionBundler` over a copy of the FESM
+  with the annotation removed: both needles were kept, so the check fails. With the annotation,
+  neither is kept. As a positive control, the same app importing `TmDecimals` ships both needles,
+  so they are live strings and not dead text.
+- **Acme compiles from sources.** `distributions/acme/.../tsconfig.json` maps `@tellma/core` to
+  `client/projects/core/tellma-core/public-api.ts`, and the implementer's before and after Acme
+  builds both lack "which is not a decimal". So Acme's initial bundle is not the first frame of an
+  app over the published package. This matters beyond this checkpoint: 0024 §12's initial-JS
+  budget is measured on Acme.
+- **The four candidates.**
+  - (2) The query codec is a sync API change of `TmUrls`, as stated.
+  - (4) The transports' public methods already return promises, so their API would not change.
+    But the first upload, download or blob fetch would wait on a chunk, and could fail with a
+    chunk-load error outside the `TmApiError` kinds. `fetchBlob` also serves `TM_BLOB_FETCHER`,
+    which first-frame images may use. So it is not a pure move, as stated.
+  - (1) and (3) are R1-3 and R1-2 below.
+
+### Findings
+
+**R1-1 (minor): the new per-spec split is on a different basis from the ceiling, and it
+contradicts the paragraph before it.** `client/projects/core/tellma-core/package.json:46`.
+- The new paragraph gives spec 0024's own services "about 23.8 KB", scaled to the 35.93 KB that the
+  primary weighs in Acme's source build. The preceding paragraph of the same note (the 34 → 38.5
+  raise) gives "the remaining 26.7 KB or so" on the gate's linked measure. 0025 goes from 11.0 to
+  11.3 in the same way.
+- 0024 §12 sets the ceiling as the sum of the shares on the gate's measure (38.49), and D-214's
+  question for Ahmad is how far 0024 and 0025 overrun their 14 KB and 9 KB shares. A reader of the
+  note would conclude that the 0024 overrun shrank by about 2.9 KB. Nothing moved. The figure only
+  changed its basis, and Acme's build already drops what this change dropped.
+- Fix: state the split scaled to the gate's 38.49 KB (about 25.5 and 12.1 at the same
+  proportions), or give both bases. Say in one clause that the earlier 26.7 was a residual on the
+  linked measure, so the figures can be compared.
+
+**R1-2 (minor): candidate 3's estimate overstates what can leave the first frame, about 0.9 KB
+against roughly 0.2.** `plans/platform-core/reviews/PC-F69.md:118-124`.
+- The estimate counts all of `tm-route-error.ts` and `tm-launch-redirect.ts`. But `TmRouteError` is
+  the one data-driven component that also renders the offline and client-outdated views, which the
+  note says must stay eager.
+- The forbidden view is not a component of its own. It is `<tm-route-error
+  [view]="views.forbidden">` inside `TmRouteHost`'s template (`src/routes/tm-route-host.ts:162`),
+  so only its four-string entry in `TM_ROUTE_ERROR_VIEWS` could move.
+- The launch redirect renders at `/` on launches, as the candidate itself concedes.
+- What a chunk of its own could take is `TmNotFoundPage` (`src/routes/tm-routes.ts:51-70`) and the
+  not-found entry: a few hundred bytes minified, on the order of 0.1–0.2 KB gzip (estimated from
+  the FESM, not measured alone).
+- Fix: correct the figure and drop the forbidden view from the candidate, so that the ruling is not
+  made on 0.9 KB.
+
+**R1-3 (minor; needs a ruling): D-216 carried TmPreferences' flush engine to this checkpoint, and
+the commit's Deviations do not name it as unmade.** Commit message (Deviations); review file
+lines 107–113.
+- D-216 says "TmPreferences' flush engine is left for PC-F69". The commit lists it only among
+  unnamed "candidates … listed in the review file". PLAN §7.1 item 1 asks that a deliverable left
+  out be justified under Deviations.
+- Its reason is sound as far as it goes. A lazy engine delays a curated flush, which 0025 §9.4
+  says goes "at once", for any `set` before the chunk lands, so it is not a pure move.
+- But the residual change can be bounded:
+  - keep `get`, the overlay, the dirty map, the `prefs.changed` receiver and the `pagehide` send
+    (with its 16 KB cut) eager;
+  - load the schedules, `#flush`, `#write`, the failure handling and the adoption with `import()`,
+    preloaded at idle after the first render.
+- Then only a curated `set` made before idle waits for one cached chunk, and nothing is lost on
+  `pagehide`. That is the same class of change D-221 accepted for the locale write, which loads
+  with `import()` on the first saved change. The saving is about 1.2 KB by the implementer's estimate.
+- Fix: either make the move with a named deviation against 0025 §9.4 (curated writes before the
+  chunk lands wait for it), or name the D-216 carry explicitly under Deviations as deferred for a
+  ruling.
+
+### Responses
+
+- R1-1: fixed in the "PC-F69: review 1 fixes" commit (child of be5219bc), per D-228.
+  - `budgetNotes["."]` now gives the split on both bases, each labelled. On the gate's 38.49 KB
+    measure, at Acme's proportions: spec 0024 about 25.5 KB, spec 0025 about 12.1, TmEntities
+    about 0.5, the 0026 seams about 0.3. In Acme's source build: 23.8, 11.3, 0.45 and 0.26.
+  - It says that nothing moved between the two. It also says that the note's earlier 26.7 KB is on
+    the gate's measure, as the residual after the other shares and the icon data, so it also held
+    the seams and the exports that boot does not reach.
+  - The implementer notes carry the same two-basis table. Their candidate summary now quotes the
+    gate-basis shares.
+- R1-2: fixed in the same commit, per D-228. Candidate 3 is now the not-found page alone, about
+  0.1–0.2 KB (`TmNotFoundPage` and its `not-found` data entry, estimated from the FESM). The notes
+  give the reasons:
+  - `TmRouteError` also renders the offline and client-outdated views, which stay eager;
+  - the forbidden view is only a data entry inside `TmRouteHost`'s template;
+  - the launch redirect renders at `/` on launches.
+- R1-3: not made, per D-228. The brief makes this checkpoint a pure move.
+  - The commit's Deviations now name the D-216 carry: TmPreferences' flush engine behind `import()`,
+    about 1.2 KB. It is a timing change against 0025 §9.4's "at once" for curated writes, deferred
+    for Ahmad's ruling.
+  - The bounded variant this review describes is recorded there too: `get`, the overlay, the dirty
+    map, the receiver and the `pagehide` send stay eager, and the rest preloads at idle.
+- Flaky lint:test case (D-011), root-caused and fixed in the same commit.
+  - Cause: `printedForEveryOrder` in `client/tools/tests/union-order.spec.mts` called
+    `sortUnionMembers` once per ordering, 120 times for five members. Each call runs
+    `ts.transpileModule` (a one-file program, its syntactic diagnostics and an emit) and then
+    `ts.createSourceFile`. That fixed cost × 120 is the case's whole 160 ms when run alone.
+  - In the full `lint:test` run the "tools" project runs its files in parallel workers. Those
+    workers import TypeScript and build type-aware programs: 812 s of import time and 1115 s of test
+    time summed over workers in a 541 s run. The file took 32 s instead of 1.1 s, a 30× slowdown, so
+    the case crossed vitest's 5 s default. (The fixture `ng build` is a separate group that runs
+    afterwards, so it was not the contender. Other slots building on the same machine add to it.)
+  - Fix: every ordering becomes one declaration of a single source, separated by a fixed line
+    comment, and is sorted in one call. Each union is still sorted independently, and the comments
+    between declarations are kept as written (a case in the same file pins that), so splitting at
+    the separator gives each ordering's text.
+  - Alone, the bigint case fell from 160 to 31 ms, the five-member literal case from 129 to 26 ms,
+    and the four-member case from 55 to 20 ms. A scratch check confirmed that the split returns one
+    text per declaration, unsorted ones included.
+  - No timeout was raised and no retry was added.

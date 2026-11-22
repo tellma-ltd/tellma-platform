@@ -33,9 +33,21 @@ function permutations(items: readonly string[]): string[][] {
       );
 }
 
-/** The distinct texts `sortUnionMembers` gives for every ordering of a union's members. */
+/** The line comment that separates the orderings in the one source `printedForEveryOrder` sorts. */
+const ORDER_SEPARATOR = '\n// next ordering\n';
+
+/**
+ * The distinct texts `sortUnionMembers` gives for every ordering of a union's
+ * members. Every ordering is one declaration of a single source, sorted in one
+ * call: each call parses and transpiles its source, so a call per ordering
+ * (120 for five members) multiplied that fixed cost, and on a machine busy
+ * with the other test files it ran past the test timeout. The unions are
+ * sorted one by one, and the comments between declarations stay as written,
+ * so splitting the result at the separators gives each ordering's text.
+ */
 function printedForEveryOrder(members: readonly string[], layout: (order: string[]) => string) {
-  return [...new Set(permutations(members).map((order) => sortUnionMembers(layout(order))))];
+  const source = permutations(members).map(layout).join(ORDER_SEPARATOR);
+  return [...new Set(sortUnionMembers(source).split(ORDER_SEPARATOR))];
 }
 
 describe('sortUnionMembers', () => {
@@ -84,7 +96,7 @@ describe('sortUnionMembers', () => {
   });
 
   it('orders string literals, then numeric literals, then the other literals', () => {
-    // Five members keep the permutations (120 parses) quick.
+    // Five members keep the permutations (120 declarations, sorted in one call) quick.
     const printed = printedForEveryOrder(
       ['true', '1n', '1', '"a"', '`t`'],
       (order) => `export type L = ${order.join(' | ')};`,
