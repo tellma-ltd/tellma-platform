@@ -384,6 +384,18 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-194 (orchestrator, 2026-11-22): PC-092 fix1 held; it integrates ahead of PC-214 and PC-175
+
+PC-092's fix1 (5ddb17c5) fixed R1-1..R1-6. Its pushback on R1-1's "read denied, extra dropped" sub-point is accepted. Every grant implies Read with the same filter (0014 §5.2 step 2), and DetailsPlanner.Compose throws Forbidden before any contributor runs, so the branch cannot be reached through the stack. The contributor keeps it as a guard. The tests pin the Forbidden and a filtered Save's implied read, and no leak was found.
+
+New deviation, accepted: R1-4's case runs only the seeder under a Production IHostEnvironment, because a full Production host cannot start in memory.
+
+merge-tree shows 3 conflicts:
+- ARCHITECTURE.md's migrator paragraph: keep both sentences.
+- The Acme InitialTenant migration pair (rename/rename): regenerate it and the model snapshot with dotnet-ef at integration, never hand-merge.
+
+Release order after PC-096 lands: PC-092 (T1), then PC-214 and PC-175 (both T3, in the order they held). PC-092 held before PC-214 was released, so D-193 and D-140/D-173 put it first. The D-192 question for Ahmad stands.
+
 ### D-193 (orchestrator, 2026-11-22): PC-175 fix1 held; its AspNetCore load timeouts predate PC-F65
 
 PC-175's fix1 (6eb3f3c9) is held. R1-1, R1-2 and R1-4 are fixed. R1-3 is fixed by inversion: the pipeline owns Crud/IPlatformCompanions, ExcelCompanions.Instance implements it, and CompositionPipeline hands it to CrudComposition.Register. Crud/ and Abstractions now name no Tellma.Core.Excel type, so 0019 §1.1 holds with no deviation. R1-5 is unchanged (D-188).
