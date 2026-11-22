@@ -384,6 +384,22 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-192 (orchestrator, 2026-11-22): PC-092 Review 1 rulings
+
+Review 1 found 0/1/5 and accepted all 9 deviations. The reviewer verified that the `IDevelopmentSubjects` seam and the `TellmaIdentity:Seed:DevUsers` seeding are guarded by the host environment and the system scope, not by an option. The dev-admin bootstrap keeps its guarantees. The service account has no credentials, and sandbox@ is in tenant 2 only. The ARCHITECTURE.md edits match the code. The resource audit in Acme Web.Tests is accepted, and the PC-094 stand-in is extended in place.
+
+Fixed in fix1:
+- R1-1: member-scoped tests for the related-documents extra's own access guard (a filtered invoice read on the rows and in the customer join; the extra dropped on denied read and above 128 targets), fixing any leak they expose.
+- R1-2: the sample users' tenant hints are recorded on every run.
+- R1-3: the `{number}` placeholder in `Acme_Settings_NextNumber` (en, ar).
+- R1-4: a test that the development users are seeded only in Development.
+- R1-5: the derived-label check covers `Gl_Center_ManagerId` and `SettingCategory_*`.
+- R1-6: the commit's test list is corrected.
+
+For Ahmad: in Development, the e2e principals (sales@, centers@ and sandbox@localhost) are bound to fixed subjects instead of being invited. This departs from 0018 §6.3 and 0024 §13, and ARCHITECTURE.md now describes it.
+
+PC-092 holds after fix1. PC-096 is integrating and PC-214 is held.
+
 ### D-191 (orchestrator, 2026-11-22): PC-214 fix1 accepted and held behind PC-096
 
 Fix1 (2b2a3562) fixed R1-1..R1-6 per D-187 and added deviation 11.
