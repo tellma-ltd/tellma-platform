@@ -53,7 +53,7 @@ reported by `tellma_whoami`, never by hiding tools. Every input schema is a clos
 | `tellma_describe` | The catalogue of entities (narrowed by `search`), or one entity's columns, navigations and the columns reachable through them, child collections, operations, actions with their argument schemas, and example filters. Entity descriptions are cached per tenant, entity and language under the tenant's settings tag. |
 | `tellma_query` | Rows of a stack or a child entity through the stack's service or the child query service, as a Markdown table or JSON objects, truncated row by row under `MaxToolResultChars`. |
 | `tellma_aggregate` | Grouped totals computed in the database. |
-| `tellma_get` | Whole records by id, each child collection cut to a window, or one window of one record's collection. |
+| `tellma_get` | Whole records by id, each child collection cut to a window at every depth before any JSON is written, or one window of one record's collection. Each piece is written bounded by the room left, so the work follows what the result shows, never what was loaded, and the trailing lines always fit under `MaxToolResultChars`. |
 
 `tellma_save`, `tellma_delete` and `tellma_action`, and the reserved names of `McpToolNames`, are not
 served yet. A distribution's tool may not take the `tellma_` prefix; a startup check refuses one that
@@ -67,10 +67,10 @@ The resource `tellma://queryex/syntax` is the Queryex reference in Markdown
 | Folder | Holds |
 |---|---|
 | `Hosting/` | The route and its origin check, the server's identity and instructions, the front door's per-request decision, the request filters and the tool-name check. |
-| `Authentication/` | The bearer events that check the tenant audience and write the MCP challenges. |
+| `Authentication/` | The bearer events that check the tenant audience (exactly one `aud` value, the tenant's resource) and write the MCP challenges. |
 | `Tools/` | The tools, their argument reader and schema builder, and the entities they reach. |
 | `Describe/` | The catalogue and entity descriptions, and their cache. |
-| `Rendering/` | The row and record renderings under the character cap. |
+| `Rendering/` | The row and record renderings under the character cap, the record shapes that name each collection to window, and the bounded JSON writer that stops once its room is spent. |
 | `Observability/` | The `Tellma.Core.Mcp` meter (`tellma.mcp.tool.calls`, `tellma.mcp.tool.duration`, `tellma.mcp.result.chars`) and the log messages. |
 | `Resources/` | The Queryex syntax resource. |
 

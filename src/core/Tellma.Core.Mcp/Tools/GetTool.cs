@@ -7,9 +7,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using ModelContextProtocol.Protocol;
 using System.Globalization;
-using System.Text.Json;
-using Tellma.Core.Abstractions.Api;
 using Tellma.Core.Abstractions.Crud;
+using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Mcp.Rendering;
 
 namespace Tellma.Core.Mcp.Tools
@@ -54,18 +53,18 @@ namespace Tellma.Core.Mcp.Tools
             string? collection = arguments.String(CollectionArgument);
             int skip = arguments.Integer("skip", 0, int.MaxValue) ?? 0;
             int top = arguments.Integer("top", 1, options.MaxChildTop) ?? options.DefaultChildTop;
-            IReadOnlyList<string> collections = CollectionNames(stack);
+            var shape = RecordShape.Of(services.GetRequiredService<IEntityMetadataProvider>().Get(stack.EntityType));
 
             // --- One collection's window: one record, a collection the stack declares ---
-            string? named = null;
+            CollectionShape? named = null;
             if (collection is not null)
             {
-                named = collections.FirstOrDefault(name => string.Equals(name, collection, StringComparison.OrdinalIgnoreCase))
+                named = shape.Collections.FirstOrDefault(candidate => string.Equals(candidate.Name, collection, StringComparison.OrdinalIgnoreCase))
                     ?? throw ToolArguments.Invalid(
                         CollectionArgument,
-                        collections.Count == 0
+                        shape.Collections.Count == 0
                             ? $"The entity '{stack.Resource}' has no child collections."
-                            : $"The entity '{stack.Resource}' has no collection '{collection}'; its collections are: {string.Join(", ", collections)}.");
+                            : $"The entity '{stack.Resource}' has no collection '{collection}'; its collections are: {string.Join(", ", shape.Collections.Select(static candidate => candidate.Name))}.");
                 if (ids.Count != 1)
                 {
                     throw ToolArguments.Invalid(IdsArgument, "With a collection, ids names exactly one record.");
@@ -76,23 +75,13 @@ namespace Tellma.Core.Mcp.Tools
                 throw ToolArguments.Invalid("skip", "skip pages a collection: name it in collection, with exactly one id.");
             }
 
-            // --- The read, as the web surface's details read; the tool slices what it loaded ---
+            // --- The read, as the web surface's details read; the rendering windows what it loaded before writing any of it ---
             DetailsRequest details = include is { Count: > 0 } ? new DetailsRequest { Include = include } : DetailsRequest.None;
             StackRecords records = await StackInvoker.For(stack).GetAsync(services, ids, details, cancellationToken).ConfigureAwait(false);
             RenderedText rendered = named is null
-                ? EntityRendering.Records(records.Result, ids, new ChildWindows(collections, top), options.MaxToolResultChars)
-                : EntityRendering.Collection(records.Result, ids[0], named, skip, top, options.MaxToolResultChars);
+                ? EntityRendering.Records(records, ids, shape, top, options.MaxToolResultChars)
+                : EntityRendering.Collection(records, ids[0], named, skip, top, options.MaxToolResultChars);
             return Text(services, rendered.Text, rendered.Truncated);
-        }
-
-        /// <summary>The JSON names of a stack's child collections, as the wire writes them.</summary>
-        /// <param name="stack">The stack.</param>
-        /// <returns>The names, in declaration order.</returns>
-        internal static IReadOnlyList<string> CollectionNames(StackDescriptor stack)
-        {
-            ArgumentNullException.ThrowIfNull(stack);
-            JsonNamingPolicy? naming = TellmaJson.Options.PropertyNamingPolicy;
-            return [.. stack.Children.Select(child => naming?.ConvertName(child.Property) ?? child.Property)];
         }
 
         /// <summary>The tool's input schema.</summary>

@@ -6,20 +6,14 @@
 using Microsoft.Extensions.DependencyInjection;
 using System.Collections.Concurrent;
 using System.Numerics;
-using System.Text.Json;
-using System.Text.Json.Nodes;
 using Tellma.Core.Abstractions.Api;
 using Tellma.Core.Abstractions.Crud;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Entities;
+using Tellma.Core.Mcp.Rendering;
 
 namespace Tellma.Core.Mcp.Tools
 {
-    /// <summary>The records a get read, in the wire's own JSON shape.</summary>
-    /// <param name="Ids">The ids of the records read, in request order.</param>
-    /// <param name="Result">The entities result as the web surface writes it: <c>ids</c>, <c>entities</c>, <c>related</c>, <c>extras</c>.</param>
-    internal sealed record StackRecords(IReadOnlyList<long> Ids, JsonObject Result);
-
     /// <summary>
     ///     Calls a stack's service, closed over the stack's entity and key types, from a tool that
     ///     knows the stack only by its descriptor. Every call reaches the same service operation the
@@ -51,7 +45,7 @@ namespace Tellma.Core.Mcp.Tools
         /// <param name="ids">The ids, each refused when outside the key's range.</param>
         /// <param name="details">The extras to include.</param>
         /// <param name="cancellationToken">Cancels the read.</param>
-        /// <returns>The records read; an absent or invisible id is omitted.</returns>
+        /// <returns>The records read, as the service loaded them; an absent or invisible id is omitted.</returns>
         public abstract Task<StackRecords> GetAsync(IServiceProvider services, IReadOnlyList<long> ids, DetailsRequest details, CancellationToken cancellationToken);
 
         /// <summary>Builds the invoker closed over a stack's types.</summary>
@@ -90,10 +84,12 @@ namespace Tellma.Core.Mcp.Tools
                 .GetByIdsAsync(keys, details, cancellationToken)
                 .ConfigureAwait(false);
 
-            // The wire's own JSON, so an agent reads exactly what a details page reads.
-            JsonObject json = JsonSerializer.SerializeToNode(result, TellmaJson.Options)?.AsObject()
-                ?? throw new InvalidOperationException("An entities result serialized to nothing.");
-            return new StackRecords(result.Ids, json);
+            // The records as loaded: the rendering cuts their collections before it writes the wire's JSON.
+            return new StackRecords(
+                result.Ids,
+                [.. result.Entities.Select(static entity => new StackRecord(long.CreateChecked(entity.Id), entity))],
+                result.Related,
+                result.Extras);
         }
     }
 }

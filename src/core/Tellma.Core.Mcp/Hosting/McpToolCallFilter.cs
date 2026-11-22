@@ -41,9 +41,15 @@ namespace Tellma.Core.Mcp.Hosting
             return async (request, cancellationToken) =>
             {
                 // An unknown tool is the protocol's error, which the SDK answers.
-                if (request.MatchedPrimitive is null || request.Services is not IServiceProvider services)
+                if (request.MatchedPrimitive is null)
                 {
                     return await next(request, cancellationToken).ConfigureAwait(false);
+                }
+
+                // A tool that matched always runs inside its request; one that does not is refused, never run unguarded.
+                if (request.Services is not IServiceProvider services)
+                {
+                    throw new InvalidOperationException($"The MCP tool '{request.Params?.Name}' was called without its request's services, so its tenant's front door cannot run.");
                 }
 
                 string tool = request.Params?.Name ?? string.Empty;
@@ -68,7 +74,7 @@ namespace Tellma.Core.Mcp.Hosting
                         result = await next(request, cancellationToken).ConfigureAwait(false);
                         outcome = result.IsError == true ? McpToolOutcome.Error : state.Outcome;
                     }
-                    catch (Exception exception) when (exception is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+                    catch (Exception exception) when (IsAnswered(exception, cancellationToken))
                     {
                         (result, outcome) = Problem(services, exception, tool, logger);
                     }
@@ -152,11 +158,29 @@ namespace Tellma.Core.Mcp.Hosting
                 document = ProblemRenderer.Render(problem, services, TraceIdentity.Of(http));
             }
 
-            McpToolOutcome outcome = problem.Status is StatusCodes.Status403Forbidden or StatusCodes.Status404NotFound
+            return (new CallToolResult { IsError = true, Content = [new TextContentBlock { Text = Render(document, problem.RetryAfter) }] }, Classify(problem));
+        }
+
+        /// <summary>Whether an exception a tool let escape is answered as an <c>isError</c> result: all but the request's own cancellation, which ends the request.</summary>
+        /// <param name="exception">The exception.</param>
+        /// <param name="cancellationToken">The request's cancellation.</param>
+        /// <returns>True when it is answered.</returns>
+        internal static bool IsAnswered(Exception exception, CancellationToken cancellationToken)
+        {
+            ArgumentNullException.ThrowIfNull(exception);
+            return exception is not OperationCanceledException || !cancellationToken.IsCancellationRequested;
+        }
+
+        /// <summary>A refused call's outcome: denied when the caller may not do it, an error otherwise.</summary>
+        /// <param name="problem">The mapped problem.</param>
+        /// <returns>The outcome.</returns>
+        internal static McpToolOutcome Classify(ProblemDescription problem)
+        {
+            ArgumentNullException.ThrowIfNull(problem);
+            return problem.Status is StatusCodes.Status403Forbidden or StatusCodes.Status404NotFound
                 || string.Equals(problem.Code, SensitiveOperationCode, StringComparison.Ordinal)
                 ? McpToolOutcome.Denied
                 : McpToolOutcome.Error;
-            return (new CallToolResult { IsError = true, Content = [new TextContentBlock { Text = Render(document, problem.RetryAfter) }] }, outcome);
         }
 
         /// <summary>A problem's text: its code, title, detail, errors and details, as compact JSON.</summary>

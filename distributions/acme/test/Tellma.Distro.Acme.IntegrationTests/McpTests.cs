@@ -25,8 +25,10 @@ namespace Tellma.Distro.Acme.IntegrationTests
     /// <summary>
     ///     The tenant MCP server over Acme's seed tenants: an SDK client holding a token of a test
     ///     issuer the host trusts beside its engine lists the platform's tools and runs each read tool
-    ///     against the live tenant, and the endpoint refuses a token for another audience or another
-    ///     tenant, one without the API scope, an unlisted browser origin and a GET.
+    ///     against the live tenant; the endpoint refuses a token for another audience or another
+    ///     tenant, one naming a second audience, an expired one, one without the API scope, an
+    ///     unlisted browser origin and a GET; and a valid token of a service account, a non-member or a
+    ///     deactivated member learns no tenant and has every call refused.
     /// </summary>
     /// <param name="sql">The SQL Server the migrator and the host run against.</param>
     [Trait("Category", "Integration")]
@@ -43,6 +45,10 @@ namespace Tellma.Distro.Acme.IntegrationTests
 
         /// <summary>The issuer of the test's tokens, which the host trusts beside its engine.</summary>
         private const string TestIssuer = "https://mcp-tests.test";
+
+        /// <summary>Why a test is skipped until the composition connects a tenant request to its user.</summary>
+        private const string NeedsUserConnection =
+            "Needs the user connection initializer, which refuses a caller who is not one of the tenant's users.";
 
         /// <summary>Why a test is skipped until the composition serves the administrator.</summary>
         private const string NeedsUserConnectionAndBootstrap =
@@ -153,6 +159,24 @@ namespace Tellma.Distro.Acme.IntegrationTests
                 Assert.Contains($"/.well-known/oauth-protected-resource/{Sandbox}/mcp", crossed.Headers.WwwAuthenticate.ToString(), StringComparison.Ordinal);
             }
 
+            // --- A token naming a second audience beside the tenant's resource, at either tenant: invalid ---
+            foreach (string[] audiences in (string[][])[[Resource(Live), Resource(Sandbox)], [Resource(Live), AcmeMigrator.PublicOrigin]])
+            {
+                foreach (int tenant in (int[])[Live, Sandbox])
+                {
+                    using HttpResponseMessage doubled = await PostAsync(client, tenant, UserToken(audiences));
+                    Assert.Equal(HttpStatusCode.Unauthorized, doubled.StatusCode);
+                    Assert.StartsWith("Bearer error=\"invalid_token\"", doubled.Headers.WwwAuthenticate.ToString(), StringComparison.Ordinal);
+                }
+            }
+
+            // --- An expired token for the tenant's own resource: invalid ---
+            using (HttpResponseMessage expired = await PostAsync(client, Live, UserToken(Resource(Live), expired: true)))
+            {
+                Assert.Equal(HttpStatusCode.Unauthorized, expired.StatusCode);
+                Assert.StartsWith("Bearer error=\"invalid_token\"", expired.Headers.WwwAuthenticate.ToString(), StringComparison.Ordinal);
+            }
+
             // --- No API scope: insufficient scope ---
             using (HttpResponseMessage scopeless = await PostAsync(client, Live, UserToken(Resource(Live), scope: "openid")))
             {
@@ -183,7 +207,69 @@ namespace Tellma.Distro.Acme.IntegrationTests
             Assert.Equal(Resource(Live), document.RootElement.GetProperty("resource").GetString());
         }
 
+        [Fact]
+        public async Task A_service_account_s_valid_token_learns_no_tenant_and_every_call_is_refused_as_individual_required()
+        {
+            AcmeMigrator acme = new(sql, "acme_mcp_service");
+            _ = await acme.MigrateAsync();
+            await using AcmeHost host = await StartAsync(acme);
+            await using McpClient client = await ConnectAsync(host, Live, UserToken(Resource(Live), subject: "acme-agent", service: true));
+
+            await AssertRefusedAsync(client, "\"code\":\"individual-required\"");
+        }
+
+        [Fact(Skip = NeedsUserConnection, SkipUnless = nameof(PlatformSeams.ConnectsTheUser), SkipType = typeof(PlatformSeams))]
+        public async Task A_non_member_s_valid_token_learns_no_tenant_and_every_call_is_refused()
+        {
+            AcmeMigrator acme = new(sql, "acme_mcp_stranger");
+            _ = await acme.MigrateAsync();
+            await using AcmeHost host = await StartAsync(acme);
+            await using McpClient client = await ConnectAsync(host, Live, UserToken(Resource(Live), subject: Guid.NewGuid().ToString()));
+
+            await AssertRefusedAsync(client, "\"status\":404");
+        }
+
+        [Fact(Skip = NeedsUserConnectionAndBootstrap, SkipUnless = nameof(PlatformSeams.ServesTheAdministrator), SkipType = typeof(PlatformSeams))]
+        public async Task A_member_deactivated_in_the_tenant_is_refused_by_the_next_call()
+        {
+            AcmeMigrator acme = new(sql, "acme_mcp_deactivated");
+            _ = await acme.MigrateAsync();
+            await using AcmeHost host = await StartAsync(acme);
+            await JoinAsync(host);
+            await using (McpClient member = await ConnectAsync(host, Live, UserToken(Resource(Live))))
+            {
+                _ = await CallAsync(member, "tellma_whoami", []);
+            }
+
+            // --- Deactivated in the tenant's database: whoami's fresh connect refuses them ---
+            int administrator = await SqlServerFixture.ScalarAsync<int?>(
+                acme.TenantConnectionString(Live), $"SELECT [Id] FROM [core].[Users] WHERE [Email] = N'{AcmeSignIn.Administrator}';")
+                ?? throw new InvalidOperationException($"Tenant {Live} has no user {AcmeSignIn.Administrator}.");
+            await SqlServerFixture.ExecuteAsync(
+                acme.TenantConnectionString(Live),
+                string.Create(CultureInfo.InvariantCulture, $"UPDATE [core].[Users] SET [IsActive] = 0 WHERE [Id] = {administrator};"));
+
+            await using McpClient deactivated = await ConnectAsync(host, Live, UserToken(Resource(Live)));
+            CallToolResult refused = await deactivated.CallToolAsync("tellma_whoami", cancellationToken: Token);
+            Assert.True(refused.IsError);
+            Assert.Contains("\"status\":404", Text(refused), StringComparison.Ordinal);
+        }
+
         // --- Helpers ---
+
+        /// <summary>Asserts a connected caller learns no tenant and has a call refused.</summary>
+        /// <param name="client">The client.</param>
+        /// <param name="expected">What the refusal's text holds.</param>
+        /// <returns>A task that completes when the assertions have run.</returns>
+        private static async Task AssertRefusedAsync(McpClient client, string expected)
+        {
+            // The title is the distribution's display name alone, and the instructions name no tenant.
+            Assert.DoesNotContain(" (", client.ServerInfo.Title, StringComparison.Ordinal);
+            Assert.DoesNotContain("a live tenant", client.ServerInstructions, StringComparison.Ordinal);
+            CallToolResult refused = await client.CallToolAsync("tellma_describe", cancellationToken: Token);
+            Assert.True(refused.IsError);
+            Assert.Contains(expected, Text(refused), StringComparison.Ordinal);
+        }
 
         /// <summary>Starts Acme's host trusting the test issuer beside its engine.</summary>
         /// <param name="acme">The deployment.</param>
@@ -303,24 +389,27 @@ namespace Tellma.Distro.Acme.IntegrationTests
             return string.Create(CultureInfo.InvariantCulture, $"{AcmeMigrator.PublicOrigin}/{tenantId}/mcp");
         }
 
-        /// <summary>An access token of the test issuer for the administrator.</summary>
-        /// <param name="audience">The audience.</param>
+        /// <summary>An access token of the test issuer, for the administrator unless another subject is named.</summary>
+        /// <param name="audience">The audience: one value, or an array of them.</param>
         /// <param name="scope">The scopes.</param>
+        /// <param name="subject">The subject.</param>
+        /// <param name="service">Whether the token speaks for a service account.</param>
+        /// <param name="expired">Whether the token expired well past the validation's clock skew.</param>
         /// <returns>The token.</returns>
-        private static string UserToken(string audience, string scope = "tellma_api")
+        private static string UserToken(object audience, string scope = "tellma_api", string subject = AdministratorSubject, bool service = false, bool expired = false)
         {
-            DateTime now = DateTime.UtcNow;
+            DateTime now = expired ? DateTime.UtcNow.AddHours(-1) : DateTime.UtcNow;
             return new JsonWebTokenHandler().CreateToken(new SecurityTokenDescriptor
             {
                 Issuer = TestIssuer,
                 Claims = new Dictionary<string, object>
                 {
-                    ["sub"] = AdministratorSubject,
-                    ["azp"] = "claude-code",
+                    ["sub"] = subject,
+                    ["azp"] = service ? subject : "claude-code",
                     ["aud"] = audience,
                     ["scope"] = scope,
-                    ["tellma_kind"] = "individual",
-                    ["auth_time"] = DateTimeOffset.UtcNow.AddMinutes(-1).ToUnixTimeSeconds(),
+                    ["tellma_kind"] = service ? "service" : "individual",
+                    ["auth_time"] = new DateTimeOffset(now.AddMinutes(-1)).ToUnixTimeSeconds(),
                 },
                 IssuedAt = now,
                 NotBefore = now.AddMinutes(-1),

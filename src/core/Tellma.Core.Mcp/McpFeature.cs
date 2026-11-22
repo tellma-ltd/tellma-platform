@@ -8,7 +8,7 @@ using Tellma.Core.Abstractions.Composition;
 namespace Tellma.Core.Mcp
 {
     /// <summary>
-    ///     The tenant MCP server's feature, named <c>mcp</c>: it binds <see cref="McpOptions" /> from
+    ///     The tenant MCP server's feature, named <c>core.mcp</c>: it binds <see cref="McpOptions" /> from
     ///     <c>Tellma:Mcp</c>, validated by the startup gate's options check. It contributes no entity,
     ///     securable or table, so the migrator, which never composes it, sees the same model.
     /// </summary>
@@ -16,7 +16,7 @@ namespace Tellma.Core.Mcp
     public sealed class McpFeature : ITellmaFeature
     {
         /// <summary>The feature's name.</summary>
-        public const string FeatureName = "mcp";
+        public const string FeatureName = "core.mcp";
 
         /// <inheritdoc />
         public string Name => FeatureName;

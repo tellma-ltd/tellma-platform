@@ -111,7 +111,10 @@ namespace Tellma.Core.Mcp
                 });
             if (toolTypes.Length > 0)
             {
-                _ = server.WithTools(toolTypes, TellmaJson.Options);
+                // Passed as a sequence of types: an array binds to the SDK's generic overload that
+                // reads tools from the target object's own type, and would register none.
+                IEnumerable<Type> distributionTools = toolTypes;
+                _ = server.WithTools(distributionTools, TellmaJson.Options);
             }
 
             return tellma;

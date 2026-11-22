@@ -23,15 +23,17 @@ namespace Tellma.Core.Mcp.Authentication
     /// <summary>
     ///     The bearer scheme's events on the tenant MCP endpoint, chained ahead of any the scheme
     ///     already has and inert on every other endpoint: the token's audience must be this tenant's
-    ///     MCP resource exactly, and the scheme's refusals name the resource's metadata document, so
+    ///     MCP resource alone, and the scheme's refusals name the resource's metadata document, so
     ///     a client that was refused can discover where to obtain a token.
     /// </summary>
     /// <remarks>
     ///     <para>
     ///         A token issued for another tenant's server, or for the public API, fails
     ///         authentication: it is not a valid token for this resource, answered 401
-    ///         <c>invalid_token</c>, never 403. The bearer policy's audience requirement still runs
-    ///         behind it.
+    ///         <c>invalid_token</c>, never 403. So does a token that names this resource beside any
+    ///         other: one token valid at two tenants, or at a tenant and the public API, would let a
+    ///         token one tenant's client holds be replayed at the other. The bearer policy's audience
+    ///         requirement still runs behind it.
     ///     </para>
     ///     <para>
     ///         Every URL is built from the configured public origin and the route's tenant id, never
@@ -78,7 +80,7 @@ namespace Tellma.Core.Mcp.Authentication
             };
         }
 
-        /// <summary>Fails a validated token whose audience does not name this tenant's MCP resource.</summary>
+        /// <summary>Fails a validated token whose audience is not this tenant's MCP resource alone.</summary>
         /// <param name="context">The validated token's context.</param>
         internal static void ValidateAudience(TokenValidatedContext context)
         {
@@ -87,11 +89,12 @@ namespace Tellma.Core.Mcp.Authentication
                 return;
             }
 
-            ClaimsPrincipal? principal = context.Principal;
-            bool named = principal is not null && principal
-                .FindAll(TellmaClaimTypes.Audience)
-                .Any(claim => string.Equals(claim.Value, resource, StringComparison.Ordinal));
-            if (!named)
+            // Exactly one audience, and it is this resource (spec 0016 §11.2): any second value, even
+            // the same tenant's other resource, makes the token valid somewhere else too.
+            string[] audiences = context.Principal is ClaimsPrincipal principal
+                ? [.. principal.FindAll(TellmaClaimTypes.Audience).Select(static claim => claim.Value)]
+                : [];
+            if (audiences is not [string only] || !string.Equals(only, resource, StringComparison.Ordinal))
             {
                 context.Fail("The token was not issued for this tenant's MCP server.");
             }
