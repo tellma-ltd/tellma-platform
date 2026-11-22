@@ -12,7 +12,10 @@ namespace Tellma.Core.AspNetCore.IntegrationTests.Stacks
     /// <summary>
     ///     The routes the reference distribution projects for centers, users and roles and their child
     ///     surfaces are exactly the ones the operation cases drive end to end, so a route added to
-    ///     one of the three stacks fails here until a case drives it.
+    ///     one of the three stacks fails here until a case drives it. It covers the stacks' routes
+    ///     only: the platform's own service routes (access, notification preferences, settings and
+    ///     the rest) are not stack routes and are not held to this list, though the round-trip
+    ///     budget case measures the access and notification-preference ones the budget names.
     /// </summary>
     /// <param name="deployment">The suite's deployment.</param>
     [Trait("Category", "Integration")]

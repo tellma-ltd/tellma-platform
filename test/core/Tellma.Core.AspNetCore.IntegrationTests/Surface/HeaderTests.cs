@@ -4,6 +4,7 @@
 // LICENSE file in the root directory of this source tree.
 
 using Microsoft.Extensions.DependencyInjection;
+using System.Globalization;
 using System.Net;
 using System.Text.Json.Nodes;
 using Tellma.Core.Abstractions.Api;
@@ -17,7 +18,8 @@ namespace Tellma.Core.AspNetCore.IntegrationTests.Surface
     /// <summary>
     ///     The headers of the web surface's answers through the composed host: the trace id and the
     ///     build on every answer, tenantless ones and refusals before admission among them; the four
-    ///     version tags on an admitted answer, agreeing with the envelope, and on none refused before
+    ///     version tags on an admitted answer, agreeing with the envelope and the tenant's database, a
+    ///     cached entity's save answering with the entities tag it moved, and on none refused before
     ///     it; the contract check refusing an outdated client before anything runs; and the
     ///     compression and caching of an API answer.
     /// </summary>
@@ -45,10 +47,31 @@ namespace Tellma.Core.AspNetCore.IntegrationTests.Surface
             Dictionary<string, string> tags = new(items, StringComparer.Ordinal);
             Assert.Equal(envelope["preferencesTag"]!.GetValue<string>(), tags[VersionTagWire.PreferencesItem]);
             Assert.Equal(envelope["access"]!["tag"]!.GetValue<string>(), tags[VersionTagWire.PermissionsItem]);
+
+            // --- The tenant's two tags are the ones the tenant's database holds ---
+            Assert.Equal(VersionTagWire.Settings(await StoredAsync(VersionTagWire.SettingsItem)), tags[VersionTagWire.SettingsItem]);
+            Assert.Equal(VersionTagWire.Entities(await StoredAsync(VersionTagWire.EntitiesItem)), tags[VersionTagWire.EntitiesItem]);
+
             AssertTraced(me);
             Assert.Equal("en", me.Header("Content-Language"));
             Assert.Equal("gc", me.Header(TellmaHeaders.Calendar));
             Assert.Equal("no-store", me.Header("Cache-Control"));
+        }
+
+        [Fact]
+        public async Task A_save_of_a_cached_entity_answers_with_the_entities_tag_it_moved()
+        {
+            using SpaClient admin = await deployment.SignInAsync(deployment.Administrator);
+            string before = Item(await admin.PostAsync(Tenant, "users/me"), VersionTagWire.EntitiesItem);
+
+            // --- A currency is cached by every client, so its save moves the tenant's entities tag ---
+            ApiResponse saved = await admin.PostAsync(
+                Tenant, "currencies/save", Wire.Save(new JsonObject { ["id"] = 0, ["code"] = "HDT", ["name"] = "Header test currency" }));
+
+            _ = saved.Expect(HttpStatusCode.OK);
+            string after = Item(saved, VersionTagWire.EntitiesItem);
+            Assert.NotEqual(before, after);
+            Assert.Equal(VersionTagWire.Entities(await StoredAsync(VersionTagWire.EntitiesItem)), after);
         }
 
         [Fact]
@@ -114,6 +137,24 @@ namespace Tellma.Core.AspNetCore.IntegrationTests.Surface
         {
             Assert.Matches("^[0-9a-f]{32}$", answer.Header(TellmaHeaders.TraceId) ?? string.Empty);
             Assert.False(string.IsNullOrEmpty(answer.Header(TellmaHeaders.Build)), answer.ToString());
+        }
+
+        /// <summary>A tenant version tag of the live tenant, as its database holds it.</summary>
+        /// <param name="name">The tag's name.</param>
+        /// <returns>The tag.</returns>
+        private async Task<VersionTag> StoredAsync(string name)
+        {
+            return new VersionTag(await deployment.ScalarAsync<Guid>(
+                Tenant, string.Create(CultureInfo.InvariantCulture, $"SELECT [Tag] FROM [core].[VersionTags] WHERE [Name] = N'{name}';")));
+        }
+
+        /// <summary>One item of an answer's version-tags header.</summary>
+        /// <param name="answer">The answer.</param>
+        /// <param name="name">The item's name.</param>
+        /// <returns>The item's value.</returns>
+        private static string Item(ApiResponse answer, string name)
+        {
+            return Assert.Single(Tags(answer), item => item.Key == name).Value;
         }
 
         /// <summary>The items of an answer's version-tags header, by name, in order.</summary>

@@ -5,7 +5,9 @@
 
 using Microsoft.AspNetCore.Http;
 using System.Globalization;
+using System.Reflection;
 using Tellma.Core.Abstractions.Api;
+using Tellma.Core.Abstractions.Crud;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.AspNetCore.Api;
 using Tellma.Core.Crud;
@@ -46,12 +48,14 @@ namespace Tellma.Core.AspNetCore.Tests.Observability
                 DataTelemetryNames.OperationTag,
             ];
 
-            // --- The values: the server-error status, the pipeline's operation kinds, and the
-            // separator a unit of work's operation puts between its resource and its kind ---
+            // --- The values: the server-error status, the pipeline's operation kinds, the platform's
+            // API action names (the kind of a unit of work an API action runs), and the separator a
+            // unit of work's operation puts between its resource and its kind ---
             HashSet<string> values =
             [
                 StatusCodes.Status500InternalServerError.ToString(CultureInfo.InvariantCulture),
                 .. AlertQueries.Constants([typeof(CrudOperationNames)], static _ => true),
+                .. PlatformApiActions(),
                 ":",
             ];
 
@@ -67,6 +71,17 @@ namespace Tellma.Core.AspNetCore.Tests.Observability
             Assert.Equal(
                 [ApiTelemetryNames.OperationDuration, ApiTelemetryNames.RequestsRejected, ApiTelemetryNames.UnknownMembers, ApiTelemetryNames.RealtimeEvents],
                 AlertQueries.Uncovered(Queries, Instruments));
+        }
+
+        /// <summary>The name of every API action the platform's own services and stacks declare.</summary>
+        /// <returns>The names.</returns>
+        private static IEnumerable<string> PlatformApiActions()
+        {
+            const BindingFlags Declared = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly;
+            return typeof(CrudOperationNames).Assembly.GetTypes()
+                .SelectMany(static type => type.GetMethods(Declared))
+                .Select(static method => method.GetCustomAttribute<ApiActionAttribute>()?.Name)
+                .OfType<string>();
         }
     }
 }

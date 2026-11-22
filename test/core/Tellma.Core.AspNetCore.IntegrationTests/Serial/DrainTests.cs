@@ -4,8 +4,11 @@
 // LICENSE file in the root directory of this source tree.
 
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Diagnostics.Metrics.Testing;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using System.Diagnostics.Metrics;
 using System.Globalization;
 using System.Net;
 using System.Text.Json.Nodes;
@@ -18,7 +21,8 @@ namespace Tellma.Core.AspNetCore.IntegrationTests.Serial
     /// <summary>
     ///     A second instance of the deployment, listening with Kestrel on a loopback port as a real
     ///     server does, and with a per-user rate of a few requests: a member past the rate refused with
-    ///     the trace and build headers and no version tags, and the instance's stop waiting for a
+    ///     the trace and build headers and no version tags, counted and logged as rate limited, and
+    ///     the instance's stop waiting for a
     ///     request in flight, which still answers, before it completes. The request in flight waits on
     ///     a lock on the live tenant's centers, so the case runs alone.
     /// </summary>
@@ -38,10 +42,14 @@ namespace Tellma.Core.AspNetCore.IntegrationTests.Serial
             {
                 ["Tellma:Api:RequestsPerMinutePerUser"] = Rate.ToString(CultureInfo.InvariantCulture),
             };
-            AcmeHost instance = await AcmeHost.StartAsync(values, new AcmeHostOptions { UsesKestrel = true });
+            using ScopeLog logs = new();
+            AcmeHost instance = await AcmeHost.StartAsync(
+                values, new AcmeHostOptions { UsesKestrel = true, Services = services => services.AddSingleton<ILoggerProvider>(logs) });
             await using (instance)
             {
                 Assert.Equal(TimeSpan.FromSeconds(30), instance.Services.GetRequiredService<IOptions<HostOptions>>().Value.ShutdownTimeout);
+                using MetricCollector<long> rejected = new(
+                    instance.Services.GetRequiredService<IMeterFactory>(), ApiTelemetryNames.MeterName, ApiTelemetryNames.RequestsRejected);
 
                 // --- Past the rate: refused before admission, traced, without version tags ---
                 using (SpaClient restricted = new(instance, await WebSessions.SignInAsync(instance, deployment.Restricted)))
@@ -57,6 +65,14 @@ namespace Tellma.Core.AspNetCore.IntegrationTests.Serial
                     Assert.False(string.IsNullOrEmpty(refused.Header(TellmaHeaders.TraceId)));
                     Assert.False(string.IsNullOrEmpty(refused.Header(TellmaHeaders.Build)));
                     Assert.Null(refused.Header(TellmaHeaders.VersionTags));
+
+                    // --- Counted and logged by its reason, the refusing policy in the log's scope ---
+                    Assert.Contains(
+                        rejected.GetMeasurementSnapshot(),
+                        static measured => measured.Tags.GetValueOrDefault(ApiTelemetryNames.ReasonTag) is "rate_limited");
+                    LoggedEvent refusal = Assert.Single(
+                        logs.Events, static entry => entry.EventName == "ApiRequestRejected" && entry.Properties.GetValueOrDefault("Reason") == "rate_limited");
+                    Assert.False(string.IsNullOrEmpty(refusal.Properties.GetValueOrDefault("RatePolicy")), "The refusal's log names no policy.");
                 }
 
                 // --- A read in flight, waiting on a lock, when the instance is told to stop ---

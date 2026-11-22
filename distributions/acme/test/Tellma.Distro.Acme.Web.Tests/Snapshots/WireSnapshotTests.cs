@@ -9,6 +9,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.OpenApi;
 using System.Runtime.CompilerServices;
 using System.Text;
+using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Tellma.Core.Api;
@@ -42,15 +43,23 @@ namespace Tellma.Distro.Acme.Web.Tests.Snapshots
         /// <summary>The OpenAPI document's name, as the web host registers and serves it.</summary>
         private const string DocumentName = "web";
 
-        /// <summary>How the map is written: indented, with line feeds on every platform.</summary>
-        private static readonly JsonWriterOptions Indented = new() { Indented = true, NewLine = "\n" };
+        /// <summary>
+        ///     How both snapshots are written: indented, with line feeds on every platform, and with
+        ///     only the characters JSON requires escaped, so the files read as the text they hold.
+        /// </summary>
+        private static readonly JsonWriterOptions Indented = new()
+        {
+            Indented = true,
+            NewLine = "\n",
+            Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+        };
 
         [Fact]
         public async Task Every_projected_route_s_fingerprint_matches_the_route_map_snapshot()
         {
             await using WebApplication app = AcmeWebApplication.Build("Production", AcmeWebApplication.ProductionSettings);
 
-            Snapshot(ContractsFile, Render(app.Services.GetRequiredService<IRouteContracts>()));
+            Snapshot(ContractsFile, Canonical(Render(app.Services.GetRequiredService<IRouteContracts>())));
         }
 
         [Fact]
@@ -79,7 +88,7 @@ namespace Tellma.Distro.Acme.Web.Tests.Snapshots
                 .GetOpenApiDocumentAsync(TestContext.Current.CancellationToken);
             string written = await document.SerializeAsJsonAsync(OpenApiSpecVersion.OpenApi3_1, TestContext.Current.CancellationToken);
 
-            Snapshot(OpenApiFile, Normalized(written));
+            Snapshot(OpenApiFile, Canonical(written));
         }
 
         /// <summary>Renders the route map: every route's fingerprint in mapping order, then the long and the idempotent routes.</summary>
@@ -125,12 +134,48 @@ namespace Tellma.Distro.Acme.Web.Tests.Snapshots
             writer.WriteEndArray();
         }
 
-        /// <summary>A generated text with line feeds alone, ending in one.</summary>
-        /// <param name="text">The text.</param>
-        /// <returns>The normalized text.</returns>
-        private static string Normalized(string text)
+        /// <summary>
+        ///     A generated JSON text in the one form both platforms agree on: every string value's line
+        ///     breaks as line feeds, written indented with line feeds and ending in one.
+        /// </summary>
+        /// <param name="json">The generated text.</param>
+        /// <returns>The canonical text.</returns>
+        private static string Canonical(string json)
         {
-            return text.ReplaceLineEndings("\n").TrimEnd('\n') + "\n";
+            // The compiler writes XML documentation with the platform's newline, and the OpenAPI
+            // generator copies a summary's line breaks into its description verbatim: the same
+            // source yields CR LF inside strings on Windows and LF on Linux. Normalizing the text's
+            // own line breaks cannot reach those escaped ones, so the values themselves are rewritten.
+            JsonNode? canonical = WithLineFeeds(JsonNode.Parse(json));
+
+            using MemoryStream buffer = new();
+            using (Utf8JsonWriter writer = new(buffer, Indented))
+            {
+                if (canonical is null)
+                {
+                    writer.WriteNullValue();
+                }
+                else
+                {
+                    canonical.WriteTo(writer);
+                }
+            }
+
+            return Encoding.UTF8.GetString(buffer.ToArray()) + "\n";
+        }
+
+        /// <summary>A copy of a JSON tree whose string values carry line feeds as their only line breaks.</summary>
+        /// <param name="node">The tree.</param>
+        /// <returns>The copy.</returns>
+        private static JsonNode? WithLineFeeds(JsonNode? node)
+        {
+            return node switch
+            {
+                JsonObject members => new JsonObject(members.Select(static member => KeyValuePair.Create(member.Key, WithLineFeeds(member.Value)))),
+                JsonArray items => new JsonArray([.. items.Select(WithLineFeeds)]),
+                JsonValue value when value.GetValueKind() == JsonValueKind.String => JsonValue.Create(value.GetValue<string>().ReplaceLineEndings("\n")),
+                _ => node?.DeepClone(),
+            };
         }
 
         /// <summary>Compares a rendering with its snapshot, or rewrites the snapshot when the run is a rewrite.</summary>

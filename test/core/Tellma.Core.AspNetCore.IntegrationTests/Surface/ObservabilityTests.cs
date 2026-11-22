@@ -5,6 +5,7 @@
 
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.Metrics.Testing;
+using Microsoft.Extensions.Logging;
 using System.Diagnostics;
 using System.Diagnostics.Metrics;
 using System.Net;
@@ -16,8 +17,9 @@ namespace Tellma.Core.AspNetCore.IntegrationTests.Surface
 {
     /// <summary>
     ///     The web host's instruments and log scope over real requests: each instrument observed with
-    ///     its declared tags on a path that records it, and a problem's log event carrying the client,
-    ///     the resource and the operation beside the tenant and the caller. Every case shares the host and
+    ///     its declared tags on a path that records it, a refusal's and the child surfaces' log events,
+    ///     and a problem's log event carrying the client, the resource and the operation beside the
+    ///     tenant and the caller. Every case shares the host and
     ///     its background work, so each assertion looks for the measurement its own request made rather
     ///     than counting.
     /// </summary>
@@ -55,6 +57,9 @@ namespace Tellma.Core.AspNetCore.IntegrationTests.Surface
             _ = (await admin.PostAsync(Tenant, "centers/query", new JsonObject(), static request => request.Headers.Add(TellmaHeaders.Contract, "AAAAAAAAAAAA")))
                 .ExpectProblem(HttpStatusCode.PreconditionFailed, "client-outdated");
             await AwaitAsync(rejected, static tags => Is(tags, ApiTelemetryNames.ReasonTag, "client_outdated"));
+            LoggedEvent refusal = await AwaitEventAsync(static entry => entry.EventName == "ApiRequestRejected" && entry.Properties.GetValueOrDefault("Reason") == "client_outdated");
+            Assert.Equal(LogLevel.Information, refusal.Level);
+            Assert.Contains("/centers/query", refusal.Properties["Route"], StringComparison.Ordinal);
 
             // --- A role save moves the tenant's permissions, and the cache event it publishes is
             // handed to the hub, by name ---
@@ -81,6 +86,16 @@ namespace Tellma.Core.AspNetCore.IntegrationTests.Surface
             Assert.Equal(
                 ("test", "gl.Center", "get", "1", deployment.Administrator.Subject),
                 (problem.Properties["Client"], problem.Properties["Resource"], problem.Properties["Operation"], problem.Properties["TenantId"], problem.Properties["Subject"]));
+        }
+
+        [Fact]
+        public async Task The_child_query_surfaces_the_host_projects_are_logged_at_startup()
+        {
+            LoggedEvent projected = await AwaitEventAsync(static entry => entry.EventName == "ApiChildSurfacesProjected");
+
+            Assert.Equal(LogLevel.Information, projected.Level);
+            Assert.Contains("(role-memberships, owner core.User)", projected.Properties["Surfaces"], StringComparison.Ordinal);
+            Assert.Contains("(permissions, owner core.Role)", projected.Properties["Surfaces"], StringComparison.Ordinal);
         }
 
         /// <summary>Whether a measurement's tags hold a value.</summary>

@@ -4,6 +4,7 @@
 // LICENSE file in the root directory of this source tree.
 
 using System.Diagnostics;
+using System.Net;
 using System.Text.Json.Nodes;
 using Tellma.Core.AspNetCore.IntegrationTests.Infrastructure;
 using Tellma.Core.AspNetCore.IntegrationTests.Stacks;
@@ -15,8 +16,10 @@ namespace Tellma.Core.AspNetCore.IntegrationTests.Serial
     ///     What a browser's abort does on the server: a read waiting on a lock is cancelled there and
     ///     leaves the server at once, while a save whose persist was already sent still commits once
     ///     the lock is released. Each lock is a real one another session holds on the live tenant's
-    ///     centers, which every other case would wait on, so the cases run alone. The save is sent to
-    ///     an instance listening on a loopback port, so its abort is a closed connection.
+    ///     centers, which every other case would wait on, so the cases run alone. Both requests are
+    ///     sent to an instance listening on a loopback port, so an abort is a closed connection the
+    ///     server observes as the request's abort, and the request's own scope and connection stay
+    ///     with the server until the request's code lets them go.
     /// </summary>
     /// <param name="deployment">The suite's deployment.</param>
     [Trait("Category", "Integration")]
@@ -24,23 +27,34 @@ namespace Tellma.Core.AspNetCore.IntegrationTests.Serial
     {
         private const int Tenant = AcmeDeployment.LiveTenant;
 
+        /// <summary>
+        ///     How long an aborted read may take to leave the server: well under the data layer's
+        ///     command timeout, so only the request's abort, never the timeout, can end the wait.
+        /// </summary>
+        private static readonly TimeSpan ReadLeaves = TimeSpan.FromSeconds(5);
+
         [Fact]
         public async Task An_aborted_read_waiting_on_a_lock_is_cancelled_on_the_server()
         {
-            using SpaClient admin = await deployment.SignInAsync(deployment.Administrator);
-            _ = await admin.PostAsync(Tenant, "users/me");
+            // --- An instance listening on a loopback port, where only the request's abort can end its statement ---
+            AcmeHost instance = await AcmeHost.StartAsync(deployment.Acme.Values, new AcmeHostOptions { UsesKestrel = true });
+            await using (instance)
+            {
+                using SpaClient admin = new(instance, await WebSessions.SignInAsync(instance, deployment.Administrator));
+                _ = (await admin.PostAsync(Tenant, "users/me")).Expect(HttpStatusCode.OK);
 
-            // --- A schema lock on the centers, which even a snapshot read waits on ---
-            await using SqlLock schema = await SqlLock.HoldAsync(
-                deployment.Acme.TenantConnectionString(Tenant), "ALTER TABLE [gl].[Centers] SET (LOCK_ESCALATION = AUTO);");
-            using var abort = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
-            Task<ApiResponse> read = admin.PostAsync(Tenant, "centers/query", new JsonObject { ["select"] = "Code", ["take"] = 1 }, cancellationToken: abort.Token);
-            Assert.Contains("[gl].[Centers]", await schema.AwaitWaiterAsync(), StringComparison.OrdinalIgnoreCase);
+                // --- A schema lock on the centers, which even a snapshot read waits on ---
+                await using SqlLock schema = await SqlLock.HoldAsync(
+                    deployment.Acme.TenantConnectionString(Tenant), "ALTER TABLE [gl].[Centers] SET (LOCK_ESCALATION = AUTO);");
+                using var abort = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+                Task<ApiResponse> read = admin.PostAsync(Tenant, "centers/query", new JsonObject { ["select"] = "Code", ["take"] = 1 }, cancellationToken: abort.Token);
+                Assert.Contains("[gl].[Centers]", await schema.AwaitWaiterAsync(), StringComparison.OrdinalIgnoreCase);
 
-            // --- The browser aborts: the server's statement goes while the lock is still held ---
-            await abort.CancelAsync();
-            _ = await Assert.ThrowsAnyAsync<OperationCanceledException>(() => read);
-            await schema.AwaitNoWaiterAsync();
+                // --- The browser aborts: the server's statement goes, soon, while the lock is still held ---
+                await abort.CancelAsync();
+                await schema.AwaitNoWaiterAsync(ReadLeaves);
+                _ = await Assert.ThrowsAnyAsync<OperationCanceledException>(() => read);
+            }
         }
 
         [Fact]

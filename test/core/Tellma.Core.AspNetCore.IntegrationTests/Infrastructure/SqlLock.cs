@@ -108,13 +108,14 @@ namespace Tellma.Core.AspNetCore.IntegrationTests.Infrastructure
         }
 
         /// <summary>Waits until no session waits on the lock any more, while it is still held.</summary>
+        /// <param name="within">How long, from this call, the last waiter may take to leave.</param>
         /// <returns>A task that completes when the last waiter is gone.</returns>
-        public async Task AwaitNoWaiterAsync()
+        public async Task AwaitNoWaiterAsync(TimeSpan within)
         {
             var elapsed = Stopwatch.StartNew();
             while ((await WaitersAsync()).Count > 0)
             {
-                Assert.True(elapsed.Elapsed < Patience, "A statement still waits on the held lock.");
+                Assert.True(elapsed.Elapsed < within, $"A statement still waits on the held lock after {within.TotalSeconds:0.#} s.");
                 await Task.Delay(TimeSpan.FromMilliseconds(50), Token);
             }
         }
