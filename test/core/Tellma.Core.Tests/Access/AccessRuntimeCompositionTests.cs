@@ -22,7 +22,7 @@ namespace Tellma.Core.Tests.Access
     /// <summary>
     ///     The access runtime as every composition registers it: the options bound and judged by the
     ///     startup gate, the set builder over the composed registry and schema, the write side's rules,
-    ///     effects, bootstrapper and drift scanner, and the membership filter against the composed model.
+    ///     effects, bootstrapper, administrator inviter and drift scanner, and the membership filter against the composed model.
     /// </summary>
     public class AccessRuntimeCompositionTests(AccessModel model) : IClassFixture<AccessModel>
     {
@@ -74,15 +74,16 @@ namespace Tellma.Core.Tests.Access
                     (typeof(User), typeof(UserAccessRules<User>), ComponentKind.Validator),
                     (typeof(Role), typeof(RoleAccessRules<Role>), ComponentKind.Validator),
                     (typeof(User), typeof(UserStampsCompanion<User>), ComponentKind.PersistEffect),
-                    (typeof(User), typeof(BootstrapSubjectEffect<User>), ComponentKind.PersistEffect),
+                    (typeof(User), typeof(DevelopmentSubjectsEffect<User>), ComponentKind.PersistEffect),
                     (typeof(User), typeof(UserActivityContributor<User>), ComponentKind.DetailsContributor),
                 ],
                 record.Components.Where(static component => component.EntityType == typeof(User) || component.EntityType == typeof(Role))
                     .Select(static component => (component.EntityType, component.ComponentType, component.Kind)));
             Assert.Contains(record.ProvisioningSteps, static step => step.StepType == typeof(BootstrapAdministratorStep));
 
-            // --- The bootstrapper over the user leaf; the scanner once behind both its contracts ---
+            // --- The bootstrapper and the inviter over the user leaf; the scanner once behind both its contracts ---
             _ = Assert.IsType<TenantBootstrapper<User>>(scope.ServiceProvider.GetRequiredService<ITenantBootstrapper>());
+            _ = Assert.IsType<TenantAdministratorInviter<User>>(scope.ServiceProvider.GetRequiredService<ITenantAdministratorInviter>());
             PermissionDriftScanner scanner = scope.ServiceProvider.GetRequiredService<PermissionDriftScanner>();
             Assert.Same(scanner, scope.ServiceProvider.GetRequiredService<IPermissionDriftScanner>());
             Assert.Same(scanner, scope.ServiceProvider.GetRequiredService<ITenantDriftReport>());

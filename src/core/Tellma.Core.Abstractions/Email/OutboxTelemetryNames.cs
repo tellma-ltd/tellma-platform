@@ -40,10 +40,26 @@ namespace Tellma.Core.Abstractions.Email
         /// </summary>
         public const string Latency = "tellma.outbox.latency";
 
+        /// <summary>
+        ///     Counter (<c>{event}</c>): the delivery events the outbox's handler weighed, each counted
+        ///     once by what became of it: applied to its row, stale (a repeat, or no stronger than what
+        ///     the row already records), unmatched (no row has its reference), or dropped with its
+        ///     tenant, which is missing, provisioning or retired. Open, click and unclassified events
+        ///     are dropped before they are weighed, and a frozen tenant's events wait for redelivery
+        ///     uncounted. Tagged <see cref="ResultTag" />.
+        /// </summary>
+        public const string DeliveryUpdates = "tellma.outbox.delivery_updates";
+
+        /// <summary>Counter (<c>{email}</c>): outgoing emails the nightly retention deleted. Untagged.</summary>
+        public const string Retained = "tellma.outbox.retained";
+
         /// <summary>The source tag: who produced the email, <c>api</c> or <c>notification</c>.</summary>
         public const string SourceTag = "source";
 
         /// <summary>The state tag: the state an email settled in, <c>sent</c>, <c>sandboxed</c>, <c>rejected</c> or <c>failed</c>.</summary>
         public const string StateTag = "state";
+
+        /// <summary>The result tag: what became of a delivery event, <c>applied</c>, <c>stale</c>, <c>unmatched</c> or <c>tenant_skipped</c>.</summary>
+        public const string ResultTag = "result";
     }
 }

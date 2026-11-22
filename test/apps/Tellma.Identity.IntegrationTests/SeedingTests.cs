@@ -5,9 +5,12 @@
 
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Hosting.Internal;
 using OpenIddict.Abstractions;
 using Tellma.Identity.IntegrationTests.Infrastructure;
 using Tellma.Identity.Services.Provisioning;
+using Tellma.Identity.Services.Seeding;
 using static OpenIddict.Abstractions.OpenIddictConstants;
 
 namespace Tellma.Identity.IntegrationTests
@@ -24,6 +27,11 @@ namespace Tellma.Identity.IntegrationTests
         private static readonly Dictionary<string, string?> SeedConfiguration = new()
         {
             ["TellmaIdentity:Seed:DevAdmin:Enabled"] = "true",
+            ["TellmaIdentity:Seed:DevUsers:0:Email"] = "sales@localhost",
+            ["TellmaIdentity:Seed:DevUsers:0:Subject"] = "00000000-0000-0000-0000-000000000002",
+            ["TellmaIdentity:Seed:DevUsers:0:DisplayName"] = "Sales Representative",
+            ["TellmaIdentity:Seed:DevUsers:1:Email"] = "centers@localhost",
+            ["TellmaIdentity:Seed:DevUsers:1:Subject"] = "00000000-0000-0000-0000-000000000003",
             ["TellmaIdentity:Seed:Clients:0:ClientId"] = "tellma-cli",
             ["TellmaIdentity:Seed:Clients:0:DisplayName"] = "Tellma CLI",
             ["TellmaIdentity:Seed:Clients:0:Kind"] = "Cli",
@@ -35,7 +43,7 @@ namespace Tellma.Identity.IntegrationTests
         };
 
         [Fact]
-        public async Task Seeding_creates_scopes_platform_clients_and_dev_admin_idempotently()
+        public async Task Seeding_creates_scopes_platform_clients_the_dev_admin_and_dev_users_idempotently()
         {
             using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(
                 fixture, "idseed", SeedConfiguration);
@@ -56,6 +64,46 @@ namespace Tellma.Identity.IntegrationTests
             using (secondBoot.CreateClient())
             {
                 await AssertSeededAsync(secondBoot);
+            }
+        }
+
+        /// <summary>
+        ///     Outside Development the seeder creates neither the dev admin nor the development users,
+        ///     though both are configured: no account with a fixed subject reaches a deployed store.
+        /// </summary>
+        /// <returns>A task that completes when the store is checked.</returns>
+        [Fact]
+        public async Task Outside_development_the_dev_admin_and_dev_users_are_not_seeded()
+        {
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idseedprod", SeedConfiguration);
+
+            // The seeder alone sees a Production environment; the host keeps the test-safe
+            // Development settings (self-signed keys, plain HTTP) it needs to start in memory.
+            factory.ServiceOverrides.Add(static services => services.AddScoped(static provider =>
+            {
+                IHostEnvironment host = provider.GetRequiredService<IHostEnvironment>();
+                HostingEnvironment production = new()
+                {
+                    EnvironmentName = Environments.Production,
+                    ApplicationName = host.ApplicationName,
+                    ContentRootPath = host.ContentRootPath,
+                    ContentRootFileProvider = host.ContentRootFileProvider,
+                };
+                return ActivatorUtilities.CreateInstance<IdentitySeeder>(provider, production);
+            }));
+
+            using (factory.CreateClient())
+            {
+                using IServiceScope scope = factory.Services.CreateScope();
+                Data.TellmaIdentityDbContext context = scope.ServiceProvider.GetRequiredService<Data.TellmaIdentityDbContext>();
+                CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+
+                // --- The platform clients are seeded, so the seeder ran; no fixed-subject account is ---
+                IOpenIddictApplicationManager applicationManager = scope.ServiceProvider.GetRequiredService<IOpenIddictApplicationManager>();
+                Assert.NotNull(await applicationManager.FindByClientIdAsync("tellma-cli", cancellationToken));
+                string[] subjects = ["00000000-0000-0000-0000-000000000001", "00000000-0000-0000-0000-000000000002", "00000000-0000-0000-0000-000000000003"];
+                Assert.False(await context.Users.AnyAsync(user => subjects.Contains(user.Id), cancellationToken));
+                Assert.False(await context.Users.AnyAsync(static user => user.Email == "sales@localhost" || user.Email == "centers@localhost", cancellationToken));
             }
         }
 
@@ -314,6 +362,14 @@ namespace Tellma.Identity.IntegrationTests
                 ["00000000-0000-0000-0000-000000000001"], cancellationToken);
             Assert.NotNull(admin);
             Assert.Equal("admin@localhost", admin.Email);
+
+            // The development users with their fixed subjects, active and confirmed so an email code signs them in.
+            Data.TellmaIdentityUser? sales = await context.Users.FindAsync(["00000000-0000-0000-0000-000000000002"], cancellationToken);
+            Data.TellmaIdentityUser? centers = await context.Users.FindAsync(["00000000-0000-0000-0000-000000000003"], cancellationToken);
+            Assert.NotNull(sales);
+            Assert.NotNull(centers);
+            Assert.Equal(("sales@localhost", "Sales Representative", true), (sales.Email, sales.DisplayName, sales.EmailConfirmed));
+            Assert.Equal(("centers@localhost", "centers", Data.UserLifecycleState.Active), (centers.Email, centers.DisplayName, centers.LifecycleState));
         }
     }
 }

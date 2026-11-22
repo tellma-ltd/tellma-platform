@@ -5,14 +5,21 @@
 ```ts
 
 import { ApplicationConfig } from '@angular/core';
+import { ApplicationRef } from '@angular/core';
 import { CanActivateFn } from '@angular/router';
+import { DestroyRef } from '@angular/core';
 import { EnvironmentProviders } from '@angular/core';
 import * as i0 from '@angular/core';
 import { InjectionToken } from '@angular/core';
 import { Observable } from 'rxjs';
 import { Provider } from '@angular/core';
+import { RouterStateSnapshot } from '@angular/router';
 import { Signal } from '@angular/core';
+import { TitleStrategy } from '@angular/router';
 import { Type } from '@angular/core';
+
+// @public
+export function bootstrapTellma(appConfig: ApplicationConfig): Promise<ApplicationRef>;
 
 // @public
 export function provideTellma(config: TmAppConfig): EnvironmentProviders;
@@ -133,6 +140,15 @@ export interface TmApiErrorInit {
 
 // @public
 export type TmApiErrorKind = 'bad-request' | 'cancelled' | 'client-outdated' | 'confirmation' | 'conflict' | 'forbidden' | 'limit' | 'not-found' | 'offline' | 'partial-failure' | 'query-invalid' | 'read-only' | 'server' | 'step-up' | 'tenant-not-found' | 'tenant-unavailable' | 'unauthenticated' | 'unavailable' | 'validation';
+
+// @public
+export class TmApp {
+    protected readonly failure: i0.Signal<TmRouteErrorKind | null>;
+    protected retry(): void;
+    protected readonly views: Readonly<Record<"forbidden" | "not-found" | TmRouteErrorKind, TmRouteErrorView>>;
+    static ɵcmp: i0.ɵɵComponentDeclaration<TmApp, "tm-app", never, {}, {}, never, never, true, never>;
+    static ɵfac: i0.ɵɵFactoryDeclaration<TmApp, never>;
+}
 
 // @public
 export interface TmAppConfig {
@@ -503,6 +519,18 @@ export interface TmDraftsReplyMessage {
 }
 
 // @public
+export class TmEntities {
+    bySegment(segment: string): TmEntitySummary | undefined;
+    declaration(name: string): TmEntityDeclaration | undefined;
+    label(name: string, plural?: boolean): Signal<string>;
+    load(): Promise<void>;
+    readonly loaded: Signal<boolean>;
+    summary(name: string): TmEntitySummary | undefined;
+    static ɵfac: i0.ɵɵFactoryDeclaration<TmEntities, never>;
+    static ɵprov: i0.ɵɵInjectableDeclaration<TmEntities>;
+}
+
+// @public
 export interface TmEntitiesChunk {
     readonly entities: readonly TmEntityMetadata[];
     readonly enums: readonly TmEnumMetadata[];
@@ -749,6 +777,12 @@ export type TmLazyComponent = () => Promise<Type<unknown> | {
 export interface TmLeaderProbeMessage {
     readonly tenantId: number;
     readonly type: 'leader.probe';
+}
+
+// @public
+export interface TmListPayload {
+    readonly cols?: readonly string[];
+    readonly filter: string | null;
 }
 
 // @public
@@ -1090,6 +1124,29 @@ export interface TmRequestRecord {
 export type TmRequestStart = Pick<TmRequestRecord, 'background' | 'method' | 'route' | 'tenantId' | 'traceId'>;
 
 // @public
+export interface TmRouteData {
+    readonly kind: TmPageKind;
+    readonly load?: TmLazyComponent;
+    readonly securable?: TmSecurableRef;
+    readonly skeleton: TmRouteSkeleton;
+    readonly titleKey?: string;
+}
+
+// @public
+export interface TmRouteMatch {
+    readonly entity?: string;
+    readonly hash?: string;
+    readonly id?: TmId;
+    readonly key?: string;
+    readonly kind: 'core' | 'create' | 'details' | 'home' | 'launch' | 'list' | 'page' | 'picker' | 'report' | 'search' | 'signed-out';
+    readonly page?: TmPageDeclaration;
+    readonly pinnable: boolean;
+    readonly securable?: TmSecurableRef;
+    readonly template: string;
+    readonly tenantId?: number;
+}
+
+// @public
 export type TmRouteSkeleton = 'blank' | 'dashboard' | 'details' | 'home' | 'me' | 'report' | 'search';
 
 // @public
@@ -1098,6 +1155,22 @@ export interface TmRoutingMetadata {
     readonly serverTenantSegments: readonly string[];
     readonly spaFirstSegments: readonly string[];
     readonly spaTenantSegments: readonly string[];
+}
+
+// @public
+export interface TmSearchQuery {
+    readonly cols?: readonly string[];
+    readonly columnFilters?: Readonly<Record<string, string>>;
+    readonly custom?: Readonly<Record<string, string>>;
+    readonly filter?: string;
+    readonly inactive?: boolean;
+    readonly list?: boolean;
+    readonly order?: string;
+    readonly page?: number;
+    readonly q?: string;
+    readonly size?: number;
+    readonly tab?: string;
+    readonly view?: 'grid' | 'tiles';
 }
 
 // @public
@@ -1337,11 +1410,77 @@ export interface TmTenantSettingsForClient {
 export type TmTenantState = 'Active' | 'Frozen' | 'Provisioning' | 'ReadOnly' | 'Retired' | 'Suspended';
 
 // @public
+export interface TmTenantUrls {
+    blob(kind: string, id: number, options?: {
+        readonly variant?: string;
+        readonly download?: boolean;
+    }): string;
+    create(entity: string, options?: {
+        readonly clone?: TmId;
+    }): string;
+    details(entity: string, id: TmId, child?: {
+        readonly collection: string;
+        readonly id: TmId;
+    }): string;
+    home(): string;
+    list(segment: string, payload: TmListPayload, query?: TmSearchQuery): string;
+    page(path: string): string;
+    search(entity: string, query?: TmSearchQuery): string;
+    target(resource: string, id: TmId): string | null;
+}
+
+// @public
+export class TmTitleStrategy extends TitleStrategy {
+    constructor();
+    readonly pageTitle: Signal<string>;
+    updateTitle(snapshot: RouterStateSnapshot): void;
+    static ɵfac: i0.ɵɵFactoryDeclaration<TmTitleStrategy, never>;
+    static ɵprov: i0.ɵɵInjectableDeclaration<TmTitleStrategy>;
+}
+
+// @public
 export interface TmUploadOptions {
     readonly fileName: string;
     readonly onProgress?: (fraction: number) => void;
     readonly signal: AbortSignal;
     readonly tenantId?: number;
+}
+
+// @public
+export class TmUrls implements TmTenantUrls {
+    constructor();
+    blob(kind: string, id: number, options?: {
+        readonly variant?: string;
+        readonly download?: boolean;
+    }): string;
+    create(entity: string, options?: {
+        readonly clone?: TmId;
+    }): string;
+    describe(url: string): TmRouteMatch | null;
+    details(entity: string, id: TmId, child?: {
+        readonly collection: string;
+        readonly id: TmId;
+    }): string;
+    forTenant(tenantId: number): TmTenantUrls;
+    home(): string;
+    list(segment: string, payload: TmListPayload, query?: TmSearchQuery): string;
+    page(path: string): string;
+    parseList(params: URLSearchParams, hash: string): {
+        readonly payload: TmListPayload | null;
+        readonly query: TmSearchQuery;
+    };
+    parseSearch(params: URLSearchParams, hash: string): TmSearchQuery;
+    picker(options?: {
+        readonly notice?: 'tenant-not-found';
+        readonly from?: number;
+    }): string;
+    preload(url: string): void;
+    search(entity: string, query?: TmSearchQuery): string;
+    signedOut(): string;
+    target(resource: string, id: TmId): string | null;
+    readonly tenantId: Signal<number | null>;
+    static ɵfac: i0.ɵɵFactoryDeclaration<TmUrls, never>;
+    static ɵprov: i0.ɵɵInjectableDeclaration<TmUrls>;
 }
 
 // @public

@@ -1404,9 +1404,9 @@ describe('TmHttpApi', () => {
   });
 
   describe('the blob fetcher', () => {
-    /** The providers of an app whose metadata is never loaded. */
+    /** The providers of an app whose metadata is never loaded: its startup's loads never settle. */
     const app = (): ReturnType<typeof provideTellma> => {
-      const unused = (): Promise<never> => Promise.reject(new Error('unused'));
+      const unused = (): Promise<never> => new Promise(() => undefined);
       return provideTellma({ metadata: { core: unused, entities: unused, contracts: unused, strings: {} }, languages: [], features: [] });
     };
 

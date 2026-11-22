@@ -17,13 +17,14 @@ namespace Tellma.Distro.Acme.IntegrationTests.Infrastructure
         private static CancellationToken Token => TestContext.Current.CancellationToken;
 
         /// <summary>
-        ///     Signs the administrator in through the BFF: the login's redirect to the engine, the
-        ///     engine's email-code sign-in, and the authorization response delivered to the host's
-        ///     callback, which starts the session.
+        ///     Signs a user the engine holds in through the BFF, the administrator by default: the
+        ///     login's redirect to the engine, the engine's email-code sign-in, and the authorization
+        ///     response delivered to the host's callback, which starts the session.
         /// </summary>
         /// <param name="flow">The browser.</param>
+        /// <param name="email">The user's email address; the administrator's when null.</param>
         /// <returns>A task that completes when the browser holds a session.</returns>
-        public static async Task SignInAsync(OidcFlowClient flow)
+        public static async Task SignInAsync(OidcFlowClient flow, string? email = null)
         {
             ArgumentNullException.ThrowIfNull(flow);
 
@@ -43,7 +44,7 @@ namespace Tellma.Distro.Acme.IntegrationTests.Infrastructure
             }
 
             // --- The engine signs the user in, then answers the authorization request ---
-            string returned = await flow.SignInWithEmailCodeAsync(Administrator, loginPage);
+            string returned = await flow.SignInWithEmailCodeAsync(email ?? Administrator, loginPage);
             using HttpResponseMessage answer = await flow.Browser.GetAsync(new Uri(returned, UriKind.RelativeOrAbsolute), Token);
 
             // --- The callback: a redirect to it, or a form the browser posts to it ---

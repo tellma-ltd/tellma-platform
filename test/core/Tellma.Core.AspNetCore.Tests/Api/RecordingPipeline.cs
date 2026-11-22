@@ -96,6 +96,9 @@ namespace Tellma.Core.AspNetCore.Tests.Api
                 _ when type == typeof(int) => 7,
                 _ when type == typeof(PjInboxSummary) => new PjInboxSummary(3),
                 _ when type == typeof(ValueTuple<byte[], string>) => (Document.ToArray(), "1.document"),
+
+                // An object innermost: one level past what the wire writes.
+                _ when type == typeof(PjDepth) => PjDepth.Parse("{}"),
                 _ => null,
             };
         }

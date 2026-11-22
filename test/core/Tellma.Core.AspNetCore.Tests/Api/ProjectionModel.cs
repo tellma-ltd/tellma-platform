@@ -6,6 +6,7 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using System.Diagnostics.CodeAnalysis;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 using Tellma.Core.Abstractions.Api;
 using Tellma.Core.Abstractions.Composition;
@@ -397,6 +398,131 @@ namespace Tellma.Core.AspNetCore.Tests.Api
             return Task.FromResult(new PjCallback(static () => 0));
         }
     }
+
+    /// <summary>A routed service whose body and answer nest as deep as the wire reads and writes.</summary>
+    [ApiRoute("depth")]
+    [SuppressMessage("Performance", "CA1822:Mark members as static", Justification = "An action is an instance method by contract; the registry refuses a static one.")]
+    [SuppressMessage("Style", "IDE0060:Remove unused parameter", Justification = "The signature is what the fixture declares; the recording invoker answers in its place.")]
+    public sealed class PjDepthService
+    {
+        /// <summary>Reads a deep value.</summary>
+        /// <param name="body">The value.</param>
+        /// <returns>A number.</returns>
+        [ApiAction("read", Mutation = false, Idempotent = true, MemberOnly = true)]
+        public Task<int> ReadAsync(PjDepth body)
+        {
+            return Task.FromResult(0);
+        }
+
+        /// <summary>Answers a deep value.</summary>
+        /// <returns>The value.</returns>
+        [ApiAction("answer", Mutation = false, Idempotent = true, MemberOnly = true)]
+        public Task<PjDepth> AnswerAsync()
+        {
+            return Task.FromResult(PjDepth.Parse("1"));
+        }
+    }
+
+    /// <summary>
+    ///     A value nesting as deep as the wire reads and writes: itself and fifteen distinct levels
+    ///     below it, sixteen objects, the innermost a polymorphic shape whose member is any JSON value.
+    ///     A value there that is an object or an array nests one level past the wire's limit. Each
+    ///     level is its own type, so its schema nests about twice as deep as the value, and the
+    ///     polymorphic one about four times.
+    /// </summary>
+    /// <param name="Next">The level below.</param>
+    public sealed record PjDepth(PjLevel<PjLevel<PjLevel<PjLevel<PjLevel<PjLevel<PjLevel<PjLevel<PjLevel<PjLevel<PjLevel<PjLevel<PjLevel<PjLevel<PjShape>>>>>>>>>>>>>> Next)
+    {
+        /// <summary>How many objects the value nests.</summary>
+        public const int Levels = 16;
+
+        /// <summary>The platform's rules with room for a value one level past the wire's limit.</summary>
+        private static readonly JsonSerializerOptions Roomy = new(TellmaJson.Options) { MaxDepth = 2 * Levels };
+
+        /// <summary>The JSON of a value whose innermost member is the given JSON.</summary>
+        /// <param name="innermost">The innermost member's JSON.</param>
+        /// <returns>The value's JSON.</returns>
+        public static string Json(string innermost)
+        {
+            // Each level an object under "next", the innermost one naming its shape first.
+            return string.Concat(Enumerable.Repeat("""{"next":""", Levels - 1)) + """{"shape":"circle","next":""" + innermost + new string('}', Levels);
+        }
+
+        /// <summary>Reads a value whose innermost member is the given JSON, at any depth.</summary>
+        /// <param name="innermost">The innermost member's JSON.</param>
+        /// <returns>The value.</returns>
+        public static PjDepth Parse(string innermost)
+        {
+            return JsonSerializer.Deserialize<PjDepth>(Json(innermost), Roomy)!;
+        }
+    }
+
+    /// <summary>One level of a deep value.</summary>
+    /// <typeparam name="T">The level below's type.</typeparam>
+    /// <param name="Next">The level below.</param>
+    public sealed record PjLevel<T>(T Next);
+
+    /// <summary>The innermost level of a deep value: a shape told apart by its discriminator.</summary>
+    [JsonPolymorphic(TypeDiscriminatorPropertyName = "shape")]
+    [JsonDerivedType(typeof(PjCircle), "circle")]
+    public abstract record PjShape;
+
+    /// <summary>The one shape: its member is any JSON value.</summary>
+    /// <param name="Next">The innermost member.</param>
+    public sealed record PjCircle(JsonElement Next) : PjShape;
+
+    /// <summary>A routed service whose body's type nests as deep as the OpenAPI document describes.</summary>
+    [ApiRoute("tallest")]
+    [SuppressMessage("Performance", "CA1822:Mark members as static", Justification = "An action is an instance method by contract; the registry refuses a static one.")]
+    [SuppressMessage("Style", "IDE0060:Remove unused parameter", Justification = "The signature is what the fixture declares; the recording invoker answers in its place.")]
+    public sealed class PjTallestService
+    {
+        /// <summary>Reads a value of the deepest type the document describes.</summary>
+        /// <param name="body">The value.</param>
+        /// <returns>A number.</returns>
+        [ApiAction("read", Mutation = false, Idempotent = true, MemberOnly = true)]
+        public Task<int> ReadAsync(PjTallest body)
+        {
+            return Task.FromResult(0);
+        }
+    }
+
+    /// <summary>A routed service whose body's type nests one object past what the OpenAPI document describes.</summary>
+    [ApiRoute("too-tall")]
+    [SuppressMessage("Performance", "CA1822:Mark members as static", Justification = "An action is an instance method by contract; the registry refuses a static one.")]
+    [SuppressMessage("Style", "IDE0060:Remove unused parameter", Justification = "The signature is what the fixture declares; the recording invoker answers in its place.")]
+    public sealed class PjTooTallService
+    {
+        /// <summary>Reads a value of a type too deep for the document.</summary>
+        /// <param name="body">The value.</param>
+        /// <returns>A number.</returns>
+        [ApiAction("read", Mutation = false, Idempotent = true, MemberOnly = true)]
+        public Task<int> ReadAsync(PjTooTall body)
+        {
+            return Task.FromResult(0);
+        }
+    }
+
+    /// <summary>
+    ///     The deepest type the OpenAPI document describes: itself and sixty-two distinct object types
+    ///     nested below it, sixty-three in all, whose innermost member is an array of numbers. Its
+    ///     values may be as shallow as the caller likes; the schema nests two levels for each type and
+    ///     two for the array, exactly the document's limit.
+    /// </summary>
+    /// <param name="Next">The level below.</param>
+    public sealed record PjTallest(PjTower<PjTower<PjTower<PjTower<PjTower<PjTower<PjTower<PjLevel<PjLevel<PjLevel<PjLevel<PjLevel<PjLevel<int[]>>>>>>>>>>>>> Next);
+
+    /// <summary>
+    ///     A type whose schema nests one level past what the OpenAPI document describes: sixty-four
+    ///     object types nested, whose innermost member is any JSON value.
+    /// </summary>
+    /// <param name="Next">The level below.</param>
+    public sealed record PjTooTall(PjTower<PjTower<PjTower<PjTower<PjTower<PjTower<PjTower<PjLevel<PjLevel<PjLevel<PjLevel<PjLevel<PjLevel<PjLevel<JsonElement>>>>>>>>>>>>>> Next);
+
+    /// <summary>Eight levels of a deep type: itself and seven below it.</summary>
+    /// <typeparam name="T">The type below the eighth level.</typeparam>
+    /// <param name="Next">The level below.</param>
+    public sealed record PjTower<T>(PjLevel<PjLevel<PjLevel<PjLevel<PjLevel<PjLevel<PjLevel<T>>>>>>> Next);
 
     /// <summary>A legacy shape with no JSON contract: two members take one JSON name.</summary>
     public sealed class PjLegacy

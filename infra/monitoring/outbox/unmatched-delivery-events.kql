@@ -1,0 +1,13 @@
+// Delivery events the provider reported for outgoing emails the outbox does not hold.
+// Backs the "the provider is reporting on mail we never sent" alert: each such event's correlation
+// names the outbox but a tenant, or a row, that does not exist, so it is dropped and logged as
+// OutboxDeliveryEventUnmatched. A stray few are expected (an event that outlived its row's
+// retention, a webhook replayed against the wrong environment); a steady stream points at a
+// correlation that is being written wrongly, or at another system's mail reaching this endpoint.
+// More than 10 in the window is a starting point.
+customMetrics
+| where name == "tellma.outbox.delivery_updates"
+| extend result = tostring(customDimensions["result"])
+| where result == "unmatched"
+| summarize unmatched = sum(valueSum) by bin(timestamp, 15m)
+| where unmatched > 10

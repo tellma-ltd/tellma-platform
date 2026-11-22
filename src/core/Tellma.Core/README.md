@@ -383,7 +383,8 @@ victim's re-run meets the fence.
 
 `IDataBatch.Update` assigns the same values to every row it selects, in one statement that skips
 the rows already holding them (null-safe, character columns compared binary), so a repeated
-activation writes no history row; the updated ids are the receipt. By ids it captures the ids the
+activation writes no history row; the updated ids are the receipt. By ids, `StampUnchanged` writes
+and stamps those rows too, for an action's command over each target. By ids it captures the ids the
 grant filter passes, the others skipped; all-or-nothing first selects the ids the read filter does
 not show (absent and hidden alike) and throws `50404` with them, then throws `50403` unless every
 id passes the grant filter. By query it captures at most the cap plus one keys and throws `50413`
@@ -1291,9 +1292,20 @@ a call with attachments, so a channel sender's tenantless gate scope needs neith
 
 `OutboxOptions` (`Tellma:Outbox`) holds `Retention` (180 days, one day to ten years),
 `MaxMessageBytes` (7 MiB, 1 KiB to 20 MiB) and `MaxRecipients` (50, 1 to 1000). The outgoing
-emails' stack (route segment `outgoing-emails`) serves the query, the details and the delete by
-ids, read-only to MCP; a delete of a row that may still be sent (unsettled, with a live job) is
-refused as `Email.NotDeletable` at `Ids[i]`. A request's `Source` is `api` or `notification`; any
+emails' stack (route segment `outgoing-emails`) serves the query, the details, the delete by ids
+and two actions, read-only to MCP, under the securables `core.OutgoingEmail` × `Read`, `Delete`,
+`Retry` and `Cancel`; it serves no delete by query, since a delete is validated row by row. A delete
+of a row that may still be sent (unsettled, with a live job) is refused as `Email.NotDeletable` at
+`Ids[i]`. `retry` sends again each row that failed, or that is unsettled with no live job: it
+returns the row to `Pending` with its send and delivery columns cleared and enqueues a new sending
+job, refusing any other row as `Email.NotRetryable`. `cancel` settles each `Pending` row
+`Cancelled`, in a read-only tenant too, and refuses any other as `Email.NotCancellable`; its job then
+meets a settled row and succeeds unsent. Both stamp the rows they change. `cancel` repeats its
+precondition in the update, so a row the sending job reached since the validation is left as it
+is, unstamped. `retry` holds every target to its precondition again in the persist, so a row
+another administrator cancelled since the validation refuses the whole retry as
+`Email.NotRetryable` and no job is enqueued; it stamps every target, one whose columns already held
+their cleared values included. A request's `Source` is `api` or `notification`; any
 other is refused before anything is staged. The rows are counted on `tellma.outbox.enqueued`
 (meter `Tellma.Core`, tag `source`) once the frame they were enlisted with commits them, by the
 stack's commit effect (`OutboxEnqueuedEffect`); a frame that rolls back counts nothing.
@@ -1335,8 +1347,31 @@ claim and the next triage meets the rows as this one left them. The startup chec
 reports a host whose job worker runs with no email sender registered (the handler resolves the
 sender on each claim, so such a host still builds, and a claim it runs fails before it writes
 anything, every row still pending); the queries in
-`infra/monitoring/outbox` alert on interrupted sends, the failure rate and the latency's 95th
-percentile.
+`infra/monitoring/outbox` alert on interrupted sends, the failure rate, the latency's 95th
+percentile and unmatched delivery events.
+
+`OutgoingEmailDeliveryHandler` answers the `outbox` owner key's delivery events on the email
+pipeline's tenantless webhook path. Opens, clicks and unclassified events are dropped; of the rest,
+each row keeps only its strongest event (the higher status, then the later time). Each tenant is
+looked up in the registry: a missing, provisioning or retired tenant's events are dropped
+(`OutboxDeliveryTenantSkipped`); an active, read-only or suspended tenant's are applied; a frozen
+tenant's wait for the provider to deliver them again, the call failing once every other tenant's
+were applied, as does a tenant whose update failed. The update is one idempotent maintenance round
+trip on a tenant database handle outside any tenant scope: a row moves only to a stronger status, or
+to a later event of the same one, and an event already applied is skipped, whatever the row's
+state. An event naming no row is logged as `OutboxDeliveryEventUnmatched`. Every event is counted
+on `tellma.outbox.delivery_updates` by `result`: `applied`, `stale` (a repeat, no stronger, or
+replaced by a stronger event of the same row), `unmatched` (each event of a row that does not
+exist, or that names no row) or `tenant_skipped`.
+
+`OutgoingEmailRetentionHandler` runs `core.outgoing-email-retention` nightly at 03:45 on built-in
+schedule 7, as the system user and in a read-only tenant too. Each page reads up to 500 ids of rows
+created longer ago than `Retention`, on the database clock, that are settled, or unsettled with no
+live job, and deletes them through the stack's delete by ids, so the delete's own rules run and the
+attachments' blobs are released to the sweep; a page whose delete is refused because a row changed
+in between is read again once. The pages run until one is short, or until a full page deletes
+nothing, which would otherwise be read again for ever. The rows deleted are counted on
+`tellma.outbox.retained`.
 
 `EmailNotificationChannel` is the `email` channel's sender: each addressed recipient gets one
 internal email, to their contact address or else their sign-in address (a recipient with neither
@@ -1796,7 +1831,12 @@ no row and every id is not found.
   targets and checks them under the grant beside the validators' first loads; the validation hook,
   the components and the method run over one `ActionContext` with their rounds; then one persist:
   the method's and the components' recorded appends, the stamped `Update`s of the targets, the
-  post-check when the action asks for it, and the read-back. A method composes before the persist
+  post-check when the action asks for it, and the read-back. An `Update` with a condition repeats
+  the action's precondition: a target that no longer meets it, the read filter or the grant's
+  filter is skipped, unstamped (yet a post-check still refuses a target that left the grant's
+  filter), and the action's other appends still see it; one with a refusal code instead counts the
+  targets meeting the condition first, and fails the action with that code at the root unless every
+  target does, then writes and stamps every target. A method composes before the persist
   batch exists: its table-valued parameters and declared tables are named by the recording
   (`ReservedSqlNames.RecordingPrefix`, `@tm_rec<n>_…`) and keep those names wherever the recording
   lands, one recording's per batch, while an append that answers at once from its batch (a raw save or delete, a cache read) is
@@ -2444,9 +2484,18 @@ email address is trimmed and lower-cased, as the users' stack stores it.
   and pointing to another address, whose administrator then decides whether its privileges come
   back (no administrator may remain to reactivate it).
 - **A subject** is accepted in a Development environment only (`InvalidOperationException` before
-  anything is written otherwise). It rides the same save: `BootstrapSubjectEffect<TUser>`, a persist
-  effect of the users' stack, records it on the created user as an invitation would (the subject, the
-  invitation's instant, `InviteStatus.Invited`).
+  anything is written otherwise). It rides the same save: the bootstrap holds it in the scope's
+  `DevelopmentSubjects`, and `DevelopmentSubjectsEffect<TUser>`, a persist effect of the users' stack,
+  records it on the created user as an invitation would (the subject, the invitation's instant,
+  `InviteStatus.Invited`).
+
+`IDevelopmentSubjects` (the same scoped `DevelopmentSubjects`) is that hold as a public seam, for a
+distribution's development sample data: in the platform's own scope of a Development environment, a
+provisioning step holds a subject per email address (normalised as the stack stores it) around a
+users' save, and every user the save creates under a held address is recorded the same way, so the
+principals the development identity server seeds sign in and join with no invitation sent. A user
+that exists already keeps its evidence; the step records the membership hints itself. Outside
+Development, in a user's scope, or while a hold is open, `Hold` throws `InvalidOperationException`.
 
 The bootstrap is idempotent on the address. The `core.bootstrap-administrator` provisioning step
 (order 10, before `core.settings`) calls it with the administrator the run names, named by the address's
@@ -2456,6 +2505,21 @@ neither runs nor records it (and logs `ProvisioningAdministratorNotBootstrapped`
 has), and a run that names one runs it whatever the tenant records. `provision --tenant <id>
 --admin-email <address>` on an active or read-only tenant runs it alone, which is how a tenant
 provisioned without an administrator, or left without one, gets one.
+
+`ITenantAdministratorInviter` (`TenantAdministratorInviter<TUser>`, scoped, closed over the user leaf
+by `UsersRuntimeComposition`) invites that administrator after the run's steps, in the platform's own
+scope of the tenant, through the users' `invite` action, so the identity call, the write-back, the
+`core.user.added` notice, the welcome email and the membership hint are the action's own. It runs in a
+provisioning frame named `core.invite-administrator`, so a read-only tenant admits it as it admits the
+bootstrap. Nobody is invited when the run names no address, when it names a subject (the Development
+bootstrap bound one), or when the administrator has joined already (logged
+`TenantAdministratorAlreadyJoined`). A host holding no service-client secret, which only an in-process
+Development host may, cannot authenticate to the identity server: it logs
+`TenantAdministratorNotInvited` (a warning naming `Tellma:Identity:ServiceClientSecret` and the
+`provision --tenant <id> --admin-email <address>` that invites the administrator once the secret is
+configured, with the tenant's values) and invites nobody; the tenant still turns active. An invitation the identity server refuses, a sandbox's `Users.SandboxRequiresExistingIdentity`
+among them, throws `InvalidOperationException` with the refusal, which fails the tenant with its steps
+recorded; a success logs `TenantAdministratorInvited` with the status.
 
 ### The drift scan
 
@@ -2757,6 +2821,43 @@ are SpreadsheetML packages written with `DocumentFormat.OpenXml` (MIT), forward-
   style's font, fill and border, and no manifest. File names are the stem's ASCII form and the
   request's local time (`Widgets 2026-11-16 0930.xlsx`), `report` when the stem keeps nothing, the
   stem cut so the name fits 255 characters.
+- **The planner.** `ExportPlanner` plans the two entity workbooks. The display plan is one sheet of
+  the columns `DisplayColumns` expanded: a navigation reads its target's display-name columns
+  (`IDisplayNames`) and writes the display name in the reader's content slot, the slot whose tenant
+  language is the request culture's language or one of its parents', else the first; a group anchor
+  reads the content slot's twin with the first slot behind a blank one; any other path or expression
+  is typed by `QueryexEngine.Validate` and written as itself; every select term is read once, and
+  `FoldingRowSource` folds each row back to one value per column. A header the request leaves blank
+  is the labels of the path joined by ` / `, or the expression as sent; a derived header that
+  coincides with another column's, ignoring case, gets the expression in parentheses, while a header
+  the request supplied stays as sent. The editable plan's parent
+  sheet is `Id`, `Stamp` (from `ModifiedAt`, when the entity has it), then every property the import
+  writes in declaration order (never one the server owns or derives, a blob reference, a JSON
+  document, a binary, a hierarchy path or one excluded from Excel): a multilingual group as one
+  column per tenant language, a foreign key as one reference column in the requested key, else the
+  target's natural key, else its surrogate `Id`. Each selected collection, at every depth, is a sheet
+  of its own led by the reference to its owner row, named by the parent's and the collections' labels
+  joined by ` · ` with leading segments dropped while the name is longer than 31 characters, its
+  query riding its owner's. A columns subset keeps the natural key's columns; an unknown column,
+  reference key or collection is a `BadRequestException` at its place in the request.
+- **The operations.** `ExcelOperations<TEntity>` is attached by the platform, first among its
+  companions, to every stack that serves `Export` or `Import`, and projects `export` under `Export`
+  and `export-for-import` under `Import`, each under the stack's `Read`; `ChildExportOperations<TChild>`
+  is the `export` action of every exportable child query surface, under the child's `Read`. Both are
+  scoped and built by their own factories over the stack's service or the child query service. The
+  stack composition reaches them only through `IPlatformCompanions`, which the composition root fills
+  with `ExcelCompanions`, so the pipeline names no Excel type. A
+  request names its rows by `Ids` alone or by the grid's clauses (`ExportSources`): ids beside a
+  clause, an empty id list outside the editable template, or named filters on a child surface are a
+  `BadRequestException`, as are none or more than 100 display columns and a header over 255
+  characters. `ExcelExports` writes the plan to a scratch file under `Tellma:ScratchPath`, opened only
+  once the first page passes the cap, and hands the rewound file to the caller; a refusal at the
+  parent sheet's synchronous cap (`MaxSynchronousExportRows`) names `export/start` or
+  `export-for-import/start` as the `LimitExceededException`'s remedy. The exports count their rows,
+  durations and refusals (`tellma.excel.*`) and log each completion and refusal. `ExcelComposition`
+  binds `Tellma:Excel`, registers the exporter, the context builder from the request context and the
+  export runner, and the two checks: `excel` warns about each server-owned property excluded from
+  Excel, and `excel.deployment` refuses a scratch directory that does not exist or takes no file.
 
 ## Layout
 
@@ -2765,7 +2866,7 @@ are SpreadsheetML packages written with `DocumentFormat.OpenXml` (MIT), forward-
 | `Composition/` | `AddTellma`, `TellmaBuilder`, `TellmaComposition.Validate`, `CoreFeature`, `IContributionRealizer<T>`, `RealizationContext`, `TellmaStartupGate`; internally the pipeline, the feature graph, the composition record the checks and later runtimes read, Core's model contributions, and the link builder with its stack-route source. |
 | `Composition/Realizers/` | One realizer per item kind the platform understands: services, standalone table types, shape requirements, Core's model configurations, calendar systems, value sets, notification types and channels, client events, securables, entities, stack companions, stack components, routed API services, confirmations and provisioning steps. Each spec that adds an item kind adds its realizer to `ContributionRealizerSet.CreateBuiltIn`. |
 | `Composition/Checks/` | The built-in startup checks above. |
-| `Crud/` | Internally: the stack composition (each stack with its service, companions and components, closed over its leaf), the descriptor builder, `StackRegistry` (`IStackRegistry` and `IStackRouteSource`), the stacks' securable contributor, the platform's default service, the registrations `CrudComposition` makes, the action-method reader, and the entity pipeline with its factory, its operation frame and its instruments, and the reads of reference and lookup targets (`TargetReads`). |
+| `Crud/` | Internally: the stack composition (each stack with its service, companions and components, closed over its leaf), the descriptor builder, `StackRegistry` (`IStackRegistry` and `IStackRouteSource`), the stacks' securable contributor, the platform's default service, the registrations `CrudComposition` makes, the action-method reader, and the entity pipeline with its factory, its operation frame and its instruments, and the reads of reference and lookup targets (`TargetReads`), and the seam the platform's companions attach through (`IPlatformCompanions`). |
 | `Crud/Query/` | Internally: the query path of [Entity stacks](#the-entity-pipeline-and-the-query-path): the surfaces, the admission, the planner, the search, the argument discovery and binding, the diagnostics' locations and their wire form, the traversal rule, the query operation (with the rows of a tree by parent) and the child query service. |
 | `Crud/ExcelRows/` | Internally: [the Excel row source](#the-excel-row-source): the operation, the admitted query tree, one round trip's composition and its chunks, and the row source with its pages and lookups. |
 | `Crud/Details/` | Internally: the details reads of [Entity stacks](#the-entity-pipeline-and-the-query-path): the projections, the planner and its composition with the extras' name rules and the record permissions, and the details operation with the cached list. |
@@ -2786,7 +2887,7 @@ are SpreadsheetML packages written with `DocumentFormat.OpenXml` (MIT), forward-
 | `Tenancy/Catalog/` | The row classes the catalog model maps for its migrations. |
 | `Blobs/` | `FileSystemBlobStore`, its options, default root and validator, `AddFileSystemBlobStore`, the store instruments and log events; internally the content-type sniffer and the file-name sanitiser. |
 | `Calendars/` | `GregorianCalendarSystem`, `UmAlQuraCalendarSystem`, `EthiopianCalendarSystem`, `CalendarRegistry`; internally the Ethiopian and the extended Umm al-Qura framework calendars, the shared renderer and reader, the culture data and the date-pattern reader. |
-| `Excel/` | `ExcelContext`, `ExcelColumnSpec`, `ExcelColumnRole`, `ExcelKeyKind`, `ExcelDateEncoding`, `ExcelSheetPlan`, `ExcelWorkbookPlan`, `ExcelTableSpec`, `ExcelTableRow`, `ExcelRowStyle`, `IExcelExporter`, `ImportCheckpointState`; internally the cell codec and its decoding records, the cell reader, the column encodings, the number formats, the stylesheet, the package, worksheet and workbook writers, the manifest's header block, the serial dates, the sheet and file names, the column letters, the XML escapes and the scratch files. |
+| `Excel/` | `ExcelContext`, `ExcelColumnSpec`, `ExcelColumnRole`, `ExcelKeyKind`, `ExcelDateEncoding`, `ExcelSheetPlan`, `ExcelWorkbookPlan`, `ExcelTableSpec`, `ExcelTableRow`, `ExcelRowStyle`, `IExcelExporter`, `ImportCheckpointState`, `ExcelOperations<TEntity>`, `ChildExportOperations<TChild>`; internally the cell codec and its decoding records, the cell reader, the column encodings, the number formats, the stylesheet, the package, worksheet and workbook writers, the manifest's header block and same-source gate, the serial dates, the sheet and file names, the column letters, the XML escapes and the scratch files; the exporter, the planner, the display columns and their folding row source, the request's sources, the context builder, the export runner, the companions' attachment and factories, the instruments, the log events, the checks and the composition step. |
 | `Caching/` | The versioned cache base, its keys and kinds; internally, the cacheable entities' store and façade, the version-tag registry, its table's row, the prelude and bump contributors, the bump plan, the snapshots, the mismatch policies, the migrator's seeder, the instruments and the log events. |
 | `Jobs/` | Internally: the job tables' configurations and seeds, the handler, built-in-schedule and retired-key realizers with their cross-feature checks, `JobHandlerRegistry`, the `jobs.handlers` and `jobs.schedules` checks, the queue and its enqueue statement, the poller wake, the lease statements, the runner with its leases, renewal, progress, outcome rules, backoff, pending-confirmation record, notices and completion-failure translation, the job and system scopes, the `process` and `settle` activities and the log scope, the composition step that binds the jobs' options, and the log events; `JobService` with its action and retention statements, the self-scope criteria, the label renderer, the `jobHandlers` contributor, and the retention and tree-verify handlers. |
 | `Access/` | Internally: the access tables' configurations and seeds, the user stamp and preference rows, the securable registry with its name grammar and feature contributor, the securables section of the client metadata, the permission set build: the classifier, the builder, the interner and the access instruments and logs; and the user connection: the connect prologue, the connect, permissions and profile caches, the connector, the guarded runner and the connect initializer; and the permission filter rules the role save and the Queryex discovery share. |
@@ -2806,7 +2907,9 @@ runs batches against the data layer's fixture database (`test/shared/Tellma.Test
 holds the job tables, the queue's enqueue statement, the lease statements, the jobs' actions and
 the maintenance handlers, and jobs run end to end through `JobPollDriver` to SQL Server in `Jobs/`.
 `test/core/Tellma.Core.Tests/Excel` holds every workbook the writer produces to the Open XML SDK's
-Office 2019 schema validator.
+Office 2019 schema validator, and the planner's, the display columns' and the requests' rules over
+the fixture entities; `test/core/Tellma.Core.IntegrationTests/Excel` runs the synchronous exports
+through the stack's row source against SQL Server.
 `test/core/Tellma.Core.Tests` also runs the resource audit over Core's own resources
 (`Localization/CoreResourceAuditTests`): a key of `Strings.resx` or `ServerStrings.resx` that no
 convention derives and no literal in `src/` or `client/projects/` names (test support, harnesses,

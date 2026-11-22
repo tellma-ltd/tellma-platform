@@ -83,10 +83,11 @@ public sealed class InvalidQueryException : TellmaException, ISerializable
     public ctor(IReadOnlyList<QueryexDiagnostic> diagnostics)
 
 public sealed class LimitExceededException : TellmaException, ISerializable
-    public ctor(string limit, int actual, int maximum)
+    public ctor(string limit, int actual, int maximum, string? remedy = null)
     public int Actual { get; }
     public int Maximum { get; }
     public string Limit { get; }
+    public string? Remedy { get; }
 
 public static class LimitNames
     public const string Body = "body"

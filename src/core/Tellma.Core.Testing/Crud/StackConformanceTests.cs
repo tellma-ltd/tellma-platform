@@ -245,13 +245,19 @@ namespace Tellma.Core.Testing.Crud
 
         /// <summary>
         ///     The body a declared API action of the stack runs with in the reachability case: one its
-        ///     method answers without failing. Null by default, which suits an action that takes none.
+        ///     method answers without failing. By default the platform's workbook exports export one
+        ///     missing row's identity and the template, and any other action takes no body.
         /// </summary>
         /// <param name="action">The action.</param>
         /// <returns>The body, of the action's request type; null for none.</returns>
         protected virtual object? ApiActionArguments(ApiActionDescriptor action)
         {
-            return null;
+            ArgumentNullException.ThrowIfNull(action);
+            return action.RequestType == typeof(ExportRequest)
+                ? new ExportRequest { Ids = [long.CreateChecked(MissingId())], Columns = [new ExportColumn(Metadata.Key.Name, Header: null)] }
+                : action.RequestType == typeof(ExportForImportRequest)
+                ? new ExportForImportRequest { Ids = [] }
+                : null;
         }
 
         /// <summary>

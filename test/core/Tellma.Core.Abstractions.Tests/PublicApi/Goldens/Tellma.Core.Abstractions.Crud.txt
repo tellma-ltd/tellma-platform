@@ -289,7 +289,7 @@ public sealed class EntityRefAttribute : Attribute
     public ctor(string resource)
     public string Resource { get; }
 
-public abstract class EntityService<TEntity, TKey> : IEntityBehavior<TEntity, TKey> where TEntity : Entity<TKey> where TKey : struct, IBinaryInteger<TKey>
+public abstract class EntityService<TEntity, TKey> : IEntityBehavior<TEntity, TKey>, IStackExcelRows where TEntity : Entity<TKey> where TKey : struct, IBinaryInteger<TKey>
     protected ctor(IEntityPipelineFactory factory)
     protected virtual FilterTree? SearchFilter(string search)
     protected virtual Task AfterCommitAsync(PersistOutcome<TEntity> outcome)
@@ -312,7 +312,7 @@ public abstract class EntityService<TEntity, TKey> : IEntityBehavior<TEntity, TK
     public Task<RowPage> QueryAsync(QueryRequest request, CancellationToken cancellationToken = default)
     public Task<TResult> ExecuteActionAsync<TResult>(string action, IReadOnlyList<TKey> ids, object? arguments, ActionOptions options, CancellationToken cancellationToken = default)
 
-public abstract class EntityService<TEntity> : EntityService<TEntity, int>, IEntityBehavior<TEntity, int> where TEntity : Entity<int>
+public abstract class EntityService<TEntity> : EntityService<TEntity, int>, IEntityBehavior<TEntity, int>, IStackExcelRows where TEntity : Entity<int>
     protected ctor(IEntityPipelineFactory factory)
 
 public static class EntityServiceExtensions

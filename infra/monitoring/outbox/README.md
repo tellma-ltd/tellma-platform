@@ -8,15 +8,16 @@ instruments (meter `Tellma.Core`) and the sending job's log events (category `Te
 | `interrupted-sends.kql` | Any outgoing email a later claim found still sending: it may or may not have reached its recipient, and was failed rather than sent twice. |
 | `failure-rate.kql` | Emails that settled failed or rejected above 5% of the emails settled, or more than 20 in the window. |
 | `latency-p95.kql` | A 95th-percentile wait from enqueue to send above ten minutes. |
+| `unmatched-delivery-events.kql` | More than 10 delivery events in the window for outgoing emails the outbox does not hold. |
 
-The other instrument backs no alert, by design: `tellma.outbox.enqueued` sizes the workload by
-source (the platform's api and the notification channel). The delivery-event and retention
-instruments ship with the delivery-event handler and the retention job.
+The other two instruments back no alert, by design: `tellma.outbox.enqueued` sizes the workload by
+source (the platform's api and the notification channel), and `tellma.outbox.retained` counts the
+rows the nightly retention deleted, which only sizes the table's turnover.
 
 **These are checked against the code.** A test in `Tellma.Core.Tests` resolves every
 `customMetrics` name, every `customDimensions[...]` key and every quoted value the queries compare
 against to an instrument, a tag, a log event name or a tag value the outbox can emit, and requires
-every instrument but the one above to back at least one query. Renaming an instrument, a tag, a tag
+every instrument but the two above to back at least one query. Renaming an instrument, a tag, a tag
 value or a log event therefore fails the build instead of leaving an alert that reports zero
 forever.
 

@@ -17,6 +17,8 @@ public abstract class ActionContext<TEntity>
     public void Notify(NotificationRequest request)
     public void Save(IReadOnlyList<TEntity> entities)
     public void Update(IReadOnlyDictionary<string, object?> assignments)
+    public void Update(IReadOnlyDictionary<string, object?> assignments, FilterTree condition)
+    public void Update(IReadOnlyDictionary<string, object?> assignments, FilterTree condition, string refusalCode)
     public void Withdraw(WithdrawRequest request)
 
 public sealed class ContextRef<T>

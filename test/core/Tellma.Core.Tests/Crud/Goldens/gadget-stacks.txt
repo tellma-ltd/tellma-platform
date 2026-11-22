@@ -33,6 +33,8 @@ stack core.User
   action preferences/set: entity Preferences filtered single args UserPreferencesArguments; mutation, read-only-ok; result UserPreferencesResult; mcp Full, revision 0; -
   action preferences/delete: entity Preferences filtered single args UserPreferenceKeysArguments; mutation, read-only-ok; result UserPreferencesResult; mcp Full, revision 0; -
   action invitation-status: api core.User:Read body IdsRequest handler UserService<User>; idempotent; result IReadOnlyList<InvitationStatus>; mcp Full, revision 0; -
+  action export: api core.User:Read body ExportRequest handler ExcelOperations<User>; idempotent, long; result ExportOutcome; mcp Full, revision 0; -
+  action export-for-import: api core.User:Read body ExportForImportRequest handler ExcelOperations<User>; idempotent, long; result ExportOutcome; mcp Full, revision 0; -
 stack core.Role
   segment: roles
   entity: Tellma.Core.Abstractions.Access.Role
@@ -57,6 +59,8 @@ stack core.Role
   feature: core
   action activate: entity Activate built-in filtered args -; mutation, idempotent; result EntitiesResult<Role>; mcp Full, revision 0; -
   action deactivate: entity Activate built-in filtered args -; mutation, idempotent; result EntitiesResult<Role>; mcp Full, revision 0; -
+  action export: api core.Role:Read body ExportRequest handler ExcelOperations<Role>; idempotent, long; result ExportOutcome; mcp Full, revision 0; -
+  action export-for-import: api core.Role:Read body ExportForImportRequest handler ExcelOperations<Role>; idempotent, long; result ExportOutcome; mcp Full, revision 0; -
 stack core.Notification
   segment: notifications
   entity: Tellma.Core.Abstractions.Notifications.Notification
@@ -101,6 +105,8 @@ stack core.OutgoingEmail
   limits: default
   mcp: ReadOnly, revision 0
   feature: core
+  action retry: entity Retry filtered args -; mutation; result EntitiesResult<OutgoingEmail>; mcp Full, revision 0; Sends each failed or abandoned email again.
+  action cancel: entity Cancel filtered args -; mutation, read-only-ok, destructive; result EntitiesResult<OutgoingEmail>; mcp Full, revision 0; Stops each pending email from being sent.
 stack core.Job
   segment: jobs
   entity: Tellma.Core.Abstractions.Jobs.Job
@@ -153,6 +159,8 @@ stack core.Schedule
   action deactivate: entity Activate built-in filtered args -; mutation, idempotent; result EntitiesResult<Schedule>; mcp Full, revision 0; -
   action take-over: entity Save filtered args -; mutation; result EntitiesResult<Schedule>; mcp Full, revision 0; Makes the caller the user each schedule's jobs run as.
   action run-now: entity Save filtered single args -; mutation; result JobAccepted; mcp Full, revision 0; Runs the schedule's job once, now.
+  action export: api core.Schedule:Read body ExportRequest handler ExcelOperations<Schedule>; idempotent, long; result ExportOutcome; mcp Full, revision 0; -
+  action export-for-import: api core.Schedule:Read body ExportForImportRequest handler ExcelOperations<Schedule>; idempotent, long; result ExportOutcome; mcp Full, revision 0; -
 stack sm.SmGadget
   segment: gadgets
   entity: Tellma.Core.Tests.Crud.SmGadget
@@ -180,7 +188,9 @@ stack sm.SmGadget
   action archive: entity Archive filtered args -; mutation, idempotent; result EntitiesResult<SmGadget>; mcp Full, revision 0; Archives the gadgets.
   action prices/reprice: entity Reprice children args RepriceArguments; mutation, long; result int; mcp Full, revision 0; -
   action summary: api sm.SmGadget:Read body SummaryRequest handler GadgetService<SmGadget>; idempotent; result string; mcp Full, revision 0; -
-  action export: api sm.SmGadget:Export body - handler GadgetOperations<SmGadget>; -; result void; mcp Full, revision 0; -
+  action export: api sm.SmGadget:Read body ExportRequest handler ExcelOperations<SmGadget>; idempotent, long; result ExportOutcome; mcp Full, revision 0; -
+  action export-for-import: api sm.SmGadget:Read body ExportForImportRequest handler ExcelOperations<SmGadget>; idempotent, long; result ExportOutcome; mcp Full, revision 0; -
+  action tally: api sm.SmGadget:Tally body - handler GadgetOperations<SmGadget>; -; result void; mcp Full, revision 0; -
   action count: api member-only body - handler GadgetOperations<SmGadget>; -; result int; mcp Full, revision 0; -
 stack sm.SmGizmo
   segment: gizmos
@@ -204,6 +214,8 @@ stack sm.SmGizmo
   limits: default
   mcp: Full, revision 0
   feature: sm
+  action export: api sm.SmGizmo:Read body ExportRequest handler ExcelOperations<SmGizmo>; idempotent, long; result ExportOutcome; mcp Full, revision 0; -
+  action export-for-import: api sm.SmGizmo:Read body ExportForImportRequest handler ExcelOperations<SmGizmo>; idempotent, long; result ExportOutcome; mcp Full, revision 0; -
 stack sm.SmSprocket
   segment: sprockets
   entity: Tellma.Core.Tests.Crud.SmSprocket
@@ -226,6 +238,8 @@ stack sm.SmSprocket
   limits: default
   mcp: Full, revision 0
   feature: sm
+  action export: api sm.SmSprocket:Read body ExportRequest handler ExcelOperations<SmSprocket>; idempotent, long; result ExportOutcome; mcp Full, revision 0; -
+  action export-for-import: api sm.SmSprocket:Read body ExportForImportRequest handler ExcelOperations<SmSprocket>; idempotent, long; result ExportOutcome; mcp Full, revision 0; -
 child core.RoleMembership
   segment: role-memberships
   entity: Tellma.Core.Abstractions.Access.RoleMembership
@@ -237,6 +251,7 @@ child core.RoleMembership
   exportable: yes
   limits: default
   mcp: Full
+  action export: api core.RoleMembership:Read body ExportRequest handler ChildExportOperations<RoleMembership>; idempotent, long; result ExportOutcome; mcp Full, revision 0; -
 child core.Permission
   segment: permissions
   entity: Tellma.Core.Abstractions.Access.Permission
@@ -248,6 +263,7 @@ child core.Permission
   exportable: yes
   limits: default
   mcp: Full
+  action export: api core.Permission:Read body ExportRequest handler ChildExportOperations<Permission>; idempotent, long; result ExportOutcome; mcp Full, revision 0; -
 child core.OutgoingEmailAttachment
   segment: outgoing-email-attachments
   entity: Tellma.Core.Abstractions.Email.OutgoingEmailAttachment
@@ -270,6 +286,7 @@ child sm.SmGadgetPart
   exportable: yes
   limits: default
   mcp: Full
+  action export: api sm.SmGadgetPart:Read body ExportRequest handler ChildExportOperations<SmGadgetPart>; idempotent, long; result ExportOutcome; mcp Full, revision 0; -
 child sm.SmGadgetPartNote
   segment: part-notes
   entity: Tellma.Core.Tests.Crud.SmGadgetPartNote
@@ -281,6 +298,7 @@ child sm.SmGadgetPartNote
   exportable: yes
   limits: default
   mcp: Full
+  action export: api sm.SmGadgetPartNote:Read body ExportRequest handler ChildExportOperations<SmGadgetPartNote>; idempotent, long; result ExportOutcome; mcp Full, revision 0; -
 service access
   class: Tellma.Core.Access.AccessService
   feature: core
