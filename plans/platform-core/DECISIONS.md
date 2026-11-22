@@ -384,6 +384,14 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-224 (orchestrator, 2026-11-22): PC-107 landed; PC-104 released; the AH 9666 carries move to PC-F71
+
+PC-107 landed at 5a41bd43. After its merge, "." measured 33.82/34 KB, ./memory 2.54/2.6, ./recents 1.53/1.6, and the first frame ≈33.14 KB.
+
+PC-104 integrates next, and it integrates second of the pair, so under D-214 it re-measures "." after the merge. The combined ceiling is the measured figure rounded up to 0.5 KB. It may not exceed 34 KB plus PC-104's own reviewed raise (36 - 31 = 5 KB), so 39 KB at most. Anything above that stops and is reported. PC-104 also merges the two TmSendOptions.tenantId copies into one.
+
+D-221 and D-222 gave PC-104's integration three carries for PC-F71's 9666 range: the vector rows, a lengths array asserted on both sides, and a bounded client daysIn. All three require PC-F71's server change to be on platform-core, and PC-F71 integrates after PC-104. They therefore move to PC-F71's integration, which merges PC-104's client and lands the binding test with the server change it binds.
+
 ### D-223 (orchestrator, 2026-11-22): PC-F70 Review 1 rulings; PC-F71 held
 
 PC-F70 Review 1 found 0/0/2 and accepted the three implementer deviations. The event is logged once per refusal; a crashing check still logs CheckThrew at Error; the migrator never registers the check.
