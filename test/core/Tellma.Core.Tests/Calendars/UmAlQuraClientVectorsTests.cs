@@ -11,7 +11,7 @@ namespace Tellma.Core.Tests.Calendars
 {
     /// <summary>
     ///     The Umm al-Qura vectors the client's calendar is checked against are the server calendar's
-    ///     dates: every month start and length they list, and every single day.
+    ///     dates: every month start and length they list, every month length, and every single day.
     /// </summary>
     public class UmAlQuraClientVectorsTests
     {
@@ -33,6 +33,31 @@ namespace Tellma.Core.Tests.Calendars
             }
 
             Assert.True(count > 2196);
+        }
+
+        [Fact]
+        public void Every_listed_length_is_the_server_calendars_including_the_months_after_the_last_date()
+        {
+            // The months of AH 9666 after 9999-12-31 have no first day to list, so the client's
+            // lengths are bound to the server's here.
+            using JsonDocument vectors = Load();
+            Calendar calendar = new UmAlQuraCalendarSystem().Calendar;
+            HashSet<(int Year, int Month)> listed = [];
+            foreach (JsonElement row in vectors.RootElement.GetProperty("lengths").EnumerateArray())
+            {
+                int year = row[0].GetInt32();
+                int month = row[1].GetInt32();
+                int days = row[2].GetInt32();
+
+                Assert.Equal(days, calendar.GetDaysInMonth(year, month));
+                Assert.Equal(days, UmAlQuraExtendedCalendar.DaysIn(year, month));
+                _ = listed.Add((year, month));
+            }
+
+            for (int month = 1; month <= 12; month++)
+            {
+                Assert.Contains((9666, month), listed);
+            }
         }
 
         [Fact]

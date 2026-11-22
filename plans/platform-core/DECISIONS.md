@@ -384,6 +384,71 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-229 (orchestrator, 2026-11-22): Tier 1 was unblocked and left idle; slots re-ordered
+
+PC-107 and PC-104 landed and made PC-105 (0029-b), PC-106 (0027-a) and PC-108 (0025-c) ready. I did not re-run check_deps --ready at those landings, so PC-F69 (mandated by D-214) and PC-F72 (a once-seen flake that blocks nothing) took the freed slots, and the T3 fills kept theirs. Ahmad noticed that no T1 item was in flight.
+
+Correction:
+- PC-F72 was stopped minutes after launch, before it had committed or changed anything. PC-105 takes pc-3.
+- PC-106 takes pc-4 when PC-F70 lands. PC-108 takes pc-1 when PC-F69 lands.
+- PC-F72 returns to todo, behind the ready T1 items. D-140/D-173 put fix items ahead of T3, not ahead of T1, unless the fix blocks CI.
+- The T3 fills (PC-176, PC-182, PC-189) keep their slots. Each is well into its cycle, and §3 lets a fill finish.
+
+Process: after every landing I re-run check_deps --ready and assign freed slots in this order: blocking fixes, then T1, then T2, then non-blocking fixes, then T3 fills.
+
+### D-228 (orchestrator, 2026-11-22): PC-F69 Review 1 rulings; the "." shares go to Ahmad
+
+PC-F69 Review 1 found 0/0/3. Its own probes confirmed the claim: boot keeps every service class of "." on the first frame, so no sizable service can move to a secondary entry point without becoming asynchronous.
+
+It also confirmed the TmDecimals pure annotation. The annotation is safe, its treeShakes check fails without it, and it saves about 0.67 KB for FESM consumers.
+
+Rulings:
+- R1-1: give the per-spec split on both bases.
+- R1-2: correct candidate 3's figure.
+- R1-3: do not make the move. The flush engine via import() (≈1.2 KB) is a timing change against 0025 §9.4's "at once", so it is named in the commit as deferred. Fix1 also root-causes the union-order.spec bigint timeout (D-011).
+
+PC-F69 holds after fix1. D-214's re-split cannot honestly bring "." to 31 KB, so the ceiling stays at 38.5 KB.
+
+For Ahmad (from D-214, now with evidence):
+- Option 1: raise spec 0024's share of "." to its measured size (≈25.5 KB on the gate's measure, against 14) and spec 0025's (≈12.1 KB, against 9).
+- Option 2: approve async changes for about 1.5-2.5 KB more: the flush engine via import(), and the search query codec, which makes TmUrls async.
+
+Also, 0024 §12's initial-JS budget is measured on Acme. Acme compiles core from sources, so that measure is not an FESM consumer's first frame.
+
+### D-227 (orchestrator, 2026-11-22): PC-182 Review 1 rulings; PC-F71's root cause; PC-F69 R1
+
+PC-182 Review 1 found 0 blocking, 3 major and 4 minor.
+
+Rulings:
+- R1-1 (major, defect): a delete withdraws every deleted row's share notices, in the same transaction as the delete (0033 §5.6 and §7, 0021 §2.3).
+- R1-2 (major, privacy): the shares extra's admission filter moves into the grants query, so related never names other grantees to a reader (0033 §5.2). This retires deviation 5.
+- R1-3 (major): add tests for the grant caps, the SQL backstop and the grantee checks.
+- R1-4 (minor): fix.
+- R1-5 (minor): remove ReportShare's client metadata, or record it as a deviation.
+- R1-6 (minor): record the delete-by-query contradiction in the commit body.
+- R1-7 (minor): keep the reports category.
+
+PC-182 is not on the two-review list, and Review 1 does not meet §4.4's thresholds. R1-2 is a privacy fix in the query layer, so fix1 is judged for escalation once it is in: if the grants query is reshaped well beyond one filter, Review 2 runs on fable.
+
+PC-182 holds after fix1.
+
+For Ahmad, from PC-182:
+- Spec 0033 §2.1 and §5.1 should make OwnerId server-owned, not derived. Review 1 confirmed it is equivalent on insert and stricter on update, and spec 0012 §9.1 refuses a derived column in a column update, so transfer cannot work with derived.
+- Spec 0033 §5.1 could take an optional notification category per shareable, so that a pack's own shareable is not filed under reports.
+- Spec 0033 §2.1's [Stack] attribute lists no delete-by-query, but §2.2 and §5.6 do.
+
+PC-F71's CI fix d5421aa9 found the startup dir test's root cause in the test, not the product. The test read <html dir> right after the init promise, but a root effect writes the attribute and TestBed never ticks. It passed only when a macrotask let the scheduler tick first. The fix is one TestBed.tick() before the same assertion. The real first frame is correct, because bootstrap's tick flushes root effects before it renders. The flaky row is fixed through PC-F71.
+
+PC-F69's implementation (be5219bc) made no new entry points. Its claim is that boot reaches nearly every family, so a move would save only in the measure. Its one saving is TmDecimals' pure annotation (first frame 37.79 to 37.10 KB). Review 1 verifies the claim independently. If the claim holds, Ahmad decides between raising the 0024 and 0025 shares (≈23.8 KB against 14, ≈11.3 KB against 9) and approving API or behaviour changes for the listed candidates.
+
+### D-226 (orchestrator, 2026-11-22): the startup dir test is fixed through PC-F71; PC-F72 opened
+
+Since about 16:38 UTC, tm-localization.spec's startup test fails on both OSes: the document dir is ltr when rtl is expected. It fails on platform-core's PR run 45044779464 (08ebc1cc, PC-104's code) and on PC-F71's gate run 45046747313. PC-104's own gate run passed it at 16:08 UTC on the same code, so the failure depends on time or environment and is now deterministic. It blocks every integration's CI.
+
+No slot is free: pc-1 is PC-F69, pc-2 PC-189, pc-3 PC-F71, pc-4 PC-F70 (held), pc-f PC-176 and pc-f2 PC-182. PC-F71 is next in the release order and is blocked by this test anyway, so its agent root-causes and fixes the test as "PC-F71: integrate (CI fixes)". The fix makes the cause deterministic. It does not weaken the assertion or add a retry (D-011/D-113).
+
+The same PR run also failed ScheduleTests.A_schedule_paused_for_its_inactive_owner… once (Assert.True at ScheduleTests.cs:516, ubuntu). It passed on the pc run of the same code and on PC-F71's run. PC-F72 root-causes it in the next free slot, ahead of T3. A red CI that stops only integrations is not notified (§9).
+
 ### D-225 (orchestrator, 2026-11-22): PC-104 landed; "." at 38.5 KB; PC-F69 launched; PC-F71 released
 
 PC-104 landed at 5bfbd41c. After the merge, "." measured 38.49 KB, so its ceiling was set to 38.5 KB, within D-224's 39 KB cap.

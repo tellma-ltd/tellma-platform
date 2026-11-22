@@ -410,6 +410,10 @@ describe('TmLocalization', () => {
         await tmWarmTenant(store, TM_T17, launchDocs({ preferredLanguage: 'ar', preferredCalendar: 'uq' }));
         core.resolve();
         await status.donePromise;
+        // The first frame is the bootstrap's first tick, which runs the root
+        // effects (among them the one that writes <html lang dir>) before it
+        // renders; TestBed bootstraps nothing, so the test ticks once itself.
+        TestBed.tick();
 
         // The first frame: nothing has navigated yet.
         const l10n = TestBed.inject(TmLocalization);

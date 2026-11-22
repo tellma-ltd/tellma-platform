@@ -12,11 +12,16 @@ using Microsoft.AspNetCore.Routing.Patterns;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging;
+using OpenTelemetry;
+using OpenTelemetry.Logs;
+using System.Collections.Concurrent;
 using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.Abstractions.Crud;
 using Tellma.Core.Access;
 using Tellma.Core.AspNetCore.Routing;
+using Tellma.Core.AspNetCore.Tests.Infrastructure;
 using Tellma.Core.Composition;
 using Tellma.Testing.WebHost;
 
@@ -28,6 +33,9 @@ namespace Tellma.Core.AspNetCore.Tests.Routing
     /// </summary>
     public sealed class EndpointAuditTests
     {
+        /// <summary>The name of the event a refused audit logs before startup throws.</summary>
+        private const string FailureEvent = "ApiSecurableAuditFailed";
+
         /// <summary>A handler that answers nothing.</summary>
         private static readonly RequestDelegate Nothing = static _ => Task.CompletedTask;
 
@@ -347,6 +355,66 @@ namespace Tellma.Core.AspNetCore.Tests.Routing
         }
 
         [Fact]
+        public async Task The_gate_s_audit_logs_its_refusal_at_critical_with_every_problem_before_startup_throws()
+        {
+            // A securable no feature registers passes MapTellma's own run and fails the realised gate.
+            CapturingLoggerProvider logs = new();
+            (WebApplication app, _, _) = TellmaTestHost.Build(options =>
+            {
+                options.ConfigureServices = services => services.AddSingleton<ILoggerProvider>(logs);
+                options.Map = static (application, endpoints) => MapViolation(application, endpoints, "unregistered-securable");
+            });
+            await using (app)
+            {
+                Assert.DoesNotContain(logs.Events, static captured => captured.EventName == FailureEvent);
+                TellmaCompositionException exception = await Assert.ThrowsAsync<TellmaCompositionException>(
+                    () => app.StartAsync(TestContext.Current.CancellationToken));
+
+                CompositionProblem problem = Assert.Single(exception.Problems, static problem => problem.Source == TellmaEndpointAudit.CheckName);
+                Assert.Contains("requires the securable 'acme.Missing:Read', which no feature registers.", problem.Problem, StringComparison.Ordinal);
+                AssertFailureLogged(logs, [problem]);
+            }
+        }
+
+        [Fact]
+        public void MapTellma_logs_its_refusal_at_critical_with_every_problem_and_flushes_it_before_it_throws()
+        {
+            // Two endpoints mapped ahead of MapTellma fail it there, before the host is built.
+            CapturingLoggerProvider logs = new();
+            FlushRecorder exported = new();
+            TellmaCompositionException exception = Assert.Throws<TellmaCompositionException>(
+                () => TellmaTestHost.Build(options =>
+                {
+                    options.ConfigureServices = services =>
+                    {
+                        _ = services.AddSingleton<ILoggerProvider>(logs);
+                        _ = services.ConfigureOpenTelemetryLoggerProvider(builder => builder.AddProcessor(exported));
+                    };
+                    options.BeforeMapTellma = static app =>
+                    {
+                        _ = app.MapGet("/plain", Nothing);
+                        _ = app.MapGet("/plain-2", Nothing);
+                    };
+                }));
+
+            Assert.Equal(2, exception.Problems.Count);
+            AssertFailureLogged(logs, exception.Problems);
+
+            // --- OpenTelemetry's export was flushed once the event had reached it ---
+            Assert.Contains(FailureEvent, exported.FlushedEvents);
+        }
+
+        [Fact]
+        public async Task A_host_whose_endpoints_pass_the_audit_logs_no_refusal()
+        {
+            CapturingLoggerProvider logs = new();
+            await using TellmaTestHost host = await TellmaTestHost.StartAsync(options =>
+                options.ConfigureServices = services => services.AddSingleton<ILoggerProvider>(logs));
+
+            Assert.DoesNotContain(logs.Events, static captured => captured.EventName == FailureEvent);
+        }
+
+        [Fact]
         public void MapTellma_refuses_a_pipeline_UseTellma_did_not_install()
         {
             InvalidOperationException exception = Assert.Throws<InvalidOperationException>(
@@ -362,6 +430,27 @@ namespace Tellma.Core.AspNetCore.Tests.Routing
             {
                 _ = Assert.Throws<InvalidOperationException>(app.MapTellma);
             }
+        }
+
+        /// <summary>
+        ///     Asserts the audit's refusal was logged once, at Critical, under its event name, with the
+        ///     problems the startup exception carries: their count, and each one's one-line rendering in
+        ///     order, joined by semicolons.
+        /// </summary>
+        /// <param name="logs">The captured events.</param>
+        /// <param name="problems">The problems the audit found.</param>
+        private static void AssertFailureLogged(CapturingLoggerProvider logs, IReadOnlyList<CompositionProblem> problems)
+        {
+            string count = problems.Count.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            string described = string.Join("; ", problems.Select(static problem => problem.Describe()));
+
+            CapturedEvent logged = Assert.Single(logs.Events, static captured => captured.EventName == FailureEvent);
+            Assert.Equal(LogLevel.Critical, logged.Level);
+            Assert.Equal(count, logged.Members["Count"]);
+            Assert.Equal(described, logged.Members["Problems"]);
+            // The host's Serilog pipeline quotes a string member where it renders it in the message.
+            Assert.StartsWith($"The endpoint audit found {count} problem(s), so the host does not start: ", logged.Message, StringComparison.Ordinal);
+            Assert.Contains(described, logged.Message, StringComparison.Ordinal);
         }
 
         /// <summary>Maps one violation.</summary>
@@ -461,6 +550,36 @@ namespace Tellma.Core.AspNetCore.Tests.Routing
             public void Contribute(SecurableRegistryBuilder builder)
             {
                 throw new FormatException("bad pair");
+            }
+        }
+
+        /// <summary>
+        ///     An OpenTelemetry log processor standing in for a batching exporter: it holds the events it
+        ///     receives, and a flush records which of them it held at that moment.
+        /// </summary>
+        private sealed class FlushRecorder : BaseProcessor<LogRecord>
+        {
+            /// <summary>The names of the events received so far.</summary>
+            private readonly ConcurrentQueue<string?> _received = new();
+
+            /// <summary>The names of the events held when the last flush ran; empty before any flush.</summary>
+            private volatile string?[] _flushed = [];
+
+            /// <summary>The names of the events held when the last flush ran; empty before any flush.</summary>
+            public IReadOnlyList<string?> FlushedEvents => _flushed;
+
+            /// <inheritdoc />
+            public override void OnEnd(LogRecord data)
+            {
+                ArgumentNullException.ThrowIfNull(data);
+                _received.Enqueue(data.EventId.Name);
+            }
+
+            /// <inheritdoc />
+            protected override bool OnForceFlush(int timeoutMilliseconds)
+            {
+                _flushed = [.. _received];
+                return true;
             }
         }
 

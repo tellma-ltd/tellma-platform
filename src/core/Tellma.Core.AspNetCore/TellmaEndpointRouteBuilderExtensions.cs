@@ -10,7 +10,9 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using OpenTelemetry.Logs;
 using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Api;
 using Tellma.Core.Abstractions.Composition;
@@ -33,6 +35,9 @@ namespace Tellma.Core.AspNetCore
     {
         /// <summary>The prefix every tenant route group begins with.</summary>
         internal const string TenantPrefix = "/{tenantId:int:min(1)}";
+
+        /// <summary>How long a refused <c>MapTellma</c> waits for OpenTelemetry to export its log, in milliseconds.</summary>
+        internal const int FailureFlushMilliseconds = 5000;
 
         /// <summary>
         ///     Maps the platform's tenantless routes (the information document, the health probes, the
@@ -145,7 +150,20 @@ namespace Tellma.Core.AspNetCore
                     .GetAwaiter()
                     .GetResult(),
             ];
-            return problems.Count > 0 ? throw new TellmaCompositionException(problems) : groups;
+            if (problems.Count > 0)
+            {
+                // Logged ahead of the throw, so the host's logs name the problems as well as its exception.
+                TellmaEndpointAudit.LogFailure(app.Services.GetRequiredService<ILoggerFactory>().CreateLogger(ApiLog.Category), problems);
+
+                // The host never runs, so it is never disposed and nothing flushes its logs: the
+                // event would wait in OpenTelemetry's export batch while the process ends. A failed
+                // gate needs no flush, since the host's run disposes it. Sinks that buffer outside
+                // OpenTelemetry are not reached.
+                _ = app.Services.GetService<LoggerProvider>()?.ForceFlush(FailureFlushMilliseconds);
+                throw new TellmaCompositionException(problems);
+            }
+
+            return groups;
         }
 
         /// <summary>Maps a tenant route group under its surface's policy, its filter and its final stamp.</summary>
