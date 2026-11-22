@@ -211,6 +211,15 @@ export function tmSameKeys(a: TmKeyParts, b: TmKeyParts): boolean {
   return identity(a, false) === identity(b, false) || identity(a, true) === identity(b, true);
 }
 
+/**
+ * Whether two combinations are the same keys on every platform: a reserved
+ * id must take its own combination, not one that equals it on one platform
+ * only (`Ctrl+K` is `Mod+K` off Apple platforms, but ⌃K rather than ⌘K on them).
+ */
+function sameEverywhere(a: TmKeyParts, b: TmKeyParts): boolean {
+  return identity(a, false) === identity(b, false) && identity(a, true) === identity(b, true);
+}
+
 /** The modifiers as written, in a fixed order, for comparing against the families. */
 function modifiers(parts: TmKeyParts): string {
   return `${parts.mod ? 'mod+' : ''}${parts.ctrl ? 'ctrl+' : ''}${parts.alt ? 'alt+' : ''}${parts.shift ? 'shift+' : ''}${parts.meta ? 'meta+' : ''}`;
@@ -293,7 +302,7 @@ export function tmShortcutRefusal(
   // The families: a reserved id takes its own keys, any other id a page key.
   if (shortcut.id.startsWith('tm.')) {
     const reserved = TM_RESERVED_SHORTCUTS.find((entry) => entry.id === shortcut.id);
-    if (reserved === undefined || !tmSameKeys(parts, tmKeyParts(reserved.keys))) {
+    if (reserved === undefined || !sameEverywhere(parts, tmKeyParts(reserved.keys))) {
       return 'family';
     }
   } else if (!isPageKey(shortcut.id, parts)) {

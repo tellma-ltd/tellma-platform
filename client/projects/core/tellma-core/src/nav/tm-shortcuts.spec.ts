@@ -489,6 +489,20 @@ describe('TmShortcuts', () => {
       );
     });
 
+    it('refuses a reserved id on a spelling of its keys that differs on one platform, on both platforms', () => {
+      for (const apple of [true, false]) {
+        TestBed.resetTestingModule();
+        const { shortcuts } = rig({ apple });
+        // Ctrl+K is ⌃K rather than ⌘K on a Mac; Meta+K is the Windows key with K elsewhere.
+        for (const keys of ['Ctrl+K', 'Meta+K']) {
+          expect(refusalOf(shortcuts, counted(keys, { id: 'tm.launcher.open', scope: 'global' })), `${keys} ${apple}`).toBe(
+            'family',
+          );
+        }
+        expect(refusalOf(shortcuts, counted('Mod+K', { id: 'tm.launcher.open', scope: 'global' }))).toBeNull();
+      }
+    });
+
     it('refuses a page id on a platform key, a component key or an unmodified printable key', () => {
       const { shortcuts } = rig();
       const outside = [

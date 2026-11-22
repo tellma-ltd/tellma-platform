@@ -412,7 +412,10 @@ navigation to another path.
 same way: bidi controls stripped, NFKD with Latin and Arabic marks removed, lowercased, the
 interchangeable Arabic letters folded and tatweel dropped, Arabic-Indic digits as 0-9, and
 punctuation and symbols as single spaces. Nothing on the first frame matches text, so it is an
-entry point of its own rather than part of the primary.
+entry point of its own rather than part of the primary. The size gate's static-graph check
+(`"tellma".staticGraphExcludes`) proves that neither the primary nor the eager `/shell` reaches it
+through static imports, so the shell's deferred launcher panel and Shortcuts dialog load it with
+`import()`.
 
 ## Decimals
 

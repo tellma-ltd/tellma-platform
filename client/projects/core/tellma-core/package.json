@@ -60,7 +60,8 @@
       ".": { "tm-locale-write": 2 }
     },
     "staticGraphExcludes": {
-      ".": ["./shell", "./memory", "./recents", "./search-normalize"]
+      ".": ["./shell", "./memory", "./recents", "./search-normalize"],
+      "./shell": ["./search-normalize"]
     },
     "apiGoldens": {
       "exclude": ["./private"]

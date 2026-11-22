@@ -80,8 +80,15 @@ describe('the shell frame stylesheet', () => {
     expect(frame.get('grid-template-columns')).toBe('minmax(0, 1fr) var(--tm-aside-width)');
   });
 
-  it("is part of the platform's global styles", () => {
+  it("is part of the platform's global styles, after the design tokens", () => {
     const styles = readFileSync(join(process.cwd(), CORE, 'styles.css'), 'utf8');
-    expect(styles).toContain("@import './styles/tm-frame.css';");
+    const frame = styles.indexOf("@import './styles/tm-frame.css';");
+    const tokens = styles.indexOf("@import '@tellma/core-ui-tokens/css/tellma-default.css';");
+    expect(frame).toBeGreaterThan(-1);
+    expect(tokens).toBeGreaterThan(-1);
+    // Both declare --toast-offset-block-start on :root in the same layer, and
+    // the later declaration wins: before the tokens, the toasts would fall
+    // back to the tokens' 8px and sit over the app bar.
+    expect(frame).toBeGreaterThan(tokens);
   });
 });
