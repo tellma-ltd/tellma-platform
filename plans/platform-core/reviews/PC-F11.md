@@ -435,7 +435,7 @@ rulings. Runs, on the final tree:
   `TELLMA_REQUIRE_LANDLOCK=1`, the whole Imaging test assembly: 501 total, 0 failed, 3 skipped
   (Windows-only).
 
-- R1-1: fixed in the review 1 fixes commit.
+- R1-1: fixed in 9446fd17.
   - **The refusal.** The filter now refuses every `ioctl` of types `'f'` (0x66), `'X'` (0x58) and
     `0x94`, whatever the request, by masking the request's type byte (a BPF `AND` of the low word
     of argument 1 with `0xFF00`). Reads of those types are refused too. It also refuses `0xF5`,
@@ -465,7 +465,7 @@ rulings. Runs, on the final tree:
     allowance rest on that filesystem's checks, and that is recorded as residual in the Imaging
     README and `ARCHITECTURE.md`. The worker README, the Imaging README and the filter's XML docs
     match.
-- R1-2: fixed in the review 1 fixes commit.
+- R1-2: fixed in 9446fd17.
   - The stand-in has a new mode, `ready-unconfined`. It masks `FilesystemConfinement` out of its
     ready frame, whether or not it is confined, and then answers with a good page.
   - `WorkerConfinementTests.A_worker_its_launcher_confines_that_does_not_report_its_confinement_is_refused`
@@ -473,7 +473,7 @@ rulings. Runs, on the final tree:
     launcher takes the same worker's 64x64 page.
   - It passes on Windows (AppContainer) and on Linux (Landlock). With the client's check disabled
     it fails on Windows ("No exception was thrown"); I restored the check afterwards.
-- R1-3: fixed in the review 1 fixes commit.
+- R1-3: fixed in 9446fd17.
   - **The grant.** On Windows, `PdfWorkerLauncher.CanConfine` now asks
     `WindowsAppContainer.GrantRuntime(muxer)` once, lazily. It grants the workers' capability read
     and execute on the muxer and on the installation's `host` and `shared` directories, with
@@ -502,7 +502,7 @@ rulings. Runs, on the final tree:
   - **Not exercised.** A host on an installation in `%USERPROFILE%\.dotnet` was not run end to
     end, because this machine's runtime is under Program Files. Neither was the fallback branch,
     where the account cannot change the installation's permissions.
-- R1-4: fixed in the review 1 fixes commit.
+- R1-4: fixed in 9446fd17.
   - **Refused.** The filter refuses `inotify_init`, `inotify_init1`, `inotify_add_watch`,
     `fanotify_init` and `fanotify_mark`, and the path forms `getxattr`, `lgetxattr`, `listxattr`,
     `llistxattr`, `getxattrat` and `listxattrat`. The numbers are those of the finding on both
@@ -521,11 +521,11 @@ rulings. Runs, on the final tree:
   - **Residual.** `stat`, `access` and `readlink` stay open. A worker can learn that a path
     exists, and its size, owner, times and link target. Closing that needs a mount namespace. It
     is recorded here, in the Imaging README's "Residual risks", and in `ARCHITECTURE.md`.
-- R1-5: fixed in the review 1 fixes commit. `close_range` is now called as
+- R1-5: fixed in 9446fd17. `close_range` is now called as
   `syscall(436, 3, ~0U, CLOSE_RANGE_CLOEXEC)` through libc's `syscall` entry point, which every
   glibc has. The number is the same on x64 and arm64. Every confined Linux worker in the run takes
   this path, and every one passes. No host on glibc older than 2.34 was run.
-- R1-6: fixed in the review 1 fixes commit.
+- R1-6: fixed in 9446fd17.
   - **The guard.** `WorkerAllowance.Compose` refuses, with `PdfWorkerException(Start)`, a host
     whose runtime configuration or dependency manifest lies beneath a directory the worker reads
     in full: the runtime's `host` and `shared` directories, the system's library directory, or a
