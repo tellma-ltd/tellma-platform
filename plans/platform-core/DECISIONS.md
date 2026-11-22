@@ -384,6 +384,18 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-217 (orchestrator, 2026-11-22): PC-107 fix1 escalated to Review 2
+
+Fix1 (e9406aaf) fixed R1-1..R1-4. "." went from 36.5 to a 34 KB ceiling (33.84 measured). An app's first frame went from 33.60 to 30.48 KB, and the dump's first-frame cost from +1.35 to +0.13 KB. The fix added:
+- two lazy entry points: @tellma/core/memory (2.54 / 2.6 KB) and @tellma/core/recents (1.30 / 1.4 KB);
+- internal ɵ seams on the primary;
+- parts registered by each service for the state dump;
+- a test-rig exception in the core-tools tm/core-import-boundary rule.
+
+Because fix1 rewrote much of the checkpoint, PC-107 escalates to Review 2 (inherit, xhigh) per PROCESS §4.4. Review 2 checks that the moved code is off the first frame, that the lazy loads have no ordering race, that the ɵ seams are minimal, and that the lint exception is closed to production code.
+
+For Ahmad: 0025 §1 should list @tellma/core/memory and @tellma/core/recents as lazy entry points. 0025's primary services are still ~11.0 KB against their 9 KB share; TmPreferences' flush engine goes to PC-F69.
+
 ### D-216 (orchestrator, 2026-11-22): PC-107 Review 1 rulings; carries
 
 Review 1 found 0/1/3. It accepted the deviations and points (2) through (6). It measured with the gate's bundler: esbuild splits by module, so only a separate entry point keeps code off the first frame.
