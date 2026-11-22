@@ -1,5 +1,5 @@
 # Nightly tier: the slow, broad and timing-sensitive tests the PR tier (ci.yml) leaves out, and the
-# Windows run of two integration suites the PR tier runs on Linux only.
+# Windows run of three integration suites the PR tier runs on Linux only.
 #
 # GitHub fires `schedule` (and accepts `workflow_dispatch`) only for workflows on the default
 # branch, so main carries a trampoline under this same file name: each night it runs
@@ -17,7 +17,8 @@
 #     run in nightly.yml. On Linux all of them; on Windows those that are neither Integration nor
 #     E2E, matching the OS coverage the PR tier gives each kind.
 #   - dotnet integration on Windows: the PR tier runs no integration tests on Windows, so this
-#     tier runs the platform's (Tellma.Core.IntegrationTests) and the reference distribution's
+#     tier runs the platform's (Tellma.Core.IntegrationTests), the web surface's
+#     (Tellma.Core.AspNetCore.IntegrationTests) and the reference distribution's
 #     (Tellma.Distro.Acme.IntegrationTests) integration suites there, against LocalDB, with the PR
 #     tier's own filter: their tests that are not Nightly and not Live=true. The other integration
 #     suites, and every Nightly integration test, run on Linux only.
@@ -91,10 +92,11 @@ jobs:
       - name: Nightly-tier dotnet unit tests
         run: dotnet test Tellma.slnx -c Release --no-build --filter "Category=Nightly&Category!=Integration&Category!=E2E&Live!=true"
 
-  # The distribution host's two integration suites on Windows, against LocalDB rather than a
+  # The distribution host's three integration suites on Windows, against LocalDB rather than a
   # container (the Windows runners have no Linux containers): the platform's catalog and migrator
-  # suite and the reference distribution's. LocalDB is installed when the image lacks it. These are
-  # the PR tier's tests of those two suites (Nightly excluded, as in ci.yml's integration job), which
+  # suite, the web surface's end to end over the reference distribution, and the reference
+  # distribution's. LocalDB is installed when the image lacks it. These are the PR tier's tests of
+  # those three suites (Nightly excluded, as in ci.yml's integration job), which
   # the PR tier runs on Linux only. The other integration suites need nothing Windows-specific and
   # run on Linux alone, in the PR tier and in the dotnet job above.
   integration-windows:
@@ -127,6 +129,7 @@ jobs:
           sqllocaldb start MSSQLLocalDB
       - run: dotnet build test/core/Tellma.Core.IntegrationTests -c Release
       - run: dotnet build distributions/acme/test/Tellma.Distro.Acme.IntegrationTests -c Release
+      - run: dotnet build test/core/Tellma.Core.AspNetCore.IntegrationTests -c Release
       # The instance's first logins can fail while it warms up, and a suite's first catalog load
       # would then classify that error instead of the one under test. A query against master,
       # retried until it answers, leaves the instance warm. The instance's pipe name serves either
@@ -150,6 +153,7 @@ jobs:
       # left behind.
       - run: dotnet test test/core/Tellma.Core.IntegrationTests -c Release --no-build --filter "Category=Integration&Category!=Nightly&Live!=true" --logger "console;verbosity=normal" -- xUnit.DiagnosticMessages=true
       - run: dotnet test distributions/acme/test/Tellma.Distro.Acme.IntegrationTests -c Release --no-build --filter "Category=Integration&Category!=Nightly&Live!=true" --logger "console;verbosity=normal" -- xUnit.DiagnosticMessages=true
+      - run: dotnet test test/core/Tellma.Core.AspNetCore.IntegrationTests -c Release --no-build --filter "Category=Integration&Category!=Nightly&Live!=true" --logger "console;verbosity=normal" -- xUnit.DiagnosticMessages=true
 
   # The Playwright nightly tier on the showcase, every browser engine, quarantined tests excluded.
   client-e2e:

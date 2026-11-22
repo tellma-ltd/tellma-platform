@@ -237,6 +237,21 @@ namespace Tellma.Core.Tests.Crud
         }
 
         [Fact]
+        public async Task A_feature_companion_declaring_the_workbook_segments_fails_though_the_platforms_takes_them()
+        {
+            IReadOnlyList<CompositionProblem> problems = await StackScenarios.CheckAsync(static contribution => contribution
+                .EntityCompanion<SmGadget, WorkbookOperations<SmGadget>>());
+            string companion = $"Tellma.Core.Tests.Crud.WorkbookOperations<{typeof(SmGadget).FullName}>";
+
+            Assert.Equal(
+                [
+                    $"The action of {companion}.ExportAsync is named 'export', a standard segment the stack projects.",
+                    $"The action of {companion}.ExportForImportAsync is named 'export-for-import', a standard segment the stack projects.",
+                ],
+                Problems(problems, CoreCheckNames.StackActions));
+        }
+
+        [Fact]
         public async Task A_routed_service_without_a_route_or_a_securable_fails()
         {
             IReadOnlyList<CompositionProblem> problems = await StackScenarios.CheckAsync(static contribution => contribution

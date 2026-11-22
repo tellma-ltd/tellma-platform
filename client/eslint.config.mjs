@@ -37,6 +37,8 @@ const UNPREFIXED_EXPORTS = [
   // The app's one provider call, which the app-foundation spec names; the
   // prefix pattern expects a suffix after `provideTellma`.
   'provideTellma',
+  // The app's start, which the app-foundation spec names beside it.
+  'bootstrapTellma',
 ];
 
 /**
@@ -187,11 +189,16 @@ export default defineConfig(
     },
   },
 
-  // Specs build declarations from stand-in components and computed keys to
-  // exercise the merge and the config check; the lazy-layout and literal-key
-  // rules guard app sources, not these fixtures.
+  // Specs and their shared rigs build declarations from stand-in components
+  // and computed keys to exercise the merge, the config check and the derived
+  // routes; the lazy-layout and literal-key rules guard app sources, not
+  // these fixtures.
   {
-    files: ['projects/core/tellma-core/**/*.spec.ts', 'projects/core/tellma-core-testing/**/*.spec.ts'],
+    files: [
+      'projects/core/tellma-core/**/*.spec.ts',
+      'projects/core/tellma-core/**/*.testing.util.ts',
+      'projects/core/tellma-core-testing/**/*.spec.ts',
+    ],
     rules: {
       'tm/lazy-layouts': 'off',
       'tm/literal-declaration-keys': 'off',

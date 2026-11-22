@@ -8,6 +8,7 @@ using Tellma.Core.Abstractions.Hosting;
 using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.Migrator;
 using Tellma.Distro.Acme.IntegrationTests.Infrastructure;
+using Tellma.Distro.Acme.TestSupport;
 using Tellma.Identity;
 
 namespace Tellma.Distro.Acme.IntegrationTests

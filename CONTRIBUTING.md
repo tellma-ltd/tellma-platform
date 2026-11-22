@@ -8,7 +8,7 @@ working branch whose head commit is an integration commit (its message contains 
 any other push to a `pc/**` branch skips every job. The **nightly tier** holds what is too slow,
 too broad or too timing-sensitive for that: full viewport and language matrices, Firefox and
 WebKit, performance budgets, soaks and long waits (`.github/workflows/nightly-tier.yml`). It also
-runs two integration suites on Windows, which the PR tier runs on Linux only. Tests reach the
+runs three integration suites on Windows, which the PR tier runs on Linux only. Tests reach the
 nightly tier only through the tags below; everything untagged is PR tier.
 
 Before tagging a slow test nightly, try to make it fast: a wall-clock wait (a watchdog, a poll
@@ -202,13 +202,14 @@ nor E2E tests, as the PR tier does for the unit suites:
 dotnet test Tellma.slnx --filter "Category=Nightly&Category!=Integration&Category!=E2E&Live!=true"
 ```
 
-The PR tier runs no integration tests on Windows. The nightly tier runs the platform's and the
-reference distribution's integration suites there, against LocalDB, with the PR tier's
-integration filter. On Windows, with `TELLMA_TEST_SQL` set to
+The PR tier runs no integration tests on Windows. The nightly tier runs the platform's, the web
+surface's and the reference distribution's integration suites there, against LocalDB, with the PR
+tier's integration filter. On Windows, with `TELLMA_TEST_SQL` set to
 `Server=(localdb)\MSSQLLocalDB;Integrated Security=True;TrustServerCertificate=True`:
 
 ```bash
 dotnet test test/core/Tellma.Core.IntegrationTests --filter "Category=Integration&Category!=Nightly&Live!=true"
+dotnet test test/core/Tellma.Core.AspNetCore.IntegrationTests --filter "Category=Integration&Category!=Nightly&Live!=true"
 dotnet test distributions/acme/test/Tellma.Distro.Acme.IntegrationTests --filter "Category=Integration&Category!=Nightly&Live!=true"
 ```
 

@@ -1,12 +1,15 @@
 /*
  * The fixture app's TypeScript configuration. It extends the client
  * workspace's, whose path mappings resolve every @tellma package to its
- * sources, so the fixture builds without the packages being built first.
+ * sources, so the fixture builds without the packages being built first,
+ * and @tellma/core's list of lazily loaded entry points, which a build from
+ * sources compiles too since the framework loads them with import() through
+ * a specifier the compiler does not follow.
  */
 {
-  "extends": "../../../../../tsconfig.json",
+  "extends": ["../../../../../tsconfig.json", "../../../tellma-core/tsconfig.lazy-entry-points.json"],
   "compilerOptions": {
     "types": []
   },
-  "files": ["src/main.ts"]
+  "include": ["src/main.ts"]
 }

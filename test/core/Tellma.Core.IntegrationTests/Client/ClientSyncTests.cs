@@ -7,6 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using System.Globalization;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Api;
 using Tellma.Core.Abstractions.Caching;
@@ -57,7 +58,7 @@ namespace Tellma.Core.IntegrationTests.Client
             // --- Every member, the settings written from the cache's bytes ---
             TenantSettingsForClient settings = result.Settings!.Deserialize();
             Assert.Equal(ConnectDatabase.TenantA, settings.TenantId);
-            Assert.Equal(ann, result.Me!.Deserialize().User.Id);
+            Assert.Equal(ann, result.Me!.User.Id);
             Assert.Equal(ClientItems, result.Tags.Keys.Take(4));
             Assert.Equal(VersionTagWire.Entities(new VersionTag(await fixture.TenantTagAsync(LookupItem))), result.Tags[LookupItem]);
             Assert.Empty(result.StaleEntities);
@@ -157,7 +158,7 @@ namespace Tellma.Core.IntegrationTests.Client
             Guid caller = (await fixture.UserTagsAsync(ann)).Permissions!.Value;
             string composite = string.Create(CultureInfo.InvariantCulture, $"{MeResult.FormatVersion}.{tenant:N}{caller:N}");
             Assert.Equal(composite, result.Tags[VersionTagWire.PermissionsItem]);
-            Assert.Equal(composite, result.Me!.Deserialize().Access.Tag);
+            Assert.Equal(composite, result.Me!.Access.Tag);
             Assert.Null(result.Settings);
         }
 
@@ -171,7 +172,7 @@ namespace Tellma.Core.IntegrationTests.Client
             (ClientSyncResult result, _) = await SyncAsync(admin, Cold);
             MeResult own = await MeAsync(admin);
 
-            MeResult me = result.Me!.Deserialize();
+            MeResult me = result.Me!;
             Assert.Equal(own.User, me.User);
             Assert.Equal(own.Preferences, me.Preferences);
             Assert.Equal(own.PreferencesTag, me.PreferencesTag);
@@ -214,16 +215,19 @@ namespace Tellma.Core.IntegrationTests.Client
         // --- The wire ---
 
         [Fact]
-        public async Task The_answer_writes_the_settings_bytes_as_they_are_and_omits_the_members_it_does_not_carry()
+        public async Task The_answer_writes_the_settings_bytes_as_they_are_the_envelope_as_the_callers_own_read_and_omits_the_members_it_does_not_carry()
         {
             (_, string admin) = await fixture.SeedAdministratorAsync("Ann");
             (ClientSyncResult cold, _) = await SyncAsync(admin, Cold);
             (ClientSyncResult warm, _) = await SyncAsync(admin, cold.Tags);
+            MeResult own = await MeAsync(admin);
 
             using var coldWire = JsonDocument.Parse(JsonSerializer.SerializeToUtf8Bytes(cold, TellmaJson.Options));
             using var warmWire = JsonDocument.Parse(JsonSerializer.SerializeToUtf8Bytes(warm, TellmaJson.Options));
 
             Assert.Equal(JsonSerializer.Serialize(JsonDocument.Parse(cold.Settings!.Utf8).RootElement), JsonSerializer.Serialize(coldWire.RootElement.GetProperty("settings")));
+            string me = coldWire.RootElement.GetProperty("me").GetRawText();
+            Assert.True(JsonNode.DeepEquals(JsonSerializer.SerializeToNode(own, TellmaJson.Options), JsonNode.Parse(me)), "The envelope on the wire is " + me);
             Assert.Equal(["tenant", "tags", "staleEntities"], warmWire.RootElement.EnumerateObject().Select(static member => member.Name));
             Assert.False(warmWire.RootElement.GetProperty("tenant").TryGetProperty("liveTenantId", out _));
         }

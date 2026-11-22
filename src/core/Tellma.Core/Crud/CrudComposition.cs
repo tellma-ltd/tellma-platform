@@ -37,11 +37,13 @@ namespace Tellma.Core.Crud
         /// <summary>Settles the stacks and registers them.</summary>
         /// <param name="services">The service collection.</param>
         /// <param name="record">The realised composition.</param>
-        public static void Register(IServiceCollection services, TellmaCompositionRecord record)
+        /// <param name="platform">The platform's companions, which the stacks carry beside the features' own.</param>
+        public static void Register(IServiceCollection services, TellmaCompositionRecord record, IPlatformCompanions platform)
         {
             ArgumentNullException.ThrowIfNull(services);
             ArgumentNullException.ThrowIfNull(record);
-            var composition = StackComposition.Build(record);
+            ArgumentNullException.ThrowIfNull(platform);
+            var composition = StackComposition.Build(record, platform);
             services.AddSingleton(composition);
 
             // --- Each stack's classes, scoped: the service, its companions and its components ---
@@ -50,7 +52,17 @@ namespace Tellma.Core.Crud
                 RegisterService(services, stack);
                 foreach (Type companion in stack.Companions)
                 {
-                    services.TryAddScoped(companion);
+                    // The platform's companion is registered as the platform builds it; a feature's
+                    // is built by the container.
+                    services.TryAdd(platform.IsCompanion(companion)
+                        ? platform.Scoped(companion)
+                        : ServiceDescriptor.Scoped(companion, companion));
+                }
+
+                // --- The child export operations of each exportable child query surface (spec 0019 §1.2) ---
+                foreach (Type handler in platform.ChildOperationsUnder(stack.Leaf, stack.Operations, record.LeafOf))
+                {
+                    services.TryAdd(platform.Scoped(handler));
                 }
 
                 // A named filter contributor is created once by the registry from the root provider,

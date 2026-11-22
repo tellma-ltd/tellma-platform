@@ -67,6 +67,7 @@
     <File Path="distributions/acme/test/Directory.Build.props" />
     <Project Path="distributions/acme/test/Tellma.Distro.Acme.E2E/Tellma.Distro.Acme.E2E.csproj" />
     <Project Path="distributions/acme/test/Tellma.Distro.Acme.IntegrationTests/Tellma.Distro.Acme.IntegrationTests.csproj" />
+    <Project Path="distributions/acme/test/Tellma.Distro.Acme.TestSupport/Tellma.Distro.Acme.TestSupport.csproj" />
     <Project Path="distributions/acme/test/Tellma.Distro.Acme.Web.Tests/Tellma.Distro.Acme.Web.Tests.csproj" />
   </Folder>
   <Folder Name="/test/">
@@ -79,6 +80,7 @@
     <Project Path="test/core/Tellma.Core.Tests/Tellma.Core.Tests.csproj" />
     <Project Path="test/core/Tellma.Core.Analyzers.Tests/Tellma.Core.Analyzers.Tests.csproj" />
     <Project Path="test/core/Tellma.Core.AspNetCore.Tests/Tellma.Core.AspNetCore.Tests.csproj" />
+    <Project Path="test/core/Tellma.Core.AspNetCore.IntegrationTests/Tellma.Core.AspNetCore.IntegrationTests.csproj" />
     <Project Path="test/core/Tellma.Core.Email.Tests/Tellma.Core.Email.Tests.csproj" />
     <Project Path="test/core/Tellma.Core.EntityFrameworkCore.Tests/Tellma.Core.EntityFrameworkCore.Tests.csproj" />
     <Project Path="test/core/Tellma.Core.EntityFrameworkCore.Design.Tests/Tellma.Core.EntityFrameworkCore.Design.Tests.csproj" />

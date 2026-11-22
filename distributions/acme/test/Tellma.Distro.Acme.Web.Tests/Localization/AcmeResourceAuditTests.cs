@@ -5,6 +5,7 @@
 
 using Microsoft.AspNetCore.Builder;
 using System.Reflection;
+using Tellma.Core.Abstractions.Excel;
 using Tellma.Core.Localization;
 using Tellma.Distro.Acme.Entities;
 using Tellma.Distro.Acme.Web.Tests.Infrastructure;
@@ -74,10 +75,19 @@ namespace Tellma.Distro.Acme.Web.Tests.Localization
             // The audit admits a key nothing derives; this is its converse for Acme's own families.
             // The audit members, the create labels and the platform's own actions fall back to
             // Core's shared labels, and a reference's navigation to its foreign key's label.
+            // The platform's workbook actions, which it attaches to every stack that exports or
+            // imports, fall back to Core's labels as well, and so do their request's fields.
+            string[] workbookFields =
+            [
+                .. typeof(ExportRequest).GetProperties(BindingFlags.Public | BindingFlags.Instance).Select(static property => property.Name),
+                .. typeof(ExportForImportRequest).GetProperties(BindingFlags.Public | BindingFlags.Instance).Select(static property => property.Name),
+            ];
             string[] shared =
             [
                 "_CreatedAt", "_CreatedBy", "_CreatedById", "_ModifiedAt", "_ModifiedBy", "_ModifiedById", "_Id", "_New",
                 "_Action_Read", "_Action_Save", "_Action_Delete", "_Action_Activate", "_Action_Deactivate",
+                "_Action_Export", "_Action_ExportForImport",
+                .. workbookFields.Distinct(StringComparer.Ordinal).SelectMany(static field => new[] { $"_Action_Export_{field}", $"_Action_ExportForImport_{field}", $"_{field}" }),
             ];
             // Acme's keys outside its own prefixes: the members it adds to GL's center, and its setting
             // categories. Each must be derived, so a renamed convention cannot leave them unchecked.

@@ -31,7 +31,7 @@ namespace Tellma.Core.Abstractions.Crud
     /// <param name="Exportable">Whether the root stack serves export, so this surface serves the display-shape export too.</param>
     /// <param name="Limits">The root stack's ceilings.</param>
     /// <param name="Mcp">The root stack's agent exposure.</param>
-    /// <param name="Actions">The surface's two export actions when <see cref="Exportable" />, else empty.</param>
+    /// <param name="Actions">The surface's export actions when <see cref="Exportable" />, else empty.</param>
     public sealed record ChildQueryDescriptor(
         string Resource,
         string ResourceSegment,

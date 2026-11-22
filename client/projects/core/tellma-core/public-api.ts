@@ -4,8 +4,10 @@
  * with the app; each lazy boundary of the framework is a secondary entry
  * point of its own.
  *
- * It holds the distribution API (`provideTellma`, `tmFeature` and the
- * declaration functions), the client metadata's types and loaders, the
+ * It holds the distribution API (`bootstrapTellma`, `provideTellma`,
+ * `tmFeature` and the declaration functions), the app's root component, its
+ * routes' data, title strategy and URLs with the search query codec, the
+ * entity registry's summaries, the client metadata's types and loaders, the
  * HTTP layer with its error and plain-JSON value types, the exact decimal
  * helpers, the client store and the tab bus, and the seams through which
  * telemetry, the request log and page scopes are provided.
@@ -71,9 +73,23 @@ export type {
   TmStringTree,
 } from './src/app/tm-app-config';
 export { provideTellma, tmAppConfigOf } from './src/app/provide-tellma';
+export { bootstrapTellma } from './src/app/bootstrap-tellma';
+export { TmApp } from './src/app/tm-app';
 export { TM_APP_DECLARATIONS, type TmAppDeclarations } from './src/app/tm-app-declarations';
-export type { TmRouteSkeleton } from './src/app/tm-route-data';
+export type { TmRouteData, TmRouteSkeleton } from './src/app/tm-route-data';
 export type { TmPageKind } from './src/context/tm-page-kind';
+
+// Routes and URLs: the title strategy, the app's URLs and the search query codec.
+export { TmTitleStrategy } from './src/routes/tm-title-strategy';
+export { TmUrls, type TmRouteMatch, type TmTenantUrls } from './src/urls/tm-urls';
+export type { TmListPayload, TmSearchQuery } from './src/urls/tm-search-query';
+// The leave checks of a routed page, which the page frameworks register; not for app code.
+export { TmLeaveChecks as ɵTmLeaveChecks, type TmLeaveCheck as ɵTmLeaveCheck } from './src/routes/tm-leave-checks';
+// The contract of the components the primary loads from the shell entry point; not for app code.
+export type { TmShellComponents as ɵTmShellComponents } from './src/routes/tm-route-hosts';
+
+// The entity registry's summaries.
+export { TmEntities } from './src/entity/tm-entities';
 
 // Features and the declaration functions.
 export type { TmDeclarationKey, TmLazyComponent, TmSecurableRef } from './src/declarations/tm-declaration-types';
