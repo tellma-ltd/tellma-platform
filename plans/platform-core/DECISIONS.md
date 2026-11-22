@@ -384,6 +384,20 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-212 (orchestrator, 2026-11-22): PC-095 Review 2 rulings
+
+Review 2 (inherit, xhigh) found 0/0/4.
+- It confirmed that the snapshot canonicalization is OS-independent, that exact-tag matching cannot misattribute, and that the 5 s aborted-read bound holds.
+- The new suite passed 34/34 on Testcontainers and on LocalDB, and WireSnapshotTests passed in the Linux sdk container.
+
+Fix2 rulings:
+- R2-1: measure notification-preferences/save on a non-empty set.
+- R2-2: delete, delete_by_query, delete_with_descendants and `all` get a ceiling of 3, one above their warm budget.
+- R2-3: add the RT1 save pre-check case: an editor's retype of a stored Service center is refused, and the row is unchanged.
+- R2-4: narrow the ARCHITECTURE.md claim to the measured operations.
+
+PC-095 holds after fix2. Integration order (D-190): PC-F17 (blocked on its push), then PC-F11, PC-143 and PC-095 in the order they hold. PC-095's integration regenerates web.json and contracts.json.
+
 ### D-211 (orchestrator, 2026-11-22): PC-143 Review 1 rulings
 
 Review 1 found 0/0/4 and accepted all 8 deviations.
