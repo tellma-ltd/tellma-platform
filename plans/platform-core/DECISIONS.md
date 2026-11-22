@@ -384,6 +384,23 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-201 (orchestrator, 2026-11-22): PC-093 Review 1 rulings
+
+Review 1 found 0/0/2 and accepted all 6 deviations. Its findings on the reviewer's checks:
+- Without a secret, the warn-and-keep path is reachable only in in-proc Development. Anywhere else, `core.options` fails and the migrator exits 3 before any command runs. Recovery is a rerun of `provision --tenant N --admin-email X` once a secret is configured.
+- The `core.invite-administrator` frame grants nothing beyond the invite. It admits ReadOnly tenants only (Frozen is still refused) and adds no securable.
+- PC-092's Development path is unchanged.
+- InitialTenant passes the hand-review list (28 tables, 37 UDTTs, no Sql(), IDENTITY, rowversion, trigger or MERGE).
+- The parity pins plus CompositionTests catch drift on both OSes, and nothing is OS-sensitive.
+
+The CI smoke deployment deferral follows PLAN §6's Deferred row and is now recorded in LEDGER.md's Deferred tests.
+
+Fixed in fix1:
+- R1-1: an Acme ProvisioningTests case for no secret in Development, and a warning that names the recovery command.
+- R1-2: ARCHITECTURE.md narrowed to say that the seeded administrator is not invited in Development.
+
+PC-093 holds after fix1. Release order: PC-175 (CI fixes), PC-F67, then PC-093 (T1) ahead of PC-F17 (fix item) if both are held.
+
 ### D-200 (orchestrator, 2026-11-22): PC-103 Review 1 rulings; escalated to Review 2; PC-F69 opened for the @tellma/core primary re-split
 
 Review 1 found 0/4/8. Four majors meet PROCESS §4.4's escalation rule, so PC-103 gets Review 2 (inherit, xhigh) after fix1. This is recorded in LEDGER.md.
