@@ -40,12 +40,7 @@ const ROW_HEIGHT = 32;
 @Component({
   imports: [TmGrid, TmGridColumn, TmGridDisplayDef, TmGridRowEndDef],
   template: `
-    <tm-grid
-      gridId="spec-grid-reuse"
-      [data]="rows()"
-      [rowId]="rowId"
-      style="block-size: 300px"
-    >
+    <tm-grid gridId="spec-grid-reuse" [data]="rows()" [rowId]="rowId" style="block-size: 300px">
       <tm-grid-column key="name" header="Name" [width]="120" />
       <tm-grid-column key="qty" type="number" header="Qty" [width]="100" />
       <tm-grid-column key="active" type="boolean" header="Active" [width]="80" />
@@ -65,6 +60,28 @@ class ReuseHost {
   readonly rowId = (row: Row): number => row.id;
 }
 
+/** A readonly selectable grid of the same rows, for the row checkboxes. */
+@Component({
+  imports: [TmGrid, TmGridColumn],
+  template: `
+    <tm-grid
+      gridId="spec-grid-reuse-select"
+      [data]="rows()"
+      [rowId]="rowId"
+      selectable
+      [(selectedIds)]="selection"
+      style="block-size: 300px"
+    >
+      <tm-grid-column key="name" header="Name" [width]="120" />
+    </tm-grid>
+  `,
+})
+class SelectReuseHost {
+  readonly rows = signal<readonly Row[]>(makeRows(500));
+  readonly selection = signal<ReadonlySet<string | number>>(new Set());
+  readonly rowId = (row: Row): number => row.id;
+}
+
 async function stable(fixture: ComponentFixture<unknown>): Promise<void> {
   await fixture.whenStable();
   await new Promise((resolve) => setTimeout(resolve, 0));
@@ -79,6 +96,39 @@ async function setup(): Promise<{ fixture: ComponentFixture<ReuseHost>; scroller
     '.tm-grid__scroller',
   ) as HTMLElement;
   return { fixture, scroller };
+}
+
+async function setupSelect(): Promise<{
+  fixture: ComponentFixture<SelectReuseHost>;
+  scroller: HTMLElement;
+}> {
+  TestBed.configureTestingModule({ providers: [provideTellmaUi()] });
+  const fixture = TestBed.createComponent(SelectReuseHost);
+  await stable(fixture);
+  const scroller = (fixture.nativeElement as HTMLElement).querySelector(
+    '.tm-grid__scroller',
+  ) as HTMLElement;
+  return { fixture, scroller };
+}
+
+/** A mouse press on an element, as the browser dispatches it. */
+function press(target: HTMLElement): void {
+  target.dispatchEvent(
+    new PointerEvent('pointerdown', {
+      bubbles: true,
+      cancelable: true,
+      button: 0,
+      pointerType: 'mouse',
+      pointerId: 1,
+    }),
+  );
+}
+
+/** The click that ends a mouse press on an element. */
+function release(target: HTMLElement, init: MouseEventInit = {}): void {
+  target.dispatchEvent(
+    new MouseEvent('click', { bubbles: true, cancelable: true, detail: 1, ...init }),
+  );
 }
 
 async function scrollTo(
@@ -257,5 +307,62 @@ describe('tm-grid (reused rows)', () => {
     const staying = [...scroller.querySelectorAll('.spec-link')].at(-1)!;
     await scrollTo(fixture, scroller, 201 * ROW_HEIGHT);
     expect(scroller.contains(staying)).toBe(true);
+  });
+  it('keeps a replaced active row off its element, so focus moves with a focusin', async () => {
+    const { fixture, scroller } = await setup();
+    scroller.focus();
+    keydown(scroller, 'ArrowDown');
+    await stable(fixture);
+    const origin = cellAt(scroller, 0, 0)!;
+    expect(document.activeElement).toBe(origin);
+    const focusins: EventTarget[] = [];
+    scroller.addEventListener('focusin', (event) => focusins.push(event.target!));
+    // The active row's temporary id gives way to its saved id: only that
+    // row leaves and only its replacement enters, which would take the
+    // focused element in place were it not kept out of reuse.
+    fixture.componentInstance.rows.update((rows) => [
+      { ...rows[0], id: 100_000 },
+      ...rows.slice(1),
+    ]);
+    await stable(fixture);
+    expect(cellAt(scroller, 0, 0)!.closest('.tm-grid__row')!.getAttribute('data-tm-key')).toBe(
+      '#100000',
+    );
+    expect(origin.isConnected).toBe(false);
+    // Focus follows the active cell onto an element of its own.
+    const active = scroller.querySelector<HTMLElement>('.tm-grid__cell--active')!;
+    expect(document.activeElement).toBe(active);
+    expect(active).not.toBe(origin);
+    expect(focusins).toContain(active);
+  });
+
+  it('ignores a checkbox click whose press was on the row its element showed before a scroll', async () => {
+    const { fixture, scroller } = await setupSelect();
+    await scrollTo(fixture, scroller, 20 * ROW_HEIGHT);
+    const checkCell = (row: number): HTMLElement =>
+      scroller.querySelector<HTMLElement>(`[data-tm-checkcell][data-row="${row}"]`)!;
+    // The window's first row leaves on a scroll of three rows, and its
+    // element re-binds to a row that enters; a plain click and a Shift
+    // click (a range from the anchor) alike.
+    for (const [top, init] of [
+      [23, {}],
+      [26, { shiftKey: true }],
+    ] as const) {
+      const first = viewIndexOf(rowElements(scroller)[0]);
+      const pressed = checkCell(first);
+      press(pressed);
+      await scrollTo(fixture, scroller, top * ROW_HEIGHT);
+      expect(pressed.isConnected).toBe(true);
+      expect(pressed.getAttribute('data-row')).not.toBe(String(first));
+      release(pressed, init);
+      await stable(fixture);
+      expect([...fixture.componentInstance.selection()]).toEqual([]);
+    }
+    // A press and click on one row still toggles it.
+    const row = viewIndexOf(rowElements(scroller)[6]);
+    press(checkCell(row));
+    release(checkCell(row));
+    await stable(fixture);
+    expect([...fixture.componentInstance.selection()]).toEqual([row]);
   });
 });

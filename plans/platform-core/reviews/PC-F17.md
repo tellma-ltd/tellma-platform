@@ -118,7 +118,7 @@ thread time.
 
 ### Deviations
 
-1. **Rows are tracked by slot, not by `rowId(row)`.** Spec 0004 §5 says the window's `@for`
+1. **Rows are tracked by slot, not by `rowId(row)`.** Spec 0004 §4 says the window's `@for`
    tracks by `rowId(row)` "so scrolling reuses row views". It does not: tracking by row id destroys
    the views of the rows that leave and creates those that enter, and that is the cost this fix
    removes. Rows are tracked by slot, and only the consumer's views are keyed by row id.
@@ -134,7 +134,16 @@ thread time.
    The raise is what the change adds rounded up to 0.5 KB, with 90 B of headroom and 879 B left
    under the 42 KB hard cap. Savings taken: -25 B (the window's end is its start plus its length;
    one pass collects the rendered rows' keys). This is the first raise since the re-split lowered
-   the ceiling. The budgetNotes entry gives the breakdown.
+   the ceiling. The budgetNotes entry gives the breakdown. The review 1 fixes add 136 B (the
+   checkbox press guard and the window's equality test), so the ceiling is now 41.37: 41.27
+   measured (42,265 B; +575 B over the parent), within +575 B rounded up to 1 KB, with 97 B of
+   headroom and 743 B under the hard cap.
+6. **The probes measure unthrottled** (added with the review 1 fixes). 0004 §16 sets the 50 ms
+   scroll budget "measured in CI (Playwright traces on a mid-tier mobile CPU throttle profile)".
+   The grid probes, like the tree and tiles probes before them, apply no CPU throttle. This
+   checkpoint covers §16 unthrottled. On this host the flat grid's longest task takes 43-45 ms of
+   thread time, so it would not meet 50 ms under a 4x throttle. Whether §16 keeps the throttle is
+   for the orchestrator to decide.
 
 ### Open risks
 
@@ -174,3 +183,173 @@ thread time.
   highlight or error state (`tm-grid-reuse.spec.ts`, and the tree-chains test in
   `tm-tree-grid.spec.ts`).
 - The size measurement: re-measure HEAD and this change with the linked measure.
+
+## Review 1
+
+Scope: commit 73069c02 (the grid's row slots, the fixed-length window and sliced scroll frames, the
+keyed consumer views, the moved and new `@perf` probes with their shared loop, the `./grid` raise,
+the ARCHITECTURE.md sentence). Judged against spec 0004 §4, §5.2, §8.3, §8.8 and §16, 0010 §C.13,
+the datagrid's existing behaviour, and the tiles' line slots, which solved the same problem first.
+
+What I checked and found sound:
+
+- **Per-row state across a re-bind.** Every attribute, class and text on the row, its cells, the
+  row header, the checkbox cell and the row-end cell is a binding off the row view model, so a
+  re-bound element re-renders all of it (ids, `aria-rowindex`/`level`/`expanded`/`posinset`/
+  `setsize`/`selected`, `aria-invalid`/`readonly`/`describedby`, tabindex, active, selected, cut,
+  find, flash, error, pending, outlier transform). The only imperative DOM write in the grid's rows
+  is the per-render tabindex pass over projected interactive content, which re-runs on every render.
+  The grid chrome has no CSS transitions, and a re-bound element gains the flash class the way a
+  new one did. The editor, the draft input, the error popover and the popup pane all live on the
+  active row, which keeps its slot while it is rendered, and the active row is always rendered.
+  Signal Forms state is read into the view model; no field directive sits on a row element. Tree
+  state (expanded glyph, indent, child spinner) is bound through the affordance template's context.
+  The consumer's `*tmGridDisplay` and row-end views are keyed by row id (one-entry `@for`), so they
+  never move to another row, and the tiles take the same approach.
+- **Window arithmetic.** Unsliced, `start + size` covers `tmComputeAxisWindow`'s own end, because
+  its visible span is at most `ceil(viewport / row) + 1` rows. Sliced, `start <= first` and
+  `start >= last - size`, so every visible row is in the window, at either end of the data and for
+  an empty view. The fixed length breaks only at the end of the data (`end` clamps), which costs
+  element churn there and nothing else.
+- **The slice's ordering in production.** Angular's listener marks the view dirty before
+  `onScroll` runs, so the change-detection callback is queued ahead of the slice's `setTimeout`.
+  The sliced frame therefore renders first and the overscan follows, under zoneless and zone.js
+  alike. Programmatic scrolls (reveal, find, restore, drag auto-scroll) set `scrollTop` before
+  their event arrives, so they never slice.
+- **Probes.** The shared loop is the old loop verbatim: 40 screen-sized wheel steps each way, one
+  animation frame between steps, `appStable`, and a 50 ms filter. The tiles probe calls it with the
+  same locator and step count as before. The touch project's `testMatch` keeps the probes out of
+  it, and the PR tier's `--grep-invert` keeps `@perf` out of PR runs.
+- **ARCHITECTURE.md** matches the code: slots that a scroll re-binds, and consumer views keyed by
+  row id. The rule this deviates from is 0004 §4's "`@for` over the window tracks by `rowId(row)`
+  (§5.2)", not a §5 sentence. The deviation text cites §5, but its substance is right.
+- **Tests run here.** core-ui unit specs `grid/**`, `tree-grid/**` and `tiles/**`: 630 passed.
+  The Chromium and touch PR-tier e2e for `grid-*`, `tree-grid*` and `tiles*` in CI mode: 412
+  passed. After a clean `ng build core-ui` at this commit, `size:check` reports `./grid` at 41.14
+  against 41.23, the implementer's figure. The +439 B rounds up to the 0.5 KB that D-031 allows,
+  and the budgetNotes entry names the feature, the bytes and the savings. I did not re-measure
+  the parent commit. No CI run exists for pc/PC-F17: the push run 44986364564 was
+  skipped. I did not run the `@perf` probes.
+
+### Findings
+
+**R1-1 (major): a checkbox click after a scroll during the press toggles another row's selection.**
+`client/projects/core/tellma-core-ui/grid/internal/grid-core.ts:3084-3091` (the press on
+`[data-tm-checkcell]` returns without activating the row or capturing the pointer) and `:3333-3338`
+(`onClick` reads `data-row` from the checkbox cell at click time). Unlike every other press in the
+body, a press on the checkbox does not make its row active, so its row element is not protected
+from re-binding. Take a mouse press on row R's checkbox. Wheel the grid while holding the button,
+then release without moving the mouse. If the slot cycle has put R's old element back under the
+pointer, bound to row R + k, the press and the release share a target. The browser then fires
+`click` on it, and `toggleRowCheckAt` toggles R + k. With Shift held, it checks the range from the
+anchor to R + k. Before this change R's element was destroyed, the click went to the common
+ancestor, and nothing toggled.
+
+This is reachable. I replayed `ɵtmGridAssignRowSlots` with the shipped window arithmetic (sliced
+then settled frame per step, a 288 px body, every pointer row, 1-60 wheel steps). The release
+lands on the pressed element, now another row, in 155 of 2,160 cases with 100 px notches (about
+7%). With screen-sized steps it is 600 of 2,160 (about 28%). For example, a press 128 px into the
+body lands on the element again after 10, 27, 32 and 42 notches. `selectedIds` is what bulk
+actions read (0004 §8.8), so an unseen extra check can reach a bulk delete. The tiles hit the same
+case and guard it: `tm-tiles.ts:1009-1013`, with `pressedElsewhere` at `:1154`, ignores a click
+whose row differs from the press's. The grid's port of the slot pattern left that guard out. The
+expander is not affected: its press activates the row (`:3141-3146`), and the active row keeps its
+element.
+
+Fix: on a checkbox-cell press, record the pressed row's key (`closest('[data-tm-key]')`). In
+`onClick`'s check-cell branch, ignore the click when the cell's row key differs, as the tiles do
+(skip the check for `event.detail === 0` keyboard or synthetic clicks). Add a unit test. Dispatch
+`pointerdown` on row r's `.tm-grid__check`, scroll so that element re-binds to another row, then
+dispatch `click` on the same element. Assert that `selectedIds` is unchanged.
+
+**R1-2 (minor): every scroll renders the whole row set twice, even when the window does not move.**
+`grid-core.ts:1468-1499` builds `window` as a plain `computed` that returns a fresh object on
+every evaluation. `onScroll`'s timeout (`:2373`, `sliceFrom.set(null)`) re-evaluates it in the next
+task. `renderRows` (`:1658`) then runs `buildRenderRows` again for every row and cell, and the
+template checks every binding again. This happens when the sliced window already equals the
+settled one, and for every scroll smaller than the overscan, whose sliced frame keeps the old
+window. The review file's own cpuSum figures show it: v2 2,949-5,423 against v1 2,211-3,247. The
+budget is per task, so this is not a breach. It is avoidable main-thread work on every scroll
+step, and it is the first thing a slower device pays for. Fix: give the `window` computed an
+`equal` that compares `start`, `end`, `leadOffset` and `totalSize`. Then a scroll that needs no
+new rows re-renders nothing in its own task, and an overscan task with nothing to add is free.
+Re-measure cpuSum after the change.
+
+**R1-3 (minor): no grid-level test pins the active-row slot retire.**
+`grid-core.ts:4447-4449` passes the last render's active key to `ɵtmGridAssignRowSlots`. Only
+`row-slots.spec.ts` pins the function's contract. The review file says the focus-on-jump test
+in `tm-grid-reuse.spec.ts` passes with or without the retire. So if the core passed the current
+key or `null`, no grid test would fail. One realistic case needs the retire: the consumer
+replaces the active row's temporary id with its saved id. Only that key leaves, and only its
+replacement enters. Without the retire, the replacement takes the focused element in place, with
+no focus change for assistive technology to report. That differs from the grid's behaviour before
+this change, and from what the retire's TSDoc promises. Fix: add a `tm-grid-reuse.spec.ts` case.
+Focus a cell of row r, replace row r's object with one of a new id in `rows`, and settle. Assert
+that the old cell element is detached, that `document.activeElement` is the new row's cell, and
+that a `focusin` reached it. Check that the case fails with the retire argument forced to `null`.
+
+**R1-4 (minor): the commit claims 0004 §16 coverage, but its new probe measures unthrottled.**
+`client/e2e/specs/grid-scroll-budget.spec.ts:22-31` and `client/e2e/support/scroll-probe.ts:30-58`.
+0004 §16 sets the 50 ms scroll budget "measured in CI (Playwright traces on a mid-tier mobile
+CPU throttle profile)". The probes apply no CPU throttle. The review file's thread-time figures
+(43-45 ms for the longest flat-grid task on this host) say the flat grid would not meet 50 ms
+under a 4x throttle. The tree and tiles probes had the same gap before this change, but this
+commit adds the flat probe and claims §16 in its "Spec coverage" line. The gap is not recorded.
+Fix: list the unthrottled measurement under Deviations as a spec misalignment for the
+orchestrator. Do not add a throttle in this item.
+
+### Responses
+
+R1-1: fixed in the "PC-F17: review 1 fixes" commit (child of 73069c02). A press on a row checkbox records its row's key (`checkPressKey`). The
+click consumes it and toggles nothing when the checkbox's row key differs, which covers the Shift
+range too, since it is the same branch. A click with no press of its own (`detail` 0) is always
+its row's, as in the tiles (`pressedElsewhere`). The new unit test
+`ignores a checkbox click whose press was on the row its element showed before a scroll` presses
+the first row's checkbox, scrolls three rows so that element re-binds to another row (asserted),
+releases plainly and then with Shift, and asserts the selection is still empty. It also checks
+that a press and click on one row still toggles it. With the guard removed, the test fails
+(`expected [ 36 ] to deeply equal []`).
+
+R1-2: fixed in the "PC-F17: review 1 fixes" commit (child of 73069c02). The `window` computed has an `equal` that compares `start`, `end`,
+`leadOffset` and `totalSize`, so a scroll that keeps the window renders nothing. Re-measured with
+3 interleaved runs on this host: base, the build before the fix (`v2`) and the build with it
+(`r1`).
+
+| story | build | over 50 per run | cpuSum (tasks of 4 ms or more) | tasks of 16 ms or more | longest task's thread time (ms) |
+|---|---|---|---|---|---|
+| grid-readonly | base | 20, 18, 25 | 3643, 3536, 3883 | 83, 83, 83 | 66, 68, 61 |
+| grid-readonly | v2 | 0, 2, 4 | 4088, 4166, 4153 | 157, 158, 157 | 43, 40, 43 |
+| grid-readonly | r1 | 5, 2, 3 | 3992, 4260, 4124 | 155, 159, 148 | 42, 39, 42 |
+| tree-grid-large | base | 1, 0, 0 | 2337, 2384, 2157 | 81, 83, 82 | 52, 44, 37 |
+| tree-grid-large | v2 | 0, 0, 1 | 2495, 2197, 2581 | 88, 76, 88 | 30, 26, 27 |
+| tree-grid-large | r1 | 2, 0, 2 | 2350, 2546, 2938 | 73, 80, 113 | 32, 28, 31 |
+
+The fix does not move cpuSum or the task count on the probe. Each screen-sized wheel step moves
+the window in both of its tasks, so the probe never takes the path the fix saves. The saving is
+on scrolls smaller than the overscan, whose sliced frame keeps the window, and on an overscan
+task with nothing to add. Every over-50 task of v2 and r1 here is a wall-time stall on a loaded
+host: the longest task's thread time is 39-43 ms on the flat grid and 26-32 on the tree.
+
+R1-3: fixed in the "PC-F17: review 1 fixes" commit (child of 73069c02). The new unit test `keeps a replaced active row off its element, so focus
+moves with a focusin` focuses row 0's cell and replaces row 0's object with one of a new id, so
+only that key leaves and only its replacement enters. It asserts that the replacement renders as
+`#100000` and that the old cell element is detached. It also asserts that focus is on the grid's
+active cell, a different element, and that a `focusin` reached it. With the retire argument
+forced to `null`, the test fails on the detach (`expected true to be false`). One difference
+from the suggested assertions: when the active row's id disappears, the grid moves the active
+cell to the next row (row 1), not onto the replacement. So the test asserts focus on the active
+cell, not on the replacement's cell.
+
+R1-4: fixed in the "PC-F17: review 1 fixes" commit (child of 73069c02) (recorded, not changed, per the orchestrator's ruling). Deviation 6 records
+that the probes measure unthrottled against 0004 §16's mid-tier mobile CPU throttle profile, and
+the commit says §16 is covered unthrottled. The probes stay unthrottled, like the existing tree
+and tiles probes.
+
+Also corrected: deviation 1 now cites 0004 §4, not §5.
+
+Local runs for these fixes: core-ui unit tests for `grid/**`, `tree-grid/**` and `tiles/**` (632
+passed); size:check (`./grid` 41.27 against 41.37); the Chromium PR-tier e2e for `grid-*`,
+`tree-grid*` and `tiles` in CI mode (394 passed); `dotnet build Tellma.slnx` (0 warnings) and
+`dotnet format --verify-no-changes`. The `@perf` probes ran on Chromium with one worker, three
+times each, and are indicative only: flat grid 3 of 3, tree 3 of 3 and tiles 3 of 3, all passing
+outright on a quieter host than the earlier runs.
