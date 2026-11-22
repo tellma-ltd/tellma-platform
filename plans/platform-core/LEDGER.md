@@ -109,10 +109,10 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 
 | PC | Slot | Branch | Step | Implementer agent (name / id) | Reviewer agent (name / id) | Started (UTC) |
 |---|---|---|---|---|---|---|
-| PC-175 | pc-2 | pc/PC-175 | integrating | impl df9e5804 (16 deviations accepted); R1 0/1/4; fix1 6eb3f3c9 held (R1-3 inverted via IPlatformCompanions, no deviation); 5 merge-tree conflicts (README + 4 goldens, regenerate); integrating after PC-214 landed; D-188, D-193 | 0019-b; R1 only | 2026-11-21 |
+| PC-175 | pc-2 | pc/PC-175 | integrating | impl df9e5804 (16 deviations accepted); R1 0/1/4; fix1 6eb3f3c9 held (R1-3 inverted via IPlatformCompanions, no deviation); 5 merge-tree conflicts (README + 4 goldens, regenerate); integrate c6e50d56, pc run 44986216771 pending; D-188, D-193 | 0019-b; R1 only | 2026-11-21 |
 | PC-103 | pc-1 | pc/PC-103 | impl | impl launched (high; R1 only); replaces PC-094 client interims; @tellma/core 20.36/20.44 KB | 0024-g; R1 only | 2026-11-22 |
 | PC-F67 | pc-f2 | pc/PC-F67 | fix1 | impl 0dabb9cc (deviations 2; SchemaMaxDepth 128 via a document-only JsonOptions, for Ahmad; Me restored as MeResult); R1 0/0/2 (type-nesting bound + polymorphic fixture; independent me oracle); fix1 then hold behind PC-175; D-197, D-198 | fix; R1 only | 2026-11-22 |
-| PC-F17 | pc-4 | pc/PC-F17 | impl | fix item (D-195): grid and 21,000-row tree scroll probes to no long task over 50 ms; unquarantine the @perf probes | fix; R1 only | 2026-11-22 |
+| PC-F17 | pc-4 | pc/PC-F17 | R1 | impl 73069c02 (deviations 5: rows tracked by slot against 0004 §5; ./grid ceiling 40.73 to 41.23 KB under D-031; ARCHITECTURE.md core-ui edit; probes unquarantined, thin margin on a loaded host); R1 launched | fix; R1 only | 2026-11-22 |
 | PC-093 | pc-3 | pc/PC-093 | impl | impl launched (high; R1 only); InitialTenant regenerated with dotnet-ef at each integration until first release | 0018-h; R1 only | 2026-11-22 |
 | PC-F11 | pc-f | pc/PC-F11 | impl | fix item (D-195): PDF worker filesystem confinement (Landlock; AppContainer or low integrity); security-bound | fix; R1 + R2 fable; implementer xhigh | 2026-11-22 |
 
