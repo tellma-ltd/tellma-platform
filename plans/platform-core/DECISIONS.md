@@ -384,6 +384,17 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-213 (orchestrator, 2026-11-22): PC-095 fix2 accepted; release order after PC-F17
+
+Fix2 (c5732459) fixed R2-1..R2-4 and pushed none back.
+- The new suite passed 35/35 and AlertQueryTests 6/6.
+- The two non-empty notification-preferences saves each took 1 round trip against a budget of 2.
+- The merge-tree is clean. web.json and contracts.json are regenerated at integration.
+
+Release order once PC-F17's blocked push lands:
+- PC-095 (T1) first, ahead of the held fix item and the T2 item, as D-194 and D-202's addendum put T1 ahead.
+- Then PC-F11 (held before PC-143), then PC-143 (D-190, D-211).
+
 ### D-212 (orchestrator, 2026-11-22): PC-095 Review 2 rulings
 
 Review 2 (inherit, xhigh) found 0/0/4.
