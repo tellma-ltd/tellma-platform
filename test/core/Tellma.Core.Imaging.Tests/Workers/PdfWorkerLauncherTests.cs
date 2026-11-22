@@ -12,21 +12,171 @@ namespace Tellma.Core.Imaging.Tests.Workers
     ///     How a worker is started: <c>dotnet exec</c> on the host's own runtime files, told the
     ///     host's process id, under an environment of the worker's runtime settings alone, with a
     ///     managed heap sized to its memory limit on Linux and left to the Job Object on Windows,
-    ///     and with a command line that splits back into exactly its arguments; and how the
-    ///     worker's sandbox reads the descriptors it must close and the host it must die with.
+    ///     and with a command line that splits back into exactly its arguments; what a confined
+    ///     worker may read, which is the runtime, the host's assemblies and native libraries by
+    ///     name, the system's libraries and fonts, and nothing else of the host's; and how the
+    ///     worker's sandbox reads the descriptors it must close, the host it must die with and the
+    ///     allowance it confines itself to.
     /// </summary>
     public sealed class PdfWorkerLauncherTests
     {
+        // A Linux host's files, as the composition sees them: the runtime's installation, and the
+        // host's own directory, which holds its configuration beside its assemblies.
+        private static readonly PdfWorkerFiles LinuxFiles = new(
+            "/usr/share/dotnet", "/usr/share/dotnet/dotnet", "/app/Host.runtimeconfig.json", "/app/Host.deps.json", "/app/Tellma.Core.Imaging.PdfWorker.dll");
+
         [Fact]
         public void A_worker_is_started_with_dotnet_exec_on_the_hosts_runtime_files()
         {
-            var launcher = new PdfWorkerLauncher(arguments: ["extra"]);
+            var launcher = new PdfWorkerLauncher(arguments: ["extra"], confine: false);
             PdfWorkerFiles files = launcher.Files;
 
             string host = Environment.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            Assert.False(launcher.Confines);
             Assert.Equal(
                 ["exec", "--runtimeconfig", files.RuntimeConfiguration, "--depsfile", files.Dependencies, files.Worker, WorkerSandbox.HostProcessArgument, host, "extra"],
                 launcher.Arguments());
+        }
+
+        [Fact]
+        public void A_confined_linux_worker_is_told_its_allowance_before_the_launchers_arguments()
+        {
+            var launcher = new PdfWorkerLauncher(arguments: ["extra"], confine: true);
+            PdfWorkerFiles files = launcher.Files;
+
+            // Section: on Linux the worker confines itself, so its allowance is on its command
+            // line; a Windows worker's AppContainer is the launcher's doing.
+            string host = Environment.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            List<string> allowance = OperatingSystem.IsLinux() ? launcher.Allowance.Arguments() : [];
+            Assert.True(launcher.Confines);
+            Assert.Equal(
+                ["exec", "--runtimeconfig", files.RuntimeConfiguration, "--depsfile", files.Dependencies, files.Worker, WorkerSandbox.HostProcessArgument, host, .. allowance, "extra"],
+                launcher.Arguments());
+
+            // Section: whatever the operating system, the allowance names the worker and the host's
+            // runtime files, and no directory of the host's own.
+            Assert.Contains(files.Worker, launcher.Allowance.Read);
+            Assert.Contains(files.Dependencies, launcher.Allowance.Read);
+            Assert.Contains(files.RuntimeConfiguration, launcher.Allowance.WindowsFiles);
+            Assert.DoesNotContain(Path.GetDirectoryName(files.Worker)!, launcher.Allowance.ReadBeneath);
+            Assert.DoesNotContain(launcher.Allowance.ReadBeneath, path => files.Worker.StartsWith(path + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase));
+        }
+
+        [Fact]
+        public void This_hosts_workers_are_confined_wherever_its_operating_system_can_confine_them()
+        {
+            Assert.Equal(PdfWorkerLauncher.CanConfine, new PdfWorkerLauncher().Confines);
+            Assert.Equal(OperatingSystem.IsWindows() || (OperatingSystem.IsLinux() && Landlock.Version() >= 1), PdfWorkerLauncher.CanConfine);
+            Assert.False(OperatingSystem.IsMacOS() && PdfWorkerLauncher.CanConfine);
+        }
+
+        [Fact]
+        public void On_linux_the_allowance_reads_the_hosts_own_files_by_name_and_the_systems_beneath_their_directories()
+        {
+            var allowance = WorkerAllowance.Compose(
+                LinuxFiles,
+                trustedAssemblies: ["/usr/share/dotnet/shared/Microsoft.NETCore.App/10.0.0/System.Private.CoreLib.dll", "/app/Host.dll", "/app/SkiaSharp.dll"],
+                nativeLibraries: ["/app/libSkiaSharp.so", "/app/libpdfium.so"],
+                mappedLibraries:
+                [
+                    "/usr/share/dotnet/shared/Microsoft.NETCore.App/10.0.0/libcoreclr.so", "/usr/lib/x86_64-linux-gnu/libc.so.6",
+                    "/usr/lib/x86_64-linux-gnu/libfontconfig.so.1", "/opt/vendor/libextra.so.2", "/app/libSkiaSharp.so",
+                ],
+                interpreter: "/lib64/ld-linux-x86-64.so.2",
+                fontDirectories: ["/usr/share/fonts"],
+                loaderFiles: ["/etc/ld.so.cache"],
+                windows: false);
+
+            // Section: the host's files one by one, any other library the host mapped, and the
+            // loader's cache; never the host's directory, its configuration or its secrets.
+            Assert.Equal(
+                [
+                    "/app/Host.deps.json", "/app/Host.dll", "/app/Host.runtimeconfig.json", "/app/SkiaSharp.dll", "/app/Tellma.Core.Imaging.PdfWorker.dll",
+                    "/app/libSkiaSharp.so", "/app/libpdfium.so", "/etc/ld.so.cache", "/opt/vendor/libextra.so.2",
+                ],
+                allowance.Read);
+
+            // Section: the runtime's installation, the C library's directory and the fonts, beneath
+            // them; and the two programs the worker's restart executes.
+            Assert.Equal(["/usr/lib/x86_64-linux-gnu", "/usr/share/dotnet/host", "/usr/share/dotnet/shared", "/usr/share/fonts"], allowance.ReadBeneath);
+            Assert.Equal(["/lib64/ld-linux-x86-64.so.2", "/usr/share/dotnet/dotnet"], allowance.Execute);
+
+            // Section: the command line the worker parses back into the same allowance.
+            List<string> arguments = [.. allowance.Arguments(), "mode"];
+            List<(string Path, ulong Access)> parsed = WorkerConfinement.TakeAllowance(arguments);
+            Assert.Equal(["mode"], arguments);
+            Assert.Equal(
+                [
+                    .. allowance.ReadBeneath.Select(static path => (path, Landlock.ReadFile | Landlock.ReadDirectory)),
+                    .. allowance.Read.Select(static path => (path, Landlock.ReadFile)),
+                    .. allowance.Execute.Select(static path => (path, Landlock.ReadFile | Landlock.Execute)),
+                ],
+                parsed);
+        }
+
+        [Fact]
+        public void On_windows_the_allowance_grants_the_hosts_own_files_and_leaves_the_runtimes_installation_to_its_installer()
+        {
+            var files = new PdfWorkerFiles(
+                @"C:\Program Files\dotnet", @"C:\Program Files\dotnet\dotnet.exe", @"D:\app\Host.runtimeconfig.json", @"D:\app\Host.deps.json", @"D:\app\Tellma.Core.Imaging.PdfWorker.dll");
+
+            var allowance = WorkerAllowance.Compose(
+                files,
+                trustedAssemblies: [@"c:\program files\dotnet\shared\Microsoft.NETCore.App\10.0.0\System.Private.CoreLib.dll", @"D:\app\Host.dll"],
+                nativeLibraries: [@"D:\app\libSkiaSharp.dll", @"D:\app\pdfium.dll"],
+                mappedLibraries: [],
+                interpreter: null,
+                fontDirectories: [],
+                loaderFiles: [],
+                windows: true);
+
+            Assert.Equal(
+                [@"D:\app\Host.deps.json", @"D:\app\Host.dll", @"D:\app\Host.runtimeconfig.json", @"D:\app\libSkiaSharp.dll", @"D:\app\pdfium.dll", @"D:\app\Tellma.Core.Imaging.PdfWorker.dll"],
+                allowance.WindowsFiles);
+            Assert.Equal(allowance.WindowsFiles, allowance.Read);
+        }
+
+        [Fact]
+        public void The_worker_takes_its_allowance_arguments_and_leaves_the_rest()
+        {
+            List<string> arguments =
+            [
+                "mode", WorkerConfinement.ConfineArgument, WorkerConfinement.ReadArgument, "/a", "other",
+                WorkerConfinement.ReadBeneathArgument, "/b c", WorkerConfinement.ExecuteArgument, "/d",
+            ];
+
+            List<(string Path, ulong Access)> allowed = WorkerConfinement.TakeAllowance(arguments);
+
+            Assert.Equal([("/a", Landlock.ReadFile), ("/b c", Landlock.ReadFile | Landlock.ReadDirectory), ("/d", Landlock.ReadFile | Landlock.Execute)], allowed);
+            Assert.Equal(["mode", "other"], arguments);
+        }
+
+        [Theory]
+        [InlineData("--read", "relative")]
+        [InlineData("--read-beneath", "")]
+        [InlineData("--execute", "C:/dotnet")]
+        public void A_malformed_allowance_argument_is_refused(string argument, string path)
+        {
+            Assert.Throws<ArgumentException>(() => WorkerConfinement.TakeAllowance([argument, path]));
+            Assert.Throws<ArgumentException>(() => WorkerConfinement.TakeAllowance([argument]));
+        }
+
+        [Fact]
+        public void A_rule_carries_only_the_rights_its_kernel_knows_and_a_files_rule_only_a_files_rights()
+        {
+            // Section: ABI 1's thirteen rights; then refer (2), truncate (3) and device control (5).
+            Assert.Equal(0x1FFFUL, Landlock.FilesystemRights(1));
+            Assert.Equal(0x3FFFUL, Landlock.FilesystemRights(2));
+            Assert.Equal(0x7FFFUL, Landlock.FilesystemRights(3));
+            Assert.Equal(0x7FFFUL, Landlock.FilesystemRights(4));
+            Assert.Equal(0xFFFFUL, Landlock.FilesystemRights(5));
+            Assert.Equal(0xFFFFUL, Landlock.FilesystemRights(7));
+
+            // Section: listing is a directory's right, which a rule on a file may not carry.
+            const ulong readAll = Landlock.ReadFile | Landlock.ReadDirectory | Landlock.Execute;
+            Assert.Equal(readAll, Landlock.Grantable(7, readAll, directory: true));
+            Assert.Equal(Landlock.ReadFile | Landlock.Execute, Landlock.Grantable(7, readAll, directory: false));
+            Assert.Throws<ArgumentOutOfRangeException>(static () => Landlock.FilesystemRights(0));
         }
 
         [Fact]

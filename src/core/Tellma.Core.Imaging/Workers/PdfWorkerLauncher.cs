@@ -10,11 +10,12 @@ using Tellma.Core.Imaging.PdfWorker;
 namespace Tellma.Core.Imaging.Workers
 {
     /// <summary>Where the files a worker is started from are, resolved once per launcher.</summary>
+    /// <param name="Root">The installation the muxer runs a worker on: the muxer's directory, which holds its <c>host</c> and <c>shared</c> directories.</param>
     /// <param name="Muxer">The <c>dotnet</c> executable of the runtime the host runs on.</param>
     /// <param name="RuntimeConfiguration">The host's <c>.runtimeconfig.json</c>.</param>
     /// <param name="Dependencies">The host's <c>.deps.json</c>.</param>
     /// <param name="Worker">The worker's assembly, beside the host's.</param>
-    internal sealed record PdfWorkerFiles(string Muxer, string RuntimeConfiguration, string Dependencies, string Worker);
+    internal sealed record PdfWorkerFiles(string Root, string Muxer, string RuntimeConfiguration, string Dependencies, string Worker);
 
     /// <summary>
     ///     Starts PDF workers: <c>dotnet exec</c> on the worker assembly with the host's own
@@ -22,9 +23,16 @@ namespace Tellma.Core.Imaging.Workers
     ///     framework, PDFium and Skia, from wherever the host's build or publish put them, under the
     ///     least environment that runs it.
     /// </summary>
+    /// <remarks>
+    ///     Workers are confined to what their <see cref="WorkerAllowance" /> lets them read, and
+    ///     write no file, wherever the operating system can confine them: on Linux where the kernel
+    ///     offers Landlock, which the worker restricts itself with before it starts over; on
+    ///     Windows always, in an AppContainer of the worker's own. macOS workers are not confined.
+    /// </remarks>
     /// <param name="worker">The worker assembly to start; the PDF worker beside this one when null.</param>
     /// <param name="arguments">Arguments appended after the worker's own; none when null.</param>
-    internal sealed class PdfWorkerLauncher(string? worker = null, IReadOnlyList<string>? arguments = null)
+    /// <param name="confine">Whether workers are confined; wherever the operating system can confine them when null.</param>
+    internal sealed class PdfWorkerLauncher(string? worker = null, IReadOnlyList<string>? arguments = null, bool? confine = null)
     {
         // The worker's runtime settings, which win over the host's runtime configuration:
         // workstation GC with no background thread for a process that renders once, no
@@ -41,12 +49,29 @@ namespace Tellma.Core.Imaging.Workers
             new("DOTNET_TieredPGO", "0"),
         ];
 
+        // Whether this kernel offers Landlock, asked once: Linux 5.13 and later, unless it was
+        // booted without it or a container's system-call filter refuses it.
+        private static readonly Lazy<bool> LandlockOffered = new(static () => OperatingSystem.IsLinux() && Landlock.Version() >= 1);
+
         private readonly Lazy<PdfWorkerFiles> _files = new(() => Locate(worker), LazyThreadSafetyMode.ExecutionAndPublication);
         private readonly IReadOnlyList<string> _arguments = arguments ?? [];
 
         /// <summary>The files workers are started from.</summary>
         /// <exception cref="PdfWorkerException">A file is missing: the host cannot run workers.</exception>
         public PdfWorkerFiles Files => _files.Value;
+
+        /// <summary>
+        ///     Whether the operating system this host runs on confines a worker's files: Linux whose
+        ///     kernel offers Landlock, and Windows.
+        /// </summary>
+        public static bool CanConfine => OperatingSystem.IsWindows() || LandlockOffered.Value;
+
+        /// <summary>Whether this launcher's workers are confined, which each must confirm in its ready frame.</summary>
+        public bool Confines { get; } = confine ?? CanConfine;
+
+        /// <summary>What a confined worker may read; resolved once per launcher (a race may resolve it twice, alike).</summary>
+        /// <exception cref="PdfWorkerException">A file is missing: the host cannot run workers.</exception>
+        public WorkerAllowance Allowance => LazyInitializer.EnsureInitialized(ref field, () => WorkerAllowance.For(Files));
 
         /// <summary>
         ///     The worker's whole environment: the runtime settings above, and what its operating
@@ -103,14 +128,16 @@ namespace Tellma.Core.Imaging.Workers
 
         /// <summary>
         ///     The command line after the muxer: the host's runtime files, the worker, the host's
-        ///     process id (which the worker checks is its parent's), and the launcher's own arguments.
+        ///     process id (which the worker checks is its parent's), on Linux a confined worker's
+        ///     allowance, and the launcher's own arguments.
         /// </summary>
         /// <returns>The arguments.</returns>
         internal List<string> Arguments()
         {
             PdfWorkerFiles files = Files;
             string host = System.Environment.ProcessId.ToString(CultureInfo.InvariantCulture);
-            return ["exec", "--runtimeconfig", files.RuntimeConfiguration, "--depsfile", files.Dependencies, files.Worker, WorkerSandbox.HostProcessArgument, host, .. _arguments];
+            List<string> confinement = Confines && OperatingSystem.IsLinux() ? Allowance.Arguments() : [];
+            return ["exec", "--runtimeconfig", files.RuntimeConfiguration, "--depsfile", files.Dependencies, files.Worker, WorkerSandbox.HostProcessArgument, host, .. confinement, .. _arguments];
         }
 
         /// <summary>
@@ -127,9 +154,10 @@ namespace Tellma.Core.Imaging.Workers
             Dictionary<string, string> environment = Environment(memoryLimit);
 
             // The working directory is a system one, never the host's: nothing there is the worker's
-            // to read, and a planted library in it could not be found by the loader.
+            // to read, and a planted library in it could not be found by the loader. A confined
+            // Windows worker gets read on its allowance's files through its capability.
             return OperatingSystem.IsWindows()
-                ? WindowsWorkerProcess.Start(files.Muxer, arguments, environment, System.Environment.SystemDirectory)
+                ? WindowsWorkerProcess.Start(files.Muxer, arguments, environment, System.Environment.SystemDirectory, Confines ? Allowance.WindowsFiles : null)
                 : UnixWorkerProcess.Start(files.Muxer, arguments, environment, "/");
         }
 
@@ -180,7 +208,7 @@ namespace Tellma.Core.Imaging.Workers
             string path = worker ?? typeof(WorkerProtocol).Assembly.Location;
             return string.IsNullOrEmpty(path) || !File.Exists(path)
                 ? throw Missing("the PDF worker assembly (Tellma.Core.Imaging.PdfWorker.dll)", "Ship it beside the host's assemblies; it comes with the Tellma.Core.Imaging package.")
-                : new PdfWorkerFiles(muxer, runtimeConfiguration, dependencies, path);
+                : new PdfWorkerFiles(Path.GetDirectoryName(Path.GetFullPath(muxer))!, muxer, runtimeConfiguration, dependencies, path);
         }
 
         /// <summary>A number as the runtime's configuration reads it: hexadecimal.</summary>

@@ -29,10 +29,21 @@ namespace Tellma.Core.Imaging.PdfWorker
     ///         clearing the parent-death signal that ends the worker with its host; and the kernel
     ///         interfaces exploits favour (io_uring, userfaultfd, perf events, BPF, namespaces, the
     ///         key store).
-    ///         <c>clone3</c> answers <c>ENOSYS</c>, because its flags sit behind a pointer the filter
-    ///         cannot read; the C library then creates threads with <c>clone</c>, whose flags it can.
-    ///         Any other system call is allowed, so the runtime and PDFium work as they would
-    ///         anywhere.
+    ///     </para>
+    ///     <para>
+    ///         It also refuses every change to a file: opening one for writing, creating or
+    ///         truncating it, renaming, linking or removing it, making a directory, device or
+    ///         symbolic link, and changing its mode, owner, times, extended attributes or inode
+    ///         flags. That holds whatever the kernel's Landlock knows, which confines reads, and
+    ///         covers what Landlock does not restrict at all (modes, owners, times, attributes).
+    ///         The worker's only writable descriptors are its pipes and the runtime's anonymous
+    ///         memory files.
+    ///     </para>
+    ///     <para>
+    ///         <c>clone3</c> and <c>openat2</c> answer <c>ENOSYS</c>, because their flags sit behind
+    ///         a pointer the filter cannot read; the C library then creates threads with
+    ///         <c>clone</c> and opens files with <c>openat</c>, whose flags it can. Any other system
+    ///         call is allowed, so the runtime and PDFium work as they would anywhere.
     ///     </para>
     ///     <para>
     ///         A process id is a C <c>int</c>, which the kernel reads from the low half of the
@@ -70,6 +81,7 @@ namespace Tellma.Core.Imaging.PdfWorker
         private const uint SetSignal = 10; // F_SETSIG
         private const uint SetOwnerExtended = 15; // F_SETOWN_EX
         private const uint SignalDrivenIo = 0x2000; // O_ASYNC
+        private const uint OpenForWriting = 0x1 | 0x2 | 0x40 | 0x200; // O_WRONLY | O_RDWR | O_CREAT | O_TRUNC
 
         // Offsets into struct seccomp_data: the call number, the architecture, and the low words of
         // the first three arguments (little-endian).
@@ -146,6 +158,16 @@ namespace Tellma.Core.Imaging.PdfWorker
                     425, 426, 427, 323, 298,    // io_uring_setup, io_uring_enter, io_uring_register, userfaultfd, perf_event_open
                     321, 272, 308,              // bpf, unshare, setns
                     248, 249, 250,              // add_key, request_key, keyctl
+                    76, 85, 304,                // truncate, creat, open_by_handle_at
+                    82, 264, 316, 86, 265,      // rename, renameat, renameat2, link, linkat
+                    88, 266, 87, 263,           // symlink, symlinkat, unlink, unlinkat
+                    83, 258, 84, 133, 259,      // mkdir, mkdirat, rmdir, mknod, mknodat
+                    90, 91, 268, 452,           // chmod, fchmod, fchmodat, fchmodat2
+                    92, 93, 94, 260,            // chown, fchown, lchown, fchownat
+                    132, 235, 261, 280,         // utime, utimes, futimesat, utimensat
+                    188, 189, 190, 463,         // setxattr, lsetxattr, fsetxattr, setxattrat
+                    197, 198, 199, 466,         // removexattr, lremovexattr, fremovexattr, removexattrat
+                    469,                        // file_setattr
                 ]
                 : [
                     198, 199,                   // socket, socketpair
@@ -159,6 +181,16 @@ namespace Tellma.Core.Imaging.PdfWorker
                     425, 426, 427, 282, 241,    // io_uring_setup, io_uring_enter, io_uring_register, userfaultfd, perf_event_open
                     280, 97, 268,               // bpf, unshare, setns
                     217, 218, 219,              // add_key, request_key, keyctl
+                    45, 265,                    // truncate, open_by_handle_at
+                    38, 276, 37,                // renameat, renameat2, linkat
+                    36, 35,                     // symlinkat, unlinkat
+                    34, 33,                     // mkdirat, mknodat
+                    52, 53, 452,                // fchmod, fchmodat, fchmodat2
+                    55, 54,                     // fchown, fchownat
+                    88,                         // utimensat
+                    5, 6, 7, 463,               // setxattr, lsetxattr, fsetxattr, setxattrat
+                    14, 15, 16, 466,            // removexattr, lremovexattr, fremovexattr, removexattrat
+                    469,                        // file_setattr
                 ];
 
             // Section: the calls allowed only on the worker's own process, by its pid as the first
@@ -179,13 +211,19 @@ namespace Tellma.Core.Imaging.PdfWorker
             uint fcntl = x64 ? 72u : 25u;
             uint ioctl = x64 ? 16u : 29u;
             uint clone = x64 ? 56u : 220u;
+            uint openAt = x64 ? 257u : 56u;
+            const uint open = 2; // x64 only; arm64 has openat alone
             const uint clone3 = 435;
+            const uint openAt2 = 437;
 
             // Section: the ioctl requests refused, the same on both architectures
-            // (include/uapi/asm-generic/ioctls.h and sockios.h): TIOCSTI and TIOCLINUX, which push
-            // input into a terminal for whoever reads it next; FIOASYNC, which asks for
-            // signal-driven I/O; FIOSETOWN and SIOCSPGRP, which name a socket's owner.
-            uint[] refusedRequests = [0x5412, 0x541C, 0x5452, 0x8901, 0x8902];
+            // (include/uapi/asm-generic/ioctls.h and sockios.h, linux/fs.h): TIOCSTI and
+            // TIOCLINUX, which push input into a terminal for whoever reads it next; FIOASYNC,
+            // which asks for signal-driven I/O; FIOSETOWN and SIOCSPGRP, which name a socket's
+            // owner; FS_IOC_SETFLAGS, FS_IOC_SETVERSION (each in its 64- and 32-bit form) and
+            // FS_IOC_FSSETXATTR, which change a file's attributes through a descriptor opened only
+            // for reading.
+            uint[] refusedRequests = [0x5412, 0x541C, 0x5452, 0x8901, 0x8902, 0x40086602, 0x40046602, 0x40087602, 0x40047602, 0x401C5820];
 
             // Section: another architecture's calls kill the process; so do x32 calls on x64.
             var program = new List<Instruction>
@@ -277,6 +315,29 @@ namespace Tellma.Core.Imaging.PdfWorker
 
             program.Add(Statement(ReturnConstant, ErrorNumber | PermissionDenied));
             program.Add(Statement(ReturnConstant, Allow));
+
+            // Section: a file may be opened only for reading: open (x64) and openat refuse any of
+            // O_WRONLY, O_RDWR, O_CREAT and O_TRUNC in their flags (the second argument of open,
+            // the third of openat). A descriptor opened for reading cannot be written, truncated or
+            // mapped shared for writing, so no file is written in place. openat2 takes its flags
+            // behind a pointer the filter cannot read, so it is not implemented, and the C library
+            // and the runtime open files with openat.
+            if (x64)
+            {
+                program.Add(Jump(JumpIfEqual, open, 0, 4));
+                program.Add(Statement(LoadWordAbsolute, SecondArgumentOffset));
+                program.Add(Jump(JumpIfAnyBitSet, OpenForWriting, 0, 1));
+                program.Add(Statement(ReturnConstant, ErrorNumber | PermissionDenied));
+                program.Add(Statement(ReturnConstant, Allow));
+            }
+
+            program.Add(Jump(JumpIfEqual, openAt, 0, 4));
+            program.Add(Statement(LoadWordAbsolute, ThirdArgumentOffset));
+            program.Add(Jump(JumpIfAnyBitSet, OpenForWriting, 0, 1));
+            program.Add(Statement(ReturnConstant, ErrorNumber | PermissionDenied));
+            program.Add(Statement(ReturnConstant, Allow));
+            program.Add(Jump(JumpIfEqual, openAt2, 0, 1));
+            program.Add(Statement(ReturnConstant, ErrorNumber | NotImplemented));
 
             // Section: clone3 is not implemented, so the C library falls back to clone, which is
             // allowed only to create a thread (CLONE_THREAD in its flags, its first argument).

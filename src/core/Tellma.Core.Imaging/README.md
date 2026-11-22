@@ -71,21 +71,28 @@ bounds what it can take.
    nothing of the host's, its secrets included. Its working directory is a system one. Before
    every start, a Linux host first closes itself to its own account
    ([below](#what-a-linux-host-closes-of-itself)).
-2. **Handles and identity.** On Windows the worker is created suspended on a restricted copy of the
-   host's token (no privilege, low integrity), put in its own Job Object, then resumed, and a
-   handle list lets it inherit its three pipes and nothing else. On Linux .NET opens every
-   descriptor close-on-exec; the host lists any descriptor some native library left inheritable,
-   and the worker closes each before it reads anything. A Linux worker runs as the host's user.
-3. **Sandbox and limits.** The worker reports ready once its runtime is up. On Linux it has by then
+2. **Files.** The worker is confined to reading what it runs on
+   ([below](#what-a-worker-may-read)) and writes no file. On Linux the host passes the allowance on
+   its command line, and the worker restricts itself with Landlock and starts over as the same
+   program, which the kernel then runs restricted on every thread. On Windows the host starts it
+   in an AppContainer of its own, whose capability the host's files of the allowance grant read to.
+3. **Handles and identity.** On Windows the worker is created suspended on a restricted copy of the
+   host's token (no privilege, low integrity), made a lowbox token in its AppContainer, put in its
+   own Job Object, then resumed, and a handle list lets it inherit its three pipes and nothing
+   else. On Linux .NET opens every descriptor close-on-exec; the host lists any descriptor some
+   native library left inheritable, and the worker closes each before it reads anything. A Linux
+   worker runs as the host's user.
+4. **Sandbox and limits.** The worker reports ready once its runtime is up, with its confinement:
+   the host refuses a worker it confines that does not report it. On Linux it has by then
    asked the kernel to kill it when its host dies (and has stopped if the host was already gone),
    left its host's session, so that a terminal the host was started from is not the worker's to
    control, made itself non-dumpable, which closes its entries under `/proc` (the upload on its
    input among them) to the host's other workers, dropped every capability, and installed a
    seccomp filter on all its threads that refuses sockets, new programs and processes, SysV
    objects, every call that would signal, trace, read or re-limit another process or have the
-   kernel signal one on the worker's word, input pushed into a terminal, and the kernel interfaces
-   exploits favour (the host refuses a Linux worker without the filter). Only then does the host
-   cap it from outside: on Windows, the job's
+   kernel signal one on the worker's word, input pushed into a terminal, every change to a file,
+   and the kernel interfaces exploits favour (the host refuses a Linux worker without the filter).
+   Only then does the host cap it from outside: on Windows, the job's
    committed-memory limit (the baseline plus `PdfWorkerMemoryLimit`), user-mode CPU time, one
    process, no crash dialog, no desktop or clipboard, and death with the host's handle; on Linux,
    `prlimit` sets `RLIMIT_DATA` (the private memory the worker holds once started plus
@@ -94,16 +101,16 @@ bounds what it can take.
    `RLIMIT_CPU`, and zero core-dump and file sizes, soft and hard alike. The CPU limit is the
    call's budget plus a second, at most 60 s, and 60 s for a call without a budget, so a worker
    always ends on its own. Then the host sends the document.
-4. **Protocol.** Three length-prefixed, size-capped frames over the worker's standard input and
+5. **Protocol.** Three length-prefixed, size-capped frames over the worker's standard input and
    output ([WorkerProtocol](../Tellma.Core.Imaging.PdfWorker/WorkerProtocol.cs)): ready, request
    (thumbnail size and the PDF, at most 32 MiB), result (a PNG, or a refusal or failure detail). Each
    reader refuses a wrong magic number or a length beyond its cap before allocating for it.
-5. **Answer.** The worker's PNG is treated like an upload: [WorkerPng](Workers/WorkerPng.cs) checks
+6. **Answer.** The worker's PNG is treated like an upload: [WorkerPng](Workers/WorkerPng.cs) checks
    its signature, its header (8-bit RGB or RGBA, no interlace, the longer side exactly the thumbnail
    size) and that nothing but image data follows; Skia's PNG decoder then decodes it at those
    dimensions, and it is encoded in the policy's format exactly as a page rendered in-process was.
    A worker's detail text is reduced to one line of printable ASCII before it is logged.
-6. **End.** The worker is killed when the budget runs out or the caller cancels, and always when
+7. **End.** The worker is killed when the budget runs out or the caller cancels, and always when
    the call ends; the call's PDF slot comes back only once the worker's process is gone. On Windows
    the kill also cancels the host's pending reads and writes on the worker's pipes, so a call ends
    with its worker even when some other process inherited one of the worker's pipe ends. A worker
@@ -114,7 +121,8 @@ bounds what it can take.
    limit stands behind both.
 
 A worker renders one document and exits, so no upload ever shares a process with another tenant's.
-Starting one costs about 0.2 to 0.5 s; PDF thumbnails are rare (one per PDF upload) and the budget
+Starting one costs about 0.2 to 0.5 s (on Linux about 0.1 s of it is the runtime's second start,
+which the worker's confinement takes); PDF thumbnails are rare (one per PDF upload) and the budget
 is 5 s, so a pool would buy little and lose that isolation. PDF workers have slots of their own,
 `PdfWorkerConcurrency`, apart from the image slots: at most that many run at once, each under its
 memory limit, and image uploads never wait behind them. A PDF that finds every slot taken waits for
@@ -166,6 +174,29 @@ The price is the operators':
 | Attaching a managed debugger | Not possible once a worker has started, and the startup check starts one. A debugger that started the host, or attached before that, holds the pipes open and stays attached (by the runtime's design; not exercised). |
 | `strace`, `gdb`, `lldb`, `lsof`, reading `/proc/<pid>` | Only for a process with `CAP_SYS_PTRACE`, as root on the machine has. |
 
+## What a worker may read
+
+The host computes a worker's allowance ([WorkerAllowance](Workers/WorkerAllowance.cs)) once per
+launcher, from what it runs on itself:
+
+- the runtime's installation: on Linux its `host` and `shared` directories, with everything beneath
+  them; on Windows the installer already grants every AppContainer read on it;
+- the host's runtime configuration, dependency manifest, trusted assemblies and native libraries
+  (PDFium and Skia among them), each by name: never their directory, which holds the host's
+  configuration and secrets too;
+- on Linux, the system's library directory (the C library's), any other library the host has
+  mapped, by name, the dynamic loader's cache, and the font directories PDFium looks in
+  (`/usr/share/fonts`, `/usr/local/share/fonts`, `/usr/share/X11/fonts/Type1` and `TTF`); and the
+  worker's own `/proc/<pid>`, which the runtime reads;
+- on Windows, the system's files, which grant every AppContainer read.
+
+Nothing else: not the host's configuration files or temporary directory, not the account's home,
+not another process's `/proc` entries, not `/proc` itself, not a terminal. A Windows host adds an
+access-control entry granting the workers' capability (`tellmaPdfWorker`) read and execute to each
+of its own files in the allowance, once, and leaves it in place; only processes that hold that
+capability, its workers, gain anything by it. The host must therefore be allowed to change those
+files' permissions, as the account that built or deployed them is.
+
 ## Where PDF thumbnails render
 
 A worker is only as contained as its operating system's hold on it, so a host renders PDF
@@ -173,8 +204,10 @@ thumbnails only where that hold is good enough for production, and for developer
 
 | Host | PDF thumbnails |
 |---|---|
-| Linux with glibc | Rendered, in every environment. This is the production host. |
-| Windows, macOS | Rendered only in the Development environment (`IHostEnvironment.IsDevelopment()`). A Windows worker can still end its host's process and open other workers of the same account; a macOS worker runs under no operating-system limit. |
+| Linux with glibc, on a kernel that offers Landlock | Rendered, in every environment. This is the production host. |
+| Linux with glibc, without Landlock | Rendered only in the Development environment, with unconfined workers; the check logs `BlobPdfWorkerUnconfined` at Warning. Landlock is in Linux 5.13 and later, enabled where it is listed in `/sys/kernel/security/lsm`; a container's system-call filter must allow its three calls, as Docker's default profile did when measured. |
+| Windows | Rendered only in the Development environment (`IHostEnvironment.IsDevelopment()`). The worker is confined in an AppContainer, made through `NtCreateLowBoxToken`, an undocumented system call, and not yet verified under the Windows hosting environments. |
+| macOS | Rendered only in the Development environment. A macOS worker runs under no operating-system limit, and the check logs `BlobPdfWorkerUnconfined`. |
 | Linux with another C library (musl, as on Alpine) | Never. The .NET runtime there signals its threads with `tkill`, which the worker's filter refuses. |
 
 A host that renders none starts no worker: a PDF there gets no thumbnail, as a file of any other
@@ -220,40 +253,35 @@ What a document does through PDFium's ordinary behaviour (taking memory and CPU,
 its worker. The risks below need more: an exploit of PDFium that runs an attacker's code in the
 worker. On Linux, the production host:
 
-- **A compromised worker runs as the host's user and reaches its files.** It holds no capability
-  and can gain no privilege, and it cannot reach the network, start a program, or signal, trace or
-  re-limit another process. But it can read what the host's account can read, the host's
-  configuration files included, and encode what it reads into the pixels of the thumbnail it
-  returns, the one output the host accepts. The host's environment and memory it cannot read, for
-  the host closes them; the host's command line it can, as every process on the machine can, so
-  pass the host no secret there. The zero file-size limit stops it creating file content or
-  growing a file, not changing files the account may already write: it can overwrite them in place
-  through a mapping, and truncate, rename or delete them, the application's own files included
-  where the account owns them. A terminal the host was started from is such a file: a worker
-  cannot control it, push input into it or have the host signalled through it, but it can open the
-  device and read what is typed there, or write to it. A filesystem sandbox (Landlock) over the
-  worker would close all of this, `/proc` and the temporary directory with it; none is in place.
-  Until then, run the host as a service, not from a terminal, and as a user that cannot write its
-  own application files.
-- **The account's other processes are open to a worker.** The host closes itself, and each worker
-  closes itself; any other process of the same account does neither. A worker can read such a
-  process's environment and reopen its open files and, if it is a .NET process, its code memory
-  and debugger pipes, whatever `kernel.yama.ptrace_scope` is. Where that is 0, or the kernel has no
+- **A compromised worker reads what it runs on.** It holds no capability and can gain no
+  privilege; it cannot reach the network, start a program, signal, trace or re-limit another
+  process, or change any file. What it can read is its allowance: the runtime, the host's
+  assemblies, dependency manifest and runtime configuration (code and its wiring, no secrets unless
+  the host puts some there), the system's libraries, the loader's cache, the fonts, and its own
+  `/proc` entries. It could encode what it reads into the pixels of the thumbnail it returns, the
+  one output the host accepts; none of it is the host's configuration, secrets, temporary files or
+  uploads. The host's command line it can read in its own `/proc` entries only as its own; the
+  host's it cannot. A terminal the host was started from is closed to it: it cannot open the
+  device.
+- **What the kernel's Landlock does not govern.** Landlock decides on opening, listing, executing
+  and changing files, not on looking them up: a worker can still learn whether a path exists, and
+  a file's size, owner and times (`stat`), its link target, and with `inotify` when one of the
+  account's readable files changes. It cannot read a byte of such a file.
+- **An unconfined worker.** On a Development host without Landlock, a worker can read what the
+  host's account can read, its configuration files included; its filter still refuses every change
+  to a file. The account's other processes are open to it as well: it can read such a process's
+  environment and reopen its open files for reading and, if it is a .NET process, its code memory
+  and debugger pipes, whatever `kernel.yama.ptrace_scope` is; where that is 0, or the kernel has no
   Yama, it can open such a process's memory too, and the `core.imaging` check logs
-  `BlobPdfWorkerPtraceUnrestricted` at Warning. Run nothing else under the host's account: give
-  the host a container, or a service account, of its own.
-- **A worker is open to its host's other workers while it starts.** The kernel makes every newly
-  started program dumpable, so from its start until it enters its sandbox (the runtime's own
-  startup, some tens of milliseconds, before the host sends it anything) a worker of an
-  unprivileged host can be opened through `/proc` by a compromised worker that runs at that
-  moment: its pipes among them, through which the upload and the thumbnail later pass. The same
-  filesystem sandbox would close this, as would sockets in place of the pipes, which `/proc` does
-  not reopen. A worker of a root host that keeps its capabilities has no such moment.
-- **A host that runs as root lends its worker root's files.** The worker holds no capability, but
-  what root owns is its own. Beside the files, it can raise the host's `/proc/<pid>/oom_score_adj`
-  (measured), which makes the host the kernel's first choice when memory runs out; an unprivileged
-  host's is closed to it. Run the host as an unprivileged user, as the `app` user of the .NET
-  container images is.
+  `BlobPdfWorkerPtraceUnrestricted` at Warning beside `BlobPdfWorkerUnconfined`. A confined worker
+  reaches no other process's `/proc` entries, and the kernel refuses it the `ptrace` family of
+  access to every process outside its confinement, whatever that setting; it also reaches no
+  other worker while that one starts, the moment a worker is still dumpable.
+- **A host that runs as root.** The worker holds no capability, and what root owns is closed to it
+  beyond its allowance, as anything else is. An unconfined worker of a root host would read root's
+  files and could raise the host's `/proc/<pid>/oom_score_adj`; a confined one can open neither.
+  Run the host as an unprivileged user all the same, as the `app` user of the .NET container
+  images is.
 - **The memory limit binds a document, not exploit code.** `RLIMIT_DATA` counts private memory,
   which is what PDFium, Skia and the runtime allocate. Shared mappings are held only by the
   address-space limit, and a started worker holds about 3.2 GiB of address space at the default
@@ -267,17 +295,21 @@ worker. On Linux, the production host:
 - **Memory is capped per worker, not per host.** `PdfWorkerConcurrency` workers may each take
   `PdfWorkerMemoryLimit`; size both for the host.
 - **Deployment.** A worker needs the host to run framework-dependent on an installed .NET runtime,
-  not as a single file or self-contained, on Linux with glibc, seccomp and `prlimit`; the startup
-  check fails where a worker cannot start.
+  not as a single file or self-contained, on Linux with glibc, seccomp, Landlock and `prlimit`; the
+  startup check fails where a worker cannot start.
 
 On Windows and macOS, where PDF thumbnails render only in Development:
 
-- **Windows.** The worker's low integrity level keeps it out of the host's memory, threads and
-  handles, and from writing the host's files. It can still end the host's process and open the
-  account's other low-integrity processes, other workers among them; it can read the account's
-  files; nothing keeps it off the network (no unprivileged Windows mechanism denies one process
-  the network); and memory mapped from pagefile-backed sections is not counted by the Job Object's
-  limit (768 MiB mapped and touched under a 128 MiB limit, measured).
+- **Windows.** The worker's AppContainer keeps it out of the host's process (ending it included)
+  and every other worker's, off the network (the loopback interface included), and away from every
+  file but the system's, the runtime's and those of its allowance; its low integrity level and
+  the AppContainer each keep it from writing any of the account's files. It rests on
+  `NtCreateLowBoxToken`, which Windows' own AppContainer start calls and Chromium's sandbox calls
+  likewise, but which is undocumented; the documented start needs an AppContainer profile
+  registered per user and per worker. The host's own files keep the access-control entries it adds
+  for the workers' capability. Memory mapped from pagefile-backed sections is not counted by the Job
+  Object's limit (768 MiB mapped and touched under a 128 MiB limit, measured). Production on
+  Windows waits on verifying the AppContainer under the Windows hosting environments.
 - **macOS.** A worker runs under no operating-system limit; only the budget's kill ends it.
 
 ## Telemetry
@@ -290,9 +322,10 @@ an input (or a PDF worker is started); `BlobImageFailed` (debug) records each fa
 `BlobImageUnexpectedFailure` (warning) an exception the processor does not anticipate,
 `BlobPdfWorkerFailed` (warning) a PDF worker that failed rather than refusing its document, and
 `BlobImageBusy` (warning) an upload that found every slot busy. The startup check writes
-`BlobPdfThumbnailsDisabled` (warning) on a host that renders no PDF thumbnails, with the reason, and
-`BlobPdfWorkerPtraceUnrestricted` (warning) on a Linux machine whose kernel lets a worker open the
-memory of the other processes of the host's account.
+`BlobPdfThumbnailsDisabled` (warning) on a host that renders no PDF thumbnails, with the reason,
+`BlobPdfWorkerUnconfined` (warning) on a Development host whose workers run without filesystem
+confinement, and `BlobPdfWorkerPtraceUnrestricted` (warning) on a Linux machine whose kernel lets
+such an unconfined worker open the memory of the other processes of the host's account.
 
 ## Native assets
 

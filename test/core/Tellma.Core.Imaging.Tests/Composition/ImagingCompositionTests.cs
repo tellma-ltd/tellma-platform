@@ -21,7 +21,8 @@ namespace Tellma.Core.Imaging.Tests.Composition
     ///     <c>AddTellmaSkia</c>: one processor registration however often it is called, resolvable
     ///     from a plain container, and the startup check that proves the natives load; and where a
     ///     host renders PDF thumbnails at all, which the processor and the check decide alike from
-    ///     the host's environment, the check saying so in the log.
+    ///     the host's environment, the check saying so in the log, as it says when the host's
+    ///     workers run without filesystem confinement.
     /// </summary>
     [Collection(SerialSuites.Name)]
     public sealed class ImagingCompositionTests
@@ -182,17 +183,19 @@ namespace Tellma.Core.Imaging.Tests.Composition
             services.AddTellmaSkia();
             using ServiceProvider provider = services.BuildServiceProvider(new ServiceProviderOptions { ValidateOnBuild = true });
 
-            // A host that registers no environment is not in Development. The suites run on glibc.
+            // A host that registers no environment is not in Development. The suites run on glibc,
+            // with Landlock or without.
             SkiaImageProcessor processor = Assert.IsType<SkiaImageProcessor>(provider.GetRequiredService<IImageProcessor>());
-            PdfThumbnailSupport expected = OperatingSystem.IsLinux() || environment == "Development"
+            PdfThumbnailSupport expected = environment == "Development" || (OperatingSystem.IsLinux() && PdfWorkerLauncher.CanConfine)
                 ? PdfThumbnailSupport.Enabled
-                : PdfThumbnailSupport.DisabledOutsideDevelopment;
+                : OperatingSystem.IsLinux() ? PdfThumbnailSupport.DisabledWithoutLandlock : PdfThumbnailSupport.DisabledOutsideDevelopment;
             Assert.Equal(expected, processor.PdfThumbnails);
         }
 
         [Theory]
         [InlineData("DisabledOutsideDevelopment")]
         [InlineData("DisabledOnMusl")]
+        [InlineData("DisabledWithoutLandlock")]
         public async Task A_host_that_renders_no_pdf_thumbnails_passes_the_startup_check_with_a_warning_and_starts_no_worker(string support)
         {
             // The check's worker is missing: starting it would be a problem.
@@ -213,8 +216,8 @@ namespace Tellma.Core.Imaging.Tests.Composition
         [Fact]
         public async Task The_startup_check_decides_from_the_hosts_environment_whether_a_worker_is_probed()
         {
-            // A Production host: on Linux it renders PDF thumbnails, so the missing worker is a
-            // problem; elsewhere it renders none, starts no worker, and says so.
+            // A Production host: on Linux with Landlock it renders PDF thumbnails, so the missing
+            // worker is a problem; elsewhere it renders none, starts no worker, and says so.
             var check = new ImagingStartupCheck(MissingWorker());
             var logger = new FakeLogger<SkiaImageProcessor>();
             using ServiceProvider provider = new ServiceCollection()
@@ -225,7 +228,7 @@ namespace Tellma.Core.Imaging.Tests.Composition
             IReadOnlyList<CompositionProblem> problems = await check.CheckAsync(provider, TestContext.Current.CancellationToken);
 
             string?[] events = [.. logger.Collector.GetSnapshot().Select(static record => record.Id.Name)];
-            if (OperatingSystem.IsLinux())
+            if (OperatingSystem.IsLinux() && PdfWorkerLauncher.CanConfine)
             {
                 Assert.Contains("PDF worker assembly", Assert.Single(problems).Problem, StringComparison.Ordinal);
                 Assert.DoesNotContain("BlobPdfThumbnailsDisabled", events);
@@ -242,18 +245,21 @@ namespace Tellma.Core.Imaging.Tests.Composition
         [InlineData(null, true)]
         [InlineData("1\n", false)]
         [InlineData("3", false)]
-        public async Task On_linux_the_startup_check_warns_when_the_kernel_lets_a_worker_open_the_memory_of_the_accounts_other_processes(string? scope, bool warns)
+        public async Task On_linux_the_startup_check_warns_when_the_kernel_lets_an_unconfined_worker_open_the_memory_of_the_accounts_other_processes(string? scope, bool warns)
         {
             Assert.SkipUnless(OperatingSystem.IsLinux(), "Yama's ptrace scope is a Linux kernel setting.");
-            var check = new ImagingStartupCheck(readPtraceScope: () => scope);
+            var check = new ImagingStartupCheck(new PdfWorkerLauncher(confine: false), PdfThumbnailSupport.Enabled, () => scope);
             var logger = new FakeLogger<SkiaImageProcessor>();
             using ServiceProvider provider = new ServiceCollection().AddSingleton<ILogger<SkiaImageProcessor>>(logger).BuildServiceProvider();
 
             IReadOnlyList<CompositionProblem> problems = await check.CheckAsync(provider, TestContext.Current.CancellationToken);
 
-            // A warning, never a problem: the host starts, and PDF thumbnails render.
+            // Warnings, never a problem: the host starts, and PDF thumbnails render. The first says
+            // the workers are unconfined.
             Assert.Empty(problems);
             FakeLogRecord[] records = [.. logger.Collector.GetSnapshot()];
+            Assert.Equal("BlobPdfWorkerUnconfined", records[0].Id.Name);
+            records = records[1..];
             if (warns)
             {
                 FakeLogRecord record = Assert.Single(records);
@@ -269,6 +275,40 @@ namespace Tellma.Core.Imaging.Tests.Composition
             {
                 Assert.Empty(records);
             }
+        }
+
+        [Fact]
+        public async Task The_startup_check_warns_when_the_hosts_workers_run_without_filesystem_confinement()
+        {
+            var check = new ImagingStartupCheck(new PdfWorkerLauncher(confine: false), PdfThumbnailSupport.Enabled, static () => "1");
+            var logger = new FakeLogger<SkiaImageProcessor>();
+            using ServiceProvider provider = new ServiceCollection().AddSingleton<ILogger<SkiaImageProcessor>>(logger).BuildServiceProvider();
+
+            IReadOnlyList<CompositionProblem> problems = await check.CheckAsync(provider, TestContext.Current.CancellationToken);
+
+            // A warning, never a problem: the unconfined worker still rendered the probe.
+            Assert.Empty(problems);
+            FakeLogRecord record = Assert.Single(logger.Collector.GetSnapshot());
+            Assert.Equal("BlobPdfWorkerUnconfined", record.Id.Name);
+            Assert.Equal(LogLevel.Warning, record.Level);
+            Assert.Contains("without filesystem confinement (the image processor's launcher does not confine them)", record.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public async Task A_host_whose_workers_are_confined_warns_of_neither_confinement_nor_the_ptrace_scope()
+        {
+            Assert.SkipUnless(PdfWorkerLauncher.CanConfine, "This host's operating system cannot confine a worker's files.");
+
+            // The kernel's ptrace scope is the loosest: a confined worker still reaches no other
+            // process's memory.
+            var check = new ImagingStartupCheck(pdfThumbnails: PdfThumbnailSupport.Enabled, readPtraceScope: static () => "0");
+            var logger = new FakeLogger<SkiaImageProcessor>();
+            using ServiceProvider provider = new ServiceCollection().AddSingleton<ILogger<SkiaImageProcessor>>(logger).BuildServiceProvider();
+
+            IReadOnlyList<CompositionProblem> problems = await check.CheckAsync(provider, TestContext.Current.CancellationToken);
+
+            Assert.Empty(problems);
+            Assert.Empty(logger.Collector.GetSnapshot());
         }
 
         [Theory]

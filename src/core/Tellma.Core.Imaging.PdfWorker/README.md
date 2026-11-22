@@ -19,6 +19,12 @@ standard input; on Linux it refuses to run unless the process that started it is
 
 ## One worker's life
 
+0. **Confinement, on Linux** ([WorkerConfinement](WorkerConfinement.cs)), when the host passes
+   `--confine` and the allowance (`--read <file>`, `--read-beneath <directory>`,
+   `--execute <program>`): it restricts its own thread with [Landlock](Landlock.cs), then executes
+   the same command line again, which the kernel starts under that restriction, every thread of it.
+   The second start finds `--confined <descriptor>` in place of the allowance, checks that the
+   restriction holds, and goes on (see [Filesystem confinement](#filesystem-confinement)).
 1. **Sandbox** ([WorkerSandbox](WorkerSandbox.cs)), before anything of the upload is read: it
    closes each descriptor the host named as inherited by accident (`--close-fd <n> <target>`, only
    when it still refers to that target), and keeps its protocol output on a private duplicate of
@@ -30,8 +36,10 @@ standard input; on Linux it refuses to run unless the process that started it is
    included, can open its descriptors or memory through `/proc`, drops every capability, and
    installs its [SeccompFilter](SeccompFilter.cs) on every thread. Without the filter it does not
    run on Linux.
-2. **Ready**: it writes the ready frame, with what it enforces on itself. The host now applies its
-   memory and CPU limits from outside.
+2. **Ready**: it writes the ready frame, with what it enforces on itself: the system-call filter,
+   and its filesystem confinement (Landlock on Linux; on Windows, the AppContainer it checks its
+   token is in). The host refuses a worker it confines that does not report it, and only then
+   applies its memory and CPU limits from outside.
 3. **Request**: it reads one request ([WorkerProtocol](WorkerProtocol.cs)): the thumbnail size and
    the PDF, at most 32 MiB, refused before allocation when out of range. From then on, its input
    ending means the host is gone or gave up, and it exits at once, mid-render or not.
@@ -41,6 +49,47 @@ standard input; on Linux it refuses to run unless the process that started it is
    white without annotations or form fields, and Skia encodes it as a lossless PNG.
 5. **Answer**: one result frame, the PNG, a refusal (the document is at fault: encrypted, malformed,
    over a cap) or a failure (the worker is: out of memory under its cap, say), and it exits.
+
+## Filesystem confinement
+
+A worker may read only what it runs on and write no file at all. The host computes the allowance
+(`WorkerAllowance` in the image processor's package): the runtime's installation (its `host` and
+`shared` directories), the host's runtime configuration, dependency manifest, trusted assemblies and
+native libraries one file at a time (never their directory, which holds the host's configuration
+and secrets too), and on Linux the system's library directory (the C library's), any other library
+the host has mapped, the dynamic loader's cache, and the font directories PDFium looks in.
+
+On Linux the worker puts that in place itself, through Landlock:
+
+- **Why it starts over.** A Landlock restriction binds the thread that asks for it and what that
+  thread starts, never the threads that already run, and the runtime has threads of its own before
+  any of the worker's code does. So the first start restricts its one thread, marks every
+  descriptor but one close-on-exec, and executes the same program again: the kernel starts it under
+  the restriction from its first instruction. The muxer and the ELF interpreter are the only
+  programs the restriction lets it execute, and its filter refuses `execve` once it is installed.
+- **What it handles.** Every filesystem right the kernel knows is refused except reading beneath
+  the allowed paths and executing those two programs. From the kernels that know them, TCP binding
+  and connecting are refused too (the filter refuses sockets already), and so are signals and
+  abstract Unix sockets aimed outside the restriction.
+- **`/proc`.** The worker's own `/proc/<pid>` stays readable, which the runtime reads: the first
+  start opens it as an `O_PATH` descriptor, grants it, and keeps it open across the restart, since
+  the kernel ties a rule to an inode that lasts only while something holds it. Every other
+  process's entries, and the listing of `/proc`, are refused. Landlock also refuses a restricted
+  process the `ptrace` family of access to any process outside its restriction, whatever Yama's
+  `ptrace_scope` is.
+- **The check.** The second start finds that descriptor (`--confined <n>`), checks that it is its
+  own `/proc/<pid>`, and checks that `/` cannot be read; otherwise it stops.
+
+The filter refuses every change to a file as well (below), whatever ABI the kernel's Landlock has,
+which covers what Landlock does not govern at all: modes, owners, times and extended attributes.
+
+On Windows the host starts the worker in an AppContainer of its own (a lowbox token over its
+restricted, low-integrity one), holding one capability that the host's files of the allowance grant
+read and execute to; the runtime's installation and the system's files already grant every
+AppContainer read. The worker checks that its token is in an AppContainer and reports the
+confinement. An AppContainer with no network capability reaches no network, the loopback interface
+included, and no process grants it access, another worker's included, since each worker's
+AppContainer is its own.
 
 ## The system-call filter
 
@@ -74,18 +123,24 @@ code that took over the renderer would want:
   allowed.
 - **Kernel interfaces exploits favour**: `io_uring`, `userfaultfd`, `perf_event_open`, `bpf`,
   `unshare`, `setns` and the key store.
+- **Every change to a file**: `open` and `openat` with any of `O_WRONLY`, `O_RDWR`, `O_CREAT` and
+  `O_TRUNC`, `creat`, `truncate`, `open_by_handle_at`; renaming, linking and unlinking; making
+  directories, devices, pipes and symbolic links; changing a file's mode, owner, times or extended
+  attributes (`file_setattr` among them); and `ioctl`'s `FS_IOC_SETFLAGS`, `FS_IOC_SETVERSION` and
+  `FS_IOC_FSSETXATTR`, which change a file's attributes through a descriptor opened for reading. A
+  descriptor opened for reading cannot be written, truncated or mapped shared for writing, so the
+  worker's only writable descriptors are its pipes and the runtime's anonymous memory files.
 
-`clone3` answers `ENOSYS`, so the C library creates threads with `clone`, whose flags the filter can
-read. A call through another architecture's entry point kills the process. Everything else is
-allowed: the filter is a list of what is refused, and it does not confine the worker's view of the
-filesystem (the [residual risks](../Tellma.Core.Imaging/README.md#residual-risks) say what that
-leaves open). The .NET runtime signals its threads with `tgkill` on glibc and with `tkill` on musl,
-which is why a host on musl renders no PDF thumbnails.
+`clone3` and `openat2` answer `ENOSYS`, so the C library creates threads with `clone` and opens
+files with `openat`, whose flags the filter can read. A call through another architecture's entry
+point kills the process. Everything else is allowed: the filter is a list of what is refused, and
+what the worker may read is its confinement's to decide. The .NET runtime signals its threads with
+`tgkill` on glibc and with `tkill` on musl, which is why a host on musl renders no PDF thumbnails.
 
 ## Exit codes
 
-0 once a result is written; 64 for an argument it does not know, 65 when the sandbox could not be
-put in place (the reason on standard error), 66 for a malformed request, 67 when the host closed its
+0 once a result is written; 64 for an argument it does not know, 65 when the sandbox or the
+confinement could not be put in place (the reason on standard error), 66 for a malformed request, 67 when the host closed its
 input, 68 for a failure it could not report. A worker the host killed reports 137 on Linux
 (SIGKILL) and on Windows. One a limit stopped reports the signal's code on Linux (137 at the CPU
 limit, 153 for a file write) and the system's status on Windows; an allocation the memory limit

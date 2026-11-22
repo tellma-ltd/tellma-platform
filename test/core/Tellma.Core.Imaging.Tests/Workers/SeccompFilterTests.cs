@@ -12,9 +12,11 @@ namespace Tellma.Core.Imaging.Tests.Workers
     ///     another architecture's calls and x32 calls kill, each refused call is refused with EPERM,
     ///     signals, resource limits and scheduling reach the worker's own process only, the
     ///     parent-death signal cannot be changed, fcntl and ioctl cannot name a descriptor's owner
-    ///     or its signal, ask for signal-driven I/O or push input into a terminal, clone3 answers
-    ///     ENOSYS, clone creates threads only, and every other call is allowed, number by number.
-    ///     The sandbox suite proves the installed filter's effect in a real worker.
+    ///     or its signal, ask for signal-driven I/O, push input into a terminal or change a file's
+    ///     attributes, a file opens for reading only, nothing changes a file by name, clone3 and
+    ///     openat2 answer ENOSYS, clone creates threads only, and every other call is allowed,
+    ///     number by number. The sandbox and confinement suites prove the installed filter's effect
+    ///     in a real worker.
     /// </summary>
     public sealed class SeccompFilterTests
     {
@@ -36,7 +38,12 @@ namespace Tellma.Core.Imaging.Tests.Workers
         // pidfd_send_signal, tkill; ioprio_set, migrate_pages, move_pages; shmget, shmat, shmctl;
         // semget, semop, semctl, semtimedop; msgget, msgsnd, msgrcv, msgctl; io_uring_setup,
         // io_uring_enter, io_uring_register, userfaultfd, perf_event_open; bpf, unshare, setns;
-        // add_key, request_key, keyctl.
+        // add_key, request_key, keyctl. Then the calls that change a file by name or through a
+        // descriptor opened for reading: truncate, creat, open_by_handle_at; rename, renameat,
+        // renameat2, link, linkat; symlink, symlinkat, unlink, unlinkat; mkdir, mkdirat, rmdir,
+        // mknod, mknodat; chmod, fchmod, fchmodat, fchmodat2; chown, fchown, lchown, fchownat;
+        // utime, utimes, futimesat, utimensat; setxattr, lsetxattr, fsetxattr, setxattrat;
+        // removexattr, lremovexattr, fremovexattr, removexattrat; file_setattr.
         private static readonly uint[] RefusedX64 =
         [
             41, 53,
@@ -50,9 +57,20 @@ namespace Tellma.Core.Imaging.Tests.Workers
             425, 426, 427, 323, 298,
             321, 272, 308,
             248, 249, 250,
+            76, 85, 304,
+            82, 264, 316, 86, 265,
+            88, 266, 87, 263,
+            83, 258, 84, 133, 259,
+            90, 91, 268, 452,
+            92, 93, 94, 260,
+            132, 235, 261, 280,
+            188, 189, 190, 463,
+            197, 198, 199, 466,
+            469,
         ];
 
-        // The same calls on arm64, which has no fork or vfork.
+        // The same calls on arm64, which has no fork or vfork, and of the calls that change a
+        // file, only those that take a directory descriptor (and truncate).
         private static readonly uint[] RefusedArm64 =
         [
             198, 199,
@@ -66,6 +84,16 @@ namespace Tellma.Core.Imaging.Tests.Workers
             425, 426, 427, 282, 241,
             280, 97, 268,
             217, 218, 219,
+            45, 265,
+            38, 276, 37,
+            36, 35,
+            34, 33,
+            52, 53, 452,
+            55, 54,
+            88,
+            5, 6, 7, 463,
+            14, 15, 16, 466,
+            469,
         ];
 
         public static TheoryData<bool, uint, uint> Calls => new()
@@ -216,7 +244,9 @@ namespace Tellma.Core.Imaging.Tests.Workers
 
             // Section: the calls refused when aimed at the host: those refused outright, those
             // allowed on the worker's own process only, setpriority (whose first argument here is
-            // no PRIO_PROCESS) and clone (whose flags here lack CLONE_THREAD).
+            // no PRIO_PROCESS), clone (whose flags here lack CLONE_THREAD) and, on x64, open (whose
+            // flags here, the host's pid, hold O_WRONLY). openat's flags, its third argument, are
+            // none here, so it opens for reading.
             HashSet<uint> refused =
             [
                 .. x64 ? RefusedX64 : RefusedArm64,
@@ -224,13 +254,18 @@ namespace Tellma.Core.Imaging.Tests.Workers
                 x64 ? 141u : 140u,
                 x64 ? 56u : 220u,
             ];
-            const uint clone3 = 435;
+            if (x64)
+            {
+                _ = refused.Add(2);
+            }
 
-            // Section: every number, with the host's pid as both arguments. One wrong jump in the
-            // program would hand some call another call's verdict.
+            const uint clone3 = 435, openAt2 = 437;
+
+            // Section: every number, with the host's pid as the first two arguments. One wrong jump
+            // in the program would hand some call another call's verdict.
             for (uint number = 0; number < 1024; number++)
             {
-                uint expected = number == clone3 ? NotImplemented : refused.Contains(number) ? PermissionDenied : Allow;
+                uint expected = number is clone3 or openAt2 ? NotImplemented : refused.Contains(number) ? PermissionDenied : Allow;
                 Assert.Equal((number, expected), (number, Run(program, number, architecture, Host, Host)));
             }
         }
@@ -342,18 +377,64 @@ namespace Tellma.Core.Imaging.Tests.Workers
             uint ioctl = x64 ? 16u : 29u;
             uint architecture = x64 ? X64 : Arm64;
 
-            // Section: TIOCSTI, TIOCLINUX, FIOASYNC, FIOSETOWN and SIOCSPGRP are refused. The
-            // kernel reads the request as a C unsigned int, from the register's low half.
-            Assert.All((ulong[])[0x5412, 0x541C, 0x5452, 0x8901, 0x8902], request =>
+            // Section: TIOCSTI, TIOCLINUX, FIOASYNC, FIOSETOWN and SIOCSPGRP are refused, as are
+            // FS_IOC_SETFLAGS, FS_IOC32_SETFLAGS, FS_IOC_SETVERSION, FS_IOC32_SETVERSION and
+            // FS_IOC_FSSETXATTR. The kernel reads the request as a C unsigned int, from the
+            // register's low half.
+            Assert.All((ulong[])[0x5412, 0x541C, 0x5452, 0x8901, 0x8902, 0x40086602, 0x40046602, 0x40087602, 0x40047602, 0x401C5820], request =>
             {
                 Assert.Equal((request, PermissionDenied), (request, Run(program, ioctl, architecture, 0, request)));
                 Assert.Equal((request, PermissionDenied), (request, Run(program, ioctl, architecture, 0, 0xFFFF_FFFF_0000_0000UL | request)));
             });
 
             // Section: their neighbours are allowed: TCGETS, TIOCGPGRP, TIOCGWINSZ, FIONREAD,
-            // FIONBIO, FIONCLEX, FIOCLEX, FIOGETOWN and SIOCGPGRP.
-            Assert.All((ulong[])[0x5401, 0x540F, 0x5413, 0x541B, 0x5421, 0x5450, 0x5451, 0x8903, 0x8904], request =>
+            // FIONBIO, FIONCLEX, FIOCLEX, FIOGETOWN, SIOCGPGRP, FS_IOC_GETFLAGS,
+            // FS_IOC32_GETFLAGS, FS_IOC_GETVERSION and FS_IOC_FSGETXATTR.
+            Assert.All((ulong[])[0x5401, 0x540F, 0x5413, 0x541B, 0x5421, 0x5450, 0x5451, 0x8903, 0x8904, 0x80086601, 0x80046601, 0x80087601, 0x801C581F], request =>
                 Assert.Equal((request, Allow), (request, Run(program, ioctl, architecture, 0, request))));
+        }
+
+        [Theory]
+        [InlineData(true, true)]
+        [InlineData(true, false)]
+        [InlineData(false, false)]
+        public void A_file_opens_for_reading_only(bool x64, bool legacyOpen)
+        {
+            SeccompFilter.Instruction[] program = SeccompFilter.Build(x64, Self);
+            uint architecture = x64 ? X64 : Arm64;
+            const ulong directory = 0xFFFF_FF9C, highHalf = 0xFFFF_FFFF_0000_0000UL;
+
+            // Section: x64's open takes its flags second; openat, on both, third, after the
+            // directory descriptor (here AT_FDCWD).
+            uint Open(ulong flags)
+            {
+                return legacyOpen
+                    ? Run(program, 2, architecture, 0x1000, flags)
+                    : Run(program, x64 ? 257u : 56u, architecture, directory, 0x1000, flags);
+            }
+
+            // Section: O_WRONLY, O_RDWR, O_CREAT and O_TRUNC are refused, alone, together with
+            // others (O_CLOEXEC, O_APPEND, O_TMPFILE's directory bit), or under a high half the
+            // kernel ignores, since it reads the flags as a C int.
+            Assert.All((ulong[])[0x1, 0x2, 0x40, 0x200, 0x1 | 0x80000, 0x2 | 0x400, 0x41 | 0x80, 0x241, 0x410000 | 0x2, highHalf | 0x1], flags =>
+                Assert.Equal((flags, PermissionDenied), (flags, Open(flags))));
+
+            // Section: reading is allowed, with any flag that writes nothing: O_CLOEXEC,
+            // O_NONBLOCK, O_NOFOLLOW, O_PATH, O_APPEND without write access, the directory bit;
+            // and so is a high half alone.
+            Assert.All((ulong[])[0, 0x80000, 0x800, 0x20000 | 0x80000, 0x200000 | 0x80000, 0x400, 0x10000, highHalf], flags =>
+                Assert.Equal((flags, Allow), (flags, Open(flags))));
+        }
+
+        [Theory]
+        [InlineData(true)]
+        [InlineData(false)]
+        public void Openat2_is_not_implemented_whatever_its_flags(bool x64)
+        {
+            // Its flags are behind a pointer, its third argument, which the filter cannot read.
+            SeccompFilter.Instruction[] program = SeccompFilter.Build(x64, Self);
+            Assert.Equal(NotImplemented, Run(program, 437, x64 ? X64 : Arm64, 0xFFFF_FF9C, 0x1000, 0x2000));
+            Assert.Equal(NotImplemented, Run(program, 437, x64 ? X64 : Arm64, 0, 0, 0));
         }
 
         [Theory]
