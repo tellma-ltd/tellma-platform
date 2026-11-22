@@ -29,6 +29,10 @@ namespace Tellma.Core.AspNetCore.OpenApi
     // options; the transformers add what the types alone cannot say: the securable an operation
     // requires, which members a save never takes, what a navigation's related entity carries, the
     // tag of each operation's resource, and the string-or-number encodings of decimal and long.
+    //
+    // The schema generator reads the host's JSON options with their nesting limit raised to the
+    // document's own (SchemaMaxDepth): spec 0016 §3.1's limit of 16 bounds the documents the wire
+    // reads and writes, and a schema nests deeper than the documents it describes.
 
     /// <summary>The web surface's OpenAPI document, served in Development alone.</summary>
     internal static class WebOpenApi
@@ -60,6 +64,20 @@ namespace Tellma.Core.AspNetCore.OpenApi
         /// <summary>The format of a long, written as a string or read as a number.</summary>
         public const string Int64Format = "int64";
 
+        /// <summary>
+        ///     The deepest nesting a schema may have while the document is generated, in place of the
+        ///     wire's 16, which still bounds every request and response body.
+        /// </summary>
+        /// <remarks>
+        ///     A schema nests deeper than the values it describes: two levels for each object a value
+        ///     nests (<c>properties</c>, then the member's schema) and four for each polymorphic one
+        ///     (<c>anyOf</c>, its entry, <c>properties</c>, the member). The deepest value the wire
+        ///     carries therefore needs at most 65 levels, and this limit leaves about as much again for the
+        ///     generator's own wrapping. It guards the generator's recursion; nothing is read from a
+        ///     caller under it.
+        /// </remarks>
+        public const int SchemaMaxDepth = 128;
+
         /// <summary>Registers the document and its transformers.</summary>
         /// <param name="services">The host's services.</param>
         public static void Register(IServiceCollection services)
@@ -90,6 +108,9 @@ namespace Tellma.Core.AspNetCore.OpenApi
                     return Task.CompletedTask;
                 });
             });
+
+            // --- The schema generator under the document's own nesting limit ---
+            SchemaJson.Register(services, DocumentName);
         }
 
         /// <summary>Maps the document's endpoint.</summary>

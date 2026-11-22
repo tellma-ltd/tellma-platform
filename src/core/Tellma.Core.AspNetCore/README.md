@@ -122,7 +122,7 @@ Maps the tenantless platform routes and returns the tenant route groups:
 | `GET /health/live`, `GET /health/ready` | anonymous |
 | `/api/admin/v1/...` | `Tellma.ControlPlane`; when `Tellma:Admin:Enabled` (default: standalone identity) |
 | `GET /.well-known/oauth-protected-resource/{tenantId}/mcp` | anonymous; RFC 9728 metadata, output-cached five minutes |
-| `GET /openapi/web.json` | anonymous; the web surface's OpenAPI 3.1 document, in Development alone, output-cached five minutes |
+| `GET /openapi/web.json` | anonymous; the web surface's OpenAPI 3.1 document, in Development alone, output-cached five minutes; its schemas are the real wire types, generated under the HTTP JSON options with the document's own nesting limit (`WebOpenApi.SchemaMaxDepth`, 128) in place of the wire's 16, which still bounds every body |
 | `GET /bff/login` | anonymous; the sign-in challenge |
 | `POST /bff/logout` | `Tellma.Web`; the sign-out, `global` or `local` |
 | `GET /bff/user` | `Tellma.Web`; the user and the tenants the membership hints list |

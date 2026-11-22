@@ -57,7 +57,7 @@ namespace Tellma.Core.IntegrationTests.Client
             // --- Every member, the settings written from the cache's bytes ---
             TenantSettingsForClient settings = result.Settings!.Deserialize();
             Assert.Equal(ConnectDatabase.TenantA, settings.TenantId);
-            Assert.Equal(ann, result.Me!.Deserialize().User.Id);
+            Assert.Equal(ann, result.Me!.User.Id);
             Assert.Equal(ClientItems, result.Tags.Keys.Take(4));
             Assert.Equal(VersionTagWire.Entities(new VersionTag(await fixture.TenantTagAsync(LookupItem))), result.Tags[LookupItem]);
             Assert.Empty(result.StaleEntities);
@@ -157,7 +157,7 @@ namespace Tellma.Core.IntegrationTests.Client
             Guid caller = (await fixture.UserTagsAsync(ann)).Permissions!.Value;
             string composite = string.Create(CultureInfo.InvariantCulture, $"{MeResult.FormatVersion}.{tenant:N}{caller:N}");
             Assert.Equal(composite, result.Tags[VersionTagWire.PermissionsItem]);
-            Assert.Equal(composite, result.Me!.Deserialize().Access.Tag);
+            Assert.Equal(composite, result.Me!.Access.Tag);
             Assert.Null(result.Settings);
         }
 
@@ -171,7 +171,7 @@ namespace Tellma.Core.IntegrationTests.Client
             (ClientSyncResult result, _) = await SyncAsync(admin, Cold);
             MeResult own = await MeAsync(admin);
 
-            MeResult me = result.Me!.Deserialize();
+            MeResult me = result.Me!;
             Assert.Equal(own.User, me.User);
             Assert.Equal(own.Preferences, me.Preferences);
             Assert.Equal(own.PreferencesTag, me.PreferencesTag);
@@ -224,6 +224,7 @@ namespace Tellma.Core.IntegrationTests.Client
             using var warmWire = JsonDocument.Parse(JsonSerializer.SerializeToUtf8Bytes(warm, TellmaJson.Options));
 
             Assert.Equal(JsonSerializer.Serialize(JsonDocument.Parse(cold.Settings!.Utf8).RootElement), JsonSerializer.Serialize(coldWire.RootElement.GetProperty("settings")));
+            Assert.Equal(JsonSerializer.Serialize(cold.Me, TellmaJson.Options), coldWire.RootElement.GetProperty("me").GetRawText());
             Assert.Equal(["tenant", "tags", "staleEntities"], warmWire.RootElement.EnumerateObject().Select(static member => member.Name));
             Assert.False(warmWire.RootElement.GetProperty("tenant").TryGetProperty("liveTenantId", out _));
         }

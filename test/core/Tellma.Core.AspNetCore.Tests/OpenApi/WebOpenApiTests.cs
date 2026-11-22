@@ -3,9 +3,13 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+using Microsoft.AspNetCore.Http.Json;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using Microsoft.OpenApi;
 using System.Net;
 using System.Text.Json;
+using Tellma.Core.Abstractions.Api;
 using Tellma.Core.AspNetCore.OpenApi;
 using Tellma.Core.AspNetCore.Tests.Api;
 using Tellma.Testing.WebHost;
@@ -15,8 +19,8 @@ namespace Tellma.Core.AspNetCore.Tests.OpenApi
     /// <summary>
     ///     The web surface's OpenAPI document: served in Development alone, OpenAPI 3.1, the web
     ///     surface's operations only, each stamped with its securable and tagged by its resource,
-    ///     decimals and longs as the string-or-number the wire carries, and the members a save never
-    ///     takes marked read-only.
+    ///     decimals and longs as the string-or-number the wire carries, the members a save never
+    ///     takes marked read-only, and every schema its real type, however deep it nests.
     /// </summary>
     public sealed class WebOpenApiTests
     {
@@ -151,6 +155,80 @@ namespace Tellma.Core.AspNetCore.Tests.OpenApi
             Assert.False(ledger.TryGetProperty("additionalProperties", out _));
         }
 
+        [Fact]
+        public async Task The_sync_answers_envelope_is_described_as_the_envelope()
+        {
+            await using TellmaTestHost host = await StartAsync("Development");
+
+            JsonElement document = await ReadAsync(host);
+            JsonElement schemas = document.GetProperty("components").GetProperty("schemas");
+
+            // The envelope's schema nests past the wire's limit under the answer, and is still the real type.
+            JsonElement answer = schemas.GetProperty(Reference(Response(document, "/{tenantId}/api/web/client/sync"))!);
+            Assert.Equal(nameof(MeResult), Reference(answer.GetProperty("properties").GetProperty("me")));
+            Assert.True(schemas.GetProperty(nameof(MeResult)).GetProperty("properties").TryGetProperty("access", out _));
+        }
+
+        [Fact]
+        public async Task A_value_as_deep_as_the_wire_carries_is_described_level_by_level()
+        {
+            await using TellmaTestHost host = await TellmaTestHost.StartAsync(static options =>
+            {
+                options.Environment = "Development";
+                options.Compose = static tellma => tellma.AddFeature(ProjectionModel.Feature(static contribution => contribution.ApiService<PjDepthService>()));
+                options.ConfigureServices = WebApiProjectionTests.StandIns;
+            });
+
+            JsonElement document = await ReadAsync(host);
+            JsonElement schemas = document.GetProperty("components").GetProperty("schemas");
+
+            // --- The body and the answer are the deep value's schema ---
+            string root = Reference(Response(document, "/{tenantId}/api/web/depth/answer"))!;
+            JsonElement body = Operation(document, "/{tenantId}/api/web/depth/read").GetProperty("requestBody").GetProperty("content").GetProperty("application/json").GetProperty("schema");
+            Assert.Equal(nameof(PjDepth), root);
+            Assert.Equal(root, Reference(body));
+
+            // --- One component per level, down to the innermost member, which takes any JSON value ---
+            int levels = 0;
+            for (string id = root; id != nameof(JsonElement); id = Reference(schemas.GetProperty(id).GetProperty("properties").GetProperty("next"))!)
+            {
+                levels++;
+            }
+
+            Assert.Equal(PjDepth.Levels, levels);
+        }
+
+        [Fact]
+        public async Task The_schema_generator_reads_the_hosts_JSON_options_under_the_documents_own_nesting_limit()
+        {
+            await using TellmaTestHost host = await StartAsync("Development");
+            JsonSerializerOptions http = host.Services.GetRequiredService<IOptions<JsonOptions>>().Value.SerializerOptions;
+
+            JsonSerializerOptions schema = SchemaJson.Create(host.Services).SerializerOptions;
+
+            // --- The same rules, converters and resolvers, under the document's limit ---
+            Assert.Equal(WebOpenApi.SchemaMaxDepth, schema.MaxDepth);
+            Assert.Same(http.PropertyNamingPolicy, schema.PropertyNamingPolicy);
+            Assert.Equal(http.NumberHandling, schema.NumberHandling);
+            Assert.Equal(http.UnmappedMemberHandling, schema.UnmappedMemberHandling);
+            Assert.Equal([.. http.Converters.Select(static converter => converter.GetType())], [.. schema.Converters.Select(static converter => converter.GetType())]);
+            Assert.Equal([.. http.TypeInfoResolverChain.Select(static resolver => resolver.GetType())], [.. schema.TypeInfoResolverChain.Select(static resolver => resolver.GetType())]);
+
+            // --- The wire keeps its own, the document served ---
+            _ = await ReadAsync(host);
+            Assert.Equal(TellmaJson.Options.MaxDepth, http.MaxDepth);
+        }
+
+        [Fact]
+        public void The_documents_nesting_limit_without_a_document_fails()
+        {
+            ServiceCollection services = new();
+
+            InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() => SchemaJson.Register(services, WebOpenApi.DocumentName));
+
+            Assert.StartsWith("The OpenAPI document 'web' registers no service that reads the HTTP JSON options", exception.Message, StringComparison.Ordinal);
+        }
+
         /// <summary>Starts a host composing the projection suite's model.</summary>
         /// <param name="environment">The host's environment.</param>
         /// <returns>The host.</returns>
@@ -174,6 +252,41 @@ namespace Tellma.Core.AspNetCore.Tests.OpenApi
             string body = await response.Content.ReadAsStringAsync(Token);
             using var json = JsonDocument.Parse(body);
             return json.RootElement.Clone();
+        }
+
+        /// <summary>The schema of the answer of a path's one operation.</summary>
+        /// <param name="document">The document.</param>
+        /// <param name="path">The path.</param>
+        /// <returns>The schema.</returns>
+        private static JsonElement Response(JsonElement document, string path)
+        {
+            // The one media type the answer is written in, with its charset.
+            return Assert.Single(Operation(document, path).GetProperty("responses").GetProperty("200").GetProperty("content").EnumerateObject()).Value.GetProperty("schema");
+        }
+
+        /// <summary>The component a schema references, itself or as one alternative of several, such as a nullable member's.</summary>
+        /// <param name="schema">The schema.</param>
+        /// <param name="required">Whether a schema without a reference fails the test.</param>
+        /// <returns>The component's name; null when it references none and none is required.</returns>
+        private static string? Reference(JsonElement schema, bool required = true)
+        {
+            if (schema.TryGetProperty("$ref", out JsonElement direct))
+            {
+                string target = direct.GetString()!;
+                return target[(target.LastIndexOf('/') + 1)..];
+            }
+
+            foreach (string alternatives in (string[])["oneOf", "anyOf", "allOf"])
+            {
+                if (schema.TryGetProperty(alternatives, out JsonElement entries)
+                    && entries.EnumerateArray().Select(static entry => Reference(entry, required: false)).FirstOrDefault(static id => id is not null) is string id)
+                {
+                    return id;
+                }
+            }
+
+            Assert.False(required, "The schema " + schema.GetRawText() + " references no component.");
+            return null;
         }
 
         /// <summary>The one operation of a path.</summary>
