@@ -384,6 +384,21 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-231 (orchestrator, 2026-11-22): PC-182 fix1 accepted, not escalated; held
+
+Fix1 (4855edd5) fixed R1-1..R1-5. R1-6 and R1-7 needed no code change (D-227).
+
+The privacy fix (R1-2) is one Via(row navigation, Share or Publish filter) on the grants read, which replaces the separate key read. That is not a reshaping beyond one filter, so D-227's escalation test is not met and Review 2 does not run.
+
+New deviations accepted:
+- 15: with filtered decisions, the extra omits admitted rows that hold no grants. This is equivalent, because the dialog reads an omitted row as no grants.
+- 16: an internal set-based Notifier.WithdrawEach runs inside the delete's transaction, because DeletePersistContext carries ids, not entities.
+- 17: the delete-by-query contradiction in spec 0033 is recorded.
+
+The share-count backstop held under a concurrent test with a side TABLOCKX, so the existing range locks serialise it.
+
+PC-182 holds. Release order: PC-F69 (integrating), then PC-182.
+
 ### D-230 (orchestrator, 2026-11-22): PC-176 Review 1 rulings; escalated to Review 2
 
 PC-176 Review 1 found 2 blocking, 3 major and 6 minor.
