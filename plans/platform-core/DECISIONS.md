@@ -384,6 +384,18 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-236 (orchestrator, 2026-11-22): PC-176 Review 2 rulings
+
+- Review 2 (inherit, xhigh) found 1 blocking, 2 major, 2 minor. All five accepted:
+  - R2-1: the token bound did not bound one node, because a literal > ends a run. Runs now end only at <. CDATA, comments and processing instructions count as one run each, and the text caps apply before a value is materialised.
+  - R2-2: refuse sheets that name the same part, charge the text budget per workbook, and skip the rows of Duplicate sheets.
+  - R2-3: the zip64 deferral now covers the directory-offset trigger.
+  - R2-4: distinct ModifiedById seeds.
+  - R2-5: the header-block cap counts rows read and checks cancellation.
+- Then PC-176 holds behind PC-182, PC-105, PC-189 and PC-106. If fix 2 rewrites the stream bounding substantially, one section 4.4 verification of R2-1 to R2-3 runs before integration.
+- For Ahmad: 0019 section 12.1 lists delete-by-query among the import routes. Its own Stack sketch omits it, and the D-132/D-134 startup gate refuses it for ImportService. The implementation omits it. Should the spec drop it?
+- Carries: PC-178's job handler must cope with a Pending job whose import row is gone, which a retry racing a delete can leave. PC-177's synchronous path must not trust the plan's row count.
+
 ### D-235 (orchestrator, 2026-11-22): PC-106 Review 1 rulings
 
 PC-106 Review 1 found 0/0/3.
