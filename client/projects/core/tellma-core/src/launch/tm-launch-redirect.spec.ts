@@ -3,6 +3,7 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+import { Location } from '@angular/common';
 import { TestBed } from '@angular/core/testing';
 
 import { TmApiError } from '../api/tm-api-error';
@@ -70,5 +71,30 @@ describe('the launch redirect', () => {
     await tmSettle();
     expect(rig.router.url).toBe('/tenants');
     expect(automatic()).toBeNull();
+  });
+
+  it('pushes the redirect of an in-app link to /, so Back returns to the page it left', async () => {
+    rig = await tmAppRig();
+    TestBed.inject(TmClientStore).boot.patch({ lastTenantId: 17, sub: TM_TEST_SUB });
+    await tmNavigate('/17/centers');
+    await tmSettle();
+    expect(await rig.router.navigateByUrl('/')).toBe(true);
+    expect(rig.router.url).toBe('/17');
+    // The history keeps the page the link left, one step back.
+    const location = TestBed.inject(Location);
+    location.back();
+    expect(location.path()).toBe('/17/centers');
+  });
+
+  it('navigates nowhere once the user leaves / before the memberships are read', async () => {
+    rig = await tmAppRig();
+    let answer!: (value: unknown) => void;
+    rig.api.respond('/bff/user', () => new Promise((resolve) => (answer = resolve)));
+    const harness = await tmNavigate('/');
+    expect(harness.routeNativeElement?.querySelector('main[aria-busy="true"]')).not.toBeNull();
+    await rig.router.navigateByUrl('/signed-out');
+    answer({ tenants: [tmTestMembership(17)] });
+    await tmSettle();
+    expect(rig.router.url).toBe('/signed-out');
   });
 });

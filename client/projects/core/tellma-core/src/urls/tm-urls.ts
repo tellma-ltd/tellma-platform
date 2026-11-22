@@ -3,10 +3,11 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-import { DOCUMENT, inject, Injectable, Injector, isDevMode, signal, type Signal, untracked } from '@angular/core';
+import { DOCUMENT, inject, Injectable, Injector, signal, type Signal, untracked } from '@angular/core';
 import { NavigationCancel, NavigationEnd, NavigationError, ResolveEnd, Router } from '@angular/router';
 
 import { TM_APP_DECLARATIONS } from '../app/tm-app-declarations';
+import { TM_DEV_MODE } from '../app/tm-dev-mode';
 import type { TmLazyComponent, TmSecurableRef } from '../declarations/tm-declaration-types';
 import type { TmPageDeclaration } from '../declarations/tm-page';
 import { TmEntities } from '../entity/tm-entities';
@@ -147,6 +148,7 @@ class TmUrlResolver {
   readonly #entities = inject(TmEntities);
   readonly #rules = inject(TmRouteRules);
   readonly #telemetry = inject(TmTelemetry);
+  readonly #devMode = inject(TM_DEV_MODE);
 
   /**
    * An entity's summary for a URL builder: an unknown entity, or one without
@@ -161,7 +163,7 @@ class TmUrlResolver {
     if (summary?.segment != null) {
       return summary as TmEntitySummary & { readonly segment: string };
     }
-    if (isDevMode()) {
+    if (this.#devMode()) {
       throw new Error(`The entity '${entity}' has no route: the server registers no entity of that name with an API segment.`);
     }
     return null;
@@ -212,7 +214,7 @@ class TmUrlResolver {
    * @returns The picker's URL.
    */
   noTenant(): string {
-    if (isDevMode()) {
+    if (this.#devMode()) {
       throw new Error('A TmUrls builder ran outside a tenant route. Build links into a tenant with forTenant(tenantId).');
     }
     this.#telemetry.event('tm.urls.no-tenant');
@@ -322,6 +324,7 @@ export class TmUrls implements TmTenantUrls {
   readonly #window = inject(DOCUMENT).defaultView;
   readonly #injector = inject(Injector);
   readonly #resolver = inject(TmUrlResolver);
+  readonly #devMode = inject(TM_DEV_MODE);
 
   /** Loads the Entities chunk, as one preload. */
   readonly #loadEntities = (): Promise<void> => this.#entities.load();
@@ -456,7 +459,12 @@ export class TmUrls implements TmTenantUrls {
   describe(url: string): TmRouteMatch | null {
     const hashAt = url.indexOf('#');
     const hash = hashAt < 0 ? '' : url.slice(hashAt);
-    const match = this.#match(this.#router.parseUrl(url).root.children['primary']?.segments.map((segment) => segment.path) ?? []);
+    const segments = this.#router.parseUrl(url).root.children['primary']?.segments ?? [];
+    // A tenant segment with matrix parameters, such as `/17;x=1`, reaches the not-found page.
+    if (segments[0] && tmTenantSegment(segments[0].path) !== null && Object.keys(segments[0].parameters).length > 0) {
+      return null;
+    }
+    const match = this.#match(segments.map((segment) => segment.path));
     return match && (hash.startsWith('#d=') ? { ...match, hash } : match);
   }
 
@@ -485,7 +493,7 @@ export class TmUrls implements TmTenantUrls {
 
   /** Reports a dropped query entry in development. */
   readonly #report: TmQueryProblemSink = (problem) => {
-    if (isDevMode()) {
+    if (this.#devMode()) {
       console.warn(problem);
     }
   };

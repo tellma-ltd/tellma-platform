@@ -5,9 +5,6 @@
 
 import type { ɵTmShellComponents } from '@tellma/core';
 
-import { TmForbiddenView } from './tm-forbidden-view';
-import { TmLaunchRedirect } from './tm-launch-redirect';
-import { TmNotFoundPage } from './tm-not-found-page';
 import { TmPagePlaceholder } from './tm-page-placeholder';
 import { TmSignedOutPage } from './tm-signed-out-page';
 import { TmTenantPicker } from './tm-tenant-picker';
@@ -23,8 +20,5 @@ export const TM_SHELL = {
   TmTenantShell,
   TmTenantPicker,
   TmSignedOutPage,
-  TmLaunchRedirect,
-  TmNotFoundPage,
-  TmForbiddenView,
   TmPagePlaceholder,
 } as const satisfies ɵTmShellComponents;

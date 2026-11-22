@@ -8,7 +8,7 @@ own.
 | Entry point | Holds | Loaded |
 |---|---|---|
 | `@tellma/core` | The distribution API: `bootstrapTellma`, `provideTellma`, `tmFeature`, the declaration functions (`tmEntity`, `tmPage`, `tmCodedReport`, `tmWidget`, `tmOverride`) and `TM_APP_DECLARATIONS`, the merged declarations; the client metadata's types, its loaders (`tmMetadataLoaders`) and the loaded Core chunk (`TM_CLIENT_METADATA`); the HTTP layer (`TmApi`, `TmApiError`, `TmProblem`), its plain-JSON value types (`TmJson`, `TmDecimal`, `TmId`) and the exact decimal helpers `TmDecimals`; the seams through which telemetry (`TmTelemetry`), the request log (`TmRequestLog`) and page scopes (`provideTmPageScope`) are provided; the session (`TmSession`, `tmSessionGuard`, `tmParseProfileCookie`), the launch mark (`TmLaunch`) and the single-membership rule (`tmSingleLiveTenant`); the client store (`TmClientStore`, `TmStoreRefusedError`, `TM_DOC_FORMATS`) and the tab bus (`TmTabBus`) with its message catalogue; the boot script's result types and the app clock (`TM_NOW`); the derived router's pieces: the root component (`TmApp`), the route data (`TmRouteData`), the title strategy (`TmTitleStrategy`), the URL builders and classifier (`TmUrls`) with the search query's types, and the entity lookups (`TmEntities`) | eager |
-| `@tellma/core/shell` | The tenant shell, the tenant picker and the signed-out page, which the derived routes load, and the pages and views only some routes render: the launch page at `/`, the not-found page and the forbidden view; until their owners arrive the shells are plain stand-ins, beside one placeholder page for the platform's page families | eager, through `import()` |
+| `@tellma/core/shell` | The tenant shell, the tenant picker and the signed-out page, which the derived routes load; until their owners arrive they are plain stand-ins, beside one placeholder page for the platform's page families | eager, through `import()` |
 | `@tellma/core/config-check` | `tmCheckAppConfig`, the check of an app's configuration against the client metadata, which the build runs in Node and a development app at startup | lazy |
 | `@tellma/core/private` | Wiring shared by the platform's own entry points and packages; no API goldens, no stability guarantee, never imported by app code | — |
 
@@ -278,14 +278,16 @@ frame, loads the page's chunk beside a cold tenant entry's refresh, and creates 
 tenant's launch documents are current. A page that names a `securable` the user lacks shows the
 forbidden view in place. A chunk that fails to load asks the service worker for an update and
 shows `client-outdated` or `offline`. Each page gets its own page scope and leave checks, which a
-navigation away runs, a move between My settings sections included; a settings tab change keeps
-the page and runs none. After a path change,
-focus moves to the page's `[tmPageTitle]`, and the document's title is the page's title and the
-display name.
+navigation away runs, a move between My settings sections or into another tenant included; a
+settings tab change keeps the page and runs none. After a path change, focus moves to the page's
+`[tmPageTitle]`, except on a settings tab change, where it stays on the tab list. The document's
+title is the page's title and the display name. A stored report's and a dashboard's details pages
+draw the `report` and `dashboard` skeletons.
 
-The launch redirect at `/` replaces it with the last tenant when the boot record names one for this
-user, else with the user's one live tenant, else with the picker; each tenant it picks marks the
-entry automatic. Entering a tenant records it as the boot record's `lastTenantId`.
+The launch redirect at `/` leads to the last tenant when the boot record names one for this user,
+else to the user's one live tenant, else to the picker; each tenant it picks marks the entry
+automatic. At launch it replaces `/`; a link to `/` inside the app pushes, so Back returns to the
+page it left. Entering a tenant records it as the boot record's `lastTenantId`.
 
 `TmUrls` builds every URL of the routed tenant (`forTenant` builds another's), parses a search or
 list page's query, classifies a stored URL (`describe`) and loads a route's chunks at idle

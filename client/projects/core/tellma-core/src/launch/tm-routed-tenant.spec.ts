@@ -18,6 +18,7 @@ describe('the routed tenant', () => {
     ['/017', null],
     ['/0', null],
     ['/17x', null],
+    ['/17;x=1/centers', null],
     ['/99999999999999999999', null],
     [`/${Number.MAX_SAFE_INTEGER + 1}/centers`, null],
   ])('routes %s into tenant %s', (url, tenantId) => {

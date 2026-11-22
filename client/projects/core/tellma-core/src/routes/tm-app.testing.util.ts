@@ -78,7 +78,7 @@ function summary(name: string, segment: string, kind: TmEntitySummary['kind']): 
   };
 }
 
-/** The test metadata, with a stack that has no details page and a child entity. */
+/** The test metadata, with a stack that has no details page, a child entity, and the stored reports and dashboards. */
 export function tmRouteTestMetadata(): TmClientMetadata {
   const base = tmTestMetadata();
   return tmTestMetadata({
@@ -86,6 +86,8 @@ export function tmRouteTestMetadata(): TmClientMetadata {
       ...base.entities,
       summary('acme.Currency', 'currencies', 'stack'),
       summary('acme.SalesInvoiceLine', 'sales-invoice-lines', 'child'),
+      summary('core.Report', 'reports', 'stack'),
+      summary('core.Dashboard', 'dashboards', 'stack'),
     ],
   });
 }
@@ -103,6 +105,9 @@ export function tmRouteTestFeature(): TmFeature {
       }),
       tmEntity('acme.Customer', { details: tmLoadTestPage }),
       tmEntity('acme.Currency', {}),
+      // Stored reports and dashboards, whose details pages draw their own skeletons.
+      tmEntity('core.Report', { details: tmLoadTestPage }),
+      tmEntity('core.Dashboard', { details: tmLoadTestPage }),
     ],
     pages: [
       tmPage('credit-review', { component: tmLoadTestPage, titleKey: 'Acme_CreditReview' }),

@@ -12,8 +12,9 @@ import type { TmApiUpdateCheck } from '../api/tm-api-seams';
 import { TM_BOOT_RESULT } from '../boot/tm-boot-result';
 import type { TmBootResult } from '../boot/tm-boot-types';
 import { TmClientStore } from '../state/store/tm-client-store';
-import { tmAppRig, tmLoadTestPage, tmNavigate, tmSettle, TM_COLD_SYNC, TmTestPage, type TmAppRig } from './tm-app.testing.util';
+import { tmAppRig, tmLoadTestPage, tmNavigate, tmSettle, TM_COLD_SYNC, tmTestMembership, TmTestPage, type TmAppRig } from './tm-app.testing.util';
 import { TM_ROUTE_ERROR_VIEWS, TmRouteError, type TmRouteErrorKind } from './tm-route-error';
+import { TmPageSkeleton } from './tm-page-skeleton';
 import { TmRouteHost } from './tm-route-host';
 import { TM_ROUTE_PERMISSIONS } from './tm-route-permissions';
 
@@ -78,6 +79,20 @@ describe('the route host', () => {
     const harness = await tmNavigate('/17/credit-review');
     await tmSettle();
     expect(hostElement(harness).querySelector('tm-test-page')).not.toBeNull();
+  });
+
+  it.each<[string, string]>([
+    ['/17/centers/5', 'details'],
+    ['/17/reports/5', 'report'],
+    ['/17/dashboards/3', 'dashboard'],
+  ])('draws the skeleton of the details page at %s: %s', async (url, skeleton) => {
+    // A cold entry whose sync never answers keeps the skeleton.
+    rig = await tmAppRig({ cold: true });
+    rig.api.respond('client/sync', () => new Promise(() => undefined));
+    const harness = await tmNavigate(url);
+    await tmSettle();
+    const element = harness.fixture.debugElement.query(By.directive(TmPageSkeleton));
+    expect((element.componentInstance as TmPageSkeleton).kind()).toBe(skeleton);
   });
 
   it('keeps a cold entry on its skeleton until the launch documents arrive', async () => {
@@ -159,6 +174,25 @@ describe('the route host', () => {
     expect(launches.map((item) => [item.name, item.props['routeKind']])).toEqual([[timing, 'custom']]);
   });
 
+  it.each(['/tenants', '/signed-out', '/17/nope'])('times no launch that lands on %s, nor the tenant page after it', async (url) => {
+    rig = await tmAppRig({ providers: [{ provide: TM_BOOT_RESULT, useValue: RETURNING }] });
+    await tmNavigate(url);
+    await tmSettle();
+    await rig.router.navigateByUrl('/17/credit-review');
+    await tmSettle();
+    expect(rig.telemetry.recent().filter((item) => item.name.startsWith('tm.launch.'))).toEqual([]);
+  });
+
+  it('times a launch at / at the tenant page it leads to', async () => {
+    rig = await tmAppRig({ providers: [{ provide: TM_BOOT_RESULT, useValue: RETURNING }] });
+    rig.api.respond('/bff/user', { tenants: [tmTestMembership(17)] });
+    await tmNavigate('/');
+    await tmSettle();
+    expect(rig.router.url).toBe('/17');
+    const launches = rig.telemetry.recent().filter((item) => item.name.startsWith('tm.launch.'));
+    expect(launches.map((item) => [item.name, item.props['routeKind']])).toEqual([['tm.launch.warm', 'home']]);
+  });
+
   it('renders the forbidden view in place of a page whose permission the user lacks', async () => {
     const can = vi.fn(() => signal(false).asReadonly());
     rig = await tmAppRig({ providers: [{ provide: TM_ROUTE_PERMISSIONS, useValue: { can } }] });
@@ -197,6 +231,26 @@ describe('the route host', () => {
     const title = document.activeElement as HTMLElement | null;
     expect(title?.hasAttribute('tmPageTitle')).toBe(true);
     expect(title?.textContent).toContain('Centers');
+  });
+
+  it('keeps focus where it is on a settings tab change, and moves it on the next path change', async () => {
+    rig = await tmAppRig();
+    await tmNavigate('/17/settings/general');
+    await tmSettle();
+    // A stand-in for the settings tab list's selected tab.
+    const tab = document.body.appendChild(document.createElement('button'));
+    try {
+      tab.focus();
+      await rig.router.navigateByUrl('/17/settings/invoicing');
+      await tmSettle();
+      expect(document.activeElement).toBe(tab);
+
+      await rig.router.navigateByUrl('/17/credit-review');
+      await tmSettle();
+      expect((document.activeElement as HTMLElement | null)?.hasAttribute('tmPageTitle')).toBe(true);
+    } finally {
+      tab.remove();
+    }
   });
 
   it('remembers the tenant each navigation enters', async () => {

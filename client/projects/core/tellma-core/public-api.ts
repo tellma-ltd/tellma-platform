@@ -85,11 +85,7 @@ export { TmUrls, type TmRouteMatch, type TmTenantUrls } from './src/urls/tm-urls
 export type { TmListPayload, TmSearchQuery } from './src/urls/tm-search-query';
 // The leave checks of a routed page, which the page frameworks register; not for app code.
 export { TmLeaveChecks as ɵTmLeaveChecks, type TmLeaveCheck as ɵTmLeaveCheck } from './src/routes/tm-leave-checks';
-// What the shell entry point renders on the primary's behalf: the route error
-// view, the route data it reads and the contract of the components the
-// primary loads from it; not for app code.
-export { TmRouteError as ɵTmRouteError, type TmRouteErrorView as ɵTmRouteErrorView } from './src/routes/tm-route-error';
-export type { TmRouteDataInternal as ɵTmRouteDataInternal } from './src/routes/tm-routes';
+// The contract of the components the primary loads from the shell entry point; not for app code.
 export type { TmShellComponents as ɵTmShellComponents } from './src/routes/tm-route-hosts';
 
 // The entity registry's summaries.
@@ -235,8 +231,6 @@ export { TM_SYNC_ERRORS as ɵTM_SYNC_ERRORS, type TmSyncErrors as ɵTmSyncErrors
 export { tmSingleLiveTenant } from './src/launch/tm-single-live-tenant';
 export type { TmMembership, TmTenantCategory, TmTenantState } from './src/launch/tm-membership';
 export { TmLaunch } from './src/launch/tm-launch';
-// Where `/` leads, which the shell's launch page decides too; not for app code.
-export { tmLaunchTarget as ɵtmLaunchTarget } from './src/launch/tm-launch-redirect';
 
 // The client metadata: its chunks, their loaders and the loaded Core chunk.
 export {

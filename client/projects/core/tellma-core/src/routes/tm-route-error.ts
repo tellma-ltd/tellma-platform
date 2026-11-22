@@ -10,11 +10,10 @@ import { TmEmptyState } from '@tellma/core-ui/empty-state';
 import { TmPlatformText } from '../app/tm-platform-text';
 
 // The route's own error views (spec 0024 §11), each 0023's empty state,
-// inline where the page would be. The two a failed chunk load shows
-// (`client-outdated` and `offline`) live here, since they render when no
-// chunk can load; the views of a `tmPage` the user may not open
-// (`forbidden`) and of a path no route matches (`not-found`) render from the
-// shell entry point, over the same component.
+// inline where the page would be: a page whose chunk failed to load
+// (`client-outdated` or `offline`), a `tmPage` the user may not open
+// (`forbidden`, reason `no-grant`), and a path no route matches
+// (`not-found`).
 
 /** The error views a route renders when a chunk does not load. */
 export type TmRouteErrorKind = 'client-outdated' | 'offline';
@@ -32,8 +31,8 @@ export interface TmRouteErrorView {
 }
 
 // The strings are worded as spec 0024 §11's table words them.
-/** The views of a chunk that did not load. */
-export const TM_ROUTE_ERROR_VIEWS: Readonly<Record<TmRouteErrorKind, TmRouteErrorView>> = {
+/** The route's error views: a chunk that did not load, a page the user may not open, and a path no route matches. */
+export const TM_ROUTE_ERROR_VIEWS: Readonly<Record<TmRouteErrorKind | 'forbidden' | 'not-found', TmRouteErrorView>> = {
   'client-outdated': {
     title: ['tm.errors.clientOutdated.title', '{displayName} was updated'],
     message: ['tm.errors.clientOutdated.message', 'Reload to continue. Your unsaved changes come back after the reload.'],
@@ -43,6 +42,15 @@ export const TM_ROUTE_ERROR_VIEWS: Readonly<Record<TmRouteErrorKind, TmRouteErro
     title: ['tm.errors.offline.title', "You're offline"],
     message: ['tm.errors.offline.message', "Check your connection. We'll keep trying."],
     action: ['retry', 'tm.errors.retry', 'Try again'],
+  },
+  forbidden: {
+    title: ['tm.errors.forbidden.title', "You don't have permission for this"],
+    message: ['tm.errors.forbidden.message', 'It needs “{permission}”. Ask your administrator to grant it.'],
+  },
+  'not-found': {
+    title: ['tm.errors.notFound.title', 'Page not found'],
+    message: ['tm.errors.notFound.message', 'Check the address, or go back to the start.'],
+    tone: 'neutral',
   },
 };
 

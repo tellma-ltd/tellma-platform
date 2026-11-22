@@ -21,22 +21,23 @@ import {
   untracked,
 } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
-import { ActivatedRoute } from '@angular/router';
+import { ActivatedRoute, type ActivatedRouteSnapshot, NavigationEnd, Router } from '@angular/router';
 
 import { TM_API_UPDATES } from '../api/tm-api-seams';
-import type { TmRouteData } from '../app/tm-route-data';
+import type { TmRouteData, TmRouteSkeleton } from '../app/tm-route-data';
 import { TM_BOOT_RESULT } from '../boot/tm-boot-result';
 import { provideTmPageScope } from '../context/tm-page-scope';
 import type { TmLazyComponent } from '../declarations/tm-declaration-types';
 import { TmEntities } from '../entity/tm-entities';
 import { TmTelemetry } from '../observe/tm-telemetry';
+import { TmLaunchRedirect } from '../launch/tm-launch-redirect';
 import { tmTenantSegment } from '../launch/tm-routed-tenant';
 import { TmLaunchCache } from '../state/launch/tm-launch-cache';
 import { TmLeaveChecks } from './tm-leave-checks';
 import { TmPageFocus } from './tm-page-focus';
 import { TmPageSkeleton } from './tm-page-skeleton';
 import { TM_ROUTE_ERROR_VIEWS, TmRouteError, type TmRouteErrorKind } from './tm-route-error';
-import { TM_ROUTE_HOSTS, tmShellComponent } from './tm-route-hosts';
+import { TM_ROUTE_HOSTS } from './tm-route-hosts';
 import { TM_ROUTE_PERMISSIONS } from './tm-route-permissions';
 import { TmRouteRules } from './tm-route-rules';
 import type { TmRouteDataInternal } from './tm-routes';
@@ -46,7 +47,7 @@ import type { TmRouteDataInternal } from './tm-routes';
 // component (and, on an entity route, the Entities chunk) while a cold
 // tenant entry runs its refresh, and creates the page only once the launch
 // documents are current. A `tmPage` whose permission the user lacks renders
-// the shell's forbidden view in place. A chunk that fails to load asks the service
+// the forbidden view in place. A chunk that fails to load asks the service
 // worker for an update: a newer version shows `client-outdated`, anything
 // else `offline`. Each page gets a page scope and a leave-check registry. A
 // load holds the focus move until its view renders; a load superseded, or a
@@ -55,11 +56,13 @@ import type { TmRouteDataInternal } from './tm-routes';
 /** Where the host stands: the skeleton, the page, or an error view in its place. */
 type TmHostState =
   | { readonly view: 'loading' }
-  | { readonly view: 'page'; readonly component: Type<unknown>; readonly forbidden: Type<unknown> | null }
+  | { readonly view: 'page'; readonly component: Type<unknown> }
   | { readonly view: 'error'; readonly error: TmRouteErrorKind };
 
-/** The view in place of a page whose permission the user lacks, which loads with the shell. */
-const FORBIDDEN = tmShellComponent('TmForbiddenView');
+// A stored report and a dashboard route as details pages, yet draw the
+// compact header's skeletons (spec 0024 §4.4).
+/** The skeletons of the entities whose details page is not a record's form. */
+const ENTITY_SKELETONS: Readonly<Record<string, TmRouteSkeleton>> = { 'core.Report': 'report', 'core.Dashboard': 'dashboard' };
 
 /**
  * The component a lazy component's module holds.
@@ -73,20 +76,62 @@ async function resolveComponent(load: TmLazyComponent): Promise<Type<unknown>> {
 }
 
 /**
- * Times the document's launch: from navigation start to the first page
- * rendered. A launch is warm when the boot script found the same user and
- * the first page's tenant entry found its launch documents current.
+ * The component a router state renders deepest: the nearest component at
+ * or above its deepest route, since a My settings section has none.
+ */
+function routedComponent(root: ActivatedRouteSnapshot): unknown {
+  let route = root;
+  while (route.firstChild) {
+    route = route.firstChild;
+  }
+  for (let at: ActivatedRouteSnapshot | null = route; at; at = at.parent) {
+    if (at.component) {
+      return at.component;
+    }
+  }
+  return null;
+}
+
+/**
+ * Times the document's launch into a tenant page: from navigation start to
+ * the first render of the page the launch lands on. A launch is warm when
+ * the boot script found the same user and the page's tenant entry found its
+ * launch documents current. A launch that lands elsewhere, such as on the
+ * picker, is not timed, so no later page counts the time spent there.
  */
 @Injectable({ providedIn: 'root' })
 export class TmLaunchTimer {
   readonly #telemetry = inject(TmTelemetry);
+  readonly #router = inject(Router);
   readonly #cold = inject(TM_BOOT_RESULT)?.cold ?? true;
 
-  /** Whether the launch was timed. */
+  /** Whether the launch was timed, or ended untimed. */
   #timed = false;
 
   /**
-   * Emits the launch's timing at the first page rendered.
+   * Starts following the launch's navigations: one that ends outside a page
+   * route ends the launch untimed. The launch page at `/` only passes the
+   * launch on to where it leads. Internal: the boot sequence starts it.
+   */
+  ɵstart(): void {
+    const watch = this.#router.events.subscribe((event) => {
+      if (this.#timed) {
+        watch.unsubscribe();
+        return;
+      }
+      if (event instanceof NavigationEnd) {
+        const component = routedComponent(this.#router.routerState.snapshot.root);
+        if (component !== TmRouteHost && component !== TmLaunchRedirect) {
+          this.#timed = true;
+          watch.unsubscribe();
+        }
+      }
+    });
+  }
+
+  /**
+   * Emits the launch's timing at the first page rendered, unless the launch
+   * already ended.
    *
    * @param routeKind - The page's family.
    * @param cold - Whether the page's tenant entry was cold: it ran a cold sync, or the sync failed.
@@ -108,11 +153,11 @@ export class TmLaunchTimer {
   template: `
     @switch (state().view) {
       @case ('page') {
-        <!-- The page, behind its permission gate; without the permission, the shell's forbidden view. -->
+        <!-- The page, behind its permission gate; without the permission, the forbidden view naming it. -->
         @if (allowed()) {
           <ng-container *ngComponentOutlet="component(); inputs: inputs()" />
         } @else {
-          <ng-container *ngComponentOutlet="forbidden(); inputs: { securable: data().securable }" />
+          <tm-route-error [view]="views.forbidden" [params]="permission()" />
         }
       }
       @case ('error') {
@@ -121,7 +166,7 @@ export class TmLaunchTimer {
       }
       @default {
         <!-- The page's skeleton, from the click's frame until the page renders. -->
-        <tm-page-skeleton [kind]="data().skeleton" />
+        <tm-page-skeleton [kind]="skeleton()" />
       }
     }
   `,
@@ -164,13 +209,13 @@ export class TmRouteHost {
     return state.view === 'page' ? state.component : null;
   });
 
-  /** The forbidden view, loaded beside a page that names a securable. */
-  protected readonly forbidden = computed(() => {
-    const state = this.#state();
-    return state.view === 'page' ? state.forbidden : null;
+  /** The forbidden view's placeholder: the permission the page needs. */
+  protected readonly permission = computed(() => {
+    const securable = this.data().securable;
+    return { permission: securable ? `${securable[0]} · ${securable[1]}` : '' };
   });
 
-  /** The views of a chunk that did not load. */
+  /** The route's error views. */
   protected readonly views = TM_ROUTE_ERROR_VIEWS;
 
   /** The error view in the page's place. */
@@ -187,6 +232,13 @@ export class TmRouteHost {
       return undefined;
     }
     return (data.ɵentity === 'list' ? this.#rules.list(segment) : this.#rules.stack(segment))?.name;
+  });
+
+  /** The skeleton the host draws: the route's, unless the routed entity's details page has its own. */
+  protected readonly skeleton = computed<TmRouteSkeleton>(() => {
+    const data = this.data();
+    const entity = this.#entity();
+    return (data.ɵentity === 'details' && entity !== undefined && ENTITY_SKELETONS[entity]) || data.skeleton;
   });
 
   /** The page's component loader: the route's own, else its family's host. */
@@ -282,14 +334,8 @@ export class TmRouteHost {
             () => ({ ok: false, cold: true }),
           );
     let component: Type<unknown>;
-    let forbidden: Type<unknown> | null;
     try {
-      [component, forbidden] = await Promise.all([
-        resolveComponent(this.#loader()),
-        // A page that names a securable may render the forbidden view in its place.
-        this.data().securable === undefined ? null : resolveComponent(FORBIDDEN),
-        this.#entity() === undefined ? null : this.#entities.load(),
-      ]);
+      [component] = await Promise.all([resolveComponent(this.#loader()), this.#entity() === undefined ? null : this.#entities.load()]);
     } catch {
       // A chunk that fails to load: a newer version is the likely cause.
       const update = await this.#updates.check();
@@ -305,11 +351,14 @@ export class TmRouteHost {
     if (!entry.ok && current()) {
       await this.#warm();
     }
-    if (current()) {
-      this.#state.set({ view: 'page', component, forbidden });
-      this.#timer.rendered(this.data().kind, entry.cold);
+    if (!current()) {
+      this.#rendered(release);
+      return;
     }
-    this.#rendered(release);
+    this.#state.set({ view: 'page', component });
+    // The launch is timed once the page has rendered.
+    const routeKind = this.data().kind;
+    this.#rendered(release, () => this.#timer.rendered(routeKind, entry.cold));
   }
 
   /** Releases every focus hold still taken. */
@@ -319,12 +368,23 @@ export class TmRouteHost {
     }
   }
 
-  /** Releases the focus hold once the host's new view has rendered, or at once when the host is gone. */
-  #rendered(release: () => void): void {
+  /**
+   * Releases the focus hold once the host's new view has rendered, or at
+   * once when the host is gone, after what else waits for the render.
+   */
+  #rendered(release: () => void, rendered?: () => void): void {
     if (this.#destroyed) {
       release();
     } else {
-      afterNextRender({ read: release }, { injector: this.#injector });
+      afterNextRender(
+        {
+          read: () => {
+            rendered?.();
+            release();
+          },
+        },
+        { injector: this.#injector },
+      );
     }
   }
 

@@ -22,6 +22,7 @@ import { tmRoutedTenant } from '../launch/tm-routed-tenant';
 import { TmClientMetadataStore } from '../metadata/tm-client-metadata';
 import { TmTelemetry } from '../observe/tm-telemetry';
 import { TmPageFocus } from '../routes/tm-page-focus';
+import { TmLaunchTimer } from '../routes/tm-route-host';
 import { TmSession } from '../session/tm-session';
 import { TmClientStore } from '../state/store/tm-client-store';
 import { TmUrls } from '../urls/tm-urls';
@@ -34,7 +35,8 @@ import { TmPlatformText, type TmLoadedStrings } from './tm-platform-text';
 // which the Core chunk's load never waits for. None awaits the API, so a warm
 // launch has no network wait. A chunk or string load that fails shows the
 // boot page `load-failed`, and the app never starts. Beside them, the router
-// wiring: the routed tenant's `lastTenantId` and focus after navigation; and
+// wiring: the routed tenant's `lastTenantId`, focus after navigation and the
+// launch's timing; and
 // after first render, at idle, the Contracts chunk, so the first API call
 // does not wait for it.
 
@@ -101,6 +103,7 @@ export function tmStartup(config: TmAppConfig): EnvironmentProviders[] {
       // Created now, so the routed tenant is known before the first page's links.
       inject(TmUrls);
       inject(TmPageFocus).ɵstart();
+      inject(TmLaunchTimer).ɵstart();
       // After first render, at idle: the Contracts chunk, which the HTTP layer keeps.
       // An app torn down before its idle moment loads nothing.
       let alive = true;

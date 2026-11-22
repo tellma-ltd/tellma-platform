@@ -1,8 +1,7 @@
 /**
  * Public API Surface of @tellma/core/shell — the app's shells: the tenant
  * picker, the signed-out page and the tenant shell, which the route table
- * loads with the app, beside the pages and views it renders only on some
- * routes: the launch page, the not-found page and the forbidden view.
+ * loads with the app.
  *
  * Each is a plain stand-in for now, enough for the app to boot, route and
  * render its pages; the shells with their app bars, launcher and pins

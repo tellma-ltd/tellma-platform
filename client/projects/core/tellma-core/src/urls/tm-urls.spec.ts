@@ -6,6 +6,7 @@
 import { Location } from '@angular/common';
 import { TestBed } from '@angular/core/testing';
 
+import { TM_DEV_MODE } from '../app/tm-dev-mode';
 import type { TmDecimal } from '../json/tm-json';
 import { tmAppRig, tmLoadTestPage, tmNavigate, tmSettle, type TmAppRig } from '../routes/tm-app.testing.util';
 import { TM_ROUTE_CASES } from '../routes/tm-route-cases.testing.util';
@@ -65,6 +66,28 @@ describe('TmUrls', () => {
     it('throw in development for an entity with no route', () => {
       expect(() => rig.urls.search('acme.Nothing')).toThrow(/acme.Nothing/);
       expect(() => rig.urls.details('core.Blob', 1)).toThrow(/core.Blob/);
+    });
+
+    describe('in production', () => {
+      beforeEach(async () => {
+        TestBed.resetTestingModule();
+        rig = await tmAppRig({ providers: [{ provide: TM_DEV_MODE, useValue: () => false }] });
+        await tmNavigate('/17/centers');
+      });
+
+      it('answer the tenant home for an entity with no route', () => {
+        expect(rig.urls.search('acme.Nothing')).toBe('/17');
+        expect(rig.urls.details('core.Blob', 1)).toBe('/17');
+        expect(rig.urls.create('acme.Nothing')).toBe('/17');
+        expect(rig.telemetry.recent().filter((item) => item.name === 'tm.urls.no-tenant')).toEqual([]);
+      });
+
+      it('answer the picker outside a tenant, with a telemetry event', async () => {
+        await rig.router.navigateByUrl('/tenants');
+        expect(rig.urls.home()).toBe('/tenants');
+        expect(rig.urls.search('gl.Center')).toBe('/tenants');
+        expect(rig.telemetry.recent().filter((item) => item.name === 'tm.urls.no-tenant')).toHaveLength(2);
+      });
     });
 
     it('build the tenantless pages', () => {

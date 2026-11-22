@@ -3,8 +3,9 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-import { inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import {
+  ActivatedRoute,
   type ActivatedRouteSnapshot,
   type CanDeactivateFn,
   type CanMatchFn,
@@ -17,9 +18,10 @@ import {
 
 import type { TmRouteData } from '../app/tm-route-data';
 import type { TmPageDeclaration } from '../declarations/tm-page';
-import { tmLaunchMatch } from '../launch/tm-launch-redirect';
+import { TmLaunchRedirect, tmLaunchMatch } from '../launch/tm-launch-redirect';
 import { tmIsIdSegment, tmTenantSegment } from '../launch/tm-routed-tenant';
 import { tmSessionGuard } from '../session/tm-session-guard';
+import { TM_ROUTE_ERROR_VIEWS, TmRouteError } from './tm-route-error';
 import { TmRouteHost } from './tm-route-host';
 import { TM_ROUTE_HOSTS, tmShellComponent } from './tm-route-hosts';
 import { TM_ME_SECTIONS, TmRouteRules } from './tm-route-rules';
@@ -32,7 +34,7 @@ import { TM_ME_SECTIONS, TmRouteRules } from './tm-route-rules';
 // the Core chunk is loaded. Literal segments match exactly: `/17/Centers`
 // is not found.
 
-/** The route data the platform's own routes add for the route host and the shell's pages. */
+/** The route data the platform's own routes add for the route host and the not-found page. */
 export interface TmRouteDataInternal {
   /** The entity route the host serves, which picks its family's host and its entity. */
   readonly ɵentity?: 'search' | 'list' | 'details' | 'create';
@@ -45,15 +47,36 @@ export interface TmRouteDataInternal {
 /** The not-found page's title key. */
 const NOT_FOUND = 'tm.errors.notFound.title';
 
-/** The not-found page, which loads with the shell. */
-const notFound = tmShellComponent('TmNotFoundPage');
+/** The not-found page: no route matches the path. */
+@Component({
+  selector: 'tm-not-found-page',
+  imports: [TmRouteError],
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  template: `
+    <!-- Outside any shell, the page brings the document's main landmark. -->
+    @if (main) {
+      <main><tm-route-error [view]="view" /></main>
+    } @else {
+      <tm-route-error [view]="view" />
+    }
+  `,
+})
+export class TmNotFoundPage {
+  /** Whether the page renders outside any shell. */
+  protected readonly main = (inject(ActivatedRoute).snapshot.data as TmRouteDataInternal).ɵmain === true;
+
+  /** The view's strings. */
+  protected readonly view = TM_ROUTE_ERROR_VIEWS['not-found'];
+}
 
 /**
  * The first path segment as the tenant: a positive integer without leading
- * zeros, as the parameter `t`.
+ * zeros and without matrix parameters, as the parameter `t`.
  */
 const tenantMatcher: UrlMatcher = (segments) =>
-  tmTenantSegment(segments[0]?.path) === null ? null : { consumed: segments.slice(0, 1), posParams: { t: segments[0]! } };
+  tmTenantSegment(segments[0]?.path) === null || Object.keys(segments[0]!.parameters).length > 0
+    ? null
+    : { consumed: segments.slice(0, 1), posParams: { t: segments[0]! } };
 
 /** `settings` and `settings/{category}`: one route, so a tab click reuses the host. */
 const settingsMatcher: UrlMatcher = (segments) => {
@@ -96,13 +119,15 @@ function find(state: ActivatedRouteSnapshot, config: Route | null): ActivatedRou
   return null;
 }
 
-/** The config of a route's deepest descendant down the primary outlet: a My settings section, or the route's own. */
-function leafOf(route: ActivatedRouteSnapshot): Route | null {
-  let leaf = route;
-  while (leaf.firstChild) {
-    leaf = leaf.firstChild;
-  }
-  return leaf.routeConfig;
+/**
+ * The section a page route renders: its child route's path, the hub's bare
+ * path standing for its first section, or `null` on a route without
+ * sections.
+ */
+function sectionOf(route: ActivatedRouteSnapshot): string | null {
+  const child = route.firstChild?.routeConfig;
+  // `/{t}/me` renders the first section, so it and `/{t}/me/profile` are one section.
+  return child ? child.path || TM_ME_SECTIONS[0] : null;
 }
 
 /**
@@ -118,15 +143,18 @@ const leave: CanDeactivateFn<TmRouteHost | null> = (host, current, _state, next)
   const inPlace = new Set((current.data as TmRouteDataInternal).ɵinPlace ?? []);
   const same =
     reused !== null &&
-    leafOf(reused) === leafOf(current) &&
+    sectionOf(reused) === sectionOf(current) &&
     [...new Set([...Object.keys(current.params), ...Object.keys(reused.params)])].every(
       (name) => inPlace.has(name) || current.params[name] === reused.params[name],
     );
   return same || (host?.ɵleave() ?? true);
 };
 
-/** The hub's guards run again whenever the navigation changes its section, so its leave check runs. */
-const sectionChange: RunGuardsAndResolvers = (from, to) => from.firstChild?.routeConfig !== to.firstChild?.routeConfig;
+/**
+ * The hub's guards run again whenever the navigation changes its section or
+ * its tenant, so its leave check runs.
+ */
+const sectionChange: RunGuardsAndResolvers = (from, to) => from.params['t'] !== to.params['t'] || sectionOf(from) !== sectionOf(to);
 
 /**
  * A page route: the route host, its data, and the leave check.
@@ -176,17 +204,17 @@ export function tmBuildRoutes(pages: readonly TmPageDeclaration[]): Routes {
     page({ path: ':segment', canMatch: [stackMatch] }, { kind: 'search', skeleton: 'search', ɵentity: 'search' }),
     page({ path: ':segment/new', canMatch: [detailsMatch] }, { kind: 'details', skeleton: 'details', ɵentity: 'create' }),
     page({ path: ':segment/:id', canMatch: [detailsMatch] }, { kind: 'details', skeleton: 'details', ɵentity: 'details' }),
-    { path: '**', loadComponent: notFound, data: { titleKey: NOT_FOUND } satisfies Partial<TmRouteData> },
+    { path: '**', component: TmNotFoundPage, data: { titleKey: NOT_FOUND } satisfies Partial<TmRouteData> },
   ];
   return [
-    { path: '', pathMatch: 'full', canMatch: [tmLaunchMatch], canActivate: [tmSessionGuard], loadComponent: tmShellComponent('TmLaunchRedirect') },
+    { path: '', pathMatch: 'full', canMatch: [tmLaunchMatch], canActivate: [tmSessionGuard], component: TmLaunchRedirect },
     { path: 'tenants', canActivate: [tmSessionGuard], loadComponent: tmShellComponent('TmTenantPicker') },
     { path: 'signed-out', loadComponent: tmShellComponent('TmSignedOutPage') },
     { matcher: tenantMatcher, canActivate: [tmSessionGuard], loadComponent: tmShellComponent('TmTenantShell'), children: tenant },
     {
       path: '**',
       canActivate: [tmSessionGuard],
-      loadComponent: notFound,
+      component: TmNotFoundPage,
       data: { titleKey: NOT_FOUND, ɵmain: true } satisfies Partial<TmRouteData> & TmRouteDataInternal,
     },
   ];

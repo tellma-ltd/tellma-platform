@@ -105,6 +105,27 @@ describe('the route table', () => {
       expect(rig.router.url).toBe('/17/me/profile');
     });
 
+    it('checks a move to the same My settings section of another tenant', async () => {
+      await rig.router.navigateByUrl('/17/me/profile');
+      const checks = refuseLeaving();
+      const host = harness.fixture.debugElement.query(By.directive(TmRouteHost)).componentInstance as TmRouteHost;
+      expect(await rig.router.navigateByUrl('/18/me/profile')).toBe(false);
+      expect(checks.calls).toBe(1);
+      expect(rig.router.url).toBe('/17/me/profile');
+      // Tenant 17's page, with its unsaved edits, stays.
+      expect(harness.fixture.debugElement.query(By.directive(TmRouteHost)).componentInstance).toBe(host);
+    });
+
+    it('keeps the hub and its first section as one section, with no check', async () => {
+      await rig.router.navigateByUrl('/17/me');
+      const checks = refuseLeaving();
+      expect(await rig.router.navigateByUrl('/17/me/profile')).toBe(true);
+      expect(await rig.router.navigateByUrl('/17/me')).toBe(true);
+      expect(checks.calls).toBe(0);
+      expect(await rig.router.navigateByUrl('/17/me/region')).toBe(false);
+      expect(checks.calls).toBe(1);
+    });
+
     it('checks a step to another record on the same route', async () => {
       await rig.router.navigateByUrl('/17/centers/5');
       const checks = refuseLeaving();

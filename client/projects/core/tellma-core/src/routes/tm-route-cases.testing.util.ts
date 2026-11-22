@@ -95,6 +95,16 @@ export const TM_ROUTE_CASES: readonly TmRouteCase[] = [
     routed: host('details', { segment: 'customers', id: '9' }, 'details'),
     described: tenant('details', '/customers/:id', { entity: 'acme.Customer', id: 9 }),
   },
+  {
+    url: '/17/reports/5',
+    routed: host('details', { segment: 'reports', id: '5' }, 'details'),
+    described: tenant('details', '/reports/:id', { entity: 'core.Report', id: 5 }),
+  },
+  {
+    url: '/17/dashboards/3',
+    routed: host('details', { segment: 'dashboards', id: '3' }, 'details'),
+    described: tenant('details', '/dashboards/:id', { entity: 'core.Dashboard', id: 3 }),
+  },
   { url: '/17/currencies', routed: host('search', { segment: 'currencies' }, 'search'), described: tenant('search', '/currencies', { entity: 'acme.Currency' }) },
 
   // --- No route: a stack without a details page, a child entity, unknown segments ---
@@ -113,10 +123,11 @@ export const TM_ROUTE_CASES: readonly TmRouteCase[] = [
   { url: '/17/me/unknown', routed: TENANT_NOT_FOUND, described: null },
   { url: '/17/settings/general/more', routed: TENANT_NOT_FOUND, described: null },
   { url: '/17/reports/unknown', routed: TENANT_NOT_FOUND, described: null },
-  // A tenant is a positive safe integer without leading zeros.
+  // A tenant is a positive safe integer without leading zeros or matrix parameters.
   { url: '/017', routed: NOT_FOUND, described: null },
   { url: '/0', routed: NOT_FOUND, described: null },
   { url: '/17x', routed: NOT_FOUND, described: null },
+  { url: '/17;x=1/centers', routed: NOT_FOUND, described: null },
   { url: '/99999999999999999999', routed: NOT_FOUND, described: null },
   { url: '/nope', routed: NOT_FOUND, described: null },
   { url: '/tenants/x', routed: NOT_FOUND, described: null },

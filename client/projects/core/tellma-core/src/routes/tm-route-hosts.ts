@@ -23,12 +23,6 @@ export interface TmShellComponents {
   readonly TmTenantPicker: Type<unknown>;
   /** The page at `/signed-out`. */
   readonly TmSignedOutPage: Type<unknown>;
-  /** The page at `/` while the user's memberships are read. */
-  readonly TmLaunchRedirect: Type<unknown>;
-  /** The page of a path no route matches. */
-  readonly TmNotFoundPage: Type<unknown>;
-  /** The view of a page whose permission the user lacks. */
-  readonly TmForbiddenView: Type<unknown>;
   /** The page of every family without an entry point of its own. */
   readonly TmPagePlaceholder: Type<unknown>;
 }
