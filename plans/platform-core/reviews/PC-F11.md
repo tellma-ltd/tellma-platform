@@ -744,7 +744,7 @@ rulings. Runs, on the final tree:
   `TELLMA_REQUIRE_LANDLOCK=1`, the same namespaces: 408 total, 0 failed, 27 skipped
   (Windows-only).
 
-- R2-1: fixed in the review 2 fixes commit.
+- R2-1: fixed in ac939191.
   - **Refused.** The filter refuses `mq_open`, `mq_unlink`, `mq_timedsend`, `mq_timedreceive`,
     `mq_notify` and `mq_getsetattr` (x64 240-245, arm64 180-185), and `flock` (x64 73, arm64 32).
     `SeccompFilterTests` lists every one as refused on both architectures.
@@ -767,7 +767,7 @@ rulings. Runs, on the final tree:
     which shows the filter is what refuses it.
   - **Docs.** Updated to match: the worker README (the POSIX queues beside SysV, and a "Locking a
     file" bullet), the Imaging README, `ARCHITECTURE.md` and the filter's XML docs.
-- R2-2: fixed in the review 2 fixes commit.
+- R2-2: fixed in ac939191.
   - **The host's own files.** `PdfWorkerLauncher.CanConfine` on Windows now asks
     `WindowsBlocker`. It grants the runtime as before, then the host's own files of the PDF
     worker's allowance, through the new `WindowsAppContainer.GrantRead(files, grant)`.
@@ -808,7 +808,7 @@ rulings. Runs, on the final tree:
         logs one `BlobPdfWorkerReadsHostDirectory`.
   - **Not exercised.** An unelevated host under Program Files, and a build owned by another
     account, were not run end to end. Their branches are driven through the grant seam.
-- R2-3: fixed in the review 2 fixes commit, with no code change, as ruled. The worker's own
+- R2-3: fixed in ac939191, with no code change, as ruled. The worker's own
   `/proc/<pid>` entries that describe the network and mount namespaces it shares with its host
   (`net/tcp`, `net/tcp6`, `net/udp`, `net/unix`, `net/arp`, `mountinfo`) are recorded as a
   residual beside `stat`, `access` and `readlink`. They appear in:
@@ -821,7 +821,7 @@ rulings. Runs, on the final tree:
   The record states what they show (the host's connections and Unix sockets, its neighbours, the
   mount table), that none is a credential, and that closing them takes namespaces of the worker's
   own.
-- R2-4: fixed in the review 2 fixes commit.
+- R2-4: fixed in ac939191.
   - **Stage 2's checks, on Linux.**
     - In process: `PdfWorkerLauncherTests.The_second_stage_refuses_an_anchor_that_is_not_the_workers_own_proc_directory_on_linux`
       passes an `O_PATH` descriptor of `/tmp`.
