@@ -10,7 +10,7 @@ import { TestbedHarnessEnvironment } from '@angular/cdk/testing/testbed';
 
 import { provideTellmaUi } from '@tellma/core-ui';
 import { TmModal } from '@tellma/core-ui/modal';
-import { tmPushEscapeDismissal, ɵtmModalOpened } from '@tellma/core-ui/overlay';
+import { tmPushEscapeDismissal, ɵtmIsBusy, ɵtmModalOpened } from '@tellma/core-ui/overlay';
 import { TmToasts } from '@tellma/core-ui/toast';
 import { TmBusyOverlayHarness } from '@tellma/core-ui-testing';
 
@@ -390,6 +390,29 @@ describe('TmBusyOverlay', () => {
     const event = new KeyboardEvent('keydown', { key: 'a', bubbles: true, cancelable: true });
     document.body.dispatchEvent(event);
     expect(event.defaultPrevented).toBe(false);
+  });
+
+  it('tells the page-wide layers a run is in progress, while it stands aside for a modal too', async () => {
+    expect(ɵtmIsBusy()).toBe(false);
+    const { busy } = setup();
+    expect(ɵtmIsBusy()).toBe(false);
+    const work = deferred();
+    const result = busy.run(work.promise);
+    expect(ɵtmIsBusy()).toBe(true);
+    const confirmation = modal();
+    expect(ɵtmIsBusy()).toBe(true);
+    confirmation.close();
+    work.resolve();
+    await result;
+    expect(ɵtmIsBusy()).toBe(false);
+  });
+
+  it('stops answering for the layers once the app that created it is destroyed', () => {
+    const { busy } = setup();
+    void busy.run(new Promise<void>(() => {}));
+    expect(ɵtmIsBusy()).toBe(true);
+    TestBed.resetTestingModule();
+    expect(ɵtmIsBusy()).toBe(false);
   });
 });
 

@@ -8,7 +8,7 @@
 // including those whose owners have not shipped yet, so the graph never needs
 // to change shape when one arrives.
 
-/** How an entry point loads: with the app, on demand, or as shared wiring. */
+/** How an entry point loads: with the app, on demand, or with whichever entry point imports it first. */
 export type TmEntryPointLoad = 'eager' | 'lazy' | 'shared';
 
 /** One entry point of `@tellma/core`. */
@@ -28,17 +28,24 @@ export const TM_CORE_PACKAGE = '@tellma/core';
  *
  * - The primary imports no other entry point; `/attention` imports only the
  *   primary; `/shell` the primary and `/attention`.
- * - `/private` is shared wiring between the package's own entry points: it
- *   may import the primary, and every entry point but the primary may import
- *   it.
- * - A lazy entry point may import every eager one and `/private`, plus the
- *   lazy ones it lists. No eager entry point imports a lazy one.
+ * - A shared entry point loads with whichever code imports it first: every
+ *   entry point but the primary and the shared ones may import it, so the
+ *   primary's first frame never carries it. `/private` is the package's own
+ *   wiring between its entry points and may import the primary;
+ *   `/search-normalize` is the text folding the launcher and the lazy pages
+ *   match with, and imports none.
+ * - A lazy entry point may import every eager and shared one, plus the lazy
+ *   ones it lists. No eager entry point imports a lazy one.
  */
 export const TM_CORE_ENTRY_POINTS: Readonly<Record<string, TmEntryPointRule>> = Object.freeze({
   '.': { load: 'eager', imports: [] },
   './attention': { load: 'eager', imports: ['.'] },
   './shell': { load: 'eager', imports: ['.', './attention'] },
   './private': { load: 'shared', imports: ['.'] },
+  // Spec 0027's search normalization, which spec 0027 §1 places in the
+  // primary; nothing on the first frame matches text, so it loads with the
+  // code that does.
+  './search-normalize': { load: 'shared', imports: [] },
   './realtime': { load: 'lazy', imports: [] },
   './support': { load: 'lazy', imports: [] },
   './entity': { load: 'lazy', imports: [] },
@@ -58,9 +65,9 @@ export const TM_CORE_ENTRY_POINTS: Readonly<Record<string, TmEntryPointRule>> = 
 });
 
 /**
- * The entry points `from` may import statically: those it lists, and for a
- * lazy entry point every eager one and `/private`, and for any entry point
- * other than the primary `/private`.
+ * The entry points `from` may import statically: those it lists, for a
+ * lazy entry point every eager one, and for any entry point other than the
+ * primary and the shared ones every shared one.
  */
 export function tmAllowedImports(
   table: Readonly<Record<string, TmEntryPointRule>>,
@@ -71,15 +78,13 @@ export function tmAllowedImports(
     return new Set();
   }
   const allowed = new Set(rule.imports);
-  if (rule.load === 'lazy') {
-    for (const [id, other] of Object.entries(table)) {
-      if (other.load === 'eager') {
-        allowed.add(id);
-      }
+  // A shared entry point gets none of the others, so two shared ones can
+  // never import each other in a cycle.
+  const getsShared = from !== '.' && rule.load !== 'shared';
+  for (const [id, other] of Object.entries(table)) {
+    if ((rule.load === 'lazy' && other.load === 'eager') || (getsShared && other.load === 'shared')) {
+      allowed.add(id);
     }
-  }
-  if (from !== '.' && from !== './private' && './private' in table) {
-    allowed.add('./private');
   }
   return allowed;
 }

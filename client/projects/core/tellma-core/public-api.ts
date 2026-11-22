@@ -9,8 +9,10 @@
  * routes' data, title strategy and URLs with the search query codec, the
  * entity registry's summaries, the client metadata's types and loaders, the
  * HTTP layer with its error and plain-JSON value types, the exact decimal
- * helpers, the client store and the tab bus, and the seams through which
- * telemetry, the request log and page scopes are provided.
+ * helpers, the client store and the tab bus, the app-level keyboard
+ * shortcut registry, the shell frame's seams (immersive mode and what the
+ * tenant shell's `main` shows), and the seams through which telemetry, the
+ * request log and page scopes are provided.
  *
  * @packageDocumentation
  */
@@ -127,6 +129,19 @@ export {
 export type { TmSettingsTabDeclaration } from './src/admin/tm-settings-tab';
 export type { TmNavContext, TmNavEntry, TmNavSection } from './src/nav/tm-nav-declarations';
 export type { TmShellSlot } from './src/nav/tm-shell-slot';
+
+// App-level keyboard shortcuts and the shell frame's seams.
+export {
+  TM_BROWSER_KEYS,
+  TM_RESERVED_SHORTCUTS,
+  TmShortcutConflictError,
+  type TmReservedShortcut,
+  type TmShortcut,
+  type TmShortcutRefusal,
+} from './src/nav/tm-shortcut';
+export { TmShortcuts } from './src/nav/tm-shortcuts';
+export { TM_SHELL_LAYOUT, TmShell } from './src/nav/tm-shell';
+export { TmShellMain, type TmShellMainOverride } from './src/nav/tm-shell-main';
 export type {
   TmDistributionIdentityInfo,
   TmDistributionInfo,

@@ -1,0 +1,50 @@
+/*
+ * Copyright (c) Tellma Ltd. All rights reserved.
+ *
+ * This source code is licensed under the Apache-2.0 license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/* The shell frame (spec 0027 §5.1): both shells are a fixed-height grid of
+   the app bar, the banner row, the pinned bar and `main`, beside the aside
+   column, and only `main` scrolls. The row heights are root variables, so
+   the shell writes them on the root element and every page, popover and
+   the toast host reads the chrome's height as `--tm-shell-top` without
+   computing it. TM_SHELL_LAYOUT mirrors the heights in TypeScript; a test
+   keeps the two in step.
+
+   These rules are global, not the shell entry point's own, because the
+   root variables must hold before any shell renders: the toast host and
+   the boot-time pages read them too. */
+
+@layer tm.base {
+  /* The rows and the column, at their defaults: no banner, no aside. */
+  :root {
+    --tm-app-bar-height: 40px;
+    --tm-banner-height: 0px;
+    --tm-pinned-bar-height: 32px;
+    --tm-aside-width: 0px;
+    --tm-shell-top: calc(var(--tm-app-bar-height) + var(--tm-banner-height) + var(--tm-pinned-bar-height));
+
+    /* Toasts start just below the chrome (the toast host reads this). */
+    --toast-offset-block-start: calc(var(--tm-shell-top) + 8px);
+  }
+
+  /* Immersive mode takes every row away, over whatever the shell wrote on
+     the root element: an important declaration beats an inline one. */
+  :root[data-tm-immersive] {
+    --tm-app-bar-height: 0px !important;
+    --tm-banner-height: 0px !important;
+    --tm-pinned-bar-height: 0px !important;
+  }
+
+  /* The frame itself, in both shells. */
+  .tm-shell {
+    display: grid;
+    block-size: 100dvh;
+    grid-template-rows:
+      var(--tm-app-bar-height) var(--tm-banner-height) var(--tm-pinned-bar-height)
+      minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr) var(--tm-aside-width);
+  }
+}

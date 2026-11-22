@@ -31,6 +31,9 @@ export function provideTmPageScope(): Provider[];
 export const TM_APP_DECLARATIONS: InjectionToken<TmAppDeclarations>;
 
 // @public
+export const TM_BROWSER_KEYS: readonly TmKeys[];
+
+// @public
 export const TM_CLIENT_METADATA: InjectionToken<TmClientMetadata>;
 
 // @public
@@ -38,6 +41,16 @@ export const TM_DOC_FORMATS: Readonly<Record<string, number>>;
 
 // @public
 export const TM_NOW: InjectionToken<() => number>;
+
+// @public
+export const TM_RESERVED_SHORTCUTS: readonly TmReservedShortcut[];
+
+// @public
+export const TM_SHELL_LAYOUT: Readonly<{
+    readonly appBar: 40;
+    readonly banner: 32;
+    readonly pinnedBar: 32;
+}>;
 
 // @public
 export interface TmAccessProblem {
@@ -1200,6 +1213,13 @@ export interface TmRequestRecord {
 export type TmRequestStart = Pick<TmRequestRecord, 'background' | 'method' | 'route' | 'tenantId' | 'traceId'>;
 
 // @public
+export interface TmReservedShortcut {
+    readonly id: string;
+    readonly keys: TmKeys;
+    readonly owner: string;
+}
+
+// @public
 export interface TmRouteData {
     readonly kind: TmPageKind;
     readonly load?: TmLazyComponent;
@@ -1361,12 +1381,67 @@ export type TmSettingValueType = 'Boolean' | 'Date' | 'Decimal' | 'Enum' | 'Guid
 export type TmSettingVisibility = 'Client' | 'Secret' | 'Server';
 
 // @public
+export class TmShell {
+    constructor();
+    readonly immersive: Signal<boolean>;
+    setImmersive(on: boolean, destroyRef: DestroyRef): void;
+    static ɵfac: i0.ɵɵFactoryDeclaration<TmShell, never>;
+    static ɵprov: i0.ɵɵInjectableDeclaration<TmShell>;
+}
+
+// @public
+export class TmShellMain {
+    constructor();
+    readonly override: Signal<TmShellMainOverride | null>;
+    replace(component: Type<unknown>, inputs?: Readonly<Record<string, unknown>>): void;
+    restore(): void;
+    static ɵfac: i0.ɵɵFactoryDeclaration<TmShellMain, never>;
+    static ɵprov: i0.ɵɵInjectableDeclaration<TmShellMain>;
+}
+
+// @public
+export interface TmShellMainOverride {
+    readonly component: Type<unknown>;
+    readonly inputs?: Readonly<Record<string, unknown>>;
+}
+
+// @public
 export interface TmShellSlot {
     readonly badge?: () => Signal<number | null>;
     readonly icon: string;
     readonly id: string;
     readonly labelKey: string;
     readonly panel: TmLazyComponent;
+}
+
+// @public
+export interface TmShortcut {
+    readonly id: string;
+    readonly inFields?: boolean;
+    readonly keys: TmKeys;
+    readonly labelKey: string;
+    readonly overModals?: boolean;
+    run(event: KeyboardEvent): false | void;
+    readonly scope: 'global' | 'page';
+}
+
+// @public
+export class TmShortcutConflictError extends Error {
+    constructor(id: string, reason: TmShortcutRefusal, message: string, options?: ErrorOptions);
+    readonly id: string;
+    readonly reason: TmShortcutRefusal;
+}
+
+// @public
+export type TmShortcutRefusal = 'browser' | 'family' | 'grid' | 'invalid' | 'live';
+
+// @public
+export class TmShortcuts {
+    constructor();
+    readonly active: Signal<readonly TmShortcut[]>;
+    register(shortcut: TmShortcut, destroyRef?: DestroyRef): void;
+    static ɵfac: i0.ɵɵFactoryDeclaration<TmShortcuts, never>;
+    static ɵprov: i0.ɵɵInjectableDeclaration<TmShortcuts>;
 }
 
 // @public

@@ -7,18 +7,19 @@ own.
 
 | Entry point | Holds | Loaded |
 |---|---|---|
-| `@tellma/core` | The distribution API: `bootstrapTellma`, `provideTellma`, `tmFeature`, the declaration functions (`tmEntity`, `tmPage`, `tmCodedReport`, `tmWidget`, `tmOverride`) and `TM_APP_DECLARATIONS`, the merged declarations; the client metadata's types, its loaders (`tmMetadataLoaders`) and the loaded Core chunk (`TM_CLIENT_METADATA`); the HTTP layer (`TmApi`, `TmApiError`, `TmProblem`), its plain-JSON value types (`TmJson`, `TmDecimal`, `TmId`) and the exact decimal helpers `TmDecimals`; the seams through which telemetry (`TmTelemetry`), the request log (`TmRequestLog`) and page scopes (`provideTmPageScope`) are provided; the session (`TmSession`, `tmSessionGuard`, `tmParseProfileCookie`), the launch mark (`TmLaunch`) and the single-membership rule (`tmSingleLiveTenant`); the client store (`TmClientStore`, `TmStoreRefusedError`, `TM_DOC_FORMATS`) and the tab bus (`TmTabBus`) with its message catalogue; the boot script's result types and the app clock (`TM_NOW`); the derived router's pieces: the root component (`TmApp`), the route data (`TmRouteData`), the title strategy (`TmTitleStrategy`), the URL builders and classifier (`TmUrls`) with the search query's types, and the entity lookups (`TmEntities`); localization: `TmLocalization` (the language, the regional formats, the calendar and the zones, and their switches with the coalesced locale write), `TmServerText` (server codes and keys through the string packs) and `tmEnglish()`, the platform's English | eager |
+| `@tellma/core` | The distribution API: `bootstrapTellma`, `provideTellma`, `tmFeature`, the declaration functions (`tmEntity`, `tmPage`, `tmCodedReport`, `tmWidget`, `tmOverride`) and `TM_APP_DECLARATIONS`, the merged declarations; the client metadata's types, its loaders (`tmMetadataLoaders`) and the loaded Core chunk (`TM_CLIENT_METADATA`); the HTTP layer (`TmApi`, `TmApiError`, `TmProblem`), its plain-JSON value types (`TmJson`, `TmDecimal`, `TmId`) and the exact decimal helpers `TmDecimals`; the seams through which telemetry (`TmTelemetry`), the request log (`TmRequestLog`) and page scopes (`provideTmPageScope`) are provided; the session (`TmSession`, `tmSessionGuard`, `tmParseProfileCookie`), the launch mark (`TmLaunch`) and the single-membership rule (`tmSingleLiveTenant`); the client store (`TmClientStore`, `TmStoreRefusedError`, `TM_DOC_FORMATS`) and the tab bus (`TmTabBus`) with its message catalogue; the boot script's result types and the app clock (`TM_NOW`); the derived router's pieces: the root component (`TmApp`), the route data (`TmRouteData`), the title strategy (`TmTitleStrategy`), the URL builders and classifier (`TmUrls`) with the search query's types, and the entity lookups (`TmEntities`); localization: `TmLocalization` (the language, the regional formats, the calendar and the zones, and their switches with the coalesced locale write), `TmServerText` (server codes and keys through the string packs) and `tmEnglish()`, the platform's English; the app-level keyboard shortcuts (`TmShortcuts`, `TmShortcut`, `TM_RESERVED_SHORTCUTS`, `TM_BROWSER_KEYS`, `TmShortcutConflictError`) and the shell frame's seams (`TmShell` with immersive mode, `TmShellMain`, `TM_SHELL_LAYOUT`) | eager |
 | `@tellma/core/shell` | The tenant shell, the tenant picker and the signed-out page, which the derived routes load; until their owners arrive they are plain stand-ins, beside one placeholder page for the platform's page families | eager, through `import()` |
 | `@tellma/core/memory` | The tab's memory of its pages: page state (`TmPageState`, `tmPageStateKey`), drafts (`TmDrafts`) and tree expansion (`TmTreeExpansion`), which the page hosts load with them | lazy |
 | `@tellma/core/recents` | The recently visited pages (`TmRecents`), which the launcher and the home page list; the app loads it with `import()` after its first render, when visits start to count | lazy, through `import()` after first render |
 | `@tellma/core/config-check` | `tmCheckAppConfig`, the check of an app's configuration against the client metadata, which the build runs in Node and a development app at startup | lazy |
+| `@tellma/core/search-normalize` | `tmSearchNormalize`, the one text folding the launcher, the shortcuts filter, the field tree and the reports list match with | with the code that imports it |
 | `@tellma/core/private` | Wiring shared by the platform's own entry points and packages; no API goldens, no stability guarantee, never imported by app code | — |
 
 The other entry points of the framework arrive with the features they hold, each in the folder of
 its name. The package also ships plain assets: `boot/tm-boot.template.js`, the boot script's
 template, `styles.css`, the app's global stylesheet, which a distribution's `src/styles.css`
-imports first (the tokens, the Latin fonts, the directive stylesheets and
-`styles/tm-boot-page.css`, the boot page's styles), and the default brand files
+imports first (the tokens, the Latin fonts, the directive stylesheets, `styles/tm-frame.css`, the
+shell frame's root variables and grid, and `styles/tm-boot-page.css`, the boot page's styles), and the default brand files
 `brand/{wordmark,mark}-on-{dark,light}.svg`.
 
 The platform's icon names live in `src/icons/platform-icons.ts`, which `provideTellma` registers
@@ -370,6 +371,49 @@ list page's query, classifies a stored URL (`describe`) and loads a route's chun
 `q` stripped of bidi controls, and the free filter in the fragment as `#d=`, base64url JSON, which
 no server log sees.
 
+## Shortcuts and the shell frame
+
+`TmShortcuts` is the one keyboard listener for app-level shortcuts: a bubble-phase `keydown`
+listener on the document, so a focused grid, editor, menu or dialog handles its own keys first and
+wins them by preventing the event. It ignores a prevented key, a composition, an auto-repeat, and
+every key while the busy overlay runs or the session is not active. It matches with `tmKeysMatch`,
+so `Mod+K` works while an Arabic layout types `ن`. In an editable field only `inFields` shortcuts
+run (the default for keys with `Mod` or `Ctrl`), and on an Apple platform a key that Option turns
+into another character is typing. While a modal is open only `overModals` shortcuts run, besides
+the page shortcuts of the top dialog's own page context, which the page actions register through
+the internal `ɵregisterInDialog`. A shortcut that runs is prevented, stopped and reported as the
+sampled `tm.shortcut.used`.
+
+```ts
+inject(TmShortcuts).register({ id: 'acme.credit-review.approve-next', keys: 'Mod+Shift+M',
+  labelKey: 'Acme_CreditReview_ApproveNext', scope: 'page', run: () => this.approveNext() });
+```
+
+The platform and pages draw keys from disjoint families. A `tm.` id registers only its keys in
+`TM_RESERVED_SHORTCUTS`; every other id takes `Mod+<key>` or `Mod+Shift+<key>` (except `Mod+K`
+and `Mod+/`), `F2`, `Alt+PageUp` or `Alt+PageDown`, and only `dashboard.exit-presentation` takes
+`Escape`. The registry also refuses the keys a focused grid handles with a modifier (all but
+`Mod+Enter`, which the grid prevents when it acts), `TM_BROWSER_KEYS`, and the keys of a live
+shortcut, comparing `Mod` as both Ctrl and ⌘ so a conflict fails on every platform. Development
+throws `TmShortcutConflictError`; production drops the registration and reports
+`tm.shortcut.conflict` with the id and the reason. The registry's copy of the grid's modified keys
+keeps the grid's binding table off the first frame; a unit test holds it equal to `TM_GRID_KEYS`.
+
+The shell frame's rows are root CSS variables in `styles/tm-frame.css`: the app bar (40 px), the
+banner row (0, or 32 px while a banner shows) and the pinned bar (32 px), summed as
+`--tm-shell-top`, which pages, popovers and the toast host read. `TM_SHELL_LAYOUT` mirrors the
+heights, and a tooling test holds the two equal. `TmShell.setImmersive(true, destroyRef)` takes
+every row away through an attribute on the root element until the caller gives them back or its
+`destroyRef` ends. `TmShellMain` says what the tenant shell's `main` shows: the route host, or a
+component the error presenter puts in its place (the tenant-state page), until `restore()` or a
+navigation to another path.
+
+`tmSearchNormalize` (`@tellma/core/search-normalize`) folds a query and the terms it matches the
+same way: bidi controls stripped, NFKD with Latin and Arabic marks removed, lowercased, the
+interchangeable Arabic letters folded and tatweel dropped, Arabic-Indic digits as 0-9, and
+punctuation and symbols as single spaces. Nothing on the first frame matches text, so it is an
+entry point of its own rather than part of the primary.
+
 ## Decimals
 
 `decimal` and `long` values travel as JSON strings and stay strings: a `TmDecimal` is the value's
@@ -404,7 +448,9 @@ loaded string packs and client tables until the localization service replaces it
 
 Static imports between entry points follow one graph, always through `@tellma/core/<entry point>`
 and never a relative path: the primary imports no other entry point, `/attention` only the
-primary, `/shell` the primary and `/attention`, and no eager entry point imports a lazy one.
+primary, `/shell` the primary and `/attention`, and no eager entry point imports a lazy one. A
+shared entry point (`/private`, `/search-normalize`) loads with whichever code imports it: every
+entry point but the primary and the shared ones may import it, so the primary never carries it.
 Dynamic `import()` and `import type` cross any boundary, and a spec may reach another entry
 point's test rigs (`*.testing.util.ts`) by a relative path, since no build ships either. The lint
 rule `tm/core-import-boundary` enforces the graph, and ng-packagr refuses a cycle between entry
