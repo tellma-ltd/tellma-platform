@@ -384,6 +384,25 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-228 (orchestrator, 2026-11-22): PC-F69 Review 1 rulings; the "." shares go to Ahmad
+
+PC-F69 Review 1 found 0/0/3. Its own probes confirmed the claim: boot keeps every service class of "." on the first frame, so no sizable service can move to a secondary entry point without becoming asynchronous.
+
+It also confirmed the TmDecimals pure annotation. The annotation is safe, its treeShakes check fails without it, and it saves about 0.67 KB for FESM consumers.
+
+Rulings:
+- R1-1: give the per-spec split on both bases.
+- R1-2: correct candidate 3's figure.
+- R1-3: do not make the move. The flush engine via import() (≈1.2 KB) is a timing change against 0025 §9.4's "at once", so it is named in the commit as deferred. Fix1 also root-causes the union-order.spec bigint timeout (D-011).
+
+PC-F69 holds after fix1. D-214's re-split cannot honestly bring "." to 31 KB, so the ceiling stays at 38.5 KB.
+
+For Ahmad (from D-214, now with evidence):
+- Option 1: raise spec 0024's share of "." to its measured size (≈25.5 KB on the gate's measure, against 14) and spec 0025's (≈12.1 KB, against 9).
+- Option 2: approve async changes for about 1.5-2.5 KB more: the flush engine via import(), and the search query codec, which makes TmUrls async.
+
+Also, 0024 §12's initial-JS budget is measured on Acme. Acme compiles core from sources, so that measure is not an FESM consumer's first frame.
+
 ### D-227 (orchestrator, 2026-11-22): PC-182 Review 1 rulings; PC-F71's root cause; PC-F69 R1
 
 PC-182 Review 1 found 0 blocking, 3 major and 4 minor.
