@@ -115,6 +115,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-F70 | pc-4 | pc/PC-F70 | held 222dcad6 | impl 5c274bc6 (3 deviations: event covers every endpoint-audit refusal; fields Count/Problems, no event id; CheckAsync takes ILoggerFactory; AspNetCore unit 998/998); R1 0/0/2 (MapTellma-path event lost to batched exporters; multi-problem join unpinned); fix1 then hold; D-223; for Ahmad: 0016 §10.1 "endpoint audit" wording; fix1 222dcad6 (R1-1 OpenTelemetry LoggerProvider force-flush before the MapTellma throw, with a test; R1-2 two-violation join pinned); spec 0016 does not require deferral (0011 §5.3); merge-tree clean; held after PC-F71 | fix; R1 only | 2026-11-22 |
 | PC-176 | pc-f | pc/PC-176 | impl | T3 fill (D-140); only T3 ready | 3; R1 only | 2026-11-22 |
 | PC-182 | pc-f2 | pc/PC-182 | impl | T3 fill (D-140); only T3 ready; usage 36% at 15:50 UTC, on pace | 3; R1 only | 2026-11-22 |
+| PC-189 | pc-2 | pc/PC-189 | impl | T3 fill (D-140); only T3 ready | 3 | 2026-11-22 |
 
 ## Fix items
 
@@ -506,7 +507,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-186 | 0033-e | 3 | todo | | | |
 | PC-187 | 0033-f | 3 | todo | | | |
 | PC-188 | 0033-g | 3 | todo | | | |
-| PC-189 | 0016-g | 3 | todo | | | |
+| PC-189 | 0016-g | 3 | in progress (pc-2; T3 fill, D-140) | | | |
 | PC-190 | 0016-h | 3 | todo | | | carry (D-159): tellma_action must refuse the sensitive core.User invite and issue-credentials actions (both mcp Full in the stack golden today) |
 | PC-191 | 0033-h | 3 | todo | | | carry from PC-173: PC-191 is not gated on PC-175, so until PC-175 lands it reaches the table writer only through internal WorkbookWriter.WriteTableAsync |
 | PC-192 | 0033-i | 3 | todo | | | |
