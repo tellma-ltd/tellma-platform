@@ -112,8 +112,8 @@ namespace Tellma.Core.AspNetCore.IntegrationTests.Infrastructure
         private async Task<ApiResponse> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             using HttpResponseMessage response = await _http.SendAsync(request, cancellationToken);
-            string text = await response.Content.ReadAsStringAsync(cancellationToken);
-            return new ApiResponse(response.StatusCode, response.Headers, response.Content.Headers, text, Host.Warnings);
+            byte[] body = await response.Content.ReadAsByteArrayAsync(cancellationToken);
+            return new ApiResponse(response.StatusCode, response.Headers, response.Content.Headers, Encoding.UTF8.GetString(body), body, Host.Warnings);
         }
     }
 
@@ -121,9 +121,10 @@ namespace Tellma.Core.AspNetCore.IntegrationTests.Infrastructure
     /// <param name="Status">The status.</param>
     /// <param name="Headers">The response's headers.</param>
     /// <param name="ContentHeaders">The body's headers.</param>
-    /// <param name="Text">The body's text.</param>
+    /// <param name="Text">The body's text, read as UTF-8.</param>
+    /// <param name="Body">The body's bytes, for an answer that is a file rather than text.</param>
     /// <param name="Warnings">The host's warnings, for a failed assertion to report.</param>
-    internal sealed record ApiResponse(HttpStatusCode Status, HttpResponseHeaders Headers, HttpContentHeaders ContentHeaders, string Text, WarningLog Warnings)
+    internal sealed record ApiResponse(HttpStatusCode Status, HttpResponseHeaders Headers, HttpContentHeaders ContentHeaders, string Text, ReadOnlyMemory<byte> Body, WarningLog Warnings)
     {
         /// <summary>The body as JSON; null when it is empty or not JSON.</summary>
         public JsonNode? Json

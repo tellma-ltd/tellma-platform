@@ -11,7 +11,7 @@ namespace Tellma.Core.AspNetCore.IntegrationTests.Stacks
 {
     /// <summary>
     ///     The routes the reference distribution projects for centers, users and roles and their child
-    ///     surfaces are exactly the ones the operation cases drive end to end, so a route added to
+    ///     surfaces are exactly the ones the operation and export cases drive end to end, so a route added to
     ///     one of the three stacks fails here until a case drives it. It covers the stacks' routes
     ///     only: the platform's own service routes (access, notification preferences, settings and
     ///     the rest) are not stack routes and are not held to this list, though the round-trip
@@ -29,8 +29,8 @@ namespace Tellma.Core.AspNetCore.IntegrationTests.Stacks
 
         /// <summary>
         ///     Every route the operation cases drive, after <c>/{tenantId}/api/web/</c>: the center
-        ///     cases, the user cases (the membership's child surface among them) and the role cases
-        ///     (the permission's child surface among them).
+        ///     cases, the user cases (the membership's child surface among them), the role cases
+        ///     (the permission's child surface among them), and the export cases.
         /// </summary>
         private static readonly string[] Driven =
         [
@@ -42,6 +42,8 @@ namespace Tellma.Core.AspNetCore.IntegrationTests.Stacks
             "users/invitation-status",
             "roles/query", "roles/get", "roles/get-by-ids", "roles/save", "roles/delete", "roles/activate", "roles/deactivate",
             "role-memberships/query", "permissions/query",
+            "centers/export", "centers/export-for-import", "users/export", "users/export-for-import", "roles/export", "roles/export-for-import",
+            "permissions/export", "role-memberships/export",
         ];
 
         [Fact]
