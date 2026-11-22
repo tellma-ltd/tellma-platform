@@ -384,6 +384,18 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-195 (Ahmad, 2026-11-22): start PC-F11 and PC-F17 to use the reset
+
+Situation: at 02:10 UTC usage was 15% at about 1 pt/h, below D-178's target of about 1.5. Nothing beyond PC-103 was ready, and pc-4 was idle. I proposed the two before-GA fix items, and Ahmad answered "Yes, start both".
+
+Ruling:
+- PC-F17 (grid scroll budget) starts at once in pc-4, implementer inherit high, with one review.
+- PC-F11 (PDF worker filesystem confinement) takes pc-3 as soon as PC-092 lands. No other slot is free: PC-214 and PC-175 hold theirs, and adding a slot would need new ports and a DB_SUFFIX (D-035).
+- PC-F11 is security-bound, so it runs at implementer xhigh with Review 1 and Review 2 on fable (PROCESS §3).
+- Both integrate in the normal release order, after PC-214 and PC-175.
+
+Revisit if usage stays below about 1.2 pts/h with a free slot and nothing ready.
+
 ### D-194 (orchestrator, 2026-11-22): PC-092 fix1 held; it integrates ahead of PC-214 and PC-175
 
 PC-092's fix1 (5ddb17c5) fixed R1-1..R1-6. Its pushback on R1-1's "read denied, extra dropped" sub-point is accepted. Every grant implies Read with the same filter (0014 §5.2 step 2), and DetailsPlanner.Compose throws Forbidden before any contributor runs, so the branch cannot be reached through the stack. The contributor keeps it as a guard. The tests pin the Forbidden and a filtered Save's implied read, and no leak was found.
