@@ -384,6 +384,21 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-214 (orchestrator, 2026-11-22): the @tellma/core "." entry point; PC-F69 promoted
+
+PC-104 (0024-h) and PC-107 (0025-e) each raise the "." ceiling from 31 KB, by about 4.7 KB and 5.1 KB. Once both land, "." passes 41 KB.
+- 0024's services are already ~22 KB against a 14 KB share (D-200, D-206).
+- 0025's primary services are now ~13.2 KB against 9 KB.
+- D-031's revisit clause (an entry point that rises three times is re-split rather than raised) has long been triggered.
+
+Rulings:
+- Both Review 1s judge whether each added KB truly belongs on the first frame, and list concrete lazy or secondary-entry moves.
+- Raises that survive review stand, each honest and rounded up to 0.5 KB.
+- Whichever of the two integrates second re-measures after the merge and keeps the combined ceiling honest.
+- PC-F69 (re-split "." by spec family) is promoted. It takes the next free slot after PC-104 and PC-107 land, ahead of other T1/T2 work, because each new client checkpoint adds to the same entry point.
+
+For Ahmad: the 0024 and 0025 shares of "." (14 KB and 9 KB) are both overrun. Either raise the shares, or accept the overrun until PC-F69 re-splits.
+
 ### D-213 (orchestrator, 2026-11-22): PC-095 fix2 accepted; release order after PC-F17
 
 Fix2 (c5732459) fixed R2-1..R2-4 and pushed none back.
