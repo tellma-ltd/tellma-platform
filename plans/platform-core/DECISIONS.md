@@ -384,6 +384,22 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-202 (orchestrator, 2026-11-22): PC-175 CI fixes accepted
+
+PC-175's integration run 44986216771 was red, with two root causes. Both fixes are in 6ced57c6.
+
+1. Merge interplay, both OSes:
+   - The failing check is AcmeResourceAuditTests.Every_label_the_acme_model_derives_in_its_own_schema_is_shipped, from PC-092.
+   - Cause: PC-175's workbook actions attach to every Acme stack and derive `Acme_<Resource>_Action_Export` and ExportForImport keys that Acme does not ship.
+   - Accepted: Core owns the shared workbook-action and request-field labels (Strings.resx and Strings.ar.resx), and the audit's shared-suffix list reads them from ExportRequest and ExportForImportRequest by reflection, as it does for the platform's other actions.
+   - For Ahmad: the Arabic labels were written by the agent and want a native review.
+2. A flake that predates PC-175, Windows only:
+   - The failing test is HostShapeTests.Development_provisions_through_the_local_migrator.
+   - Cause: Identity's DevelopmentCertificateSource raced. One host loaded dev-signing.pfx while another replaced it with File.Move, which is a sharing violation on Windows.
+   - Accepted, landing through PC-175 because it is the item the flake blocked: every read and replacement now holds an exclusive `<pfx>.lock` gate with a 30 s bounded retry, and the in-memory fallback is kept. DevelopmentCertificateSourceTests pins 16 concurrent loads.
+
+Both are recorded as deviations in the commit. New pc run 44990079169.
+
 ### D-201 (orchestrator, 2026-11-22): PC-093 Review 1 rulings
 
 Review 1 found 0/0/2 and accepted all 6 deviations. Its findings on the reviewer's checks:

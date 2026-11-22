@@ -109,7 +109,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 
 | PC | Slot | Branch | Step | Implementer agent (name / id) | Reviewer agent (name / id) | Started (UTC) |
 |---|---|---|---|---|---|---|
-| PC-175 | pc-2 | pc/PC-175 | integrating | impl df9e5804 (16 deviations accepted); R1 0/1/4; fix1 6eb3f3c9 held (R1-3 inverted via IPlatformCompanions, no deviation); 5 merge-tree conflicts (README + 4 goldens, regenerate); integrate c6e50d56 red (build-test ubuntu + windows), CI fixes in progress; D-188, D-193 | 0019-b; R1 only | 2026-11-21 |
+| PC-175 | pc-2 | pc/PC-175 | integrating | impl df9e5804 (16 deviations accepted); R1 0/1/4; fix1 6eb3f3c9 held (R1-3 inverted via IPlatformCompanions, no deviation); 5 merge-tree conflicts (README + 4 goldens, regenerate); integrate c6e50d56 red (Acme label audit vs workbook actions; HostShape dev-cert race); CI fixes 6ced57c6, pc run 44990079169 pending; D-202; D-188, D-193 | 0019-b; R1 only | 2026-11-21 |
 | PC-103 | pc-1 | pc/PC-103 | fix1 | impl 93091a54 (17 deviations; "." ceiling 20.44 to 30.3 KB); R1 0/4/8 (tenant switch skips cold entry; focus hold leak; settings sections skip leave guard; budget); escalated to R2 inherit xhigh (§4.4: four majors); fix1 then R2; PC-F69 re-split opened; D-200 | 0024-g; R1 only | 2026-11-22 |
 | PC-F67 | pc-f2 | pc/PC-F67 | held | impl 0dabb9cc (deviations 2; SchemaMaxDepth 128 via a document-only JsonOptions, for Ahmad; Me restored as MeResult); R1 0/0/2 (type-nesting bound + polymorphic fixture; independent me oracle); fix1 4da04f01 held (SchemaDepthCheck host.openapi-depth, Development only; 128 served, 129 fails startup; polymorphic boundary not pinned against the generator); clean merge-tree; released after PC-175; D-197, D-198 | fix; R1 only | 2026-11-22 |
 | PC-F17 | pc-4 | pc/PC-F17 | fix1 | impl 73069c02 (deviations 5: slot tracking against 0004 §4; ./grid 41.23 KB under D-031; ARCHITECTURE.md core-ui edit; probes unquarantined); R1 0/1/3 (checkbox press-scroll-release toggles another row; window equal; retire test; unthrottled probe deviation); fix1 then hold; D-199 | fix; R1 only | 2026-11-22 |
@@ -232,6 +232,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 |---|---|---|
 | CI windows-latest unit step: vstest testhost connect timeout (90 s) aborts one assembly under parallel load (PR run 44947728191) | 2026-11-21 | PC-F66 (fixed 39ab3f1b) |
 | Core IntegrationTests SaveEmitterTests.Two_racing_saves_of_one_row_produce_exactly_one_conflict: first poll counted other databases' app-lock waits (e.g. AdministratorGuardTests) (pc run 44969051977) | 2026-11-22 | fixed in PC-096 CI fixes 42071b8c |
+| Acme Web.Tests HostShapeTests.Development_provisions_through_the_local_migrator (Windows): Identity DevelopmentCertificateSource load raced File.Move replace of dev-signing.pfx (pc run 44986216771) | 2026-11-22 | fixed in PC-175 CI fixes 6ced57c6 (exclusive lock gate) |
 | tellma-core-tools build.spec "stops with exit 3 …" (local load-only timeout) | 2026-11-14 | D-085 |
 | integration fixtures: CREATE DATABASE fails with SQL 1807 (model locked) under concurrent slots (local only) | 2026-11-15 | PC-F47 |
 | Identity InvitationDeliveryStatusApiTests.A_delivered_invitation_reports_what_the_provider_said (expectsDeliveryEvents) under load; passed alone 6/6 | 2026-11-15 | watch |
