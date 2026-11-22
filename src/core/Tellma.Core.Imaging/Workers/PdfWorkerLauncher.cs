@@ -27,7 +27,9 @@ namespace Tellma.Core.Imaging.Workers
     ///     Workers are confined to what their <see cref="WorkerAllowance" /> lets them read, and
     ///     write no file, wherever the operating system can confine them: on Linux where the kernel
     ///     offers Landlock, which the worker restricts itself with before it starts over; on
-    ///     Windows always, in an AppContainer of the worker's own. macOS workers are not confined.
+    ///     Windows in an AppContainer of the worker's own, wherever that can read the .NET
+    ///     installation, which the host grants it on a runtime outside Program Files when it may.
+    ///     macOS workers are not confined.
     /// </remarks>
     /// <param name="worker">The worker assembly to start; the PDF worker beside this one when null.</param>
     /// <param name="arguments">Arguments appended after the worker's own; none when null.</param>
@@ -53,6 +55,13 @@ namespace Tellma.Core.Imaging.Workers
         // booted without it or a container's system-call filter refuses it.
         private static readonly Lazy<bool> LandlockOffered = new(static () => OperatingSystem.IsLinux() && Landlock.Version() >= 1);
 
+        // On Windows, why a worker's AppContainer cannot read the .NET installation, found once,
+        // after granting it read there where it may; null when it can, or when the installation
+        // is missing, which starting a worker reports.
+        private static readonly Lazy<string?> AppContainerBlocked = new(
+            static () => OperatingSystem.IsWindows() && FindMuxer(RuntimeRoot()) is string muxer ? WindowsAppContainer.GrantRuntime(muxer) : null,
+            LazyThreadSafetyMode.ExecutionAndPublication);
+
         private readonly Lazy<PdfWorkerFiles> _files = new(() => Locate(worker), LazyThreadSafetyMode.ExecutionAndPublication);
         private readonly IReadOnlyList<string> _arguments = arguments ?? [];
 
@@ -61,16 +70,29 @@ namespace Tellma.Core.Imaging.Workers
         public PdfWorkerFiles Files => _files.Value;
 
         /// <summary>
-        ///     Whether the operating system this host runs on confines a worker's files: Linux whose
-        ///     kernel offers Landlock, and Windows.
+        ///     Whether this host's workers can be confined: on Linux whose kernel offers Landlock, and
+        ///     on Windows where a worker's AppContainer can read the .NET installation. On Windows
+        ///     the first ask may grant the AppContainer read on an installation outside Program Files.
         /// </summary>
-        public static bool CanConfine => OperatingSystem.IsWindows() || LandlockOffered.Value;
+        public static bool CanConfine => OperatingSystem.IsWindows() ? AppContainerBlocked.Value is null : LandlockOffered.Value;
 
-        /// <summary>Whether this launcher's workers are confined, which each must confirm in its ready frame.</summary>
-        public bool Confines { get; } = confine ?? CanConfine;
+        /// <summary>Why this host's workers cannot be confined; null when they can.</summary>
+        public static string? Unconfinable =>
+            CanConfine
+                ? null
+                : OperatingSystem.IsWindows()
+                    ? AppContainerBlocked.Value
+                    : OperatingSystem.IsLinux() ? "the kernel offers no Landlock" : "the operating system offers no confinement the worker uses";
+
+        /// <summary>
+        ///     Whether this launcher's workers are confined, which each must confirm in its ready
+        ///     frame; decided when first asked, not when the launcher is made, so a host that starts
+        ///     no worker never decides it.
+        /// </summary>
+        public bool Confines => confine ?? CanConfine;
 
         /// <summary>What a confined worker may read; resolved once per launcher (a race may resolve it twice, alike).</summary>
-        /// <exception cref="PdfWorkerException">A file is missing: the host cannot run workers.</exception>
+        /// <exception cref="PdfWorkerException">A file is missing, or the host's files lie where a worker may read in full: the host cannot run confined workers.</exception>
         public WorkerAllowance Allowance => LazyInitializer.EnsureInitialized(ref field, () => WorkerAllowance.For(Files));
 
         /// <summary>
@@ -167,9 +189,8 @@ namespace Tellma.Core.Imaging.Workers
         /// <exception cref="PdfWorkerException">One is missing.</exception>
         private static PdfWorkerFiles Locate(string? worker)
         {
-            // Section: the installation this process runs on: the shared framework's directory is
-            // <root>/shared/Microsoft.NETCore.App/<version>.
-            string root = Path.GetFullPath(Path.Combine(RuntimeEnvironment.GetRuntimeDirectory(), "..", "..", ".."));
+            // Section: the installation this process runs on.
+            string root = RuntimeRoot();
 
             // Section: the host's dependency manifest, which the host process was started with. The
             // application's own is listed first; when it has none, the first is a framework's.
@@ -193,22 +214,38 @@ namespace Tellma.Core.Imaging.Workers
             }
 
             // Section: the muxer of that installation; or, under the SDK, the one it names.
-            string muxer = Path.Combine(root, OperatingSystem.IsWindows() ? "dotnet.exe" : "dotnet");
-            if (!File.Exists(muxer))
-            {
-                muxer = System.Environment.GetEnvironmentVariable("DOTNET_HOST_PATH") ?? string.Empty;
-            }
-
-            if (!File.Exists(muxer))
-            {
-                throw Missing("the dotnet executable of the runtime the host runs on", "Run the host framework-dependent on an installed .NET runtime, not self-contained.");
-            }
+            string muxer = FindMuxer(root)
+                ?? throw Missing("the dotnet executable of the runtime the host runs on", "Run the host framework-dependent on an installed .NET runtime, not self-contained.");
 
             // Section: the worker, beside the host's assemblies.
             string path = worker ?? typeof(WorkerProtocol).Assembly.Location;
             return string.IsNullOrEmpty(path) || !File.Exists(path)
                 ? throw Missing("the PDF worker assembly (Tellma.Core.Imaging.PdfWorker.dll)", "Ship it beside the host's assemblies; it comes with the Tellma.Core.Imaging package.")
                 : new PdfWorkerFiles(Path.GetDirectoryName(Path.GetFullPath(muxer))!, muxer, runtimeConfiguration, dependencies, path);
+        }
+
+        /// <summary>
+        ///     The installation this process runs on: the shared framework's directory is
+        ///     <c>&lt;root&gt;/shared/Microsoft.NETCore.App/&lt;version&gt;</c>.
+        /// </summary>
+        /// <returns>The installation's root directory.</returns>
+        private static string RuntimeRoot()
+        {
+            return Path.GetFullPath(Path.Combine(RuntimeEnvironment.GetRuntimeDirectory(), "..", "..", ".."));
+        }
+
+        /// <summary>The muxer of an installation; or, under the SDK, the one it names.</summary>
+        /// <param name="root">The installation's root directory.</param>
+        /// <returns>The muxer's path; null when there is none.</returns>
+        private static string? FindMuxer(string root)
+        {
+            string muxer = Path.Combine(root, OperatingSystem.IsWindows() ? "dotnet.exe" : "dotnet");
+            if (!File.Exists(muxer))
+            {
+                muxer = System.Environment.GetEnvironmentVariable("DOTNET_HOST_PATH") ?? string.Empty;
+            }
+
+            return File.Exists(muxer) ? muxer : null;
         }
 
         /// <summary>A number as the runtime's configuration reads it: hexadecimal.</summary>

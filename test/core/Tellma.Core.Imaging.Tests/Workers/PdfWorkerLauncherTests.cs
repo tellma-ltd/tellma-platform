@@ -14,7 +14,8 @@ namespace Tellma.Core.Imaging.Tests.Workers
     ///     managed heap sized to its memory limit on Linux and left to the Job Object on Windows,
     ///     and with a command line that splits back into exactly its arguments; what a confined
     ///     worker may read, which is the runtime, the host's assemblies and native libraries by
-    ///     name, the system's libraries and fonts, and nothing else of the host's; and how the
+    ///     name, the system's libraries and fonts, and nothing else of the host's, which is why a
+    ///     host installed beneath a directory a worker reads in full is refused; and how the
     ///     worker's sandbox reads the descriptors it must close, the host it must die with and the
     ///     allowance it confines itself to.
     /// </summary>
@@ -112,6 +113,53 @@ namespace Tellma.Core.Imaging.Tests.Workers
                     .. allowance.Execute.Select(static path => (path, Landlock.ReadFile | Landlock.Execute)),
                 ],
                 parsed);
+        }
+
+        [Theory]
+        [InlineData("/usr/lib/x86_64-linux-gnu", "/usr/lib/x86_64-linux-gnu", false)]
+        [InlineData("/usr/lib/x86_64-linux-gnu/tellma", "/usr/lib/x86_64-linux-gnu", false)]
+        [InlineData("/usr/share/fonts/tellma", "/usr/share/fonts", false)]
+        [InlineData("/usr/share/dotnet/shared/tellma", "/usr/share/dotnet/shared", false)]
+        [InlineData(@"c:\program files\dotnet\HOST\tellma", @"C:\Program Files\dotnet\host", true)]
+        public void A_host_installed_beneath_a_directory_a_worker_reads_in_full_cannot_have_its_workers_confined(string application, string holder, bool windows)
+        {
+            // Section: the host's files, its configuration beside them, beneath the system's library
+            // directory, a font directory or the runtime's installation.
+            char separator = windows ? '\\' : '/';
+            string root = windows ? @"C:\Program Files\dotnet" : "/usr/share/dotnet";
+            var files = new PdfWorkerFiles(
+                root,
+                $"{root}{separator}{(windows ? "dotnet.exe" : "dotnet")}",
+                $"{application}{separator}Host.runtimeconfig.json",
+                $"{application}{separator}Host.deps.json",
+                $"{application}{separator}Tellma.Core.Imaging.PdfWorker.dll");
+
+            PdfWorkerException refused = Assert.Throws<PdfWorkerException>(() => WorkerAllowance.Compose(
+                files,
+                trustedAssemblies: [$"{application}{separator}Host.dll"],
+                nativeLibraries: [],
+                mappedLibraries: windows ? [] : ["/usr/lib/x86_64-linux-gnu/libc.so.6"],
+                interpreter: null,
+                fontDirectories: windows ? [] : ["/usr/share/fonts"],
+                loaderFiles: [],
+                windows));
+            Assert.Equal(PdfWorkerFailure.Start, refused.Failure);
+            Assert.Contains(holder, refused.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void A_host_beside_a_directory_a_worker_reads_in_full_but_not_beneath_it_has_its_workers_confined()
+        {
+            // A directory whose name merely starts with the library directory's is not beneath it.
+            var files = new PdfWorkerFiles(
+                "/usr/share/dotnet", "/usr/share/dotnet/dotnet", "/usr/lib/x86_64-linux-gnu-tellma/Host.runtimeconfig.json",
+                "/usr/lib/x86_64-linux-gnu-tellma/Host.deps.json", "/usr/lib/x86_64-linux-gnu-tellma/Tellma.Core.Imaging.PdfWorker.dll");
+
+            var allowance = WorkerAllowance.Compose(
+                files, [], [], ["/usr/lib/x86_64-linux-gnu/libc.so.6"], interpreter: null, ["/usr/share/fonts"], [], windows: false);
+
+            Assert.Contains("/usr/lib/x86_64-linux-gnu", allowance.ReadBeneath);
+            Assert.Contains("/usr/lib/x86_64-linux-gnu-tellma/Host.runtimeconfig.json", allowance.Read);
         }
 
         [Fact]

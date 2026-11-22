@@ -80,16 +80,22 @@ On Linux the worker puts that in place itself, through Landlock:
 - **The check.** The second start finds that descriptor (`--confined <n>`), checks that it is its
   own `/proc/<pid>`, and checks that `/` cannot be read; otherwise it stops.
 
-The filter refuses every change to a file as well (below), whatever ABI the kernel's Landlock has,
-which covers what Landlock does not govern at all: modes, owners, times and extended attributes.
+The filter refuses the calls that change a file as well (below), whatever ABI the kernel's
+Landlock has, which covers what Landlock does not govern at all: modes, owners, times, extended
+attributes and `ioctl` on a file. It also refuses what Landlock leaves open to a path it refuses
+to read: watching it with inotify or fanotify, and reading or listing its extended attributes by
+name. What a path lookup tells, that a path exists and its size, owner and times (`stat`, `access`,
+`readlink`), stays open: closing it would take a mount namespace of the worker's own.
 
 On Windows the host starts the worker in an AppContainer of its own (a lowbox token over its
 restricted, low-integrity one), holding one capability that the host's files of the allowance grant
-read and execute to; the runtime's installation and the system's files already grant every
-AppContainer read. The worker checks that its token is in an AppContainer and reports the
-confinement. An AppContainer with no network capability reaches no network, the loopback interface
-included, and no process grants it access, another worker's included, since each worker's
-AppContainer is its own.
+read and execute to; the system's files and a runtime installed under Program Files already grant
+every AppContainer read, and on a runtime installed elsewhere the host grants that capability read
+and execute on its muxer and its `host` and `shared` directories (or, where it may not, runs its
+workers unconfined, in Development only). The worker checks that its token is in an AppContainer
+and reports the confinement. An AppContainer with no network capability reaches no network, the
+loopback interface included, and no process grants it access, another worker's included, since
+each worker's AppContainer is its own.
 
 ## The system-call filter
 
@@ -119,17 +125,26 @@ code that took over the renderer would want:
   asks only that the owner be of the caller's account, as the host is; a terminal needs no naming,
   its owner being whoever runs in its foreground.
 - **Input pushed into a terminal**: `ioctl`'s `TIOCSTI` and `TIOCLINUX`, whose input the next
-  reader of the terminal, a shell say, would take for typed. Every other `fcntl` and `ioctl` is
-  allowed.
+  reader of the terminal, a shell say, would take for typed.
 - **Kernel interfaces exploits favour**: `io_uring`, `userfaultfd`, `perf_event_open`, `bpf`,
   `unshare`, `setns` and the key store.
-- **Every change to a file**: `open` and `openat` with any of `O_WRONLY`, `O_RDWR`, `O_CREAT` and
-  `O_TRUNC`, `creat`, `truncate`, `open_by_handle_at`; renaming, linking and unlinking; making
-  directories, devices, pipes and symbolic links; changing a file's mode, owner, times or extended
-  attributes (`file_setattr` among them); and `ioctl`'s `FS_IOC_SETFLAGS`, `FS_IOC_SETVERSION` and
-  `FS_IOC_FSSETXATTR`, which change a file's attributes through a descriptor opened for reading. A
-  descriptor opened for reading cannot be written, truncated or mapped shared for writing, so the
-  worker's only writable descriptors are its pipes and the runtime's anonymous memory files.
+- **The calls that change a file**: `open` and `openat` with any of `O_WRONLY`, `O_RDWR`,
+  `O_CREAT` and `O_TRUNC`, `creat`, `truncate`, `open_by_handle_at`; renaming, linking and
+  unlinking; making directories, devices, pipes and symbolic links; changing a file's mode, owner,
+  times or extended attributes (`file_setattr` among them); `ioctl`'s `FS_IOC_SETVERSION`; and every
+  `ioctl` of the types `'f'` (the VFS's and ext4's: inode flags, fs-verity, encryption policies),
+  `'X'` (XFS's and the VFS's extended inode attributes), `0x94` (Btrfs's, and the VFS's clone,
+  dedupe and label calls) and `0xF5` (f2fs's), whatever the request, reads among them, since several
+  change a file through a descriptor opened only for reading (`FS_IOC_ENABLE_VERITY` makes a file
+  immutable for good). A descriptor opened for reading cannot be written, truncated or mapped shared
+  for writing, so the worker's only writable descriptors are its pipes and the runtime's anonymous
+  memory files. Every other `fcntl` and `ioctl` is allowed: another filesystem's own `ioctl` types
+  are not refused one by one, and changes through them rest on the kernel's own checks.
+- **Watching or describing a file by name**: `inotify_init`, `inotify_init1`, `inotify_add_watch`,
+  `fanotify_init` and `fanotify_mark`, which Landlock does not govern and would tell when the host
+  reads or writes a file; and `getxattr`, `lgetxattr`, `listxattr`, `llistxattr`, `getxattrat` and
+  `listxattrat`, which read a file's extended attributes by its path alone. The descriptor forms,
+  `fgetxattr` and `flistxattr`, need a descriptor the confinement let the worker open.
 
 `clone3` and `openat2` answer `ENOSYS`, so the C library creates threads with `clone` and opens
 files with `openat`, whose flags the filter can read. A call through another architecture's entry

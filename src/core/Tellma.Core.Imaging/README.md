@@ -90,8 +90,9 @@ bounds what it can take.
    input among them) to the host's other workers, dropped every capability, and installed a
    seccomp filter on all its threads that refuses sockets, new programs and processes, SysV
    objects, every call that would signal, trace, read or re-limit another process or have the
-   kernel signal one on the worker's word, input pushed into a terminal, every change to a file,
-   and the kernel interfaces exploits favour (the host refuses a Linux worker without the filter).
+   kernel signal one on the worker's word, input pushed into a terminal, the calls that change a
+   file, watching a file or reading its extended attributes by name, and the kernel interfaces
+   exploits favour (the host refuses a Linux worker without the filter).
    Only then does the host cap it from outside: on Windows, the job's
    committed-memory limit (the baseline plus `PdfWorkerMemoryLimit`), user-mode CPU time, one
    process, no crash dialog, no desktop or clipboard, and death with the host's handle; on Linux,
@@ -180,7 +181,11 @@ The host computes a worker's allowance ([WorkerAllowance](Workers/WorkerAllowanc
 launcher, from what it runs on itself:
 
 - the runtime's installation: on Linux its `host` and `shared` directories, with everything beneath
-  them; on Windows the installer already grants every AppContainer read on it;
+  them; on Windows the installer grants every AppContainer read on it under Program Files, and on
+  one installed elsewhere (a user's profile, a repository's own `.dotnet`) the host grants the
+  workers' capability read and execute on its muxer and its `host` and `shared` directories, where
+  its account may change their permissions; a Development host that may not runs its workers
+  unconfined and logs `BlobPdfWorkerUnconfined` with the cause;
 - the host's runtime configuration, dependency manifest, trusted assemblies and native libraries
   (PDFium and Skia among them), each by name: never their directory, which holds the host's
   configuration and secrets too;
@@ -197,6 +202,15 @@ of its own files in the allowance, once, and leaves it in place; only processes 
 capability, its workers, gain anything by it. The host must therefore be allowed to change those
 files' permissions, as the account that built or deployed them is.
 
+A worker reads the runtime's `host` and `shared` directories, the system's library directory and
+the font directories in full, so a host installed beneath one of them (a package under
+`/usr/lib/<app>`, say, where the system's libraries are in `/usr/lib`) would hand its configuration
+to its workers. Such a host starts no confined worker, and the `core.imaging` check fails at
+startup with the fix: install the host in a directory of its own. A Windows worker also reads whatever
+grants every AppContainer read, which Program Files does throughout; a Development host installed
+under Program Files hands its configuration to its workers, and is not refused. A build's output
+and a user's profile grant AppContainers nothing.
+
 ## Where PDF thumbnails render
 
 A worker is only as contained as its operating system's hold on it, so a host renders PDF
@@ -206,7 +220,7 @@ thumbnails only where that hold is good enough for production, and for developer
 |---|---|
 | Linux with glibc, on a kernel that offers Landlock | Rendered, in every environment. This is the production host. |
 | Linux with glibc, without Landlock | Rendered only in the Development environment, with unconfined workers; the check logs `BlobPdfWorkerUnconfined` at Warning. Landlock is in Linux 5.13 and later, enabled where it is listed in `/sys/kernel/security/lsm`; a container's system-call filter must allow its three calls, as Docker's default profile did when measured. |
-| Windows | Rendered only in the Development environment (`IHostEnvironment.IsDevelopment()`). The worker is confined in an AppContainer, made through `NtCreateLowBoxToken`, an undocumented system call, and not yet verified under the Windows hosting environments. |
+| Windows | Rendered only in the Development environment (`IHostEnvironment.IsDevelopment()`). The worker is confined in an AppContainer, made through `NtCreateLowBoxToken`, an undocumented system call, and not yet verified under the Windows hosting environments. On a .NET installation outside Program Files that the host's account may not grant the workers' capability read on, workers run unconfined and the check logs `BlobPdfWorkerUnconfined` at Warning, naming the installation. |
 | macOS | Rendered only in the Development environment. A macOS worker runs under no operating-system limit, and the check logs `BlobPdfWorkerUnconfined`. |
 | Linux with another C library (musl, as on Alpine) | Never. The .NET runtime there signals its threads with `tkill`, which the worker's filter refuses. |
 
@@ -255,24 +269,29 @@ worker. On Linux, the production host:
 
 - **A compromised worker reads what it runs on.** It holds no capability and can gain no
   privilege; it cannot reach the network, start a program, signal, trace or re-limit another
-  process, or change any file. What it can read is its allowance: the runtime, the host's
-  assemblies, dependency manifest and runtime configuration (code and its wiring, no secrets unless
-  the host puts some there), the system's libraries, the loader's cache, the fonts, and its own
-  `/proc` entries. It could encode what it reads into the pixels of the thumbnail it returns, the
-  one output the host accepts; none of it is the host's configuration, secrets, temporary files or
-  uploads. The host's command line it can read in its own `/proc` entries only as its own; the
+  process, or change a file through any call that changes one, nor through any `ioctl` of the
+  VFS's, ext4's, XFS's, Btrfs's or f2fs's. What it can read is its allowance: the runtime, the
+  host's assemblies, dependency manifest and runtime configuration (code and its wiring, no secrets
+  unless the host puts some there), the system's libraries, the loader's cache, the fonts, and its
+  own `/proc` entries. It could encode what it reads into the pixels of the thumbnail it returns,
+  the one output the host accepts; none of it is the host's configuration, secrets, temporary files
+  or uploads. The host's command line it can read in its own `/proc` entries only as its own; the
   host's it cannot. A terminal the host was started from is closed to it: it cannot open the
   device.
 - **What the kernel's Landlock does not govern.** Landlock decides on opening, listing, executing
   and changing files, not on looking them up: a worker can still learn whether a path exists, and
-  a file's size, owner and times (`stat`), its link target, and with `inotify` when one of the
-  account's readable files changes. It cannot read a byte of such a file.
+  a file's size, owner and times (`stat`, `access`), and a link's target (`readlink`). It cannot
+  read a byte of such a file, watch it (the filter refuses inotify and fanotify) or read its
+  extended attributes (the filter refuses their path forms). Nor does Landlock govern `ioctl` on a
+  file the worker may open: the filter refuses every `ioctl` of the VFS's, ext4's, XFS's, Btrfs's
+  and f2fs's types, and another filesystem's own `ioctl`s on a file of the allowance rest on that
+  filesystem's own checks.
 - **An unconfined worker.** On a Development host without Landlock, a worker can read what the
-  host's account can read, its configuration files included; its filter still refuses every change
-  to a file. The account's other processes are open to it as well: it can read such a process's
-  environment and reopen its open files for reading and, if it is a .NET process, its code memory
-  and debugger pipes, whatever `kernel.yama.ptrace_scope` is; where that is 0, or the kernel has no
-  Yama, it can open such a process's memory too, and the `core.imaging` check logs
+  host's account can read, its configuration files included; its filter still refuses the calls
+  that change a file. The account's other processes are open to it as well: it can read such a
+  process's environment and reopen its open files for reading and, if it is a .NET process, its
+  code memory and debugger pipes, whatever `kernel.yama.ptrace_scope` is; where that is 0, or the
+  kernel has no Yama, it can open such a process's memory too, and the `core.imaging` check logs
   `BlobPdfWorkerPtraceUnrestricted` at Warning beside `BlobPdfWorkerUnconfined`. A confined worker
   reaches no other process's `/proc` entries, and the kernel refuses it the `ptrace` family of
   access to every process outside its confinement, whatever that setting; it also reaches no

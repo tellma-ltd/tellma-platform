@@ -12,11 +12,12 @@ namespace Tellma.Core.Imaging.Tests.Workers
     ///     another architecture's calls and x32 calls kill, each refused call is refused with EPERM,
     ///     signals, resource limits and scheduling reach the worker's own process only, the
     ///     parent-death signal cannot be changed, fcntl and ioctl cannot name a descriptor's owner
-    ///     or its signal, ask for signal-driven I/O, push input into a terminal or change a file's
-    ///     attributes, a file opens for reading only, nothing changes a file by name, clone3 and
-    ///     openat2 answer ENOSYS, clone creates threads only, and every other call is allowed,
-    ///     number by number. The sandbox and confinement suites prove the installed filter's effect
-    ///     in a real worker.
+    ///     or its signal, ask for signal-driven I/O or push input into a terminal, no ioctl of the
+    ///     families that change a file's attributes is made whatever its request, a file opens for
+    ///     reading only, nothing changes a file by name, nothing watches a file or reads its
+    ///     extended attributes by name, clone3 and openat2 answer ENOSYS, clone creates threads
+    ///     only, and every other call is allowed, number by number. The sandbox and confinement
+    ///     suites prove the installed filter's effect in a real worker.
     /// </summary>
     public sealed class SeccompFilterTests
     {
@@ -43,7 +44,10 @@ namespace Tellma.Core.Imaging.Tests.Workers
         // renameat2, link, linkat; symlink, symlinkat, unlink, unlinkat; mkdir, mkdirat, rmdir,
         // mknod, mknodat; chmod, fchmod, fchmodat, fchmodat2; chown, fchown, lchown, fchownat;
         // utime, utimes, futimesat, utimensat; setxattr, lsetxattr, fsetxattr, setxattrat;
-        // removexattr, lremovexattr, fremovexattr, removexattrat; file_setattr.
+        // removexattr, lremovexattr, fremovexattr, removexattrat; file_setattr. Then the calls
+        // that watch a file or read its extended attributes by name: inotify_init,
+        // inotify_init1, inotify_add_watch, fanotify_init, fanotify_mark; getxattr, lgetxattr,
+        // listxattr, llistxattr; getxattrat, listxattrat.
         private static readonly uint[] RefusedX64 =
         [
             41, 53,
@@ -67,10 +71,13 @@ namespace Tellma.Core.Imaging.Tests.Workers
             188, 189, 190, 463,
             197, 198, 199, 466,
             469,
+            253, 294, 254, 300, 301,
+            191, 192, 194, 195,
+            464, 465,
         ];
 
-        // The same calls on arm64, which has no fork or vfork, and of the calls that change a
-        // file, only those that take a directory descriptor (and truncate).
+        // The same calls on arm64, which has no fork or vfork, no inotify_init, and of the calls
+        // that change a file, only those that take a directory descriptor (and truncate).
         private static readonly uint[] RefusedArm64 =
         [
             198, 199,
@@ -94,6 +101,9 @@ namespace Tellma.Core.Imaging.Tests.Workers
             5, 6, 7, 463,
             14, 15, 16, 466,
             469,
+            26, 27, 262, 263,
+            8, 9, 11, 12,
+            464, 465,
         ];
 
         public static TheoryData<bool, uint, uint> Calls => new()
@@ -378,20 +388,61 @@ namespace Tellma.Core.Imaging.Tests.Workers
             uint architecture = x64 ? X64 : Arm64;
 
             // Section: TIOCSTI, TIOCLINUX, FIOASYNC, FIOSETOWN and SIOCSPGRP are refused, as are
-            // FS_IOC_SETFLAGS, FS_IOC32_SETFLAGS, FS_IOC_SETVERSION, FS_IOC32_SETVERSION and
-            // FS_IOC_FSSETXATTR. The kernel reads the request as a C unsigned int, from the
-            // register's low half.
-            Assert.All((ulong[])[0x5412, 0x541C, 0x5452, 0x8901, 0x8902, 0x40086602, 0x40046602, 0x40087602, 0x40047602, 0x401C5820], request =>
+            // FS_IOC_SETVERSION and FS_IOC32_SETVERSION. The kernel reads the request as a C
+            // unsigned int, from the register's low half.
+            Assert.All((ulong[])[0x5412, 0x541C, 0x5452, 0x8901, 0x8902, 0x40087602, 0x40047602], request =>
             {
                 Assert.Equal((request, PermissionDenied), (request, Run(program, ioctl, architecture, 0, request)));
                 Assert.Equal((request, PermissionDenied), (request, Run(program, ioctl, architecture, 0, 0xFFFF_FFFF_0000_0000UL | request)));
             });
 
             // Section: their neighbours are allowed: TCGETS, TIOCGPGRP, TIOCGWINSZ, FIONREAD,
-            // FIONBIO, FIONCLEX, FIOCLEX, FIOGETOWN, SIOCGPGRP, FS_IOC_GETFLAGS,
-            // FS_IOC32_GETFLAGS, FS_IOC_GETVERSION and FS_IOC_FSGETXATTR.
-            Assert.All((ulong[])[0x5401, 0x540F, 0x5413, 0x541B, 0x5421, 0x5450, 0x5451, 0x8903, 0x8904, 0x80086601, 0x80046601, 0x80087601, 0x801C581F], request =>
+            // FIONBIO, FIONCLEX, FIOCLEX, FIOGETOWN, SIOCGPGRP and FS_IOC_GETVERSION.
+            Assert.All((ulong[])[0x5401, 0x540F, 0x5413, 0x541B, 0x5421, 0x5450, 0x5451, 0x8903, 0x8904, 0x80087601], request =>
                 Assert.Equal((request, Allow), (request, Run(program, ioctl, architecture, 0, request))));
+        }
+
+        [Theory]
+        [InlineData(true)]
+        [InlineData(false)]
+        public void Ioctl_makes_no_request_of_the_families_that_change_a_files_attributes(bool x64)
+        {
+            SeccompFilter.Instruction[] program = SeccompFilter.Build(x64, Self);
+            uint ioctl = x64 ? 16u : 29u;
+            uint architecture = x64 ? X64 : Arm64;
+            const ulong highHalf = 0xFFFF_FFFF_0000_0000UL;
+
+            // Section: the requests a compromised worker would make through a descriptor opened
+            // for reading: FS_IOC_SETFLAGS and FS_IOC32_SETFLAGS, FS_IOC_ENABLE_VERITY,
+            // FS_IOC_SET_ENCRYPTION_POLICY, FS_IOC_FSSETXATTR, BTRFS_IOC_SUBVOL_SETFLAGS, FICLONE,
+            // FIDEDUPERANGE and F2FS_IOC_SET_PIN_FILE; and reads of the same families, which the
+            // worker makes no more than their writes, FS_IOC_GETFLAGS and FS_IOC_FSGETXATTR.
+            Assert.All((ulong[])[0x40086602, 0x40046602, 0x40806685, 0x800C6613, 0x401C5820, 0x4008941A, 0x40049409, 0xC0189436, 0x4004F50D, 0x80086601, 0x801C581F], request =>
+            {
+                Assert.Equal((request, PermissionDenied), (request, Run(program, ioctl, architecture, 0, request)));
+                Assert.Equal((request, PermissionDenied), (request, Run(program, ioctl, architecture, 0, highHalf | request)));
+            });
+
+            // Section: every request of the four types 'f', 'X', 0x94 and 0xF5, whatever its number,
+            // direction and size.
+            foreach (ulong type in (ulong[])[0x66, 0x58, 0x94, 0xF5])
+            {
+                for (ulong number = 0; number < 256; number++)
+                {
+                    foreach (ulong form in (ulong[])[0x0000_0000, 0x4004_0000, 0x8008_0000, 0xC018_0000, 0xFFFF_0000])
+                    {
+                        ulong request = form | (type << 8) | number;
+                        Assert.Equal((request, PermissionDenied), (request, Run(program, ioctl, architecture, 0, request)));
+                    }
+                }
+            }
+
+            // Section: the types beside them are allowed, as is a request of type 0.
+            foreach (ulong type in (ulong[])[0x00, 0x54, 0x65, 0x67, 0x57, 0x59, 0x93, 0x95, 0xF4, 0xF6, 0x76])
+            {
+                ulong request = 0x8008_0000 | (type << 8) | 0x01;
+                Assert.Equal((request, Allow), (request, Run(program, ioctl, architecture, 0, request)));
+            }
         }
 
         [Theory]
@@ -510,6 +561,10 @@ namespace Tellma.Core.Imaging.Tests.Workers
 
                     case 0x45:
                         pc += (accumulator & instruction.Value) != 0 ? instruction.WhenTrue : instruction.WhenFalse;
+                        break;
+
+                    case 0x54:
+                        accumulator &= instruction.Value;
                         break;
 
                     case 0x06:

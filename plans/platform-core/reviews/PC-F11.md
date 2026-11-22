@@ -259,3 +259,290 @@ the parent-death signal, dropped capabilities, the Job Object) are unchanged and
 5. **The Windows lowbox token**: handle lifetimes in `CreateToken` and `WindowsWorkerProcess.Start`,
    the per-worker package SID, and the ACE edit's failure mode (a `PdfWorkerException` at start).
 6. **The policy matrix** in `PdfThumbnailSupport.For` and the smoke-host test that pins it.
+
+## Review 1
+
+Scope: commit c4a8cac1 against the LEDGER PC-F11 row, D-030 (addenda 3-5), D-040 (2), D-043 (2)-(4)
+and D-195. Runs by the reviewer:
+
+- Windows, `dotnet build` of `Tellma.Core.Imaging.Tests` (Build succeeded, 0 warnings), then the
+  `WorkerConfinementTests`, `PdfWorkerLauncherTests`, `SeccompFilterTests`, `PdfThumbnailPolicyTests`,
+  `ImagingCompositionTests`, `WorkerSandboxTests`, `SmokeHostTests` and `HostIsolationTests` classes:
+  231 total, 0 failed, 21 skipped (Linux-only).
+- Linux, `mcr.microsoft.com/dotnet/sdk:10.0` on Docker Desktop's WSL2 kernel 6.18 (Landlock ABI 7),
+  from `git archive c4a8cac1` in a volume of its own, `TELLMA_REQUIRE_LANDLOCK=1`: the same classes
+  plus `HostileDocumentTests`, 235 total, 0 failed, 1 skipped.
+- Linux, the same image: a scratch program that restricts its thread under a ruleset handling all
+  16 filesystem rights with no rule, then calls `inotify_add_watch` and `listxattr` (R1-4).
+- CI: the pc/PC-F11 push run was skipped (CI runs at integration), so nothing to cite. Whether
+  `ubuntu-latest`'s kernel lists `landlock` among its LSMs I cannot tell from here. Ubuntu's own
+  kernels have carried `landlock` first in `CONFIG_LSM` since 22.04 as far as I know, but the Azure
+  flavour was not checked. The integration CI run settles it, and `TELLMA_REQUIRE_LANDLOCK=1` makes
+  a missing Landlock show red.
+
+Checked, with no finding:
+
+- **Landlock ABI handling.** The rights per ABI (13 at ABI 1, then refer, truncate, device
+  `ioctl`), the ruleset sizes (8/16/24), TCP bind and connect from ABI 4, the signal and
+  abstract-socket scopes from ABI 6, and file rules masked to file rights. All match
+  `linux/landlock.h`.
+- **Ordering.** The ruleset is in place, by restrict-then-`execve`, before any of the upload is
+  read. Nothing reaches stage 2 without `--confined`, and stage 2 proves the domain by `/` →
+  `EACCES`. Then come the descriptor close, the parent-death signal, `setsid`, non-dumpable, the
+  capability drop and the TSYNC filter, in the same order as before. `RLIMIT_*` still come after
+  the ready frame.
+- **Command-line reconstruction.** It reads `/proc/self/cmdline`, which the host's `execve` wrote,
+  before any hostile input, and checks it against the worker's own arguments.
+- **The `/proc` anchor.** It is the process's own `/proc/<pid>`. Magic links (`root`, `cwd`, `fd/*`)
+  are checked against their resolved paths. Landlock's ptrace hook closes every process outside
+  the domain, which also closes D-043 (2)'s dumpable window against other confined workers.
+- **Production confinement.** No configuration runs an unconfined worker in production.
+  `PdfThumbnailPolicy.For` and `PdfWorkerLauncher.Confines` read the same cached `CanConfine`. The
+  `confine` and `pdf` seams are internal. The client refuses a worker that lacks the bit.
+- **Windows confinement.** The capability SID comes from `DeriveCapabilitySidsFromName`, and every
+  SID it returns is freed. The `OBJECT_ATTRIBUTES` layout and the `NtCreateLowBoxToken` signature
+  match Chromium's use. The restricted token is closed on every path, including a failure in
+  `GrantRead` or `CreateToken`. The handle list is unchanged.
+- **The Windows ACE.** It grants read and execute only, and only to tokens that hold the capability.
+  The account's own DACL check still applies, so it gives nothing to anyone the account could not
+  already reach. Its idempotency check counts explicit rules only, which is harmless.
+- **The write-path syscall numbers.** The refused numbers and the `0x243` open-flag test are right
+  on both architectures, and the BPF jump offsets are right.
+- **ARCHITECTURE.md and CONTRIBUTING.md.** Both match the code, apart from the overstatements
+  noted in R1-1 and R1-4.
+
+### Findings
+
+**Blocking:** none.
+
+**Major**
+
+- **R1-1. The filter's `ioctl` deny-list leaves ioctls that change a file through a read-only
+  descriptor.**
+  - **Where:** `src/core/Tellma.Core.Imaging.PdfWorker/SeccompFilter.cs:226`.
+  - **The gap:** the list refuses `FS_IOC_SETFLAGS`/`SETVERSION`/`FSSETXATTR` but not
+    `FS_IOC_ENABLE_VERITY` (`0x40806685`). That ioctl needs only an `O_RDONLY` descriptor plus DAC
+    write permission (`file_permission(MAY_WRITE)`). Landlock governs `ioctl` only on devices, and
+    it has no `file_permission` hook.
+  - **Failure scenario:** the host runs under an account that owns its installation, as a
+    systemd-style deployment does (not the root-owned `/app` of the .NET images). It runs on a
+    filesystem with fs-verity: btrfs needs no mkfs flag, ext4 and f2fs need the feature. A
+    compromised worker opens one of its allowance's files (a host assembly, `.deps.json`,
+    `.runtimeconfig.json`) read-only and enables verity on it. The file then refuses every later
+    open for writing, for good. The next in-place deploy over it fails, and only deleting the file
+    undoes it.
+  - **Stated guarantee broken:** this is the same immutability that `FS_IOC_SETFLAGS` was refused
+    for. It contradicts "no change to any file, whatever the kernel's Landlock governs"
+    (`ARCHITECTURE.md`, the READMEs) and D-040 (2).
+  - **Related ioctls:** `FS_IOC_SET_ENCRYPTION_POLICY` (`0x800C6613`, an owned empty directory) and
+    `BTRFS_IOC_SUBVOL_SETFLAGS` (`0x4008941A`, which checks no `FMODE_WRITE`) are in the same class.
+  - **Fix:** refuse by ioctl type rather than by request. `(request >> 8) & 0xFF` equal to `0x66`
+    (`'f'`), `0x58` (`'X'`) or `0x94` (btrfs) returns `EPERM`. The worker needs none of them;
+    `FIONREAD`, `FIOCLEX`, `FIONBIO` and `TCGETS` are type `'T'`. At the least, add the three
+    requests above. Then extend `SeccompFilterTests` to cover them.
+
+**Minor**
+
+- **R1-2. Nothing tests that the client refuses a confined launcher's worker that does not report
+  `FilesystemConfinement`.**
+  - **Where:** `src/core/Tellma.Core.Imaging/Workers/PdfWorkerClient.cs:104-107`.
+  - **The gap:** this check is what makes the new capability bit mean anything, and the
+    implementer notes and `A_confined_worker_still_renders` rely on it. Deleting it fails no test.
+  - **Fix:** add a stand-in mode that writes a ready frame with `SystemCallFilter` only, after it
+    has started over confined on Linux, or as is on Windows. Assert that a `confine: true` launcher
+    gets `PdfWorkerException(Protocol)` from it, while `confine: false` accepts it.
+
+- **R1-3. A Windows Development host whose .NET runtime is not under Program Files can no longer
+  render.**
+  - **Where:** `src/core/Tellma.Core.Imaging/Workers/WorkerAllowance.cs:124`, and `ExitFix` at
+    `src/core/Tellma.Core.Imaging/ImagingStartupCheck.cs:322`.
+  - **The gap:** `WindowsFiles` leaves out everything beneath `files.Root`, relying on the
+    installer's `ALL APPLICATION PACKAGES` grant. A runtime installed by `dotnet-install.ps1` into
+    `%USERPROFILE%\.dotnet` or a repo-local `.dotnet` has no such grant. The AppContainer then
+    cannot load `hostfxr` or the shared framework, and every worker exits.
+  - **Effect:** `core.imaging` fails the Development host's startup. The fix text shown is
+    `ExitFix`, which names only the Linux causes. `StartFix`, which mentions Program Files, applies
+    only to a start failure. Before PC-F11 such a host rendered. This is by reading; I did not
+    exercise it.
+  - **Fix:** at launcher construction, check whether `Root\host\fxr` grants `ALL APPLICATION
+    PACKAGES` read, from its DACL.
+    - If it does not, either grant the capability on the `host` and `shared` trees, or, since
+      Windows is Development-only, start unconfined with the `BlobPdfWorkerUnconfined` warning
+      and a detail that says why.
+    - Either way, name the requirement in `ExitFix` and in the README's "What a worker may read".
+
+- **R1-4. The inotify residual can be closed cheaply, and the xattr reads are not recorded.**
+  - **Where:** `src/core/Tellma.Core.Imaging.PdfWorker/SeccompFilter.cs:149-195`, and the Imaging
+    README "Residual risks" (`:266-269`).
+  - **Measured:** under a Landlock domain that handles every filesystem right and grants none,
+    `open("/etc/passwd")` fails, but `inotify_add_watch` on `/etc/passwd` and on `/etc` succeeds.
+    `listxattr` by path also works. `getxattr` goes through the same ungoverned path; I did not
+    run it.
+  - **Effect:** a compromised worker can time the host's file accesses and reads anywhere, and can
+    read any `user.*` xattr payload.
+  - **Fix:** the worker needs none of these calls.
+    - Refuse `inotify_init`, `inotify_init1`, `inotify_add_watch`, `fanotify_init` and
+      `fanotify_mark` (x64 253/294/254/300/301; arm64 26/27/262/263).
+    - Refuse the path forms `getxattr`, `lgetxattr`, `listxattr`, `llistxattr`, `getxattrat` and
+      `listxattrat` (x64 191/192/194/195/464/465; arm64 8/9/11/12/464/465). Keep the `f*`
+      descriptor forms in case the runtime needs one.
+    - Otherwise record xattrs beside `stat` in the README and `ARCHITECTURE.md`.
+    - `stat`, `access` and `readlink` stay. Closing those needs a mount namespace, which is not
+      cheap.
+
+- **R1-5. `close_range` comes through glibc's wrapper, which needs glibc 2.34.**
+  - **Where:** `src/core/Tellma.Core.Imaging.PdfWorker/WorkerConfinement.cs:383-386`.
+  - **The gap:** a host on a kernel that offers Landlock but with an older glibc (Debian 11 with a
+    backports kernel, SLES 15 SP4/SP5 at glibc 2.31) passes the policy, because `CanConfine` is
+    true.
+  - **Effect:** every worker then throws `EntryPointNotFoundException` in stage 1, and
+    `core.imaging` fails startup. That is fail-closed, but avoidable.
+  - **Fix:** call it through `syscall` with number 436 (the same on x64 and arm64), as `Landlock`
+    already does for its calls.
+
+- **R1-6. Nothing checks that the host's own directory lies outside every read-beneath
+  directory.**
+  - **Where:** `src/core/Tellma.Core.Imaging/Workers/WorkerAllowance.cs:139-144`.
+  - **The gap:** the system directory is wherever libc is mapped from. That is `/usr/lib` on Arch,
+    and on distributions that put 64-bit libraries there. The installation's `host` and `shared`
+    directories and the font directories are also granted beneath.
+  - **Effect:** a host installed beneath any of them, such as `/usr/lib/<app>/`, which is a common
+    packaging layout, hands its `appsettings*.json` to the worker. That contradicts "none of the
+    host's configuration or secrets".
+  - **Fix:** in `Compose`, if the directory of `files.RuntimeConfiguration` (or
+    `AppContext.BaseDirectory`) is beneath any `ReadBeneath` entry, either fail with a
+    `PdfWorkerException(Start)` that names the layout, or replace that entry with per-file rules.
+    Add a `Compose` unit case for it.
+
+- **R1-7. No one has verified that the production target offers Landlock.**
+  - **Where:** `ARCHITECTURE.md`, "Hosting on Azure"; the policy's `DisabledWithoutLandlock`.
+  - **The gap:** before PC-F11, every glibc Linux host rendered PDF thumbnails. Now an App Service
+    Linux instance without Landlock, or whose sandbox's seccomp profile refuses the calls, renders
+    none in production, and says so only in a log line. `ARCHITECTURE.md` already says the App
+    Service path is unverified, but no task tracks it.
+  - **Fix:** record a staging task: check `/sys/kernel/security/lsm` and the startup log on the
+    first App Service deployment. If Landlock is absent there, raise it with Ahmad before GA.
+
+### Responses
+
+The orchestrator ruled on every finding before this round (D-204). This round follows those
+rulings. Runs, on the final tree:
+
+- Windows: `dotnet build` of `Tellma.Core.Imaging.Tests` (Build succeeded, 0 warnings), then the
+  `Workers`, `Thumbnails`, `Composition` and `Packaging` namespaces: 394 total, 0 failed, 21
+  skipped (Linux-only).
+- Linux: `mcr.microsoft.com/dotnet/sdk:10.0` on Docker Desktop's WSL2 kernel, with
+  `TELLMA_REQUIRE_LANDLOCK=1`, the whole Imaging test assembly: 501 total, 0 failed, 3 skipped
+  (Windows-only).
+
+- R1-1: fixed in the review 1 fixes commit.
+  - **The refusal.** The filter now refuses every `ioctl` of types `'f'` (0x66), `'X'` (0x58) and
+    `0x94`, whatever the request, by masking the request's type byte (a BPF `AND` of the low word
+    of argument 1 with `0xFF00`). Reads of those types are refused too. It also refuses `0xF5`,
+    f2fs's type, which the ruling did not name; it falls in the same class (pinning a file, atomic
+    writes and compression through a descriptor). `FS_IOC_SETVERSION` (`'v'`) stays refused by
+    request. The type-wide rule covers `FS_IOC_SETFLAGS` and `FS_IOC_FSSETXATTR`, which were
+    refused by request before, so they left the request list.
+  - **The stated check.** Rendering and the runtime still work with every one of these types
+    refused. The Linux run renders every PDF thumbnail suite of the assembly (the hostile
+    documents, the budgets, the composition and the smoke host) through confined workers under
+    this filter, with 0 failures. No type had to be kept, so the fallback (refusing only the three
+    named requests) was not needed.
+  - **Tests.**
+    - `SeccompFilterTests.Ioctl_makes_no_request_of_the_families_that_change_a_files_attributes`
+      runs the filter's program in its BPF interpreter on both architectures. It checks the three
+      named requests, `FICLONE`, `FIDEDUPERANGE` and `F2FS_IOC_SET_PIN_FILE`, with and without a
+      high half. It checks every number 0-255 of each refused type in five direction and size
+      forms. It checks that neighbouring types (`'T'` among them) are allowed. The interpreter
+      gained the `AND` instruction.
+    - The stand-in's `files` probe now tries `FS_IOC_GETFLAGS`, `FS_IOC_ENABLE_VERITY`,
+      `FS_IOC_FSGETXATTR` and `FICLONE` on a descriptor of its own assembly opened only for
+      reading. On Linux the confined worker gets `EPERM` for all four. Under Landlock alone,
+      before the filter, the kernel answers each: `done`, `EOPNOTSUPP` (no verity on that
+      filesystem), `done` and `EBADF`. That shows the filter, not Landlock, refuses them.
+  - **Docs.** The "no change to any file" wording now states what is refused: the calls that change
+    a file, and the `ioctl` types above. Another filesystem's own `ioctl` types on a file of the
+    allowance rest on that filesystem's checks, and that is recorded as residual in the Imaging
+    README and `ARCHITECTURE.md`. The worker README, the Imaging README and the filter's XML docs
+    match.
+- R1-2: fixed in the review 1 fixes commit.
+  - The stand-in has a new mode, `ready-unconfined`. It masks `FilesystemConfinement` out of its
+    ready frame, whether or not it is confined, and then answers with a good page.
+  - `WorkerConfinementTests.A_worker_its_launcher_confines_that_does_not_report_its_confinement_is_refused`
+    covers it. A confining launcher gets `PdfWorkerException` with `Protocol`. A `confine: false`
+    launcher takes the same worker's 64x64 page.
+  - It passes on Windows (AppContainer) and on Linux (Landlock). With the client's check disabled
+    it fails on Windows ("No exception was thrown"); I restored the check afterwards.
+- R1-3: fixed in the review 1 fixes commit.
+  - **The grant.** On Windows, `PdfWorkerLauncher.CanConfine` now asks
+    `WindowsAppContainer.GrantRuntime(muxer)` once, lazily. It grants the workers' capability read
+    and execute on the muxer and on the installation's `host` and `shared` directories, with
+    inheritance, so what lies beneath them is covered. A directory that already lets every
+    AppContainer or the capability read and execute it, and what lies beneath it, is left alone.
+    `Grants` accepts both forms an access list holds: the split entries of Program Files (`RX` on
+    the folder, and inherit-only generic read and execute), and a single inheritable entry. A
+    Program Files installation is therefore never touched.
+  - **The fallback.** When the account cannot change those permissions, `CanConfine` is false. The
+    launcher's `Confines` is false then, and the policy runs Development workers unconfined. The
+    check's `BlobPdfWorkerUnconfined` warning names the cause through the new
+    `PdfWorkerLauncher.Unconfinable`: the installation's path, and the error of the grant that
+    failed.
+  - **Laziness.** `Confines` is now evaluated when first asked, not when the launcher is made, so
+    a host that starts no worker never grants anything. A Windows production host renders no PDF
+    thumbnails.
+  - **Messages.** `ExitFix` now names the Windows causes: what the AppContainer must read, which
+    entries grant it, and that `icacls` lists them. `StartFix` names the grant and the fallback.
+    The Imaging README's "What a worker may read" and the worker README match.
+  - **Test.**
+    `WorkerConfinementTests.A_directory_granted_to_the_workers_appcontainer_is_read_by_a_confined_worker_and_still_changed_by_none_on_windows`
+    starts from a temporary directory that grants no AppContainer anything, as an installation in
+    a user's profile does not. After `GrantReadAndExecute`, a confined worker reads the file and
+    lists the directory, every other attempt is still refused, and nothing changed. It also checks
+    that this machine's own installation needs nothing it cannot grant.
+  - **Not exercised.** A host on an installation in `%USERPROFILE%\.dotnet` was not run end to
+    end, because this machine's runtime is under Program Files. Neither was the fallback branch,
+    where the account cannot change the installation's permissions.
+- R1-4: fixed in the review 1 fixes commit.
+  - **Refused.** The filter refuses `inotify_init`, `inotify_init1`, `inotify_add_watch`,
+    `fanotify_init` and `fanotify_mark`, and the path forms `getxattr`, `lgetxattr`, `listxattr`,
+    `llistxattr`, `getxattrat` and `listxattrat`. The numbers are those of the finding on both
+    architectures; arm64 has no `inotify_init`. The runtime and PDFium need none of them: the whole
+    Linux run passes with all of them refused.
+  - **Kept.** `fgetxattr` and `flistxattr` stay open. They need a descriptor that Landlock already
+    let the worker open.
+  - **Tests.** `SeccompFilterTests` lists each call as refused on both architectures. The `files`
+    probe now tries `watch` (inotify on the victim), `notify` (fanotify), `get-xattr` and
+    `list-xattr`.
+    - Confined, the worker gets `EPERM` for all four.
+    - Under Landlock alone, `inotify_add_watch` succeeds, as the reviewer measured. `getxattr`
+      reaches the file (`ENODATA`), and `listxattr` succeeds. That confirms the gap was real.
+    - `fanotify_init` is `EPERM` there too: the container or the kernel refuses it to a process
+      without `CAP_SYS_ADMIN`. The filter refuses it whatever either allows.
+  - **Residual.** `stat`, `access` and `readlink` stay open. A worker can learn that a path
+    exists, and its size, owner, times and link target. Closing that needs a mount namespace. It
+    is recorded here, in the Imaging README's "Residual risks", and in `ARCHITECTURE.md`.
+- R1-5: fixed in the review 1 fixes commit. `close_range` is now called as
+  `syscall(436, 3, ~0U, CLOSE_RANGE_CLOEXEC)` through libc's `syscall` entry point, which every
+  glibc has. The number is the same on x64 and arm64. Every confined Linux worker in the run takes
+  this path, and every one passes. No host on glibc older than 2.34 was run.
+- R1-6: fixed in the review 1 fixes commit.
+  - **The guard.** `WorkerAllowance.Compose` refuses, with `PdfWorkerException(Start)`, a host
+    whose runtime configuration or dependency manifest lies beneath a directory the worker reads
+    in full: the runtime's `host` and `shared` directories, the system's library directory, or a
+    font directory. The message names the directory and the fix. The startup check reports it as
+    a start failure.
+  - **Tests.**
+    `PdfWorkerLauncherTests.A_host_installed_beneath_a_directory_a_worker_reads_in_full_cannot_have_its_workers_confined`
+    covers five layouts: the library directory itself, beneath it, beneath a font directory,
+    beneath `shared`, and a Windows path that differs in case.
+    `A_host_beside_a_directory_a_worker_reads_in_full_but_not_beneath_it_has_its_workers_confined`
+    covers a sibling whose name only starts with the library directory's.
+  - **Recorded, not guarded.** A Windows worker also reads whatever grants every AppContainer read,
+    and Program Files does so throughout. A Development host installed under Program Files
+    therefore hands its configuration to its workers. I tried an access-list check that refused
+    such a host, then took it out: R1-3's ruling is that a Windows Development host must not fail
+    to start where it rendered before, and the alternative, running unconfined, reads more. It is
+    recorded in the Imaging README and `ARCHITECTURE.md`. A build's output and a user's profile
+    grant AppContainers nothing.
+- R1-7: no code change, as ruled. The orchestrator records the App Service Linux Landlock check as
+  a merge-time task for Ahmad.

@@ -72,6 +72,7 @@ namespace Tellma.Core.Imaging.Workers
         /// <summary>The allowance of a worker started from the given files, by this process's own runtime.</summary>
         /// <param name="files">The worker's files.</param>
         /// <returns>The allowance.</returns>
+        /// <exception cref="PdfWorkerException">The host's files lie beneath a directory the worker may read in full.</exception>
         public static WorkerAllowance For(PdfWorkerFiles files)
         {
             ArgumentNullException.ThrowIfNull(files);
@@ -97,6 +98,7 @@ namespace Tellma.Core.Imaging.Workers
         /// <param name="loaderFiles">The dynamic loader's files that exist (Linux).</param>
         /// <param name="windows">Whether the paths are Windows paths, compared without case.</param>
         /// <returns>The allowance, each list ordered and without duplicates.</returns>
+        /// <exception cref="PdfWorkerException">The host's files lie beneath a directory the worker may read in full.</exception>
         internal static WorkerAllowance Compose(
             PdfWorkerFiles files,
             IEnumerable<string> trustedAssemblies,
@@ -142,6 +144,19 @@ namespace Tellma.Core.Imaging.Workers
             read.UnionWith(mappedLibraries.Where(path => !Beneath(path, files.Root, windows) && (system is null || !Beneath(path, system, windows))));
             read.UnionWith(loaderFiles);
             beneath.UnionWith(fontDirectories);
+
+            // Section: a directory read in full must not hold the host's own files, beside which lie
+            // its configuration and secrets: a host installed beneath the system's library
+            // directory, say, cannot have its workers confined to what they run on.
+            string? holder = beneath.FirstOrDefault(directory =>
+                Beneath(files.RuntimeConfiguration, directory, windows) || Beneath(files.Dependencies, directory, windows));
+            if (holder is not null)
+            {
+                throw new PdfWorkerException(
+                    PdfWorkerFailure.Start,
+                    $"PDF workers cannot be confined: the host's files lie beneath {holder}, which a worker may read in full, so it would read the host's configuration beside them. Install the host in a directory of its own, outside the .NET installation, the system's library directory and the font directories.");
+            }
+
             var execute = new SortedSet<string>(comparer) { files.Muxer };
             if (interpreter is not null)
             {

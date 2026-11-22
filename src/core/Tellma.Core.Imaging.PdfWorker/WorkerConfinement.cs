@@ -72,11 +72,13 @@ namespace Tellma.Core.Imaging.PdfWorker
         private const int PathOnly = 0x20_0000;
         private const int CloseOnExecFlag = 0x8_0000;
 
-        // fcntl's F_SETFD with FD_CLOEXEC; close_range's CLOSE_RANGE_CLOEXEC (Linux 5.11), which
-        // marks descriptors close-on-exec instead of closing them; prctl's PR_SET_NO_NEW_PRIVS.
+        // fcntl's F_SETFD with FD_CLOEXEC; close_range (436 on x64 and arm64 alike, Linux 5.9)
+        // with CLOSE_RANGE_CLOEXEC (Linux 5.11), which marks descriptors close-on-exec instead of
+        // closing them; prctl's PR_SET_NO_NEW_PRIVS.
         private const int SetDescriptorFlags = 2;
         private const int CloseOnExecDescriptorFlag = 1;
-        private const uint CloseRangeCloseOnExec = 1 << 2;
+        private const long CloseRangeCall = 436;
+        private const long CloseRangeCloseOnExec = 1 << 2;
         private const int SetNoNewPrivileges = 38;
 
         // errno values (asm-generic/errno-base.h).
@@ -177,7 +179,7 @@ namespace Tellma.Core.Imaging.PdfWorker
             // Section: every descriptor from 3 up but the anchor closes at the restart, those the
             // runtime opened and any the host left inheritable alike; the program executed anew
             // starts with its three pipes and the anchor.
-            if (CloseRange(3, uint.MaxValue, CloseRangeCloseOnExec) != 0 || DescriptorControl(anchor, SetDescriptorFlags, 0) != 0)
+            if (SystemCall(CloseRangeCall, 3, uint.MaxValue, CloseRangeCloseOnExec) != 0 || DescriptorControl(anchor, SetDescriptorFlags, 0) != 0)
             {
                 throw new InvalidOperationException($"The worker's descriptors could not be marked close-on-exec (errno {Marshal.GetLastPInvokeError()}).");
             }
@@ -375,15 +377,19 @@ namespace Tellma.Core.Imaging.PdfWorker
         [SupportedOSPlatform("linux")]
         private static partial int DescriptorControl(int descriptor, int command, int argument);
 
-        /// <summary><c>int close_range(unsigned int first, unsigned int last, int flags)</c>.</summary>
+        /// <summary>
+        ///     <c>long syscall(long number, ...)</c>, for <c>close_range(2)</c>, which the C library
+        ///     wraps only from glibc 2.34: a kernel that offers Landlock may run under an older one.
+        /// </summary>
+        /// <param name="number">The system call.</param>
         /// <param name="first">The first descriptor.</param>
-        /// <param name="last">The last descriptor.</param>
+        /// <param name="last">The last descriptor, read by the kernel as an unsigned int.</param>
         /// <param name="flags"><c>CLOSE_RANGE_CLOEXEC</c>.</param>
         /// <returns>0 on success; -1 with <c>errno</c> set on failure.</returns>
-        [LibraryImport("libc", EntryPoint = "close_range", SetLastError = true)]
+        [LibraryImport("libc", EntryPoint = "syscall", SetLastError = true)]
         [DefaultDllImportSearchPaths(DllImportSearchPath.SafeDirectories)]
         [SupportedOSPlatform("linux")]
-        private static partial int CloseRange(uint first, uint last, uint flags);
+        private static partial long SystemCall(long number, long first, long last, long flags);
 
         /// <summary><c>int execve(const char *path, char *const argv[], char *const envp[])</c>.</summary>
         /// <param name="path">The program.</param>

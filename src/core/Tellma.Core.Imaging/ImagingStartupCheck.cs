@@ -172,11 +172,7 @@ namespace Tellma.Core.Imaging
         /// <returns>The reason.</returns>
         private static string UnconfinedDetail()
         {
-            return PdfWorkerLauncher.CanConfine
-                ? "the image processor's launcher does not confine them"
-                : OperatingSystem.IsLinux()
-                    ? "the kernel offers no Landlock"
-                    : "the operating system offers no confinement the worker uses";
+            return PdfWorkerLauncher.Unconfinable ?? "the image processor's launcher does not confine them";
         }
 
         /// <summary>Reads the kernel's ptrace scope.</summary>
@@ -316,11 +312,11 @@ namespace Tellma.Core.Imaging
 
         /// <summary>The fix for a worker that cannot start.</summary>
         private const string StartFix =
-            "PDF thumbnails render in a worker process that `dotnet exec` starts from the host's own files: run the host framework-dependent on an installed .NET runtime, with its .deps.json and .runtimeconfig.json and Tellma.Core.Imaging.PdfWorker.dll beside its assemblies, as `dotnet build` and `dotnet publish` lay them out (not as a single file and not self-contained). On Windows the worker runs in an AppContainer, which reads the .NET installation through the ALL APPLICATION PACKAGES group that the installer grants read under Program Files, and the host's own files through an access-control entry the host adds to each, so the host must be allowed to change their permissions.";
+            "PDF thumbnails render in a worker process that `dotnet exec` starts from the host's own files: run the host framework-dependent on an installed .NET runtime, with its .deps.json and .runtimeconfig.json and Tellma.Core.Imaging.PdfWorker.dll beside its assemblies, as `dotnet build` and `dotnet publish` lay them out (not as a single file and not self-contained). On Windows the worker runs in an AppContainer, which reads the .NET installation through the ALL APPLICATION PACKAGES group that the installer grants read under Program Files (elsewhere, through an access-control entry the host adds to its host and shared directories where it may, running Development workers unconfined where it may not), and the host's own files through an access-control entry the host adds to each, so the host must be allowed to change their permissions.";
 
         /// <summary>The fix for a worker that ended before it answered.</summary>
         private const string ExitFix =
-            "The worker's own error, quoted above, names the cause. On Linux it confines its files with Landlock and installs a seccomp system-call filter before it reads any upload, and it does not run where the kernel or the container runtime refuses either. A worker that ran out of memory needs a larger Tellma:Blobs:PdfWorkerMemoryLimit.";
+            "The worker's own error, quoted above, names the cause. On Linux it confines its files with Landlock and installs a seccomp system-call filter before it reads any upload, and it does not run where the kernel or the container runtime refuses either. On Windows it runs in an AppContainer, which must read the .NET installation and every file of the host's that it loads, and one that cannot ends with no more than the .NET host's own error: check that the installation under Program Files, or the host and shared directories of one elsewhere, and the host's assemblies, runtime files and native libraries grant ALL APPLICATION PACKAGES or the tellmaPdfWorker capability read and execute (icacls lists them). A worker that ran out of memory needs a larger Tellma:Blobs:PdfWorkerMemoryLimit.";
 
         /// <summary>The fix for a worker that started but did not render.</summary>
         private const string RenderFix =

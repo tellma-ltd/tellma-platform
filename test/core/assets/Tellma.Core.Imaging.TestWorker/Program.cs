@@ -80,8 +80,9 @@ namespace Tellma.Core.Imaging.TestWorker
                     break;
             }
 
-            // Section: the ready frame and the request, as a worker reads them.
-            WorkerProtocol.WriteReady(output, capabilities);
+            // Section: the ready frame and the request, as a worker reads them; one mode leaves its
+            // filesystem confinement out of the ready frame, whether or not it is confined.
+            WorkerProtocol.WriteReady(output, mode == "ready-unconfined" ? capabilities & ~WorkerCapabilities.FilesystemConfinement : capabilities);
             WorkerRequest request = WorkerProtocol.ReadRequest(input);
             int size = request.Size;
 
@@ -152,6 +153,7 @@ namespace Tellma.Core.Imaging.TestWorker
                     return 0;
 
                 case "good":
+                case "ready-unconfined":
                     WorkerProtocol.WriteResult(output, WorkerStatus.Rendered, Png(size, size, extraChunk: false));
                     return 0;
 
@@ -643,8 +645,10 @@ namespace Tellma.Core.Imaging.TestWorker
         ///     the worker runs on, and a system file; listing them; writing the host's file in place,
         ///     by an open for writing or through a shared mapping, truncating it, renaming it, linking
         ///     to it and deleting it; making files, directories, links and pipes beside it, removing a
-        ///     directory there, and changing the file's permissions and times. Whatever an attempt
-        ///     opens is closed again at once, and nothing is written through it.
+        ///     directory there, and changing the file's permissions and times; on Linux also watching
+        ///     the file, reading its extended attributes by name, and asking after or changing a
+        ///     readable file's attributes through a descriptor opened for reading. Whatever an
+        ///     attempt opens is closed again at once, and nothing is written through it.
         /// </summary>
         /// <param name="directory">A directory of the host's, holding <c>victim.txt</c> and an empty directory <c>empty</c>.</param>
         /// <param name="beside">A file beside the worker's own assembly.</param>
@@ -701,7 +705,7 @@ namespace Tellma.Core.Imaging.TestWorker
         private static List<string> UnixFiles(string directory, string victim, string beside, string own)
         {
             const int readOnly = 0, writeOnly = 1, readWrite = 2, create = 0x40, exclusive = 0x80, truncate = 0x200, append = 0x400, closeOnExec = 0x80000;
-            const uint ownerOnly = 0x180;
+            const uint ownerOnly = 0x180, reportFileIdentity = 0x200; // FAN_CLASS_NOTIF | FAN_REPORT_FID
             string worker = Environment.ProcessId.ToString(CultureInfo.InvariantCulture);
 
             // Section: reads, of files and of directories, outside the allowance.
@@ -737,9 +741,18 @@ namespace Tellma.Core.Imaging.TestWorker
                 Called("chmod", Native.ChangeMode(victim, 0x1B6)),
                 Called("set-times", Native.SetTimes(victim, 0)),
 
+                // Section: the file watched, by inotify and by fanotify, and its extended attributes
+                // read and listed by name.
+                Called("watch", Watched(victim)),
+                Called("notify", Closed(Native.FileNotifyInit(reportFileIdentity, readOnly | closeOnExec))),
+                Called("get-xattr", Native.GetAttribute(victim, "user.tellma", 0, 0)),
+                Called("list-xattr", Native.ListAttributes(victim, 0, 0)),
+
                 // Section: a file the worker may read, its own assembly, mapped shared for writing,
-                // directly or by changing a read-only shared mapping's protection.
+                // directly or by changing a read-only shared mapping's protection, and its
+                // attributes asked after or changed through a descriptor opened for reading.
                 MappedForWriting(own),
+                AttributeControls(own),
             ];
             if (Directory.Exists("/dev/shm"))
             {
@@ -785,6 +798,69 @@ namespace Tellma.Core.Imaging.TestWorker
                 string changed = Called("mprotect-shared-write", Native.ProtectMemory(readable, length, read | write));
                 _ = Native.UnmapMemory(readable, length);
                 return $"{direct},{changed}";
+            }
+            finally
+            {
+                _ = Native.Close(descriptor);
+            }
+        }
+
+        /// <summary>
+        ///     Watches a file for access with inotify, closing the instance again at once, and keeps
+        ///     the watch's result and <c>errno</c>.
+        /// </summary>
+        /// <param name="path">The file.</param>
+        /// <returns>The watch's descriptor, or the instance's failure; -1 with <c>errno</c> set on failure.</returns>
+        [UnsupportedOSPlatform("windows")]
+        private static int Watched(string path)
+        {
+            const int closeOnExec = 0x80000;
+            const uint accessed = 0x1, opened = 0x20; // IN_ACCESS, IN_OPEN
+            int instance = Native.WatchInit(closeOnExec);
+            if (instance < 0)
+            {
+                return instance;
+            }
+
+            int watch = Native.Watch(instance, path, accessed | opened);
+            int error = Marshal.GetLastPInvokeError();
+            _ = Native.Close(instance);
+            Marshal.SetLastPInvokeError(error);
+            return watch;
+        }
+
+        /// <summary>
+        ///     Asks after and changes a file's attributes through <c>ioctl</c>s on a descriptor
+        ///     opened only for reading, one of each type the filter refuses whatever the request:
+        ///     <c>FS_IOC_GETFLAGS</c> and <c>FS_IOC_ENABLE_VERITY</c> ('f'), <c>FS_IOC_FSGETXATTR</c>
+        ///     ('X') and <c>FICLONE</c> (0x94). None changes anything even where it is allowed: the
+        ///     verity request carries version 0, which no kernel takes, and a clone into a
+        ///     descriptor opened for reading is refused by the kernel itself.
+        /// </summary>
+        /// <param name="path">A file the worker may read.</param>
+        /// <returns><c>get-flags=...,enable-verity=...,get-fsxattr=...,clone-into=...</c>.</returns>
+        [UnsupportedOSPlatform("windows")]
+        private static unsafe string AttributeControls(string path)
+        {
+            const int readOnly = 0, closeOnExec = 0x80000, room = 256;
+            const long getFlags = 0x80086601, enableVerity = 0x40806685, getExtendedAttributes = 0x801C581F, clone = 0x40049409;
+            int descriptor = Native.Open(path, readOnly | closeOnExec);
+            if (descriptor < 0)
+            {
+                return Called("ioctl-open", descriptor);
+            }
+
+            try
+            {
+                // Room for the largest argument, fsverity_enable_arg's 128 bytes, all zero.
+                byte* argument = stackalloc byte[room];
+                new Span<byte>(argument, room).Clear();
+                return string.Join(
+                    ',',
+                    Called("get-flags", DeviceControl(descriptor, getFlags, (long)argument)),
+                    Called("enable-verity", DeviceControl(descriptor, enableVerity, (long)argument)),
+                    Called("get-fsxattr", DeviceControl(descriptor, getExtendedAttributes, (long)argument)),
+                    Called("clone-into", DeviceControl(descriptor, clone, descriptor)));
             }
             finally
             {

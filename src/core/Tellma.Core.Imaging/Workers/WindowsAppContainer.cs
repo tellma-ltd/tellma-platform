@@ -54,8 +54,124 @@ namespace Tellma.Core.Imaging.Workers
         private static readonly Lazy<SecurityIdentifier> Capability = new(DeriveCapability, LazyThreadSafetyMode.ExecutionAndPublication);
         private static readonly ConcurrentDictionary<string, byte> Granted = new(StringComparer.OrdinalIgnoreCase);
 
+        // ALL APPLICATION PACKAGES, a group every AppContainer token holds.
+        private static readonly SecurityIdentifier EveryAppContainer = new("S-1-15-2-1");
+
         /// <summary>The SID of the capability every worker holds and its allowance's files grant read to.</summary>
         public static SecurityIdentifier CapabilitySid => Capability.Value;
+
+        /// <summary>
+        ///     Makes the .NET installation a worker runs on readable to its AppContainer, where it is
+        ///     not already: its muxer, and its <c>host</c> and <c>shared</c> directories with
+        ///     everything beneath them.
+        /// </summary>
+        /// <remarks>
+        ///     An installer grants every AppContainer read under Program Files, so the installation
+        ///     there needs nothing. A runtime installed elsewhere (in a user's profile, or a
+        ///     repository's own <c>.dotnet</c>) grants none, and the worker could not load it; the
+        ///     workers' capability is granted read and execute on it instead, inherited by what lies
+        ///     beneath, where this account may change its permissions.
+        /// </remarks>
+        /// <param name="muxer">The <c>dotnet</c> executable workers are started with.</param>
+        /// <returns>Null when a worker's AppContainer can read the installation; otherwise why it cannot.</returns>
+        public static string? GrantRuntime(string muxer)
+        {
+            ArgumentNullException.ThrowIfNull(muxer);
+            string root = Path.GetDirectoryName(Path.GetFullPath(muxer))!;
+            try
+            {
+                GrantReadAndExecute(muxer, directory: false);
+                GrantReadAndExecute(Path.Combine(root, "host"), directory: true);
+                GrantReadAndExecute(Path.Combine(root, "shared"), directory: true);
+                return null;
+            }
+            catch (Exception exception) when (exception is UnauthorizedAccessException or IOException or PrivilegeNotHeldException)
+            {
+                return $"its AppContainer cannot read the .NET installation at {root}, and this account cannot grant it read there ({exception.Message})";
+            }
+        }
+
+        /// <summary>
+        ///     Grants the workers' capability read and execute on a file, or on a directory and
+        ///     everything beneath it, unless every AppContainer or the capability can already read
+        ///     it so.
+        /// </summary>
+        /// <param name="path">The file or directory.</param>
+        /// <param name="directory">Whether it is a directory.</param>
+        /// <exception cref="UnauthorizedAccessException">Its access control could not be read or changed.</exception>
+        /// <exception cref="IOException">It could not be reached.</exception>
+        internal static void GrantReadAndExecute(string path, bool directory)
+        {
+            // Section: an allowance already there, explicit or inherited, is enough.
+            FileSystemSecurity security = directory
+                ? new DirectoryInfo(path).GetAccessControl(AccessControlSections.Access)
+                : new FileInfo(path).GetAccessControl(AccessControlSections.Access);
+            if (Grants(security, directory))
+            {
+                return;
+            }
+
+            // Section: a directory's entry is inherited by its files and subdirectories, which the
+            // system applies to those already there as it writes the directory's access list.
+            if (directory)
+            {
+                security.AddAccessRule(new FileSystemAccessRule(
+                    CapabilitySid, FileSystemRights.ReadAndExecute, InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit, PropagationFlags.None, AccessControlType.Allow));
+                new DirectoryInfo(path).SetAccessControl((DirectorySecurity)security);
+            }
+            else
+            {
+                security.AddAccessRule(new FileSystemAccessRule(CapabilitySid, FileSystemRights.ReadAndExecute, AccessControlType.Allow));
+                new FileInfo(path).SetAccessControl((FileSecurity)security);
+            }
+        }
+
+        /// <summary>
+        ///     Whether an access list lets every AppContainer, or the workers' capability, read and
+        ///     execute the object, and, for a directory, everything beneath it too.
+        /// </summary>
+        /// <remarks>
+        ///     A directory often grants itself and what lies beneath it in two entries, as Program
+        ///     Files does: read and execute on the directory alone, and generic read and execute
+        ///     inherited by its files and subdirectories only. Either form counts.
+        /// </remarks>
+        /// <param name="security">The object's access list, its inherited entries included.</param>
+        /// <param name="directory">Whether the object is a directory.</param>
+        /// <returns>True when it does.</returns>
+        internal static bool Grants(FileSystemSecurity security, bool directory)
+        {
+            ArgumentNullException.ThrowIfNull(security);
+            const InheritanceFlags beneath = InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit;
+            SecurityIdentifier capability = CapabilitySid;
+            FileSystemAccessRule[] rules =
+            [
+                .. security.GetAccessRules(includeExplicit: true, includeInherited: true, typeof(SecurityIdentifier))
+                    .OfType<FileSystemAccessRule>()
+                    .Where(rule => rule.AccessControlType == AccessControlType.Allow
+                        && (EveryAppContainer.Equals(rule.IdentityReference) || capability.Equals(rule.IdentityReference))
+                        && ReadsAndExecutes(rule.FileSystemRights)),
+            ];
+
+            // Section: the object itself, by an entry that is not only inherited; and for a
+            // directory, what lies beneath it, by one its files and subdirectories all inherit.
+            bool itself = rules.Any(static rule => !rule.PropagationFlags.HasFlag(PropagationFlags.InheritOnly));
+            bool below = rules.Any(static rule => (rule.InheritanceFlags & beneath) == beneath && !rule.PropagationFlags.HasFlag(PropagationFlags.NoPropagateInherit));
+            return itself && (!directory || below);
+        }
+
+        /// <summary>Whether access rights include reading and executing, as specific rights or as generic ones.</summary>
+        /// <param name="rights">The rights, generic bits included as the access list holds them.</param>
+        /// <returns>True when they do.</returns>
+        private static bool ReadsAndExecutes(FileSystemRights rights)
+        {
+            // GENERIC_ALL, GENERIC_EXECUTE and GENERIC_READ (winnt.h), which an inherited entry may
+            // hold in place of the rights they map to.
+            const uint genericAll = 0x1000_0000, genericExecute = 0x2000_0000, genericRead = 0x8000_0000;
+            uint mask = unchecked((uint)rights);
+            return (rights & FileSystemRights.ReadAndExecute) == FileSystemRights.ReadAndExecute
+                || (mask & genericAll) != 0
+                || (mask & (genericRead | genericExecute)) == (genericRead | genericExecute);
+        }
 
         /// <summary>Grants the workers' capability read and execute on each file, unless the file already grants it.</summary>
         /// <param name="files">The files.</param>

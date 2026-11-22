@@ -21,14 +21,18 @@ namespace Tellma.Core.Imaging.Tests.Workers
     ///     one in the host's temporary directory, not one beside its own assembly, not the system's
     ///     own) and lists none of their directories; it changes no file at all, neither writing one
     ///     in place, through an open or a shared mapping, nor truncating, renaming, linking to or
-    ///     deleting it, nor making anything beside it; it reads nothing of another process under
+    ///     deleting it, nor making anything beside it, nor changing a file's attributes through a
+    ///     descriptor opened for reading; on Linux it neither watches a file nor reads its extended
+    ///     attributes by name; it reads nothing of another process under
     ///     <c>/proc</c>, its host's, another worker's or the first process's, and lists no process,
     ///     while its own entries stay open to it; it reaches no network; it opens neither its host's
     ///     process nor another worker's; and a thread it started before its sandbox is held alike.
     ///     On Linux Landlock itself refuses each read and change it governs, before the system-call
     ///     filter is there to refuse the changes first. An unconfined worker reads what a confined
-    ///     one cannot, so the probes would see a confinement that is missing. A confined worker
-    ///     still renders.
+    ///     one cannot, so the probes would see a confinement that is missing. A worker its launcher
+    ///     confines that does not report its confinement is refused. On Windows a directory the
+    ///     host grants its workers, as it does a .NET installation outside Program Files, is read
+    ///     by a confined worker and still changed by none. A confined worker still renders.
     /// </summary>
     [Collection(SerialSuites.Name)]
     public sealed class WorkerConfinementTests
@@ -54,7 +58,16 @@ namespace Tellma.Core.Imaging.Tests.Workers
             "read-victim", "read-beside", "read-system", "list-root", "list-folder",
             "write-victim", "read-write-victim", "append-victim", "truncate-open", "truncate",
             "rename", "link", "symlink", "delete", "create", "create-temp", "mkdir", "rmdir", "mkfifo",
-            "chmod", "set-times", "map-shared-write", "mprotect-shared-write",
+            "chmod", "set-times", "watch", "notify", "get-xattr", "list-xattr",
+            "map-shared-write", "mprotect-shared-write", "get-flags", "enable-verity", "get-fsxattr", "clone-into",
+        ];
+
+        // The attempts on Linux that Landlock does not govern, which the system-call filter alone
+        // refuses: a file's mode and times, watching it, reading its extended attributes by name,
+        // and ioctls on a descriptor opened for reading.
+        private static readonly string[] FilterOnlyAttempts =
+        [
+            "chmod", "set-times", "watch", "notify", "get-xattr", "list-xattr", "get-flags", "enable-verity", "get-fsxattr", "clone-into",
         ];
 
         private static readonly string[] WindowsAttempts =
@@ -94,11 +107,12 @@ namespace Tellma.Core.Imaging.Tests.Workers
             // by Landlock itself (EACCES), whatever the filter would refuse first. A shared writable
             // mapping of a file opened for reading the kernel refuses anyway.
             Dictionary<string, string> outcomes = Outcomes(Probe(new PdfWorkerLauncher(TestWorkers.StandInPath, ["files-before-filter", victim.Folder, victim.Beside]), "files-before-filter"));
-            string[] governed = [.. LinuxAttempts.Except(["chmod", "set-times"], StringComparer.Ordinal)];
+            string[] governed = [.. LinuxAttempts.Except(FilterOnlyAttempts, StringComparer.Ordinal)];
             Assert.All(governed, name => Assert.Equal((name, "EACCES"), (name, outcomes[name])));
 
-            // Section: a file's mode and times are not Landlock's to govern, which is why the filter
-            // refuses their change; here, with no filter yet, they may change. Nothing else did.
+            // Section: a file's mode and times, watches and extended attributes, and ioctls on a
+            // readable file are not Landlock's to govern, which is why the filter refuses them; here,
+            // with no filter yet, the mode and times may change. Nothing else did.
             victim.AssertUnchanged(metadata: false);
         }
 
@@ -213,6 +227,53 @@ namespace Tellma.Core.Imaging.Tests.Workers
             string probe = Probe(new PdfWorkerLauncher(TestWorkers.StandInPath, ["early-thread", victim.Victim]), "early-thread");
             string read = probe[(probe.IndexOf("read file=", StringComparison.Ordinal) + "read file=".Length)..];
             Assert.True(IsRefusal(read), probe);
+        }
+
+        [Fact]
+        public void A_worker_its_launcher_confines_that_does_not_report_its_confinement_is_refused()
+        {
+            SkipUnlessConfined();
+
+            // Section: the stand-in leaves its confinement out of its ready frame, then answers with
+            // a good page: a launcher that confines refuses it before sending the document.
+            using var budget = new CancellationTokenSource(Patience);
+            using var confined = new PdfWorkerClient(new PdfWorkerLauncher(TestWorkers.StandInPath, ["ready-unconfined"]), Limit);
+            PdfWorkerException refused = Assert.Throws<PdfWorkerException>(() => confined.Render(DocumentFixtures.HalfBlackPage(100, 100), 64, CpuTime, budget.Token));
+            Assert.Equal(PdfWorkerFailure.Protocol, refused.Failure);
+
+            // Section: one that does not confine takes the same worker's page.
+            using var unconfined = new PdfWorkerClient(new PdfWorkerLauncher(TestWorkers.StandInPath, ["ready-unconfined"], confine: false), Limit);
+            RenderedPage page = unconfined.Render(DocumentFixtures.HalfBlackPage(100, 100), 64, CpuTime, budget.Token);
+            Assert.Equal((64, 64), (page.Width, page.Height));
+        }
+
+        [Fact]
+        [SupportedOSPlatform("windows")]
+        public void A_directory_granted_to_the_workers_appcontainer_is_read_by_a_confined_worker_and_still_changed_by_none_on_windows()
+        {
+            Assert.SkipUnless(OperatingSystem.IsWindows(), "The AppContainer is Windows's.");
+            SkipUnlessConfined();
+            using var victim = new VictimFolder();
+
+            // Section: the host's own temporary directory grants no AppContainer anything, as a
+            // .NET installation in a user's profile does not; this host's own installation
+            // grants every AppContainer read already, or has been granted the workers' capability.
+            Assert.False(WindowsAppContainer.Grants(new DirectoryInfo(victim.Folder).GetAccessControl(), directory: true));
+            Assert.Null(WindowsAppContainer.GrantRuntime(new PdfWorkerLauncher().Files.Muxer));
+
+            // Section: granted, as the host grants such an installation, the directory and what lies
+            // beneath it are readable to a confined worker.
+            WindowsAppContainer.GrantReadAndExecute(victim.Folder, directory: true);
+            Assert.True(WindowsAppContainer.Grants(new DirectoryInfo(victim.Folder).GetAccessControl(), directory: true));
+            Assert.True(WindowsAppContainer.Grants(new FileInfo(victim.Victim).GetAccessControl(), directory: false));
+            Dictionary<string, string> outcomes = Outcomes(Probe(new PdfWorkerLauncher(TestWorkers.StandInPath, ["files", victim.Folder, victim.Beside]), "files"));
+            Assert.Equal("done", outcomes["read-victim"]);
+            Assert.Equal("done", outcomes["list-folder"]);
+
+            // Section: and only read: every other attempt is still refused, and nothing changed.
+            Assert.All(outcomes.Where(static outcome => outcome.Key is not ("read-victim" or "list-folder")), static outcome =>
+                Assert.True(IsRefusal(outcome.Value), $"{outcome.Key} was not refused: {outcome.Value}"));
+            victim.AssertUnchanged();
         }
 
         [Fact]

@@ -319,6 +319,54 @@ namespace Tellma.Core.Imaging.TestWorker
         [UnsupportedOSPlatform("windows")]
         public static partial int SetTimes(string path, nint times);
 
+        /// <summary><c>int inotify_init1(int)</c>.</summary>
+        /// <param name="flags">The flags.</param>
+        /// <returns>The instance's descriptor; -1 with <c>errno</c> set on failure.</returns>
+        [LibraryImport("libc", EntryPoint = "inotify_init1", SetLastError = true)]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.SafeDirectories)]
+        [UnsupportedOSPlatform("windows")]
+        public static partial int WatchInit(int flags);
+
+        /// <summary><c>int inotify_add_watch(int, const char*, uint32_t)</c>.</summary>
+        /// <param name="instance">The inotify instance.</param>
+        /// <param name="path">The file or directory watched.</param>
+        /// <param name="events">The events watched for.</param>
+        /// <returns>The watch's descriptor; -1 with <c>errno</c> set on failure.</returns>
+        [LibraryImport("libc", EntryPoint = "inotify_add_watch", SetLastError = true, StringMarshalling = StringMarshalling.Utf8)]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.SafeDirectories)]
+        [UnsupportedOSPlatform("windows")]
+        public static partial int Watch(int instance, string path, uint events);
+
+        /// <summary><c>int fanotify_init(unsigned int, unsigned int)</c>.</summary>
+        /// <param name="flags">The notification group's flags.</param>
+        /// <param name="eventFlags">The flags of the descriptors its events carry.</param>
+        /// <returns>The group's descriptor; -1 with <c>errno</c> set on failure.</returns>
+        [LibraryImport("libc", EntryPoint = "fanotify_init", SetLastError = true)]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.SafeDirectories)]
+        [UnsupportedOSPlatform("windows")]
+        public static partial int FileNotifyInit(uint flags, uint eventFlags);
+
+        /// <summary><c>ssize_t getxattr(const char*, const char*, void*, size_t)</c>.</summary>
+        /// <param name="path">The file.</param>
+        /// <param name="name">The attribute.</param>
+        /// <param name="value">Receives its value; null to ask its size.</param>
+        /// <param name="size">The buffer's size.</param>
+        /// <returns>The value's size; -1 with <c>errno</c> set on failure.</returns>
+        [LibraryImport("libc", EntryPoint = "getxattr", SetLastError = true, StringMarshalling = StringMarshalling.Utf8)]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.SafeDirectories)]
+        [UnsupportedOSPlatform("windows")]
+        public static partial nint GetAttribute(string path, string name, nint value, nuint size);
+
+        /// <summary><c>ssize_t listxattr(const char*, char*, size_t)</c>.</summary>
+        /// <param name="path">The file.</param>
+        /// <param name="list">Receives the names; null to ask their size.</param>
+        /// <param name="size">The buffer's size.</param>
+        /// <returns>The names' size; -1 with <c>errno</c> set on failure.</returns>
+        [LibraryImport("libc", EntryPoint = "listxattr", SetLastError = true, StringMarshalling = StringMarshalling.Utf8)]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.SafeDirectories)]
+        [UnsupportedOSPlatform("windows")]
+        public static partial nint ListAttributes(string path, nint list, nuint size);
+
         /// <summary><c>int munmap(void*, size_t)</c>.</summary>
         /// <param name="address">The mapping.</param>
         /// <param name="length">Its length.</param>
