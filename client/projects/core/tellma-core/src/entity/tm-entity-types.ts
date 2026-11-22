@@ -46,3 +46,45 @@ export interface TmEntityShapes {}
  * ```
  */
 export type TmEntityType<N extends string> = N extends keyof TmEntityTypes ? TmEntityTypes[N] : TmJsonObject;
+
+// -----------------------------------------------------------------------------
+// Typed paths
+// -----------------------------------------------------------------------------
+
+/** The path shape of an entity the emitted declarations register, else `never`. */
+type TmShapeOf<N extends string> = N extends keyof TmEntityShapes ? TmEntityShapes[N] : never;
+
+/**
+ * The paths from an entity, crossing at most as many navigations as `D`
+ * has elements: its scalars, its multilingual groups and its navigations,
+ * then each navigation's name and a dot before its target's paths. Past the
+ * last step, a navigation's name and a dot accept any text.
+ */
+type TmPathsFrom<N extends string, D extends readonly unknown[]> =
+  TmShapeOf<N> extends {
+    readonly scalars: infer S extends string;
+    readonly groups: infer G extends string;
+    readonly navigations: infer V;
+  }
+    ?
+        | S
+        | G
+        | (keyof V & string)
+        | (D extends readonly [unknown, ...infer R]
+            ? { [K in keyof V & string]: V[K] extends string ? `${K}.${TmPathsFrom<V[K], R>}` : never }[keyof V & string]
+            : `${keyof V & string}.${string}`)
+    : string;
+
+/**
+ * A path from an entity, in PascalCase C# names: `Code`, `Parent.Name`,
+ * `Parent.Manager`. Once the distribution's emitted declarations register
+ * the entity, a path of up to three navigation steps is checked exactly
+ * and a longer one when its first three steps check; without them, any
+ * text is a path.
+ *
+ * @example
+ * ```ts
+ * const path: TmPath<'gl.Center'> = 'Parent.Manager.Name';
+ * ```
+ */
+export type TmPath<N extends string> = [TmShapeOf<N>] extends [never] ? string : TmPathsFrom<N, readonly [1, 1, 1]>;

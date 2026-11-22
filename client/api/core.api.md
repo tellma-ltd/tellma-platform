@@ -11,9 +11,11 @@ import { DestroyRef } from '@angular/core';
 import { EnvironmentProviders } from '@angular/core';
 import * as i0 from '@angular/core';
 import { InjectionToken } from '@angular/core';
+import { InputSignal } from '@angular/core';
 import { Observable } from 'rxjs';
 import { Provider } from '@angular/core';
 import { RouterStateSnapshot } from '@angular/router';
+import { SchemaPathTree } from '@angular/forms/signals';
 import { Signal } from '@angular/core';
 import { TitleStrategy } from '@angular/router';
 import { Type } from '@angular/core';
@@ -57,6 +59,13 @@ export interface TmAccessSummary {
     readonly securables: readonly TmSecurableSummary[];
     readonly tag: string;
     readonly validUntil?: string;
+}
+
+// @public
+export interface TmActionConfirmation {
+    readonly args?: Signal<TmJsonObject>;
+    readonly messageKey: string;
+    readonly titleKey: string;
 }
 
 // @public
@@ -305,6 +314,11 @@ export interface TmCalendarDefinition {
 }
 
 // @public
+export interface TmChildDescriptor extends TmChildMetadata {
+    readonly label: Signal<string>;
+}
+
+// @public
 export interface TmChildMetadata {
     readonly entity: string;
     readonly json: string;
@@ -395,11 +409,37 @@ export type TmCodedReportRun = (api: never, args: TmReportArgs, options: {
 }) => Promise<unknown>;
 
 // @public
+export type TmColumnInput<N extends string> = TmPath<N> | {
+    readonly expression: string;
+    readonly labelKey: string;
+    readonly type?: TmDataType;
+} | {
+    readonly path: TmPath<N>;
+    readonly display?: TmLazyComponent;
+    readonly width?: number;
+    readonly select?: readonly TmPath<N>[];
+    readonly filter?: string;
+};
+
+// @public
 export interface TmContracts {
     readonly fingerprints: Readonly<Record<string, string>>;
     readonly idempotent: readonly string[];
     readonly long: readonly string[];
 }
+
+// @public
+export type TmCustomFilterDeclaration = ({
+    readonly key: string;
+    readonly labelKey: string;
+} & TmFilterSource) | {
+    readonly key: string;
+    readonly labelKey: string;
+    readonly options: readonly ({
+        readonly value: string;
+        readonly labelKey: string;
+    } & TmFilterSource)[];
+};
 
 // @public
 export type TmDataType = 'binary' | 'bool' | 'date' | 'datetime' | 'decimal' | 'enum' | 'float' | 'guid' | 'instant' | 'integer' | 'json' | 'string' | 'time';
@@ -427,13 +467,50 @@ export type TmDeclarationKey = `${'appBar' | 'entry' | 'page' | 'section' | 'set
 export type TmDeclarationPatch = TmCodedReportDeclaration | TmEntityDeclaration | TmOverride | TmPageDeclaration | TmWidgetTypeDeclaration;
 
 // @public
+export interface TmDetailsDeclaration<N extends string> {
+    readonly create?: TmLazyComponent;
+    readonly createdUrl?: (entity: TmEntityType<N>, urls: TmTenantUrls) => string;
+    readonly edit?: 'page';
+    readonly header?: 'compact' | 'standard';
+    readonly page: TmLazyComponent;
+    readonly refresh?: 'page';
+}
+
+// @public
 export type TmDigitStyle = 'Latin' | 'Native';
+
+// @public
+export class TmDisplayName {
+    readonly parts: InputSignal<TmDisplayNameParts | null>;
+    static ɵcmp: i0.ɵɵComponentDeclaration<TmDisplayName, "tm-display-name", never, { "parts": { "alias": "parts"; "required": false; "isSignal": true; }; }, {}, never, never, true, never>;
+    static ɵfac: i0.ɵɵFactoryDeclaration<TmDisplayName, never>;
+}
+
+// @public
+export interface TmDisplayNameParts {
+    readonly name: string;
+    readonly prefix: string | null;
+}
 
 // @public
 export interface TmDisplayNameRule {
     readonly multilingual: boolean;
     readonly prefix?: string;
     readonly source: string;
+}
+
+// @public
+export class TmDisplayNames {
+    label(entity: string, id: TmId): Signal<string | null>;
+    labelParts(entity: string, id: TmId): Signal<TmDisplayNameParts | null>;
+    of(entity: string, row: TmJson): Signal<string>;
+    parts(entity: string, row: TmJson): Signal<TmDisplayNameParts>;
+    remember(entity: string, rows: TmQueryRowSet | readonly TmJson[]): void;
+    rememberRelated(related: Readonly<Record<string, readonly TmJson[]>>): void;
+    resolve(entity: string, ids: readonly TmId[]): void;
+    select(entity: string, navigation?: string): readonly string[];
+    static ɵfac: i0.ɵɵFactoryDeclaration<TmDisplayNames, never>;
+    static ɵprov: i0.ɵɵInjectableDeclaration<TmDisplayNames>;
 }
 
 // @public
@@ -525,9 +602,12 @@ export function tmEnglish(): TmLanguageDefinition;
 export class TmEntities {
     bySegment(segment: string): TmEntitySummary | undefined;
     declaration(name: string): TmEntityDeclaration | undefined;
+    enum(name: string): TmEnumDescriptor | undefined;
+    get(name: string): TmEntityDescriptor;
     label(name: string, plural?: boolean): Signal<string>;
     load(): Promise<void>;
     readonly loaded: Signal<boolean>;
+    resolve(root: string, key: string): TmPathResolution | null;
     summary(name: string): TmEntitySummary | undefined;
     static ɵfac: i0.ɵɵFactoryDeclaration<TmEntities, never>;
     static ɵprov: i0.ɵɵInjectableDeclaration<TmEntities>;
@@ -540,7 +620,26 @@ export interface TmEntitiesChunk {
 }
 
 // @public
-export function tmEntity(name: string, declaration?: TmEntityDeclarationInput): TmEntityDeclaration;
+export function tmEntity<const N extends string>(name: N, declaration?: TmEntityDeclarationInput<N>): TmEntityDeclaration;
+
+// @public
+export interface TmEntityActionDeclaration<N extends string> {
+    readonly bulk?: false;
+    readonly button?: boolean;
+    readonly confirm?: TmActionConfirmation;
+    readonly dialog?: TmLazyComponent;
+    readonly icon?: string;
+    readonly name: string;
+    readonly visible?: (entity: TmEntityType<N>, context: {
+        readonly userId: number;
+    }) => boolean;
+}
+
+// @public
+export interface TmEntityActionDescriptor extends TmActionMetadata {
+    readonly declaration?: TmEntityActionDeclaration<string>;
+    readonly label: Signal<string>;
+}
 
 // @public
 export interface TmEntityDeclaration {
@@ -549,13 +648,47 @@ export interface TmEntityDeclaration {
 }
 
 // @public
-export interface TmEntityDeclarationInput {
-    readonly [member: string]: unknown;
+export interface TmEntityDeclarationInput<N extends string = string> {
+    readonly actions?: readonly TmEntityActionDeclaration<N>[];
+    readonly beforeSave?: (entity: TmEntityType<N>) => Promise<TmEntityType<N>> | TmEntityType<N>;
+    readonly clone?: (copy: TmEntityType<N>, source: TmEntityType<N>) => TmEntityType<N>;
+    readonly columns?: readonly TmColumnInput<N>[];
+    readonly defaults?: () => Partial<TmEntityType<N>>;
+    readonly details?: TmDetailsDeclaration<N> | TmLazyComponent;
+    readonly filters?: readonly TmCustomFilterDeclaration[];
+    readonly helpKey?: string;
     readonly icon?: string;
     readonly order?: number;
+    readonly orderBy?: TmOrderInput<N>;
+    readonly pageActions?: readonly TmSearchPageActionDeclaration[];
+    readonly picker?: TmPickerDeclaration<N>;
+    readonly rowLink?: (row: TmPlanRow) => string | null;
+    readonly search?: TmLazyComponent;
     readonly section?: string;
     readonly synonymsKey?: string;
+    readonly tabs?: readonly TmTabDeclaration[];
+    readonly tile?: TmTileDeclaration<N>;
+    readonly validate?: (path: SchemaPathTree<TmEntityType<N>>) => void;
     readonly visibleWhen?: (context: TmNavContext) => boolean;
+}
+
+// @public
+export interface TmEntityDescriptor extends Omit<TmEntityMetadata, 'actions' | 'capabilities' | 'children' | 'navigations' | 'operations' | 'properties' | 'relatedSelect' | 'searchable'> {
+    readonly actions: readonly TmEntityActionDescriptor[];
+    readonly capabilities: ReadonlySet<string>;
+    child(name: string): TmChildDescriptor | undefined;
+    readonly children: readonly TmChildDescriptor[];
+    readonly declaration: TmEntityDeclaration;
+    readonly label: Signal<string>;
+    navigation(name: string): TmNavigationDescriptor | undefined;
+    readonly navigations: readonly TmNavigationDescriptor[];
+    readonly operations: ReadonlySet<TmEntityOperation>;
+    readonly pluralLabel: Signal<string>;
+    readonly properties: readonly TmPropertyDescriptor[];
+    property(name: string): TmPropertyDescriptor | undefined;
+    readonly relatedSelect: readonly string[];
+    readonly searchable: readonly string[];
+    readonly slots: 1 | 2 | 3;
 }
 
 // @public
@@ -619,6 +752,11 @@ export interface TmEntityTypes {
 }
 
 // @public
+export interface TmEnumDescriptor extends TmEnumMetadata {
+    label(value: string): Signal<string>;
+}
+
+// @public
 export interface TmEnumMetadata {
     readonly aliases?: Readonly<Record<string, string>>;
     readonly name: string;
@@ -664,6 +802,15 @@ export interface TmFeatureMetadata {
     readonly key: string;
     readonly version: string;
 }
+
+// @public
+export type TmFilterSource = {
+    readonly named: string;
+    readonly queryex?: never;
+} | {
+    readonly queryex: string;
+    readonly named?: never;
+};
 
 // @public
 export interface TmHubEventMessage {
@@ -912,6 +1059,11 @@ export interface TmNavEntry {
 }
 
 // @public
+export interface TmNavigationDescriptor extends TmNavigationMetadata {
+    readonly label: Signal<string>;
+}
+
+// @public
 export interface TmNavigationMetadata {
     readonly foreignKey: string;
     readonly json: string;
@@ -950,6 +1102,9 @@ export interface TmNotificationTypeMetadata {
     readonly targetResource?: string;
     readonly toast: boolean;
 }
+
+// @public
+export type TmOrderInput<N extends string> = `${TmPath<N>}:desc` | TmPath<N>;
 
 // @public
 export interface TmOverride {
@@ -1003,6 +1158,66 @@ export type TmPartition = {
     readonly kind: 'user';
     readonly sub: string;
 };
+
+// @public
+export type TmPath<N extends string> = [TmShapeOf<N>] extends [never] ? string : TmPathsFrom<N, readonly [1, 1, 1]>;
+
+// @public
+export type TmPathEnd = {
+    readonly kind: 'file' | 'image';
+    readonly navigation: TmNavigationDescriptor;
+    readonly policy: TmBlobKindPolicy;
+} | {
+    readonly kind: 'navigation';
+    readonly navigation: TmNavigationDescriptor;
+} | {
+    readonly kind: 'text';
+    readonly slots: readonly TmPropertyDescriptor[];
+} | {
+    readonly kind: 'value';
+    readonly property: TmPropertyDescriptor;
+};
+
+// @public
+export interface TmPathResolution {
+    readonly end: TmPathEnd;
+    readonly entity: string;
+    readonly fkPath?: string;
+    readonly key: string;
+    readonly label: Signal<string>;
+    readonly root: string;
+    readonly steps: readonly TmNavigationDescriptor[];
+}
+
+// @public
+export type TmPermissionOperation = 'activate' | `action:${string}` | TmEntityOperation;
+
+// @public
+export class TmPermissions {
+    allows(entity: string, operation: TmPermissionOperation): Signal<boolean>;
+    can(resource: string, action: string): Signal<boolean>;
+    disabledReason(entity: string, operation: TmPermissionOperation): Signal<string | null>;
+    filtered(resource: string, action: string): Signal<boolean>;
+    label(resource: string, action?: string): Signal<string>;
+    reachable(root: string, key: string): Signal<boolean>;
+    sensitive(resource: string, action: string): boolean;
+    static ɵfac: i0.ɵɵFactoryDeclaration<TmPermissions, never>;
+    static ɵprov: i0.ɵɵInjectableDeclaration<TmPermissions>;
+}
+
+// @public
+export interface TmPickerDeclaration<N extends string> {
+    readonly create?: boolean;
+    readonly description?: false | readonly TmPath<N>[];
+    readonly filter?: string;
+    readonly orderBy?: TmOrderInput<N>;
+}
+
+// @public
+export interface TmPlanRow {
+    get(path: string): unknown;
+    readonly id: TmId;
+}
 
 // @public
 export interface TmPreferenceKey<T> {
@@ -1072,6 +1287,12 @@ export interface TmProfile {
 }
 
 // @public
+export interface TmPropertyDescriptor extends TmPropertyMetadata {
+    readonly contentDir?: 'ltr' | 'rtl';
+    readonly label: Signal<string>;
+}
+
+// @public
 export interface TmPropertyMetadata {
     readonly blob?: TmBlobKindPolicy;
     readonly defaulted?: true;
@@ -1095,6 +1316,22 @@ export interface TmPropertyMetadata {
     readonly scale?: number;
     readonly type: TmDataType;
     readonly unique?: true;
+}
+
+// @public
+export interface TmQueryRowSet {
+    readonly columns: readonly TmQueryRowSetColumn[];
+    readonly rows: readonly (readonly TmJson[])[];
+}
+
+// @public
+export interface TmQueryRowSetColumn {
+    readonly groupingKey: boolean;
+    readonly name: string;
+    readonly nullable: boolean;
+    readonly path?: readonly string[];
+    readonly scale?: number;
+    readonly type: string;
 }
 
 // @public
@@ -1231,6 +1468,23 @@ export interface TmRoutingMetadata {
     readonly serverTenantSegments: readonly string[];
     readonly spaFirstSegments: readonly string[];
     readonly spaTenantSegments: readonly string[];
+}
+
+// @public
+export function tmRowsToObjects(root: TmEntityDescriptor, set: TmQueryRowSet): readonly TmJsonObject[];
+
+// @public
+export interface TmSearchPageActionDeclaration {
+    readonly confirm?: TmActionConfirmation;
+    readonly destructive?: boolean;
+    readonly group?: 'menu' | 'primary';
+    readonly icon?: string;
+    readonly id: string;
+    readonly labelKey: string;
+    readonly order?: number;
+    readonly requires?: TmSecurableRef;
+    run(search: unknown, ids: readonly TmId[]): Promise<void>;
+    readonly selection?: boolean;
 }
 
 // @public
@@ -1441,6 +1695,14 @@ export abstract class TmTabBus {
 }
 
 // @public
+export interface TmTabDeclaration {
+    readonly key: string;
+    readonly labelKey: string;
+    readonly named?: string;
+    readonly queryex?: string;
+}
+
+// @public
 export abstract class TmTelemetry {
     abstract error(error: unknown, context?: Readonly<Record<string, string>>): void;
     abstract event(name: string, props?: TmTelemetryProps, options?: TmTelemetryOptions): void;
@@ -1515,6 +1777,17 @@ export interface TmTenantUrls {
     search(entity: string, query?: TmSearchQuery): string;
     target(resource: string, id: TmId): string | null;
 }
+
+// @public
+export type TmTileDeclaration<N extends string> = {
+    readonly component: TmLazyComponent;
+} | {
+    readonly image?: TmPath<N>;
+    readonly title?: TmPath<N>;
+    readonly subtitle?: TmPath<N>;
+    readonly topEnd?: TmPath<N>;
+    readonly badge?: TmPath<N>;
+};
 
 // @public
 export class TmTitleStrategy extends TitleStrategy {
