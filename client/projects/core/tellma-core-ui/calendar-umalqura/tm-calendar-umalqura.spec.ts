@@ -23,6 +23,18 @@ type MonthVector = [number, number, string, number];
 /** One day of the vectors: the ISO date and its parts, or null before the Islamic era. */
 type DayVector = [string, [number, number, number] | null];
 
+/** One month length of the vectors: the year, the month and its days. */
+type LengthVector = [number, number, number];
+
+/** The last ISO day, 3 Rabi' II 9666. */
+const LAST_ISO_DAY = '9999-12-31';
+
+/** The days from one ISO date to another. */
+function daysBetween(from: string, to: string): number {
+  const milliseconds = Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`);
+  return Math.round(milliseconds / 86_400_000);
+}
+
 /** The ISO date `days` days after `iso`. */
 function addDays(iso: string, days: number): string {
   const date = new Date(`${iso}T00:00:00Z`);
@@ -51,6 +63,7 @@ describe('tmUmalquraCalendar', () => {
   const calendar = tmUmalquraCalendar();
   const months = vectors.months as MonthVector[];
   const days = vectors.days as DayVector[];
+  const lengths = vectors.lengths as LengthVector[];
 
   it('carries the Intl identifier, converts by its own rule and has 12-month years', () => {
     expect(calendar.id).toBe('islamic-umalqura');
@@ -74,11 +87,37 @@ describe('tmUmalquraCalendar', () => {
       expect(calendar.fromParts({ year, month, day: 1 }), label).toBe(start);
       expect(calendar.toParts(start), label).toEqual({ year, month, day: 1 });
       expect(calendar.daysInMonth(year, month), label).toBe(length);
-      const last = addDays(start, length - 1);
-      expect(calendar.toParts(last), label).toEqual({ year, month, day: length });
-      expect(calendar.fromParts({ year, month, day: length }), label).toBe(last);
-      expect(calendar.fromParts({ year, month, day: length + 1 }), label).toBeNull();
+      // Rabi' II 9666 runs past the last ISO day: only its first days are dates.
+      const dated = Math.min(length, daysBetween(start, LAST_ISO_DAY) + 1);
+      const last = addDays(start, dated - 1);
+      expect(calendar.toParts(last), label).toEqual({ year, month, day: dated });
+      expect(calendar.fromParts({ year, month, day: dated }), label).toBe(last);
+      expect(calendar.fromParts({ year, month, day: dated + 1 }), label).toBeNull();
+      if (dated < length) {
+        expect(last, label).toBe(LAST_ISO_DAY);
+        expect(calendar.fromParts({ year, month, day: length }), label).toBeNull();
+      }
     }
+  });
+
+  it('gives every month the length the server gives it, past the last ISO day too', () => {
+    // The months of AH 9666 after 9999-12-31 have no first day to list as
+    // a month vector, so their lengths are bound to the server's here.
+    const listed = new Set(lengths.map(([year, month]) => `${year}-${month}`));
+    for (let month = 1; month <= 12; month++) {
+      expect(listed.has(`9666-${month}`), `9666-${month}`).toBe(true);
+    }
+    for (const [year, month, length] of lengths) {
+      expect(calendar.daysInMonth(year, month), `${year}-${month}`).toBe(length);
+    }
+  });
+
+  it('ends with AH 9666, as the server does: a later year has no months', () => {
+    for (let month = 1; month <= 12; month++) {
+      expect(calendar.daysInMonth(9667, month), `9667-${month}`).toBe(0);
+    }
+    expect(calendar.fromParts({ year: 9667, month: 1, day: 1 })).toBeNull();
+    expect(calendar.daysInMonth(9666, 12)).toBe(29);
   });
 
   it('dates the edge days as the server does', () => {

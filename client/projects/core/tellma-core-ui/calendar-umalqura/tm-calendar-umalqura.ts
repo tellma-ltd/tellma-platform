@@ -27,6 +27,13 @@ const TABLE_FIRST_YEAR = 1318;
 const TABLE_LAST_YEAR = 1500;
 
 /**
+ * The last year of the calendar, as on the server: AH 9666, whose
+ * 3 Rabi' II is 9999-12-31, the last ISO day. Its months still have
+ * their lengths; the years after it have none.
+ */
+const LAST_YEAR = 9666;
+
+/**
  * The table: one 12-bit month-length mask per year from AH 1318 to 1500,
  * three hexadecimal digits a year; bit `m - 1` is set when month `m` has
  * 30 days (29 otherwise). Generated from .NET's UmAlQuraCalendar.
@@ -154,9 +161,15 @@ function hijriOf(day: number): Hijri {
     : tabular;
 }
 
-/** The length of a month (0 for a month number outside 1–12). */
+/** The length of a month (0 for a month number outside 1–12, or a year after AH 9666). */
 function daysIn(year: number, month: number): number {
-  if (!Number.isInteger(year) || !Number.isInteger(month) || month < 1 || month > 12) {
+  if (
+    !Number.isInteger(year) ||
+    !Number.isInteger(month) ||
+    month < 1 ||
+    month > 12 ||
+    year > LAST_YEAR
+  ) {
     return 0;
   }
   if (year >= TABLE_FIRST_YEAR && year <= TABLE_LAST_YEAR) {
@@ -191,7 +204,9 @@ let singleton: TmCalendar | undefined;
  * (18 July 622). The table wins the one day the two overlap, so Muharram
  * 1501 begins on 17 November 2077 and has 29 days; from Safar 1501 on,
  * every date is the tabular calendar's. Beyond the table every date is an
- * approximation of the observed calendar.
+ * approximation of the observed calendar. The last date is 3 Rabi' II
+ * 9666 (31 December 9999): the months of AH 9666 keep their lengths, but
+ * no later day converts, and a year after 9666 has no months' lengths.
  *
  * Years are Anno Hegirae (AH); month and era names render from Intl in
  * the active UI language, while the year, month and day come from this

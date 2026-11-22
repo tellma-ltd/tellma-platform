@@ -98,6 +98,24 @@ that binds the server's lengths to the client's past 9999-12-31 lands at PC-104'
 - The client's `daysIn` has no upper year (R1 point 2: `daysIn(9667, 1)` is 30 there and 0 on the
   server). That is past both sides' date range and is PC-104's to decide.
 
+### At integration (D-222, D-224): the binding test landed here
+
+PC-104 reached platform-core first, so the binding test landed in this item's integration, not
+PC-104's:
+- `umalqura-vectors.json` gained the `months` rows for AH 9666 months 1-4, checked by the server's
+  `Compose` and `DaysIn` in `UmAlQuraClientVectorsTests`. It also gained a `lengths` array,
+  `[year, month, days]`, for all twelve months of 9666.
+- `UmAlQuraClientVectorsTests.Every_listed_length_is_the_server_calendars_...` asserts each length
+  against `GetDaysInMonth` and `DaysIn`. The client spec asserts them against `daysInMonth`. The two
+  sides agreed on every entry.
+- The client month test now handles Rabi' II 9666, which runs past 9999-12-31: it checks the last
+  ISO day and refuses the days after it.
+- The client's `daysIn` is bounded at AH 9666 like the server's. A later year gets 0, the client's
+  existing out-of-range answer (as for a month outside 1-12), and its `fromParts` is null. A client
+  test covers 9667.
+- The lower side is left as it was: `toParts` deliberately gives years of 0 and below for ISO
+  dates before AH 1, and the date popup lays out those months with `daysInMonth`.
+
 ### Deviations
 
 None from the specs. One behaviour change: `GetDaysInMonth(9666, 5..12)`, `GetDaysInYear(9666)` and
