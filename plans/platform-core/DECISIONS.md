@@ -384,6 +384,24 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-221 (orchestrator, 2026-11-22): PC-104 fix2 accepted; held
+
+Fix2 (7f087f0d) fixed R2-1..R2-7 and applied D-214: TmLocaleWrite now loads with import(). Sizes: "." 35.45/36, the write chunk 1.50/2, core-ui l10n 9.96/10. The merge-tree is clean.
+
+Accepted deviations:
+- A new tab-bus message, l10n.switched (TmLanguageSwitchedMessage), beyond 0025 §6.2's catalogue. Other tabs follow a real switch, never a settle.
+- Locale-write retries for offline-like failures while online stay true stop after 4 tries (5 s doubling, capped at 30 s). After that the state is 'failed', and the user's choices stay applied.
+- The formatting locale carries a private-use subtag (for example en-US-x-om) when the winning tag belongs to another language. The core-ui date engine reads the requested language from it, so the om/ti day-first rule survives the browser fallback.
+
+PC-104 holds. Release order once PC-F11 lands: PC-143, PC-107, PC-104.
+
+PC-104's integration, after PC-107 lands, must:
+- merge the two TmSendOptions.tenantId copies;
+- re-measure "." (D-214);
+- add PC-F71's AH 9666 vector rows, if PC-F71 has landed.
+
+For Ahmad: 0025 §6.2's tab-bus catalogue gains l10n.switched.
+
 ### D-220 (orchestrator, 2026-11-22): PC-107 fix2 accepted; held
 
 Fix2 (a0919af3) fixed R2-1..R2-7. The merge-tree is clean.
