@@ -4,6 +4,7 @@
 // LICENSE file in the root directory of this source tree.
 
 using Microsoft.Extensions.Logging;
+using Tellma.Core.Abstractions.Email;
 
 namespace Tellma.Core.Notifications
 {
@@ -83,5 +84,27 @@ namespace Tellma.Core.Notifications
             Level = LogLevel.Warning,
             Message = "The email notification to user {RecipientUserId} was skipped: the outbox cannot store their address or their email.")]
         public static partial void EmailRecipientSkipped(ILogger logger, int recipientUserId);
+
+        /// <summary>
+        ///     A user's test email did not go out: the transport answered a transient failure or
+        ///     refused the message. The address is not logged; the transport's detail is.
+        /// </summary>
+        /// <param name="logger">The logger.</param>
+        /// <param name="outcome">What the transport answered.</param>
+        /// <param name="detail">The transport's detail, when it gave one.</param>
+        [LoggerMessage(
+            EventName = "TestEmailNotSent",
+            Level = LogLevel.Warning,
+            Message = "A test email was not sent: the transport answered {Outcome} ({Detail}).")]
+        public static partial void TestEmailNotSent(ILogger logger, EmailSendOutcome outcome, string? detail);
+
+        /// <summary>A user's test email failed before the transport answered.</summary>
+        /// <param name="logger">The logger.</param>
+        /// <param name="exception">What the sender threw.</param>
+        [LoggerMessage(
+            EventName = "TestEmailFailed",
+            Level = LogLevel.Warning,
+            Message = "A test email failed before the transport answered.")]
+        public static partial void TestEmailFailed(ILogger logger, Exception exception);
     }
 }

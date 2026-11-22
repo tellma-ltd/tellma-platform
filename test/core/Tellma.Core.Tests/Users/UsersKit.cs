@@ -22,6 +22,7 @@ using Tellma.Core.Abstractions.Crud;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Email;
 using Tellma.Core.Abstractions.Localization;
+using Tellma.Core.Abstractions.Notifications;
 using Tellma.Core.Abstractions.Settings;
 using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.Abstractions.Validation;
@@ -42,8 +43,9 @@ namespace Tellma.Core.Tests.Users
 {
     /// <summary>
     ///     The users' stack service over a scripted identity server, a recording membership directory,
-    ///     a fixed link, English and Arabic on offer, and a log that keeps every structured value; its
-    ///     action contexts are built by hand, so a test completes the persist itself.
+    ///     a fixed link, English and Arabic on offer, the channel senders a test names, and a log that
+    ///     keeps every structured value; its action contexts are built by hand, with a notifier that
+    ///     records each notice, so a test completes the persist itself.
     /// </summary>
     internal sealed class UsersKit : IDisposable
     {
@@ -68,10 +70,18 @@ namespace Tellma.Core.Tests.Users
         /// <summary>Composes the kit.</summary>
         /// <param name="runner">The guarded runner the service runs its own batches through; null for <see cref="Runner" />.</param>
         /// <param name="openWrites">The open frame a profile edit enlists into; null for the scope's own, which serves no frame here.</param>
-        public UsersKit(IGuardedBatchRunner? runner = null, IOpenWriteHost? openWrites = null)
+        /// <param name="senders">The notification channel senders the host registers; null for none.</param>
+        public UsersKit(IGuardedBatchRunner? runner = null, IOpenWriteHost? openWrites = null, IReadOnlyList<INotificationChannel>? senders = null)
         {
             _scope = Harness.Services.CreateAsyncScope();
-            _listeners = new ServiceCollection().AddSingleton<ISessionTerminationListener>(Listener).BuildServiceProvider();
+            ServiceCollection services = new();
+            _ = services.AddSingleton<ISessionTerminationListener>(Listener);
+            foreach (INotificationChannel sender in senders ?? [])
+            {
+                _ = services.AddSingleton(sender);
+            }
+
+            _listeners = services.BuildServiceProvider();
             IMeterFactory meters = Harness.Services.GetRequiredService<IMeterFactory>();
             Languages = new LanguageCatalog(new LanguageDeclaration(["en-GB", "ar-SA"], []));
             CalendarRegistry calendars = new([new GregorianCalendarSystem(), new UmAlQuraCalendarSystem()]);
@@ -79,6 +89,7 @@ namespace Tellma.Core.Tests.Users
             LoggerFactory = Microsoft.Extensions.Logging.LoggerFactory.Create(builder => builder.SetMinimumLevel(LogLevel.Trace).AddProvider(Logs));
             Localizers = new IcuStringLocalizerFactory(Languages, LoggerFactory, meters);
             Invites = new MetricCollector<long>(meters, UsersTelemetryNames.MeterName, UsersTelemetryNames.Invites);
+            TestNotifications = new MetricCollector<long>(meters, UsersTelemetryNames.MeterName, UsersTelemetryNames.TestNotifications);
             Dependencies = new UserServiceDependencies(
                 _listeners,
                 Identity,
@@ -96,10 +107,13 @@ namespace Tellma.Core.Tests.Users
                 Options.Create(new AccessOptions()),
                 Harness.Services.GetRequiredService<IEntityMetadataProvider>(),
                 Harness.Services.GetRequiredService<QueryexSchemaProvider>(),
-                new CallerConnection(),
+                Connection,
                 Outbox,
                 new LocalizationNegotiator(Languages, calendars, ValueSets, meters),
                 Localizers,
+                Harness.Services.GetRequiredService<INotificationTypeRegistry>(),
+                Harness.Services.GetRequiredService<INotificationChannelRegistry>(),
+                Options.Create(NotificationsOptions),
                 new FakeTimeProvider(Now),
                 new UsersMetrics(meters),
                 LoggerFactory);
@@ -138,6 +152,15 @@ namespace Tellma.Core.Tests.Users
 
         /// <summary>The invites counted.</summary>
         public MetricCollector<long> Invites { get; }
+
+        /// <summary>The test messages counted.</summary>
+        public MetricCollector<long> TestNotifications { get; }
+
+        /// <summary>The scope's connection, as the caller named Caller and المتصل.</summary>
+        public CallerConnection Connection { get; } = new();
+
+        /// <summary>The notifications options the service runs with; set before the kit is composed.</summary>
+        public NotificationsOptions NotificationsOptions { get; } = new();
 
         /// <summary>The languages on offer: English and Arabic.</summary>
         public LanguageCatalog Languages { get; }
@@ -209,7 +232,16 @@ namespace Tellma.Core.Tests.Users
                 Batch = batch,
                 Host = Refusing.Of<IWriteHost>(),
                 Entities = targets,
+                Notifier = new RecordingNotifier(),
             };
+        }
+
+        /// <summary>The notices an action's context recorded, in order.</summary>
+        /// <param name="context">A context <see cref="Action" /> built.</param>
+        /// <returns>The notices.</returns>
+        public static IReadOnlyList<NotificationRequest> Notices(ActionContext<User, int> context)
+        {
+            return [.. Assert.IsType<RecordingNotifier>(context.Notifier).Requests];
         }
 
         /// <summary>A new individual with an email, active and never invited.</summary>
@@ -242,6 +274,7 @@ namespace Tellma.Core.Tests.Users
         public void Dispose()
         {
             Invites.Dispose();
+            TestNotifications.Dispose();
             LoggerFactory.Dispose();
             Logs.Dispose();
             _listeners.Dispose();
@@ -250,10 +283,10 @@ namespace Tellma.Core.Tests.Users
         }
 
         /// <summary>
-        ///     The scope's connection, connected as the caller named Caller and المتصل; nothing else
-        ///     of a connection is the users' stack's concern.
+        ///     The scope's connection, connected as the caller named Caller and المتصل, with a prologue
+        ///     due only when a test says so; nothing else of a connection is the users' stack's concern.
         /// </summary>
-        private sealed class CallerConnection : IScopeConnection
+        internal sealed class CallerConnection : IScopeConnection
         {
             /// <summary>The caller the scope connects as.</summary>
             private readonly ConnectedUser _caller = new(
@@ -265,6 +298,9 @@ namespace Tellma.Core.Tests.Users
                 UserAccess.System,
                 new Dictionary<string, Guid>(StringComparer.Ordinal),
                 null);
+
+            /// <summary>Whether a prologue is due for the caller.</summary>
+            public bool PrologueDue { get; set; }
 
             /// <inheritdoc />
             public RequestContextInputs Inputs => RequestContextInputs.Empty;
@@ -278,7 +314,7 @@ namespace Tellma.Core.Tests.Users
             /// <inheritdoc />
             public bool IsPrologueDue(ConnectedUser user)
             {
-                throw new NotSupportedException("The users' stack composes no prologue.");
+                return PrologueDue;
             }
 
             /// <inheritdoc />
@@ -378,6 +414,49 @@ namespace Tellma.Core.Tests.Users
         public Task<MeResult> RunSaveMeAsync(MeSaveRequest request, CancellationToken cancellationToken)
         {
             return SaveMeAsync(request, cancellationToken);
+        }
+
+        /// <summary>Runs the caller's test message directly, without the invoker's binding.</summary>
+        /// <param name="request">The channel.</param>
+        /// <returns>The channel's answer.</returns>
+        public Task<TestNotificationResult> RunSendTestNotificationAsync(TestNotificationRequest request)
+        {
+            return SendTestNotificationAsync(request, TestContext.Current.CancellationToken);
+        }
+    }
+
+    /// <summary>A notifier that records each request appended and writes nothing.</summary>
+    internal sealed class RecordingNotifier : INotifier
+    {
+        /// <summary>Every request appended to a batch, in order.</summary>
+        public ConcurrentQueue<NotificationRequest> Requests { get; } = new();
+
+        /// <inheritdoc />
+        public void Notify(IDataBatch batch, IReadOnlyList<NotificationRequest> requests)
+        {
+            ArgumentNullException.ThrowIfNull(requests);
+            foreach (NotificationRequest request in requests)
+            {
+                Requests.Enqueue(request);
+            }
+        }
+
+        /// <inheritdoc />
+        public Task NotifyAsync(IReadOnlyList<NotificationRequest> requests, CancellationToken cancellationToken = default)
+        {
+            throw new NotSupportedException("The users' stack raises its notices on the action's batch.");
+        }
+
+        /// <inheritdoc />
+        public void Withdraw(IDataBatch batch, IReadOnlyList<WithdrawRequest> requests)
+        {
+            throw new NotSupportedException("The users' stack withdraws no notice.");
+        }
+
+        /// <inheritdoc />
+        public Task WithdrawAsync(IReadOnlyList<WithdrawRequest> requests, CancellationToken cancellationToken = default)
+        {
+            throw new NotSupportedException("The users' stack withdraws no notice.");
         }
     }
 

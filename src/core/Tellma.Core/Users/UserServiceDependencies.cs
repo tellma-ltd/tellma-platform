@@ -14,6 +14,7 @@ using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Email;
 using Tellma.Core.Abstractions.Identity;
 using Tellma.Core.Abstractions.Localization;
+using Tellma.Core.Abstractions.Notifications;
 using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.Access;
 using Tellma.Core.Crud;
@@ -28,8 +29,9 @@ namespace Tellma.Core.Users
     ///     What the users' stack service needs from the platform beyond its pipeline: the identity
     ///     server, the membership hints, the links, the language catalogue and value sets its rules
     ///     check against, the guarded batches of the invitation status and the self-service writes,
-    ///     the open frame a profile edit enlists into, and what the welcome email is rendered and
-    ///     enqueued with. One per scope.
+    ///     the open frame a profile edit enlists into, what the welcome email is rendered and
+    ///     enqueued with, and the notification registries the invitation's notice, the test message
+    ///     and another user's notification settings are checked against. One per scope.
     /// </summary>
     /// <remarks>
     ///     The platform registers and builds it; a service that derives from the users' stack service
@@ -58,6 +60,9 @@ namespace Tellma.Core.Users
         /// <param name="outbox">The scope's email outbox, which the welcome emails are enqueued through.</param>
         /// <param name="negotiator">Negotiates each invited user's localization.</param>
         /// <param name="localizers">Creates the localizer of Core's server resources, which hold the welcome email's text.</param>
+        /// <param name="notificationTypes">The notification types another user's notification settings are checked against.</param>
+        /// <param name="notificationChannels">The notification channels a test message and another user's notification settings are checked against.</param>
+        /// <param name="notificationsOptions">The notifications options: how many recipients one notification request names.</param>
         /// <param name="time">The host's clock.</param>
         /// <param name="metrics">The users' stack's instruments.</param>
         /// <param name="loggerFactory">Creates the users' stack's logger.</param>
@@ -82,6 +87,9 @@ namespace Tellma.Core.Users
             IEmailOutbox outbox,
             ILocalizationNegotiator negotiator,
             IStringLocalizerFactory localizers,
+            INotificationTypeRegistry notificationTypes,
+            INotificationChannelRegistry notificationChannels,
+            IOptions<NotificationsOptions> notificationsOptions,
             TimeProvider time,
             UsersMetrics metrics,
             ILoggerFactory loggerFactory)
@@ -106,6 +114,9 @@ namespace Tellma.Core.Users
             Outbox = outbox ?? throw new ArgumentNullException(nameof(outbox));
             Negotiator = negotiator ?? throw new ArgumentNullException(nameof(negotiator));
             Localizers = localizers ?? throw new ArgumentNullException(nameof(localizers));
+            NotificationTypes = notificationTypes ?? throw new ArgumentNullException(nameof(notificationTypes));
+            NotificationChannels = notificationChannels ?? throw new ArgumentNullException(nameof(notificationChannels));
+            NotificationsOptions = (notificationsOptions ?? throw new ArgumentNullException(nameof(notificationsOptions))).Value;
             Time = time ?? throw new ArgumentNullException(nameof(time));
             Metrics = metrics ?? throw new ArgumentNullException(nameof(metrics));
             Logger = (loggerFactory ?? throw new ArgumentNullException(nameof(loggerFactory))).CreateLogger(UsersLog.Category);
@@ -171,6 +182,15 @@ namespace Tellma.Core.Users
         /// <summary>Creates the localizer of Core's server resources.</summary>
         internal IStringLocalizerFactory Localizers { get; }
 
+        /// <summary>The notification types another user's notification settings are checked against.</summary>
+        internal INotificationTypeRegistry NotificationTypes { get; }
+
+        /// <summary>The notification channels a test message and another user's notification settings are checked against.</summary>
+        internal INotificationChannelRegistry NotificationChannels { get; }
+
+        /// <summary>The notifications options: how many recipients one notification request names.</summary>
+        internal NotificationsOptions NotificationsOptions { get; }
+
         /// <summary>The host's clock.</summary>
         internal TimeProvider Time { get; }
 
@@ -185,6 +205,25 @@ namespace Tellma.Core.Users
         internal IReadOnlyList<ISessionTerminationListener> SessionListeners()
         {
             return [.. Services.GetServices<ISessionTerminationListener>()];
+        }
+
+        /// <summary>
+        ///     The sender of one notification channel, resolved when a test message needs it: the
+        ///     host's other senders are never created for it.
+        /// </summary>
+        /// <param name="key">The channel's key.</param>
+        /// <returns>The sender; null when the host registers none for the channel.</returns>
+        internal INotificationChannel? ChannelSender(string key)
+        {
+            foreach (INotificationChannel sender in Services.GetServices<INotificationChannel>())
+            {
+                if (string.Equals(sender.Key, key, StringComparison.Ordinal))
+                {
+                    return sender;
+                }
+            }
+
+            return null;
         }
     }
 }

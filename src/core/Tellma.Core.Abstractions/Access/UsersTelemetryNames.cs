@@ -27,13 +27,28 @@ namespace Tellma.Core.Abstractions.Access
         public const string Invites = "tellma.users.invites";
 
         /// <summary>
-        ///     Counter (<c>{message}</c>): the test notifications users sent themselves, by
-        ///     <see cref="ChannelTag" /> and <see cref="OutcomeTag" />.
+        ///     Counter (<c>{message}</c>): the test notifications users asked to send themselves through
+        ///     a registered channel other than the inbox, by <see cref="ChannelTag" /> and
+        ///     <see cref="OutcomeTag" />: <see cref="TestNotificationSent" />,
+        ///     <see cref="TestNotificationNoContactAddress" />, <see cref="TestNotificationNotConfigured" />
+        ///     or <see cref="TestNotificationUnavailable" />. A request the endpoint refuses is not counted.
         /// </summary>
         public const string TestNotifications = "tellma.users.test_notifications";
 
         /// <summary>The channel tag of a test notification: the channel's key, such as <c>email</c>.</summary>
         public const string ChannelTag = "channel";
+
+        /// <summary>The test-notification outcome of a message the channel's transport took.</summary>
+        public const string TestNotificationSent = "Sent";
+
+        /// <summary>The test-notification outcome of a caller whose profile holds no address the channel can reach.</summary>
+        public const string TestNotificationNoContactAddress = "NoContactAddress";
+
+        /// <summary>The test-notification outcome of a channel with no sender, or whose transport this instance does not configure.</summary>
+        public const string TestNotificationNotConfigured = "NotConfigured";
+
+        /// <summary>The test-notification outcome of a send the channel's transport failed or refused.</summary>
+        public const string TestNotificationUnavailable = "Unavailable";
 
         /// <summary>The invite outcome of a user the identity server created and sent an invitation to.</summary>
         public const string InviteInvited = "Invited";

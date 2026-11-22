@@ -36,13 +36,16 @@ namespace Tellma.Core.Tests.Data.Batches
         /// <param name="owners">Which stack owns each table; none when null.</param>
         /// <param name="registry">Which tags written tables bump; none composed when null.</param>
         /// <param name="compose">Composes the model's features; the default composition when null.</param>
-        public BatchHarness(IStackTableOwners? owners = null, IVersionTagRegistry? registry = null, Action<TellmaBuilder>? compose = null)
+        /// <param name="configure">Adjusts the composed services before the provider is built; null for none.</param>
+        public BatchHarness(IStackTableOwners? owners = null, IVersionTagRegistry? registry = null, Action<TellmaBuilder>? compose = null, Action<IServiceCollection>? configure = null)
         {
             IServiceCollection services = TestComposition.Compose(compose ?? (static _ => { }));
             if (registry is not null)
             {
                 _ = services.AddSingleton(registry);
             }
+
+            configure?.Invoke(services);
 
             _root = services.BuildServiceProvider(validateScopes: true);
             Executor = new DataExecutor(

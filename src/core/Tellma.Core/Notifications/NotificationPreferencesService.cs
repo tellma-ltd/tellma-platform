@@ -37,9 +37,6 @@ namespace Tellma.Core.Notifications
         INotificationChannelRegistry channels,
         NotificationsMetrics metrics)
     {
-        /// <summary>The table a save writes, whose user-level tag rule moves the caller's preferences tag.</summary>
-        private static readonly FrozenSet<TableName> Written = new[] { NotificationStatements.Preferences }.ToFrozenSet();
-
         /// <summary>
         ///     The caller's stored preferences: the deviations from each channel's default, of the
         ///     types and channels this instance registers. A type and channel absent from the list
@@ -55,9 +52,7 @@ namespace Tellma.Core.Notifications
                 BatchPurpose.Read,
                 (_, batch) =>
                 {
-                    found = batch.Sql(
-                        $"SELECT [Type], [Channel], [Enabled] FROM [core].[NotificationPreferences] WHERE [UserId] = @tm_UserId;",
-                        new SqlOptions(idempotent: true, resultSets: 1));
+                    found = NotificationPreferenceRules.Read(batch, userId: null);
                     return ValueTask.CompletedTask;
                 },
                 (_, _) => Known(found!.Value.ResultSets[0]),
@@ -91,19 +86,7 @@ namespace Tellma.Core.Notifications
                 BatchPurpose.Persist,
                 (caller, batch) =>
                 {
-                    SqlIdentifier rows = batch.Tvp(deviations);
-                    _ = batch.Sql(
-                        $"""
-                        DELETE P FROM [core].[NotificationPreferences] AS P
-                        WHERE P.[UserId] = @tm_UserId AND NOT EXISTS (SELECT 1 FROM {rows} AS I WHERE I.[Type] = P.[Type] AND I.[Channel] = P.[Channel]);
-                        UPDATE P SET P.[Enabled] = I.[Enabled]
-                        FROM [core].[NotificationPreferences] AS P JOIN {rows} AS I ON I.[Type] = P.[Type] AND I.[Channel] = P.[Channel]
-                        WHERE P.[UserId] = @tm_UserId AND P.[Enabled] <> I.[Enabled];
-                        INSERT INTO [core].[NotificationPreferences] ([UserId], [Type], [Channel], [Enabled])
-                        SELECT @tm_UserId, I.[Type], I.[Channel], I.[Enabled] FROM {rows} AS I
-                        WHERE NOT EXISTS (SELECT 1 FROM [core].[NotificationPreferences] AS P WHERE P.[UserId] = @tm_UserId AND P.[Type] = I.[Type] AND P.[Channel] = I.[Channel]);
-                        """,
-                        SqlOptions.ForCaller(Written));
+                    _ = NotificationPreferenceRules.Save(batch, userId: null, deviations);
                     return ValueTask.CompletedTask;
                 },
                 static (_, outcome) => outcome,
@@ -112,7 +95,7 @@ namespace Tellma.Core.Notifications
             metrics.RecordPreferencesSaved();
 
             // The statements leave exactly the bound rows stored, so the answer is those rows.
-            return Sorted(deviations.Select(static row => new NotificationPreference { Type = row.Type, Channel = row.Channel, Enabled = row.Enabled }));
+            return NotificationPreferenceRules.Stored(deviations);
         }
 
         /// <summary>The stored rows of the types and channels this instance registers; a removed one's rows are invisible.</summary>
@@ -120,26 +103,23 @@ namespace Tellma.Core.Notifications
         /// <returns>The preferences, by type and then channel.</returns>
         private NotificationPreference[] Known(QueryRowSet set)
         {
-            string[] typeKeys = (string[])set.GetBuffer(0);
-            string[] channelKeys = (string[])set.GetBuffer(1);
-            bool[] enabled = (bool[])set.GetBuffer(2);
-            return Sorted(Enumerable.Range(0, set.RowCount)
-                .Where(row => types.Find(typeKeys[row]) is not null && channels.Find(channelKeys[row]) is not null)
-                .Select(row => new NotificationPreference { Type = typeKeys[row], Channel = channelKeys[row], Enabled = enabled[row] }));
-        }
-
-        /// <summary>Orders preferences by type and then channel, ordinally, so both actions answer alike.</summary>
-        /// <param name="preferences">The preferences.</param>
-        /// <returns>The ordered list.</returns>
-        private static NotificationPreference[] Sorted(IEnumerable<NotificationPreference> preferences)
-        {
-            return [.. preferences.OrderBy(static row => row.Type, StringComparer.Ordinal).ThenBy(static row => row.Channel, StringComparer.Ordinal)];
+            return NotificationPreferenceRules.Known(set, types, channels);
         }
     }
 
-    /// <summary>The rules of a save of a user's notification preferences, which every path that saves them runs.</summary>
+    // Spec 0021 §4.3's rules and statements, shared with spec 0018 §3.5's administrative routes.
+    // The caller's own rows are written against the connect prologue's @tm_UserId with
+    // SqlOptions.ForCaller; another user's bind the target's id as a parameter and name it in a
+    // one-row IdList, so the epilogue moves that user's PreferencesTag either way. Another user's set
+    // is replaced under an update lock on that user's stamp row, taken first, so it serialises with
+    // the owner's own save (whose re-check holds that row from the batch's head) and with any other
+    // administrator's.
+    /// <summary>The rules and statements of a user's notification preferences, which every path that reads or saves them runs.</summary>
     internal static class NotificationPreferenceRules
     {
+        /// <summary>The table a save writes, whose user-level tag rule moves the user's preferences tag.</summary>
+        public static readonly FrozenSet<TableName> Written = new[] { NotificationStatements.Preferences }.ToFrozenSet();
+
         /// <summary>
         ///     Validates a user's complete set and returns the rows to store: those that differ from
         ///     their channel's default.
@@ -155,29 +135,52 @@ namespace Tellma.Core.Notifications
         public static IReadOnlyList<NotificationPreferenceList> Deviations(
             IReadOnlyList<NotificationPreference?> preferences, INotificationTypeRegistry types, INotificationChannelRegistry channels)
         {
+            ValidationErrors errors = new();
+            IReadOnlyList<NotificationPreferenceList> deviations = Check(preferences, types, channels, errors, ValidationPath.Root);
+            return errors.HasErrors ? throw new ValidationException(errors.Items) : deviations;
+        }
+
+        /// <summary>
+        ///     Validates a user's complete set into a list of errors, each at its row under a path, and
+        ///     returns the rows to store: those that differ from their channel's default.
+        /// </summary>
+        /// <param name="preferences">The complete set, as sent.</param>
+        /// <param name="types">The registered notification types.</param>
+        /// <param name="channels">The registered channels.</param>
+        /// <param name="errors">Collects a row naming an unknown type or channel, repeating an earlier row's pair, or muting the inbox of a type that cannot be muted.</param>
+        /// <param name="path">The path of the set, under which each row's errors land.</param>
+        /// <returns>The deviations of the valid rows, in the order sent.</returns>
+        public static IReadOnlyList<NotificationPreferenceList> Check(
+            IReadOnlyList<NotificationPreference?> preferences,
+            INotificationTypeRegistry types,
+            INotificationChannelRegistry channels,
+            ValidationErrors errors,
+            ValidationPath path)
+        {
             ArgumentNullException.ThrowIfNull(preferences);
             ArgumentNullException.ThrowIfNull(types);
             ArgumentNullException.ThrowIfNull(channels);
+            ArgumentNullException.ThrowIfNull(errors);
+            ArgumentNullException.ThrowIfNull(path);
 
-            List<ValidationError> errors = [];
             List<NotificationPreferenceList> deviations = [];
             HashSet<(string Type, string Channel)> seen = [];
             for (int index = 0; index < preferences.Count; index++)
             {
                 NotificationPreference? row = preferences[index];
-                ValidationPath path = ValidationPath.Root.Index(index);
+                ValidationPath at = path.Index(index);
 
                 // --- The type and the channel, each registered on this instance ---
                 NotificationTypeDescriptor? type = row?.Type is string typeKey ? types.Find(typeKey) : null;
                 NotificationChannelDescriptor? channel = row?.Channel is string channelKey ? channels.Find(channelKey) : null;
                 if (type is null)
                 {
-                    errors.Add(Error(path.Property(nameof(NotificationPreference.Type)), NotificationValidationCodes.UnknownType, ("type", row?.Type)));
+                    Add(errors, at.Property(nameof(NotificationPreference.Type)), NotificationValidationCodes.UnknownType, ("type", row?.Type));
                 }
 
                 if (row is not null && channel is null)
                 {
-                    errors.Add(Error(path.Property(nameof(NotificationPreference.Channel)), NotificationValidationCodes.UnknownChannel, ("channel", row.Channel)));
+                    Add(errors, at.Property(nameof(NotificationPreference.Channel)), NotificationValidationCodes.UnknownChannel, ("channel", row.Channel));
                 }
 
                 if (row is null || type is null || channel is null)
@@ -188,14 +191,14 @@ namespace Tellma.Core.Notifications
                 // --- Each pair once ---
                 if (!seen.Add((type.Key, channel.Key)))
                 {
-                    errors.Add(Error(path.Property(nameof(NotificationPreference.Channel)), NotificationValidationCodes.DuplicatePreference, ("type", type.Key), ("channel", channel.Key)));
+                    Add(errors, at.Property(nameof(NotificationPreference.Channel)), NotificationValidationCodes.DuplicatePreference, ("type", type.Key), ("channel", channel.Key));
                     continue;
                 }
 
                 // --- The inbox of a type that cannot be muted stays on ---
                 if (!row.Enabled && !type.Mutable && string.Equals(channel.Key, Composition.CoreFeature.InboxChannel, StringComparison.Ordinal))
                 {
-                    errors.Add(Error(path.Property(nameof(NotificationPreference.Enabled)), NotificationValidationCodes.CannotMute, ("type", type.Key)));
+                    Add(errors, at.Property(nameof(NotificationPreference.Enabled)), NotificationValidationCodes.CannotMute, ("type", type.Key));
                     continue;
                 }
 
@@ -206,17 +209,112 @@ namespace Tellma.Core.Notifications
                 }
             }
 
-            return errors.Count > 0 ? throw new ValidationException(errors) : deviations;
+            return deviations;
         }
 
-        /// <summary>A refusal at a path, with its arguments.</summary>
+        /// <summary>Appends the read of a user's stored rows: type, channel, enabled.</summary>
+        /// <param name="batch">The batch, a Read batch.</param>
+        /// <param name="userId">Another user, bound as a parameter; null for the caller, the prologue's <c>@tm_UserId</c>.</param>
+        /// <returns>The read: one result set.</returns>
+        public static BatchResult<RawResult> Read(IDataBatch batch, int? userId)
+        {
+            ArgumentNullException.ThrowIfNull(batch);
+            SqlOptions options = new(idempotent: true, resultSets: 1);
+            return userId is int id
+                ? batch.Sql($"SELECT [Type], [Channel], [Enabled] FROM [core].[NotificationPreferences] WHERE [UserId] = {id};", options)
+                : batch.Sql($"SELECT [Type], [Channel], [Enabled] FROM [core].[NotificationPreferences] WHERE [UserId] = @tm_UserId;", options);
+        }
+
+        /// <summary>
+        ///     Appends the replacement of a user's stored rows by the deviations: a stored pair absent
+        ///     from them deleted, a changed one updated, a new one inserted. The user's preferences tag
+        ///     moves with the batch's epilogue.
+        /// </summary>
+        /// <param name="batch">The batch, a Persist batch.</param>
+        /// <param name="userId">Another user, bound as a parameter; null for the caller, the prologue's <c>@tm_UserId</c>.</param>
+        /// <param name="deviations">The rows to store, each pair once.</param>
+        /// <returns>The statement, which reads nothing.</returns>
+        public static BatchResult<RawResult> Save(IDataBatch batch, int? userId, IReadOnlyList<NotificationPreferenceList> deviations)
+        {
+            ArgumentNullException.ThrowIfNull(batch);
+            ArgumentNullException.ThrowIfNull(deviations);
+            SqlIdentifier rows = batch.Tvp(deviations);
+            if (userId is int id)
+            {
+                // Another user's set: that user's stamp row is held under an update lock first.
+                SqlIdentifier owner = batch.DeclareIdTable();
+                return batch.Sql(
+                    $"""
+                    INSERT INTO {owner} ([Id]) SELECT [UserId] FROM [core].[UserStamps] WITH (UPDLOCK, ROWLOCK) WHERE [UserId] = {id};
+                    DELETE P FROM [core].[NotificationPreferences] AS P
+                    WHERE P.[UserId] = {id} AND NOT EXISTS (SELECT 1 FROM {rows} AS I WHERE I.[Type] = P.[Type] AND I.[Channel] = P.[Channel]);
+                    UPDATE P SET P.[Enabled] = I.[Enabled]
+                    FROM [core].[NotificationPreferences] AS P JOIN {rows} AS I ON I.[Type] = P.[Type] AND I.[Channel] = P.[Channel]
+                    WHERE P.[UserId] = {id} AND P.[Enabled] <> I.[Enabled];
+                    INSERT INTO [core].[NotificationPreferences] ([UserId], [Type], [Channel], [Enabled])
+                    SELECT {id}, I.[Type], I.[Channel], I.[Enabled] FROM {rows} AS I
+                    WHERE NOT EXISTS (SELECT 1 FROM [core].[NotificationPreferences] AS P WHERE P.[UserId] = {id} AND P.[Type] = I.[Type] AND P.[Channel] = I.[Channel]);
+                    """,
+                    new SqlOptions(Written, userIds: batch.Tvp([new IdList { Id = id }])));
+            }
+
+            return batch.Sql(
+                $"""
+                DELETE P FROM [core].[NotificationPreferences] AS P
+                WHERE P.[UserId] = @tm_UserId AND NOT EXISTS (SELECT 1 FROM {rows} AS I WHERE I.[Type] = P.[Type] AND I.[Channel] = P.[Channel]);
+                UPDATE P SET P.[Enabled] = I.[Enabled]
+                FROM [core].[NotificationPreferences] AS P JOIN {rows} AS I ON I.[Type] = P.[Type] AND I.[Channel] = P.[Channel]
+                WHERE P.[UserId] = @tm_UserId AND P.[Enabled] <> I.[Enabled];
+                INSERT INTO [core].[NotificationPreferences] ([UserId], [Type], [Channel], [Enabled])
+                SELECT @tm_UserId, I.[Type], I.[Channel], I.[Enabled] FROM {rows} AS I
+                WHERE NOT EXISTS (SELECT 1 FROM [core].[NotificationPreferences] AS P WHERE P.[UserId] = @tm_UserId AND P.[Type] = I.[Type] AND P.[Channel] = I.[Channel]);
+                """,
+                SqlOptions.ForCaller(Written));
+        }
+
+        /// <summary>The stored rows of the types and channels this instance registers; a removed one's rows are invisible.</summary>
+        /// <param name="set">The read's result set: type, channel, enabled.</param>
+        /// <param name="types">The registered notification types.</param>
+        /// <param name="channels">The registered channels.</param>
+        /// <returns>The preferences, by type and then channel.</returns>
+        public static NotificationPreference[] Known(QueryRowSet set, INotificationTypeRegistry types, INotificationChannelRegistry channels)
+        {
+            ArgumentNullException.ThrowIfNull(set);
+            ArgumentNullException.ThrowIfNull(types);
+            ArgumentNullException.ThrowIfNull(channels);
+            string[] typeKeys = (string[])set.GetBuffer(0);
+            string[] channelKeys = (string[])set.GetBuffer(1);
+            bool[] enabled = (bool[])set.GetBuffer(2);
+            return Sorted(Enumerable.Range(0, set.RowCount)
+                .Where(row => types.Find(typeKeys[row]) is not null && channels.Find(channelKeys[row]) is not null)
+                .Select(row => new NotificationPreference { Type = typeKeys[row], Channel = channelKeys[row], Enabled = enabled[row] }));
+        }
+
+        /// <summary>The rows a save stored, as a read answers them.</summary>
+        /// <param name="deviations">The rows the save bound.</param>
+        /// <returns>The preferences, by type and then channel.</returns>
+        public static NotificationPreference[] Stored(IReadOnlyList<NotificationPreferenceList> deviations)
+        {
+            ArgumentNullException.ThrowIfNull(deviations);
+            return Sorted(deviations.Select(static row => new NotificationPreference { Type = row.Type, Channel = row.Channel, Enabled = row.Enabled }));
+        }
+
+        /// <summary>Orders preferences by type and then channel, ordinally, so every path answers alike.</summary>
+        /// <param name="preferences">The preferences.</param>
+        /// <returns>The ordered list.</returns>
+        private static NotificationPreference[] Sorted(IEnumerable<NotificationPreference> preferences)
+        {
+            return [.. preferences.OrderBy(static row => row.Type, StringComparer.Ordinal).ThenBy(static row => row.Channel, StringComparer.Ordinal)];
+        }
+
+        /// <summary>Collects a refusal at a path, with its arguments.</summary>
+        /// <param name="errors">The errors.</param>
         /// <param name="path">The path.</param>
         /// <param name="code">The code.</param>
         /// <param name="arguments">The arguments.</param>
-        /// <returns>The error.</returns>
-        private static ValidationError Error(ValidationPath path, string code, params (string Name, object? Value)[] arguments)
+        private static void Add(ValidationErrors errors, ValidationPath path, string code, params (string Name, object? Value)[] arguments)
         {
-            return new ValidationError(path, code, arguments.ToDictionary(static argument => argument.Name, static argument => argument.Value, StringComparer.Ordinal));
+            errors.Add(path, code, arguments.ToDictionary(static argument => argument.Name, static argument => argument.Value, StringComparer.Ordinal));
         }
     }
 }

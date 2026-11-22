@@ -27,6 +27,9 @@ stack core.User
   action me: api member-only body - handler UserService<User>; idempotent; result MeResult; mcp Full, revision 0; -
   action me/save: api member-only body MeSaveRequest handler UserService<User>; mutation; result MeResult; mcp Full, revision 0; -
   action me/locale: api member-only body MeLocaleRequest handler UserService<User>; mutation, read-only-ok; result MeLocaleResult; mcp Full, revision 0; -
+  action me/test-notification: api member-only body TestNotificationRequest handler UserService<User>; mutation; result TestNotificationResult; mcp Full, revision 0; -
+  action notification-preferences/get: api core.User:Preferences body UserPreferencesRequest handler UserService<User>; idempotent; result IReadOnlyList<NotificationPreference>; mcp Full, revision 0; -
+  action notification-preferences/save: entity Preferences filtered single args NotificationPreferencesArguments; mutation, read-only-ok; result IReadOnlyList<NotificationPreference>; mcp Full, revision 0; -
   action me/preferences/set: api member-only body UserPreferencesArguments handler UserService<User>; mutation, read-only-ok; result PreferencesResult; mcp Full, revision 0; -
   action me/preferences/delete: api member-only body UserPreferenceKeysArguments handler UserService<User>; mutation, read-only-ok; result PreferencesResult; mcp Full, revision 0; -
   action preferences/get: api core.User:Preferences body UserPreferencesRequest handler UserService<User>; idempotent; result UserPreferencesResult; mcp Full, revision 0; -

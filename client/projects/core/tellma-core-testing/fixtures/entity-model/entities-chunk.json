@@ -4676,6 +4676,137 @@
           ]
         },
         {
+          "name": "me/test-notification",
+          "kind": "api",
+          "builtIn": false,
+          "action": null,
+          "labelKey": "Core_User_Action_MeTestNotification",
+          "labelFallback": "Me test notification",
+          "mutation": true,
+          "idempotent": false,
+          "destructive": false,
+          "singleTarget": false,
+          "supportsFilter": false,
+          "result": "own",
+          "arguments": {
+            "type": "object",
+            "properties": {
+              "channel": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "channel"
+            ]
+          },
+          "fields": [
+            {
+              "name": "channel",
+              "labelKey": "Core_User_Action_MeTestNotification_Channel",
+              "labelFallback": "Channel",
+              "required": true,
+              "value": {
+                "type": "string",
+                "nullable": false
+              }
+            }
+          ]
+        },
+        {
+          "name": "notification-preferences/get",
+          "kind": "api",
+          "builtIn": false,
+          "action": "Preferences",
+          "labelKey": "Core_User_Action_NotificationPreferencesGet",
+          "labelFallback": "Notification preferences get",
+          "mutation": false,
+          "idempotent": true,
+          "destructive": false,
+          "singleTarget": false,
+          "supportsFilter": false,
+          "result": "own",
+          "arguments": {
+            "type": "object",
+            "properties": {
+              "userId": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "userId"
+            ]
+          },
+          "fields": [
+            {
+              "name": "userId",
+              "labelKey": "Core_User_Action_NotificationPreferencesGet_UserId",
+              "labelFallback": "User id",
+              "required": true,
+              "value": {
+                "type": "integer",
+                "nullable": false
+              }
+            }
+          ]
+        },
+        {
+          "name": "notification-preferences/save",
+          "kind": "entity",
+          "builtIn": false,
+          "action": "Preferences",
+          "labelKey": "Core_User_Action_NotificationPreferencesSave",
+          "labelFallback": "Notification preferences save",
+          "mutation": true,
+          "idempotent": false,
+          "destructive": false,
+          "allowWhenReadOnly": true,
+          "singleTarget": true,
+          "supportsFilter": true,
+          "result": "own",
+          "arguments": {
+            "type": "object",
+            "properties": {
+              "preferences": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string"
+                    },
+                    "channel": {
+                      "type": "string"
+                    },
+                    "enabled": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "channel",
+                    "enabled"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "preferences"
+            ]
+          },
+          "fields": [
+            {
+              "name": "preferences",
+              "labelKey": "Core_User_Action_NotificationPreferencesSave_Preferences",
+              "labelFallback": "Preferences",
+              "required": true,
+              "value": {
+                "type": "json",
+                "nullable": false
+              }
+            }
+          ]
+        },
+        {
           "name": "me/preferences/set",
           "kind": "api",
           "builtIn": false,

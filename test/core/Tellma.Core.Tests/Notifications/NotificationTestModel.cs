@@ -3,6 +3,8 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.Abstractions.Crud;
 using Tellma.Core.Abstractions.Notifications;
@@ -41,19 +43,28 @@ namespace Tellma.Core.Tests.Notifications
         /// <summary>The channel the feature registers, on by default.</summary>
         public const string Push = "push";
 
-        /// <summary>Composes the catalogue with no sender: no channel but the inbox delivers.</summary>
+        /// <summary>
+        ///     Composes the catalogue with no sender of its own: the platform's email sender is the
+        ///     only one, and the push channel does not deliver.
+        /// </summary>
         /// <param name="tellma">The builder.</param>
         public static void Compose(TellmaBuilder tellma)
         {
             _ = tellma.AddFeature(new TestFeature<Tag.D>("acme", contribute: static contribution => Contribute(contribution)));
         }
 
-        /// <summary>Composes the catalogue with senders for <c>email</c> and <c>push</c>.</summary>
+        /// <summary>Removes every channel sender, the platform's own for <c>email</c> included, so no channel but the inbox delivers.</summary>
+        /// <param name="services">The composed services.</param>
+        public static void WithoutSenders(IServiceCollection services)
+        {
+            _ = services.RemoveAll<INotificationChannel>();
+        }
+
+        /// <summary>Composes the catalogue with a sender for <c>push</c>, beside the platform's own for <c>email</c>.</summary>
         /// <param name="tellma">The builder.</param>
         public static void ComposeDelivering(TellmaBuilder tellma)
         {
             _ = tellma.AddFeature(new TestFeature<Tag.D>("acme", contribute: static contribution => Contribute(contribution)
-                .Scoped<INotificationChannel, EmailSender>()
                 .Scoped<INotificationChannel, PushSender>()));
         }
 
@@ -90,9 +101,6 @@ namespace Tellma.Core.Tests.Notifications
                 throw new NotSupportedException();
             }
         }
-
-        /// <summary>The email channel's sender.</summary>
-        internal sealed class EmailSender() : KeyedSender(CoreFeature.EmailChannel);
 
         /// <summary>The push channel's sender.</summary>
         internal sealed class PushSender() : KeyedSender(Push);

@@ -3,18 +3,22 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Logging;
 using System.Net;
 using System.Text.Json;
+using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Api;
 using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.Abstractions.Crud;
 using Tellma.Core.Abstractions.Email;
+using Tellma.Core.Abstractions.Errors;
 using Tellma.Core.Abstractions.Localization;
 using Tellma.Core.Abstractions.Notifications;
 using Tellma.Core.Abstractions.Settings;
 using Tellma.Core.Abstractions.Tenancy;
+using Tellma.Core.Access;
 using Tellma.Core.Composition;
 using Tellma.Core.Outbox;
 
@@ -24,7 +28,9 @@ namespace Tellma.Core.Notifications
     // language, calendar and zone, and hands the outbox one request per addressed recipient, so every
     // row records exactly what was sent and the dispatch only sends. The rows are enlisted with the
     // delivery job's frame and commit with its completion. Spec 0021 §4.4: channels have no
-    // duplicate detection, and a notification email has no attachments.
+    // duplicate detection, and a notification email has no attachments. Spec 0018 §3.5: the test
+    // send goes straight to the email sender, outside any batch and the outbox, to the caller's own
+    // address, so a user learns at once whether email reaches them.
     /// <summary>
     ///     The sender of the <c>email</c> notification channel: each recipient gets one outgoing email,
     ///     to their contact address or else their sign-in address, rendered in their own language,
@@ -45,8 +51,21 @@ namespace Tellma.Core.Notifications
     ///         notification's target as the record it concerns. A recipient with no address is
     ///         skipped, and so, with a warning, is one whose address the outbox cannot store, so one
     ///         unusable address never fails the other recipients' emails; a display name loses its
-    ///         control characters instead. The constructor needs no tenant, so the startup gate can
-    ///         read the key.
+    ///         control characters instead.
+    ///     </para>
+    ///     <para>
+    ///         A test send goes to the connected user's contact address, else their sign-in address,
+    ///         through the email sender directly: the subject and text are Core's server resources
+    ///         <c>Email_TestNotification_Subject</c> and <c>Email_TestNotification_Text</c>, given the
+    ///         tenant's name and the current time, rendered in the user's language, calendar and
+    ///         region and in the tenant's zone. A host that composes no email sender answers
+    ///         <see cref="TestNotificationResult.NotConfigured" />; a transport that fails or refuses
+    ///         the message is an unavailable dependency.
+    ///     </para>
+    ///     <para>
+    ///         The constructor needs no tenant, and the email sender is resolved only when a test
+    ///         send needs it, so the startup gate can create the channel in a scope of no tenant to
+    ///         read its key.
     ///     </para>
     /// </remarks>
     /// <param name="outbox">The scope's outbox, which the emails are enqueued through.</param>
@@ -55,7 +74,10 @@ namespace Tellma.Core.Notifications
     /// <param name="links">Builds the link to the notification's target.</param>
     /// <param name="accessor">The scope's request context, which names the tenant and may hold its settings.</param>
     /// <param name="settings">The tenant's settings, when the scope's context holds none.</param>
-    /// <param name="loggers">Creates the logger that reports a skipped recipient.</param>
+    /// <param name="connection">The scope's connection, whose connected user a test send goes to.</param>
+    /// <param name="negotiator">Negotiates the connected user's localization for a test send.</param>
+    /// <param name="services">The scope's services, which hold the email sender a test send uses, if the host composes one.</param>
+    /// <param name="loggers">Creates the logger that reports a skipped recipient and a failed test send.</param>
     internal sealed class EmailNotificationChannel(
         IEmailOutbox outbox,
         INotificationRenderer renderer,
@@ -63,6 +85,9 @@ namespace Tellma.Core.Notifications
         ITellmaLinks links,
         IRequestContextAccessor accessor,
         ITenantSettingsCache settings,
+        IScopeConnection connection,
+        ILocalizationNegotiator negotiator,
+        IServiceProvider services,
         ILoggerFactory loggers) : INotificationChannel
     {
         /// <summary>The resource of an email notification's subject. Arguments: <c>tenantName</c> and <c>text</c>.</summary>
@@ -73,6 +98,12 @@ namespace Tellma.Core.Notifications
 
         /// <summary>The resource of an email notification's HTML body. Arguments: <c>tenantName</c>, <c>text</c> and <c>link</c>, each HTML-encoded.</summary>
         public const string HtmlKey = "Email_Notification_Html";
+
+        /// <summary>The resource of a test email's subject. Arguments: <c>tenantName</c> and <c>sentAt</c>.</summary>
+        public const string TestSubjectKey = "Email_TestNotification_Subject";
+
+        /// <summary>The resource of a test email's plain-text body. Arguments: <c>tenantName</c> and <c>sentAt</c>.</summary>
+        public const string TestTextKey = "Email_TestNotification_Text";
 
         /// <summary>The base name of Core's server-only resources.</summary>
         private const string ServerStringsBaseName = CoreStrings.Assembly + ".Resources.ServerStrings";
@@ -85,6 +116,12 @@ namespace Tellma.Core.Notifications
 
         /// <summary>The argument holding the link to the notification's target.</summary>
         private const string LinkArgument = "link";
+
+        /// <summary>The argument holding the instant a test email is sent.</summary>
+        private const string SentAtArgument = "sentAt";
+
+        /// <summary>The dependency a failed test send reports as unavailable.</summary>
+        private const string EmailDependency = "email";
 
         /// <summary>Reports a recipient skipped because their email cannot be stored.</summary>
         private readonly ILogger _logger = loggers.CreateLogger(NotificationsLog.Category);
@@ -187,12 +224,94 @@ namespace Tellma.Core.Notifications
         }
 
         /// <inheritdoc />
-        /// <exception cref="NotSupportedException">Always: the email channel's test send is not built yet.</exception>
-        public Task<TestNotificationResult> SendTestAsync(CancellationToken cancellationToken = default)
+        /// <exception cref="DependencyUnavailableException">
+        ///     The transport failed or refused the message, or the sender threw before it answered.
+        /// </exception>
+        public async Task<TestNotificationResult> SendTestAsync(CancellationToken cancellationToken = default)
         {
-            // The test send goes through the email sender outside any batch (spec 0018 §3.5); it
-            // ships with the users' test-notification endpoint that calls it.
-            throw new NotSupportedException("The email channel's test send is not available yet.");
+            // --- A host that composes no email sender cannot send one ---
+            if (services.GetService<IEmailSender>() is not IEmailSender sender)
+            {
+                return TestNotificationResult.NotConfigured;
+            }
+
+            // --- The connected user's address: the contact address, else the sign-in address ---
+            // Spec 0018 §3.5: the profile is in memory once connected, so this costs no round trip.
+            UserProfile profile = (await connection.CurrentAsync(cancellationToken).ConfigureAwait(false)).Profile;
+            string? address = !string.IsNullOrWhiteSpace(profile.ContactEmail) ? profile.ContactEmail
+                : !string.IsNullOrWhiteSpace(profile.Email) ? profile.Email
+                : null;
+            if (address is null)
+            {
+                return TestNotificationResult.NoContactAddress;
+            }
+
+            // --- The user's localization: their language, calendar and region, in the tenant's zone ---
+            // The zone preference is left out so the time reads as the tenant's current time.
+            TenantSettings tenant = accessor.Current.TenantSettings
+                ?? (await settings.GetAsync().ConfigureAwait(false)).Value
+                ?? throw new InvalidOperationException("The tenant settings cache served no settings.");
+            LocalizationContext localization = negotiator.Negotiate(new NegotiationInput(
+                AcceptLanguage: null,
+                CalendarHeader: null,
+                TimeZoneHeader: null,
+                profile.PreferredLanguage,
+                profile.PreferredCalendar,
+                PreferredTimeZone: null,
+                profile.PreferredRegion,
+                MessageLanguage: null,
+                MessageCalendar: null,
+                tenant));
+            int slot = localization.ContentLanguageIndex;
+
+            // --- The mailbox; an address no transport could parse is no contact address ---
+            EmailAddress mailbox = OutgoingEmailText.Mailbox(address, new LocalizedText(profile.Name, profile.Name2, profile.Name3).In(slot));
+            if (!EmailAddressList.IsWellFormed(mailbox))
+            {
+                return TestNotificationResult.NoContactAddress;
+            }
+
+            // --- The subject and the text, rendered inside the user's localization ---
+            string tenantName = OutgoingEmailText.TenantName(tenant, accessor.Current.RequireTenant()).In(slot);
+            DateTimeOffset sentAt = accessor.Current.Now;
+            IStringLocalizer strings = localizers.Create(ServerStringsBaseName, CoreStrings.Assembly);
+            string subject, text;
+            using (LocalizationScope.Enter(localization))
+            {
+                subject = OutgoingEmailText.FitSubject(strings[TestSubjectKey, TestArguments(tenantName, sentAt)].Value);
+                text = strings[TestTextKey, TestArguments(tenantName, sentAt)].Value;
+            }
+
+            EmailMessage message = new()
+            {
+                To = [mailbox],
+                Subject = subject,
+                TextBody = text,
+                Audience = EmailAudience.Internal,
+            };
+
+            // --- One send; anything but an accepted message is an unavailable dependency ---
+            IReadOnlyList<EmailSendResult> results;
+            try
+            {
+                results = await sender.SendAsync([message], cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException and not DependencyUnavailableException)
+            {
+                NotificationsLog.TestEmailFailed(_logger, exception);
+                throw new DependencyUnavailableException(EmailDependency, null, exception);
+            }
+
+            EmailSendResult result = results.Count == 1
+                ? results[0]
+                : throw new InvalidOperationException("The email sender answered a result count other than the one message it was handed.");
+            if (result.Outcome is EmailSendOutcome.Sent or EmailSendOutcome.Sandboxed)
+            {
+                return TestNotificationResult.Sent;
+            }
+
+            NotificationsLog.TestEmailNotSent(_logger, result.Outcome, result.Error);
+            throw new DependencyUnavailableException(EmailDependency, null, null);
         }
 
         /// <summary>The address a recipient's email goes to: their contact address, else their sign-in address; null for neither.</summary>
@@ -270,6 +389,19 @@ namespace Tellma.Core.Notifications
                 [TenantNameArgument] = tenantName,
                 [TextArgument] = text,
                 [LinkArgument] = link,
+            };
+        }
+
+        /// <summary>The ICU arguments of the test email's two resources.</summary>
+        /// <param name="tenantName">The tenant's name.</param>
+        /// <param name="sentAt">When the email is sent.</param>
+        /// <returns>The arguments.</returns>
+        private static Dictionary<string, object?> TestArguments(string tenantName, DateTimeOffset sentAt)
+        {
+            return new Dictionary<string, object?>(StringComparer.Ordinal)
+            {
+                [TenantNameArgument] = tenantName,
+                [SentAtArgument] = sentAt,
             };
         }
 

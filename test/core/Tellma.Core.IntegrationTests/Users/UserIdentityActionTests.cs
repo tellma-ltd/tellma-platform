@@ -8,6 +8,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using System.Collections.Concurrent;
 using System.Globalization;
+using System.Text.Json;
 using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Api;
 using Tellma.Core.Abstractions.Composition;
@@ -29,8 +30,8 @@ namespace Tellma.Core.IntegrationTests.Users
     ///     the invite's write-back and its transitions, the invitation status under the caller's read
     ///     decision, service credentials issued, rotated and revoked, refused when the account changed
     ///     while its client was created, an invite answered in part, a recomposed persist that calls the
-    ///     identity server once, the welcome emails committed with the invite's write-back, an
-    ///     unconfirmed warning that calls it never, the round-trip budgets of
+    ///     identity server once, the welcome emails and the added users' notices committed with the
+    ///     invite's write-back, an unconfirmed warning that calls it never, the round-trip budgets of
     ///     the users' writes, no transaction open while the identity server is called, and a user delete
     ///     that takes the rows its keys cascade to.
     /// </summary>
@@ -218,6 +219,54 @@ namespace Tellma.Core.IntegrationTests.Users
             // The welcome's ids then ride a round of their own after the identity server answered.
             Instance.GetRequiredService<IdAllocator>().ForgetTenant(ConnectDatabase.TenantA);
             _ = await RecomposedInviteAsync(ann, admin, ada);
+        }
+
+        // --- The added users' notice ---
+
+        [Fact]
+        public async Task An_invite_notices_each_added_user_once_naming_the_tenant_and_the_caller_in_every_slot()
+        {
+            (int ann, string admin) = await fixture.SeedAdministratorAsync("Ann");
+            int ada = await SeedNewAsync("Ada");
+            int bob = await SeedNewAsync("Bob");
+            int cal = await SeedNewAsync("Cal");
+            int dan = await SeedNewAsync("Dan");
+            await fixture.ExecuteAsync(ConnectDatabase.TenantA, Invariant($"UPDATE [core].[Users] SET [Name2] = N'آن', [Name3] = N'Anne' WHERE [Id] = {ann};"));
+            await fixture.ExecuteAsync(ConnectDatabase.TenantA, "UPDATE [core].[Settings] SET [Name2] = N'المستأجر ١', [Name3] = N'Mandant 1';");
+            try
+            {
+                // A fresh instance reads the names: its caches hold none yet.
+                await Instance.DisposeAsync();
+                _instance = fixture.CreateInstance(configure: Scripted);
+                InviteStatus?[] statuses = [InviteStatus.Invited, InviteStatus.Reinvited, InviteStatus.Active, null];
+                _identity.OnInvite = (invitations, _) => Task.FromResult<IReadOnlyList<IdentityInvitationResult>>(
+                    [.. invitations.Select((invitation, index) => statuses[index] is InviteStatus status
+                        ? new IdentityInvitationResult(invitation.Email, ScriptedIdentityClient.SubjectOf(invitation.Email), status, null)
+                        : new IdentityInvitationResult(invitation.Email, null, null, "account_disabled"))]);
+
+                _ = await InviteAsync(admin, ada, bob, cal, dan);
+
+                // --- One unread notice per user with a status, by the caller, of no target, keyed by its type ---
+                IReadOnlyList<NoticeRow> notices = await NoticesAsync(ada, bob, cal, dan);
+                Assert.Equal([ada, bob, cal], notices.Select(static notice => notice.UserId));
+                Assert.All(notices, notice =>
+                {
+                    Assert.Equal(("core.user.added", ann, null, null, "core.user.added"), (notice.Type, notice.ActorUserId, notice.TargetResource, notice.TargetId, notice.DedupKey));
+                    using var arguments = JsonDocument.Parse(notice.ArgumentsJson!);
+                    Assert.Equal(["Tenant 1", "المستأجر ١", "Mandant 1"], arguments.RootElement.GetProperty("tenantName").EnumerateArray().Select(static slot => slot.GetString()));
+                    Assert.Equal(["Ann", "آن", "Anne"], arguments.RootElement.GetProperty("actorName").EnumerateArray().Select(static slot => slot.GetString()));
+                });
+
+                // --- A re-invite before the user read it adds no second notice ---
+                _identity.OnInvite = static (invitations, _) => Task.FromResult<IReadOnlyList<IdentityInvitationResult>>(
+                    [.. invitations.Select(static invitation => new IdentityInvitationResult(invitation.Email, ScriptedIdentityClient.SubjectOf(invitation.Email), InviteStatus.Reinvited, null))]);
+                _ = await InviteAsync(admin, ada);
+                _ = Assert.Single(await NoticesAsync(ada));
+            }
+            finally
+            {
+                await fixture.ExecuteAsync(ConnectDatabase.TenantA, "UPDATE [core].[Settings] SET [Name2] = NULL, [Name3] = NULL;");
+            }
         }
 
         // --- The welcome email ---
@@ -736,8 +785,9 @@ namespace Tellma.Core.IntegrationTests.Users
             Assert.Equal((ScriptedIdentityClient.SubjectOf(Email(ada)), "Invited"), (row.Subject, row.State));
             Assert.Single(_memberships.Hints());
 
-            // The welcome email rode the persist that committed, once.
+            // The welcome email and the notice rode the persist that committed, once.
             _ = Assert.Single(await WelcomesAsync(ada));
+            _ = Assert.Single(await NoticesAsync(ada));
             return trips;
         }
 
@@ -859,6 +909,38 @@ namespace Tellma.Core.IntegrationTests.Users
             return rows;
         }
 
+        /// <summary>The <c>core.user.added</c> notices of users, by recipient then id.</summary>
+        /// <param name="ids">The users.</param>
+        /// <returns>The notices.</returns>
+        private async Task<IReadOnlyList<NoticeRow>> NoticesAsync(params int[] ids)
+        {
+            await using SqlConnection connection = new(fixture.ConnectionString(ConnectDatabase.TenantA));
+            await connection.OpenAsync(Token);
+            await using SqlCommand command = connection.CreateCommand();
+            command.CommandText = Invariant(
+                $"""
+                SELECT [UserId], [Type], [ArgumentsJson], [ActorUserId], [TargetResource], [TargetId], [DedupKey]
+                FROM [core].[Notifications]
+                WHERE [UserId] IN ({string.Join(", ", ids)}) AND [Type] = N'core.user.added'
+                ORDER BY [UserId], [Id];
+                """);
+            await using SqlDataReader reader = await command.ExecuteReaderAsync(Token);
+            List<NoticeRow> rows = [];
+            while (await reader.ReadAsync(Token))
+            {
+                rows.Add(new NoticeRow(
+                    reader.GetInt32(0),
+                    reader.GetString(1),
+                    reader.IsDBNull(2) ? null : reader.GetString(2),
+                    reader.IsDBNull(3) ? null : reader.GetInt32(3),
+                    reader.IsDBNull(4) ? null : reader.GetString(4),
+                    reader.IsDBNull(5) ? null : reader.GetInt64(5),
+                    reader.IsDBNull(6) ? null : reader.GetString(6)));
+            }
+
+            return rows;
+        }
+
         /// <summary>Counts a user's row and the rows that reference it through a cascading key.</summary>
         /// <param name="id">The user.</param>
         /// <returns>The user rows, stamps, preferences and notification preferences.</returns>
@@ -898,6 +980,16 @@ namespace Tellma.Core.IntegrationTests.Users
         {
             return text.ToString(CultureInfo.InvariantCulture);
         }
+
+        /// <summary>The members of a notice the invite raises.</summary>
+        /// <param name="UserId">The recipient.</param>
+        /// <param name="Type">The notification type.</param>
+        /// <param name="ArgumentsJson">The stored arguments.</param>
+        /// <param name="ActorUserId">Who caused it.</param>
+        /// <param name="TargetResource">The resource it points at.</param>
+        /// <param name="TargetId">The row it points at.</param>
+        /// <param name="DedupKey">The key a duplicate is detected under.</param>
+        private sealed record NoticeRow(int UserId, string Type, string? ArgumentsJson, int? ActorUserId, string? TargetResource, long? TargetId, string? DedupKey);
 
         /// <summary>The members of a user row the identity actions write.</summary>
         /// <param name="Subject">The linked account.</param>

@@ -8,15 +8,19 @@ using Tellma.Core.Abstractions.Access;
 
 namespace Tellma.Core.Users
 {
-    // The instrument is spec 0018 §3.3 step 4's and §8.2's invites row.
+    // The instruments are spec 0018 §3.3 step 4's and §8.2's invites and test-notifications rows.
     /// <summary>
     ///     The users' stack's instruments on the core meter: one count per user an invite was asked
-    ///     for, by outcome. No instrument carries a tenant or a user.
+    ///     for, by outcome, and one per test message a user sent themselves, by channel and outcome.
+    ///     No instrument carries a tenant or a user.
     /// </summary>
     internal sealed class UsersMetrics
     {
         /// <summary>The users the invite action was asked for, by outcome.</summary>
         private readonly Counter<long> _invites;
+
+        /// <summary>The test messages users sent themselves, by channel and outcome.</summary>
+        private readonly Counter<long> _testNotifications;
 
         /// <summary>Creates the instruments.</summary>
         /// <param name="meterFactory">The host's meter factory, which owns the meter's lifetime.</param>
@@ -29,6 +33,10 @@ namespace Tellma.Core.Users
                 UsersTelemetryNames.Invites,
                 "{user}",
                 "Users the invite action was asked to invite, by outcome.");
+            _testNotifications = meter.CreateCounter<long>(
+                UsersTelemetryNames.TestNotifications,
+                "{message}",
+                "Test messages users sent themselves through a notification channel, by channel and outcome.");
         }
 
         /// <summary>Counts users of one invite outcome.</summary>
@@ -40,6 +48,17 @@ namespace Tellma.Core.Users
             {
                 _invites.Add(count, new KeyValuePair<string, object?>(UsersTelemetryNames.OutcomeTag, outcome));
             }
+        }
+
+        /// <summary>Counts one test message a user sent themselves.</summary>
+        /// <param name="channel">The channel's key.</param>
+        /// <param name="outcome">The outcome's tag value, one of the test-notification outcomes of <see cref="UsersTelemetryNames" />.</param>
+        public void RecordTestNotification(string channel, string outcome)
+        {
+            _testNotifications.Add(
+                1,
+                new KeyValuePair<string, object?>(UsersTelemetryNames.ChannelTag, channel),
+                new KeyValuePair<string, object?>(UsersTelemetryNames.OutcomeTag, outcome));
         }
     }
 }

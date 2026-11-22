@@ -15,6 +15,7 @@ using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Email;
 using Tellma.Core.Abstractions.Identity;
 using Tellma.Core.Abstractions.Localization;
+using Tellma.Core.Abstractions.Notifications;
 using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.Access;
 using Tellma.Core.Composition;
@@ -65,6 +66,9 @@ namespace Tellma.Core.Users
                 provider.GetRequiredService<IEmailOutbox>(),
                 provider.GetRequiredService<ILocalizationNegotiator>(),
                 provider.GetRequiredService<IStringLocalizerFactory>(),
+                provider.GetRequiredService<INotificationTypeRegistry>(),
+                provider.GetRequiredService<INotificationChannelRegistry>(),
+                provider.GetRequiredService<IOptions<NotificationsOptions>>(),
                 provider.GetRequiredService<TimeProvider>(),
                 provider.GetRequiredService<UsersMetrics>(),
                 provider.GetRequiredService<ILoggerFactory>()));
