@@ -384,6 +384,24 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-208 (orchestrator, 2026-11-22): PC-095 Review 1 rulings; escalated to Review 2
+
+Review 1 found 1 blocking, 3 major and 4 minor. On Windows the new suite (32), WireSnapshotTests (3) and AlertQueryTests (6) passed, and every measured budget matched 0018 §8.1 exactly.
+
+Rulings:
+- R1-1 (blocking): web.json carries escaped CRLF inside descriptions on Windows, from the platform newline in XML docs, and LF on Linux. The snapshot test normalizes line endings inside every string value, the snapshots are regenerated, and the fix is proved on Linux in the sdk container.
+- R1-2: the budget tests match the operation tag exactly.
+- R1-3: the aborted read moves to Kestrel with a ~5 s bound, and a temporary break proves it can go red.
+- R1-4: measure access/check, access/holders, and notification-preferences get and save.
+- R1-5: the KQL covers every kind and alerts on the per-window maximum.
+- R1-6: assert the version tags' values.
+- R1-7: run the whole Acme integration project once (D-151).
+- R1-8: assert the two log events and the rate_limited reason (0016 §14).
+
+Per PROCESS §4.4, the blocking finding escalates PC-095 to Review 2 (inherit, xhigh) after fix1.
+
+For Ahmad: every entity action and pipeline [ApiAction] records tellma.data.roundtrips under the one kind {resource}:action. The production budget alert therefore cannot budget individual actions, only the shared kind; per-action budgets need per-action tags, which is a platform change. The implementer kept the single kind, recorded as a deviation.
+
 ### D-207 (orchestrator, 2026-11-22): PC-F11 Review 2 rulings
 
 Review 2 (fable) found 0/0/4. It found no escape path for reads or file changes on Linux. It closed R1-1, R1-2, R1-4, R1-5 and R1-6 by measurement, and R1-3 by reading.
