@@ -14,6 +14,8 @@ import {
   ɵtmPlainText,
 } from './tm-date-engine';
 import { tmGregorianCalendar, type TmCalendar } from './tm-calendar';
+import { tmFormatDateTime } from './tm-instant';
+import dayFirst from './day-first-vectors.json';
 
 const TODAY = '2026-07-15';
 
@@ -321,5 +323,23 @@ describe('tmDatePlaceholder', () => {
     for (const locale of ['ar', 'ar-SA', 'ar-EG', 'fa', 'he', 'ur']) {
       expect([...tmDatePlaceholder(locale).matchAll(TM_BIDI_CONTROLS)], locale).toEqual([]);
     }
+  });
+});
+
+describe('day-first languages', () => {
+  // Oromo and Tigrinya write numeric dates day-first, as the server's
+  // culture data does, whatever the browser's CLDR says.
+  it("writes each vector's numeric date as the server writes its short date, and reads it back", () => {
+    for (const row of dayFirst.rows) {
+      expect(tmFormatDate(row.date, row.locale), row.locale).toBe(row.expected);
+      expect(tmParseDate(row.expected, row.locale, { today: TODAY }), row.locale).toBe(row.date);
+    }
+  });
+
+  it('writes the date of a numeric date-time day-first, and leaves the named styles alone', () => {
+    expect(tmFormatDateTime('2026-03-05T07:42:00Z', 'om-ET', { timeZone: 'UTC' })).toMatch(/^05\/03\/2026\D/);
+    expect(tmFormatDate('2026-03-05', 'om-ET', { dateStyle: 'long' })).toBe(
+      new Intl.DateTimeFormat('om-ET', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' }).format(Date.UTC(2026, 2, 5, 12)),
+    );
   });
 });

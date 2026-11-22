@@ -50,6 +50,9 @@
     <!-- The offered (language, region) pairs the client's cross-engine check reads: the language
          catalogue's own list, so a catalogue change turns the pin red until the file follows. -->
     <None Include="../../../client/e2e/fixtures/offered-pairs.json" Link="Localization\offered-pairs.json" CopyToOutputDirectory="PreserveNewest" />
+    <!-- The numeric dates of the client's day-first languages: the server's short dates of the
+         same pairs, so the two write one date order. -->
+    <None Include="../../../client/projects/core/tellma-core-ui/l10n/day-first-vectors.json" Link="Localization\day-first-vectors.json" CopyToOutputDirectory="PreserveNewest" />
     <!-- The job alert queries are read at runtime and cross-checked against the instruments, tags
          and log events the job machinery emits, so a telemetry rename turns an alert query red at
          PR time. -->

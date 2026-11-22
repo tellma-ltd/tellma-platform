@@ -190,6 +190,9 @@ export class TmLocalization {
   /** The languages whose locale fell back, so each is reported once per launch. */
   readonly #fellBack = new Set<string>();
 
+  /** Whether the app was torn down, so a startup step that lands later does nothing. */
+  #destroyed = false;
+
   /** The routed tenant, or `null` outside a tenant. */
   readonly #tenantId = computed(() => this.#refresher.ɵpartition()?.tenantId ?? null);
 
@@ -354,6 +357,7 @@ export class TmLocalization {
       host.listen('window', 'pageshow', reread),
     ];
     destroyRef.onDestroy(() => {
+      this.#destroyed = true;
       languageChanges.unsubscribe();
       loads.unsubscribe();
       bootChanges.unsubscribe();
@@ -370,11 +374,20 @@ export class TmLocalization {
       untracked(() => void this.#loadCalendar(code).catch(() => undefined));
     });
 
-    // --- The document and Transloco follow the active language ---
+    // --- The document, Transloco and the boot record follow the active language ---
+    // The boot record follows whatever settles the language, a switch here
+    // or a preference adopted from another device, so the next warm launch
+    // starts in it.
     effect(() => {
       const language = this.#language();
       const dir = this.dir();
-      untracked(() => this.#applyDocument(language, dir));
+      untracked(() => {
+        this.#applyDocument(language, dir);
+        const record = this.#store.boot.read();
+        if (record.lang !== language || record.dir !== dir) {
+          this.#store.boot.patch({ lang: language, dir });
+        }
+      });
     });
 
     // --- Telemetry: the locale's changes, and a browser that lacks the locale ---
@@ -509,11 +522,15 @@ export class TmLocalization {
    * calendar's entry point, once the store's boot step has filled the launch
    * documents. Internal: the startup sequence awaits it before the first
    * render, so a cached calendar or language never flashes another first. A
-   * load that fails leaves the boot language or `gc` in place.
+   * load that fails leaves the boot language or `gc` in place. An app torn
+   * down before its launch documents arrived loads nothing.
    *
    * @returns A promise that settles once both loads have.
    */
   ɵready(): Promise<void> {
+    if (this.#destroyed) {
+      return Promise.resolve();
+    }
     return Promise.all([
       this.#loadLanguage(this.#wantedLanguage()).catch(() => undefined),
       this.#loadCalendar(this.#wantedCalendar()).catch(() => undefined),
@@ -567,7 +584,8 @@ export class TmLocalization {
     this.#applyDocument(this.#language(), this.dir());
 
     // --- 3. Save: the boot record keeps the language, the locale write the members ---
-    if (language !== undefined) {
+    const record = this.#store.boot.read();
+    if (record.lang !== this.#language() || record.dir !== this.dir()) {
       this.#store.boot.patch({ lang: this.#language(), dir: this.dir() });
     }
     if (inTenant && Object.keys(queue).length > 0) {

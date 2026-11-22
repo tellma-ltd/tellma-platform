@@ -24,9 +24,12 @@ providers: [provideTellmaUi(), provideTellmaLocaleAr()]
 ## What the pack contributes
 
 - **Strings** — the library's built-in messages in Arabic
-  (`strings-ar.ts`), merged into Transloco's `ar` resources under the shared
-  `tmUi` namespace, and the platform's own (`strings-tm-ar.ts`, under `tm`),
-  which `tmArabic()` hands the platform. Plurals carry the full Arabic ICU
+  (`strings/strings-ar.ts`), merged into Transloco's `ar` resources under the
+  shared `tmUi` namespace, and the platform's own (`strings/strings-tm-ar.ts`,
+  under `tm`), which `tmArabic()` hands the platform. Both live in the
+  `@tellma/locale-ar/strings` entry point, which `tmArabic()` loads on the
+  first switch to Arabic, so an app's other languages never download them.
+  Plurals carry the full Arabic ICU
   categories (one/two/few/many/other); imperative verbs conjugate for the
   addressee via the ambient `{gender}` parameter (see below).
 - **Fonts** — self-hosted Noto Sans Arabic woff2 with an Arabic
@@ -47,7 +50,7 @@ changes.
 
 Copy this package's structure:
 
-1. `strings-xx.ts` — translate every key of `TM_UI_STRINGS_EN` and of the
+1. `strings/strings-xx.ts` — translate every key of `TM_UI_STRINGS_EN` and of the
    tables entry points ship beside it (`TM_PIVOT_STRINGS_EN` under `pivot`,
    `TM_TILES_TREE_STRINGS_EN` under `tilesTree`, `TM_CHART_STRINGS_EN` under
    `chart`); keep the ICU categories
@@ -55,10 +58,11 @@ Copy this package's structure:
 2. Vendor the script's font subsets (see `tools/fonts/vendor-fonts-ar.mjs`)
    if the language needs a non-Latin face; skip fonts entirely for
    Latin-script locales.
-3. `strings-tm-xx.ts` — translate every key of the platform's English
+3. `strings/strings-tm-xx.ts` — translate every key of the platform's English
    `tm` table (`tmEnglish()` in `@tellma/core`).
 4. `provide-tellma-locale-xx.ts` — register the strings; `tm-xx.ts` — the
-   language definition `tmXx()`, with its direction and both tables;
+   language definition `tmXx()`, with its direction and both tables, loaded
+   with `import()` from the `strings` entry point;
    `styles.css` — import the pack's fonts.
 5. If the script's leading differs from Latin, add the language to the token
    preset's `leadingByLang`; if it needs a new face, add the family to the

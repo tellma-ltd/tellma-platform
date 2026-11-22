@@ -100,6 +100,81 @@ export function ɵtmDateSkeleton(
   return STYLE_OPTIONS[style];
 }
 
+// ---- Day-first numeric dates ----
+
+// CLDR 48 gives Oromo and Tigrinya the month-first numeric date `M/d/y`, a
+// regression against every earlier release and against Amharic beside them.
+// The server pins their short date to `dd/MM/yyyy` (spec 0013 §9.2
+// culture data), so the client writes, and reads, the same order
+// whatever the browser's CLDR.
+
+/** The languages whose numeric dates are written day-first, as `dd/MM/yyyy`. */
+const DAY_FIRST_LANGUAGES: ReadonlySet<string> = new Set(['om', 'ti']);
+
+/** The slash between the fields of a day-first date. */
+const SLASH: Intl.DateTimeFormatPart = { type: 'literal', value: '/' };
+
+/** A date formatter that writes its numeric date fields as `dd/MM/yyyy`. */
+class TmDayFirstFormat extends Intl.DateTimeFormat {
+  /**
+   * The parts of a date, its day, month and year in that order.
+   *
+   * @param date - The date.
+   * @returns The parts.
+   */
+  override formatToParts(date?: Date | number): Intl.DateTimeFormatPart[] {
+    const parts = super.formatToParts(date);
+    const fields = parts.filter((part) => part.type === 'day' || part.type === 'month' || part.type === 'year');
+    if (fields.length !== 3) {
+      return parts;
+    }
+    // The run from the first date field to the last becomes `dd/MM/yyyy`;
+    // the day-first languages write Latin digits, padded with a Latin zero.
+    const field = (type: 'day' | 'month' | 'year', width: number): Intl.DateTimeFormatPart => ({
+      type,
+      value: fields.find((part) => part.type === type)!.value.padStart(width, '0'),
+    });
+    return [
+      ...parts.slice(0, parts.indexOf(fields[0])),
+      field('day', 2),
+      SLASH,
+      field('month', 2),
+      SLASH,
+      field('year', 4),
+      ...parts.slice(parts.indexOf(fields[2]) + 1),
+    ];
+  }
+
+  /**
+   * The text of a date, its day, month and year in that order.
+   *
+   * @param date - The date.
+   * @returns The text.
+   */
+  override format(date?: Date | number): string {
+    return this.formatToParts(date)
+      .map((part) => part.value)
+      .join('');
+  }
+}
+
+/**
+ * A date formatter: Intl's, except that a numeric date in a day-first
+ * language writes its fields as `dd/MM/yyyy`, as the server does.
+ *
+ * @param locale - The locale.
+ * @param options - The fields and the zone.
+ * @returns The formatter.
+ * @internal Shared with the instant formatters.
+ */
+export function ɵtmDateTimeFormat(locale: string, options: Intl.DateTimeFormatOptions): Intl.DateTimeFormat {
+  const numeric = options.year === 'numeric' && options.month === 'numeric' && options.day === 'numeric';
+  const language = locale.split(/[-_]/)[0].toLowerCase();
+  return numeric && DAY_FIRST_LANGUAGES.has(language)
+    ? new TmDayFirstFormat(locale, options)
+    : new Intl.DateTimeFormat(locale, options);
+}
+
 const formatterCache = new Map<string, Intl.DateTimeFormat>();
 
 function formatterFor(
@@ -110,7 +185,7 @@ function formatterFor(
   const key = `${locale}|${calendarId}|${style}`;
   let formatter = formatterCache.get(key);
   if (formatter === undefined) {
-    formatter = new Intl.DateTimeFormat(locale, {
+    formatter = ɵtmDateTimeFormat(locale, {
       ...STYLE_OPTIONS[style],
       calendar: calendarId,
       timeZone: 'UTC',

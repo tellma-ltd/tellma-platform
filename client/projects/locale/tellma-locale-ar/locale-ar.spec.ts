@@ -22,7 +22,7 @@ import { TM_PIVOT_STRINGS_EN } from '@tellma/core-ui/pivot';
 import { TM_TILES_TREE_STRINGS_EN } from '@tellma/core-ui/tiles-tree';
 
 import { provideTellmaLocaleAr } from './provide-tellma-locale-ar';
-import { TM_LOCALE_AR_STRINGS } from './strings-ar';
+import { TM_LOCALE_AR_STRINGS } from '@tellma/locale-ar/strings';
 
 @Component({
   imports: [TmInput, TmFormField, FormField],

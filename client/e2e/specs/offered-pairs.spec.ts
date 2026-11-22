@@ -43,5 +43,9 @@ test('every offered pair resolves exactly, apart from the known gaps @cross-engi
   );
 
   const gaps = KNOWN_GAPS[browserName] ?? [];
-  expect(misses.filter((tag) => !gaps.includes(tag.split('-')[0]))).toEqual([]);
+  const language = (tag: string): string => tag.split('-')[0];
+  expect(misses.filter((tag) => !gaps.includes(language(tag)))).toEqual([]);
+  // Every pair of a gap language still misses: a gap the engine has closed
+  // turns this red, so the list and the fallback it documents stay current.
+  expect(misses).toEqual(PAIRS.filter((tag) => gaps.includes(language(tag))));
 });

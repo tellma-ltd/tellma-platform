@@ -15,6 +15,7 @@ import { ɵtmToIsoDate, type TmCalendar } from './tm-calendar';
 import {
   tmFormatDate,
   ɵtmDateSkeleton,
+  ɵtmDateTimeFormat,
   ɵtmFormatWithoutEra,
   ɵtmPlainText,
   type TmDateStyle,
@@ -215,14 +216,14 @@ function formatterFor(
   let formatter = formatters.get(cacheKey);
   if (formatter === undefined) {
     try {
-      formatter = new Intl.DateTimeFormat(locale, { ...options, timeZone });
+      formatter = ɵtmDateTimeFormat(locale, { ...options, timeZone });
     } catch (error) {
       if (!(error instanceof RangeError) || timeZone === 'UTC') {
         throw error;
       }
       // Either the zone or the locale is unknown. Retry in UTC: an unknown
       // locale throws again, from here, exactly as it does for a date.
-      formatter = new Intl.DateTimeFormat(locale, { ...options, timeZone: 'UTC' });
+      formatter = ɵtmDateTimeFormat(locale, { ...options, timeZone: 'UTC' });
       warnOnce(`Unknown time zone "${timeZone}"; instants in it are shown in UTC.`);
     }
     formatters.set(cacheKey, formatter);

@@ -1253,6 +1253,7 @@ export interface TmSecurableSummary {
 // @public
 export interface TmSendOptions {
     readonly background?: boolean;
+    readonly tenantId?: number;
 }
 
 // @public
