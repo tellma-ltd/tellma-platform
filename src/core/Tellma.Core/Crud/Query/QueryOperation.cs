@@ -105,7 +105,7 @@ namespace Tellma.Core.Crud.Query
         /// <typeparam name="TResult">What the read returns.</typeparam>
         /// <param name="steps">The read's steps.</param>
         /// <returns>What the read returned.</returns>
-        private static async Task<TResult> TranslatedAsync<TResult>(Func<Task<TResult>> steps)
+        internal static async Task<TResult> TranslatedAsync<TResult>(Func<Task<TResult>> steps)
         {
             try
             {

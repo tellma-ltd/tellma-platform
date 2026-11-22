@@ -4,28 +4,41 @@
 // LICENSE file in the root directory of this source tree.
 
 using Microsoft.Data.SqlClient;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Hosting.Internal;
+using Microsoft.Extensions.Logging;
 using System.Globalization;
 using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Caching;
 using Tellma.Core.Abstractions.Crud;
+using Tellma.Core.Abstractions.Email;
 using Tellma.Core.Abstractions.Notifications;
+using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.Crud;
 using Tellma.Core.Data.Batches;
+using Tellma.Core.Email;
 using Tellma.Core.IntegrationTests.Jobs;
 using Tellma.Core.Notifications;
 using Tellma.Core.Testing.Blobs;
+using Tellma.Core.Testing.Email;
 using Tellma.Testing.Entities;
+using Tellma.Testing.Support.Logging;
+using Tellma.Testing.Support.Tenancy;
 
 namespace Tellma.Core.IntegrationTests.Outbox
 {
     /// <summary>
     ///     One fixture database for the outbox's tests, created once with its users and reset before
     ///     each test. Its host stores blobs in memory, sends notification email through the platform's
-    ///     email channel and sms through a sender a test can make throw, runs the scripted job handlers
-    ///     whose frames enqueue, lets the stacks own their tables as in production, and audits every
-    ///     batch's writes against change tracking.
+    ///     email channel and sms through a sender a test can make throw, sends the sending jobs'
+    ///     emails through the platform's email pipeline onto a capturing transport a test scripts,
+    ///     under a sandbox switch a test can turn on, answers through a sender a test can make answer
+    ///     short, reaches an administrator directory a test can make fail, runs the scripted job
+    ///     handlers whose frames enqueue, keeps every log event, lets the stacks own their tables as in production, and
+    ///     audits every batch's writes against change tracking.
     /// </summary>
     public sealed class OutboxDatabase : IAsyncLifetime
     {
@@ -90,11 +103,23 @@ namespace Tellma.Core.IntegrationTests.Outbox
         /// <summary>The host's blob store.</summary>
         public InMemoryBlobStore Blobs { get; private set; } = new();
 
+        /// <summary>The email pipeline's transport: every message the router passes on captured, each result scripted.</summary>
+        public CapturingEmailSender Sender { get; private set; } = new();
+
+        /// <summary>Whether the email pipeline routes the tenant's mail as a sandbox tenant's.</summary>
+        public StubSandboxContext Sandbox { get; } = new();
+
+        /// <summary>Every log event of the host, with every structured value.</summary>
+        public StateCapturingLoggerProvider Logs { get; } = new();
+
         /// <summary>What the scripted handlers do, set by each test.</summary>
         public JobRunScript Script { get; } = new();
 
         /// <summary>Whether the sms sender throws, which fails the delivery job after email delivered.</summary>
         public SmsSwitch Sms { get; } = new();
+
+        /// <summary>How the email sender's answers and the administrator lookup misbehave, set by each test.</summary>
+        public DispatchFaults Faults { get; } = new();
 
         /// <summary>The cancellation token of the running test.</summary>
         private static CancellationToken Token => TestContext.Current.CancellationToken;
@@ -113,9 +138,30 @@ namespace Tellma.Core.IntegrationTests.Outbox
                     _ = services.AddSingleton(Sms);
                     _ = services.AddScoped<INotificationChannel, SwitchableSms>();
 
+                    // --- The email pipeline over the capturing transport, outside Development so
+                    // only the configured transport sends, under the sandbox switch ---
+                    _ = services.AddSingleton<IConfiguration>(new ConfigurationBuilder()
+                        .AddInMemoryCollection(new Dictionary<string, string?> { ["Email:Provider"] = CapturingEmailServiceCollectionExtensions.TransportName })
+                        .Build());
+                    _ = services.AddSingleton<IHostEnvironment>(new HostingEnvironment { EnvironmentName = Environments.Production, ApplicationName = "Tellma.Core.IntegrationTests" });
+                    _ = services.AddTellmaEmail();
+                    Sender = services.AddCapturingEmail(CapturingEmailMode.Transport);
+                    _ = services.Replace(ServiceDescriptor.Scoped<ISandboxContext>(_ => Sandbox));
+
+                    // --- The pipeline's router behind a sender whose answers a test may cut short ---
+                    ServiceDescriptor router = services.Single(static descriptor => descriptor.ServiceType == typeof(IEmailSender));
+                    Type routerType = router.ImplementationType ?? throw new InvalidOperationException("The email pipeline registers its router by type.");
+                    _ = services.Replace(ServiceDescriptor.Describe(
+                        typeof(IEmailSender),
+                        provider => new FaultingSender((IEmailSender)ActivatorUtilities.CreateInstance(provider, routerType), Faults),
+                        router.Lifetime));
+
+                    // --- The log that keeps every event ---
+                    _ = services.AddSingleton<ILoggerProvider>(Logs);
+
                     // --- The scripted handlers' script and the one administrator ---
                     _ = services.AddSingleton(Script);
-                    _ = services.Replace(ServiceDescriptor.Scoped<IAdministratorDirectory>(static _ => new FixedAdministrators()));
+                    _ = services.Replace(ServiceDescriptor.Scoped<IAdministratorDirectory>(_ => new FixedAdministrators(Faults)));
 
                     // --- The stacks' tables are theirs again, as in production: a raw write to one is refused ---
                     _ = services.Replace(ServiceDescriptor.Singleton<IStackTableOwners>(static provider => new StackTableOwners(provider.GetRequiredService<StackRegistry>())));
@@ -136,20 +182,35 @@ namespace Tellma.Core.IntegrationTests.Outbox
                 UserInsert(AdministratorId, "Admin", contactEmail: null, timeZone: null));
         }
 
-        /// <summary>Deletes every row a test may have written, the users kept, and forgets the script and the sms switch.</summary>
+        /// <summary>
+        ///     Deletes every row a test may have written, the users kept, and forgets the script, the
+        ///     sms and sandbox switches and the captured emails; the transport sends every email again. The log keeps
+        ///     every test's events, so a test finds its own by the ids it wrote.
+        /// </summary>
         /// <returns>A task that completes when the database is reset.</returns>
         public async Task ResetAsync()
         {
             await SqlServerFixture.ExecuteAsync(ConnectionString, ResetText);
             Script.Reset();
             Sms.Fails = false;
+            Sandbox.IsSandbox = false;
+            Faults.Answer = null;
+            Faults.AdministratorsFail = false;
+            Sender.Clear();
+            Sender.OnSending(static (_, ordinal) => new EmailSendResult(
+                EmailSendOutcome.Sent, string.Create(CultureInfo.InvariantCulture, $"capture-{ordinal}"), ExpectsDeliveryEvents: true));
         }
 
         /// <inheritdoc />
-        public ValueTask DisposeAsync()
+        public async ValueTask DisposeAsync()
         {
             GC.SuppressFinalize(this);
-            return _tenant?.DisposeAsync() ?? ValueTask.CompletedTask;
+            if (_tenant is not null)
+            {
+                await _tenant.DisposeAsync();
+            }
+
+            Logs.Dispose();
         }
 
         /// <summary>A user's sign-in address.</summary>
@@ -224,13 +285,29 @@ namespace Tellma.Core.IntegrationTests.Outbox
                 """);
         }
 
-        /// <summary>The one administrator the failure notices reach.</summary>
-        private sealed class FixedAdministrators : IAdministratorDirectory
+        /// <summary>The one administrator the failure notices reach, or a lookup that fails while the faults say so.</summary>
+        /// <param name="faults">The faults.</param>
+        private sealed class FixedAdministrators(DispatchFaults faults) : IAdministratorDirectory
         {
             /// <inheritdoc />
             public Task<IReadOnlyList<int>> GetAdministratorIdsAsync(CancellationToken cancellationToken = default)
             {
-                return Task.FromResult<IReadOnlyList<int>>([AdministratorId]);
+                return faults.AdministratorsFail
+                    ? throw new InvalidOperationException("The administrators could not be read.")
+                    : Task.FromResult<IReadOnlyList<int>>([AdministratorId]);
+            }
+        }
+
+        /// <summary>The pipeline's router, whose answers the faults may rewrite once it sent.</summary>
+        /// <param name="router">The router.</param>
+        /// <param name="faults">The faults.</param>
+        private sealed class FaultingSender(IEmailSender router, DispatchFaults faults) : IEmailSender
+        {
+            /// <inheritdoc />
+            public async Task<IReadOnlyList<EmailSendResult>> SendAsync(IReadOnlyList<EmailMessage> messages, CancellationToken cancellationToken = default)
+            {
+                IReadOnlyList<EmailSendResult> results = await router.SendAsync(messages, cancellationToken);
+                return faults.Answer is { } answer ? answer(results) : results;
             }
         }
 
@@ -254,6 +331,16 @@ namespace Tellma.Core.IntegrationTests.Outbox
                 throw new NotSupportedException();
             }
         }
+    }
+
+    /// <summary>How the outbox database's email sender answers and its administrator lookup behave.</summary>
+    public sealed class DispatchFaults
+    {
+        /// <summary>Rewrites the sender's results once its messages went out; null for the results as they are.</summary>
+        public Func<IReadOnlyList<EmailSendResult>, IReadOnlyList<EmailSendResult>>? Answer { get; set; }
+
+        /// <summary>Whether reading the administrators throws.</summary>
+        public bool AdministratorsFail { get; set; }
     }
 
     /// <summary>Whether the outbox database's sms sender throws.</summary>

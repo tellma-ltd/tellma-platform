@@ -53,6 +53,10 @@ namespace Tellma.Queryex.Inspection
     /// <param name="Measure">
     ///     A measure whose row condition to report, under the declared and omitted parameters.
     /// </param>
+    /// <param name="Measures">
+    ///     The measures of an aggregate query, separated by commas, whose partial columns the
+    ///     compilation appends; ignored unless the query groups.
+    /// </param>
     public sealed record InspectRequest(
         string? Select,
         string? Filter,
@@ -69,7 +73,8 @@ namespace Tellma.Queryex.Inspection
         string? Omitted = null,
         string? Constants = null,
         bool Conjuncts = false,
-        string? Measure = null);
+        string? Measure = null,
+        string? Measures = null);
 
     /// <summary>One scanned token, as the page shows it.</summary>
     /// <param name="Kind">What kind of token it is.</param>
@@ -109,6 +114,18 @@ namespace Tellma.Queryex.Inspection
     /// <param name="IsGroupingKey">Whether it is one of the grouping keys.</param>
     public sealed record ColumnView(int Ordinal, string Text, string Type, string Nullity, bool IsGroupingKey);
 
+    /// <summary>One partial column of the query's measures, as the page shows it.</summary>
+    /// <param name="Ordinal">The result column that holds it.</param>
+    /// <param name="Kind">Which aggregation it is.</param>
+    /// <param name="Type">Its type.</param>
+    public sealed record PartialView(int Ordinal, string Kind, string Type);
+
+    /// <summary>One measure of the query, as the page shows it.</summary>
+    /// <param name="Text">Its text.</param>
+    /// <param name="Type">Its type.</param>
+    /// <param name="Nullity">Whether it can be absent.</param>
+    public sealed record MeasureView(string Text, string Type, string Nullity);
+
     /// <summary>One top-level restriction of the filter, as the page shows it.</summary>
     /// <param name="Location">Which filter leaf it is in.</param>
     /// <param name="Start">Where the atom starts in that leaf.</param>
@@ -144,6 +161,8 @@ namespace Tellma.Queryex.Inspection
     ///     The rows the page's measure aggregates, as a predicate; what kept it from being worked
     ///     out; or nothing when no measure was given.
     /// </param>
+    /// <param name="Partials">The partial columns of the query's measures, when it compiled with any.</param>
+    /// <param name="Measures">The query's measures, when it compiled with any.</param>
     public sealed record InspectResponse(
         IReadOnlyList<TokenView> Tokens,
         string Canonical,
@@ -156,7 +175,9 @@ namespace Tellma.Queryex.Inspection
         IReadOnlyList<IReadOnlyList<string>>? Rows,
         string? Error,
         IReadOnlyList<ConjunctView>? Conjuncts = null,
-        string? MeasureCondition = null);
+        string? MeasureCondition = null,
+        IReadOnlyList<PartialView>? Partials = null,
+        IReadOnlyList<MeasureView>? Measures = null);
 
     /// <summary>
     ///     Runs one query, or one constant statement, through every stage and reports what each of
@@ -270,6 +291,7 @@ namespace Tellma.Queryex.Inspection
                         Filter = Filter(request.Filter, request.Via, request.Exists),
                         Having = request.Aggregate ? Leaf(request.Having) : null,
                         OrderBy = string.IsNullOrWhiteSpace(request.OrderBy) ? null : request.OrderBy,
+                        Measures = request.Aggregate ? request.Measures : null,
                         Restrictions = restrictions,
                         UndeclaredColumns = Names(request.UndeclaredColumns),
                     };
@@ -333,7 +355,16 @@ namespace Tellma.Queryex.Inspection
                 [.. compiled.Value.Parameters.Select(Slot)],
                 [.. compiled.Value.Columns.Select(Column)],
                 rows,
-                error);
+                error)
+            {
+                // What the measures are computed from, beside the columns that hold it.
+                Partials = compiled.Value.Measures?.Partials
+                    .Select(static partial => new PartialView(partial.Ordinal, partial.Kind.ToString(), partial.Type.ToString()))
+                    .ToList(),
+                Measures = compiled.Value.Measures?.Items
+                    .Select(static measure => new MeasureView(measure.Text, measure.Type.ToString(), measure.Nullity.ToString()))
+                    .ToList(),
+            };
         }
 
         /// <summary>Reads the composed filter's top-level restrictions, as discovery does.</summary>
@@ -353,6 +384,7 @@ namespace Tellma.Queryex.Inspection
                         Filter = Filter(request.Filter, request.Via, request.Exists),
                         Having = request.Aggregate ? Leaf(request.Having) : null,
                         OrderBy = string.IsNullOrWhiteSpace(request.OrderBy) ? null : request.OrderBy,
+                        Measures = request.Aggregate ? request.Measures : null,
                         Conjuncts = true,
                     },
                     new DiscoveryOptions { Schema = LedgerFixture.Schema, Root = root });

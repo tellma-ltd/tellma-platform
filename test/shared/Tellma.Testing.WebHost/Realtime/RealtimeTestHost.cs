@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Http.Connections;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.AspNetCore.TestHost;
+using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.DependencyInjection;
 using System.Collections.Concurrent;
 using System.Security.Claims;
@@ -41,9 +42,6 @@ namespace Tellma.Testing.WebHost.Realtime
         /// <summary>A suspended tenant.</summary>
         public const int Suspended = 5;
 
-        /// <summary>How long a client waits for what it expects.</summary>
-        public static readonly TimeSpan Patience = TimeSpan.FromSeconds(10);
-
         /// <summary>Starts a host with the hub on.</summary>
         /// <param name="configure">Changes to the defaults, applied last.</param>
         /// <param name="hostingCheck">
@@ -75,11 +73,17 @@ namespace Tellma.Testing.WebHost.Realtime
             options.Rows.Add(FakeCatalogReader.Row(Frozen, "Frozen"));
             options.Rows.Add(FakeCatalogReader.Row(Suspended, "Suspended"));
 
-            // A client is handed back once the hub finished its connect, groups joined.
+            // A client is handed back once the hub finished its connect, groups joined. The hub's
+            // handshake waits as long as the client does: its timer is not under test, and a cold host
+            // on a loaded runner takes seconds over the handshake.
             options.ConfigureServices += static services =>
             {
                 _ = services.AddSingleton<ConnectedProbe>();
-                _ = services.AddOptions<HubOptions<TellmaHub>>().Configure<ConnectedProbe>(static (hub, probe) => hub.AddFilter(probe));
+                _ = services.AddOptions<HubOptions<TellmaHub>>().Configure<ConnectedProbe>(static (hub, probe) =>
+                {
+                    hub.AddFilter(probe);
+                    hub.HandshakeTimeout = Patience.Limit;
+                });
             };
             if (!hostingCheck)
             {
@@ -106,7 +110,12 @@ namespace Tellma.Testing.WebHost.Realtime
             ArgumentNullException.ThrowIfNull(host);
             HubClient client = Client(host, tenantId, cookie);
             await client.Connection.StartAsync(TestContext.Current.CancellationToken);
-            await host.Services.GetRequiredService<ConnectedProbe>().WaitAsync(client.Connection.ConnectionId!);
+
+            // The wait goes by the token the client connected with: a connection the hub refuses
+            // closes as soon as its connect ends, and a closed client no longer reports its id.
+            string token = client.ConnectionToken
+                ?? throw new InvalidOperationException("The client started without opening a WebSocket.");
+            await host.Services.GetRequiredService<ConnectedProbe>().WaitForTokenAsync(token);
             return client;
         }
 
@@ -119,6 +128,7 @@ namespace Tellma.Testing.WebHost.Realtime
         {
             ArgumentNullException.ThrowIfNull(host);
             TestServer server = host.Server;
+            HubClient? client = null;
             HubConnection connection = new HubConnectionBuilder()
                 .WithUrl(new Uri(server.BaseAddress, $"/{tenantId}/hub"), options =>
                 {
@@ -132,6 +142,8 @@ namespace Tellma.Testing.WebHost.Realtime
 
                     options.WebSocketFactory = async (context, cancellationToken) =>
                     {
+                        // The connect's address carries the token the negotiate handed out.
+                        client!.ConnectionToken = QueryHelpers.ParseQuery(context.Uri.Query)["id"].ToString();
                         WebSocketClient sockets = server.CreateWebSocketClient();
                         if (cookie is not null)
                         {
@@ -142,7 +154,13 @@ namespace Tellma.Testing.WebHost.Realtime
                     };
                 })
                 .Build();
-            return new HubClient(connection);
+
+            // The client's own handshake and server timeouts are not under test either: they wait as
+            // long as the test does, so a slow host fails a test only by a hang.
+            connection.HandshakeTimeout = Patience.Limit;
+            connection.ServerTimeout = Patience.Limit;
+            client = new HubClient(connection);
+            return client;
         }
 
         /// <summary>Publishes an event from a scope bound to a tenant, as a tenant request would.</summary>
@@ -184,6 +202,7 @@ namespace Tellma.Testing.WebHost.Realtime
     internal sealed class ConnectedProbe : IHubFilter
     {
         private readonly ConcurrentDictionary<string, TaskCompletionSource> _connected = new(StringComparer.Ordinal);
+        private readonly ConcurrentDictionary<string, TaskCompletionSource> _tokens = new(StringComparer.Ordinal);
         private readonly ConcurrentDictionary<string, ClaimsPrincipal?> _users = new(StringComparer.Ordinal);
 
         /// <inheritdoc />
@@ -198,7 +217,13 @@ namespace Tellma.Testing.WebHost.Realtime
             }
             finally
             {
-                _ = Signal(context.Context.ConnectionId).TrySetResult();
+                // --- Signalled by the connection's id and by the token its WebSocket connected with ---
+                _ = Signal(_connected, context.Context.ConnectionId).TrySetResult();
+                string? token = context.Context.GetHttpContext()?.Request.Query["id"];
+                if (!string.IsNullOrEmpty(token))
+                {
+                    _ = Signal(_tokens, token).TrySetResult();
+                }
             }
         }
 
@@ -207,7 +232,18 @@ namespace Tellma.Testing.WebHost.Realtime
         /// <returns>A task that completes when it did.</returns>
         public Task WaitAsync(string connectionId)
         {
-            return Signal(connectionId).Task.WaitAsync(RealtimeTestHost.Patience, TestContext.Current.CancellationToken);
+            return Patience.WaitAsync(Signal(_connected, connectionId).Task);
+        }
+
+        /// <summary>
+        ///     Waits for the hub to finish the connect of the connection whose WebSocket connected with
+        ///     a token, which a client keeps after the hub closed it.
+        /// </summary>
+        /// <param name="connectionToken">The token the negotiate handed out.</param>
+        /// <returns>A task that completes when it did.</returns>
+        public Task WaitForTokenAsync(string connectionToken)
+        {
+            return Patience.WaitAsync(Signal(_tokens, connectionToken).Task);
         }
 
         /// <summary>The principal a connection arrived with.</summary>
@@ -219,11 +255,12 @@ namespace Tellma.Testing.WebHost.Realtime
         }
 
         /// <summary>A connection's signal, created by whichever side asks first.</summary>
-        /// <param name="connectionId">The connection's id.</param>
+        /// <param name="signals">The signals, by the connection's id or by its token.</param>
+        /// <param name="key">The connection's id or token.</param>
         /// <returns>The signal.</returns>
-        private TaskCompletionSource Signal(string connectionId)
+        private static TaskCompletionSource Signal(ConcurrentDictionary<string, TaskCompletionSource> signals, string key)
         {
-            return _connected.GetOrAdd(connectionId, static _ => new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously));
+            return signals.GetOrAdd(key, static _ => new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously));
         }
     }
 
@@ -249,6 +286,9 @@ namespace Tellma.Testing.WebHost.Realtime
         /// <summary>The connection.</summary>
         public HubConnection Connection { get; }
 
+        /// <summary>The token the connection's WebSocket connected with; null until it did.</summary>
+        public string? ConnectionToken { get; set; }
+
         /// <summary>Completes when the connection closed, with the error it closed with, if any.</summary>
         public Task<Exception?> Closed => _closed.Task;
 
@@ -256,16 +296,17 @@ namespace Tellma.Testing.WebHost.Realtime
         /// <returns>The envelope.</returns>
         public async Task<JsonElement> NextAsync()
         {
-            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
-            timeout.CancelAfter(RealtimeTestHost.Patience);
-            return await _events.Reader.ReadAsync(timeout.Token);
+            // The read itself is cancelled at the limit, so no read left waiting takes a later event.
+            using var limit = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+            limit.CancelAfter(Patience.Limit);
+            return await _events.Reader.ReadAsync(limit.Token);
         }
 
         /// <summary>Waits for the connection to close.</summary>
         /// <returns>The error it closed with, if any.</returns>
         public async Task<Exception?> ClosedAsync()
         {
-            return await Closed.WaitAsync(RealtimeTestHost.Patience, TestContext.Current.CancellationToken);
+            return await Patience.WaitAsync(Closed);
         }
 
         /// <summary>Whether an event is waiting that was not read.</summary>

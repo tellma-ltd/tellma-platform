@@ -31,6 +31,7 @@
   <label><span>select</span><input type="text" id="select" value="Id, Code, Amount"></label>
   <label><span>filter</span><input type="text" id="filter" value="Amount &gt; 0"></label>
   <label><span>having</span><input type="text" id="having" value=""></label>
+  <label><span>measures, of an aggregate query</span><input type="text" id="measures" value=""></label>
   <label><span>order by</span><input type="text" id="orderBy" value=""></label>
   <label><span>restrictions (path @table = keys; …)</span><input type="text" id="restrictions" value=""></label>
   <label><span>undeclared columns</span><input type="text" id="undeclaredColumns" value=""></label>
@@ -61,12 +62,13 @@
   <section><h2>rows</h2><div id="rows"></div></section>
   <section><h2>conjuncts</h2><div id="conjunctList"></div></section>
   <section><h2>measure condition</h2><pre id="measureCondition"></pre></section>
+  <section><h2>measures</h2><div id="measureList"></div></section>
 </div>
 
 <script>
 // Everything the page does is one round trip per keystroke, debounced. The compiler is fast enough
 // that watching every stage react as the input changes is the whole point of the tool.
-const fields = ['select', 'filter', 'having', 'orderBy', 'restrictions', 'undeclaredColumns', 'via', 'exists',
+const fields = ['select', 'filter', 'having', 'measures', 'orderBy', 'restrictions', 'undeclaredColumns', 'via', 'exists',
   'parameters', 'omitted', 'constants', 'measure'];
 const el = id => document.getElementById(id);
 
@@ -86,6 +88,7 @@ async function inspect() {
     select: el('select').value,
     filter: el('filter').value,
     having: el('having').value,
+    measures: el('measures').value,
     orderBy: el('orderBy').value,
     aggregate: el('aggregate').checked,
     root: el('root').value,
@@ -139,6 +142,11 @@ async function inspect() {
     (result.conjuncts ?? []).map(c => [c.location, c.start + '+' + c.length, c.compared, c.operator,
       c.value === null ? '(null)' : c.value, c.type]));
   el('measureCondition').textContent = result.measureCondition ?? '';
+
+  // The query's measures, then the partial columns they are computed from.
+  el('measureList').innerHTML =
+    table(['measure', 'type', 'nullity'], (result.measures ?? []).map(m => [m.text, m.type, m.nullity])) +
+    table(['partial column', 'kind', 'type'], (result.partials ?? []).map(p => [p.ordinal, p.kind, p.type]));
 }
 
 let pending;

@@ -4,12 +4,14 @@
 // LICENSE file in the root directory of this source tree.
 
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.Abstractions.Crud;
 using Tellma.Core.Abstractions.Data;
+using Tellma.Core.Abstractions.Email;
 using Tellma.Core.Abstractions.Identity;
 using Tellma.Core.Abstractions.Localization;
 using Tellma.Core.Abstractions.Tenancy;
@@ -26,7 +28,8 @@ namespace Tellma.Core.Users
     ///     What the users' stack service needs from the platform beyond its pipeline: the identity
     ///     server, the membership hints, the links, the language catalogue and value sets its rules
     ///     check against, the guarded batches of the invitation status and the self-service writes,
-    ///     and the open frame a profile edit enlists into. One per scope.
+    ///     the open frame a profile edit enlists into, and what the welcome email is rendered and
+    ///     enqueued with. One per scope.
     /// </summary>
     /// <remarks>
     ///     The platform registers and builds it; a service that derives from the users' stack service
@@ -51,6 +54,10 @@ namespace Tellma.Core.Users
         /// <param name="accessOptions">The access options: the preference bags' caps.</param>
         /// <param name="metadata">The entity metadata, whose user leaf a profile edit loads whole.</param>
         /// <param name="schemas">The query schemas, which declare the columns a profile edit loads.</param>
+        /// <param name="connection">The scope's user connection, which names the caller who invites.</param>
+        /// <param name="outbox">The scope's email outbox, which the welcome emails are enqueued through.</param>
+        /// <param name="negotiator">Negotiates each invited user's localization.</param>
+        /// <param name="localizers">Creates the localizer of Core's server resources, which hold the welcome email's text.</param>
         /// <param name="time">The host's clock.</param>
         /// <param name="metrics">The users' stack's instruments.</param>
         /// <param name="loggerFactory">Creates the users' stack's logger.</param>
@@ -71,6 +78,10 @@ namespace Tellma.Core.Users
             IOptions<AccessOptions> accessOptions,
             IEntityMetadataProvider metadata,
             QueryexSchemaProvider schemas,
+            IScopeConnection connection,
+            IEmailOutbox outbox,
+            ILocalizationNegotiator negotiator,
+            IStringLocalizerFactory localizers,
             TimeProvider time,
             UsersMetrics metrics,
             ILoggerFactory loggerFactory)
@@ -91,6 +102,10 @@ namespace Tellma.Core.Users
             AccessOptions = (accessOptions ?? throw new ArgumentNullException(nameof(accessOptions))).Value;
             Metadata = metadata ?? throw new ArgumentNullException(nameof(metadata));
             Schemas = schemas ?? throw new ArgumentNullException(nameof(schemas));
+            Connection = connection ?? throw new ArgumentNullException(nameof(connection));
+            Outbox = outbox ?? throw new ArgumentNullException(nameof(outbox));
+            Negotiator = negotiator ?? throw new ArgumentNullException(nameof(negotiator));
+            Localizers = localizers ?? throw new ArgumentNullException(nameof(localizers));
             Time = time ?? throw new ArgumentNullException(nameof(time));
             Metrics = metrics ?? throw new ArgumentNullException(nameof(metrics));
             Logger = (loggerFactory ?? throw new ArgumentNullException(nameof(loggerFactory))).CreateLogger(UsersLog.Category);
@@ -143,6 +158,18 @@ namespace Tellma.Core.Users
 
         /// <summary>The query schemas, which declare the columns a profile edit loads.</summary>
         internal QueryexSchemaProvider Schemas { get; }
+
+        /// <summary>The scope's user connection, whose connected caller names who invites.</summary>
+        internal IScopeConnection Connection { get; }
+
+        /// <summary>The scope's email outbox, which the welcome emails are enqueued through.</summary>
+        internal IEmailOutbox Outbox { get; }
+
+        /// <summary>Negotiates each invited user's localization from their preferences and the tenant's settings.</summary>
+        internal ILocalizationNegotiator Negotiator { get; }
+
+        /// <summary>Creates the localizer of Core's server resources.</summary>
+        internal IStringLocalizerFactory Localizers { get; }
 
         /// <summary>The host's clock.</summary>
         internal TimeProvider Time { get; }

@@ -52,6 +52,7 @@ namespace Tellma.Core.Crud.Save
     /// <param name="guards">The access guards of the security tables.</param>
     /// <param name="frames">The write frames the scope's persists may be nested in.</param>
     /// <param name="registry">The stacks and the pairs they accept enlisted writes through.</param>
+    /// <param name="reads">The reads of the entities a write reaches: its reference targets and visible loads.</param>
     /// <param name="logger">The log of the post-commit failures.</param>
     internal sealed class SaveOperation(
         AccessEvaluator evaluator,
@@ -76,11 +77,9 @@ namespace Tellma.Core.Crud.Save
         IAccessGuards guards,
         WriteFrames frames,
         StackRegistry registry,
+        TargetReads reads,
         ILogger<SaveOperation> logger)
     {
-        /// <summary>The owner of each child entity, by the child's name; built on first use.</summary>
-        private Dictionary<string, EntityOwner>? _owners;
-
         /// <summary>The caller's access decisions.</summary>
         internal AccessEvaluator Evaluator { get; } = evaluator;
 
@@ -141,21 +140,14 @@ namespace Tellma.Core.Crud.Save
         /// <summary>The stacks and the pairs they accept enlisted writes through.</summary>
         internal StackRegistry Registry { get; } = registry;
 
+        /// <summary>The reads of the entities a write reaches.</summary>
+        internal TargetReads Reads { get; } = reads;
+
         /// <summary>The log of the post-commit failures.</summary>
         internal ILogger Logger { get; } = logger;
 
         /// <summary>The data layer's large-batch threshold, which picks a save's lane.</summary>
         internal int LargeBatchThreshold => data.Value.LargeBatchThreshold;
-
-        /// <summary>The entity whose child collection holds a child entity, and the child's navigation to that entity's row.</summary>
-        /// <param name="child">The child entity.</param>
-        /// <returns>The owner; null for an entity no collection holds.</returns>
-        internal EntityOwner? OwnerOf(EntityMetadata child)
-        {
-            ArgumentNullException.ThrowIfNull(child);
-            _owners ??= Owners(Metadata);
-            return _owners.GetValueOrDefault(child.Name);
-        }
 
         /// <summary>Saves a payload of a stack's rows: inserts the new ones, updates the others, synchronises their children.</summary>
         /// <typeparam name="TEntity">The stack's entity type.</typeparam>
@@ -188,25 +180,6 @@ namespace Tellma.Core.Crud.Save
                 cancellationToken);
         }
 
-        /// <summary>Maps every child entity to the entity whose collection holds it.</summary>
-        /// <param name="metadata">The tenant model's entity metadata.</param>
-        /// <returns>The owners, by the child's name.</returns>
-        private static Dictionary<string, EntityOwner> Owners(IEntityMetadataProvider metadata)
-        {
-            Dictionary<string, EntityOwner> owners = new(StringComparer.Ordinal);
-            foreach (EntityMetadata entity in metadata.All)
-            {
-                foreach (ChildCollectionMetadata collection in entity.Children)
-                {
-                    // A child's one parent key names one owner, whichever of the owner's collections holds it.
-                    string? navigation = collection.Child.References.FirstOrDefault(reference => reference.ForeignKey.Name == collection.ParentKey.Name)?.Navigation;
-                    _ = owners.TryAdd(collection.Child.Name, new EntityOwner(entity, collection.ParentKey, navigation));
-                }
-            }
-
-            return owners;
-        }
-
         /// <summary>Counts a payload's rows at every depth, skipping a null row, which the first check refuses.</summary>
         /// <param name="entity">The rows' entity.</param>
         /// <param name="rows">The rows.</param>
@@ -234,10 +207,4 @@ namespace Tellma.Core.Crud.Save
             return count;
         }
     }
-
-    /// <summary>The entity whose child collection holds a child entity, and how the child reaches that entity's row.</summary>
-    /// <param name="Entity">The owning entity.</param>
-    /// <param name="ParentKey">The child's parent key, which references the owner's row.</param>
-    /// <param name="Navigation">The child's navigation through its parent key; null when the child declares none.</param>
-    internal sealed record EntityOwner(EntityMetadata Entity, PropertyMetadata ParentKey, string? Navigation);
 }

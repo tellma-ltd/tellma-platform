@@ -23,8 +23,9 @@ namespace Tellma.Core.IntegrationTests.Blobs
     /// <summary>
     ///     The statements that meet a confirm outside a save: the reconcile, which releases a
     ///     committed blob no owner row references once its day of grace passed and leaves a young
-    ///     orphan and a referenced blob alone; and the sweep's claim under read-committed snapshot,
-    ///     which blocks on the row a save's confirm holds and, once the save commits, skips it.
+    ///     orphan and a referenced blob alone; and the sweep's claim, as the sweep composes it, under
+    ///     read-committed snapshot, which blocks on the row a save's confirm holds and, once the save
+    ///     commits, skips it.
     /// </summary>
     /// <param name="fixture">The tenant databases and the seeding helpers.</param>
     [Trait("Category", "Integration")]
@@ -32,22 +33,6 @@ namespace Tellma.Core.IntegrationTests.Blobs
     {
         /// <summary>The application lock the race's save waits on, holding its confirm's lock; the save's statement names it literally.</summary>
         private const string Gate = "fixture-blob-race";
-
-        /// <summary>
-        ///     The sweep's claim, as the sweep job runs it on a maintenance batch with no transaction of
-        ///     its own, here at an instant an hour past the database's clock, so a row staged for half
-        ///     an hour is due.
-        /// </summary>
-        private const string Claim = """
-            DECLARE @now datetimeoffset(3) = DATEADD(hour, 1, SYSUTCDATETIME());
-            WITH due AS (
-                SELECT TOP (100) [Id], [Kind], [StorageKey], [Variants], [State], [ExpiresAt]
-                FROM [core].[Blobs] WITH (ROWLOCK)
-                WHERE [State] IN ('Staged', 'Released', 'Deleting') AND [ExpiresAt] < @now
-                ORDER BY [ExpiresAt])
-            UPDATE due SET [State] = 'Deleting', [ExpiresAt] = DATEADD(minute, 60, @now)
-            OUTPUT inserted.[Id], inserted.[Kind], inserted.[StorageKey], inserted.[Variants], deleted.[State];
-            """;
 
         /// <summary>The test's cancellation.</summary>
         private static CancellationToken Token => TestContext.Current.CancellationToken;
@@ -100,7 +85,7 @@ namespace Tellma.Core.IntegrationTests.Blobs
 
             // The property is the one under read-committed snapshot, where the claim's read sees the row as it was before the confirm.
             Assert.Equal(1, await ScalarAsync(sweeper, "SELECT CAST([is_read_committed_snapshot_on] AS int) FROM sys.databases WHERE [name] = DB_NAME();"));
-            Task<List<int>> claiming = ClaimAsync(sweeper);
+            Task<List<int>> claiming = ClaimAsync(sweeper, await ClaimCommandAsync(Tenant));
             await WaitUntilAsync(Tenant, FormattableString.Invariant($"SELECT COUNT(*) FROM sys.dm_exec_requests WHERE [session_id] = {spid} AND [wait_type] LIKE N'LCK_M_%' AND [blocking_session_id] <> 0;"), claiming);
             Assert.False(claiming.IsCompleted, "The claim did not wait for the confirm's lock.");
 
@@ -135,12 +120,35 @@ namespace Tellma.Core.IntegrationTests.Blobs
             return released.Value;
         }
 
+        /// <summary>
+        ///     The sweep's claim, as the sweep job composes it on a maintenance batch of a tenant, its
+        ///     declared instant moved an hour past the database's clock so a row staged for half an
+        ///     hour is due, and its parameters bound.
+        /// </summary>
+        /// <param name="tenantId">The tenant.</param>
+        /// <returns>The command's text and parameters.</returns>
+        private async Task<(string Text, SqlParameter[] Parameters)> ClaimCommandAsync(int tenantId)
+        {
+            await using AsyncServiceScope scope = await fixture.Connect.ScopeAsync(subject: null, kind: PrincipalKind.System, tenantId: tenantId, background: true, services: fixture.Instance);
+            var batch = (DataBatch)scope.ServiceProvider.GetRequiredService<ITenantDatabase>().CreateBatch(BatchPurpose.Maintenance);
+            _ = BlobStatements.Claim(batch, 100, TimeSpan.FromMinutes(60));
+
+            // --- The claim follows the batch's own preamble; its declared instant is moved an hour ahead ---
+            BatchStatement statement = batch.Statements[^1];
+            string instant = string.Create(CultureInfo.InvariantCulture, $"DECLARE @tb{statement.Ordinal}_now datetimeoffset(3) = SYSUTCDATETIME();");
+            Assert.StartsWith(instant, statement.Text, StringComparison.Ordinal);
+            string text = string.Create(CultureInfo.InvariantCulture, $"DECLARE @tb{statement.Ordinal}_now datetimeoffset(3) = DATEADD(hour, 1, SYSUTCDATETIME());") + statement.Text[instant.Length..];
+            return (text, [.. statement.Parameters.Select(static parameter => parameter.Create())]);
+        }
+
         /// <summary>Runs the claim on a connection and returns the ids it claimed.</summary>
         /// <param name="connection">The connection.</param>
+        /// <param name="claim">The claim's text and parameters.</param>
         /// <returns>The claimed ids.</returns>
-        private static async Task<List<int>> ClaimAsync(SqlConnection connection)
+        private static async Task<List<int>> ClaimAsync(SqlConnection connection, (string Text, SqlParameter[] Parameters) claim)
         {
-            await using SqlCommand command = new(Claim, connection) { CommandTimeout = 60 };
+            await using SqlCommand command = new(claim.Text, connection) { CommandTimeout = 60 };
+            command.Parameters.AddRange(claim.Parameters);
             await using SqlDataReader reader = await command.ExecuteReaderAsync(Token);
             List<int> claimed = [];
             while (await reader.ReadAsync(Token))

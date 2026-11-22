@@ -16,6 +16,7 @@ using Tellma.Core.Abstractions.Crud;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Entities;
 using Tellma.Core.Abstractions.Errors;
+using Tellma.Core.Abstractions.Excel;
 using Xunit;
 
 namespace Tellma.Core.Testing.Crud
@@ -482,6 +483,48 @@ namespace Tellma.Core.Testing.Crud
         private ParentIdsRequest ByParents(IEnumerable<TKey> parents)
         {
             return new ParentIdsRequest([.. parents.Select(static parent => long.CreateChecked(parent))], Metadata.Key.Name, null, null);
+        }
+
+        /// <summary>The export source of some rows by id.</summary>
+        /// <param name="ids">The rows' ids.</param>
+        /// <returns>The source.</returns>
+        private static ExportSource.ByIds ExportByIds(IEnumerable<TKey> ids)
+        {
+            return new ExportSource.ByIds([.. ids.Select(static id => long.CreateChecked(id))], null);
+        }
+
+        /// <summary>
+        ///     The Excel rows of the stack's ids, with every child collection at every depth riding
+        ///     each page, each collection's rows by their parent key and id.
+        /// </summary>
+        /// <returns>The root query.</returns>
+        private ExcelQuery ExcelTree()
+        {
+            return new ExcelQuery(Metadata.Name, [Metadata.Key.Name], null, null, null, null, null, Dependents(Metadata));
+
+            // Each collection of an entity, with its own collections under it; null for none.
+            static List<ExcelQuery>? Dependents(EntityMetadata entity)
+            {
+                return entity.Children.Count == 0
+                    ? null
+                    : [.. entity.Children.Select(static collection => new ExcelQuery(
+                        collection.Child.Name, [collection.ParentKey.Name, collection.Child.Key.Name], null, null, null, null, null, Dependents(collection.Child)))];
+            }
+        }
+
+        /// <summary>Streams every page of an Excel row source.</summary>
+        /// <param name="rows">The row source.</param>
+        /// <param name="query">The root query.</param>
+        /// <returns>The root rows across the pages.</returns>
+        private static async Task<int?> ExcelRowsAsync(IExcelRowSource rows, ExcelQuery query)
+        {
+            int count = 0;
+            await foreach (ExcelPage page in rows.Pages(query, Token))
+            {
+                count += page.Rows.Count;
+            }
+
+            return count;
         }
 
         /// <summary>Whether the stack serves an operation, and has the capability it needs.</summary>

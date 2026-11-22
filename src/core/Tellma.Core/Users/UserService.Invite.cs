@@ -23,8 +23,8 @@ namespace Tellma.Core.Users
     // once per chunk, composes the write-back onto the deferred persist batch, and reads the
     // statement's mismatch set once the action committed. A recompose of round trip 2 replays the
     // composed write-back and never invokes the method, so the identity server is called once.
-    // The core.user.added notice and the welcome email of §3.3 step 3 join with spec 0021's and
-    // spec 0022's contributions.
+    // The welcome emails of §3.3 step 3 are enlisted with the action's frame after the write-back is
+    // composed; the core.user.added notice joins with spec 0021's contribution.
     public partial class UserService<TUser>
     {
         /// <summary>The identity server's per-user error for an unknown address on a lookup that may not create users.</summary>
@@ -91,6 +91,9 @@ namespace Tellma.Core.Users
             // --- Phase 3 (round trip 2): the write-back of what was answered, its tag bumps riding the epilogue ---
             UserInvitationOutcome[] outcomes = [.. answered.Select((result, index) => Outcome(targets[index].Id, result, existingOnly))];
             BatchResult<RawResult>? written = outcomes.Length > 0 ? ComposeWriteBack(context.Batch, outcomes) : null;
+
+            // --- The welcome emails, enlisted with the action's frame so they commit with the write-back ---
+            await EnqueueWelcomeAsync(context, targets, outcomes, answered, settings, returnUrl).ConfigureAwait(false);
 
             // --- Phase 4: the commit, then the statement's mismatches ---
             await context.Persisted.ConfigureAwait(false);

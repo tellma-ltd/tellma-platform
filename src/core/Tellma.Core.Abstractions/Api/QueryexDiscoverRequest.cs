@@ -15,7 +15,7 @@ namespace Tellma.Core.Abstractions.Api
     /// <param name="Filters">Queryex predicates, each its own leaf, conjoined as a query conjoins them; null or empty for none.</param>
     /// <param name="Having">The group-level predicate of an aggregate query; null for none.</param>
     /// <param name="OrderBy">The Queryex ordering; null for none.</param>
-    /// <param name="Measures">The measures of a pivot or a summary, which need an aggregate; not supported yet, so any is refused.</param>
+    /// <param name="Measures">The measures of a pivot or a summary, as a comma-separated list; null for none, and refused without an aggregate.</param>
     /// <param name="Aggregate">Whether the select is an aggregation.</param>
     /// <param name="Parameters">The parameter types the author confirmed; every other parameter's type is inferred.</param>
     /// <param name="Profile">Whether the text is checked as a query or as a permission filter.</param>

@@ -159,9 +159,9 @@ namespace Tellma.Core.Queryex
         /// <returns>What they refer to, and whatever problems could still be reported.</returns>
         /// <exception cref="ArgumentNullException">An argument is null.</exception>
         /// <exception cref="ArgumentException">
-        ///     A root was supplied without its schema, a group-level predicate was supplied for a
-        ///     query that does not group, or a rebase or semi-join does not fit the schema or sits in
-        ///     the group-level predicate.
+        ///     A root was supplied without its schema, a group-level predicate or measures were
+        ///     supplied for a query that does not group, or a rebase or semi-join does not fit the
+        ///     schema or sits in the group-level predicate.
         /// </exception>
         /// <remarks>
         ///     One inference run across every clause, which is why this exists beside the
@@ -175,6 +175,7 @@ namespace Tellma.Core.Queryex
             RequirePairedSchema(options);
 
             RequireGrouping(spec.Having, spec.Aggregate, nameof(spec));
+            RequireMeasuresGroup(spec.Measures, spec.Aggregate, nameof(spec));
             HostStructure.RequireFilters(spec, options.Schema, options.Root);
             return Discoverer.DiscoverQuery(_compiler, spec, options);
         }
@@ -185,8 +186,8 @@ namespace Tellma.Core.Queryex
         /// <returns>The compiled query, or the diagnostics that stopped it.</returns>
         /// <exception cref="ArgumentNullException">An argument is null.</exception>
         /// <exception cref="ArgumentException">
-        ///     The root does not belong to the schema, a group-level predicate was supplied for a
-        ///     query that does not group, the paging values are not usable, the batch ordinal is
+        ///     The root does not belong to the schema, a group-level predicate or measures were
+        ///     supplied for a query that does not group, the paging values are not usable, the batch ordinal is
         ///     negative, the declarations are not usable, an omitted parameter is not declared, a
         ///     key-set restriction does not fit the schema, the undeclared columns are not usable, or
         ///     a rebase or semi-join does not fit the schema or sits in the group-level predicate.
@@ -471,6 +472,25 @@ namespace Tellma.Core.Queryex
             }
         }
 
+        /// <summary>Checks that measures belong to a query that groups.</summary>
+        /// <param name="measures">The measures, when there are any.</param>
+        /// <param name="aggregate">Whether the query groups.</param>
+        /// <param name="parameterName">The caller's parameter name, for the exception.</param>
+        /// <exception cref="ArgumentException">There are some and the query does not group.</exception>
+        /// <remarks>
+        ///     A measure is evaluated over groups that a host combines after the statement has run,
+        ///     and a query that does not group has no groups to combine.
+        /// </remarks>
+        private static void RequireMeasuresGroup(string? measures, bool aggregate, string parameterName)
+        {
+            if (!string.IsNullOrWhiteSpace(measures) && !aggregate)
+            {
+                throw new ArgumentException(
+                    "Measures belong only to a query that groups.",
+                    parameterName);
+            }
+        }
+
         /// <summary>Checks that an entity belongs to the schema it is being used with.</summary>
         /// <param name="schema">The schema.</param>
         /// <param name="entity">The entity.</param>
@@ -514,6 +534,7 @@ namespace Tellma.Core.Queryex
         private static void RequirePaging(QuerySpec spec, QueryCompilationOptions options)
         {
             RequireGrouping(spec.Having, spec.Aggregate, nameof(spec));
+            RequireMeasuresGroup(spec.Measures, spec.Aggregate, nameof(spec));
 
             if (spec.Skip is < 0)
             {

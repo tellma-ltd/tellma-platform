@@ -9,6 +9,7 @@ using System.Globalization;
 using System.Text;
 using Tellma.Core.Abstractions.Blobs;
 using Tellma.Core.Abstractions.Data;
+using Tellma.Core.Abstractions.TableTypes;
 using Tellma.Core.Data.Batches;
 using Tellma.Core.Data.Conventions;
 
@@ -16,9 +17,10 @@ namespace Tellma.Core.Blobs
 {
     /// <summary>
     ///     The blob machinery's fixed statements, each appended on the batch's internal channel: the
-    ///     stage, the read a download resolves, and the reconcile of one kind. Those that write declare
-    ///     <c>core.Blobs</c> as the table they write, which no caller authority check refuses:
-    ///     <c>core.Blobs</c> belongs to no stack.
+    ///     stage, the read a download resolves, the sweep's claim and row delete, the reconcile of one
+    ///     kind, and the rows of one listing segment the operator's verification compares. Those that
+    ///     write declare <c>core.Blobs</c> as the table they write, which no caller authority check
+    ///     refuses: <c>core.Blobs</c> belongs to no stack.
     /// </summary>
     internal static class BlobStatements
     {
@@ -189,6 +191,195 @@ namespace Tellma.Core.Blobs
             }
         }
 
+        // spec 0017 §7.1: the sweep's claim. Its instant is the database clock's, the clock the
+        // confirm's expiry check reads (§4.4), so a row the claim takes can never be confirmed after
+        // it, and a row a save confirmed first is no longer staged when the claim's update, having
+        // waited on the confirm's lock, re-reads it. A row already deleting is taken again once its
+        // reclaim instant passed: the sweep that claimed it stopped short of deleting it.
+        /// <summary>
+        ///     Appends the sweep's claim: up to <paramref name="size" /> rows that are staged past their
+        ///     deadline, released, or deleting past their reclaim instant, earliest first, become
+        ///     <see cref="BlobState.Deleting" /> until <paramref name="reclaimAfter" /> from now, and
+        ///     are returned with the state each was in before.
+        /// </summary>
+        /// <remarks>
+        ///     The statement is not idempotent: a run that failed ambiguously leaves its rows claimed,
+        ///     and the next sweep after their reclaim instant takes them again. The caller runs it on a
+        ///     maintenance batch with no transaction of its own, so the claim commits as it ends.
+        /// </remarks>
+        /// <param name="batch">The batch the statement rides.</param>
+        /// <param name="size">The most rows the claim takes; positive.</param>
+        /// <param name="reclaimAfter">How long a claimed row stays claimed; a whole number of seconds that a 32-bit count carries.</param>
+        /// <returns>The claimed rows, once the batch executed.</returns>
+        public static BatchResult<IReadOnlyList<ClaimedBlob>> Claim(DataBatch batch, int size, TimeSpan reclaimAfter)
+        {
+            ArgumentNullException.ThrowIfNull(batch);
+            ArgumentOutOfRangeException.ThrowIfNegativeOrZero(size);
+
+            BatchResult<IReadOnlyList<ClaimedBlob>> result = new();
+            StatementDraft draft = batch.Begin();
+            try
+            {
+                // --- The parameters, in the spec's order; the reclaim span in seconds, as the options validate it ---
+                string top = draft.Scalar(SqlDbType.Int, size);
+                string reclaim = draft.Scalar(SqlDbType.Int, checked((int)reclaimAfter.TotalSeconds));
+                string now = draft.Name(ReservedSqlNames.StatementNames.Now);
+
+                // --- The text: a seek on IX_Blobs_Expiry, whose filter the deadline predicate implies ---
+                string text = string.Create(CultureInfo.InvariantCulture, $"""
+                    DECLARE {now} datetimeoffset(3) = SYSUTCDATETIME();
+                    WITH due AS (
+                        SELECT TOP ({top}) [Id], [Kind], [{BlobConfiguration.StorageKey}], [Variants], [State], [ExpiresAt]
+                        FROM {Blobs.Delimited} WITH (ROWLOCK)
+                        WHERE [State] IN ('{nameof(BlobState.Staged)}', '{nameof(BlobState.Released)}', '{nameof(BlobState.Deleting)}') AND [ExpiresAt] < {now}
+                        ORDER BY [ExpiresAt])
+                    UPDATE due SET [State] = '{nameof(BlobState.Deleting)}', [ExpiresAt] = DATEADD(second, {reclaim}, {now})
+                    OUTPUT inserted.[Id], inserted.[Kind], inserted.[{BlobConfiguration.StorageKey}], inserted.[Variants], deleted.[State];
+                    """);
+
+                // --- The reader: every claimed row with the state it left ---
+                int ordinal = draft.Ordinal;
+                batch.Append(draft, text, new HashSet<TableName> { Blobs }, idempotent: false, reader: async (cursor, cancellationToken) =>
+                {
+                    DbDataReader set = await cursor.NextAsync(ordinal, cancellationToken).ConfigureAwait(false);
+                    List<ClaimedBlob> claimed = [];
+                    while (await set.ReadAsync(cancellationToken).ConfigureAwait(false))
+                    {
+                        claimed.Add(new ClaimedBlob(
+                            set.GetInt32(0),
+                            set.GetString(1),
+                            set.GetString(2),
+                            set.GetString(3),
+                            Enum.Parse<BlobState>(set.GetString(4), ignoreCase: false)));
+                    }
+
+                    cursor.CountRows(claimed.Count);
+                    cursor.Complete(result, claimed);
+                });
+                return result;
+            }
+            catch
+            {
+                batch.Discard(draft);
+                throw;
+            }
+        }
+
+        // spec 0017 §7.1: the sweep's row delete, once a claimed row's objects are gone. Only a
+        // deleting row is deleted, so a row that left the claim in between (it cannot: only a staged
+        // row is ever confirmed) would survive rather than lose its owner's blob.
+        /// <summary>
+        ///     Appends the delete of the rows among <paramref name="ids" /> that are still
+        ///     <see cref="BlobState.Deleting" />, returning the ids it deleted. Running it twice deletes
+        ///     nothing more.
+        /// </summary>
+        /// <param name="batch">The batch the statement rides.</param>
+        /// <param name="ids">The rows whose objects are gone; not empty.</param>
+        /// <returns>The ids of the rows deleted, once the batch executed.</returns>
+        public static BatchResult<IReadOnlyList<int>> DeleteSwept(DataBatch batch, IReadOnlyCollection<int> ids)
+        {
+            ArgumentNullException.ThrowIfNull(batch);
+            ArgumentNullException.ThrowIfNull(ids);
+            if (ids.Count == 0)
+            {
+                throw new ArgumentException("The sweep deletes at least one row.", nameof(ids));
+            }
+
+            BatchResult<IReadOnlyList<int>> result = new();
+            StatementDraft draft = batch.Begin();
+            try
+            {
+                string list = draft.Table([.. ids.Distinct().Select(static id => new IdList { Id = id })]);
+                string text = string.Create(CultureInfo.InvariantCulture, $"""
+                    DELETE b
+                    OUTPUT deleted.[Id]
+                    FROM {Blobs.Delimited} AS b INNER JOIN {list} AS i ON i.[Id] = b.[Id] WHERE b.[State] = '{nameof(BlobState.Deleting)}';
+                    """);
+
+                // --- The reader: the ids deleted ---
+                int ordinal = draft.Ordinal;
+                batch.Append(draft, text, new HashSet<TableName> { Blobs }, idempotent: true, reader: async (cursor, cancellationToken) =>
+                {
+                    DbDataReader set = await cursor.NextAsync(ordinal, cancellationToken).ConfigureAwait(false);
+                    List<int> deleted = [];
+                    while (await set.ReadAsync(cancellationToken).ConfigureAwait(false))
+                    {
+                        deleted.Add(set.GetInt32(0));
+                    }
+
+                    cursor.CountRows(deleted.Count);
+                    cursor.Complete(result, deleted);
+                });
+                return result;
+            }
+            catch
+            {
+                batch.Discard(draft);
+                throw;
+            }
+        }
+
+        // spec 0017 §7.3: the rows the operator's verification compares with one listing segment of
+        // the store. The prefix holds a kind and a fan-out segment, whose characters the name grammar
+        // keeps clear of the pattern's wildcards, so the match is a seek on UX_Blobs_StorageKey.
+        /// <summary>
+        ///     Appends the read of the kind's rows, in every state, whose primary object lies under a
+        ///     listing segment: the rows whose objects the store lists under that segment.
+        /// </summary>
+        /// <param name="batch">The batch the statement rides.</param>
+        /// <param name="kind">The kind.</param>
+        /// <param name="segment">The segment, a kind and a fan-out segment (<see cref="BlobName.IsValidPrefix" />) of that kind.</param>
+        /// <returns>The rows, once the batch executed.</returns>
+        public static BatchResult<IReadOnlyList<SegmentBlob>> Segment(DataBatch batch, string kind, string segment)
+        {
+            ArgumentNullException.ThrowIfNull(batch);
+            ArgumentNullException.ThrowIfNull(kind);
+            ArgumentNullException.ThrowIfNull(segment);
+            if (!BlobName.IsValidPrefix(segment) || !segment.StartsWith(kind + BlobName.SegmentSeparator, StringComparison.Ordinal))
+            {
+                throw new ArgumentException($"'{segment}' is not a fan-out segment of the kind '{kind}'.", nameof(segment));
+            }
+
+            BatchResult<IReadOnlyList<SegmentBlob>> result = new();
+            StatementDraft draft = batch.Begin();
+            try
+            {
+                string kindParameter = draft.Scalar(SqlDbType.NVarChar, kind, 40);
+                string pattern = draft.Scalar(SqlDbType.NVarChar, segment + BlobName.SegmentSeparator + "%", 120);
+                string text = string.Create(CultureInfo.InvariantCulture, $"""
+                    SELECT [Id], [{BlobConfiguration.StorageKey}], [Variants], [State], [CreatedAt]
+                    FROM {Blobs.Delimited}
+                    WHERE [Kind] = {kindParameter} AND [{BlobConfiguration.StorageKey}] LIKE {pattern};
+                    """);
+
+                // --- The reader: every row of the segment ---
+                int ordinal = draft.Ordinal;
+                batch.Append(draft, text, new HashSet<TableName>(), idempotent: true, reader: async (cursor, cancellationToken) =>
+                {
+                    DbDataReader set = await cursor.NextAsync(ordinal, cancellationToken).ConfigureAwait(false);
+                    List<SegmentBlob> rows = [];
+                    while (await set.ReadAsync(cancellationToken).ConfigureAwait(false))
+                    {
+                        rows.Add(new SegmentBlob(
+                            set.GetInt32(0),
+                            set.GetString(1),
+                            set.GetString(2),
+                            Enum.Parse<BlobState>(set.GetString(3), ignoreCase: false),
+                            set.GetFieldValue<DateTimeOffset>(4)));
+                    }
+
+                    cursor.CountRows(rows.Count);
+                    cursor.Complete(result, rows);
+                });
+                return result;
+            }
+            catch
+            {
+                batch.Discard(draft);
+                throw;
+            }
+        }
+
         // spec 0017 §7.2: the reconcile of one kind, which the reconcile job runs once per kind on a
         // maintenance batch; a day's grace keeps a blob committed by a transaction still in flight.
         /// <summary>
@@ -295,4 +486,20 @@ namespace Tellma.Core.Blobs
         int? Width,
         int? Height,
         string Variants);
+
+    /// <summary>A row the sweep's claim took, as its output returns it.</summary>
+    /// <param name="Id">The blob's id.</param>
+    /// <param name="Kind">The blob's kind.</param>
+    /// <param name="StorageKey">The primary's full object name.</param>
+    /// <param name="Variants">The comma-separated variants stored beside the primary; empty for none.</param>
+    /// <param name="PreviousState">The state the row was in before the claim.</param>
+    internal sealed record ClaimedBlob(int Id, string Kind, string StorageKey, string Variants, BlobState PreviousState);
+
+    /// <summary>A row of one listing segment, as the operator's verification reads it.</summary>
+    /// <param name="Id">The blob's id.</param>
+    /// <param name="StorageKey">The primary's full object name.</param>
+    /// <param name="Variants">The comma-separated variants stored beside the primary; empty for none.</param>
+    /// <param name="State">The row's state.</param>
+    /// <param name="CreatedAt">When the row was staged.</param>
+    internal sealed record SegmentBlob(int Id, string StorageKey, string Variants, BlobState State, DateTimeOffset CreatedAt);
 }

@@ -238,6 +238,12 @@ namespace Tellma.Core.Testing.Crud
                 expected.Add(("save", "ok"));
             }
 
+            if (Serves(StackOperations.Export))
+            {
+                _ = await AsWriterAsync(service => ExcelRowsAsync(service.ExcelRowSource(ExportByIds([stored.Id])), ExcelTree()));
+                expected.Add(("excel_rows", "ok"));
+            }
+
             if (Serves(StackOperations.Delete))
             {
                 _ = await AttemptAsync(writer, service => service.DeleteByIdsAsync([MissingId()], null, Token));

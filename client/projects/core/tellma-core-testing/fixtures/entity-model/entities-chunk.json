@@ -2887,6 +2887,8 @@
         "Name3"
       ],
       "extras": [
+        "members",
+        "problems",
         "permissions"
       ],
       "limits": {

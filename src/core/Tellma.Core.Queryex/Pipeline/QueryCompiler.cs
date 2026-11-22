@@ -69,6 +69,7 @@ namespace Tellma.Core.Queryex.Pipeline
                 Recompile = recompile,
                 Parameters = StatementEmitter.Parameters(plan.Parameters),
                 Columns = [.. plan.Select.Select(static item => item.Column)],
+                Measures = clauses.Measures,
             });
         }
 

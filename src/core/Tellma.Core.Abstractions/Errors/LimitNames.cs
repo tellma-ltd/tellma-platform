@@ -38,6 +38,9 @@ namespace Tellma.Core.Abstractions.Errors
         /// <summary>More details extras in one request than the stack allows.</summary>
         public const string MaxExtras = "MaxExtras";
 
+        /// <summary>More securables in one access check than the endpoint allows.</summary>
+        public const string MaxSecurables = "MaxSecurables";
+
         /// <summary>More entities in one save than the web surface allows.</summary>
         public const string Entities = "entities";
 

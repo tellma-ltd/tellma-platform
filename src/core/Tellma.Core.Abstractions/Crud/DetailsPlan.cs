@@ -3,6 +3,7 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.Queryex;
@@ -27,6 +28,11 @@ namespace Tellma.Core.Abstractions.Crud
     ///         An extra's name must be one the read includes and the producer's class declares, and is
     ///         added once; a raw statement declares no writes. A breach of either rule is an
     ///         <see cref="InvalidOperationException" />: an authoring bug.
+    ///     </para>
+    ///     <para>
+    ///         A producer adds every requested extra it declares, or leaves it out on purpose with
+    ///         <see cref="OmitExtra" />, as when <see cref="Decide" /> denies the caller what the extra
+    ///         would show; an omitted extra is absent from the result.
     ///     </para>
     /// </remarks>
     /// <typeparam name="TEntity">The stack's entity type.</typeparam>
@@ -137,6 +143,38 @@ namespace Tellma.Core.Abstractions.Crud
             Planner().AddComputedExtra(name, compute);
         }
 
+        /// <summary>
+        ///     Leaves a requested extra out of the result on purpose, as when the caller may not read
+        ///     what it would show: no statement is added and the extra is absent. By the name rules of
+        ///     <see cref="AddExtra(string, QuerySpec, QueryArguments)" />, an extra is added or omitted
+        ///     once.
+        /// </summary>
+        /// <param name="name">The extra's name.</param>
+        /// <exception cref="ArgumentException"><paramref name="name" /> is null, empty or white space.</exception>
+        /// <exception cref="InvalidOperationException">The name is not requested or not declared, or was added or omitted already.</exception>
+        public void OmitExtra(string name)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(name);
+            Planner().OmitExtra(name);
+        }
+
+        /// <summary>
+        ///     The caller's decision on a securable, from the permission set the details read is
+        ///     composed under, as the read's own check was decided: an extra showing rows of another
+        ///     resource reads them under this decision's filter, and is omitted when it denies.
+        ///     Nothing is recorded as evaluated and nothing is counted.
+        /// </summary>
+        /// <param name="resource">The securable's resource, or a former name of it.</param>
+        /// <param name="action">The securable's action.</param>
+        /// <returns>The decision; a denial with its problem when the registry does not hold the pair.</returns>
+        /// <exception cref="ArgumentException"><paramref name="resource" /> or <paramref name="action" /> is null, empty or white space.</exception>
+        public AccessDecision Decide(string resource, string action)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(resource);
+            ArgumentException.ThrowIfNullOrWhiteSpace(action);
+            return Planner().Decide(resource, action);
+        }
+
         /// <summary>The planner behind the plan.</summary>
         /// <returns>The planner.</returns>
         /// <exception cref="InvalidOperationException">The plan was not prepared by the details planner.</exception>
@@ -160,7 +198,10 @@ namespace Tellma.Core.Abstractions.Crud
         }
     }
 
-    /// <summary>The details planner's side of a plan: it records each extra and read on the details batch under the name rules.</summary>
+    /// <summary>
+    ///     The details planner's side of a plan: it records each extra and read on the details batch
+    ///     under the name rules, and decides securables from the set the batch is composed under.
+    /// </summary>
     /// <typeparam name="TEntity">The stack's entity type.</typeparam>
     internal interface IDetailsPlanSink<TEntity>
     {
@@ -193,5 +234,15 @@ namespace Tellma.Core.Abstractions.Crud
         /// <param name="name">The extra's name.</param>
         /// <param name="compute">Computes the value.</param>
         void AddComputedExtra<TValue>(string name, Func<IReadOnlyList<TEntity>, TValue> compute);
+
+        /// <summary>Records a requested extra left out on purpose.</summary>
+        /// <param name="name">The extra's name.</param>
+        void OmitExtra(string name);
+
+        /// <summary>Decides a securable from the permission set the batch is composed under.</summary>
+        /// <param name="resource">The securable's resource.</param>
+        /// <param name="action">The securable's action.</param>
+        /// <returns>The decision.</returns>
+        AccessDecision Decide(string resource, string action);
     }
 }

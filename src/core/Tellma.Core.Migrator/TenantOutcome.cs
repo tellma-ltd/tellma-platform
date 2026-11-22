@@ -37,6 +37,9 @@ namespace Tellma.Core.Migrator
         /// <summary>Retired, so skipped when named.</summary>
         public const string Retired = "retired";
 
+        /// <summary>Its storage was compared with its blob rows to the end.</summary>
+        public const string Verified = "verified";
+
         /// <summary>The command failed on the tenant; a re-run retries it.</summary>
         public const string Failed = "failed";
 

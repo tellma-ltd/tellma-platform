@@ -150,6 +150,9 @@ namespace Tellma.Core.Composition.Checks
         /// </summary>
         public const string Blobs = "blobs";
 
+        /// <summary>A host whose job worker runs registers an email sender for the outgoing emails' sending jobs.</summary>
+        public const string OutboxSender = "outbox.sender";
+
         /// <summary>
         ///     Exactly one blob store is registered; the blob options are positive and the upload
         ///     ceiling covers every kind; and the file-system store's root and the scratch directory

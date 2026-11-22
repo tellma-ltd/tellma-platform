@@ -150,6 +150,7 @@ namespace Tellma.Core.Api
                     Filter = filter,
                     Having = having,
                     OrderBy = shape.OrderBy,
+                    Measures = shape.Measures,
                     Conjuncts = shape.Conjuncts,
                 },
                 new DiscoveryOptions { Schema = schema, Root = root, QueryexVersion = QueryexLanguage.Version, Limits = QueryexProfiles.PipelineLimits });
@@ -166,6 +167,7 @@ namespace Tellma.Core.Api
                     Filter = filter,
                     Having = having,
                     OrderBy = shape.OrderBy,
+                    Measures = shape.Measures,
                 },
                 new QueryCompilationOptions
                 {
