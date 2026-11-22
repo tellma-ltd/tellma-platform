@@ -384,6 +384,14 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-237 (orchestrator, 2026-11-22): PC-105 fix 1 accepted; one verification runs alongside integration
+
+- Fix 1 (8162da65) fixes R1-1 to R1-5 with none pushed back. It is about 460 lines against about 4,240 in the implementation, so it is not an escalation under section 4.4.
+- R1-3 replaces how the primary entity registry's public types check paths: bounded TmPath, TmCheckedDeclaration and TmCheckFrom. Many Tier 1 items build on these types. So one section 4.4 verification of R1-1 to R1-3 runs against 8162da65 in a detached scratch worktree.
+- PROCESS says the verification runs before integration. To keep the queue moving, it runs alongside integration instead. The CI-green message waits for its report, and any defect it confirms is fixed as an integration commit. This is a judgement where PROCESS is silent on overlap.
+- New deviations: from a child root, the owner is judged like any other entity; annotations check two segments, while tmEntity checks every segment of its literal paths.
+- For Ahmad (extends D-233): when both a child's grant and its owner's are filtered, reachable cannot tell whether the child's grant is its own, so it fails closed and may under-offer owner columns. A direct flag on SecurableSummary would close the gap.
+
 ### D-236 (orchestrator, 2026-11-22): PC-176 Review 2 rulings
 
 - Review 2 (inherit, xhigh) found 1 blocking, 2 major, 2 minor. All five accepted:
