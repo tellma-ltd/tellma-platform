@@ -384,6 +384,24 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-191 (orchestrator, 2026-11-22): PC-214 fix1 accepted and held behind PC-096
+
+Fix1 (2b2a3562) fixed R1-1..R1-6 per D-187 and added deviation 11.
+
+Confirmed:
+- The second public `ActionContext.Update` overload (assignments, condition, refusalCode).
+- The data-layer option `UpdateSpec.ByIds.StampUnchanged`.
+
+D-187's all-or-nothing retry needs both. The plain update would reset a target cancelled between the rounds back to Pending, and would leave a retried row whose columns were already clear unstamped. The new overload is pinned in the Abstractions Validation API golden.
+
+Deviation 11 is accepted: a target deleted between the rounds is refused with Email.NotRetryable, not reported as not found. The refusal is whole, so either answer leaves nothing changed, and one code keeps the client path simple.
+
+merge-tree shows 8 conflicts:
+- three regenerated migration pairs (Acme InitialTenant, the Core migrator test distribution and Testing.Entities);
+- two test files (AccessModelTests, JobLabelsTests).
+
+At integration, the migrations are regenerated, never hand-merged. PC-214 is released right after PC-096's platform-core push (D-087, D-190), and PC-175 follows it.
+
 ### D-190 (orchestrator, 2026-11-22): PC-096 integrates ahead of PC-214 and PC-175
 
 PC-096's fix2 (70c18c62) held with a clean merge-tree while PC-214 and PC-175 were still in fix1 and nothing was integrating. D-087 releases one held item at a time; it does not make a held item wait for items that are not yet held. PC-096 is also T1 against PC-214's T3 fill (D-140/D-173). It was released at once. PC-214 and PC-175 integrate next, in the order they report held, after PC-096's platform-core push.
