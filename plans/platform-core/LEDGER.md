@@ -115,7 +115,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-176 | pc-f | pc/PC-176 | impl | T3 fill (D-140); only T3 ready | 3; R1 only | 2026-11-22 |
 | PC-182 | pc-f2 | pc/PC-182 | R1 | T3 fill (D-140); only T3 ready; usage 36% at 15:50 UTC, on pace; impl 2bb25b2c (14 deviations; OwnerId ServerOwned not Derived (0012 §9.1 refuses derived column updates); reports category hard-coded per shareable; delete leaves share notices; user select Name2/3 fix; integration 12/12); R1 launched | 3; R1 only | 2026-11-22 |
 | PC-189 | pc-2 | pc/PC-189 | impl | T3 fill (D-140); only T3 ready | 3; R1 only | 2026-11-22 |
-| PC-F69 | pc-1 | pc/PC-F69 | impl | re-split "." (38.49/38.5 KB after PC-104) by spec family; D-214, D-225 | fix; R1 only | 2026-11-22 |
+| PC-F69 | pc-1 | pc/PC-F69 | R1 | re-split "." (38.49/38.5 KB after PC-104) by spec family; D-214, D-225; impl be5219bc (no new entry points: boot reaches nearly every family, so a move saves only in the measure; TmDecimals pure annotation, first frame 37.79 to 37.10 KB; "." stays 38.49/38.5; 4 candidates listed and not made; Acme compiles core from sources); R1 launched | fix; R1 only | 2026-11-22 |
 
 ## Fix items
 
@@ -235,6 +235,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 
 | Test | Since | Tracking |
 |---|---|---|
+| client tools lint:test union-order.spec.mts bigint case: 5 s default timeout hit (5.8 s) under the lint:test fixture build; passes alone | 2026-11-22 (PC-F69 impl) | root-cause in PC-F69 fix1 |
 | client unit core tm-localization.spec "at startup: resolves the address's tenant before the first render…": document dir ltr, expected rtl, on both OSes; green at 16:08 UTC (pc run 45042095713), red from 16:38 UTC on the same code (PR run 45044779464, pc run 45046747313) | 2026-11-22 | root-causing in PC-F71 CI fixes (D-226) |
 | Core IntegrationTests ScheduleTests "a schedule paused for its inactive owner is taken over…": Assert.True at ScheduleTests.cs:516 (ubuntu; PR run 45044779464); next run green | 2026-11-22 | PC-F72 |
 | CI windows-latest unit step: vstest testhost connect timeout (90 s) aborts one assembly under parallel load (PR run 44947728191) | 2026-11-21 | PC-F66 (fixed 39ab3f1b) |
