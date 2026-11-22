@@ -384,6 +384,19 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-220 (orchestrator, 2026-11-22): PC-107 fix2 accepted; held
+
+Fix2 (a0919af3) fixed R2-1..R2-7. The merge-tree is clean.
+
+Accepted:
+- ./recents rises from 1.4 to a 1.6 KB ceiling (1.53 measured) because of the cross-tab merge.
+- Two named deviations: recents' cross-tab merge (a 0025 §13 gap), and an optional revert flag on TmPrefsChangedMessage (against 0025 §6.2's message shape).
+- The lint test-rig exception is narrowed to *.spec.ts importers.
+
+D-217's first-frame figure is corrected again: the split build measures ≈33.1 KB (0.08 + 33.06), against 33.60 before fix1, so the honest saving is ≈0.5 KB. "." stays at 34 (33.82 measured). The R2-5 carries are recorded under D-218.
+
+For Ahmad: 0025 §6.2's prefs.changed message gains an optional revert member.
+
 ### D-219 (orchestrator, 2026-11-22): PC-104 Review 2 rulings
 
 Review 2 (inherit, xhigh) found 0/3/4.
