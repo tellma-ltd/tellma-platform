@@ -1,0 +1,11 @@
+// Blob sweep failures.
+// Backs the "storage is not being reclaimed" alert: the sweep counts a failure for every claimed blob
+// whose objects the store could not delete, every swept row the database refused to delete because
+// a row still references it, and every failed purge of the store's incomplete artefacts. Each
+// failure leaves its blob claimed for the sweep after its reclaim time, so nothing is lost, but a
+// failing store keeps erased files in storage past the sweep interval, and a retained row is a
+// defect in the attach path. Any failure is worth a look; the sweep's warnings name the cause.
+customMetrics
+| where name == "tellma.blobs.sweep.failures"
+| summarize failures = sum(valueSum) by bin(timestamp, 15m)
+| where failures > 0

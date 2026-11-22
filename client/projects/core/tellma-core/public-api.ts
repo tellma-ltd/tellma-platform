@@ -175,10 +175,41 @@ export type {
 } from './src/state/bus/tm-bus-messages';
 export type { TmClientEvent, TmHubState } from './src/state/leader/tm-hub-types';
 
+// The launch documents and their cache: the routed tenant's settings,
+// envelope and facts, the cacheable lists, and the one path that syncs them.
+export { TmLaunchCache } from './src/state/launch/tm-launch-cache';
+export type {
+  TmAccessProblem,
+  TmAccessSummary,
+  TmCachedEntitySet,
+  TmDigitStyle,
+  TmLanguageInfo,
+  TmLaunchDocs,
+  TmMeLocaleResult,
+  TmMeResult,
+  TmPreferencesResult,
+  TmSecurableSummary,
+  TmTenantFacts,
+  TmTenantSettingsForClient,
+  TmUserProfileView,
+} from './src/state/launch/tm-launch-docs';
+export {
+  TmCacheRefresher,
+  type TmAdoptedDocs,
+  type TmCacheChangedEvent,
+  type TmSyncTrigger,
+} from './src/state/sync/tm-cache-refresher';
+
 // The client metadata's holder, which @tellma/core-testing loads, and the
 // client store's browser, which it replaces; not for app code.
 export { TmClientMetadataStore as ɵTmClientMetadataStore } from './src/metadata/tm-client-metadata';
 export { TM_STORE_HOST as ɵTM_STORE_HOST, type TmStoreHost as ɵTmStoreHost } from './src/state/store/tm-store-host';
+export type { TmDocUpdate as ɵTmDocUpdate } from './src/state/store/tm-client-store';
+export type { TmSyncDoc as ɵTmSyncDoc } from './src/state/launch/tm-launch-docs';
+// The browser's locks, which @tellma/core-testing replaces, and the sync's
+// error presenter, which the app's error presenter provides; not for app code.
+export { TmLocks as ɵTmLocks } from './src/state/sync/tm-locks';
+export { TM_SYNC_ERRORS as ɵTM_SYNC_ERRORS, type TmSyncErrors as ɵTmSyncErrors } from './src/state/sync/tm-cache-refresher';
 
 // The launch: the single-membership rule and the automatic-entry mark.
 export { tmSingleLiveTenant } from './src/launch/tm-single-live-tenant';

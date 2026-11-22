@@ -67,6 +67,15 @@ namespace Tellma.Core.Tests.Api
         }
 
         [Fact]
+        public async Task A_pre_serialized_member_is_described_as_the_type_its_bytes_were_serialized_from()
+        {
+            await using ServiceProvider provider = StackScenarios.Gadgets().BuildServiceProvider(validateScopes: true);
+            ContractDescriber describer = Describer(provider, TellmaJson.Options);
+
+            Assert.Equal(describer.Describe(null, typeof(HeldRank), 0, 0, 0), describer.Describe(null, typeof(PreSerializedRank), 0, 0, 0));
+        }
+
+        [Fact]
         public async Task A_change_to_a_projected_member_of_an_entity_the_details_reach_moves_the_entities_results_fingerprint()
         {
             await using ServiceProvider provider = StackScenarios.Gadgets().BuildServiceProvider(validateScopes: true);
@@ -166,6 +175,14 @@ namespace Tellma.Core.Tests.Api
         /// <param name="Rank">The rank.</param>
         /// <param name="Secret">A member never written.</param>
         public sealed record RankWithSecret(int Rank, [property: JsonIgnore] string? Secret);
+
+        /// <summary>A rank held as a value.</summary>
+        /// <param name="Rank">The rank, when there is one.</param>
+        public sealed record HeldRank(Ranked? Rank);
+
+        /// <summary>The rank held as the bytes it was serialized to.</summary>
+        /// <param name="Rank">The rank, when there is one.</param>
+        public sealed record PreSerializedRank(PreSerializedJson<Ranked>? Rank);
 
         /// <summary>A label.</summary>
         /// <param name="Label">The label.</param>

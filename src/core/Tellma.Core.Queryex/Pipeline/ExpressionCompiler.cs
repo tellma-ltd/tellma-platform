@@ -237,6 +237,7 @@ namespace Tellma.Core.Queryex.Pipeline
                     context.QueryexVersion,
                     context.HasUser,
                     context.HasGroupingKeys,
+                    context.Measures,
                     directions,
                     limits,
                     BindKey.Project(syntax, context.Parameters),

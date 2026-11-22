@@ -108,8 +108,17 @@ namespace Tellma.Core.Queryex
 
         /// <summary>
         ///     The result-set columns, positional to the select list, followed by the undeclared
-        ///     columns the query asked for.
+        ///     columns the query asked for, or by the partial columns its measures need.
         /// </summary>
         public required IReadOnlyList<QueryexColumn> Columns { get; init; }
+
+        /// <summary>
+        ///     The measures the query asked for, with the partial columns each is computed from;
+        ///     null when it asked for none.
+        /// </summary>
+        /// <remarks>
+        ///     Immutable and shared by every compilation served from the same cached plan.
+        /// </remarks>
+        public CompiledMeasures? Measures { get; init; }
     }
 }

@@ -4,6 +4,7 @@
 // LICENSE file in the root directory of this source tree.
 
 using Microsoft.Extensions.DependencyInjection;
+using System.Globalization;
 using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Settings;
@@ -117,6 +118,143 @@ namespace Tellma.Core.IntegrationTests.Data
             Assert.Equal(["Fancy"], Strings(page.Value.Rows, 0));
             Assert.Equal((2, 2), (page.Value.Count, capped.Value.Count));
             Assert.Equal((3, 2), (unordered.Value.Rows.RowCount, unordered.Value.Count));
+        }
+
+        [Fact]
+        public async Task A_grouped_page_with_measures_carries_their_partials_which_evaluate_each_measure_as_the_server_does()
+        {
+            await using AsyncServiceScope scope = fixture.CreateScope();
+            IDataBatch batch = Batch(scope);
+            QuerySpec plain = new()
+            {
+                Root = Entity(scope, "fixture.Widget"),
+                Select = "Kind, count()",
+                Aggregate = true,
+                OrderBy = "Kind",
+            };
+            const string Measures = "sum(Price) / count(), max(Price), min(Id) * 2, max(length(Name)) + 1, max(DueOn)";
+            QuerySpec measured = plain with { Measures = Measures };
+
+            BatchResult<RowPage> without = batch.Rows(plain, null, new RowQueryOptions { CountCap = 10 });
+            BatchResult<RowPage> with = batch.Rows(measured, null, new RowQueryOptions { CountCap = 10 });
+            BatchResult<RowPage> partials = batch.Rows(
+                plain with { Select = "Kind, count(), sum(Price), max(Price), min(Id), max(length(Name)), max(DueOn)" }, null, null);
+            BatchResult<RowPage> valued = batch.Rows(plain with { Select = "Kind, count(), " + Measures }, null, null);
+            _ = await batch.ExecuteAsync(Token);
+
+            // --- The partials: the count the select already has is reused, the rest follow it ---
+            // Typed and valued as the same aggregations spelled out in the select.
+            QueryRowSet rows = with.Value.Rows;
+            QueryRowSet oracle = partials.Value.Rows;
+            Assert.Equal(2, without.Value.Rows.Columns.Count);
+            Assert.Equal(7, rows.Columns.Count);
+            Assert.All(rows.Columns.Skip(2), static column => Assert.False(column.GroupingKey));
+            Assert.Equal(
+                oracle.Columns.Skip(2).Select(static column => (column.Type, column.Precision, column.Scale)),
+                rows.Columns.Skip(2).Select(static column => (column.Type, column.Precision, column.Scale)));
+            for (int column = 2; column < rows.Columns.Count; column++)
+            {
+                Assert.Equal(oracle.GetBuffer(column).GetType(), rows.GetBuffer(column).GetType());
+                Assert.Equal(Present(oracle, column), Present(rows, column));
+            }
+
+            // --- The measures: compiled as the batch compiled them, and evaluated over the page ---
+            // The caller's own compilation, under the same schema and options, lists the same
+            // partials at the same columns, and each column's facets are the run's decimal types.
+            QueryexResult<CompiledQuery> compiled = new QueryexEngine().CompileQuery(
+                measured,
+                new QueryCompilationOptions
+                {
+                    QueryexVersion = QueryexLanguage.Version,
+                    Schema = scope.ServiceProvider.GetRequiredService<IQueryexSchemaProvider>().GetSchema(MultilingualShape.All),
+                });
+            Assert.True(compiled.Succeeded);
+            CompiledMeasures measures = Assert.IsType<CompiledMeasures>(compiled.Value?.Measures);
+            MeasureEvaluator evaluator = measures.Prepare(new MeasureContext(
+                [.. measures.Partials.Select(partial => rows.Columns[partial.Ordinal] is { Precision: int precision, Scale: int scale }
+                    ? new QueryexNumericType((byte)precision, (byte)scale)
+                    : (QueryexNumericType?)null)],
+                new Dictionary<string, object?>(),
+                DateOnly.FromDateTime(DateTime.UtcNow),
+                DateTimeOffset.UtcNow,
+                null));
+
+            // One cell per group, loaded from the page's own buffers, absent values left out.
+            PartialTable table = evaluator.CreateTable(rows.RowCount);
+            int[] cells = [.. Enumerable.Range(0, rows.RowCount).Select(_ => table.AddCell())];
+            for (int partial = 0; partial < measures.Partials.Count; partial++)
+            {
+                int column = measures.Partials[partial].Ordinal;
+                for (int row = 0; row < rows.RowCount; row++)
+                {
+                    if (!rows.IsNull(column, row))
+                    {
+                        table.Add(cells[row], partial, rows.GetBuffer(column), row);
+                    }
+                }
+            }
+
+            // Each measure is the server's value for the same text, at the same type.
+            QueryRowSet expected = valued.Value.Rows;
+            for (int measure = 0; measure < measures.Items.Count; measure++)
+            {
+                QueryColumn column = expected.Columns[2 + measure];
+                for (int row = 0; row < rows.RowCount; row++)
+                {
+                    MeasureValue value = evaluator.Evaluate(table, cells[row], measure);
+                    object? server = expected.IsNull(2 + measure, row) ? null : expected.GetBuffer(2 + measure).GetValue(row);
+                    Assert.Equal(server is null, value.IsNull);
+                    if (server is DateOnly day)
+                    {
+                        Assert.Equal(day, value.Date);
+                    }
+                    else if (server is not null)
+                    {
+                        Assert.Equal(Convert.ToDecimal(server, CultureInfo.InvariantCulture), value.Number.Value);
+                        QueryexNumericType? type = evaluator.ResultTypes[measure];
+                        Assert.Equal(column.Scale, type?.Scale);
+                        if (column.Precision is int precision)
+                        {
+                            Assert.Equal(precision, (int?)type?.Precision);
+                        }
+                    }
+                }
+            }
+
+            // --- Over keyed groups, measures add columns to each group and never a group ---
+            Assert.Equal(Strings(without.Value.Rows, 0), Strings(rows, 0));
+            Assert.Equal(without.Value.Count, with.Value.Count);
+        }
+
+        [Fact]
+        public async Task A_labelled_grand_total_with_measures_is_one_row_counted_once_over_rows_or_none()
+        {
+            await using AsyncServiceScope scope = fixture.CreateScope();
+            IDataBatch batch = Batch(scope);
+            QuerySpec total = new()
+            {
+                Root = Entity(scope, "fixture.Widget"),
+                Select = "'Total'",
+                Measures = "sum(Price)",
+                Aggregate = true,
+            };
+            QuerySpec nothing = total with { Filter = FilterTree.Leaf("false") };
+            QuerySpec folded = total with { Measures = "if(false, sum(Price), 1)" };
+            RowQueryOptions options = new() { CountCap = 10 };
+
+            BatchResult<RowPage> overRows = batch.Rows(total, null, options);
+            BatchResult<RowPage> overNone = batch.Rows(nothing, null, options);
+            BatchResult<RowPage> foldedOverRows = batch.Rows(folded, null, options);
+            BatchResult<RowPage> foldedOverNone = batch.Rows(folded with { Filter = nothing.Filter }, null, options);
+            _ = await batch.ExecuteAsync(Token);
+
+            // The measures make each page one grand total, whether or not a row is read and whether
+            // or not a partial survives, and its count agrees with it.
+            foreach (RowPage page in new[] { overRows.Value, overNone.Value, foldedOverRows.Value, foldedOverNone.Value })
+            {
+                Assert.Equal(["Total"], Strings(page.Rows, 0));
+                Assert.Equal(1, page.Count);
+            }
         }
 
         [Fact]
@@ -612,6 +750,16 @@ namespace Tellma.Core.IntegrationTests.Data
         private static long[] Longs(QueryRowSet rows, int column)
         {
             return (long[])rows.GetBuffer(column);
+        }
+
+        /// <summary>A column's values as objects, null where the row holds none.</summary>
+        /// <param name="rows">The rows.</param>
+        /// <param name="column">The column.</param>
+        /// <returns>The values.</returns>
+        private static List<object?> Present(QueryRowSet rows, int column)
+        {
+            Array values = rows.GetBuffer(column);
+            return [.. Enumerable.Range(0, rows.RowCount).Select(row => rows.IsNull(column, row) ? null : values.GetValue(row))];
         }
 
         /// <summary>A text column's values, null where the row holds none.</summary>

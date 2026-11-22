@@ -31,6 +31,32 @@ namespace Tellma.Core.Queryex.Emit
         RepeatedArgument,
     }
 
+    /// <summary>How a pattern's result type follows the argument it takes its type from.</summary>
+    /// <remarks>
+    ///     The backend's numeric functions do not all hand back their argument's type: they return a
+    ///     narrow whole number as <c>int</c>, and the two that drop the fractional part also drop the
+    ///     scale. A result typed as its argument would misstate exactly the cases where the width
+    ///     decides whether arithmetic overflows.
+    /// </remarks>
+    internal enum ResultFollowing
+    {
+        /// <summary>Exactly the argument's type.</summary>
+        Same,
+
+        /// <summary>The argument's type, with a <c>tinyint</c> or <c>smallint</c> widened to <c>int</c>.</summary>
+        Numeric,
+
+        /// <summary>As <see cref="Numeric" />, and a decimal kept at its precision with no fractional digits.</summary>
+        Integral,
+
+        /// <summary>
+        ///     A count of the argument's characters, which the pattern casts to an <c>int</c>: the
+        ///     backend counts an unbounded text in a <c>bigint</c>, and whether a bound text is
+        ///     unbounded depends on the value bound, while every count fits an <c>int</c>.
+        /// </summary>
+        Length,
+    }
+
     /// <summary>One piece of a template.</summary>
     /// <param name="Kind">What this piece is.</param>
     /// <param name="Text">The SQL text, or the separator between repeated arguments.</param>
@@ -70,13 +96,15 @@ namespace Tellma.Core.Queryex.Emit
         /// <param name="argumentShapes">How each argument is consumed.</param>
         /// <param name="result">The type the result is held in, when the pattern fixes it.</param>
         /// <param name="follows">The argument whose type the result takes, when it takes one.</param>
+        /// <param name="following">How the result's type follows that argument's.</param>
         private EmitTemplate(
             string pattern,
             ImmutableArray<EmitSegment> segments,
             ImmutableArray<int> useCounts,
             ImmutableArray<EmitShape> argumentShapes,
             QueryexStoreType? result,
-            int? follows)
+            int? follows,
+            ResultFollowing following)
         {
             Pattern = pattern;
             Segments = segments;
@@ -84,6 +112,7 @@ namespace Tellma.Core.Queryex.Emit
             ArgumentShapes = argumentShapes;
             Result = result;
             Follows = follows;
+            Following = following;
         }
 
         /// <summary>The pattern this was parsed from.</summary>
@@ -112,17 +141,22 @@ namespace Tellma.Core.Queryex.Emit
         /// <summary>The argument whose type the result takes, when it takes one.</summary>
         internal int? Follows { get; }
 
+        /// <summary>How the result's type follows the argument it takes its type from.</summary>
+        internal ResultFollowing Following { get; }
+
         /// <summary>Parses a pattern.</summary>
         /// <param name="pattern">The pattern text.</param>
         /// <param name="result">The type the result is held in, when the pattern fixes it.</param>
         /// <param name="follows">The argument whose type the result takes, when it takes one.</param>
+        /// <param name="following">How the result's type follows that argument's.</param>
         /// <returns>The template.</returns>
         /// <exception cref="ArgumentException">The pattern is malformed, which is a defect in the
         ///     registry rather than anything a user could cause.</exception>
         internal static EmitTemplate Parse(
             string pattern,
             QueryexStoreType? result = null,
-            int? follows = null)
+            int? follows = null,
+            ResultFollowing following = ResultFollowing.Same)
         {
             ArgumentNullException.ThrowIfNull(pattern);
 
@@ -171,7 +205,7 @@ namespace Tellma.Core.Queryex.Emit
 
             if (counts.Count == 0)
             {
-                return new EmitTemplate(pattern, [.. segments], [], [], result, follows);
+                return new EmitTemplate(pattern, [.. segments], [], [], result, follows, following);
             }
 
             int arity = counts.Keys.Max() + 1;
@@ -189,7 +223,8 @@ namespace Tellma.Core.Queryex.Emit
                 [.. useCounts],
                 [.. argumentShapes],
                 result,
-                follows);
+                follows,
+                following);
         }
 
         /// <summary>Parses one placeholder.</summary>

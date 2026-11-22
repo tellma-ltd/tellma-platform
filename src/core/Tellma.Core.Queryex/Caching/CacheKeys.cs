@@ -55,6 +55,7 @@ namespace Tellma.Core.Queryex.Caching
         /// <param name="queryexVersion">The Queryex version it bound under.</param>
         /// <param name="hasUser">Whether execution will have a signed-in user.</param>
         /// <param name="hasGroupingKeys">Whether the enclosing query groups by anything.</param>
+        /// <param name="measures">Whether the items were bound as measures.</param>
         /// <param name="directions">Whether direction suffixes were accepted.</param>
         /// <param name="limits">The ceilings it was bound under.</param>
         /// <param name="declarations">
@@ -82,6 +83,7 @@ namespace Tellma.Core.Queryex.Caching
             int queryexVersion,
             bool hasUser,
             bool hasGroupingKeys,
+            bool measures,
             bool directions,
             QueryexLimits limits,
             ImmutableArray<ParameterSymbol> declarations,
@@ -95,6 +97,7 @@ namespace Tellma.Core.Queryex.Caching
             QueryexVersion = queryexVersion;
             HasUser = hasUser;
             HasGroupingKeys = hasGroupingKeys;
+            Measures = measures;
             Directions = directions;
             Limits = limits;
             Declarations = declarations;
@@ -109,6 +112,7 @@ namespace Tellma.Core.Queryex.Caching
             hash.Add(queryexVersion);
             hash.Add(hasUser);
             hash.Add(hasGroupingKeys);
+            hash.Add(measures);
             hash.Add(directions);
             hash.Add(limits);
             foreach (ParameterSymbol declaration in declarations)
@@ -153,6 +157,9 @@ namespace Tellma.Core.Queryex.Caching
         /// <summary>Whether the enclosing query groups by anything.</summary>
         internal bool HasGroupingKeys { get; }
 
+        /// <summary>Whether the items were bound as measures.</summary>
+        internal bool Measures { get; }
+
         /// <summary>Whether direction suffixes were accepted.</summary>
         internal bool Directions { get; }
 
@@ -182,6 +189,7 @@ namespace Tellma.Core.Queryex.Caching
                 || QueryexVersion != other.QueryexVersion
                 || HasUser != other.HasUser
                 || HasGroupingKeys != other.HasGroupingKeys
+                || Measures != other.Measures
                 || Directions != other.Directions
                 || !Limits.Equals(other.Limits)
                 || Negated != other.Negated
@@ -333,6 +341,9 @@ namespace Tellma.Core.Queryex.Caching
             Field(key, spec.Aggregate ? "1" : "0");
             Field(key, spec.Select);
             Field(key, spec.OrderBy);
+
+            // Blank measures are no measures, and compile to the same statement as none.
+            Field(key, string.IsNullOrWhiteSpace(spec.Measures) ? null : spec.Measures);
 
             // Whether the query pages, never which page: the values travel in the paging slots,
             // which a hit re-stamps, so every page of a query shares one compilation.

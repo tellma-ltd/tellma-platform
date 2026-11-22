@@ -84,8 +84,11 @@ removing one behind the store's back, and planting incomplete artefacts. It pins
 **[InMemoryBlobStore](Blobs/InMemoryBlobStore.cs)** is an `IBlobStore` over a dictionary per
 tenant that passes the conformance suite above: create-only writes, the contract's name and length
 validation, and the out-of-band reads a test asserts with (`Find`, `Names`, `TenantExists`,
-`RemoveTenant`). `FailWrites` makes every write throw, for the failure paths of the code that
-writes.
+`RemoveTenant`, and `Purges`, each purge's cut-off, which `ClearPurges` forgets). `FailWrites` makes every write throw and
+`FailDeletes` keeps the objects it matches and throws after deleting the rest, and `FailPurges`
+makes every purge throw, for the failure paths of the code that writes, deletes and purges;
+`Deleting` is awaited with each delete's names before anything is deleted, so a test can act
+(cancel a job, say) while a delete is under way.
 
 **[StubImageProcessor](Blobs/StubImageProcessor.cs)** is an `IImageProcessor` that decodes nothing:
 it hands the input back as the normalised image at the policy's dimensions and renders a fixed

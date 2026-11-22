@@ -31,13 +31,18 @@ namespace Tellma.Testing.Entities
         /// <summary>The composed services.</summary>
         private readonly ServiceProvider _provider;
 
+        /// <summary>The registry that holds the fixture tenant, whose state <see cref="State" /> moves.</summary>
+        private readonly FixtureTenantRegistry _registry;
+
         /// <summary>Creates the host.</summary>
         /// <param name="provider">The composed services.</param>
         /// <param name="info">The tenant.</param>
-        private FixtureTenant(ServiceProvider provider, TenantInfo info)
+        /// <param name="registry">The registry that holds the tenant.</param>
+        private FixtureTenant(ServiceProvider provider, TenantInfo info, FixtureTenantRegistry registry)
         {
             _provider = provider;
             Info = info;
+            _registry = registry;
         }
 
         /// <summary>The fixture database's connection string.</summary>
@@ -49,8 +54,20 @@ namespace Tellma.Testing.Entities
         /// <summary>The composed services.</summary>
         public IServiceProvider Services => _provider;
 
-        /// <summary>The tenant, as the registry would describe it.</summary>
+        /// <summary>The tenant, as the registry described it when the host was composed.</summary>
         internal TenantInfo Info { get; }
+
+        /// <summary>
+        ///     The fixture tenant's state as its registry holds it; <see cref="TenantState.Active" />
+        ///     when the host is composed. Setting it moves the registry's tenant, so the tenant scope
+        ///     factory, the scopes <see cref="CreateScope" /> opens and <see cref="JobPollDriver" /> see
+        ///     the new state; the database is untouched.
+        /// </summary>
+        public TenantState State
+        {
+            get => _registry.Current.Descriptor.State;
+            set => _registry.Current = _registry.Current with { Descriptor = _registry.Current.Descriptor with { State = value } };
+        }
 
         /// <summary>
         ///     Composes a fixture host and creates its database: migrated, change-tracked, and listing
@@ -97,7 +114,8 @@ namespace Tellma.Testing.Entities
 
             // The registry holds the fixture tenant alone, so the tenant scope factory opens the
             // background scopes the job machinery runs in without a catalog.
-            _ = services.Replace(ServiceDescriptor.Singleton<ITenantRegistry>(new FixtureTenantRegistry(info)));
+            FixtureTenantRegistry registry = new(info);
+            _ = services.Replace(ServiceDescriptor.Singleton<ITenantRegistry>(registry));
 
             // The data layer's suites append every statement the way a stack's own pipeline does, so
             // no stack owns a table here; the refusal of a write to a stack's table from outside it
@@ -113,7 +131,7 @@ namespace Tellma.Testing.Entities
 
             try
             {
-                FixtureTenant tenant = new(provider, info);
+                FixtureTenant tenant = new(provider, info, registry);
                 _ = await FixtureDatabase.CreateAsync(masterConnectionString, databaseName, tenant.Fingerprint, readCommittedSnapshot, cancellationToken).ConfigureAwait(false);
                 return tenant;
             }
@@ -137,7 +155,7 @@ namespace Tellma.Testing.Entities
         {
             AsyncServiceScope scope = _provider.CreateAsyncScope();
             IRequestContextHolder holder = scope.ServiceProvider.GetRequiredService<IRequestContextHolder>();
-            holder.Set(holder.Current with { Tenant = Info.Descriptor, Kind = PrincipalKind.System, Subject = "system", UserId = userId });
+            holder.Set(holder.Current with { Tenant = _registry.Current.Descriptor, Kind = PrincipalKind.System, Subject = "system", UserId = userId });
             return scope;
         }
 
@@ -183,17 +201,27 @@ namespace Tellma.Testing.Entities
         }
 
         /// <summary>A tenant registry that holds the fixture tenant alone, loaded once and never stale.</summary>
-        /// <param name="info">The tenant.</param>
+        /// <param name="info">The tenant as composed.</param>
         private sealed class FixtureTenantRegistry(TenantInfo info) : ITenantRegistry
         {
             /// <summary>When the snapshot was loaded: when the host was composed.</summary>
             private readonly DateTimeOffset _loadedAt = DateTimeOffset.UtcNow;
 
-            /// <inheritdoc />
-            public IReadOnlyList<TenantInfo> Tenants => [info];
+            /// <summary>The tenant the registry holds, replaced whole when a suite moves its state.</summary>
+            private volatile TenantInfo _current = info;
+
+            /// <summary>The tenant the registry holds now.</summary>
+            public TenantInfo Current
+            {
+                get => _current;
+                set => _current = value;
+            }
 
             /// <inheritdoc />
-            public Guid SnapshotVersion => info.Version;
+            public IReadOnlyList<TenantInfo> Tenants => [_current];
+
+            /// <inheritdoc />
+            public Guid SnapshotVersion => _current.Version;
 
             /// <inheritdoc />
             public DateTimeOffset? SnapshotLoadedAt => _loadedAt;
@@ -204,7 +232,8 @@ namespace Tellma.Testing.Entities
             /// <inheritdoc />
             public TenantInfo? Find(int tenantId)
             {
-                return tenantId == info.Id ? info : null;
+                TenantInfo current = _current;
+                return tenantId == current.Id ? current : null;
             }
 
             /// <inheritdoc />

@@ -65,6 +65,16 @@ namespace Tellma.Core.Tests.Migrator
         [InlineData("status", "--tenant", "1")]
         [InlineData("emit-client-assets")]
         [InlineData("emit-client-assets", "a", "b")]
+        [InlineData("blobs")]
+        [InlineData("blobs", "--tenant", "1")]
+        [InlineData("blobs", "check", "--tenant", "1")]
+        [InlineData("blobs", "verify", "extra", "--tenant", "1")]
+        [InlineData("blobs", "verify")]
+        [InlineData("blobs", "verify", "--tenant", "0")]
+        [InlineData("blobs", "verify", "--tenant", "1", "--tenant", "2")]
+        [InlineData("blobs", "verify", "--tenant", "1", "--delete-orphans=yes")]
+        [InlineData("blobs", "verify", "--tenant", "1", "--all-tenants")]
+        [InlineData("migrate", "--delete-orphans")]
         [InlineData("upgrade")]
         [InlineData("")]
         public void A_contradictory_or_malformed_command_line_is_a_usage_error(params string[] args)
@@ -99,6 +109,20 @@ namespace Tellma.Core.Tests.Migrator
                 MigratorCommandLine.Parse(["set-state", "--tenant", "4", "--state", "readonly", "--reason", "Overdue invoice"]));
 
             Assert.Equal(new SetStateCommandLine(4, TenantState.ReadOnly, "Overdue invoice"), line);
+        }
+
+        [Fact]
+        public void Blobs_verify_reads_the_tenant_and_deletes_orphans_only_when_flagged()
+        {
+            Assert.Equal(new BlobsVerifyCommandLine(3, false), MigratorCommandLine.Parse(["blobs", "verify", "--tenant", "3"]));
+            Assert.Equal(new BlobsVerifyCommandLine(3, true), MigratorCommandLine.Parse(["blobs", "verify", "--delete-orphans", "--tenant=3"]));
+            Assert.Equal(new BlobsVerifyCommandLine(3, true), MigratorCommandLine.Parse(["blobs", "--tenant", "3", "verify", "--delete-orphans"]));
+        }
+
+        [Fact]
+        public void The_usage_text_lists_blobs_verify()
+        {
+            Assert.Contains("blobs verify --tenant <id> [--delete-orphans]", MigratorCommandLine.Usage, StringComparison.Ordinal);
         }
 
         [Fact]

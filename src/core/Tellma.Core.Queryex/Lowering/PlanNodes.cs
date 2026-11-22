@@ -512,7 +512,7 @@ namespace Tellma.Core.Queryex.Lowering
         /// <param name="span">Where the expression it came from sits in the input.</param>
         /// <param name="operand">The operand.</param>
         internal PlanNegate(QueryexSpan span, PlanValue operand)
-            : base(span, BoundType.Numeric, operand.StoreType)
+            : base(span, BoundType.Numeric, SqlTypes.NegationOf(operand.StoreType))
         {
             Operand = operand;
         }

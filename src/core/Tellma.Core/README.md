@@ -451,7 +451,7 @@ queries and writes have no class for it. Its fingerprint digests the model.
 
 | Member | Statements |
 |---|---|
-| `Rows` | One page of columnar rows. With `CaptureKeys` or `IncludeAncestors`, a keys-only twin first fills a statement-local table (`@tb{b}_keys`) under the filter, restrictions and paging, and the page reads those keys in the spec's order, its key appended as the last tiebreak only where the ordering does not already hold it (in any position or direction, as the language decides for the twin: the page keeps a zero skip, `OFFSET @qx{n}_skip ROWS`, which marks it paged); a capped count (cap + 1 rows counted) and a tree's ancestors (the nodes above the page, not on it, in the same order) follow. A grouped spec captures no keys and climbs to no ancestors; its count counts its groups. Each call's statements fit the batch's parameter budget together or none is added. |
+| `Rows` | One page of columnar rows. With `CaptureKeys` or `IncludeAncestors`, a keys-only twin first fills a statement-local table (`@tb{b}_keys`) under the filter, restrictions and paging, and the page reads those keys in the spec's order, its key appended as the last tiebreak only where the ordering does not already hold it (in any position or direction, as the language decides for the twin: the page keeps a zero skip, `OFFSET @qx{n}_skip ROWS`, which marks it paged); a capped count (cap + 1 rows counted) and a tree's ancestors (the nodes above the page, not on it, in the same order) follow. A grouped spec captures no keys and climbs to no ancestors; its count counts its groups. A grouped spec's `Measures` add their partial columns after the select items, which the page reads like any other column, its decimals with the precision and scale the server reports, so a caller that compiled the same spec itself evaluates its measures over the page; the count compiles without them. Each call's statements fit the batch's parameter budget together or none is added. |
 | `Count` | A capped count: a result of cap + 1 means more than the cap. |
 | `EvaluateConstant` | One row of path-free expressions. |
 | `Assert` | A count compared with an expected value, throwing the given platform or distribution number and code. |
@@ -655,10 +655,45 @@ tellma.Blobs(blobs => blobs
   - **Round trips.** A download takes one round trip. The exception is a caller denied the owner
     read whose cached set is older than the fast-deny window: that caller first pays the evaluator's
     prologue-only re-check, so the download takes two.
-- **The reconcile statement.** `BlobStatements.Reconcile` releases a kind's committed blobs that no
-  owner row references and that were committed more than a day ago, and returns how many.
 - **Telemetry.** `tellma.blobs.attach.rejected` counts each refused attach by kind and reason
   (`duplicate` and `persist` beside the reasons above).
+
+## Blobs: sweep, reconcile and verification
+
+- **The sweep.** `core.blob-sweep` (built-in schedule 4, every 15 minutes; one run per tenant, on a
+  read-only tenant too, as the system user) repeats rounds until one claims fewer than
+  `SweepBatchSize` rows or the job is cancelled. A round's claim, a `Maintenance` batch with no
+  transaction of its own, takes the earliest rows that are staged past their deadline, released,
+  or deleting past their reclaim instant, on the database's clock, and marks them `Deleting` until
+  `SweepReclaimAfter` from then. The round then deletes each row's primary and listed variants from
+  the store in one call (a missing object is success), and row by row when that call fails, then
+  deletes the rows whose objects are gone and that are still `Deleting`. Once per run the store
+  purges its incomplete artefacts older than a day. Objects go before rows, so an object never
+  outlives the row that leads the sweep to it.
+- **Failures never fail the run.** A row whose objects the store could not delete, a row whose
+  names fall outside the blob name grammar (staging never writes one), and a row a foreign key
+  still holds (impossible by construction: only staged rows are confirmed), stay
+  claimed for the sweep after their reclaim instant, are counted in `tellma.blobs.sweep.failures`
+  and are warned of (`BlobSweepStoreFailed` with the store's exception, `BlobSweepRowRetained` with
+  the id); a failed purge is counted and warned of too. `tellma.blobs.sweep.deleted` counts the rows
+  deleted by the state they were claimed from (`staged`, `released`, `deleting`), each round that
+  claimed rows logs `BlobSweepBatch` (claimed, deleted, failed), and the progress message `Blob.SweepProgress` counts
+  the rows claimed and the objects deleted so far.
+- **The reconcile.** `core.blob-reconcile` (built-in schedule 5, Saturday at 02:00) runs
+  `BlobStatements.Reconcile` once per registered kind, in kind order, each its own `Maintenance`
+  round trip over the kind's owner table and column: a kind's committed blobs that no owner row
+  references and that were committed more than a day ago are released for the sweep. A non-zero
+  count points at a path that bypassed the save pipeline, so it is counted in
+  `tellma.blobs.reconcile.released` by kind and warned of (`BlobReconcileReleased`). Progress is
+  `Blob.ReconcileProgress`, after each kind.
+- **Verification.** `BlobVerifier` backs the migrator's `blobs verify --tenant <id>
+  [--delete-orphans]`: for each registered kind and each of its 256 fan-out segments it lists the
+  store, then reads the segment's rows, and reports the objects no row references and the objects a
+  row references that the store lacks (a deleting row and a row staged within the last five minutes
+  excepted). Listing before reading makes a reported orphan a true one, so `--delete-orphans`
+  deletes it safely; rows are never written.
+- **Alerts.** `infra/monitoring/blobs` holds the alert queries over `sweep.failures`,
+  `reconcile.released` and the `attach.rejected` rate, checked against these instruments by a test.
 
 ## Calendars
 
@@ -1879,9 +1914,10 @@ tenant, in a job that runs on one and in a provisioning step, refused in any oth
 
 `QueryexService` (route `queryex`, registered by `CoreFeature`) serves `discover`, a member-only,
 idempotent read hidden from the agents, for the editors: it checks clauses being written as `query`
-or a role save would compile them and answers `200` with every problem. Admission (`DiscoverShape`)
-runs before any I/O: a root the widest schema shape lacks is `NotFoundException`; measures (not
-supported yet), a having clause without an aggregation, a confirmed parameter without a name, of a
+or a role save would compile them and answers `200` with every problem. An aggregate query's measures
+are checked as its compilation checks them, each problem at its item in clause `measures`. Admission (`DiscoverShape`)
+runs before any I/O: a root the widest schema shape lacks is `NotFoundException`; measures or a
+having clause without an aggregation, a confirmed parameter without a name, of a
 hierarchy or geography type or named twice, and for a permission filter more than one filter or any
 other clause or parameter, are each `BadRequestException`. The caller's set comes from the scope's
 connection, and no statement ever runs. A cached caller costs no round trip while a prologue
@@ -2318,6 +2354,17 @@ Every member reaches their own row without a role grant, through the users' memb
 | `me/locale` | 1 | validates in memory (`Users.LocaleEmpty` at `language`, `Users.LocaleResetConflict` at `reset`, then the save's locale rules, each value stored as its set spells it), then one persist batch: the access guards' lock, the update of the caller's row (each member set, `NULL` for each reset; an unchanged value writes no row), the invariants and the stored values; a read-only tenant admits it |
 | `me/preferences/set`, `me/preferences/delete` | 1 | checks the keys and values in memory (paths `items[i].key`, `keys[i]`), then the bag's statement with the key cap asserted inside it (`Users.TooManyPreferenceKeys` at the request), then the bag; the answer carries the caller's moved preferences tag; a read-only tenant admits them |
 
+`client/sync` (`Client/ClientSyncService`, member-only, idempotent, hidden from agents) is the one
+call a browser tab revalidates a tenant's cached documents with. It takes the tags the tab holds
+and runs one Read batch: the connect prologue, then the caller's preference rows. It answers the
+tenant's facts (`TenantFacts`: id, category, state, live tenant, whether the hub runs) and the four
+client tags always; the settings, as the bytes the settings cache serialized when it loaded them,
+when the held `settings` tag differs; the envelope `me` answers when a held caller tag differs;
+every list's tag when the held `entities` tag differs or is absent; and the held lists whose tags
+moved. Tags compare ordinally and a held name the server does not know is ignored. It is a polling
+route, so it never stamps the caller's activity. `me` and `client/sync` compose the envelope
+through one internal helper, `MeEnvelope`.
+
 An administrator reads and writes another user's bag under `core.User` × `Preferences` and its
 filter: `preferences/get` (one round trip; a user the filter hides is not found) and the
 single-target entity actions `preferences/set` and `preferences/delete` (two round trips, the
@@ -2668,9 +2715,12 @@ only when no resource declares the label, and the row a succeeded job leaves.
 | Key | Built-in | Does |
 |---|---|---|
 | `core.job-retention` | id 1, `0 3 * * *` | In pages of 1,000 rows, each its own `Maintenance` round trip: first queues flagged every job that waited for confirmation longer than `FailedRetention` and withdraws its notice, then deletes the succeeded jobs that ended longer than `SucceededRetention` ago, then the failed and cancelled ones past `FailedRetention`. A job that has not ended is never deleted; the rows that referenced a deleted job (every job entity's `JobId`, the schedule states' `LastJobId`) lose it, and each delete page declares the tables those keys write, read from the model's foreign keys. |
+| `core.blob-sweep` | id 4, `*/15 * * * *` | Deletes the objects and rows of staged blobs past their deadline and of released blobs, a batch of rows per round, then purges the store's incomplete artefacts (see the blobs' sweep above). |
+| `core.blob-reconcile` | id 5, `0 2 * * 6` | Releases each kind's committed blobs that no owner row references, one `Maintenance` round trip per kind. |
 | `core.tree-verify` | id 6, `0 1 * * 6` | Recounts every tree table's subtree counts with the tree statements' verify, one `Maintenance` round trip per table, repairing the drifted rows. |
 
-Both run on a read-only tenant and report their progress after every page or table.
+All four run on a read-only tenant and report their progress after every page, round, kind or
+table.
 
 ## Excel
 
@@ -2752,7 +2802,7 @@ are SpreadsheetML packages written with `DocumentFormat.OpenXml` (MIT), forward-
 | `Identity/` | `IdentityServerClient`; internally its transport and token cache, the wire shapes and their source-generated JSON metadata, the options' settling and validator, the composition step that binds them and registers the named HTTP client, the instruments and the log events. |
 | `Notifications/` | `NotificationTypeRegistry`, `NotificationChannelRegistry`, `ClientEventRegistry`, `NotificationsClientAssetContributor`, `ClientEventPublisher`, `NullClientEventPublisher`, `NotificationConfiguration` and `NotificationDeliveryArguments`; internally the notifier, its statements and the delivering channels, the email channel's sender, the renderer, the preference row, the metrics, the name grammars, the hub-less real-time status, the composition step and the log events. |
 | `Outbox/` | `OutgoingEmailService`; internally the outbox, the stored address lists, the outgoing emails' model configuration, the sending job's handler and the composition step that binds the outbox's options. |
-| `Client/` | Internally: the client entity model, its data types, the action arguments' fields and schema, the declarations writer and the client-asset contributor. |
+| `Client/` | Internally: the client entity model, its data types, the action arguments' fields and schema, the declarations writer and the client-asset contributor; and `ClientSyncService`, the `client/sync` route. |
 | `Localization/` | `LanguageCatalog`, `LanguageDeclaration`, `LocalizationNegotiator`, `ValueSetRegistry`, `IcuStringLocalizerFactory`, `ConventionalStringKeys`; internally the catalogue's data, the declaration's resolution, the `Accept-Language` reader, the negotiated cultures, the pinned culture data with its reader, writer and generator source, the localizer's resource reader, ICU renderer, calendar formatter, argument reader and missing-key telemetry, the string-pack composer with its resource sources and client-asset contributor, the label provider, the label key chains, the named enums, the key conventions and the name humanizer. |
 | `Resources/` | `Strings.resx`, Core's shared resources (English), with its `ar` and `am` satellites and the `Strings` marker; `ServerStrings.resx`, the server-only resources (the email notification's subject and bodies), with its `ar` satellite and its marker. |
 

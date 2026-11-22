@@ -213,21 +213,24 @@ namespace Tellma.Core.AspNetCore.Tests.Blobs
             ScriptedBlobStore store = new(() => new BlobContent(stalled, Length));
             await using TellmaTestHost host = await StartAsync(store, settings: null, Length);
             TimeSpan deadline = BlobEndpoints.TransferDeadline(host.Services.GetRequiredService<IOptions<ApiOptions>>().Value.RequestTimeout, Length);
+            long mark = host.Time.Mark();
+            DateTimeOffset due = host.Time.GetUtcNow() + deadline;
 
             using HttpResponseMessage response = await host.Client.SendAsync(
                 TellmaTestHost.SpaRequest(HttpMethod.Get, Address, host.Cookie()), HttpCompletionOption.ResponseHeadersRead, Token);
             Assert.Equal(HttpStatusCode.OK, response.StatusCode);
             Task<byte[]> body = response.Content.ReadAsByteArrayAsync(Token);
 
-            // --- Just short of the deadline the transfer still holds on ---
+            // --- Just short of the deadline the transfer still holds on: its timer is still armed ---
+            await Patience.UntilAsync(() => host.Time.Waiting(mark, due) >= 1, "the transfer's deadline timer");
             host.Time.Advance(deadline - TimeSpan.FromSeconds(1));
-            await Task.Delay(TimeSpan.FromMilliseconds(200), Token);
+            Assert.NotEqual(0, host.Time.Waiting(mark, due));
             Assert.False(stalled.Released.Task.IsCompleted, "The transfer was ended before its deadline.");
 
-            // --- Past it, the connection is aborted and the endpoint returns, its permit with it ---
-            host.Time.Advance(TimeSpan.FromSeconds(2));
-            Assert.True(await stalled.Released.Task.WaitAsync(TimeSpan.FromSeconds(10), Token));
-            _ = await Assert.ThrowsAnyAsync<Exception>(() => body.WaitAsync(TimeSpan.FromSeconds(10), Token));
+            // --- On it, the connection is aborted and the endpoint returns, its permit with it ---
+            _ = await host.Time.AdvanceToAsync(mark, due);
+            Assert.True(await Patience.WaitAsync(stalled.Released.Task));
+            _ = await Assert.ThrowsAnyAsync<Exception>(() => Patience.WaitAsync(body));
         }
 
         [Fact]
@@ -255,7 +258,9 @@ namespace Tellma.Core.AspNetCore.Tests.Blobs
                 Assert.Equal(HttpStatusCode.NotModified, warm.StatusCode);
             }
 
-            // --- A raw connection that reads the response's head and then nothing more ---
+            // --- A raw connection that reads the response's head and then nothing more; its deadline timer comes after the mark ---
+            long mark = host.Time.Mark();
+            DateTimeOffset due = host.Time.GetUtcNow() + deadline;
             using TcpClient reader = new() { ReceiveBufferSize = 4096 };
             await reader.ConnectAsync(IPAddress.Loopback, host.Client.BaseAddress!.Port, Token);
             NetworkStream connection = reader.GetStream();
@@ -273,10 +278,12 @@ namespace Tellma.Core.AspNetCore.Tests.Blobs
             }
 
             // --- Past the deadline the connection is aborted, the object let go, and the permit freed ---
-            host.Time.Advance(deadline + TimeSpan.FromSeconds(1));
-            Assert.True(await zeros.Released.Task.WaitAsync(TimeSpan.FromSeconds(10), Token));
+            _ = await host.Time.AdvanceToAsync(mark, due);
+            Assert.True(await Patience.WaitAsync(zeros.Released.Task));
+
+            // The permit is released as the endpoint returns, a moment after the object; ask until it is.
             HttpStatusCode answered = HttpStatusCode.TooManyRequests;
-            for (var waited = Stopwatch.StartNew(); answered != HttpStatusCode.NotModified && waited.Elapsed < TimeSpan.FromSeconds(10);)
+            for (var waited = Stopwatch.StartNew(); answered != HttpStatusCode.NotModified && waited.Elapsed < Patience.Limit;)
             {
                 using HttpResponseMessage next = await host.Client.SendAsync(HeldCopy(cookie), Token);
                 answered = next.StatusCode;
@@ -350,7 +357,7 @@ namespace Tellma.Core.AspNetCore.Tests.Blobs
             StringBuilder head = new();
             while (!head.ToString().EndsWith("\r\n\r\n", StringComparison.Ordinal))
             {
-                Assert.Equal(1, await connection.ReadAsync(buffer, Token).AsTask().WaitAsync(TimeSpan.FromSeconds(30), Token));
+                Assert.Equal(1, await Patience.WaitAsync(connection.ReadAsync(buffer, Token).AsTask()));
                 _ = head.Append((char)buffer[0]);
             }
 
@@ -507,13 +514,13 @@ namespace Tellma.Core.AspNetCore.Tests.Blobs
                 set => throw new NotSupportedException();
             }
 
-            /// <summary>Waits until no more of the object has been read for half a second: the reader is blocked.</summary>
+            /// <summary>Waits until no more of the object has been read for half a second, the reader blocked, ending a hang at the test's patience.</summary>
             /// <param name="cancellationToken">Cancels the wait.</param>
             /// <returns>How many bytes were read.</returns>
             public async Task<long> SettledAsync(CancellationToken cancellationToken)
             {
                 long last = -1;
-                for (var waited = Stopwatch.StartNew(); waited.Elapsed < TimeSpan.FromSeconds(30);)
+                for (var waited = Stopwatch.StartNew(); waited.Elapsed < Patience.Limit;)
                 {
                     long now = Interlocked.Read(ref _produced);
                     if (now > 0 && now == last)
@@ -525,7 +532,7 @@ namespace Tellma.Core.AspNetCore.Tests.Blobs
                     await Task.Delay(TimeSpan.FromMilliseconds(500), cancellationToken).ConfigureAwait(false);
                 }
 
-                throw new TimeoutException($"The object was still being read after 30 seconds: {Interlocked.Read(ref _produced)} bytes.");
+                throw new TimeoutException($"The object was still being read after {Patience.Limit}: {Interlocked.Read(ref _produced)} bytes.");
             }
 
             /// <inheritdoc />
