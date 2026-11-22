@@ -384,6 +384,20 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-197 (orchestrator, 2026-11-22): PC-F67 implementation; PC-F68 opened for a local LastAdministrator failure
+
+PC-F67's implementation (0dabb9cc) restores ClientSyncResult.Me as MeResult and drops PreSerializedJson.Of. The web OpenAPI document builds its schemas under its own limit, WebOpenApi.SchemaMaxDepth = 128, through a second, document-only JsonOptions instance; the wire keeps MaxDepth 16. The wire, fingerprint, route and stack goldens and the client types are unchanged, and 7 tests fail without the fix. Review 1 is running.
+
+For Ahmad (D-185 item 2): the document-only JsonOptions copy goes against 0016 §3.1's "No other copy exists". Either §3.1 should allow a document-only copy for the OpenAPI schema writer, or the wire limit should rise. Follow-up, not scheduled: client/sync's settings stay "any value" in the document (PreSerializedJson). A schema transformer could describe them.
+
+PC-F68 opened: UserSelfServiceTests.Another_user_s_bag_is_read_set_and_deleted_under_the_preferences_filter_within_its_budgets throws Access.LastAdministrator on preferences/set.
+- Seen locally on Windows at 2026-11-22 03:18 UTC, alone on a fresh fixture database.
+- It fails the same way on PC-F67's base, so platform-core already has it.
+- It passed in PC-096 on 2026-11-21, so a date or time dependence is possible.
+- The latest PR-tier CI integration run (on 87a9066c) was green.
+
+It may be a product bug in the last-administrator guard, so it is root-caused, not retried (D-011/D-113). It takes the first slot that frees after PC-F11 has pc-f, which is likely pc-2 once PC-175 lands, unless T1/T2 work is ready.
+
 ### D-196 (orchestrator, 2026-11-22): PC-093 takes pc-3; PC-F11 moves to pc-f
 
 PC-092 landed (87a9066c), and PC-093 (0018-h, T1) became ready just as pc-3 freed. D-140/D-173 put ready T1 work ahead of fills, and PC-F11 is a before-GA fill (D-195), so PC-093 takes pc-3 at implementer high with R1 only. PC-F11 takes the fix slot pc-f as soon as PC-214 lands, ahead of PC-175's release. Its brief has already been retargeted to pc-f.
