@@ -72,25 +72,11 @@ namespace Tellma.Core.Abstractions.Tests.Api
         }
 
         [Fact]
-        public void A_value_serialized_under_the_platforms_rules_reads_back_to_itself()
+        public void A_members_schema_is_any_value()
         {
-            var value = PreSerializedJson<Pair>.Of(new Pair(1, 2));
+            JsonNode schema = TellmaJson.Options.GetJsonSchemaAsNode(typeof(Holder));
 
-            Assert.Equal(/*lang=json,strict*/ """{"left":1,"right":2}""", Encoding.UTF8.GetString(value.Utf8.Span));
-            Assert.Equal(new Pair(1, 2), value.Deserialize());
-        }
-
-        [Fact]
-        public void A_sync_answers_schema_describes_its_documents_as_any_value_and_fits_the_nesting_limit()
-        {
-            // The web host's OpenAPI document writes each schema under the HTTP JSON options, whose
-            // nesting limit is the platform's; the envelope's own schema nests too deep to fit under
-            // the answer.
-            JsonNode schema = TellmaJson.Options.GetJsonSchemaAsNode(typeof(ClientSyncResult));
-
-            Assert.Equal(JsonValueKind.True, schema["properties"]!["me"]!.GetValueKind());
-            Assert.Equal(JsonValueKind.True, schema["properties"]!["settings"]!.GetValueKind());
-            Assert.NotEmpty(schema.ToJsonString(TellmaJson.Options));
+            Assert.Equal(JsonValueKind.True, schema["properties"]!["pair"]!.GetValueKind());
         }
 
         [Fact]

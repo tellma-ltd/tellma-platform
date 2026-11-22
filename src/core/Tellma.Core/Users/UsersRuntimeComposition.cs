@@ -17,23 +17,28 @@ using Tellma.Core.Abstractions.Identity;
 using Tellma.Core.Abstractions.Localization;
 using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.Access;
+using Tellma.Core.Composition;
 using Tellma.Core.Crud;
 using Tellma.Core.Data.Queries;
+using Tellma.Core.Provisioning;
 
 namespace Tellma.Core.Users
 {
     /// <summary>
     ///     Registers what the users' and the roles' stack services need beyond
-    ///     <see cref="Composition.CoreFeature" />'s registration of the stacks themselves: the users'
-    ///     instruments and the bundles of platform collaborators their public constructors take.
+    ///     <see cref="CoreFeature" />'s registration of the stacks themselves: the users'
+    ///     instruments, the bundles of platform collaborators their public constructors take, and the
+    ///     first administrator's invitation after a tenant's provisioning steps, closed over the user leaf.
     /// </summary>
     internal static class UsersRuntimeComposition
     {
-        /// <summary>Registers the instruments and the collaborators' bundles; each registration is idempotent.</summary>
+        /// <summary>Registers the instruments, the collaborators' bundles and the administrator's inviter; each registration is idempotent.</summary>
         /// <param name="services">The composition's services.</param>
-        public static void Register(IServiceCollection services)
+        /// <param name="record">The settled composition, which names the user leaf.</param>
+        public static void Register(IServiceCollection services, TellmaCompositionRecord record)
         {
             ArgumentNullException.ThrowIfNull(services);
+            ArgumentNullException.ThrowIfNull(record);
 
             // --- The instruments, one set per process ---
             services.TryAddSingleton<UsersMetrics>();
@@ -63,6 +68,9 @@ namespace Tellma.Core.Users
                 provider.GetRequiredService<TimeProvider>(),
                 provider.GetRequiredService<UsersMetrics>(),
                 provider.GetRequiredService<ILoggerFactory>()));
+
+            // --- The first administrator's invitation, which the migrator runs after the steps (spec 0018 §6.1) ---
+            services.TryAddScoped(typeof(ITenantAdministratorInviter), typeof(TenantAdministratorInviter<>).MakeGenericType(record.LeafOf(typeof(User))));
 
             // --- The roles' stack's bundle, one per process: its collaborators are all singletons ---
             services.TryAddSingleton(static provider => new RoleServiceDependencies(

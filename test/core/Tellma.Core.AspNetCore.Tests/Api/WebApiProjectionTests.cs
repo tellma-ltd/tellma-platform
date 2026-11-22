@@ -182,6 +182,41 @@ namespace Tellma.Core.AspNetCore.Tests.Api
         }
 
         [Fact]
+        public async Task A_body_is_read_sixteen_levels_deep_and_refused_one_level_deeper_while_the_OpenAPI_document_is_served()
+        {
+            // Development serves the OpenAPI document, whose schemas nest past the wire's limit.
+            await using TellmaTestHost host = await StartDeepAsync();
+            await ServeDocumentAsync(host);
+
+            // --- Sixteen levels: the innermost member a number ---
+            using JsonDocument read = await PostAsync(host, host.Cookie(), "depth/read", PjDepth.Json("1"), HttpStatusCode.OK);
+            Assert.Equal(7, read.RootElement.GetInt32());
+            Assert.Single(host.Services.GetRequiredService<PipelineLog>().Calls);
+
+            // --- Seventeen levels: the innermost member an object, refused before the action runs ---
+            using HttpResponseMessage response = await SendAsync(host, host.Cookie(), "depth/read", PjDepth.Json("{}"));
+            Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+            Problem problem = await Problem.ReadAsync(response);
+            Assert.Equal("bad-request", problem.Code);
+            Assert.Equal("malformed-json", problem.Argument("reason"));
+            Assert.Single(host.Services.GetRequiredService<PipelineLog>().Calls);
+        }
+
+        [Fact]
+        public async Task An_answer_nesting_one_level_past_sixteen_is_never_written_while_the_OpenAPI_document_is_served()
+        {
+            await using TellmaTestHost host = await StartDeepAsync();
+            await ServeDocumentAsync(host);
+
+            // The canned answer's innermost member is an object: seventeen levels.
+            using HttpResponseMessage response = await SendAsync(host, host.Cookie(), "depth/answer", null);
+
+            Assert.Equal(HttpStatusCode.InternalServerError, response.StatusCode);
+            Assert.Equal("internal", (await Problem.ReadAsync(response)).Code);
+            Assert.Equal(TellmaJson.Options.MaxDepth, host.Services.GetRequiredService<IOptions<JsonOptions>>().Value.SerializerOptions.MaxDepth);
+        }
+
+        [Fact]
         public async Task A_save_refused_by_validation_names_each_entity_and_its_property_by_its_label()
         {
             await using TellmaTestHost host = await StartAsync();
@@ -868,6 +903,26 @@ namespace Tellma.Core.AspNetCore.Tests.Api
                 options.ConfigureServices = StandIns;
                 configure?.Invoke(options);
             });
+        }
+
+        /// <summary>Starts a Development host whose model adds the deep service.</summary>
+        /// <returns>The host.</returns>
+        private static Task<TellmaTestHost> StartDeepAsync()
+        {
+            return StartAsync(static options =>
+            {
+                options.Environment = "Development";
+                options.Compose = static tellma => tellma.AddFeature(ProjectionModel.Feature(static contribution => contribution.ApiService<PjDepthService>()));
+            });
+        }
+
+        /// <summary>Reads the web surface's OpenAPI document, so its schema generator has run.</summary>
+        /// <param name="host">A Development host.</param>
+        /// <returns>A task.</returns>
+        private static async Task ServeDocumentAsync(TellmaTestHost host)
+        {
+            using HttpResponseMessage document = await host.Client.GetAsync("/openapi/web.json", TestContext.Current.CancellationToken);
+            Assert.Equal(HttpStatusCode.OK, document.StatusCode);
         }
 
         /// <summary>Adds a capturing logger provider to a host's services, after the stand-ins.</summary>
