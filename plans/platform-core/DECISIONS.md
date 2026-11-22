@@ -384,6 +384,32 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-227 (orchestrator, 2026-11-22): PC-182 Review 1 rulings; PC-F71's root cause; PC-F69 R1
+
+PC-182 Review 1 found 0 blocking, 3 major and 4 minor.
+
+Rulings:
+- R1-1 (major, defect): a delete withdraws every deleted row's share notices, in the same transaction as the delete (0033 §5.6 and §7, 0021 §2.3).
+- R1-2 (major, privacy): the shares extra's admission filter moves into the grants query, so related never names other grantees to a reader (0033 §5.2). This retires deviation 5.
+- R1-3 (major): add tests for the grant caps, the SQL backstop and the grantee checks.
+- R1-4 (minor): fix.
+- R1-5 (minor): remove ReportShare's client metadata, or record it as a deviation.
+- R1-6 (minor): record the delete-by-query contradiction in the commit body.
+- R1-7 (minor): keep the reports category.
+
+PC-182 is not on the two-review list, and Review 1 does not meet §4.4's thresholds. R1-2 is a privacy fix in the query layer, so fix1 is judged for escalation once it is in: if the grants query is reshaped well beyond one filter, Review 2 runs on fable.
+
+PC-182 holds after fix1.
+
+For Ahmad, from PC-182:
+- Spec 0033 §2.1 and §5.1 should make OwnerId server-owned, not derived. Review 1 confirmed it is equivalent on insert and stricter on update, and spec 0012 §9.1 refuses a derived column in a column update, so transfer cannot work with derived.
+- Spec 0033 §5.1 could take an optional notification category per shareable, so that a pack's own shareable is not filed under reports.
+- Spec 0033 §2.1's [Stack] attribute lists no delete-by-query, but §2.2 and §5.6 do.
+
+PC-F71's CI fix d5421aa9 found the startup dir test's root cause in the test, not the product. The test read <html dir> right after the init promise, but a root effect writes the attribute and TestBed never ticks. It passed only when a macrotask let the scheduler tick first. The fix is one TestBed.tick() before the same assertion. The real first frame is correct, because bootstrap's tick flushes root effects before it renders. The flaky row is fixed through PC-F71.
+
+PC-F69's implementation (be5219bc) made no new entry points. Its claim is that boot reaches nearly every family, so a move would save only in the measure. Its one saving is TmDecimals' pure annotation (first frame 37.79 to 37.10 KB). Review 1 verifies the claim independently. If the claim holds, Ahmad decides between raising the 0024 and 0025 shares (≈23.8 KB against 14, ≈11.3 KB against 9) and approving API or behaviour changes for the listed candidates.
+
 ### D-226 (orchestrator, 2026-11-22): the startup dir test is fixed through PC-F71; PC-F72 opened
 
 Since about 16:38 UTC, tm-localization.spec's startup test fails on both OSes: the document dir is ltr when rtl is expected. It fails on platform-core's PR run 45044779464 (08ebc1cc, PC-104's code) and on PC-F71's gate run 45046747313. PC-104's own gate run passed it at 16:08 UTC on the same code, so the failure depends on time or environment and is now deterministic. It blocks every integration's CI.
