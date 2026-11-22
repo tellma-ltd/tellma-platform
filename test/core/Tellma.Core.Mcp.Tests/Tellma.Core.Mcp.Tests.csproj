@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <!-- The server's internals: the argument reader, the renderings, the catalogue, the filters'
+         pure parts and the startup check, driven without a host. -->
+    <ProjectReference Include="..\..\..\src\core\Tellma.Core.Mcp\Tellma.Core.Mcp.csproj" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+  </ItemGroup>
+
+</Project>

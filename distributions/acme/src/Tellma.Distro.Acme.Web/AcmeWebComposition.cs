@@ -5,6 +5,7 @@
 
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Tellma.Core.Composition;
+using Tellma.Core.Mcp;
 using Tellma.Core.Tenancy;
 using Tellma.Defaults.Azure.AspNetCore;
 using Tellma.Distro.Acme.Web.Provisioning;
@@ -12,20 +13,23 @@ using Tellma.Distro.Acme.Web.Provisioning;
 namespace Tellma.Distro.Acme.Web
 {
     /// <summary>
-    ///     What only Acme's web host composes, after <see cref="AcmeComposition.Compose" />: never a
-    ///     feature or an entity, which the migrator would not see.
+    ///     What only Acme's web host composes, after <see cref="AcmeComposition.Compose" />: never an
+    ///     entity, a securable or a table, which the migrator would not see.
     /// </summary>
     public static class AcmeWebComposition
     {
         /// <summary>
-        ///     Composes the web host's additions: the Azure web defaults and, in Development, the
-        ///     provisioning trigger that runs the distribution's own migrator.
+        ///     Composes the web host's additions: the Azure web defaults, the tenant MCP server and, in
+        ///     Development, the provisioning trigger that runs the distribution's own migrator.
         /// </summary>
         /// <param name="tellma">The composition builder.</param>
         public static void Compose(TellmaBuilder tellma)
         {
             ArgumentNullException.ThrowIfNull(tellma);
             _ = tellma.UseAzureWebDefaults();
+
+            // --- The tenant MCP server at /{tenantId}/mcp, with the platform's tools alone ---
+            _ = tellma.AddMcp();
 
             // --- Self-serve provisioning: a local migrator process in Development, none elsewhere ---
             // Replaces the platform's default, which answers the admin surface's tenant POST 501.

@@ -13,6 +13,7 @@ using Tellma.Core.Abstractions.Api;
 using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.Abstractions.Hosting;
 using Tellma.Core.AspNetCore.Hosting;
+using Tellma.Core.AspNetCore.Routing;
 
 namespace Tellma.Core.AspNetCore.Surfaces
 {
@@ -67,6 +68,19 @@ namespace Tellma.Core.AspNetCore.Surfaces
             string origin = configuration[HostConfigurationKeys.PublicOrigin]
                 ?? throw new InvalidOperationException($"{HostConfigurationKeys.PublicOrigin} is not set.");
             string authority = identity.ResolveAuthority(origin);
+
+            // --- The tenant surfaces: the web surface always; the MCP and public API surfaces when an adapter maps them ---
+            Dictionary<string, string?> surfaces = new(StringComparer.Ordinal)
+            {
+                ["web"] = WebSurface,
+                ["mcp"] = null,
+                ["api"] = null,
+            };
+            foreach (ITenantSurfaceSource source in services.GetServices<ITenantSurfaceSource>())
+            {
+                surfaces[source.Key] = source.Route;
+            }
+
             return new DistributionInfo(
                 deployment.Application,
                 distribution.DisplayName ?? throw new InvalidOperationException($"{DistributionOptions.SectionPath}:{nameof(DistributionOptions.DisplayName)} is not set."),
@@ -74,13 +88,7 @@ namespace Tellma.Core.AspNetCore.Surfaces
                 versions.PlatformVersion,
                 versions.DistributionVersion,
                 new IdentityInfo(authority, identity.Mode.ToString(), $"{authority}/account?client_id={Uri.EscapeDataString(deployment.Application)}"),
-                new Dictionary<string, string?>(StringComparer.Ordinal)
-                {
-                    // The MCP and public API surfaces are announced by the features that map them.
-                    ["web"] = WebSurface,
-                    ["mcp"] = null,
-                    ["api"] = null,
-                },
+                surfaces,
                 LoginRoute,
                 admin ? AdminVersions : [],
                 new DistributionLinks(NullIfEmpty(links.Terms), NullIfEmpty(links.Privacy)),
