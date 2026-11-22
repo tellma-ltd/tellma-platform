@@ -6,6 +6,7 @@
 import {
   computed,
   DestroyRef,
+  DOCUMENT,
   effect,
   inject,
   Injectable,
@@ -182,7 +183,7 @@ export class TmCacheRefresher {
   readonly #aborts = new Map<number, AbortController>();
   /** The jitter timers of hub events. */
   readonly #timers = new Set<ReturnType<typeof setTimeout>>();
-  /** The routed tenant. */
+  /** The routed tenant: before the first navigation, the address's. */
   readonly #tenant = signal<number | null>(null);
   #boundary: TmBoundary | null = null;
   #timer: ReturnType<typeof setTimeout> | undefined;
@@ -223,6 +224,11 @@ export class TmCacheRefresher {
     });
     if (router.navigated) {
       route(router.url);
+    } else {
+      // Before the first navigation the tenant is the one the address names,
+      // so the launch resolves its language and calendar before the first
+      // render (spec 0024 §4.3, step 2).
+      this.#tenant.set(tmRoutedTenant(inject(DOCUMENT).location.pathname));
     }
 
     // --- The page: leaving it aborts every sync; showing it again runs a boundary that passed ---

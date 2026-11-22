@@ -3,6 +3,7 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+import { InjectionToken } from '@angular/core';
 import type { TmCalendar } from '@tellma/core-ui/l10n';
 
 import type { TmFeature } from '../declarations/tm-feature';
@@ -67,3 +68,9 @@ export interface TmAppConfig {
   /** Calendars the distribution registers on the server and the platform lacks. */
   readonly calendars?: readonly TmCalendarDefinition[];
 }
+
+/**
+ * The app configuration `provideTellma` received. Internal: the localization
+ * service reads the offered languages and the distribution's calendars.
+ */
+export const ɵTM_APP_CONFIG = new InjectionToken<TmAppConfig>('ɵTM_APP_CONFIG');

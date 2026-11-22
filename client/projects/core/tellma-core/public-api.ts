@@ -79,6 +79,12 @@ export { TM_APP_DECLARATIONS, type TmAppDeclarations } from './src/app/tm-app-de
 export type { TmRouteData, TmRouteSkeleton } from './src/app/tm-route-data';
 export type { TmPageKind } from './src/context/tm-page-kind';
 
+// Localization: the language, the regional formats, the calendar and the zones, server text and English.
+export { TmLocalization, type TmLocaleChange } from './src/l10n/tm-localization';
+export type { TmLocaleSave } from './src/l10n/tm-locale-write';
+export { TmServerText, type TmProblemText } from './src/l10n/tm-server-text';
+export { tmEnglish } from './src/l10n/tm-english';
+
 // Routes and URLs: the title strategy, the app's URLs and the search query codec.
 export { TmTitleStrategy } from './src/routes/tm-title-strategy';
 export { TmUrls, type TmRouteMatch, type TmTenantUrls } from './src/urls/tm-urls';
@@ -184,6 +190,7 @@ export type {
   TmDraftsReplyMessage,
   TmHubEventMessage,
   TmHubStatusMessage,
+  TmLanguageSwitchedMessage,
   TmLeaderProbeMessage,
   TmPrefsChangedMessage,
   TmSessionMessage,
@@ -216,6 +223,12 @@ export {
   type TmSyncTrigger,
 } from './src/state/sync/tm-cache-refresher';
 
+// The user's preferences. The tab's memory (page state, drafts and tree
+// expansion) is @tellma/core/memory's, and recently visited pages are
+// @tellma/core/recents'.
+export { tmPreferenceKey, type TmPreferenceKey, type TmPreferenceKind } from './src/state/prefs/tm-preference-key';
+export { TmPreferences } from './src/state/prefs/tm-preferences';
+
 // The client metadata's holder, which @tellma/core-testing loads, and the
 // client store's browser, which it replaces; not for app code.
 export { TmClientMetadataStore as ɵTmClientMetadataStore } from './src/metadata/tm-client-metadata';
@@ -226,6 +239,28 @@ export type { TmSyncDoc as ɵTmSyncDoc } from './src/state/launch/tm-launch-docs
 // error presenter, which the app's error presenter provides; not for app code.
 export { TmLocks as ɵTmLocks } from './src/state/sync/tm-locks';
 export { TM_SYNC_ERRORS as ɵTM_SYNC_ERRORS, type TmSyncErrors as ɵTmSyncErrors } from './src/state/sync/tm-cache-refresher';
+// What @tellma/core/memory and @tellma/core/recents build on: the browser
+// seams, the routed tenant of a URL, the route data the route table adds, the
+// drafts' storage (which @tellma/core-testing replaces) and keys (which the
+// session's sign-in sweep shares), and the state's section of the support
+// dump with the parts the services report to it. Not for app code.
+export { TM_API_HOST as ɵTM_API_HOST, type TmApiHost as ɵTmApiHost } from './src/api/tm-api-host';
+export { tmRoutedTenant as ɵtmRoutedTenant } from './src/launch/tm-routed-tenant';
+export type { TmRouteDataInternal as ɵTmRouteDataInternal } from './src/routes/tm-routes';
+export {
+  TM_DRAFT_KEY_PREFIX as ɵTM_DRAFT_KEY_PREFIX,
+  TM_DRAFTS_STORAGE as ɵTM_DRAFTS_STORAGE,
+  tmDraftPrefix as ɵtmDraftPrefix,
+  tmRemoveDrafts as ɵtmRemoveDrafts,
+  tmStorageKeys as ɵtmStorageKeys,
+} from './src/state/memory/tm-draft-keys';
+export {
+  TM_STATE_PARTS as ɵTM_STATE_PARTS,
+  TmStateDump as ɵTmStateDump,
+  type TmStateDumpSection as ɵTmStateDumpSection,
+  type TmStateParts as ɵTmStateParts,
+} from './src/state/tm-state-dump';
+export type { TmStoredDocInfo as ɵTmStoredDocInfo } from './src/state/store/tm-client-store';
 
 // The launch: the single-membership rule and the automatic-entry mark.
 export { tmSingleLiveTenant } from './src/launch/tm-single-live-tenant';

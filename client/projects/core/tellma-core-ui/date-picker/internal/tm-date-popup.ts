@@ -365,6 +365,7 @@ export class ɵTmDatePopup {
         timeZone: 'UTC',
       }),
       this.utcOf(iso),
+      { calendar, iso },
     );
   }
 
@@ -383,6 +384,7 @@ export class ɵTmDatePopup {
           timeZone: 'UTC',
         }),
         this.utcOf(iso),
+        { calendar, iso },
       );
     }
     if (this.view() === 'month') {
@@ -406,6 +408,7 @@ export class ɵTmDatePopup {
         timeZone: 'UTC',
       }),
       this.utcOf(iso),
+      { calendar, iso },
     );
   }
 
@@ -556,7 +559,10 @@ export class ɵTmDatePopup {
       });
       cells.push({
         month,
-        label: iso === null ? String(month) : ɵtmFormatWithoutEra(formatter, this.utcOf(iso)),
+        label:
+          iso === null
+            ? String(month)
+            : ɵtmFormatWithoutEra(formatter, this.utcOf(iso), { calendar, iso }),
         // `last === null` means the month's END is past what the calendar
         // can represent (the ISO ceiling) — its earlier days are still
         // reachable, so that alone must not disable it.

@@ -384,6 +384,155 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-232 (orchestrator, 2026-11-22): PC-189 Review 1 rulings
+
+PC-189 Review 1 found 0/2/4.
+
+What the review confirmed:
+- describe does not depend on permissions, so its cache leaks nothing;
+- the read tools go through EntityService and IChildQueryService;
+- the request limits match spec 0016;
+- the 5/8 tool split is planned in PC-190.
+
+Rulings:
+- R1-1: follow spec 0016 §11.2 on the MCP path only. An MCP token carries exactly one aud value, equal to the tenant's resource; a multi-audience token is refused. This fails closed. Test it.
+- R1-2: add the listed tests and the missing integration refusals.
+- R1-3: fail closed.
+- R1-4: rename the feature to core.mcp.
+- R1-5: window tellma_get before materialising, grandchildren included.
+- R1-6: the trailer always fits the cap.
+
+PC-189 holds after fix1.
+
+For Ahmad, from PC-189:
+- Tellma.Identity's ResourceGrantValidator lets one interactive token name several tenants (and the origin), while 0016 §11.2 requires an MCP token's aud to equal the tenant's resource exactly. The MCP path now refuses multi-audience tokens. Should Identity also refuse a multi-resource request that includes an MCP resource?
+- 0016 §1.2 composes AddMcp() in the shared delegate, but the code requires composeWeb. The spec illustration needs aligning.
+- Deviation 10: 0016 §11.2's resource_name drops the tenant name, to avoid tenant enumeration. This needs sign-off.
+
+### D-231 (orchestrator, 2026-11-22): PC-182 fix1 accepted, not escalated; held
+
+Fix1 (4855edd5) fixed R1-1..R1-5. R1-6 and R1-7 needed no code change (D-227).
+
+The privacy fix (R1-2) is one Via(row navigation, Share or Publish filter) on the grants read, which replaces the separate key read. That is not a reshaping beyond one filter, so D-227's escalation test is not met and Review 2 does not run.
+
+New deviations accepted:
+- 15: with filtered decisions, the extra omits admitted rows that hold no grants. This is equivalent, because the dialog reads an omitted row as no grants.
+- 16: an internal set-based Notifier.WithdrawEach runs inside the delete's transaction, because DeletePersistContext carries ids, not entities.
+- 17: the delete-by-query contradiction in spec 0033 is recorded.
+
+The share-count backstop held under a concurrent test with a side TABLOCKX, so the existing range locks serialise it.
+
+PC-182 holds. Release order: PC-F69 (integrating), then PC-182.
+
+### D-230 (orchestrator, 2026-11-22): PC-176 Review 1 rulings; escalated to Review 2
+
+PC-176 Review 1 found 2 blocking, 3 major and 6 minor.
+
+Blocking:
+- R1-1: every export fails without IBlobStore. 8 of the 9 ExcelExportTests fail. The implementer did not run them, and deviation 12 claimed the opposite.
+- R1-2: the XML name table is unbounded. An upload within the 100 MiB limit can reach about 4 GB resident.
+
+Every finding is to be fixed, as Review 1 proposes. R1-6 records three departures as deviations, including the real-producer corpus deferral (acceptable under PLAN §6). R1-4 adds core.Export and core.Import to ProjectedRouteTests and tests the own-rows criteria on an ungranted user.
+
+The blocking findings escalate PC-176 to Review 2 under §4.4, inherit at xhigh, as an off-list item. R2 judges the memory bounds (R1-2, R1-3) as hostile-input defences.
+
+Lesson for briefs: an implementer's "tests passed" lists only what it ran. The R1 briefs already ask reviewers to run the touched integration classes, and that is how R1-1 was caught.
+
+### D-229 (orchestrator, 2026-11-22): Tier 1 was unblocked and left idle; slots re-ordered
+
+PC-107 and PC-104 landed and made PC-105 (0029-b), PC-106 (0027-a) and PC-108 (0025-c) ready. I did not re-run check_deps --ready at those landings, so PC-F69 (mandated by D-214) and PC-F72 (a once-seen flake that blocks nothing) took the freed slots, and the T3 fills kept theirs. Ahmad noticed that no T1 item was in flight.
+
+Correction:
+- PC-F72 was stopped minutes after launch, before it had committed or changed anything. PC-105 takes pc-3.
+- PC-106 takes pc-4 when PC-F70 lands. PC-108 takes pc-1 when PC-F69 lands.
+- PC-F72 returns to todo, behind the ready T1 items. D-140/D-173 put fix items ahead of T3, not ahead of T1, unless the fix blocks CI.
+- The T3 fills (PC-176, PC-182, PC-189) keep their slots. Each is well into its cycle, and §3 lets a fill finish.
+
+Process: after every landing I re-run check_deps --ready and assign freed slots in this order: blocking fixes, then T1, then T2, then non-blocking fixes, then T3 fills.
+
+### D-228 (orchestrator, 2026-11-22): PC-F69 Review 1 rulings; the "." shares go to Ahmad
+
+PC-F69 Review 1 found 0/0/3. Its own probes confirmed the claim: boot keeps every service class of "." on the first frame, so no sizable service can move to a secondary entry point without becoming asynchronous.
+
+It also confirmed the TmDecimals pure annotation. The annotation is safe, its treeShakes check fails without it, and it saves about 0.67 KB for FESM consumers.
+
+Rulings:
+- R1-1: give the per-spec split on both bases.
+- R1-2: correct candidate 3's figure.
+- R1-3: do not make the move. The flush engine via import() (≈1.2 KB) is a timing change against 0025 §9.4's "at once", so it is named in the commit as deferred. Fix1 also root-causes the union-order.spec bigint timeout (D-011).
+
+PC-F69 holds after fix1. D-214's re-split cannot honestly bring "." to 31 KB, so the ceiling stays at 38.5 KB.
+
+For Ahmad (from D-214, now with evidence):
+- Option 1: raise spec 0024's share of "." to its measured size (≈25.5 KB on the gate's measure, against 14) and spec 0025's (≈12.1 KB, against 9).
+- Option 2: approve async changes for about 1.5-2.5 KB more: the flush engine via import(), and the search query codec, which makes TmUrls async.
+
+Also, 0024 §12's initial-JS budget is measured on Acme. Acme compiles core from sources, so that measure is not an FESM consumer's first frame.
+
+### D-227 (orchestrator, 2026-11-22): PC-182 Review 1 rulings; PC-F71's root cause; PC-F69 R1
+
+PC-182 Review 1 found 0 blocking, 3 major and 4 minor.
+
+Rulings:
+- R1-1 (major, defect): a delete withdraws every deleted row's share notices, in the same transaction as the delete (0033 §5.6 and §7, 0021 §2.3).
+- R1-2 (major, privacy): the shares extra's admission filter moves into the grants query, so related never names other grantees to a reader (0033 §5.2). This retires deviation 5.
+- R1-3 (major): add tests for the grant caps, the SQL backstop and the grantee checks.
+- R1-4 (minor): fix.
+- R1-5 (minor): remove ReportShare's client metadata, or record it as a deviation.
+- R1-6 (minor): record the delete-by-query contradiction in the commit body.
+- R1-7 (minor): keep the reports category.
+
+PC-182 is not on the two-review list, and Review 1 does not meet §4.4's thresholds. R1-2 is a privacy fix in the query layer, so fix1 is judged for escalation once it is in: if the grants query is reshaped well beyond one filter, Review 2 runs on fable.
+
+PC-182 holds after fix1.
+
+For Ahmad, from PC-182:
+- Spec 0033 §2.1 and §5.1 should make OwnerId server-owned, not derived. Review 1 confirmed it is equivalent on insert and stricter on update, and spec 0012 §9.1 refuses a derived column in a column update, so transfer cannot work with derived.
+- Spec 0033 §5.1 could take an optional notification category per shareable, so that a pack's own shareable is not filed under reports.
+- Spec 0033 §2.1's [Stack] attribute lists no delete-by-query, but §2.2 and §5.6 do.
+
+PC-F71's CI fix d5421aa9 found the startup dir test's root cause in the test, not the product. The test read <html dir> right after the init promise, but a root effect writes the attribute and TestBed never ticks. It passed only when a macrotask let the scheduler tick first. The fix is one TestBed.tick() before the same assertion. The real first frame is correct, because bootstrap's tick flushes root effects before it renders. The flaky row is fixed through PC-F71.
+
+PC-F69's implementation (be5219bc) made no new entry points. Its claim is that boot reaches nearly every family, so a move would save only in the measure. Its one saving is TmDecimals' pure annotation (first frame 37.79 to 37.10 KB). Review 1 verifies the claim independently. If the claim holds, Ahmad decides between raising the 0024 and 0025 shares (≈23.8 KB against 14, ≈11.3 KB against 9) and approving API or behaviour changes for the listed candidates.
+
+### D-226 (orchestrator, 2026-11-22): the startup dir test is fixed through PC-F71; PC-F72 opened
+
+Since about 16:38 UTC, tm-localization.spec's startup test fails on both OSes: the document dir is ltr when rtl is expected. It fails on platform-core's PR run 45044779464 (08ebc1cc, PC-104's code) and on PC-F71's gate run 45046747313. PC-104's own gate run passed it at 16:08 UTC on the same code, so the failure depends on time or environment and is now deterministic. It blocks every integration's CI.
+
+No slot is free: pc-1 is PC-F69, pc-2 PC-189, pc-3 PC-F71, pc-4 PC-F70 (held), pc-f PC-176 and pc-f2 PC-182. PC-F71 is next in the release order and is blocked by this test anyway, so its agent root-causes and fixes the test as "PC-F71: integrate (CI fixes)". The fix makes the cause deterministic. It does not weaken the assertion or add a retry (D-011/D-113).
+
+The same PR run also failed ScheduleTests.A_schedule_paused_for_its_inactive_owner… once (Assert.True at ScheduleTests.cs:516, ubuntu). It passed on the pc run of the same code and on PC-F71's run. PC-F72 root-causes it in the next free slot, ahead of T3. A red CI that stops only integrations is not notified (§9).
+
+### D-225 (orchestrator, 2026-11-22): PC-104 landed; "." at 38.5 KB; PC-F69 launched; PC-F71 released
+
+PC-104 landed at 5bfbd41c. After the merge, "." measured 38.49 KB, so its ceiling was set to 38.5 KB, within D-224's 39 KB cap.
+
+The other entry points measured:
+- the lazy locale-write chunk: 1.50/2
+- ./memory: 2.54/2.6
+- ./recents: 1.53/1.6
+- core-ui l10n: 9.96/10
+
+PC-F69 starts in pc-1, the slot PC-104 freed, ahead of other T1/T2 work (D-214). It re-splits "." by spec family into secondary entry points, so that each spec's services leave the first frame unless the shell needs them at boot.
+
+Goals:
+- "." falls back to its 31 KB pre-raise level, or as close to it as the boot path honestly allows.
+- Each new entry point gets its own honest ceiling.
+- The static-graph check proves "." does not reach the new entry points.
+- Consumers (Acme, showcase) import from the new entry points.
+
+Any first-frame figure that rises is reported.
+
+PC-F71 integrates next, carrying D-224's three items: the AH 9666 vector rows, a lengths array asserted on both sides, and a client daysIn bounded at AH 9666. PC-F70 follows.
+
+### D-224 (orchestrator, 2026-11-22): PC-107 landed; PC-104 released; the AH 9666 carries move to PC-F71
+
+PC-107 landed at 5a41bd43. After its merge, "." measured 33.82/34 KB, ./memory 2.54/2.6, ./recents 1.53/1.6, and the first frame ≈33.14 KB.
+
+PC-104 integrates next, and it integrates second of the pair, so under D-214 it re-measures "." after the merge. The combined ceiling is the measured figure rounded up to 0.5 KB. It may not exceed 34 KB plus PC-104's own reviewed raise (36 - 31 = 5 KB), so 39 KB at most. Anything above that stops and is reported. PC-104 also merges the two TmSendOptions.tenantId copies into one.
+
+D-221 and D-222 gave PC-104's integration three carries for PC-F71's 9666 range: the vector rows, a lengths array asserted on both sides, and a bounded client daysIn. All three require PC-F71's server change to be on platform-core, and PC-F71 integrates after PC-104. They therefore move to PC-F71's integration, which merges PC-104's client and lands the binding test with the server change it binds.
+
 ### D-223 (orchestrator, 2026-11-22): PC-F70 Review 1 rulings; PC-F71 held
 
 PC-F70 Review 1 found 0/0/2 and accepted the three implementer deviations. The event is logged once per refusal; a crashing check still logs CheckThrew at Error; the migrator never registers the check.

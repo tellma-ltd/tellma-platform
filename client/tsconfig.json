@@ -18,7 +18,15 @@
       "@tellma/core-ui/*": ["./projects/core/tellma-core-ui/*/public-api.ts"],
       "@tellma/core-ui-tokens": ["./projects/core/tellma-core-ui-tokens/public-api.ts"],
       "@tellma/core-ui-testing": ["./projects/core/tellma-core-ui-testing/public-api.ts"],
-      "@tellma/locale-ar": ["./projects/locale/tellma-locale-ar/public-api.ts"]
+      "@tellma/locale-ar": ["./projects/locale/tellma-locale-ar/public-api.ts"],
+      "@tellma/locale-ar/strings": ["./projects/locale/tellma-locale-ar/strings/public-api.ts"],
+      /* The stylesheets a global stylesheet imports by package name, which the build's CSS bundler resolves here too. */
+      "@tellma/core/styles.css": ["./projects/core/tellma-core/styles.css"],
+      "@tellma/core-ui/fonts/*": ["./projects/core/tellma-core-ui/fonts/*"],
+      "@tellma/core-ui/styles/*": ["./projects/core/tellma-core-ui/styles/*"],
+      "@tellma/core-ui-tokens/css/*": ["./projects/core/tellma-core-ui-tokens/css/*"],
+      "@tellma/locale-ar/fonts/*": ["./projects/locale/tellma-locale-ar/fonts/*"],
+      "@tellma/locale-ar/styles.css": ["./projects/locale/tellma-locale-ar/styles.css"]
     }
   },
   "files": [],

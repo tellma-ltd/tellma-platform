@@ -726,7 +726,10 @@ when the calendar renders it with the same three numbers.
 
 Each system's framework `Calendar` covers exactly the dates the system decomposes: `uq`'s is the
 table extended by the tabular calendar under the same rule (`UmAlQuraExtendedCalendar`), so month
-arithmetic works beyond the table too.
+arithmetic works beyond the table too, up to `DateOnly.MaxValue` (AD 9999-12-31, AH 9666-04-03).
+Month and year lengths follow the tabular rule to the end of AH 9666, so the months that end after
+that day still have lengths; a day after it does not compose, and `ToDateTime` and the arithmetic
+refuse it with `ArgumentOutOfRangeException`.
 
 Month names of `uq` and `et` are Core's resources, `Calendar_<code>_Month<n>` in
 `Resources/Strings.resx` (English) and its Arabic and Amharic satellites, taken from CLDR so the

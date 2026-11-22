@@ -5,7 +5,7 @@
 
 import { ChangeDetectionStrategy, Component, inject, type Signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
-import { TmLaunchCache, type TmMembership, TmUrls } from '@tellma/core';
+import { TmLaunchCache, TmLocalization, type TmMembership, TmUrls } from '@tellma/core';
 import { TmSkeleton } from '@tellma/core-ui/skeleton';
 
 // The tenant picker's stand-in (spec 0024 §9.2; spec 0027 §6.2): the user's
@@ -19,7 +19,7 @@ import { TmSkeleton } from '@tellma/core-ui/skeleton';
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <main class="tm-tenant-picker">
-      <h1 tmPageTitle tabindex="-1">Choose a company</h1>
+      <h1 tmPageTitle tabindex="-1">{{ title() }}</h1>
       <!-- The cached memberships, else skeleton rows while they are read. -->
       @if (tenants(); as tenants) {
         <ul>
@@ -45,6 +45,9 @@ import { TmSkeleton } from '@tellma/core-ui/skeleton';
 })
 export class TmTenantPicker {
   readonly #cache = inject(TmLaunchCache);
+
+  /** The heading. */
+  protected readonly title = inject(TmLocalization).ɵtext('tm.shell.tenantPicker.title');
 
   /** The app's URLs. */
   protected readonly urls = inject(TmUrls);

@@ -13,7 +13,7 @@ import { TranslocoService } from '@jsverse/transloco';
 
 import { TM_UI_I18N_SCOPE } from '@tellma/core-ui';
 
-import { TM_LOCALE_AR_STRINGS } from './strings-ar';
+import { TM_LOCALE_AR_STRINGS } from '@tellma/locale-ar/strings';
 
 /**
  * Installs the Arabic locale pack — THE reference

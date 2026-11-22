@@ -1,0 +1,13 @@
+/*
+ * Copyright (c) Tellma Ltd. All rights reserved.
+ *
+ * This source code is licensed under the Apache-2.0 license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/*
+ * The Arabic locale pack's global styles, which a distribution's
+ * src/styles.css imports after @tellma/core/styles.css: the self-hosted
+ * Noto Sans Arabic faces, fetched only when Arabic glyphs render.
+ */
+@import './fonts/fonts.css';
