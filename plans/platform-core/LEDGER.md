@@ -111,7 +111,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC | Slot | Branch | Step | Implementer agent (name / id) | Reviewer agent (name / id) | Started (UTC) |
 |---|---|---|---|---|---|---|
 | PC-104 | pc-1 | pc/PC-104 | fix1 | impl 2330b361 (9 deviations; "." ceiling 31 to 36 KB; Umm al-Qura client on .NET month table, not ICU; tenant language after first NavigationEnd; cross-engine e2e scratch only; ar-AE digits vs §7.7); R1 0/6/5 (startup tenant unknown so Gregorian first frame; om/ti day-first missing; locale write cross-tenant queue; atomicity test cannot fail; fallback untested; Arabic tables in initial bundle); fix1 then R2 inherit xhigh (§4.4); D-215 | 0024-h; R1 only | 2026-11-22 |
-| PC-107 | pc-2 | pc/PC-107 | R1 | impl 7c63b401 (14 deviations; "." ceiling 31 to 36.5 KB, 0025 share ~13.2 vs 9 KB; TmSendOptions.tenantId; boot reads session partition; TM_ROUTED_PAGE / TM_RECENTS_NAVIGATION seams for PC-111 / PC-115; state dump without leader; drafts.reply to PC-110); R1 launched; D-214 | 0025-e; R1 only | 2026-11-22 |
+| PC-107 | pc-2 | pc/PC-107 | fix1 | impl 7c63b401 (14 deviations; "." ceiling 31 to 36.5 KB, 0025 share ~13.2 vs 9 KB; TmSendOptions.tenantId; boot reads session partition; TM_ROUTED_PAGE / TM_RECENTS_NAVIGATION seams for PC-111 / PC-115; state dump without leader; drafts.reply to PC-110); R1 0/1/3 (1.8 KB of the raise off first frame possible; tree-expansion overlapping flush loses a toggle; missing tests; TSDoc); fix1 (memory entry point, lazy TmRecents) then hold; D-214, D-216 | 0025-e; R1 only | 2026-11-22 |
 | PC-F17 | pc-4 | pc/PC-F17 | blocked | impl 73069c02 (deviations 5: slot tracking against 0004 §4; ./grid 41.23 KB under D-031; ARCHITECTURE.md core-ui edit; probes unquarantined); R1 0/1/3 (checkbox press-scroll-release toggles another row; window equal; retire test; unthrottled probe deviation); fix1 1ff9556a held (R1-1..R1-4 fixed; deviation 6 unthrottled probes; ./grid 41.37 KB, measured 41.27; window equal saves nothing on screen-sized steps; active cell moves to the next row on an id swap, as before); clean merge-tree; D-199; released after PC-103 landed (257f1ed6); integrating; integrated 048b6791 (clean merge; ./grid 41.27/41.37 KB), CI 45008624479; CI green; platform-core fast-forward push denied by the auto-mode classifier; Ahmad notified (push + Gmail 1a202ba370a3fada); PC-F11 and PC-143 integrations wait | fix; R1 only | 2026-11-22 |
 | PC-F11 | pc-f | pc/PC-F11 | held c7de6fa9 | impl c4a8cac1 (9 deviations; Landlock ABI-detected, no temp dir; no-Landlock: thumbnails off outside Development; Windows AppContainer via undocumented NtCreateLowBoxToken, Development only; host adds capability-SID ACEs to its allowance files; CI sets TELLMA_REQUIRE_LANDLOCK=1; residual stat/readlink metadata); R1 0/1/6 (seccomp misses verity/encryption/btrfs ioctls; confinement-bit test; Windows user-profile runtime; inotify/fanotify/xattr; close_range syscall; install-path guard; App Service Landlock check for Ahmad); fix1 then R2 fable; D-204; fix1 25cd8cb3 (3 deviations: Windows CanConfine depends on runtime grant, persistent ACE outside Program Files; Program Files Development host unguarded; ioctl 0xF5 also refused); R2 0/0/4 (mq_* and flock open; Windows host-file grant fallback; own-/proc namespace residual; tests); fix2 c7de6fa9 (5 deviations; flock and mq_* refused, .NET FileStream measured fine with flock EPERM; Windows host-file grant fallback; BlobPdfWorkerReadsHostDirectory warning); merge-tree clean; held; release after PC-F17 and PC-095 (D-213); D-207 | fix; R1 + R2 fable; implementer xhigh | 2026-11-22 |
 | PC-095 | pc-3 | pc/PC-095 | held c5732459 | impl fc493f42 (8 deviations; roundtrip tag only {resource}:action, per-action tags not made; Kestrel for abort/drain tests; classes serial; shared TestSupport; web.json/contracts.json regenerate at integration); R1 1/3/4 (web.json CRLF in descriptions breaks the Linux snapshot test; budget tag prefix match; aborted read not proven; 4 budgets unmeasured; KQL kinds/mean; version tag values; harness move unrun; log events); fix1 0672df4c (all 8 fixed; web.json CRLF-only regen; Acme integration 48/48; Linux WireSnapshot 3/3); R2 0/0/4 (save measured on empty set; delete/all ceilings 2; RT1 pre-check untested; ARCHITECTURE overclaim); fix2 c5732459 (all 4 fixed; suite 35/35); merge-tree clean; held; first after PC-F17 lands, regenerate web.json/contracts.json; D-208, D-209, D-212, D-213 | 0016-f; R1 only | 2026-11-22 |
@@ -426,14 +426,14 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-105 | 0029-b | 1 | todo | | | |
 | PC-106 | 0027-a | 1 | todo | | | |
 | PC-107 | 0025-e | 1 | in progress | | | |
-| PC-108 | 0025-c | 1 | todo | | | |
+| PC-108 | 0025-c | 1 | todo | | | carry (D-216): add the leader member to PC-107's state dump |
 | PC-109 | 0028-c | 1 | todo | | | |
-| PC-110 | 0024-i | 1 | todo | | | |
-| PC-111 | 0026-a | 1 | todo | | | |
+| PC-110 | 0024-i | 1 | todo | | | carry (D-216): answer drafts.reply (busy flag, sign-out wait) for PC-107's TmDrafts |
+| PC-111 | 0026-a | 1 | todo | | | carry (D-216): replace PC-107's internal TM_ROUTED_PAGE seam with TmPageContexts |
 | PC-112 | 0026-b | 1 | todo | | | |
 | PC-113 | 0026-c | 1 | todo | | | |
 | PC-114 | 0024-k | 1 | todo | | | |
-| PC-115 | 0027-b | 1 | todo | | | |
+| PC-115 | 0027-b | 1 | todo | | | carry (D-216): replace PC-107's internal TM_RECENTS_NAVIGATION seam with TmNavigation |
 | PC-116 | 0027-c | 1 | todo | | | |
 | PC-117 | 0029-c | 1 | todo | | | |
 | PC-118 | 0027-d | 1 | todo | | | |
@@ -472,7 +472,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-151 | 0023-h | 2 | done (99123772; CI 43994567778 red → PC-F53; green 44019377406 on 880b58d7) | 7b9c658, c678bc7, 9912377 (pc/PC-151) | | |
 | PC-152 | 0024-j | 2 | todo | | | |
 | PC-153 | 0025-d | 2 | todo | | | |
-| PC-154 | 0026-f | 2 | todo | | | |
+| PC-154 | 0026-f | 2 | todo | | | carry (D-216): register PC-107's state dump with TmSupport (registerDumpSection) without pulling @tellma/core/memory onto the first frame |
 | PC-155 | 0028-d | 2 | todo | | | |
 | PC-156 | 0028-e | 2 | todo | | | |
 | PC-157 | 0028-f | 2 | todo | | | |

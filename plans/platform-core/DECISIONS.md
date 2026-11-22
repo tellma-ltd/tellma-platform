@@ -384,6 +384,33 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-216 (orchestrator, 2026-11-22): PC-107 Review 1 rulings; carries
+
+Review 1 found 0/1/3. It accepted the deviations and points (2) through (6). It measured with the gate's bundler: esbuild splits by module, so only a separate entry point keeps code off the first frame.
+
+Fix1 rulings:
+- R1-1, option (a) now, because the code is new:
+  - TmStateDump reads without injecting the services.
+  - TmDrafts, TmPageState and TmTreeExpansion move to a new @tellma/core/memory entry point (about -1.69 KB).
+  - TmRecents loads through import() after the first render (about -0.56 KB).
+  - "." is set to its true size rounded up to 0.5 KB.
+  - Each move is a named deviation against 0025 §1.
+  - TmPreferences' flush engine is left for PC-F69.
+- R1-2: each tree-expansion settle removes exactly what it sent.
+- R1-3: the five missing tests.
+- R1-4: the TSDoc gaps.
+
+PC-107 holds after fix1.
+
+Carries, recorded on the Status rows:
+- PC-111: replace the internal TM_ROUTED_PAGE seam with TmPageContexts.
+- PC-115: replace TM_RECENTS_NAVIGATION with TmNavigation.
+- PC-108: add the state dump's leader member.
+- PC-110: answer drafts.reply with its busy flag and the sign-out wait.
+- PC-154: register the state dump with TmSupport, through registerDumpSection, without pulling the memory services onto the first frame.
+
+For Ahmad: 0025 §2.6 step 2 should say that the boot step reads the session partition as well as the user partition, so the first tree page after a reload restores in one call (§15). The code does this.
+
 ### D-215 (orchestrator, 2026-11-22): PC-104 Review 1 rulings; escalated to Review 2
 
 Review 1 found 0/6/5. It confirmed the following, and accepted deviations 1, 3, 5, 6, 7 and 8:
