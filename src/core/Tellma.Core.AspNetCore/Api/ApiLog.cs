@@ -58,6 +58,12 @@ namespace Tellma.Core.AspNetCore.Api
         ///     The endpoint audit refused the host's endpoints, so the host does not start: logged once,
         ///     just before the startup throw that carries the same problems.
         /// </summary>
+        /// <remarks>
+        ///     A refusal by the startup gate reaches every sink, because the failed run disposes the
+        ///     host. A refusal by <c>MapTellma</c> leaves the host undisposed, so <c>MapTellma</c>
+        ///     flushes OpenTelemetry's export before it throws. A sink that buffers outside
+        ///     OpenTelemetry, such as a buffered Serilog file sink, may lose that event.
+        /// </remarks>
         /// <param name="logger">The logger.</param>
         /// <param name="count">How many problems the audit found.</param>
         /// <param name="problems">Every problem, each rendered as one line with its source and fix, separated by semicolons.</param>

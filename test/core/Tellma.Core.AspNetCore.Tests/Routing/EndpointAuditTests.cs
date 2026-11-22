@@ -13,6 +13,9 @@ using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
+using OpenTelemetry;
+using OpenTelemetry.Logs;
+using System.Collections.Concurrent;
 using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.Abstractions.Crud;
@@ -369,23 +372,36 @@ namespace Tellma.Core.AspNetCore.Tests.Routing
 
                 CompositionProblem problem = Assert.Single(exception.Problems, static problem => problem.Source == TellmaEndpointAudit.CheckName);
                 Assert.Contains("requires the securable 'acme.Missing:Read', which no feature registers.", problem.Problem, StringComparison.Ordinal);
-                AssertFailureLogged(logs, problem);
+                AssertFailureLogged(logs, [problem]);
             }
         }
 
         [Fact]
-        public void MapTellma_logs_its_refusal_at_critical_with_every_problem_before_it_throws()
+        public void MapTellma_logs_its_refusal_at_critical_with_every_problem_and_flushes_it_before_it_throws()
         {
-            // An endpoint mapped ahead of MapTellma fails it there, before the host is built.
+            // Two endpoints mapped ahead of MapTellma fail it there, before the host is built.
             CapturingLoggerProvider logs = new();
+            FlushRecorder exported = new();
             TellmaCompositionException exception = Assert.Throws<TellmaCompositionException>(
                 () => TellmaTestHost.Build(options =>
                 {
-                    options.ConfigureServices = services => services.AddSingleton<ILoggerProvider>(logs);
-                    options.BeforeMapTellma = static app => app.MapGet("/plain", Nothing);
+                    options.ConfigureServices = services =>
+                    {
+                        _ = services.AddSingleton<ILoggerProvider>(logs);
+                        _ = services.ConfigureOpenTelemetryLoggerProvider(builder => builder.AddProcessor(exported));
+                    };
+                    options.BeforeMapTellma = static app =>
+                    {
+                        _ = app.MapGet("/plain", Nothing);
+                        _ = app.MapGet("/plain-2", Nothing);
+                    };
                 }));
 
-            AssertFailureLogged(logs, Assert.Single(exception.Problems));
+            Assert.Equal(2, exception.Problems.Count);
+            AssertFailureLogged(logs, exception.Problems);
+
+            // --- OpenTelemetry's export was flushed once the event had reached it ---
+            Assert.Contains(FailureEvent, exported.FlushedEvents);
         }
 
         [Fact]
@@ -418,19 +434,23 @@ namespace Tellma.Core.AspNetCore.Tests.Routing
 
         /// <summary>
         ///     Asserts the audit's refusal was logged once, at Critical, under its event name, with the
-        ///     problem the startup exception carries as its count and its one-line rendering.
+        ///     problems the startup exception carries: their count, and each one's one-line rendering in
+        ///     order, joined by semicolons.
         /// </summary>
         /// <param name="logs">The captured events.</param>
-        /// <param name="problem">The one problem the audit found.</param>
-        private static void AssertFailureLogged(CapturingLoggerProvider logs, CompositionProblem problem)
+        /// <param name="problems">The problems the audit found.</param>
+        private static void AssertFailureLogged(CapturingLoggerProvider logs, IReadOnlyList<CompositionProblem> problems)
         {
+            string count = problems.Count.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            string described = string.Join("; ", problems.Select(static problem => problem.Describe()));
+
             CapturedEvent logged = Assert.Single(logs.Events, static captured => captured.EventName == FailureEvent);
             Assert.Equal(LogLevel.Critical, logged.Level);
-            Assert.Equal("1", logged.Members["Count"]);
-            Assert.Equal(problem.Describe(), logged.Members["Problems"]);
+            Assert.Equal(count, logged.Members["Count"]);
+            Assert.Equal(described, logged.Members["Problems"]);
             // The host's Serilog pipeline quotes a string member where it renders it in the message.
-            Assert.StartsWith("The endpoint audit found 1 problem(s), so the host does not start: ", logged.Message, StringComparison.Ordinal);
-            Assert.Contains(problem.Describe(), logged.Message, StringComparison.Ordinal);
+            Assert.StartsWith($"The endpoint audit found {count} problem(s), so the host does not start: ", logged.Message, StringComparison.Ordinal);
+            Assert.Contains(described, logged.Message, StringComparison.Ordinal);
         }
 
         /// <summary>Maps one violation.</summary>
@@ -530,6 +550,36 @@ namespace Tellma.Core.AspNetCore.Tests.Routing
             public void Contribute(SecurableRegistryBuilder builder)
             {
                 throw new FormatException("bad pair");
+            }
+        }
+
+        /// <summary>
+        ///     An OpenTelemetry log processor standing in for a batching exporter: it holds the events it
+        ///     receives, and a flush records which of them it held at that moment.
+        /// </summary>
+        private sealed class FlushRecorder : BaseProcessor<LogRecord>
+        {
+            /// <summary>The names of the events received so far.</summary>
+            private readonly ConcurrentQueue<string?> _received = new();
+
+            /// <summary>The names of the events held when the last flush ran; empty before any flush.</summary>
+            private volatile string?[] _flushed = [];
+
+            /// <summary>The names of the events held when the last flush ran; empty before any flush.</summary>
+            public IReadOnlyList<string?> FlushedEvents => _flushed;
+
+            /// <inheritdoc />
+            public override void OnEnd(LogRecord data)
+            {
+                ArgumentNullException.ThrowIfNull(data);
+                _received.Enqueue(data.EventId.Name);
+            }
+
+            /// <inheritdoc />
+            protected override bool OnForceFlush(int timeoutMilliseconds)
+            {
+                _flushed = [.. _received];
+                return true;
             }
         }
 
