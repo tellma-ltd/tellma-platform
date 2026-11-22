@@ -384,6 +384,34 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-205 (orchestrator, 2026-11-22): PC-103 Review 2 rulings
+
+Review 2 (inherit, xhigh) found 0/1/9. It confirmed:
+- TmRouteReuse is correct for every navigation kind, with no leaked handles.
+- The TmShellComponents contract is checked at build time.
+- The startup loads run in parallel and fail correctly.
+- The shared lazy tsconfig holds on both OSes.
+- Both size measurements are right.
+- R1-2, R1-5..R1-8, R1-9, R1-11 and R1-12 are closed.
+
+Fixed in fix2:
+- R2-1 (major): a tenant switch within the same My settings section (/17/me/profile to /18/me/profile) skipped the leave guard, and TmRouteReuse then discarded a dirty Profile. A t change now counts as a section change.
+- R2-2: replaceUrl only for the launch navigation.
+- R2-3: stored reports and dashboards draw the dashboard skeleton (0024 §4.4).
+- R2-4: no leave question between two URLs that render the same section.
+- R2-5: tm.launch.* is timed to the launch route's first render, with no sample for a launch that lands off a tenant page.
+- R2-6: Review 1's budget saving was only in the measure, because ./shell is modulepreloaded on every first frame. Give the moved views their own lazy chunk, or move them back and set "." to its true size.
+- R2-7: focus stays on the settings tablist on a tab change (0032 §7.1), recorded as a deviation against 0024 §4.4.
+- R2-8: a tenant segment with matrix parameters routes to not-found.
+- R2-9: TmLaunchRedirect does not navigate after it is destroyed.
+- R2-10: the dev-mode check is injected through a token, so both halves of TmUrls' rules are tested.
+
+For Ahmad:
+- 0024 §4.4 (focus moves to the page heading on navigation) and 0032 §7.1 (focus stays on the settings tablist) conflict on settings tab changes. The code follows 0032 for now.
+- D-200's 0024 share question stands. After R2-6 the honest figure for "." will be in budgetNotes.
+
+PC-103 holds after fix2.
+
 ### D-204 (orchestrator, 2026-11-22): PC-F11 Review 1 rulings
 
 Review 1 found 0/1/6. It confirmed:
