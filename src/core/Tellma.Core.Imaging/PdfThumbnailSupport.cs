@@ -6,6 +6,7 @@
 using Microsoft.Extensions.Hosting;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
+using Tellma.Core.Imaging.Workers;
 
 namespace Tellma.Core.Imaging
 {
@@ -17,8 +18,9 @@ namespace Tellma.Core.Imaging
 
         /// <summary>
         ///     A host on Windows or macOS outside the Development environment renders none. A worker
-        ///     on Windows can still end the host's process, and workers of one account can open each
-        ///     other; a worker on macOS runs under no operating-system limit at all.
+        ///     on Windows is confined by an AppContainer made through an undocumented system call,
+        ///     not yet verified under the Windows hosting environments; a worker on macOS runs under
+        ///     no operating-system limit at all.
         /// </summary>
         DisabledOutsideDevelopment,
 
@@ -27,12 +29,21 @@ namespace Tellma.Core.Imaging
         ///     runtime there signals its threads through a system call the worker's filter refuses.
         /// </summary>
         DisabledOnMusl,
+
+        /// <summary>
+        ///     A Linux host whose kernel offers no Landlock renders none outside the Development
+        ///     environment: its workers could not be confined to their own files, and could read
+        ///     whatever the host's account can. In Development they render unconfined, and the
+        ///     startup check warns of it.
+        /// </summary>
+        DisabledWithoutLandlock,
     }
 
     /// <summary>
     ///     Decides whether this host renders PDF thumbnails. They render where the worker's
-    ///     confinement holds, on Linux with glibc; and, for developers only, on Windows and macOS in
-    ///     the Development environment.
+    ///     confinement holds, on Linux with glibc and a kernel that offers Landlock; and, for
+    ///     developers only, on Windows, macOS and Linux without Landlock in the Development
+    ///     environment.
     /// </summary>
     internal static partial class PdfThumbnailPolicy
     {
@@ -44,20 +55,25 @@ namespace Tellma.Core.Imaging
         /// <returns>The support.</returns>
         public static PdfThumbnailSupport For(IHostEnvironment? environment)
         {
-            return For(OperatingSystem.IsLinux(), LinuxWithGlibc, environment?.IsDevelopment() == true);
+            bool linux = OperatingSystem.IsLinux();
+            return For(linux, LinuxWithGlibc, linux && PdfWorkerLauncher.CanConfine, environment?.IsDevelopment() == true);
         }
 
         /// <summary>Whether a host of the given shape renders PDF thumbnails.</summary>
         /// <param name="linux">Whether the host runs on Linux.</param>
         /// <param name="glibc">Whether the host's C library is glibc.</param>
+        /// <param name="landlock">Whether the host's Linux kernel offers Landlock.</param>
         /// <param name="development">Whether the host runs in the Development environment.</param>
         /// <returns>The support.</returns>
-        internal static PdfThumbnailSupport For(bool linux, bool glibc, bool development)
+        internal static PdfThumbnailSupport For(bool linux, bool glibc, bool landlock, bool development)
         {
-            // On Linux the C library decides; anywhere else, the environment.
-            return linux
-                ? glibc ? PdfThumbnailSupport.Enabled : PdfThumbnailSupport.DisabledOnMusl
-                : development ? PdfThumbnailSupport.Enabled : PdfThumbnailSupport.DisabledOutsideDevelopment;
+            // On Linux the C library decides, then the kernel's Landlock, which only Development
+            // does without; anywhere else, the environment alone.
+            return !linux
+                ? development ? PdfThumbnailSupport.Enabled : PdfThumbnailSupport.DisabledOutsideDevelopment
+                : !glibc
+                    ? PdfThumbnailSupport.DisabledOnMusl
+                    : landlock || development ? PdfThumbnailSupport.Enabled : PdfThumbnailSupport.DisabledWithoutLandlock;
         }
 
         /// <summary>Why a host renders no PDF thumbnails, for its log.</summary>
@@ -69,9 +85,11 @@ namespace Tellma.Core.Imaging
             return support switch
             {
                 PdfThumbnailSupport.DisabledOutsideDevelopment =>
-                    "Outside Linux a PDF worker is only partly confined: on Windows it can still end the host's process and open other workers of the same account, and on macOS it runs under no operating-system limit. Such a host renders PDF thumbnails only in the Development environment; Linux with glibc is the production host for them.",
+                    "Outside Linux a PDF worker's confinement is not yet supported in production: on Windows it runs in an AppContainer made through an undocumented system call and not yet verified under the Windows hosting environments, and on macOS it runs under no operating-system limit. Such a host renders PDF thumbnails only in the Development environment; Linux with glibc and Landlock is the production host for them.",
                 PdfThumbnailSupport.DisabledOnMusl =>
                     "This host's C library is not glibc, and the PDF worker's system-call filter refuses the call the .NET runtime signals its threads with on musl. Run the host on a glibc-based Linux for PDF thumbnails.",
+                PdfThumbnailSupport.DisabledWithoutLandlock =>
+                    "This host's Linux kernel offers no Landlock, so a PDF worker could not be confined to its own files and could read whatever the host's account can. Run the host on Linux 5.13 or later with Landlock enabled (it is then listed in /sys/kernel/security/lsm), under a container runtime whose system-call filter allows the Landlock calls (the default profile of current Docker releases does); a Development host renders PDF thumbnails without it.",
                 PdfThumbnailSupport.Enabled => throw new ArgumentOutOfRangeException(nameof(support), support, "PDF thumbnails are enabled."),
                 _ => throw new ArgumentOutOfRangeException(nameof(support), support, "The support is undefined."),
             };

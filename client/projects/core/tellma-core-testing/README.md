@@ -5,7 +5,7 @@ end-to-end suites share.
 
 | Entry point | Holds | Runs in |
 |---|---|---|
-| `@tellma/core-testing` | `provideTellmaTesting()`, which replaces each platform seam with a fake a test can inspect and loads the test client metadata into its holder, as the Core chunk's load would; `TmFakeApi`, which answers each route from a script and records every call, image fetches scripted by URL included; `TmFakeTelemetry`, which records every telemetry item and sends nothing; `tmTestMetadata()` and `tmTestEntitiesChunk()`, the Core and Entities chunks of a small Acme distribution, each patchable member by member; `provideTellmaStateTesting()`, which adds the client state's fakes: `TmFakeTabBus`, which records posts and delivers the messages a test plays as other tabs', `TmFakeSession`, signed in as `tmTestProfile()`'s user and active until the test changes it, and `TmFakeLocks`, the browser's exclusive locks kept in memory, which shows the locks held | the unit-test browser |
+| `@tellma/core-testing` | `provideTellmaTesting()`, which replaces each platform seam with a fake a test can inspect and loads the test client metadata into its holder, as the Core chunk's load would; `TmFakeApi`, which answers each route from a script and records every call, image fetches scripted by URL included; `TmFakeTelemetry`, which records every telemetry item and sends nothing; `tmTestMetadata()` and `tmTestEntitiesChunk()`, the Core and Entities chunks of a small Acme distribution, each patchable member by member; `provideTellmaStateTesting()`, which adds the client state's fakes: `TmFakeTabBus`, which records posts and delivers the messages a test plays as other tabs', `TmFakeSession`, signed in as `tmTestProfile()`'s user and active until the test changes it, and `TmFakeLocks`, the browser's exclusive locks kept in memory, which shows the locks held; `tmWarmTenant()`, which stores a tenant's launch documents with a recent sync, so its entry is warm | the unit-test browser |
 | `@tellma/core-testing/e2e` | `expectNoAxeViolations` and `tmAxeViolations`: one axe-core scan of the WCAG 2.1 A and AA rules over a page or part of it | Node, inside Playwright tests; needs the optional peer `@playwright/test` |
 
 ```ts
@@ -36,6 +36,15 @@ const user: TmPartition = { kind: 'user', sub: tmTestProfile().sub };
 await store.put(user, 'tenants', { tag: null, savedAt: Date.now(), data: [] });
 TestBed.inject(TmFakeSession).setState('expired');
 await expect(store.put(user, 'tenants', { tag: null, savedAt: Date.now(), data: [] })).rejects.toThrow(TmStoreRefusedError);
+```
+
+A tenant's documents read as absent unless the tenant synced recently, so stored launch documents
+alone make a cold entry. `tmWarmTenant()` stores them with a recent `sync` stamp, as after a launch
+that synced a moment ago:
+
+```ts
+const tenant: TmPartition = { kind: 'tenant', sub: tmTestProfile().sub, tenantId: 17 };
+await tmWarmTenant(TestBed.inject(TmClientStore), tenant, { settings, me, tenant: facts });
 ```
 
 `fixtures/entity-model/` holds the server's own output for its Acme-like test model, recorded by

@@ -27,7 +27,10 @@ import type { ɵTmGridRowVm, ɵTmGridViewCore } from './grid-core';
   // with the row's context. A placeholder (no template) renders empty.
   template: `@if (row(); as row) {
       @if (row.endCtx; as ctx) {
-        <ng-container [ngTemplateOutlet]="core().rowEndDef()!.template" [ngTemplateOutletContext]="ctx" />
+        <!-- Keyed by the row, so a re-bound row element never hands one row's view to another. -->
+        @for (key of [row.rowKey]; track key) {
+          <ng-container [ngTemplateOutlet]="core().rowEndDef()!.template" [ngTemplateOutletContext]="ctx" />
+        }
       }
     } @else if (core().rowEndHeaderDef(); as def) {
       <ng-container

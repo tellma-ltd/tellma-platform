@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <Using Include="Tellma.Testing.Support.Sql" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The reference distribution as a deployment runs it: Acme's migrator in process, its web
+         host on a test server, both over Acme's own configuration files, which the shared Acme
+         plumbing copies beside the suite. -->
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <ProjectReference Include="..\..\..\distributions\acme\test\Tellma.Distro.Acme.TestSupport\Tellma.Distro.Acme.TestSupport.csproj" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
+    <PackageReference Include="Microsoft.AspNetCore.TestHost" />
+    <!-- MetricCollector, for the instruments and the round trips per operation. -->
+    <PackageReference Include="Microsoft.Extensions.Diagnostics.Testing" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+  </ItemGroup>
+
+</Project>

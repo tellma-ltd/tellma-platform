@@ -113,6 +113,32 @@ namespace Tellma.Core.Excel
             });
         }
 
+        /// <summary>
+        ///     Whether a file is same-source: its manifest names this deployment, compared ordinally,
+        ///     and the target tenant as the source. Only a same-source file may use <c>Id</c> as row
+        ///     identity or supply stamps; tenant ids are allocated per deployment, so the same id on
+        ///     another deployment is another tenant.
+        /// </summary>
+        /// <param name="manifest">The file's manifest header block, untrusted; absent keys make the file foreign.</param>
+        /// <param name="deploymentId">This deployment's id.</param>
+        /// <param name="tenantId">The tenant the file is imported into.</param>
+        /// <returns>True when the file is same-source.</returns>
+        public static bool IsSameSource(IReadOnlyDictionary<string, string>? manifest, string deploymentId, int tenantId)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(deploymentId);
+            if (manifest is null
+                || !manifest.TryGetValue(DeploymentKey, out string? deployment)
+                || !manifest.TryGetValue(SourceTenantIdKey, out string? source))
+            {
+                return false;
+            }
+
+            // The tenant id is the invariant integer the header block writes, nothing looser.
+            return string.Equals(deployment, deploymentId, StringComparison.Ordinal)
+                && int.TryParse(source, NumberStyles.None, CultureInfo.InvariantCulture, out int sourceTenantId)
+                && sourceTenantId == tenantId;
+        }
+
         /// <summary>A Queryex type's name as the manifest records it: without its <c>Qx</c> prefix.</summary>
         /// <param name="type">The type.</param>
         /// <returns>The name (<c>Numeric</c>).</returns>

@@ -36,6 +36,8 @@ stack core.User
   action preferences/set: entity Preferences filtered single args UserPreferencesArguments; mutation, read-only-ok; result UserPreferencesResult; mcp Full, revision 0; -
   action preferences/delete: entity Preferences filtered single args UserPreferenceKeysArguments; mutation, read-only-ok; result UserPreferencesResult; mcp Full, revision 0; -
   action invitation-status: api core.User:Read body IdsRequest handler UserService<User>; idempotent; result IReadOnlyList<InvitationStatus>; mcp Full, revision 0; -
+  action export: api core.User:Read body ExportRequest handler ExcelOperations<User>; idempotent, long; result ExportOutcome; mcp Full, revision 0; -
+  action export-for-import: api core.User:Read body ExportForImportRequest handler ExcelOperations<User>; idempotent, long; result ExportOutcome; mcp Full, revision 0; -
 stack core.Role
   segment: roles
   entity: Tellma.Core.Abstractions.Access.Role
@@ -60,6 +62,8 @@ stack core.Role
   feature: core
   action activate: entity Activate built-in filtered args -; mutation, idempotent; result EntitiesResult<Role>; mcp Full, revision 0; -
   action deactivate: entity Activate built-in filtered args -; mutation, idempotent; result EntitiesResult<Role>; mcp Full, revision 0; -
+  action export: api core.Role:Read body ExportRequest handler ExcelOperations<Role>; idempotent, long; result ExportOutcome; mcp Full, revision 0; -
+  action export-for-import: api core.Role:Read body ExportForImportRequest handler ExcelOperations<Role>; idempotent, long; result ExportOutcome; mcp Full, revision 0; -
 stack core.Notification
   segment: notifications
   entity: Tellma.Core.Abstractions.Notifications.Notification
@@ -158,6 +162,8 @@ stack core.Schedule
   action deactivate: entity Activate built-in filtered args -; mutation, idempotent; result EntitiesResult<Schedule>; mcp Full, revision 0; -
   action take-over: entity Save filtered args -; mutation; result EntitiesResult<Schedule>; mcp Full, revision 0; Makes the caller the user each schedule's jobs run as.
   action run-now: entity Save filtered single args -; mutation; result JobAccepted; mcp Full, revision 0; Runs the schedule's job once, now.
+  action export: api core.Schedule:Read body ExportRequest handler ExcelOperations<Schedule>; idempotent, long; result ExportOutcome; mcp Full, revision 0; -
+  action export-for-import: api core.Schedule:Read body ExportForImportRequest handler ExcelOperations<Schedule>; idempotent, long; result ExportOutcome; mcp Full, revision 0; -
 stack fixture.Widget
   segment: widgets
   entity: Tellma.Testing.Entities.Widget
@@ -182,6 +188,8 @@ stack fixture.Widget
   feature: fixture
   action activate: entity Activate built-in filtered args -; mutation, idempotent; result EntitiesResult<Widget>; mcp Full, revision 0; -
   action deactivate: entity Activate built-in filtered args -; mutation, idempotent; result EntitiesResult<Widget>; mcp Full, revision 0; -
+  action export: api fixture.Widget:Read body ExportRequest handler ExcelOperations<Widget>; idempotent, long; result ExportOutcome; mcp Full, revision 0; -
+  action export-for-import: api fixture.Widget:Read body ExportForImportRequest handler ExcelOperations<Widget>; idempotent, long; result ExportOutcome; mcp Full, revision 0; -
 stack fixture.WidgetExtra
   segment: widget-extras
   entity: Tellma.Testing.Entities.WidgetExtra
@@ -204,6 +212,8 @@ stack fixture.WidgetExtra
   limits: default
   mcp: Full, revision 0
   feature: fixture
+  action export: api fixture.WidgetExtra:Read body ExportRequest handler ExcelOperations<WidgetExtra>; idempotent, long; result ExportOutcome; mcp Full, revision 0; -
+  action export-for-import: api fixture.WidgetExtra:Read body ExportForImportRequest handler ExcelOperations<WidgetExtra>; idempotent, long; result ExportOutcome; mcp Full, revision 0; -
 stack fixture.Node
   segment: nodes
   entity: Tellma.Testing.Entities.Node
@@ -228,6 +238,8 @@ stack fixture.Node
   feature: fixture
   action activate: entity Activate built-in filtered args -; mutation, idempotent; result EntitiesResult<Node>; mcp Full, revision 0; -
   action deactivate: entity Activate built-in filtered args -; mutation, idempotent; result EntitiesResult<Node>; mcp Full, revision 0; -
+  action export: api fixture.Node:Read body ExportRequest handler ExcelOperations<Node>; idempotent, long; result ExportOutcome; mcp Full, revision 0; -
+  action export-for-import: api fixture.Node:Read body ExportForImportRequest handler ExcelOperations<Node>; idempotent, long; result ExportOutcome; mcp Full, revision 0; -
 stack fixture.Shipment
   segment: shipments
   entity: Tellma.Testing.Entities.Shipment
@@ -250,6 +262,8 @@ stack fixture.Shipment
   limits: default
   mcp: Full, revision 0
   feature: fixture
+  action export: api fixture.Shipment:Read body ExportRequest handler ExcelOperations<Shipment>; idempotent, long; result ExportOutcome; mcp Full, revision 0; -
+  action export-for-import: api fixture.Shipment:Read body ExportForImportRequest handler ExcelOperations<Shipment>; idempotent, long; result ExportOutcome; mcp Full, revision 0; -
 stack fixture.Export
   segment: exports
   entity: Tellma.Testing.Entities.Export
@@ -272,6 +286,8 @@ stack fixture.Export
   limits: default
   mcp: Full, revision 0
   feature: fixture
+  action export: api fixture.Export:Read body ExportRequest handler ExcelOperations<Export>; idempotent, long; result ExportOutcome; mcp Full, revision 0; -
+  action export-for-import: api fixture.Export:Read body ExportForImportRequest handler ExcelOperations<Export>; idempotent, long; result ExportOutcome; mcp Full, revision 0; -
 stack fixture.Lookup
   segment: lookups
   entity: Tellma.Testing.Entities.Lookup
@@ -296,6 +312,8 @@ stack fixture.Lookup
   feature: fixture
   action activate: entity Activate built-in filtered args -; mutation, idempotent; result EntitiesResult<Lookup>; mcp Full, revision 0; -
   action deactivate: entity Activate built-in filtered args -; mutation, idempotent; result EntitiesResult<Lookup>; mcp Full, revision 0; -
+  action export: api fixture.Lookup:Read body ExportRequest handler ExcelOperations<Lookup>; idempotent, long; result ExportOutcome; mcp Full, revision 0; -
+  action export-for-import: api fixture.Lookup:Read body ExportForImportRequest handler ExcelOperations<Lookup>; idempotent, long; result ExportOutcome; mcp Full, revision 0; -
 stack fixture.BlobOwner
   segment: blob-owners
   entity: Tellma.Testing.Entities.BlobOwner
@@ -318,6 +336,8 @@ stack fixture.BlobOwner
   limits: default
   mcp: Full, revision 0
   feature: fixture
+  action export: api fixture.BlobOwner:Read body ExportRequest handler ExcelOperations<BlobOwner>; idempotent, long; result ExportOutcome; mcp Full, revision 0; -
+  action export-for-import: api fixture.BlobOwner:Read body ExportForImportRequest handler ExcelOperations<BlobOwner>; idempotent, long; result ExportOutcome; mcp Full, revision 0; -
 stack fixture.BlobFolder
   segment: blob-folders
   entity: Tellma.Testing.Entities.BlobFolder
@@ -340,6 +360,8 @@ stack fixture.BlobFolder
   limits: default
   mcp: Full, revision 0
   feature: fixture
+  action export: api fixture.BlobFolder:Read body ExportRequest handler ExcelOperations<BlobFolder>; idempotent, long; result ExportOutcome; mcp Full, revision 0; -
+  action export-for-import: api fixture.BlobFolder:Read body ExportForImportRequest handler ExcelOperations<BlobFolder>; idempotent, long; result ExportOutcome; mcp Full, revision 0; -
 stack gl.Center
   segment: centers
   entity: Tellma.Module.Gl.Center
@@ -364,6 +386,8 @@ stack gl.Center
   feature: gl
   action activate: entity Activate built-in filtered args -; mutation, idempotent; result EntitiesResult<Center>; mcp Full, revision 0; -
   action deactivate: entity Activate built-in filtered args -; mutation, idempotent; result EntitiesResult<Center>; mcp Full, revision 0; -
+  action export: api gl.Center:Read body ExportRequest handler ExcelOperations<Center>; idempotent, long; result ExportOutcome; mcp Full, revision 0; -
+  action export-for-import: api gl.Center:Read body ExportForImportRequest handler ExcelOperations<Center>; idempotent, long; result ExportOutcome; mcp Full, revision 0; -
 child core.RoleMembership
   segment: role-memberships
   entity: Tellma.Core.Abstractions.Access.RoleMembership
@@ -375,6 +399,7 @@ child core.RoleMembership
   exportable: yes
   limits: default
   mcp: Full
+  action export: api core.RoleMembership:Read body ExportRequest handler ChildExportOperations<RoleMembership>; idempotent, long; result ExportOutcome; mcp Full, revision 0; -
 child core.Permission
   segment: permissions
   entity: Tellma.Core.Abstractions.Access.Permission
@@ -386,6 +411,7 @@ child core.Permission
   exportable: yes
   limits: default
   mcp: Full
+  action export: api core.Permission:Read body ExportRequest handler ChildExportOperations<Permission>; idempotent, long; result ExportOutcome; mcp Full, revision 0; -
 child core.OutgoingEmailAttachment
   segment: outgoing-email-attachments
   entity: Tellma.Core.Abstractions.Email.OutgoingEmailAttachment
@@ -408,6 +434,7 @@ child fixture.WidgetPart
   exportable: yes
   limits: StackLimits { MaxTake = 50, CountCap = 10000, MaxSkipWindow = 100000, MaxSaveCount = 10000, MaxRowsPerSave = 100000, MaxIds = 10000, MaxDeleteByQueryRows = 10000, MaxExpandDepth = 3, MaxValidationRounds = 3, MaxSearchLength = 200, MaxExtras = 16 }
   mcp: Full
+  action export: api fixture.WidgetPart:Read body ExportRequest handler ChildExportOperations<WidgetPart>; idempotent, long; result ExportOutcome; mcp Full, revision 0; -
 child fixture.WidgetPartNote
   segment: widget-part-notes
   entity: Tellma.Testing.Entities.WidgetPartNote
@@ -419,6 +446,7 @@ child fixture.WidgetPartNote
   exportable: yes
   limits: StackLimits { MaxTake = 50, CountCap = 10000, MaxSkipWindow = 100000, MaxSaveCount = 10000, MaxRowsPerSave = 100000, MaxIds = 10000, MaxDeleteByQueryRows = 10000, MaxExpandDepth = 3, MaxValidationRounds = 3, MaxSearchLength = 200, MaxExtras = 16 }
   mcp: Full
+  action export: api fixture.WidgetPartNote:Read body ExportRequest handler ChildExportOperations<WidgetPartNote>; idempotent, long; result ExportOutcome; mcp Full, revision 0; -
 child fixture.Link
   segment: links
   entity: Tellma.Testing.Entities.Link
@@ -430,6 +458,7 @@ child fixture.Link
   exportable: yes
   limits: default
   mcp: Full
+  action export: api fixture.Link:Read body ExportRequest handler ChildExportOperations<Link>; idempotent, long; result ExportOutcome; mcp Full, revision 0; -
 service access
   class: Tellma.Core.Access.AccessService
   feature: core

@@ -15,8 +15,10 @@ had made when it started, found under the names the processor expects of them
 both are so.
 
 Its environment is the generic host's: `DOTNET_ENVIRONMENT`, Production when unset. It reports
-whether it renders PDF thumbnails at all (`pdf.thumbnails=Enabled`, `DisabledOutsideDevelopment` or
-`DisabledOnMusl`). A host that renders none, as a Production host on Windows or macOS does, holds
+whether it renders PDF thumbnails at all (`pdf.thumbnails=Enabled`, `DisabledOutsideDevelopment`,
+`DisabledOnMusl` or `DisabledWithoutLandlock`), and whether its workers are confined to their own
+files (`pdf.workers-confined=yes` or `no`). A host that renders none, as a Production host on
+Windows or macOS does, holds
 when its check passed with no problem, the honest page got no thumbnail, no worker was started, and
 PDFium stayed out of the host.
 

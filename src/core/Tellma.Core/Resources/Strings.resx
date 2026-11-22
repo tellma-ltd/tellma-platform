@@ -169,6 +169,43 @@
   <data name="Action_Resume" xml:space="preserve">
     <value>Resume</value>
   </data>
+  <!-- Workbook actions: the labels of the platform's exports on every stack, and of their request's fields -->
+  <data name="Action_Export" xml:space="preserve">
+    <value>Export</value>
+  </data>
+  <data name="Action_ExportForImport" xml:space="preserve">
+    <value>Export for import</value>
+  </data>
+  <data name="Arguments" xml:space="preserve">
+    <value>Arguments</value>
+  </data>
+  <data name="Children" xml:space="preserve">
+    <value>Collections</value>
+  </data>
+  <data name="Columns" xml:space="preserve">
+    <value>Columns</value>
+  </data>
+  <data name="Filters" xml:space="preserve">
+    <value>Filters</value>
+  </data>
+  <data name="Ids" xml:space="preserve">
+    <value>Records</value>
+  </data>
+  <data name="IncludeInactive" xml:space="preserve">
+    <value>Include inactive</value>
+  </data>
+  <data name="NamedFilters" xml:space="preserve">
+    <value>Named filters</value>
+  </data>
+  <data name="OrderBy" xml:space="preserve">
+    <value>Order by</value>
+  </data>
+  <data name="ReferenceKeys" xml:space="preserve">
+    <value>Reference keys</value>
+  </data>
+  <data name="Search" xml:space="preserve">
+    <value>Search</value>
+  </data>
   <!-- Entities: the create label and the display name of a record without one -->
   <data name="Entity_New" xml:space="preserve">
     <value>New</value>

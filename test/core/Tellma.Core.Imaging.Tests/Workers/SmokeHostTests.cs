@@ -12,9 +12,10 @@ namespace Tellma.Core.Imaging.Tests.Workers
     /// <summary>
     ///     The processor in a host of its own, composed on the generic host as a distribution
     ///     composes it: its startup check passes, an honest PDF renders, a hostile one is stopped
-    ///     with the host's memory unmoved, and PDFium is never loaded into the host; on Linux the
-    ///     host ends up closed to its own account, its runtime's debugger pipes found and removed;
-    ///     and a Production host renders PDF thumbnails on Linux only, saying so in its log
+    ///     with the host's memory unmoved, its workers are confined wherever the operating system
+    ///     can confine them, and PDFium is never loaded into the host; on Linux the host ends up
+    ///     closed to its own account, its runtime's debugger pipes found and removed; and a
+    ///     Production host renders PDF thumbnails on Linux with Landlock only, saying so in its log
     ///     elsewhere.
     /// </summary>
     [Collection(SerialSuites.Name)]
@@ -28,6 +29,7 @@ namespace Tellma.Core.Imaging.Tests.Workers
 
             Assert.Equal("passed", report["check.core.imaging"]);
             Assert.Equal("Enabled", report["pdf.thumbnails"]);
+            Assert.Equal(PdfWorkerLauncher.CanConfine ? "yes" : "no", report["pdf.workers-confined"]);
             Assert.NotEqual("none", report["honest.bytes"]);
             Assert.Equal("none", report["hostile.thumbnail"]);
             Assert.Equal("no", report["host.pdfium-loaded"]);
@@ -41,7 +43,7 @@ namespace Tellma.Core.Imaging.Tests.Workers
         }
 
         [Fact]
-        public async Task A_production_host_renders_pdf_thumbnails_on_linux_only_and_says_so_elsewhere()
+        public async Task A_production_host_renders_pdf_thumbnails_on_linux_with_landlock_only_and_says_so_elsewhere()
         {
             ProcessStartInfo start = StartInfo();
             start.Environment["DOTNET_ENVIRONMENT"] = "Production";
@@ -52,10 +54,12 @@ namespace Tellma.Core.Imaging.Tests.Workers
             Assert.Equal("no", report["host.pdfium-loaded"]);
             Assert.Equal("held", report["result"]);
             Assert.Equal(0, exitCode);
-            if (OperatingSystem.IsLinux())
+            if (OperatingSystem.IsLinux() && PdfWorkerLauncher.CanConfine)
             {
-                // The production shape: thumbnails render, and the hostile document is stopped.
+                // The production shape: thumbnails render in confined workers, and the hostile
+                // document is stopped.
                 Assert.Equal("Enabled", report["pdf.thumbnails"]);
+                Assert.Equal("yes", report["pdf.workers-confined"]);
                 Assert.NotEqual("none", report["honest.bytes"]);
                 Assert.Equal("none", report["hostile.thumbnail"]);
                 AssertClosedToItsAccount(report);
@@ -63,7 +67,7 @@ namespace Tellma.Core.Imaging.Tests.Workers
             else
             {
                 // No thumbnail, no worker, and the reason in the host's log, once.
-                Assert.Equal("DisabledOutsideDevelopment", report["pdf.thumbnails"]);
+                Assert.Equal(OperatingSystem.IsLinux() ? "DisabledWithoutLandlock" : "DisabledOutsideDevelopment", report["pdf.thumbnails"]);
                 Assert.Equal("none", report["honest.bytes"]);
                 Assert.Equal("0", report["workers.started"]);
                 Assert.Equal(output.IndexOf("PDF thumbnails are disabled on this host", StringComparison.Ordinal), output.LastIndexOf("PDF thumbnails are disabled on this host", StringComparison.Ordinal));

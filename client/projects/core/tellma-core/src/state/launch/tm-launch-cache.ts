@@ -84,7 +84,7 @@ export class TmLaunchCache {
     readonly tenantId: number;
     readonly sub: string;
     readonly signal: AbortSignal;
-    readonly done: Promise<void>;
+    readonly done: Promise<boolean>;
   } | null = null;
 
   /** The routed tenant's launch documents; each reads `undefined` while absent. */
@@ -121,8 +121,12 @@ export class TmLaunchCache {
     const window = inject(DOCUMENT).defaultView;
     afterNextRender(
       () => {
-        const read = (): void =>
-          void this.#revalidate((['tenants', 'distribution'] as const).filter((name) => !this.#fetched.has(name)));
+        // An app torn down before its idle moment reads nothing.
+        const read = (): void => {
+          if (!this.#life.signal.aborted) {
+            void this.#revalidate((['tenants', 'distribution'] as const).filter((name) => !this.#fetched.has(name)));
+          }
+        };
         if (window?.requestIdleCallback) {
           window.requestIdleCallback(read);
         } else {
@@ -192,13 +196,14 @@ export class TmLaunchCache {
    * page.
    *
    * @param tenantId - The tenant.
-   * @returns A promise that settles once the tenant's chrome can render; it
+   * @returns A promise that settles once the tenant's chrome can render,
+   *   with whether the entry was cold: whether it ran a cold sync; it
    *   rejects with the cold sync's error.
    */
-  ɵenter(tenantId: number): Promise<void> {
+  ɵenter(tenantId: number): Promise<boolean> {
     const sub = untracked(this.#session.profile)?.sub;
     if (sub === undefined) {
-      return Promise.resolve();
+      return Promise.resolve(false);
     }
     // An entry from before a leave is never joined: leaving aborted its sync.
     const entry = this.#entry;
@@ -210,7 +215,9 @@ export class TmLaunchCache {
       await this.#store.ɵreadOnce(partition);
       if (LAUNCH.some((name) => untracked(this.#store.doc(partition, name)) === undefined)) {
         await this.#refresher.refresh(tenantId, LAUNCH, 'cold');
+        return true;
       }
+      return false;
     })();
     const current = { tenantId, sub, signal: this.#refresher.ɵsignal(tenantId), done };
     this.#entry = current;
