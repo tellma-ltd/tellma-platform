@@ -384,6 +384,31 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-232 (orchestrator, 2026-11-22): PC-189 Review 1 rulings
+
+PC-189 Review 1 found 0/2/4.
+
+What the review confirmed:
+- describe does not depend on permissions, so its cache leaks nothing;
+- the read tools go through EntityService and IChildQueryService;
+- the request limits match spec 0016;
+- the 5/8 tool split is planned in PC-190.
+
+Rulings:
+- R1-1: follow spec 0016 §11.2 on the MCP path only. An MCP token carries exactly one aud value, equal to the tenant's resource; a multi-audience token is refused. This fails closed. Test it.
+- R1-2: add the listed tests and the missing integration refusals.
+- R1-3: fail closed.
+- R1-4: rename the feature to core.mcp.
+- R1-5: window tellma_get before materialising, grandchildren included.
+- R1-6: the trailer always fits the cap.
+
+PC-189 holds after fix1.
+
+For Ahmad, from PC-189:
+- Tellma.Identity's ResourceGrantValidator lets one interactive token name several tenants (and the origin), while 0016 §11.2 requires an MCP token's aud to equal the tenant's resource exactly. The MCP path now refuses multi-audience tokens. Should Identity also refuse a multi-resource request that includes an MCP resource?
+- 0016 §1.2 composes AddMcp() in the shared delegate, but the code requires composeWeb. The spec illustration needs aligning.
+- Deviation 10: 0016 §11.2's resource_name drops the tenant name, to avoid tenant enumeration. This needs sign-off.
+
 ### D-231 (orchestrator, 2026-11-22): PC-182 fix1 accepted, not escalated; held
 
 Fix1 (4855edd5) fixed R1-1..R1-5. R1-6 and R1-7 needed no code change (D-227).
