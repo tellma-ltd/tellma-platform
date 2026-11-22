@@ -169,6 +169,43 @@
   <data name="Action_Resume" xml:space="preserve">
     <value>استئناف</value>
   </data>
+  <!-- Workbook actions: the labels of the platform's exports on every stack, and of their request's fields -->
+  <data name="Action_Export" xml:space="preserve">
+    <value>تصدير</value>
+  </data>
+  <data name="Action_ExportForImport" xml:space="preserve">
+    <value>تصدير للاستيراد</value>
+  </data>
+  <data name="Arguments" xml:space="preserve">
+    <value>المعاملات</value>
+  </data>
+  <data name="Children" xml:space="preserve">
+    <value>المجموعات</value>
+  </data>
+  <data name="Columns" xml:space="preserve">
+    <value>الأعمدة</value>
+  </data>
+  <data name="Filters" xml:space="preserve">
+    <value>عوامل التصفية</value>
+  </data>
+  <data name="Ids" xml:space="preserve">
+    <value>السجلات</value>
+  </data>
+  <data name="IncludeInactive" xml:space="preserve">
+    <value>تضمين غير النشط</value>
+  </data>
+  <data name="NamedFilters" xml:space="preserve">
+    <value>عوامل التصفية المسماة</value>
+  </data>
+  <data name="OrderBy" xml:space="preserve">
+    <value>الترتيب حسب</value>
+  </data>
+  <data name="ReferenceKeys" xml:space="preserve">
+    <value>مفاتيح المراجع</value>
+  </data>
+  <data name="Search" xml:space="preserve">
+    <value>بحث</value>
+  </data>
   <!-- Entities: the create label and the display name of a record without one -->
   <data name="Entity_New" xml:space="preserve">
     <value>جديد</value>
