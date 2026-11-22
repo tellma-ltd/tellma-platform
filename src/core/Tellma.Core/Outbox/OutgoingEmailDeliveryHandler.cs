@@ -133,21 +133,24 @@ namespace Tellma.Core.Outbox
         {
             DeliveryUpdateResult result = await writer.ApplyAsync(tenant.TenantId, tenant.Rows, cancellationToken).ConfigureAwait(false);
 
-            // --- Each unmatched reference, logged; the rest were repeats or no stronger ---
+            // --- Each unmatched reference, logged once and counted by its events; each applied row
+            // counts one event, and the rest were repeats, no stronger, or replaced by a stronger one ---
             HashSet<int> unmatched = [.. result.Unmatched];
+            int unmatchedEvents = 0;
             foreach (int rowId in unmatched.Order())
             {
                 OutboxLog.OutboxDeliveryEventUnmatched(_logger, tenant.TenantId, rowId.ToString(CultureInfo.InvariantCulture));
+                unmatchedEvents += tenant.Counts.GetValueOrDefault(rowId, 1);
             }
 
-            int stale = Math.Max(0, tenant.Weighed - result.Applied - unmatched.Count);
+            int stale = Math.Max(0, tenant.Weighed - result.Applied - unmatchedEvents);
             if (stale > 0)
             {
                 OutboxLog.OutboxDeliveryEventsStale(_logger, tenant.TenantId, stale);
             }
 
             metrics.RecordDeliveryUpdates(OutboxMetrics.AppliedResult, result.Applied);
-            metrics.RecordDeliveryUpdates(OutboxMetrics.UnmatchedResult, unmatched.Count);
+            metrics.RecordDeliveryUpdates(OutboxMetrics.UnmatchedResult, unmatchedEvents);
             metrics.RecordDeliveryUpdates(OutboxMetrics.StaleResult, stale);
         }
     }

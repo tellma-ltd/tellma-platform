@@ -14,6 +14,7 @@ using Tellma.Core.Abstractions.Email;
 using Tellma.Core.Abstractions.Errors;
 using Tellma.Core.Abstractions.Jobs;
 using Tellma.Core.Abstractions.Tenancy;
+using Tellma.Core.Abstractions.Validation;
 using Tellma.Core.IntegrationTests.Jobs;
 using Tellma.Core.Outbox;
 using Tellma.Core.Testing.Email;
@@ -26,8 +27,10 @@ namespace Tellma.Core.IntegrationTests.Outbox
     ///     What becomes of an outgoing email after it was sent, against a fixture database: the
     ///     provider's delivery events recorded on it monotonically, repeats and stragglers skipped
     ///     and unknown references reported; the administrator's retry, cancel and delete under their
-    ///     preconditions, stamped; and the nightly retention, which deletes the settled and abandoned
-    ///     rows past their retention, with their attachments, and keeps any row a job may still send.
+    ///     preconditions, stamped, the retry refused whole and the cancel skipping a target that
+    ///     changed between their two rounds; and the nightly retention, which deletes the settled and
+    ///     abandoned rows past their retention page by page, with their attachments, and keeps any row
+    ///     a job may still send.
     /// </summary>
     /// <param name="fixture">The class's database, reset before each test.</param>
     [Trait("Category", "Integration")]
@@ -150,6 +153,49 @@ namespace Tellma.Core.IntegrationTests.Outbox
         }
 
         [Fact]
+        public async Task A_retry_of_an_abandoned_email_whose_outcome_is_already_clear_still_stamps_it()
+        {
+            int id = Assert.Single(await EnqueueAsync(Request()));
+            _ = await DispatchAsync();
+
+            // --- Pending again with every column a retry clears already clear, and its job ended ---
+            await SetAsync(id, "[State] = 'Pending', [SentAt] = NULL, [ProviderMessageId] = NULL, [ExpectsDeliveryEvents] = 0, [ModifiedAt] = '2001-01-01T00:00:00+00:00'");
+            object? firstJob = (await RowAsync(id))["JobId"];
+
+            await ActAsync(OutgoingEmailService.RetryAction, id);
+
+            IReadOnlyDictionary<string, object?> row = await RowAsync(id);
+            Assert.Equal((nameof(OutgoingEmailState.Pending), AdministratorId), (row["State"], row["ModifiedById"]));
+            Assert.True((DateTimeOffset)row["ModifiedAt"]! > LongAgo);
+            Assert.NotEqual(firstJob, row["JobId"]);
+        }
+
+        [Fact]
+        public async Task A_retry_is_refused_whole_when_a_target_was_cancelled_since_its_validation_and_enqueues_no_job()
+        {
+            int[] ids = [.. await EnqueueAsync(Request(), Request())];
+            _ = await DispatchAsync();
+            (int kept, int cancelled) = (ids[0], ids[1]);
+            await SetAsync(kept, "[State] = 'Failed', [ErrorCode] = N'Email.AttemptsExhausted'");
+            await SetAsync(cancelled, "[State] = 'Failed', [ErrorCode] = N'Email.AttemptsExhausted'");
+            IReadOnlyList<IReadOnlyDictionary<string, object?>> jobs = await fixture.RowsAsync("SELECT [Id] FROM [core].[Jobs] ORDER BY [Id];");
+            object? keptJob = (await RowAsync(kept))["JobId"];
+
+            // --- Another administrator cancels one target between the retry's two rounds ---
+            fixture.Race.Arm(() => SetAsync(cancelled, "[State] = 'Cancelled'"));
+            ValidationException refused = await Assert.ThrowsAsync<ValidationException>(() => ActAsync(OutgoingEmailService.RetryAction, [kept, cancelled]));
+
+            // --- Nothing the retry composed is written: no row reset, no job enqueued ---
+            Assert.True(fixture.Race.Ran);
+            ValidationError error = Assert.Single(refused.Errors);
+            Assert.Equal((OutgoingEmailCodes.NotRetryable, ValidationPath.Root), (error.Code, error.Path));
+            IReadOnlyDictionary<string, object?> row = await RowAsync(kept);
+            Assert.Equal((nameof(OutgoingEmailState.Failed), keptJob), (row["State"], row["JobId"]));
+            Assert.Equal(nameof(OutgoingEmailState.Cancelled), (await RowAsync(cancelled))["State"]);
+            Assert.Equal(jobs.Count, (await fixture.RowsAsync("SELECT [Id] FROM [core].[Jobs];")).Count);
+        }
+
+        [Fact]
         public async Task A_retry_of_a_rejected_email_is_refused_and_changes_nothing()
         {
             int id = Assert.Single(await EnqueueAsync(Request()));
@@ -189,6 +235,28 @@ namespace Tellma.Core.IntegrationTests.Outbox
             PolledJob polled = Assert.Single(await DispatchAsync());
             Assert.Equal(JobStatus.Succeeded, polled.Status);
             Assert.Empty(fixture.Sender.Captured);
+        }
+
+        [Fact]
+        public async Task A_cancel_leaves_a_target_its_job_pre_marked_since_its_validation_as_it_is_and_cancels_the_other()
+        {
+            int[] ids = [.. await EnqueueAsync(Request(), Request())];
+            (int cancelled, int sending) = (ids[0], ids[1]);
+            await SetAsync(cancelled, "[ModifiedAt] = '2001-01-01T00:00:00+00:00'");
+            await SetAsync(sending, "[ModifiedAt] = '2001-01-01T00:00:00+00:00'");
+
+            // --- The sending job pre-marks one target between the cancel's two rounds ---
+            fixture.Race.Arm(() => SetAsync(sending, "[State] = 'Sending'"));
+            await ActAsync(OutgoingEmailService.CancelAction, [cancelled, sending]);
+
+            // --- The cancel commits: one target cancelled and stamped, the pre-marked one untouched ---
+            Assert.True(fixture.Race.Ran);
+            IReadOnlyDictionary<string, object?> row = await RowAsync(cancelled);
+            Assert.Equal((nameof(OutgoingEmailState.Cancelled), AdministratorId), (row["State"], row["ModifiedById"]));
+            Assert.True((DateTimeOffset)row["ModifiedAt"]! > LongAgo);
+            IReadOnlyDictionary<string, object?> untouched = await RowAsync(sending);
+            Assert.Equal(nameof(OutgoingEmailState.Sending), untouched["State"]);
+            Assert.Equal(LongAgo, (DateTimeOffset)untouched["ModifiedAt"]!);
         }
 
         [Fact]
@@ -246,6 +314,35 @@ namespace Tellma.Core.IntegrationTests.Outbox
             Assert.Empty(await fixture.RowsAsync("SELECT [Id] FROM [core].[OutgoingEmailAttachments];"));
             Assert.Equal(nameof(BlobState.Released), Assert.Single(await fixture.RowsAsync("SELECT [State] FROM [core].[Blobs];"))["State"]);
             Assert.Equal([2L], retained.GetMeasurementSnapshot().Select(static point => point.Value));
+        }
+
+        [Fact]
+        public async Task The_retention_deletes_more_old_emails_than_a_page_holds_page_by_page()
+        {
+            using MetricCollector<long> retained = Collector<long>(OutboxTelemetryNames.Retained);
+            int source = Assert.Single(await EnqueueAsync(Request()));
+            _ = await DispatchAsync();
+
+            // --- One sent row past the retention, its ended job forgotten (a job owns one row), then
+            // as many copies as fill a page ---
+            await SetAsync(source, "[CreatedAt] = DATEADD(day, -200, SYSDATETIMEOFFSET()), [JobId] = NULL");
+            await SqlServerFixture.ExecuteAsync(fixture.ConnectionString, Query($$"""
+                DECLARE @columns nvarchar(max) = (
+                    SELECT STRING_AGG(CONVERT(nvarchar(max), QUOTENAME([name])), N', ') WITHIN GROUP (ORDER BY [column_id])
+                    FROM sys.columns WHERE [object_id] = OBJECT_ID(N'[core].[OutgoingEmails]') AND [name] <> N'Id' AND [is_computed] = 0 AND TYPE_NAME([system_type_id]) <> N'timestamp');
+                DECLARE @text nvarchar(max) = N'INSERT INTO [core].[OutgoingEmails] ([Id], ' + @columns + N') '
+                    + N'SELECT NEXT VALUE FOR [core].[sq_OutgoingEmails], ' + @columns + N' FROM [core].[OutgoingEmails] '
+                    + N'CROSS JOIN (SELECT TOP ({{OutgoingEmailRetentionHandler.PageSize}}) 1 AS [n] FROM sys.all_columns) AS [c] WHERE [Id] = {{source}};';
+                EXEC sp_executesql @text;
+                """));
+
+            _ = await fixture.InsertJobAsync(OutgoingEmailRetentionHandler.Key, WellKnownIds.SystemUserId);
+            PolledJob polled = Assert.Single(await JobPollDriver.PollOnceAsync(fixture.Tenant, [OutgoingEmailRetentionHandler.Key], Token, Token));
+
+            // --- A full page, then the short one; every row deleted ---
+            Assert.Equal(JobStatus.Succeeded, polled.Status);
+            Assert.Empty(await fixture.RowsAsync("SELECT [Id] FROM [core].[OutgoingEmails];"));
+            Assert.Equal([500L, 1L], retained.GetMeasurementSnapshot().Select(static point => point.Value));
         }
 
         [Fact]
@@ -351,10 +448,20 @@ namespace Tellma.Core.IntegrationTests.Outbox
         /// <param name="id">The row.</param>
         /// <param name="state">The tenant's state the request sees; the registered one when null.</param>
         /// <returns>A task that completes when the action committed.</returns>
-        private async Task ActAsync(string action, int id, TenantState? state = null)
+        private Task ActAsync(string action, int id, TenantState? state = null)
+        {
+            return ActAsync(action, [id], state);
+        }
+
+        /// <summary>Runs one of the outgoing emails' actions on rows as the administrator.</summary>
+        /// <param name="action">The action's name.</param>
+        /// <param name="ids">The rows.</param>
+        /// <param name="state">The tenant's state the request sees; the registered one when null.</param>
+        /// <returns>A task that completes when the action committed.</returns>
+        private async Task ActAsync(string action, int[] ids, TenantState? state = null)
         {
             await using AsyncServiceScope scope = await fixture.UserScopeAsync(AdministratorId, state);
-            _ = await Emails(scope).ExecuteActionAsync(action, [id], null, new ActionOptions(), Token);
+            _ = await Emails(scope).ExecuteActionAsync(action, ids, null, new ActionOptions(), Token);
         }
 
         /// <summary>Deletes one row as the administrator.</summary>

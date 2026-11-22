@@ -14,6 +14,7 @@ using System.Globalization;
 using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Caching;
 using Tellma.Core.Abstractions.Crud;
+using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Email;
 using Tellma.Core.Abstractions.Notifications;
 using Tellma.Core.Abstractions.Tenancy;
@@ -39,8 +40,10 @@ namespace Tellma.Core.IntegrationTests.Outbox
     ///     under a sandbox switch a test can turn on, answers through a sender a test can make answer
     ///     short, reaches an administrator directory a test can make fail, runs the scripted job
     ///     handlers whose frames enqueue, keeps every log event, lets the stacks own their tables as in production, and
-    ///     audits every batch's writes against change tracking. Its administrator may read, delete,
-    ///     retry and cancel every outgoing email, through a request scope a test opens for them.
+    ///     audits every batch's writes against change tracking. A test may arm a write that races an
+    ///     action, run once the action's persist is composed and before it is sent. Its administrator
+    ///     may read, delete, retry and cancel every outgoing email, through a request scope a test
+    ///     opens for them.
     /// </summary>
     public sealed class OutboxDatabase : IAsyncLifetime
     {
@@ -126,6 +129,9 @@ namespace Tellma.Core.IntegrationTests.Outbox
         /// <summary>How the email sender's answers and the administrator lookup misbehave, set by each test.</summary>
         public DispatchFaults Faults { get; } = new();
 
+        /// <summary>The write a test arms to race an action between its validation round and its persist.</summary>
+        public PersistRace Race { get; } = new();
+
         /// <summary>The cancellation token of the running test.</summary>
         private static CancellationToken Token => TestContext.Current.CancellationToken;
 
@@ -170,6 +176,14 @@ namespace Tellma.Core.IntegrationTests.Outbox
 
                     // --- The stacks' tables are theirs again, as in production: a raw write to one is refused ---
                     _ = services.Replace(ServiceDescriptor.Singleton<IStackTableOwners>(static provider => new StackTableOwners(provider.GetRequiredService<StackRegistry>())));
+
+                    // --- The race: a persist batch's prologue marks it due, and the scope's next
+                    // connection, the persist's own, opens only once the armed write ran ---
+                    _ = services.AddSingleton(Race);
+                    _ = services.AddScoped<IDataBatchContributor, PersistRaceMarker>();
+                    Func<IServiceProvider, object> open = services.Last(static descriptor => descriptor.ServiceType == typeof(ITenantConnectionProvider)).ImplementationFactory
+                        ?? throw new InvalidOperationException("The fixture composes its tenant connection provider from a factory.");
+                    _ = services.Replace(ServiceDescriptor.Scoped<ITenantConnectionProvider>(scope => new RacingConnectionProvider((ITenantConnectionProvider)open(scope), Race)));
                 },
                 compose: static tellma => tellma.AddFeature(new JobRunFeature()),
                 cancellationToken: Token);
@@ -203,6 +217,7 @@ namespace Tellma.Core.IntegrationTests.Outbox
             Sandbox.IsSandbox = false;
             Faults.Answer = null;
             Faults.AdministratorsFail = false;
+            Race.Reset();
             Sender.Clear();
             Sender.OnSending(static (_, ordinal) => new EmailSendResult(
                 EmailSendOutcome.Sent, string.Create(CultureInfo.InvariantCulture, $"capture-{ordinal}"), ExpectsDeliveryEvents: true));
@@ -391,6 +406,40 @@ namespace Tellma.Core.IntegrationTests.Outbox
             }
         }
 
+        /// <summary>Marks the race due once a persist batch's prologue is composed.</summary>
+        /// <param name="race">The race.</param>
+        private sealed class PersistRaceMarker(PersistRace race) : IDataBatchContributor
+        {
+            /// <inheritdoc />
+            public int Order => int.MaxValue;
+
+            /// <inheritdoc />
+            public void Contribute(IDataBatch batch, DataBatchStage stage)
+            {
+                ArgumentNullException.ThrowIfNull(batch);
+                if (stage == DataBatchStage.Prologue && batch.Purpose == BatchPurpose.Persist)
+                {
+                    race.MarkDue();
+                }
+            }
+        }
+
+        /// <summary>A scope's tenant connections, each opened once the race, when due, ran.</summary>
+        /// <param name="inner">The fixture's provider.</param>
+        /// <param name="race">The race.</param>
+        private sealed class RacingConnectionProvider(ITenantConnectionProvider inner, PersistRace race) : ITenantConnectionProvider
+        {
+            /// <inheritdoc />
+            public TenantInfo Tenant => inner.Tenant;
+
+            /// <inheritdoc />
+            public async Task<SqlConnection> OpenAsync(CancellationToken cancellationToken = default)
+            {
+                await race.RunIfDueAsync();
+                return await inner.OpenAsync(cancellationToken);
+            }
+        }
+
         /// <summary>The sms sender: delivers nothing, or throws while its switch says it fails.</summary>
         /// <param name="sms">The switch.</param>
         private sealed class SwitchableSms(SmsSwitch sms) : INotificationChannel
@@ -421,6 +470,75 @@ namespace Tellma.Core.IntegrationTests.Outbox
 
         /// <summary>Whether reading the administrators throws.</summary>
         public bool AdministratorsFail { get; set; }
+    }
+
+    /// <summary>
+    ///     A write that races an action: armed by a test, it runs once, on its own connection, after the
+    ///     action's persist batch is composed and before that batch opens its connection, as another
+    ///     administrator's or a job's write between the action's two rounds would.
+    /// </summary>
+    public sealed class PersistRace
+    {
+        /// <summary>Guards the armed write and whether it is due.</summary>
+        private readonly Lock _gate = new();
+
+        /// <summary>The armed write; null when none is armed or it ran.</summary>
+        private Func<Task>? _write;
+
+        /// <summary>Whether a persist batch was composed since the write was armed.</summary>
+        private bool _due;
+
+        /// <summary>Whether the armed write ran.</summary>
+        public bool Ran { get; private set; }
+
+        /// <summary>Arms a write, which runs before the next persist batch opens its connection.</summary>
+        /// <param name="write">The write.</param>
+        public void Arm(Func<Task> write)
+        {
+            ArgumentNullException.ThrowIfNull(write);
+            lock (_gate)
+            {
+                (_write, _due, Ran) = (write, false, false);
+            }
+        }
+
+        /// <summary>Disarms the race.</summary>
+        public void Reset()
+        {
+            lock (_gate)
+            {
+                (_write, _due, Ran) = (null, false, false);
+            }
+        }
+
+        /// <summary>Marks the armed write due: a persist batch was composed.</summary>
+        internal void MarkDue()
+        {
+            lock (_gate)
+            {
+                _due = _write is not null;
+            }
+        }
+
+        /// <summary>Runs the armed write once it is due, then disarms it.</summary>
+        /// <returns>A task that completes when the write ran, or at once when none is due.</returns>
+        internal async Task RunIfDueAsync()
+        {
+            Func<Task>? write;
+            lock (_gate)
+            {
+                write = _due ? _write : null;
+                if (write is not null)
+                {
+                    (_write, _due, Ran) = (null, false, true);
+                }
+            }
+
+            if (write is not null)
+            {
+                await write();
+            }
+        }
     }
 
     /// <summary>Whether the outbox database's sms sender throws.</summary>

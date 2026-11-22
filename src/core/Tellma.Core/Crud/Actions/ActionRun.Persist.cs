@@ -224,7 +224,7 @@ namespace Tellma.Core.Crud.Actions
             SaveHandle? saved = _marked.Length > 0 ? batch.Save(_marked, ConcurrencyMode.Override) : null;
             _saved = saved;
             SqlIdentifier affected = KeyTables.Bind(batch, _ids);
-            ComposeUpdates(batch, user, granted);
+            ComposeUpdates(batch, user, granted, affected);
 
             // --- The statements the hook, the components and the method appended, in their order ---
             _recording?.Replay(batch);
@@ -275,8 +275,9 @@ namespace Tellma.Core.Crud.Actions
         /// <param name="batch">The batch.</param>
         /// <param name="user">The connected user.</param>
         /// <param name="granted">The action's decision.</param>
+        /// <param name="affected">The target ids' table.</param>
         /// <exception cref="NotFoundException">The connected user reads no row of the stack.</exception>
-        private void ComposeUpdates(IDataBatch batch, ConnectedUser user, AccessDecision granted)
+        private void ComposeUpdates(IDataBatch batch, ConnectedUser user, AccessDecision granted, SqlIdentifier affected)
         {
             if (_updates.Count == 0)
             {
@@ -289,17 +290,39 @@ namespace Tellma.Core.Crud.Actions
                 throw new NotFoundException(Resource, [.. _ids.Select(static id => id.ToString(null, CultureInfo.InvariantCulture))]);
             }
 
-            // An update with a condition repeats the action's precondition: a target that changed since
-            // the first round, and no longer meets it, the caller's Read filter or the grant, is
-            // skipped rather than refused; the first round already reported the missing and the
-            // forbidden targets.
             IReadOnlyList<object> ids = [.. _ids.Select(static id => (object)id)];
-            foreach ((IReadOnlyDictionary<string, object?> assignments, FilterTree? condition) in _updates)
+            foreach ((IReadOnlyDictionary<string, object?> assignments, FilterTree? condition, string? refusalCode) in _updates)
             {
-                UpdateSpec<TEntity>.ByIds spec = condition is null
-                    ? new(ids, read.Filter, granted.Filter, assignments, Stamp: true, AllOrNothing: true)
-                    : new(ids, read.Filter, Conjoin(read.Filter, granted.Filter, condition), assignments, Stamp: true, AllOrNothing: false);
-                _ = batch.Update(spec);
+                if (condition is null)
+                {
+                    _ = batch.Update(new UpdateSpec<TEntity>.ByIds(ids, read.Filter, granted.Filter, assignments, Stamp: true, AllOrNothing: true));
+                }
+                else if (refusalCode is not null)
+                {
+                    // A refusing condition: every target, existing, must still meet it, or the batch
+                    // fails with the action's code; then the update is all or nothing as an
+                    // unconditioned one, and stamps every target. Its filter keeps the condition, so a
+                    // target changed between the count and the update fails the row-security count
+                    // rather than being overwritten.
+                    EntityDescriptor root = _map.Descriptor(_root);
+                    string key = root.Key.Name;
+                    batch.Assert(
+                        new QuerySpec { Root = root, Select = key, Filter = condition, Restrictions = [new KeySetRestriction(key, affected.Name)] },
+                        arguments: null,
+                        expected: _ids.Length,
+                        TellmaSqlErrors.Invariant,
+                        refusalCode);
+                    _ = batch.Update(new UpdateSpec<TEntity>.ByIds(
+                        ids, read.Filter, Conjoin(read: null, granted.Filter, condition), assignments, Stamp: true, AllOrNothing: true, StampUnchanged: true));
+                }
+                else
+                {
+                    // A skipping condition repeats the action's precondition: a target that changed
+                    // since the first round, and no longer meets it, the caller's Read filter or the
+                    // grant, is skipped rather than refused; the first round already reported the
+                    // missing and the forbidden targets.
+                    _ = batch.Update(new UpdateSpec<TEntity>.ByIds(ids, read.Filter, Conjoin(read.Filter, granted.Filter, condition), assignments, Stamp: true, AllOrNothing: false));
+                }
             }
         }
 

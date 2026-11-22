@@ -276,16 +276,24 @@ namespace Tellma.Core.Abstractions.Validation
         /// <exception cref="InvalidOperationException">Composing has closed, or the calling flow read <see cref="Persisted" />.</exception>
         public void Update(IReadOnlyDictionary<string, object?> assignments)
         {
-            Compose(assignments, condition: null);
+            Compose(assignments, condition: null, refusalCode: null);
         }
 
         /// <summary>
         ///     Composes one update of the target rows that still meet a condition when the persist runs,
-        ///     with stamping. The first round already found every target and counted it under the
-        ///     action grant; a target that changed since, so that it no longer meets
-        ///     <paramref name="condition" /> or the grant's filter, is left as it is rather than failing
-        ///     the action, as when the action's precondition is repeated in its statement.
+        ///     with stamping, as when the action's precondition is repeated in its statement. The first
+        ///     round already found every target and counted it under the action grant. A target that
+        ///     changed since, so that it no longer meets <paramref name="condition" />, the caller's read
+        ///     filter or the grant's filter, or that already holds the values, is left as it is,
+        ///     unstamped, and the action still succeeds; but an action that post-checks its writes
+        ///     still refuses, as outside the grant, a target that left the grant's filter.
         /// </summary>
+        /// <remarks>
+        ///     Every other statement the action composes, such as an enqueue or a notification, still
+        ///     sees every target, the skipped ones included. When one must not act on a skipped target,
+        ///     use <see cref="Update(IReadOnlyDictionary{string, object?}, FilterTree, string)" />, which
+        ///     refuses instead.
+        /// </remarks>
         /// <param name="assignments">The new values, by property name; at least one.</param>
         /// <param name="condition">The filter, over the stack's entity, that a target must still meet to be updated.</param>
         /// <exception cref="ArgumentNullException"><paramref name="assignments" /> or <paramref name="condition" /> is null.</exception>
@@ -294,7 +302,37 @@ namespace Tellma.Core.Abstractions.Validation
         public void Update(IReadOnlyDictionary<string, object?> assignments, FilterTree condition)
         {
             ArgumentNullException.ThrowIfNull(condition);
-            Compose(assignments, condition);
+            Compose(assignments, condition, refusalCode: null);
+        }
+
+        /// <summary>
+        ///     Composes one update of the target rows, all or nothing, that every target must still meet
+        ///     a condition for when the persist runs, with stamping. A target that changed since the
+        ///     first round, so that it no longer meets <paramref name="condition" />, or that was
+        ///     deleted since, fails the action with a validation error at the root carrying
+        ///     <paramref name="refusalCode" />, and nothing the action composed is written; a target
+        ///     the caller can no longer read is not found and one outside the grant's filter is
+        ///     forbidden, as with <see cref="Update(IReadOnlyDictionary{string, object?})" />. Every
+        ///     target is written and stamped, one that already holds the values included, since the
+        ///     action acted on each.
+        /// </summary>
+        /// <param name="assignments">The new values, by property name; at least one.</param>
+        /// <param name="condition">The filter, over the stack's entity, that every target must still meet.</param>
+        /// <param name="refusalCode">
+        ///     The validation code of the refusal when a target no longer meets
+        ///     <paramref name="condition" />: letters, digits, dots, underscores and hyphens, such as the
+        ///     code the action's validation refuses that target with.
+        /// </param>
+        /// <exception cref="ArgumentNullException">
+        ///     <paramref name="assignments" />, <paramref name="condition" /> or <paramref name="refusalCode" /> is null.
+        /// </exception>
+        /// <exception cref="ArgumentException"><paramref name="assignments" /> is empty, or <paramref name="refusalCode" /> is blank.</exception>
+        /// <exception cref="InvalidOperationException">Composing has closed, or the calling flow read <see cref="Persisted" />.</exception>
+        public void Update(IReadOnlyDictionary<string, object?> assignments, FilterTree condition, string refusalCode)
+        {
+            ArgumentNullException.ThrowIfNull(condition);
+            ArgumentException.ThrowIfNullOrWhiteSpace(refusalCode);
+            Compose(assignments, condition, refusalCode);
         }
 
         /// <summary>Appends a notification to <see cref="Batch" />; it is raised when the action commits.</summary>
@@ -358,10 +396,11 @@ namespace Tellma.Core.Abstractions.Validation
         /// <summary>Records one update, once its assignments are checked and copied.</summary>
         /// <param name="assignments">The new values, by property name; at least one.</param>
         /// <param name="condition">The filter a target must still meet; null for every target, all or nothing.</param>
+        /// <param name="refusalCode">The code a target failing <paramref name="condition" /> refuses the action with; null to skip it.</param>
         /// <exception cref="ArgumentNullException"><paramref name="assignments" /> is null.</exception>
         /// <exception cref="ArgumentException"><paramref name="assignments" /> is empty.</exception>
         /// <exception cref="InvalidOperationException">Composing has closed, or the calling flow read <see cref="Persisted" />.</exception>
-        private void Compose(IReadOnlyDictionary<string, object?> assignments, FilterTree? condition)
+        private void Compose(IReadOnlyDictionary<string, object?> assignments, FilterTree? condition, string? refusalCode)
         {
             ArgumentNullException.ThrowIfNull(assignments);
             if (assignments.Count == 0)
@@ -374,7 +413,7 @@ namespace Tellma.Core.Abstractions.Validation
             lock (_gate)
             {
                 ThrowIfClosed();
-                _updates.Add(new ComposedUpdate(copy, condition));
+                _updates.Add(new ComposedUpdate(copy, condition, refusalCode));
             }
         }
 
@@ -410,5 +449,10 @@ namespace Tellma.Core.Abstractions.Validation
     ///     The filter a target must still meet when the persist runs; null for an update of every
     ///     target, all or nothing.
     /// </param>
-    internal sealed record ComposedUpdate(IReadOnlyDictionary<string, object?> Assignments, FilterTree? Condition);
+    /// <param name="RefusalCode">
+    ///     The validation code the action fails with when a target no longer meets
+    ///     <paramref name="Condition" />, every target then written and stamped; null when such a
+    ///     target is skipped instead.
+    /// </param>
+    internal sealed record ComposedUpdate(IReadOnlyDictionary<string, object?> Assignments, FilterTree? Condition, string? RefusalCode = null);
 }

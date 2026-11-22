@@ -42,8 +42,8 @@ namespace Tellma.Core.Outbox
         {
             ArgumentNullException.ThrowIfNull(events);
 
-            // --- Each classified event, by tenant and row, the strongest kept ---
-            SortedDictionary<int, (Dictionary<int, Candidate> Rows, int Weighed)> tenants = [];
+            // --- Each classified event, by tenant and row, the strongest kept and every one counted ---
+            SortedDictionary<int, (Dictionary<int, Candidate> Rows, Dictionary<int, int> Counts)> tenants = [];
             List<UnaddressedEvent> unaddressed = [];
             int dropped = 0;
             for (int position = 0; position < events.Count; position++)
@@ -63,19 +63,20 @@ namespace Tellma.Core.Outbox
                     continue;
                 }
 
-                if (!tenants.TryGetValue(tenantId, out (Dictionary<int, Candidate> Rows, int Weighed) tenant))
+                if (!tenants.TryGetValue(tenantId, out (Dictionary<int, Candidate> Rows, Dictionary<int, int> Counts) tenant))
                 {
-                    tenant = ([], 0);
+                    tenant = ([], []);
+                    tenants[tenantId] = tenant;
                 }
 
                 Candidate candidate = new(@event, status, position);
                 tenant.Rows[rowId] = tenant.Rows.TryGetValue(rowId, out Candidate? kept) && !Stronger(candidate, kept) ? kept : candidate;
-                tenants[tenantId] = (tenant.Rows, tenant.Weighed + 1);
+                tenant.Counts[rowId] = tenant.Counts.GetValueOrDefault(rowId) + 1;
             }
 
             // --- Each tenant's rows, in row order, shaped for the update's table-valued parameter ---
             List<TenantDeliveryEvents> selected = [];
-            foreach ((int tenantId, (Dictionary<int, Candidate> rows, int weighed)) in tenants)
+            foreach ((int tenantId, (Dictionary<int, Candidate> rows, Dictionary<int, int> counts)) in tenants)
             {
                 List<EmailDeliveryEventList> list = new(rows.Count);
                 foreach ((int rowId, Candidate candidate) in rows.OrderBy(static pair => pair.Key))
@@ -83,7 +84,7 @@ namespace Tellma.Core.Outbox
                     list.Add(Row(list.Count, rowId, candidate));
                 }
 
-                selected.Add(new TenantDeliveryEvents(tenantId, list, weighed));
+                selected.Add(new TenantDeliveryEvents(tenantId, list, counts));
             }
 
             return new DeliverySelection(selected, unaddressed, dropped);
@@ -161,8 +162,15 @@ namespace Tellma.Core.Outbox
     /// <summary>One tenant's events.</summary>
     /// <param name="TenantId">The tenant.</param>
     /// <param name="Rows">The strongest event of each outgoing email, in id order, numbered from 0.</param>
-    /// <param name="Weighed">The tenant's classified events, those a stronger one of the same email replaced included.</param>
-    internal sealed record TenantDeliveryEvents(int TenantId, IReadOnlyList<EmailDeliveryEventList> Rows, int Weighed);
+    /// <param name="Counts">
+    ///     The classified events of each outgoing email, by its id: its strongest one and those it
+    ///     replaced.
+    /// </param>
+    internal sealed record TenantDeliveryEvents(int TenantId, IReadOnlyList<EmailDeliveryEventList> Rows, IReadOnlyDictionary<int, int> Counts)
+    {
+        /// <summary>The tenant's classified events, those a stronger one of the same email replaced included.</summary>
+        public int Weighed => Counts.Values.Sum();
+    }
 
     /// <summary>A classified event that names no outgoing email.</summary>
     /// <param name="TenantId">The tenant its correlation names; null for none.</param>

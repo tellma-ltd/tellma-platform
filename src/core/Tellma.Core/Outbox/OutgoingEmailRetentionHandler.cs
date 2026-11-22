@@ -5,13 +5,9 @@
 
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using Tellma.Core.Abstractions.Access;
-using Tellma.Core.Abstractions.Crud;
-using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Email;
 using Tellma.Core.Abstractions.Errors;
 using Tellma.Core.Abstractions.Jobs;
-using Tellma.Core.Data.Batches;
 
 namespace Tellma.Core.Outbox
 {
@@ -24,15 +20,13 @@ namespace Tellma.Core.Outbox
     // their own delete) refuses the delete, so the page is read again, once, before the refusal
     // stands.
     /// <summary>Deletes the outgoing emails older than the outbox's retention that are settled or abandoned.</summary>
-    /// <param name="runner">Runs each page's read behind the connect prologue.</param>
-    /// <param name="emails">The outgoing emails' stack, which deletes each page through its pipeline.</param>
+    /// <param name="pages">Reads each page and deletes it through the outgoing emails' stack.</param>
     /// <param name="options">The outbox's options: the retention.</param>
     /// <param name="metrics">The outbox's instruments.</param>
     /// <param name="loggers">Creates the outbox's logger.</param>
     [JobHandler(Key, LeaseSeconds = 600, RunsWhenReadOnly = true)]
     internal sealed class OutgoingEmailRetentionHandler(
-        IGuardedBatchRunner runner,
-        EntityService<OutgoingEmail, int> emails,
+        IOutboxRetentionPages pages,
         IOptions<OutboxOptions> options,
         OutboxMetrics metrics,
         ILoggerFactory loggers) : IJobHandler
@@ -91,7 +85,7 @@ namespace Tellma.Core.Outbox
         /// <returns>How many ids the last read returned, and how many rows the page deleted.</returns>
         private async Task<(int Read, int Deleted)> PageAsync(TimeSpan retention, CancellationToken cancellationToken)
         {
-            IReadOnlyList<int> ids = await ReadAsync(retention, cancellationToken).ConfigureAwait(false);
+            IReadOnlyList<int> ids = await pages.ReadAsync(PageSize, retention, cancellationToken).ConfigureAwait(false);
             if (ids.Count == 0)
             {
                 return (0, 0);
@@ -99,7 +93,7 @@ namespace Tellma.Core.Outbox
 
             try
             {
-                return (ids.Count, (await emails.DeleteByIdsAsync(ids, cancellationToken: cancellationToken).ConfigureAwait(false)).Count);
+                return (ids.Count, await pages.DeleteAsync(ids, cancellationToken).ConfigureAwait(false));
             }
             catch (Exception refused) when (refused is ValidationException or NotFoundException)
             {
@@ -107,28 +101,10 @@ namespace Tellma.Core.Outbox
             }
 
             // --- The page again, as it stands now; a second refusal fails the run ---
-            ids = await ReadAsync(retention, cancellationToken).ConfigureAwait(false);
+            ids = await pages.ReadAsync(PageSize, retention, cancellationToken).ConfigureAwait(false);
             return ids.Count == 0
                 ? (0, 0)
-                : (ids.Count, (await emails.DeleteByIdsAsync(ids, cancellationToken: cancellationToken).ConfigureAwait(false)).Count);
-        }
-
-        /// <summary>Reads one page of the ids the retention deletes, in one read round trip.</summary>
-        /// <param name="retention">How long a row is kept.</param>
-        /// <param name="cancellationToken">Cancels the read.</param>
-        /// <returns>The ids, at most a page.</returns>
-        private Task<IReadOnlyList<int>> ReadAsync(TimeSpan retention, CancellationToken cancellationToken)
-        {
-            BatchResult<IReadOnlyList<int>>? page = null;
-            return runner.RunAsync(
-                BatchPurpose.Read,
-                (_, data) =>
-                {
-                    page = OutboxStatements.RetentionPage((DataBatch)data, PageSize, retention);
-                    return ValueTask.CompletedTask;
-                },
-                (_, _) => page!.Value,
-                cancellationToken);
+                : (ids.Count, await pages.DeleteAsync(ids, cancellationToken).ConfigureAwait(false));
         }
     }
 }

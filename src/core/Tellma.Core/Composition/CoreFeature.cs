@@ -258,6 +258,7 @@ namespace Tellma.Core.Composition
                 .NotificationType(OutgoingEmailHandler.FailedDescriptor)
                 .Scoped<IOutboxDeliveryWriter, OutboxDeliveryWriter>()
                 .Scoped<IEmailDeliveryEventHandler, OutgoingEmailDeliveryHandler>()
+                .Scoped<IOutboxRetentionPages, OutboxRetentionPages>()
                 .JobHandler<OutgoingEmailRetentionHandler>()
                 .BuiltInSchedule(OutgoingEmailRetentionHandler.ScheduleId, OutgoingEmailRetentionHandler.Key, OutgoingEmailRetentionHandler.Cron)
                 .BlobKind(OutgoingEmailAttachment.BlobKind, static policy => policy with { Thumbnail = null })

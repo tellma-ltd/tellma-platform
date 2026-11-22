@@ -121,16 +121,17 @@ namespace Tellma.Core.Tests.Outbox
             _tenants[1] = TenantState.Active;
             _tenants[4] = TenantState.Retired;
 
-            // Tenant 1: three events weighed for rows 10 and 11 (two of row 10, one of row 11) and one
-            // of row 12; the writer applies one, finds row 12 missing, and leaves the rest as stale.
+            // Tenant 1: three events weighed for rows 10 and 11 (two of row 10, one of row 11) and two
+            // of row 12; the writer applies one, finds row 12 missing, so both of its events are
+            // unmatched, and leaves the rest as stale.
             _writer.Answers[1] = new DeliveryUpdateResult(1, [12]);
 
             await Handler(new OutboxMetrics(Meters)).HandleAsync(
-                [Event(1, 10), Event(1, 10, EmailDeliveryEventType.Delivered), Event(1, 11), Event(1, 12), Event(4, 40), Unaddressed(), Opened(1, 10)],
+                [Event(1, 10), Event(1, 10, EmailDeliveryEventType.Delivered), Event(1, 11), Event(1, 12), Event(1, 12, EmailDeliveryEventType.Bounced), Event(4, 40), Unaddressed(), Opened(1, 10)],
                 TestContext.Current.CancellationToken);
 
             Assert.Equal(
-                [("applied", 1L), ("stale", 2L), ("tenant_skipped", 1L), ("unmatched", 2L)],
+                [("applied", 1L), ("stale", 2L), ("tenant_skipped", 1L), ("unmatched", 3L)],
                 updates.GetMeasurementSnapshot()
                     .GroupBy(static point => (string)point.Tags[OutboxTelemetryNames.ResultTag]!)
                     .Select(static group => (group.Key, group.Sum(static point => point.Value)))

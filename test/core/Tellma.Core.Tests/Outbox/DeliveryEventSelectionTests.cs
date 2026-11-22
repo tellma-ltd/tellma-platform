@@ -66,6 +66,7 @@ namespace Tellma.Core.Tests.Outbox
             TenantDeliveryEvents tenant = Assert.Single(selection.Tenants);
             Assert.Equal(1, tenant.TenantId);
             Assert.Equal(5, tenant.Weighed);
+            Assert.Equal([(7, 3), (9, 2)], tenant.Counts.OrderBy(static pair => pair.Key).Select(static pair => (pair.Key, pair.Value)));
             Assert.Equal(
                 [(0, 7, EmailDeliveryStatus.Bounced, (byte)EmailDeliveryStatus.Bounced, "e1"), (1, 9, EmailDeliveryStatus.Delivered, (byte)EmailDeliveryStatus.Delivered, "e5")],
                 tenant.Rows.Select(static row => (row.Ordinal, row.OutgoingEmailId, row.Status, row.Rank, row.ProviderEventId)));

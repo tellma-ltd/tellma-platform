@@ -140,9 +140,12 @@ namespace Tellma.Core.Outbox
             ArgumentNullException.ThrowIfNull(context);
             await context.Loader.LoadAsync().ConfigureAwait(false);
 
-            // --- The row's effect, on the targets still failed or unsent; the job queue checks under
-            // its update's lock that no live job holds the row, and refuses the whole persist if one does ---
-            context.Update(RetryAssignments, RetryCondition);
+            // --- The row's effect, on every target, each stamped: a target no longer failed or unsent
+            // (another administrator cancelled it since the first round) refuses the whole retry
+            // rather than being skipped, so no job is enqueued for a row the update passed over; the
+            // job queue checks under its update's lock that no live job holds the row, and refuses the
+            // whole persist if one does ---
+            context.Update(RetryAssignments, RetryCondition, OutgoingEmailCodes.NotRetryable);
             JobRequest[] requests = [.. context.Entities.Select(static row => SendRequest(row))];
             if (requests.Length > 0)
             {
