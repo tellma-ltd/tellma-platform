@@ -384,6 +384,27 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-233 (orchestrator, 2026-11-22): PC-105 Review 1 rulings
+
+PC-105 Review 1 found 0/3/2.
+
+What the review confirmed:
+- The +3.86 KB raise of "." is honest under D-031. What stays on the first frame is what the route gate, the forbidden view, the shell and the bell read synchronously.
+- The lazy tm-entity-model chunk is sound. It loads in the same Promise.all as the Entities chunk, so it adds no async boundary.
+
+Rulings:
+- R1-1: fail closed. reachable skips the owner step only as the server does, and a case AccessSummary cannot decide is not reachable.
+- R1-2: walk segment by segment, like the server.
+- R1-3: validate paths segment by segment rather than as one enumerated union, with a type-cost regression test.
+- R1-4: the golden uses the production plan.
+- R1-5: resolve uses the cached list.
+
+Escalation: if R1-3 rewrites much of tm-entity-types, fix1 is judged for Review 2 under §4.4.
+
+PC-105 holds after fix1, behind PC-182.
+
+For Ahmad: AccessSummary cannot tell a direct child grant from an owner-derived one. With a direct child grant and a filtered owner grant, the client cannot decide whether a path is reachable, so it answers not reachable. Exact parity would need AccessSummary (0014 / 0029) to mark direct grants.
+
 ### D-232 (orchestrator, 2026-11-22): PC-189 Review 1 rulings
 
 PC-189 Review 1 found 0/2/4.
