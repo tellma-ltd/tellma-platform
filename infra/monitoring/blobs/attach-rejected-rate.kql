@@ -1,0 +1,12 @@
+// Refused blob attaches, per kind and reason.
+// Backs the "saves are refusing files" alert: a save that names a blob it may not attach is refused
+// with the reason as the cause. An expired upload or a duplicate in one payload is a user's slip and
+// a handful is normal; a burst of one reason on one kind is a client defect (a stale id, the wrong
+// kind), a client that attaches another user's uploads, or saves racing for one blob (persist).
+// More than 20 of one reason on one kind in the window is a starting point.
+customMetrics
+| where name == "tellma.blobs.attach.rejected"
+| extend kind = tostring(customDimensions["kind"])
+| extend reason = tostring(customDimensions["reason"])
+| summarize rejected = sum(valueSum) by kind, reason, bin(timestamp, 15m)
+| where rejected > 20

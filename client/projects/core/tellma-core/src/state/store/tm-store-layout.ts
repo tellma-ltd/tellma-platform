@@ -18,6 +18,9 @@ export type TmPartition =
   | { readonly kind: 'tenant'; readonly sub: string; readonly tenantId: number }
   | { readonly kind: 'session'; readonly sub: string; readonly sessionHandle: string };
 
+/** A user's tenant partition: the launch documents and cacheable lists of one tenant. */
+export type TmTenantPartition = Extract<TmPartition, { readonly kind: 'tenant' }>;
+
 /** The client store's database. */
 export const TM_STORE_DATABASE = 'tm-app';
 

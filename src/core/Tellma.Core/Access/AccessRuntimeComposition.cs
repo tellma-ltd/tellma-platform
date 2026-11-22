@@ -80,8 +80,9 @@ namespace Tellma.Core.Access
             // --- The security tables' guards: the lock and the three invariants (§8.3) ---
             services.TryAddScoped<IAccessGuards, AccessGuards>();
 
-            // --- The first administrator's bootstrap, closed over the user leaf, and its held subject (§11) ---
-            services.TryAddScoped<BootstrapSubject>();
+            // --- The first administrator's bootstrap, closed over the user leaf, and the held development subjects (§11) ---
+            services.TryAddScoped<DevelopmentSubjects>();
+            services.TryAddScoped<IDevelopmentSubjects>(static provider => provider.GetRequiredService<DevelopmentSubjects>());
             services.TryAddScoped(typeof(ITenantBootstrapper), typeof(TenantBootstrapper<>).MakeGenericType(record.LeafOf(typeof(User))));
 
             // --- The drift scan, and the migrator's report of it after migrate (§9) ---

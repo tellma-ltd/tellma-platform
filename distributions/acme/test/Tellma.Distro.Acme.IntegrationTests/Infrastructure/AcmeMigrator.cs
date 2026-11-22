@@ -95,6 +95,9 @@ namespace Tellma.Distro.Acme.IntegrationTests.Infrastructure
         /// <summary>A further composition every run adds to Acme's.</summary>
         public Action<TellmaBuilder>? Compose { get; set; }
 
+        /// <summary>The environment every run runs in: Development, as a developer's checkout runs, unless a test names another.</summary>
+        public string EnvironmentName { get; set; } = "Development";
+
         /// <summary>The connection string each run handed the identity store's migration, in order.</summary>
         public ConcurrentQueue<string> IdentityStoreConnectionStrings { get; } = new();
 
@@ -143,7 +146,7 @@ namespace Tellma.Distro.Acme.IntegrationTests.Infrastructure
                     MigrationsAssembly = typeof(AcmeDesignTimeFactory).Assembly,
                     Out = output,
                     Error = error,
-                    EnvironmentName = "Development",
+                    EnvironmentName = EnvironmentName,
 
                     // Acme's appsettings.json and appsettings.Development.json, which the migrator
                     // project links and copies beside the suite.

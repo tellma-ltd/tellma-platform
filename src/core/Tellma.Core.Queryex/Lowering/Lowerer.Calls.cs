@@ -430,7 +430,7 @@ namespace Tellma.Core.Queryex.Lowering
                 && source < operands.Length
                 && operands[source] is PlanValue followed)
             {
-                return followed.StoreType;
+                return SqlTypes.Following(followed.StoreType, template.Following);
             }
 
             QueryexStoreType? widest = null;

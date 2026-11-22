@@ -306,6 +306,13 @@ namespace Tellma.Queryex.Testing.Semantics
             IReadOnlyList<LedgerRow> rows)
         {
             List<Answer> answers = [];
+            if (plan.Keys.Count == 0 && plan.Having is null && !plan.Select.Any(static item => item.Expression.ContainsAggregate))
+            {
+                // Neither a key nor an aggregation anywhere is the degenerate shape (spec 0008
+                // §2.1): it groups by nothing, so it answers once per row it reads.
+                return [.. rows.Select(row => Project(plan, context, [row], row))];
+            }
+
             if (plan.Keys.Count == 0)
             {
                 // No keys at all is a grand total: one answer over every row, and one even when

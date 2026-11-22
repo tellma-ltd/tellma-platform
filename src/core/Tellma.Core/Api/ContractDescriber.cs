@@ -48,6 +48,7 @@ namespace Tellma.Core.Api
     ///         <item>An array is <c>{ "array": type }</c>; a dictionary <c>{ "map": { "key": type, "value": type } }</c>.</item>
     ///         <item>A polymorphic type adds <c>"polymorphic": { "discriminator": name, "types": { value: type } }</c>.</item>
     ///         <item>A type met again inside itself is <c>{ "ref": n }</c>, <c>n</c> levels up.</item>
+    ///         <item>A pre-serialized value (<see cref="PreSerializedJson{T}" />) is described as the type its bytes were serialized from.</item>
     ///         <item>
     ///             A row set is <c>"row-set"</c> (its columns describe themselves); an entities result
     ///             spells out its ids in the key type and its related projections, one per entity its
@@ -207,6 +208,13 @@ namespace Tellma.Core.Api
             if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(EntitiesResult<>))
             {
                 WriteEntitiesResult(writer, type.GetGenericArguments()[0], path);
+                return;
+            }
+
+            // Bytes the platform serialized once have the shape of the type they were serialized from.
+            if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(PreSerializedJson<>))
+            {
+                Write(writer, type.GetGenericArguments()[0], path, handling);
                 return;
             }
 

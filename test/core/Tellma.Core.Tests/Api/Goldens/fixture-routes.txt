@@ -122,11 +122,14 @@ POST /{tenantId}/api/web/outgoing-email-attachments/query | query | core.Outgoin
 POST /{tenantId}/api/web/widget-parts/query | query | fixture.WidgetPart | - | QueryRequest | RowPage | fixture.WidgetPart:Read | idempotent | PqV1-faRenCx
 POST /{tenantId}/api/web/widget-part-notes/query | query | fixture.WidgetPartNote | - | QueryRequest | RowPage | fixture.WidgetPartNote:Read | idempotent | PqV1-faRenCx
 POST /{tenantId}/api/web/links/query | query | fixture.Link | - | QueryRequest | RowPage | fixture.Link:Read | idempotent | PqV1-faRenCx
+POST /{tenantId}/api/web/access/check | check | - | api | AccessCheckRequest | IReadOnlyList<AccessDecision> | member-only | idempotent | BY0Dt98gYpu2
+POST /{tenantId}/api/web/access/holders | holders | - | api | AccessHoldersRequest | AccessHolders | member-only | idempotent | 2outbY8RcBPf
 POST /{tenantId}/api/web/settings/client | client | - | api | - | ValueTuple<byte[], string> | member-only | idempotent | JjXeFFL8XHtK
 POST /{tenantId}/api/web/settings/entity-tags | entity-tags | - | api | - | IReadOnlyDictionary<string, string> | member-only | idempotent | mtZdmhBQ5vWx
 POST /{tenantId}/api/web/settings/details | details | - | api | - | TenantSettingsDetails | member-only | idempotent | Ue6a3BcH7zii
 POST /{tenantId}/api/web/settings/refresh-caches | refresh-caches | - | api | - | void | core.Settings.General:Save | mutation, idempotent | lYZxNIK2Qbw7
 POST /{tenantId}/api/web/settings/save | save | - | api | TenantSettingsPatch | SettingsSaveResult | member-only | mutation | 2FgBFQi1n4Jw
+POST /{tenantId}/api/web/client/sync | sync | - | api | ClientSyncRequest | ClientSyncResult | member-only | idempotent | 1UjYUCJx3WE2
 POST /{tenantId}/api/web/queryex/discover | discover | - | api | QueryexDiscoverRequest | QueryexDiscoverResult | member-only | idempotent | Q9rAN9qhOkVv
 POST /{tenantId}/api/web/inbox/summary | summary | - | api | - | InboxSummary | member-only | idempotent | o9p0wbvTAosb
 POST /{tenantId}/api/web/inbox/seen | seen | - | api | - | InboxVerbResult | member-only | mutation, read-only, idempotent | pXR_mrC6LMxV

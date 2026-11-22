@@ -115,6 +115,12 @@ namespace Tellma.Core.Tests.Crud.Query
         /// <summary>What a re-check throws, as a revalidation that failed would; null while it finds a set.</summary>
         public Exception? RevalidateFailure { get; set; }
 
+        /// <summary>The other users' sets a scope's evaluator loads, by user id; a null set for an unknown, inactive or system user.</summary>
+        public Dictionary<int, UserAccess?> Others { get; } = [];
+
+        /// <summary>The loads of other users' sets the scopes' connections ran.</summary>
+        public int OtherLoads { get; private set; }
+
         /// <summary>The root services.</summary>
         public IServiceProvider Services => _root;
 
@@ -177,6 +183,14 @@ namespace Tellma.Core.Tests.Crud.Query
         public void GrantOnRecheck(params (string Resource, string Action, string? Filter)[] grants)
         {
             Revalidated = Connect(grants);
+        }
+
+        /// <summary>Gives another user a set of grants, each a resource, an action and an optional filter, which a scope's evaluator loads.</summary>
+        /// <param name="userId">The user.</param>
+        /// <param name="grants">The grants.</param>
+        public void GrantOther(int userId, params (string Resource, string Action, string? Filter)[] grants)
+        {
+            Others[userId] = Access(userId, grants);
         }
 
         /// <summary>A scope of the caller: user 42 of tenant 1.</summary>
@@ -270,6 +284,15 @@ namespace Tellma.Core.Tests.Crud.Query
         /// <returns>The connected caller.</returns>
         private ConnectedUser Connect((string Resource, string Action, string? Filter)[] grants)
         {
+            return Connected(Access(UserId, grants));
+        }
+
+        /// <summary>A user's set with grants, each a resource, an action and an optional filter.</summary>
+        /// <param name="userId">The user.</param>
+        /// <param name="grants">The grants.</param>
+        /// <returns>The set.</returns>
+        private UserAccess Access(int userId, (string Resource, string Action, string? Filter)[] grants)
+        {
             PermissionRow[] rows =
             [
                 .. grants.Select(grant => new PermissionRow(
@@ -284,8 +307,7 @@ namespace Tellma.Core.Tests.Crud.Query
                     null,
                     null)),
             ];
-            UserAccess access = _root.GetRequiredService<UserAccessBuilder>().Build(1, UserId, Guid.Empty, Guid.Empty, rows, Schema);
-            return Connected(access);
+            return _root.GetRequiredService<UserAccessBuilder>().Build(1, userId, Guid.Empty, Guid.Empty, rows, Schema);
         }
 
         /// <summary>A connected caller with a set.</summary>
@@ -400,7 +422,14 @@ namespace Tellma.Core.Tests.Crud.Query
             /// <inheritdoc />
             public Task<UserAccess?> LoadDetachedAsync(int userId, CancellationToken cancellationToken)
             {
-                throw new NotSupportedException("The query path loads no other user.");
+                // Each load is one prologue-only round trip in production; the rig counts it.
+                if (!rig.Others.TryGetValue(userId, out UserAccess? access))
+                {
+                    throw new NotSupportedException($"The rig gives user {userId} no set; give it one with GrantOther.");
+                }
+
+                rig.OtherLoads++;
+                return Task.FromResult(access);
             }
 
             /// <inheritdoc />

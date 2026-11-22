@@ -615,9 +615,11 @@ namespace Tellma.Core.Queryex.Functions
         /// <returns>The definitions.</returns>
         private static IEnumerable<FunctionDefinition> NumericOperations()
         {
-            yield return Unary("abs", "ABS({0})", TypeSpecs.Numeric, TypeSpecs.Numeric, follows: 0);
-            yield return Unary("floor", "FLOOR({0})", TypeSpecs.Numeric, TypeSpecs.Numeric, follows: 0);
-            yield return Unary("ceiling", "CEILING({0})", TypeSpecs.Numeric, TypeSpecs.Numeric, follows: 0);
+            // The backend returns a narrow whole number from each of these as an int, and floor and
+            // ceiling return a decimal without its fractional digits.
+            yield return Unary("abs", "ABS({0})", TypeSpecs.Numeric, TypeSpecs.Numeric, follows: 0, following: ResultFollowing.Numeric);
+            yield return Unary("floor", "FLOOR({0})", TypeSpecs.Numeric, TypeSpecs.Numeric, follows: 0, following: ResultFollowing.Integral);
+            yield return Unary("ceiling", "CEILING({0})", TypeSpecs.Numeric, TypeSpecs.Numeric, follows: 0, following: ResultFollowing.Integral);
 
             yield return Define(
                 "round",
@@ -635,14 +637,17 @@ namespace Tellma.Core.Queryex.Functions
                     ],
                     TypeSpecs.Numeric,
                     NullityRule.Propagate(0),
-                    Sql.ValueLike("ROUND({0}, {1})", 0)));
+                    Sql.ValueLike("ROUND({0}, {1})", 0, ResultFollowing.Numeric)));
         }
 
         /// <summary>Operations on text.</summary>
         /// <returns>The definitions.</returns>
         private static IEnumerable<FunctionDefinition> StringOperations()
         {
-            yield return Unary("length", "LEN({0})", TypeSpecs.Text, TypeSpecs.Numeric, store: QueryexStoreType.QxBigInt);
+            // The backend counts an unbounded text in a bigint, and a bound parameter is unbounded
+            // only when its value is long, so the count is cast to the int every count fits in and
+            // its type no longer depends on the value bound.
+            yield return Unary("length", "CAST(LEN({0}) AS int)", TypeSpecs.Text, TypeSpecs.Numeric, follows: 0, following: ResultFollowing.Length);
             yield return Unary("trim", "TRIM({0})", TypeSpecs.Text, TypeSpecs.Text, follows: 0);
             yield return Unary("upper", "UPPER({0})", TypeSpecs.Text, TypeSpecs.Text, follows: 0);
             yield return Unary("lower", "LOWER({0})", TypeSpecs.Text, TypeSpecs.Text, follows: 0);
@@ -786,6 +791,7 @@ namespace Tellma.Core.Queryex.Functions
         /// <param name="result">The result type.</param>
         /// <param name="store">The type the backend holds the result in, when the SQL fixes it.</param>
         /// <param name="follows">The argument whose stored type the result takes, when it takes one.</param>
+        /// <param name="following">How the result's stored type follows that argument's.</param>
         /// <returns>The definition.</returns>
         private static FunctionDefinition Unary(
             string name,
@@ -793,11 +799,12 @@ namespace Tellma.Core.Queryex.Functions
             TypeSpec argument,
             TypeSpec result,
             QueryexStoreType? store = null,
-            int? follows = null)
+            int? follows = null,
+            ResultFollowing following = ResultFollowing.Same)
         {
             EmitStrategy emit = store is QueryexStoreType fixedStore
                 ? Sql.Value(pattern, fixedStore)
-                : follows is int source ? Sql.ValueLike(pattern, source) : Sql.Value(pattern);
+                : follows is int source ? Sql.ValueLike(pattern, source, following) : Sql.Value(pattern);
 
             return Define(
                 name,

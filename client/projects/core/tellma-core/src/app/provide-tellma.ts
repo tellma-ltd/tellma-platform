@@ -7,9 +7,11 @@ import { type ApplicationConfig, type EnvironmentProviders, inject, makeEnvironm
 import { TM_BLOB_FETCHER, type TmBlobFetcher } from '@tellma/core-ui/image';
 
 import { TmApi } from '../api/tm-api';
+import { TM_API_CACHE } from '../api/tm-api-seams';
 import { ɵtmMergeAppDeclarations } from '../declarations/tm-merge';
 import { TM_CLIENT_METADATA } from '../metadata/tm-client-metadata';
 import { TM_METADATA_LOADERS } from '../metadata/tm-metadata-loaders';
+import { TmCacheRefresher } from '../state/sync/tm-cache-refresher';
 import type { TmAppConfig } from './tm-app-config';
 import { TM_APP_DECLARATIONS } from './tm-app-declarations';
 
@@ -60,6 +62,9 @@ export function provideTellma(config: TmAppConfig): EnvironmentProviders {
         return (url, options) => api.fetchBlob(url, options);
       },
     },
+    // The HTTP layer reports every tenant response's version tags, and each
+    // read-only refusal, to the cache refresher.
+    { provide: TM_API_CACHE, useExisting: TmCacheRefresher },
   ]);
   configs.set(providers, config);
   return providers;

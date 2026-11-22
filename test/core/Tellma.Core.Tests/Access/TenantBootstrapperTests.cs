@@ -15,7 +15,7 @@ namespace Tellma.Core.Tests.Access
     /// <summary>
     ///     The administrator bootstrap without a database: the membership it grants an existing user,
     ///     the scope and the environment it refuses, the name the provisioning step derives, and the
-    ///     subject it holds for the save.
+    ///     subjects it holds for the save.
     /// </summary>
     public class TenantBootstrapperTests
     {
@@ -91,7 +91,7 @@ namespace Tellma.Core.Tests.Access
             _ = await Assert.ThrowsAsync<ArgumentException>(() => bootstrapper.BootstrapAdministratorAsync(new TenantBootstrapRequest(email, name, "en", null), TestContext.Current.CancellationToken));
         }
 
-        // --- The provisioning step's name, and the held subject ---
+        // --- The provisioning step's name, and the held subjects ---
 
         [Theory]
         [InlineData("ann@example.com", "ann")]
@@ -104,17 +104,45 @@ namespace Tellma.Core.Tests.Access
         }
 
         [Fact]
-        public void One_subject_is_held_at_a_time_and_released_with_its_handle()
+        public void One_hold_at_a_time_keeps_the_subjects_by_normalised_address_until_its_handle_is_released()
         {
-            BootstrapSubject subject = new();
+            DevelopmentSubjects subjects = Subjects(Context(null) with { Kind = PrincipalKind.System }, isDevelopment: true);
 
-            using (subject.Hold("ann@example.com", "sub-1"))
+            using (subjects.Hold(new Dictionary<string, string>(StringComparer.Ordinal) { [" Ann@Example.com "] = "sub-1", ["ben@example.com"] = "sub-2" }))
             {
-                Assert.Equal(("ann@example.com", "sub-1"), (subject.Email, subject.Subject));
-                _ = Assert.Throws<InvalidOperationException>(() => subject.Hold("ben@example.com", "sub-2"));
+                Assert.Equal([("ann@example.com", "sub-1"), ("ben@example.com", "sub-2")], subjects.Held!.Select(static pair => (pair.Key, pair.Value)).Order());
+                _ = Assert.Throws<InvalidOperationException>(() => subjects.Hold(new Dictionary<string, string>(StringComparer.Ordinal) { ["cat@example.com"] = "sub-3" }));
             }
 
-            Assert.Equal((null, null), (subject.Email, subject.Subject));
+            Assert.Null(subjects.Held);
+        }
+
+        [Fact]
+        public void Subjects_outside_a_development_environment_or_in_a_user_s_scope_are_refused()
+        {
+            Dictionary<string, string> held = new(StringComparer.Ordinal) { ["ann@example.com"] = "sub-1" };
+
+            _ = Assert.Throws<InvalidOperationException>(() => Subjects(Context(null) with { Kind = PrincipalKind.System }, isDevelopment: false).Hold(held));
+            _ = Assert.Throws<InvalidOperationException>(() => Subjects(Context(50), isDevelopment: true).Hold(held));
+        }
+
+        [Theory]
+        [InlineData(" ", "sub-1")]
+        [InlineData("ann@example.com", "")]
+        public void A_blank_address_or_subject_is_refused(string email, string subject)
+        {
+            DevelopmentSubjects subjects = Subjects(Context(null) with { Kind = PrincipalKind.System }, isDevelopment: true);
+
+            _ = Assert.Throws<ArgumentException>(() => subjects.Hold(new Dictionary<string, string>(StringComparer.Ordinal) { [email] = subject }));
+            Assert.Null(subjects.Held);
+        }
+
+        [Fact]
+        public void Two_spellings_of_one_address_are_refused()
+        {
+            DevelopmentSubjects subjects = Subjects(Context(null) with { Kind = PrincipalKind.System }, isDevelopment: true);
+
+            _ = Assert.Throws<ArgumentException>(() => subjects.Hold(new Dictionary<string, string>(StringComparer.Ordinal) { ["ann@example.com"] = "sub-1", ["ANN@example.com"] = "sub-2" }));
         }
 
         // --- Fixtures ---
@@ -150,8 +178,17 @@ namespace Tellma.Core.Tests.Access
                 new SchemaDatabase(Schema),
                 new FixedContextAccessor(context),
                 new TenancyEnvironment("fixture", isDevelopment),
-                new BootstrapSubject(),
+                Subjects(context, isDevelopment),
                 TimeProvider.System);
+        }
+
+        /// <summary>The scope's held development subjects.</summary>
+        /// <param name="context">The scope's context.</param>
+        /// <param name="isDevelopment">Whether the environment is a development one.</param>
+        /// <returns>The holder.</returns>
+        private static DevelopmentSubjects Subjects(RequestContext context, bool isDevelopment)
+        {
+            return new DevelopmentSubjects(new TenancyEnvironment("fixture", isDevelopment), new FixedContextAccessor(context));
         }
 
         /// <summary>A users' service whose pipeline refuses every operation, for a bootstrapper whose refusals come first.</summary>

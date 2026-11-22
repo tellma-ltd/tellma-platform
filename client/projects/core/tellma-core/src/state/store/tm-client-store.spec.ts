@@ -17,7 +17,7 @@ import { TmTabBus } from '../bus/tm-tab-bus';
 import { TmRecordingTabBus } from '../bus/tm-tab-bus.testing.util';
 import type { TmBootRecord, TmBootTheme } from '../tm-boot-record';
 import { TM_REFUSING_STORAGE, TmFakeStorage } from '../tm-storage.testing.util';
-import { TmClientStore, TmStoreRefusedError, type TmStoredDoc, type TmSweepRule } from './tm-client-store';
+import { TmClientStore, TmStoreRefusedError, type TmDocUpdate, type TmStoredDoc, type TmSweepRule } from './tm-client-store';
 import { TM_DOC_FORMATS, TM_STORE_EXTRA_FORMATS, TM_STORE_FORMATS } from './tm-doc-formats';
 import { TM_STORE_HOST, type TmStoreHost } from './tm-store-host';
 import { TM_IMAGES_CACHE, TM_STORE_DATABASE, TM_STORE_DOCS, type TmPartition } from './tm-store-layout';
@@ -604,6 +604,136 @@ describe('TmClientStore', () => {
     });
   });
 
+  // The cache refresher's seams: several documents in one transaction, a
+  // write's result shown ahead of its write, and the re-read inside the lock.
+  describe('writes of several documents', () => {
+    it('writes them in one readwrite transaction, from the stored copies, and names the written ones in one store.changed', async () => {
+      const { store, bus } = setUp();
+      await tmWriteRawRecords([
+        { p: 'u:0b4f/t17', n: 'sync@1', tag: null, savedAt: 1, data: { at: 1, entities: 'E1', entityTags: {} } },
+        { p: 'u:0b4f/t17', n: 'me@1', tag: null, savedAt: 1, data: 'kept' },
+      ]);
+      await store.readAll(T17);
+      const transactions = spyTransactions();
+      await store.ɵwrite(T17, {
+        tenant: () => docOf('tenant'),
+        sync: (current) => docOf({ ...(current?.data as object), at: NOW }),
+        me: () => undefined,
+      });
+
+      expect(transactions()).toEqual(['readwrite']);
+      expect(await tmReadRawRecords()).toEqual([
+        { p: 'u:0b4f/t17', n: 'me@1', tag: null, savedAt: 1, data: 'kept' },
+        { p: 'u:0b4f/t17', n: 'sync@1', tag: null, savedAt: NOW, data: { at: NOW, entities: 'E1', entityTags: {} } },
+        { p: 'u:0b4f/t17', n: 'tenant@1', tag: null, savedAt: NOW, data: 'tenant' },
+      ]);
+      expect(bus.posted).toEqual([{ type: 'store.changed', partition: 'u:0b4f/t17', names: ['tenant@1', 'sync@1'] }]);
+      expect(store.doc(T17, 'tenant')()?.data).toBe('tenant');
+      expect(store.doc(T17, 'me')()?.data).toBe('kept');
+    });
+
+    it('writes nothing when an update throws, and rejects with its error', async () => {
+      const { store, bus } = setUp();
+      const failure = new Error('The update failed.');
+      await expect(
+        store.ɵwrite(T17, {
+          tenant: () => docOf('tenant'),
+          sync: () => {
+            throw failure;
+          },
+        }),
+      ).rejects.toBe(failure);
+      expect(await tmReadRawKeys()).toEqual([]);
+      expect(store.doc(T17, 'tenant')()).toBeUndefined();
+      expect(bus.posted).toEqual([]);
+    });
+
+    it("refuses another user's partition", async () => {
+      const { store } = setUp();
+      await expect(store.ɵwrite({ kind: 'tenant', sub: SARA, tenantId: 17 }, { me: () => docOf({}) })).rejects.toBeInstanceOf(
+        TmStoreRefusedError,
+      );
+      expect(() => store.ɵshow({ kind: 'tenant', sub: SARA, tenantId: 17 }, { me: () => docOf({}) })).toThrow(TmStoreRefusedError);
+    });
+
+    it('shows a result at once, and keeps it over a re-read until released', async () => {
+      const { store } = setUp();
+      await tmWriteRawRecords([syncRecord('u:0b4f/t17'), { p: 'u:0b4f/t17', n: 'me@1', tag: null, savedAt: 1, data: 'stored' }]);
+      await store.readAll(T17);
+      const release = store.ɵshow(T17, { me: (current) => docOf(`${String(current?.data)} and shown`) });
+      expect(store.doc(T17, 'me')()?.data).toBe('stored and shown');
+
+      // Another tab's commit does not replace the shown copy while it is held.
+      await tmWriteRawRecords([{ p: 'u:0b4f/t17', n: 'me@1', tag: null, savedAt: 2, data: 'committed' }]);
+      await store.ɵreread(T17, ['me']);
+      expect(store.doc(T17, 'me')()?.data).toBe('stored and shown');
+      // Releasing twice releases once.
+      release();
+      release();
+      await store.ɵreread(T17, ['me']);
+      expect(store.doc(T17, 'me')()?.data).toBe('committed');
+    });
+
+    for (const memory of [false, true]) {
+      it(`keeps a shown copy over another write until released, and makes its change once in its own write${memory ? ', in memory' : ''}`, async () => {
+        const { store } = setUp(memory ? { host: { memory: true } } : {});
+        await store.ɵwrite(T17, { sync: () => docOf({ at: NOW, entities: null, entityTags: {} }), me: () => docOf('stored') });
+        const show: TmDocUpdate = (current) => docOf(`${String(current?.data)} and shown`);
+        const release = store.ɵshow(T17, { me: show });
+        expect(store.doc(T17, 'me')()?.data).toBe('stored and shown');
+
+        // Another write of it lands first: the shown change is made again on its copy.
+        await store.ɵwrite(T17, { me: () => docOf('synced') });
+        expect(store.doc(T17, 'me')()?.data).toBe('synced and shown');
+        // The show's own write makes the change once.
+        await store.ɵwrite(T17, { me: show });
+        expect(store.doc(T17, 'me')()?.data).toBe('synced and shown');
+        release();
+        await store.ɵwrite(T17, { me: () => docOf('later') });
+        expect(store.doc(T17, 'me')()?.data).toBe('later');
+      });
+    }
+
+    it('re-reads only the named documents, in one readonly transaction', async () => {
+      const { store } = setUp();
+      await tmWriteRawRecords([syncRecord('u:0b4f/t17')]);
+      await store.readAll(T17);
+      await tmWriteRawRecords([
+        { p: 'u:0b4f/t17', n: 'me@1', tag: null, savedAt: 1, data: 'me' },
+        { p: 'u:0b4f/t17', n: 'tenant@1', tag: null, savedAt: 1, data: 'tenant' },
+      ]);
+      const transactions = spyTransactions();
+      await store.ɵreread(T17, ['me', 'settings']);
+      expect(transactions()).toEqual(['readonly']);
+      expect(store.doc(T17, 'me')()?.data).toBe('me');
+      expect(store.doc(T17, 'tenant')()).toBeUndefined();
+    });
+
+    it('reads a partition once however often it is entered', async () => {
+      const { store } = setUp();
+      await tmWriteRawRecords([syncRecord('u:0b4f/t17'), { p: 'u:0b4f/t17', n: 'me@1', tag: null, savedAt: 1, data: 'me' }]);
+      const transactions = spyTransactions();
+      const first = store.ɵreadOnce(T17);
+      expect(store.ɵreadOnce(T17)).toBe(first);
+      await first;
+      await store.ɵreadOnce(T17);
+      expect(transactions()).toEqual(['readonly']);
+      expect(store.doc(T17, 'me')()?.data).toBe('me');
+    });
+
+    it('lists the mirrored documents of a partition by prefix, without their formats', async () => {
+      const { store } = setUp();
+      await tmWriteRawRecords([
+        { p: 'u:0b4f/t17', n: 'entity:acme.Currency@1', tag: 'C1', savedAt: 1, data: [] },
+        { p: 'u:0b4f/t17', n: 'entity:acme.Bank@1', tag: 'B1', savedAt: 1, data: [] },
+        { p: 'u:0b4f/t17', n: 'tree:acme.Center@1', tag: 'T1', savedAt: 1, data: [] },
+        { p: 'u:0b4f/t170', n: 'entity:acme.Unit@1', tag: 'U1', savedAt: 1, data: [] },
+      ]);
+      await store.readAll(T17, T170);
+      expect(store.ɵnames(T17, 'entity:').sort()).toEqual(['entity:acme.Bank', 'entity:acme.Currency']);
+    });
+  });
+
   describe('fallbacks', () => {
     it('drops a write the quota refuses, keeping it in the mirror', async () => {
       const { store, bus, telemetry } = setUp();
@@ -837,6 +967,20 @@ describe('TmClientStore', () => {
       expect(store.doc(T17, 'me')()?.data).toBe('u:0b4f/t17 me@1');
       expect(bus.posted).toEqual([]);
       expect((await tmReadRawKeys()).length).toBe(warmRecords().length);
+    });
+
+    it("joins an entry into the start's tenant to the start's read", async () => {
+      const { store, local } = setUp();
+      await tmWriteRawRecords(warmRecords());
+      local.setItem('tm.boot', JSON.stringify({ v: 1, theme: 'system', lang: 'en', dir: 'ltr', sub: FARAH, lastTenantId: 17 }));
+      const transactions = spyTransactions();
+      const start = store.ɵstart(17);
+      // The entry, before the database has opened, waits for the start.
+      const entry = store.ɵreadOnce(T17);
+      await entry;
+      expect(store.doc(T17, 'me')()?.data).toBe('u:0b4f/t17 me@1');
+      await start;
+      expect(transactions()).toEqual(['readonly']);
     });
 
     it('sweeps every user first when the boot record names no user, then records the user', async () => {

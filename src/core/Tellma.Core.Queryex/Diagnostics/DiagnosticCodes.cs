@@ -153,6 +153,12 @@ namespace Tellma.Core.Queryex.Diagnostics
         /// <summary>Paths are not permitted in this position, which has no row to read one from.</summary>
         internal const string PathNotPermitted = "QX4009";
 
+        /// <summary>A measure uses something that cannot be computed over rolled-up values.</summary>
+        internal const string NotComputableOverRollups = "QX4010";
+
+        /// <summary>A measure reads a path outside an aggregation, or aggregates nothing at all.</summary>
+        internal const string MeasureMustAggregate = "QX4011";
+
         /// <summary>The expression text is longer than this call site permits.</summary>
         internal const string MaxInputLength = "QX5001";
 
@@ -230,5 +236,8 @@ namespace Tellma.Core.Queryex.Diagnostics
 
         /// <summary>The accepted values, for a constrained literal argument.</summary>
         internal const string Accepted = "accepted";
+
+        /// <summary>The operator or function a measure may not use, or the kind of comparison.</summary>
+        internal const string Construct = "construct";
     }
 }

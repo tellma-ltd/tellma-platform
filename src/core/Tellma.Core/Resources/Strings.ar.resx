@@ -856,6 +856,18 @@
   <data name="JobHandler_core_tree-verify" xml:space="preserve">
     <value>فحص الأشجار</value>
   </data>
+  <data name="JobHandler_core_blob-sweep" xml:space="preserve">
+    <value>حذف الملفات غير المستخدمة</value>
+  </data>
+  <data name="JobHandler_core_blob-reconcile" xml:space="preserve">
+    <value>تحرير الملفات غير المرتبطة</value>
+  </data>
+  <data name="Blob_SweepProgress" xml:space="preserve">
+    <value>جُمع {claimed, plural, zero {# ملف} one {ملف واحد} two {ملفان} few {# ملفات} many {# ملفًا} other {# ملف}}، وحُذف {deleted, plural, zero {# كائن مخزَّن} one {كائن مخزَّن واحد} two {كائنان مخزَّنان} few {# كائنات مخزَّنة} many {# كائنًا مخزَّنًا} other {# كائن مخزَّن}}.</value>
+  </data>
+  <data name="Blob_ReconcileProgress" xml:space="preserve">
+    <value>فُحص {reconciled} من {total} من أنواع الملفات، وحُرِّر {released, plural, zero {# ملف} one {ملف واحد} two {ملفان} few {# ملفات} many {# ملفًا} other {# ملف}}.</value>
+  </data>
   <data name="Notification_core_job_failed" xml:space="preserve">
     <value>فشلت المهمة {handlerKey}.</value>
   </data>
@@ -1113,6 +1125,12 @@
   </data>
   <data name="Queryex_QX4009" xml:space="preserve">
     <value>لا يمكن استخدام المسار {name} هنا: لا يوجد صف لقراءته منه.</value>
+  </data>
+  <data name="Queryex_QX4010" xml:space="preserve">
+    <value>لا يمكن حساب {construct} على القيم المجمّعة.</value>
+  </data>
+  <data name="Queryex_QX4011" xml:space="preserve">
+    <value>يجب أن يجمّع المقياس، وأن يكون كل مسار يقرؤه داخل تجميع.</value>
   </data>
   <data name="Queryex_QX5001" xml:space="preserve">
     <value>التعبير أطول من {limit} حرفًا.</value>

@@ -50,7 +50,7 @@ stack core.Role
   details-expand: CreatedBy, ModifiedBy
   default-order-by: -
   display-name: Name group Name prefix -
-  extras: permissions
+  extras: members, problems, permissions
   named-filters: -
   limits: default
   mcp: Full, revision 0
@@ -283,6 +283,11 @@ child sm.SmGadgetPartNote
   exportable: yes
   limits: default
   mcp: Full
+service access
+  class: Tellma.Core.Access.AccessService
+  feature: core
+  action check: api member-only body AccessCheckRequest handler AccessService; idempotent; result IReadOnlyList<AccessDecision>; mcp Hidden, revision 0; -
+  action holders: api member-only body AccessHoldersRequest handler AccessService; idempotent; result AccessHolders; mcp Hidden, revision 0; -
 service settings
   class: Tellma.Core.Settings.SettingsService
   feature: core
@@ -291,6 +296,10 @@ service settings
   action details: api member-only body - handler SettingsService; idempotent; result TenantSettingsDetails; mcp Hidden, revision 0; -
   action refresh-caches: api core.Settings.General:Save body - handler SettingsService; mutation, idempotent; result void; mcp Hidden, revision 0; -
   action save: api member-only body TenantSettingsPatch handler SettingsService; mutation; result SettingsSaveResult; mcp Hidden, revision 0; -
+service client
+  class: Tellma.Core.Client.ClientSyncService
+  feature: core
+  action sync: api member-only body ClientSyncRequest handler ClientSyncService; idempotent; result ClientSyncResult; mcp Hidden, revision 0; -
 service queryex
   class: Tellma.Core.Api.QueryexService
   feature: core

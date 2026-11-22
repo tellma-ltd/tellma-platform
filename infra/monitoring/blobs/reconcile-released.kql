@@ -1,0 +1,10 @@
+// Committed blobs the weekly reconcile released, per kind.
+// Backs the "something bypassed the save pipeline" alert: the save pipeline releases a blob in the
+// same transaction that removes or replaces its owner row, so the reconcile finds a committed blob
+// that no owner row references only when a raw SQL statement or an operator's script removed the
+// owner. Any release points at such a path; the reconcile's warning names the kind.
+customMetrics
+| where name == "tellma.blobs.reconcile.released"
+| extend kind = tostring(customDimensions["kind"])
+| summarize released = sum(valueSum) by kind, bin(timestamp, 1d)
+| where released > 0

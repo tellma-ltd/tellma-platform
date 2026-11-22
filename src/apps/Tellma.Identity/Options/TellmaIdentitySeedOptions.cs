@@ -52,6 +52,14 @@ namespace Tellma.Identity.Options
         /// <summary>Development-only seeded admin identity.</summary>
         public TellmaIdentityDevAdminOptions DevAdmin { get; } = new TellmaIdentityDevAdminOptions();
 
+        /// <summary>
+        ///     Development-only seeded user identities beside the dev admin, each with its fixed
+        ///     subject, so a distribution's development sample data can bind its tenant users to the
+        ///     same subjects and those users sign in from a fresh checkout without an invitation. Only
+        ///     honored in the Development environment; seeded after the dev admin.
+        /// </summary>
+        public IList<TellmaIdentityDevUserOptions> DevUsers { get; } = [];
+
         /// <summary>Deployed-instance break-glass administrator bootstrap.</summary>
         public TellmaIdentityBootstrapOptions Bootstrap { get; } = new TellmaIdentityBootstrapOptions();
 
@@ -240,6 +248,22 @@ namespace Tellma.Identity.Options
         ///     matching tenant admin onto the same <c>sub</c>.
         /// </summary>
         public string Subject { get; set; } = "00000000-0000-0000-0000-000000000001";
+    }
+
+    /// <summary>One development-only seeded user identity.</summary>
+    public sealed class TellmaIdentityDevUserOptions
+    {
+        /// <summary>The user's email/username; required.</summary>
+        public string? Email { get; set; }
+
+        /// <summary>
+        ///     The user's fixed subject identifier, which the distribution's development data binds
+        ///     its tenant user to; required, and distinct from every other seeded identity's.
+        /// </summary>
+        public string? Subject { get; set; }
+
+        /// <summary>The display name the account starts with; null for the email address's local part.</summary>
+        public string? DisplayName { get; set; }
     }
 
     /// <summary>Break-glass administrator bootstrap for deployed instances.</summary>

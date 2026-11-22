@@ -7,7 +7,7 @@ always built, run and tested in the shape a real distribution repository has. It
 ```
 distributions/acme/
 ├── src/
-│   ├── Tellma.Distro.Acme/            # AcmeComposition and AcmeFeature: the slug and the composition both hosts run
+│   ├── Tellma.Distro.Acme/            # AcmeComposition and AcmeFeature: the composition both hosts run, Acme's entities and sample data
 │   ├── Tellma.Distro.Acme.Web/        # the web host: three platform calls, configuration, launch profile, SPA proxy
 │   ├── Tellma.Distro.Acme.Client/     # the Angular app (an esproj): feature, languages, manifest, icons, theme
 │   └── Tellma.Distro.Acme.Migrator/   # the migrator: one call, the design-time factory, tenant migrations
@@ -36,6 +36,10 @@ dotnet run --project distributions/acme/src/Tellma.Distro.Acme.Web
 1. `migrate` creates `Tellma.dev.acme.catalog` with the identity engine's `idsvr` schema, then
    registers and provisions the seed tenants of `Tellma:Seed:Tenants`: tenant 1, "Acme", and its
    sandbox, tenant 2, "Acme Sandbox", with `admin@localhost` as their administrator.
+   Each also takes Acme's development data: GL's centers as Acme's 40-node tree, currencies,
+   customers, the `Sales` role and 20 sales invoices, and the end-to-end principals
+   `sales@localhost` and `centers@localhost` (with `sandbox@localhost` in tenant 2 alone), who
+   sign in with an email code like the administrator.
 2. The web host serves `/api/distribution-info`, `/health/live`, `/health/ready` and the BFF
    (`/bff/login`, `/bff/user`, `/bff/logout`), with the identity engine in process under `/id`. Its
    launch profile turns on the SPA proxy, which starts the client's dev server (`pnpm start` in

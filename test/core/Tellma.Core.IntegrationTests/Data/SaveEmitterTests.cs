@@ -196,7 +196,9 @@ namespace Tellma.Core.IntegrationTests.Data
 
             widget.Name = "first";
             Task<SaveReceipt> held = SaveAsync([widget], gated: true);
-            await WaitForAsync("SELECT COUNT(*) FROM sys.dm_tran_locks WHERE [resource_type] = 'APPLICATION' AND [request_status] = 'WAIT';");
+            // Only this database's wait on the gate counts: on the shared server, other
+            // classes' sessions wait on application locks of their own meanwhile.
+            await WaitForAsync("SELECT COUNT(*) FROM sys.dm_tran_locks WHERE [resource_type] = 'APPLICATION' AND [request_status] = 'WAIT' AND [resource_database_id] = DB_ID() AND [resource_description] LIKE N'%fx-race%';");
 
             // --- The second save's guard waits on the row the first one updated ---
             racer.Name = "second";

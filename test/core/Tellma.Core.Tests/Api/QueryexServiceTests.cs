@@ -100,6 +100,30 @@ namespace Tellma.Core.Tests.Api
             Assert.True(result.UsesAggregation);
         }
 
+        [Fact]
+        public async Task Each_measure_is_checked_as_the_query_checks_it_at_its_item_in_the_measures_clause()
+        {
+            _rig.Grant((QueryModel.Accounts, AccessActions.Read, null));
+            const string Measures = "sum(Price), Price + 1, max(Code) || 'x'";
+
+            QueryexDiscoverResult clean = await DiscoverAsync(new QueryexDiscoverRequest(QueryModel.Accounts, "Code", Measures: "sum(Price) / count()", Aggregate: true));
+            QueryexDiscoverResult result = await DiscoverAsync(new QueryexDiscoverRequest(QueryModel.Accounts, "Code", Measures: Measures, Aggregate: true));
+
+            // A measure that compiles answers nothing; a stray path is the whole item's, and an
+            // operator that cannot be rolled up is its own node's, naming itself. Spans are in the
+            // measures text as sent.
+            Assert.Empty(clean.Diagnostics);
+            Assert.Equal(
+                [("measures", "Measures[1]", "QX4011", 12, 9), ("measures", "Measures[2]", "QX4010", 23, 16)],
+                result.Diagnostics.Select(static diagnostic => (diagnostic.Clause, diagnostic.Location, diagnostic.Code, diagnostic.Start, diagnostic.Length)));
+            Assert.Equal("||", result.Diagnostics[1].Arguments["construct"]);
+
+            // The paths the measures read are discovered at their own items.
+            Assert.Equal(
+                [("Code", "select", null), ("Price", "measures", "Measures[0]"), ("Price", "measures", "Measures[1]"), ("Code", "measures", "Measures[2]")],
+                result.Paths.Select(static path => (string.Join('.', path.Segments), path.Site.Clause, path.Site.Location)));
+        }
+
         // --- The parameters ---
 
         [Fact]
@@ -290,7 +314,6 @@ namespace Tellma.Core.Tests.Api
         public static TheoryData<QueryexDiscoverRequest> Malformed => new(
             new QueryexDiscoverRequest(" "),
             new QueryexDiscoverRequest(QueryModel.Accounts, Measures: "sum(Price)"),
-            new QueryexDiscoverRequest(QueryModel.Accounts, Measures: "sum(Price)", Aggregate: true),
             new QueryexDiscoverRequest(QueryModel.Accounts, "Code", Having: "Code != ''"),
             new QueryexDiscoverRequest(QueryModel.Accounts, Parameters: [new("p", QueryexType.QxDate), new("P", QueryexType.QxString)]),
             new QueryexDiscoverRequest(QueryModel.Accounts, Parameters: [new("p", QueryexType.QxGeography)]),
