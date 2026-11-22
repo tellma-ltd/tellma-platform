@@ -384,6 +384,245 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-223 (orchestrator, 2026-11-22): PC-F70 Review 1 rulings; PC-F71 held
+
+PC-F70 Review 1 found 0/0/2 and accepted the three implementer deviations. The event is logged once per refusal; a crashing check still logs CheckThrew at Error; the migrator never registers the check.
+
+Fix1 rulings:
+- R1-1: stay within the fix item. MapTellma's problems are not moved into the gate, because that changes startup behaviour. If the throwing project already references OpenTelemetry, force-flush a registered LoggerProvider before the throw, adding no dependency; otherwise document that a MapTellma refusal reaches synchronous sinks only. If spec 0016 turns out to require deferral into the gate, the implementer flags it and it goes to Ahmad.
+- R1-2: pin Count and the "; " join with a two-violation case.
+
+PC-F70 holds after fix1.
+
+PC-F71's fix1 (492510e3) is held, and merge-tree is clean. Release order: PC-143, PC-107, PC-104, PC-F71, PC-F70. PC-104's integration still carries D-222's lengths array and daysIn bound.
+
+### D-222 (orchestrator, 2026-11-22): PC-F71 Review 1 rulings
+
+Review 1 found 0/0/2. The fix is consistent with D-029, 0013 §8.2-8.3, 0008 §10.4 and 0024 §7.4. The client's lengths for AH 9666 months 5-12 on pc/PC-104 match the server's.
+
+Fix1 rulings:
+- R1-1: the binding test of the two sides' lengths lands at PC-104's integration, as a lengths array in umalqura-vectors.json asserted by both the server and the client. PC-F71 amends its implementer note to say so.
+- R1-2: GetDaysInMonth checks the year first and names year for an out-of-range year, like every other year-level member and EthiopianCalendar. The test expects year.
+
+PC-F71 holds after fix1.
+
+Carry for PC-104's integration: the client daysIn has no upper year (daysIn(9667, m) is 30 on the client and 0 on the server). Bound it at AH 9666 like the server, or record why not.
+
+### D-221 (orchestrator, 2026-11-22): PC-104 fix2 accepted; held
+
+Fix2 (7f087f0d) fixed R2-1..R2-7 and applied D-214: TmLocaleWrite now loads with import(). Sizes: "." 35.45/36, the write chunk 1.50/2, core-ui l10n 9.96/10. The merge-tree is clean.
+
+Accepted deviations:
+- A new tab-bus message, l10n.switched (TmLanguageSwitchedMessage), beyond 0025 §6.2's catalogue. Other tabs follow a real switch, never a settle.
+- Locale-write retries for offline-like failures while online stay true stop after 4 tries (5 s doubling, capped at 30 s). After that the state is 'failed', and the user's choices stay applied.
+- The formatting locale carries a private-use subtag (for example en-US-x-om) when the winning tag belongs to another language. The core-ui date engine reads the requested language from it, so the om/ti day-first rule survives the browser fallback.
+
+PC-104 holds. Release order once PC-F11 lands: PC-143, PC-107, PC-104.
+
+PC-104's integration, after PC-107 lands, must:
+- merge the two TmSendOptions.tenantId copies;
+- re-measure "." (D-214);
+- add PC-F71's AH 9666 vector rows, if PC-F71 has landed.
+
+For Ahmad: 0025 §6.2's tab-bus catalogue gains l10n.switched.
+
+### D-220 (orchestrator, 2026-11-22): PC-107 fix2 accepted; held
+
+Fix2 (a0919af3) fixed R2-1..R2-7. The merge-tree is clean.
+
+Accepted:
+- ./recents rises from 1.4 to a 1.6 KB ceiling (1.53 measured) because of the cross-tab merge.
+- Two named deviations: recents' cross-tab merge (a 0025 §13 gap), and an optional revert flag on TmPrefsChangedMessage (against 0025 §6.2's message shape).
+- The lint test-rig exception is narrowed to *.spec.ts importers.
+
+D-217's first-frame figure is corrected again: the split build measures ≈33.1 KB (0.08 + 33.06), against 33.60 before fix1, so the honest saving is ≈0.5 KB. "." stays at 34 (33.82 measured). The R2-5 carries are recorded under D-218.
+
+For Ahmad: 0025 §6.2's prefs.changed message gains an optional revert member.
+
+### D-219 (orchestrator, 2026-11-22): PC-104 Review 2 rulings
+
+Review 2 (inherit, xhigh) found 0/3/4.
+- It closed R1-5, R1-6 and R1-8 to R1-11, and closed R1-1 to R1-4 apart from the gaps below.
+- Both budgets are honest.
+- The Arabic strings load on the first switch with no flash.
+
+Fix2 rulings:
+- R2-1 (major): other tabs follow only a real user switch, never a boot-record settle.
+- R2-2 (major): a member's override holds while its write is queued or in flight (§7.2).
+- R2-3 (major): every tenant entry awaits ɵready() before showing the page.
+- R2-4: offline-like failures retry while online stays true.
+- R2-5: the om/ti day-first rule is keyed on the requested language, so the Chromium fallback is covered too.
+- R2-6: guard tests that can fail.
+- R2-7: the commit's Tests lines are complete.
+- Also, per D-214: TmLocaleWrite loads with import() on the first change, if nothing needs it at boot.
+
+PC-104 holds after fix2.
+
+Integration order once PC-095 lands (D-190, D-213): PC-F11, then PC-143, then PC-104 and PC-107 in the order they hold. Whichever of PC-104 and PC-107 integrates second merges the two TmSendOptions.tenantId copies and re-measures "." (D-214).
+
+### D-218 (orchestrator, 2026-11-22): PC-107 Review 2 rulings; carries
+
+Review 2 (inherit, xhigh) found 0/1/6. R1-1..R1-4 are closed, there is no race in the lazy loads, and the ɵ seams are minimal.
+
+Correction to D-217: TmPreferences still reaches the first frame through the recents chunk. A split app build measures ≈33.2 KB, not 30.48.
+
+Fix2 rulings:
+- R2-1: inject TmPreferences in tmStartup again, and correct the budget figures.
+- R2-2 (major): TmRecents merges the stored nav.recent list with its own visits, so a new tab never erases another tab's unflushed visits. This is a named deviation for a 0025 §13 gap.
+- R2-3: an in-flight tab never reverts its own successful write.
+- R2-4: the lint test-rig exception is limited to *.spec.ts importers.
+- R2-6: test the lazy start, and catch construction errors.
+- R2-7: TmDrafts.flush becomes ɵflush.
+
+PC-107 holds after fix2.
+
+Carries (R2-5):
+- The launcher, in the eager ./shell, must not statically import the lazy @tellma/core/recents. It reaches recents through import() or the TM_RECENTS_NAVIGATION seam. This lands with PC-115.
+- The page-host import lists must include ./memory and ./recents. This lands with PC-111.
+- PC-110's drafts.reply and the state dump must count session-storage drafts when TmDrafts is not loaded.
+
+For Ahmad: 0025 §13 does not say how a new tab's recents list combines with another tab's unflushed visits. The code merges the two.
+
+### D-217 (orchestrator, 2026-11-22): PC-107 fix1 escalated to Review 2
+
+Fix1 (e9406aaf) fixed R1-1..R1-4. "." went from 36.5 to a 34 KB ceiling (33.84 measured). An app's first frame went from 33.60 to 30.48 KB, and the dump's first-frame cost from +1.35 to +0.13 KB. The fix added:
+- two lazy entry points: @tellma/core/memory (2.54 / 2.6 KB) and @tellma/core/recents (1.30 / 1.4 KB);
+- internal ɵ seams on the primary;
+- parts registered by each service for the state dump;
+- a test-rig exception in the core-tools tm/core-import-boundary rule.
+
+Because fix1 rewrote much of the checkpoint, PC-107 escalates to Review 2 (inherit, xhigh) per PROCESS §4.4. Review 2 checks that the moved code is off the first frame, that the lazy loads have no ordering race, that the ɵ seams are minimal, and that the lint exception is closed to production code.
+
+For Ahmad: 0025 §1 should list @tellma/core/memory and @tellma/core/recents as lazy entry points. 0025's primary services are still ~11.0 KB against their 9 KB share; TmPreferences' flush engine goes to PC-F69.
+
+### D-216 (orchestrator, 2026-11-22): PC-107 Review 1 rulings; carries
+
+Review 1 found 0/1/3. It accepted the deviations and points (2) through (6). It measured with the gate's bundler: esbuild splits by module, so only a separate entry point keeps code off the first frame.
+
+Fix1 rulings:
+- R1-1, option (a) now, because the code is new:
+  - TmStateDump reads without injecting the services.
+  - TmDrafts, TmPageState and TmTreeExpansion move to a new @tellma/core/memory entry point (about -1.69 KB).
+  - TmRecents loads through import() after the first render (about -0.56 KB).
+  - "." is set to its true size rounded up to 0.5 KB.
+  - Each move is a named deviation against 0025 §1.
+  - TmPreferences' flush engine is left for PC-F69.
+- R1-2: each tree-expansion settle removes exactly what it sent.
+- R1-3: the five missing tests.
+- R1-4: the TSDoc gaps.
+
+PC-107 holds after fix1.
+
+Carries, recorded on the Status rows:
+- PC-111: replace the internal TM_ROUTED_PAGE seam with TmPageContexts.
+- PC-115: replace TM_RECENTS_NAVIGATION with TmNavigation.
+- PC-108: add the state dump's leader member.
+- PC-110: answer drafts.reply with its busy flag and the sign-out wait.
+- PC-154: register the state dump with TmSupport, through registerDumpSection, without pulling the memory services onto the first frame.
+
+For Ahmad: 0025 §2.6 step 2 should say that the boot step reads the session partition as well as the user partition, so the first tree page after a reload restores in one call (§15). The code does this.
+
+### D-215 (orchestrator, 2026-11-22): PC-104 Review 1 rulings; escalated to Review 2
+
+Review 1 found 0/6/5. It confirmed the following, and accepted deviations 1, 3, 5, 6, 7 and 8:
+- The "." raise is honest (+4.74 KB, rounded to 36, all 0024 §1 primary API).
+- The Umm al-Qura table conforms to D-029, checked by a scratch run of 65,700 days and 438,018 round trips.
+- ar-AE digits match CLDR.
+
+Fix1 rulings:
+- R1-1: seed the startup tenant from the path, so a uq/et tenant never shows a Gregorian first frame. Patch the boot record whenever the active language settles.
+- R1-2: implement D-046's om/ti day-first rule on the client.
+- R1-3: give the locale write a queue per tenant, and name the tenant on the pagehide send.
+- R1-4: rewrite the atomicity test so it can fail.
+- R1-5: test the Accept-Language fallback rule and the locale-fallback event.
+- R1-6: move tmArabic()'s tables to a secondary entry point that loads on the first switch (§7.3).
+- R1-7 to R1-11: the adopt pin, the core-ui-tokens peer, the gap-language check, the three Chromium e2e specs, and the date popup's own-conversion pins.
+
+Per PROCESS §4.4, 6 majors escalate PC-104 to Review 2 (inherit, xhigh) after fix1.
+
+### D-214 (orchestrator, 2026-11-22): the @tellma/core "." entry point; PC-F69 promoted
+
+PC-104 (0024-h) and PC-107 (0025-e) each raise the "." ceiling from 31 KB, by about 4.7 KB and 5.1 KB. Once both land, "." passes 41 KB.
+- 0024's services are already ~22 KB against a 14 KB share (D-200, D-206).
+- 0025's primary services are now ~13.2 KB against 9 KB.
+- D-031's revisit clause (an entry point that rises three times is re-split rather than raised) has long been triggered.
+
+Rulings:
+- Both Review 1s judge whether each added KB truly belongs on the first frame, and list concrete lazy or secondary-entry moves.
+- Raises that survive review stand, each honest and rounded up to 0.5 KB.
+- Whichever of the two integrates second re-measures after the merge and keeps the combined ceiling honest.
+- PC-F69 (re-split "." by spec family) is promoted. It takes the next free slot after PC-104 and PC-107 land, ahead of other T1/T2 work, because each new client checkpoint adds to the same entry point.
+
+For Ahmad: the 0024 and 0025 shares of "." (14 KB and 9 KB) are both overrun. Either raise the shares, or accept the overrun until PC-F69 re-splits.
+
+### D-213 (orchestrator, 2026-11-22): PC-095 fix2 accepted; release order after PC-F17
+
+Fix2 (c5732459) fixed R2-1..R2-4 and pushed none back.
+- The new suite passed 35/35 and AlertQueryTests 6/6.
+- The two non-empty notification-preferences saves each took 1 round trip against a budget of 2.
+- The merge-tree is clean. web.json and contracts.json are regenerated at integration.
+
+Release order once PC-F17's blocked push lands:
+- PC-095 (T1) first, ahead of the held fix item and the T2 item, as D-194 and D-202's addendum put T1 ahead.
+- Then PC-F11 (held before PC-143), then PC-143 (D-190, D-211).
+
+### D-212 (orchestrator, 2026-11-22): PC-095 Review 2 rulings
+
+Review 2 (inherit, xhigh) found 0/0/4.
+- It confirmed that the snapshot canonicalization is OS-independent, that exact-tag matching cannot misattribute, and that the 5 s aborted-read bound holds.
+- The new suite passed 34/34 on Testcontainers and on LocalDB, and WireSnapshotTests passed in the Linux sdk container.
+
+Fix2 rulings:
+- R2-1: measure notification-preferences/save on a non-empty set.
+- R2-2: delete, delete_by_query, delete_with_descendants and `all` get a ceiling of 3, one above their warm budget.
+- R2-3: add the RT1 save pre-check case: an editor's retype of a stored Service center is refused, and the row is unchanged.
+- R2-4: narrow the ARCHITECTURE.md claim to the measured operations.
+
+PC-095 holds after fix2. Integration order (D-190): PC-F17 (blocked on its push), then PC-F11, PC-143 and PC-095 in the order they hold. PC-095's integration regenerates web.json and contracts.json.
+
+### D-211 (orchestrator, 2026-11-22): PC-143 Review 1 rulings
+
+Review 1 found 0/0/4 and accepted all 8 deviations.
+- D-177 is confirmed: the transport refuses a garbage recipient, not the 0007 pipeline, and the outbox records it as Rejected. Refusing at enqueue would be a 0022 change.
+- The Rejected test send answered as a 503 is acceptable.
+- Core registering EmailNotificationChannel in every composition has no harmful side effects.
+
+Fix1 rulings:
+- R1-1: assert the System-scope notice and its null ActorUserId.
+- R1-2: extend the partial-failure test.
+- R1-3: count outcome=Rejected separately, as a named deviation.
+- R1-4: correct the two XML docs and the README sentence.
+
+PC-143 holds after fix1. It integrates after PC-F11 (D-190).
+
+For Ahmad: 0021 §4.4's TestNotificationResult has no Rejected value. With one, the SPA could tell a user to check their address instead of saying email is unavailable.
+
+### D-210 (orchestrator, 2026-11-22): PC-F68 closed, fixed through PC-143
+
+PC-F68's diagnosis (94759c2e, on pc/PC-F68, review file only) finds an order dependence, not a date dependence and not a platform bug:
+- UserSelfServiceTests shares one database across its tests, and its fixture seeds no administrator.
+- preferences/set is a users'-stack entity action, so its persist joins the guards over the stack's tables (0015 §6.7 step 4) and asserts L1.
+- The bag test passed only when an earlier test had seeded an administrator.
+- xUnit v3 orders a class's tests by a SHA-256 of the test assembly's absolute path, so whether the test runs first depends on the checkout path. The model predicts every observation in D-197. It also predicts that the GitHub Windows runner path runs the test first, so the nightly integration-windows job may fail on it until PC-143 lands.
+- The guard itself matches 0014 §8.3 and has no time window.
+
+PC-143 seeds the administrator in that test and in its two new tests. PC-F68 changes no code, needs no review and does not integrate. Its branch keeps the diagnosis for the record. PC-F68 is closed when PC-143 lands.
+
+For Ahmad: 0014 §8.3 says the guards join a persist "whose WrittenTables meets" a security table, but 0015 §6.7 step 4 widens this to "the stack's tables", which the code follows. So every users'-stack action (preferences/set and delete, notification-preferences/save) takes the security lock and asserts L1-L3. That is harmless while L1 holds, but the two specs should state one rule.
+
+### D-209 (orchestrator, 2026-11-22): PC-095 fix1 accepted; Review 2 launched; PC-F70 opened
+
+Fix1 (0672df4c) fixed R1-1..R1-8 and pushed none back.
+- Windows: the new suite passed 34/34 twice, and the whole Acme integration project passed 48/48 with the PR filter.
+- Linux sdk container: WireSnapshotTests passed.
+- The aborted-read case went red with read cancellation broken.
+- The regenerated web.json differs only in the 151 CRLF descriptions.
+- notification-preferences/save measures 1 round trip against a budget of 2. That is under budget and is noted for information only.
+
+Review 2 (inherit, xhigh) follows under the §4.4 escalation (D-208).
+
+PC-F70 opened: the platform never emits the ApiSecurableAuditFailed log event that 0016 §10.1 lists. TellmaEndpointAudit throws at startup without logging it, so no suite can assert it. The fix item emits the event before the throw and asserts it in a unit test.
+
 ### D-208 (orchestrator, 2026-11-22): PC-095 Review 1 rulings; escalated to Review 2
 
 Review 1 found 1 blocking, 3 major and 4 minor. On Windows the new suite (32), WireSnapshotTests (3) and AlertQueryTests (6) passed, and every measured budget matched 0018 §8.1 exactly.

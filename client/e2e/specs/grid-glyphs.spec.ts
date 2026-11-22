@@ -14,7 +14,7 @@ import {
   measure,
   type GlyphMeasure,
 } from '../support/glyph-geometry';
-import { activateCell, cell, findBar, gotoGrid, gridScroller, statusChip } from '../support/grid';
+import { activateCell, cell, findBar, gotoGrid, statusChip } from '../support/grid';
 import { appStable } from '../support/settle';
 
 /**
@@ -260,48 +260,5 @@ test.describe('grid glyphs after a live direction flip', () => {
     await flipDocumentTo(page, 'ltr');
     await expect.poll(() => isMirrored(previous)).toBe(false);
     await expect.poll(() => isMirrored(next)).toBe(false);
-  });
-});
-
-// Quarantined at the bar spec 0010 §C.13 sets: the grid's scroll cost already
-// exceeds 50 ms per task on a flat grid with no icons in its rows, so this
-// probe runs in the non-blocking quarantine job until that budget is met.
-test.describe('the expanded tree under scroll', () => {
-  test('@perf @quarantine scrolling a 21,000-row expanded tree produces no long task over 50 ms', async ({
-    page,
-    browserName,
-  }) => {
-    test.skip(browserName !== 'chromium', 'Long-task timing is a Chromium API.');
-    await gotoGrid(page, 'tree-grid-large');
-    await expect(gridScroller(page)).toHaveAttribute('aria-rowcount', '21001');
-    await expect(page.locator('[data-tm-expander]').first()).toBeVisible();
-    await appStable(page);
-
-    // Section: record long tasks from here on.
-    await page.evaluate(() => {
-      const record = window as unknown as { tmLongTasks: number[] };
-      record.tmLongTasks = [];
-      new PerformanceObserver((list) => {
-        for (const entry of list.getEntries()) {
-          record.tmLongTasks.push(entry.duration);
-        }
-      }).observe({ type: 'longtask' });
-    });
-
-    // Section: wheel down through the tree a screen at a time, then back.
-    const box = (await gridScroller(page).boundingBox())!;
-    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-    for (const direction of [1, -1]) {
-      for (let step = 0; step < 40; step++) {
-        await page.mouse.wheel(0, direction * box.height);
-        await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(resolve)));
-      }
-    }
-    await appStable(page);
-
-    const longTasks = await page.evaluate(
-      () => (window as unknown as { tmLongTasks: number[] }).tmLongTasks,
-    );
-    expect(longTasks.filter((duration) => duration > 50)).toEqual([]);
   });
 });

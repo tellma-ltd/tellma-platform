@@ -6,7 +6,7 @@
 using Microsoft.Extensions.Logging;
 using System.Collections.Concurrent;
 
-namespace Tellma.Distro.Acme.IntegrationTests.Infrastructure
+namespace Tellma.Distro.Acme.TestSupport
 {
     /// <summary>
     ///     A logger provider that keeps a host's warnings and errors, so a failed assertion can say

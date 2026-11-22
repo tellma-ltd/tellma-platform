@@ -25,9 +25,10 @@ namespace Tellma.Core.Imaging.SmokeHost
     /// <remarks>
     ///     <para>
     ///         The host's environment is the generic host's (<c>DOTNET_ENVIRONMENT</c>, Production
-    ///         by default). A host that renders no PDF thumbnails (on Windows or macOS outside
-    ///         Development) reports that instead: its check passes, the honest PDF gets no thumbnail,
-    ///         and no worker starts.
+    ///         by default). It reports whether its workers are confined to their own files. A host
+    ///         that renders no PDF thumbnails (on Windows or macOS outside Development, or on Linux
+    ///         outside Development without Landlock) reports that instead: its check passes, the
+    ///         honest PDF gets no thumbnail, and no worker starts.
     ///     </para>
     ///     <para>
     ///         <c>--measure N</c> also renders the honest PDF N more times and reports the spread of
@@ -88,6 +89,7 @@ namespace Tellma.Core.Imaging.SmokeHost
             // honest page none, starts no worker, and has nothing more to show.
             PdfThumbnailSupport support = ((SkiaImageProcessor)processor).PdfThumbnails;
             Report("pdf.thumbnails", support.ToString());
+            Report("pdf.workers-confined", ((SkiaImageProcessor)processor).PdfWorkers.Launcher.Confines ? "yes" : "no");
             if (support != PdfThumbnailSupport.Enabled)
             {
                 byte[]? none = await ThumbnailAsync(processor, HalfBlackPage(200, 100), HonestBudget);

@@ -14,21 +14,25 @@ using Tellma.Core.Abstractions.Blobs;
 using Tellma.Core.Abstractions.Caching;
 using Tellma.Core.Abstractions.Crud;
 using Tellma.Core.Abstractions.Data;
+using Tellma.Core.Abstractions.Email;
 using Tellma.Core.Abstractions.Errors;
 using Tellma.Core.Abstractions.Localization;
+using Tellma.Core.Abstractions.Notifications;
 using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.Abstractions.Validation;
 using Tellma.Core.IntegrationTests.Access;
+using Tellma.Core.Jobs;
 using Tellma.Core.Testing.Blobs;
+using Tellma.Core.Testing.Email;
 using Tellma.Testing.Support.Logging;
 
 namespace Tellma.Core.IntegrationTests.Users
 {
     /// <summary>
     ///     The caller's self-service against a real tenant database: the envelope, the profile edit
-    ///     a member makes without a role grant, the locale change and the preference bag, then another
-    ///     user's bag under the users' preferences grant and the users' activity extra, each within
-    ///     its round-trip budget.
+    ///     a member makes without a role grant, the locale change, the preference bag and the test
+    ///     message, then another user's bag and notification settings under the users' preferences
+    ///     grant and the users' activity extra, each within its round-trip budget.
     /// </summary>
     /// <param name="fixture">The two tenant databases and their composition.</param>
     [Trait("Category", "Integration")]
@@ -426,6 +430,10 @@ namespace Tellma.Core.IntegrationTests.Users
             (int carer, string subject) = await fixture.SeedCallerAsync("Carer");
             int role = await fixture.SeedRoleAsync((CoreResources.User, AccessActions.Preferences, "Name = 'Vis'"));
             await fixture.SeedMembershipAsync(carer, role);
+
+            // A user's action is a security write, held to the last-administrator invariant: the
+            // tenant needs one, whichever test ran first.
+            _ = await fixture.SeedAdministratorAsync("Ann");
             await SeedBagAsync(vis, ("theme", "light"));
             await SeedBagAsync(hid, ("theme", "light"));
             Guid? carerTag = (await fixture.UserTagsAsync(carer)).Preferences;
@@ -519,6 +527,129 @@ namespace Tellma.Core.IntegrationTests.Users
             Assert.Equal(tag, (await fixture.UserTagsAsync(vis)).Preferences);
         }
 
+        // --- Another user's notification settings ---
+
+        [Fact]
+        public async Task Another_user_s_notification_settings_are_read_and_saved_under_the_preferences_filter_within_their_budgets()
+        {
+            (int vis, _) = await fixture.SeedCallerAsync("Vis");
+            (int hid, _) = await fixture.SeedCallerAsync("Hid");
+            (int carer, string subject) = await fixture.SeedCallerAsync("Carer");
+            int role = await fixture.SeedRoleAsync((CoreResources.User, AccessActions.Preferences, "Name = 'Vis'"));
+            await fixture.SeedMembershipAsync(carer, role);
+
+            // A user's action is a security write, held to the last-administrator invariant: the
+            // tenant needs one, whichever test ran first.
+            _ = await fixture.SeedAdministratorAsync("Ann");
+            await SeedNotificationPreferencesAsync(vis, ("core.user.added", "email", true), ("acme.retired", "email", true));
+            await SeedNotificationPreferencesAsync(hid, ("core.user.added", "email", true));
+            Guid? carerTag = (await fixture.UserTagsAsync(carer)).Preferences;
+            _ = await MeAsync(subject);
+
+            // --- The read: one round trip, a type no longer registered invisible, a hidden user not found ---
+            IReadOnlyList<NotificationPreference> read;
+            await using (AsyncServiceScope scope = await fixture.ScopeAsync(subject, services: Instance))
+            {
+                DataAccessScope access = scope.ServiceProvider.GetRequiredService<DataAccessScope>();
+                int start = access.RoundTrips;
+                read = (IReadOnlyList<NotificationPreference>)(await InvokeAsync(scope, "notification-preferences/get", new UserPreferencesRequest(vis)))!;
+                Assert.Equal(1, access.RoundTrips - start);
+                NotFoundException hidden = await Assert.ThrowsAsync<NotFoundException>(() => InvokeAsync(scope, "notification-preferences/get", new UserPreferencesRequest(hid)));
+                Assert.Equal([hid.ToString(CultureInfo.InvariantCulture)], hidden.Ids);
+            }
+
+            Assert.Equal([("core.user.added", "email", true)], read.Select(static row => (row.Type, row.Channel, row.Enabled)));
+
+            // --- The save: two round trips, the complete set replacing the stored one, a default row not stored ---
+            Guid? visTag = (await fixture.UserTagsAsync(vis)).Preferences;
+            (IReadOnlyList<NotificationPreference> saved, int trips) = await TheirNotificationPreferencesAsync(
+                subject,
+                vis,
+                new NotificationPreferencesArguments(
+                    [
+                        new NotificationPreference { Type = "core.user.added", Channel = "inbox", Enabled = false },
+                        new NotificationPreference { Type = "core.user.added", Channel = "email", Enabled = false },
+                    ]));
+            Assert.Equal(2, trips);
+            Assert.Equal([("core.user.added", "inbox", false)], saved.Select(static row => (row.Type, row.Channel, row.Enabled)));
+            Assert.Equal("core.user.added/inbox=0", await NotificationPreferencesAsync(vis));
+            Assert.NotEqual(visTag, (await fixture.UserTagsAsync(vis)).Preferences);
+
+            // --- The writer's own tag stays, the hidden user's rows stay; the write is logged for the target ---
+            Assert.Equal(carerTag, (await fixture.UserTagsAsync(carer)).Preferences);
+            Assert.Equal("core.user.added/email=1", await NotificationPreferencesAsync(hid));
+            CapturedLogEntry logged = Assert.Single(_logs.Entries, static entry => entry.EventId.Name == "UserPreferencesChangedByAdministrator");
+            Assert.Equal(LogLevel.Information, logged.Level);
+            Assert.Contains(vis.ToString(CultureInfo.InvariantCulture), logged.Texts);
+            Assert.Contains("notification-preferences", logged.Texts);
+        }
+
+        [Fact]
+        public async Task Another_user_s_notification_settings_refuse_an_unmutable_inbox_row_and_a_service_account_writing_nothing()
+        {
+            (int vis, _) = await fixture.SeedCallerAsync("Vis");
+            int robot = fixture.NextUserId();
+            await fixture.SeedUserAsync(ConnectDatabase.TenantA, robot, Invariant($"svc-{robot}"), "Robot", UserKind.Service);
+            (_, string admin) = await fixture.SeedAdministratorAsync("Ann");
+            await SeedNotificationPreferencesAsync(vis, ("core.user.added", "email", true));
+            Guid? tag = (await fixture.UserTagsAsync(vis)).Preferences;
+
+            // --- An inbox the type keeps on, at its row's member ---
+            ValidationException unmutable = await Assert.ThrowsAsync<ValidationException>(() => TheirNotificationPreferencesAsync(
+                admin, vis, new NotificationPreferencesArguments([new NotificationPreference { Type = JobNotices.FailedDescriptor.Key, Channel = "inbox", Enabled = false }])));
+            ValidationError muted = Assert.Single(unmutable.Errors);
+            Assert.Equal(("Arguments.Preferences[0].Enabled", NotificationValidationCodes.CannotMute), (muted.Path.ToString(), muted.Code));
+
+            // --- A service account, for the save at its target and for the read at its id ---
+            ValidationException saveRefused = await Assert.ThrowsAsync<ValidationException>(() => TheirNotificationPreferencesAsync(
+                admin, robot, new NotificationPreferencesArguments([new NotificationPreference { Type = "core.user.added", Channel = "email", Enabled = true }])));
+            ValidationError notIndividual = Assert.Single(saveRefused.Errors);
+            Assert.Equal(("Ids[0]", AccessCodes.NotIndividual), (notIndividual.Path.ToString(), notIndividual.Code));
+            await using (AsyncServiceScope scope = await fixture.ScopeAsync(admin, services: Instance))
+            {
+                ValidationException readRefused = await Assert.ThrowsAsync<ValidationException>(() => InvokeAsync(scope, "notification-preferences/get", new UserPreferencesRequest(robot)));
+                ValidationError readError = Assert.Single(readRefused.Errors);
+                Assert.Equal(("UserId", AccessCodes.NotIndividual), (readError.Path.ToString(), readError.Code));
+            }
+
+            // --- Nothing written, the target's tag unmoved, nothing logged ---
+            Assert.Equal("core.user.added/email=1", await NotificationPreferencesAsync(vis));
+            Assert.Null(await NotificationPreferencesAsync(robot));
+            Assert.Equal(tag, (await fixture.UserTagsAsync(vis)).Preferences);
+            Assert.DoesNotContain(_logs.Entries, static entry => entry.EventId.Name == "UserPreferencesChangedByAdministrator");
+        }
+
+        // --- The test message ---
+
+        [Fact]
+        public async Task The_caller_sends_themselves_a_test_email_to_their_address_with_no_round_trip()
+        {
+            CapturingEmailSender? sender = null;
+            await using ServiceProvider capturing = fixture.CreateInstance(configure: services =>
+            {
+                Configure(services);
+                sender = services.AddCapturingEmail(CapturingEmailMode.ReplaceSender);
+            });
+            (_, string subject) = await fixture.SeedCallerAsync("Ada");
+            _ = await MeAsync(subject, capturing);
+
+            await using AsyncServiceScope scope = await fixture.ScopeAsync(subject, services: capturing);
+            DataAccessScope access = scope.ServiceProvider.GetRequiredService<DataAccessScope>();
+            int start = access.RoundTrips;
+            object? result = await InvokeAsync(scope, "me/test-notification", new TestNotificationRequest("email"));
+
+            Assert.Equal(0, access.RoundTrips - start);
+            Assert.Equal(TestNotificationResult.Sent, result);
+            EmailMessage message = Assert.Single(sender!.Captured).Message;
+            Assert.Equal(new EmailAddress(Invariant($"{subject}@example.com"), "Ada"), Assert.Single(message.To));
+            Assert.Equal((EmailAudience.Internal, "Test message from Tenant 1"), (message.Audience, message.Subject));
+
+            // --- The inbox cannot be tested, and nothing more is sent ---
+            ValidationException refused = await Assert.ThrowsAsync<ValidationException>(() => InvokeAsync(scope, "me/test-notification", new TestNotificationRequest("inbox")));
+            Assert.Equal(("Channel", AccessCodes.ChannelNotTestable), (Assert.Single(refused.Errors).Path.ToString(), Assert.Single(refused.Errors).Code));
+            _ = Assert.Single(sender.Captured);
+        }
+
         // --- The activity extra ---
 
         [Fact]
@@ -593,10 +724,11 @@ namespace Tellma.Core.IntegrationTests.Users
 
         /// <summary>Reads the caller's envelope in a scope of their own, which also warms their connection.</summary>
         /// <param name="subject">The caller.</param>
+        /// <param name="services">The instance to call; null for the test's own.</param>
         /// <returns>The envelope.</returns>
-        private async Task<MeResult> MeAsync(string subject)
+        private async Task<MeResult> MeAsync(string subject, IServiceProvider? services = null)
         {
-            await using AsyncServiceScope scope = await fixture.ScopeAsync(subject, services: Instance);
+            await using AsyncServiceScope scope = await fixture.ScopeAsync(subject, services: services ?? Instance);
             return (MeResult)(await InvokeAsync(scope, "me", null))!;
         }
 
@@ -656,6 +788,21 @@ namespace Tellma.Core.IntegrationTests.Users
             return (result, access.RoundTrips - start);
         }
 
+        /// <summary>Saves another user's notification settings through the users' entity action in a scope of the caller and counts the round trips.</summary>
+        /// <param name="subject">The caller.</param>
+        /// <param name="target">The user whose settings are saved.</param>
+        /// <param name="arguments">The action's arguments.</param>
+        /// <returns>The answer and the round trips.</returns>
+        private async Task<(IReadOnlyList<NotificationPreference> Result, int RoundTrips)> TheirNotificationPreferencesAsync(string subject, int target, NotificationPreferencesArguments arguments)
+        {
+            await using AsyncServiceScope scope = await fixture.ScopeAsync(subject, services: Instance);
+            DataAccessScope access = scope.ServiceProvider.GetRequiredService<DataAccessScope>();
+            int start = access.RoundTrips;
+            IReadOnlyList<NotificationPreference> result = await scope.Users().ExecuteActionAsync<IReadOnlyList<NotificationPreference>>(
+                "notification-preferences/save", [target], arguments, new ActionOptions(), Token);
+            return (result, access.RoundTrips - start);
+        }
+
         /// <summary>Stages a signature as a member, in a scope of their own.</summary>
         /// <param name="subject">The member.</param>
         /// <returns>The staged blob's id.</returns>
@@ -709,6 +856,26 @@ namespace Tellma.Core.IntegrationTests.Users
         {
             string rows = string.Join(", ", items.Select(item => Invariant($"({userId}, N'{item.Key}', N'{item.Value}')")));
             return fixture.ExecuteAsync(ConnectDatabase.TenantA, $"INSERT INTO [core].[UserPreferences] ([UserId], [Key], [Value]) VALUES {rows};");
+        }
+
+        /// <summary>Seeds rows of a user's notification settings, raw.</summary>
+        /// <param name="userId">The user.</param>
+        /// <param name="rows">The types, channels and whether each is enabled.</param>
+        /// <returns>A task that completes when they are seeded.</returns>
+        private Task SeedNotificationPreferencesAsync(int userId, params (string Type, string Channel, bool Enabled)[] rows)
+        {
+            string values = string.Join(", ", rows.Select(row => Invariant($"({userId}, N'{row.Type}', N'{row.Channel}', {(row.Enabled ? 1 : 0)})")));
+            return fixture.ExecuteAsync(ConnectDatabase.TenantA, $"INSERT INTO [core].[NotificationPreferences] ([UserId], [Type], [Channel], [Enabled]) VALUES {values};");
+        }
+
+        /// <summary>A user's notification settings as stored, as <c>type/channel=enabled</c> items in order.</summary>
+        /// <param name="userId">The user.</param>
+        /// <returns>The items; null for none.</returns>
+        private Task<string?> NotificationPreferencesAsync(int userId)
+        {
+            return fixture.ScalarAsync<string>(
+                ConnectDatabase.TenantA,
+                Invariant($"SELECT STRING_AGG(CAST([Type] + N'/' + [Channel] + N'=' + CAST([Enabled] AS nchar(1)) AS nvarchar(max)), N';') WITHIN GROUP (ORDER BY [Type], [Channel]) FROM [core].[NotificationPreferences] WHERE [UserId] = {userId};"));
         }
 
         /// <summary>A user's bag as stored, as <c>key=value</c> items by key.</summary>

@@ -10,7 +10,6 @@ using Tellma.Core.Abstractions.Email;
 using Tellma.Core.Abstractions.Identity;
 using Tellma.Core.Abstractions.Localization;
 using Tellma.Core.Abstractions.Settings;
-using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.Abstractions.Validation;
 using Tellma.Core.Outbox;
 
@@ -37,27 +36,23 @@ namespace Tellma.Core.Users
         private const string ServerStringsBaseName = CoreStrings.Assembly + ".Resources.ServerStrings";
 
         /// <summary>
-        ///     Enqueues the welcome email of every answered user with a status whose loaded row holds
-        ///     no account or the one answered, through one call with the action's frame.
+        ///     The users an invite added, who receive its notice and its welcome email: every answered
+        ///     user with a status whose loaded row holds no account or the one answered.
         /// </summary>
-        /// <param name="context">The action's context, whose frame the emails commit with.</param>
         /// <param name="targets">The loaded targets in request order.</param>
         /// <param name="outcomes">The answered users' write-back rows, in request order.</param>
         /// <param name="answered">The identity server's answers, in request order.</param>
-        /// <param name="settings">The tenant's settings.</param>
-        /// <param name="link">The tenant's link, the invitation's return address.</param>
-        /// <returns>A task that completes when the emails are enlisted.</returns>
-        private async Task EnqueueWelcomeAsync(
-            ActionContext<TUser, int> context,
-            List<TUser> targets,
-            UserInvitationOutcome[] outcomes,
-            IReadOnlyList<IdentityInvitationResult> answered,
-            TenantSettings settings,
-            string link)
+        /// <returns>The users and their statuses, in request order.</returns>
+        internal static List<(TUser User, InviteStatus Status)> Added(
+            IReadOnlyList<TUser> targets, IReadOnlyList<UserInvitationOutcome> outcomes, IReadOnlyList<IdentityInvitationResult> answered)
         {
-            // --- The users the invite added: a status, and an account the row holds or gains ---
+            ArgumentNullException.ThrowIfNull(targets);
+            ArgumentNullException.ThrowIfNull(outcomes);
+            ArgumentNullException.ThrowIfNull(answered);
+
+            // --- A status, and an account the row holds or gains ---
             List<(TUser User, InviteStatus Status)> added = [];
-            for (int index = 0; index < outcomes.Length; index++)
+            for (int index = 0; index < outcomes.Count; index++)
             {
                 TUser user = targets[index];
                 if (answered[index].Status is InviteStatus status
@@ -68,17 +63,26 @@ namespace Tellma.Core.Users
                 }
             }
 
-            if (added.Count == 0)
-            {
-                return;
-            }
+            return added;
+        }
 
-            // --- What every email shares: the tenant's names, the caller's names, the resources ---
-            // The caller is connected by the action's first round trip, so this costs none.
-            TenantDescriptor tenant = context.Context.RequireTenant();
-            LocalizedText tenantName = OutgoingEmailText.TenantName(settings, tenant);
-            UserProfile caller = (await _dependencies.Connection.CurrentAsync(context.CancellationToken).ConfigureAwait(false)).Profile;
-            LocalizedText actorName = new(caller.Name, caller.Name2, caller.Name3);
+        /// <summary>Enqueues the welcome email of every user the invite added, through one call with the action's frame.</summary>
+        /// <param name="context">The action's context, whose frame the emails commit with.</param>
+        /// <param name="added">The users the invite added and their statuses, in request order.</param>
+        /// <param name="settings">The tenant's settings.</param>
+        /// <param name="tenantName">The tenant's name in each content language.</param>
+        /// <param name="actorName">The caller's name in each content language.</param>
+        /// <param name="link">The tenant's link, the invitation's return address.</param>
+        /// <returns>A task that completes when the emails are enlisted.</returns>
+        private async Task EnqueueWelcomeAsync(
+            ActionContext<TUser, int> context,
+            List<(TUser User, InviteStatus Status)> added,
+            TenantSettings settings,
+            LocalizedText tenantName,
+            LocalizedText actorName,
+            string link)
+        {
+            // --- What every email shares: the resources ---
             IStringLocalizer strings = _dependencies.Localizers.Create(ServerStringsBaseName, CoreStrings.Assembly);
 
             // --- One request per user; one the outbox would refuse is skipped, never sent to fail the call ---

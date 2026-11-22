@@ -22,8 +22,8 @@ using Tellma.Core.AspNetCore;
 using Tellma.Core.Migrator;
 using Tellma.Distro.Acme.Development;
 using Tellma.Distro.Acme.Entities;
-using Tellma.Distro.Acme.IntegrationTests.Infrastructure;
 using Tellma.Distro.Acme.Services;
+using Tellma.Distro.Acme.TestSupport;
 using Tellma.Identity.TestSupport;
 
 namespace Tellma.Distro.Acme.IntegrationTests

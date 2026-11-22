@@ -20,7 +20,10 @@ Windows runner).
 | `SampleDataTests` | Acme's development data as `migrate` writes it: in both seed tenants the 40 centers with four inactive, two currencies, 60 customers (all three types, 10 committed pictures, their contacts, four inactive), the `Sales` and `CenterReaders` roles, the principals bound to their seeded subjects and `Invited` with their catalog hints (the sandbox's own in tenant 2 alone) and the credential-less service account, and 20 invoices with the six oldest closed; the step run again inserting nothing and recording a catalog hint that was lost; a tenant provisioned in Production holding none of it, both sample steps recorded; the sample sales representative signing in with an email code, joining and holding the `Sales` grants; `set-credit-limit` writing its argument and refusing a negative one at `Arguments.CreditLimit`, a save refusing one at the row, and `close`; the `related-documents` extra answering the customer's other invoices latest first, the requested ones left out, at most ten; and, read as members, the extra listing only invoices a filtered read admits, a hidden requested invoice revealing nothing of its customer, the extra dropped beyond 128 requested invoices and for a member who may save invoices but not read them. |
 | `SelfServiceTests` | The client shell's boot calls as the signed-in administrator makes them: `users/me` answering the profile, the access summary and the tags the `Tellma-Version-Tags` header agrees with; `users/me/locale` storing a zone and digits and moving the caller's tag, the header carrying the moved one; `users/me/preferences/set` bound from `{ items }` answering the bag and the moved tag; a bad key answering `422` at `items[0].key`; and the envelope read again holding what the writes stored. |
 
-`AcmeHost` builds the web host call for call as `Program.cs` does, on a test server that also
+The harness, `AcmeMigrator`, `AcmeHost`, `AcmeHostOptions`, `AcmeSignIn`, `TenantProbes` and
+`WarningLog`, lives in `../Tellma.Distro.Acme.TestSupport`, which the platform's web integration
+suite (`test/core/Tellma.Core.AspNetCore.IntegrationTests`) shares; this project adds the assembly's
+SQL Server fixture. `AcmeHost` builds the web host call for call as `Program.cs` does, on a test server that also
 answers what the host reaches at its own public origin: the OpenID Connect handler's and the bearer scheme's back channels,
 the engine's back-channel logout client and the platform's identity-server client. Starting it waits until its tenant snapshot is loaded,
 as a load balancer sends an instance nothing before it is ready, so a first catalog load that
@@ -30,8 +33,10 @@ for a failed assertion to report. `AcmeHostOptions` adds what a test needs beyon
 environment, the blob store and processor Acme composes instead of the in-memory stand-ins (`KeepsComposedBlobs`), a further composition beside Acme's (one that changes no model), services, and the
 tenant probes (`TenantProbes`), a read that runs one batch against the tenant database, a read whose
 batch waits a minute on the server, and a mutation that changes nothing and records that it ran,
-mapped onto the web group as a distribution maps its own endpoints, and a test's own endpoints
-(`Map`), such as a bearer probe on the public API group. Two hosts of one test can share a browser's cookie jar (`CreateFlowClient(cookies)`,
+mapped onto the web group as a distribution maps its own endpoints, a test's own endpoints
+(`Map`), such as a bearer probe on the public API group, and Kestrel on a loopback port in place of
+the test server (`UsesKestrel`), for a test that needs a real connection: a client's abort or a
+stop that drains requests in flight. Two hosts of one test can share a browser's cookie jar (`CreateFlowClient(cookies)`,
 `CreateBrowser(cookies)`), as a load balancer sends one browser to every instance. The browser is
 the identity suite's `OidcFlowClient` (`test/apps/Tellma.Identity.TestSupport`), signed in by
 `AcmeSignIn`.

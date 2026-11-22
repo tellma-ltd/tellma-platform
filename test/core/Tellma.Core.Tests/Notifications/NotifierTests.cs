@@ -86,8 +86,8 @@ namespace Tellma.Core.Tests.Notifications
         /// <summary>Arguments that serialise to a JSON array.</summary>
         private static readonly int[] NotAnObject = [1, 2];
 
-        /// <summary>The composition with no sender.</summary>
-        private readonly BatchHarness _plain = new(compose: Compose);
+        /// <summary>The composition with no sender, the platform's own removed.</summary>
+        private readonly BatchHarness _plain = new(compose: Compose, configure: WithoutSenders);
 
         /// <summary>The composition with senders for email and push.</summary>
         private readonly BatchHarness _delivering = new(compose: ComposeDelivering);

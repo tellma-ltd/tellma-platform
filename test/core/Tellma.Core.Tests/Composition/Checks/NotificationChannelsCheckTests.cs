@@ -7,8 +7,11 @@ using Microsoft.Extensions.DependencyInjection;
 using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.Abstractions.Crud;
 using Tellma.Core.Abstractions.Notifications;
+using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.Composition;
 using Tellma.Core.Composition.Checks;
+using Tellma.Core.Notifications;
+using Tellma.Core.Testing.Email;
 using Tellma.Core.Tests.Infrastructure;
 
 namespace Tellma.Core.Tests.Composition.Checks
@@ -16,17 +19,41 @@ namespace Tellma.Core.Tests.Composition.Checks
     /// <summary>
     ///     <c>core.notification-channels</c>: keys follow their grammar and are unique, the baseline
     ///     channels are composed, and each sender names a registered channel other than the inbox, at
-    ///     most one per channel.
+    ///     most one per channel. The platform's own email sender is one of them, created in the
+    ///     gate's scope of no tenant.
     /// </summary>
     public class NotificationChannelsCheckTests
     {
         private const string Check = "core.notification-channels";
 
         [Fact]
-        public async Task The_baseline_channels_pass_without_a_sender()
+        public async Task The_baseline_channels_pass_with_the_platforms_email_sender()
         {
-            // A channel without a sender keeps its preferences and delivers nothing.
+            // The inbox has no sender: the notifier writes its rows. The email channel's is Core's.
             Assert.Empty((await TestComposition.CheckAsync(static _ => { })).From(Check));
+        }
+
+        [Fact]
+        public async Task The_platforms_email_sender_is_created_in_a_scope_of_no_tenant_with_or_without_an_email_sender()
+        {
+            // What the gate does: create every sender in a scope whose context names no tenant, and
+            // read its key. The email sender's transport is resolved only when a test send needs it.
+            foreach (bool withEmail in new[] { false, true })
+            {
+                IServiceCollection services = TestComposition.Compose(static _ => { });
+                if (withEmail)
+                {
+                    _ = services.AddCapturingEmail(CapturingEmailMode.ReplaceSender);
+                }
+
+                await using ServiceProvider provider = services.BuildServiceProvider(validateScopes: true);
+                await using AsyncServiceScope scope = provider.CreateAsyncScope();
+                Assert.Null(scope.ServiceProvider.GetRequiredService<IRequestContextAccessor>().Current.Tenant);
+
+                INotificationChannel sender = Assert.Single(scope.ServiceProvider.GetServices<INotificationChannel>());
+                _ = Assert.IsType<EmailNotificationChannel>(sender);
+                Assert.Equal(CoreFeature.EmailChannel, sender.Key);
+            }
         }
 
         [Fact]
@@ -35,8 +62,7 @@ namespace Tellma.Core.Tests.Composition.Checks
             IReadOnlyList<CompositionProblem> problems = await TestComposition.CheckAsync(static tellma => tellma
                 .AddFeature(new TestFeature<Tag.A>("fixture", contribute: static contribution => contribution
                     .NotificationChannel(new NotificationChannelDescriptor("sms", DefaultEnabled: false))
-                    .Scoped<INotificationChannel, SmsChannel>()
-                    .Scoped<INotificationChannel, EmailChannel>())));
+                    .Scoped<INotificationChannel, SmsChannel>())));
 
             Assert.Empty(problems.From(Check));
         }
@@ -130,12 +156,26 @@ namespace Tellma.Core.Tests.Composition.Checks
         public async Task Two_senders_of_one_channel_are_refused()
         {
             IReadOnlyList<CompositionProblem> problems = await TestComposition.CheckAsync(static tellma => tellma
-                .AddFeature(new TestFeature<Tag.A>("fixture", contribute: static contribution => contribution.Scoped<INotificationChannel, EmailChannel>()))
-                .AddFeature(new TestFeature<Tag.B>("other", contribute: static contribution => contribution.Scoped<INotificationChannel, OtherEmailChannel>())));
+                .AddFeature(new TestFeature<Tag.A>("fixture", contribute: static contribution => contribution
+                    .NotificationChannel(new NotificationChannelDescriptor("sms", DefaultEnabled: false))
+                    .Scoped<INotificationChannel, SmsChannel>()))
+                .AddFeature(new TestFeature<Tag.B>("other", contribute: static contribution => contribution.Scoped<INotificationChannel, OtherSmsChannel>())));
 
             CompositionProblem problem = Assert.Single(problems.From(Check));
             Assert.Equal(
-                $"The notification channel 'email' has more than one sender: {Display(typeof(EmailChannel))} (registered by the feature 'fixture') and {Display(typeof(OtherEmailChannel))} (registered by the feature 'other').",
+                $"The notification channel 'sms' has more than one sender: {Display(typeof(SmsChannel))} (registered by the feature 'fixture') and {Display(typeof(OtherSmsChannel))} (registered by the feature 'other').",
+                problem.Problem);
+        }
+
+        [Fact]
+        public async Task A_second_sender_of_the_email_channel_is_refused_and_names_the_platforms()
+        {
+            IReadOnlyList<CompositionProblem> problems = await TestComposition.CheckAsync(static tellma => tellma
+                .AddFeature(new TestFeature<Tag.A>("fixture", contribute: static contribution => contribution.Scoped<INotificationChannel, EmailChannel>())));
+
+            CompositionProblem problem = Assert.Single(problems.From(Check));
+            Assert.Equal(
+                $"The notification channel 'email' has more than one sender: {Display(typeof(EmailNotificationChannel))} (registered by the feature 'core') and {Display(typeof(EmailChannel))} (registered by the feature 'fixture').",
                 problem.Problem);
         }
 
@@ -147,7 +187,7 @@ namespace Tellma.Core.Tests.Composition.Checks
 
             CompositionProblem problem = Assert.Single(problems.From(Check));
             Assert.StartsWith(
-                "The notification channel senders registered by the feature 'fixture' could not be created to read their keys: InvalidOperationException:",
+                "The notification channel senders registered by the features 'core' and 'fixture' could not be created to read their keys: InvalidOperationException:",
                 problem.Problem,
                 StringComparison.Ordinal);
         }
@@ -203,8 +243,8 @@ namespace Tellma.Core.Tests.Composition.Checks
         /// <summary>A sender of the <c>email</c> channel.</summary>
         public sealed class EmailChannel() : TestChannel("email");
 
-        /// <summary>A second sender of the <c>email</c> channel.</summary>
-        public sealed class OtherEmailChannel() : TestChannel("email");
+        /// <summary>A second sender of the <c>sms</c> channel.</summary>
+        public sealed class OtherSmsChannel() : TestChannel("sms");
 
         /// <summary>A sender of the <c>inbox</c> channel, which has none.</summary>
         public sealed class InboxChannel() : TestChannel("inbox");

@@ -14,8 +14,8 @@ namespace Tellma.Core.Imaging.Workers
 {
     /// <summary>
     ///     A worker on Windows: created suspended on a restricted, low-integrity copy of the host's
-    ///     token, put in its own Job Object, then resumed, with a handle list that lets it inherit
-    ///     its three pipes and nothing else.
+    ///     token, in an AppContainer of its own when confined, put in its own Job Object, then
+    ///     resumed, with a handle list that lets it inherit its three pipes and nothing else.
     /// </summary>
     /// <remarks>
     ///     <para>
@@ -23,9 +23,15 @@ namespace Tellma.Core.Imaging.Workers
     ///         integrity policy denies it every memory, thread, handle and settings access to the
     ///         host's process and to any other process of the host's account at medium integrity or
     ///         above, and every write to the host's files. Ending a process is not among the
-    ///         accesses that policy denies, so a worker can still terminate its host; and it can open
-    ///         the account's other low-integrity processes, other workers among them. Hosts therefore
-    ///         render PDF thumbnails on Windows only in Development.
+    ///         accesses that policy denies, and low-integrity processes of one account may open
+    ///         each other.
+    ///     </para>
+    ///     <para>
+    ///         A confined worker's token is also an AppContainer's (<see cref="WindowsAppContainer" />),
+    ///         one per worker, which closes what integrity leaves open: the host's process, ending
+    ///         it included, and every other worker are closed to it, it reaches no network, it
+    ///         reads only the system's files, the runtime's installation and the files its
+    ///         capability is granted, and it writes nothing of the account's.
     ///     </para>
     ///     <para>
     ///         The job kills the worker when the host closes its handle, which the system does when
@@ -41,10 +47,6 @@ namespace Tellma.Core.Imaging.Workers
     ///         The host's pipe ends are overlapped, and a kill cancels their pending reads and
     ///         writes, so a call ends with its worker even while another process holds one of the
     ///         worker's pipe ends open.
-    ///     </para>
-    ///     <para>
-    ///         Windows offers an unprivileged process no way to deny another process the network,
-    ///         so this worker is not kept off it; the README lists that among the residual risks.
     ///     </para>
     /// </remarks>
     [SupportedOSPlatform("windows")]
@@ -138,15 +140,23 @@ namespace Tellma.Core.Imaging.Workers
         /// <inheritdoc />
         protected override ErrorTail Error => _error;
 
-        /// <summary>Starts a worker in its own job, on its own restricted token.</summary>
+        /// <summary>Starts a worker in its own job, on its own restricted token, confined in an AppContainer of its own when asked.</summary>
         /// <param name="application">The executable's full path.</param>
         /// <param name="arguments">Its arguments.</param>
         /// <param name="environment">Its whole environment.</param>
         /// <param name="workingDirectory">Its working directory.</param>
+        /// <param name="confinedFiles">
+        ///     The files outside the runtime's installation a confined worker reads, which its
+        ///     AppContainer is granted read on; null to start the worker unconfined.
+        /// </param>
         /// <returns>The started worker.</returns>
         /// <exception cref="PdfWorkerException">The worker could not be started.</exception>
         public static WindowsWorkerProcess Start(
-            string application, IReadOnlyList<string> arguments, IReadOnlyDictionary<string, string> environment, string workingDirectory)
+            string application,
+            IReadOnlyList<string> arguments,
+            IReadOnlyDictionary<string, string> environment,
+            string workingDirectory,
+            IReadOnlyList<string>? confinedFiles)
         {
             NamedPipeServerStream? input = null, output = null, error = null;
             NamedPipeClientStream? childInput = null, childOutput = null, childError = null;
@@ -178,8 +188,24 @@ namespace Tellma.Core.Imaging.Workers
                 }
 
                 // Section: the process, on its own token, suspended, so it runs nothing before it is
-                // in its job.
+                // in its job. A confined worker's token is a lowbox copy, in an AppContainer of its
+                // own, whose capability its files grant read to.
                 token = CreateWorkerToken();
+                if (confinedFiles is not null)
+                {
+                    WindowsAppContainer.GrantRead(confinedFiles);
+                    nint restricted = token;
+                    token = 0;
+                    try
+                    {
+                        token = WindowsAppContainer.CreateToken(restricted);
+                    }
+                    finally
+                    {
+                        _ = CloseHandle(restricted);
+                    }
+                }
+
                 ProcessInformation created = CreateSuspendedProcess(
                     token, application, Win32Text.CommandLine(application, arguments), Win32Text.EnvironmentBlock(environment), workingDirectory, stdin, stdout, stderr);
                 process = new SafeProcessHandle(created.Process, ownsHandle: true);

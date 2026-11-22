@@ -21,7 +21,7 @@ namespace Tellma.Core.Imaging.Workers
     ///     checks the answer. The worker is killed when the call's token is cancelled, and always
     ///     when the call ends, so it never outlives the call; what else a hostile document could
     ///     reach from inside its worker is what the operating system's controls on the worker leave
-    ///     open.
+    ///     open, its filesystem confinement among them where the launcher confines it.
     /// </summary>
     /// <param name="launcher">Starts the workers.</param>
     /// <param name="memoryLimit">The memory each worker may add once ready, in bytes.</param>
@@ -94,11 +94,16 @@ namespace Tellma.Core.Imaging.Workers
 
                 // Section: ready, then the limits, then the document. The worker has read nothing of
                 // the upload before its limits are in place; on Linux it must have installed its
-                // system-call filter.
+                // system-call filter, and a worker the launcher confines must be confined.
                 WorkerCapabilities capabilities = Talk(worker, () => WorkerProtocol.ReadReady(worker.Output), cancellationToken);
                 if (OperatingSystem.IsLinux() && !capabilities.HasFlag(WorkerCapabilities.SystemCallFilter))
                 {
                     throw new PdfWorkerException(PdfWorkerFailure.Protocol, "The worker started without its system-call filter.");
+                }
+
+                if (launcher.Confines && !capabilities.HasFlag(WorkerCapabilities.FilesystemConfinement))
+                {
+                    throw new PdfWorkerException(PdfWorkerFailure.Protocol, "The worker started without its filesystem confinement.");
                 }
 
                 try
