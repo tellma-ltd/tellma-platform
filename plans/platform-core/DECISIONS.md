@@ -384,6 +384,16 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-206 (orchestrator, 2026-11-22): PC-103 fix2 accepted; held
+
+Fix2 (155d35a1) closes R2-1..R2-10 with tests. The merge-tree against origin/platform-core is clean.
+
+- R2-5 confirmed: when / has no cached memberships, the launch page passes the launch on. Its /bff/user wait counts as launch time, because it is part of reaching the first tenant page, not picker time.
+- R2-6 accepted: the not-found, forbidden and launch-redirect views moved back into ".", with no lazy chunk of their own. The "." ceiling is now 31 KB (30.87 measured) and "./shell" is back to 1.28 KB (1.22 measured). This is the honest figure D-205 asked for. The re-split stays with PC-F69.
+- For Ahmad: the 0024 share of "." is now ~22.3 KB against its 14 KB allowance (D-200).
+
+Release order (D-194, D-203): PC-F67 (integrating), then PC-175, then PC-103 (T1), then PC-F17.
+
 ### D-205 (orchestrator, 2026-11-22): PC-103 Review 2 rulings
 
 Review 2 (inherit, xhigh) found 0/1/9. It confirmed:
