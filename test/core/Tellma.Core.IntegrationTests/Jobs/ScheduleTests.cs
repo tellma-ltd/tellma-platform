@@ -16,6 +16,7 @@ using Tellma.Core.Abstractions.Errors;
 using Tellma.Core.Abstractions.Jobs;
 using Tellma.Core.Abstractions.Notifications;
 using Tellma.Core.Abstractions.TableTypes;
+using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.Data;
 using Tellma.Core.Data.Batches;
 using Tellma.Core.Jobs;
@@ -76,11 +77,17 @@ namespace Tellma.Core.IntegrationTests.Jobs
             // --- The first tick initialises the seeded built-in from the database's clock, in the tenant's zone ---
             DateTimeOffset before = await DatabaseNowAsync();
             _ = await TickAsync();
+            DateTimeOffset after = await DatabaseNowAsync();
 
+            // The tick read the database's clock between the two reads, so its next due time is the
+            // expression's next occurrence after one of them: both give the same one unless the
+            // occurrence itself fell between them.
             Assert.Empty(await JobsOfAsync(FixtureFeature.ProbeScheduleId));
             Row state = await StateAsync(FixtureFeature.ProbeScheduleId);
-            DateTimeOffset expected = Cronos.CronExpression.Parse(BuiltInCron).GetNextOccurrence(before, await TenantZoneAsync())!.Value.ToUniversalTime();
-            Assert.Equal(expected, state.Get<DateTimeOffset>("NextDueAt"));
+            var builtIn = Cronos.CronExpression.Parse(BuiltInCron);
+            TimeZoneInfo zone = await TenantZoneAsync();
+            DateTimeOffset[] expected = [.. new[] { before, after }.Select(at => builtIn.GetNextOccurrence(at, zone)!.Value.ToUniversalTime()).Distinct()];
+            Assert.Contains(state.Get<DateTimeOffset>("NextDueAt"), expected);
             Assert.Equal((null, null, null, null), (state["LeaseToken"], state["LastFiredAt"], state["LastScheduledFor"], state["LastSkippedAt"]));
 
             // --- Once its expression names the last three minutes and its state is behind, the next tick fires it as the platform ---
@@ -509,11 +516,18 @@ namespace Tellma.Core.IntegrationTests.Jobs
             Assert.Equal((ActiveUserId, false, nameof(SchedulePausedReason.OwnerInactive)), (taken.Get<int>("RunAsUserId"), taken.Get<bool>("IsActive"), taken.Get<string>("PausedReason")));
             Assert.Empty(fixture.Notices.Withdrawn);
 
-            // --- The activation: active, the reason cleared, due again from now, and the notice withdrawn once it committed ---
+            // --- The activation: active, the reason cleared, due again from the request's instant, and the notice withdrawn once it committed ---
             _ = await schedules.ActivateAsync([id], cancellationToken: Token);
             Row active = await ScheduleAsync(id);
             Assert.Equal((true, null), (active.Get<bool>("IsActive"), active["PausedReason"]));
-            Assert.True((await StateAsync(id)).Get<DateTimeOffset>("NextDueAt") > await DatabaseNowAsync());
+
+            // The next due time is the expression's first occurrence after the request's instant, which
+            // the scope stamped when it began (spec 0020 §7.8: the one place the application clock
+            // enters). It is held to that instant, not to a later read of the database clock: a minute
+            // that turns between the two leaves it in the past.
+            DateTimeOffset requested = scope.ServiceProvider.GetRequiredService<IRequestContextAccessor>().Current.Now;
+            DateTimeOffset due = Cronos.CronExpression.Parse(EveryMinute).GetNextOccurrence(requested, await TenantZoneAsync())!.Value.ToUniversalTime();
+            Assert.Equal(due, (await StateAsync(id)).Get<DateTimeOffset>("NextDueAt"));
             Assert.Equal([JobNotices.SchedulePausedKey(id)], fixture.Notices.Withdrawn.Select(static withdrawal => withdrawal.DedupKey));
         }
 
