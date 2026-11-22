@@ -149,6 +149,15 @@ async function flush(): Promise<void> {
   await vi.advanceTimersByTimeAsync(0);
 }
 
+/**
+ * The whole seconds since {@link NOW}. A timer armed for a boundary that has
+ * passed fires 1 ms late when the fake clock is mid-tick as it is armed, and
+ * whether it is depends on when Angular runs the effect that arms it.
+ */
+function seconds(): number {
+  return Math.round((Date.now() - NOW) / 1_000);
+}
+
 /** How {@link setUp} starts. */
 interface TmSetUp {
   /** Store no documents of tenant 17. */
@@ -675,7 +684,7 @@ describe('TmCacheRefresher', () => {
       await setUp({
         me: stuck,
         respond: () => {
-          times.push((Date.now() - NOW) / 1_000);
+          times.push(seconds());
           return answer({ me: stuck });
         },
       });
@@ -695,15 +704,16 @@ describe('TmCacheRefresher', () => {
       await setUp({
         me: stuck,
         respond: () => {
-          times.push((Date.now() - NOW) / 1_000);
+          times.push(seconds());
           return answer({ me: next });
         },
       });
-      await vi.advanceTimersByTimeAsync(30_000);
+      // Past the second sync, at 30 s, which still finds the boundary passed.
+      await vi.advanceTimersByTimeAsync(31_000);
       await flush();
-      // The next sync brings a new boundary, 130 s after the start, which the server keeps.
+      // The third, at 90 s, brings a new boundary 130 s after the start, which the server keeps.
       next = me({ validUntil: new Date(NOW + 130_000).toISOString() });
-      await vi.advanceTimersByTimeAsync(160_000);
+      await vi.advanceTimersByTimeAsync(159_000);
       await flush();
       expect(times).toEqual([0, 30, 90, 130, 160]);
     });
