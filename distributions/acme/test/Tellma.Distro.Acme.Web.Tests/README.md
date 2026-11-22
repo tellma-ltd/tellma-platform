@@ -26,6 +26,11 @@ Unit tests of the Acme distribution's shape, needing no database:
   spelled in the distribution's source or pending, every Arabic key declared in English, and every
   label Acme's model derives shipped: its own families, its setting categories and the members it
   adds to GL's center;
+- the wire snapshots beside `Snapshots/WireSnapshotTests.cs`: `contracts.json`, every projected
+  route's fingerprint with the long and the idempotent routes, equal to the emitted Contracts
+  chunk, and `web.json`, the Development OpenAPI document. A diff of either fails the build until
+  the snapshot is updated in the same change: run once with `TELLMA_UPDATE_GOLDENS=1`, which
+  rewrites them and fails on purpose, review the diff, then run again without it;
 - the development data's shape: the 40-center tree on four levels with its inactive and invoiced
   lists, the customers and invoices, the step's name slots and key filter, and the development
   identity server seeding every principal the sample data binds, at its address and subject.

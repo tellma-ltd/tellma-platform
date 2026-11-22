@@ -31,12 +31,14 @@ namespace Tellma.Core.Imaging.PdfWorker
 
     /// <summary>
     ///     What the worker does to itself before it reads anything of the upload, while its own code
-    ///     is still trustworthy: it closes descriptors it inherited by accident, keeps its protocol
-    ///     output away from native code, and on Linux asks the kernel to kill it when its host dies,
-    ///     leaves its host's session and with it the host's terminal, closes itself to the other
-    ///     processes of its account, drops every capability, and installs its system-call filter,
-    ///     which keeps the worker from undoing what protects its host. Limits on memory and CPU are
-    ///     not here: the host applies those from outside.
+    ///     is still trustworthy: on Linux, when the host asks, it confines its files and starts over
+    ///     (<see cref="WorkerConfinement" />); it closes descriptors it inherited by accident, keeps
+    ///     its protocol output away from native code, and on Linux asks the kernel to kill it when
+    ///     its host dies, leaves its host's session and with it the host's terminal, closes itself
+    ///     to the other processes of its account, drops every capability, and installs its
+    ///     system-call filter, which keeps the worker from undoing what protects its host. Limits on
+    ///     memory and CPU are not here: the host applies those from outside, as it confines a
+    ///     Windows worker's files.
     /// </summary>
     internal static partial class WorkerSandbox
     {
@@ -67,6 +69,21 @@ namespace Tellma.Core.Imaging.PdfWorker
         public static WorkerCapabilities Enter(List<string> arguments, out Stream output)
         {
             ArgumentNullException.ThrowIfNull(arguments);
+
+            // Section: on Linux, a worker the host asks to confine its files restricts itself and
+            // starts over as the same program, which this call never returns from; the program
+            // started over checks that its confinement holds, and goes on below.
+            bool confined = false;
+            if (OperatingSystem.IsLinux())
+            {
+                if (arguments.Contains(WorkerConfinement.ConfineArgument))
+                {
+                    WorkerConfinement.ConfineAndRestart(arguments);
+                }
+
+                confined = WorkerConfinement.TakeConfined(arguments);
+            }
+
             List<(int Descriptor, string Target)> inherited = TakeInheritedDescriptors(arguments);
             int? host = TakeHostProcess(arguments);
 
@@ -114,10 +131,14 @@ namespace Tellma.Core.Imaging.PdfWorker
                 CloseToAccount();
                 DropCapabilities();
                 SeccompFilter.Install();
-                return WorkerCapabilities.SystemCallFilter;
+                return WorkerCapabilities.SystemCallFilter | (confined ? WorkerCapabilities.FilesystemConfinement : WorkerCapabilities.None);
             }
 
-            return WorkerCapabilities.None;
+            // Section: on Windows the host confines the worker's files from outside, by starting it
+            // in an AppContainer; the worker reports whether it runs in one.
+            return OperatingSystem.IsWindows() && WorkerConfinement.InAppContainer()
+                ? WorkerCapabilities.FilesystemConfinement
+                : WorkerCapabilities.None;
         }
 
         /// <summary>Removes the <c>--host-pid</c> pair from the arguments.</summary>

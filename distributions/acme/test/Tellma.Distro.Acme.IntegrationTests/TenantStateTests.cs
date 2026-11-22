@@ -15,6 +15,7 @@ using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.AspNetCore;
 using Tellma.Core.Tenancy;
 using Tellma.Distro.Acme.IntegrationTests.Infrastructure;
+using Tellma.Distro.Acme.TestSupport;
 using Tellma.Identity.TestSupport;
 
 namespace Tellma.Distro.Acme.IntegrationTests

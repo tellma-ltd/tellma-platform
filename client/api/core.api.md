@@ -272,7 +272,7 @@ export interface TmBusEnvelope {
 }
 
 // @public
-export type TmBusMessage = TmDraftsQueryMessage | TmDraftsReplyMessage | TmHubEventMessage | TmHubStatusMessage | TmLeaderProbeMessage | TmPrefsChangedMessage | TmSessionMessage | TmStoreChangedMessage;
+export type TmBusMessage = TmDraftsQueryMessage | TmDraftsReplyMessage | TmHubEventMessage | TmHubStatusMessage | TmLanguageSwitchedMessage | TmLeaderProbeMessage | TmPrefsChangedMessage | TmSessionMessage | TmStoreChangedMessage;
 
 // @public
 export interface TmCacheChangedEvent {
@@ -519,6 +519,9 @@ export interface TmDraftsReplyMessage {
 }
 
 // @public
+export function tmEnglish(): TmLanguageDefinition;
+
+// @public
 export class TmEntities {
     bySegment(segment: string): TmEntitySummary | undefined;
     declaration(name: string): TmEntityDeclaration | undefined;
@@ -736,6 +739,12 @@ export interface TmLanguageMetadata {
 }
 
 // @public
+export interface TmLanguageSwitchedMessage {
+    readonly lang: string;
+    readonly type: 'l10n.switched';
+}
+
+// @public
 export class TmLaunch {
     constructor();
     readonly automatic: Signal<number | null>;
@@ -783,6 +792,42 @@ export interface TmLeaderProbeMessage {
 export interface TmListPayload {
     readonly cols?: readonly string[];
     readonly filter: string | null;
+}
+
+// @public
+export interface TmLocaleChange {
+    readonly calendar?: string | null;
+    readonly digits?: TmDigitStyle | null;
+    readonly language?: string | null;
+    readonly region?: string | null;
+    readonly timeZone?: string | null;
+}
+
+// @public
+export type TmLocaleSave = 'failed' | 'idle' | 'saved' | 'saving';
+
+// @public
+export class TmLocalization {
+    constructor();
+    readonly calendar: Signal<TmCalendar>;
+    readonly calendarCode: Signal<string>;
+    readonly calendars: Signal<readonly string[]>;
+    readonly contentSlot: Signal<1 | 2 | 3>;
+    readonly deviceTimeZone: Signal<string>;
+    readonly digits: Signal<TmDigitStyle | null>;
+    readonly dir: Signal<'ltr' | 'rtl'>;
+    readonly displayName: Signal<string>;
+    readonly language: Signal<string>;
+    readonly languages: Signal<readonly TmLanguageDefinition[]>;
+    readonly locale: Signal<string>;
+    readonly localeSave: Signal<TmLocaleSave>;
+    readonly region: Signal<string>;
+    setCalendar(code: string): void;
+    setLanguage(code: string): void;
+    setLocale(change: TmLocaleChange): void;
+    readonly timeZone: Signal<string>;
+    static ɵfac: i0.ɵɵFactoryDeclaration<TmLocalization, never>;
+    static ɵprov: i0.ɵɵInjectableDeclaration<TmLocalization>;
 }
 
 // @public
@@ -960,6 +1005,30 @@ export type TmPartition = {
 };
 
 // @public
+export interface TmPreferenceKey<T> {
+    readonly fallback: T;
+    readonly key: string;
+    readonly kind: TmPreferenceKind;
+    readonly validate?: (value: unknown) => value is T;
+}
+
+// @public
+export function tmPreferenceKey<T>(key: string, kind: TmPreferenceKind, fallback: T, validate?: (value: unknown) => value is T): TmPreferenceKey<T>;
+
+// @public
+export type TmPreferenceKind = 'curated' | 'write-behind';
+
+// @public
+export class TmPreferences {
+    constructor();
+    get<T>(key: TmPreferenceKey<T>): Signal<T>;
+    reset(key: TmPreferenceKey<unknown>): void;
+    set<T>(key: TmPreferenceKey<T>, value: T): void;
+    static ɵfac: i0.ɵɵFactoryDeclaration<TmPreferences, never>;
+    static ɵprov: i0.ɵɵInjectableDeclaration<TmPreferences>;
+}
+
+// @public
 export interface TmPreferencesResult {
     readonly preferences: Readonly<Record<string, string>>;
     readonly preferencesTag: string;
@@ -967,6 +1036,7 @@ export interface TmPreferencesResult {
 
 // @public
 export interface TmPrefsChangedMessage {
+    readonly revert?: true;
     readonly tenantId: number;
     readonly type: 'prefs.changed';
     readonly values: Readonly<Record<string, string | null>>;
@@ -984,6 +1054,12 @@ export type TmProblemError = TmJsonObject & {
     readonly code: string;
     readonly message: string;
 };
+
+// @public
+export interface TmProblemText {
+    readonly detail: string;
+    readonly title: string;
+}
 
 // @public
 export interface TmProfile {
@@ -1208,6 +1284,17 @@ export interface TmSecurableSummary {
 // @public
 export interface TmSendOptions {
     readonly background?: boolean;
+    readonly tenantId?: number;
+}
+
+// @public
+export class TmServerText {
+    error(error: TmProblemError, entity?: string): Signal<string>;
+    has(key: string): boolean;
+    message(key: string, args?: Readonly<Record<string, TmJson>>): Signal<string>;
+    problem(problem: TmProblem): Signal<TmProblemText>;
+    static ɵfac: i0.ɵɵFactoryDeclaration<TmServerText, never>;
+    static ɵprov: i0.ɵɵInjectableDeclaration<TmServerText>;
 }
 
 // @public

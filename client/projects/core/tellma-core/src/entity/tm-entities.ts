@@ -6,7 +6,7 @@
 import { inject, Injectable, Injector, signal, type Signal } from '@angular/core';
 
 import { TM_APP_DECLARATIONS } from '../app/tm-app-declarations';
-import { TmPlatformText } from '../app/tm-platform-text';
+import { TmLocalization } from '../l10n/tm-localization';
 import { TmClientMetadataStore } from '../metadata/tm-client-metadata';
 import { TM_METADATA_LOADERS } from '../metadata/tm-metadata-loaders';
 import type { TmEntityDeclaration } from './tm-entity-declaration';
@@ -31,7 +31,7 @@ import type { TmEntitySummary } from './tm-entity-metadata';
 export class TmEntities {
   readonly #injector = inject(Injector);
   readonly #metadata = inject(TmClientMetadataStore);
-  readonly #text = inject(TmPlatformText);
+  readonly #l10n = inject(TmLocalization);
 
   /** The summaries by lower-cased name, built at first use. */
   #byName: ReadonlyMap<string, TmEntitySummary> | null = null;
@@ -97,7 +97,7 @@ export class TmEntities {
   label(name: string, plural = false): Signal<string> {
     const summary = this.summary(name);
     return summary
-      ? this.#text.text(plural ? summary.pluralLabelKey : summary.labelKey, summary.labelFallback)
+      ? this.#l10n.ɵtext(plural ? summary.pluralLabelKey : summary.labelKey, undefined, summary.labelFallback)
       : signal(name).asReadonly();
   }
 

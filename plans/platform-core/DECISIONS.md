@@ -384,6 +384,188 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-228 (orchestrator, 2026-11-22): PC-F69 Review 1 rulings; the "." shares go to Ahmad
+
+PC-F69 Review 1 found 0/0/3. Its own probes confirmed the claim: boot keeps every service class of "." on the first frame, so no sizable service can move to a secondary entry point without becoming asynchronous.
+
+It also confirmed the TmDecimals pure annotation. The annotation is safe, its treeShakes check fails without it, and it saves about 0.67 KB for FESM consumers.
+
+Rulings:
+- R1-1: give the per-spec split on both bases.
+- R1-2: correct candidate 3's figure.
+- R1-3: do not make the move. The flush engine via import() (≈1.2 KB) is a timing change against 0025 §9.4's "at once", so it is named in the commit as deferred. Fix1 also root-causes the union-order.spec bigint timeout (D-011).
+
+PC-F69 holds after fix1. D-214's re-split cannot honestly bring "." to 31 KB, so the ceiling stays at 38.5 KB.
+
+For Ahmad (from D-214, now with evidence):
+- Option 1: raise spec 0024's share of "." to its measured size (≈25.5 KB on the gate's measure, against 14) and spec 0025's (≈12.1 KB, against 9).
+- Option 2: approve async changes for about 1.5-2.5 KB more: the flush engine via import(), and the search query codec, which makes TmUrls async.
+
+Also, 0024 §12's initial-JS budget is measured on Acme. Acme compiles core from sources, so that measure is not an FESM consumer's first frame.
+
+### D-227 (orchestrator, 2026-11-22): PC-182 Review 1 rulings; PC-F71's root cause; PC-F69 R1
+
+PC-182 Review 1 found 0 blocking, 3 major and 4 minor.
+
+Rulings:
+- R1-1 (major, defect): a delete withdraws every deleted row's share notices, in the same transaction as the delete (0033 §5.6 and §7, 0021 §2.3).
+- R1-2 (major, privacy): the shares extra's admission filter moves into the grants query, so related never names other grantees to a reader (0033 §5.2). This retires deviation 5.
+- R1-3 (major): add tests for the grant caps, the SQL backstop and the grantee checks.
+- R1-4 (minor): fix.
+- R1-5 (minor): remove ReportShare's client metadata, or record it as a deviation.
+- R1-6 (minor): record the delete-by-query contradiction in the commit body.
+- R1-7 (minor): keep the reports category.
+
+PC-182 is not on the two-review list, and Review 1 does not meet §4.4's thresholds. R1-2 is a privacy fix in the query layer, so fix1 is judged for escalation once it is in: if the grants query is reshaped well beyond one filter, Review 2 runs on fable.
+
+PC-182 holds after fix1.
+
+For Ahmad, from PC-182:
+- Spec 0033 §2.1 and §5.1 should make OwnerId server-owned, not derived. Review 1 confirmed it is equivalent on insert and stricter on update, and spec 0012 §9.1 refuses a derived column in a column update, so transfer cannot work with derived.
+- Spec 0033 §5.1 could take an optional notification category per shareable, so that a pack's own shareable is not filed under reports.
+- Spec 0033 §2.1's [Stack] attribute lists no delete-by-query, but §2.2 and §5.6 do.
+
+PC-F71's CI fix d5421aa9 found the startup dir test's root cause in the test, not the product. The test read <html dir> right after the init promise, but a root effect writes the attribute and TestBed never ticks. It passed only when a macrotask let the scheduler tick first. The fix is one TestBed.tick() before the same assertion. The real first frame is correct, because bootstrap's tick flushes root effects before it renders. The flaky row is fixed through PC-F71.
+
+PC-F69's implementation (be5219bc) made no new entry points. Its claim is that boot reaches nearly every family, so a move would save only in the measure. Its one saving is TmDecimals' pure annotation (first frame 37.79 to 37.10 KB). Review 1 verifies the claim independently. If the claim holds, Ahmad decides between raising the 0024 and 0025 shares (≈23.8 KB against 14, ≈11.3 KB against 9) and approving API or behaviour changes for the listed candidates.
+
+### D-226 (orchestrator, 2026-11-22): the startup dir test is fixed through PC-F71; PC-F72 opened
+
+Since about 16:38 UTC, tm-localization.spec's startup test fails on both OSes: the document dir is ltr when rtl is expected. It fails on platform-core's PR run 45044779464 (08ebc1cc, PC-104's code) and on PC-F71's gate run 45046747313. PC-104's own gate run passed it at 16:08 UTC on the same code, so the failure depends on time or environment and is now deterministic. It blocks every integration's CI.
+
+No slot is free: pc-1 is PC-F69, pc-2 PC-189, pc-3 PC-F71, pc-4 PC-F70 (held), pc-f PC-176 and pc-f2 PC-182. PC-F71 is next in the release order and is blocked by this test anyway, so its agent root-causes and fixes the test as "PC-F71: integrate (CI fixes)". The fix makes the cause deterministic. It does not weaken the assertion or add a retry (D-011/D-113).
+
+The same PR run also failed ScheduleTests.A_schedule_paused_for_its_inactive_owner… once (Assert.True at ScheduleTests.cs:516, ubuntu). It passed on the pc run of the same code and on PC-F71's run. PC-F72 root-causes it in the next free slot, ahead of T3. A red CI that stops only integrations is not notified (§9).
+
+### D-225 (orchestrator, 2026-11-22): PC-104 landed; "." at 38.5 KB; PC-F69 launched; PC-F71 released
+
+PC-104 landed at 5bfbd41c. After the merge, "." measured 38.49 KB, so its ceiling was set to 38.5 KB, within D-224's 39 KB cap.
+
+The other entry points measured:
+- the lazy locale-write chunk: 1.50/2
+- ./memory: 2.54/2.6
+- ./recents: 1.53/1.6
+- core-ui l10n: 9.96/10
+
+PC-F69 starts in pc-1, the slot PC-104 freed, ahead of other T1/T2 work (D-214). It re-splits "." by spec family into secondary entry points, so that each spec's services leave the first frame unless the shell needs them at boot.
+
+Goals:
+- "." falls back to its 31 KB pre-raise level, or as close to it as the boot path honestly allows.
+- Each new entry point gets its own honest ceiling.
+- The static-graph check proves "." does not reach the new entry points.
+- Consumers (Acme, showcase) import from the new entry points.
+
+Any first-frame figure that rises is reported.
+
+PC-F71 integrates next, carrying D-224's three items: the AH 9666 vector rows, a lengths array asserted on both sides, and a client daysIn bounded at AH 9666. PC-F70 follows.
+
+### D-224 (orchestrator, 2026-11-22): PC-107 landed; PC-104 released; the AH 9666 carries move to PC-F71
+
+PC-107 landed at 5a41bd43. After its merge, "." measured 33.82/34 KB, ./memory 2.54/2.6, ./recents 1.53/1.6, and the first frame ≈33.14 KB.
+
+PC-104 integrates next, and it integrates second of the pair, so under D-214 it re-measures "." after the merge. The combined ceiling is the measured figure rounded up to 0.5 KB. It may not exceed 34 KB plus PC-104's own reviewed raise (36 - 31 = 5 KB), so 39 KB at most. Anything above that stops and is reported. PC-104 also merges the two TmSendOptions.tenantId copies into one.
+
+D-221 and D-222 gave PC-104's integration three carries for PC-F71's 9666 range: the vector rows, a lengths array asserted on both sides, and a bounded client daysIn. All three require PC-F71's server change to be on platform-core, and PC-F71 integrates after PC-104. They therefore move to PC-F71's integration, which merges PC-104's client and lands the binding test with the server change it binds.
+
+### D-223 (orchestrator, 2026-11-22): PC-F70 Review 1 rulings; PC-F71 held
+
+PC-F70 Review 1 found 0/0/2 and accepted the three implementer deviations. The event is logged once per refusal; a crashing check still logs CheckThrew at Error; the migrator never registers the check.
+
+Fix1 rulings:
+- R1-1: stay within the fix item. MapTellma's problems are not moved into the gate, because that changes startup behaviour. If the throwing project already references OpenTelemetry, force-flush a registered LoggerProvider before the throw, adding no dependency; otherwise document that a MapTellma refusal reaches synchronous sinks only. If spec 0016 turns out to require deferral into the gate, the implementer flags it and it goes to Ahmad.
+- R1-2: pin Count and the "; " join with a two-violation case.
+
+PC-F70 holds after fix1.
+
+PC-F71's fix1 (492510e3) is held, and merge-tree is clean. Release order: PC-143, PC-107, PC-104, PC-F71, PC-F70. PC-104's integration still carries D-222's lengths array and daysIn bound.
+
+### D-222 (orchestrator, 2026-11-22): PC-F71 Review 1 rulings
+
+Review 1 found 0/0/2. The fix is consistent with D-029, 0013 §8.2-8.3, 0008 §10.4 and 0024 §7.4. The client's lengths for AH 9666 months 5-12 on pc/PC-104 match the server's.
+
+Fix1 rulings:
+- R1-1: the binding test of the two sides' lengths lands at PC-104's integration, as a lengths array in umalqura-vectors.json asserted by both the server and the client. PC-F71 amends its implementer note to say so.
+- R1-2: GetDaysInMonth checks the year first and names year for an out-of-range year, like every other year-level member and EthiopianCalendar. The test expects year.
+
+PC-F71 holds after fix1.
+
+Carry for PC-104's integration: the client daysIn has no upper year (daysIn(9667, m) is 30 on the client and 0 on the server). Bound it at AH 9666 like the server, or record why not.
+
+### D-221 (orchestrator, 2026-11-22): PC-104 fix2 accepted; held
+
+Fix2 (7f087f0d) fixed R2-1..R2-7 and applied D-214: TmLocaleWrite now loads with import(). Sizes: "." 35.45/36, the write chunk 1.50/2, core-ui l10n 9.96/10. The merge-tree is clean.
+
+Accepted deviations:
+- A new tab-bus message, l10n.switched (TmLanguageSwitchedMessage), beyond 0025 §6.2's catalogue. Other tabs follow a real switch, never a settle.
+- Locale-write retries for offline-like failures while online stay true stop after 4 tries (5 s doubling, capped at 30 s). After that the state is 'failed', and the user's choices stay applied.
+- The formatting locale carries a private-use subtag (for example en-US-x-om) when the winning tag belongs to another language. The core-ui date engine reads the requested language from it, so the om/ti day-first rule survives the browser fallback.
+
+PC-104 holds. Release order once PC-F11 lands: PC-143, PC-107, PC-104.
+
+PC-104's integration, after PC-107 lands, must:
+- merge the two TmSendOptions.tenantId copies;
+- re-measure "." (D-214);
+- add PC-F71's AH 9666 vector rows, if PC-F71 has landed.
+
+For Ahmad: 0025 §6.2's tab-bus catalogue gains l10n.switched.
+
+### D-220 (orchestrator, 2026-11-22): PC-107 fix2 accepted; held
+
+Fix2 (a0919af3) fixed R2-1..R2-7. The merge-tree is clean.
+
+Accepted:
+- ./recents rises from 1.4 to a 1.6 KB ceiling (1.53 measured) because of the cross-tab merge.
+- Two named deviations: recents' cross-tab merge (a 0025 §13 gap), and an optional revert flag on TmPrefsChangedMessage (against 0025 §6.2's message shape).
+- The lint test-rig exception is narrowed to *.spec.ts importers.
+
+D-217's first-frame figure is corrected again: the split build measures ≈33.1 KB (0.08 + 33.06), against 33.60 before fix1, so the honest saving is ≈0.5 KB. "." stays at 34 (33.82 measured). The R2-5 carries are recorded under D-218.
+
+For Ahmad: 0025 §6.2's prefs.changed message gains an optional revert member.
+
+### D-219 (orchestrator, 2026-11-22): PC-104 Review 2 rulings
+
+Review 2 (inherit, xhigh) found 0/3/4.
+- It closed R1-5, R1-6 and R1-8 to R1-11, and closed R1-1 to R1-4 apart from the gaps below.
+- Both budgets are honest.
+- The Arabic strings load on the first switch with no flash.
+
+Fix2 rulings:
+- R2-1 (major): other tabs follow only a real user switch, never a boot-record settle.
+- R2-2 (major): a member's override holds while its write is queued or in flight (§7.2).
+- R2-3 (major): every tenant entry awaits ɵready() before showing the page.
+- R2-4: offline-like failures retry while online stays true.
+- R2-5: the om/ti day-first rule is keyed on the requested language, so the Chromium fallback is covered too.
+- R2-6: guard tests that can fail.
+- R2-7: the commit's Tests lines are complete.
+- Also, per D-214: TmLocaleWrite loads with import() on the first change, if nothing needs it at boot.
+
+PC-104 holds after fix2.
+
+Integration order once PC-095 lands (D-190, D-213): PC-F11, then PC-143, then PC-104 and PC-107 in the order they hold. Whichever of PC-104 and PC-107 integrates second merges the two TmSendOptions.tenantId copies and re-measures "." (D-214).
+
+### D-218 (orchestrator, 2026-11-22): PC-107 Review 2 rulings; carries
+
+Review 2 (inherit, xhigh) found 0/1/6. R1-1..R1-4 are closed, there is no race in the lazy loads, and the ɵ seams are minimal.
+
+Correction to D-217: TmPreferences still reaches the first frame through the recents chunk. A split app build measures ≈33.2 KB, not 30.48.
+
+Fix2 rulings:
+- R2-1: inject TmPreferences in tmStartup again, and correct the budget figures.
+- R2-2 (major): TmRecents merges the stored nav.recent list with its own visits, so a new tab never erases another tab's unflushed visits. This is a named deviation for a 0025 §13 gap.
+- R2-3: an in-flight tab never reverts its own successful write.
+- R2-4: the lint test-rig exception is limited to *.spec.ts importers.
+- R2-6: test the lazy start, and catch construction errors.
+- R2-7: TmDrafts.flush becomes ɵflush.
+
+PC-107 holds after fix2.
+
+Carries (R2-5):
+- The launcher, in the eager ./shell, must not statically import the lazy @tellma/core/recents. It reaches recents through import() or the TM_RECENTS_NAVIGATION seam. This lands with PC-115.
+- The page-host import lists must include ./memory and ./recents. This lands with PC-111.
+- PC-110's drafts.reply and the state dump must count session-storage drafts when TmDrafts is not loaded.
+
+For Ahmad: 0025 §13 does not say how a new tab's recents list combines with another tab's unflushed visits. The code merges the two.
+
 ### D-217 (orchestrator, 2026-11-22): PC-107 fix1 escalated to Review 2
 
 Fix1 (e9406aaf) fixed R1-1..R1-4. "." went from 36.5 to a 34 KB ceiling (33.84 measured). An app's first frame went from 33.60 to 30.48 KB, and the dump's first-frame cost from +1.35 to +0.13 KB. The fix added:

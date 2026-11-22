@@ -12,7 +12,7 @@ using Tellma.Core.Abstractions.Api;
 using Tellma.Core.Abstractions.Caching;
 using Tellma.Core.Abstractions.Localization;
 using Tellma.Core.AspNetCore;
-using Tellma.Distro.Acme.IntegrationTests.Infrastructure;
+using Tellma.Distro.Acme.TestSupport;
 using Tellma.Identity.TestSupport;
 
 namespace Tellma.Distro.Acme.IntegrationTests

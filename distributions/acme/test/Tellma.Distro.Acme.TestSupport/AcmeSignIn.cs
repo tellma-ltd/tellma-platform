@@ -6,7 +6,7 @@
 using System.Net;
 using Tellma.Identity.TestSupport;
 
-namespace Tellma.Distro.Acme.IntegrationTests.Infrastructure
+namespace Tellma.Distro.Acme.TestSupport
 {
     /// <summary>Signs a browser in through Acme's BFF, with the identity engine in process.</summary>
     internal static class AcmeSignIn

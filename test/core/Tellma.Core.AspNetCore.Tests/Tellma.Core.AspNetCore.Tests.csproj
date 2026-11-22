@@ -37,6 +37,7 @@
          instrument, tag and tag-value names, so a telemetry rename turns an alert query red. -->
     <Content Include="..\..\..\infra\monitoring\host\*.kql" Link="AlertQueries/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="..\..\..\infra\monitoring\realtime\*.kql" Link="RealtimeAlertQueries/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\..\infra\monitoring\api\*.kql" Link="ApiAlertQueries/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

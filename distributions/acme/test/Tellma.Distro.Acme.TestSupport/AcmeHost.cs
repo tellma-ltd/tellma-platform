@@ -6,6 +6,9 @@
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Hosting.Server;
+using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.Mvc.Testing.Handlers;
 using Microsoft.AspNetCore.TestHost;
@@ -22,7 +25,7 @@ using Tellma.Distro.Acme.Web;
 using Tellma.Identity.Services.BackchannelLogout;
 using Tellma.Identity.TestSupport;
 
-namespace Tellma.Distro.Acme.IntegrationTests.Infrastructure
+namespace Tellma.Distro.Acme.TestSupport
 {
     /// <summary>
     ///     Acme's web host on a test server, built call for call as its <c>Program.cs</c> builds it,
@@ -65,8 +68,16 @@ namespace Tellma.Distro.Acme.IntegrationTests.Infrastructure
         /// <summary>The host's services.</summary>
         public IServiceProvider Services => _app.Services;
 
-        /// <summary>The test server.</summary>
+        /// <summary>The test server; unavailable on a host that listens with Kestrel.</summary>
         public TestServer Server => _app.GetTestServer();
+
+        /// <summary>
+        ///     Where a client sends its requests: the public origin, which the test server answers, or
+        ///     the loopback address Kestrel listens on.
+        /// </summary>
+        public Uri Address => _app.Services.GetRequiredService<IServer>() is TestServer
+            ? new Uri(AcmeMigrator.PublicOrigin)
+            : new Uri(_app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.Single());
 
         /// <summary>
         ///     Where the engine's back-channel logout tokens go; null delivers them to the host itself,
@@ -166,6 +177,19 @@ namespace Tellma.Distro.Acme.IntegrationTests.Infrastructure
 
             options.Services?.Invoke(builder.Services);
 
+            // --- A real Kestrel listener on a loopback port in place of the test server ---
+            // The defaults register Kestrel before the test server replaces it as the last server
+            // registered; removing the test server's registration leaves Kestrel's.
+            if (options.UsesKestrel)
+            {
+                foreach (ServiceDescriptor testServer in builder.Services.Where(static descriptor => descriptor.ServiceType == typeof(IServer) && descriptor.ImplementationType == typeof(TestServer)).ToList())
+                {
+                    _ = builder.Services.Remove(testServer);
+                }
+
+                _ = builder.WebHost.ConfigureKestrel(static kestrel => kestrel.Listen(IPAddress.Loopback, 0));
+            }
+
             WebApplication app = builder.Build();
             _ = app.UseTellma();
             TellmaEndpoints groups = app.MapTellma();
@@ -214,6 +238,23 @@ namespace Tellma.Distro.Acme.IntegrationTests.Infrastructure
             }
 
             Assert.True(registry.IsAvailable, "The host's tenant snapshot is not available after a successful refresh.");
+        }
+
+        /// <summary>A handler that reaches the host: the test server's, or one over the network to Kestrel's port.</summary>
+        /// <returns>The handler; the caller disposes it.</returns>
+        public HttpMessageHandler CreateHandler()
+        {
+            return _app.Services.GetRequiredService<IServer>() is TestServer server ? server.CreateHandler() : new SocketsHttpHandler();
+        }
+
+        /// <summary>
+        ///     Stops the host as its orchestrator stops an instance: it stops accepting, and waits for
+        ///     the requests in flight up to the host's shutdown timeout.
+        /// </summary>
+        /// <returns>A task that completes when the host stopped.</returns>
+        public Task StopAsync()
+        {
+            return _app.StopAsync(CancellationToken.None);
         }
 
         /// <summary>

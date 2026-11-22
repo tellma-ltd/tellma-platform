@@ -26,7 +26,8 @@ namespace Tellma.Core.IntegrationTests.Outbox
     /// <summary>
     ///     The sending job against a fixture database: each outcome of the email sender settling its
     ///     row and ending its job, a transient failure retried until the last attempt fails it, a
-    ///     sender that throws, a row found still sending failed unsent, a settled row left alone, an
+    ///     sender that throws, a garbage recipient passed to the transport and its refusal recorded on
+    ///     the row, a row found still sending failed unsent, a settled row left alone, an
     ///     attachment whose object is gone rejecting its email, a stored address that no longer
     ///     parses, a sender that answers short, a pre-mark that a re-run repeats, the administrators'
     ///     one inbox notice per claim replaced by a later claim's and lost alone when their lookup
@@ -177,6 +178,32 @@ namespace Tellma.Core.IntegrationTests.Outbox
 
             Assert.Equal(["rejected", "rejected"], settled.GetMeasurementSnapshot().Select(static point => (string)point.Tags[OutboxTelemetryNames.StateTag]!));
             Assert.Empty(latency.GetMeasurementSnapshot());
+        }
+
+        [Fact]
+        public async Task A_garbage_recipient_the_outbox_stored_reaches_the_transport_unchanged_and_its_refusal_settles_the_row_rejected()
+        {
+            // The transport refuses a recipient that is no mailbox, as the SMTP adapter's pre-check
+            // and the HTTP providers' 400 answers do; every other message goes out.
+            fixture.Sender.OnSending(static (message, ordinal) => message.To.Any(static to => !to.Address.Contains('@', StringComparison.Ordinal))
+                ? new EmailSendResult(EmailSendOutcome.Rejected, Error: "'not-an-address' is not a valid mailbox address.")
+                : new EmailSendResult(EmailSendOutcome.Sent, $"capture-{ordinal}"));
+            EmailEnqueueRequest garbage = Request() with { Message = Request().Message with { To = [new EmailAddress("not-an-address", "Ada")] } };
+            int[] ids = [.. await EnqueueAsync(garbage, Request())];
+
+            _ = await DispatchAsync();
+
+            // --- The pipeline handed the stored address to the transport as it was ---
+            CapturedEmail refused = Assert.Single(fixture.Sender.Captured, email => email.Message.Correlation!.Reference == Text(ids[0]));
+            Assert.Equal([new EmailAddress("not-an-address", "Ada")], refused.Message.To);
+
+            // --- The refusal is recorded on its row; the other email was sent ---
+            IReadOnlyDictionary<string, object?> row = await RowAsync(ids[0]);
+            Assert.Equal(
+                (nameof(OutgoingEmailState.Rejected), (object?)OutgoingEmailCodes.Rejected, (object?)"'not-an-address' is not a valid mailbox address.", null),
+                (row["State"], row["ErrorCode"], row["ErrorDetail"], row["SentAt"]));
+            Assert.Equal(nameof(OutgoingEmailState.Sent), (await RowAsync(ids[1]))["State"]);
+            _ = Assert.Single(await NoticesAsync());
         }
 
         [Fact]

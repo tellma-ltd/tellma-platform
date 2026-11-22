@@ -14,6 +14,8 @@ import {
   ɵtmPlainText,
 } from './tm-date-engine';
 import { tmGregorianCalendar, type TmCalendar } from './tm-calendar';
+import { tmFormatDateTime } from './tm-instant';
+import dayFirst from './day-first-vectors.json';
 
 const TODAY = '2026-07-15';
 
@@ -321,5 +323,34 @@ describe('tmDatePlaceholder', () => {
     for (const locale of ['ar', 'ar-SA', 'ar-EG', 'fa', 'he', 'ur']) {
       expect([...tmDatePlaceholder(locale).matchAll(TM_BIDI_CONTROLS)], locale).toEqual([]);
     }
+  });
+});
+
+describe('day-first languages', () => {
+  // Oromo and Tigrinya write numeric dates day-first, as the server's
+  // culture data does, whatever the browser's CLDR says.
+  it("writes each vector's numeric date as the server writes its short date, and reads it back", () => {
+    for (const row of dayFirst.rows) {
+      expect(tmFormatDate(row.date, row.locale), row.locale).toBe(row.expected);
+      expect(tmParseDate(row.expected, row.locale, { today: TODAY }), row.locale).toBe(row.date);
+    }
+  });
+
+  it("keeps the order on another language's locale that names a day-first language, as a browser that lacks it gets", () => {
+    // A distribution whose default language is US English: the fallback is month-first on its own.
+    expect(tmFormatDate('2026-03-05', 'en-US')).toBe('3/5/2026');
+    expect(tmFormatDate('2026-03-05', 'en-US-x-om')).toBe('05/03/2026');
+    expect(tmParseDate('05/03/2026', 'en-US-x-om', { today: TODAY })).toBe('2026-03-05');
+    expect(tmFormatDate('2026-11-22', 'en-US-u-nu-latn-x-ti')).toBe('22/11/2026');
+    expect(tmFormatDateTime('2026-03-05T07:42:00Z', 'en-US-x-om', { timeZone: 'UTC' })).toMatch(/^05\/03\/2026\D/);
+    // A private-use subtag naming another language changes nothing.
+    expect(tmFormatDate('2026-03-05', 'en-US-x-ar')).toBe('3/5/2026');
+  });
+
+  it('writes the date of a numeric date-time day-first, and leaves the named styles alone', () => {
+    expect(tmFormatDateTime('2026-03-05T07:42:00Z', 'om-ET', { timeZone: 'UTC' })).toMatch(/^05\/03\/2026\D/);
+    expect(tmFormatDate('2026-03-05', 'om-ET', { dateStyle: 'long' })).toBe(
+      new Intl.DateTimeFormat('om-ET', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' }).format(Date.UTC(2026, 2, 5, 12)),
+    );
   });
 });

@@ -169,7 +169,8 @@ namespace Tellma.Core.Tests.Localization
         public void The_server_only_resources_hold_the_platform_emails_as_well_formed_icu_messages(string culture)
         {
             // The neutral set and the Arabic satellite each hold exactly the email channel's and the
-            // welcome email's subjects and bodies, and each renders from its named arguments.
+            // welcome email's subjects and bodies and the test message's, and each renders from its
+            // named arguments.
             ResourceManager resources = new("Tellma.Core.Resources.ServerStrings", typeof(ServerStrings).Assembly);
             ResourceSet? set = resources.GetResourceSet(CultureInfo.GetCultureInfo(culture), createIfNotExists: true, tryParents: false);
             Assert.NotNull(set);
@@ -180,6 +181,8 @@ namespace Tellma.Core.Tests.Localization
                     "Email_Notification_Html",
                     "Email_Notification_Subject",
                     "Email_Notification_Text",
+                    "Email_TestNotification_Subject",
+                    "Email_TestNotification_Text",
                     "Email_UserAdded_Html",
                     "Email_UserAdded_Subject",
                     "Email_UserAdded_Text",
@@ -196,6 +199,7 @@ namespace Tellma.Core.Tests.Localization
                     ["link"] = "https://example.com/a",
                     ["actorName"] = "Ada",
                     ["status"] = "Invited",
+                    ["sentAt"] = new DateTimeOffset(2026, 11, 20, 12, 0, 0, TimeSpan.Zero),
                 });
                 Assert.Contains("Acme", rendered, StringComparison.Ordinal);
                 Assert.DoesNotContain("{", rendered, StringComparison.Ordinal);

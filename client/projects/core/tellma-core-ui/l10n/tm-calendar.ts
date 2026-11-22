@@ -31,6 +31,15 @@ export interface TmCalendarParts {
 export interface TmCalendar {
   /** The Intl calendar identifier: 'gregory', 'islamic-umalqura', 'ethiopic'. */
   readonly id: string;
+  /**
+   * Whether the calendar dates days by a rule of its own that Intl's
+   * calendar of the same `id` does not follow day for day. The formatters
+   * then take the year, month and day from {@link TmCalendar.toParts} and
+   * only the names (months, digits, the pattern) from Intl.
+   *
+   * @internal
+   */
+  readonly ɵownConversion?: boolean;
   /** Converts an ISO date to this calendar's parts. */
   toParts(iso: string): TmCalendarParts;
   /** Converts in-calendar parts to ISO, or `null` when they name no real date. */

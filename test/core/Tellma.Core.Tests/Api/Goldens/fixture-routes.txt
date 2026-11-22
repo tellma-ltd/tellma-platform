@@ -10,6 +10,9 @@ POST /{tenantId}/api/web/users/invite | invite | core.User | entity | IdsRequest
 POST /{tenantId}/api/web/users/me | me | core.User | api | - | MeResult | member-only | idempotent | IH8_utI43bnm
 POST /{tenantId}/api/web/users/me/save | me/save | core.User | api | MeSaveRequest | MeResult | member-only | mutation | CYPfnhdrbYmY
 POST /{tenantId}/api/web/users/me/locale | me/locale | core.User | api | MeLocaleRequest | MeLocaleResult | member-only | mutation, read-only | L02Kb4ZV7bKr
+POST /{tenantId}/api/web/users/me/test-notification | me/test-notification | core.User | api | TestNotificationRequest | TestNotificationResult | member-only | mutation | RlMiPTM0An2o
+POST /{tenantId}/api/web/users/notification-preferences/get | notification-preferences/get | core.User | api | UserPreferencesRequest | IReadOnlyList<NotificationPreference> | core.User:Preferences | idempotent | -rX0DQqaFail
+POST /{tenantId}/api/web/users/notification-preferences/save | notification-preferences/save | core.User | entity | IdRequest<NotificationPreferencesArguments> | IReadOnlyList<NotificationPreference> | core.User:Preferences | mutation, read-only | rROigsnlEFzK
 POST /{tenantId}/api/web/users/me/preferences/set | me/preferences/set | core.User | api | UserPreferencesArguments | PreferencesResult | member-only | mutation, read-only | wT8mDrlFjWQL
 POST /{tenantId}/api/web/users/me/preferences/delete | me/preferences/delete | core.User | api | UserPreferenceKeysArguments | PreferencesResult | member-only | mutation, read-only | -Wf3OrTgSmAG
 POST /{tenantId}/api/web/users/preferences/get | preferences/get | core.User | api | UserPreferencesRequest | UserPreferencesResult | core.User:Preferences | idempotent | aOMZhcdCDIhl

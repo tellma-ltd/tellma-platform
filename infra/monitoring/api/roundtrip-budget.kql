@@ -1,0 +1,52 @@
+// Units of work above their round-trip ceiling, per operation.
+// Backs the "an operation takes more database round trips than its budget" alert, which finds an
+// N+1 per operation: each request's unit of work is tagged "<resource>:<kind>", where the kind is
+// the pipeline operation (query, save, action, ...) or the name of the API action that ran
+// (me, check, ...). The exporter lands the histogram as per-interval sums, counts and maximums, so
+// the hour's worst unit is compared with its kind's ceiling: one save at five round trips fires,
+// where a mean over the hour would hide it among the twos.
+//
+// A kind's ceiling is its warm budget, an overridden validation included, plus the one round trip
+// a cold connect cache or a stale tag adds: the reads two, a delete three (two with the stack's
+// own delete validation), a cached table read in full three (two beyond its row limit), and a
+// save or an entity action its dependent-round maximum of four. Kinds not listed, a
+// distribution's own API actions among them, are held to the fallback, the save ceiling. A transient failure's retry costs a round trip of its own, so a
+// retried unit can fire the alert alone; that is the alert to look at, not to page on.
+//
+// Excluded: units of work outside any request (an empty tag), jobs ("job:<key>") and provisioning
+// steps, whose round trips follow their work, and an Excel export's rows, which take one round
+// trip per page.
+let ceiling = datatable(kind: string, allowed: long)
+[
+    "query", 2,
+    "get", 2,
+    "get_by_ids", 2,
+    "get_by_parent_ids", 2,
+    "all", 3,
+    "save", 4,
+    "delete", 3,
+    "delete_by_query", 3,
+    "delete_with_descendants", 3,
+    "action", 4,
+    "api_action", 4,
+    "me", 2,
+    "me/save", 4,
+    "me/locale", 2,
+    "me/preferences/set", 2,
+    "me/preferences/delete", 2,
+    "invitation-status", 2,
+    "preferences/get", 2,
+    "check", 3,
+    "holders", 2,
+];
+let fallback = 4;
+customMetrics
+| where name == "tellma.data.roundtrips"
+| extend operation = tostring(customDimensions["operation"])
+| where isnotempty(operation)
+| extend owner = tostring(split(operation, ":")[0]), kind = tostring(split(operation, ":")[1])
+| where owner != "job" and kind !in ("job", "provisioning", "excel_rows")
+| summarize units = sum(valueCount), worst = max(valueMax) by operation, kind, bin(timestamp, 1h)
+| lookup kind=leftouter ceiling on kind
+| extend allowed = coalesce(allowed, fallback)
+| where worst > allowed
