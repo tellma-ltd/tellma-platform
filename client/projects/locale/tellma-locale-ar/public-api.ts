@@ -1,7 +1,9 @@
 /**
  * Public API Surface of @tellma/locale-ar — the reference Arabic locale
- * pack: library strings + the self-hosted Noto Sans Arabic subset, wired
- * by provideTellmaLocaleAr(). The template every later locale pack copies.
+ * pack: the library's and the platform's strings + the self-hosted Noto
+ * Sans Arabic subset. A Tellma app offers Arabic with tmArabic(); an app on
+ * the component library alone wires it by provideTellmaLocaleAr(). The
+ * template every later locale pack copies.
  *
  * @packageDocumentation
  */
@@ -12,3 +14,5 @@
 // LICENSE file in the root directory of this source tree.
 export * from './provide-tellma-locale-ar';
 export * from './strings-ar';
+export * from './strings-tm-ar';
+export * from './tm-arabic';

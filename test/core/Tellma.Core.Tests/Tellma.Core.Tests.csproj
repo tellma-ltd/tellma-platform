@@ -44,6 +44,12 @@
     <None Include="../../../client/projects/core/tellma-core/src/launch/launch-landing-vectors.json" Link="Tenancy\launch-landing-vectors.json" CopyToOutputDirectory="PreserveNewest" />
     <!-- The display-name golden the client's renderer reads too: one rule, one file. -->
     <None Include="../../../client/projects/core/tellma-core/src/entity/display-name-golden.json" Link="Data\Queries\display-name-golden.json" CopyToOutputDirectory="PreserveNewest" />
+    <!-- The Umm al-Qura vectors the client's calendar is checked against: generated from this
+         calendar, so the two implementations date every listed day alike. -->
+    <None Include="../../../client/projects/core/tellma-core-ui/calendar-umalqura/umalqura-vectors.json" Link="Calendars\umalqura-vectors.json" CopyToOutputDirectory="PreserveNewest" />
+    <!-- The offered (language, region) pairs the client's cross-engine check reads: the language
+         catalogue's own list, so a catalogue change turns the pin red until the file follows. -->
+    <None Include="../../../client/e2e/fixtures/offered-pairs.json" Link="Localization\offered-pairs.json" CopyToOutputDirectory="PreserveNewest" />
     <!-- The job alert queries are read at runtime and cross-checked against the instruments, tags
          and log events the job machinery emits, so a telemetry rename turns an alert query red at
          PR time. -->

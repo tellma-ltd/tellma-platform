@@ -155,14 +155,13 @@ export function tmFormatDate(
   const calendar = options?.calendar ?? tmGregorianCalendar();
   const style = options?.dateStyle ?? 'numeric';
   const date = utcDateOf(parts.year, parts.month, parts.day);
+  // The ISO text is rebuilt from the Date, so a day past its month's end
+  // rolls over in the calendar's parts exactly as it does in Intl's.
+  const rolled = ɵtmToIsoDate(date.getUTCFullYear(), date.getUTCMonth() + 1, date.getUTCDate());
   if (style === 'quarter') {
     // The quarter and its year are the display calendar's, read through
-    // the calendar seam. The ISO text is rebuilt from the Date first, so
-    // a day past its month's end rolls over here exactly as it does in
-    // the other styles.
-    const inCalendar = calendar.toParts(
-      ɵtmToIsoDate(date.getUTCFullYear(), date.getUTCMonth() + 1, date.getUTCDate()),
-    );
+    // the calendar seam.
+    const inCalendar = calendar.toParts(rolled);
     // Three months to a quarter, capped at four: Ethiopic's thirteenth
     // month falls in the fourth quarter (spec 0010 §D.7).
     const quarter = tmFormatNumber(Math.min(4, Math.ceil(inCalendar.month / 3)), locale);
@@ -174,7 +173,10 @@ export function tmFormatDate(
       ),
     );
   }
-  return ɵtmFormatWithoutEra(formatterFor(locale, calendar.id, style), date);
+  return ɵtmFormatWithoutEra(formatterFor(locale, calendar.id, style), date, {
+    calendar,
+    iso: rolled,
+  });
 }
 
 /**
@@ -194,6 +196,124 @@ export function ɵtmPlainText(text: string): string {
 }
 
 /**
+ * The calendar date a formatter writes, for the calendars that date days
+ * by their own rule (see {@link TmCalendar.ɵownConversion}).
+ *
+ * @internal Shared with the calendar popup and the instant formatters.
+ */
+export interface ɵTmOwnDate {
+  /** The display calendar the formatter was built for. */
+  readonly calendar: TmCalendar;
+  /** The ISO date the formatted moment falls on, in the formatter's time zone. */
+  readonly iso: string;
+}
+
+/** Milliseconds in a day. */
+const DAY_MS = 86_400_000;
+
+/** The part types an own-conversion calendar takes from Intl's view of its month. */
+const MONTH_NAMED_PARTS: ReadonlySet<string> = new Set([
+  'year',
+  'relatedYear',
+  'yearName',
+  'month',
+  'era',
+]);
+
+/** The number format of each formatter's day field, in its digits and padding. */
+const dayFormats = new WeakMap<Intl.DateTimeFormat, Intl.NumberFormat>();
+
+/**
+ * The number format that writes a day the way `formatter` writes its day
+ * field: in its numbering system, padded to two digits when its pattern
+ * pads (`dd`). The padding is read off a day Intl numbers below 10, since
+ * `resolvedOptions()` omits the fields of a `dateStyle` formatter.
+ */
+function dayFormatOf(formatter: Intl.DateTimeFormat): Intl.NumberFormat {
+  let format = dayFormats.get(formatter);
+  if (format === undefined) {
+    const { locale, numberingSystem } = formatter.resolvedOptions();
+    const plain = new Intl.NumberFormat(locale, { numberingSystem, useGrouping: false });
+    const padded = new Intl.NumberFormat(locale, {
+      numberingSystem,
+      useGrouping: false,
+      minimumIntegerDigits: 2,
+    });
+    format = plain;
+    // Up to a month of probe days: one of the first nine days of a month
+    // turns up within it, whatever the calendar.
+    search: for (let offset = 0; offset < 31; offset++) {
+      const day = formatter
+        .formatToParts(Date.UTC(2001, 0, 1 + offset, 12))
+        .find((part) => part.type === 'day');
+      if (day === undefined) {
+        break;
+      }
+      const value = tmStripBidiControls(day.value);
+      for (let number = 1; number <= 9; number++) {
+        if (value === padded.format(number)) {
+          format = padded;
+          break search;
+        }
+        if (value === plain.format(number)) {
+          break search;
+        }
+      }
+    }
+    dayFormats.set(formatter, format);
+  }
+  return format;
+}
+
+/** The days from 1970-01-01 to an ISO date. */
+function dayNumberOf(iso: string): number {
+  const parts = ɵtmParseIsoDate(iso)!;
+  return Math.round(utcDateOf(parts.year, parts.month, parts.day).getTime() / DAY_MS);
+}
+
+/**
+ * The parts `formatter` writes for `date`, with an own-conversion
+ * calendar's year, month and day in place of Intl's. Intl supplies the
+ * pattern, the digits and the names: the month and year are read from its
+ * view of the middle of the calendar's month, which lies in the same month
+ * whichever rule dates it (the rules differ by a day or two), and the day
+ * is written in the formatter's digits. The weekday and the time of day
+ * are the real moment's.
+ */
+function ownDateParts(
+  formatter: Intl.DateTimeFormat,
+  date: Date,
+  own: ɵTmOwnDate,
+): Intl.DateTimeFormatPart[] {
+  const parts = formatter.formatToParts(date);
+  const { calendar, iso } = own;
+  const inCalendar = calendar.toParts(iso);
+  const middle = calendar.fromParts({
+    year: inCalendar.year,
+    month: inCalendar.month,
+    day: Math.min(15, calendar.daysInMonth(inCalendar.year, inCalendar.month)),
+  });
+  if (middle === null) {
+    return parts;
+  }
+  const anchor = formatter.formatToParts(
+    new Date(date.getTime() + (dayNumberOf(middle) - dayNumberOf(iso)) * DAY_MS),
+  );
+  // One formatter writes one sequence of parts for every date.
+  if (anchor.length !== parts.length) {
+    return parts;
+  }
+  return parts.map((part, index): Intl.DateTimeFormatPart => {
+    if (part.type === 'day') {
+      return { type: 'day', value: dayFormatOf(formatter).format(inCalendar.day) };
+    }
+    return MONTH_NAMED_PARTS.has(part.type) && anchor[index].type === part.type
+      ? anchor[index]
+      : part;
+  });
+}
+
+/**
  * Formats a date with the calendar's ERA SUFFIX removed (`9/16/1447 AH`
  * becomes `9/16/1447`).
  *
@@ -205,11 +325,21 @@ export function ɵtmPlainText(text: string): string {
  * The result also carries no bidirectional control character and only
  * plain spaces (see `ɵtmPlainText`).
  *
+ * For a calendar that dates days by its own rule, pass `own`: the year,
+ * month and day are then the calendar's, not Intl's.
+ *
  * @internal Shared with the calendar popup, which builds its own headers,
  * and with the instant formatters.
  */
-export function ɵtmFormatWithoutEra(formatter: Intl.DateTimeFormat, date: Date): string {
-  const parts = formatter.formatToParts(date);
+export function ɵtmFormatWithoutEra(
+  formatter: Intl.DateTimeFormat,
+  date: Date,
+  own?: ɵTmOwnDate,
+): string {
+  const parts =
+    own?.calendar.ɵownConversion === true
+      ? ownDateParts(formatter, date, own)
+      : formatter.formatToParts(date);
   if (!parts.some((part) => part.type === 'era')) {
     return ɵtmPlainText(parts.map((part) => part.value).join(''));
   }
@@ -543,7 +673,14 @@ function monthNamesFor(
     );
     const months = calendar.monthsInYear(referenceYear);
     for (let month = 1; month <= months; month++) {
-      const iso = calendar.fromParts({ year: referenceYear, month, day: 1 });
+      // The middle of the month: Intl names the month of the day it dates,
+      // and an own-conversion calendar's first day can be Intl's last day
+      // of the month before.
+      const iso = calendar.fromParts({
+        year: referenceYear,
+        month,
+        day: Math.min(15, calendar.daysInMonth(referenceYear, month)),
+      });
       if (iso === null) {
         continue;
       }

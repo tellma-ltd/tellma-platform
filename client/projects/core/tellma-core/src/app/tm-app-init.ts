@@ -18,6 +18,7 @@ import { NavigationEnd, Router } from '@angular/router';
 import { TmApi } from '../api/tm-api';
 import { TmHttpApi } from '../api/tm-http-api';
 import { TM_BOOT_RESULT } from '../boot/tm-boot-result';
+import { TmLocalization } from '../l10n/tm-localization';
 import { tmRoutedTenant } from '../launch/tm-routed-tenant';
 import { TmClientMetadataStore } from '../metadata/tm-client-metadata';
 import { TmTelemetry } from '../observe/tm-telemetry';
@@ -27,14 +28,15 @@ import { TmSession } from '../session/tm-session';
 import { TmClientStore } from '../state/store/tm-client-store';
 import { TmUrls } from '../urls/tm-urls';
 import type { TmAppConfig } from './tm-app-config';
-import { TmPlatformText, type TmLoadedStrings } from './tm-platform-text';
 
 // The startup sequence's initializers (spec 0024 §4.3), in parallel: the
-// Core chunk; the active language's string pack and client tables, and
+// Core chunk; the boot language's string pack and client tables, and
 // English's; the session's cookie parse; and the client store's boot step,
-// which the Core chunk's load never waits for. None awaits the API, so a warm
-// launch has no network wait. A chunk or string load that fails shows the
-// boot page `load-failed`, and the app never starts. Beside them, the router
+// which the Core chunk's load never waits for. Once the store's launch
+// documents are in, the language and calendar they resolve to load too, so
+// the first frame shows them and never another first. None awaits the API,
+// so a warm launch has no network wait. A chunk or boot-language load that
+// fails shows the boot page `load-failed`, and the app never starts. Beside them, the router
 // wiring: the routed tenant's `lastTenantId`, focus after navigation and the
 // launch's timing; and
 // after first render, at idle, the Contracts chunk, so the first API call
@@ -56,7 +58,7 @@ export function tmStartup(config: TmAppConfig): EnvironmentProviders[] {
       const boot = inject(TM_BOOT_RESULT);
       const telemetry = inject(TmTelemetry);
       const metadata = inject(TmClientMetadataStore);
-      const text = inject(TmPlatformText);
+      const l10n = inject(TmLocalization);
       const failed =
         (chunk: string) =>
         (error: unknown): Promise<never> => {
@@ -76,24 +78,19 @@ export function tmStartup(config: TmAppConfig): EnvironmentProviders[] {
 
       // --- The Core chunk and the string packs of the active language and English ---
       const core = config.metadata.core().then((chunk) => metadata.set(chunk), failed('core'));
-      const language = document.documentElement.lang || 'en';
-      const strings = Promise.all(
-        [...new Set([language, 'en'])].map(
-          // The pack and the tables of one language load side by side.
-          async (code): Promise<TmLoadedStrings> => {
-            const [pack, tables] = await Promise.all([
-              config.metadata.strings[code]?.(),
-              config.languages.find((offered) => offered.code === code)?.strings(),
-            ]);
-            return { pack: pack ?? {}, tables };
-          },
-        ),
-      ).then((loaded) => text.ɵset(loaded), failed('strings'));
+      // The boot language is the one the boot script set on <html>, or the default when it is not offered.
+      const lang = document.documentElement.lang;
+      const language = config.languages.some((offered) => offered.code === lang) ? lang : (config.languages[0]?.code ?? 'en');
+      const strings = Promise.all([...new Set([language, 'en'])].map((code) => l10n.ɵloadLanguage(code))).then(
+        () => undefined,
+        failed('strings'),
+      );
 
       // --- The session, and the store's boot step, which never rejects ---
       inject(TmSession);
       const started = inject(TmClientStore).ɵstart(tmRoutedTenant(document.location.pathname));
-      return Promise.all([core, strings, started]).then(() => undefined);
+      // --- Then what the launch documents resolve to: the user's language and calendar ---
+      return Promise.all([core, strings, started]).then(() => l10n.ɵready());
     }),
     provideEnvironmentInitializer(() => {
       const router = inject(Router);

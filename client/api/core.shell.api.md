@@ -11,6 +11,8 @@ import { Type } from '@angular/core';
 // @public
 export class TmSignedOutPage {
     protected signIn(): void;
+    protected readonly signInLabel: i0.Signal<string>;
+    protected readonly title: i0.Signal<string>;
     static ɵcmp: i0.ɵɵComponentDeclaration<TmSignedOutPage, "tm-signed-out-page", never, {}, {}, never, never, true, never>;
     static ɵfac: i0.ɵɵFactoryDeclaration<TmSignedOutPage, never>;
 }
@@ -19,6 +21,7 @@ export class TmSignedOutPage {
 export class TmTenantPicker {
     constructor();
     protected readonly tenants: Signal<readonly TmMembership[] | undefined>;
+    protected readonly title: Signal<string>;
     protected readonly urls: TmUrls;
     static ɵcmp: i0.ɵɵComponentDeclaration<TmTenantPicker, "tm-tenant-picker", never, {}, {}, never, never, true, never>;
     static ɵfac: i0.ɵɵFactoryDeclaration<TmTenantPicker, never>;

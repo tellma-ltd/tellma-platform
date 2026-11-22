@@ -6,11 +6,20 @@
   "peerDependencies": {
     "@angular/core": "^22.0.0",
     "@jsverse/transloco": "^8.4.0",
+    "@tellma/core": "^0.1.0",
     "@tellma/core-ui": "^0.1.0"
   },
   "dependencies": {
     "tslib": "^2.3.0"
   },
   "sideEffects": false,
-  "type": "module"
+  "type": "module",
+  "exports": {
+    "./fonts/*": {
+      "default": "./fonts/*"
+    },
+    "./styles.css": {
+      "default": "./styles.css"
+    }
+  }
 }

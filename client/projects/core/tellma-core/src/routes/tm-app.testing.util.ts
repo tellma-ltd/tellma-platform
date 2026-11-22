@@ -24,6 +24,7 @@ import type { TmAppConfig } from '../app/tm-app-config';
 import { tmFeature, type TmFeature } from '../declarations/tm-feature';
 import { tmPage } from '../declarations/tm-page';
 import { tmEntity } from '../entity/tm-entity-declaration';
+import { tmEnglish } from '../l10n/tm-english';
 import type { TmEntitySummary } from '../entity/tm-entity-metadata';
 import type { TmMembership } from '../launch/tm-membership';
 import type { TmClientMetadata } from '../metadata/tm-client-metadata';
@@ -214,7 +215,7 @@ export function tmRouteTestConfig(): TmAppConfig {
   };
   return {
     metadata: loaders,
-    languages: [{ code: 'en', dir: 'ltr', strings: () => Promise.resolve({ tm: { home: { title: 'Home' } }, tmUi: {} }) }],
+    languages: [tmEnglish()],
     features: [tmRouteTestFeature()],
   };
 }

@@ -2,7 +2,20 @@
 
 The Arabic locale pack — and the template every future locale pack copies.
 
-One provider wires everything:
+A Tellma app offers Arabic with its language definition, and imports the
+pack's stylesheet after the platform's:
+
+```ts
+provideTellma({ metadata: tellmaMetadata, languages: [tmEnglish(), tmArabic()], features: [] });
+```
+
+```css
+@import '@tellma/core/styles.css';
+@import '@tellma/locale-ar/styles.css';
+```
+
+An application on the component library alone wires the pack with one
+provider instead:
 
 ```ts
 providers: [provideTellmaUi(), provideTellmaLocaleAr()]
@@ -12,19 +25,15 @@ providers: [provideTellmaUi(), provideTellmaLocaleAr()]
 
 - **Strings** — the library's built-in messages in Arabic
   (`strings-ar.ts`), merged into Transloco's `ar` resources under the shared
-  `tmUi` namespace. Plurals carry the full Arabic ICU categories
-  (one/two/few/many/other); imperative verbs conjugate for the addressee via
-  the ambient `{gender}` parameter (see below).
+  `tmUi` namespace, and the platform's own (`strings-tm-ar.ts`, under `tm`),
+  which `tmArabic()` hands the platform. Plurals carry the full Arabic ICU
+  categories (one/two/few/many/other); imperative verbs conjugate for the
+  addressee via the ambient `{gender}` parameter (see below).
 - **Fonts** — self-hosted Noto Sans Arabic woff2 with an Arabic
   `unicode-range`, so the face downloads only when Arabic glyphs render.
-  `fonts/fonts.css` carries the `@font-face`; OFL.txt ships alongside.
-
-The consuming app adds the pack's stylesheet to its build's `styles` array
-(the pipeline fingerprints the binary like any other asset):
-
-```jsonc
-"styles": [..., "node_modules/@tellma/locale-ar/fonts/fonts.css"]
-```
+  `fonts/fonts.css` carries the `@font-face`, `styles.css` imports it, and
+  OFL.txt ships alongside; the pipeline fingerprints the binary like any
+  other asset.
 
 ## Gendered strings
 
@@ -46,7 +55,11 @@ Copy this package's structure:
 2. Vendor the script's font subsets (see `tools/fonts/vendor-fonts-ar.mjs`)
    if the language needs a non-Latin face; skip fonts entirely for
    Latin-script locales.
-3. `provide-tellma-locale-xx.ts` — register the strings.
-4. If the script's leading differs from Latin, add the language to the token
+3. `strings-tm-xx.ts` — translate every key of the platform's English
+   `tm` table (`tmEnglish()` in `@tellma/core`).
+4. `provide-tellma-locale-xx.ts` — register the strings; `tm-xx.ts` — the
+   language definition `tmXx()`, with its direction and both tables;
+   `styles.css` — import the pack's fonts.
+5. If the script's leading differs from Latin, add the language to the token
    preset's `leadingByLang`; if it needs a new face, add the family to the
    preset's `font.ui` stack.

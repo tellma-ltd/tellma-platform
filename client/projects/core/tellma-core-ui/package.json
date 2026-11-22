@@ -22,6 +22,12 @@
   "exports": {
     "./breakpoints.json": {
       "default": "./layout/breakpoints.json"
+    },
+    "./fonts/*": {
+      "default": "./fonts/*"
+    },
+    "./styles/*": {
+      "default": "./styles/*"
     }
   },
   "tellma": {

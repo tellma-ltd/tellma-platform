@@ -79,6 +79,12 @@ export { TM_APP_DECLARATIONS, type TmAppDeclarations } from './src/app/tm-app-de
 export type { TmRouteData, TmRouteSkeleton } from './src/app/tm-route-data';
 export type { TmPageKind } from './src/context/tm-page-kind';
 
+// Localization: the language, the regional formats, the calendar and the zones, server text and English.
+export { TmLocalization, type TmLocaleChange } from './src/l10n/tm-localization';
+export type { TmLocaleSave } from './src/l10n/tm-locale-write';
+export { TmServerText, type TmProblemText } from './src/l10n/tm-server-text';
+export { tmEnglish } from './src/l10n/tm-english';
+
 // Routes and URLs: the title strategy, the app's URLs and the search query codec.
 export { TmTitleStrategy } from './src/routes/tm-title-strategy';
 export { TmUrls, type TmRouteMatch, type TmTenantUrls } from './src/urls/tm-urls';

@@ -456,6 +456,9 @@ export function tmFormatDateTime(
         calendar: calendarId,
       }),
       new Date(at),
+      options.calendar === undefined
+        ? undefined
+        : { calendar: options.calendar, iso: zoneDateOf(at, options.timeZone) },
     ),
     options.zoneLabel,
     at,

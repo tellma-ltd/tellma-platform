@@ -519,6 +519,9 @@ export interface TmDraftsReplyMessage {
 }
 
 // @public
+export function tmEnglish(): TmLanguageDefinition;
+
+// @public
 export class TmEntities {
     bySegment(segment: string): TmEntitySummary | undefined;
     declaration(name: string): TmEntityDeclaration | undefined;
@@ -786,6 +789,42 @@ export interface TmListPayload {
 }
 
 // @public
+export interface TmLocaleChange {
+    readonly calendar?: string | null;
+    readonly digits?: TmDigitStyle | null;
+    readonly language?: string | null;
+    readonly region?: string | null;
+    readonly timeZone?: string | null;
+}
+
+// @public
+export type TmLocaleSave = 'failed' | 'idle' | 'saved' | 'saving';
+
+// @public
+export class TmLocalization {
+    constructor();
+    readonly calendar: Signal<TmCalendar>;
+    readonly calendarCode: Signal<string>;
+    readonly calendars: Signal<readonly string[]>;
+    readonly contentSlot: Signal<1 | 2 | 3>;
+    readonly deviceTimeZone: Signal<string>;
+    readonly digits: Signal<TmDigitStyle | null>;
+    readonly dir: Signal<'ltr' | 'rtl'>;
+    readonly displayName: Signal<string>;
+    readonly language: Signal<string>;
+    readonly languages: Signal<readonly TmLanguageDefinition[]>;
+    readonly locale: Signal<string>;
+    readonly localeSave: Signal<TmLocaleSave>;
+    readonly region: Signal<string>;
+    setCalendar(code: string): void;
+    setLanguage(code: string): void;
+    setLocale(change: TmLocaleChange): void;
+    readonly timeZone: Signal<string>;
+    static ɵfac: i0.ɵɵFactoryDeclaration<TmLocalization, never>;
+    static ɵprov: i0.ɵɵInjectableDeclaration<TmLocalization>;
+}
+
+// @public
 export interface TmLoginMark {
     readonly at: number;
     readonly auto: boolean;
@@ -984,6 +1023,12 @@ export type TmProblemError = TmJsonObject & {
     readonly code: string;
     readonly message: string;
 };
+
+// @public
+export interface TmProblemText {
+    readonly detail: string;
+    readonly title: string;
+}
 
 // @public
 export interface TmProfile {
@@ -1208,6 +1253,16 @@ export interface TmSecurableSummary {
 // @public
 export interface TmSendOptions {
     readonly background?: boolean;
+}
+
+// @public
+export class TmServerText {
+    error(error: TmProblemError, entity?: string): Signal<string>;
+    has(key: string): boolean;
+    message(key: string, args?: Readonly<Record<string, TmJson>>): Signal<string>;
+    problem(problem: TmProblem): Signal<TmProblemText>;
+    static ɵfac: i0.ɵɵFactoryDeclaration<TmServerText, never>;
+    static ɵprov: i0.ɵɵInjectableDeclaration<TmServerText>;
 }
 
 // @public

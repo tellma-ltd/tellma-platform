@@ -7,9 +7,9 @@ import { computed, effect, inject, Injectable, signal, type Signal } from '@angu
 import { Title } from '@angular/platform-browser';
 import { type ActivatedRouteSnapshot, type RouterStateSnapshot, TitleStrategy } from '@angular/router';
 
-import { TmPlatformText } from '../app/tm-platform-text';
 import type { TmRouteData } from '../app/tm-route-data';
 import { TmEntities } from '../entity/tm-entities';
+import { TmLocalization } from '../l10n/tm-localization';
 import { TmRouteRules } from './tm-route-rules';
 import type { TmRouteDataInternal } from './tm-routes';
 
@@ -19,21 +19,13 @@ import type { TmRouteDataInternal } from './tm-routes';
 // page, the create label on a create page. The title follows the language,
 // since it is a signal.
 
-/** The English fallbacks of the platform's own route titles. */
-const FALLBACKS: Readonly<Record<string, string>> = {
-  'tm.home.title': 'Home',
-  'tm.admin.settings.title': 'Settings',
-  'tm.admin.me.title': 'My settings',
-  'tm.errors.notFound.title': 'Page not found',
-};
-
 /**
  * Sets the document title to the routed page's title and the distribution's
  * display name, `Centers · Acme`; the display name alone outside any page.
  */
 @Injectable({ providedIn: 'root' })
 export class TmTitleStrategy extends TitleStrategy {
-  readonly #text = inject(TmPlatformText);
+  readonly #l10n = inject(TmLocalization);
   readonly #entities = inject(TmEntities);
   readonly #rules = inject(TmRouteRules);
 
@@ -49,7 +41,7 @@ export class TmTitleStrategy extends TitleStrategy {
     const title = inject(Title);
     effect(() => {
       const page = this.pageTitle();
-      const name = this.#text.displayName();
+      const name = this.#l10n.displayName();
       title.setTitle(page && name ? `${page} · ${name}` : page || name);
     });
   }
@@ -71,11 +63,11 @@ export class TmTitleStrategy extends TitleStrategy {
   #titleOf(route: ActivatedRouteSnapshot): Signal<string> | null {
     const data = route.data as Partial<TmRouteData & TmRouteDataInternal>;
     if (data.titleKey) {
-      return this.#text.text(data.titleKey, FALLBACKS[data.titleKey]);
+      return this.#l10n.ɵtext(data.titleKey);
     }
     const report = data.kind === 'report' ? this.#rules.report(route.paramMap.get('key') ?? '') : undefined;
     if (report) {
-      return this.#text.text(report.titleKey);
+      return this.#l10n.ɵtext(report.titleKey);
     }
     const segment = route.paramMap.get('segment');
     const summary = data.ɵentity && segment !== null ? this.#entities.bySegment(segment) : undefined;
@@ -83,7 +75,7 @@ export class TmTitleStrategy extends TitleStrategy {
       return null;
     }
     return data.ɵentity === 'create'
-      ? this.#text.text(summary.newLabelKey, summary.labelFallback)
+      ? this.#l10n.ɵtext(summary.newLabelKey, undefined, summary.labelFallback)
       : this.#entities.label(summary.name, data.ɵentity === 'search' || data.ɵentity === 'list');
   }
 }
