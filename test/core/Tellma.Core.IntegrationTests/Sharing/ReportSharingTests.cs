@@ -5,17 +5,22 @@
 
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using System.Diagnostics;
 using System.Globalization;
 using System.Text.Json;
 using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Api;
+using Tellma.Core.Abstractions.Caching;
 using Tellma.Core.Abstractions.Crud;
 using Tellma.Core.Abstractions.Data;
+using Tellma.Core.Abstractions.Entities;
 using Tellma.Core.Abstractions.Errors;
 using Tellma.Core.Abstractions.Reports;
 using Tellma.Core.Abstractions.Sharing;
+using Tellma.Core.Abstractions.Validation;
 using Tellma.Core.IntegrationTests.Access;
+using Tellma.Core.Localization;
 using Tellma.Core.Queryex;
 
 namespace Tellma.Core.IntegrationTests.Sharing
@@ -26,8 +31,10 @@ namespace Tellma.Core.IntegrationTests.Sharing
     ///     expired or a future membership, a public or an inactive role, everyone); Edit saves and
     ///     View does not; the Everyone grant's uniqueness and View-only check; standard rows share and
     ///     publish but refuse every other write; a share never stamps its row; a delete removes the
-    ///     row's grants; one statement text serves every caller; the shared-with-me filter; the
-    ///     permissions and shares extras; and the share notice's raise, withdrawal and replacement.
+    ///     row's grants and its notices; one statement text serves every caller; the shared-with-me
+    ///     filter; the permissions and shares extras, which name no grantee to a caller who may not
+    ///     share; the share notice's raise, withdrawal, replacement and multilingual arguments; the
+    ///     user and role caps, held under concurrent shares; and the grants' shape.
     ///     The class has its own databases, so it alone seeds their users, roles and reports.
     /// </summary>
     /// <param name="fixture">The tenant databases and their composition.</param>
@@ -248,7 +255,7 @@ namespace Tellma.Core.IntegrationTests.Sharing
         // --- What a share writes, and what a delete removes ---
 
         [Fact]
-        public async Task A_share_never_stamps_its_row_a_transfer_does_and_a_delete_removes_the_rows_grants()
+        public async Task A_share_never_stamps_its_row_a_transfer_does_and_a_delete_removes_the_rows_grants_and_notices()
         {
             (_, string ownerSubject) = await fixture.SeedCallerAsync("Owner seven");
             (int grantee, _) = await fixture.SeedCallerAsync("Grantee seven");
@@ -270,13 +277,19 @@ namespace Tellma.Core.IntegrationTests.Sharing
             Assert.Equal(heir, await ScalarAsync<int>($"SELECT [OwnerId] FROM [core].[Reports] WHERE [Id] = {id}"));
             Assert.Equal(0, await ScalarAsync<int>($"SELECT COUNT(*) FROM [core].[ReportShares] WHERE [ReportId] = {id} AND [UserId] = {heir}"));
 
-            // --- The new owner deletes it, and its grants go with it ---
+            // --- The remaining grantee still holds the share notice, the new owner no longer does ---
+            string notices = $"SELECT COUNT(*) FROM [core].[Notifications] WHERE [DedupKey] = N'core.Report:{id}'";
+            Assert.Equal(grantee, await ScalarAsync<int>($"SELECT [UserId] FROM [core].[Notifications] WHERE [DedupKey] = N'core.Report:{id}'"));
+            Assert.Equal(1, await ScalarAsync<int>(notices));
+
+            // --- The new owner deletes it, and its grants and notices go with it ---
             await using (AsyncServiceScope scope = await fixture.ScopeAsync(heirSubject))
             {
                 _ = await Reports(scope).DeleteByIdsAsync([id], null, Token);
             }
 
             Assert.Equal(0, await ScalarAsync<int>($"SELECT COUNT(*) FROM [core].[ReportShares] WHERE [ReportId] = {id}"));
+            Assert.Equal(0, await ScalarAsync<int>(notices));
         }
 
         [Fact]
@@ -349,13 +362,17 @@ namespace Tellma.Core.IntegrationTests.Sharing
                     grants.Select(static grant => (Int(grant, "userId"), Int(grant, "roleId"), grant.GetProperty("access").GetString())));
                 Assert.All(grants, grant => Assert.Equal(owner, grant.GetProperty("sharedById").GetInt32()));
                 Assert.NotNull(read.Related);
+                Assert.Superset(new HashSet<int> { bea, ada }, RelatedIds<User>(read, "core.User").ToHashSet());
+                Assert.Contains(role, RelatedIds<Role>(read, "core.Role"));
             }
 
-            // --- An Edit grantee may not share: the extra answers nothing for the row, and no 403 ---
+            // --- An Edit grantee may not share: the extra answers nothing for the row, no 403, and no grantee is related ---
             await using (AsyncServiceScope scope = await fixture.ScopeAsync(beaSubject))
             {
                 EntitiesResult<Report> read = await Reports(scope).GetByIdAsync(id, new DetailsRequest { Include = [ShareableNames.SharesExtra] }, Token);
                 Assert.Equal(0, read.Extras![ShareableNames.SharesExtra].GetArrayLength());
+                Assert.DoesNotContain(ada, RelatedIds<User>(read, "core.User"));
+                Assert.Empty(RelatedIds<Role>(read, "core.Role"));
             }
         }
 
@@ -384,6 +401,14 @@ namespace Tellma.Core.IntegrationTests.Sharing
                  await ScalarAsync<string>($"SELECT [TargetResource] FROM [core].[Notifications] WHERE [DedupKey] = N'core.Report:{id}'"),
                  await ScalarAsync<long>($"SELECT [TargetId] FROM [core].[Notifications] WHERE [DedupKey] = N'core.Report:{id}'")));
 
+            // --- In a tenant of one content language, each text fills its first slot alone ---
+            string json = await ScalarAsync<string>($"SELECT [ArgumentsJson] FROM [core].[Notifications] WHERE [DedupKey] = N'core.Report:{id}'") ?? "null";
+            using (var arguments = JsonDocument.Parse(json))
+            {
+                Assert.Equal(["Sales", null, null], Slots(arguments.RootElement.GetProperty("title")));
+                Assert.Equal(["Owner eleven", null, null], Slots(arguments.RootElement.GetProperty("actorName")));
+            }
+
             // --- Role and Everyone grants notify no one ---
             await PublishAsync(publisher, [id], new PublishArguments([new RoleGrant(role, ShareAccess.View)], null, Everyone: true));
             Assert.Equal(1, await ScalarAsync<int>(notices));
@@ -395,6 +420,141 @@ namespace Tellma.Core.IntegrationTests.Sharing
             await ShareAsync(publisher, [id], new ShareArguments(null, [grantee]));
             await ShareAsync(publisher, [id], new ShareArguments([new UserGrant(grantee, ShareAccess.View)], null));
             Assert.Equal(1, await ScalarAsync<int>(notices));
+        }
+
+        [Fact]
+        public async Task The_share_notice_carries_the_rows_title_and_the_sharers_name_in_every_content_language()
+        {
+            // --- The second tenant, which no other case seeds: English content first, then Arabic, on an instance that offers both ---
+            await fixture.ExecuteAsync(
+                ConnectDatabase.TenantB,
+                $"UPDATE [core].[Settings] SET [SecondaryLanguage] = 'ar'; UPDATE [core].[VersionTags] SET [Tag] = NEWID() WHERE [Name] = N'{VersionTagNames.Settings}';");
+            await using ServiceProvider bilingual = fixture.CreateInstance(static services => services.Replace(ServiceDescriptor.Singleton(new LanguageDeclaration(["en", "ar"], []))));
+            (int owner, string ownerSubject) = await SeedSecondTenantUserAsync("Owner twelve", "مالك");
+            (int grantee, _) = await SeedSecondTenantUserAsync("Grantee twelve", "مستلم");
+
+            // --- A report titled in both languages, shared with the grantee ---
+            int id;
+            await using (AsyncServiceScope scope = await fixture.ScopeAsync(ownerSubject, tenantId: ConnectDatabase.TenantB, services: bilingual))
+            {
+                Report report = new()
+                {
+                    Title = "Sales",
+                    Title2 = "مبيعات",
+                    Root = "core.User",
+                    Kind = ReportKind.List,
+                    DefinitionJson = Definition,
+                };
+                EntitiesResult<Report> saved = await Reports(scope).SaveAsync([report], new SaveOptions { ReturnEntities = false }, Token);
+                id = checked((int)Assert.Single(saved.Ids));
+            }
+
+            Assert.Equal("مبيعات", await fixture.ScalarAsync<string>(ConnectDatabase.TenantB, $"SELECT [Title2] FROM [core].[Reports] WHERE [Id] = {id}"));
+            await using (AsyncServiceScope scope = await fixture.ScopeAsync(ownerSubject, tenantId: ConnectDatabase.TenantB, services: bilingual))
+            {
+                _ = await Reports(scope).ExecuteActionAsync(ShareableNames.ShareAction, [id], new ShareArguments([new UserGrant(grantee, ShareAccess.View)], null), new ActionOptions(), Token);
+            }
+
+            // --- The notice's arguments: each text in its three content slots ---
+            string where = $"FROM [core].[Notifications] WHERE [DedupKey] = N'core.Report:{id}'";
+            Assert.Equal((grantee, owner), (await fixture.ScalarAsync<int>(ConnectDatabase.TenantB, $"SELECT [UserId] {where}"), await fixture.ScalarAsync<int>(ConnectDatabase.TenantB, $"SELECT [ActorUserId] {where}")));
+            string json = await fixture.ScalarAsync<string>(ConnectDatabase.TenantB, $"SELECT [ArgumentsJson] {where}") ?? "null";
+            using var arguments = JsonDocument.Parse(json);
+            Assert.Equal(["Sales", "مبيعات", null], Slots(arguments.RootElement.GetProperty("title")));
+            Assert.Equal(["Owner twelve", "مالك", null], Slots(arguments.RootElement.GetProperty("actorName")));
+        }
+
+        // --- The grant caps and the grantees' shape ---
+
+        [Fact]
+        public async Task The_user_and_role_caps_admit_a_row_at_each_and_refuse_one_grant_past_it()
+        {
+            (_, string ownerSubject) = await fixture.SeedCallerAsync("Owner thirteen");
+            int[] users = await SeedUsersAsync(ShareableNames.MaxUserGrants + 1, "Grantee thirteen");
+            int[] roles = await SeedRolesAsync(ShareableNames.MaxRoleGrants + 1);
+            string publisher = await PublisherAsync(ownerSubject);
+            int id = await CreateAsync(publisher);
+            string userGrants = $"SELECT COUNT(*) FROM [core].[ReportShares] WHERE [ReportId] = {id} AND [UserId] IS NOT NULL";
+            string roleGrants = $"SELECT COUNT(*) FROM [core].[ReportShares] WHERE [ReportId] = {id} AND [RoleId] IS NOT NULL";
+
+            // --- One user past the cap in one call: refused, nothing written ---
+            ValidationException tooMany = await Assert.ThrowsAsync<ValidationException>(() => ShareAsync(publisher, [id], new ShareArguments([.. users.Select(static user => new UserGrant(user, ShareAccess.View))], null)));
+            ValidationError error = Assert.Single(tooMany.Errors);
+            Assert.Equal(("Arguments.Set", SharingValidationCodes.TooManyGrants, "user", ShareableNames.MaxUserGrants), (error.Path.ToString(), error.Code, error.Arguments["kind"], error.Arguments["max"]));
+            Assert.Equal(0, await ScalarAsync<int>(userGrants));
+
+            // --- At the cap: admitted; one more on top of the stored grants: refused ---
+            await ShareAsync(publisher, [id], new ShareArguments([.. users.SkipLast(1).Select(static user => new UserGrant(user, ShareAccess.View))], null));
+            Assert.Equal(ShareableNames.MaxUserGrants, await ScalarAsync<int>(userGrants));
+            ValidationException onTop = await Assert.ThrowsAsync<ValidationException>(() => ShareAsync(publisher, [id], new ShareArguments([new UserGrant(users[^1], ShareAccess.View)], null)));
+            Assert.Equal(("Arguments.Set", SharingValidationCodes.TooManyGrants), Only(onTop));
+
+            // --- The same for roles, at their own cap ---
+            ValidationException tooManyRoles = await Assert.ThrowsAsync<ValidationException>(() => PublishAsync(publisher, [id], new PublishArguments([.. roles.Select(static role => new RoleGrant(role, ShareAccess.View))], null, null)));
+            ValidationError roleError = Assert.Single(tooManyRoles.Errors);
+            Assert.Equal(("Arguments.Set", SharingValidationCodes.TooManyGrants, "role", ShareableNames.MaxRoleGrants), (roleError.Path.ToString(), roleError.Code, roleError.Arguments["kind"], roleError.Arguments["max"]));
+            Assert.Equal(0, await ScalarAsync<int>(roleGrants));
+            await PublishAsync(publisher, [id], new PublishArguments([.. roles.SkipLast(1).Select(static role => new RoleGrant(role, ShareAccess.View))], null, null));
+            Assert.Equal(ShareableNames.MaxRoleGrants, await ScalarAsync<int>(roleGrants));
+        }
+
+        [Fact]
+        public async Task Two_concurrent_shares_that_each_fit_the_user_cap_alone_commit_one_and_the_table_refuses_the_other()
+        {
+            (_, string ownerSubject) = await fixture.SeedCallerAsync("Owner fourteen");
+            int[] users = await SeedUsersAsync(ShareableNames.MaxUserGrants + 1, "Grantee fourteen");
+            int id = await CreateAsync(ownerSubject);
+
+            // --- One grant short of the cap, the two left out apart in the grantees' order ---
+            int first = users[50];
+            int second = users[150];
+            await ShareAsync(ownerSubject, [id], new ShareArguments([.. users.Where(user => user != first && user != second).Select(static user => new UserGrant(user, ShareAccess.View))], null));
+            Assert.Equal(ShareableNames.MaxUserGrants - 1, await ScalarAsync<int>($"SELECT COUNT(*) FROM [core].[ReportShares] WHERE [ReportId] = {id}"));
+
+            // --- Each adds one grantee while the share table is held, so both pass validation and write together ---
+            await using AsyncServiceScope one = await fixture.ScopeAsync(ownerSubject);
+            await using AsyncServiceScope other = await fixture.ScopeAsync(ownerSubject);
+            IReadOnlyList<Task> shares = await fixture.HoldWhileAsync(
+                "SELECT COUNT(*) FROM [core].[ReportShares] WITH (TABLOCKX, HOLDLOCK);",
+                2,
+                "OBJECT",
+                () => [ShareInAsync(one, id, first), ShareInAsync(other, id, second)]);
+            Exception?[] outcomes = [await CaptureAsync(shares[0]), await CaptureAsync(shares[1])];
+
+            // --- One commits; the other, run after it, finds the cap reached ---
+            ValidationException refused = Assert.IsType<ValidationException>(Assert.Single(outcomes, static outcome => outcome is not null));
+            Assert.Equal([SharingValidationCodes.TooManyGrants], refused.Codes());
+            Assert.Equal(ShareableNames.MaxUserGrants, await ScalarAsync<int>($"SELECT COUNT(*) FROM [core].[ReportShares] WHERE [ReportId] = {id}"));
+        }
+
+        [Fact]
+        public async Task The_grants_set_refuse_a_hole_a_grantee_twice_and_a_grantee_both_set_and_removed()
+        {
+            (_, string ownerSubject) = await fixture.SeedCallerAsync("Owner fifteen");
+            (int ann, _) = await fixture.SeedCallerAsync("Ann fifteen");
+            (int ben, _) = await fixture.SeedCallerAsync("Ben fifteen");
+            int role = await fixture.SeedRoleAsync();
+            string publisher = await PublisherAsync(ownerSubject);
+            int id = await CreateAsync(publisher);
+
+            // --- A hole, a user set twice, a user both set and removed, and one removed twice ---
+            ValidationException share = await Assert.ThrowsAsync<ValidationException>(() => ShareAsync(
+                publisher,
+                [id],
+                new ShareArguments([new UserGrant(ann, ShareAccess.View), null!, new UserGrant(ann, ShareAccess.Edit)], [ann, ben, ben])));
+            Assert.Equal(
+                [("Arguments.Set[1]", ValidationCodes.Required), ("Arguments.Set[2].UserId", ValidationCodes.Unique), ("Arguments.Remove[0]", ValidationCodes.Unique), ("Arguments.Remove[2]", ValidationCodes.Unique)],
+                share.Errors.Select(static error => (error.Path.ToString(), error.Code)));
+
+            // --- The same rules for roles ---
+            ValidationException publish = await Assert.ThrowsAsync<ValidationException>(() => PublishAsync(
+                publisher,
+                [id],
+                new PublishArguments([null!, new RoleGrant(role, ShareAccess.View), new RoleGrant(role, ShareAccess.View)], [role], null)));
+            Assert.Equal(
+                [("Arguments.Set[0]", ValidationCodes.Required), ("Arguments.Set[2].RoleId", ValidationCodes.Unique), ("Arguments.Remove[0]", ValidationCodes.Unique)],
+                publish.Errors.Select(static error => (error.Path.ToString(), error.Code)));
+            Assert.Equal(0, await ScalarAsync<int>($"SELECT COUNT(*) FROM [core].[ReportShares] WHERE [ReportId] = {id}"));
         }
 
         // --- Helpers ---
@@ -473,6 +633,55 @@ namespace Tellma.Core.IntegrationTests.Sharing
             return $"INSERT INTO [core].[ReportShares] ([Id], [ReportId], [UserId], [RoleId], [Access], [SharedById], [SharedAt]) VALUES (NEXT VALUE FOR [core].[sq_ReportShares], {id}, NULL, NULL, '{access}', {system}, SYSDATETIMEOFFSET());";
         }
 
+        /// <summary>Seeds active, joined individuals of the first tenant in one round trip, under fresh ids.</summary>
+        /// <param name="count">How many.</param>
+        /// <param name="name">The name each carries, followed by its id.</param>
+        /// <returns>The ids, ascending.</returns>
+        private async Task<int[]> SeedUsersAsync(int count, string name)
+        {
+            int[] ids = [.. Enumerable.Range(0, count).Select(_ => fixture.NextUserId())];
+            int system = WellKnownIds.SystemUserId;
+            string users = string.Join(
+                ",\n",
+                ids.Select(id => string.Create(CultureInfo.InvariantCulture, $"({id}, 'Individual', 'sub-{id}', N'sub-{id}@example.com', SYSDATETIMEOFFSET(), SYSDATETIMEOFFSET(), N'{name} {id}', 1, SYSDATETIMEOFFSET(), {system}, SYSDATETIMEOFFSET(), {system})")));
+            string stamps = string.Join(", ", ids.Select(static id => string.Create(CultureInfo.InvariantCulture, $"({id})")));
+            await fixture.ExecuteAsync(
+                ConnectDatabase.TenantA,
+                $"""
+                INSERT INTO [core].[Users] ([Id], [Kind], [Subject], [Email], [InvitedAt], [JoinedAt], [Name], [IsActive], [CreatedAt], [CreatedById], [ModifiedAt], [ModifiedById])
+                VALUES {users};
+                INSERT INTO [core].[UserStamps] ([UserId]) VALUES {stamps};
+                """);
+            return ids;
+        }
+
+        /// <summary>Seeds active, private roles of the first tenant without permissions.</summary>
+        /// <param name="count">How many.</param>
+        /// <returns>The ids, in seeding order.</returns>
+        private async Task<int[]> SeedRolesAsync(int count)
+        {
+            int[] ids = new int[count];
+            for (int index = 0; index < count; index++)
+            {
+                ids[index] = await fixture.SeedRoleAsync();
+            }
+
+            return ids;
+        }
+
+        /// <summary>Seeds an active individual of the second tenant with a name in its second content language.</summary>
+        /// <param name="name">The name.</param>
+        /// <param name="name2">The name in the second content language.</param>
+        /// <returns>The id and the subject.</returns>
+        private async Task<(int UserId, string Subject)> SeedSecondTenantUserAsync(string name, string name2)
+        {
+            int userId = fixture.NextUserId();
+            string subject = string.Create(CultureInfo.InvariantCulture, $"sub-{userId}");
+            await fixture.SeedUserAsync(ConnectDatabase.TenantB, userId, subject, name);
+            await fixture.ExecuteAsync(ConnectDatabase.TenantB, string.Create(CultureInfo.InvariantCulture, $"UPDATE [core].[Users] SET [Name2] = N'{name2}' WHERE [Id] = {userId};"));
+            return (userId, subject);
+        }
+
         /// <summary>Gives a caller a role that publishes reports, and any other actions named, over every report.</summary>
         /// <param name="subject">The caller's subject.</param>
         /// <param name="actions">The other actions.</param>
@@ -525,6 +734,51 @@ namespace Tellma.Core.IntegrationTests.Sharing
         {
             await using AsyncServiceScope scope = await fixture.ScopeAsync(subject);
             _ = await Reports(scope).ExecuteActionAsync(action, ids, arguments, new ActionOptions(), Token);
+        }
+
+        /// <summary>Shares a report with one user at view access, in a scope opened beforehand.</summary>
+        /// <param name="scope">The caller's scope.</param>
+        /// <param name="id">The report.</param>
+        /// <param name="user">The grantee.</param>
+        /// <returns>A task that completes when the action does.</returns>
+        private static async Task ShareInAsync(AsyncServiceScope scope, int id, int user)
+        {
+            _ = await Reports(scope).ExecuteActionAsync(ShareableNames.ShareAction, [id], new ShareArguments([new UserGrant(user, ShareAccess.View)], null), new ActionOptions(), Token);
+        }
+
+        /// <summary>The refusal a task ends with, or null when it succeeds.</summary>
+        /// <param name="task">The task.</param>
+        /// <returns>The refusal.</returns>
+        private static async Task<Exception?> CaptureAsync(Task task)
+        {
+            try
+            {
+                await task;
+                return null;
+            }
+            catch (ValidationException exception)
+            {
+                return exception;
+            }
+        }
+
+        /// <summary>The ids of the related instances of one entity a read carries; none when it carries no such set.</summary>
+        /// <typeparam name="T">The entity's leaf.</typeparam>
+        /// <param name="read">The read.</param>
+        /// <param name="entity">The entity's name.</param>
+        /// <returns>The ids.</returns>
+        private static IEnumerable<int> RelatedIds<T>(EntitiesResult<Report> read, string entity)
+            where T : Entity<int>
+        {
+            return read.Related is not null && read.Related.Sets.TryGetValue(entity, out RelatedEntitySet? set) ? set.Entities.Cast<T>().Select(static instance => instance.Id) : [];
+        }
+
+        /// <summary>The three content slots of a multilingual text in JSON.</summary>
+        /// <param name="text">The text's array.</param>
+        /// <returns>The slots, null for an empty one.</returns>
+        private static IEnumerable<string?> Slots(JsonElement text)
+        {
+            return text.EnumerateArray().Select(static slot => slot.ValueKind == JsonValueKind.Null ? null : slot.GetString());
         }
 
         /// <summary>The ids among some reports that a caller's query reads, inactive ones included.</summary>

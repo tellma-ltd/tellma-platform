@@ -224,21 +224,6 @@
     "kind": "stack"
   },
   {
-    "name": "core.ReportShare",
-    "segment": null,
-    "labelKey": "Core_ReportShare",
-    "pluralLabelKey": "Core_ReportShare_Plural",
-    "newLabelKey": "Entity_New",
-    "labelFallback": "Report share",
-    "operations": [],
-    "capabilities": [],
-    "displayName": {
-      "source": "Id",
-      "multilingual": false
-    },
-    "kind": "readonly"
-  },
-  {
     "name": "core.Role",
     "segment": "roles",
     "labelKey": "Core_Role",

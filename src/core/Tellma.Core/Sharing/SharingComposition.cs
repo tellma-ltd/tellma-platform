@@ -17,7 +17,7 @@ namespace Tellma.Core.Sharing
     /// </summary>
     internal static class SharingComposition
     {
-        /// <summary>Registers the options and the shareables check.</summary>
+        /// <summary>Registers the options, the shareables check and the share entities the client metadata leaves out.</summary>
         /// <param name="services">The composition's services.</param>
         /// <param name="record">The realised composition, which the check reads and keeps.</param>
         /// <param name="options">The options registrar, whose bindings the startup gate validates.</param>
@@ -34,6 +34,9 @@ namespace Tellma.Core.Sharing
             ShareablesCheck check = new(record);
             record.BuiltInChecks.Add(check);
             _ = services.AddSingleton<IStartupCheck>(check);
+
+            // --- The share entities' leaves, which the client entity model leaves out ---
+            _ = services.AddSingleton(new ShareEntityTypes(record.Shareables.Select(shareable => record.LeafOf(shareable.ShareType)).ToHashSet()));
         }
     }
 }

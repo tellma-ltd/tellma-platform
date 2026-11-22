@@ -410,24 +410,6 @@ export interface CoreReport {
   isActive: boolean;
 }
 
-/** A row of the entity `core.ReportShare`, as the wire carries it. */
-export interface CoreReportShare {
-  /** The property `Id`. */
-  id: number;
-  /** The property `ReportId`. */
-  reportId: number;
-  /** The property `UserId`. */
-  userId?: number | null;
-  /** The property `RoleId`. */
-  roleId?: number | null;
-  /** The property `Access`. */
-  access: CoreShareAccess;
-  /** The property `SharedById`. */
-  sharedById: number;
-  /** The property `SharedAt`. */
-  sharedAt: string;
-}
-
 /** A row of the entity `core.Role`, as the wire carries it. */
 export interface CoreRole {
   /** The property `Id`. */
@@ -701,8 +683,6 @@ declare module '@tellma/core' {
     'core.Permission': CorePermission;
     /** The entity `core.Report`. */
     'core.Report': CoreReport;
-    /** The entity `core.ReportShare`. */
-    'core.ReportShare': CoreReportShare;
     /** The entity `core.Role`. */
     'core.Role': CoreRole;
     /** The entity `core.RoleMembership`. */
@@ -798,13 +778,6 @@ declare module '@tellma/core' {
       scalars: 'Id' | 'CreatedAt' | 'CreatedById' | 'ModifiedAt' | 'ModifiedById' | 'Code' | 'Title' | 'Title2' | 'Title3' | 'Description' | 'Description2' | 'Description3' | 'Root' | 'Kind' | 'QueryexVersion' | 'OwnerId' | 'BasedOnId' | 'IsActive';
       groups: 'Title' | 'Description';
       navigations: { CreatedBy: 'core.User'; ModifiedBy: 'core.User'; Owner: 'core.User' };
-      children: {};
-    };
-    /** The path shape of the entity `core.ReportShare`. */
-    'core.ReportShare': {
-      scalars: 'Id' | 'ReportId' | 'UserId' | 'RoleId' | 'Access' | 'SharedById' | 'SharedAt';
-      groups: never;
-      navigations: { Report: 'core.Report'; User: 'core.User'; Role: 'core.Role'; SharedBy: 'core.User' };
       children: {};
     };
     /** The path shape of the entity `core.Role`. */

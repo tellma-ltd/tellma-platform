@@ -287,6 +287,12 @@ namespace Tellma.Core.Tests.Sharing
             Calls.Add(("transfer", arguments));
             return Task.CompletedTask;
         }
+
+        /// <inheritdoc />
+        public void WithdrawAll(DeletePersistContext<Report> context)
+        {
+            Calls.Add(("withdraw-all", context));
+        }
     }
 
     /// <summary>A dashboards' read-through that answers the entries the test scripts.</summary>

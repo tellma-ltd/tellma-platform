@@ -16,14 +16,19 @@ using Tellma.Core.Queryex;
 namespace Tellma.Core.Sharing
 {
     // Spec 0033 §5.2's shares extra. Only the share dialog asks for it, so readers of a row never see
-    // who else holds it. It answers each visible row the caller's Share or Publish decision admits,
-    // with its grants, and nothing for any other row; both decisions denied cost no statement. The
-    // grants are one read rooted at the share entity over the visible ids, whose grantee and sharer
-    // columns join the read's related entities. When neither decision is unrestricted, a key read
-    // under the two decisions' filters says which visible rows are admitted, in the same batch.
+    // who else holds it. It is one read rooted at the share entity over the visible ids, whose
+    // grantee and sharer columns join the read's related entities; both decisions denied cost no
+    // statement. When neither the Share nor the Publish decision is unrestricted, the read itself
+    // carries their filters through the grant's row navigation, so a row they do not admit
+    // contributes no grant and, above all, no grantee to the related entities. A filtered read cannot
+    // tell an admitted row with no grants from a row it does not admit, so under filtered decisions
+    // only the rows holding grants have entries; the share dialog reads a missing entry as no grants,
+    // since its own abilities come from the permissions extra.
     /// <summary>
-    ///     Produces a shareable stack's <c>shares</c> details extra: each admitted row's grants, the
-    ///     user grants, then the role grants, then the Everyone grant, each group by grant id.
+    ///     Produces a shareable stack's <c>shares</c> details extra: the grants of each visible row the
+    ///     caller's Share or Publish decision admits (every visible row under an unrestricted decision;
+    ///     otherwise each admitted row that holds a grant), the user grants, then the role grants, then
+    ///     the Everyone grant, each group by grant id.
     /// </summary>
     /// <typeparam name="TEntity">The shareable entity.</typeparam>
     /// <typeparam name="TShare">The share entity.</typeparam>
@@ -64,21 +69,11 @@ namespace Tellma.Core.Sharing
             QueryexSchemaMap map = schemas.Map(settings.Shape);
             string row = shape.Row.ForeignKey.Name;
 
-            // --- Which visible rows the decisions admit: all of them under an unrestricted one ---
-            BatchResult<RowPage>? admitted = null;
-            if (!admitting.Any(static decision => decision.Outcome == AccessOutcome.Unrestricted))
-            {
-                FilterTree filter = admitting.Length == 1 ? admitting[0].Filter! : FilterTree.Or([.. admitting.Select(static decision => decision.Filter!)]);
-                admitted = plan.AddRead(
-                    new QuerySpec
-                    {
-                        Root = map.Descriptor(shape.Entity),
-                        Select = shape.Entity.Key.Name,
-                        Filter = filter,
-                        Restrictions = [new KeySetRestriction(shape.Entity.Key.Name, plan.IdsSource.Name)],
-                    },
-                    arguments: null);
-            }
+            // --- The admission: none under an unrestricted decision, else the decisions' filters on the grant's row ---
+            bool unrestricted = admitting.Any(static decision => decision.Outcome == AccessOutcome.Unrestricted);
+            FilterTree? admission = unrestricted
+                ? null
+                : FilterTree.Via(shape.Row.Navigation, admitting.Length == 1 ? admitting[0].Filter! : FilterTree.Or([.. admitting.Select(static decision => decision.Filter!)]));
 
             // --- The grants of the visible rows, with their grantees and sharers as related entities ---
             QueryexSchema schema = map.Schema;
@@ -99,6 +94,7 @@ namespace Tellma.Core.Sharing
             {
                 Root = map.Descriptor(shape.Share),
                 Select = string.Join(", ", columns),
+                Filter = admission,
                 OrderBy = $"{row}, {nameof(Entity<>.Id)}",
                 Restrictions = [new KeySetRestriction(row, plan.IdsSource.Name)],
             };
@@ -106,16 +102,16 @@ namespace Tellma.Core.Sharing
                 ShareableNames.SharesExtra,
                 grants,
                 arguments: null,
-                (visible, rows) => Lists(shape, visible, rows, admitted is null ? null : Keys(admitted.Value.Rows)));
+                (visible, rows) => Lists(shape, visible, rows, everyVisible: unrestricted));
         }
 
         /// <summary>The entries of the admitted visible rows, in request order, each with its grants in the dialog's order.</summary>
         /// <param name="shape">The shareable's shape.</param>
         /// <param name="visible">The visible rows, in request order.</param>
-        /// <param name="rows">The grants of the visible rows.</param>
-        /// <param name="admitted">The admitted rows' ids; null when every visible row is admitted.</param>
+        /// <param name="rows">The admitted grants of the visible rows.</param>
+        /// <param name="everyVisible">Whether every visible row is admitted, so a row with no grants still has an entry.</param>
         /// <returns>The entries.</returns>
-        internal static IReadOnlyList<ShareList> Lists(ShareableShape shape, IReadOnlyList<TEntity> visible, IReadOnlyList<TShare> rows, IReadOnlySet<int>? admitted)
+        internal static IReadOnlyList<ShareList> Lists(ShareableShape shape, IReadOnlyList<TEntity> visible, IReadOnlyList<TShare> rows, bool everyVisible)
         {
             ArgumentNullException.ThrowIfNull(shape);
             ArgumentNullException.ThrowIfNull(visible);
@@ -124,7 +120,7 @@ namespace Tellma.Core.Sharing
             List<ShareList> lists = [];
             foreach (TEntity entity in visible)
             {
-                if (admitted is not null && !admitted.Contains(entity.Id))
+                if (!everyVisible && !byRow.Contains(entity.Id))
                 {
                     continue;
                 }
@@ -150,24 +146,6 @@ namespace Tellma.Core.Sharing
             ReferenceMetadata reference = share.References.FirstOrDefault(candidate => string.Equals(candidate.Navigation, navigation, StringComparison.Ordinal))
                 ?? throw new InvalidOperationException($"The share entity {share.Name} has no navigation {navigation}.");
             return RelatedProjections.Of(stacks, reference.Target, schema).Select(column => $"{navigation}.{column}");
-        }
-
-        /// <summary>The ids of a key read's first column.</summary>
-        /// <param name="rows">The rows.</param>
-        /// <returns>The ids.</returns>
-        private static HashSet<int> Keys(QueryRowSet rows)
-        {
-            HashSet<int> keys = [];
-            int[] buffer = (int[])rows.GetBuffer(0);
-            for (int index = 0; index < rows.RowCount; index++)
-            {
-                if (!rows.IsNull(0, index))
-                {
-                    _ = keys.Add(buffer[index]);
-                }
-            }
-
-            return keys;
         }
     }
 }

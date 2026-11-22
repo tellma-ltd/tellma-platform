@@ -157,6 +157,21 @@ namespace Tellma.Core.Abstractions.Sharing
             }
         }
 
+        /// <summary>Withdraws, in a delete's batch, every share notice of the deleted rows.</summary>
+        /// <param name="context">The persist context, of the operation's kind.</param>
+        /// <returns>A task that completes when the withdrawals are appended.</returns>
+        protected override async Task ContributeAsync(PersistContext<TEntity> context)
+        {
+            ArgumentNullException.ThrowIfNull(context);
+            await base.ContributeAsync(context).ConfigureAwait(false);
+
+            // A delete removes every grant of its rows, so every notice those grants raised goes too.
+            if (context is DeletePersistContext<TEntity> delete)
+            {
+                Commands.WithdrawAll(delete);
+            }
+        }
+
         /// <summary>A standard row refuses a save, a delete, an activation and a transfer; it can still be shared and published.</summary>
         /// <param name="row">The row.</param>
         /// <param name="ability">The ability.</param>

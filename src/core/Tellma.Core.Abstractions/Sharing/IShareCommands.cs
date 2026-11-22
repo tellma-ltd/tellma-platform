@@ -3,6 +3,7 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+using Tellma.Core.Abstractions.Crud;
 using Tellma.Core.Abstractions.Entities;
 using Tellma.Core.Abstractions.Validation;
 
@@ -41,5 +42,12 @@ namespace Tellma.Core.Abstractions.Sharing
         /// <param name="arguments">The new owner.</param>
         /// <returns>A task that completes when the writes are composed.</returns>
         Task TransferAsync(ActionContext<TEntity, int> context, TransferArguments arguments);
+
+        /// <summary>
+        ///     Withdraws every recipient's share notice of each deleted row, in the delete's own batch,
+        ///     since the delete removes every grant the notices announced.
+        /// </summary>
+        /// <param name="context">The delete's persist context, whose affected ids are the deleted rows.</param>
+        void WithdrawAll(DeletePersistContext<TEntity> context);
     }
 }

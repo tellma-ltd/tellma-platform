@@ -103,6 +103,54 @@ namespace Tellma.Core.Notifications
             }
         }
 
+        /// <summary>
+        ///     Appends one withdrawal of many keys: the deletion of every row whose key is a prefix
+        ///     followed by one id of a batch table, read or not, whatever its type.
+        /// </summary>
+        /// <param name="batch">The batch the statement rides.</param>
+        /// <param name="keyPrefix">The keys' common start, such as <c>core.Report:</c>.</param>
+        /// <param name="ids">The batch table of ids, in its <c>Id</c> column, that complete the keys.</param>
+        /// <returns>The users and types of the deleted rows, once the batch executed and the statement ran.</returns>
+        public static BatchResult<WithdrawOutcome> WithdrawEach(DataBatch batch, string keyPrefix, SqlIdentifier ids)
+        {
+            ArgumentNullException.ThrowIfNull(batch);
+            ArgumentNullException.ThrowIfNull(keyPrefix);
+            ArgumentNullException.ThrowIfNull(ids);
+
+            BatchResult<WithdrawOutcome> result = new();
+            StatementDraft draft = batch.Begin();
+            try
+            {
+                // --- Each key spelled in the statement from the prefix and one id, as the raiser spelled it ---
+                string prefix = draft.Scalar(SqlDbType.NVarChar, keyPrefix, Notification.DedupKeyLength);
+                string text = string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"DELETE [n] OUTPUT [deleted].[UserId], [deleted].[Type]\nFROM {Notifications.Delimited} AS [n] WHERE [n].[DedupKey] IN (SELECT {prefix} + CONVERT(nvarchar(20), [a].[Id]) FROM {ids} AS [a]);");
+
+                // --- The reader: the deleted rows' users and types ---
+                int ordinal = draft.Ordinal;
+                HashSet<TableName> writes = [Notifications];
+                batch.Append(draft, text, writes, idempotent: true, reader: async (cursor, cancellationToken) =>
+                {
+                    DbDataReader set = await cursor.NextAsync(ordinal, cancellationToken).ConfigureAwait(false);
+                    List<WithdrawnRow> deleted = [];
+                    while (await set.ReadAsync(cancellationToken).ConfigureAwait(false))
+                    {
+                        deleted.Add(new WithdrawnRow(set.GetInt32(0), set.GetString(1)));
+                    }
+
+                    cursor.CountRows(deleted.Count);
+                    cursor.Complete(result, new WithdrawOutcome(deleted));
+                });
+                return result;
+            }
+            catch
+            {
+                batch.Discard(draft);
+                throw;
+            }
+        }
+
         /// <summary>Appends one withdrawal: the deletion of every row of a key, or of the named recipients' rows of it.</summary>
         /// <param name="batch">The batch the statement rides.</param>
         /// <param name="dedupKey">The key whose rows are deleted, read or not, whatever their type.</param>

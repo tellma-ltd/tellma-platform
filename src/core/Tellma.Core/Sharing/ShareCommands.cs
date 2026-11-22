@@ -8,6 +8,7 @@ using System.Collections.Frozen;
 using System.Globalization;
 using System.Text;
 using Tellma.Core.Abstractions.Access;
+using Tellma.Core.Abstractions.Crud;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Entities;
 using Tellma.Core.Abstractions.Localization;
@@ -16,6 +17,7 @@ using Tellma.Core.Abstractions.Settings;
 using Tellma.Core.Abstractions.Sharing;
 using Tellma.Core.Abstractions.TableTypes;
 using Tellma.Core.Abstractions.Validation;
+using Tellma.Core.Notifications;
 using Tellma.Core.Queryex;
 
 namespace Tellma.Core.Sharing
@@ -276,6 +278,19 @@ namespace Tellma.Core.Sharing
                     context.Withdraw(new WithdrawRequest(_shape.DedupKey(target.Id), [owner]));
                 }
             }
+        }
+
+        /// <inheritdoc />
+        public void WithdrawAll(DeletePersistContext<TEntity> context)
+        {
+            ArgumentNullException.ThrowIfNull(context);
+
+            // A delete's rows exist only as the batch's table of deleted ids, so one statement spells
+            // each row's dedup key from them. A withdrawal needs no grant row: the cascade that
+            // removes the grants may run before or after it in the batch.
+            Notifier notifier = context.Notifier as Notifier
+                ?? throw new NotSupportedException($"A delete withdraws its rows' share notices through the platform's notifier; the host registers {context.Notifier?.GetType().Name ?? "none"}.");
+            notifier.WithdrawEach(context.Batch, _shape.DedupKeyPrefix, context.AffectedIds);
         }
 
         /// <summary>Refuses a hole among the grants set, a grantee set twice, and a grantee both set and removed.</summary>

@@ -951,7 +951,8 @@ display-name rule, kind), its key, owner, properties, navigations, children, act
 argument fields and JSON Schema, related select, default order, searchable and natural keys, extras
 and query limits, and every named enum: the C# enums with their wire names (a
 `[JsonStringEnumMemberName]` member travels by it) and the value sets with their aliases. It is built
-once from `QueryexSchemaProvider`'s full map, entities and enums in ordinal name order. A label
+once from `QueryexSchemaProvider`'s full map, entities and enums in ordinal name order, leaving
+out a shareable's share entity, which the client reads only through the `shares` extra. A label
 resolves to the first key of its chain a neutral resource declares, else to the chain's first key
 with a humanized `labelFallback`. A `[BlobReference]` property carries its kind's policy,
 its size the kind's own `MaxSize` (a host whose `Tellma:Blobs:MaxUploadSize` is smaller does not

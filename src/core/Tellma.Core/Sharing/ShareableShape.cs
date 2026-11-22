@@ -34,8 +34,11 @@ namespace Tellma.Core.Sharing
         /// <returns>The key.</returns>
         public string DedupKey(int id)
         {
-            return $"{Entity.Name}:{id.ToString(System.Globalization.CultureInfo.InvariantCulture)}";
+            return DedupKeyPrefix + id.ToString(System.Globalization.CultureInfo.InvariantCulture);
         }
+
+        /// <summary>The start every dedup key of the entity's grants shares: the entity's name and a colon.</summary>
+        public string DedupKeyPrefix => Entity.Name + ":";
 
         /// <summary>The model's shape of a shareable entity and its share entity.</summary>
         /// <param name="metadata">The model's entity metadata.</param>
