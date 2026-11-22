@@ -384,6 +384,16 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-234 (orchestrator, 2026-11-22): PC-189 fix1 accepted; held
+
+Fix1 (ed5d0edc) fixed all six findings under D-232. While writing the tests, the implementer found a real bug: distribution ToolTypes were never registered, because WithTools(Type[]) bound to the SDK's generic WithTools<T>(T target). It is fixed and covered by a test.
+
+In one loaded run, the non-member's initialize took 2m22s and returned no reply. A request that never answers on an authentication path needs a root cause, so the held agent root-causes it now (D-011). It changes code only on a proven cause.
+
+PC-189 holds. Release order: PC-182 (CI fixes), PC-105, PC-189.
+
+For Ahmad (as in D-232): ResourceGrantValidator still issues tokens that combine a distribution's origin with its tenant resources. Every MCP endpoint now refuses those tokens. Either Identity refuses a grant that includes an MCP resource with others, or 0016 §11.2 relaxes.
+
 ### D-233 (orchestrator, 2026-11-22): PC-105 Review 1 rulings
 
 PC-105 Review 1 found 0/3/2.
