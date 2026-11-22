@@ -384,6 +384,19 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-209 (orchestrator, 2026-11-22): PC-095 fix1 accepted; Review 2 launched; PC-F70 opened
+
+Fix1 (0672df4c) fixed R1-1..R1-8 and pushed none back.
+- Windows: the new suite passed 34/34 twice, and the whole Acme integration project passed 48/48 with the PR filter.
+- Linux sdk container: WireSnapshotTests passed.
+- The aborted-read case went red with read cancellation broken.
+- The regenerated web.json differs only in the 151 CRLF descriptions.
+- notification-preferences/save measures 1 round trip against a budget of 2. That is under budget and is noted for information only.
+
+Review 2 (inherit, xhigh) follows under the §4.4 escalation (D-208).
+
+PC-F70 opened: the platform never emits the ApiSecurableAuditFailed log event that 0016 §10.1 lists. TellmaEndpointAudit throws at startup without logging it, so no suite can assert it. The fix item emits the event before the throw and asserts it in a unit test.
+
 ### D-208 (orchestrator, 2026-11-22): PC-095 Review 1 rulings; escalated to Review 2
 
 Review 1 found 1 blocking, 3 major and 4 minor. On Windows the new suite (32), WireSnapshotTests (3) and AlertQueryTests (6) passed, and every measured budget matched 0018 §8.1 exactly.
