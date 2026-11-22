@@ -205,7 +205,7 @@
     <value>الترقيم</value>
   </data>
   <data name="Acme_Settings_NextNumber" xml:space="preserve">
-    <value>رقم الفاتورة التالي</value>
+    <value>رقم الفاتورة التالي: {number}</value>
   </data>
   <!-- Validation -->
   <data name="Acme_Customers_NegativeCreditLimit" xml:space="preserve">

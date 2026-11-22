@@ -395,7 +395,8 @@ namespace Tellma.Distro.Acme.Development
 
         /// <summary>
         ///     Inserts the principals the tenant lacks: the individuals bound to their seeded subjects,
-        ///     with their membership hints, and the service account.
+        ///     and the service account; then records the membership hint of every individual bound,
+        ///     on every run.
         /// </summary>
         /// <param name="services">The scope's services.</param>
         /// <param name="tenantId">The tenant, whose id decides whether the sandbox's own user belongs.</param>
@@ -453,23 +454,31 @@ namespace Tellma.Distro.Acme.Development
                 });
             }
 
-            if (rows.Count == 0)
-            {
-                return 0;
-            }
-
             // --- One save, with the individuals' subjects held so each row commits bound ---
-            IDevelopmentSubjects subjects = services.GetRequiredService<IDevelopmentSubjects>();
-            using (subjects.Hold(created.ToDictionary(static principal => principal.Email, static principal => principal.Subject, StringComparer.Ordinal)))
+            if (rows.Count > 0)
             {
-                _ = await service.SaveAsync(rows, Inserts).ConfigureAwait(false);
+                IDevelopmentSubjects subjects = services.GetRequiredService<IDevelopmentSubjects>();
+                using (subjects.Hold(created.ToDictionary(static principal => principal.Email, static principal => principal.Subject, StringComparer.Ordinal)))
+                {
+                    _ = await service.SaveAsync(rows, Inserts).ConfigureAwait(false);
+                }
             }
 
             // --- The catalog's hints, so each individual's sign-in lists the tenant ---
-            if (created.Count > 0)
+            // Recorded on every run for each active individual whose row holds its development subject,
+            // created now or found: the directory's write is a best-effort upsert, so a hint a failed
+            // write or an interrupted run left out is written by the next run.
+            Dictionary<string, int> bound = await FindAsync(
+                service, nameof(User.Subject), [.. individuals.Select(static individual => individual.Principal.Subject)], includeInactive: false).ConfigureAwait(false);
+            TenantMembershipRecord[] hints =
+            [
+                .. individuals
+                    .Where(individual => bound.ContainsKey(individual.Principal.Subject))
+                    .Select(individual => new TenantMembershipRecord { TenantId = tenantId, Subject = individual.Principal.Subject, IsActive = true }),
+            ];
+            if (hints.Length > 0)
             {
-                await services.GetRequiredService<ITenantMembershipDirectory>().RecordAsync(
-                    [.. created.Select(principal => new TenantMembershipRecord { TenantId = tenantId, Subject = principal.Subject, IsActive = true })]).ConfigureAwait(false);
+                await services.GetRequiredService<ITenantMembershipDirectory>().RecordAsync(hints).ConfigureAwait(false);
             }
 
             return rows.Count;

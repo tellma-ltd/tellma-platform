@@ -21,7 +21,8 @@ Unit tests of the Acme distribution's shape, needing no database:
 - the Development provisioning trigger's process and its Production replacement.
 - the resource audit over Acme's strings: every key derived from the web host's composition,
   spelled in the distribution's source or pending, every Arabic key declared in English, and every
-  label Acme's model derives in its own families shipped;
+  label Acme's model derives shipped: its own families, its setting categories and the members it
+  adds to GL's center;
 - the development data's shape: the 40-center tree on four levels with its inactive and invoiced
   lists, the customers and invoices, the step's name slots and key filter, and the development
   identity server seeding every principal the sample data binds, at its address and subject.

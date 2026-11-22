@@ -4,7 +4,9 @@
 // LICENSE file in the root directory of this source tree.
 
 using Microsoft.AspNetCore.Builder;
+using System.Reflection;
 using Tellma.Core.Localization;
+using Tellma.Distro.Acme.Entities;
 using Tellma.Distro.Acme.Web.Tests.Infrastructure;
 using Tellma.Testing.Resources;
 
@@ -58,7 +60,10 @@ namespace Tellma.Distro.Acme.Web.Tests.Localization
             Assert.Contains("Tellma.Distro.Acme.Resources.Strings.resources", typeof(AcmeFeature).Assembly.GetManifestResourceNames());
         }
 
-        /// <summary>Every entity, member, action, enum value and setting Acme declares has an English label of its own.</summary>
+        /// <summary>
+        ///     Every entity, member, action, enum value, setting and setting category Acme declares has
+        ///     an English label of its own, as has every member Acme adds to GL's center.
+        /// </summary>
         /// <returns>A task that completes when the keys are compared.</returns>
         [Fact]
         public async Task Every_label_the_acme_model_derives_in_its_own_schema_is_shipped()
@@ -74,10 +79,24 @@ namespace Tellma.Distro.Acme.Web.Tests.Localization
                 "_CreatedAt", "_CreatedBy", "_CreatedById", "_ModifiedAt", "_ModifiedBy", "_ModifiedById", "_Id", "_New",
                 "_Action_Read", "_Action_Save", "_Action_Delete", "_Action_Activate", "_Action_Deactivate",
             ];
+            // Acme's keys outside its own prefixes: the members it adds to GL's center, and its setting
+            // categories. Each must be derived, so a renamed convention cannot leave them unchecked.
+            HashSet<string> derived = [.. ConventionalStringKeys.Of(app.Services)];
+            string[] owned =
+            [
+                .. typeof(MyCenter).GetProperties(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
+                    .Select(static property => "Gl_Center_" + property.Name)
+                    .Where(derived.Contains),
+                .. ((string[])[AcmeSettings.InvoicingCategory, AcmeSettings.SalesCategory, AcmeSettings.IntegrationCategory])
+                    .Select(static category => "SettingCategory_" + category),
+            ];
+            Assert.Contains("Gl_Center_ManagerId", owned);
+            Assert.All(owned, key => Assert.Contains(key, derived));
+
             string[] missing =
             [
-                .. ConventionalStringKeys.Of(app.Services)
-                    .Where(static key => key.StartsWith("Acme_", StringComparison.Ordinal) || key.StartsWith("Setting_acme_", StringComparison.Ordinal))
+                .. derived
+                    .Where(key => key.StartsWith("Acme_", StringComparison.Ordinal) || key.StartsWith("Setting_acme_", StringComparison.Ordinal) || owned.Contains(key))
                     .Where(key => !shared.Any(suffix => key.EndsWith(suffix, StringComparison.Ordinal)))
                     .Where(key => !shipped.ContainsKey(key) && !shipped.ContainsKey(key + "Id"))
                     .Order(StringComparer.Ordinal),

@@ -205,7 +205,7 @@
     <value>Numbering</value>
   </data>
   <data name="Acme_Settings_NextNumber" xml:space="preserve">
-    <value>Next invoice number</value>
+    <value>Next invoice number: {number}</value>
   </data>
   <!-- Validation -->
   <data name="Acme_Customers_NegativeCreditLimit" xml:space="preserve">

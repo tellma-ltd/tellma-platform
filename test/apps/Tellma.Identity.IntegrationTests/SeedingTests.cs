@@ -5,9 +5,12 @@
 
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Hosting.Internal;
 using OpenIddict.Abstractions;
 using Tellma.Identity.IntegrationTests.Infrastructure;
 using Tellma.Identity.Services.Provisioning;
+using Tellma.Identity.Services.Seeding;
 using static OpenIddict.Abstractions.OpenIddictConstants;
 
 namespace Tellma.Identity.IntegrationTests
@@ -61,6 +64,46 @@ namespace Tellma.Identity.IntegrationTests
             using (secondBoot.CreateClient())
             {
                 await AssertSeededAsync(secondBoot);
+            }
+        }
+
+        /// <summary>
+        ///     Outside Development the seeder creates neither the dev admin nor the development users,
+        ///     though both are configured: no account with a fixed subject reaches a deployed store.
+        /// </summary>
+        /// <returns>A task that completes when the store is checked.</returns>
+        [Fact]
+        public async Task Outside_development_the_dev_admin_and_dev_users_are_not_seeded()
+        {
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idseedprod", SeedConfiguration);
+
+            // The seeder alone sees a Production environment; the host keeps the test-safe
+            // Development settings (self-signed keys, plain HTTP) it needs to start in memory.
+            factory.ServiceOverrides.Add(static services => services.AddScoped(static provider =>
+            {
+                IHostEnvironment host = provider.GetRequiredService<IHostEnvironment>();
+                HostingEnvironment production = new()
+                {
+                    EnvironmentName = Environments.Production,
+                    ApplicationName = host.ApplicationName,
+                    ContentRootPath = host.ContentRootPath,
+                    ContentRootFileProvider = host.ContentRootFileProvider,
+                };
+                return ActivatorUtilities.CreateInstance<IdentitySeeder>(provider, production);
+            }));
+
+            using (factory.CreateClient())
+            {
+                using IServiceScope scope = factory.Services.CreateScope();
+                Data.TellmaIdentityDbContext context = scope.ServiceProvider.GetRequiredService<Data.TellmaIdentityDbContext>();
+                CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+
+                // --- The platform clients are seeded, so the seeder ran; no fixed-subject account is ---
+                IOpenIddictApplicationManager applicationManager = scope.ServiceProvider.GetRequiredService<IOpenIddictApplicationManager>();
+                Assert.NotNull(await applicationManager.FindByClientIdAsync("tellma-cli", cancellationToken));
+                string[] subjects = ["00000000-0000-0000-0000-000000000001", "00000000-0000-0000-0000-000000000002", "00000000-0000-0000-0000-000000000003"];
+                Assert.False(await context.Users.AnyAsync(user => subjects.Contains(user.Id), cancellationToken));
+                Assert.False(await context.Users.AnyAsync(static user => user.Email == "sales@localhost" || user.Email == "centers@localhost", cancellationToken));
             }
         }
 

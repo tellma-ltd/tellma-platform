@@ -32,7 +32,8 @@ namespace Tellma.Distro.Acme.IntegrationTests
     ///     Acme's development data as <c>migrate</c> writes it from a fresh checkout, and the
     ///     feature's actions and related-documents extra over it: the counts in both seed tenants,
     ///     the principals bound and signing in, none of it outside Development, the set-credit-limit
-    ///     and close actions, and the invoices' related documents.
+    ///     and close actions, and the invoices' related documents, read by the platform and by
+    ///     members of filtered and denied invoice reads.
     /// </summary>
     /// <remarks>
     ///     The class migrates one deployment for all its tests but the one outside Development. The
@@ -69,7 +70,8 @@ namespace Tellma.Distro.Acme.IntegrationTests
         ///     <c>migrate</c> writes the sample data into both seed tenants: the forty centers with
         ///     four inactive, two currencies, sixty customers with pictures and contacts, the roles,
         ///     the principals bound to their seeded subjects with their catalog hints, and twenty
-        ///     invoices, six of them closed; running the step again inserts nothing.
+        ///     invoices, six of them closed; running the step again inserts nothing and records a hint
+        ///     the catalog lost.
         /// </summary>
         /// <returns>A task that completes when the data is checked.</returns>
         [Fact]
@@ -161,7 +163,11 @@ namespace Tellma.Distro.Acme.IntegrationTests
                     await ScalarAsync<int>(db, "SELECT COUNT(*) FROM [acme].[SalesInvoiceLines] AS L JOIN [gl].[Centers] AS C ON C.[Id] = L.[CenterId] WHERE C.[CenterType] = 'Sale' AND C.[IsActive] = 1;"));
             }
 
-            // --- The step run again, as a bumped version runs it, inserts nothing ---
+            // --- The step run again, as a bumped version runs it, inserts nothing and restores a lost hint ---
+            string salesHint = string.Create(
+                CultureInfo.InvariantCulture,
+                $"FROM [catalog].[TenantMemberships] WHERE [TenantId] = {Live} AND [Subject] = '{AcmeDevelopmentPrincipals.SalesMember.Subject}'");
+            await SqlServerFixture.ExecuteAsync(acme.CatalogConnectionString, $"DELETE {salesHint};");
             int before = await ScalarAsync<int>(acme.TenantConnectionString(Live), Census);
             await using (TenantScope scope = await SystemScopeAsync(development.Host, Live))
             {
@@ -171,6 +177,7 @@ namespace Tellma.Distro.Acme.IntegrationTests
             }
 
             Assert.Equal(before, await ScalarAsync<int>(acme.TenantConnectionString(Live), Census));
+            Assert.Equal(1, await ScalarAsync<int>(acme.CatalogConnectionString, $"SELECT COUNT(*) {salesHint} AND [IsActive] = 1;"));
         }
 
         /// <summary>
@@ -306,6 +313,98 @@ namespace Tellma.Distro.Acme.IntegrationTests
             Assert.Equal([.. Enumerable.Range(103, 10).Reverse()], RelatedSerials(many));
         }
 
+        /// <summary>
+        ///     A member's related documents follow the member's own filtered read of the invoices: a
+        ///     hidden invoice of the same customer is not listed, a hidden invoice requested beside a
+        ///     visible one reveals nothing of its customer, and a read of more than 128 invoices carries
+        ///     no extra.
+        /// </summary>
+        /// <returns>A task that completes when the extra is checked.</returns>
+        [Fact]
+        public async Task A_member_s_related_documents_are_only_invoices_the_member_may_read()
+        {
+            Dictionary<int, int> serials;
+            int member;
+            await using (TenantScope system = await SystemScopeAsync(development.Host, Sandbox))
+            {
+                serials = await SerialsAsync(system.Services.GetRequiredService<EntityService<SalesInvoice, int>>());
+                member = await MemberAsync(system, "OpenInvoiceReaders", "open.readers@example.com", new Permission { Resource = "acme.SalesInvoice", Action = AccessActions.Read, Filter = "IsClosed = false" });
+            }
+
+            await using TenantScope scope = await MemberScopeAsync(development.Host, Sandbox, member);
+            EntityService<SalesInvoice, int> invoices = scope.Services.GetRequiredService<EntityService<SalesInvoice, int>>();
+            DetailsRequest related = new() { Include = [RelatedDocumentsContributor.RelatedDocumentsExtra] };
+
+            // --- Invoice 10's customer holds 2, 10 and 18; invoice 2 is closed, so only 18 is listed ---
+            EntitiesResult<SalesInvoice> open = await invoices.GetByIdAsync(serials[10], related, Token);
+            Assert.Equal([18], RelatedSerials(open));
+
+            // --- Closed invoice 2 beside open invoice 11: only 11's customer's other open invoice, 19 ---
+            int[] hiddenBesideVisible = [serials[2], serials[11]];
+            EntitiesResult<SalesInvoice> mixed = await invoices.GetByIdsAsync(hiddenBesideVisible, related, Token);
+            Assert.Equal([serials[11]], mixed.Entities.Select(static invoice => invoice.Id));
+            Assert.Equal([19], RelatedSerials(mixed));
+
+            // --- 128 targets carry the extra; 129 do not ---
+            int[] unknown = [.. Enumerable.Range(1_000_001, RelatedDocumentsContributor.MaxTargets)];
+            int[] most = [serials[10], .. unknown[..^1]];
+            int[] tooMany = [serials[10], .. unknown];
+            EntitiesResult<SalesInvoice> within = await invoices.GetByIdsAsync(most, related, Token);
+            Assert.Equal([18], RelatedSerials(within));
+            EntitiesResult<SalesInvoice> beyond = await invoices.GetByIdsAsync(tooMany, related, Token);
+            Assert.Single(beyond.Entities);
+            Assert.False(beyond.Extras?.ContainsKey(RelatedDocumentsContributor.RelatedDocumentsExtra) ?? false);
+        }
+
+        /// <summary>
+        ///     A member with no grant on invoices is refused the read itself, so no related document
+        ///     reaches them; a member whose one invoice grant is a filtered save reads by the read it
+        ///     implies, and a save's read-back lists only the related invoices that filter admits.
+        /// </summary>
+        /// <returns>A task that completes when the extra is checked.</returns>
+        [Fact]
+        public async Task The_related_documents_of_a_member_without_an_invoice_read_follow_the_read_their_grants_imply()
+        {
+            Dictionary<int, int> serials;
+            int customerId;
+            int outsider;
+            int saver;
+            await using (TenantScope system = await SystemScopeAsync(development.Host, Sandbox))
+            {
+                serials = await SerialsAsync(system.Services.GetRequiredService<EntityService<SalesInvoice, int>>());
+                customerId = Assert.Single(await IdsAsync(system.Services.GetRequiredService<EntityService<Customer, int>>(), "Code", "C-005"));
+                Permission customers = new() { Resource = "acme.Customer", Action = AccessActions.Read };
+                outsider = await MemberAsync(system, "CustomerReaders", "customer.readers@example.com", customers);
+                saver = await MemberAsync(
+                    system,
+                    "OpenInvoiceSavers",
+                    "open.savers@example.com",
+                    new Permission { Resource = "acme.SalesInvoice", Action = AccessActions.Save, Filter = "IsClosed = false" },
+                    new Permission { Resource = "acme.Customer", Action = AccessActions.Read });
+            }
+
+            DetailsRequest related = new() { Include = [RelatedDocumentsContributor.RelatedDocumentsExtra] };
+
+            // --- No grant on invoices: the read is refused before any extra is composed ---
+            await using (TenantScope scope = await MemberScopeAsync(development.Host, Sandbox, outsider))
+            {
+                EntityService<SalesInvoice, int> invoices = scope.Services.GetRequiredService<EntityService<SalesInvoice, int>>();
+                ForbiddenException refused = await Assert.ThrowsAsync<ForbiddenException>(() => invoices.GetByIdAsync(serials[13], related, Token));
+                Assert.Equal("acme.SalesInvoice", refused.Resource);
+            }
+
+            // --- A filtered save implies the filtered read: customer C-005 holds 5 (closed) and 13 (open) ---
+            await using (TenantScope scope = await MemberScopeAsync(development.Host, Sandbox, saver))
+            {
+                EntityService<SalesInvoice, int> invoices = scope.Services.GetRequiredService<EntityService<SalesInvoice, int>>();
+                EntitiesResult<SalesInvoice> saved = await invoices.SaveAsync(
+                    [new SalesInvoice { SerialNumber = 201, PostingDate = DateOnly.FromDateTime(DateTime.UtcNow), CustomerId = customerId, Lines = [] }],
+                    new SaveOptions { ReturnEntities = true, Details = related },
+                    Token);
+                Assert.Equal([13], RelatedSerials(saved));
+            }
+        }
+
         // --- Helpers ---
 
         /// <summary>The serial numbers of an invoice read's related documents, in the extra's order.</summary>
@@ -366,6 +465,34 @@ namespace Tellma.Distro.Acme.IntegrationTests
             }
 
             return ids;
+        }
+
+        /// <summary>Saves a role with some grants, and an active individual holding it alone.</summary>
+        /// <param name="system">The platform's own scope of the tenant.</param>
+        /// <param name="code">The role's code, also its name.</param>
+        /// <param name="email">The individual's email address.</param>
+        /// <param name="grants">The role's grants.</param>
+        /// <returns>The individual's id.</returns>
+        private static async Task<int> MemberAsync(TenantScope system, string code, string email, params Permission[] grants)
+        {
+            EntitiesResult<Role> role = await system.Services.GetRequiredService<EntityService<Role, int>>().SaveAsync(
+                [new Role { Code = code, Name = code, Permissions = [.. grants] }], new SaveOptions { ReturnEntities = false }, Token);
+            EntitiesResult<User> user = await system.Services.GetRequiredService<EntityService<User, int>>().SaveAsync(
+                [new User { Kind = UserKind.Individual, Email = email, Name = code, RoleMemberships = [new RoleMembership { RoleId = checked((int)Assert.Single(role.Ids)) }] }],
+                new SaveOptions { ReturnEntities = false },
+                Token);
+            return checked((int)Assert.Single(user.Ids));
+        }
+
+        /// <summary>A member's own scope of a tenant, as a background job of theirs runs.</summary>
+        /// <param name="host">The host.</param>
+        /// <param name="tenantId">The tenant.</param>
+        /// <param name="userId">The member.</param>
+        /// <returns>The scope.</returns>
+        private static Task<TenantScope> MemberScopeAsync(AcmeHost host, int tenantId, int userId)
+        {
+            RequestContextSnapshot member = new(tenantId, PrincipalKind.User, Subject: null, userId, "worker", TraceParent: null);
+            return host.Services.GetRequiredService<ITenantScopeFactory>().CreateScopeAsync(member, allowNonActive: false, Token);
         }
 
         /// <summary>The platform's own scope of a tenant.</summary>
