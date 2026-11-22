@@ -253,10 +253,12 @@ export class TmPermissions {
 
   /**
    * Whether a query from an entity may read a path, by the server's
-   * traversal rule: the root's `Read` is granted, and through each
-   * navigation whose target the user reads with a filter or not at all,
-   * every column read is in the target's related projection. Blobs always
-   * count as restricted. `false` until the Entities chunk loads.
+   * traversal rule: the root's `Read` is granted, and at each entity the
+   * path reaches that the user reads with a filter or not at all, the
+   * segment read there is in the entity's related projection, a navigation
+   * by its name or its foreign key's. Blobs always count as restricted, and
+   * a child root's owner counts as any other entity. `false` until the
+   * Entities chunk loads.
    *
    * @param root - The entity the query reads, such as `gl.Center`.
    * @param key - The path, such as `Parent.Code`.

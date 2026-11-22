@@ -17,16 +17,18 @@ import golden from './display-name-golden.json';
 import { TmDisplayName } from './tm-display-name';
 import {
   ɵtmDisplayNameParts,
-  ɵtmDisplayNamePlan,
+  ɵtmDisplayNamePlanOf,
+  ɵtmDisplayNameSelect,
   ɵtmDisplayNameText,
   type TmDisplayNameParts,
   type ɵTmDisplayNamePlan,
 } from './tm-display-names';
 import { tmEntityDocs, tmEntityRig, type TmEntityRig, type TmEntityRigOptions } from './tm-entity.testing.util';
-import type { TmDataType } from './tm-entity-metadata';
+import type { TmEntityDescriptor } from './tm-entity-descriptors';
+import type { TmDataType, TmDisplayNameRule } from './tm-entity-metadata';
 import type { TmQueryRowSet } from './tm-rows-to-objects';
 
-// Display names: the shared golden's rows rendered by the client's steps,
+// Display names: the shared golden's rows through the registry's own plan,
 // then the registry over the server's recorded model: rendering from wire
 // rows, the select a display name reads, names by id from the held rows,
 // the cacheable lists and the background reads, and the rules that keep or
@@ -44,22 +46,41 @@ interface GoldenRule {
 /** The slots each of the golden's shapes admits. */
 const SLOTS = { Primary: 1, PrimaryAndSecondary: 2, All: 3 } as const;
 
-/** The plan of a golden rule under a shape, as the registry builds it from the metadata. */
-function goldenPlan(rule: GoldenRule, shape: keyof typeof SLOTS): ɵTmDisplayNamePlan {
-  const term = (name: string, type: TmDataType) => ({ name, json: name.charAt(0).toLowerCase() + name.slice(1), type });
-  const names = [];
-  if (rule.twins === undefined) {
-    names.push(term(rule.source!, rule.sourceType as TmDataType));
-  } else {
-    // A group's twins up to the shape's slots, stopping at the first the group lacks.
-    for (const twin of rule.twins.slice(0, SLOTS[shape])) {
-      if (twin === null) {
-        break;
-      }
-      names.push(term(twin, 'string'));
-    }
-  }
-  return ɵtmDisplayNamePlan(term(rule.key, 'integer'), names, rule.prefix === undefined ? null : term(rule.prefix, 'string'));
+/**
+ * The descriptor facts a golden rule implies: the key, each twin the group
+ * has with its slot, or the scalar source, and the prefix.
+ */
+function goldenDescriptor(rule: GoldenRule): TmEntityDescriptor {
+  const property = (name: string, type: string, multilingual?: { group: string; slot: number }) => ({
+    name,
+    json: name.charAt(0).toLowerCase() + name.slice(1),
+    type: type as TmDataType,
+    ...(multilingual && { multilingual }),
+  });
+  const properties = [
+    property(rule.key, 'integer'),
+    ...(rule.twins ?? []).flatMap((twin, index) => (twin === null ? [] : [property(twin, 'string', { group: rule.twins![0]!, slot: index + 1 })])),
+    ...(rule.source !== undefined && rule.source !== rule.key ? [property(rule.source, rule.sourceType!)] : []),
+    ...(rule.prefix !== undefined ? [property(rule.prefix, 'string')] : []),
+  ];
+  return {
+    key: { property: rule.key },
+    properties,
+    property: (name: string) => properties.find((candidate) => candidate.name.toLowerCase() === name.toLowerCase()),
+  } as unknown as TmEntityDescriptor;
+}
+
+/** A golden rule as the Core chunk's summary carries it. */
+function summaryRule(rule: GoldenRule): TmDisplayNameRule {
+  return { source: rule.twins?.[0] ?? rule.source!, multilingual: rule.twins !== undefined, ...(rule.prefix !== undefined && { prefix: rule.prefix }) };
+}
+
+/**
+ * The plan of a golden rule under a shape, as the registry builds it: from
+ * the descriptor once loaded, or from the summary alone before.
+ */
+function goldenPlan(rule: GoldenRule, shape: keyof typeof SLOTS, loaded = true): ɵTmDisplayNamePlan {
+  return ɵtmDisplayNamePlanOf(summaryRule(rule), SLOTS[shape], loaded ? goldenDescriptor(rule) : null);
 }
 
 /** One listed securable. */
@@ -92,9 +113,17 @@ describe('display names', () => {
 
     it.each(golden.expansion.map((row) => [row.name, row] as const))('%s', (_, row) => {
       const plan = goldenPlan(row.rule as GoldenRule, row.shape as keyof typeof SLOTS);
-      const columns = row.navigation === null ? plan.columns : plan.columns.map((column) => `${row.navigation}.${column}`);
-      expect(columns).toEqual(row.columns);
+      expect(ɵtmDisplayNameSelect(plan, row.navigation ?? undefined)).toEqual(row.columns);
     });
+
+    it.each(golden.expansion.filter((row) => !(row.rule.twins ?? []).includes(null)).map((row) => [row.name, row] as const))(
+      'before the Entities chunk loads: %s',
+      (_, row) => {
+        // Before the load the twins follow the naming convention, which every rule with all its twins obeys.
+        const plan = goldenPlan(row.rule as GoldenRule, row.shape as keyof typeof SLOTS, false);
+        expect(ɵtmDisplayNameSelect(plan, row.navigation ?? undefined)).toEqual(row.columns);
+      },
+    );
 
     it('has the client-only rows the server skips', () => {
       expect(golden.render.filter((row) => 'clientOnly' in row && row.clientOnly).map((row) => row.locale)).toEqual(['ar-SA']);
@@ -286,6 +315,22 @@ describe('display names', () => {
         names.resolve('acme.Customer', [7, 9]);
         await new Promise((resolve) => setTimeout(resolve, 50));
         expect(api.calls().filter((call) => call.route === 'customers/query')).toHaveLength(1);
+      });
+
+      it('never asks about ids a cacheable entity’s loaded list holds', async () => {
+        const { names, api, store, move, docs } = await start({ access: { securables: [grant('acme.Currency', 'Read')] } });
+        await store.put(TM_T17, 'entity:acme.Currency', { tag: 'L1', savedAt: Date.now(), data: [{ id: 3, code: 'USD' }] });
+        await move(docs, { 'acme.Currency': 'L1' });
+        api.respond('currencies/query', { rows: { columns: [], rows: [] } });
+
+        names.resolve('acme.Currency', [3, '3' as TmDecimal]);
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        expect(api.calls().filter((call) => call.route === 'currencies/query')).toEqual([]);
+
+        // An id the list lacks is still asked, alone.
+        names.resolve('acme.Currency', [3, 9]);
+        await vi.waitFor(() => expect(names.label('acme.Currency', 9)()).toBe('#9'));
+        expect(api.calls().filter((call) => call.route === 'currencies/query').map((call) => (call.body as { filters: unknown }).filters)).toEqual([['Id in (9)']]);
       });
 
       it('never asks about an entity the user cannot query', async () => {

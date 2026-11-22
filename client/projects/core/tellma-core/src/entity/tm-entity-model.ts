@@ -371,12 +371,12 @@ export class TmEntityModel {
   }
 
   /**
-   * Whether a path passes the traversal rule: through every restricted
-   * entity after the root, what the path reads there must be in that
-   * entity's related projection. A navigation reads its foreign key; a group
-   * anchor reads every admitted slot. From a child root, the owner it
-   * reaches through its owner navigation counts as the root. The caller
-   * checks the root's own `Read`.
+   * Whether a path passes the traversal rule, walked segment by segment as
+   * the server walks it: at each entity after the root that the user reads
+   * with a filter or not at all, the one segment read there must be in the
+   * entity's related projection. A navigation segment passes by its name or
+   * its foreign key's, and a group anchor reads every admitted slot. The
+   * caller checks the root's own `Read`.
    *
    * @param root - The entity the path starts from.
    * @param key - The path.
@@ -390,27 +390,29 @@ export class TmEntityModel {
       return false;
     }
 
-    // --- What the path reads: one path for each column, in C# names ---
-    const prefix = resolution.steps.map((step) => step.name);
-    const { end } = resolution;
-    const reads: readonly string[] =
+    // --- What the last segment reads where it is read: each entry passes by any of its names ---
+    const { steps, end } = resolution;
+    const last: readonly (readonly string[])[] =
       end.kind === 'value'
-        ? [[...prefix, end.property.name].join('.')]
+        ? [[end.property.name]]
         : end.kind === 'text'
-          ? end.slots.map((slot) => [...prefix, slot.name].join('.'))
-          : [resolution.fkPath ?? ''];
+          ? end.slots.map((slot) => [slot.name])
+          : [[end.navigation.name, end.navigation.foreignKey]];
 
-    // --- Each restricted entity along the way must project what is read through it ---
-    const owner = this.descriptor(root, shape)?.kind === 'child' && resolution.steps[0]?.kind === 'owner';
-    return resolution.steps.every((step, index) => {
-      if (index === 0 && owner) {
-        return true;
-      }
+    // --- Each restricted entity a step reaches projects the segment read there ---
+    // Spec 0015 §5.2 step 4 also counts a child root's owner as the root when
+    // the child's Read carries no grant of its own. The access summary does
+    // not say which of a child's grants are its own (spec 0014 §5.5 composes
+    // the owner's into it), so the client never assumes so: it may under-offer
+    // an owner's columns, but never offers one the server refuses.
+    return steps.every((step, index) => {
       if (step.target !== 'core.Blob' && !restricted(step.target)) {
         return true;
       }
-      const projection = new Set(this.descriptor(step.target, shape)?.relatedSelect.map((path) => path.toLowerCase()));
-      return reads.every((path) => projection.has(path.split('.').slice(index + 1).join('.').toLowerCase()));
+      const projection = new Set(this.descriptor(step.target, shape)?.relatedSelect.map((name) => name.toLowerCase()));
+      const next = steps[index + 1];
+      const reads = next === undefined ? last : [[next.name, next.foreignKey]];
+      return reads.every((names) => names.some((name) => projection.has(name.toLowerCase())));
     });
   }
 }

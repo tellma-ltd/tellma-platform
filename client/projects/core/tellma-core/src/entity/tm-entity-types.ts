@@ -54,37 +54,98 @@ export type TmEntityType<N extends string> = N extends keyof TmEntityTypes ? TmE
 /** The path shape of an entity the emitted declarations register, else `never`. */
 type TmShapeOf<N extends string> = N extends keyof TmEntityShapes ? TmEntityShapes[N] : never;
 
+// The paths are never enumerated past two segments: the union of every path
+// grows with the cube of an entity's navigations, which a connected model
+// cannot afford (TS2590 and minutes of checking). An annotation checks the
+// first two segments exactly; a declaration passed to `tmEntity` checks each
+// literal segment by segment, at a cost linear in its length.
+
 /**
- * The paths from an entity, crossing at most as many navigations as `D`
- * has elements: its scalars, its multilingual groups and its navigations,
- * then each navigation's name and a dot before its target's paths. Past the
- * last step, a navigation's name and a dot accept any text.
+ * What one segment may name on an entity: a scalar, a multilingual group, a
+ * navigation, or a navigation, a dot and any text. Any text for an entity
+ * the emitted declarations do not register.
  */
-type TmPathsFrom<N extends string, D extends readonly unknown[]> =
-  TmShapeOf<N> extends {
-    readonly scalars: infer S extends string;
-    readonly groups: infer G extends string;
-    readonly navigations: infer V;
-  }
-    ?
-        | S
-        | G
-        | (keyof V & string)
-        | (D extends readonly [unknown, ...infer R]
-            ? { [K in keyof V & string]: V[K] extends string ? `${K}.${TmPathsFrom<V[K], R>}` : never }[keyof V & string]
-            : `${keyof V & string}.${string}`)
+type TmPathStep<N extends string> = [TmShapeOf<N>] extends [never]
+  ? string
+  : TmShapeOf<N> extends {
+        readonly scalars: infer S extends string;
+        readonly groups: infer G extends string;
+        readonly navigations: infer V;
+      }
+    ? S | G | (keyof V & string) | `${keyof V & string}.${string}`
     : string;
 
 /**
  * A path from an entity, in PascalCase C# names: `Code`, `Parent.Name`,
  * `Parent.Manager`. Once the distribution's emitted declarations register
- * the entity, a path of up to three navigation steps is checked exactly
- * and a longer one when its first three steps check; without them, any
- * text is a path.
+ * the entity, an annotation checks a path's first two segments exactly, and
+ * editors complete them; `tmEntity` checks every segment of the paths its
+ * declaration names. Without the declarations, any text is a path.
  *
  * @example
  * ```ts
  * const path: TmPath<'gl.Center'> = 'Parent.Manager.Name';
  * ```
  */
-export type TmPath<N extends string> = [TmShapeOf<N>] extends [never] ? string : TmPathsFrom<N, readonly [1, 1, 1]>;
+export type TmPath<N extends string> = [TmShapeOf<N>] extends [never]
+  ? string
+  : TmShapeOf<N> extends {
+        readonly scalars: infer S extends string;
+        readonly groups: infer G extends string;
+        readonly navigations: infer V;
+      }
+    ?
+        | S
+        | G
+        | (keyof V & string)
+        | { [K in keyof V & string]: V[K] extends string ? `${K}.${TmPathStep<V[K]>}` : never }[keyof V & string]
+    : string;
+
+/**
+ * The rest of a literal path checked from an entity, one segment at a time:
+ * the whole path when every segment names what its entity has, else the
+ * prefix that checked followed by what may come next, which the compiler
+ * reports against the literal.
+ */
+type TmCheckFrom<N extends string, Rest extends string, Full extends string, Prefix extends string> = string extends Rest
+  ? Full
+  : [TmShapeOf<N>] extends [never]
+    ? Full
+    : TmShapeOf<N> extends {
+          readonly scalars: infer S extends string;
+          readonly groups: infer G extends string;
+          readonly navigations: infer V;
+        }
+      ? Rest extends `${infer H}.${infer T}`
+        ? H extends keyof V
+          ? V[H] extends string
+            ? TmCheckFrom<V[H], T, Full, `${Prefix}${H}.`>
+            : Full
+          : `${Prefix}${TmPathStep<N>}`
+        : Rest extends S | G | (keyof V & string)
+          ? Full
+          : `${Prefix}${TmPathStep<N>}`
+      : Full;
+
+/**
+ * A path checked segment by segment from an entity: the literal itself when
+ * it resolves, else what may follow its last valid segment. Text that is no
+ * literal passes as it is.
+ *
+ * @example
+ * ```ts
+ * type Ok = TmCheckedPath<'gl.Center', 'Parent.Manager.Name'>; // 'Parent.Manager.Name'
+ * ```
+ */
+export type TmCheckedPath<N extends string, P extends string> = P extends string ? (string extends P ? P : TmCheckFrom<N, P, P, ''>) : never;
+
+/**
+ * An order checked from an entity: its path segment by segment, and the
+ * `:desc` suffix apart from it.
+ *
+ * @example
+ * ```ts
+ * type Ok = TmCheckedOrder<'gl.Center', 'Parent.Code:desc'>; // 'Parent.Code:desc'
+ * ```
+ */
+export type TmCheckedOrder<N extends string, O extends string> = O extends `${infer P}:desc` ? `${TmCheckedPath<N, P>}:desc` : TmCheckedPath<N, O>;

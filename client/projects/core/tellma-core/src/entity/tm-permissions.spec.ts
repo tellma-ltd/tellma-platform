@@ -258,6 +258,22 @@ describe('TmPermissions', () => {
       expect(permissions.reachable('gl.Center', 'Manager.Email')()).toBe(false);
     });
 
+    it.each([
+      // core.User projects ImageId, so Image passes there; core.Blob then judges FileName itself.
+      ['Manager.Image.FileName', true],
+      ['Manager.Image.State', false],
+      ['Manager.Image', true],
+      // core.User projects neither Signature nor SignatureId.
+      ['Manager.Signature.FileName', false],
+      ['Parent.Manager.Image.FileName', true],
+      ['Parent.Manager.Name', true],
+      // Past core.User, ModifiedBy is not projected, whatever follows it.
+      ['Manager.ModifiedBy.Name', false],
+    ])('walks segment by segment from an unfiltered gl.Center with no core.User grant: %s is %s', async (key, reachable) => {
+      const { permissions } = await rig([grant('gl.Center', 'Read')]);
+      expect(permissions.reachable('gl.Center', key)()).toBe(reachable);
+    });
+
     it('needs the root’s Read', async () => {
       const { permissions } = await rig([grant('core.User', 'Read')]);
       expect(permissions.reachable('gl.Center', 'Code')()).toBe(false);
@@ -272,14 +288,34 @@ describe('TmPermissions', () => {
       expect(permissions.reachable('acme.Customer', 'Currency.DecimalPlaces')()).toBe(true);
     });
 
-    it('checks a child root’s owner as the root', async () => {
-      const { permissions } = await rig([grant('acme.CustomerContact', 'Read', true), grant('acme.Customer', 'Read', true)]);
+    describe('from a child root', () => {
+      it('limits the owner to its projection under the child’s own grant', async () => {
+        const { permissions } = await rig([grant('acme.CustomerContact', 'Read', true)]);
 
-      expect(permissions.reachable('acme.CustomerContact', 'Customer.CreditLimit')()).toBe(true);
-      expect(permissions.reachable('acme.CustomerContact', 'Customer.Currency.Code')()).toBe(true);
-      expect(permissions.reachable('acme.CustomerContact', 'Customer.Currency.DecimalPlaces')()).toBe(false);
-      // From the owner itself, its own filtered grant limits nothing at the root.
-      expect(permissions.reachable('acme.Customer', 'CreditLimit')()).toBe(true);
+        expect(permissions.reachable('acme.CustomerContact', 'Customer.Code')()).toBe(true);
+        expect(permissions.reachable('acme.CustomerContact', 'Customer.CreditLimit')()).toBe(false);
+      });
+
+      it('reads every owner column under the owner’s unfiltered Read', async () => {
+        const { permissions } = await rig([grant('acme.CustomerContact', 'Read'), grant('acme.Customer', 'Read')]);
+
+        expect(permissions.reachable('acme.CustomerContact', 'Customer.CreditLimit')()).toBe(true);
+        expect(permissions.reachable('acme.CustomerContact', 'Customer.Currency.Code')()).toBe(true);
+        // The owner's own references are judged by their targets' grants.
+        expect(permissions.reachable('acme.CustomerContact', 'Customer.Currency.DecimalPlaces')()).toBe(false);
+      });
+
+      it('refuses past the owner’s projection when the summary cannot tell the child’s own grant from the owner’s', async () => {
+        // A filtered owner composes into the child's entry, so a filtered child
+        // may hold a grant of its own or only the owner's: the client fails closed.
+        const { permissions } = await rig([grant('acme.CustomerContact', 'Read', true), grant('acme.Customer', 'Read', true)]);
+
+        expect(permissions.reachable('acme.CustomerContact', 'Customer.Code')()).toBe(true);
+        expect(permissions.reachable('acme.CustomerContact', 'Customer.CreditLimit')()).toBe(false);
+        expect(permissions.reachable('acme.CustomerContact', 'Customer.Currency.Code')()).toBe(false);
+        // From the owner itself, its own filtered grant limits nothing at the root.
+        expect(permissions.reachable('acme.Customer', 'CreditLimit')()).toBe(true);
+      });
     });
 
     it('is false until the Entities chunk loads', async () => {

@@ -53,6 +53,34 @@ const usage = virtual('usage.check.ts');
 /** A chunk the client type refuses, which proves the check can fail. */
 const refused = virtual('refused.check.ts');
 
+/** Paths over a synthetic, densely connected model, whose checking time is bounded. */
+const connected = virtual('connected.check.ts');
+
+// --- The synthetic model: 20 entities, each with 30 scalars, a group and 12 navigations to others ---
+
+/** The synthetic model's number of entities. */
+const ENTITIES = 20;
+
+/** Each synthetic entity's number of navigations. */
+const NAVIGATIONS = 12;
+
+/** The synthetic model's shapes, as the emitted declarations would augment them. */
+function connectedShapes(): string {
+  const scalars = Array.from({ length: 30 }, (_, index) => `'S${index}'`).join(' | ');
+  const entities = Array.from({ length: ENTITIES }, (_, entity) => {
+    const navigations = Array.from({ length: NAVIGATIONS }, (_, index) => `N${index}: 'syn.E${(entity + index + 1) % ENTITIES}'`).join('; ');
+    return `    'syn.E${entity}': { scalars: ${scalars}; groups: 'G'; navigations: { ${navigations} }; children: {} };`;
+  });
+  return ["declare module '@tellma/core' {", '  interface TmEntityShapes {', ...entities, '  }', '}'].join('\n');
+}
+
+/**
+ * The most the connected model's file may take to check, in milliseconds:
+ * about 0.2 s measured, against minutes, or TS2590, when every path was
+ * enumerated.
+ */
+const CONNECTED_BUDGET_MS = 10_000;
+
 const sources = new Map<string, string>([
   [declarations, readFileSync(join(fixturesDir, 'tellma-entities.d.ts.txt'), 'utf8')],
   [
@@ -66,7 +94,7 @@ const sources = new Map<string, string>([
   [
     usage,
     [
-      "import { tmEntity, type TmDecimal, type TmEntityShapes, type TmEntityType, type TmJsonObject, type TmPath } from '@tellma/core';",
+      "import { tmEntity, type TmDecimal, type TmEntityShapes, type TmEntityType, type TmJsonObject, type TmOrderInput, type TmPath } from '@tellma/core';",
       "import type { AcmeCustomer, AcmeCustomerType, GlCenter } from './tellma-entities';",
       '',
       "declare const customer: TmEntityType<'acme.Customer'>;",
@@ -92,19 +120,41 @@ const sources = new Map<string, string>([
       "export const target: TmEntityShapes['acme.Customer']['navigations']['Currency'] = 'acme.Currency';",
       "export const child: TmEntityShapes['acme.Customer']['children']['Contacts'] = 'acme.CustomerContact';",
       '',
-      '// Paths of up to three navigation steps check exactly; a longer one checks its first three.',
+      '// An annotation checks the first two segments of a path exactly.',
       "export const path: TmPath<'acme.Customer'> = 'Currency.Code';",
       "export const three: TmPath<'acme.Customer'> = 'Currency.CreatedBy.Image.FileName';",
       "export const four: TmPath<'acme.Customer'> = 'Currency.CreatedBy.ModifiedBy.Image.Anything';",
       "export const anyPath: TmPath<'acme.Unknown'> = 'Whatever.Goes';",
+      "export const order: TmOrderInput<'acme.Customer'> = 'Currency.Code:desc';",
+      '',
+      '// tmEntity checks every segment of the literal paths its declaration names.',
       "export const declared = tmEntity('acme.Customer', { columns: ['Code', 'Name', 'Currency', { path: 'CreditLimit', width: 120 }], orderBy: 'Code:desc' });",
+      "export const deep = tmEntity('acme.Customer', {",
+      "  columns: ['Currency.CreatedBy.Image.FileName', { path: 'Currency.Code', select: ['Currency.ModifiedBy.Name'] }, { expression: 'Code', labelKey: 'Code' }],",
+      "  orderBy: 'Currency.CreatedBy.Name:desc',",
+      "  tile: { image: 'Image', title: 'Currency.CreatedBy.Image.FileName' },",
+      "  picker: { description: ['Currency.ModifiedBy.Image.Size'], orderBy: 'Currency.Code' },",
+      '});',
+      "export const anyEntity = tmEntity('acme.Unknown', { columns: ['Whatever.Goes.Deep'] });",
       '',
       '// @ts-expect-error a column names a property the entity has',
       "export const typo = tmEntity('acme.Customer', { columns: ['Cod'] });",
       '// @ts-expect-error a path steps only through navigations',
       "export const throughScalar: TmPath<'acme.Customer'> = 'Code.Length';",
-      '// @ts-expect-error the first three steps of a longer path are checked',
+      '// @ts-expect-error an annotation checks the first two segments of a longer path',
       "export const badPrefix: TmPath<'acme.Customer'> = 'Currency.Nope.CreatedBy.Image.Anything';",
+      '// @ts-expect-error the path of an order is checked apart from its suffix',
+      "export const badOrder: TmOrderInput<'acme.Customer'> = 'Currency.Cod:desc';",
+      '// @ts-expect-error tmEntity checks the fourth segment of a column',
+      "export const deepColumn = tmEntity('acme.Customer', { columns: ['Currency.CreatedBy.Image.Nope'] });",
+      '// @ts-expect-error tmEntity checks the select of a column',
+      "export const deepSelect = tmEntity('acme.Customer', { columns: [{ path: 'Code', select: ['Currency.CreatedBy.Nope.Name'] }] });",
+      '// @ts-expect-error tmEntity checks the path of an order apart from its suffix',
+      "export const deepOrder = tmEntity('acme.Customer', { orderBy: 'Currency.CreatedBy.Nope:desc' });",
+      '// @ts-expect-error tmEntity checks the slots of a tile',
+      "export const deepTile = tmEntity('acme.Customer', { tile: { subtitle: 'Currency.CreatedBy.Image.Nope' } });",
+      '// @ts-expect-error tmEntity checks the description of a picker',
+      "export const deepPicker = tmEntity('acme.Customer', { picker: { description: ['Currency.CreatedBy.Image.Nope'] } });",
       '// @ts-expect-error a decimal is text, never a number',
       'export const numeric: number = customer.creditLimit;',
       '// @ts-expect-error the wire spells the member in camelCase',
@@ -115,6 +165,20 @@ const sources = new Map<string, string>([
       "export const notes: TmEntityShapes['acme.Customer']['scalars'] = 'Notes';",
       '// @ts-expect-error a currency has no groups',
       "export const none: TmEntityShapes['acme.Currency']['groups'] = 'Name';",
+    ].join('\n'),
+  ],
+  [
+    connected,
+    [
+      "import { tmEntity, type TmOrderInput, type TmPath } from '@tellma/core';",
+      '',
+      connectedShapes(),
+      '',
+      "export const path: TmPath<'syn.E0'> = 'N0.N1.N2.S3';",
+      "export const order: TmOrderInput<'syn.E0'> = 'N0.N1.S2:desc';",
+      "export const declared = tmEntity('syn.E0', { columns: ['N0.N1.N2.N3.S4', 'N11.G'], orderBy: 'N1.N2.N3.S0:desc' });",
+      '// @ts-expect-error a fourth segment the entity lacks',
+      "export const refusedPath = tmEntity('syn.E0', { columns: ['N0.N1.N2.Nope'] });",
     ].join('\n'),
   ],
   [
@@ -190,6 +254,19 @@ describe('the client entity model fixtures', { timeout: 300_000 }, () => {
 
   it('the declarations type rows and paths by entity name', () => {
     expect(diagnosticsOf(program, usage)).toEqual([]);
+  });
+
+  it('paths over a densely connected model check quickly', () => {
+    // Every other file is checked first, so the timing covers this file's paths alone.
+    for (const name of [declarations, chunks, usage]) {
+      diagnosticsOf(program, name);
+    }
+    const started = performance.now();
+    const diagnostics = diagnosticsOf(program, connected);
+    const elapsed = performance.now() - started;
+
+    expect(diagnostics).toEqual([]);
+    expect(elapsed).toBeLessThan(CONNECTED_BUDGET_MS);
   });
 
   it('a chunk off its client type is refused', () => {

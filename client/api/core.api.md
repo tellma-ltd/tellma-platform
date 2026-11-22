@@ -620,7 +620,7 @@ export interface TmEntitiesChunk {
 }
 
 // @public
-export function tmEntity<const N extends string>(name: N, declaration?: TmEntityDeclarationInput<N>): TmEntityDeclaration;
+export function tmEntity<const N extends string, const D extends TmEntityDeclarationInput<N> = TmEntityDeclarationInput<N>>(name: N, declaration?: D extends TmCheckedDeclaration<N, D> ? D : TmCheckedDeclaration<N, D>): TmEntityDeclaration;
 
 // @public
 export interface TmEntityActionDeclaration<N extends string> {
@@ -1160,7 +1160,13 @@ export type TmPartition = {
 };
 
 // @public
-export type TmPath<N extends string> = [TmShapeOf<N>] extends [never] ? string : TmPathsFrom<N, readonly [1, 1, 1]>;
+export type TmPath<N extends string> = [TmShapeOf<N>] extends [never] ? string : TmShapeOf<N> extends {
+    readonly scalars: infer S extends string;
+    readonly groups: infer G extends string;
+    readonly navigations: infer V;
+} ? G | S | {
+    [K in keyof V & string]: V[K] extends string ? `${K}.${TmPathStep<V[K]>}` : never;
+}[keyof V & string] | (keyof V & string) : string;
 
 // @public
 export type TmPathEnd = {

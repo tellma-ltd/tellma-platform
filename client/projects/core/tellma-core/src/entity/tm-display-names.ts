@@ -141,6 +141,18 @@ export function ɵtmDisplayNamePlanOf(
   return ɵtmDisplayNamePlan(term(descriptor?.key.property ?? 'Id'), names, rule.prefix === undefined ? null : term(rule.prefix));
 }
 
+/**
+ * The paths a plan reads, for a query's select, under the navigation the
+ * entity is reached through. Internal.
+ *
+ * @param plan - The plan.
+ * @param navigation - The navigation path, such as `Parent`; absent from the root.
+ * @returns The paths, such as `['Parent.Id', 'Parent.Name']`.
+ */
+export function ɵtmDisplayNameSelect(plan: ɵTmDisplayNamePlan, navigation?: string): readonly string[] {
+  return navigation ? plan.columns.map((column) => `${navigation}.${column}`) : plan.columns;
+}
+
 /** Each locale's digits and decimal separator, for writing decimal text exactly. */
 const DIGITS = new Map<string, { readonly zero: number; readonly point: string }>();
 
@@ -370,7 +382,7 @@ export class TmDisplayNames {
     if (plan === null) {
       throw new Error(`The metadata lists no entity '${entity}'.`);
     }
-    return navigation ? plan.columns.map((column) => `${navigation}.${column}`) : plan.columns;
+    return ɵtmDisplayNameSelect(plan, navigation);
   }
 
   /**
@@ -461,7 +473,7 @@ export class TmDisplayNames {
    * Fetches the display names of ids this tab does not hold, in the
    * background: the ids of one frame are read together, at most 100 per
    * read, and a tenant change aborts the reads. An entity the user cannot
-   * query is never asked.
+   * query is never asked, nor an id a cacheable entity's loaded list holds.
    *
    * @param entity - The entity's name.
    * @param ids - The ids, numbers or decimal text.
@@ -472,10 +484,13 @@ export class TmDisplayNames {
       return;
     }
     const bucket = untracked(() => this.#bucket(summary.name));
+    // A cacheable entity's loaded list already names its rows, as label reads them.
+    const list = summary.capabilities.includes('cacheable') ? untracked(this.#launch.entitySet(summary.name)) : undefined;
     let queue = this.#queue.get(summary.name);
     for (const id of ids) {
       const key = idKey(id);
-      if (key !== null && !bucket.rows.has(key) && !this.#reading.has(`${summary.name}\n${key}`)) {
+      const listed = key !== null && list && (list.byId.has(Number(key)) || list.byId.has(key as TmDecimal));
+      if (key !== null && !listed && !bucket.rows.has(key) && !this.#reading.has(`${summary.name}\n${key}`)) {
         queue ??= new Map();
         queue.set(key, id);
       }

@@ -12,7 +12,7 @@ import type { TmId, TmJsonObject } from '../json/tm-json';
 import type { TmNavContext } from '../nav/tm-nav-declarations';
 import type { TmTenantUrls } from '../urls/tm-urls';
 import type { TmDataType } from './tm-entity-metadata';
-import type { TmEntityType, TmPath } from './tm-entity-types';
+import type { TmCheckedOrder, TmCheckedPath, TmEntityType, TmPath } from './tm-entity-types';
 
 // The entity declaration (spec 0029 §3): what a feature says about an entity
 // that the metadata cannot know, such as its launcher entry, its grids'
@@ -386,6 +386,44 @@ export interface TmEntityDeclaration {
   readonly [member: string]: unknown;
 }
 
+// --- The literal paths of a declaration, checked segment by segment ---
+
+/** Each path of a list checked from an entity; other members pass. */
+type TmCheckedPaths<N extends string, A> = { readonly [I in keyof A]: A[I] extends string ? TmCheckedPath<N, A[I]> : A[I] };
+
+/** A column checked from an entity: a path, or a column's path and its select. */
+type TmCheckedColumn<N extends string, C> = C extends string
+  ? TmCheckedPath<N, C>
+  : { readonly [M in keyof C]: M extends 'path' ? (C[M] extends string ? TmCheckedPath<N, C[M]> : C[M]) : M extends 'select' ? TmCheckedPaths<N, C[M]> : C[M] };
+
+/** Each column of a list checked from an entity. */
+type TmCheckedColumns<N extends string, A> = { readonly [I in keyof A]: TmCheckedColumn<N, A[I]> };
+
+/** An order checked from an entity, when it is text. */
+type TmCheckedOrderMember<N extends string, O> = O extends string ? TmCheckedOrder<N, O> : O;
+
+/** A picker's description and order checked from an entity. */
+type TmCheckedPicker<N extends string, P> = {
+  readonly [M in keyof P]: M extends 'description' ? TmCheckedPaths<N, P[M]> : M extends 'orderBy' ? TmCheckedOrderMember<N, P[M]> : P[M];
+};
+
+/**
+ * A declaration whose literal paths are checked from its entity, segment by
+ * segment: the columns with their selects, the order, the tile's slots and
+ * the picker's description and order. Every other member passes as it is.
+ */
+type TmCheckedDeclaration<N extends string, D> = {
+  readonly [K in keyof D]: K extends 'columns'
+    ? TmCheckedColumns<N, D[K]>
+    : K extends 'orderBy'
+      ? TmCheckedOrderMember<N, D[K]>
+      : K extends 'tile'
+        ? TmCheckedPaths<N, D[K]>
+        : K extends 'picker'
+          ? TmCheckedPicker<N, D[K]>
+          : D[K];
+};
+
 /**
  * Declares an entity: its launcher entry, its default grids, its details
  * layout and its hatches. Listed in a feature's `entities`, it adds the
@@ -394,7 +432,7 @@ export interface TmEntityDeclaration {
  * types the declaration's paths and rows, so it takes no type argument.
  *
  * @param name - The entity's name, as the metadata spells it: `acme.Customer`.
- * @param declaration - The members to set.
+ * @param declaration - The members to set; once the emitted declarations register the entity, each literal path it names is checked, segment by segment.
  * @returns The frozen declaration.
  *
  * @example
@@ -406,6 +444,9 @@ export interface TmEntityDeclaration {
  * });
  * ```
  */
-export function tmEntity<const N extends string>(name: N, declaration?: TmEntityDeclarationInput<N>): TmEntityDeclaration {
+export function tmEntity<const N extends string, const D extends TmEntityDeclarationInput<N> = TmEntityDeclarationInput<N>>(
+  name: N,
+  declaration?: D extends TmCheckedDeclaration<N, D> ? D : TmCheckedDeclaration<N, D>,
+): TmEntityDeclaration {
   return tmMarkDeclaration(Object.freeze({ ...declaration, name }), 'entity');
 }
