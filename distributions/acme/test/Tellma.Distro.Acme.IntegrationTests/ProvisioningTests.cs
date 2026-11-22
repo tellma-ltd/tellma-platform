@@ -18,8 +18,8 @@ using Tellma.Core.Data;
 using Tellma.Core.Identity;
 using Tellma.Core.Migrator;
 using Tellma.Distro.Acme.Development;
-using Tellma.Distro.Acme.IntegrationTests.Infrastructure;
 using Tellma.Distro.Acme.Migrator;
+using Tellma.Distro.Acme.TestSupport;
 using Tellma.Identity.Data;
 using Tellma.Identity.TestSupport;
 

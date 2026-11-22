@@ -1,0 +1,28 @@
+// Units of work above the round-trip budget, per operation.
+// Backs the "an operation takes more database round trips than its budget" alert, which finds an
+// N+1 per operation: each unit of work is tagged "<resource>:<kind>", and its kind's budget is the
+// most the pipeline takes with warm caches, its dependent validation rounds included. The exporter
+// lands the histogram as per-interval sums and counts, so the hour's mean stands in for a
+// percentile; a cold cache or a retry costs one more round trip now and then, which a mean over
+// enough units absorbs. Jobs and provisioning steps carry kinds of their own and are not budgeted.
+let budget = datatable(kind: string, allowed: real)
+[
+    "query", 1,
+    "get", 1,
+    "get_by_ids", 1,
+    "get_by_parent_ids", 1,
+    "all", 1,
+    "save", 4,
+    "delete", 2,
+    "delete_by_query", 2,
+    "delete_with_descendants", 2,
+    "action", 3,
+    "api_action", 3,
+];
+customMetrics
+| where name == "tellma.data.roundtrips"
+| extend operation = tostring(customDimensions["operation"])
+| extend kind = tostring(split(operation, ":")[1])
+| summarize units = sum(valueCount), trips = sum(valueSum), worst = max(valueMax) by operation, kind, bin(timestamp, 1h)
+| lookup kind=inner budget on kind
+| where units >= 20 and trips / units > allowed

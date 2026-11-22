@@ -7,7 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Tellma.Core.AspNetCore;
 using Tellma.Core.Composition;
 
-namespace Tellma.Distro.Acme.IntegrationTests.Infrastructure
+namespace Tellma.Distro.Acme.TestSupport
 {
     /// <summary>What a test adds to Acme's web host beyond its configuration files and a deployment's settings.</summary>
     internal sealed record AcmeHostOptions
@@ -44,5 +44,13 @@ namespace Tellma.Distro.Acme.IntegrationTests.Infrastructure
         ///     the developer's application data.
         /// </summary>
         public bool KeepsComposedBlobs { get; init; }
+
+        /// <summary>
+        ///     Whether the host listens with Kestrel on a loopback port instead of the in-memory test
+        ///     server, for a case that needs the real server's behavior, such as a stop that waits for
+        ///     the requests in flight; off by default. Such a host's browser and protocol drivers are
+        ///     unavailable, and it reaches nothing over HTTP at its public origin.
+        /// </summary>
+        public bool UsesKestrel { get; init; }
     }
 }

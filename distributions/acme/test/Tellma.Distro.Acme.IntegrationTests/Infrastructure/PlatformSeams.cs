@@ -5,6 +5,7 @@
 
 using Microsoft.Extensions.DependencyInjection;
 using Tellma.Core.Abstractions.Tenancy;
+using Tellma.Distro.Acme.TestSupport;
 
 namespace Tellma.Distro.Acme.IntegrationTests.Infrastructure
 {

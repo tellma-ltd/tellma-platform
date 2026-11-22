@@ -12,7 +12,7 @@ using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.AspNetCore;
 
-namespace Tellma.Distro.Acme.IntegrationTests.Infrastructure
+namespace Tellma.Distro.Acme.TestSupport
 {
     /// <summary>
     ///     Three tenant endpoints a test maps onto the web group, as a distribution maps its own: a
