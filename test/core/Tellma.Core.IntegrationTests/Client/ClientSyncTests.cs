@@ -7,6 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using System.Globalization;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Api;
 using Tellma.Core.Abstractions.Caching;
@@ -214,17 +215,19 @@ namespace Tellma.Core.IntegrationTests.Client
         // --- The wire ---
 
         [Fact]
-        public async Task The_answer_writes_the_settings_bytes_as_they_are_and_omits_the_members_it_does_not_carry()
+        public async Task The_answer_writes_the_settings_bytes_as_they_are_the_envelope_as_the_callers_own_read_and_omits_the_members_it_does_not_carry()
         {
             (_, string admin) = await fixture.SeedAdministratorAsync("Ann");
             (ClientSyncResult cold, _) = await SyncAsync(admin, Cold);
             (ClientSyncResult warm, _) = await SyncAsync(admin, cold.Tags);
+            MeResult own = await MeAsync(admin);
 
             using var coldWire = JsonDocument.Parse(JsonSerializer.SerializeToUtf8Bytes(cold, TellmaJson.Options));
             using var warmWire = JsonDocument.Parse(JsonSerializer.SerializeToUtf8Bytes(warm, TellmaJson.Options));
 
             Assert.Equal(JsonSerializer.Serialize(JsonDocument.Parse(cold.Settings!.Utf8).RootElement), JsonSerializer.Serialize(coldWire.RootElement.GetProperty("settings")));
-            Assert.Equal(JsonSerializer.Serialize(cold.Me, TellmaJson.Options), coldWire.RootElement.GetProperty("me").GetRawText());
+            string me = coldWire.RootElement.GetProperty("me").GetRawText();
+            Assert.True(JsonNode.DeepEquals(JsonSerializer.SerializeToNode(own, TellmaJson.Options), JsonNode.Parse(me)), "The envelope on the wire is " + me);
             Assert.Equal(["tenant", "tags", "staleEntities"], warmWire.RootElement.EnumerateObject().Select(static member => member.Name));
             Assert.False(warmWire.RootElement.GetProperty("tenant").TryGetProperty("liveTenantId", out _));
         }

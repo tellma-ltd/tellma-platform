@@ -3,6 +3,7 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
@@ -10,6 +11,7 @@ using Microsoft.OpenApi;
 using System.Net;
 using System.Text.Json;
 using Tellma.Core.Abstractions.Api;
+using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.AspNetCore.OpenApi;
 using Tellma.Core.AspNetCore.Tests.Api;
 using Tellma.Testing.WebHost;
@@ -189,13 +191,100 @@ namespace Tellma.Core.AspNetCore.Tests.OpenApi
             Assert.Equal(root, Reference(body));
 
             // --- One component per level, down to the innermost member, which takes any JSON value ---
+            // A polymorphic level's component names its shapes rather than members, so the walk steps
+            // from it to its one shape without counting a level.
             int levels = 0;
-            for (string id = root; id != nameof(JsonElement); id = Reference(schemas.GetProperty(id).GetProperty("properties").GetProperty("next"))!)
+            List<string> polymorphic = [];
+            for (string id = root; id != nameof(JsonElement);)
             {
-                levels++;
+                JsonElement schema = schemas.GetProperty(id);
+                if (schema.TryGetProperty("properties", out JsonElement properties))
+                {
+                    levels++;
+                    id = Reference(properties.GetProperty("next"))!;
+                }
+                else
+                {
+                    polymorphic.Add(id);
+                    id = Reference(schema)!;
+                }
             }
 
             Assert.Equal(PjDepth.Levels, levels);
+            Assert.Equal([nameof(PjShape)], polymorphic);
+        }
+
+        [Fact]
+        public void A_types_schema_nests_two_levels_per_object_and_four_per_polymorphic_level_however_shallow_its_values()
+        {
+            JsonSerializerOptions options = new(TellmaJson.Options) { MaxDepth = 4 * WebOpenApi.SchemaMaxDepth };
+
+            // --- Any value is an object of its own; each object level adds two, a polymorphic one four ---
+            Assert.Equal(1, SchemaDepthCheck.Depth(options, typeof(JsonElement)));
+            Assert.Equal(1 + 2, SchemaDepthCheck.Depth(options, typeof(PjLevel<JsonElement>)));
+            Assert.Equal(1 + 4, SchemaDepthCheck.Depth(options, typeof(PjLevel<PjLevel<JsonElement>>)));
+            Assert.Equal(1 + 4, SchemaDepthCheck.Depth(options, typeof(PjShape)));
+            Assert.Equal(1 + 2 + 4, SchemaDepthCheck.Depth(options, typeof(PjLevel<PjShape>)));
+
+            // --- The deepest types the document describes, and one level past it ---
+            Assert.Equal(WebOpenApi.SchemaMaxDepth, SchemaDepthCheck.Depth(options, typeof(PjTallest)));
+            Assert.Equal(WebOpenApi.SchemaMaxDepth + 1, SchemaDepthCheck.Depth(options, typeof(PjTooTall)));
+        }
+
+        [Fact]
+        public async Task A_body_whose_type_nests_as_deep_as_the_document_describes_is_described()
+        {
+            await using TellmaTestHost host = await TellmaTestHost.StartAsync(Compose("Development", static contribution => contribution.ApiService<PjTallestService>()));
+
+            JsonElement document = await ReadAsync(host);
+
+            JsonElement body = Operation(document, "/{tenantId}/api/web/tallest/read").GetProperty("requestBody").GetProperty("content").GetProperty("application/json").GetProperty("schema");
+            Assert.Equal(nameof(PjTallest), Reference(body));
+        }
+
+        [Fact]
+        public async Task A_body_whose_type_nests_past_what_the_document_describes_fails_startup_in_development()
+        {
+            (WebApplication app, _, _) = TellmaTestHost.Build(Compose("Development", static contribution => contribution.ApiService<PjTooTallService>()));
+            await using (app)
+            {
+                TellmaCompositionException exception = await Assert.ThrowsAsync<TellmaCompositionException>(() => app.StartAsync(Token));
+
+                CompositionProblem problem = Assert.Single(exception.Problems);
+                Assert.Equal(SchemaDepthCheck.CheckName, problem.Source);
+                Assert.Equal($"The web surface's type PjTooTall has a schema {WebOpenApi.SchemaMaxDepth + 1} levels deep, past the OpenAPI document's limit of {WebOpenApi.SchemaMaxDepth}, so the Development document would fail.", problem.Problem);
+            }
+        }
+
+        [Fact]
+        public async Task A_body_whose_type_nests_past_what_the_document_describes_fails_the_whole_document_without_the_check()
+        {
+            Action<TestHostOptions> compose = Compose("Development", static contribution => contribution.ApiService<PjTooTallService>());
+            await using TellmaTestHost host = await TellmaTestHost.StartAsync(options =>
+            {
+                compose(options);
+                Action<IServiceCollection>? prior = options.ConfigureServices;
+                options.ConfigureServices = services =>
+                {
+                    prior?.Invoke(services);
+                    _ = services.Remove(Assert.Single(services, static descriptor => descriptor.ServiceType == typeof(IStartupCheck) && descriptor.ImplementationType == typeof(SchemaDepthCheck)));
+                };
+            });
+
+            // The check's limit is the generator's own: a schema one level past it and no document is served.
+            using HttpResponseMessage response = await host.Client.GetAsync("/openapi/web.json", Token);
+
+            Assert.Equal(HttpStatusCode.InternalServerError, response.StatusCode);
+        }
+
+        [Fact]
+        public async Task The_check_measures_nothing_without_the_route_model()
+        {
+            await using ServiceProvider services = new ServiceCollection().BuildServiceProvider();
+
+            IReadOnlyList<CompositionProblem> problems = await new SchemaDepthCheck().CheckAsync(services, Token);
+
+            Assert.Empty(problems);
         }
 
         [Fact]
@@ -240,6 +329,20 @@ namespace Tellma.Core.AspNetCore.Tests.OpenApi
                 options.Compose = ProjectionModel.Compose;
                 options.ConfigureServices = WebApiProjectionTests.StandIns;
             });
+        }
+
+        /// <summary>Composes a host of the projection suite's feature with a contribution of its own.</summary>
+        /// <param name="environment">The host's environment.</param>
+        /// <param name="contribute">What the feature contributes.</param>
+        /// <returns>The host's options.</returns>
+        private static Action<TestHostOptions> Compose(string environment, Action<FeatureContribution> contribute)
+        {
+            return options =>
+            {
+                options.Environment = environment;
+                options.Compose = tellma => tellma.AddFeature(ProjectionModel.Feature(contribute));
+                options.ConfigureServices = WebApiProjectionTests.StandIns;
+            };
         }
 
         /// <summary>Reads the document.</summary>
