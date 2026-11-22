@@ -384,6 +384,12 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-196 (orchestrator, 2026-11-22): PC-093 takes pc-3; PC-F11 moves to pc-f
+
+PC-092 landed (87a9066c), and PC-093 (0018-h, T1) became ready just as pc-3 freed. D-140/D-173 put ready T1 work ahead of fills, and PC-F11 is a before-GA fill (D-195), so PC-093 takes pc-3 at implementer high with R1 only. PC-F11 takes the fix slot pc-f as soon as PC-214 lands, ahead of PC-175's release. Its brief has already been retargeted to pc-f.
+
+A local, unpushed pc/PC-F11 branch was created in pc-3 before the swap. pc-f reuses it, fast-forwarded to origin/platform-core. No branch is deleted.
+
 ### D-195 (Ahmad, 2026-11-22): start PC-F11 and PC-F17 to use the reset
 
 Situation: at 02:10 UTC usage was 15% at about 1 pt/h, below D-178's target of about 1.5. Nothing beyond PC-103 was ready, and pc-4 was idle. I proposed the two before-GA fix items, and Ahmad answered "Yes, start both".
