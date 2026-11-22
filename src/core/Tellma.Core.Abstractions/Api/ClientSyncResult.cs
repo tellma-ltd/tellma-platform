@@ -22,16 +22,14 @@ namespace Tellma.Core.Abstractions.Api
     ///     serialized when it loaded them; null when the held <c>settings</c> tag is current.
     /// </param>
     /// <param name="Me">
-    ///     The caller's own envelope, serialized as <c>users/me</c> writes it; null when the held
-    ///     <c>preferences</c> and <c>permissions</c> tags are both current. It is pre-serialized so a
-    ///     JSON schema of this record describes it as any value: the envelope's own schema, which
-    ///     <c>users/me</c> describes, nests too deep under this record for the HTTP nesting limit.
+    ///     The caller's own envelope, as <c>users/me</c> answers it; null when the held
+    ///     <c>preferences</c> and <c>permissions</c> tags are both current.
     /// </param>
     /// <param name="StaleEntities">The cacheable entities whose held <c>entity:&lt;Name&gt;</c> tag differs, in name order.</param>
     public sealed record ClientSyncResult(
         TenantFacts Tenant,
         IReadOnlyDictionary<string, string> Tags,
         PreSerializedJson<TenantSettingsForClient>? Settings,
-        PreSerializedJson<MeResult>? Me,
+        MeResult? Me,
         IReadOnlyList<string> StaleEntities);
 }

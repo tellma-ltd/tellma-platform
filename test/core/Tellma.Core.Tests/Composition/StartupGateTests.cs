@@ -210,6 +210,8 @@ namespace Tellma.Core.Tests.Composition
                 ["core.entity-pipeline"] = false,
                 ["core.enlistments"] = false,
                 ["core.stack-securables"] = false,
+                ["excel"] = false,
+                ["excel.deployment"] = true,
                 ["blobs"] = false,
                 ["blobs.deployment"] = true,
                 ["outbox.sender"] = true,

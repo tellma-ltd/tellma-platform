@@ -166,8 +166,12 @@ namespace Tellma.Core.Crud
         public IExcelRowSource CreateExcelRowSource(ExportSource source)
         {
             ArgumentNullException.ThrowIfNull(source);
-            Require(StackOperations.Export, CrudOperationNames.ExcelRows);
-            return excelRows.Create(Surface(), source, behavior.SearchFilter);
+
+            // Spec 0019 §1.2: the display export reads under Export, and the editable export and the
+            // importer's lookups under Import, so either operation serves the rows.
+            return (Descriptor.Operations & (StackOperations.Export | StackOperations.Import)) == 0
+                ? throw new InvalidOperationException($"The stack {Descriptor.Resource} omits both the Export and the Import operations, so its service cannot run '{CrudOperationNames.ExcelRows}'.")
+                : excelRows.Create(Surface(), source, behavior.SearchFilter);
         }
 
         /// <summary>The stack's query surface.</summary>

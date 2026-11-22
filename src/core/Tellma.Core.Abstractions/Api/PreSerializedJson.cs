@@ -20,12 +20,7 @@ namespace Tellma.Core.Abstractions.Api
     ///         again. A contract description describes the member as <typeparamref name="T" />, the
     ///         shape its bytes have.
     ///     </para>
-    ///     <para>
-    ///         A JSON schema describes the member as any value. A result that nests a deep type, whose
-    ///         own route describes it, holds it pre-serialized for that reason too: the web host's
-    ///         OpenAPI document writes each schema under the HTTP nesting limit, and a schema nests
-    ///         about twice as deep as the documents it describes.
-    ///     </para>
+    ///     <para>A JSON schema describes the member as any value.</para>
     /// </remarks>
     /// <typeparam name="T">The type the bytes are the JSON of.</typeparam>
     [JsonConverter(typeof(PreSerializedJsonConverterFactory))]
@@ -40,14 +35,6 @@ namespace Tellma.Core.Abstractions.Api
         internal PreSerializedJson(byte[] utf8)
         {
             _utf8 = utf8 ?? throw new ArgumentNullException(nameof(utf8));
-        }
-
-        /// <summary>Serializes a value under the platform's rules.</summary>
-        /// <param name="value">The value.</param>
-        /// <returns>The value's bytes.</returns>
-        internal static PreSerializedJson<T> Of(T value)
-        {
-            return new PreSerializedJson<T>(JsonSerializer.SerializeToUtf8Bytes(value, TellmaJson.Options));
         }
 
         /// <summary>The value's UTF-8 JSON.</summary>

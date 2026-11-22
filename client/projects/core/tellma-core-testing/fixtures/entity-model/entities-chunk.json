@@ -147,7 +147,169 @@
         }
       ],
       "children": [],
-      "actions": [],
+      "actions": [
+        {
+          "name": "export",
+          "kind": "api",
+          "builtIn": false,
+          "action": "Read",
+          "labelKey": "Action_Export",
+          "mutation": false,
+          "idempotent": true,
+          "destructive": false,
+          "singleTarget": false,
+          "supportsFilter": false,
+          "result": "own",
+          "arguments": {
+            "type": "object",
+            "properties": {
+              "columns": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "expression": {
+                      "type": "string"
+                    },
+                    "header": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "expression"
+                  ]
+                }
+              },
+              "ids": {
+                "type": [
+                  "array",
+                  "null"
+                ]
+              },
+              "filters": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "string"
+                }
+              },
+              "namedFilters": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "string"
+                }
+              },
+              "orderBy": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "search": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "arguments": {
+                "type": [
+                  "object",
+                  "null"
+                ]
+              },
+              "includeInactive": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "columns",
+              "includeInactive"
+            ]
+          },
+          "fields": [
+            {
+              "name": "columns",
+              "labelKey": "Columns",
+              "required": true,
+              "value": {
+                "type": "json",
+                "nullable": false
+              }
+            },
+            {
+              "name": "ids",
+              "labelKey": "Ids",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "filters",
+              "labelKey": "Filters",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "namedFilters",
+              "labelKey": "NamedFilters",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "orderBy",
+              "labelKey": "OrderBy",
+              "required": false,
+              "value": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            {
+              "name": "search",
+              "labelKey": "Search",
+              "required": false,
+              "value": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            {
+              "name": "arguments",
+              "labelKey": "Arguments",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "includeInactive",
+              "labelKey": "IncludeInactive",
+              "required": true,
+              "value": {
+                "type": "bool",
+                "nullable": false
+              }
+            }
+          ]
+        }
+      ],
       "relatedSelect": [
         "Id",
         "Code"
@@ -818,6 +980,385 @@
           "singleTarget": false,
           "supportsFilter": false,
           "result": "none"
+        },
+        {
+          "name": "export",
+          "kind": "api",
+          "builtIn": false,
+          "action": "Read",
+          "labelKey": "Action_Export",
+          "mutation": false,
+          "idempotent": true,
+          "destructive": false,
+          "singleTarget": false,
+          "supportsFilter": false,
+          "result": "own",
+          "arguments": {
+            "type": "object",
+            "properties": {
+              "columns": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "expression": {
+                      "type": "string"
+                    },
+                    "header": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "expression"
+                  ]
+                }
+              },
+              "ids": {
+                "type": [
+                  "array",
+                  "null"
+                ]
+              },
+              "filters": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "string"
+                }
+              },
+              "namedFilters": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "string"
+                }
+              },
+              "orderBy": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "search": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "arguments": {
+                "type": [
+                  "object",
+                  "null"
+                ]
+              },
+              "includeInactive": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "columns",
+              "includeInactive"
+            ]
+          },
+          "fields": [
+            {
+              "name": "columns",
+              "labelKey": "Columns",
+              "required": true,
+              "value": {
+                "type": "json",
+                "nullable": false
+              }
+            },
+            {
+              "name": "ids",
+              "labelKey": "Ids",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "filters",
+              "labelKey": "Filters",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "namedFilters",
+              "labelKey": "NamedFilters",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "orderBy",
+              "labelKey": "OrderBy",
+              "required": false,
+              "value": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            {
+              "name": "search",
+              "labelKey": "Search",
+              "required": false,
+              "value": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            {
+              "name": "arguments",
+              "labelKey": "Arguments",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "includeInactive",
+              "labelKey": "IncludeInactive",
+              "required": true,
+              "value": {
+                "type": "bool",
+                "nullable": false
+              }
+            }
+          ]
+        },
+        {
+          "name": "export-for-import",
+          "kind": "api",
+          "builtIn": false,
+          "action": "Read",
+          "labelKey": "Action_ExportForImport",
+          "mutation": false,
+          "idempotent": true,
+          "destructive": false,
+          "singleTarget": false,
+          "supportsFilter": false,
+          "result": "own",
+          "arguments": {
+            "type": "object",
+            "properties": {
+              "columns": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "string"
+                }
+              },
+              "referenceKeys": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "children": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "collection": {
+                      "type": "string"
+                    },
+                    "columns": {
+                      "type": [
+                        "array",
+                        "null"
+                      ],
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "referenceKeys": {
+                      "type": [
+                        "object",
+                        "null"
+                      ],
+                      "additionalProperties": {
+                        "type": "string"
+                      }
+                    },
+                    "children": {
+                      "type": [
+                        "array",
+                        "null"
+                      ],
+                      "items": {
+                        "$ref": "#/properties/children/items"
+                      }
+                    }
+                  },
+                  "required": [
+                    "collection"
+                  ]
+                }
+              },
+              "ids": {
+                "type": [
+                  "array",
+                  "null"
+                ]
+              },
+              "filters": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "string"
+                }
+              },
+              "namedFilters": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "string"
+                }
+              },
+              "orderBy": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "search": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "arguments": {
+                "type": [
+                  "object",
+                  "null"
+                ]
+              },
+              "includeInactive": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "referenceKeys",
+              "includeInactive"
+            ]
+          },
+          "fields": [
+            {
+              "name": "columns",
+              "labelKey": "Columns",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "referenceKeys",
+              "labelKey": "ReferenceKeys",
+              "required": true,
+              "value": {
+                "type": "json",
+                "nullable": false
+              }
+            },
+            {
+              "name": "children",
+              "labelKey": "Children",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "ids",
+              "labelKey": "Ids",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "filters",
+              "labelKey": "Filters",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "namedFilters",
+              "labelKey": "NamedFilters",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "orderBy",
+              "labelKey": "OrderBy",
+              "required": false,
+              "value": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            {
+              "name": "search",
+              "labelKey": "Search",
+              "required": false,
+              "value": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            {
+              "name": "arguments",
+              "labelKey": "Arguments",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "includeInactive",
+              "labelKey": "IncludeInactive",
+              "required": true,
+              "value": {
+                "type": "bool",
+                "nullable": false
+              }
+            }
+          ]
         }
       ],
       "relatedSelect": [
@@ -936,7 +1477,169 @@
         }
       ],
       "children": [],
-      "actions": [],
+      "actions": [
+        {
+          "name": "export",
+          "kind": "api",
+          "builtIn": false,
+          "action": "Read",
+          "labelKey": "Action_Export",
+          "mutation": false,
+          "idempotent": true,
+          "destructive": false,
+          "singleTarget": false,
+          "supportsFilter": false,
+          "result": "own",
+          "arguments": {
+            "type": "object",
+            "properties": {
+              "columns": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "expression": {
+                      "type": "string"
+                    },
+                    "header": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "expression"
+                  ]
+                }
+              },
+              "ids": {
+                "type": [
+                  "array",
+                  "null"
+                ]
+              },
+              "filters": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "string"
+                }
+              },
+              "namedFilters": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "string"
+                }
+              },
+              "orderBy": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "search": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "arguments": {
+                "type": [
+                  "object",
+                  "null"
+                ]
+              },
+              "includeInactive": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "columns",
+              "includeInactive"
+            ]
+          },
+          "fields": [
+            {
+              "name": "columns",
+              "labelKey": "Columns",
+              "required": true,
+              "value": {
+                "type": "json",
+                "nullable": false
+              }
+            },
+            {
+              "name": "ids",
+              "labelKey": "Ids",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "filters",
+              "labelKey": "Filters",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "namedFilters",
+              "labelKey": "NamedFilters",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "orderBy",
+              "labelKey": "OrderBy",
+              "required": false,
+              "value": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            {
+              "name": "search",
+              "labelKey": "Search",
+              "required": false,
+              "value": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            {
+              "name": "arguments",
+              "labelKey": "Arguments",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "includeInactive",
+              "labelKey": "IncludeInactive",
+              "required": true,
+              "value": {
+                "type": "bool",
+                "nullable": false
+              }
+            }
+          ]
+        }
+      ],
       "relatedSelect": [
         "Id"
       ],
@@ -1011,7 +1714,387 @@
       ],
       "navigations": [],
       "children": [],
-      "actions": [],
+      "actions": [
+        {
+          "name": "export",
+          "kind": "api",
+          "builtIn": false,
+          "action": "Read",
+          "labelKey": "Action_Export",
+          "mutation": false,
+          "idempotent": true,
+          "destructive": false,
+          "singleTarget": false,
+          "supportsFilter": false,
+          "result": "own",
+          "arguments": {
+            "type": "object",
+            "properties": {
+              "columns": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "expression": {
+                      "type": "string"
+                    },
+                    "header": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "expression"
+                  ]
+                }
+              },
+              "ids": {
+                "type": [
+                  "array",
+                  "null"
+                ]
+              },
+              "filters": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "string"
+                }
+              },
+              "namedFilters": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "string"
+                }
+              },
+              "orderBy": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "search": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "arguments": {
+                "type": [
+                  "object",
+                  "null"
+                ]
+              },
+              "includeInactive": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "columns",
+              "includeInactive"
+            ]
+          },
+          "fields": [
+            {
+              "name": "columns",
+              "labelKey": "Columns",
+              "required": true,
+              "value": {
+                "type": "json",
+                "nullable": false
+              }
+            },
+            {
+              "name": "ids",
+              "labelKey": "Ids",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "filters",
+              "labelKey": "Filters",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "namedFilters",
+              "labelKey": "NamedFilters",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "orderBy",
+              "labelKey": "OrderBy",
+              "required": false,
+              "value": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            {
+              "name": "search",
+              "labelKey": "Search",
+              "required": false,
+              "value": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            {
+              "name": "arguments",
+              "labelKey": "Arguments",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "includeInactive",
+              "labelKey": "IncludeInactive",
+              "required": true,
+              "value": {
+                "type": "bool",
+                "nullable": false
+              }
+            }
+          ]
+        },
+        {
+          "name": "export-for-import",
+          "kind": "api",
+          "builtIn": false,
+          "action": "Read",
+          "labelKey": "Action_ExportForImport",
+          "mutation": false,
+          "idempotent": true,
+          "destructive": false,
+          "singleTarget": false,
+          "supportsFilter": false,
+          "result": "own",
+          "arguments": {
+            "type": "object",
+            "properties": {
+              "columns": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "string"
+                }
+              },
+              "referenceKeys": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "children": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "collection": {
+                      "type": "string"
+                    },
+                    "columns": {
+                      "type": [
+                        "array",
+                        "null"
+                      ],
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "referenceKeys": {
+                      "type": [
+                        "object",
+                        "null"
+                      ],
+                      "additionalProperties": {
+                        "type": "string"
+                      }
+                    },
+                    "children": {
+                      "type": [
+                        "array",
+                        "null"
+                      ],
+                      "items": {
+                        "$ref": "#/properties/children/items"
+                      }
+                    }
+                  },
+                  "required": [
+                    "collection"
+                  ]
+                }
+              },
+              "ids": {
+                "type": [
+                  "array",
+                  "null"
+                ]
+              },
+              "filters": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "string"
+                }
+              },
+              "namedFilters": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "string"
+                }
+              },
+              "orderBy": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "search": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "arguments": {
+                "type": [
+                  "object",
+                  "null"
+                ]
+              },
+              "includeInactive": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "referenceKeys",
+              "includeInactive"
+            ]
+          },
+          "fields": [
+            {
+              "name": "columns",
+              "labelKey": "Columns",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "referenceKeys",
+              "labelKey": "ReferenceKeys",
+              "required": true,
+              "value": {
+                "type": "json",
+                "nullable": false
+              }
+            },
+            {
+              "name": "children",
+              "labelKey": "Children",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "ids",
+              "labelKey": "Ids",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "filters",
+              "labelKey": "Filters",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "namedFilters",
+              "labelKey": "NamedFilters",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "orderBy",
+              "labelKey": "OrderBy",
+              "required": false,
+              "value": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            {
+              "name": "search",
+              "labelKey": "Search",
+              "required": false,
+              "value": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            {
+              "name": "arguments",
+              "labelKey": "Arguments",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "includeInactive",
+              "labelKey": "IncludeInactive",
+              "required": true,
+              "value": {
+                "type": "bool",
+                "nullable": false
+              }
+            }
+          ]
+        }
+      ],
       "relatedSelect": [
         "Id"
       ],
@@ -2651,7 +3734,169 @@
         }
       ],
       "children": [],
-      "actions": [],
+      "actions": [
+        {
+          "name": "export",
+          "kind": "api",
+          "builtIn": false,
+          "action": "Read",
+          "labelKey": "Action_Export",
+          "mutation": false,
+          "idempotent": true,
+          "destructive": false,
+          "singleTarget": false,
+          "supportsFilter": false,
+          "result": "own",
+          "arguments": {
+            "type": "object",
+            "properties": {
+              "columns": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "expression": {
+                      "type": "string"
+                    },
+                    "header": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "expression"
+                  ]
+                }
+              },
+              "ids": {
+                "type": [
+                  "array",
+                  "null"
+                ]
+              },
+              "filters": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "string"
+                }
+              },
+              "namedFilters": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "string"
+                }
+              },
+              "orderBy": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "search": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "arguments": {
+                "type": [
+                  "object",
+                  "null"
+                ]
+              },
+              "includeInactive": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "columns",
+              "includeInactive"
+            ]
+          },
+          "fields": [
+            {
+              "name": "columns",
+              "labelKey": "Columns",
+              "required": true,
+              "value": {
+                "type": "json",
+                "nullable": false
+              }
+            },
+            {
+              "name": "ids",
+              "labelKey": "Ids",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "filters",
+              "labelKey": "Filters",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "namedFilters",
+              "labelKey": "NamedFilters",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "orderBy",
+              "labelKey": "OrderBy",
+              "required": false,
+              "value": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            {
+              "name": "search",
+              "labelKey": "Search",
+              "required": false,
+              "value": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            {
+              "name": "arguments",
+              "labelKey": "Arguments",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "includeInactive",
+              "labelKey": "IncludeInactive",
+              "required": true,
+              "value": {
+                "type": "bool",
+                "nullable": false
+              }
+            }
+          ]
+        }
+      ],
       "relatedSelect": [
         "Id"
       ],
@@ -2895,6 +4140,385 @@
           "singleTarget": false,
           "supportsFilter": true,
           "result": "entities"
+        },
+        {
+          "name": "export",
+          "kind": "api",
+          "builtIn": false,
+          "action": "Read",
+          "labelKey": "Action_Export",
+          "mutation": false,
+          "idempotent": true,
+          "destructive": false,
+          "singleTarget": false,
+          "supportsFilter": false,
+          "result": "own",
+          "arguments": {
+            "type": "object",
+            "properties": {
+              "columns": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "expression": {
+                      "type": "string"
+                    },
+                    "header": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "expression"
+                  ]
+                }
+              },
+              "ids": {
+                "type": [
+                  "array",
+                  "null"
+                ]
+              },
+              "filters": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "string"
+                }
+              },
+              "namedFilters": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "string"
+                }
+              },
+              "orderBy": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "search": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "arguments": {
+                "type": [
+                  "object",
+                  "null"
+                ]
+              },
+              "includeInactive": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "columns",
+              "includeInactive"
+            ]
+          },
+          "fields": [
+            {
+              "name": "columns",
+              "labelKey": "Columns",
+              "required": true,
+              "value": {
+                "type": "json",
+                "nullable": false
+              }
+            },
+            {
+              "name": "ids",
+              "labelKey": "Ids",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "filters",
+              "labelKey": "Filters",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "namedFilters",
+              "labelKey": "NamedFilters",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "orderBy",
+              "labelKey": "OrderBy",
+              "required": false,
+              "value": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            {
+              "name": "search",
+              "labelKey": "Search",
+              "required": false,
+              "value": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            {
+              "name": "arguments",
+              "labelKey": "Arguments",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "includeInactive",
+              "labelKey": "IncludeInactive",
+              "required": true,
+              "value": {
+                "type": "bool",
+                "nullable": false
+              }
+            }
+          ]
+        },
+        {
+          "name": "export-for-import",
+          "kind": "api",
+          "builtIn": false,
+          "action": "Read",
+          "labelKey": "Action_ExportForImport",
+          "mutation": false,
+          "idempotent": true,
+          "destructive": false,
+          "singleTarget": false,
+          "supportsFilter": false,
+          "result": "own",
+          "arguments": {
+            "type": "object",
+            "properties": {
+              "columns": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "string"
+                }
+              },
+              "referenceKeys": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "children": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "collection": {
+                      "type": "string"
+                    },
+                    "columns": {
+                      "type": [
+                        "array",
+                        "null"
+                      ],
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "referenceKeys": {
+                      "type": [
+                        "object",
+                        "null"
+                      ],
+                      "additionalProperties": {
+                        "type": "string"
+                      }
+                    },
+                    "children": {
+                      "type": [
+                        "array",
+                        "null"
+                      ],
+                      "items": {
+                        "$ref": "#/properties/children/items"
+                      }
+                    }
+                  },
+                  "required": [
+                    "collection"
+                  ]
+                }
+              },
+              "ids": {
+                "type": [
+                  "array",
+                  "null"
+                ]
+              },
+              "filters": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "string"
+                }
+              },
+              "namedFilters": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "string"
+                }
+              },
+              "orderBy": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "search": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "arguments": {
+                "type": [
+                  "object",
+                  "null"
+                ]
+              },
+              "includeInactive": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "referenceKeys",
+              "includeInactive"
+            ]
+          },
+          "fields": [
+            {
+              "name": "columns",
+              "labelKey": "Columns",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "referenceKeys",
+              "labelKey": "ReferenceKeys",
+              "required": true,
+              "value": {
+                "type": "json",
+                "nullable": false
+              }
+            },
+            {
+              "name": "children",
+              "labelKey": "Children",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "ids",
+              "labelKey": "Ids",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "filters",
+              "labelKey": "Filters",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "namedFilters",
+              "labelKey": "NamedFilters",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "orderBy",
+              "labelKey": "OrderBy",
+              "required": false,
+              "value": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            {
+              "name": "search",
+              "labelKey": "Search",
+              "required": false,
+              "value": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            {
+              "name": "arguments",
+              "labelKey": "Arguments",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "includeInactive",
+              "labelKey": "IncludeInactive",
+              "required": true,
+              "value": {
+                "type": "bool",
+                "nullable": false
+              }
+            }
+          ]
         }
       ],
       "relatedSelect": [
@@ -3050,7 +4674,169 @@
         }
       ],
       "children": [],
-      "actions": [],
+      "actions": [
+        {
+          "name": "export",
+          "kind": "api",
+          "builtIn": false,
+          "action": "Read",
+          "labelKey": "Action_Export",
+          "mutation": false,
+          "idempotent": true,
+          "destructive": false,
+          "singleTarget": false,
+          "supportsFilter": false,
+          "result": "own",
+          "arguments": {
+            "type": "object",
+            "properties": {
+              "columns": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "expression": {
+                      "type": "string"
+                    },
+                    "header": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "expression"
+                  ]
+                }
+              },
+              "ids": {
+                "type": [
+                  "array",
+                  "null"
+                ]
+              },
+              "filters": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "string"
+                }
+              },
+              "namedFilters": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "string"
+                }
+              },
+              "orderBy": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "search": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "arguments": {
+                "type": [
+                  "object",
+                  "null"
+                ]
+              },
+              "includeInactive": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "columns",
+              "includeInactive"
+            ]
+          },
+          "fields": [
+            {
+              "name": "columns",
+              "labelKey": "Columns",
+              "required": true,
+              "value": {
+                "type": "json",
+                "nullable": false
+              }
+            },
+            {
+              "name": "ids",
+              "labelKey": "Ids",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "filters",
+              "labelKey": "Filters",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "namedFilters",
+              "labelKey": "NamedFilters",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "orderBy",
+              "labelKey": "OrderBy",
+              "required": false,
+              "value": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            {
+              "name": "search",
+              "labelKey": "Search",
+              "required": false,
+              "value": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            {
+              "name": "arguments",
+              "labelKey": "Arguments",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "includeInactive",
+              "labelKey": "IncludeInactive",
+              "required": true,
+              "value": {
+                "type": "bool",
+                "nullable": false
+              }
+            }
+          ]
+        }
+      ],
       "relatedSelect": [
         "Id"
       ],
@@ -3413,6 +5199,385 @@
           "singleTarget": true,
           "supportsFilter": true,
           "result": "own"
+        },
+        {
+          "name": "export",
+          "kind": "api",
+          "builtIn": false,
+          "action": "Read",
+          "labelKey": "Action_Export",
+          "mutation": false,
+          "idempotent": true,
+          "destructive": false,
+          "singleTarget": false,
+          "supportsFilter": false,
+          "result": "own",
+          "arguments": {
+            "type": "object",
+            "properties": {
+              "columns": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "expression": {
+                      "type": "string"
+                    },
+                    "header": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "expression"
+                  ]
+                }
+              },
+              "ids": {
+                "type": [
+                  "array",
+                  "null"
+                ]
+              },
+              "filters": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "string"
+                }
+              },
+              "namedFilters": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "string"
+                }
+              },
+              "orderBy": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "search": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "arguments": {
+                "type": [
+                  "object",
+                  "null"
+                ]
+              },
+              "includeInactive": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "columns",
+              "includeInactive"
+            ]
+          },
+          "fields": [
+            {
+              "name": "columns",
+              "labelKey": "Columns",
+              "required": true,
+              "value": {
+                "type": "json",
+                "nullable": false
+              }
+            },
+            {
+              "name": "ids",
+              "labelKey": "Ids",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "filters",
+              "labelKey": "Filters",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "namedFilters",
+              "labelKey": "NamedFilters",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "orderBy",
+              "labelKey": "OrderBy",
+              "required": false,
+              "value": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            {
+              "name": "search",
+              "labelKey": "Search",
+              "required": false,
+              "value": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            {
+              "name": "arguments",
+              "labelKey": "Arguments",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "includeInactive",
+              "labelKey": "IncludeInactive",
+              "required": true,
+              "value": {
+                "type": "bool",
+                "nullable": false
+              }
+            }
+          ]
+        },
+        {
+          "name": "export-for-import",
+          "kind": "api",
+          "builtIn": false,
+          "action": "Read",
+          "labelKey": "Action_ExportForImport",
+          "mutation": false,
+          "idempotent": true,
+          "destructive": false,
+          "singleTarget": false,
+          "supportsFilter": false,
+          "result": "own",
+          "arguments": {
+            "type": "object",
+            "properties": {
+              "columns": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "string"
+                }
+              },
+              "referenceKeys": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "children": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "collection": {
+                      "type": "string"
+                    },
+                    "columns": {
+                      "type": [
+                        "array",
+                        "null"
+                      ],
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "referenceKeys": {
+                      "type": [
+                        "object",
+                        "null"
+                      ],
+                      "additionalProperties": {
+                        "type": "string"
+                      }
+                    },
+                    "children": {
+                      "type": [
+                        "array",
+                        "null"
+                      ],
+                      "items": {
+                        "$ref": "#/properties/children/items"
+                      }
+                    }
+                  },
+                  "required": [
+                    "collection"
+                  ]
+                }
+              },
+              "ids": {
+                "type": [
+                  "array",
+                  "null"
+                ]
+              },
+              "filters": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "string"
+                }
+              },
+              "namedFilters": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "string"
+                }
+              },
+              "orderBy": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "search": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "arguments": {
+                "type": [
+                  "object",
+                  "null"
+                ]
+              },
+              "includeInactive": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "referenceKeys",
+              "includeInactive"
+            ]
+          },
+          "fields": [
+            {
+              "name": "columns",
+              "labelKey": "Columns",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "referenceKeys",
+              "labelKey": "ReferenceKeys",
+              "required": true,
+              "value": {
+                "type": "json",
+                "nullable": false
+              }
+            },
+            {
+              "name": "children",
+              "labelKey": "Children",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "ids",
+              "labelKey": "Ids",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "filters",
+              "labelKey": "Filters",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "namedFilters",
+              "labelKey": "NamedFilters",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "orderBy",
+              "labelKey": "OrderBy",
+              "required": false,
+              "value": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            {
+              "name": "search",
+              "labelKey": "Search",
+              "required": false,
+              "value": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            {
+              "name": "arguments",
+              "labelKey": "Arguments",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "includeInactive",
+              "labelKey": "IncludeInactive",
+              "required": true,
+              "value": {
+                "type": "bool",
+                "nullable": false
+              }
+            }
+          ]
         }
       ],
       "relatedSelect": [
@@ -4924,6 +7089,385 @@
               }
             }
           ]
+        },
+        {
+          "name": "export",
+          "kind": "api",
+          "builtIn": false,
+          "action": "Read",
+          "labelKey": "Action_Export",
+          "mutation": false,
+          "idempotent": true,
+          "destructive": false,
+          "singleTarget": false,
+          "supportsFilter": false,
+          "result": "own",
+          "arguments": {
+            "type": "object",
+            "properties": {
+              "columns": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "expression": {
+                      "type": "string"
+                    },
+                    "header": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "expression"
+                  ]
+                }
+              },
+              "ids": {
+                "type": [
+                  "array",
+                  "null"
+                ]
+              },
+              "filters": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "string"
+                }
+              },
+              "namedFilters": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "string"
+                }
+              },
+              "orderBy": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "search": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "arguments": {
+                "type": [
+                  "object",
+                  "null"
+                ]
+              },
+              "includeInactive": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "columns",
+              "includeInactive"
+            ]
+          },
+          "fields": [
+            {
+              "name": "columns",
+              "labelKey": "Columns",
+              "required": true,
+              "value": {
+                "type": "json",
+                "nullable": false
+              }
+            },
+            {
+              "name": "ids",
+              "labelKey": "Ids",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "filters",
+              "labelKey": "Filters",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "namedFilters",
+              "labelKey": "NamedFilters",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "orderBy",
+              "labelKey": "OrderBy",
+              "required": false,
+              "value": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            {
+              "name": "search",
+              "labelKey": "Search",
+              "required": false,
+              "value": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            {
+              "name": "arguments",
+              "labelKey": "Arguments",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "includeInactive",
+              "labelKey": "IncludeInactive",
+              "required": true,
+              "value": {
+                "type": "bool",
+                "nullable": false
+              }
+            }
+          ]
+        },
+        {
+          "name": "export-for-import",
+          "kind": "api",
+          "builtIn": false,
+          "action": "Read",
+          "labelKey": "Action_ExportForImport",
+          "mutation": false,
+          "idempotent": true,
+          "destructive": false,
+          "singleTarget": false,
+          "supportsFilter": false,
+          "result": "own",
+          "arguments": {
+            "type": "object",
+            "properties": {
+              "columns": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "string"
+                }
+              },
+              "referenceKeys": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "children": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "collection": {
+                      "type": "string"
+                    },
+                    "columns": {
+                      "type": [
+                        "array",
+                        "null"
+                      ],
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "referenceKeys": {
+                      "type": [
+                        "object",
+                        "null"
+                      ],
+                      "additionalProperties": {
+                        "type": "string"
+                      }
+                    },
+                    "children": {
+                      "type": [
+                        "array",
+                        "null"
+                      ],
+                      "items": {
+                        "$ref": "#/properties/children/items"
+                      }
+                    }
+                  },
+                  "required": [
+                    "collection"
+                  ]
+                }
+              },
+              "ids": {
+                "type": [
+                  "array",
+                  "null"
+                ]
+              },
+              "filters": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "string"
+                }
+              },
+              "namedFilters": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "string"
+                }
+              },
+              "orderBy": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "search": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "arguments": {
+                "type": [
+                  "object",
+                  "null"
+                ]
+              },
+              "includeInactive": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "referenceKeys",
+              "includeInactive"
+            ]
+          },
+          "fields": [
+            {
+              "name": "columns",
+              "labelKey": "Columns",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "referenceKeys",
+              "labelKey": "ReferenceKeys",
+              "required": true,
+              "value": {
+                "type": "json",
+                "nullable": false
+              }
+            },
+            {
+              "name": "children",
+              "labelKey": "Children",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "ids",
+              "labelKey": "Ids",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "filters",
+              "labelKey": "Filters",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "namedFilters",
+              "labelKey": "NamedFilters",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "orderBy",
+              "labelKey": "OrderBy",
+              "required": false,
+              "value": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            {
+              "name": "search",
+              "labelKey": "Search",
+              "required": false,
+              "value": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            {
+              "name": "arguments",
+              "labelKey": "Arguments",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "includeInactive",
+              "labelKey": "IncludeInactive",
+              "required": true,
+              "value": {
+                "type": "bool",
+                "nullable": false
+              }
+            }
+          ]
         }
       ],
       "relatedSelect": [
@@ -5318,6 +7862,385 @@
           "singleTarget": false,
           "supportsFilter": true,
           "result": "entities"
+        },
+        {
+          "name": "export",
+          "kind": "api",
+          "builtIn": false,
+          "action": "Read",
+          "labelKey": "Action_Export",
+          "mutation": false,
+          "idempotent": true,
+          "destructive": false,
+          "singleTarget": false,
+          "supportsFilter": false,
+          "result": "own",
+          "arguments": {
+            "type": "object",
+            "properties": {
+              "columns": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "expression": {
+                      "type": "string"
+                    },
+                    "header": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "expression"
+                  ]
+                }
+              },
+              "ids": {
+                "type": [
+                  "array",
+                  "null"
+                ]
+              },
+              "filters": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "string"
+                }
+              },
+              "namedFilters": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "string"
+                }
+              },
+              "orderBy": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "search": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "arguments": {
+                "type": [
+                  "object",
+                  "null"
+                ]
+              },
+              "includeInactive": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "columns",
+              "includeInactive"
+            ]
+          },
+          "fields": [
+            {
+              "name": "columns",
+              "labelKey": "Columns",
+              "required": true,
+              "value": {
+                "type": "json",
+                "nullable": false
+              }
+            },
+            {
+              "name": "ids",
+              "labelKey": "Ids",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "filters",
+              "labelKey": "Filters",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "namedFilters",
+              "labelKey": "NamedFilters",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "orderBy",
+              "labelKey": "OrderBy",
+              "required": false,
+              "value": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            {
+              "name": "search",
+              "labelKey": "Search",
+              "required": false,
+              "value": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            {
+              "name": "arguments",
+              "labelKey": "Arguments",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "includeInactive",
+              "labelKey": "IncludeInactive",
+              "required": true,
+              "value": {
+                "type": "bool",
+                "nullable": false
+              }
+            }
+          ]
+        },
+        {
+          "name": "export-for-import",
+          "kind": "api",
+          "builtIn": false,
+          "action": "Read",
+          "labelKey": "Action_ExportForImport",
+          "mutation": false,
+          "idempotent": true,
+          "destructive": false,
+          "singleTarget": false,
+          "supportsFilter": false,
+          "result": "own",
+          "arguments": {
+            "type": "object",
+            "properties": {
+              "columns": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "string"
+                }
+              },
+              "referenceKeys": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "children": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "collection": {
+                      "type": "string"
+                    },
+                    "columns": {
+                      "type": [
+                        "array",
+                        "null"
+                      ],
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "referenceKeys": {
+                      "type": [
+                        "object",
+                        "null"
+                      ],
+                      "additionalProperties": {
+                        "type": "string"
+                      }
+                    },
+                    "children": {
+                      "type": [
+                        "array",
+                        "null"
+                      ],
+                      "items": {
+                        "$ref": "#/properties/children/items"
+                      }
+                    }
+                  },
+                  "required": [
+                    "collection"
+                  ]
+                }
+              },
+              "ids": {
+                "type": [
+                  "array",
+                  "null"
+                ]
+              },
+              "filters": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "string"
+                }
+              },
+              "namedFilters": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "string"
+                }
+              },
+              "orderBy": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "search": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "arguments": {
+                "type": [
+                  "object",
+                  "null"
+                ]
+              },
+              "includeInactive": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "referenceKeys",
+              "includeInactive"
+            ]
+          },
+          "fields": [
+            {
+              "name": "columns",
+              "labelKey": "Columns",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "referenceKeys",
+              "labelKey": "ReferenceKeys",
+              "required": true,
+              "value": {
+                "type": "json",
+                "nullable": false
+              }
+            },
+            {
+              "name": "children",
+              "labelKey": "Children",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "ids",
+              "labelKey": "Ids",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "filters",
+              "labelKey": "Filters",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "namedFilters",
+              "labelKey": "NamedFilters",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "orderBy",
+              "labelKey": "OrderBy",
+              "required": false,
+              "value": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            {
+              "name": "search",
+              "labelKey": "Search",
+              "required": false,
+              "value": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            {
+              "name": "arguments",
+              "labelKey": "Arguments",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "includeInactive",
+              "labelKey": "IncludeInactive",
+              "required": true,
+              "value": {
+                "type": "bool",
+                "nullable": false
+              }
+            }
+          ]
         }
       ],
       "relatedSelect": [

@@ -199,7 +199,14 @@ namespace Tellma.Core.Testing.Crud
         /// <returns>Null: an action's answer holds no rows to count.</returns>
         private async Task<int?> InvokeAsync(IServiceProvider scope, ApiActionDescriptor action)
         {
-            _ = await scope.GetRequiredService<IApiActionInvoker>().InvokeAsync(action, ApiActionArguments(action), Token);
+            object? result = await scope.GetRequiredService<IApiActionInvoker>().InvokeAsync(action, ApiActionArguments(action), Token);
+
+            // A result that holds a resource, such as an export's workbook, is released at once.
+            if (result is IAsyncDisposable disposable)
+            {
+                await disposable.DisposeAsync();
+            }
+
             return null;
         }
 

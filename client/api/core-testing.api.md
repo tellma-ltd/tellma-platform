@@ -105,4 +105,15 @@ export function tmTestMetadata(patch?: Partial<TmClientMetadata>): TmClientMetad
 // @public
 export function tmTestProfile(patch?: Partial<Omit<TmProfile, 'v'>>): TmProfile;
 
+// @public
+export function tmWarmTenant(store: TmClientStore, partition: Extract<TmPartition, {
+    readonly kind: 'tenant';
+}>, docs: TmLaunchDocs, options?: TmWarmTenantOptions): Promise<void>;
+
+// @public
+export interface TmWarmTenantOptions {
+    readonly at?: number;
+    readonly entityTags?: Readonly<Record<string, string>>;
+}
+
 ```

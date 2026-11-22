@@ -712,6 +712,15 @@ export class TmHttpApi implements TmApi {
   }
 
   /**
+   * Loads the Contracts chunk ahead of the first call that needs it; a
+   * failed load is tried again by that call. Internal: the startup sequence
+   * calls it after first render.
+   */
+  ɵprefetchContracts(): void {
+    this.#loadContracts('network', '').catch(() => undefined);
+  }
+
+  /**
    * The Contracts chunk, loaded once; an app with no metadata loaders has
    * no described route.
    *

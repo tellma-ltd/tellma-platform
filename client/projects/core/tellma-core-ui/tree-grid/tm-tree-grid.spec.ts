@@ -791,3 +791,63 @@ describe('tm-tree-grid list-page members', () => {
     );
   });
 });
+
+/** A readonly tree of `roots` chains (root, child, grandchild), fully expanded. */
+@Component({
+  imports: [TmTreeGrid, TmGridColumn],
+  template: `
+    <tm-tree-grid
+      gridId="spec-tree-reuse"
+      [data]="rows"
+      [rowId]="rowId"
+      [parentId]="parentId"
+      readonly
+      style="block-size: 300px"
+    >
+      <tm-grid-column key="name" header="Name" [width]="200" />
+      <tm-grid-column key="qty" type="number" header="Qty" [flex]="1" />
+    </tm-tree-grid>
+  `,
+})
+class ChainsHost {
+  /** 300 chains: ids 3r+1 (root), 3r+2 (child) and 3r+3 (grandchild). */
+  readonly rows: readonly Node[] = Array.from({ length: 900 }, (_, i) =>
+    node(i + 1, i % 3 === 0 ? null : i, `Node ${i + 1}`),
+  );
+  readonly rowId = (row: Node): number => row.id;
+  readonly parentId = (row: Node): number | null => row.parentId;
+}
+
+describe('tm-tree-grid reused rows', () => {
+  it('keeps every re-bound row true to its own place in the tree', async () => {
+    TestBed.configureTestingModule({ providers: [provideTellmaUi()] });
+    const fixture = TestBed.createComponent(ChainsHost);
+    await stable(fixture);
+    const scroller = (fixture.nativeElement as HTMLElement).querySelector(
+      '.tm-grid__scroller',
+    ) as HTMLElement;
+    // Jumps by amounts that are not multiples of three, so row elements move
+    // between levels, from branch to leaf and back.
+    for (const top of [20, 21, 25, 400, 401, 7, 880]) {
+      scroller.scrollTop = top * 32;
+      scroller.dispatchEvent(new Event('scroll'));
+      await stable(fixture);
+      for (const row of scroller.querySelectorAll<HTMLElement>('.tm-grid__window > .tm-grid__row')) {
+        const index = Number(row.getAttribute('aria-rowindex')) - 2;
+        const level = (index % 3) + 1;
+        expect(row.getAttribute('data-tm-key')).toBe(`#${index + 1}`);
+        expect(row.getAttribute('aria-level')).toBe(String(level));
+        expect(row.getAttribute('aria-expanded')).toBe(level < 3 ? 'true' : null);
+        const hierarchy = row.querySelector<HTMLElement>('[data-tm-cell][data-col="0"]')!;
+        expect(hierarchy.textContent!.trim()).toBe(`Node ${index + 1}`);
+        expect(hierarchy.querySelector('.tm-grid__indent')!.getAttribute('style')).toContain(
+          `--grid-level: ${level - 1}`,
+        );
+        const expander = hierarchy.querySelector('[data-tm-expander]');
+        expect(expander !== null).toBe(level < 3);
+        // The expanded glyph is the one drawn: one svg, never a stale extra.
+        expect(expander?.querySelectorAll('svg').length ?? 1).toBe(1);
+      }
+    }
+  });
+});

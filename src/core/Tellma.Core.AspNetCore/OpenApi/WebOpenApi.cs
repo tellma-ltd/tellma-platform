@@ -16,6 +16,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization.Metadata;
 using Tellma.Core.Abstractions.Access;
+using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.Abstractions.Crud;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.AspNetCore.Api;
@@ -29,6 +30,11 @@ namespace Tellma.Core.AspNetCore.OpenApi
     // options; the transformers add what the types alone cannot say: the securable an operation
     // requires, which members a save never takes, what a navigation's related entity carries, the
     // tag of each operation's resource, and the string-or-number encodings of decimal and long.
+    //
+    // The schema generator reads the host's JSON options with their nesting limit raised to the
+    // document's own (SchemaMaxDepth): spec 0016 §3.1's limit of 16 bounds the documents the wire
+    // reads and writes, and a schema nests deeper than the documents it describes. In Development a
+    // startup check (SchemaDepthCheck) refuses a route type whose schema would not fit.
 
     /// <summary>The web surface's OpenAPI document, served in Development alone.</summary>
     internal static class WebOpenApi
@@ -60,6 +66,24 @@ namespace Tellma.Core.AspNetCore.OpenApi
         /// <summary>The format of a long, written as a string or read as a number.</summary>
         public const string Int64Format = "int64";
 
+        /// <summary>
+        ///     The deepest nesting a schema may have while the document is generated, in place of the
+        ///     wire's 16, which still bounds every request and response body.
+        /// </summary>
+        /// <remarks>
+        ///     A schema's depth follows how deeply its type nests, not how deeply a value of it does:
+        ///     the exporter writes each type in full the first time it meets it. Each nested object
+        ///     member costs two levels (<c>properties</c>, then the member's schema), each array or
+        ///     dictionary one, and each polymorphic level four (<c>anyOf</c>, its entry,
+        ///     <c>properties</c>, the member). So the limit fits a type nesting about 63 objects plain
+        ///     or about 31 polymorphic levels. That is past any value the wire's 16 carries (at most
+        ///     65 levels, all of them polymorphic), with margin left for a type whose optional
+        ///     members nest deeper than its values do. In Development a startup check measures every
+        ///     web route's body and answer against it. It guards the generator's recursion; nothing is
+        ///     read from a caller under it.
+        /// </remarks>
+        public const int SchemaMaxDepth = 128;
+
         /// <summary>Registers the document and its transformers.</summary>
         /// <param name="services">The host's services.</param>
         public static void Register(IServiceCollection services)
@@ -90,6 +114,10 @@ namespace Tellma.Core.AspNetCore.OpenApi
                     return Task.CompletedTask;
                 });
             });
+
+            // --- The schema generator under the document's own nesting limit, and the startup check of every route against it ---
+            SchemaJson.Register(services, DocumentName);
+            _ = services.AddSingleton<IStartupCheck, SchemaDepthCheck>();
         }
 
         /// <summary>Maps the document's endpoint.</summary>
