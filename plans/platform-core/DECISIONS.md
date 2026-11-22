@@ -384,6 +384,28 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-204 (orchestrator, 2026-11-22): PC-F11 Review 1 rulings
+
+Review 1 found 0/1/6. It confirmed:
+- Landlock's ABI detection and its per-ABI rights match the kernel header, and the ruleset is in place before any upload is read.
+- No configuration runs an unconfined worker in production.
+- On Windows, the capability SID, the handle lifetimes and inheritance, and the refusals of the host, other workers and loopback hold.
+- The ACE grants read+execute only and is idempotent.
+- seccomp TSYNC, RLIMIT_DATA, non-dumpable and setsid are intact and in order. Confinement also closes D-043 (2)'s dumpable window against other workers.
+- Refusing /tmp and /dev/shm costs nothing.
+
+Fixed in fix1:
+- R1-1 (major): the seccomp ioctl deny-list missed FS_IOC_ENABLE_VERITY (and the same class: FS_IOC_SET_ENCRYPTION_POLICY, BTRFS_IOC_SUBVOL_SETFLAGS). Through it, a compromised worker could make a host allowance file permanently refuse writes. Refuse ioctl types 'f', 'X' and 0x94 outright, or at least those three requests, with hostile tests.
+- R1-2: a test for the client refusing an unreported confinement bit.
+- R1-3: a Windows Development host whose .NET runtime the AppContainer cannot read must not fail startup. Grant the runtime directory the ACE where it can, or else fall back unconfined with the warning. The exit message names Windows causes.
+- R1-4: refuse inotify, fanotify and the path-based xattr calls where the runtime allows it. Record whatever stays as a residual.
+- R1-5: close_range as syscall 436 directly, for glibc older than 2.34.
+- R1-6: a Compose guard against a host installed under a directory the worker may read in full.
+
+R1-7 is a merge-time task for Ahmad: verify that the production target (App Service Linux) offers Landlock. Without it, production PDF thumbnails are silently disabled.
+
+Review 2 on fable follows fix1 (security-bound, PROCESS §3).
+
 ### D-203 (orchestrator, 2026-11-22): PC-175 steps back into the hold queue after a second red run; PC-093 released
 
 Situation: PC-175's integration went red twice, on both build-test jobs (runs 44986216771 and 44990079169). Meanwhile PC-093 (T1) was held with a clean merge-tree, and PC-F67 and PC-F17 were held behind it. D-087 releases one item at a time, so a pc branch that keeps failing CI was holding up the whole queue.
