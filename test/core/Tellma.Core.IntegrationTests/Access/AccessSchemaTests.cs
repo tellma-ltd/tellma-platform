@@ -46,7 +46,7 @@ namespace Tellma.Core.IntegrationTests.Access
         }
 
         [Fact]
-        public async Task The_four_access_tables_the_schedules_and_the_settings_are_system_versioned_and_the_rest_are_not()
+        public async Task The_four_access_tables_the_reports_and_their_grants_the_schedules_and_the_settings_are_system_versioned_and_the_rest_are_not()
         {
             List<string> versioned = await database.ColumnAsync("""
                 SELECT t.[name] + N'>' + h.[name]
@@ -57,7 +57,7 @@ namespace Tellma.Core.IntegrationTests.Access
 
             Assert.Equal(
                 [
-                    "Permissions>PermissionsHistory", "RoleMemberships>RoleMembershipsHistory", "Roles>RolesHistory", "Schedules>SchedulesHistory",
+                    "Permissions>PermissionsHistory", "ReportShares>ReportSharesHistory", "Reports>ReportsHistory", "RoleMemberships>RoleMembershipsHistory", "Roles>RolesHistory", "Schedules>SchedulesHistory",
                     "SettingEntries>SettingEntriesHistory", "Settings>SettingsHistory", "Users>UsersHistory",
                 ],
                 versioned.Order(StringComparer.Ordinal));

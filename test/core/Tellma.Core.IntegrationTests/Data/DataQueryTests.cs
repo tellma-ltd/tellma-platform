@@ -606,7 +606,9 @@ namespace Tellma.Core.IntegrationTests.Data
             string[] added = [.. wide.Except(narrow)];
             Assert.Contains("fixture.Widget.Name2", added);
             Assert.Contains("fixture.Widget.Name3", added);
-            Assert.All(added, static name => Assert.Matches(@"\.Name[23]$", name));
+            Assert.Contains("core.Report.Title2", added);
+            Assert.Contains("core.Report.Description3", added);
+            Assert.All(added, static name => Assert.Matches(@"\.(Name|Title|Description)[23]$", name));
             Assert.Empty(narrow.Except(wide));
         }
 
