@@ -145,6 +145,7 @@ export type TmApiErrorKind = 'bad-request' | 'cancelled' | 'client-outdated' | '
 export class TmApp {
     protected readonly failure: i0.Signal<TmRouteErrorKind | null>;
     protected retry(): void;
+    protected readonly views: Readonly<Record<TmRouteErrorKind, _tellma_core.ɵTmRouteErrorView>>;
     static ɵcmp: i0.ɵɵComponentDeclaration<TmApp, "tm-app", never, {}, {}, never, never, true, never>;
     static ɵfac: i0.ɵɵFactoryDeclaration<TmApp, never>;
 }

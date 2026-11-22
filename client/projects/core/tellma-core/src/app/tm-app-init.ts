@@ -3,9 +3,20 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-import { DOCUMENT, type EnvironmentProviders, inject, provideAppInitializer, provideEnvironmentInitializer } from '@angular/core';
+import {
+  afterNextRender,
+  DestroyRef,
+  DOCUMENT,
+  type EnvironmentProviders,
+  inject,
+  Injector,
+  provideAppInitializer,
+  provideEnvironmentInitializer,
+} from '@angular/core';
 import { NavigationEnd, Router } from '@angular/router';
 
+import { TmApi } from '../api/tm-api';
+import { TmHttpApi } from '../api/tm-http-api';
 import { TM_BOOT_RESULT } from '../boot/tm-boot-result';
 import { tmRoutedTenant } from '../launch/tm-routed-tenant';
 import { TmClientMetadataStore } from '../metadata/tm-client-metadata';
@@ -23,7 +34,9 @@ import { TmPlatformText, type TmLoadedStrings } from './tm-platform-text';
 // which the Core chunk's load never waits for. None awaits the API, so a warm
 // launch has no network wait. A chunk or string load that fails shows the
 // boot page `load-failed`, and the app never starts. Beside them, the router
-// wiring: the routed tenant's `lastTenantId` and focus after navigation.
+// wiring: the routed tenant's `lastTenantId` and focus after navigation; and
+// after first render, at idle, the Contracts chunk, so the first API call
+// does not wait for it.
 
 /** A promise that never settles: the app does not start under the boot page. */
 const NEVER = new Promise<never>(() => undefined);
@@ -64,10 +77,14 @@ export function tmStartup(config: TmAppConfig): EnvironmentProviders[] {
       const language = document.documentElement.lang || 'en';
       const strings = Promise.all(
         [...new Set([language, 'en'])].map(
-          async (code): Promise<TmLoadedStrings> => ({
-            pack: (await config.metadata.strings[code]?.()) ?? {},
-            tables: await config.languages.find((offered) => offered.code === code)?.strings(),
-          }),
+          // The pack and the tables of one language load side by side.
+          async (code): Promise<TmLoadedStrings> => {
+            const [pack, tables] = await Promise.all([
+              config.metadata.strings[code]?.(),
+              config.languages.find((offered) => offered.code === code)?.strings(),
+            ]);
+            return { pack: pack ?? {}, tables };
+          },
         ),
       ).then((loaded) => text.ɵset(loaded), failed('strings'));
 
@@ -79,9 +96,31 @@ export function tmStartup(config: TmAppConfig): EnvironmentProviders[] {
     provideEnvironmentInitializer(() => {
       const router = inject(Router);
       const store = inject(TmClientStore);
+      const injector = inject(Injector);
+      const window = inject(DOCUMENT).defaultView;
       // Created now, so the routed tenant is known before the first page's links.
       inject(TmUrls);
       inject(TmPageFocus).ɵstart();
+      // After first render, at idle: the Contracts chunk, which the HTTP layer keeps.
+      // An app torn down before its idle moment loads nothing.
+      let alive = true;
+      inject(DestroyRef).onDestroy(() => (alive = false));
+      afterNextRender(
+        () => {
+          const load = (): void => {
+            const api = alive ? injector.get(TmApi) : null;
+            if (api instanceof TmHttpApi) {
+              api.ɵprefetchContracts();
+            }
+          };
+          if (window?.requestIdleCallback) {
+            window.requestIdleCallback(load);
+          } else {
+            setTimeout(load);
+          }
+        },
+        { injector },
+      );
       // Entering a tenant route records it as the last tenant, for the next warm launch at `/`.
       router.events.subscribe((event) => {
         const tenantId = event instanceof NavigationEnd ? tmRoutedTenant(event.urlAfterRedirects) : null;

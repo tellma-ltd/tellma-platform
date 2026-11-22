@@ -30,14 +30,15 @@ import { provideTmPageScope } from '../context/tm-page-scope';
 import type { TmLazyComponent } from '../declarations/tm-declaration-types';
 import { TmEntities } from '../entity/tm-entities';
 import { TmTelemetry } from '../observe/tm-telemetry';
+import { tmTenantSegment } from '../launch/tm-routed-tenant';
 import { TmLaunchCache } from '../state/launch/tm-launch-cache';
 import { TmLeaveChecks } from './tm-leave-checks';
 import { TmPageFocus } from './tm-page-focus';
 import { TmPageSkeleton } from './tm-page-skeleton';
-import { TmRouteError } from './tm-route-error';
-import { TM_ROUTE_HOSTS } from './tm-route-hosts';
+import { TM_ROUTE_ERROR_VIEWS, TmRouteError, type TmRouteErrorKind } from './tm-route-error';
+import { TM_ROUTE_HOSTS, tmShellComponent } from './tm-route-hosts';
 import { TM_ROUTE_PERMISSIONS } from './tm-route-permissions';
-import { TmRouteRules, tmTenantSegment } from './tm-route-rules';
+import { TmRouteRules } from './tm-route-rules';
 import type { TmRouteDataInternal } from './tm-routes';
 
 // The route host (spec 0024 §4.4): the component of every page route. It
@@ -45,15 +46,20 @@ import type { TmRouteDataInternal } from './tm-routes';
 // component (and, on an entity route, the Entities chunk) while a cold
 // tenant entry runs its refresh, and creates the page only once the launch
 // documents are current. A `tmPage` whose permission the user lacks renders
-// the forbidden view in place. A chunk that fails to load asks the service
+// the shell's forbidden view in place. A chunk that fails to load asks the service
 // worker for an update: a newer version shows `client-outdated`, anything
-// else `offline`. Each page gets a page scope and a leave-check registry.
+// else `offline`. Each page gets a page scope and a leave-check registry. A
+// load holds the focus move until its view renders; a load superseded, or a
+// host destroyed while it waits, gives its hold back.
 
 /** Where the host stands: the skeleton, the page, or an error view in its place. */
 type TmHostState =
   | { readonly view: 'loading' }
-  | { readonly view: 'page'; readonly component: Type<unknown> }
-  | { readonly view: 'error'; readonly error: 'client-outdated' | 'offline' };
+  | { readonly view: 'page'; readonly component: Type<unknown>; readonly forbidden: Type<unknown> | null }
+  | { readonly view: 'error'; readonly error: TmRouteErrorKind };
+
+/** The view in place of a page whose permission the user lacks, which loads with the shell. */
+const FORBIDDEN = tmShellComponent('TmForbiddenView');
 
 /**
  * The component a lazy component's module holds.
@@ -66,7 +72,11 @@ async function resolveComponent(load: TmLazyComponent): Promise<Type<unknown>> {
   return typeof loaded === 'function' ? loaded : loaded.default;
 }
 
-/** Times the document's launch: from navigation start to the first page rendered. */
+/**
+ * Times the document's launch: from navigation start to the first page
+ * rendered. A launch is warm when the boot script found the same user and
+ * the first page's tenant entry found its launch documents current.
+ */
 @Injectable({ providedIn: 'root' })
 export class TmLaunchTimer {
   readonly #telemetry = inject(TmTelemetry);
@@ -79,11 +89,12 @@ export class TmLaunchTimer {
    * Emits the launch's timing at the first page rendered.
    *
    * @param routeKind - The page's family.
+   * @param cold - Whether the page's tenant entry was cold: it ran a cold sync, or the sync failed.
    */
-  rendered(routeKind: string): void {
+  rendered(routeKind: string, cold: boolean): void {
     if (!this.#timed) {
       this.#timed = true;
-      this.#telemetry.timing(this.#cold ? 'tm.launch.cold' : 'tm.launch.warm', performance.now(), { routeKind });
+      this.#telemetry.timing(this.#cold || cold ? 'tm.launch.cold' : 'tm.launch.warm', performance.now(), { routeKind });
     }
   }
 }
@@ -97,16 +108,16 @@ export class TmLaunchTimer {
   template: `
     @switch (state().view) {
       @case ('page') {
-        <!-- The page, behind its permission gate. -->
+        <!-- The page, behind its permission gate; without the permission, the shell's forbidden view. -->
         @if (allowed()) {
           <ng-container *ngComponentOutlet="component(); inputs: inputs()" />
         } @else {
-          <tm-route-error kind="forbidden" [securable]="data().securable" />
+          <ng-container *ngComponentOutlet="forbidden(); inputs: { securable: data().securable }" />
         }
       }
       @case ('error') {
         <!-- The page's chunk failed to load. -->
-        <tm-route-error [kind]="error()" (retry)="load()" />
+        <tm-route-error [view]="views[error()]" (retry)="load()" />
       }
       @default {
         <!-- The page's skeleton, from the click's frame until the page renders. -->
@@ -153,8 +164,17 @@ export class TmRouteHost {
     return state.view === 'page' ? state.component : null;
   });
 
+  /** The forbidden view, loaded beside a page that names a securable. */
+  protected readonly forbidden = computed(() => {
+    const state = this.#state();
+    return state.view === 'page' ? state.forbidden : null;
+  });
+
+  /** The views of a chunk that did not load. */
+  protected readonly views = TM_ROUTE_ERROR_VIEWS;
+
   /** The error view in the page's place. */
-  protected readonly error = computed(() => {
+  protected readonly error = computed<TmRouteErrorKind>(() => {
     const state = this.#state();
     return state.view === 'error' ? state.error : 'offline';
   });
@@ -196,6 +216,9 @@ export class TmRouteHost {
   /** The current load, so a superseded one stops; a destroyed host has none. */
   #run = 0;
 
+  /** The focus holds of the loads not rendered yet, released when a load supersedes them or the host goes. */
+  readonly #holds = new Set<() => void>();
+
   /** Whether the host is destroyed. */
   #destroyed = false;
 
@@ -205,6 +228,8 @@ export class TmRouteHost {
     inject(DestroyRef).onDestroy(() => {
       this.#destroyed = true;
       this.#run++;
+      // A load that never renders, such as one waiting on a failed cold entry, holds focus no longer.
+      this.#release();
     });
     this.data = toSignal(route.data, { requireSync: true }) as Signal<TmRouteData & TmRouteDataInternal>;
     this.#params = toSignal(route.params, { requireSync: true });
@@ -235,16 +260,36 @@ export class TmRouteHost {
    */
   protected async load(): Promise<void> {
     const run = ++this.#run;
-    const release = this.#focus.ɵhold();
+    // A superseded load renders nothing: this load's hold, taken first, takes over from its hold.
+    const hold = this.#focus.ɵhold();
+    this.#release();
+    const release = (): void => {
+      this.#holds.delete(release);
+      hold();
+    };
+    this.#holds.add(release);
     const current = (): boolean => run === this.#run;
     this.#state.set({ view: 'loading' });
 
     // --- The cold entry's refresh, the page's chunk and the Entities chunk, in parallel ---
+    // The entry settles with whether it was cold; a failed one was cold too.
     const tenantId = tmTenantSegment(this.#params()['t']);
-    const entered = tenantId === null ? Promise.resolve(true) : this.#launch.ɵenter(tenantId).then(() => true, () => false);
+    const entered =
+      tenantId === null
+        ? Promise.resolve({ ok: true, cold: false })
+        : this.#launch.ɵenter(tenantId).then(
+            (cold) => ({ ok: true, cold }),
+            () => ({ ok: false, cold: true }),
+          );
     let component: Type<unknown>;
+    let forbidden: Type<unknown> | null;
     try {
-      [component] = await Promise.all([resolveComponent(this.#loader()), this.#entity() === undefined ? null : this.#entities.load()]);
+      [component, forbidden] = await Promise.all([
+        resolveComponent(this.#loader()),
+        // A page that names a securable may render the forbidden view in its place.
+        this.data().securable === undefined ? null : resolveComponent(FORBIDDEN),
+        this.#entity() === undefined ? null : this.#entities.load(),
+      ]);
     } catch {
       // A chunk that fails to load: a newer version is the likely cause.
       const update = await this.#updates.check();
@@ -256,14 +301,22 @@ export class TmRouteHost {
     }
 
     // --- A failed refresh keeps the skeleton until the documents arrive: the shell shows the failure ---
-    if (!(await entered) && current()) {
+    const entry = await entered;
+    if (!entry.ok && current()) {
       await this.#warm();
     }
     if (current()) {
-      this.#state.set({ view: 'page', component });
-      this.#timer.rendered(this.data().kind);
+      this.#state.set({ view: 'page', component, forbidden });
+      this.#timer.rendered(this.data().kind, entry.cold);
     }
     this.#rendered(release);
+  }
+
+  /** Releases every focus hold still taken. */
+  #release(): void {
+    for (const release of [...this.#holds]) {
+      release();
+    }
   }
 
   /** Releases the focus hold once the host's new view has rendered, or at once when the host is gone. */

@@ -3,9 +3,8 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-import { ChangeDetectionStrategy, Component, inject, untracked } from '@angular/core';
+import { inject, untracked } from '@angular/core';
 import { type CanMatchFn, RedirectCommand, Router } from '@angular/router';
-import { TmSkeleton } from '@tellma/core-ui/skeleton';
 
 import { TmSession } from '../session/tm-session';
 import { TmLaunchCache } from '../state/launch/tm-launch-cache';
@@ -20,17 +19,19 @@ import { tmSingleLiveTenant } from './tm-single-live-tenant';
 // else the picker, which never redirects, so a stale hint cannot loop. Each
 // pick of a tenant marks the entry automatic. With the memberships cached,
 // the decision is the route's `canMatch` and nothing renders; without them,
-// the route renders the picker's skeleton rows while `/bff/user` is read.
+// the route renders the shell's launch page, the picker's skeleton rows,
+// while `/bff/user` is read.
 
 /**
  * Where `/` leads over the user's memberships: their one live tenant,
- * marked automatic, else the picker.
+ * marked automatic, else the picker. Internal: the launch route and the
+ * shell's launch page decide alike.
  *
  * @param tenants - The memberships, or `undefined` when they could not be read.
  * @param launch - The launch mark.
  * @returns The URL.
  */
-function decide(tenants: readonly TmMembership[] | undefined, launch: TmLaunch): string {
+export function tmLaunchTarget(tenants: readonly TmMembership[] | undefined, launch: TmLaunch): string {
   const id = tenants === undefined ? null : tmSingleLiveTenant(tenants);
   if (id === null) {
     return '/tenants';
@@ -55,46 +56,9 @@ export const tmLaunchMatch: CanMatchFn = () => {
     target = `/${record.lastTenantId}`;
   } else if (tenants !== undefined) {
     // The cached memberships: stale while the launch cache revalidates them.
-    target = decide(tenants, launch);
+    target = tmLaunchTarget(tenants, launch);
   } else {
     return true;
   }
   return new RedirectCommand(inject(Router).parseUrl(target), { replaceUrl: true });
 };
-
-/**
- * The page at `/` while the user's memberships are read: the picker's
- * skeleton rows, then a replace to the tenant or the picker.
- */
-@Component({
-  selector: 'tm-launch-redirect',
-  imports: [TmSkeleton],
-  changeDetection: ChangeDetectionStrategy.OnPush,
-  template: `
-    <!-- The picker's list geometry, while the memberships are read. -->
-    <main class="tm-launch-redirect" aria-busy="true">
-      <tm-skeleton shape="line" width="16rem" />
-      <tm-skeleton shape="line" [lines]="4" />
-    </main>
-  `,
-  styles: `
-    .tm-launch-redirect {
-      display: flex;
-      flex-direction: column;
-      gap: var(--space-4);
-      max-inline-size: 40rem;
-      margin-inline: auto;
-      padding: var(--space-6) var(--space-4);
-    }
-  `,
-})
-export class TmLaunchRedirect {
-  /** Reads the memberships, then replaces `/` with the decision. */
-  constructor() {
-    const router = inject(Router);
-    const cache = inject(TmLaunchCache);
-    const launch = inject(TmLaunch);
-    // A failed read leaves the memberships unknown, which leads to the picker and its error state.
-    void cache.revalidateUser().then(() => router.navigateByUrl(decide(untracked(cache.tenants), launch), { replaceUrl: true }));
-  }
-}

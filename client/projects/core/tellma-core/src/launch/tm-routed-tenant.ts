@@ -6,17 +6,46 @@
 // The routed tenant (spec 0024 §9.4): the tenant segment that opens an app
 // path. The launch mark ends at a route into another tenant, and the HTTP
 // layer sends a tenant call to the routed tenant when the caller names none.
+// The segment rules live here, beside it and free of imports, so the route
+// table, the URL service and every reader of the routed tenant share one
+// rule without an import cycle.
 
-/** The tenant segment that opens an app path, such as `17` in `/17/centers`. */
-const TENANT_PATH = /^\/([1-9]\d*)(?:[/?#]|$)/;
+/** A positive integer without leading zeros: a tenant or a record id. */
+const POSITIVE = /^[1-9]\d*$/;
+
+/** The first segment of an app path, such as `17` in `/17/centers?x=1`. */
+const FIRST_SEGMENT = /^\/([^/?#]*)/;
 
 /**
- * The tenant an app URL routes into, or `null` for a tenantless one.
+ * The tenant a path segment names: a positive safe integer without leading
+ * zeros, so `017` and `0` name none.
+ *
+ * @param segment - The path segment.
+ * @returns The tenant's id, or `null`.
+ */
+export function tmTenantSegment(segment: string | undefined): number | null {
+  const id = Number(segment);
+  return segment !== undefined && POSITIVE.test(segment) && Number.isSafeInteger(id) ? id : null;
+}
+
+/**
+ * Whether a path segment is a record id: a positive integer without leading
+ * zeros. A `long` key's id may exceed the safe integers, so it stays text.
+ *
+ * @param segment - The path segment.
+ * @returns Whether it is an id.
+ */
+export function tmIsIdSegment(segment: string | undefined): boolean {
+  return segment !== undefined && POSITIVE.test(segment);
+}
+
+/**
+ * The tenant an app URL routes into, or `null` for a tenantless one: its
+ * first segment, by the route table's own tenant rule.
  *
  * @param url - The router's URL, such as `/17/centers?x=1`.
  * @returns The tenant's id, or `null`.
  */
 export function tmRoutedTenant(url: string): number | null {
-  const match = TENANT_PATH.exec(url);
-  return match ? Number(match[1]) : null;
+  return tmTenantSegment(FIRST_SEGMENT.exec(url)?.[1]);
 }

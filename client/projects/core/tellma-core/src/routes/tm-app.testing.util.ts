@@ -8,7 +8,15 @@ import { provideLocationMocks } from '@angular/common/testing';
 import { TestBed } from '@angular/core/testing';
 import { Router } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
-import { provideTellmaStateTesting, provideTellmaTesting, TmFakeApi, TmFakeTelemetry, tmTestEntitiesChunk, tmTestMetadata } from '@tellma/core-testing';
+import {
+  provideTellmaStateTesting,
+  provideTellmaTesting,
+  TmFakeApi,
+  TmFakeTelemetry,
+  tmTestEntitiesChunk,
+  tmTestMetadata,
+  tmWarmTenant,
+} from '@tellma/core-testing';
 
 import { TM_API_UPDATES, type TmApiUpdateCheck } from '../api/tm-api-seams';
 import { provideTellma } from '../app/provide-tellma';
@@ -20,7 +28,7 @@ import type { TmEntitySummary } from '../entity/tm-entity-metadata';
 import type { TmMembership } from '../launch/tm-membership';
 import type { TmClientMetadata } from '../metadata/tm-client-metadata';
 import type { TmMetadataLoaders } from '../metadata/tm-metadata-loaders';
-import type { TmMeResult, TmSyncDoc, TmTenantFacts, TmTenantSettingsForClient } from '../state/launch/tm-launch-docs';
+import type { TmLaunchDocs, TmMeResult, TmTenantFacts, TmTenantSettingsForClient } from '../state/launch/tm-launch-docs';
 import { TmClientStore, type TmStoredDoc } from '../state/store/tm-client-store';
 import type { TmTenantPartition } from '../state/store/tm-store-layout';
 import { TmUrls } from '../urls/tm-urls';
@@ -151,6 +159,9 @@ export function tmTestMembership(id: number, patch: Partial<TmMembership> = {}):
   } as TmMembership;
 }
 
+/** Tenant 17's launch documents, which the rig stores with a recent sync unless the entry is cold. */
+export const TM_T17_DOCS: TmLaunchDocs = { settings: SETTINGS, me: ME, tenant: TENANT };
+
 /** A stored document. */
 function stored<T>(data: T): TmStoredDoc<T> {
   return { tag: null, savedAt: Date.now() - 60_000, data };
@@ -204,22 +215,6 @@ export function tmRouteTestConfig(): TmAppConfig {
 }
 
 /**
- * Stores tenant 17's launch documents and a recent sync, without which a
- * tenant's documents read as absent, so its entry is warm.
- *
- * @param store - The client store.
- * @returns A promise that settles once they are stored.
- */
-export function tmStoreLaunchDocs(store: TmClientStore): Promise<void> {
-  return store.ɵwrite(TM_T17, {
-    settings: () => stored(SETTINGS),
-    me: () => stored(ME),
-    tenant: () => stored(TENANT),
-    sync: () => stored<TmSyncDoc>({ at: Date.now() - 60_000, entities: 'E1', entityTags: {} }),
-  });
-}
-
-/**
  * Configures and starts the app's providers, waits for its initializers,
  * and stores what the options ask for.
  *
@@ -241,7 +236,7 @@ export async function tmAppRig(options: TmAppRigOptions = {}): Promise<TmAppRig>
   await TestBed.inject(ApplicationInitStatus).donePromise;
   const store = TestBed.inject(TmClientStore);
   if (options.cold !== true) {
-    await tmStoreLaunchDocs(store);
+    await tmWarmTenant(store, TM_T17, TM_T17_DOCS);
   }
   if (options.tenants !== undefined) {
     await store.put({ kind: 'user', sub: TM_TEST_SUB }, 'tenants', stored(options.tenants));

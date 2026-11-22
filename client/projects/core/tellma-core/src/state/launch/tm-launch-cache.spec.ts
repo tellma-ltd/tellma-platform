@@ -145,7 +145,7 @@ describe('TmLaunchCache', () => {
     it('renders a cold entry after one sync, sent in the foreground', async () => {
       const rig = await setUp({ cold: true });
       expect(rig.launch.warm()).toBe(false);
-      await rig.launch.ɵenter(17);
+      await expect(rig.launch.ɵenter(17)).resolves.toBe(true);
 
       expect(rig.calls('client/sync').map((call) => [call.body, (call.options as { background: boolean }).background])).toEqual([
         [{ held: {} }, false],
@@ -158,7 +158,7 @@ describe('TmLaunchCache', () => {
 
     it('enters a warm tenant from the store, with no sync', async () => {
       const rig = await setUp();
-      await rig.launch.ɵenter(17);
+      await expect(rig.launch.ɵenter(17)).resolves.toBe(false);
       await settle();
       expect(rig.launch.warm()).toBe(true);
       expect(rig.calls('client/sync')).toEqual([]);

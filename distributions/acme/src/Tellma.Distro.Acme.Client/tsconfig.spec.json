@@ -1,10 +1,10 @@
 /* The unit tests' TypeScript configuration: every spec, with Vitest's globals. */
 {
-  "extends": "./tsconfig.json",
+  /* Inside the platform's repository, the lazily loaded entry points too, as tsconfig.app.json says. */
+  "extends": ["./tsconfig.json", "../../../../client/projects/core/tellma-core/tsconfig.lazy-entry-points.json"],
   "compilerOptions": {
     "noEmit": false,
     "outDir": "./out-tsc/spec"
   },
-  /* Inside the platform's repository, the shell entry point too, as tsconfig.app.json says. */
-  "include": ["src/**/*.spec.ts", "generated/*.d.ts", "../../../../client/projects/core/tellma-core/shell/public-api.ts"]
+  "include": ["src/**/*.spec.ts", "generated/*.d.ts"]
 }

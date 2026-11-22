@@ -6,10 +6,10 @@
 import { provideLocationMocks } from '@angular/common/testing';
 import type { ApplicationRef, Type } from '@angular/core';
 import { Router } from '@angular/router';
-import { provideTellmaStateTesting, provideTellmaTesting, TmFakeApi } from '@tellma/core-testing';
+import { provideTellmaStateTesting, provideTellmaTesting, TmFakeApi, tmWarmTenant } from '@tellma/core-testing';
 
 import type { TmBootResult, TmBootState } from '../boot/tm-boot-types';
-import { tmLoadTestPage, tmRouteTestConfig, tmStoreLaunchDocs, TmTestPage } from '../routes/tm-app.testing.util';
+import { TM_T17, TM_T17_DOCS, tmLoadTestPage, tmRouteTestConfig, TmTestPage } from '../routes/tm-app.testing.util';
 import { TmClientStore } from '../state/store/tm-client-store';
 import { bootstrapTellma } from './bootstrap-tellma';
 import { provideTellma } from './provide-tellma';
@@ -72,7 +72,7 @@ describe('bootstrapTellma', () => {
       for (const route of ['client/sync', '/bff/user', '/api/distribution-info']) {
         api.respond(route, () => new Promise(() => undefined));
       }
-      await tmStoreLaunchDocs(app.injector.get(TmClientStore));
+      await tmWarmTenant(app.injector.get(TmClientStore), TM_T17, TM_T17_DOCS);
 
       // The navigation's own frame draws the skeleton; the page follows once its chunk loads.
       let loaded!: (page: Type<unknown>) => void;

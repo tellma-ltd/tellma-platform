@@ -8,26 +8,32 @@ import { TmButton } from '@tellma/core-ui/button';
 import { TmEmptyState } from '@tellma/core-ui/empty-state';
 
 import { TmPlatformText } from '../app/tm-platform-text';
-import type { TmSecurableRef } from '../declarations/tm-declaration-types';
 
-// The route's own error views (spec 0024 §11): a page whose chunk failed to
-// load (`client-outdated` or `offline`), a `tmPage` the user may not open
-// (`forbidden`, reason `no-grant`), and a path no route matches. Each is
-// 0023's empty state, inline where the page would be.
+// The route's own error views (spec 0024 §11), each 0023's empty state,
+// inline where the page would be. The two a failed chunk load shows
+// (`client-outdated` and `offline`) live here, since they render when no
+// chunk can load; the views of a `tmPage` the user may not open
+// (`forbidden`) and of a path no route matches (`not-found`) render from the
+// shell entry point, over the same component.
 
-/** The error views a route renders in place of its page. */
-export type TmRouteErrorKind = 'client-outdated' | 'offline' | 'forbidden' | 'not-found';
+/** The error views a route renders when a chunk does not load. */
+export type TmRouteErrorKind = 'client-outdated' | 'offline';
 
-/** One view's strings and action: the keys, their English, and the action's. */
-interface TmRouteErrorStrings {
+/** One error view: the keys and the English of its title and message, its one action, and its tone. */
+export interface TmRouteErrorView {
+  /** The title's key and its English. */
   readonly title: readonly [key: string, english: string];
+  /** The message's key and its English. */
   readonly message: readonly [key: string, english: string];
+  /** The action's name, its label's key and the label's English. */
   readonly action?: readonly [name: 'reload' | 'retry', key: string, english: string];
+  /** The empty state's tone; `error` when absent. */
+  readonly tone?: 'neutral' | 'error';
 }
 
 // The strings are worded as spec 0024 §11's table words them.
-/** Each view's strings: the key and the English fallback of its title, message and action. */
-const VIEWS: Readonly<Record<TmRouteErrorKind, TmRouteErrorStrings>> = {
+/** The views of a chunk that did not load. */
+export const TM_ROUTE_ERROR_VIEWS: Readonly<Record<TmRouteErrorKind, TmRouteErrorView>> = {
   'client-outdated': {
     title: ['tm.errors.clientOutdated.title', '{displayName} was updated'],
     message: ['tm.errors.clientOutdated.message', 'Reload to continue. Your unsaved changes come back after the reload.'],
@@ -38,14 +44,6 @@ const VIEWS: Readonly<Record<TmRouteErrorKind, TmRouteErrorStrings>> = {
     message: ['tm.errors.offline.message', "Check your connection. We'll keep trying."],
     action: ['retry', 'tm.errors.retry', 'Try again'],
   },
-  forbidden: {
-    title: ['tm.errors.forbidden.title', "You don't have permission for this"],
-    message: ['tm.errors.forbidden.message', 'It needs “{permission}”. Ask your administrator to grant it.'],
-  },
-  'not-found': {
-    title: ['tm.errors.notFound.title', 'Page not found'],
-    message: ['tm.errors.notFound.message', 'Check the address, or go back to the start.'],
-  },
 };
 
 /** A route's inline error view: a heading, a message and its one action. */
@@ -55,9 +53,9 @@ const VIEWS: Readonly<Record<TmRouteErrorKind, TmRouteErrorStrings>> = {
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <!-- The heading, the message, and the view's one action. -->
-    <tm-empty-state [heading]="title()" [tone]="kind() === 'not-found' ? 'neutral' : 'error'" live="polite">
+    <tm-empty-state [heading]="title()" [tone]="view().tone ?? 'error'" live="polite">
       {{ message() }}
-      @if (strings().action; as action) {
+      @if (view().action; as action) {
         <button tmButton variant="primary" tmEmptyStateActions type="button" (click)="act(action[0])">{{ label() }}</button>
       }
     </tm-empty-state>
@@ -68,32 +66,26 @@ export class TmRouteError {
   readonly #document = inject(DOCUMENT);
 
   /** Which view. */
-  readonly kind = input.required<TmRouteErrorKind>();
+  readonly view = input.required<TmRouteErrorView>();
 
-  /** The permission a `forbidden` view names. */
-  readonly securable = input<TmSecurableRef | undefined>(undefined);
+  /** The view's placeholders beyond `{displayName}`, such as the permission a `forbidden` view names. */
+  readonly params = input<Readonly<Record<string, string>>>({});
 
   /** Emits when the user asks to try again. */
   readonly retry = output();
 
-  /** The view's strings. */
-  protected readonly strings = computed(() => VIEWS[this.kind()]);
-
   /** The view's placeholders. */
-  readonly #params = computed(() => {
-    const securable = this.securable();
-    return { displayName: this.#text.displayName(), permission: securable ? `${securable[0]} · ${securable[1]}` : '' };
-  });
+  readonly #params = computed(() => ({ displayName: this.#text.displayName(), ...this.params() }));
 
   /** The heading. */
-  protected readonly title = computed(() => this.#text.text(...this.strings().title, this.#params())());
+  protected readonly title = computed(() => this.#text.text(...this.view().title, this.#params())());
 
   /** The message. */
-  protected readonly message = computed(() => this.#text.text(...this.strings().message, this.#params())());
+  protected readonly message = computed(() => this.#text.text(...this.view().message, this.#params())());
 
   /** The action's label. */
   protected readonly label = computed(() => {
-    const action = this.strings().action;
+    const action = this.view().action;
     return action ? this.#text.text(action[1], action[2])() : '';
   });
 

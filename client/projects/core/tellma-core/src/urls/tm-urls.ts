@@ -12,10 +12,10 @@ import type { TmPageDeclaration } from '../declarations/tm-page';
 import { TmEntities } from '../entity/tm-entities';
 import type { TmEntitySummary } from '../entity/tm-entity-metadata';
 import type { TmDecimal, TmId } from '../json/tm-json';
-import { tmRoutedTenant } from '../launch/tm-routed-tenant';
+import { tmIsIdSegment, tmRoutedTenant, tmTenantSegment } from '../launch/tm-routed-tenant';
 import { TmTelemetry } from '../observe/tm-telemetry';
 import { TM_ROUTE_HOSTS } from '../routes/tm-route-hosts';
-import { TM_ME_SECTIONS, TmRouteRules, tmIsIdSegment, tmTenantSegment } from '../routes/tm-route-rules';
+import { TM_ME_SECTIONS, TmRouteRules } from '../routes/tm-route-rules';
 import {
   tmEncodeQueryValue,
   tmParseListPayload,

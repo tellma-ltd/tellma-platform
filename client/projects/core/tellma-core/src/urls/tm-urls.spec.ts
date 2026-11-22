@@ -8,6 +8,7 @@ import { TestBed } from '@angular/core/testing';
 
 import type { TmDecimal } from '../json/tm-json';
 import { tmAppRig, tmLoadTestPage, tmNavigate, tmSettle, type TmAppRig } from '../routes/tm-app.testing.util';
+import { TM_ROUTE_CASES } from '../routes/tm-route-cases.testing.util';
 import { tmParseListPayload } from './tm-search-query';
 
 describe('TmUrls', () => {
@@ -112,19 +113,19 @@ describe('TmUrls', () => {
   });
 
   describe('describe', () => {
+    it.each(TM_ROUTE_CASES.map((row) => [row.url, row.described] as const))('classifies %s as the router routes it', (url, described) => {
+      if (described === null) {
+        expect(rig.urls.describe(url)).toBeNull();
+      } else {
+        expect(rig.urls.describe(url)).toMatchObject(described);
+      }
+    });
+
     it.each([
       ['/', { kind: 'launch', template: '/', pinnable: false }],
-      ['/tenants', { kind: 'picker', template: '/tenants', pinnable: false }],
-      ['/signed-out', { kind: 'signed-out', template: '/signed-out', pinnable: false }],
-      ['/17', { kind: 'home', tenantId: 17, template: '/:t', pinnable: true }],
-      ['/17/settings', { kind: 'core', tenantId: 17, template: '/:t/settings', pinnable: true }],
-      ['/17/settings/general', { kind: 'core', tenantId: 17, template: '/:t/settings/:category', pinnable: true }],
-      ['/17/me/region', { kind: 'core', tenantId: 17, template: '/:t/me/region', pinnable: true }],
-      ['/17/reports/acme-credit-exposure', { kind: 'report', tenantId: 17, key: 'acme-credit-exposure', securable: ['acme.Customer', 'Read'], template: '/:t/reports/:key', pinnable: true }],
       ['/17/centers?q=jed', { kind: 'search', tenantId: 17, entity: 'gl.Center', template: '/:t/centers', pinnable: true }],
-      ['/17/centers/new', { kind: 'create', tenantId: 17, entity: 'gl.Center', template: '/:t/centers/new', pinnable: true }],
       ['/17/centers/5', { kind: 'details', tenantId: 17, entity: 'gl.Center', id: 5, template: '/:t/centers/:id', pinnable: true }],
-    ])('classifies %s', (url, expected) => {
+    ])('classifies %s exactly', (url, expected) => {
       expect(rig.urls.describe(url)).toEqual(expected);
     });
 
@@ -147,13 +148,6 @@ describe('TmUrls', () => {
       expect(one.hash).toMatch(/^#d=/);
       expect(one.hash).not.toBe(two.hash);
     });
-
-    it.each(['/17/currencies/5', '/017', '/17/Centers', '/17/centers/05', '/17/me/unknown', '/17/reports/unknown', '/17/nope'])(
-      'reaches no page at %s',
-      (url) => {
-        expect(rig.urls.describe(url)).toBeNull();
-      },
-    );
   });
 
   describe('preload', () => {

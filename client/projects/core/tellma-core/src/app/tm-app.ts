@@ -7,7 +7,7 @@ import { ChangeDetectionStrategy, Component, inject, Injectable, signal } from '
 import { NavigationEnd, type NavigationError, Router, RouterOutlet } from '@angular/router';
 
 import { TM_API_UPDATES } from '../api/tm-api-seams';
-import { TmRouteError, type TmRouteErrorKind } from '../routes/tm-route-error';
+import { TM_ROUTE_ERROR_VIEWS, TmRouteError, type TmRouteErrorKind } from '../routes/tm-route-error';
 
 // The app's root component and the navigation failures it shows (spec 0024
 // §4.4, §9.2). `tm-app` renders the router outlet; the shells are route
@@ -69,7 +69,7 @@ export class TmNavigationFailure {
   template: `
     <!-- A navigation that could not load its chunk; the routed page stays below. -->
     @if (failure(); as kind) {
-      <tm-route-error [kind]="kind" (retry)="retry()" />
+      <tm-route-error [view]="views[kind]" (retry)="retry()" />
     }
     <router-outlet />
   `,
@@ -79,6 +79,9 @@ export class TmApp {
 
   /** A failed navigation's view, or `null`. */
   protected readonly failure = this.#failures.view;
+
+  /** The error views a failed navigation shows. */
+  protected readonly views = TM_ROUTE_ERROR_VIEWS;
 
   /** Runs the failed navigation again. */
   protected retry(): void {

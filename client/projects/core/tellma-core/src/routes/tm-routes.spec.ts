@@ -9,7 +9,8 @@ import { By } from '@angular/platform-browser';
 import { type ActivatedRouteSnapshot } from '@angular/router';
 import type { RouterTestingHarness } from '@angular/router/testing';
 
-import { tmAppRig, tmNavigate, type TmAppRig } from './tm-app.testing.util';
+import { tmAppRig, tmNavigate, tmSettle, type TmAppRig } from './tm-app.testing.util';
+import { TM_ROUTE_CASES } from './tm-route-cases.testing.util';
 import { TmLeaveChecks } from './tm-leave-checks';
 import { TmRouteHost } from './tm-route-host';
 import type { TmRouteDataInternal } from './tm-routes';
@@ -50,50 +51,16 @@ describe('the route table', () => {
     harness = await tmNavigate('/17');
   });
 
-  it.each<[string, Record<string, unknown>]>([
-    ['/17', { component: 'TmRouteHost', kind: 'home', params: { t: '17' } }],
-    ['/17/settings', { component: 'TmRouteHost', kind: 'settings', params: { t: '17' } }],
-    ['/17/settings/general', { component: 'TmRouteHost', kind: 'settings', params: { t: '17', category: 'general' } }],
-    ['/17/me', { component: 'TmRouteHost', kind: 'settings', params: { t: '17' } }],
-    ['/17/me/region', { component: 'TmRouteHost', kind: 'settings', params: { t: '17' } }],
-    ['/17/list/sales-invoice-lines', { component: 'TmRouteHost', kind: 'search', entity: 'list', params: { t: '17', segment: 'sales-invoice-lines' } }],
-    ['/17/list/centers', { component: 'TmRouteHost', kind: 'search', entity: 'list', params: { t: '17', segment: 'centers' } }],
-    ['/17/reports/acme-credit-exposure', { component: 'TmRouteHost', kind: 'report', params: { t: '17', key: 'acme-credit-exposure' } }],
-    ['/17/credit-review', { component: 'TmRouteHost', kind: 'custom', params: { t: '17' } }],
-    ['/17/centers/5/map', { component: 'TmRouteHost', kind: 'custom', params: { t: '17', id: '5' } }],
-    ['/17/centers', { component: 'TmRouteHost', kind: 'search', entity: 'search', params: { t: '17', segment: 'centers' } }],
-    ['/17/centers/new', { component: 'TmRouteHost', kind: 'details', entity: 'create', params: { t: '17', segment: 'centers' } }],
-    ['/17/centers/5', { component: 'TmRouteHost', kind: 'details', entity: 'details', params: { t: '17', segment: 'centers', id: '5' } }],
-    ['/17/customers/9', { component: 'TmRouteHost', kind: 'details', entity: 'details', params: { t: '17', segment: 'customers', id: '9' } }],
-    ['/17/currencies', { component: 'TmRouteHost', kind: 'search', entity: 'search', params: { t: '17', segment: 'currencies' } }],
-  ])('routes %s', async (url, expected) => {
-    expect(await match(rig, url)).toEqual({ url, entity: undefined, ...expected });
+  it.each(TM_ROUTE_CASES.map((row) => [row.url, row.routed] as const))('routes %s', async (url, routed) => {
+    const { url: canonical, ...expected } = routed;
+    expect(await match(rig, url)).toEqual({ url: canonical ?? url, kind: undefined, entity: undefined, ...expected });
   });
 
-  it.each([
-    // A stack whose declaration has no details page has no details or create route.
-    '/17/currencies/5',
-    '/17/currencies/new',
-    // A child entity has a list, never a search page; an unknown segment is no entity.
-    '/17/sales-invoice-lines',
-    '/17/list/nope',
-    '/17/nope',
-    // Ids are positive integers; literal segments match exactly; coded reports by key.
-    '/17/centers/abc',
-    '/17/centers/05',
-    '/17/centers/0',
-    '/17/Centers',
-    '/17/me/unknown',
-    '/17/settings/general/more',
-    '/17/reports/unknown',
-  ])('shows the tenant not-found page at %s', async (url) => {
-    expect(await match(rig, url)).toMatchObject({ url, component: 'TmNotFoundPage', params: { t: '17' } });
-  });
-
-  it.each(['/017', '/0', '/17x', '/nope', '/tenants/x'])('shows the tenantless not-found page at %s', async (url) => {
-    expect(await match(rig, url)).toMatchObject({ url, component: 'TmNotFoundPage', params: {} });
+  it('renders the not-found page outside any shell in its own main landmark', async () => {
+    await rig.router.navigateByUrl('/nope');
+    await tmSettle();
     harness.detectChanges();
-    expect(harness.fixture.nativeElement.querySelector('main tm-route-error')).not.toBeNull();
+    expect(harness.fixture.nativeElement.querySelector('tm-not-found-page > main > tm-route-error')).not.toBeNull();
   });
 
   it('routes the tenantless pages to the shells', async () => {
@@ -128,6 +95,14 @@ describe('the route table', () => {
       expect(await rig.router.navigateByUrl('/17/centers')).toBe(false);
       expect(checks.calls).toBe(1);
       expect(rig.router.url).toBe('/17/settings/invoicing');
+    });
+
+    it('checks a move between My settings sections', async () => {
+      await rig.router.navigateByUrl('/17/me/profile');
+      const checks = refuseLeaving();
+      expect(await rig.router.navigateByUrl('/17/me/region')).toBe(false);
+      expect(checks.calls).toBe(1);
+      expect(rig.router.url).toBe('/17/me/profile');
     });
 
     it('checks a step to another record on the same route', async () => {

@@ -14,34 +14,8 @@ import type { TmCodedReportMetadata, TmCodedReportPatch } from '../reports/tm-co
 // the router's `canMatch` guards and `TmUrls.describe`, so a stored URL is
 // classified exactly as the router would route it.
 
-/** A positive integer without leading zeros: a tenant or a record id. */
-const POSITIVE = /^[1-9]\d*$/;
-
 /** The sections of the My settings hub, each a child route of `me`. */
 export const TM_ME_SECTIONS: readonly string[] = ['profile', 'region', 'display', 'notifications'];
-
-/**
- * The tenant a path segment names: a positive safe integer without leading
- * zeros, so `017` and `0` name none.
- *
- * @param segment - The path segment.
- * @returns The tenant's id, or `null`.
- */
-export function tmTenantSegment(segment: string | undefined): number | null {
-  const id = Number(segment);
-  return segment !== undefined && POSITIVE.test(segment) && Number.isSafeInteger(id) ? id : null;
-}
-
-/**
- * Whether a path segment is a record id: a positive integer without leading
- * zeros. A `long` key's id may exceed the safe integers, so it stays text.
- *
- * @param segment - The path segment.
- * @returns Whether it is an id.
- */
-export function tmIsIdSegment(segment: string | undefined): boolean {
-  return segment !== undefined && POSITIVE.test(segment);
-}
 
 /**
  * The route grammar's lookups at match time, once the Core chunk is loaded:

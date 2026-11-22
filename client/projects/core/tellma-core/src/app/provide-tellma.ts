@@ -6,6 +6,7 @@
 import { type ApplicationConfig, type EnvironmentProviders, inject, makeEnvironmentProviders } from '@angular/core';
 import {
   provideRouter,
+  RouteReuseStrategy,
   TitleStrategy,
   UrlSerializer,
   withComponentInputBinding,
@@ -20,6 +21,7 @@ import { TM_CORE_FEATURE } from '../declarations/tm-core-feature';
 import { ɵtmMergeAppDeclarations } from '../declarations/tm-merge';
 import { TM_CLIENT_METADATA } from '../metadata/tm-client-metadata';
 import { TM_METADATA_LOADERS } from '../metadata/tm-metadata-loaders';
+import { TmRouteReuse } from '../routes/tm-route-reuse';
 import { tmBuildRoutes } from '../routes/tm-routes';
 import { TmTitleStrategy } from '../routes/tm-title-strategy';
 import { TmUrlSerializer } from '../routes/tm-url-serializer';
@@ -41,7 +43,8 @@ const configs = new WeakMap<object, TmAppConfig>();
 
 /**
  * The providers of a Tellma app: the router over the route table its
- * declarations derive, with the title strategy; the startup initializers;
+ * declarations derive, with the title strategy and a reuse strategy that
+ * creates every route anew on a change of tenant; the startup initializers;
  * the merged declarations of its features, built once from the loaded client
  * metadata; the metadata loaders; `tm-image`'s blob fetcher over
  * `TmApi.fetchBlob`; and each feature's providers, in feature order.
@@ -74,6 +77,8 @@ export function provideTellma(config: TmAppConfig): EnvironmentProviders {
       withNavigationErrorHandler((failure) => inject(TmNavigationFailure).ɵfailed(failure)),
     ),
     { provide: UrlSerializer, useClass: TmUrlSerializer },
+    // A route into another tenant is created anew, never reused.
+    { provide: RouteReuseStrategy, useClass: TmRouteReuse },
     tmStartup(config),
     {
       provide: TM_APP_DECLARATIONS,

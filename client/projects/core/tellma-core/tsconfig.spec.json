@@ -1,12 +1,12 @@
 /* To learn more about Typescript configuration file: https://www.typescriptlang.org/docs/handbook/tsconfig-json.html. */
 /* To learn more about Angular compiler options: https://angular.dev/reference/configs/angular-compiler-options. */
 {
-  "extends": "../../../tsconfig.json",
+  // The lazily loaded entry points come with the second base: the primary
+  // loads them with a specifier the compiler does not follow.
+  "extends": ["../../../tsconfig.json", "./tsconfig.lazy-entry-points.json"],
   "compilerOptions": {
     "outDir": "../../../out-tsc/spec",
     "types": ["vitest/globals"]
   },
-  // The shell is listed too: the primary loads it with a cast specifier,
-  // which the compiler does not follow.
-  "include": ["**/*.spec.ts", "shell/public-api.ts"]
+  "include": ["**/*.spec.ts"]
 }

@@ -9,9 +9,11 @@ import { By, Title } from '@angular/platform-browser';
 import type { RouterTestingHarness } from '@angular/router/testing';
 
 import type { TmApiUpdateCheck } from '../api/tm-api-seams';
+import { TM_BOOT_RESULT } from '../boot/tm-boot-result';
+import type { TmBootResult } from '../boot/tm-boot-types';
 import { TmClientStore } from '../state/store/tm-client-store';
 import { tmAppRig, tmLoadTestPage, tmNavigate, tmSettle, TM_COLD_SYNC, TmTestPage, type TmAppRig } from './tm-app.testing.util';
-import { TmRouteError } from './tm-route-error';
+import { TM_ROUTE_ERROR_VIEWS, TmRouteError, type TmRouteErrorKind } from './tm-route-error';
 import { TmRouteHost } from './tm-route-host';
 import { TM_ROUTE_PERMISSIONS } from './tm-route-permissions';
 
@@ -26,6 +28,21 @@ function deferred<T>(): { readonly promise: Promise<T>; readonly resolve: (value
 function hostElement(harness: RouterTestingHarness): HTMLElement {
   return harness.fixture.debugElement.query(By.directive(TmRouteHost)).nativeElement as HTMLElement;
 }
+
+/** The routed host's instance. */
+function hostOf(harness: RouterTestingHarness): TmRouteHost {
+  return harness.fixture.debugElement.query(By.directive(TmRouteHost)).componentInstance as TmRouteHost;
+}
+
+/** The answer of a cold `client/sync` into tenant 18. */
+const COLD_SYNC_18 = {
+  ...TM_COLD_SYNC,
+  tenant: { ...TM_COLD_SYNC.tenant, id: 18 },
+  settings: { ...TM_COLD_SYNC.settings, tenantId: 18 },
+};
+
+/** A boot script's result for a returning user: the same user as the boot record's. */
+const RETURNING: TmBootResult = { state: 'run', profile: null, record: null, cold: false, auto: null, mark: null, showPage: () => undefined };
 
 describe('the route host', () => {
   let rig: TmAppRig;
@@ -80,18 +97,81 @@ describe('the route host', () => {
     expect(host.querySelector('tm-test-page')).not.toBeNull();
   });
 
+  it('enters another tenant afresh on the same route, on its skeleton until its cold sync answers', async () => {
+    rig = await tmAppRig();
+    const sync = deferred<unknown>();
+    rig.api.respond('client/sync', () => sync.promise);
+    const harness = await tmNavigate('/17/credit-review');
+    await tmSettle();
+    const before = hostOf(harness);
+    expect(hostElement(harness).querySelector('tm-test-page')).not.toBeNull();
+
+    // Tenant 18 has no documents in the store: its entry is cold.
+    await rig.router.navigateByUrl('/18/credit-review');
+    await tmSettle();
+    expect(hostOf(harness)).not.toBe(before);
+    expect(hostElement(harness).querySelector('tm-page-skeleton')).not.toBeNull();
+    expect(hostElement(harness).querySelector('tm-test-page')).toBeNull();
+
+    sync.resolve(COLD_SYNC_18);
+    await tmSettle();
+    expect(hostElement(harness).querySelector('tm-test-page')).not.toBeNull();
+  });
+
+  it('keeps the shell, and a host whose route stays, within a tenant', async () => {
+    rig = await tmAppRig();
+    const harness = await tmNavigate('/17/centers/5');
+    await tmSettle();
+    const shell = harness.fixture.debugElement.query(By.css('tm-tenant-shell')).componentInstance as unknown;
+    const host = hostOf(harness);
+
+    await rig.router.navigateByUrl('/17/centers/6');
+    await tmSettle();
+    expect(hostOf(harness)).toBe(host);
+    await rig.router.navigateByUrl('/17/credit-review');
+    await tmSettle();
+    expect(harness.fixture.debugElement.query(By.css('tm-tenant-shell')).componentInstance).toBe(shell);
+  });
+
+  it('moves focus after a host is left while its failed cold entry waits', async () => {
+    rig = await tmAppRig({ cold: true });
+    rig.api.respond('client/sync', () => Promise.reject(new TypeError('Failed to fetch')));
+    const harness = await tmNavigate('/tenants');
+    await tmSettle();
+    await rig.router.navigateByUrl('/17/credit-review');
+    await tmSettle();
+    expect(hostElement(harness).querySelector('tm-page-skeleton')).not.toBeNull();
+
+    // Leaving destroys the waiting host, which gives its focus hold back.
+    await rig.router.navigateByUrl('/signed-out');
+    await tmSettle();
+    expect((document.activeElement as HTMLElement | null)?.textContent).toContain("You're signed out");
+  });
+
+  it.each<[string, boolean, string]>([
+    ['warm', false, 'tm.launch.warm'],
+    ['cold', true, 'tm.launch.cold'],
+  ])('times a returning user’s launch into a %s tenant', async (_entry, cold, timing) => {
+    rig = await tmAppRig({ cold, providers: [{ provide: TM_BOOT_RESULT, useValue: RETURNING }] });
+    await tmNavigate('/17/credit-review');
+    await tmSettle();
+    const launches = rig.telemetry.recent().filter((item) => item.name.startsWith('tm.launch.'));
+    expect(launches.map((item) => [item.name, item.props['routeKind']])).toEqual([[timing, 'custom']]);
+  });
+
   it('renders the forbidden view in place of a page whose permission the user lacks', async () => {
     const can = vi.fn(() => signal(false).asReadonly());
     rig = await tmAppRig({ providers: [{ provide: TM_ROUTE_PERMISSIONS, useValue: { can } }] });
     const harness = await tmNavigate('/17/approvals');
     await tmSettle();
     const error = harness.fixture.debugElement.query(By.directive(TmRouteError));
-    expect((error.componentInstance as TmRouteError).kind()).toBe('forbidden');
+    expect((error.componentInstance as TmRouteError).view().title[0]).toBe('tm.errors.forbidden.title');
+    expect((error.nativeElement as HTMLElement).textContent).toContain('acme.Approval · Read');
     expect(can).toHaveBeenCalledWith('acme.Approval', 'Read');
     expect(hostElement(harness).querySelector('tm-test-page')).toBeNull();
   });
 
-  it.each<[TmApiUpdateCheck, string]>([
+  it.each<[TmApiUpdateCheck, TmRouteErrorKind]>([
     ['ready', 'client-outdated'],
     ['failed', 'client-outdated'],
     ['none', 'offline'],
@@ -102,7 +182,7 @@ describe('the route host', () => {
     const harness = await tmNavigate('/17/credit-review');
     await tmSettle();
     const error = harness.fixture.debugElement.query(By.directive(TmRouteError));
-    expect((error.componentInstance as TmRouteError).kind()).toBe(kind);
+    expect((error.componentInstance as TmRouteError).view()).toBe(TM_ROUTE_ERROR_VIEWS[kind]);
   });
 
   it('titles the document after the page and moves focus to its title on a path change', async () => {
@@ -125,6 +205,9 @@ describe('the route host', () => {
     await tmNavigate('/tenants');
     expect(store.boot.read().lastTenantId).toBeNull();
     await rig.router.navigateByUrl('/17/centers');
+    expect(store.boot.read().lastTenantId).toBe(17);
+    // A first segment beyond the safe integers is no tenant, so it is never remembered.
+    await rig.router.navigateByUrl('/99999999999999999999');
     expect(store.boot.read().lastTenantId).toBe(17);
   });
 });

@@ -1,17 +1,17 @@
 /* The application build's TypeScript configuration: the app from its entry file and the emitted entity types, without the specs. */
 {
-  "extends": "./tsconfig.json",
+  /*
+   * Inside the platform's repository, the second base lists @tellma/core's
+   * lazily loaded entry points: the framework loads them with import()
+   * through a specifier the compiler does not follow, and a build from
+   * sources compiles only what the program holds. An installed package
+   * needs no such base.
+   */
+  "extends": ["./tsconfig.json", "../../../../client/projects/core/tellma-core/tsconfig.lazy-entry-points.json"],
   "compilerOptions": {
     "noEmit": false,
     "outDir": "./out-tsc/app",
     "types": []
   },
-  /*
-   * Inside the platform's repository, the shell entry point is listed too:
-   * the framework loads it with import() through a specifier the compiler
-   * does not follow, and a build from sources compiles only what the
-   * program holds. An installed package needs no such line.
-   */
-  "include": ["generated/*.d.ts", "../../../../client/projects/core/tellma-core/shell/public-api.ts"],
-  "files": ["src/main.ts"]
+  "include": ["src/main.ts", "generated/*.d.ts"]
 }
