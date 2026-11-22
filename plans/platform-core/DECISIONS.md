@@ -384,6 +384,19 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-240 (orchestrator, 2026-11-22): PC-176 verification found a UTF-32 bypass; PC-176 integrates, and PC-F75 follows it
+
+- The section 4.4 verification (D-236) of abc79003 confirmed that every R2-1 to R2-3 vector and every new shape was refused within its bound. It found three new defects:
+  - V-1 (blocking): BoundedPartStream guesses UTF-8 or UTF-16 from two bytes, but XmlReader detects and decodes UCS-4. A UTF-32 part whose characters carry a byte or unit read as < bypasses the run bound. A 390 KiB upload allocated 587 to 1,174 MiB and took about 40 s.
+  - V-2 (minor): CDATA, comments and processing instructions are scanned one byte at a time, about 34 times slower than content. About 4.5 MiB uploaded costs about 3.3 minutes.
+  - V-3 (minor, from before this commit): the header search decodes every row of an all-blank sheet. About 6 MiB uploaded costs about 4.3 minutes.
+- PC-176 has had its three implementer rounds, and section 4.4 forbids a fourth. So the defects are recorded here, and PC-176 integrates when released.
+- PC-F75 then fixes V-1 and V-2, by resuming PC-176's implementer in pc-f right after PC-176 lands:
+  - V-1: refuse a NUL byte or unit in the part (U+0000 is never legal XML; OPC allows only UTF-8 and UTF-16), with a test per UCS-4 byte order.
+  - V-2: vectorise the section scan.
+- PC-F75 is ranked as blocking under D-229. It is not an integration blocker, but it is a member-reachable resource exhaustion on the import route, so it goes ahead of T1.
+- For Ahmad: V-3 needs a spec 0019 ruling on how many rows the header search may read before it refuses or stops, for example the first N rows of a sheet.
+
 ### D-239 (orchestrator, 2026-11-22): PC-105 verification found defects, fixed at integration
 
 - The section 4.4 verification (D-237) of 8162da65 reported 1 major and 2 minor findings, plus a side note:
