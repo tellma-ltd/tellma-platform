@@ -384,6 +384,18 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-203 (orchestrator, 2026-11-22): PC-175 steps back into the hold queue after a second red run; PC-093 released
+
+Situation: PC-175's integration went red twice, on both build-test jobs (runs 44986216771 and 44990079169). Meanwhile PC-093 (T1) was held with a clean merge-tree, and PC-F67 and PC-F17 were held behind it. D-087 releases one item at a time, so a pc branch that keeps failing CI was holding up the whole queue.
+
+Ruling:
+- PC-175 fixes its CI failures without the ": integrate" marker and returns to held.
+- PC-093 is released at once.
+- PC-175 is re-released after PC-093 lands, ahead of PC-F67 and PC-F17, because it is older and has already merged platform-core once.
+- PC-175's second round also runs every unit project the build-test job runs and its change could reach, in full, once, with the unit filter. Two red rounds justify that beyond D-175.
+
+Revisit if a pc branch's third CI round goes red: escalate it to a Review 2 of the integration fixes (§4.4).
+
 ### D-202 (orchestrator, 2026-11-22): PC-175 CI fixes accepted
 
 PC-175's integration run 44986216771 was red, with two root causes. Both fixes are in 6ced57c6.
