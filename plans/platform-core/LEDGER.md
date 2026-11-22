@@ -110,12 +110,11 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 
 | PC | Slot | Branch | Step | Implementer agent (name / id) | Reviewer agent (name / id) | Started (UTC) |
 |---|---|---|---|---|---|---|
-| PC-F70 | pc-4 | pc/PC-F70 | integrating | impl 5c274bc6 (3 deviations: event covers every endpoint-audit refusal; fields Count/Problems, no event id; CheckAsync takes ILoggerFactory; AspNetCore unit 998/998); R1 0/0/2 (MapTellma-path event lost to batched exporters; multi-problem join unpinned); fix1 then hold; D-223; for Ahmad: 0016 §10.1 "endpoint audit" wording; fix1 222dcad6 (R1-1 OpenTelemetry LoggerProvider force-flush before the MapTellma throw, with a test; R1-2 two-violation join pinned); spec 0016 does not require deferral (0011 §5.3); merge-tree clean; held after PC-F71; released after PC-F71 landed (d5421aa9); integrating | fix; R1 only | 2026-11-22 |
-| PC-176 | pc-f | pc/PC-176 | impl | T3 fill (D-140); only T3 ready | 3; R1 only | 2026-11-22 |
-| PC-182 | pc-f2 | pc/PC-182 | fix1 | T3 fill (D-140); only T3 ready; usage 36% at 15:50 UTC, on pace; impl 2bb25b2c (14 deviations; OwnerId ServerOwned not Derived (0012 §9.1 refuses derived column updates); reports category hard-coded per shareable; delete leaves share notices; user select Name2/3 fix; integration 12/12); R1 0/3/4 (delete leaves share notices; shares extra leaks other grantees via related; caps and grantee checks untested; ArgumentsJson unasserted; ReportShare client metadata; delete-by-query contradiction; reports category); fix1 then hold; D-227 | 3; R1 only | 2026-11-22 |
-| PC-189 | pc-2 | pc/PC-189 | impl | T3 fill (D-140); only T3 ready | 3; R1 only | 2026-11-22 |
-| PC-F69 | pc-1 | pc/PC-F69 | fix1 | re-split "." (38.49/38.5 KB after PC-104) by spec family; D-214, D-225; impl be5219bc (no new entry points: boot reaches nearly every family, so a move saves only in the measure; TmDecimals pure annotation, first frame 37.79 to 37.10 KB; "." stays 38.49/38.5; 4 candidates listed and not made; Acme compiles core from sources); R1 0/0/3 (claim verified independently: boot keeps every service class; pure annotation safe and checked; split basis mislabelled; candidate 3 overstated; D-216 flush carry unnamed); fix1 then hold; D-228 | fix; R1 only | 2026-11-22 |
-| PC-F72 | pc-3 | pc/PC-F72 | impl | ScheduleTests root-cause (D-226) | fix; R1 only | 2026-11-22 |
+| PC-176 | pc-f | pc/PC-176 | fix2 | T3 fill (D-140); only T3 ready; impl 7cdca0bc (13 deviations; BoundedPartStream token-bound fix; Subject Unique is a row-key candidate; 64-bit counts as wire strings; exports/imports/inspect-import routes not in ProjectedRouteTests; synthetic corpus only); R1 2/3/6 (exports need IBlobStore, 8/9 ExcelExportTests fail; XML name table unbounded, ~4 GB resident; per-row cell text unbounded; export/import routes undriven, own-rows criteria untested; spill metric unasserted; +6 minor); fix1 cb9ca1b8 (R1-1..5, 7..11 fixed; R1-6 as deviations 19-21; deviations 14-18: 1 MiB name cap, row/sheet text budgets, 255-char header/manifest caps, placeholder dimension); R2 launched (inherit xhigh); R2 1/2/2 (D-236: token bound ignores >, shared sheet part x4096, zip64 offset trigger); fix2 then hold | 3; R1+R2 (escalated) | 2026-11-22 |
+| PC-189 | pc-2 | pc/PC-189 | held 22dfbd38 | T3 fill (D-140); only T3 ready; impl ecede977 (19 deviations; 5 read tools, write tools left to PC-190; integration in Acme McpTests; McpFeature options only; describe cache keyed by VersionTag and culture; audience and scope challenges via JwtBearerEvents); R1 0/2/4 (multi-aud token accepted at each tenant; listed unit and refusal tests missing; guard skipped without services; feature name; tellma_get materialises before windowing; trailer can overflow); describe not permission-dependent; fix1 then hold; D-232; fix1 ed5d0edc (all 6 fixed; single-aud MCP tokens; refusal tests incl. expired, two-audience, service account, non-member, deactivated; real bug: distribution ToolTypes never registered (WithTools overload), fixed); held; root-causing a non-member initialize hang seen once under load (D-234); hang fix 22dfbd38 (a guard refusal after the 60 s timeout now returns 504, not a silent abort); slow wait still being root-caused while held | 3; R1 only | 2026-11-22 |
+| PC-105 | pc-3 | pc/PC-105 | fix1 | T1; slot freed from PC-F72 (D-229); impl 1a17e290 (8 deviations; "." 38.49 to 42.35, ceiling 42.5; lazy tm-entity-model chunk 2.09/2.5 against 0029 §1; display names stay on the first frame; 5.95 of the 6 KB share; one refused Write to a mistyped scratch path, not needed); R1 0/3/2 (reachable over-grants from a child root; under-grants through restricted entities; TmPath type cost explodes, TS2590 near 12 navigations; golden bypasses production plan; resolve re-queries cached ids); budget honest; fix1 then hold; D-233 | 1; R1 only | 2026-11-22 |
+| PC-106 | pc-4 | pc/PC-106 | held 73bc7e6f | T1 (D-229); impl ba40a2ba (9 deviations; "." 38.49 to 40.62, ceiling 41; tmSearchNormalize to the shared @tellma/core/search-normalize entry point (0.40/0.5) against 0027 §1; tmAllowedImports loosened; Mod as Ctrl and Cmd; Mod+Enter exempt (D-057 item 4)); R1 0/0/3 (tm. reserved keys accepted on either platform; search-normalize not guarded from ./shell and ./attention; frame CSS order unasserted); +2.13 KB honest; 9 deviations sound; fix1 then hold; D-235; fix1 73bc7e6f (R1-1..3 fixed; R1-2 excludes ./search-normalize from ./shell only, since ./attention does not exist yet and PC-155 must add it); merge-tree: one budgetNotes["."] line conflict with PC-F69, keep both passages; size 40.62/41 | 1; R1 only | 2026-11-22 |
+| PC-108 | pc-1 | pc/PC-108 | impl | T1 (D-229); carry (D-216): leader member in the state dump | 1; R1 only | 2026-11-22 |
 
 ## Fix items
 
@@ -188,10 +187,10 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-F66 | CI build-test (windows-latest): vstest.console failed to connect to a testhost within 90 s and aborted that assembly's run while every reported test passed (PR run 44947728191 on 9e21bb68; Windows runner starved by parallel test hosts). Root-cause and fix in ci.yml or the test setup, no retries (D-184) | done in PC-091 CI fixes (39ab3f1b, ci.yml Windows unit step -m:2; pc 44952666444 green, Windows build-test 17 min) | | | |
 | PC-F67 | OpenAPI schema writer fails /openapi/web.json once a schema nests past MaxDepth 16 (0016 §3.1 vs §12.1); decouple the schema writer's depth from the wire limit and restore ClientSyncResult.Me as MeResult (D-185) | done (196b4b16; pc 44996749745 green on 196b4b16; PR run 44998519038) | 0dabb9cc, 4da04f01, 196b4b16 | | D-197, D-198; D-185 item 2 open for Ahmad |
 | PC-F68 | Core IntegrationTests UserSelfServiceTests.Another_user_s_bag_is_read_set_and_deleted_under_the_preferences_filter_within_its_budgets throws Access.LastAdministrator on preferences/set: Windows, alone, fresh fixture DB, 2026-11-22 03:18 UTC; also on the base commit; passed 2026-11-21 (possible date dependence; D-197) | done: diagnosis only, fixed through PC-143 (landed e14934f0) | 94759c2e (pc/PC-F68, review file only) | | from PC-F67 impl |
-| PC-F69 | Re-split the @tellma/core primary entry point by spec family (D-031 revisit clause: the "." ceiling has risen seven times, four under D-031; 0024's services ~22 KB against their 14 KB §12 share after PC-103; D-200) | in progress (pc-1; D-214, D-225) | | | from PC-103 R1-4 |
-| PC-F70 | Platform never emits the ApiSecurableAuditFailed log event (0016 §10.1): TellmaEndpointAudit throws at startup without logging it; emit it before the throw and assert it in a unit test | in progress (pc-4) | | | from PC-095 fix1 (D-209) |
+| PC-F69 | Re-split the @tellma/core primary entry point by spec family (D-031 revisit clause: the "." ceiling has risen seven times, four under D-031; 0024's services ~22 KB against their 14 KB §12 share after PC-103; D-200) | done (f3c7a73a; pc 45063961943 green on f3c7a73a; no new entry points, "." 38.49/38.5, D-228) | be5219bc, 62bf5953, f3c7a73a | from PC-103 R1-4 |
+| PC-F70 | Platform never emits the ApiSecurableAuditFailed log event (0016 §10.1): TellmaEndpointAudit throws at startup without logging it; emit it before the throw and assert it in a unit test | done (d07130b0; pc 45057688226 green on d07130b0) | 5c274bc6, 222dcad6, d07130b0 | from PC-095 fix1 (D-209) |
 | PC-F71 | Server UmAlQuraExtendedCalendar.DaysIn(9666, month >= 5) throws, so the shared calendar vectors stop at AH 9665; fix the extended range or bound it explicitly with a refusal and a test | done (d5421aa9; pc 45053120869 green on d5421aa9) | 071cc228, 492510e3, bef9b90b, 0c996709, d5421aa9 | from PC-104 impl |
-| PC-F72 | Core IntegrationTests ScheduleTests.A_schedule_paused_for_its_inactive_owner_is_taken_over_then_activated_and_its_notice_withdrawn_with_the_commit: Assert.True failure at ScheduleTests.cs:516 (ubuntu integration, PR run 45044779464 on 08ebc1cc; green on pc run 45042095713, same code); root-cause, no retry (D-011) | in progress (pc-3) | | | from PR run 45044779464 (D-226) |
+| PC-F72 | Core IntegrationTests ScheduleTests.A_schedule_paused_for_its_inactive_owner_is_taken_over_then_activated_and_its_notice_withdrawn_with_the_commit: Assert.True failure at ScheduleTests.cs:516 (ubuntu integration, PR run 45044779464 on 08ebc1cc; green on pc run 45042095713, same code); root-cause, no retry (D-011) | todo (after the ready T1 items, D-229) | | | from PR run 45044779464 (D-226) |
 | PC-F02 | systemic e2e flakiness: CI 42456030333 red on 5250c6c (plans-only) with 4 NEW flaky tests | done (R1 1/1/2; CI 42471952389 green), pc-f free | 2c91df4, 4c36d45, 4c89ae1 | 11.32M | grid bundle at its 38 KB ceiling; picker same-frame Enter race open | root-cause all 9; un-quarantine the fixed PC-F01 five |
 
 ## Batch reviews (one per phase)
@@ -235,7 +234,8 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 
 | Test | Since | Tracking |
 |---|---|---|
-| client tools lint:test union-order.spec.mts bigint case: 5 s default timeout hit (5.8 s) under the lint:test fixture build; passes alone | 2026-11-22 (PC-F69 impl) | root-cause in PC-F69 fix1 |
+| Acme McpTests non-member initialize: 2m22s then no reply in one full Acme project run with the AspNetCore suite alongside; ~3 s alone; passed twice after | 2026-11-22 (PC-189 fix1) | no-reply abort fixed in PC-189 22dfbd38; the >60 s wait under suite contention is still being root-caused in PC-189 while held |
+| client tools lint:test union-order.spec.mts bigint case: 5 s default timeout hit (5.8 s) under the lint:test fixture build; passes alone | 2026-11-22 (PC-F69 impl) | fixed in PC-F69 fix1 62bf5953: 120 transpile+parse calls under CPU contention (32 s file); now one sorted source (160 to 31 ms alone) |
 | client unit core tm-localization.spec "at startup: resolves the address's tenant before the first render…": document dir ltr, expected rtl, on both OSes; green at 16:08 UTC (pc run 45042095713), red from 16:38 UTC on the same code (PR run 45044779464, pc run 45046747313) | 2026-11-22 | fixed in PC-F71 CI fixes d5421aa9: the test read html dir before a tick flushed the root effect (D-227) |
 | Core IntegrationTests ScheduleTests "a schedule paused for its inactive owner is taken over…": Assert.True at ScheduleTests.cs:516 (ubuntu; PR run 45044779464); next run green | 2026-11-22 | PC-F72 |
 | CI windows-latest unit step: vstest testhost connect timeout (90 s) aborts one assembly under parallel load (PR run 44947728191) | 2026-11-21 | PC-F66 (fixed 39ab3f1b) |
@@ -312,6 +312,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 
 | Test | Spec | Reason |
 |---|---|---|
+| Excel import real-producer corpus: workbooks saved by Excel, LibreOffice and Google Sheets (PC-176 deviation 21) | 0019 §15 | this host has no LibreOffice, and Excel and Sheets need a human; deferred to the human milestone (D-230) |
 | Decide excludes inactive-role grants (PC-043 checkpoint test list) | 0014 §5.2, §6.2 | inactive roles are excluded by the load; carried into PC-050 (PC-043 R1-4) |
 | Acme §10 rows skipped in PC-141 (6): first request binds UserId, Frozen read, ReadOnly read stamps activity (connect initializer + administrator bootstrap); AllowWhenReadOnly me/locale action (users-stack projection); RunsWhenReadOnly job (job worker); composed platform provisioning steps | 0011 §3.3, §4.3, §10 | conditional skips (PlatformSeams) since 15d1369d; carried to PC-078, PC-090, PC-100, PC-089 (D-096) |
 | tm-pivot pixel baselines: light, dark and RTL (PC-193 R1-9; computed-style checks stand in) | 0034 §14 | land with the repo's pixel-baseline infrastructure, next to the chart visual suite (WATCHLIST c10 #7) |
@@ -427,10 +428,10 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-102 | 0029-f | 1 | done (1b83923c; green 44655600178) | c586d072, 2187f29c, 1b83923c | | D-136, D-138 |
 | PC-103 | 0024-g | 1 | done (257f1ed6; pc 45004914780 green on 257f1ed6; PR run 45006613021) | 93091a54, 0052365e, 155d35a1, 257f1ed6 | | carry from PC-094: replace Acme's interim main.ts (bootstrapApplication) and AcmeApp with bootstrapTellma/TmApp |
 | PC-104 | 0024-h | 1 | done (5bfbd41c; pc 45042095713 green on 5bfbd41c) | 2330b361, 8dbe71bf, 7f087f0d, 5bfbd41c | | carry from PC-094: switch Acme to tmEnglish()/tmArabic() and cut angular.json styles to src/styles.css importing @tellma/core/styles.css and @tellma/locale-ar/styles.css |
-| PC-105 | 0029-b | 1 | todo | | | |
-| PC-106 | 0027-a | 1 | todo | | | |
+| PC-105 | 0029-b | 1 | in progress (pc-3) | | | |
+| PC-106 | 0027-a | 1 | in progress (pc-4) | | | |
 | PC-107 | 0025-e | 1 | done (5a41bd43; pc 45037802056 green on 5a41bd43; PR run 45040306696) | 7c63b401, e9406aaf, a0919af3, 5a41bd43 | | |
-| PC-108 | 0025-c | 1 | todo | | | carry (D-216): add the leader member to PC-107's state dump |
+| PC-108 | 0025-c | 1 | in progress (pc-1) | | | carry (D-216): add the leader member to PC-107's state dump |
 | PC-109 | 0028-c | 1 | todo | | | |
 | PC-110 | 0024-i | 1 | todo | | | carry (D-216): answer drafts.reply (busy flag, sign-out wait) for PC-107's TmDrafts; carry (D-218): drafts.reply and the state dump count session-storage drafts when TmDrafts is not loaded |
 | PC-111 | 0026-a | 1 | todo | | | carry (D-216): replace PC-107's internal TM_ROUTED_PAGE seam with TmPageContexts; carry (D-218): page-host import lists include ./memory and ./recents |
@@ -477,7 +478,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-152 | 0024-j | 2 | todo | | | |
 | PC-153 | 0025-d | 2 | todo | | | |
 | PC-154 | 0026-f | 2 | todo | | | carry (D-216): register PC-107's state dump with TmSupport (registerDumpSection) without pulling @tellma/core/memory onto the first frame |
-| PC-155 | 0028-d | 2 | todo | | | |
+| PC-155 | 0028-d | 2 | todo | | | carry from PC-106: add "./attention": ["./search-normalize"] to staticGraphExcludes in core-entry-points.ts |
 | PC-156 | 0028-e | 2 | todo | | | |
 | PC-157 | 0028-f | 2 | todo | | | |
 | PC-158 | 0030-e | 2 | todo | | | |
@@ -504,7 +505,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-179 | 0030-f2 | 3 | todo | | | |
 | PC-180 | 0032-b2 | 3 | todo | | | |
 | PC-181 | 0010-f6 | 3 | done (838975ec; pc 44957047158 green on f2226aff) | 19eb6762, 651abb4c, efec0cc6, f2226aff, 838975ec | | |
-| PC-182 | 0033-a | 3 | in progress (pc-f2; T3 fill, D-140) | | | |
+| PC-182 | 0033-a | 3 | done (491ca1b3; pc 45075565563 green on 491ca1b3; CI red at bff27d11: five tests pinned the pre-PC-182 model) | 2bb25b2, 4855edd, bff27d1, 491ca1b (pc/PC-182) | | |
 | PC-183 | 0033-b | 3 | todo | | | |
 | PC-184 | 0033-c | 3 | todo | | | |
 | PC-185 | 0033-d | 3 | todo | | | |

@@ -324,7 +324,13 @@ write-once mapped property that is `[JsonIgnore]`, and for any endpoint whose
 `RequireSecurable(resource, action)` names a pair no feature registers in the securable registry
 (compared ignoring case), or names it only through a renamed resource's alias; `MapTellma`'s own
 run leaves the pairs to the gate. When the securable registry did not compose, the gate's audit
-skips the pairs and says so in one line, leaving the cause to `core.securables`.
+skips the pairs and says so in one line, leaving the cause to `core.securables`. Either run that
+finds a problem logs `ApiSecurableAuditFailed` at Critical just before startup throws, with the
+problem count (`Count`) and every problem rendered on one line with its source and fix
+(`Problems`), so the host's logs name what the exception names. A failed gate disposes the host,
+which flushes every sink. `MapTellma` throws before the host runs, so it first flushes
+OpenTelemetry's export, for at most five seconds. A sink that buffers outside OpenTelemetry may
+lose a `MapTellma`-time event.
 
 - a distribution endpoint under a policy that names no authentication scheme;
 - an endpoint naming a rate policy that does not exist, more than one route policy, a tenant- or

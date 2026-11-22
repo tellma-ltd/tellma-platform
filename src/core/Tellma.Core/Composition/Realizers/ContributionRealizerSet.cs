@@ -39,6 +39,7 @@ namespace Tellma.Core.Composition.Realizers
                 .Add(new StackCompanionContributionRealizer())
                 .Add(new ApiServiceContributionRealizer())
                 .Add(new ValidatorContributionRealizer())
+                .Add(new ShareableContributionRealizer())
                 .Add(new ConfirmationContributionRealizer())
                 .Add(new ProvisioningStepContributionRealizer())
                 .Add(new JobHandlerContributionRealizer())

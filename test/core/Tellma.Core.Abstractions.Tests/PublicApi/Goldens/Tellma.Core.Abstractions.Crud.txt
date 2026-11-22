@@ -180,6 +180,7 @@ public abstract class DetailsPlan<TEntity>
     public required DetailsRequest Request { get; init; }
     public required RequestContext Context { get; init; }
     public required SqlIdentifier IdsSource { get; init; }
+    public void AddComputedExtra<TRow, TValue>(string name, QuerySpec spec, QueryArguments? arguments, Func<IReadOnlyList<TEntity>, IReadOnlyList<TRow>, TValue> compute) where TRow : class
     public void AddComputedExtra<TValue>(string name, Func<IReadOnlyList<TEntity>, TValue> compute)
     public void AddExtra(string name, FormattableString sql, SqlOptions? options)
     public void AddExtra(string name, QuerySpec spec, QueryArguments? arguments)

@@ -57,6 +57,16 @@ POST /{tenantId}/api/web/schedules/take-over | take-over | core.Schedule | entit
 POST /{tenantId}/api/web/schedules/run-now | run-now | core.Schedule | entity | IdRequest | JobAccepted | core.Schedule:Save | mutation | WKivSNmxCXQw
 POST /{tenantId}/api/web/schedules/export | export | core.Schedule | api | ExportRequest | ExportOutcome | core.Schedule:Read | long, idempotent | Fy5vEZu1-Mqy
 POST /{tenantId}/api/web/schedules/export-for-import | export-for-import | core.Schedule | api | ExportForImportRequest | ExportOutcome | core.Schedule:Read | long, idempotent | EaMkiCeHi04-
+POST /{tenantId}/api/web/reports/query | query | core.Report | - | QueryRequest | RowPage | core.Report:Read | idempotent | PqV1-faRenCx
+POST /{tenantId}/api/web/reports/get | get | core.Report | - | GetRequest | EntitiesResult<Report> | core.Report:Read | idempotent | yUeb6aXiKiUT
+POST /{tenantId}/api/web/reports/get-by-ids | get-by-ids | core.Report | - | GetByIdsRequest | EntitiesResult<Report> | core.Report:Read | idempotent | TqNhUYS1mnI9
+POST /{tenantId}/api/web/reports/save | save | core.Report | - | SaveRequest<Report> | EntitiesResult<Report> | core.Report:Save | mutation | iBW4tWiwNMG5
+POST /{tenantId}/api/web/reports/delete | delete | core.Report | - | IdsRequest | AffectedResult | core.Report:Delete | mutation | lisU15N3Oj5S
+POST /{tenantId}/api/web/reports/activate | activate | core.Report | entity | EntityActionRequest | EntitiesResult<Report> | core.Report:Activate | mutation, idempotent | Iwkgekpd7t-9
+POST /{tenantId}/api/web/reports/deactivate | deactivate | core.Report | entity | EntityActionRequest | EntitiesResult<Report> | core.Report:Activate | mutation, idempotent | Iwkgekpd7t-9
+POST /{tenantId}/api/web/reports/share | share | core.Report | entity | EntityActionRequest<ShareArguments> | EntitiesResult<Report> | core.Report:Share | mutation | fuSY7nB-9A1e
+POST /{tenantId}/api/web/reports/publish | publish | core.Report | entity | EntityActionRequest<PublishArguments> | EntitiesResult<Report> | core.Report:Publish | mutation | ZiORrXV-G841
+POST /{tenantId}/api/web/reports/transfer | transfer | core.Report | entity | EntityActionRequest<TransferArguments> | EntitiesResult<Report> | core.Report:Transfer | mutation | bq570jZlNC8X
 POST /{tenantId}/api/web/widgets/query | query | fixture.Widget | - | QueryRequest | RowPage | fixture.Widget:Read | idempotent | PqV1-faRenCx
 POST /{tenantId}/api/web/widgets/get | get | fixture.Widget | - | GetRequest | EntitiesResult<Widget> | fixture.Widget:Read | idempotent | 3dOZYmvbGZ23
 POST /{tenantId}/api/web/widgets/get-by-ids | get-by-ids | fixture.Widget | - | GetByIdsRequest | EntitiesResult<Widget> | fixture.Widget:Read | idempotent | UlcZ--uZYDvm

@@ -384,6 +384,136 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-236 (orchestrator, 2026-11-22): PC-176 Review 2 rulings
+
+- Review 2 (inherit, xhigh) found 1 blocking, 2 major, 2 minor. All five accepted:
+  - R2-1: the token bound did not bound one node, because a literal > ends a run. Runs now end only at <. CDATA, comments and processing instructions count as one run each, and the text caps apply before a value is materialised.
+  - R2-2: refuse sheets that name the same part, charge the text budget per workbook, and skip the rows of Duplicate sheets.
+  - R2-3: the zip64 deferral now covers the directory-offset trigger.
+  - R2-4: distinct ModifiedById seeds.
+  - R2-5: the header-block cap counts rows read and checks cancellation.
+- Then PC-176 holds behind PC-182, PC-105, PC-189 and PC-106. If fix 2 rewrites the stream bounding substantially, one section 4.4 verification of R2-1 to R2-3 runs before integration.
+- For Ahmad: 0019 section 12.1 lists delete-by-query among the import routes. Its own Stack sketch omits it, and the D-132/D-134 startup gate refuses it for ImportService. The implementation omits it. Should the spec drop it?
+- Carries: PC-178's job handler must cope with a Pending job whose import row is gone, which a retry racing a delete can leave. PC-177's synchronous path must not trust the plan's row count.
+
+### D-235 (orchestrator, 2026-11-22): PC-106 Review 1 rulings
+
+PC-106 Review 1 found 0/0/3.
+
+What the review confirmed:
+- The +2.13 KB raise of "." is honest: register must refuse synchronously, and TmShell and TmShellMain belong in the primary under 0027 §1.
+- All 9 deviations are sound. Mod+Enter's exemption settles D-057 item 4.
+- Accessibility: no single-character shortcuts (WCAG 2.1.4), IME composition respected, no focus trap.
+- With PC-105, "." comes to about 44.5 KB. Whichever of the two integrates second re-measures it (D-214).
+
+Rulings:
+- R1-1: a tm. id uses its reserved combination on both platforms.
+- R1-2: the size gate guards ./search-normalize from ./shell and ./attention, not only from ".".
+- R1-3: assert the frame CSS order.
+
+PC-106 holds after fix1.
+
+For Ahmad, from PC-106:
+- 0027 §1 and ARCHITECTURE.md should say that tmSearchNormalize lives in the shared @tellma/core/search-normalize entry point, not the primary.
+- WATCHLIST ## 0035 should note that 0035's Escape shortcut must use the id dashboard.exit-presentation.
+
+### D-234 (orchestrator, 2026-11-22): PC-189 fix1 accepted; held
+
+Fix1 (ed5d0edc) fixed all six findings under D-232. While writing the tests, the implementer found a real bug: distribution ToolTypes were never registered, because WithTools(Type[]) bound to the SDK's generic WithTools<T>(T target). It is fixed and covered by a test.
+
+In one loaded run, the non-member's initialize took 2m22s and returned no reply. A request that never answers on an authentication path needs a root cause, so the held agent root-causes it now (D-011). It changes code only on a proven cause.
+
+PC-189 holds. Release order: PC-182 (CI fixes), PC-105, PC-189.
+
+For Ahmad (as in D-232): ResourceGrantValidator still issues tokens that combine a distribution's origin with its tenant resources. Every MCP endpoint now refuses those tokens. Either Identity refuses a grant that includes an MCP resource with others, or 0016 §11.2 relaxes.
+
+### D-233 (orchestrator, 2026-11-22): PC-105 Review 1 rulings
+
+PC-105 Review 1 found 0/3/2.
+
+What the review confirmed:
+- The +3.86 KB raise of "." is honest under D-031. What stays on the first frame is what the route gate, the forbidden view, the shell and the bell read synchronously.
+- The lazy tm-entity-model chunk is sound. It loads in the same Promise.all as the Entities chunk, so it adds no async boundary.
+
+Rulings:
+- R1-1: fail closed. reachable skips the owner step only as the server does, and a case AccessSummary cannot decide is not reachable.
+- R1-2: walk segment by segment, like the server.
+- R1-3: validate paths segment by segment rather than as one enumerated union, with a type-cost regression test.
+- R1-4: the golden uses the production plan.
+- R1-5: resolve uses the cached list.
+
+Escalation: if R1-3 rewrites much of tm-entity-types, fix1 is judged for Review 2 under §4.4.
+
+PC-105 holds after fix1, behind PC-182.
+
+For Ahmad: AccessSummary cannot tell a direct child grant from an owner-derived one. With a direct child grant and a filtered owner grant, the client cannot decide whether a path is reachable, so it answers not reachable. Exact parity would need AccessSummary (0014 / 0029) to mark direct grants.
+
+### D-232 (orchestrator, 2026-11-22): PC-189 Review 1 rulings
+
+PC-189 Review 1 found 0/2/4.
+
+What the review confirmed:
+- describe does not depend on permissions, so its cache leaks nothing;
+- the read tools go through EntityService and IChildQueryService;
+- the request limits match spec 0016;
+- the 5/8 tool split is planned in PC-190.
+
+Rulings:
+- R1-1: follow spec 0016 §11.2 on the MCP path only. An MCP token carries exactly one aud value, equal to the tenant's resource; a multi-audience token is refused. This fails closed. Test it.
+- R1-2: add the listed tests and the missing integration refusals.
+- R1-3: fail closed.
+- R1-4: rename the feature to core.mcp.
+- R1-5: window tellma_get before materialising, grandchildren included.
+- R1-6: the trailer always fits the cap.
+
+PC-189 holds after fix1.
+
+For Ahmad, from PC-189:
+- Tellma.Identity's ResourceGrantValidator lets one interactive token name several tenants (and the origin), while 0016 §11.2 requires an MCP token's aud to equal the tenant's resource exactly. The MCP path now refuses multi-audience tokens. Should Identity also refuse a multi-resource request that includes an MCP resource?
+- 0016 §1.2 composes AddMcp() in the shared delegate, but the code requires composeWeb. The spec illustration needs aligning.
+- Deviation 10: 0016 §11.2's resource_name drops the tenant name, to avoid tenant enumeration. This needs sign-off.
+
+### D-231 (orchestrator, 2026-11-22): PC-182 fix1 accepted, not escalated; held
+
+Fix1 (4855edd5) fixed R1-1..R1-5. R1-6 and R1-7 needed no code change (D-227).
+
+The privacy fix (R1-2) is one Via(row navigation, Share or Publish filter) on the grants read, which replaces the separate key read. That is not a reshaping beyond one filter, so D-227's escalation test is not met and Review 2 does not run.
+
+New deviations accepted:
+- 15: with filtered decisions, the extra omits admitted rows that hold no grants. This is equivalent, because the dialog reads an omitted row as no grants.
+- 16: an internal set-based Notifier.WithdrawEach runs inside the delete's transaction, because DeletePersistContext carries ids, not entities.
+- 17: the delete-by-query contradiction in spec 0033 is recorded.
+
+The share-count backstop held under a concurrent test with a side TABLOCKX, so the existing range locks serialise it.
+
+PC-182 holds. Release order: PC-F69 (integrating), then PC-182.
+
+### D-230 (orchestrator, 2026-11-22): PC-176 Review 1 rulings; escalated to Review 2
+
+PC-176 Review 1 found 2 blocking, 3 major and 6 minor.
+
+Blocking:
+- R1-1: every export fails without IBlobStore. 8 of the 9 ExcelExportTests fail. The implementer did not run them, and deviation 12 claimed the opposite.
+- R1-2: the XML name table is unbounded. An upload within the 100 MiB limit can reach about 4 GB resident.
+
+Every finding is to be fixed, as Review 1 proposes. R1-6 records three departures as deviations, including the real-producer corpus deferral (acceptable under PLAN §6). R1-4 adds core.Export and core.Import to ProjectedRouteTests and tests the own-rows criteria on an ungranted user.
+
+The blocking findings escalate PC-176 to Review 2 under §4.4, inherit at xhigh, as an off-list item. R2 judges the memory bounds (R1-2, R1-3) as hostile-input defences.
+
+Lesson for briefs: an implementer's "tests passed" lists only what it ran. The R1 briefs already ask reviewers to run the touched integration classes, and that is how R1-1 was caught.
+
+### D-229 (orchestrator, 2026-11-22): Tier 1 was unblocked and left idle; slots re-ordered
+
+PC-107 and PC-104 landed and made PC-105 (0029-b), PC-106 (0027-a) and PC-108 (0025-c) ready. I did not re-run check_deps --ready at those landings, so PC-F69 (mandated by D-214) and PC-F72 (a once-seen flake that blocks nothing) took the freed slots, and the T3 fills kept theirs. Ahmad noticed that no T1 item was in flight.
+
+Correction:
+- PC-F72 was stopped minutes after launch, before it had committed or changed anything. PC-105 takes pc-3.
+- PC-106 takes pc-4 when PC-F70 lands. PC-108 takes pc-1 when PC-F69 lands.
+- PC-F72 returns to todo, behind the ready T1 items. D-140/D-173 put fix items ahead of T3, not ahead of T1, unless the fix blocks CI.
+- The T3 fills (PC-176, PC-182, PC-189) keep their slots. Each is well into its cycle, and §3 lets a fill finish.
+
+Process: after every landing I re-run check_deps --ready and assign freed slots in this order: blocking fixes, then T1, then T2, then non-blocking fixes, then T3 fills.
+
 ### D-228 (orchestrator, 2026-11-22): PC-F69 Review 1 rulings; the "." shares go to Ahmad
 
 PC-F69 Review 1 found 0/0/3. Its own probes confirmed the claim: boot keeps every service class of "." on the first frame, so no sizable service can move to a secondary entry point without becoming asynchronous.

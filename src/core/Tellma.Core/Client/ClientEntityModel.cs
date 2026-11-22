@@ -21,6 +21,7 @@ using Tellma.Core.Data;
 using Tellma.Core.Data.Queries;
 using Tellma.Core.Localization;
 using Tellma.Core.Queryex;
+using Tellma.Core.Sharing;
 
 namespace Tellma.Core.Client
 {
@@ -39,6 +40,7 @@ namespace Tellma.Core.Client
     /// <param name="valueSets">The composed value sets.</param>
     /// <param name="enums">The composition's C# enums.</param>
     /// <param name="blobKinds">The blob kinds, whose policies a blob reference carries.</param>
+    /// <param name="shares">The share entities, which the client metadata leaves out.</param>
     internal sealed class ClientEntityModel(
         QueryexSchemaProvider schemas,
         IEntityMetadataProvider metadata,
@@ -46,7 +48,8 @@ namespace Tellma.Core.Client
         INeutralStringKeys strings,
         IValueSetRegistry valueSets,
         NamedEnums enums,
-        IBlobKindRegistry blobKinds) : IClientEntityModel
+        IBlobKindRegistry blobKinds,
+        ShareEntityTypes shares) : IClientEntityModel
     {
         /// <summary>The operations an API can offer, in the order the client metadata lists them.</summary>
         private static readonly (StackOperations Flag, ClientEntityOperation Operation)[] OperationOrder =
@@ -61,7 +64,7 @@ namespace Tellma.Core.Client
 
         /// <summary>The model, built on first use.</summary>
         private readonly Lazy<Contents> _contents = new(
-            () => Build(schemas, metadata, stacks, strings, valueSets, enums, blobKinds),
+            () => Build(schemas, metadata, stacks, strings, valueSets, enums, blobKinds, shares),
             LazyThreadSafetyMode.ExecutionAndPublication);
 
         /// <inheritdoc />
@@ -85,6 +88,7 @@ namespace Tellma.Core.Client
         /// <param name="valueSets">The composed value sets.</param>
         /// <param name="enums">The composition's C# enums.</param>
         /// <param name="blobKinds">The blob kinds.</param>
+        /// <param name="shares">The share entities, left out.</param>
         /// <returns>The model.</returns>
         private static Contents Build(
             QueryexSchemaProvider schemas,
@@ -93,12 +97,14 @@ namespace Tellma.Core.Client
             INeutralStringKeys strings,
             IValueSetRegistry valueSets,
             NamedEnums enums,
-            IBlobKindRegistry blobKinds)
+            IBlobKindRegistry blobKinds,
+            ShareEntityTypes shares)
         {
-            // --- Every root of the widest shape: an entity of the model by its metadata, a read-only root by its descriptor ---
+            // --- Every root of the widest shape but the share entities: an entity of the model by its metadata, a read-only root by its descriptor ---
             QueryexSchemaMap map = schemas.Map(MultilingualShape.All);
             Builder builder = new(map, metadata, stacks, strings, enums, blobKinds);
             ClientEntityMetadata[] entities = [.. map.Schema.Entities
+                .Where(descriptor => map.ClrType(descriptor) is not Type type || !shares.Types.Contains(type))
                 .Select(descriptor => map.ClrType(descriptor) is null ? builder.ReadOnlyRoot(descriptor) : builder.Entity(map.Metadata(descriptor)))
                 .OrderBy(static entity => entity.Name, StringComparer.Ordinal)];
 
