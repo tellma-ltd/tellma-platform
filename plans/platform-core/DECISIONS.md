@@ -384,6 +384,29 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-218 (orchestrator, 2026-11-22): PC-107 Review 2 rulings; carries
+
+Review 2 (inherit, xhigh) found 0/1/6. R1-1..R1-4 are closed, there is no race in the lazy loads, and the ɵ seams are minimal.
+
+Correction to D-217: TmPreferences still reaches the first frame through the recents chunk. A split app build measures ≈33.2 KB, not 30.48.
+
+Fix2 rulings:
+- R2-1: inject TmPreferences in tmStartup again, and correct the budget figures.
+- R2-2 (major): TmRecents merges the stored nav.recent list with its own visits, so a new tab never erases another tab's unflushed visits. This is a named deviation for a 0025 §13 gap.
+- R2-3: an in-flight tab never reverts its own successful write.
+- R2-4: the lint test-rig exception is limited to *.spec.ts importers.
+- R2-6: test the lazy start, and catch construction errors.
+- R2-7: TmDrafts.flush becomes ɵflush.
+
+PC-107 holds after fix2.
+
+Carries (R2-5):
+- The launcher, in the eager ./shell, must not statically import the lazy @tellma/core/recents. It reaches recents through import() or the TM_RECENTS_NAVIGATION seam. This lands with PC-115.
+- The page-host import lists must include ./memory and ./recents. This lands with PC-111.
+- PC-110's drafts.reply and the state dump must count session-storage drafts when TmDrafts is not loaded.
+
+For Ahmad: 0025 §13 does not say how a new tab's recents list combines with another tab's unflushed visits. The code merges the two.
+
 ### D-217 (orchestrator, 2026-11-22): PC-107 fix1 escalated to Review 2
 
 Fix1 (e9406aaf) fixed R1-1..R1-4. "." went from 36.5 to a 34 KB ceiling (33.84 measured). An app's first frame went from 33.60 to 30.48 KB, and the dump's first-frame cost from +1.35 to +0.13 KB. The fix added:
