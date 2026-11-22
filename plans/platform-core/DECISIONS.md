@@ -384,6 +384,20 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-230 (orchestrator, 2026-11-22): PC-176 Review 1 rulings; escalated to Review 2
+
+PC-176 Review 1 found 2 blocking, 3 major and 6 minor.
+
+Blocking:
+- R1-1: every export fails without IBlobStore. 8 of the 9 ExcelExportTests fail. The implementer did not run them, and deviation 12 claimed the opposite.
+- R1-2: the XML name table is unbounded. An upload within the 100 MiB limit can reach about 4 GB resident.
+
+Every finding is to be fixed, as Review 1 proposes. R1-6 records three departures as deviations, including the real-producer corpus deferral (acceptable under PLAN §6). R1-4 adds core.Export and core.Import to ProjectedRouteTests and tests the own-rows criteria on an ungranted user.
+
+The blocking findings escalate PC-176 to Review 2 under §4.4, inherit at xhigh, as an off-list item. R2 judges the memory bounds (R1-2, R1-3) as hostile-input defences.
+
+Lesson for briefs: an implementer's "tests passed" lists only what it ran. The R1 briefs already ask reviewers to run the touched integration classes, and that is how R1-1 was caught.
+
 ### D-229 (orchestrator, 2026-11-22): Tier 1 was unblocked and left idle; slots re-ordered
 
 PC-107 and PC-104 landed and made PC-105 (0029-b), PC-106 (0027-a) and PC-108 (0025-c) ready. I did not re-run check_deps --ready at those landings, so PC-F69 (mandated by D-214) and PC-F72 (a once-seen flake that blocks nothing) took the freed slots, and the T3 fills kept theirs. Ahmad noticed that no T1 item was in flight.
