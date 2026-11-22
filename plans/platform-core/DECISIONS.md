@@ -400,6 +400,8 @@ PC-175's integration run 44986216771 was red, with two root causes. Both fixes a
 
 Both are recorded as deviations in the commit. New pc run 44990079169.
 
+Addendum (PC-093 held at dbd42f37; clean merge-tree): the release order after PC-175 is PC-093 (T1), then PC-F67 and PC-F17 (fix items) in the order they held. PC-093 held before PC-F67 was released, so D-140/D-173 and D-194 put it first. This supersedes the order in D-201.
+
 ### D-201 (orchestrator, 2026-11-22): PC-093 Review 1 rulings
 
 Review 1 found 0/0/2 and accepted all 6 deviations. Its findings on the reviewer's checks:
