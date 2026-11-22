@@ -122,7 +122,7 @@ namespace Tellma.Core.Composition
                 .Validator<User, UserAccessRules<User>>()
                 .Validator<Role, RoleAccessRules<Role>>()
                 .PersistEffect<User, UserStampsCompanion<User>>()
-                .PersistEffect<User, BootstrapSubjectEffect<User>>()
+                .PersistEffect<User, DevelopmentSubjectsEffect<User>>()
                 .ProvisioningStep<BootstrapAdministratorStep>()
                 .Model(typeof(UserConfiguration<>))
                 .Model(typeof(RoleConfiguration<>))

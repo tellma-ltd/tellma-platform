@@ -1,5 +1,6 @@
 using System;
 using Microsoft.EntityFrameworkCore.Migrations;
+using Microsoft.SqlServer.Types;
 using Tellma.Core.EntityFrameworkCore.TableTypes;
 using Tellma.Core.EntityFrameworkCore.TableTypes.Operations;
 
@@ -21,9 +22,35 @@ namespace Tellma.Distro.Acme.Migrator.Migrations.Tenant
             migrationBuilder.EnsureSchema(
                 name: "core");
 
+            migrationBuilder.EnsureSchema(
+                name: "gl");
+
+            migrationBuilder.EnsureSchema(
+                name: "acme");
+
             migrationBuilder.CreateSequence<int>(
                 name: "sq_Blobs",
                 schema: "core",
+                startValue: 1000L);
+
+            migrationBuilder.CreateSequence<int>(
+                name: "sq_Centers",
+                schema: "gl",
+                startValue: 1000L);
+
+            migrationBuilder.CreateSequence<int>(
+                name: "sq_Currencies",
+                schema: "acme",
+                startValue: 1000L);
+
+            migrationBuilder.CreateSequence<int>(
+                name: "sq_CustomerContacts",
+                schema: "acme",
+                startValue: 1000L);
+
+            migrationBuilder.CreateSequence<int>(
+                name: "sq_Customers",
+                schema: "acme",
                 startValue: 1000L);
 
             migrationBuilder.CreateSequence<int>(
@@ -59,6 +86,21 @@ namespace Tellma.Distro.Acme.Migrator.Migrations.Tenant
             migrationBuilder.CreateSequence<int>(
                 name: "sq_Roles",
                 schema: "core",
+                startValue: 1000L);
+
+            migrationBuilder.CreateSequence<int>(
+                name: "sq_SalesInvoiceAttachments",
+                schema: "acme",
+                startValue: 1000L);
+
+            migrationBuilder.CreateSequence<int>(
+                name: "sq_SalesInvoiceLines",
+                schema: "acme",
+                startValue: 1000L);
+
+            migrationBuilder.CreateSequence<int>(
+                name: "sq_SalesInvoices",
+                schema: "acme",
                 startValue: 1000L);
 
             migrationBuilder.CreateSequence<int>(
@@ -262,6 +304,94 @@ namespace Tellma.Distro.Acme.Migrator.Migrations.Tenant
                 .Annotation("SqlServer:TemporalHistoryTableSchema", "core")
                 .Annotation("SqlServer:TemporalPeriodEndColumnName", "ValidTo")
                 .Annotation("SqlServer:TemporalPeriodStartColumnName", "ValidFrom");
+
+            migrationBuilder.CreateTable(
+                name: "Centers",
+                schema: "gl",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false),
+                    ManagerId = table.Column<int>(type: "int", nullable: true),
+                    Node = table.Column<SqlHierarchyId>(type: "hierarchyid", nullable: false),
+                    CreatedAt = table.Column<DateTimeOffset>(type: "datetimeoffset(7)", precision: 7, nullable: false),
+                    CreatedById = table.Column<int>(type: "int", nullable: false),
+                    ModifiedAt = table.Column<DateTimeOffset>(type: "datetimeoffset(7)", precision: 7, nullable: false),
+                    ModifiedById = table.Column<int>(type: "int", nullable: false),
+                    ParentId = table.Column<int>(type: "int", nullable: true),
+                    SubtreeCount = table.Column<int>(type: "int", nullable: false, defaultValue: 1)
+                        .Annotation("Relational:DefaultConstraintName", "DF_Centers_SubtreeCount"),
+                    IsActive = table.Column<bool>(type: "bit", nullable: false, defaultValue: true)
+                        .Annotation("Relational:DefaultConstraintName", "DF_Centers_IsActive"),
+                    ActiveSubtreeCount = table.Column<int>(type: "int", nullable: false, defaultValue: 1)
+                        .Annotation("Relational:DefaultConstraintName", "DF_Centers_ActiveSubtreeCount"),
+                    CenterType = table.Column<string>(type: "varchar(12)", unicode: false, maxLength: 12, nullable: false),
+                    Name = table.Column<string>(type: "nvarchar(255)", maxLength: 255, nullable: false),
+                    Name2 = table.Column<string>(type: "nvarchar(255)", maxLength: 255, nullable: true),
+                    Name3 = table.Column<string>(type: "nvarchar(255)", maxLength: 255, nullable: true),
+                    Code = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_Centers", x => x.Id);
+                    table.CheckConstraint("CK_Centers_Id", "[Id] > 0");
+                    table.ForeignKey(
+                        name: "FK_Centers_CreatedById",
+                        column: x => x.CreatedById,
+                        principalSchema: "core",
+                        principalTable: "Users",
+                        principalColumn: "Id");
+                    table.ForeignKey(
+                        name: "FK_Centers_ManagerId",
+                        column: x => x.ManagerId,
+                        principalSchema: "core",
+                        principalTable: "Users",
+                        principalColumn: "Id");
+                    table.ForeignKey(
+                        name: "FK_Centers_ModifiedById",
+                        column: x => x.ModifiedById,
+                        principalSchema: "core",
+                        principalTable: "Users",
+                        principalColumn: "Id");
+                    table.ForeignKey(
+                        name: "FK_Centers_ParentId",
+                        column: x => x.ParentId,
+                        principalSchema: "gl",
+                        principalTable: "Centers",
+                        principalColumn: "Id");
+                });
+
+            migrationBuilder.CreateTable(
+                name: "Currencies",
+                schema: "acme",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false),
+                    Code = table.Column<string>(type: "nvarchar(3)", maxLength: 3, nullable: false),
+                    Name = table.Column<string>(type: "nvarchar(255)", maxLength: 255, nullable: false),
+                    Name2 = table.Column<string>(type: "nvarchar(255)", maxLength: 255, nullable: true),
+                    Name3 = table.Column<string>(type: "nvarchar(255)", maxLength: 255, nullable: true),
+                    CreatedAt = table.Column<DateTimeOffset>(type: "datetimeoffset(7)", precision: 7, nullable: false),
+                    CreatedById = table.Column<int>(type: "int", nullable: false),
+                    ModifiedAt = table.Column<DateTimeOffset>(type: "datetimeoffset(7)", precision: 7, nullable: false),
+                    ModifiedById = table.Column<int>(type: "int", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_Currencies", x => x.Id);
+                    table.CheckConstraint("CK_Currencies_Id", "[Id] > 0");
+                    table.ForeignKey(
+                        name: "FK_Currencies_CreatedById",
+                        column: x => x.CreatedById,
+                        principalSchema: "core",
+                        principalTable: "Users",
+                        principalColumn: "Id");
+                    table.ForeignKey(
+                        name: "FK_Currencies_ModifiedById",
+                        column: x => x.ModifiedById,
+                        principalSchema: "core",
+                        principalTable: "Users",
+                        principalColumn: "Id");
+                });
 
             migrationBuilder.CreateTable(
                 name: "NotificationPreferences",
@@ -574,6 +704,57 @@ namespace Tellma.Distro.Acme.Migrator.Migrations.Tenant
                 });
 
             migrationBuilder.CreateTable(
+                name: "Customers",
+                schema: "acme",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false),
+                    Code = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: false),
+                    Name = table.Column<string>(type: "nvarchar(255)", maxLength: 255, nullable: false),
+                    Name2 = table.Column<string>(type: "nvarchar(255)", maxLength: 255, nullable: true),
+                    Name3 = table.Column<string>(type: "nvarchar(255)", maxLength: 255, nullable: true),
+                    CustomerType = table.Column<string>(type: "varchar(10)", unicode: false, maxLength: 10, nullable: false),
+                    CurrencyId = table.Column<int>(type: "int", nullable: true),
+                    CreditLimit = table.Column<decimal>(type: "decimal(19,4)", nullable: false),
+                    ImageId = table.Column<int>(type: "int", nullable: true),
+                    IsActive = table.Column<bool>(type: "bit", nullable: false, defaultValue: true)
+                        .Annotation("Relational:DefaultConstraintName", "DF_Customers_IsActive"),
+                    CreatedAt = table.Column<DateTimeOffset>(type: "datetimeoffset(7)", precision: 7, nullable: false),
+                    CreatedById = table.Column<int>(type: "int", nullable: false),
+                    ModifiedAt = table.Column<DateTimeOffset>(type: "datetimeoffset(7)", precision: 7, nullable: false),
+                    ModifiedById = table.Column<int>(type: "int", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_Customers", x => x.Id);
+                    table.CheckConstraint("CK_Customers_Id", "[Id] > 0");
+                    table.ForeignKey(
+                        name: "FK_Customers_CreatedById",
+                        column: x => x.CreatedById,
+                        principalSchema: "core",
+                        principalTable: "Users",
+                        principalColumn: "Id");
+                    table.ForeignKey(
+                        name: "FK_Customers_CurrencyId",
+                        column: x => x.CurrencyId,
+                        principalSchema: "acme",
+                        principalTable: "Currencies",
+                        principalColumn: "Id");
+                    table.ForeignKey(
+                        name: "FK_Customers_ImageId",
+                        column: x => x.ImageId,
+                        principalSchema: "core",
+                        principalTable: "Blobs",
+                        principalColumn: "Id");
+                    table.ForeignKey(
+                        name: "FK_Customers_ModifiedById",
+                        column: x => x.ModifiedById,
+                        principalSchema: "core",
+                        principalTable: "Users",
+                        principalColumn: "Id");
+                });
+
+            migrationBuilder.CreateTable(
                 name: "Permissions",
                 schema: "core",
                 columns: table => new
@@ -715,6 +896,69 @@ namespace Tellma.Distro.Acme.Migrator.Migrations.Tenant
                 .Annotation("Tellma:LockEscalation", "DISABLE");
 
             migrationBuilder.CreateTable(
+                name: "CustomerContacts",
+                schema: "acme",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false),
+                    CustomerId = table.Column<int>(type: "int", nullable: false),
+                    Name = table.Column<string>(type: "nvarchar(255)", maxLength: 255, nullable: false),
+                    Email = table.Column<string>(type: "nvarchar(255)", maxLength: 255, nullable: true),
+                    Mobile = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_CustomerContacts", x => x.Id);
+                    table.CheckConstraint("CK_CustomerContacts_Id", "[Id] > 0");
+                    table.ForeignKey(
+                        name: "FK_CustomerContacts_CustomerId",
+                        column: x => x.CustomerId,
+                        principalSchema: "acme",
+                        principalTable: "Customers",
+                        principalColumn: "Id");
+                });
+
+            migrationBuilder.CreateTable(
+                name: "SalesInvoices",
+                schema: "acme",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false),
+                    SerialNumber = table.Column<int>(type: "int", nullable: false),
+                    PostingDate = table.Column<DateOnly>(type: "date", nullable: false),
+                    CustomerId = table.Column<int>(type: "int", nullable: false),
+                    IsClosed = table.Column<bool>(type: "bit", nullable: false),
+                    IsPosted = table.Column<bool>(type: "bit", nullable: false),
+                    CreatedAt = table.Column<DateTimeOffset>(type: "datetimeoffset(7)", precision: 7, nullable: false),
+                    CreatedById = table.Column<int>(type: "int", nullable: false),
+                    ModifiedAt = table.Column<DateTimeOffset>(type: "datetimeoffset(7)", precision: 7, nullable: false),
+                    ModifiedById = table.Column<int>(type: "int", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_SalesInvoices", x => x.Id);
+                    table.CheckConstraint("CK_SalesInvoices_Id", "[Id] > 0");
+                    table.ForeignKey(
+                        name: "FK_SalesInvoices_CreatedById",
+                        column: x => x.CreatedById,
+                        principalSchema: "core",
+                        principalTable: "Users",
+                        principalColumn: "Id");
+                    table.ForeignKey(
+                        name: "FK_SalesInvoices_CustomerId",
+                        column: x => x.CustomerId,
+                        principalSchema: "acme",
+                        principalTable: "Customers",
+                        principalColumn: "Id");
+                    table.ForeignKey(
+                        name: "FK_SalesInvoices_ModifiedById",
+                        column: x => x.ModifiedById,
+                        principalSchema: "core",
+                        principalTable: "Users",
+                        principalColumn: "Id");
+                });
+
+            migrationBuilder.CreateTable(
                 name: "OutgoingEmails",
                 schema: "core",
                 columns: table => new
@@ -815,6 +1059,62 @@ namespace Tellma.Distro.Acme.Migrator.Migrations.Tenant
                         principalTable: "Schedules",
                         principalColumn: "Id",
                         onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "SalesInvoiceAttachments",
+                schema: "acme",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false),
+                    InvoiceId = table.Column<int>(type: "int", nullable: false),
+                    FileId = table.Column<int>(type: "int", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_SalesInvoiceAttachments", x => x.Id);
+                    table.CheckConstraint("CK_SalesInvoiceAttachments_Id", "[Id] > 0");
+                    table.ForeignKey(
+                        name: "FK_SalesInvoiceAttachments_FileId",
+                        column: x => x.FileId,
+                        principalSchema: "core",
+                        principalTable: "Blobs",
+                        principalColumn: "Id");
+                    table.ForeignKey(
+                        name: "FK_SalesInvoiceAttachments_InvoiceId",
+                        column: x => x.InvoiceId,
+                        principalSchema: "acme",
+                        principalTable: "SalesInvoices",
+                        principalColumn: "Id");
+                });
+
+            migrationBuilder.CreateTable(
+                name: "SalesInvoiceLines",
+                schema: "acme",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false),
+                    InvoiceId = table.Column<int>(type: "int", nullable: false),
+                    CenterId = table.Column<int>(type: "int", nullable: false),
+                    Description = table.Column<string>(type: "nvarchar(255)", maxLength: 255, nullable: true),
+                    Amount = table.Column<decimal>(type: "decimal(19,4)", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_SalesInvoiceLines", x => x.Id);
+                    table.CheckConstraint("CK_SalesInvoiceLines_Id", "[Id] > 0");
+                    table.ForeignKey(
+                        name: "FK_SalesInvoiceLines_CenterId",
+                        column: x => x.CenterId,
+                        principalSchema: "gl",
+                        principalTable: "Centers",
+                        principalColumn: "Id");
+                    table.ForeignKey(
+                        name: "FK_SalesInvoiceLines_InvoiceId",
+                        column: x => x.InvoiceId,
+                        principalSchema: "acme",
+                        principalTable: "SalesInvoices",
+                        principalColumn: "Id");
                 });
 
             migrationBuilder.CreateTable(
@@ -3145,6 +3445,79 @@ namespace Tellma.Distro.Acme.Migrator.Migrations.Tenant
                 unique: true);
 
             migrationBuilder.CreateIndex(
+                name: "IX_Centers_IsActive_Name",
+                schema: "gl",
+                table: "Centers",
+                columns: new[] { "IsActive", "Name" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Centers_ManagerId",
+                schema: "gl",
+                table: "Centers",
+                column: "ManagerId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Centers_ParentId",
+                schema: "gl",
+                table: "Centers",
+                column: "ParentId");
+
+            migrationBuilder.CreateIndex(
+                name: "UX_Centers_Code",
+                schema: "gl",
+                table: "Centers",
+                column: "Code",
+                unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "UX_Centers_Node",
+                schema: "gl",
+                table: "Centers",
+                column: "Node",
+                unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "UX_Currencies_Code",
+                schema: "acme",
+                table: "Currencies",
+                column: "Code",
+                unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_CustomerContacts_CustomerId",
+                schema: "acme",
+                table: "CustomerContacts",
+                column: "CustomerId")
+                .Annotation("SqlServer:Include", new[] { "Id" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Customers_CurrencyId",
+                schema: "acme",
+                table: "Customers",
+                column: "CurrencyId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Customers_IsActive_Name",
+                schema: "acme",
+                table: "Customers",
+                columns: new[] { "IsActive", "Name" });
+
+            migrationBuilder.CreateIndex(
+                name: "UX_Customers_Code",
+                schema: "acme",
+                table: "Customers",
+                column: "Code",
+                unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "UX_Customers_ImageId",
+                schema: "acme",
+                table: "Customers",
+                column: "ImageId",
+                unique: true,
+                filter: "[ImageId] IS NOT NULL");
+
+            migrationBuilder.CreateIndex(
                 name: "IX_Jobs_Available",
                 schema: "core",
                 table: "Jobs",
@@ -3337,6 +3710,53 @@ namespace Tellma.Distro.Acme.Migrator.Migrations.Tenant
                 filter: "[Name3] IS NOT NULL");
 
             migrationBuilder.CreateIndex(
+                name: "IX_SalesInvoiceAttachments_InvoiceId",
+                schema: "acme",
+                table: "SalesInvoiceAttachments",
+                column: "InvoiceId")
+                .Annotation("SqlServer:Include", new[] { "Id" });
+
+            migrationBuilder.CreateIndex(
+                name: "UX_SalesInvoiceAttachments_FileId",
+                schema: "acme",
+                table: "SalesInvoiceAttachments",
+                column: "FileId",
+                unique: true,
+                filter: "[FileId] IS NOT NULL");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_SalesInvoiceLines_CenterId",
+                schema: "acme",
+                table: "SalesInvoiceLines",
+                column: "CenterId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_SalesInvoiceLines_InvoiceId",
+                schema: "acme",
+                table: "SalesInvoiceLines",
+                column: "InvoiceId")
+                .Annotation("SqlServer:Include", new[] { "Id" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_SalesInvoices_CustomerId",
+                schema: "acme",
+                table: "SalesInvoices",
+                column: "CustomerId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_SalesInvoices_CustomerId_PostingDate",
+                schema: "acme",
+                table: "SalesInvoices",
+                columns: new[] { "CustomerId", "PostingDate" });
+
+            migrationBuilder.CreateIndex(
+                name: "UX_SalesInvoices_SerialNumber",
+                schema: "acme",
+                table: "SalesInvoices",
+                column: "SerialNumber",
+                unique: true);
+
+            migrationBuilder.CreateIndex(
                 name: "IX_Schedules_HandlerKey",
                 schema: "core",
                 table: "Schedules",
@@ -3418,6 +3838,124 @@ namespace Tellma.Distro.Acme.Migrator.Migrations.Tenant
                 principalSchema: "core",
                 principalTable: "Users",
                 principalColumn: "Id");
+
+            migrationBuilder.CreateTableType(
+                name: "CurrenciesList",
+                physicalName: "CurrenciesList_2bfa991b",
+                schema: "acme",
+                scope: "tellma.tenant",
+                definitionHash: "2bfa991be7bed70e49884d6c1d875e01b6d0649ed04cb1b19940246c9094dd50",
+                columns: new[]
+                {
+                    new TableTypeColumnDefinition { Name = "Id", StoreType = "int" },
+                    new TableTypeColumnDefinition { Name = "Code", StoreType = "nvarchar(3)", MaxLength = 3 },
+                    new TableTypeColumnDefinition { Name = "Name", StoreType = "nvarchar(255)", MaxLength = 255 },
+                    new TableTypeColumnDefinition { Name = "Name2", StoreType = "nvarchar(255)", IsNullable = true, MaxLength = 255 },
+                    new TableTypeColumnDefinition { Name = "Name3", StoreType = "nvarchar(255)", IsNullable = true, MaxLength = 255 },
+                    new TableTypeColumnDefinition { Name = "CreatedAt", StoreType = "datetimeoffset(7)", Precision = 7 },
+                    new TableTypeColumnDefinition { Name = "CreatedById", StoreType = "int" },
+                    new TableTypeColumnDefinition { Name = "ModifiedAt", StoreType = "datetimeoffset(7)", Precision = 7 },
+                    new TableTypeColumnDefinition { Name = "ModifiedById", StoreType = "int" },
+                },
+                primaryKey: new[] { "Id" },
+                grants: new[] { "tellma_app" });
+
+            migrationBuilder.CreateTableType(
+                name: "CustomerContactsList",
+                physicalName: "CustomerContactsList_73c322d9",
+                schema: "acme",
+                scope: "tellma.tenant",
+                definitionHash: "73c322d93a78c8ca29379ffb4f80b525dc78124c35b32e54a1300fc8c3ca345f",
+                columns: new[]
+                {
+                    new TableTypeColumnDefinition { Name = "Id", StoreType = "int" },
+                    new TableTypeColumnDefinition { Name = "CustomerId", StoreType = "int" },
+                    new TableTypeColumnDefinition { Name = "Name", StoreType = "nvarchar(255)", MaxLength = 255 },
+                    new TableTypeColumnDefinition { Name = "Email", StoreType = "nvarchar(255)", IsNullable = true, MaxLength = 255 },
+                    new TableTypeColumnDefinition { Name = "Mobile", StoreType = "nvarchar(50)", IsNullable = true, MaxLength = 50 },
+                },
+                primaryKey: new[] { "Id" },
+                grants: new[] { "tellma_app" });
+
+            migrationBuilder.CreateTableType(
+                name: "CustomersList",
+                physicalName: "CustomersList_ef4b6dd0",
+                schema: "acme",
+                scope: "tellma.tenant",
+                definitionHash: "ef4b6dd0de8683b3a9a27b81509012c4288b67200755f4f1f34d52a268d7e5d6",
+                columns: new[]
+                {
+                    new TableTypeColumnDefinition { Name = "Id", StoreType = "int" },
+                    new TableTypeColumnDefinition { Name = "Code", StoreType = "nvarchar(50)", MaxLength = 50 },
+                    new TableTypeColumnDefinition { Name = "Name", StoreType = "nvarchar(255)", MaxLength = 255 },
+                    new TableTypeColumnDefinition { Name = "Name2", StoreType = "nvarchar(255)", IsNullable = true, MaxLength = 255 },
+                    new TableTypeColumnDefinition { Name = "Name3", StoreType = "nvarchar(255)", IsNullable = true, MaxLength = 255 },
+                    new TableTypeColumnDefinition { Name = "CustomerType", StoreType = "varchar(10)", MaxLength = 10 },
+                    new TableTypeColumnDefinition { Name = "CurrencyId", StoreType = "int", IsNullable = true },
+                    new TableTypeColumnDefinition { Name = "CreditLimit", StoreType = "decimal(19,4)" },
+                    new TableTypeColumnDefinition { Name = "ImageId", StoreType = "int", IsNullable = true },
+                    new TableTypeColumnDefinition { Name = "IsActive", StoreType = "bit" },
+                    new TableTypeColumnDefinition { Name = "CreatedAt", StoreType = "datetimeoffset(7)", Precision = 7 },
+                    new TableTypeColumnDefinition { Name = "CreatedById", StoreType = "int" },
+                    new TableTypeColumnDefinition { Name = "ModifiedAt", StoreType = "datetimeoffset(7)", Precision = 7 },
+                    new TableTypeColumnDefinition { Name = "ModifiedById", StoreType = "int" },
+                },
+                primaryKey: new[] { "Id" },
+                grants: new[] { "tellma_app" });
+
+            migrationBuilder.CreateTableType(
+                name: "SalesInvoiceAttachmentsList",
+                physicalName: "SalesInvoiceAttachmentsList_a344ee6f",
+                schema: "acme",
+                scope: "tellma.tenant",
+                definitionHash: "a344ee6f3e92ccaa5cdf72417e88689d2647e40372db15b80b95c149531bd081",
+                columns: new[]
+                {
+                    new TableTypeColumnDefinition { Name = "Id", StoreType = "int" },
+                    new TableTypeColumnDefinition { Name = "InvoiceId", StoreType = "int" },
+                    new TableTypeColumnDefinition { Name = "FileId", StoreType = "int", IsNullable = true },
+                },
+                primaryKey: new[] { "Id" },
+                grants: new[] { "tellma_app" });
+
+            migrationBuilder.CreateTableType(
+                name: "SalesInvoiceLinesList",
+                physicalName: "SalesInvoiceLinesList_b31ccfc4",
+                schema: "acme",
+                scope: "tellma.tenant",
+                definitionHash: "b31ccfc498a688e3cb27dd99fd2fff04d114d2c7beb91bfd2d9c7f2bd694626e",
+                columns: new[]
+                {
+                    new TableTypeColumnDefinition { Name = "Id", StoreType = "int" },
+                    new TableTypeColumnDefinition { Name = "InvoiceId", StoreType = "int" },
+                    new TableTypeColumnDefinition { Name = "CenterId", StoreType = "int" },
+                    new TableTypeColumnDefinition { Name = "Description", StoreType = "nvarchar(255)", IsNullable = true, MaxLength = 255 },
+                    new TableTypeColumnDefinition { Name = "Amount", StoreType = "decimal(19,4)" },
+                },
+                primaryKey: new[] { "Id" },
+                grants: new[] { "tellma_app" });
+
+            migrationBuilder.CreateTableType(
+                name: "SalesInvoicesList",
+                physicalName: "SalesInvoicesList_9c312b7f",
+                schema: "acme",
+                scope: "tellma.tenant",
+                definitionHash: "9c312b7f3626668ef2400a9dbc658a44f263319a79eb747b6138727c5fd0202b",
+                columns: new[]
+                {
+                    new TableTypeColumnDefinition { Name = "Id", StoreType = "int" },
+                    new TableTypeColumnDefinition { Name = "SerialNumber", StoreType = "int" },
+                    new TableTypeColumnDefinition { Name = "PostingDate", StoreType = "date" },
+                    new TableTypeColumnDefinition { Name = "CustomerId", StoreType = "int" },
+                    new TableTypeColumnDefinition { Name = "IsClosed", StoreType = "bit" },
+                    new TableTypeColumnDefinition { Name = "IsPosted", StoreType = "bit" },
+                    new TableTypeColumnDefinition { Name = "CreatedAt", StoreType = "datetimeoffset(7)", Precision = 7 },
+                    new TableTypeColumnDefinition { Name = "CreatedById", StoreType = "int" },
+                    new TableTypeColumnDefinition { Name = "ModifiedAt", StoreType = "datetimeoffset(7)", Precision = 7 },
+                    new TableTypeColumnDefinition { Name = "ModifiedById", StoreType = "int" },
+                },
+                primaryKey: new[] { "Id" },
+                grants: new[] { "tellma_app" });
 
             migrationBuilder.CreateTableType(
                 name: "JobsList",
@@ -4014,7 +4552,34 @@ namespace Tellma.Distro.Acme.Migrator.Migrations.Tenant
                 primaryKey: new[] { "Name" },
                 grants: new[] { "tellma_app" });
 
-            migrationBuilder.CleanupTableTypes(scope: "tellma.tenant", keepList: new[] { "JobsList_a90a5696", "NotificationsList_45bbd83e", "OutgoingEmailAttachmentsList_69b8bfd2", "OutgoingEmailsList_c103cd34", "PermissionsList_c3b8a544", "RoleMembershipsList_fd20e92d", "RolesList_77bed563", "SchedulesList_5acfe7bf", "SettingEntriesList_609d1ba0", "SettingsList_254adc5a", "UsersList_860a025a", "BigIdList_7629c0a3", "DateList_566fd984", "EmailDeliveryEventList_f9c9c1c7", "GuidList_922aa933", "IdList_9b0dfe3c", "IdStampList_36427f71", "JobLeaseList_17bf60e1", "JobOutcomeList_6165fff7", "JobProgressList_33eeb232", "JobRequestList_f3ef6d1d", "NotificationPreferenceList_61bf7917", "NotificationRowList_2c2b24d8", "NotificationSliceList_29aa6852", "OutgoingEmailOutcomeList_9ab65983", "ScheduleNextList_e422990c", "StringList_bb8903a2", "UserInvitationOutcomeList_42e4ff20", "UserPreferenceList_8b1ed724", "VersionTagList_e552f6b8" });
+            migrationBuilder.CreateTableType(
+                name: "CentersList",
+                physicalName: "CentersList_b3cee277",
+                schema: "gl",
+                scope: "tellma.tenant",
+                definitionHash: "b3cee27741f5d9c35e33307aaed9d3dbdf73c125bfb4fdd535e1510b7ef1cfcf",
+                columns: new[]
+                {
+                    new TableTypeColumnDefinition { Name = "Id", StoreType = "int" },
+                    new TableTypeColumnDefinition { Name = "ManagerId", StoreType = "int", IsNullable = true },
+                    new TableTypeColumnDefinition { Name = "CreatedAt", StoreType = "datetimeoffset(7)", Precision = 7 },
+                    new TableTypeColumnDefinition { Name = "CreatedById", StoreType = "int" },
+                    new TableTypeColumnDefinition { Name = "ModifiedAt", StoreType = "datetimeoffset(7)", Precision = 7 },
+                    new TableTypeColumnDefinition { Name = "ModifiedById", StoreType = "int" },
+                    new TableTypeColumnDefinition { Name = "ParentId", StoreType = "int", IsNullable = true },
+                    new TableTypeColumnDefinition { Name = "SubtreeCount", StoreType = "int" },
+                    new TableTypeColumnDefinition { Name = "IsActive", StoreType = "bit" },
+                    new TableTypeColumnDefinition { Name = "ActiveSubtreeCount", StoreType = "int" },
+                    new TableTypeColumnDefinition { Name = "CenterType", StoreType = "varchar(12)", MaxLength = 12 },
+                    new TableTypeColumnDefinition { Name = "Name", StoreType = "nvarchar(255)", MaxLength = 255 },
+                    new TableTypeColumnDefinition { Name = "Name2", StoreType = "nvarchar(255)", IsNullable = true, MaxLength = 255 },
+                    new TableTypeColumnDefinition { Name = "Name3", StoreType = "nvarchar(255)", IsNullable = true, MaxLength = 255 },
+                    new TableTypeColumnDefinition { Name = "Code", StoreType = "nvarchar(50)", MaxLength = 50 },
+                },
+                primaryKey: new[] { "Id" },
+                grants: new[] { "tellma_app" });
+
+            migrationBuilder.CleanupTableTypes(scope: "tellma.tenant", keepList: new[] { "CurrenciesList_2bfa991b", "CustomerContactsList_73c322d9", "CustomersList_ef4b6dd0", "SalesInvoiceAttachmentsList_a344ee6f", "SalesInvoiceLinesList_b31ccfc4", "SalesInvoicesList_9c312b7f", "JobsList_a90a5696", "NotificationsList_45bbd83e", "OutgoingEmailAttachmentsList_69b8bfd2", "OutgoingEmailsList_c103cd34", "PermissionsList_c3b8a544", "RoleMembershipsList_fd20e92d", "RolesList_77bed563", "SchedulesList_5acfe7bf", "SettingEntriesList_609d1ba0", "SettingsList_254adc5a", "UsersList_860a025a", "BigIdList_7629c0a3", "DateList_566fd984", "EmailDeliveryEventList_f9c9c1c7", "GuidList_922aa933", "IdList_9b0dfe3c", "IdStampList_36427f71", "JobLeaseList_17bf60e1", "JobOutcomeList_6165fff7", "JobProgressList_33eeb232", "JobRequestList_f3ef6d1d", "NotificationPreferenceList_61bf7917", "NotificationRowList_2c2b24d8", "NotificationSliceList_29aa6852", "OutgoingEmailOutcomeList_9ab65983", "ScheduleNextList_e422990c", "StringList_bb8903a2", "UserInvitationOutcomeList_42e4ff20", "UserPreferenceList_8b1ed724", "VersionTagList_e552f6b8", "CentersList_b3cee277" });
         }
 
         /// <inheritdoc />
@@ -4036,6 +4601,10 @@ namespace Tellma.Distro.Acme.Migrator.Migrations.Tenant
             migrationBuilder.DropTable(
                 name: "CalendarMonths",
                 schema: "core");
+
+            migrationBuilder.DropTable(
+                name: "CustomerContacts",
+                schema: "acme");
 
             migrationBuilder.DropTable(
                 name: "JobWorkerState",
@@ -4071,6 +4640,14 @@ namespace Tellma.Distro.Acme.Migrator.Migrations.Tenant
                 .Annotation("SqlServer:TemporalHistoryTableSchema", "core")
                 .Annotation("SqlServer:TemporalPeriodEndColumnName", "ValidTo")
                 .Annotation("SqlServer:TemporalPeriodStartColumnName", "ValidFrom");
+
+            migrationBuilder.DropTable(
+                name: "SalesInvoiceAttachments",
+                schema: "acme");
+
+            migrationBuilder.DropTable(
+                name: "SalesInvoiceLines",
+                schema: "acme");
 
             migrationBuilder.DropTable(
                 name: "ScheduleStates",
@@ -4120,9 +4697,21 @@ namespace Tellma.Distro.Acme.Migrator.Migrations.Tenant
                 .Annotation("SqlServer:TemporalPeriodStartColumnName", "ValidFrom");
 
             migrationBuilder.DropTable(
+                name: "Centers",
+                schema: "gl");
+
+            migrationBuilder.DropTable(
+                name: "SalesInvoices",
+                schema: "acme");
+
+            migrationBuilder.DropTable(
                 name: "Jobs",
                 schema: "core")
                 .Annotation("Tellma:LockEscalation", "DISABLE");
+
+            migrationBuilder.DropTable(
+                name: "Customers",
+                schema: "acme");
 
             migrationBuilder.DropTable(
                 name: "Schedules",
@@ -4132,6 +4721,10 @@ namespace Tellma.Distro.Acme.Migrator.Migrations.Tenant
                 .Annotation("SqlServer:TemporalHistoryTableSchema", "core")
                 .Annotation("SqlServer:TemporalPeriodEndColumnName", "ValidTo")
                 .Annotation("SqlServer:TemporalPeriodStartColumnName", "ValidFrom");
+
+            migrationBuilder.DropTable(
+                name: "Currencies",
+                schema: "acme");
 
             migrationBuilder.DropTable(
                 name: "Users",
@@ -4149,6 +4742,22 @@ namespace Tellma.Distro.Acme.Migrator.Migrations.Tenant
             migrationBuilder.DropSequence(
                 name: "sq_Blobs",
                 schema: "core");
+
+            migrationBuilder.DropSequence(
+                name: "sq_Centers",
+                schema: "gl");
+
+            migrationBuilder.DropSequence(
+                name: "sq_Currencies",
+                schema: "acme");
+
+            migrationBuilder.DropSequence(
+                name: "sq_CustomerContacts",
+                schema: "acme");
+
+            migrationBuilder.DropSequence(
+                name: "sq_Customers",
+                schema: "acme");
 
             migrationBuilder.DropSequence(
                 name: "sq_Jobs",
@@ -4177,6 +4786,18 @@ namespace Tellma.Distro.Acme.Migrator.Migrations.Tenant
             migrationBuilder.DropSequence(
                 name: "sq_Roles",
                 schema: "core");
+
+            migrationBuilder.DropSequence(
+                name: "sq_SalesInvoiceAttachments",
+                schema: "acme");
+
+            migrationBuilder.DropSequence(
+                name: "sq_SalesInvoiceLines",
+                schema: "acme");
+
+            migrationBuilder.DropSequence(
+                name: "sq_SalesInvoices",
+                schema: "acme");
 
             migrationBuilder.DropSequence(
                 name: "sq_Schedules",

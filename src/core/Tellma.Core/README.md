@@ -2397,9 +2397,18 @@ email address is trimmed and lower-cased, as the users' stack stores it.
   and pointing to another address, whose administrator then decides whether its privileges come
   back (no administrator may remain to reactivate it).
 - **A subject** is accepted in a Development environment only (`InvalidOperationException` before
-  anything is written otherwise). It rides the same save: `BootstrapSubjectEffect<TUser>`, a persist
-  effect of the users' stack, records it on the created user as an invitation would (the subject, the
-  invitation's instant, `InviteStatus.Invited`).
+  anything is written otherwise). It rides the same save: the bootstrap holds it in the scope's
+  `DevelopmentSubjects`, and `DevelopmentSubjectsEffect<TUser>`, a persist effect of the users' stack,
+  records it on the created user as an invitation would (the subject, the invitation's instant,
+  `InviteStatus.Invited`).
+
+`IDevelopmentSubjects` (the same scoped `DevelopmentSubjects`) is that hold as a public seam, for a
+distribution's development sample data: in the platform's own scope of a Development environment, a
+provisioning step holds a subject per email address (normalised as the stack stores it) around a
+users' save, and every user the save creates under a held address is recorded the same way, so the
+principals the development identity server seeds sign in and join with no invitation sent. A user
+that exists already keeps its evidence; the step records the membership hints itself. Outside
+Development, in a user's scope, or while a hold is open, `Hold` throws `InvalidOperationException`.
 
 The bootstrap is idempotent on the address. The `core.bootstrap-administrator` provisioning step
 (order 10, before `core.settings`) calls it with the administrator the run names, named by the address's

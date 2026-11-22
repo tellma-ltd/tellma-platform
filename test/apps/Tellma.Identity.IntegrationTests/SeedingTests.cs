@@ -24,6 +24,11 @@ namespace Tellma.Identity.IntegrationTests
         private static readonly Dictionary<string, string?> SeedConfiguration = new()
         {
             ["TellmaIdentity:Seed:DevAdmin:Enabled"] = "true",
+            ["TellmaIdentity:Seed:DevUsers:0:Email"] = "sales@localhost",
+            ["TellmaIdentity:Seed:DevUsers:0:Subject"] = "00000000-0000-0000-0000-000000000002",
+            ["TellmaIdentity:Seed:DevUsers:0:DisplayName"] = "Sales Representative",
+            ["TellmaIdentity:Seed:DevUsers:1:Email"] = "centers@localhost",
+            ["TellmaIdentity:Seed:DevUsers:1:Subject"] = "00000000-0000-0000-0000-000000000003",
             ["TellmaIdentity:Seed:Clients:0:ClientId"] = "tellma-cli",
             ["TellmaIdentity:Seed:Clients:0:DisplayName"] = "Tellma CLI",
             ["TellmaIdentity:Seed:Clients:0:Kind"] = "Cli",
@@ -35,7 +40,7 @@ namespace Tellma.Identity.IntegrationTests
         };
 
         [Fact]
-        public async Task Seeding_creates_scopes_platform_clients_and_dev_admin_idempotently()
+        public async Task Seeding_creates_scopes_platform_clients_the_dev_admin_and_dev_users_idempotently()
         {
             using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(
                 fixture, "idseed", SeedConfiguration);
@@ -314,6 +319,14 @@ namespace Tellma.Identity.IntegrationTests
                 ["00000000-0000-0000-0000-000000000001"], cancellationToken);
             Assert.NotNull(admin);
             Assert.Equal("admin@localhost", admin.Email);
+
+            // The development users with their fixed subjects, active and confirmed so an email code signs them in.
+            Data.TellmaIdentityUser? sales = await context.Users.FindAsync(["00000000-0000-0000-0000-000000000002"], cancellationToken);
+            Data.TellmaIdentityUser? centers = await context.Users.FindAsync(["00000000-0000-0000-0000-000000000003"], cancellationToken);
+            Assert.NotNull(sales);
+            Assert.NotNull(centers);
+            Assert.Equal(("sales@localhost", "Sales Representative", true), (sales.Email, sales.DisplayName, sales.EmailConfirmed));
+            Assert.Equal(("centers@localhost", "centers", Data.UserLifecycleState.Active), (centers.Email, centers.DisplayName, centers.LifecycleState));
         }
     }
 }

@@ -19,6 +19,12 @@ Unit tests of the Acme distribution's shape, needing no database:
 - `Program.cs` of each host holds exactly the platform's calls;
 - the collation pin over Acme's tenant migrations;
 - the Development provisioning trigger's process and its Production replacement.
+- the resource audit over Acme's strings: every key derived from the web host's composition,
+  spelled in the distribution's source or pending, every Arabic key declared in English, and every
+  label Acme's model derives in its own families shipped;
+- the development data's shape: the 40-center tree on four levels with its inactive and invoiced
+  lists, the customers and invoices, the step's name slots and key filter, and the development
+  identity server seeding every principal the sample data binds, at its address and subject.
 
 ```bash
 dotnet test distributions/acme/test/Tellma.Distro.Acme.Web.Tests

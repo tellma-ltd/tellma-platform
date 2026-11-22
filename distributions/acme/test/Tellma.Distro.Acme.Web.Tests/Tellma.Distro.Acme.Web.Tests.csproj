@@ -8,6 +8,8 @@
     <ProjectReference Include="..\..\src\Tellma.Distro.Acme.Migrator\Tellma.Distro.Acme.Migrator.csproj" />
     <!-- The collation pin. -->
     <ProjectReference Include="..\..\..\..\src\core\Tellma.Core.Testing\Tellma.Core.Testing.csproj" />
+    <!-- The resource audit over Acme's strings. -->
+    <ProjectReference Include="..\..\..\..\test\shared\Tellma.Testing.Resources\Tellma.Testing.Resources.csproj" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="xunit.v3" />
     <PackageReference Include="xunit.runner.visualstudio" />
