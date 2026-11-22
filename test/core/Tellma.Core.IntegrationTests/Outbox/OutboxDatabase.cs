@@ -22,7 +22,6 @@ using Tellma.Core.Crud;
 using Tellma.Core.Data.Batches;
 using Tellma.Core.Email;
 using Tellma.Core.IntegrationTests.Jobs;
-using Tellma.Core.Notifications;
 using Tellma.Core.Tenancy;
 using Tellma.Core.Testing.Blobs;
 using Tellma.Core.Testing.Email;
@@ -143,9 +142,8 @@ namespace Tellma.Core.IntegrationTests.Outbox
                 _sql.NewDatabaseName("fx_outbox"),
                 services =>
                 {
-                    // --- In-memory blobs, the platform's email channel and the switchable sms sender ---
+                    // --- In-memory blobs and the switchable sms sender; the email channel's sender is the platform's own ---
                     Blobs = services.AddInMemoryBlobs();
-                    _ = services.AddScoped<INotificationChannel, EmailNotificationChannel>();
                     _ = services.AddSingleton(Sms);
                     _ = services.AddScoped<INotificationChannel, SwitchableSms>();
 

@@ -44,4 +44,13 @@
   <data name="Email_UserAdded_Html" xml:space="preserve">
     <value>&lt;div dir="rtl"&gt;&lt;p&gt;أضافك {actorName} إلى {tenantName}.&lt;/p&gt;{status, select, Invited {&lt;p&gt;ستصلك رسالة منفصلة من خدمة تسجيل الدخول فيها رابط لإعداد طريقة تسجيل دخولك. استخدم ذلك الرابط قبل الرابط أدناه.&lt;/p&gt;} Reinvited {&lt;p&gt;ستصلك رسالة منفصلة من خدمة تسجيل الدخول فيها رابط لإعداد طريقة تسجيل دخولك. استخدم ذلك الرابط قبل الرابط أدناه.&lt;/p&gt;} other {}}&lt;p&gt;&lt;a href="{link}"&gt;افتح {tenantName}&lt;/a&gt;&lt;/p&gt;&lt;p style="color:#6b7280;font-size:12px"&gt;احتفظ بهذه الرسالة، فرابطها يعيدك إلى {tenantName} متى احتجت إليه.&lt;/p&gt;&lt;/div&gt;</value>
   </data>
+  <!-- The test notification: the message a user sends themselves from their notification settings -->
+  <data name="Email_TestNotification_Subject" xml:space="preserve">
+    <value>رسالة تجريبية من {tenantName}</value>
+  </data>
+  <data name="Email_TestNotification_Text" xml:space="preserve">
+    <value>هذه رسالة تجريبية من {tenantName}، أُرسلت في {sentAt, date, long} الساعة {sentAt, time, short}.
+
+تصلك إشعارات البريد الإلكتروني على هذا العنوان. يمكنك اختيار الإشعارات التي تصلك بالبريد الإلكتروني من إعدادات الإشعارات.</value>
+  </data>
 </root>

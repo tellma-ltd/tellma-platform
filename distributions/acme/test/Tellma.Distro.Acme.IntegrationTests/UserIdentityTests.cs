@@ -19,7 +19,7 @@ using Tellma.Core.Abstractions.Crud;
 using Tellma.Core.Abstractions.Identity;
 using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.AspNetCore;
-using Tellma.Distro.Acme.IntegrationTests.Infrastructure;
+using Tellma.Distro.Acme.TestSupport;
 using Tellma.Identity.Data;
 using Tellma.Identity.TestSupport;
 

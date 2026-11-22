@@ -193,7 +193,9 @@ const SORT_DESC_GLYPH: TmIconSource = ArrowDown;
 
       <div class="tm-grid__spacer" role="presentation" [style.block-size.px]="core().totalHeight()">
         <div class="tm-grid__window" role="rowgroup" [style.transform]="core().windowTransform()">
-          @for (row of core().renderRows(); track row.rowKey) {
+          <!-- Rows are tracked by slot: a scroll re-binds the elements of
+               the rows that left to the rows that enter. -->
+          @for (row of core().renderRows(); track row.slot) {
             <div
               class="tm-grid__row"
               role="row"
@@ -313,10 +315,15 @@ const SORT_DESC_GLYPH: TmIconSource = ArrowDown;
                       }
                     </div>
                   } @else if (cell.displayTemplate; as displayTemplate) {
-                    <ng-container
-                      [ngTemplateOutlet]="displayTemplate"
-                      [ngTemplateOutletContext]="cell.displayCtx ?? null"
-                    />
+                    <!-- A consumer's display view is its row's own, keyed by
+                         the row: a re-bound row element never hands one row's
+                         view, and whatever state it holds, to another row. -->
+                    @for (key of [row.rowKey]; track key) {
+                      <ng-container
+                        [ngTemplateOutlet]="displayTemplate"
+                        [ngTemplateOutletContext]="cell.displayCtx ?? null"
+                      />
+                    }
                   } @else if (cell.glyphClass; as glyphClass) {
                     <span [class]="glyphClass" aria-hidden="true"></span>
                     <span class="tm-visually-hidden">{{ cell.text }}</span>

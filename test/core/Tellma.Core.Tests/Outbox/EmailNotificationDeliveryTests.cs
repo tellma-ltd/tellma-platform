@@ -20,6 +20,7 @@ using Tellma.Core.Abstractions.Notifications;
 using Tellma.Core.Abstractions.Settings;
 using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.Abstractions.Validation;
+using Tellma.Core.Access;
 using Tellma.Core.Calendars;
 using Tellma.Core.Localization;
 using Tellma.Core.Notifications;
@@ -246,7 +247,16 @@ namespace Tellma.Core.Tests.Outbox
             IcuStringLocalizerFactory localizers = new(
                 new LanguageCatalog(new LanguageDeclaration(["en-GB", "ar-SA"], [])), NullLoggerFactory.Instance, _services.GetRequiredService<IMeterFactory>());
             return new EmailNotificationChannel(
-                _outbox, _renderer, localizers, new Links(), new FixedContextAccessor(context), new NoSettingsCache(), _services.GetRequiredService<ILoggerFactory>());
+                _outbox,
+                _renderer,
+                localizers,
+                new Links(),
+                new FixedContextAccessor(context),
+                new NoSettingsCache(),
+                Refusing.Of<IScopeConnection>(),
+                Refusing.Of<ILocalizationNegotiator>(),
+                _services,
+                _services.GetRequiredService<ILoggerFactory>());
         }
 
         /// <summary>An outbox that records each call.</summary>

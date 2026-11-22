@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <Description>Test plumbing shared by the suites that run Acme as a deployment runs it: the migrator in process, the web host on a test server, the browser's sign-in through the BFF and the tenant probes. Not a suite itself.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The web host, built in process as Program.cs builds it, on a test server. -->
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <ProjectReference Include="..\..\src\Tellma.Distro.Acme.Web\Tellma.Distro.Acme.Web.csproj" />
+    <!-- The migrator, run in process with the identity store's migrations, over Acme's own
+         configuration files, which its project copies beside every suite that references this one. -->
+    <ProjectReference Include="..\..\src\Tellma.Distro.Acme.Migrator\Tellma.Distro.Acme.Migrator.csproj" />
+    <!-- The capturing email transport and the in-memory blobs, the shared SQL Server, and the
+         OAuth/OIDC flow driver the identity engine's own suite signs in with. -->
+    <ProjectReference Include="..\..\..\..\src\core\Tellma.Core.Testing\Tellma.Core.Testing.csproj" />
+    <ProjectReference Include="..\..\..\..\test\shared\Tellma.Testing.Support\Tellma.Testing.Support.csproj" />
+    <ProjectReference Include="..\..\..\..\test\apps\Tellma.Identity.TestSupport\Tellma.Identity.TestSupport.csproj" />
+    <!-- The test server, and the assertions and the test's cancellation from xunit's libraries rather
+         than its metapackage, whose build targets would make this a test project. No test SDK:
+         omitting Microsoft.NET.Test.Sdk keeps IsTestProject false, so `dotnet test Tellma.slnx`
+         never tries to run it. -->
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
+    <PackageReference Include="Microsoft.AspNetCore.TestHost" />
+    <PackageReference Include="xunit.v3.assert" />
+    <PackageReference Include="xunit.v3.extensibility.core" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Its types are internal, visible to the suites that run Acme. -->
+    <InternalsVisibleTo Include="Tellma.Distro.Acme.IntegrationTests" />
+    <InternalsVisibleTo Include="Tellma.Core.AspNetCore.IntegrationTests" />
+  </ItemGroup>
+
+</Project>

@@ -19,14 +19,15 @@ namespace Tellma.Core.Imaging
     /// <summary>
     ///     <c>core.imaging</c>: the processor's options are valid, Skia loads and works in this
     ///     process, and, on a host that renders PDF thumbnails, a PDF worker starts, enters its
-    ///     sandbox, takes its limits and renders a tiny generated PDF.
+    ///     sandbox and its filesystem confinement, takes its limits and renders a tiny generated PDF.
     /// </summary>
     /// <remarks>
     ///     <para>
     ///         A missing or mismatched native library, or a deployment a worker cannot start in (no
     ///         installed runtime, no dependency manifest, a kernel that refuses the worker's
-    ///         system-call filter), otherwise surfaces on the first upload, as a missing thumbnail or
-    ///         a server error, rather than as a startup failure that names the fix.
+    ///         system-call filter or its Landlock restriction, a Windows runtime an AppContainer
+    ///         cannot read), otherwise surfaces on the first upload, as a missing thumbnail or a
+    ///         server error, rather than as a startup failure that names the fix.
     ///     </para>
     ///     <para>
     ///         The worker probe is bounded: a worker that does not render the probe page within
@@ -34,22 +35,31 @@ namespace Tellma.Core.Imaging
     ///         cannot run in fails startup with the fix, never hangs it.
     ///     </para>
     ///     <para>
-    ///         Two conditions are warnings in the host's log, not problems, since the host serves
+    ///         Four conditions are warnings in the host's log, not problems, since the host serves
     ///         everything else as well without their fix. A host that renders no PDF thumbnails (on
-    ///         Windows or macOS outside Development, or on Linux without glibc) writes
-    ///         <c>BlobPdfThumbnailsDisabled</c> and starts no worker, here or later. A Linux host
-    ///         whose kernel lets a process open the memory of any other process of its account
-    ///         (Yama's <c>ptrace_scope</c> is 0, or Yama is not enabled) writes
-    ///         <c>BlobPdfWorkerPtraceUnrestricted</c>: the host closes itself to its workers, but a
-    ///         worker taken over by a hostile document could reach the memory of the account's
-    ///         other processes there, and only the machine's setting closes that.
+    ///         Windows or macOS outside Development, on Linux without glibc, or on Linux outside
+    ///         Development without Landlock) writes <c>BlobPdfThumbnailsDisabled</c> and starts no
+    ///         worker, here or later. A Development host whose workers run without filesystem
+    ///         confinement writes <c>BlobPdfWorkerUnconfined</c>; on Windows that is a host whose
+    ///         account may not grant its workers' AppContainer read on the .NET installation or its
+    ///         own files. A Windows host whose own directory every AppContainer may read, as one
+    ///         under Program Files, writes <c>BlobPdfWorkerReadsHostDirectory</c>: its confined
+    ///         workers read its configuration. And a Development host on Linux whose
+    ///         kernel lets a process open the memory of any other process of its account (Yama's
+    ///         <c>ptrace_scope</c> is 0, or Yama is not enabled) writes
+    ///         <c>BlobPdfWorkerPtraceUnrestricted</c>: the host closes itself to its workers, but an
+    ///         unconfined worker taken over by a hostile document could reach the memory of the
+    ///         account's other processes there. A confined worker reaches no other process's
+    ///         <c>/proc</c> entries, and the kernel refuses it the <c>ptrace</c> family of access to
+    ///         every process outside its confinement, whatever the setting.
     ///     </para>
     /// </remarks>
     /// <param name="launcher">Starts the probe's worker; the PDF worker when null.</param>
     /// <param name="pdfThumbnails">Whether the host renders PDF thumbnails; decided from the host's environment when null.</param>
     /// <param name="readPtraceScope">Reads Yama's ptrace scope, null where the kernel has none; the kernel's own file when null.</param>
+    /// <param name="hostDirectory">The directory the host's files are in; the application's base directory when null.</param>
     internal sealed class ImagingStartupCheck(
-        PdfWorkerLauncher? launcher = null, PdfThumbnailSupport? pdfThumbnails = null, Func<string?>? readPtraceScope = null) : IStartupCheck
+        PdfWorkerLauncher? launcher = null, PdfThumbnailSupport? pdfThumbnails = null, Func<string?>? readPtraceScope = null, string? hostDirectory = null) : IStartupCheck
     {
         /// <summary>The check's name.</summary>
         public const string CheckName = "core.imaging";
@@ -62,6 +72,9 @@ namespace Tellma.Core.Imaging
 
         // The probe's thumbnail side, in pixels.
         private const int ProbeSize = 16;
+
+        // The launcher the probe's worker comes from, which also tells whether workers are confined.
+        private readonly PdfWorkerLauncher _launcher = launcher ?? new PdfWorkerLauncher();
 
         /// <inheritdoc />
         public string Name => CheckName;
@@ -116,6 +129,19 @@ namespace Tellma.Core.Imaging
                 return problems;
             }
 
+            // Section: a host whose workers its operating system cannot confine (a Development host,
+            // since the policy disables thumbnails outside one) says so. A confined Windows worker
+            // still reads whatever every AppContainer may, so a host installed where that is the
+            // host's own directory, as under Program Files, says that.
+            if (_launcher.Unconfined is string unconfined)
+            {
+                ImagingLog.PdfWorkerUnconfined(logger, unconfined);
+            }
+            else if (OperatingSystem.IsWindows() && WindowsAppContainer.ReadsInFull(hostDirectory ?? AppContext.BaseDirectory))
+            {
+                ImagingLog.PdfWorkerReadsHostDirectory(logger, hostDirectory ?? AppContext.BaseDirectory);
+            }
+
             // Section: PDFium, in a worker, through the whole path a thumbnail takes.
             CompositionProblem? worker = await ProbeWorkerAsync(Math.Max(options.PdfWorkerMemoryLimit, SkiaImageProcessorOptions.MinimumPdfWorkerMemoryLimit), cancellationToken).ConfigureAwait(false);
             if (worker is not null)
@@ -123,12 +149,13 @@ namespace Tellma.Core.Imaging
                 problems.Add(worker);
             }
 
-            // Section: on Linux, whether the kernel keeps a worker out of the memory of the other
-            // processes of the host's account. The worker's filter refuses ptrace and its relatives,
-            // but /proc/<pid>/mem is a file, which Yama's ptrace scope closes to a process of the
-            // same account. The host itself needs no such setting: starting the probe's worker
-            // above closed it to its workers, and to more than its memory.
-            if (OperatingSystem.IsLinux() && UnrestrictedPtrace((readPtraceScope ?? ReadPtraceScope)()) is string detail)
+            // Section: on Linux, whether the kernel keeps an unconfined worker out of the memory of
+            // the other processes of the host's account. The worker's filter refuses ptrace and its
+            // relatives, but /proc/<pid>/mem is a file, which Yama's ptrace scope closes to a
+            // process of the same account; a confined worker's Landlock restriction closes every
+            // other process's /proc entries. The host itself needs no such setting: starting the
+            // probe's worker above closed it to its workers, and to more than its memory.
+            if (OperatingSystem.IsLinux() && !_launcher.Confines && UnrestrictedPtrace((readPtraceScope ?? ReadPtraceScope)()) is string detail)
             {
                 ImagingLog.PtraceUnrestricted(logger, detail);
             }
@@ -243,7 +270,7 @@ namespace Tellma.Core.Imaging
         {
             using var budget = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             budget.CancelAfter(ProbeBudget);
-            using var client = new PdfWorkerClient(launcher ?? new PdfWorkerLauncher(), memoryLimit);
+            using var client = new PdfWorkerClient(_launcher, memoryLimit);
             byte[] pdf = OnePagePdf();
             try
             {
@@ -289,11 +316,11 @@ namespace Tellma.Core.Imaging
 
         /// <summary>The fix for a worker that cannot start.</summary>
         private const string StartFix =
-            "PDF thumbnails render in a worker process that `dotnet exec` starts from the host's own files: run the host framework-dependent on an installed .NET runtime, with its .deps.json and .runtimeconfig.json and Tellma.Core.Imaging.PdfWorker.dll beside its assemblies, as `dotnet build` and `dotnet publish` lay them out (not as a single file and not self-contained).";
+            "PDF thumbnails render in a worker process that `dotnet exec` starts from the host's own files: run the host framework-dependent on an installed .NET runtime, with its .deps.json and .runtimeconfig.json and Tellma.Core.Imaging.PdfWorker.dll beside its assemblies, as `dotnet build` and `dotnet publish` lay them out (not as a single file and not self-contained). On Windows the worker runs in an AppContainer, which reads the .NET installation through the ALL APPLICATION PACKAGES group that the installer grants read under Program Files (elsewhere, through an access-control entry the host adds to its host and shared directories where it may, running Development workers unconfined where it may not), and the host's own files through an access-control entry the host adds to each, so the host must be allowed to change their permissions.";
 
         /// <summary>The fix for a worker that ended before it answered.</summary>
         private const string ExitFix =
-            "The worker's own error, quoted above, names the cause. On Linux it installs a seccomp system-call filter before it reads any upload, and it does not run where the kernel or the container runtime refuses one; Docker's default profile allows it. A worker that ran out of memory needs a larger Tellma:Blobs:PdfWorkerMemoryLimit.";
+            "The worker's own error, quoted above, names the cause. On Linux it confines its files with Landlock and installs a seccomp system-call filter before it reads any upload, and it does not run where the kernel or the container runtime refuses either. On Windows it runs in an AppContainer, which must read the .NET installation and every file of the host's that it loads, and one that cannot ends with no more than the .NET host's own error: check that the installation under Program Files, or the host and shared directories of one elsewhere, and the host's assemblies, runtime files and native libraries grant ALL APPLICATION PACKAGES or the tellmaPdfWorker capability read and execute (icacls lists them). A worker that ran out of memory needs a larger Tellma:Blobs:PdfWorkerMemoryLimit.";
 
         /// <summary>The fix for a worker that started but did not render.</summary>
         private const string RenderFix =

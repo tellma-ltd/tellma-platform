@@ -69,6 +69,18 @@ export interface TmStoredDoc<T> {
  */
 export type TmSweepRule = 'session-ended' | { readonly sessionOtherThan: string } | { readonly tenant: number };
 
+/** One mirrored document as the support dump lists it: names and tags, never values. */
+export interface TmStoredDocInfo {
+  /** The partition's kind. */
+  readonly partition: TmPartition['kind'];
+  /** The stored name, such as `settings@1`. */
+  readonly name: string;
+  /** The wire tag the document was fetched under, or `null`. */
+  readonly tag: string | null;
+  /** When the writer stored it, in epoch milliseconds. */
+  readonly savedAt: number;
+}
+
 /** Why the client store refused a write. */
 export type TmStoreRefusedReason = 'other-user' | 'cookie' | 'session';
 
@@ -543,7 +555,8 @@ export class TmClientStore {
    * The store's boot step: an initializer of the app's startup. It opens the
    * database and, once the tab bus is open, so that no other tab's change
    * goes unheard, reads the device partition, the signed-in user's partition
-   * and, on a tenant path, that tenant's, in one readonly transaction: a warm
+   * and session partition and, on a tenant path, that tenant's, in one
+   * readonly transaction: a warm
    * launch's only store access. A boot record that names no user, or another
    * user, sweeps every user's data first. Then it records the user in the
    * boot record, and once the app has rendered, at idle, sweeps the user's
@@ -557,9 +570,11 @@ export class TmClientStore {
     const profile = untracked(() => this.#injector.get(TmSession).profile());
     // Step 2's partitions are known now: an entry into one of them before
     // the read waits for it, rather than reading the partition again.
+    // The session's partition joins them, so a tree page's first load finds
+    // its expansion mirrored (spec 0025 §12).
     const partitions: TmPartition[] = [{ kind: 'device' }];
     if (profile !== null) {
-      partitions.push({ kind: 'user', sub: profile.sub });
+      partitions.push({ kind: 'user', sub: profile.sub }, { kind: 'session', sub: profile.sub, sessionHandle: profile.sh });
       if (tenantId !== null) {
         partitions.push({ kind: 'tenant', sub: profile.sub, tenantId });
       }
@@ -659,6 +674,21 @@ export class TmClientStore {
     return [...this.#mirror.values()]
       .filter((entry) => entry.p === p && entry.n.startsWith(prefix))
       .map((entry) => entry.n.slice(0, entry.n.lastIndexOf('@')));
+  }
+
+  /**
+   * The documents this tab mirrors, as names and tags only. Internal: the
+   * support dump's `state.store.docs`.
+   *
+   * @returns Each mirrored document's partition kind, stored name, tag and save time.
+   */
+  ɵlist(): TmStoredDocInfo[] {
+    return [...this.#mirror.values()].flatMap(({ p, n, stored }) => {
+      const doc = untracked(stored);
+      // The kind from the key: `device`, `u:<sub>/`, `u:<sub>/t<id>` or `u:<sub>/s<handle>`.
+      const kind = p === 'device' ? 'device' : p.endsWith('/') ? 'user' : p[p.lastIndexOf('/') + 1] === 't' ? 'tenant' : 'session';
+      return doc === undefined ? [] : [{ partition: kind, name: n, tag: doc.tag, savedAt: doc.savedAt }];
+    });
   }
 
   /**

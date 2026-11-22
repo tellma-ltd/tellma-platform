@@ -1,0 +1,9 @@
+// Server errors the web surface answered, as problems.
+// Backs the "the web surface is failing" alert: every unhandled failure of a request is answered as
+// a 500 problem, so a rise in them is a fault in the platform, a distribution or a dependency the
+// instance cannot reach, never a client's mistake.
+customMetrics
+| where name == "tellma.api.problems"
+| extend status = tostring(customDimensions["status"])
+| summarize errors = sumif(valueSum, status == "500") by cloud_RoleInstance, bin(timestamp, 5m)
+| where errors > 5

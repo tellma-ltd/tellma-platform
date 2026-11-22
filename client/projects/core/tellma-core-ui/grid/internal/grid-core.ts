@@ -115,6 +115,7 @@ import {
   type TmGridIntent,
 } from './grid-keymap';
 import { ɵTM_GRID_HEADER_ACTIVITY, type ɵTmGridHeaderActivity } from './header-activity';
+import { ɵtmGridAssignRowSlots } from './row-slots';
 
 /**
  * Angular's development-mode flag. A production build defines it `false`,
@@ -551,10 +552,17 @@ export interface ɵTmGridScrollToRowOptions {
 /** One rendered row's view model. */
 export interface ɵTmGridRowVm {
   /**
-   * Identity for view reuse, and the row element's `data-tm-key`: the row id
-   * (type-prefixed) or the placeholder sentinel.
+   * The row's identity, and the row element's `data-tm-key`: the row id
+   * (type-prefixed) or the placeholder sentinel. Views the consumer's
+   * templates render in the row are keyed by it.
    */
   readonly rowKey: string;
+  /**
+   * Identity for view reuse: the slot whose row element renders this row.
+   * A row keeps its slot while it stays rendered, and a row a scroll brings
+   * in re-binds the element of one that left.
+   */
+  readonly slot: number;
   /** View-space row index. */
   readonly viewIndex: number;
   /** `aria-rowindex` (1-based, counting the header row). */
@@ -1108,6 +1116,12 @@ export class ɵTmGridCore<T>
   private menuRef: TmMenu | null = null;
   /** Generation guard for the chunked error-tally warm-up chains. */
   private warmupGeneration = 0;
+  /** Each rendered row's slot from the last render, by row key, in render order. */
+  private rowSlots: ReadonlyMap<string, number> = new Map();
+  /** The active row's key in the last render, whose slot no entering row takes. */
+  private slotActiveKey: string | null = null;
+  /** The row key of the last press on a row checkbox, which its click must match. */
+  private checkPressKey: string | null = null;
   /** Columns already warned about a missing required `format` (one warn each). */
   private readonly warnedColumns = new Set<string>();
 
@@ -1116,6 +1130,12 @@ export class ɵTmGridCore<T>
   private readonly scrollTop = signal(0);
   private readonly scrollLeft = signal(0);
   private readonly viewportHeight = signal(0);
+  /**
+   * The offset a scroll started from, for the rest of the task it arrived
+   * in: that scroll's frame renders from the rows it already has, and the
+   * overscan follows in the next task.
+   */
+  private readonly sliceFrom = signal<number | null>(null);
   private readonly rowHeightSignal = signal(DEFAULT_ROW_HEIGHT);
   /** Whether Escape parked focus on the scroller (the mid-grid exit). */
   readonly escapedSignal = signal(false);
@@ -1447,14 +1467,54 @@ export class ɵTmGridCore<T>
       const bodyHeight = Math.max(0, this.viewportHeight() - rowHeight);
       return Math.max(1, Math.floor(bodyHeight / rowHeight));
     });
-    this.window = computed(() =>
-      tmComputeAxisWindow({
-        scrollOffset: this.scrollTop(),
-        viewportSize: Math.max(0, this.viewportHeight() - this.rowHeightSignal()),
-        itemSize: this.rowHeightSignal(),
-        itemCount: this.engine.model.viewRowCount(),
-        overscan: OVERSCAN_ROWS,
-      }),
+    this.window = computed(
+      () => {
+        const itemSize = this.rowHeightSignal();
+        const viewportSize = Math.max(0, this.viewportHeight() - itemSize);
+        const itemCount = this.engine.model.viewRowCount();
+        const win = tmComputeAxisWindow({
+          scrollOffset: this.scrollTop(),
+          viewportSize,
+          itemSize,
+          itemCount,
+          overscan: OVERSCAN_ROWS,
+        });
+        // The window holds as many rows as the viewport can show, one for the
+        // part-rows at its edges and the overscan, whatever the offset's
+        // alignment: a row count that changed from one scroll to the next
+        // would create or destroy a row element where a re-bind does.
+        const size = Math.ceil(viewportSize / itemSize) + 1 + 2 * OVERSCAN_ROWS;
+        let start = win.start;
+        const from = this.sliceFrom();
+        if (from !== null) {
+          // A scroll's own frame (spec 0004 §16): the window moves from where
+          // it was only as far as the rows now visible need, so the frame
+          // re-binds no overscan row; the overscan follows in the next task.
+          const first = Math.floor(this.scrollTop() / itemSize);
+          const last = Math.ceil((this.scrollTop() + viewportSize) / itemSize);
+          start = Math.max(
+            0,
+            Math.min(first, Math.max(last - size, Math.floor(from / itemSize) - OVERSCAN_ROWS)),
+          );
+        }
+        // `size` rows from the start always cover the visible rows and the
+        // overscan the offset's own window asks for.
+        return {
+          ...win,
+          start,
+          end: Math.min(itemCount, start + size),
+          leadOffset: start * itemSize,
+        };
+      },
+      {
+        // A scroll that keeps the window (a small one, or the overscan task
+        // after a frame that already rendered it) re-renders nothing.
+        equal: (a, b) =>
+          a.start === b.start &&
+          a.end === b.end &&
+          a.leadOffset === b.leadOffset &&
+          a.totalSize === b.totalSize,
+      },
     );
     this.totalHeight = computed(() => this.window().totalSize);
     this.windowTransform = computed(() => `translateY(${this.window().leadOffset}px)`);
@@ -2320,6 +2380,18 @@ export class ɵTmGridCore<T>
   /** The scroller's scroll handler. */
   onScroll(event: Event): void {
     const element = event.currentTarget as HTMLElement;
+    // The first scroll of a task marks where it started from, until the
+    // next task. A programmatic scroll sets the offset signal first, so its
+    // event starts from where it lands and slices nothing.
+    const from = untracked(this.scrollTop);
+    if (untracked(this.sliceFrom) === null && from !== element.scrollTop) {
+      this.sliceFrom.set(from);
+      const done = this.deps.injector.get(PendingTasks).add();
+      setTimeout(() => {
+        this.sliceFrom.set(null);
+        done();
+      });
+    }
     this.scrollTop.set(element.scrollTop);
     this.scrollLeft.set(element.scrollLeft);
   }
@@ -2343,7 +2415,9 @@ export class ɵTmGridCore<T>
    * overlay surface around it is the pane's body.
    */
   inPopupPane(node: Element): boolean {
-    return node.closest('.cdk-overlay-pane, [data-tm-popup]')?.hasAttribute('data-tm-popup') === true;
+    return (
+      node.closest('.cdk-overlay-pane, [data-tm-popup]')?.hasAttribute('data-tm-popup') === true
+    );
   }
 
   /** The scroller's keydown handler: resolve to an intent, execute, consume. */
@@ -2612,7 +2686,9 @@ export class ɵTmGridCore<T>
     }
     const count = untracked(this.columnsInternal).length;
     const slot =
-      untracked(this.rowEndActive) && slots.includes(count) ? count : Math.min(active.col, count - 1);
+      untracked(this.rowEndActive) && slots.includes(count)
+        ? count
+        : Math.min(active.col, count - 1);
     if (!slots.includes(slot)) {
       return false;
     }
@@ -3030,7 +3106,10 @@ export class ɵTmGridCore<T>
     if (target.closest('[data-tm-checkcell], [data-tm-checkhdr]') !== null) {
       // Checkbox chrome (§8.8) toggles on CLICK (a pan never synthesizes
       // one). Mouse presses preventDefault so focus stays where it is;
-      // touch keeps the event native so panning stays possible.
+      // touch keeps the event native so panning stays possible. The press
+      // records its row, since a scroll before the release can re-bind the
+      // pressed row element to another row.
+      this.checkPressKey = this.rowKeyOf(target);
       if (event.pointerType !== 'touch') {
         event.preventDefault();
       }
@@ -3241,6 +3320,9 @@ export class ɵTmGridCore<T>
 
   /** The scroller's click handler: column headers and the select-all corner. */
   onClick(event: MouseEvent): void {
+    // Each checkbox press measures one click only.
+    const press = this.checkPressKey;
+    this.checkPressKey = null;
     if (!(event.target instanceof Element)) {
       return;
     }
@@ -3279,7 +3361,11 @@ export class ɵTmGridCore<T>
     const checkCell = target.closest('[data-tm-checkcell]');
     if (checkCell !== null) {
       const row = Number(checkCell.getAttribute('data-row'));
-      if (Number.isInteger(row)) {
+      // A click on another row than its press's (the pressed row element
+      // re-bound between press and release) is a click on neither row. A
+      // click with no press of its own (`detail` 0) is always its row's.
+      const elsewhere = event.detail !== 0 && press !== null && press !== this.rowKeyOf(checkCell);
+      if (Number.isInteger(row) && !elsewhere) {
         this.toggleRowCheckAt(row, event.shiftKey);
       }
       return;
@@ -4199,16 +4285,10 @@ export class ɵTmGridCore<T>
     const rowEndActive = this.rowEndActive();
 
     const rows: ɵTmGridRowVm[] = [];
-    const pushRow = (viewIndex: number, outlier: boolean): void => {
+    const pushRow = (viewIndex: number, rowKey: string, slot: number, outlier: boolean): void => {
       const model = engine.model;
       const isPlaceholder = model.isPlaceholder(viewIndex);
       const view = model.rowAt(viewIndex);
-      if (!isPlaceholder && view === null) {
-        return;
-      }
-      const rowKey = isPlaceholder
-        ? ' placeholder'
-        : `${typeof view!.id === 'number' ? '#' : '$'}${String(view!.id)}`;
       // Clipboard marquee (§9.5): draw the dashed border only on the marquee
       // RANGE's outer edges, so a multi-cell copy/cut reads as one rectangle,
       // not a box per cell. A cell sits on a perimeter edge when the neighbour
@@ -4238,7 +4318,10 @@ export class ɵTmGridCore<T>
         const cell: TmRowCol = { row: viewIndex, col: column.index };
         const selected = engine.selection.isCellSelected(cell);
         const isActive =
-          !rowEndActive && active !== null && active.row === viewIndex && active.col === column.index;
+          !rowEndActive &&
+          active !== null &&
+          active.row === viewIndex &&
+          active.col === column.index;
         const invalid =
           !isPlaceholder &&
           view !== null &&
@@ -4344,6 +4427,7 @@ export class ɵTmGridCore<T>
       const classes = view === null || rowClassOf === undefined ? null : rowClassOf(view.row);
       rows.push({
         rowKey,
+        slot,
         viewIndex,
         activeRow: viewIndex === activeRow,
         elementId: `${this.scrollerId}-r${viewIndex}`,
@@ -4371,19 +4455,55 @@ export class ɵTmGridCore<T>
       });
     };
 
-    // The array stays sorted by view index so a scroll never REORDERS the
+    // The rows to render: the window, and the active row outside it. The
+    // array stays sorted by view index so a scroll never REORDERS the
     // active row's view among survivors — reordering would move its DOM
     // node and drop focus; prepend/append keeps it in place.
+    const keys = new Map<number, string>();
+    const add = (viewIndex: number): void => {
+      const key = this.rowKeyAt(viewIndex);
+      if (key !== null) {
+        keys.set(viewIndex, key);
+      }
+    };
     if (active !== null && active.row < win.start) {
-      pushRow(active.row, true);
+      add(active.row);
     }
     for (let viewIndex = win.start; viewIndex < win.end; viewIndex++) {
-      pushRow(viewIndex, false);
+      add(viewIndex);
     }
     if (active !== null && active.row >= win.end) {
-      pushRow(active.row, true);
+      add(active.row);
+    }
+    // Row elements are reused by slot: a scroll re-binds the elements of the
+    // rows that left to the rows that enter instead of destroying and
+    // creating them, which is most of a scroll frame's cost (spec 0004 §16).
+    // The last render's active row keeps its slot out of reuse.
+    const slots = ɵtmGridAssignRowSlots([...keys.values()], this.rowSlots, this.slotActiveKey);
+    this.rowSlots = slots;
+    this.slotActiveKey = active === null ? null : (keys.get(active.row) ?? null);
+    for (const [viewIndex, rowKey] of keys) {
+      pushRow(viewIndex, rowKey, slots.get(rowKey)!, viewIndex < win.start || viewIndex >= win.end);
     }
     return rows;
+  }
+
+  /** The `data-tm-key` of the row element an element is in, or `null` outside a row. */
+  private rowKeyOf(element: Element): string | null {
+    return element.closest('[data-tm-key]')?.getAttribute('data-tm-key') ?? null;
+  }
+
+  /**
+   * The key of the row at a view index: its type-prefixed id, the
+   * placeholder sentinel, or `null` past the rows.
+   */
+  private rowKeyAt(viewIndex: number): string | null {
+    const model = this.engine.model;
+    if (model.isPlaceholder(viewIndex)) {
+      return ' placeholder';
+    }
+    const view = model.rowAt(viewIndex);
+    return view === null ? null : `${typeof view.id === 'number' ? '#' : '$'}${String(view.id)}`;
   }
 
   private executeIntent(intent: TmGridIntent): boolean {

@@ -17,7 +17,7 @@ namespace Tellma.Core.IntegrationTests.Migrator
     ///     The first administrator's invitation after a tenant's provisioning steps, run by the
     ///     migrator through the users' invite action over the test distribution, with the identity
     ///     server answering from a script: the administrator invited once and linked, with the
-    ///     membership hint and a pending welcome email; a refusal failing the provisioning after its
+    ///     membership hint, a pending welcome email and one added-user notice by no actor; a refusal failing the provisioning after its
     ///     steps with a resume that names the administrator; a sandbox's administrator without a
     ///     usable account refused with the sandbox's code; and nobody invited who joined already or
     ///     whose subject the run names.
@@ -58,6 +58,13 @@ namespace Tellma.Core.IntegrationTests.Migrator
                 SELECT COUNT(*) FROM [core].[OutgoingEmails] AS E JOIN [core].[Users] AS U ON U.[Id] = E.[RecipientUserId]
                  WHERE U.[Email] = N'{Stored}' AND E.[RegardingEntity] = N'{CoreResources.User}' AND E.[State] = 'Pending';
                 """));
+
+            // --- One added-user notice, raised in the platform's own scope, so by no actor ---
+            Assert.Equal(1, await SqlServerFixture.ScalarAsync<int>(tenant, $"""
+                SELECT COUNT(*) FROM [core].[Notifications] AS N JOIN [core].[Users] AS U ON U.[Id] = N.[UserId]
+                 WHERE U.[Email] = N'{Stored}' AND N.[Type] = N'core.user.added' AND N.[ActorUserId] IS NULL;
+                """));
+            Assert.Equal(1, await SqlServerFixture.ScalarAsync<int>(tenant, "SELECT COUNT(*) FROM [core].[Notifications] WHERE [Type] = N'core.user.added';"));
             Assert.Equal("Active", await StateAsync(migrator, 1000));
         }
 

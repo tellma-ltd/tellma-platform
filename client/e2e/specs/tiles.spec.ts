@@ -7,6 +7,7 @@ import { expect, test, type Locator, type Page } from '@playwright/test';
 
 import { expectNoAxeViolations } from '../support/axe';
 import { heldResponses, holdResponses, releaseResponses } from '../support/held-responses';
+import { wheelScreensForLongTasks } from '../support/scroll-probe';
 import { appStable } from '../support/settle';
 import { storyUrl } from '../support/story-map';
 
@@ -428,31 +429,7 @@ test.describe('10,000 rows', () => {
     await expect(grid.locator('[role="gridcell"]').first()).toBeVisible();
     await appStable(page);
 
-    // Section: record long tasks from here on.
-    await page.evaluate(() => {
-      const record = window as unknown as { tmLongTasks: number[] };
-      record.tmLongTasks = [];
-      new PerformanceObserver((list) => {
-        for (const entry of list.getEntries()) {
-          record.tmLongTasks.push(entry.duration);
-        }
-      }).observe({ type: 'longtask' });
-    });
-
-    // Section: wheel down through the tiles a screen at a time, then back.
-    const box = (await grid.boundingBox())!;
-    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-    for (const direction of [1, -1]) {
-      for (let step = 0; step < 40; step++) {
-        await page.mouse.wheel(0, direction * box.height);
-        await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(resolve)));
-      }
-    }
-    await appStable(page);
-
-    const longTasks = await page.evaluate(
-      () => (window as unknown as { tmLongTasks: number[] }).tmLongTasks,
-    );
+    const longTasks = await wheelScreensForLongTasks(page, grid, 40);
     expect(longTasks.filter((duration) => duration > 50)).toEqual([]);
   });
 });

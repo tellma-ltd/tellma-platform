@@ -38,6 +38,9 @@ namespace Tellma.Core.Imaging.TestWorker
         /// <summary><c>PROCESS_TERMINATE</c>.</summary>
         public const uint ProcessTerminate = 0x0001;
 
+        /// <summary><c>PROCESS_QUERY_LIMITED_INFORMATION</c>.</summary>
+        public const uint ProcessQueryLimitedInformation = 0x1000;
+
         /// <summary><c>int open(const char*, int)</c>, for an existing file.</summary>
         /// <param name="path">The file.</param>
         /// <param name="flags">The access wanted, and <c>O_CLOEXEC</c>.</param>
@@ -205,6 +208,30 @@ namespace Tellma.Core.Imaging.TestWorker
         [UnsupportedOSPlatform("windows")]
         public static partial long SystemCall(long number, long argument1, long argument2, long argument3);
 
+        /// <summary>
+        ///     <c>long syscall(long, ...)</c> with a name and three numbers, for the message-queue
+        ///     calls, which the C library wraps outside libc before glibc 2.34.
+        /// </summary>
+        /// <param name="number">The system call.</param>
+        /// <param name="name">Its first argument, a name without the C library's leading slash.</param>
+        /// <param name="argument2">Its second argument.</param>
+        /// <param name="argument3">Its third argument.</param>
+        /// <param name="argument4">Its fourth argument.</param>
+        /// <returns>The call's result; -1 with <c>errno</c> set on failure.</returns>
+        [LibraryImport("libc", EntryPoint = "syscall", SetLastError = true, StringMarshalling = StringMarshalling.Utf8)]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.SafeDirectories)]
+        [UnsupportedOSPlatform("windows")]
+        public static partial long NamedCall(long number, string name, long argument2, long argument3, long argument4);
+
+        /// <summary><c>int flock(int, int)</c>.</summary>
+        /// <param name="descriptor">The file.</param>
+        /// <param name="operation"><c>LOCK_SH</c> or <c>LOCK_EX</c>, with <c>LOCK_NB</c>.</param>
+        /// <returns>0; -1 with <c>errno</c> set on failure.</returns>
+        [LibraryImport("libc", EntryPoint = "flock", SetLastError = true)]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.SafeDirectories)]
+        [UnsupportedOSPlatform("windows")]
+        public static partial int Lock(int descriptor, int operation);
+
         /// <summary><c>void* mmap(void*, size_t, int, int, int, off_t)</c>.</summary>
         /// <param name="address">Null.</param>
         /// <param name="length">The length.</param>
@@ -218,6 +245,171 @@ namespace Tellma.Core.Imaging.TestWorker
         [UnsupportedOSPlatform("windows")]
         public static partial nint MapMemory(nint address, nuint length, int protection, int flags, int descriptor, long offset);
 
+        /// <summary><c>int open(const char*, int, mode_t)</c>, for a file the call may create.</summary>
+        /// <param name="path">The file.</param>
+        /// <param name="flags">The access wanted, <c>O_CREAT</c> and the like, and <c>O_CLOEXEC</c>.</param>
+        /// <param name="mode">The permissions of a file the call creates.</param>
+        /// <returns>The descriptor, or -1.</returns>
+        [LibraryImport("libc", EntryPoint = "open", SetLastError = true, StringMarshalling = StringMarshalling.Utf8)]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.SafeDirectories)]
+        [UnsupportedOSPlatform("windows")]
+        public static partial int OpenCreate(string path, int flags, uint mode);
+
+        /// <summary><c>int rename(const char*, const char*)</c>.</summary>
+        /// <param name="from">The file.</param>
+        /// <param name="to">Its new name.</param>
+        /// <returns>0 on success.</returns>
+        [LibraryImport("libc", EntryPoint = "rename", SetLastError = true, StringMarshalling = StringMarshalling.Utf8)]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.SafeDirectories)]
+        [UnsupportedOSPlatform("windows")]
+        public static partial int Rename(string from, string to);
+
+        /// <summary><c>int link(const char*, const char*)</c>.</summary>
+        /// <param name="existing">The file.</param>
+        /// <param name="link">The new hard link's name.</param>
+        /// <returns>0 on success.</returns>
+        [LibraryImport("libc", EntryPoint = "link", SetLastError = true, StringMarshalling = StringMarshalling.Utf8)]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.SafeDirectories)]
+        [UnsupportedOSPlatform("windows")]
+        public static partial int Link(string existing, string link);
+
+        /// <summary><c>int symlink(const char*, const char*)</c>.</summary>
+        /// <param name="target">What the link points to.</param>
+        /// <param name="link">The new symbolic link's name.</param>
+        /// <returns>0 on success.</returns>
+        [LibraryImport("libc", EntryPoint = "symlink", SetLastError = true, StringMarshalling = StringMarshalling.Utf8)]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.SafeDirectories)]
+        [UnsupportedOSPlatform("windows")]
+        public static partial int SymbolicLink(string target, string link);
+
+        /// <summary><c>int unlink(const char*)</c>.</summary>
+        /// <param name="path">The file.</param>
+        /// <returns>0 on success.</returns>
+        [LibraryImport("libc", EntryPoint = "unlink", SetLastError = true, StringMarshalling = StringMarshalling.Utf8)]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.SafeDirectories)]
+        [UnsupportedOSPlatform("windows")]
+        public static partial int Unlink(string path);
+
+        /// <summary><c>int mkdir(const char*, mode_t)</c>.</summary>
+        /// <param name="path">The directory.</param>
+        /// <param name="mode">Its permissions.</param>
+        /// <returns>0 on success.</returns>
+        [LibraryImport("libc", EntryPoint = "mkdir", SetLastError = true, StringMarshalling = StringMarshalling.Utf8)]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.SafeDirectories)]
+        [UnsupportedOSPlatform("windows")]
+        public static partial int MakeDirectory(string path, uint mode);
+
+        /// <summary><c>int rmdir(const char*)</c>.</summary>
+        /// <param name="path">The directory, which must be empty.</param>
+        /// <returns>0 on success.</returns>
+        [LibraryImport("libc", EntryPoint = "rmdir", SetLastError = true, StringMarshalling = StringMarshalling.Utf8)]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.SafeDirectories)]
+        [UnsupportedOSPlatform("windows")]
+        public static partial int RemoveDirectory(string path);
+
+        /// <summary><c>int mkfifo(const char*, mode_t)</c>.</summary>
+        /// <param name="path">The named pipe.</param>
+        /// <param name="mode">Its permissions.</param>
+        /// <returns>0 on success.</returns>
+        [LibraryImport("libc", EntryPoint = "mkfifo", SetLastError = true, StringMarshalling = StringMarshalling.Utf8)]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.SafeDirectories)]
+        [UnsupportedOSPlatform("windows")]
+        public static partial int MakeFifo(string path, uint mode);
+
+        /// <summary><c>int chmod(const char*, mode_t)</c>.</summary>
+        /// <param name="path">The file.</param>
+        /// <param name="mode">Its new permissions.</param>
+        /// <returns>0 on success.</returns>
+        [LibraryImport("libc", EntryPoint = "chmod", SetLastError = true, StringMarshalling = StringMarshalling.Utf8)]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.SafeDirectories)]
+        [UnsupportedOSPlatform("windows")]
+        public static partial int ChangeMode(string path, uint mode);
+
+        /// <summary><c>int truncate(const char*, off_t)</c>.</summary>
+        /// <param name="path">The file.</param>
+        /// <param name="length">Its new length.</param>
+        /// <returns>0 on success.</returns>
+        [LibraryImport("libc", EntryPoint = "truncate", SetLastError = true, StringMarshalling = StringMarshalling.Utf8)]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.SafeDirectories)]
+        [UnsupportedOSPlatform("windows")]
+        public static partial int Truncate(string path, long length);
+
+        /// <summary><c>int utimes(const char*, const struct timeval[2])</c>.</summary>
+        /// <param name="path">The file.</param>
+        /// <param name="times">Null, for the current time.</param>
+        /// <returns>0 on success.</returns>
+        [LibraryImport("libc", EntryPoint = "utimes", SetLastError = true, StringMarshalling = StringMarshalling.Utf8)]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.SafeDirectories)]
+        [UnsupportedOSPlatform("windows")]
+        public static partial int SetTimes(string path, nint times);
+
+        /// <summary><c>int inotify_init1(int)</c>.</summary>
+        /// <param name="flags">The flags.</param>
+        /// <returns>The instance's descriptor; -1 with <c>errno</c> set on failure.</returns>
+        [LibraryImport("libc", EntryPoint = "inotify_init1", SetLastError = true)]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.SafeDirectories)]
+        [UnsupportedOSPlatform("windows")]
+        public static partial int WatchInit(int flags);
+
+        /// <summary><c>int inotify_add_watch(int, const char*, uint32_t)</c>.</summary>
+        /// <param name="instance">The inotify instance.</param>
+        /// <param name="path">The file or directory watched.</param>
+        /// <param name="events">The events watched for.</param>
+        /// <returns>The watch's descriptor; -1 with <c>errno</c> set on failure.</returns>
+        [LibraryImport("libc", EntryPoint = "inotify_add_watch", SetLastError = true, StringMarshalling = StringMarshalling.Utf8)]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.SafeDirectories)]
+        [UnsupportedOSPlatform("windows")]
+        public static partial int Watch(int instance, string path, uint events);
+
+        /// <summary><c>int fanotify_init(unsigned int, unsigned int)</c>.</summary>
+        /// <param name="flags">The notification group's flags.</param>
+        /// <param name="eventFlags">The flags of the descriptors its events carry.</param>
+        /// <returns>The group's descriptor; -1 with <c>errno</c> set on failure.</returns>
+        [LibraryImport("libc", EntryPoint = "fanotify_init", SetLastError = true)]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.SafeDirectories)]
+        [UnsupportedOSPlatform("windows")]
+        public static partial int FileNotifyInit(uint flags, uint eventFlags);
+
+        /// <summary><c>ssize_t getxattr(const char*, const char*, void*, size_t)</c>.</summary>
+        /// <param name="path">The file.</param>
+        /// <param name="name">The attribute.</param>
+        /// <param name="value">Receives its value; null to ask its size.</param>
+        /// <param name="size">The buffer's size.</param>
+        /// <returns>The value's size; -1 with <c>errno</c> set on failure.</returns>
+        [LibraryImport("libc", EntryPoint = "getxattr", SetLastError = true, StringMarshalling = StringMarshalling.Utf8)]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.SafeDirectories)]
+        [UnsupportedOSPlatform("windows")]
+        public static partial nint GetAttribute(string path, string name, nint value, nuint size);
+
+        /// <summary><c>ssize_t listxattr(const char*, char*, size_t)</c>.</summary>
+        /// <param name="path">The file.</param>
+        /// <param name="list">Receives the names; null to ask their size.</param>
+        /// <param name="size">The buffer's size.</param>
+        /// <returns>The names' size; -1 with <c>errno</c> set on failure.</returns>
+        [LibraryImport("libc", EntryPoint = "listxattr", SetLastError = true, StringMarshalling = StringMarshalling.Utf8)]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.SafeDirectories)]
+        [UnsupportedOSPlatform("windows")]
+        public static partial nint ListAttributes(string path, nint list, nuint size);
+
+        /// <summary><c>int munmap(void*, size_t)</c>.</summary>
+        /// <param name="address">The mapping.</param>
+        /// <param name="length">Its length.</param>
+        /// <returns>0 on success.</returns>
+        [LibraryImport("libc", EntryPoint = "munmap", SetLastError = true)]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.SafeDirectories)]
+        [UnsupportedOSPlatform("windows")]
+        public static partial int UnmapMemory(nint address, nuint length);
+
+        /// <summary><c>int mprotect(void*, size_t, int)</c>.</summary>
+        /// <param name="address">The mapping.</param>
+        /// <param name="length">Its length.</param>
+        /// <param name="protection">The new protection.</param>
+        /// <returns>0 on success.</returns>
+        [LibraryImport("libc", EntryPoint = "mprotect", SetLastError = true)]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.SafeDirectories)]
+        [UnsupportedOSPlatform("windows")]
+        public static partial int ProtectMemory(nint address, nuint length, int protection);
+
         /// <summary><c>HANDLE OpenProcess(DWORD, BOOL, DWORD)</c>.</summary>
         /// <param name="access">The access wanted.</param>
         /// <param name="inherit">0.</param>
@@ -227,6 +419,60 @@ namespace Tellma.Core.Imaging.TestWorker
         [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
         [SupportedOSPlatform("windows")]
         public static partial nint OpenProcess(uint access, int inherit, uint processId);
+
+        /// <summary><c>BOOL MoveFileExW(LPCWSTR, LPCWSTR, DWORD)</c>.</summary>
+        /// <param name="from">The file.</param>
+        /// <param name="to">Its new name.</param>
+        /// <param name="flags">0.</param>
+        /// <returns>Nonzero on success.</returns>
+        [LibraryImport("kernel32.dll", EntryPoint = "MoveFileExW", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+        [SupportedOSPlatform("windows")]
+        public static partial int MoveFile(string from, string to, uint flags);
+
+        /// <summary><c>BOOL DeleteFileW(LPCWSTR)</c>.</summary>
+        /// <param name="path">The file.</param>
+        /// <returns>Nonzero on success.</returns>
+        [LibraryImport("kernel32.dll", EntryPoint = "DeleteFileW", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+        [SupportedOSPlatform("windows")]
+        public static partial int DeleteFile(string path);
+
+        /// <summary><c>BOOL CreateDirectoryW(LPCWSTR, LPSECURITY_ATTRIBUTES)</c>.</summary>
+        /// <param name="path">The directory.</param>
+        /// <param name="security">Null.</param>
+        /// <returns>Nonzero on success.</returns>
+        [LibraryImport("kernel32.dll", EntryPoint = "CreateDirectoryW", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+        [SupportedOSPlatform("windows")]
+        public static partial int CreateDirectory(string path, nint security);
+
+        /// <summary><c>BOOL RemoveDirectoryW(LPCWSTR)</c>.</summary>
+        /// <param name="path">The directory, which must be empty.</param>
+        /// <returns>Nonzero on success.</returns>
+        [LibraryImport("kernel32.dll", EntryPoint = "RemoveDirectoryW", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+        [SupportedOSPlatform("windows")]
+        public static partial int RemoveDirectoryW(string path);
+
+        /// <summary><c>BOOL SetFileAttributesW(LPCWSTR, DWORD)</c>.</summary>
+        /// <param name="path">The file.</param>
+        /// <param name="attributes">Its new attributes.</param>
+        /// <returns>Nonzero on success.</returns>
+        [LibraryImport("kernel32.dll", EntryPoint = "SetFileAttributesW", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+        [SupportedOSPlatform("windows")]
+        public static partial int SetFileAttributes(string path, uint attributes);
+
+        /// <summary><c>BOOL CreateHardLinkW(LPCWSTR, LPCWSTR, LPSECURITY_ATTRIBUTES)</c>.</summary>
+        /// <param name="link">The new hard link's name.</param>
+        /// <param name="existing">The file.</param>
+        /// <param name="security">Null.</param>
+        /// <returns>Nonzero on success.</returns>
+        [LibraryImport("kernel32.dll", EntryPoint = "CreateHardLinkW", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+        [SupportedOSPlatform("windows")]
+        public static partial int CreateHardLink(string link, string existing, nint security);
 
         /// <summary><c>BOOL CloseHandle(HANDLE)</c>.</summary>
         /// <param name="handle">The handle.</param>

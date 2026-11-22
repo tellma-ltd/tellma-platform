@@ -88,8 +88,9 @@ namespace Tellma.Core.Imaging
 
         /// <summary>
         ///     Written once, at startup, by a host that renders no PDF thumbnails: a host on Windows
-        ///     or macOS outside Development, or a Linux host whose C library is not glibc. PDF uploads
-        ///     proceed without a thumbnail, and no worker is started.
+        ///     or macOS outside Development, a Linux host whose C library is not glibc, or a Linux
+        ///     host outside Development whose kernel offers no Landlock. PDF uploads proceed without
+        ///     a thumbnail, and no worker is started.
         /// </summary>
         /// <param name="logger">The logger.</param>
         /// <param name="reason">Why, as one sentence.</param>
@@ -100,12 +101,43 @@ namespace Tellma.Core.Imaging
         public static partial void PdfThumbnailsDisabled(ILogger logger, string reason);
 
         /// <summary>
-        ///     Written once, at startup, by a Linux host whose kernel lets a process open the memory
-        ///     of any other process of its account. The host closes itself to its workers whatever
-        ///     that setting is; the warning is for the account's other processes, whose memory a PDF
-        ///     worker taken over by a hostile document could then read and write. A stricter setting
-        ///     closes their memory only: their environment and open files stay within such a
-        ///     worker's reach. PDF thumbnails still render; the fix is the machine's.
+        ///     Written once, at startup, by a Development host whose PDF workers run without
+        ///     filesystem confinement, since its operating system cannot confine them: a Linux kernel
+        ///     without Landlock, macOS, or a Windows host whose account may not grant its workers'
+        ///     AppContainer read on the .NET installation or on its own files. A worker taken over by
+        ///     a hostile document could read whatever the host's account can. PDF thumbnails still
+        ///     render; outside Development such a host renders none.
+        /// </summary>
+        /// <param name="logger">The logger.</param>
+        /// <param name="detail">Why the workers are not confined.</param>
+        [LoggerMessage(
+            EventName = "BlobPdfWorkerUnconfined",
+            Level = LogLevel.Warning,
+            Message = "PDF workers on this host run without filesystem confinement ({Detail}): a worker taken over by a hostile document could read whatever the host's account can read. Only a Development host renders PDF thumbnails so.")]
+        public static partial void PdfWorkerUnconfined(ILogger logger, string detail);
+
+        /// <summary>
+        ///     Written once, at startup, by a Windows host whose own directory lets every AppContainer
+        ///     read it and everything beneath it, as Program Files does: its confined PDF workers
+        ///     read its configuration and whatever else lies beside its assemblies. A worker taken
+        ///     over by a hostile document could read them. PDF thumbnails still render.
+        /// </summary>
+        /// <param name="logger">The logger.</param>
+        /// <param name="directory">The host's directory.</param>
+        [LoggerMessage(
+            EventName = "BlobPdfWorkerReadsHostDirectory",
+            Level = LogLevel.Warning,
+            Message = "The host's directory {Directory} lets every AppContainer read it, as Program Files does, so a PDF worker taken over by a hostile document could read the host's configuration and anything else beside its assemblies. Run the host from a directory of its own, outside Program Files.")]
+        public static partial void PdfWorkerReadsHostDirectory(ILogger logger, string directory);
+
+        /// <summary>
+        ///     Written once, at startup, by a Linux host whose PDF workers run unconfined and whose
+        ///     kernel lets a process open the memory of any other process of its account. The host
+        ///     closes itself to its workers whatever that setting is; the warning is for the
+        ///     account's other processes, whose memory such a worker taken over by a hostile document
+        ///     could then read and write. A stricter setting closes their memory only: their
+        ///     environment and open files stay within its reach. A confined worker reaches none of
+        ///     them, whatever the setting. PDF thumbnails still render; the fix is the machine's.
         /// </summary>
         /// <param name="logger">The logger.</param>
         /// <param name="detail">What the kernel reports: the scope is 0, or Yama is not enabled.</param>

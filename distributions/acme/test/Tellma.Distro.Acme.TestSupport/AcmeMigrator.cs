@@ -15,10 +15,9 @@ using Tellma.Core.Migrator;
 using Tellma.Core.Testing.Blobs;
 using Tellma.Distro.Acme.Migrator;
 using Tellma.Identity.Migrations;
+using Tellma.Testing.Support.Sql;
 
-[assembly: AssemblyFixture(typeof(SqlServerFixture))]
-
-namespace Tellma.Distro.Acme.IntegrationTests.Infrastructure
+namespace Tellma.Distro.Acme.TestSupport
 {
     /// <summary>What one migrator run printed and returned.</summary>
     /// <param name="ExitCode">The exit code.</param>

@@ -58,8 +58,14 @@ export interface TmPrefsChangedMessage {
   readonly type: 'prefs.changed';
   /** The tenant whose preferences changed. */
   readonly tenantId: number;
-  /** The stored strings, by key; `null` resets a key. */
+  /** The stored strings, by key; `null` resets a key. With `revert`, the values the server refused. */
   readonly values: Readonly<Record<string, string | null>>;
+  /**
+   * Whether the values are choices the server refused rather than new ones:
+   * a tab that shows one of them shows its stored value again, and a tab
+   * with its own unsaved value of the key keeps it.
+   */
+  readonly revert?: true;
 }
 
 /** A tab switched the device's language, which the tabs that take their language from the device follow. */

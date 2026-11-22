@@ -42,6 +42,7 @@ const DEVICE: TmPartition = { kind: 'device' };
 const USER: TmPartition = { kind: 'user', sub: FARAH };
 const T17: TmPartition = { kind: 'tenant', sub: FARAH, tenantId: 17 };
 const T170: TmPartition = { kind: 'tenant', sub: FARAH, tenantId: 170 };
+const SESSION: TmPartition = { kind: 'session', sub: FARAH, sessionHandle: 'sh-0b4f' };
 
 /** A document saved now. */
 function docOf<T>(data: T, savedAt = NOW, tag: string | null = null): TmStoredDoc<T> {
@@ -957,7 +958,8 @@ describe('TmClientStore', () => {
 
     it('reads a warm launch in one readonly transaction, and nothing else', async () => {
       const { store, bus, local } = setUp();
-      await tmWriteRawRecords(warmRecords());
+      const records = [...warmRecords(), { p: 'u:0b4f/ssh-0b4f', n: 'tree:/17/centers@1', tag: null, savedAt: NOW, data: { ids: [5] } }];
+      await tmWriteRawRecords(records);
       local.setItem('tm.boot', JSON.stringify({ v: 1, theme: 'system', lang: 'en', dir: 'ltr', sub: FARAH, lastTenantId: 17 }));
       const transactions = spyTransactions();
       await store.ɵstart(17);
@@ -965,8 +967,28 @@ describe('TmClientStore', () => {
       expect(store.doc(DEVICE, 'zone')()?.data).toBe('device zone@1');
       expect(store.doc(USER, 'tenants')()?.data).toBe('u:0b4f/ tenants@1');
       expect(store.doc(T17, 'me')()?.data).toBe('u:0b4f/t17 me@1');
+      // The current session's partition too, so a tree page's first load finds its expansion.
+      expect(store.doc(SESSION, 'tree:/17/centers')()?.data).toEqual({ ids: [5] });
+      expect(store.ɵreadOnce(SESSION)).toBe(store.ɵreadOnce(T17));
       expect(bus.posted).toEqual([]);
-      expect((await tmReadRawKeys()).length).toBe(warmRecords().length);
+      expect((await tmReadRawKeys()).length).toBe(records.length);
+    });
+
+    it('lists the mirrored documents by partition kind, stored name and tag, never by value', async () => {
+      const { store, local } = setUp();
+      await tmWriteRawRecords([...warmRecords(), { p: 'u:0b4f/ssh-0b4f', n: 'tree:/17/centers@1', tag: null, savedAt: NOW, data: { ids: [5] } }]);
+      local.setItem('tm.boot', JSON.stringify({ v: 1, theme: 'system', lang: 'en', dir: 'ltr', sub: FARAH, lastTenantId: 17 }));
+      await store.ɵstart(17);
+      const listed = store.ɵlist();
+      expect(listed).toEqual(
+        expect.arrayContaining([
+          { partition: 'device', name: 'zone@1', tag: null, savedAt: expect.any(Number) as number },
+          expect.objectContaining({ partition: 'user', name: 'tenants@1' }),
+          expect.objectContaining({ partition: 'tenant', name: 'me@1' }),
+          { partition: 'session', name: 'tree:/17/centers@1', tag: null, savedAt: NOW },
+        ]),
+      );
+      expect(JSON.stringify(listed)).not.toContain('ids');
     });
 
     it("joins an entry into the start's tenant to the start's read", async () => {

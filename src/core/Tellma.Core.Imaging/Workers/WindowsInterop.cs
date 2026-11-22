@@ -10,9 +10,10 @@ using System.Runtime.Versioning;
 namespace Tellma.Core.Imaging.Workers
 {
     /// <summary>
-    ///     The Win32 calls that start a worker on a restricted, low-integrity token inside a Job
-    ///     Object with exactly its three pipes inherited (processthreadsapi.h, securitybaseapi.h,
-    ///     jobapi2.h, winbase.h, psapi.h).
+    ///     The Win32 calls that start a worker on a restricted, low-integrity token, in an
+    ///     AppContainer of its own when it is confined, inside a Job Object with exactly its three
+    ///     pipes inherited (processthreadsapi.h, securitybaseapi.h, jobapi2.h, winbase.h, psapi.h,
+    ///     userenv.h, and ntdll's lowbox token call).
     /// </summary>
     [SupportedOSPlatform("windows")]
     internal static unsafe partial class WindowsInterop
@@ -103,6 +104,9 @@ namespace Tellma.Core.Imaging.Workers
 
         /// <summary><c>DUPLICATE_SAME_ACCESS</c>.</summary>
         public const uint DuplicateSameAccess = 0x2;
+
+        /// <summary><c>SE_GROUP_ENABLED</c>: a capability the token holds in force.</summary>
+        public const uint SeGroupEnabled = 0x4;
 
         /// <summary><c>BOOL OpenProcessToken(HANDLE, DWORD, PHANDLE)</c>.</summary>
         /// <param name="process">The process.</param>
@@ -336,6 +340,81 @@ namespace Tellma.Core.Imaging.Workers
         [LibraryImport("kernel32.dll", EntryPoint = "K32GetProcessMemoryInfo", SetLastError = true)]
         [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
         public static partial int GetProcessMemoryInfo(SafeProcessHandle process, ProcessMemoryCounters* counters, uint size);
+
+        /// <summary>
+        ///     <c>NTSTATUS NtCreateLowBoxToken(PHANDLE, HANDLE, ACCESS_MASK, POBJECT_ATTRIBUTES, PSID, ULONG, PSID_AND_ATTRIBUTES, ULONG, HANDLE*)</c>:
+        ///     a copy of a token in an AppContainer, with the given capabilities, at low integrity.
+        /// </summary>
+        /// <param name="token">Receives the lowbox token.</param>
+        /// <param name="existing">The token copied, opened for duplication.</param>
+        /// <param name="access">The access wanted to the new token.</param>
+        /// <param name="attributes">Its object attributes; none but the length.</param>
+        /// <param name="package">The AppContainer's package SID.</param>
+        /// <param name="capabilityCount">The number of capabilities.</param>
+        /// <param name="capabilities">The capabilities, each enabled.</param>
+        /// <param name="handleCount">0: no named objects are shared with the AppContainer.</param>
+        /// <param name="handles">Null.</param>
+        /// <returns>A non-negative status on success.</returns>
+        [LibraryImport("ntdll.dll")]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+        public static partial int NtCreateLowBoxToken(
+            nint* token, nint existing, uint access, ObjectAttributes* attributes, nint package, uint capabilityCount, SidAndAttributes* capabilities, uint handleCount, nint* handles);
+
+        /// <summary><c>HRESULT DeriveAppContainerSidFromAppContainerName(PCWSTR, PSID*)</c>: an AppContainer's package SID, from its name alone.</summary>
+        /// <param name="name">The AppContainer's name.</param>
+        /// <param name="sid">Receives the SID, which the caller frees with <see cref="FreeSid" />.</param>
+        /// <returns><c>S_OK</c> on success.</returns>
+        [LibraryImport("userenv.dll", StringMarshalling = StringMarshalling.Utf16)]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+        public static partial int DeriveAppContainerSidFromAppContainerName(string name, out nint sid);
+
+        /// <summary><c>BOOL DeriveCapabilitySidsFromName(LPCWSTR, PSID**, DWORD*, PSID**, DWORD*)</c>: a capability's SIDs, from its name.</summary>
+        /// <param name="name">The capability's name.</param>
+        /// <param name="groupSids">Receives its group SIDs, each and the array freed with <see cref="LocalFree" />.</param>
+        /// <param name="groupSidCount">Receives their number.</param>
+        /// <param name="capabilitySids">Receives its capability SIDs, freed likewise.</param>
+        /// <param name="capabilitySidCount">Receives their number.</param>
+        /// <returns>Nonzero on success.</returns>
+        [LibraryImport("kernelbase.dll", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+        public static partial int DeriveCapabilitySidsFromName(string name, nint** groupSids, uint* groupSidCount, nint** capabilitySids, uint* capabilitySidCount);
+
+        /// <summary><c>PVOID FreeSid(PSID)</c>.</summary>
+        /// <param name="sid">A SID allocated by the system.</param>
+        /// <returns>Null on success.</returns>
+        [LibraryImport("advapi32.dll")]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+        public static partial nint FreeSid(nint sid);
+
+        /// <summary><c>HLOCAL LocalFree(HLOCAL)</c>.</summary>
+        /// <param name="memory">The memory; null is ignored.</param>
+        /// <returns>Null on success.</returns>
+        [LibraryImport("kernel32.dll")]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+        public static partial nint LocalFree(nint memory);
+
+        /// <summary><c>OBJECT_ATTRIBUTES</c>.</summary>
+        [StructLayout(LayoutKind.Sequential)]
+        public struct ObjectAttributes
+        {
+            /// <summary>The structure's size.</summary>
+            public uint Length;
+
+            /// <summary>Unused: no root directory.</summary>
+            public nint RootDirectory;
+
+            /// <summary>Unused: no name.</summary>
+            public nint ObjectName;
+
+            /// <summary>Unused: no attributes.</summary>
+            public uint Attributes;
+
+            /// <summary>Unused: the default security.</summary>
+            public nint SecurityDescriptor;
+
+            /// <summary>Unused: the default quality of service.</summary>
+            public nint SecurityQualityOfService;
+        }
 
         /// <summary><c>SID_AND_ATTRIBUTES</c>.</summary>
         [StructLayout(LayoutKind.Sequential)]

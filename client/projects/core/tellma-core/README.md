@@ -9,6 +9,8 @@ own.
 |---|---|---|
 | `@tellma/core` | The distribution API: `bootstrapTellma`, `provideTellma`, `tmFeature`, the declaration functions (`tmEntity`, `tmPage`, `tmCodedReport`, `tmWidget`, `tmOverride`) and `TM_APP_DECLARATIONS`, the merged declarations; the client metadata's types, its loaders (`tmMetadataLoaders`) and the loaded Core chunk (`TM_CLIENT_METADATA`); the HTTP layer (`TmApi`, `TmApiError`, `TmProblem`), its plain-JSON value types (`TmJson`, `TmDecimal`, `TmId`) and the exact decimal helpers `TmDecimals`; the seams through which telemetry (`TmTelemetry`), the request log (`TmRequestLog`) and page scopes (`provideTmPageScope`) are provided; the session (`TmSession`, `tmSessionGuard`, `tmParseProfileCookie`), the launch mark (`TmLaunch`) and the single-membership rule (`tmSingleLiveTenant`); the client store (`TmClientStore`, `TmStoreRefusedError`, `TM_DOC_FORMATS`) and the tab bus (`TmTabBus`) with its message catalogue; the boot script's result types and the app clock (`TM_NOW`); the derived router's pieces: the root component (`TmApp`), the route data (`TmRouteData`), the title strategy (`TmTitleStrategy`), the URL builders and classifier (`TmUrls`) with the search query's types, and the entity lookups (`TmEntities`); localization: `TmLocalization` (the language, the regional formats, the calendar and the zones, and their switches with the coalesced locale write), `TmServerText` (server codes and keys through the string packs) and `tmEnglish()`, the platform's English | eager |
 | `@tellma/core/shell` | The tenant shell, the tenant picker and the signed-out page, which the derived routes load; until their owners arrive they are plain stand-ins, beside one placeholder page for the platform's page families | eager, through `import()` |
+| `@tellma/core/memory` | The tab's memory of its pages: page state (`TmPageState`, `tmPageStateKey`), drafts (`TmDrafts`) and tree expansion (`TmTreeExpansion`), which the page hosts load with them | lazy |
+| `@tellma/core/recents` | The recently visited pages (`TmRecents`), which the launcher and the home page list; the app loads it with `import()` after its first render, when visits start to count | lazy, through `import()` after first render |
 | `@tellma/core/config-check` | `tmCheckAppConfig`, the check of an app's configuration against the client metadata, which the build runs in Node and a development app at startup | lazy |
 | `@tellma/core/private` | Wiring shared by the platform's own entry points and packages; no API goldens, no stability guarantee, never imported by app code | — |
 
@@ -118,8 +120,8 @@ The layout is frozen: the boot script's expiry delete uses it too, and both test
   committed (or nothing is on disk), and `false` when the store runs in memory while a database it
   could not reach may hold documents.
 - **The boot step**, `ɵstart(tenantId)`, an initializer of the app's start: it waits for the tab
-  bus, sweeps every user when the boot record names none or another user, reads the device, user
-  and routed tenant partitions in one readonly transaction (a warm launch's only store access),
+  bus, sweeps every user when the boot record names none or another user, reads the device, user,
+  current session and routed tenant partitions in one readonly transaction (a warm launch's only store access),
   records the user in the boot record (unless its sweep could not reach the disk, so the next launch
   sweeps again), and sweeps the user's other sessions at idle after the first render. It never
   rejects: a storage fault after the open puts the tab in memory, cold.
@@ -184,6 +186,74 @@ in flight reports it), and a stale list keeps serving until the newer one
 lands. A refused list stores nothing and is tried again once the caller's grants move. The user's
 tenants and the distribution are read again in the background once per launch, at idle, and the
 tenants on every tenantless route.
+
+### Preferences
+
+`TmPreferences` (`src/state/prefs/`) gives pages typed per-tenant preferences, each declared once
+with `tmPreferenceKey(key, kind, fallback, validate?)`. In development the declaration checks the
+server's key grammar, and the first `get` or `set` checks that the first segment is a platform
+segment (`nav`, `search`, `report`, `dashboard`, `home`, `announcements`, `notifications`, `tm`) or
+a composed feature's key.
+
+- **Reading.** `get(key)` follows the routed tenant: the overlay (the last value this browser set
+  that this tab has seen), else the stored bag `me.preferences`, else the fallback. Values are
+  stored as `JSON.stringify`; each distinct string is parsed once, and one that is not JSON, or
+  fails `validate`, reads as the fallback with `tm.prefs.invalid { family }`.
+- **Setting.** `set` changes the overlay in the same frame, posts `prefs.changed` with the stored
+  string, and schedules the flush; a value deep-equal to the fallback deletes the key, and `reset`
+  does the same. A stored form over 32 KB is refused before it applies (`tm.prefs.dropped
+  too-large`; it throws in development). Outside a tenant, `get` returns the fallback and `set` does
+  nothing. Another tab's value replaces the overlay entry and drops this tab's unsent one; while
+  this tab's write of the key is in flight, the later value stays dirty and is saved after it, so the
+  bag ends on the later choice. An overlay entry ends once the bag holds its string and this tab has
+  nothing unsaved for it.
+- **Flushing.** Curated keys flush at the end of the task, coalesced; write-behind keys 2 s after
+  their last change and at most once per 10 s, at once when the page hides or the stored form
+  exceeds 8 KB; `nav.recent` at most every 5 min, the hidden flush included. A flush writes
+  `users/me/preferences/set` and `/delete` through `TmApi.write` and adopts each result. On
+  `pagehide`, every unsaved key, in-flight ones included, goes through `TmApi.send`, newest first,
+  both bodies within 16 KB (`pagehide-cap` drops the rest). Nothing flushes, and `pagehide` sends
+  nothing, while the tenant's stored state is `Frozen`; the keys flush once it leaves it.
+- **Failures** are silent. `offline`, `unavailable` and `server` keep the keys and retry after 10 s,
+  or at once when `TmApi.online` turns true; `read-only` drops them (`read-only`); the bag's key cap
+  drops the write (`key-cap`); another validation code drops the keys it names (`rejected`) and saves
+  the rest again; a dropped key leaves the overlay and every tab hears its stored string again.
+
+### The tab's memory and recent pages
+
+`@tellma/core/memory` holds what a tab remembers of its pages beyond the store, and loads with the
+page hosts that use it, not with the app; the drafts' storage and keys stay in the primary
+(`src/state/memory/tm-draft-keys.ts`), since the session's sign-in sweep removes a previous user's
+drafts.
+
+- **`TmPageState`** remembers, in memory, up to 20 pages' state by canonical path
+  (`tmPageStateKey`), least recently used out first. `markStale({ tenantId, entity? })` marks the
+  pages `TmUrls.describe` maps to the entity (a hatch's extra segment maps by its host), or every page
+  of the tenant; a move of the tenant's held `permissions` tag does the same, and a change of its
+  languages forgets the tenant's pages. `remember(key, state, { keepStale: true })` keeps a stale
+  mark a write set while the page was away.
+- **`TmDrafts`** keeps unsaved form copies in session storage under `tm.draft:<sub>:<t>:<entity>:<id>`,
+  as `{ v: 1, at, data }`: written 300 ms after the last save and at once when the page hides, refused
+  for another user's key, and counted in `dirtyCount`. A full storage moves this tab's oldest other
+  drafts into memory and retries once; failing that, the draft lives in memory
+  (`tm.drafts.quota-exceeded`).
+- **`TmTreeExpansion`** keeps a tree page's expanded ids in the session partition's `tree:<page>`,
+  oldest first and at most 500, written 250 ms after the last change; each write carries only the
+  changes no earlier write has in flight, and settles only its own. The boot step reads the
+  session partition with the others, so a tree's first load finds them.
+
+`@tellma/core/recents` holds **`TmRecents`**, which lists the routed tenant's ten most recent pages
+from the write-behind key `nav.recent`. The app loads it with `import()` after its first render.
+A visit is a search, report, dashboard, settings, access or custom page, not the drill-through
+list, current for 2 s while visible. Until the page context and the launcher land, the routed page
+comes from `ɵTM_ROUTED_PAGE` (the deepest route's data and the displayed title) and titles, icons
+and access from `ɵTM_RECENTS_NAVIGATION`; the access filter runs on read.
+
+**The dump.** `ɵTmStateDump.read()` (in the primary) builds the state's support-dump section: the
+mirrored documents' partition kinds, stored names and tags, the last sync, and the unsaved
+preference, draft and page-state keys, never a value. The preferences, the drafts and the page
+state report their keys to it through `ɵTM_STATE_PARTS` when they are created, so reading the
+section creates none of them, and a tab that never loaded `@tellma/core/memory` reports no drafts.
 
 ## The HTTP layer
 
@@ -335,15 +405,17 @@ loaded string packs and client tables until the localization service replaces it
 Static imports between entry points follow one graph, always through `@tellma/core/<entry point>`
 and never a relative path: the primary imports no other entry point, `/attention` only the
 primary, `/shell` the primary and `/attention`, and no eager entry point imports a lazy one.
-Dynamic `import()` and `import type` cross any boundary. The lint rule `tm/core-import-boundary`
-enforces the graph, and ng-packagr refuses a cycle between entry points.
+Dynamic `import()` and `import type` cross any boundary, and a spec may reach another entry
+point's test rigs (`*.testing.util.ts`) by a relative path, since no build ships either. The lint
+rule `tm/core-import-boundary` enforces the graph, and ng-packagr refuses a cycle between entry
+points.
 
-The primary reaches `/shell` only through `import()` with a specifier TypeScript does not follow,
-since ng-packagr would count a followed one as a cycle. The components it loads from there are
-named in an internal contract that the shell's component map `satisfies`, so either side's rename
-fails the build. A build or test that compiles the primary from sources in this repository
-compiles only what its program holds, so its tsconfig also extends `tsconfig.lazy-entry-points.json`,
-which lists the lazily loaded entry points.
+The primary reaches `/shell` and `/recents` only through `import()` with a specifier TypeScript
+does not follow, since ng-packagr would count a followed one as a cycle. The components it loads
+from the shell are named in an internal contract that the shell's component map `satisfies`, so
+either side's rename fails the build. A build or test that compiles the primary from sources in
+this repository compiles only what its program holds, so its tsconfig also extends
+`tsconfig.lazy-entry-points.json`, which lists the lazily loaded entry points.
 
 ## Budgets
 

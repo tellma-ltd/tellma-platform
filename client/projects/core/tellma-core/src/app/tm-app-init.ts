@@ -9,9 +9,11 @@ import {
   DOCUMENT,
   type EnvironmentProviders,
   inject,
+  InjectionToken,
   Injector,
   provideAppInitializer,
   provideEnvironmentInitializer,
+  type Type,
 } from '@angular/core';
 import { NavigationEnd, Router } from '@angular/router';
 
@@ -25,6 +27,7 @@ import { TmTelemetry } from '../observe/tm-telemetry';
 import { TmPageFocus } from '../routes/tm-page-focus';
 import { TmLaunchTimer } from '../routes/tm-route-host';
 import { TmSession } from '../session/tm-session';
+import { TmPreferences } from '../state/prefs/tm-preferences';
 import { TmClientStore } from '../state/store/tm-client-store';
 import { TmUrls } from '../urls/tm-urls';
 import type { TmAppConfig } from './tm-app-config';
@@ -39,8 +42,24 @@ import type { TmAppConfig } from './tm-app-config';
 // fails shows the boot page `load-failed`, and the app never starts. Beside them, the router
 // wiring: the routed tenant's `lastTenantId`, focus after navigation and the
 // launch's timing; and
-// after first render, at idle, the Contracts chunk, so the first API call
-// does not wait for it.
+// after first render, the recent pages' entry point, and at idle the
+// Contracts chunk, so the first API call does not wait for it.
+
+/** The recent pages' entry point, as far as the startup reads it. Internal. */
+export interface TmRecentsModule {
+  /** The service that counts visits once created. */
+  readonly TmRecents: Type<unknown>;
+}
+
+/**
+ * Loads the recent pages' entry point. Internal: the startup's seam, which a
+ * test replaces. The specifier is cast so that the package build does not
+ * report the import back as a cycle, as with the shell.
+ */
+export const TM_RECENTS_LOAD = new InjectionToken<() => Promise<TmRecentsModule>>('TM_RECENTS_LOAD', {
+  providedIn: 'root',
+  factory: () => () => import('@tellma/core/recents' as string) as Promise<TmRecentsModule>,
+});
 
 /** A promise that never settles: the app does not start under the boot page. */
 const NEVER = new Promise<never>(() => undefined);
@@ -97,16 +116,32 @@ export function tmStartup(config: TmAppConfig): EnvironmentProviders[] {
       const store = inject(TmClientStore);
       const injector = inject(Injector);
       const window = inject(DOCUMENT).defaultView;
-      // Created now, so the routed tenant is known before the first page's links.
+      const telemetry = inject(TmTelemetry);
+      // Created now, so the routed tenant is known before the first page's links,
+      // and the preferences hear the other tabs' choices from the start.
       inject(TmUrls);
+      inject(TmPreferences);
+      const loadRecents = inject(TM_RECENTS_LOAD);
       inject(TmPageFocus).ɵstart();
       inject(TmLaunchTimer).ɵstart();
-      // After first render, at idle: the Contracts chunk, which the HTTP layer keeps.
-      // An app torn down before its idle moment loads nothing.
+      // After first render: the recent pages' visit count; at idle, the
+      // Contracts chunk, which the HTTP layer keeps.
+      // An app torn down before either moment starts nothing.
       let alive = true;
       inject(DestroyRef).onDestroy(() => (alive = false));
       afterNextRender(
         () => {
+          // Recent pages count visits from the first page on (spec 0025 §13).
+          // Their entry point loads now, off the first frame. A failed load,
+          // or a service that fails to start, counts no visits until the next
+          // launch, and nothing else depends on it.
+          loadRecents()
+            .then((recents) => {
+              if (alive) {
+                injector.get(recents.TmRecents);
+              }
+            })
+            .catch((error: unknown) => telemetry.error(error, { source: 'tm-recents' }));
           const load = (): void => {
             const api = alive ? injector.get(TmApi) : null;
             if (api instanceof TmHttpApi) {

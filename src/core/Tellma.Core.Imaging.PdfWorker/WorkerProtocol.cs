@@ -19,6 +19,13 @@ namespace Tellma.Core.Imaging.PdfWorker
         ///     other processes, and the kernel interfaces exploits favour.
         /// </summary>
         SystemCallFilter = 1,
+
+        /// <summary>
+        ///     The operating system confines the worker's files: it may read only the runtime, its
+        ///     own assemblies and native libraries, and the fonts it renders with; it may write,
+        ///     rename or delete no file at all.
+        /// </summary>
+        FilesystemConfinement = 2,
     }
 
     /// <summary>How the worker answered a request.</summary>
@@ -135,7 +142,8 @@ namespace Tellma.Core.Imaging.PdfWorker
             }
 
             int capabilities = BinaryPrimitives.ReadInt32LittleEndian(frame[4..]);
-            return (capabilities & ~(int)WorkerCapabilities.SystemCallFilter) == 0
+            const int known = (int)(WorkerCapabilities.SystemCallFilter | WorkerCapabilities.FilesystemConfinement);
+            return (capabilities & ~known) == 0
                 ? (WorkerCapabilities)capabilities
                 : throw new InvalidDataException($"The worker's ready frame declares unknown capabilities ({capabilities}).");
         }

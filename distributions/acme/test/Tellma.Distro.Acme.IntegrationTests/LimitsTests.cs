@@ -7,6 +7,7 @@ using System.Diagnostics;
 using System.Net;
 using System.Text.Json;
 using Tellma.Distro.Acme.IntegrationTests.Infrastructure;
+using Tellma.Distro.Acme.TestSupport;
 using Tellma.Identity.TestSupport;
 
 namespace Tellma.Distro.Acme.IntegrationTests

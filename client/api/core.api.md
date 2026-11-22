@@ -1005,6 +1005,30 @@ export type TmPartition = {
 };
 
 // @public
+export interface TmPreferenceKey<T> {
+    readonly fallback: T;
+    readonly key: string;
+    readonly kind: TmPreferenceKind;
+    readonly validate?: (value: unknown) => value is T;
+}
+
+// @public
+export function tmPreferenceKey<T>(key: string, kind: TmPreferenceKind, fallback: T, validate?: (value: unknown) => value is T): TmPreferenceKey<T>;
+
+// @public
+export type TmPreferenceKind = 'curated' | 'write-behind';
+
+// @public
+export class TmPreferences {
+    constructor();
+    get<T>(key: TmPreferenceKey<T>): Signal<T>;
+    reset(key: TmPreferenceKey<unknown>): void;
+    set<T>(key: TmPreferenceKey<T>, value: T): void;
+    static ɵfac: i0.ɵɵFactoryDeclaration<TmPreferences, never>;
+    static ɵprov: i0.ɵɵInjectableDeclaration<TmPreferences>;
+}
+
+// @public
 export interface TmPreferencesResult {
     readonly preferences: Readonly<Record<string, string>>;
     readonly preferencesTag: string;
@@ -1012,6 +1036,7 @@ export interface TmPreferencesResult {
 
 // @public
 export interface TmPrefsChangedMessage {
+    readonly revert?: true;
     readonly tenantId: number;
     readonly type: 'prefs.changed';
     readonly values: Readonly<Record<string, string | null>>;

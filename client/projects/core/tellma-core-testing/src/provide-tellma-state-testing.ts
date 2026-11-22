@@ -4,20 +4,30 @@
 // LICENSE file in the root directory of this source tree.
 
 import { makeEnvironmentProviders, type EnvironmentProviders, type Provider } from '@angular/core';
-import { TmSession, TmTabBus, ɵTM_STORE_HOST, ɵTmLocks, type ɵTmStoreHost } from '@tellma/core';
+import { TmSession, TmTabBus, ɵTM_DRAFTS_STORAGE, ɵTM_STORE_HOST, ɵTmLocks, type ɵTmStoreHost } from '@tellma/core';
 
 import { TmFakeLocks } from './tm-fake-locks';
 import { TmFakeSession } from './tm-fake-session';
 import { TmFakeTabBus } from './tm-fake-tab-bus';
 
 // The client store over no browser storage: no IndexedDB, so the store runs
-// on its mirror alone, and a boot record kept in a map, with locks kept in
-// memory too. A test therefore starts with an empty store and leaves nothing
-// behind for the next one.
+// on its mirror alone, a boot record kept in a map, and drafts kept in
+// another, with locks kept in memory too. A test therefore starts with an
+// empty store and leaves nothing behind for the next one.
 
-/** A local storage held in a map. */
+/** A web storage held in a map. */
 class TmMapStorage {
   readonly #items = new Map<string, string>();
+
+  /** The number of items. */
+  get length(): number {
+    return this.#items.size;
+  }
+
+  /** The key at an index, or `null` past the end. */
+  key(index: number): string | null {
+    return [...this.#items.keys()][index] ?? null;
+  }
 
   /** Reads one item. */
   getItem(key: string): string | null {
@@ -64,9 +74,11 @@ export function tmMemoryStoreProvider(): Provider {
 /**
  * The test providers of the client state: an in-memory `TmClientStore`, a
  * {@link TmFakeTabBus} in place of `TmTabBus`, {@link TmFakeLocks} in place
- * of the browser's locks, and a {@link TmFakeSession} in place of
- * `TmSession`, signed in and active, so the store's write guard passes until
- * the test changes the session. Use it beside `provideTellmaTesting()`.
+ * of the browser's locks, a {@link TmFakeSession} in place of `TmSession`,
+ * signed in and active, so the store's write guard passes until the test
+ * changes the session, and `@tellma/core/memory`'s `TmDrafts` over a session
+ * storage of its own, so no draft outlives the test. Use it beside
+ * `provideTellmaTesting()`.
  *
  * @example
  * ```ts
@@ -82,6 +94,7 @@ export function tmMemoryStoreProvider(): Provider {
 export function provideTellmaStateTesting(): EnvironmentProviders {
   return makeEnvironmentProviders([
     tmMemoryStoreProvider(),
+    { provide: ɵTM_DRAFTS_STORAGE, useFactory: () => new TmMapStorage() },
     TmFakeTabBus,
     { provide: TmTabBus, useExisting: TmFakeTabBus },
     TmFakeLocks,
