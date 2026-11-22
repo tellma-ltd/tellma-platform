@@ -384,6 +384,14 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-226 (orchestrator, 2026-11-22): the startup dir test is fixed through PC-F71; PC-F72 opened
+
+Since about 16:38 UTC, tm-localization.spec's startup test fails on both OSes: the document dir is ltr when rtl is expected. It fails on platform-core's PR run 45044779464 (08ebc1cc, PC-104's code) and on PC-F71's gate run 45046747313. PC-104's own gate run passed it at 16:08 UTC on the same code, so the failure depends on time or environment and is now deterministic. It blocks every integration's CI.
+
+No slot is free: pc-1 is PC-F69, pc-2 PC-189, pc-3 PC-F71, pc-4 PC-F70 (held), pc-f PC-176 and pc-f2 PC-182. PC-F71 is next in the release order and is blocked by this test anyway, so its agent root-causes and fixes the test as "PC-F71: integrate (CI fixes)". The fix makes the cause deterministic. It does not weaken the assertion or add a retry (D-011/D-113).
+
+The same PR run also failed ScheduleTests.A_schedule_paused_for_its_inactive_owner… once (Assert.True at ScheduleTests.cs:516, ubuntu). It passed on the pc run of the same code and on PC-F71's run. PC-F72 root-causes it in the next free slot, ahead of T3. A red CI that stops only integrations is not notified (§9).
+
 ### D-225 (orchestrator, 2026-11-22): PC-104 landed; "." at 38.5 KB; PC-F69 launched; PC-F71 released
 
 PC-104 landed at 5bfbd41c. After the merge, "." measured 38.49 KB, so its ceiling was set to 38.5 KB, within D-224's 39 KB cap.
