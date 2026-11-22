@@ -144,9 +144,22 @@ namespace Tellma.Core.Tests.Calendars
 
             Assert.Equal(0, UmAlQuraExtendedCalendar.DaysIn(9667, 1));
             Assert.Null(UmAlQuraExtendedCalendar.Compose(9667, 1, 1));
-            Assert.Equal("month", Assert.Throws<ArgumentOutOfRangeException>(() => calendar.GetDaysInMonth(9667, 1)).ParamName);
+            Assert.Equal("year", Assert.Throws<ArgumentOutOfRangeException>(() => calendar.GetDaysInMonth(9667, 1)).ParamName);
             Assert.Equal("year", Assert.Throws<ArgumentOutOfRangeException>(() => calendar.GetDaysInYear(9667)).ParamName);
             Assert.Equal("year", Assert.Throws<ArgumentOutOfRangeException>(() => calendar.IsLeapYear(9667)).ParamName);
+        }
+
+        [Fact]
+        public void A_month_length_refusal_names_the_argument_at_fault()
+        {
+            // The year is checked first, so a valid month of a missing year blames the year.
+            Calendar calendar = System.Calendar;
+
+            Assert.Equal("year", Assert.Throws<ArgumentOutOfRangeException>(() => calendar.GetDaysInMonth(0, 1)).ParamName);
+            Assert.Equal("year", Assert.Throws<ArgumentOutOfRangeException>(() => calendar.GetDaysInMonth(9667, 13)).ParamName);
+            Assert.Equal("month", Assert.Throws<ArgumentOutOfRangeException>(() => calendar.GetDaysInMonth(9666, 0)).ParamName);
+            Assert.Equal("month", Assert.Throws<ArgumentOutOfRangeException>(() => calendar.GetDaysInMonth(1447, 13)).ParamName);
+            Assert.Equal("era", Assert.Throws<ArgumentOutOfRangeException>(() => calendar.GetDaysInMonth(1447, 1, 2)).ParamName);
         }
 
         [Fact]

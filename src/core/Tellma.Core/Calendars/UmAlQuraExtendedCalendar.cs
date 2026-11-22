@@ -237,9 +237,10 @@ namespace Tellma.Core.Calendars
         /// <inheritdoc />
         public override int GetDaysInMonth(int year, int month, int era)
         {
-            CheckEra(era);
-            int days = DaysIn(year, month);
-            return days > 0 ? days : throw new ArgumentOutOfRangeException(nameof(month), month, "The year and month do not name a month the calendar supports.");
+            CheckYear(year, era);
+            ArgumentOutOfRangeException.ThrowIfLessThan(month, 1);
+            ArgumentOutOfRangeException.ThrowIfGreaterThan(month, 12);
+            return DaysIn(year, month);
         }
 
         /// <inheritdoc />
