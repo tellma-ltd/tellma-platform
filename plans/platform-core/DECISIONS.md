@@ -384,6 +384,26 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-199 (orchestrator, 2026-11-22): PC-F17 Review 1 rulings
+
+Review 1 found 0/1/3. It confirmed:
+- no per-row state leaks between rows that share a slot, and keyed consumer views stay with their row;
+- window coverage and slice ordering are sound, and programmatic scrolls never slice;
+- the probes are honest (40 steps, 50 ms unchanged);
+- the ARCHITECTURE.md edit matches the code;
+- the ./grid raise to 41.23 KB (measured 41.14) is within D-031.
+
+Fixed in fix1:
+- R1-1 (major): pressing a checkbox, scrolling with the wheel while held, then releasing can toggle another row's selection, or check a range with Shift. A replay put the pressed element under the pointer on another row in about 7% of 100 px notches and 28% of screen-sized steps. Guard it the way the tiles' `pressedElsewhere` does, with a failing-first unit test.
+- R1-2: give the `window` computed an `equal`, so the slice-ending timeout stops re-rendering every row, and re-measure.
+- R1-3: a grid-level test for the active-row slot retire.
+- R1-4: the probes stay unthrottled, like the existing tree and tiles probes, recorded as a named deviation.
+- Deviation 1's citation is corrected from 0004 §5 to §4.
+
+For Ahmad: 0004 §16 measures the scroll budget under a mid-tier mobile CPU throttle, but none of the three @perf probes (tree, tiles, flat grid) applies one. Either drop the throttle from §16, or have a later item add a throttled probe and fund the cuts it would need. Also, §4 says tracking rows by id reuses row views, but in fact it re-creates them, so §4 should describe slot tracking.
+
+PC-F17 holds after fix1. Release order: PC-175 (in CI), then PC-F67, then PC-F17.
+
 ### D-198 (orchestrator, 2026-11-22): PC-F67 Review 1 rulings
 
 Review 1 found 0/0/2 and judged the fix sound. In Microsoft.AspNetCore.OpenApi 10.0.11, exactly one service takes the HTTP JSON options, and it is the one replaced. The depth-128 options never reach bodies, answers or the hub (SignalR has its own options), so all of those stay at 16. A package bump fails startup or the document tests. The wire and the fingerprint (1UjYUCJx3WE2) are unchanged, and the diff does not touch PC-F68's path.
