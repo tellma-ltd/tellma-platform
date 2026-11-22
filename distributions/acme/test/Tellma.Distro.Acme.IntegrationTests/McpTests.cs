@@ -312,7 +312,12 @@ namespace Tellma.Distro.Acme.IntegrationTests
                 },
                 host.Server.CreateClient(),
                 ownsHttpClient: true);
-            return await McpClient.CreateAsync(transport, cancellationToken: Token);
+
+            // The SDK abandons its discover probe after five seconds, and a freshly started host's
+            // first request builds the route matcher before anything else runs, which under load
+            // takes longer. Over the in-memory server the abandoned probe's answer can still arrive
+            // and fail the connect, so the probe is bounded by the connect's whole budget alone.
+            return await McpClient.CreateAsync(transport, new McpClientOptions { DiscoverProbeTimeout = Timeout.InfiniteTimeSpan }, cancellationToken: Token);
         }
 
         /// <summary>Calls a tool and asserts it succeeded.</summary>

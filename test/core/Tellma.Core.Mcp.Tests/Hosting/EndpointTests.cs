@@ -71,6 +71,18 @@ namespace Tellma.Core.Mcp.Tests.Hosting
         }
 
         [Fact]
+        public async Task A_door_slower_than_the_sdk_s_default_discover_probe_is_waited_out_in_one_request()
+        {
+            int before = McpHost.ColdDoorRuns.Reads;
+
+            await using McpClient client = await fixture.ConnectAsync(1, McpHost.Token(McpHost.Resource(1), subject: McpHost.ColdDoor));
+
+            // An abandoned probe would have run the door again for the initialize that follows it, or failed the connect.
+            Assert.Equal("Tenant 1 (Acme ERP)", client.ServerInfo.Title);
+            Assert.Equal(before + 1, McpHost.ColdDoorRuns.Reads);
+        }
+
+        [Fact]
         public async Task A_stranger_s_valid_token_learns_no_tenant_and_every_call_is_refused()
         {
             await using McpClient client = await fixture.ConnectAsync(1, McpHost.Token(McpHost.Resource(1), subject: TellmaTestHost.Stranger));
