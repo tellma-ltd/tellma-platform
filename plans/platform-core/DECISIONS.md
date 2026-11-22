@@ -384,6 +384,18 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-229 (orchestrator, 2026-11-22): Tier 1 was unblocked and left idle; slots re-ordered
+
+PC-107 and PC-104 landed and made PC-105 (0029-b), PC-106 (0027-a) and PC-108 (0025-c) ready. I did not re-run check_deps --ready at those landings, so PC-F69 (mandated by D-214) and PC-F72 (a once-seen flake that blocks nothing) took the freed slots, and the T3 fills kept theirs. Ahmad noticed that no T1 item was in flight.
+
+Correction:
+- PC-F72 was stopped minutes after launch, before it had committed or changed anything. PC-105 takes pc-3.
+- PC-106 takes pc-4 when PC-F70 lands. PC-108 takes pc-1 when PC-F69 lands.
+- PC-F72 returns to todo, behind the ready T1 items. D-140/D-173 put fix items ahead of T3, not ahead of T1, unless the fix blocks CI.
+- The T3 fills (PC-176, PC-182, PC-189) keep their slots. Each is well into its cycle, and §3 lets a fill finish.
+
+Process: after every landing I re-run check_deps --ready and assign freed slots in this order: blocking fixes, then T1, then T2, then non-blocking fixes, then T3 fills.
+
 ### D-228 (orchestrator, 2026-11-22): PC-F69 Review 1 rulings; the "." shares go to Ahmad
 
 PC-F69 Review 1 found 0/0/3. Its own probes confirmed the claim: boot keeps every service class of "." on the first frame, so no sizable service can move to a secondary entry point without becoming asynchronous.

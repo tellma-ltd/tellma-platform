@@ -115,7 +115,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-182 | pc-f2 | pc/PC-182 | fix1 | T3 fill (D-140); only T3 ready; usage 36% at 15:50 UTC, on pace; impl 2bb25b2c (14 deviations; OwnerId ServerOwned not Derived (0012 §9.1 refuses derived column updates); reports category hard-coded per shareable; delete leaves share notices; user select Name2/3 fix; integration 12/12); R1 0/3/4 (delete leaves share notices; shares extra leaks other grantees via related; caps and grantee checks untested; ArgumentsJson unasserted; ReportShare client metadata; delete-by-query contradiction; reports category); fix1 then hold; D-227 | 3; R1 only | 2026-11-22 |
 | PC-189 | pc-2 | pc/PC-189 | impl | T3 fill (D-140); only T3 ready | 3; R1 only | 2026-11-22 |
 | PC-F69 | pc-1 | pc/PC-F69 | fix1 | re-split "." (38.49/38.5 KB after PC-104) by spec family; D-214, D-225; impl be5219bc (no new entry points: boot reaches nearly every family, so a move saves only in the measure; TmDecimals pure annotation, first frame 37.79 to 37.10 KB; "." stays 38.49/38.5; 4 candidates listed and not made; Acme compiles core from sources); R1 0/0/3 (claim verified independently: boot keeps every service class; pure annotation safe and checked; split basis mislabelled; candidate 3 overstated; D-216 flush carry unnamed); fix1 then hold; D-228 | fix; R1 only | 2026-11-22 |
-| PC-F72 | pc-3 | pc/PC-F72 | impl | ScheduleTests root-cause (D-226) | fix; R1 only | 2026-11-22 |
+| PC-105 | pc-3 | pc/PC-105 | impl | T1; slot freed from PC-F72 (D-229) | 1; R1 only | 2026-11-22 |
 
 ## Fix items
 
@@ -191,7 +191,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-F69 | Re-split the @tellma/core primary entry point by spec family (D-031 revisit clause: the "." ceiling has risen seven times, four under D-031; 0024's services ~22 KB against their 14 KB §12 share after PC-103; D-200) | in progress (pc-1; D-214, D-225) | | | from PC-103 R1-4 |
 | PC-F70 | Platform never emits the ApiSecurableAuditFailed log event (0016 §10.1): TellmaEndpointAudit throws at startup without logging it; emit it before the throw and assert it in a unit test | in progress (pc-4) | | | from PC-095 fix1 (D-209) |
 | PC-F71 | Server UmAlQuraExtendedCalendar.DaysIn(9666, month >= 5) throws, so the shared calendar vectors stop at AH 9665; fix the extended range or bound it explicitly with a refusal and a test | done (d5421aa9; pc 45053120869 green on d5421aa9) | 071cc228, 492510e3, bef9b90b, 0c996709, d5421aa9 | from PC-104 impl |
-| PC-F72 | Core IntegrationTests ScheduleTests.A_schedule_paused_for_its_inactive_owner_is_taken_over_then_activated_and_its_notice_withdrawn_with_the_commit: Assert.True failure at ScheduleTests.cs:516 (ubuntu integration, PR run 45044779464 on 08ebc1cc; green on pc run 45042095713, same code); root-cause, no retry (D-011) | in progress (pc-3) | | | from PR run 45044779464 (D-226) |
+| PC-F72 | Core IntegrationTests ScheduleTests.A_schedule_paused_for_its_inactive_owner_is_taken_over_then_activated_and_its_notice_withdrawn_with_the_commit: Assert.True failure at ScheduleTests.cs:516 (ubuntu integration, PR run 45044779464 on 08ebc1cc; green on pc run 45042095713, same code); root-cause, no retry (D-011) | todo (after the ready T1 items, D-229) | | | from PR run 45044779464 (D-226) |
 | PC-F02 | systemic e2e flakiness: CI 42456030333 red on 5250c6c (plans-only) with 4 NEW flaky tests | done (R1 1/1/2; CI 42471952389 green), pc-f free | 2c91df4, 4c36d45, 4c89ae1 | 11.32M | grid bundle at its 38 KB ceiling; picker same-frame Enter race open | root-cause all 9; un-quarantine the fixed PC-F01 five |
 
 ## Batch reviews (one per phase)
@@ -427,7 +427,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-102 | 0029-f | 1 | done (1b83923c; green 44655600178) | c586d072, 2187f29c, 1b83923c | | D-136, D-138 |
 | PC-103 | 0024-g | 1 | done (257f1ed6; pc 45004914780 green on 257f1ed6; PR run 45006613021) | 93091a54, 0052365e, 155d35a1, 257f1ed6 | | carry from PC-094: replace Acme's interim main.ts (bootstrapApplication) and AcmeApp with bootstrapTellma/TmApp |
 | PC-104 | 0024-h | 1 | done (5bfbd41c; pc 45042095713 green on 5bfbd41c) | 2330b361, 8dbe71bf, 7f087f0d, 5bfbd41c | | carry from PC-094: switch Acme to tmEnglish()/tmArabic() and cut angular.json styles to src/styles.css importing @tellma/core/styles.css and @tellma/locale-ar/styles.css |
-| PC-105 | 0029-b | 1 | todo | | | |
+| PC-105 | 0029-b | 1 | in progress (pc-3) | | | |
 | PC-106 | 0027-a | 1 | todo | | | |
 | PC-107 | 0025-e | 1 | done (5a41bd43; pc 45037802056 green on 5a41bd43; PR run 45040306696) | 7c63b401, e9406aaf, a0919af3, 5a41bd43 | | |
 | PC-108 | 0025-c | 1 | todo | | | carry (D-216): add the leader member to PC-107's state dump |
