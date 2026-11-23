@@ -88,16 +88,21 @@ key is the declaration or file concerned and the feature its owner (the distribu
 own files). `label-missing` and `budget-warning` are warnings, which print and pass.
 
 **Budgets.** `initialJs` (warn 230 KB, error 260 KB), `initialCss` (40), `searchRoute` (110),
-`detailsRoute` (80), `echartsEngine` (170), `workerShell` (warn 1,536), `corePrimary` (50),
-`codedReports` (16) and `bootScript` (3 KB for the script with English, plus 0.4 KB per further
-string table). `corePrimary` is the `@tellma/core` primary entry point's own weight on the first
-frame: the code its modules (the module it starts at and every module reached from it through
-relative imports, whether from the built package or its sources) contribute to the initial
-JavaScript, cut out of those files through their hidden source maps and compressed alone. Primary
-code the app never uses is shaken out first, and primary code that loads with `import()` later is
-not on the first frame, so neither counts; the build fails when a file holding primary code has no
-source map. It complements the per-entry-point ceilings `size:check` holds the package to, which
-measure the whole entry point on its own. Every
+`detailsRoute` (80), `echartsEngine` (170), `workerShell` (warn 1,536), `corePrimaryFirstFrame`
+(50), `codedReports` (16) and `bootScript` (3 KB for the script with English, plus 0.4 KB per
+further string table).
+
+`corePrimaryFirstFrame` is the `@tellma/core` primary entry point's code on this app's first frame:
+what its modules (the module it starts at and every module reached from it through relative
+imports, whether from the built package or its sources) contribute to the initial JavaScript, cut
+out of those files through their hidden source maps and compressed alone. Primary code the app
+never uses is shaken out first, and primary code that loads with `import()` later is not on the
+first frame, so the figure is a lower bound of the primary's own weight, not its cap: the
+platform's `size:check` holds the whole entry point to the 50 KB cap, and this line lets a
+distribution check the same level on its own app. A build in which no module is the primary's, no
+initial file holds its code, or a file's source map disagrees with the stats' count of its primary
+bytes (beyond 1% under or 3% over, plus 64 bytes) reports `budget-unmeasurable`; a file holding
+primary code without a source map fails the build. Every
 lazily loaded chunk no budget covers, a `@defer` block's or a distribution route's, prints on a
 line of its own, `lazy:<the module it starts at>`, with no level: its static imports beyond the
 initial set. A distribution sets a level in `package.json`; a raise needs a note:

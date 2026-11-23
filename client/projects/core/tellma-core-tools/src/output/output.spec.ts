@@ -49,7 +49,7 @@ describe('the chunk graph', () => {
         inputs: {},
         outputs: {
           'main-A.js': {
-            inputs: { 'src\\main.ts': {} },
+            inputs: { 'src\\main.ts': { bytesInOutput: 120 }, 'src/empty.ts': { bytesInOutput: 0 } },
             imports: [
               { path: 'chunk-B.js', kind: 'import-statement' },
               { path: 'chunk-C.js', kind: 'dynamic-import' },
@@ -68,7 +68,8 @@ describe('the chunk graph', () => {
     expect([...graph.outputs.keys()]).toEqual(['main-A.js', 'chunk-B.js', 'chunk-C.js']);
     expect(graph.outputs.get('main-A.js')).toEqual({
       path: 'main-A.js',
-      inputs: ['src/main.ts'],
+      inputs: ['src/main.ts', 'src/empty.ts'],
+      bytes: { 'src/main.ts': 120, 'src/empty.ts': 0 },
       imports: [
         { path: 'chunk-B.js', kind: 'static' },
         { path: 'chunk-C.js', kind: 'dynamic' },
@@ -99,6 +100,11 @@ describe('the chunk graph', () => {
             imports: [
               { path: 'src\\app.ts', kind: 'import-statement', original: './app' },
               { path: 'lib/x.ts', kind: 'dynamic-import', original: '../lib/x' },
+              // A folder's index, named by the folder alone, is relative too.
+              { path: 'src/index.ts', kind: 'import-statement', original: '.' },
+              { path: 'index.ts', kind: 'import-statement', original: '..' },
+              // A package whose name starts with dots is not.
+              { path: 'node_modules/.hidden/x.js', kind: 'import-statement', original: '.hidden' },
               { path: 'node_modules/@angular/core/fesm2022/core.mjs', kind: 'import-statement', original: '@angular/core' },
               { path: '<runtime>', kind: 'import-statement' },
               { path: 'https://example.com/x.js', kind: 'import-statement', external: true, original: 'https://example.com/x.js' },
@@ -114,6 +120,9 @@ describe('the chunk graph', () => {
     expect(graph.modules.get('src/main.ts')!.imports).toEqual([
       { path: 'src/app.ts', relative: true },
       { path: 'lib/x.ts', relative: true },
+      { path: 'src/index.ts', relative: true },
+      { path: 'index.ts', relative: true },
+      { path: 'node_modules/.hidden/x.js', relative: false },
       { path: 'node_modules/@angular/core/fesm2022/core.mjs', relative: false },
       { path: '<runtime>', relative: false },
     ]);

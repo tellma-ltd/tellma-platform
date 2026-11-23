@@ -631,3 +631,10 @@ this repository compiles only what its program holds, so its tsconfig also exten
 Each entry point's gzipped weight, as a production app ships it after the Angular linker, has a
 ceiling in `package.json` (`"tellma".budgetsInKb`), checked by `pnpm run size:check`; every raise
 carries a note beside it.
+
+The primary entry point also has the platform's cap of 50 KB at gzip level 9 on that same weight,
+which `size:check` holds it to: the whole entry point, every member counted whether or not an app
+uses it, its `import()`-only chunks apart. Raising it takes `"tellma".capsInKb` with a note,
+`{ ".": { "error": 52, "note": "…" } }`. A distribution's `tellma-client build` also prints the
+primary's code on its own app's first frame (`corePrimaryFirstFrame`), held to the same 50 KB: a
+lower bound of this weight, since an app ships only the members it uses.

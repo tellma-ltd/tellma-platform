@@ -97,7 +97,7 @@ describe('tellma-client build on the fixture app', () => {
     expect(first.code).toBe(TM_CLI_EXIT.success);
     expect(first.out).toContain('Built with 0 error(s) and 0 warning(s).');
     expect(first.out).toMatch(/^initialJs +\d+\.\d\d +\d+\.\d\d +230 +260 +\d+$/m);
-    expect(first.out).toMatch(/^corePrimary +\d+\.\d\d +\d+\.\d\d +- +50 +[1-9]\d*$/m);
+    expect(first.out).toMatch(/^corePrimaryFirstFrame +\d+\.\d\d +\d+\.\d\d +- +50 +[1-9]\d*$/m);
     // The lazy page, which no budget covers, prints on a line of its own with no level.
     expect(first.out).toMatch(/^lazy:src\/app\/review-page\.ts +\d+\.\d\d +\d+\.\d\d +- +- +\d+$/m);
   });
@@ -256,10 +256,10 @@ describe('the output checks on the fixture app', () => {
       expect(exceeded.err).toMatch(/^budget-exceeded budget:initialCss fixture - [\d.]+ KB gzip is over the budget's error level of 0\.1 KB\.\n$/);
 
       // The primary's line fails the same way; a lowered level needs no note.
-      budgets({ corePrimary: { error: 0.1 } });
+      budgets({ corePrimaryFirstFrame: { error: 0.1 } });
       const primary = await rebuild(() => undefined);
       expect(primary.code).toBe(TM_CLI_EXIT.problem);
-      expect(primary.err).toMatch(/^budget-exceeded budget:corePrimary fixture - [\d.]+ KB gzip is over the budget's error level of 0\.1 KB\.\n$/);
+      expect(primary.err).toMatch(/^budget-exceeded budget:corePrimaryFirstFrame fixture - [\d.]+ KB gzip is over the budget's error level of 0\.1 KB\.\n$/);
 
       budgets({ initialJs: { warn: 1 } });
       const warned = await rebuild(() => undefined);

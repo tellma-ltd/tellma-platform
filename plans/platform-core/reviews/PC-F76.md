@@ -137,3 +137,200 @@ That is an estimate only. The gate measures their real weight after PC-115 lands
   the source index relative across lines) and the UTF-16 column assumption.
 - The first-frame set: it is `initialJs`, the set the `initialJs` budget measures. The /shell and
   /attention modulepreloads are counted, per D-205.
+
+## Review 1
+
+Reviewed 9cdbdeb7 against spec 0024 §12 and §2.6 step 6, the PC-F76 ledger row, and D-031, D-205,
+D-214, D-247 and D-248.
+
+Run here:
+- The four changed spec files without the fixture (`budgets`, `output`, `source-attribution` and
+  `build`): 48/48 passed.
+- `build.fixture.spec.ts`, with its real `ng build`: 12/12 passed in 86 s.
+- The pc/PC-F76 push run was skipped, so it gives no evidence.
+- A probe over the slot's Acme output (`dist/acme`, built from this commit's tools):
+  - 91 primary modules. The stats count 113,713 B in the initial files and the maps attribute
+    114,567 B, so the commit's figures reproduce.
+  - No import lacks `original`.
+  - The primary reaches `/shell`, `/leader` and `/recents` only through package-name imports, so
+    they stay out.
+  - No `tellma-core/src` JS module falls outside the closure. The only ones outside are three
+    component stylesheets, which go to CSS outputs.
+  - 14 primary modules have no bytes in any output.
+- Angular's chunk optimizer cannot desync the maps from the metafile, because step 1 runs
+  `ng build` with `NG_BUILD_OPTIMIZE_CHUNKS=false` (`build.ts:137`).
+
+Checked and confirmed:
+- The 50 KB level matches the shares: 14 + 4 + 9 + 6 + 5 + 2.5 + 6 + 2 + 0.6 + 0.6 = 49.7, which
+  rounds up to 50. So deviation 2 (a fixed 50 rather than a computed sum) loses nothing today.
+- The key name (deviation 1) is fine.
+- `budget-note-missing` (exit 3, before `ng build`) and `budget-exceeded` (exit 3) behave as for
+  every other line, and both are tested. A missing map is a `TmBuildFailure` (exit 2), like the
+  step's other output faults.
+- The VLQ decoder handles 1, 4 and 5 fields and the cross-line source delta correctly. Columns are
+  UTF-16 code units, as esbuild writes them.
+- Paths are normalised on both sides, and esbuild writes forward slashes on Windows too.
+- Map sources and metafile inputs agree because Angular's `outdir` is the workspace root and JS
+  outputs are flat.
+- The fixture test adds no second `ng build`: it reuses the snapshot, and its tolerance held with
+  room on Acme (+0.75%).
+
+### Findings
+
+**R1-1 (major): the measure leaves out primary members that Acme does not reach, so it is not the
+"own weight" the spec caps, and it runs about 7 KB below the figure the 50 KB accounting uses.**
+`client/projects/core/tellma-core-tools/src/checks/budgets.ts:212-228` (and the
+`corePrimary` label at `:65`).
+
+The line weighs only the primary code that survives Acme's tree shaking and lands in initial
+files. Spec 0024 §12 caps "the `@tellma/core` primary's own weight, the sum of its shares". The
+shares are allocations of entry-point members, whether or not an app uses them:
+- 0025 §1: "at most 9 KB gzip, its share of the primary".
+- 0028 §1's table: "Budget (gzip, own weight)" per entry point, with the members listed.
+- 0002 §8 defines self/own weight as the entry point's weight with shared Angular excluded.
+
+No spec text makes the figure depend on what one app consumes.
+
+The project's own accounting uses the whole-entry measure, not this one:
+- Every `"."` budget note in `tellma-core/package.json` says "The primary's 50 KB total is not
+  reached" on the linked whole-entry measure.
+- D-247 projects 50.4 KB on that measure.
+- D-248 moves `tmSerializePageContext` lazy to get under 50.
+
+D-205 R2-6 is about counting modulepreloaded bytes honestly. It does not support a figure that
+leaves out unconsumed members.
+
+Failure scenarios:
+- PC-111, PC-109 and PC-115 take size:check's `"."` to about 50.4 KB, the overrun D-247 wanted
+  stopped. This line reads about 42.5 KB (the implementer's own estimate) and passes.
+- The primary can hold 7 KB or more of spec'd but unconsumed members, and that grows with every
+  member that lands ahead of its consumer. The line fires only when a consumer lands. For example,
+  0027's shell registering shortcuts would pay for `tm-shortcuts.ts` bytes added long before. So
+  the failure lands late, on the wrong checkpoint, which then has to cut bytes it did not add.
+- The figure depends on the distribution. Only Acme is gated in CI, so another distribution that
+  uses more of the primary can fail its own build over the platform's cap while the platform's CI
+  stays green.
+
+Deviation 3 justifies cutting the code out instead of gzipping it in context or pro-rating it. It
+does not justify dropping unconsumed members, which is the larger effect.
+
+The reading I think is right: the cap is on the whole primary entry point's own code, meaning
+every member and its eager split chunks but not its `import()`-only chunks, at gzip level 9. That
+is size:check's linked measure of `"."` at level 9.
+
+Suggested fix: enforce the 50 KB cap on the whole-entry measure. The app build cannot see code it
+shook out, and Acme compiles the primary from sources, so that measure belongs in `size:check`:
+- measure `"."` also at gzip level 9;
+- fail it over a platform-held 50 KB level that only a noted raise moves;
+- refuse a `"."` ceiling in `budgetsInKb` above that level without such a note.
+
+Keep this commit's line as a second, app-level figure, renamed or relabelled "on the first frame".
+That figure is useful, and it is what the user downloads.
+
+If the orchestrator rules for the first-frame reading instead:
+- restate D-247 and D-248's projections and the budget notes' "50 KB total" claims on this
+  measure;
+- record under deviation 3 that unconsumed members do not count, and the roughly 7 KB that leaves
+  out today;
+- raise it with Ahmad.
+
+**R1-2 (major): if the primary's root module is not found, the line silently reads 0.00 KB and
+passes.**
+`client/projects/core/tellma-core-tools/src/output/stats.ts:222` (`CORE_PRIMARY_ROOT`), `:128`
+(`metafile.inputs ?? {}`), and `budgets.ts:218-228`.
+
+The root is found by a hard-coded path pattern: `@tellma/core/fesm2022/tellma-core.mjs` or
+`tellma-core/public-api.ts`. When nothing matches, `primary` is empty, `holding` is `[]`, and the
+"attribute none" guard (`holding.length > 0 && …`) does not fire. The figure is
+`tmCompressedSize('')` with 0 files, and the line passes. Three ways this happens:
+- a stats file without `inputs`, which `read` accepts;
+- an Angular Package Format change to the `fesm2022` folder or the FESM name;
+- the workspace moving `public-api.ts`.
+
+Every distribution's app imports the primary (`bootstrapTellma`), so an empty set is always a
+fault, never a real 0. The existing test at `budgets.spec.ts:136` ("No module of the
+@tellma/core primary is in this build", `files` 0) encodes the silent zero.
+
+Suggested fix: throw a `TmBuildFailure` when `tmCorePrimaryModules` finds no root. Better still,
+throw when no initial file holds a primary module that has bytes in its output. Give the
+general-budget test graph a primary module, and add a test where the root is missing that expects
+the failure.
+
+**R1-3 (minor): the mismatch guard is all-or-nothing, so a partial mismatch under-counts silently.**
+`client/projects/core/tellma-core-tools/src/checks/budgets.ts:220-228`.
+
+The build fails only when every holding file attributes nothing. Suppose one file's map names its
+sources differently from the stats, or attributes only part of that file's primary code: a
+post-processed chunk, a mixed vendor-map setup, or a later builder change to one output kind. That
+file's share then drops out of the figure with no error.
+
+The invariant that would catch this, that attributed bytes agree with the stats' `bytesInOutput`
+(within -1% / +3% + 64 B), is checked only in `build.fixture.spec.ts` on the fixture. The build
+never checks it.
+
+Suggested fix: keep each input's `bytesInOutput` in `TmBuildOutput` when reading the metafile.
+In `tmMeasureBudgets`, per holding file, compare the attributed raw bytes with the stats' count for
+the primary's modules in that file, and fail with `TmBuildFailure` below the test's lower bound. A
+file whose primary modules have 0 bytes, such as the re-export list, then needs no special case.
+Add a unit test where one of two maps names its sources differently.
+
+**R1-4 (minor): a bare `'.'` or `'..'` specifier counts as a package import, so its subtree leaves
+the primary.**
+`client/projects/core/tellma-core-tools/src/output/stats.ts:133`.
+
+`/^\.\.?[\\/]/` needs a slash after the dots. `import { x } from '..'` (a folder's `index.ts`) or
+`from '.'` is relative, but it is marked as by package name. The module it names, and everything
+reached only through it, then falls out of the closure without a word. The primary has no such
+import today (I grepped), and no lint rule I know of forbids one.
+
+Suggested fix: `/^\.\.?(?:[\\/]|$)/`, with a case in `output.spec.ts`.
+
+### Responses
+
+- R1-1: fixed in fix 1, per D-251.
+  - The 50 KB cap of spec 0024 §12 is enforced on the whole primary entry, in `size:check`:
+    - `client/tools/bundle-caps.mjs` holds the platform's caps: `@tellma/core` `"."` at 50 KB,
+      measured at gzip level 9.
+    - The cap is measured on the same linked, bundled-alone weight as the ceiling. Every member
+      counts. The `import()`-only chunks budgeted on their own (`tm-entity-model`,
+      `tm-locale-write`) stay out, as they do for the ceiling.
+    - `createBundleMeasurer` now returns the default-level and level-9 gzip of one bundle, so the
+      cap costs no second bundle.
+    - A library raises a cap only through `"tellma".capsInKb: { ".": { "error": …, "note": "…" } }`.
+      A raise without a non-blank note fails the gate, and so does a cap the platform does not
+      set. A lower level needs no note.
+    - `size:check` prints `@tellma/core (cap, gzip 9)` beside the ceiling and fails `OVER CAP`.
+    - Tests are in `client/tools/tests/bundle-caps.spec.mts`: over fails, at or under passes, a
+      noted raise moves the line, a raise without a note fails (missing, empty, blank), a lower
+      level needs no note, and malformed settings and unknown caps are refused.
+  - Measured on this branch's base: the cap line reads **44.90 KB** against 50 (headroom 5.10). The
+    ceiling line reads 44.97 against 45 at the default level.
+  - The `tellma-client build` line keeps its 50 KB level, restated as the first-frame figure, a
+    lower bound and not the cap:
+    - it is renamed `corePrimaryFirstFrame` (`TM_CORE_PRIMARY_FIRST_FRAME`);
+    - its label, the file comment, the core-tools README and `@tellma/core`'s README say so.
+  - Deviation 3 is restated in the fix commit: there are two measures, and the whole-entry one
+    is the cap.
+- R1-2: fixed in fix 1. The figure is never a silent zero. The line is reported as the new
+  problem `budget-unmeasurable` (an error, exit 3, keyed `budget:corePrimaryFirstFrame`), with its
+  own message, in two cases:
+  - no module matches the primary root;
+  - no initial file holds primary bytes.
+  The general budget test now expects that problem instead of `files` 0. New tests cover a
+  missing root and an initial set without the primary.
+- R1-3: fixed in fix 1.
+  - `TmBuildGraph.read` keeps each output's `bytesInOutput` per module (`TmBuildOutput.bytes`).
+  - The measure compares each file's attributed bytes with the stats' count for the primary's
+    modules in that file. A file whose primary modules have no code there, such as the re-export
+    list, is skipped.
+  - A file outside the band reports `budget-unmeasurable`, naming the file and both counts. The
+    band is 1% under or 3% over, plus 64 bytes.
+  - Measured drift on Acme: +0.63% and +0.86% on the two large files, and +15 B (about +4%) on the
+    two one-module files. Nothing ever came in under.
+  - The 64 bytes absorb the separators on small files. The 1% under catches a lost module of any
+    real size, and the 3% over catches foreign code given to the primary.
+  - The all-or-nothing "attribute none" failure is gone; the per-file check replaces it.
+  - Tests: one file's map naming its module by another path, a map over the band, and glue within
+    the band. The fixture build's real-builder check stays.
+- R1-4: fixed in fix 1. The pattern is `/^\.\.?(?:[\\/]|$)/`. `output.spec.ts` now covers `.` and
+  `..` as relative, and a `.hidden` package name as not relative.

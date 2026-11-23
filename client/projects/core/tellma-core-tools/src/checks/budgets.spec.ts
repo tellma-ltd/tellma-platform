@@ -31,7 +31,7 @@ describe('the budget levels', () => {
     expect(problems).toEqual([]);
     expect(levels.get('initialJs')).toEqual({ warn: 230, error: 260 });
     expect(levels.get('workerShell')).toEqual({ warn: 1536, error: null });
-    expect(levels.get('corePrimary')).toEqual({ warn: null, error: 50 });
+    expect(levels.get('corePrimaryFirstFrame')).toEqual({ warn: null, error: 50 });
     expect(levels.get('bootScript')).toEqual({ warn: null, error: 3.4 });
     expect(tmBootScriptBudget(1)).toBe(3);
     expect(tmBootScriptBudget(3)).toBeCloseTo(3.8);
@@ -52,22 +52,22 @@ describe('the budget levels', () => {
   });
 
   it("raise the @tellma/core primary's level only with a note", () => {
-    const noted = tmReadBudgetLevels({ corePrimary: { error: 52, note: "Spec 0027's share grew by 2 KB for the launcher." } }, 1, 'acme');
+    const noted = tmReadBudgetLevels({ corePrimaryFirstFrame: { error: 52, note: 'The launcher grew the shell share by 2 KB.' } }, 1, 'acme');
     expect(noted.problems).toEqual([]);
-    expect(noted.levels.get('corePrimary')).toEqual({ warn: null, error: 52 });
+    expect(noted.levels.get('corePrimaryFirstFrame')).toEqual({ warn: null, error: 52 });
 
-    const bare = tmReadBudgetLevels({ corePrimary: { error: 52 } }, 1, 'acme');
+    const bare = tmReadBudgetLevels({ corePrimaryFirstFrame: { error: 52 } }, 1, 'acme');
     expect(bare.problems).toEqual([
       {
         code: 'budget-note-missing',
         severity: 'error',
-        key: 'budget:corePrimary',
+        key: 'budget:corePrimaryFirstFrame',
         feature: 'acme',
-        message: "The budget 'corePrimary' is raised above the platform's level without a \"note\" saying why.",
+        message: "The budget 'corePrimaryFirstFrame' is raised above the platform's level without a \"note\" saying why.",
       },
     ]);
     // A lower level, or a warn level where the platform sets none, needs no note.
-    expect(tmReadBudgetLevels({ corePrimary: { warn: 45, error: 48 } }, 1, 'acme').problems).toEqual([]);
+    expect(tmReadBudgetLevels({ corePrimaryFirstFrame: { warn: 45, error: 48 } }, 1, 'acme').problems).toEqual([]);
   });
 
   it('take a lowered level or a new level without a note', () => {
@@ -133,8 +133,12 @@ describe('the budget figures', () => {
     near('detailsRoute', 1000, 1);
     near('echartsEngine', 5000, 1);
     near('workerShell', 6000, 2);
-    // No module of the @tellma/core primary is in this build.
-    expect(byName.get('corePrimary')!.files).toBe(0);
+    // No module of the @tellma/core primary is in this build: that is a fault, never a zero.
+    expect(byName.get('corePrimaryFirstFrame')).toMatchObject({ files: 0, unmeasurable: expect.stringMatching(/^No module of the build is the @tellma\/core primary's/) });
+    const { levels } = tmReadBudgetLevels(undefined, 1, 'acme');
+    expect(tmBudgetProblems(figures, levels, 'acme').map((problem) => [problem.code, problem.severity, problem.key])).toEqual([
+      ['budget-unmeasurable', 'error', 'budget:corePrimaryFirstFrame'],
+    ]);
     near('bootScript', 900, 1);
     expect(byName.get('codedReports')!.files).toBe(1);
     expect(figures.map((figure) => figure.name)).toEqual(TM_BUDGETS.map((budget) => budget.name));
@@ -188,12 +192,18 @@ describe('the budget figures', () => {
     const piece = (bytes: number): string => randomBytes(bytes).toString('base64');
     const pieces = { a1: piece(3000), a2: piece(2000), b: piece(1500), lazy: piece(4000), app: piece(1000), ng: piece(2500) };
 
-    /** The build: the app's main file mixes app, Angular and primary code; a static chunk is primary only; a lazy chunk holds primary code too. */
-    function build(): { readonly graph: TmBuildGraph; readonly dir: string } {
-      const root = mkdtempSync(join(tmpdir(), 'tm-budgets-'));
-      dir = root;
+    /**
+     * The build: the app's main file mixes app, Angular and primary code; a
+     * static chunk is primary only; a lazy chunk holds primary code too. The
+     * stats count each module's bytes in each file as the maps attribute them.
+     *
+     * @param root - Whether the primary's public API is among the modules.
+     */
+    function build(root = true): { readonly graph: TmBuildGraph; readonly dir: string } {
+      const folder = mkdtempSync(join(tmpdir(), 'tm-budgets-'));
+      dir = folder;
       const modules: TmBuildModule[] = [
-        { path: `${core}/public-api.ts`, imports: [{ path: `${core}/src/a.ts`, relative: true }, { path: `${core}/src/b.ts`, relative: true }] },
+        ...(root ? [{ path: `${core}/public-api.ts`, imports: [{ path: `${core}/src/a.ts`, relative: true }, { path: `${core}/src/b.ts`, relative: true }] }] : []),
         { path: `${core}/src/a.ts`, imports: [{ path: `${core}/src/lazy.ts`, relative: true }, { path: angular, relative: false }] },
         { path: `${core}/src/b.ts`, imports: [] },
         { path: `${core}/src/lazy.ts`, imports: [] },
@@ -206,12 +216,13 @@ describe('the budget figures', () => {
           {
             path: 'main-A.js',
             inputs: ['src/main.ts', `${core}/src/a.ts`, angular],
+            bytes: { 'src/main.ts': pieces.app.length, [`${core}/src/a.ts`]: pieces.a1.length + pieces.a2.length, [angular]: pieces.ng.length },
             imports: [{ path: 'chunk-B.js', kind: 'static' }, { path: 'other-D.js', kind: 'static' }, { path: 'lazy-C.js', kind: 'dynamic' }],
           },
           // The public API is a list of re-exports: a module with no code of its own in the file.
-          { path: 'chunk-B.js', inputs: [`${core}/src/b.ts`, `${core}/public-api.ts`], imports: [] },
-          { path: 'lazy-C.js', inputs: [`${core}/src/lazy.ts`], imports: [] },
-          { path: 'other-D.js', inputs: ['src/other.ts'], imports: [] },
+          { path: 'chunk-B.js', inputs: [`${core}/src/b.ts`, `${core}/public-api.ts`], bytes: { [`${core}/src/b.ts`]: pieces.b.length, [`${core}/public-api.ts`]: 0 }, imports: [] },
+          { path: 'lazy-C.js', inputs: [`${core}/src/lazy.ts`], bytes: { [`${core}/src/lazy.ts`]: pieces.lazy.length }, imports: [] },
+          { path: 'other-D.js', inputs: ['src/other.ts'], bytes: { 'src/other.ts': 500 }, imports: [] },
         ],
         modules,
       );
@@ -228,33 +239,33 @@ describe('the budget figures', () => {
         'chunk-B.js': { code: pieces.b, lines: [[[0, 3]]] },
         'lazy-C.js': { code: pieces.lazy, lines: [[[0, 4]]] },
       };
-      mkdirSync(join(root, 'maps'));
+      mkdirSync(join(folder, 'maps'));
       for (const [name, file] of Object.entries(files)) {
-        writeFileSync(join(root, name), file.code);
-        writeFileSync(join(root, 'maps', `${name}.map`), fixtureSourceMap(sources, file.lines));
+        writeFileSync(join(folder, name), file.code);
+        writeFileSync(join(folder, 'maps', `${name}.map`), fixtureSourceMap(sources, file.lines));
       }
-      writeFileSync(join(root, 'other-D.js'), piece(500));
-      writeFileSync(join(root, 'tm-boot.js'), 'void 0;');
-      return { graph, dir: root };
+      writeFileSync(join(folder, 'other-D.js'), piece(500));
+      writeFileSync(join(folder, 'tm-boot.js'), 'void 0;');
+      return { graph, dir: folder };
     }
 
-    /** Measures the build with its initial set: main and its static imports. */
-    const measure = (graph: TmBuildGraph, root: string): TmBudgetFigure =>
+    /** Measures the build with its initial set: main and its static imports, unless a case gives another. */
+    const measure = (graph: TmBuildGraph, root: string, initial: Iterable<string> = ['main-A.js']): TmBudgetFigure =>
       tmMeasureBudgets({
         browserDir: root,
         sourceMapsDir: join(root, 'maps'),
         graph,
-        initialJs: graph.staticClosure(['main-A.js']),
+        initialJs: graph.staticClosure(initial),
         initialCss: [],
         shell: [],
         codedReports: undefined,
-      }).find((figure) => figure.name === 'corePrimary')!;
+      }).find((figure) => figure.name === 'corePrimaryFirstFrame')!;
 
     it("is the primary's code in the initial files alone, compressed together", () => {
       const { graph, dir: root } = build();
       // In file order: the static chunk, then main's two runs; the lazy chunk's
       // code is not on the first frame, and the app's and Angular's code is not the primary's.
-      expect(measure(graph, root)).toEqual({ name: 'corePrimary', ...tmCompressedSize(`${pieces.b}${pieces.a1}${pieces.a2}`), files: 2 });
+      expect(measure(graph, root)).toEqual({ name: 'corePrimaryFirstFrame', ...tmCompressedSize(`${pieces.b}${pieces.a1}${pieces.a2}`), files: 2 });
     });
 
     it('fails the build when a file holding primary code has no source map', () => {
@@ -264,12 +275,56 @@ describe('the budget figures', () => {
       expect(() => measure(graph, root)).toThrow(/chunk-B\.js\.map does not exist/);
     });
 
-    it('fails the build when the maps name the modules otherwise than the stats', () => {
+    it("is not measurable when one file's map names its sources otherwise than the stats", () => {
       const { graph, dir: root } = build();
-      for (const name of ['main-A.js', 'chunk-B.js']) {
-        writeFileSync(join(root, 'maps', `${name}.map`), fixtureSourceMap(['/elsewhere/a.ts', '/elsewhere/b.ts'], [[[0, 0], [10, 1]]]));
-      }
-      expect(() => measure(graph, root)).toThrow(/The source maps of chunk-B\.js, main-A\.js attribute none of their code to the @tellma\/core primary/);
+      // The static chunk's map is right; main's names its primary module by another path, so main's share would drop out.
+      writeFileSync(join(root, 'maps', 'main-A.js.map'), fixtureSourceMap(['src/main.ts', '/elsewhere/src/a.ts', angular], [[[0, 0], [pieces.app.length, 1]], [[0, 1], [pieces.a2.length, 2]]]));
+      expect(measure(graph, root)).toEqual({
+        name: 'corePrimaryFirstFrame',
+        gzip: 0,
+        brotli: 0,
+        files: 0,
+        unmeasurable: `The source map of main-A.js attributes 0 bytes to the @tellma/core primary, where the build's stats count ${pieces.a1.length + pieces.a2.length}; the two disagree on what the file holds.`,
+      });
+    });
+
+    it("is not measurable when a file's map gives the primary more than the stats, past the band", () => {
+      const { graph, dir: root } = build();
+      // Main's map gives Angular's code to the primary module as well.
+      writeFileSync(join(root, 'maps', 'main-A.js.map'), fixtureSourceMap(['src/main.ts', `${core}/src/a.ts`], [[[0, 0], [pieces.app.length, 1]], [[0, 1]]]));
+      expect(measure(graph, root).unmeasurable).toMatch(/^The source map of main-A\.js attributes \d+ bytes to the @tellma\/core primary, where the build's stats count \d+;/);
+    });
+
+    it('takes a separator or two the maps give beyond the stats, within the band', () => {
+      const { graph, dir: root } = build();
+      // Main's map runs the primary's module 40 bytes into Angular's code: the glue a run carries with it.
+      writeFileSync(join(root, 'maps', 'main-A.js.map'), fixtureSourceMap(['src/main.ts', `${core}/src/a.ts`, angular], [[[0, 0], [pieces.app.length, 1]], [[0, 1], [pieces.a2.length + 40, 2]]]));
+      expect(measure(graph, root)).toMatchObject({ files: 2 });
+      expect(measure(graph, root).unmeasurable).toBeUndefined();
+    });
+
+    it('is not measurable when no module is the primary, rather than reading zero', () => {
+      const { graph, dir: root } = build(false);
+      expect(measure(graph, root)).toMatchObject({ files: 0, gzip: 0, unmeasurable: expect.stringMatching(/^No module of the build is the @tellma\/core primary's/) });
+    });
+
+    it('is not measurable when no initial file holds primary code, rather than reading zero', () => {
+      const { graph, dir: root } = build();
+      // Only the app's own chunk is initial; the primary sits in files the first frame does not load.
+      expect(measure(graph, root, ['other-D.js'])).toMatchObject({
+        files: 0,
+        unmeasurable: 'No initial file holds code of the @tellma/core primary, which every app loads at startup.',
+      });
+      const { levels } = tmReadBudgetLevels(undefined, 1, 'acme');
+      expect(tmBudgetProblems([measure(graph, root, ['other-D.js'])], levels, 'acme')).toEqual([
+        {
+          code: 'budget-unmeasurable',
+          severity: 'error',
+          key: 'budget:corePrimaryFirstFrame',
+          feature: 'acme',
+          message: 'No initial file holds code of the @tellma/core primary, which every app loads at startup.',
+        },
+      ]);
     });
   });
 
@@ -287,14 +342,14 @@ describe('the budget figures', () => {
 
   it("fail the @tellma/core primary over 50 KB, and pass it at 50 KB or under", () => {
     const { levels } = tmReadBudgetLevels(undefined, 1, 'acme');
-    const primary = (bytes: number): TmBudgetFigure => ({ name: 'corePrimary', gzip: bytes, brotli: bytes, files: 2 });
+    const primary = (bytes: number): TmBudgetFigure => ({ name: 'corePrimaryFirstFrame', gzip: bytes, brotli: bytes, files: 2 });
     expect(tmBudgetProblems([primary(50 * 1024 + 1)], levels, 'acme')).toEqual([
-      { code: 'budget-exceeded', severity: 'error', key: 'budget:corePrimary', feature: 'acme', message: "50.00 KB gzip is over the budget's error level of 50 KB." },
+      { code: 'budget-exceeded', severity: 'error', key: 'budget:corePrimaryFirstFrame', feature: 'acme', message: "50.00 KB gzip is over the budget's error level of 50 KB." },
     ]);
     expect(tmBudgetProblems([primary(50 * 1024)], levels, 'acme')).toEqual([]);
     expect(tmBudgetProblems([primary(37 * 1024)], levels, 'acme')).toEqual([]);
     // A distribution's noted raise moves the line.
-    const raised = tmReadBudgetLevels({ corePrimary: { error: 52, note: 'A share grew.' } }, 1, 'acme').levels;
+    const raised = tmReadBudgetLevels({ corePrimaryFirstFrame: { error: 52, note: 'A share grew.' } }, 1, 'acme').levels;
     expect(tmBudgetProblems([primary(51 * 1024)], raised, 'acme')).toEqual([]);
   });
 

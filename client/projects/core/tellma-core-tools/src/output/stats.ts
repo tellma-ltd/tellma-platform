@@ -25,6 +25,8 @@ export interface TmBuildOutput {
   readonly path: string;
   /** The modules it holds, as paths relative to the project folder. */
   readonly inputs: readonly string[];
+  /** The bytes each module it holds contributes to it, by the module's path; read from the metafile, absent where a graph is built without them. */
+  readonly bytes?: Readonly<Record<string, number>>;
   /** The JavaScript files it imports, with how. */
   readonly imports: readonly { readonly path: string; readonly kind: TmImportKind }[];
   /** The module the file starts at when it is an entry point or a dynamic import's chunk, relative to the project folder with forward slashes. */
@@ -35,7 +37,7 @@ export interface TmBuildOutput {
 export interface TmModuleImport {
   /** The imported module's path, relative to the project folder with forward slashes. */
   readonly path: string;
-  /** Whether the importing module named it by a relative path (`./x`, `../x`) rather than by a package name. */
+  /** Whether the importing module named it by a relative path (`.`, `..`, `./x`, `../x`) rather than by a package name. */
   readonly relative: boolean;
 }
 
@@ -65,8 +67,8 @@ interface MetafileInput {
 interface MetafileOutput {
   /** The files and modules it imports, with how and whether they are outside the build. */
   readonly imports?: readonly { readonly path: string; readonly kind: string; readonly external?: boolean }[];
-  /** The modules it holds, by path relative to the project folder. */
-  readonly inputs?: Readonly<Record<string, unknown>>;
+  /** The modules it holds, by path relative to the project folder, with the bytes each contributes. */
+  readonly inputs?: Readonly<Record<string, { readonly bytesInOutput?: number }>>;
   /** The module it starts at, when it is an entry point or a dynamic import's chunk. */
   readonly entryPoint?: string;
 }
@@ -116,6 +118,7 @@ export class TmBuildGraph {
       outputs.push({
         path,
         inputs: Object.keys(output.inputs ?? {}).map((input) => input.replace(/\\/g, '/')),
+        bytes: Object.fromEntries(Object.entries(output.inputs ?? {}).map(([input, held]) => [input.replace(/\\/g, '/'), held.bytesInOutput ?? 0])),
         imports: (output.imports ?? [])
           .filter((edge) => edge.external !== true && /\.m?js$/.test(edge.path))
           .filter((edge) => edge.kind === 'import-statement' || edge.kind === 'dynamic-import')
@@ -130,7 +133,7 @@ export class TmBuildGraph {
         path: path.replace(/\\/g, '/'),
         imports: (input.imports ?? [])
           .filter((edge) => edge.external !== true)
-          .map((edge) => ({ path: edge.path.replace(/\\/g, '/'), relative: /^\.\.?[\\/]/.test(edge.original ?? '') })),
+          .map((edge) => ({ path: edge.path.replace(/\\/g, '/'), relative: /^\.\.?(?:[\\/]|$)/.test(edge.original ?? '') })),
       });
     }
     return new TmBuildGraph(outputs, modules);

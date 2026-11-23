@@ -144,13 +144,13 @@ describe('tellma-client build, before ng build', { timeout: 60_000 }, () => {
   it('stops with exit 3 on a budget raised without a note', async () => {
     const run = await build('budget-note', (app) =>
       editJson(join(app, 'package.json'), (manifest) => {
-        (manifest['tellma'] as Record<string, unknown>)['budgets'] = { initialJs: { error: 300 }, corePrimary: { error: 55 } };
+        (manifest['tellma'] as Record<string, unknown>)['budgets'] = { initialJs: { error: 300 }, corePrimaryFirstFrame: { error: 55 } };
       }),
     );
     expect(run.code).toBe(TM_CLI_EXIT.problem);
     expect(lines(run)).toEqual([
       "budget-note-missing budget:initialJs fixture - The budget 'initialJs' is raised above the platform's level without a \"note\" saying why.",
-      "budget-note-missing budget:corePrimary fixture - The budget 'corePrimary' is raised above the platform's level without a \"note\" saying why.",
+      "budget-note-missing budget:corePrimaryFirstFrame fixture - The budget 'corePrimaryFirstFrame' is raised above the platform's level without a \"note\" saying why.",
     ]);
     expect(run.ngBuilt).toBe(false);
   });
