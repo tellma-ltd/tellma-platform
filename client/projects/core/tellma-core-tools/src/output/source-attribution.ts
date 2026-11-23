@@ -11,7 +11,9 @@ import { TmBuildFailure } from '../common/problems.js';
 // file's source map (version 3). A map's mappings mark, line by line, the
 // column where each run of generated code starts and the source it came
 // from; a run lasts until the next one starts or the line ends. A run with
-// no source (glue the bundler wrote) belongs to no module. Columns count
+// no source (glue the bundler wrote) belongs to no module, and neither does
+// the unmapped export statement that ends a chunk, which a line's last run
+// would otherwise take with it. Columns count
 // UTF-16 code units, as JavaScript strings do, so the file is sliced as a
 // string. The budgets use this to weigh one package's share of chunks it
 // shares with other code.
@@ -165,9 +167,35 @@ export function tmCodeFromSources(code: string, map: TmSourceMap, test: (source:
     const text = lines[index] ?? '';
     line.forEach((run, position) => {
       if (run.source >= 0 && accepted[run.source]) {
-        pieces.push(text.slice(run.column, line[position + 1]?.column ?? text.length));
+        const next = line[position + 1];
+        pieces.push(next === undefined ? lastRun(text, run.column) : text.slice(run.column, next.column));
       }
     });
   });
   return pieces.join('');
+}
+
+/**
+ * The export statement a bundler writes at the end of a chunk, with no
+ * mapping of its own: `export{a as b,…};`, or a re-export's
+ * `export{a as b}from"./chunk.js";`. It follows a statement's end or the
+ * start of a line.
+ */
+const TRAILING_EXPORT = /(?<=^|[;}\s])export\s*\{[^{}]*\}(?:\s*from\s*(?:"[^"]*"|'[^']*'))?\s*;?\s*$/;
+
+/**
+ * Takes a line's last run, which lasts to the end of the line, without the
+ * bundler's trailing export statement when one follows the run's code
+ * unmapped: that glue came from no source, and the run only reaches it
+ * because no mapping marks where the run's code ends.
+ *
+ * @param text - The line.
+ * @param column - The column the run starts at.
+ * @returns The run's code.
+ */
+function lastRun(text: string, column: number): string {
+  const run = text.slice(column);
+  const glue = TRAILING_EXPORT.exec(run);
+  // A mapping that starts at the statement itself maps it, so it stays.
+  return glue === null || glue.index === 0 ? run : run.slice(0, glue.index);
 }

@@ -203,9 +203,9 @@ describe('tellma-client build on the fixture app', () => {
       attributed += Buffer.byteLength(code);
     }
     expect(counted).toBeGreaterThan(10_000);
-    // A run lasts until the next one, so the separators between modules come with it: a little over.
-    expect(attributed).toBeGreaterThanOrEqual(counted * 0.99);
-    expect(attributed).toBeLessThanOrEqual(counted * 1.03 + 64);
+    // The build's own band: code hoisted with no mapping comes with the run before it, a little over.
+    expect(attributed).toBeGreaterThanOrEqual(counted * 0.995 - 16);
+    expect(attributed).toBeLessThanOrEqual(counted * 1.01 + 16);
   });
 
   it('moves the source maps out of the deployable output', () => {

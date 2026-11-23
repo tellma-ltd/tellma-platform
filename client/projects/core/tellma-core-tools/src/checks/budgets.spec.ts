@@ -297,7 +297,7 @@ describe('the budget figures', () => {
 
     it('takes a separator or two the maps give beyond the stats, within the band', () => {
       const { graph, dir: root } = build();
-      // Main's map runs the primary's module 40 bytes into Angular's code: the glue a run carries with it.
+      // Main's map runs the primary's module 40 bytes into Angular's code: unmapped code a run carries with it.
       writeFileSync(join(root, 'maps', 'main-A.js.map'), fixtureSourceMap(['src/main.ts', `${core}/src/a.ts`, angular], [[[0, 0], [pieces.app.length, 1]], [[0, 1], [pieces.a2.length + 40, 2]]]));
       expect(measure(graph, root)).toMatchObject({ files: 2 });
       expect(measure(graph, root).unmeasurable).toBeUndefined();

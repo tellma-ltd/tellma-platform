@@ -334,3 +334,71 @@ Suggested fix: `/^\.\.?(?:[\\/]|$)/`, with a case in `output.spec.ts`.
     the band. The fixture build's real-builder check stays.
 - R1-4: fixed in fix 1. The pattern is `/^\.\.?(?:[\\/]|$)/`. `output.spec.ts` now covers `.` and
   `..` as relative, and a `.hidden` package name as not relative.
+
+### Verification
+
+A targeted verification of 20bb7b60 found two minor defects and nothing blocking or major. The cap
+measure, the raise and note rules, the malformed settings, backslash paths, the regex and the CI
+cost all held.
+
+- V-1 (minor), `client/tools/bundle-caps.mjs:54` and `client/scripts/bundle-size.mjs:95`: the cap
+  can be absent or near zero without failing.
+  - Renaming the core package's `name` to `@tellma/core-renamed` makes `size:check` exit 0 with no
+    cap row.
+  - Truncating `dist/core/fesm2022/tellma-core.mjs` makes the cap read 0.02 "ok".
+  - Fix: after the loop, fail every package or entry point in `ENTRY_POINT_CAPS` that was never
+    measured, and fail a capped entry that measures below a floor (1 KB, justified in a comment),
+    with tests for both.
+- V-2 (minor), `source-attribution.ts:168` and `budgets.ts:289`: a line's trailing `export{…}` glue,
+  which has no source, is attributed to the primary, because the last run extends to the end of
+  the line.
+  - That is the whole +15 B drift on the small chunks, plus 118 B on `chunk-MFPI4UOF`.
+  - It can false-fail a small chunk with many exports, and its positive drift can hide about
+    1.1 KB raw of under-count in the large chunk.
+  - Fix: leave unmapped trailing glue out of the last run, then tighten the band to what the
+    corrected drift justifies (re-measured on Acme, figures in the comment), with a test where
+    the export list grows and the attribution does not.
+- Also, outside the diff: a non-numeric `budgetsInKb` ceiling such as `"abc"` passes silently,
+  because the comparison is NaN. Make `bundle-size.mjs` refuse a non-numeric or non-positive
+  ceiling, with a test.
+
+### Responses to the verification
+
+- V-1: fixed in fix 2.
+  - `bundle-size.mjs` records each entry point it measured against its cap. After the loop,
+    `unmeasuredCaps` (`bundle-caps.mjs`) fails each capped package with nothing measured, the
+    renamed-package case, and each capped entry point of a measured package that went unmeasured.
+  - `capFailure` fails a capped entry under `CAP_FLOOR_KB` (1 KB at gzip 9) as an empty or
+    truncated build, and the row reads `UNDER FLOOR`. The comment justifies the floor: the only
+    capped entry weighs about 45 KB, and an entry point with exports and their code cannot
+    compress under 1 KB.
+  - Tests in `client/tools/tests/bundle-caps.spec.mts`:
+    - the floor: 20 B and 0 B fail, 1 KB passes;
+    - unmeasured caps: a renamed package, nothing measured, and only another entry point measured.
+- V-2: fixed in fix 2.
+  - In `tmCodeFromSources`, a line's last run now stops before a trailing `export{…};`, or
+    `export{…}from"…";`, that follows the run's code unmapped. A mapping that starts at the
+    statement itself keeps it with its source.
+  - Re-measured on Acme, the six files holding primary code:
+    - before: +412, +412, +57, +50, +15 and +15 B;
+    - after: exact on five; `chunk-MFPI4UOF` reads +294 B (+0.45%).
+  - The +294 B are constants the Angular compiler hoists out of a component with no mapping of
+    their own (the `tm-page-header` content selectors after a `tm-page-focus` run). It is not
+    trailing glue, so it stays.
+  - Single modules shift by up to 40 B either way, but within a file the shifts cancel, so no file
+    reads under.
+  - The band is tightened from 1% under or 3% over plus 64 B to 0.5% under or 1% over plus 16 B:
+    twice the drift seen over, half that under. The fixture build's check uses the same band.
+  - Test: the export list grows from none to four names, and a re-export `from` form, while the
+    attribution stays the body. A mapped statement stays with its source, and an export that is
+    not at the line's end stays in the run.
+- Ceilings: fixed in fix 2.
+  - `ceilingProblem` (`bundle-caps.mjs`) refuses a `budgetsInKb` or `lazyChunkBudgetsInKb` ceiling
+    that is not a finite positive number. `bundle-size.mjs` prints the problem and fails, and does
+    not measure against that ceiling.
+  - Tests: `"abc"`, `"45"`, 0, -1, NaN, Infinity, null and an object are refused; 45 and 0.5 are
+    taken.
+- Measured after fix 2, on the same base:
+  - the `size:check` cap line reads 44.90 KB at gzip 9 against 50, unchanged;
+  - Acme's `corePrimaryFirstFrame` reads 37.49 KB at gzip 9 (Brotli 33.28) against 50, over 4
+    files. It was 37.80 before the trailing export statements came out.

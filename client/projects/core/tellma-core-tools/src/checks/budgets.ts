@@ -244,17 +244,22 @@ export function tmMeasureBudgets(inputs: TmBudgetInputs): TmBudgetFigure[] {
 }
 
 // How far a file's code attributed to the primary through its source map
-// may stray from the bytes the stats give the primary's modules in it. A run
-// lasts until the next one starts, so the separators between modules come
-// with it: on Acme's output +0.6% to +0.9% on the large files and +15 bytes
-// on a one-module file, never under. Past this band the maps and the stats
+// may stray from the bytes the stats give the primary's modules in it. With
+// the chunks' trailing export statements left out, Acme's six files holding
+// primary code read exact but one: the 65 KB shared chunk reads +294 bytes
+// (+0.45%), constants the Angular compiler hoists out of a component with no
+// mapping of their own, which the run before them takes. Single modules
+// stray by up to 40 bytes either way where a run ends a little early or
+// late, but within a file those shifts cancel, so no file reads under. The
+// band is twice the drift seen over, half that under, and a few bytes for
+// the files the primary has little code in. Past it the maps and the stats
 // disagree on what the file holds, and the figure would be wrong.
 /** The share of the stats' count the attribution may fall under it. */
-const ATTRIBUTION_UNDER = 0.01;
+const ATTRIBUTION_UNDER = 0.005;
 /** The share of the stats' count the attribution may run over it. */
-const ATTRIBUTION_OVER = 0.03;
+const ATTRIBUTION_OVER = 0.01;
 /** The bytes the attribution may stray beyond those shares, for files the primary has little code in. */
-const ATTRIBUTION_SLACK = 64;
+const ATTRIBUTION_SLACK = 16;
 
 /**
  * Weighs the `@tellma/core` primary's code on the first frame: in each

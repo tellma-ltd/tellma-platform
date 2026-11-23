@@ -17,6 +17,12 @@
  *   "tellma": { "capsInKb": { ".": { "error": 52, "note": "…" } } }
  *
  * A lower level needs no note.
+ *
+ * Every cap must be measured: a capped package or entry point the gate never
+ * reached (renamed, or dropped from the discovery) fails it, and so does a
+ * capped entry point that weighs almost nothing, an empty or truncated build.
+ * The ceilings' shape is checked here too, since a ceiling that is not a
+ * number would pass every comparison.
  */
 
 /** The gzip level the caps are measured at. */
@@ -98,17 +104,77 @@ export function readEntryPointCaps(library) {
 }
 
 /**
+ * The least a capped entry point can weigh, in KB at gzip level 9. A cap is
+ * set only on an entry point with real weight (the @tellma/core primary's
+ * whole entry is about 45 KB), and an entry point with exports and their code
+ * cannot compress under 1 KB, so a lighter one is an empty or truncated build
+ * that would pass any cap.
+ */
+export const CAP_FLOOR_KB = 1;
+
+/**
  * Judges one measured entry point against its cap.
  *
  * @param {string} importPath the entry point's import path, such as '@tellma/core'
  * @param {TmEntryPointCap} cap its cap
  * @param {number} bytes its weight at gzip level 9, in bytes
  * @returns {string | null} the failure line when the weight is over the cap,
- *   else null
+ *   or under the floor, else null
  */
 export function capFailure(importPath, cap, bytes) {
   const kb = bytes / 1024;
+  if (kb < CAP_FLOOR_KB) {
+    return (
+      `${importPath}: ${kb.toFixed(2)} KB at gzip level ${CAP_GZIP_LEVEL} is under the ${CAP_FLOOR_KB} KB ` +
+      `a capped entry point weighs at least; its build is empty or truncated.`
+    );
+  }
   return kb > cap.kb
     ? `${importPath}: ${kb.toFixed(2)} KB at gzip level ${CAP_GZIP_LEVEL} is over its cap of ${cap.kb} KB.`
     : null;
+}
+
+/**
+ * Lists the platform's caps the gate never measured: one line per capped
+ * package it found no library for, and per capped entry point of a library
+ * it did not measure.
+ *
+ * @param {readonly { name: string, id: string }[]} measured each entry point
+ *   the gate measured against its cap, by package name and entry point id
+ * @returns {string[]} one failure line per cap left unmeasured
+ */
+export function unmeasuredCaps(measured) {
+  const problems = [];
+  for (const [name, caps] of Object.entries(ENTRY_POINT_CAPS)) {
+    const ids = measured.filter((entry) => entry.name === name).map((entry) => entry.id);
+    // --- A package with nothing measured: none of its caps reached the gate ---
+    if (ids.length === 0) {
+      problems.push(`${name}: the platform caps this package, but the gate measured none of its caps; no library has that name, or none of them was measured.`);
+      continue;
+    }
+    for (const id of Object.keys(caps)) {
+      if (!ids.includes(id)) {
+        problems.push(`${name}: the platform caps '${id}', but the gate never measured it.`);
+      }
+    }
+  }
+  return problems;
+}
+
+/**
+ * Checks one ceiling a library declares, in "tellma".budgetsInKb or
+ * "tellma".lazyChunkBudgetsInKb: a comparison with anything but a positive
+ * number would pass every weight.
+ *
+ * @param {string} name the library's package name
+ * @param {string} member the member and key the ceiling sits at, such as
+ *   "budgetsInKb['.']"
+ * @param {unknown} kb the declared ceiling
+ * @returns {string | null} the problem line when the ceiling is not a
+ *   positive number of KB, else null
+ */
+export function ceilingProblem(name, member, kb) {
+  return typeof kb === 'number' && Number.isFinite(kb) && kb > 0
+    ? null
+    : `${name}: "tellma".${member} must be a positive number of KB, not ${JSON.stringify(kb)}.`;
 }

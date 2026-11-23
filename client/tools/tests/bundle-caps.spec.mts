@@ -5,10 +5,19 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { capFailure, CAP_GZIP_LEVEL, ENTRY_POINT_CAPS, readEntryPointCaps } from '../bundle-caps.mjs';
+import {
+  capFailure,
+  CAP_FLOOR_KB,
+  CAP_GZIP_LEVEL,
+  ceilingProblem,
+  ENTRY_POINT_CAPS,
+  readEntryPointCaps,
+  unmeasuredCaps,
+} from '../bundle-caps.mjs';
 
 // The size gate's caps on whole entry points: the platform's level, a raise
-// only with a note, and the verdict on a measured weight at gzip level 9.
+// only with a note, the verdict on a measured weight at gzip level 9, every
+// cap measured, and the ceilings' shape.
 
 /** A library as the workspace discovery hands it to the gate. */
 function library(capsInKb?: unknown, name = '@tellma/core'): Parameters<typeof readEntryPointCaps>[0] {
@@ -33,6 +42,32 @@ describe('the caps on whole entry points', () => {
     expect(capFailure('@tellma/core', cap!, 50 * 1024 + 1)).toBe('@tellma/core: 50.00 KB at gzip level 9 is over its cap of 50 KB.');
     expect(capFailure('@tellma/core', cap!, 50 * 1024)).toBeNull();
     expect(capFailure('@tellma/core', cap!, 44.9 * 1024)).toBeNull();
+  });
+
+  it('fail a capped entry point that weighs under the floor: an empty or truncated build', () => {
+    const [cap] = readEntryPointCaps(library()).caps;
+    expect(CAP_FLOOR_KB).toBe(1);
+    // A truncated FESM still bundles to a few bytes of glue.
+    expect(capFailure('@tellma/core', cap!, 20)).toBe(
+      '@tellma/core: 0.02 KB at gzip level 9 is under the 1 KB a capped entry point weighs at least; its build is empty or truncated.',
+    );
+    expect(capFailure('@tellma/core', cap!, 0)).toMatch(/is under the 1 KB/);
+    expect(capFailure('@tellma/core', cap!, 1024)).toBeNull();
+  });
+
+  it('fail every cap the gate never measured: a renamed package, or a capped entry point it skipped', () => {
+    expect(unmeasuredCaps([{ name: '@tellma/core', id: '.' }])).toEqual([]);
+    // The core package renamed: nothing of '@tellma/core' reaches the gate.
+    expect(unmeasuredCaps([{ name: '@tellma/core-renamed', id: '.' }])).toEqual([
+      '@tellma/core: the platform caps this package, but the gate measured none of its caps; no library has that name, or none of them was measured.',
+    ]);
+    expect(unmeasuredCaps([])).toHaveLength(1);
+    // The package measured, but another entry point than the capped one.
+    expect(unmeasuredCaps([{ name: '@tellma/core', id: './shell' }])).toEqual([
+      "@tellma/core: the platform caps '.', but the gate never measured it.",
+    ]);
+    // A renamed library has no caps to read, so only the after-loop check catches it.
+    expect(readEntryPointCaps(library(undefined, '@tellma/core-renamed')).caps).toEqual([]);
   });
 
   it('take a raise with its note, and refuse one without', () => {
@@ -63,5 +98,24 @@ describe('the caps on whole entry points', () => {
   it('refuse a platform cap on an entry point the library does not have', () => {
     const missing = { name: '@tellma/core', tellma: {}, entryPoints: [{ id: './shell' }] };
     expect(readEntryPointCaps(missing)).toEqual({ caps: [], problems: ["@tellma/core: the platform caps '.', which is not an entry point."] });
+  });
+});
+
+describe('the ceilings a library declares', () => {
+  it('take a positive number of KB', () => {
+    expect(ceilingProblem('@tellma/core', "budgetsInKb['.']", 45)).toBeNull();
+    expect(ceilingProblem('@tellma/core', "budgetsInKb['.']", 0.5)).toBeNull();
+  });
+
+  it('refuse a ceiling that is not a positive number, which would pass every weight', () => {
+    expect(ceilingProblem('@tellma/core', "budgetsInKb['.']", 'abc')).toBe(
+      `@tellma/core: "tellma".budgetsInKb['.'] must be a positive number of KB, not "abc".`,
+    );
+    for (const kb of ['45', 0, -1, Number.NaN, Number.POSITIVE_INFINITY, null, {}]) {
+      expect(ceilingProblem('@tellma/core', "budgetsInKb['.']", kb), String(kb)).toMatch(/must be a positive number of KB/);
+    }
+    expect(ceilingProblem('@tellma/core', "lazyChunkBudgetsInKb['./x']['echarts']", 'abc')).toMatch(
+      /^@tellma\/core: "tellma"\.lazyChunkBudgetsInKb\['\.\/x'\]\['echarts'\] must be/,
+    );
   });
 });

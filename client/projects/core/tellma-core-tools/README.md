@@ -101,7 +101,7 @@ first frame, so the figure is a lower bound of the primary's own weight, not its
 platform's `size:check` holds the whole entry point to the 50 KB cap, and this line lets a
 distribution check the same level on its own app. A build in which no module is the primary's, no
 initial file holds its code, or a file's source map disagrees with the stats' count of its primary
-bytes (beyond 1% under or 3% over, plus 64 bytes) reports `budget-unmeasurable`; a file holding
+bytes (beyond 0.5% under or 1% over, plus 16 bytes) reports `budget-unmeasurable`; a file holding
 primary code without a source map fails the build. Every
 lazily loaded chunk no budget covers, a `@defer` block's or a distribution route's, prints on a
 line of its own, `lazy:<the module it starts at>`, with no level: its static imports beyond the

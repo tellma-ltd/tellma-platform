@@ -30,6 +30,24 @@ describe('the code a source map attributes to some sources', () => {
     expect(tmCodeFromSources(code, sources, () => false)).toBe('');
   });
 
+  it("leaves the chunk's unmapped trailing export statement out of the line's last run, however long it grows", () => {
+    // a.ts's code, then the export list the bundler writes with no mapping of its own.
+    const body = 'function f(){return 1}var g=2;';
+    const sources = map(['src/a.ts'], [[[0, 0]]]);
+    const exports = ['', 'export{f as a};', 'export{f as a,g as b};', 'export {f as a, g as b, f as c, g as d}', 'export{f as a}from"./chunk-X.js";\n'];
+    for (const glue of exports) {
+      expect(tmCodeFromSources(`${body}${glue}`, sources, () => true), glue).toBe(body);
+    }
+    // After a statement that ends in a brace as well.
+    expect(tmCodeFromSources('function f(){}export{f as a};', sources, () => true)).toBe('function f(){}');
+    // A mapping that starts at the statement maps it, so it stays with its source.
+    const mapped = map(['src/a.ts', 'src/b.ts'], [[[0, 0], [body.length, 1]]]);
+    expect(tmCodeFromSources(`${body}export{f as a};`, mapped, (source) => source === 'src/b.ts')).toBe('export{f as a};');
+    // Code merely named like the statement, or not at the line's end, stays in the run.
+    expect(tmCodeFromSources('var myexport={a:1};', sources, () => true)).toBe('var myexport={a:1};');
+    expect(tmCodeFromSources('export{f as a};f();', sources, () => true)).toBe('export{f as a};f();');
+  });
+
   it('decodes hand-written mappings: a relative column within a line and a relative source across lines', () => {
     // AAAA: column 0, source 0. GAAC: column 3, source 0. ACAE: next line, column 0, source 1.
     const sources: TmSourceMap = { sources: ['x.ts', 'y.ts'], mappings: 'AAAA,GAAC;ACAE' };

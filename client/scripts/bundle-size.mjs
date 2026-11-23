@@ -33,7 +33,8 @@
  * The platform also caps some whole entry points (tools/bundle-caps.mjs):
  * the same linked measure at gzip level 9 against the level a spec sets,
  * such as the @tellma/core primary's 50 KB. A library raises a cap in its
- * "tellma".capsInKb only with a note.
+ * "tellma".capsInKb only with a note. Every cap must be measured, and a
+ * capped entry point that weighs under 1 KB is an empty or truncated build.
  *
  * A library may also declare "tellma".treeShakes: per entry point, an app
  * module's named imports and the strings its production bundle must not
@@ -52,7 +53,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { capFailure, CAP_GZIP_LEVEL, readEntryPointCaps } from '../tools/bundle-caps.mjs';
+import { capFailure, CAP_GZIP_LEVEL, ceilingProblem, readEntryPointCaps, unmeasuredCaps } from '../tools/bundle-caps.mjs';
 import { createBundleMeasurer, createProductionBundler } from '../tools/bundle-measure.mjs';
 import { discoverLibraries } from '../tools/workspace.mjs';
 
@@ -64,6 +65,8 @@ const bundle = await createProductionBundler(clientDir);
 
 let failed = false;
 const rows = [];
+/** Each entry point measured against its cap, by package name and entry point id. */
+const capped = [];
 
 /**
  * The built files a module reaches through static imports of its siblings,
@@ -119,6 +122,13 @@ for (const library of discoverLibraries(clientDir)) {
       continue;
     }
     declared.delete(entryPoint.id);
+    // A ceiling that is not a positive number would pass every weight.
+    const badCeiling = ceilingProblem(library.name, `budgetsInKb['${entryPoint.id}']`, kb);
+    if (badCeiling !== null) {
+      console.error(badCeiling);
+      failed = true;
+      continue;
+    }
     // The lazy chunks budgeted on their own, found beside the FESM by the
     // build's `<entry>-<module>-<hash>.mjs` naming.
     const fesm = join(clientDir, entryPoint.fesm);
@@ -137,6 +147,12 @@ for (const library of discoverLibraries(clientDir)) {
           `${library.name}: "tellma".lazyChunkBudgetsInKb names '${module}' for '${entryPoint.id}', ` +
             `which matches ${matches.length} built chunks (expected one).`,
         );
+        failed = true;
+        continue;
+      }
+      const badChunkCeiling = ceilingProblem(library.name, `lazyChunkBudgetsInKb['${entryPoint.id}']['${module}']`, chunkKb);
+      if (badChunkCeiling !== null) {
+        console.error(badChunkCeiling);
         failed = true;
         continue;
       }
@@ -160,6 +176,7 @@ for (const library of discoverLibraries(clientDir)) {
     // the level the cap is stated at.
     const cap = caps.find((candidate) => candidate.id === entryPoint.id);
     if (cap !== undefined) {
+      capped.push({ name: library.name, id: entryPoint.id });
       const failure = capFailure(entryPoint.importPath, cap, measured.gzip9);
       if (failure !== null) {
         console.error(failure);
@@ -169,7 +186,7 @@ for (const library of discoverLibraries(clientDir)) {
         'entry point': `${entryPoint.importPath} (cap, gzip ${CAP_GZIP_LEVEL})`,
         'gzipped (KB)': (measured.gzip9 / 1024).toFixed(2),
         'ceiling (KB)': cap.kb,
-        status: failure === null ? 'ok' : 'OVER CAP',
+        status: failure === null ? 'ok' : measured.gzip9 > cap.kb * 1024 ? 'OVER CAP' : 'UNDER FLOOR',
       });
     }
     // Each such chunk alone: its npm dependencies in; its entry point (the
@@ -202,6 +219,13 @@ for (const library of discoverLibraries(clientDir)) {
 }
 
 console.table(rows);
+
+// Every cap the platform sets must have been measured: a renamed package or
+// an entry point the loop skipped would otherwise pass with no cap row.
+for (const problem of unmeasuredCaps(capped)) {
+  console.error(problem);
+  failed = true;
+}
 
 // Section: lazy boundaries. A library's "tellma".staticGraphExcludes maps an
 // entry point to the sibling entry points it may reach only through import():
