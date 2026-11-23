@@ -88,4 +88,9 @@ export const TM_STRINGS_AR: TmStringTree = {
     fileType: 'هذا النوع من الملفات غير مقبول.',
     uploadFailed: 'تعذّر الرفع',
   },
+  picker: {
+    newLabel: '{label}…',
+    unavailable: 'هذه الصفحة غير متاحة بعد.',
+    loadFailed: 'تعذّر تحميل هذه الصفحة.',
+  },
 };

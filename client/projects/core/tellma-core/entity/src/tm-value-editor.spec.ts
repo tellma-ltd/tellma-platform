@@ -18,6 +18,7 @@ import {
   type TmPropertyDescriptor,
   type TmValueDescriptor,
 } from '@tellma/core';
+import { TmEntityFieldHarness, TmEntityMultiFieldHarness } from '@tellma/core-testing';
 import { TmFilePicker } from '@tellma/core-ui/files';
 import { TmFormField } from '@tellma/core-ui/form-field';
 import { TmImage } from '@tellma/core-ui/image';
@@ -164,6 +165,18 @@ async function paste(fixture: ComponentFixture<TmEditorHost>, name: string, text
   input.value = text;
   input.dispatchEvent(new Event('input', { bubbles: true }));
   input.blur();
+  await fixture.whenStable();
+}
+
+/**
+ * Waits for the next frame and the reads it starts: a display name read
+ * for an unknown row flushes on a frame, which must not outlive the test.
+ *
+ * @param fixture - The host's fixture.
+ */
+async function frame(fixture: ComponentFixture<TmEditorHost>): Promise<void> {
+  await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+  await tmSettle();
   await fixture.whenStable();
 }
 
@@ -363,14 +376,47 @@ describe('tm-value-editor', () => {
       expect(await (await created.loader.getChildLoader('[data-testid="kind"]')).getAllHarnesses(TmSelectHarness)).toHaveLength(1);
     });
 
-    it('shows a related row by its display name until the entity field binds it', async () => {
-      const { loader, rig, fixture } = await start((entities) => [
+    it('chooses a related row in the entity field, by its display name', async () => {
+      const { loader, rig, fixture, host } = await start((entities) => [
         { name: 'currency', property: entities.get('acme.Customer').navigation('Currency')!, value: 3 },
       ]);
       rig.names.remember('acme.Currency', [{ id: 3, code: 'SAR' }]);
+      rig.api.respond('currencies/query', {
+        rows: {
+          columns: ['Id', 'Code'].map((name) => ({ name, type: name === 'Id' ? 'Numeric' : 'String', nullable: false, path: [name], groupingKey: false })),
+          rows: [[3, 'SAR'], [4, 'USD']],
+        },
+      });
       await fixture.whenStable();
-      const currency = await inField(loader, 'currency', TmInputHarness);
-      expect([await currency.isReadonly(), await currency.getValue()]).toEqual([true, 'SAR']);
+      const currency = await inField(loader, 'currency', TmEntityFieldHarness);
+      expect([await currency.isReadonly(), await currency.getText()]).toEqual([false, 'SAR']);
+
+      await currency.pick('USD');
+      expect(host.model()['currency']).toBe(4);
+      expect(await (await formField(loader, 'currency')).getLabelText()).toBe('currency');
+      await frame(fixture);
+    });
+
+    it('chooses a list of related rows in the entity list field', async () => {
+      const { loader, rig, fixture } = await start(() => [
+        { name: 'currencies', property: { type: 'integer', nullable: false, target: 'acme.Currency', array: true }, value: [3] },
+      ]);
+      rig.names.remember('acme.Currency', [{ id: 3, code: 'SAR' }]);
+      await fixture.whenStable();
+      const currencies = await inField(loader, 'currencies', TmEntityMultiFieldHarness);
+      expect(await currencies.getChipLabels()).toEqual(['SAR']);
+      await frame(fixture);
+    });
+
+    it('shows a related row read-only where the user may not write it', async () => {
+      const { loader, rig, fixture } = await start((entities) => [
+        { name: 'createdBy', property: entities.get('acme.Customer').navigation('CreatedBy')!, value: 42 },
+      ]);
+      rig.names.remember('core.User', [{ id: 42, name: 'Farah' }]);
+      await fixture.whenStable();
+      const user = await inField(loader, 'createdBy', TmInputHarness);
+      expect(await user.isReadonly()).toBe(true);
+      await frame(fixture);
     });
 
     it('keeps a related row’s key property read-only, by its ungrouped id', async () => {

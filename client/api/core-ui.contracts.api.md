@@ -100,7 +100,7 @@ export interface TmGridSelectionSnapshot {
 
 // @public
 export type TmLabelResolution<V> = {
-    error: 'ambiguous' | 'notFound';
+    error: 'ambiguous' | 'notFound' | 'resolutionFailed';
 } | {
     value: V;
 };

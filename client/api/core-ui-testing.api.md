@@ -282,6 +282,7 @@ export class TmEntityPickerHarness extends ComponentHarness {
     isBusy(): Promise<boolean>;
     isInvalid(): Promise<boolean>;
     isOpen(): Promise<boolean>;
+    isReadonly(): Promise<boolean>;
     isSpinnerShown(): Promise<boolean>;
     open(): Promise<void>;
     selectOptionByLabel(label: string): Promise<void>;

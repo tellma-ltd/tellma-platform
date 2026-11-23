@@ -213,13 +213,15 @@ namespace Tellma.Core.Tests.Client
     [Stack(Operations = StackOperations.Query | StackOperations.Export)]
     public class Currency : TopLevelEntity, IActivatable
     {
-        /// <summary>The currency's ISO code.</summary>
+        /// <summary>The currency's ISO code, which search text matches from its start.</summary>
         [Column(TypeName = "varchar(3)")]
         [Unique]
+        [Searchable(SearchKind.Prefix)]
         public string Code { get; set; } = null!;
 
         /// <summary>The currency's name.</summary>
         [MaxLength(255)]
+        [Searchable]
         public string Name { get; set; } = null!;
 
         /// <summary>The digits after the point.</summary>
