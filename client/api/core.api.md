@@ -12,7 +12,6 @@ import { DestroyRef } from '@angular/core';
 import { EnvironmentProviders } from '@angular/core';
 import * as i0 from '@angular/core';
 import { InjectionToken } from '@angular/core';
-import { Injector } from '@angular/core';
 import { InputSignal } from '@angular/core';
 import { Observable } from 'rxjs';
 import { Provider } from '@angular/core';
@@ -131,15 +130,6 @@ export type TmActionResult = {
     readonly reason: 'busy' | 'disabled' | 'not-found';
     readonly message?: string;
 };
-
-// @public
-export interface TmActionSnapshot {
-    readonly destructive: boolean;
-    readonly enabled: boolean;
-    readonly group: string;
-    readonly hasParams: boolean;
-    readonly id: string;
-}
 
 // @public
 export interface TmAdoptedDocs {
@@ -826,15 +816,6 @@ export interface TmEnumValueMetadata {
 }
 
 // @public
-export interface TmErrorSnapshot {
-    readonly code: string;
-    readonly message?: string;
-    readonly path?: string;
-    readonly source: string;
-    readonly traceId?: string;
-}
-
-// @public
 export type TmFeature = TmFeatureDefinition & {
     readonly [tmFeatureBrand]: true;
 };
@@ -867,14 +848,6 @@ export interface TmFeatureMetadata {
 }
 
 // @public
-export interface TmFieldSnapshot {
-    readonly editable: boolean;
-    readonly errorCount: number;
-    readonly path: string;
-    readonly value?: TmJson;
-}
-
-// @public
 export type TmFilterSource = {
     readonly named: string;
     readonly queryex?: never;
@@ -899,12 +872,6 @@ export interface TmFormField {
     readonly labelKey: string;
     readonly path: string;
     readonly value: TmJson;
-}
-
-// @public
-export interface TmFormSnapshot {
-    readonly dirty: boolean;
-    readonly fields: readonly TmFieldSnapshot[];
 }
 
 // @public
@@ -1266,28 +1233,6 @@ export class TmPageContexts {
     readonly top: Signal<TmPageContext | null>;
     static ɵfac: i0.ɵɵFactoryDeclaration<TmPageContexts, never>;
     static ɵprov: i0.ɵɵInjectableDeclaration<TmPageContexts>;
-}
-
-// @public
-export interface TmPageContextSnapshot {
-    readonly actions: readonly TmActionSnapshot[];
-    readonly entity?: string;
-    readonly errors: readonly TmErrorSnapshot[];
-    readonly form?: TmFormSnapshot;
-    readonly helpKey?: string;
-    readonly kind: TmPageKind;
-    readonly overlay: boolean;
-    readonly routeTemplate: string;
-    readonly state: TmJson;
-    readonly status: 'error' | 'loading' | 'ready';
-    readonly title: string;
-    readonly visible?: TmVisibleSnapshot;
-}
-
-// @public
-export interface TmPageContextSnapshotOptions {
-    readonly includeData: boolean;
-    readonly injector?: Injector;
 }
 
 // @public
@@ -1721,9 +1666,6 @@ export interface TmSendOptions {
 }
 
 // @public
-export function tmSerializePageContext(context: TmPageContext, options: TmPageContextSnapshotOptions): TmPageContextSnapshot;
-
-// @public
 export class TmServerText {
     error(error: TmProblemError, entity?: string): Signal<string>;
     has(key: string): boolean;
@@ -2132,14 +2074,6 @@ export interface TmVisibleData {
 export interface TmVisibleRow {
     readonly cells: Readonly<Record<string, TmJson>>;
     readonly id: TmId | null;
-}
-
-// @public
-export interface TmVisibleSnapshot {
-    readonly columns: readonly string[];
-    readonly rowCount: number;
-    readonly rows?: readonly TmVisibleRow[];
-    readonly total: number | null;
 }
 
 // @public

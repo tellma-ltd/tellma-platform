@@ -49,7 +49,8 @@ export const TM_CORE_ENTRY_POINTS: Readonly<Record<string, TmEntryPointRule>> = 
   // statically (`/attention` joins that list when it lands).
   './search-normalize': { load: 'shared', imports: [] },
   './realtime': { load: 'lazy', imports: [] },
-  './support': { load: 'lazy', imports: [] },
+  // The support dump reads the page contexts' snapshots.
+  './support': { load: 'lazy', imports: ['./page-snapshot'] },
   './entity': { load: 'lazy', imports: [] },
   './sharing': { load: 'lazy', imports: [] },
   // The page hosts load the tab's memory with them: the search page's state
@@ -68,6 +69,10 @@ export const TM_CORE_ENTRY_POINTS: Readonly<Record<string, TmEntryPointRule>> = 
   // primary; they load with the page hosts and after first render instead.
   './memory': { load: 'lazy', imports: [] },
   './recents': { load: 'lazy', imports: [] },
+  // Spec 0026's page-context snapshot, which spec 0026 §1 places in the
+  // primary; nothing on the first frame reads it, so the support dump and a
+  // future assistant load it with import().
+  './page-snapshot': { load: 'lazy', imports: [] },
 });
 
 /**

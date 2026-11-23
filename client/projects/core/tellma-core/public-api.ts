@@ -66,7 +66,7 @@ export {
 } from './src/requests/tm-request-log';
 
 // The page context and the page actions: the registry, page scopes, the
-// dispatcher, the snapshot and the help seam.
+// dispatcher and the help seam. The snapshot is @tellma/core/page-snapshot.
 export type {
   TmContextError,
   TmFormContext,
@@ -80,16 +80,6 @@ export type { TmActionOrigin, TmActionResult, TmPageAction, TmPageActionInput } 
 export { TmPageContexts } from './src/context/tm-page-contexts';
 export { TmPageActions } from './src/context/tm-page-actions';
 export { provideTmPageScope } from './src/context/tm-page-scope';
-export {
-  tmSerializePageContext,
-  type TmActionSnapshot,
-  type TmErrorSnapshot,
-  type TmFieldSnapshot,
-  type TmFormSnapshot,
-  type TmPageContextSnapshot,
-  type TmPageContextSnapshotOptions,
-  type TmVisibleSnapshot,
-} from './src/context/tm-page-snapshot';
 export { TM_HELP_ARTICLES } from './src/context/tm-help-articles';
 
 // The distribution API: the app configuration and its providers.

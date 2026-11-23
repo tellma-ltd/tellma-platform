@@ -6,10 +6,11 @@
 import { Injector, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 
-import { tmAppRig } from '../routes/tm-app.testing.util';
-import type { TmPageContext } from './tm-page-context';
+import type { TmPageContext } from '@tellma/core';
+
+import { tmTestAction, tmTestContext } from '../../src/context/tm-page.testing.util';
+import { tmAppRig } from '../../src/routes/tm-app.testing.util';
 import { tmSerializePageContext, type TmPageContextSnapshotOptions } from './tm-page-snapshot';
-import { tmTestAction, tmTestContext } from './tm-page.testing.util';
 
 // The snapshot of a context, with and without page data: every member read
 // once, the rows, values and messages kept only with page data, and the

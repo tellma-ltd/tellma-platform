@@ -5,17 +5,16 @@
 
 import { inject, Injector } from '@angular/core';
 
-import { TmEntities } from '../entity/tm-entities';
-import type { TmJson, TmJsonObject } from '../json/tm-json';
-import type { TmPageContext, TmVisibleRow } from './tm-page-context';
-import type { TmPageKind } from './tm-page-kind';
+import { TmEntities, type TmJson, type TmJsonObject, type TmPageContext, type TmPageKind, type TmVisibleRow } from '@tellma/core';
 
 // The page context's snapshot (spec 0026 §9.6): every signal read once into
 // plain JSON, the one serialisation the support dump and a future assistant
-// share. Without page data, it leaves out the rows, the form's values and the
-// errors' messages, and masks the user's text: the search's text and filters,
-// a report's parameters, and a details page's title, which is a record's
-// display name.
+// share. Without page data, it leaves out the rows, the form's values and
+// the errors' messages, and masks the user's text: the search's text and
+// filters, a report's parameters, and a details page's title, which is a
+// record's display name. Spec 0026 §1 places it in the primary; it is an
+// entry point of its own instead, since nothing on the first frame reads it,
+// and its callers load it with import().
 
 /** What masked text becomes. */
 const MASK = '…';
@@ -177,6 +176,7 @@ function maskState(state: TmJson): TmJson {
  * @example
  * ```ts
  * const current = inject(TmPageContexts).current();
+ * const { tmSerializePageContext } = await import('@tellma/core/page-snapshot');
  * const snapshot = current && tmSerializePageContext(current, { includeData: false, injector });
  * ```
  */

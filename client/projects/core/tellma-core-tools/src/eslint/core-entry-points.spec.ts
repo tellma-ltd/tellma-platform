@@ -56,6 +56,14 @@ describe('the @tellma/core entry-point table', () => {
     }
   });
 
+  it('keeps the page-context snapshot off the first frame, for the support dump to load', () => {
+    expect(TM_CORE_ENTRY_POINTS['./page-snapshot']).toEqual({ load: 'lazy', imports: [] });
+    expect(tmAllowedImports(TM_CORE_ENTRY_POINTS, './support').has('./page-snapshot')).toBe(true);
+    for (const eager of ['.', './attention', './shell']) {
+      expect(tmAllowedImports(TM_CORE_ENTRY_POINTS, eager).has('./page-snapshot')).toBe(false);
+    }
+  });
+
   it('names an import of an unknown entry point', () => {
     const table: Record<string, TmEntryPointRule> = {
       '.': { load: 'eager', imports: [] },

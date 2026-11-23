@@ -11,10 +11,10 @@ import {
   type TmPageAction,
   TmPageActions,
   type TmPageContext,
-  type TmPageContextSnapshot,
   TmPageContexts,
-  tmSerializePageContext,
 } from '@tellma/core';
+// A test reads snapshots at once, so the harness imports the snapshot statically; the app loads it with import().
+import { type TmPageContextSnapshot, tmSerializePageContext } from '@tellma/core/page-snapshot';
 
 /**
  * Reads the page-context registry and invokes page actions in a test, as
