@@ -342,6 +342,13 @@ production both reject `server` unsent.
 - **`online`** is false while the browser is offline or after a network failure; a visible tab then
   probes `GET /health/live` every 5 s, backing off to 30 s, until any answer.
 
+Two parts of the layer are chunks of their own, loaded with `import()`, because no first-frame
+call needs them: the build comparison behind the outdated-client verdict (`tm-api-verdict`), loaded
+with the first such answer, and the file transfers (`tm-api-transfer`), a download's streamed read
+and an upload's send, loaded with the first download's answer or the first upload. A verdict whose
+chunk cannot load leaves the builds to the worker's update check; a transfer whose chunk cannot load
+fails as a network failure would.
+
 `provideTellma` points `tm-image`'s blob fetcher at `TmApi.fetchBlob`, so an image request gets the
 user check, the session's headers and the caller's signal, whose reason an aborted fetch rejects
 with; under `provideTellmaTesting()`, `TmFakeApi` answers it.
