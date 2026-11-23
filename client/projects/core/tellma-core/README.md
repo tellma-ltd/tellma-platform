@@ -8,7 +8,7 @@ own.
 | Entry point | Holds | Loaded |
 |---|---|---|
 | `@tellma/core` | The distribution API: `bootstrapTellma`, `provideTellma`, `tmFeature`, the declaration functions (`tmEntity`, `tmPage`, `tmCodedReport`, `tmWidget`, `tmOverride`) and `TM_APP_DECLARATIONS`, the merged declarations; the client metadata's types, its loaders (`tmMetadataLoaders`) and the loaded Core chunk (`TM_CLIENT_METADATA`); the HTTP layer (`TmApi`, `TmApiError`, `TmProblem`), its plain-JSON value types (`TmJson`, `TmDecimal`, `TmId`) and the exact decimal helpers `TmDecimals`; the seams through which telemetry (`TmTelemetry`) and the request log (`TmRequestLog`) are provided; the page context and page actions (`TmPageContexts`, `TmPageActions`, `provideTmPageScope`) and the help seam (`TM_HELP_ARTICLES`); the session (`TmSession`, `tmSessionGuard`, `tmParseProfileCookie`), the launch mark (`TmLaunch`) and the single-membership rule (`tmSingleLiveTenant`); the client store (`TmClientStore`, `TmStoreRefusedError`, `TM_DOC_FORMATS`) and the tab bus (`TmTabBus`) with its message catalogue; the leader tab (`TmLeader`: whether this tab leads, the hub's status and the tenant's hub events) and the documents only the leader refreshes (`TM_LEADER_DOCUMENTS`); the boot script's result types and the app clock (`TM_NOW`); the derived router's pieces: the root component (`TmApp`), the route data (`TmRouteData`), the title strategy (`TmTitleStrategy`), the URL builders and classifier (`TmUrls`) with the search query's types; the entity registry (`TmEntities`, with its descriptors once the entity model loads, and the declaration types `tmEntity` takes, typed paths `TmPath` included), display names (`TmDisplayNames`, `tm-display-name`), client permissions (`TmPermissions`) and `tmRowsToObjects`; localization: `TmLocalization` (the language, the regional formats, the calendar and the zones, and their switches with the coalesced locale write), `TmServerText` (server codes and keys through the string packs) and `tmEnglish()`, the platform's English; the app-level keyboard shortcuts (`TmShortcuts`, `TmShortcut`, `TM_RESERVED_SHORTCUTS`, `TM_BROWSER_KEYS`, `TmShortcutConflictError`) and the shell frame's seams (`TmShell` with immersive mode, `TmShellMain`, `TM_SHELL_LAYOUT`); the banners (`TmBanners`) with the input-idle clock (`TmInputIdle`), the attention documents (`TM_ATTENTION_DOCUMENTS`, `TmInboxSummary`, `TmAssignmentsSummary`) and the toast durations (`TM_TOAST_FEEDBACK_MS`, `TM_TOAST_ARRIVAL_MS`); the navigation registry (`TmNavigation`: the launcher's sections and entries, and a stored URL's state), the pins model (`tmPinsKey`, `tmPinnedBarVisibleKey` and the pin types) and the launcher's provider seam (`TM_LAUNCHER_PROVIDERS`) | eager |
-| `@tellma/core/attention` | The attention surfaces every page shows; for now the banner host (`tm-banner-host`), which renders the banner row from `TmBanners` and announces each banner as it is queued | eager, preloaded with the app |
+| `@tellma/core/attention` | The attention surfaces every page shows: the banner host (`tm-banner-host`), which renders the banner row from `TmBanners` and announces each banner as it is queued; the attention model (`TmAttention`: the bell's and the tray's badges, the open panel, the verbs with their same-frame overlays); the arrival engine (`TmArrivals`, with the `tmNotificationToastsKey` preference); the server text of notifications, jobs and assignment captions (`TmAttentionText`); and the outcome toasts (`TmOutcomeToasts`) | eager, preloaded with the app |
 | `@tellma/core/shell` | The tenant shell, the tenant picker and the signed-out page, which the derived routes load; until their owners arrive they are plain stand-ins, beside one placeholder page for the platform's page families | eager, through `import()` |
 | `@tellma/core/memory` | The tab's memory of its pages: page state (`TmPageState`, `tmPageStateKey`), drafts (`TmDrafts`) and tree expansion (`TmTreeExpansion`), which the page hosts load with them | lazy |
 | `@tellma/core/page-snapshot` | `tmSerializePageContext` and `TmPageContextSnapshot`: a page context read once into plain JSON, for the support dump and a future assistant | lazy, through `import()` by its callers |
@@ -547,7 +547,51 @@ queued, before the row opens. Each banner's time from queued to shown is the tim
 `@tellma/core/attention` holds `tm-banner-host`, which the shells place in the banner row. It renders
 `tm-banner-bar` from `current`, wires its action, pager and dismiss buttons back, never takes focus,
 and owns the one visually hidden live region: assertive for level 1, polite otherwise, written once
-per banner that becomes the row's.
+per banner that becomes the row's. A dismiss that empties the row while focus was in it moves focus
+to the page's `main`, so it never falls to the document's body.
+
+## Attention: the badges, the verbs and the arrivals
+
+`TmAttention` reads the routed tenant's stored `inbox` and `assignments` and renders the bell's and
+the tray's badges from them: the bell's count of unseen notifications (`99+` from 100), its
+`attention` tone while a warning or an error is unseen and its count of jobs that are pending or
+running, the tray's count of open assignments and its accent while some are new, each with its
+accessible name. `toggle` opens a panel or closes it; opening shows the stored document at once,
+quiets the badge, marks the document seen when it shows something new, then reads it once.
+
+```ts
+const attention = inject(TmAttention);
+const unseen = computed(() => attention.bell().count);
+attention.toggle('bell', 'click');
+await attention.read([4102]);
+```
+
+The verbs (`read`, `readAll`, `clear`, `clearRead`, `stopJob`) apply in the same frame through the
+tab's overlay, then call the server; an inbox verb's overlay drops when a copy arrives whose inbox
+version is at or above the one the verb returned, so a copy read before the verb committed never
+undoes it, whatever order the copies were saved in. A failed verb drops its overlay at once and
+toasts sticky with "Try again". The verbs do nothing on a frozen tenant or offline (`writable`). The
+server calls load as a chunk of their own with the first one, so the first frame carries only the
+overlays.
+
+`TmArrivals`, which the tenant shell creates, toasts what arrives in the visible, focused tab: a
+notification of a toasting type (by severity, with Download or View), one assignment (with its
+caption and the assigner's comment, and Open) or several grouped (View opens the tray), and a tenant
+that turned read-only or frozen. A tab's baseline is the first copy written after it started, and
+each later copy's arrivals are the rows newer than the previous copy's newest, so nothing that
+arrived before pops up and a tab that gains focus replays nothing. The user's
+`notifications.toasts` preference (`tmNotificationToastsKey`) turns the notification and assignment
+toasts off. Inside a tenant the toasts' overflow pill reads "{n} more · Open notifications" and
+opens the notifications. What arrived and how it toasts, with its strings (`tm.arrivals`), load as
+a chunk with the first copy handed on.
+
+`TmAttentionText` renders server text in the reader's language, following every language switch
+with no request: a notification's title and detail from its type's keys, a job's label (its own key,
+then its handler's, then the handler's fallback, an `entity` argument naming an entity rendering as
+its plural label), a job's message, and an assignment's caption (the title with its code split out
+for an isolate, the detail, and the amount at its own scale with its currency's code).
+`TmOutcomeToasts` raises the outcomes the platform's own pages toast: "Started in the background."
+with Track, and the sticky "Exporting…" with Cancel.
 
 The toast policy's durations are `TM_TOAST_FEEDBACK_MS` (4 s, an outcome the acting tab raises) and
 `TM_TOAST_ARRIVAL_MS` (6 s, an arriving notification or assignment).
@@ -725,7 +769,8 @@ The strings merge into the English translation, so they format through the same 
 and a language's table that holds the same keys (a locale pack's `tm.value`) wins, English being
 the fallback. A scope registers once and belongs to one entry point. `@tellma/core/entity`
 registers `tm.value` when `TmFormats` is first created; the entity picker's, the filters' and the
-expression editor's strings follow the same seam. The seam itself costs the primary one method
+expression editor's strings follow the same seam. `@tellma/core/attention` registers `tm.attention`
+when its first service is created, and its arrival toasts' chunk registers `tm.arrivals` as it loads. The seam itself costs the primary one method
 and a set of the scopes registered.
 
 ## Decimals

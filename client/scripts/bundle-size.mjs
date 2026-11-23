@@ -223,10 +223,19 @@ for (const library of discoverLibraries(clientDir)) {
     });
     const outputs = result.metafile.outputs;
     // Walk the entry output's static imports; dynamic ones are the boundary.
-    const start = Object.keys(outputs).find((out) => outputs[out].entryPoint !== undefined);
+    // With splitting, every import() target is an entry output too, in no
+    // fixed order, so the walk starts from the one built from this FESM.
+    const start = Object.keys(outputs).find(
+      (out) => outputs[out].entryPoint !== undefined && join(clientDir, outputs[out].entryPoint) === entryFesm,
+    );
+    if (start === undefined) {
+      console.error(`${library.name}: the static-graph bundle of '${id}' has no output for its own entry point.`);
+      failed = true;
+      continue;
+    }
     const seen = new Set();
     let reached = false;
-    const queue = start === undefined ? [] : [start];
+    const queue = [start];
     while (queue.length > 0) {
       const out = queue.pop();
       if (seen.has(out)) {

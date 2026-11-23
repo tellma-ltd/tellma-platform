@@ -176,6 +176,56 @@ describe('TmBannerHost', () => {
     expect(element.querySelector('.tm-banner-bar__position')).toBeNull();
   });
 
+  it('moves the focus a dismiss takes away to the main landmark once the row empties, and leaves it while a bar remains', async () => {
+    const main = document.body.appendChild(document.createElement('main'));
+    try {
+      const { banners, element, idle, render } = await setUp();
+      idle.set(true);
+      banners.show(banner('acme.a', 4));
+      banners.show(banner('acme.b', 4));
+      await render();
+      const dismiss = (): HTMLButtonElement => element.querySelector<HTMLButtonElement>('.tm-banner-bar__dismiss')!;
+
+      // A banner remains: the bar, and its focused button, stay.
+      dismiss().focus();
+      dismiss().click();
+      await render();
+      TestBed.tick();
+      expect(message(element)).toBe('acme.b message');
+      expect(document.activeElement).toBe(dismiss());
+
+      // The last one goes: focus lands on main, not on the body.
+      dismiss().click();
+      await render();
+      TestBed.tick();
+      expect(element.querySelector('tm-banner-bar')).toBeNull();
+      expect(document.activeElement).toBe(main);
+      expect(main.getAttribute('tabindex')).toBe('-1');
+    } finally {
+      main.remove();
+    }
+  });
+
+  it('moves no focus when a dismiss came from elsewhere', async () => {
+    const main = document.body.appendChild(document.createElement('main'));
+    const outside = document.body.appendChild(document.createElement('button'));
+    try {
+      const { banners, element, idle, render } = await setUp();
+      idle.set(true);
+      banners.show(banner('acme.a', 4));
+      await render();
+      outside.focus();
+      element.querySelector<HTMLButtonElement>('.tm-banner-bar__dismiss')!.click();
+      await render();
+      TestBed.tick();
+      expect(document.activeElement).toBe(outside);
+      expect(main.hasAttribute('tabindex')).toBe(false);
+    } finally {
+      main.remove();
+      outside.remove();
+    }
+  });
+
   it('keeps an emptied row open as an empty box until the gate closes it', async () => {
     const { banners, element, idle, render } = await setUp();
     idle.set(true);

@@ -118,7 +118,9 @@ export class TmServerText {
     const params: Record<string, unknown> = {};
     const slot = this.#l10n.contentSlot();
     for (const [name, value] of Object.entries(args ?? {})) {
-      params[name] = Array.isArray(value) ? (value[slot - 1] ?? value[0] ?? '') : value;
+      // A localized text reads its slot, else slot 1 when that slot is null or
+      // empty, as the server's LocalizedText.In does.
+      params[name] = Array.isArray(value) ? value[slot - 1] || value[0] || '' : value;
     }
     return this.#l10n.ɵtext(key, params, fallback)();
   }

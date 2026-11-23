@@ -77,6 +77,32 @@ export const TM_STRINGS_AR: TmStringTree = {
   },
   attention: {
     banners: { offline: 'انقطع الاتصال. جارٍ إعادة الاتصال…' },
+    bell: {
+      label: 'الإشعارات',
+      new: '{count} جديدة',
+      attention: 'تتطلب الانتباه',
+      jobs: '{count, plural, one {مهمة واحدة قيد التشغيل} two {مهمتان قيد التشغيل} few {# مهام قيد التشغيل} other {# مهمة قيد التشغيل}}',
+    },
+    tray: { label: 'مهامي', open: '{count} مفتوحة', new: '{count} جديدة' },
+    separator: '، ',
+    assignment: { title: '{entity} {code}' },
+    toasts: {
+      more: 'المزيد ({count, number}) · فتح الإشعارات',
+      failed: `تعذّر تحديث إشعاراتك. ${imperative('حاول', 'حاولي')} مرة أخرى.`,
+    },
+    outcomes: { started: 'بدأ التنفيذ في الخلفية.', track: 'متابعة', exporting: 'جارٍ التصدير…', cancel: 'إلغاء' },
+  },
+  arrivals: {
+    assigned: 'أُسند {title} إليك',
+    returned: 'أُعيد {title} إليك',
+    comment: '{assigner}: {comment}',
+    assignedBy: 'أسنده {assigner}',
+    many: '{count, plural, two {أُسند مستندان إليك} few {أُسندت # مستندات إليك} many {أُسند # مستندًا إليك} other {أُسند # مستند إليك}}',
+    readOnly: '{tenant} الآن للقراءة فقط. يمكنك عرض البيانات دون تغييرها.',
+    frozen: '{tenant} الآن قيد الصيانة. يمكنك عرض البيانات دون تغييرها حتى تنتهي.',
+    view: 'عرض',
+    open: 'فتح',
+    download: 'تنزيل',
   },
   value: {
     none: '—',

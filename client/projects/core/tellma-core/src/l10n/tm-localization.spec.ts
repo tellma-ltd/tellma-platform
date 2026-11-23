@@ -845,12 +845,15 @@ describe('TmServerText', () => {
     const { l10n } = await rig();
     const text = TestBed.inject(TmServerText);
     const named = text.message('Named', { name: ['Cash', 'النقد', null] });
+    const unnamed = text.message('Named', { name: ['Bank', '', null] });
     expect(named()).toBe('Named Cash');
 
     l10n.setLanguage('ar');
     await tmSettle();
 
     expect(named()).toBe('Named النقد');
+    // An empty slot reads slot 1, as a null one does.
+    expect(unnamed()).toBe('Named Bank');
     expect(text.has('Problem_forbidden')).toBe(true);
     expect(text.has('Due')).toBe(true);
     expect(text.has('Nowhere_Key')).toBe(false);

@@ -4,6 +4,7 @@
 
 ```ts
 
+import { ComponentHarness } from '@angular/cdk/testing';
 import { EnvironmentProviders } from '@angular/core';
 import * as i0 from '@angular/core';
 import { Observable } from 'rxjs';
@@ -14,6 +15,16 @@ export function provideTellmaStateTesting(): EnvironmentProviders;
 
 // @public
 export function provideTellmaTesting(): EnvironmentProviders;
+
+// @public
+export class TmBannerHostHarness extends ComponentHarness {
+    getAnnouncement(): Promise<string>;
+    getBar(): Promise<TmBannerBarHarness | null>;
+    getPoliteness(): Promise<'assertive' | 'polite'>;
+    static hostSelector: string;
+    isEmpty(): Promise<boolean>;
+    isOpen(): Promise<boolean>;
+}
 
 // @public
 export class TmFakeApi extends TmApi {
