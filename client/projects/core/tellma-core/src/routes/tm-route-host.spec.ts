@@ -3,7 +3,7 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-import type { Type } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, signal, type Type } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { By, Title } from '@angular/platform-browser';
 import type { RouterTestingHarness } from '@angular/router/testing';
@@ -11,6 +11,8 @@ import type { RouterTestingHarness } from '@angular/router/testing';
 import type { TmApiUpdateCheck } from '../api/tm-api-seams';
 import { TM_BOOT_RESULT } from '../boot/tm-boot-result';
 import type { TmBootResult } from '../boot/tm-boot-types';
+import { TmPageActions } from '../context/tm-page-actions';
+import { TmPageContexts } from '../context/tm-page-contexts';
 import { TmClientStore } from '../state/store/tm-client-store';
 import {
   tmAppRig,
@@ -53,6 +55,32 @@ const COLD_SYNC_18 = {
 
 /** A boot script's result for a returning user: the same user as the boot record's. */
 const RETURNING: TmBootResult = { state: 'run', profile: null, record: null, cold: false, auto: null, mark: null, showPage: () => undefined };
+
+/** A declared page that publishes a richer context than its host's, and an action of its own. */
+@Component({ selector: 'tm-credit-review', changeDetection: ChangeDetectionStrategy.OnPush, template: '<h1 tmPageTitle>Credit review</h1>' })
+class TmCreditReview {
+  /** The threshold the page reviews customers over. */
+  readonly threshold = signal(5);
+
+  /** Registers the page's context and its action in the host's page scope. */
+  constructor() {
+    inject(TmPageContexts).register({
+      kind: 'custom',
+      routeTemplate: '/:t/credit-review',
+      title: signal('Credit review'),
+      status: signal('ready'),
+      state: computed(() => ({ threshold: this.threshold() })),
+      errors: signal([]),
+      actions: signal([]),
+    });
+    inject(TmPageActions).register({
+      id: 'acme.credit-review.suggest-limits',
+      labelKey: 'Acme_CreditReview_SuggestLimits',
+      group: 'primary',
+      invoke: () => Promise.resolve({ outcome: 'done' }),
+    });
+  }
+}
 
 describe('the route host', () => {
   let rig: TmAppRig;
@@ -280,5 +308,59 @@ describe('the route host', () => {
     // A first segment beyond the safe integers is no tenant, so it is never remembered.
     await rig.router.navigateByUrl('/99999999999999999999');
     expect(store.boot.read().lastTenantId).toBe(17);
+  });
+
+  describe('the page context', () => {
+    it("publishes a declared page's context, loading until the page paints, then ready", async () => {
+      rig = await tmAppRig();
+      const load = deferred<Type<unknown>>();
+      tmLoadTestPage.mockImplementationOnce(() => load.promise);
+      await tmNavigate('/17/credit-review');
+      const contexts = TestBed.inject(TmPageContexts);
+      const current = contexts.current()!;
+      expect(current).toMatchObject({ kind: 'custom', routeTemplate: '/:t/credit-review' });
+      expect([current.status(), current.title(), current.state(), current.errors(), current.actions()]).toEqual([
+        'loading',
+        'Acme_CreditReview',
+        {},
+        [],
+        [],
+      ]);
+      load.resolve(TmTestPage);
+      await tmSettle();
+      expect(current.status()).toBe('ready');
+    });
+
+    it("lets the page's own context replace its host's, keeping the actions registered in the host's scope", async () => {
+      rig = await tmAppRig();
+      tmLoadTestPage.mockImplementationOnce(() => Promise.resolve(TmCreditReview));
+      const harness = await tmNavigate('/17/credit-review');
+      await tmSettle();
+      const contexts = TestBed.inject(TmPageContexts);
+      expect(contexts.current()!.state()).toEqual({ threshold: 5 });
+      expect(contexts.current()!.actions().map((action) => action.id)).toEqual(['acme.credit-review.suggest-limits']);
+
+      // Leaving the page ends both its context and its host's.
+      await harness.navigateByUrl('/17/approvals');
+      await tmSettle();
+      expect(contexts.current()!.routeTemplate).toBe('/:t/approvals');
+    });
+
+    it('turns to error with a client error when the host renders an error view', async () => {
+      rig = await tmAppRig();
+      await tmNavigate('/17/approvals');
+      await tmSettle();
+      const current = TestBed.inject(TmPageContexts).current()!;
+      expect(current.status()).toBe('error');
+      expect(current.errors()).toEqual([{ source: 'client', code: 'forbidden', message: expect.any(String) }]);
+      expect(current.errors()[0]!.message).not.toBe('');
+    });
+
+    it("publishes none for an entity's page, whose framework publishes its own", async () => {
+      rig = await tmAppRig();
+      await tmNavigate('/17/centers');
+      await tmSettle();
+      expect(TestBed.inject(TmPageContexts).current()).toBeNull();
+    });
   });
 });

@@ -52,13 +52,17 @@ export const TM_CORE_ENTRY_POINTS: Readonly<Record<string, TmEntryPointRule>> = 
   './support': { load: 'lazy', imports: [] },
   './entity': { load: 'lazy', imports: [] },
   './sharing': { load: 'lazy', imports: [] },
-  './search': { load: 'lazy', imports: ['./entity'] },
-  './details': { load: 'lazy', imports: ['./entity'] },
-  './admin': { load: 'lazy', imports: [] },
+  // The page hosts load the tab's memory with them: the search page's state
+  // and tree expansion, the details page's drafts and state, the stock
+  // pages' and the report studio's drafts, a report's state. The home page,
+  // in `/dashboards`, lists the recent pages.
+  './search': { load: 'lazy', imports: ['./entity', './memory'] },
+  './details': { load: 'lazy', imports: ['./entity', './memory'] },
+  './admin': { load: 'lazy', imports: ['./memory'] },
   './attention-pages': { load: 'lazy', imports: [] },
-  './reports': { load: 'lazy', imports: [] },
-  './report-studio': { load: 'lazy', imports: [] },
-  './dashboards': { load: 'lazy', imports: [] },
+  './reports': { load: 'lazy', imports: ['./memory'] },
+  './report-studio': { load: 'lazy', imports: ['./memory'] },
+  './dashboards': { load: 'lazy', imports: ['./recents'] },
   './config-check': { load: 'lazy', imports: [] },
   // Spec 0025's tab memory and recent pages, which spec 0025 §1 places in the
   // primary; they load with the page hosts and after first render instead.

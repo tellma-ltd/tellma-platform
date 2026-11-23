@@ -13,12 +13,9 @@
 
 export { TmRecents, type TmRecentPage } from './src/tm-recents';
 
-// The routed page and the launcher's answers that recents read until the page
-// context and the launcher land; not for app code.
+// The launcher's answers that recents read until the launcher lands; not for app code.
 export {
   TM_RECENTS_NAVIGATION as ɵTM_RECENTS_NAVIGATION,
-  TM_ROUTED_PAGE as ɵTM_ROUTED_PAGE,
   type TmRecentsEntry as ɵTmRecentsEntry,
   type TmRecentsNavigation as ɵTmRecentsNavigation,
-  type TmRoutedPage as ɵTmRoutedPage,
 } from './src/tm-recents';

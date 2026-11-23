@@ -12,8 +12,9 @@
  * HTTP layer with its error and plain-JSON value types, the exact decimal
  * helpers, the client store and the tab bus, the app-level keyboard
  * shortcut registry, the shell frame's seams (immersive mode and what the
- * tenant shell's `main` shows), and the seams through which telemetry, the
- * request log and page scopes are provided.
+ * tenant shell's `main` shows), the page-context registry with the page
+ * actions and their dispatcher, and the seams through which telemetry and
+ * the request log are provided.
  *
  * @packageDocumentation
  */
@@ -64,8 +65,32 @@ export {
   type TmRequestStart,
 } from './src/requests/tm-request-log';
 
-// Page scopes.
+// The page context and the page actions: the registry, page scopes, the
+// dispatcher, the snapshot and the help seam.
+export type {
+  TmContextError,
+  TmFormContext,
+  TmFormField,
+  TmPageContext,
+  TmVisibleColumn,
+  TmVisibleData,
+  TmVisibleRow,
+} from './src/context/tm-page-context';
+export type { TmActionOrigin, TmActionResult, TmPageAction, TmPageActionInput } from './src/context/tm-page-action';
+export { TmPageContexts } from './src/context/tm-page-contexts';
+export { TmPageActions } from './src/context/tm-page-actions';
 export { provideTmPageScope } from './src/context/tm-page-scope';
+export {
+  tmSerializePageContext,
+  type TmActionSnapshot,
+  type TmErrorSnapshot,
+  type TmFieldSnapshot,
+  type TmFormSnapshot,
+  type TmPageContextSnapshot,
+  type TmPageContextSnapshotOptions,
+  type TmVisibleSnapshot,
+} from './src/context/tm-page-snapshot';
+export { TM_HELP_ARTICLES } from './src/context/tm-help-articles';
 
 // The distribution API: the app configuration and its providers.
 export type {

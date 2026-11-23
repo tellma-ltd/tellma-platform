@@ -42,6 +42,8 @@ export interface TmRouteDataInternal {
   readonly ɵinPlace?: readonly string[];
   /** Whether the route renders outside any shell, so it brings its own `main`. */
   readonly ɵmain?: boolean;
+  /** A feature page's route template, such as `/:t/credit-review`: its host registers the page's default context. */
+  readonly ɵtemplate?: string;
 }
 
 /** The not-found page's title key. */
@@ -197,6 +199,7 @@ export function tmBuildRoutes(pages: readonly TmPageDeclaration[]): Routes {
           skeleton: declared.skeleton ?? 'blank',
           load: declared.component,
           titleKey: declared.titleKey,
+          ɵtemplate: `/:t/${declared.path}`,
           ...(declared.securable && { securable: declared.securable }),
         },
       ),

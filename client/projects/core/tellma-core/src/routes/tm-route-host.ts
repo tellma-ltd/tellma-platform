@@ -26,6 +26,8 @@ import { ActivatedRoute, type ActivatedRouteSnapshot, NavigationEnd, Router } fr
 import { TM_API_UPDATES } from '../api/tm-api-seams';
 import type { TmRouteData, TmRouteSkeleton } from '../app/tm-route-data';
 import { TM_BOOT_RESULT } from '../boot/tm-boot-result';
+import type { TmContextError } from '../context/tm-page-context';
+import { TmPageContexts } from '../context/tm-page-contexts';
 import { provideTmPageScope } from '../context/tm-page-scope';
 import type { TmLazyComponent } from '../declarations/tm-declaration-types';
 import { TmEntities } from '../entity/tm-entities';
@@ -51,9 +53,10 @@ import type { TmRouteDataInternal } from './tm-routes';
 // A `tmPage` whose permission the user lacks renders the forbidden view in
 // place. A chunk that fails to load asks the service worker for an update: a
 // newer version shows `client-outdated`, anything else `offline`. Each page
-// gets a page scope and a leave-check registry. A load holds the focus move
-// until its view renders; a load superseded, or a host destroyed while it
-// waits, gives its hold back.
+// gets a page scope and a leave-check registry, and a feature page a default
+// page context, which the page may replace with its own. A load holds the
+// focus move until its view renders; a load superseded, or a host destroyed
+// while it waits, gives its hold back.
 
 /** Where the host stands: the skeleton, the page, or an error view in its place. */
 type TmHostState =
@@ -277,6 +280,24 @@ export class TmRouteHost {
   /** Whether the host is destroyed. */
   #destroyed = false;
 
+  /** Whether the current load's view has rendered. */
+  readonly #painted = signal(false);
+
+  /** The default context's data state: `loading` until the view renders, then `ready`, or `error` for an error view. */
+  readonly #status = computed<'loading' | 'ready' | 'error'>(() => {
+    if (!this.#painted()) {
+      return 'loading';
+    }
+    return this.#errors().length > 0 ? 'error' : 'ready';
+  });
+
+  /** The default context's errors: the error view the host renders, if any. */
+  readonly #errors = computed<readonly TmContextError[]>(() => {
+    const state = this.#state();
+    const view = state.view === 'error' ? state.error : state.view === 'page' && !this.allowed() ? 'forbidden' : null;
+    return view === null ? [] : [{ source: 'client', code: view, message: this.#l10n.ɵtext(TM_ROUTE_ERROR_VIEWS[view].title)() }];
+  });
+
   /** Creates the host, which loads its page now and again whenever the routed page changes in place. */
   constructor() {
     const route = inject(ActivatedRoute);
@@ -289,6 +310,19 @@ export class TmRouteHost {
     this.data = toSignal(route.data, { requireSync: true }) as Signal<TmRouteData & TmRouteDataInternal>;
     this.#params = toSignal(route.params, { requireSync: true });
     this.#query = toSignal(route.queryParams, { requireSync: true });
+    // --- A feature page's default context: its kind, title and status, until the page registers its own ---
+    const data = this.data();
+    if (data.ɵtemplate !== undefined) {
+      inject(TmPageContexts).register({
+        kind: data.kind,
+        routeTemplate: data.ɵtemplate,
+        title: this.#l10n.ɵtext(data.titleKey ?? ''),
+        status: this.#status,
+        state: signal({}),
+        errors: this.#errors,
+        actions: signal([]),
+      });
+    }
     // A reused route, such as another entity's search page, loads its page anew.
     effect(() => {
       this.#loader();
@@ -324,7 +358,13 @@ export class TmRouteHost {
     };
     this.#holds.add(release);
     const current = (): boolean => run === this.#run;
+    const painted = (): void => {
+      if (current()) {
+        this.#painted.set(true);
+      }
+    };
     this.#state.set({ view: 'loading' });
+    this.#painted.set(false);
 
     // --- The cold entry's refresh, the page's chunk and the Entities chunk, in parallel ---
     // The entry settles with whether it was cold; a failed one was cold too.
@@ -345,7 +385,7 @@ export class TmRouteHost {
       if (current()) {
         this.#state.set({ view: 'error', error: update === 'ready' || update === 'failed' ? 'client-outdated' : 'offline' });
       }
-      this.#rendered(release);
+      this.#rendered(release, painted);
       return;
     }
 
@@ -366,7 +406,10 @@ export class TmRouteHost {
     this.#state.set({ view: 'page', component });
     // The launch is timed once the page has rendered.
     const routeKind = this.data().kind;
-    this.#rendered(release, () => this.#timer.rendered(routeKind, entry.cold));
+    this.#rendered(release, () => {
+      painted();
+      this.#timer.rendered(routeKind, entry.cold);
+    });
   }
 
   /** Releases every focus hold still taken. */

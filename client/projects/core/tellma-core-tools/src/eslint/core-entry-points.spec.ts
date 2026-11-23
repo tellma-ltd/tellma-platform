@@ -37,10 +37,23 @@ describe('the @tellma/core entry-point table', () => {
       '.',
       './attention',
       './entity',
+      './memory',
       './private',
       './search-normalize',
       './shell',
     ]);
+  });
+
+  it("lets the page hosts import the tab's memory, and the home page's the recent pages", () => {
+    for (const host of ['./search', './details', './admin', './reports', './report-studio']) {
+      expect(tmAllowedImports(TM_CORE_ENTRY_POINTS, host).has('./memory')).toBe(true);
+    }
+    expect(tmAllowedImports(TM_CORE_ENTRY_POINTS, './dashboards').has('./recents')).toBe(true);
+    // No eager entry point reaches either.
+    for (const eager of ['.', './attention', './shell']) {
+      expect(tmAllowedImports(TM_CORE_ENTRY_POINTS, eager).has('./memory')).toBe(false);
+      expect(tmAllowedImports(TM_CORE_ENTRY_POINTS, eager).has('./recents')).toBe(false);
+    }
   });
 
   it('names an import of an unknown entry point', () => {
