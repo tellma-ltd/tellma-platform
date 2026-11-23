@@ -7,11 +7,12 @@ import { TestBed } from '@angular/core/testing';
 import { TmConfirm, type TmConfirmYesNoOptions } from '@tellma/core-ui/confirm';
 import { TmErrorDialog, type TmErrorDialogOptions, type TmErrorDialogResult } from '@tellma/core-ui/error-dialog';
 import { TmFakeSession, TmFakeTelemetry } from '@tellma/core-testing';
-import { TmApiError, TmLaunch, TmPageContexts, TmPermissions, TmShellMain, ɵTM_API_UPDATES } from '@tellma/core';
+import { TmApiError, TmEntities, TmLaunch, TmPageContexts, TmPermissions, TmShellMain } from '@tellma/core';
 
-import { TmFakeApiUpdates } from '../../src/api/tm-api.testing.util';
+import { TmFakeApiUpdates, tmFakeUpdatesProviders } from '../../src/api/tm-api.testing.util';
 import { tmAppRig, tmNavigate, tmSettle, TM_T17, type TmAppRig } from '../../src/routes/tm-app.testing.util';
 import { TmErrorPresenter } from './tm-error-presenter';
+import { TM_RELOAD_HOST } from './tm-error-updates';
 import { TmErrorState } from './tm-error-state';
 
 // The error presenter in a whole test app warm in tenant 17, on
@@ -76,7 +77,8 @@ async function setUp(): Promise<TmPresenterRig> {
     providers: [
       { provide: TmErrorDialog, useValue: dialog },
       { provide: TmConfirm, useValue: confirm },
-      { provide: ɵTM_API_UPDATES, useValue: updates },
+      ...tmFakeUpdatesProviders(updates),
+      { provide: TM_RELOAD_HOST, useValue: updates },
     ],
   });
   await tmNavigate('/17/centers');
@@ -117,6 +119,7 @@ describe('TmErrorPresenter', () => {
       const filtered = presenter.describe(forbidden({ resource: 'gl.Center', action: 'Read', reason: 'outside-filter' }), { kind: 'read' });
       expect(filtered.title()).toBe("Your access doesn't cover this record");
       expect(filtered.message()).toContain(`“${TestBed.inject(TmPermissions).label('gl.Center', 'Read')()}”`);
+      expect(filtered.permission).toBe('gl.Center · Read');
     });
 
     it('names a refused path from the query root, else shows it raw', async () => {
@@ -127,6 +130,15 @@ describe('TmErrorPresenter', () => {
       expect(raw.title()).toBe("You can't see Manager.Name here");
       expect(raw.message()).toBe(`It needs full “${resource}: Read” access. Ask your administrator to grant it.`);
       expect(raw.permission).toBe('core.User · Read');
+
+      // With the call's entity and the entity model loaded, the path reads as its labels.
+      await TestBed.inject(TmEntities).load();
+      const named = presenter.describe(
+        forbidden({ resource: 'core.User', action: 'Read', reason: 'restricted-path', path: 'Manager.Manager' }),
+        { kind: 'read', entity: 'gl.Center' },
+      );
+      expect(named.title()).toBe(`You can't see ${TestBed.inject(TmEntities).resolve('gl.Center', 'Manager.Manager')!.label()} here`);
+      expect(named.title()).not.toContain('Manager.Manager');
     });
 
     it('names the tenant of a read-only or frozen refusal as the shell shows it', async () => {
@@ -251,7 +263,7 @@ describe('TmErrorPresenter', () => {
       await tmSettle();
       // The page is reloading: the button stays busy.
       expect(done).toBe(false);
-      expect(updates.checks).toBe(1);
+      expect([updates.checks, updates.reloads]).toEqual([1, 1]);
     });
 
     it("shows a refusal in the 400 dialog with the server's items, the reference and the raw permission", async () => {

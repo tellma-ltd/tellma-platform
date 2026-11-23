@@ -5,12 +5,13 @@
 
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { TmFakeSession } from '@tellma/core-testing';
-import { TmApiError, ɵTM_API_UPDATES } from '@tellma/core';
+import { TmApiError } from '@tellma/core';
 
-import { TmFakeApiUpdates } from '../../src/api/tm-api.testing.util';
+import { TmFakeApiUpdates, tmFakeUpdatesProviders } from '../../src/api/tm-api.testing.util';
 import { tmAppRig, tmNavigate, tmSettle, type TmAppRig } from '../../src/routes/tm-app.testing.util';
 import { TmErrorPresenter } from './tm-error-presenter';
 import { TmErrorState } from './tm-error-state';
+import { TM_RELOAD_HOST } from './tm-error-updates';
 
 // The inline error state in a whole test app on `/17/centers`, rendering
 // the presenter's views.
@@ -24,7 +25,7 @@ interface TmStateRig extends TmAppRig {
 /** Starts the test app on `/17/centers`. */
 async function setUp(): Promise<TmStateRig> {
   const updates = new TmFakeApiUpdates();
-  const rig = await tmAppRig({ providers: [{ provide: ɵTM_API_UPDATES, useValue: updates }] });
+  const rig = await tmAppRig({ providers: [...tmFakeUpdatesProviders(updates), { provide: TM_RELOAD_HOST, useValue: updates }] });
   await tmNavigate('/17/centers');
   return { ...rig, updates, presenter: TestBed.inject(TmErrorPresenter) };
 }

@@ -3,6 +3,7 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+import { Location } from '@angular/common';
 import { Injectable } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { TmBusyOverlay } from '@tellma/core-ui/busy-overlay';
@@ -187,6 +188,20 @@ describe('TmSessionFlows', () => {
       expect(dialog.querySelectorAll('button')).toHaveLength(1);
       button.click();
       await vi.waitFor(() => expect(TestBed.inject(TmFakeSession).signIns()).toEqual([{}]));
+    });
+
+    it('keeps the session-ended dialog open when the user goes Back', async () => {
+      const rig = await setUp();
+      await rig.router.navigateByUrl('/17/centers?page=2');
+      await tmSettle();
+      rig.paths.expired('cookie');
+      await vi.waitFor(() => expect(endedDialog()).not.toBeNull());
+      TestBed.inject(Location).back();
+      await tmSettle();
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      const dialog = endedDialog();
+      expect(dialog).not.toBeNull();
+      expect(document.activeElement).toBe(dialog!.querySelector('button'));
     });
 
     it('lets the next launch sweep when the sweep runs past its time box, fails, or cannot reach the stored data', async () => {
@@ -378,6 +393,25 @@ describe('TmSessionFlows', () => {
       expect(rig.bus.types().filter((type) => type === 'drafts.query').length).toBe(queries);
     });
 
+    it('asks one question about both when unsaved changes remain and a save still runs after a minute', async () => {
+      const rig = await setUp();
+      rig.bus.tabs.push({ dirty: 2, busy: true });
+      rig.confirm.answer = false;
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+      const signOut = rig.paths.ɵsignOut();
+      await vi.advanceTimersByTimeAsync(TM_SIGN_OUT_WAIT_MS + 1_000);
+      await signOut;
+      expect(rig.confirm.asked).toEqual([
+        {
+          title: 'Sign out and discard unsaved changes?',
+          message: "You have unsaved changes in 1 tab. A save is still running. If you sign out now, you won't see whether it finished.",
+          confirmLabel: 'Sign out',
+          destructive: true,
+        },
+      ]);
+      expect(rig.paths.state()).toBe('active');
+    });
+
     it('restores the session and says so when the sign-out fails', async () => {
       const rig = await setUp();
       const failure = new TmApiError({ kind: 'offline', code: 'outcome-unknown' });
@@ -438,6 +472,26 @@ describe('TmSessionFlows', () => {
       const rig = await setUp();
       TestBed.inject(TmFakeSession).setCheck('missing');
       window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true }));
+      expect(rig.paths.state()).toBe('expired');
+      expect(sessionEvents(rig)).toEqual([{ name: 'tm.session.expired', props: { source: 'cookie' } }]);
+    });
+
+    it('runs the changed-user path when the tab comes into view under another user', async () => {
+      const rig = await setUp();
+      TestBed.inject(TmFakeSession).setCheck('changed');
+      document.dispatchEvent(new Event('visibilitychange'));
+      await vi.waitFor(() => expect(rig.host.replaced).toEqual(['/']));
+      expect(rig.bus.session()).toEqual([{ type: 'session.changed', sub: TM_TEST_SUB }]);
+    });
+
+    it("re-checks the cookie when another tab's sign-out overlay lifts", async () => {
+      const rig = await setUp();
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+      rig.bus.receive({ type: 'session.signing-out', sub: TM_TEST_SUB });
+      await vi.advanceTimersByTimeAsync(0);
+      // The other tab's sign-out went through, but its signed-out message never came.
+      TestBed.inject(TmFakeSession).setCheck('missing');
+      await vi.advanceTimersByTimeAsync(TM_SIGNING_OUT_LIFT_MS);
       expect(rig.paths.state()).toBe('expired');
       expect(sessionEvents(rig)).toEqual([{ name: 'tm.session.expired', props: { source: 'cookie' } }]);
     });

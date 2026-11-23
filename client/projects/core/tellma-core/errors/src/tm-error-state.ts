@@ -8,8 +8,9 @@ import { Router } from '@angular/router';
 import { TmButton } from '@tellma/core-ui/button';
 import { TmReference } from '@tellma/core-ui/copy';
 import { TmEmptyState } from '@tellma/core-ui/empty-state';
-import { TmLocalization, TmSession, TmUrls, ɵTM_API_UPDATES } from '@tellma/core';
+import { TmLocalization, TmSession, TmUrls } from '@tellma/core';
 
+import { TmErrorUpdates } from './tm-error-updates';
 import { TM_VIEW_ERRORS, type TmErrorAction, type TmErrorView } from './tm-error-view';
 
 // The inline error state (spec 0024 §11): 0023's empty state with the view's
@@ -92,7 +93,7 @@ const LABELS: Readonly<Partial<Record<TmErrorAction, string>>> = {
 export class TmErrorState {
   readonly #injector = inject(Injector);
   readonly #l10n = inject(TmLocalization);
-  readonly #updates = inject(ɵTM_API_UPDATES);
+  readonly #updates = inject(TmErrorUpdates);
 
   /** The view, as the error presenter describes it. */
   readonly view = input.required<TmErrorView>();
@@ -163,6 +164,17 @@ export class TmErrorState {
         await this.#injector.get(Router).navigateByUrl(this.#injector.get(TmUrls).picker());
         return;
     }
+  }
+
+  /**
+   * Runs an action as a click on its button would. Internal: the route's
+   * error view hands it a Reload clicked before this state rendered.
+   *
+   * @param action - The action.
+   * @returns A promise that settles when the action has.
+   */
+  ɵact(action: TmErrorAction): Promise<void> {
+    return this.act(action);
   }
 
   /** Reloads as the browser would: the degraded worker sends the load to the network. */

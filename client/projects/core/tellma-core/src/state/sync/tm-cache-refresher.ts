@@ -15,13 +15,13 @@ import {
   signal,
   untracked,
   type Signal,
-  type Type,
 } from '@angular/core';
 import { NavigationEnd, Router } from '@angular/router';
 
 import { TmApi } from '../../api/tm-api';
 import { TmApiError } from '../../api/tm-api-error';
 import { TM_API_HOST } from '../../api/tm-api-host';
+import { TM_ERRORS_LOAD } from '../../api/tm-api-seams';
 import { TM_NOW } from '../../app/tm-now';
 import { tmRoutedTenant } from '../../launch/tm-routed-tenant';
 import { TmClientMetadataStore } from '../../metadata/tm-client-metadata';
@@ -83,12 +83,6 @@ export interface TmSyncErrors {
   present(error: TmApiError, tenantId: number): void;
 }
 
-/** The error presenter's entry point, as far as the refresher reads it. Internal. */
-export interface TmErrorsModule {
-  /** The error presenter. */
-  readonly TmErrorPresenter: Type<{ present(error: TmApiError, context: { kind: 'read'; tenantId: number }): Promise<void> }>;
-}
-
 /**
  * Where the refresher hands a sync's `tenant-not-found` and
  * `tenant-unavailable` refusals, even from a background sync: the app's
@@ -99,10 +93,10 @@ export const TM_SYNC_ERRORS = new InjectionToken<TmSyncErrors>('TM_SYNC_ERRORS',
   providedIn: 'root',
   factory: (): TmSyncErrors => {
     const injector = inject(Injector);
+    const load = inject(TM_ERRORS_LOAD);
     return {
       present: (error, tenantId) =>
-        // The specifier is cast so that the package build does not report the import back as a cycle.
-        void (import('@tellma/core/errors' as string) as Promise<TmErrorsModule>)
+        void load()
           .then((errors) => injector.get(errors.TmErrorPresenter).present(error, { kind: 'read', tenantId }))
           .catch((failure: unknown) => injector.get(TmTelemetry).error(failure, { source: 'tm-cache-refresher' })),
     };

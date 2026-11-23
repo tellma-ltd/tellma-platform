@@ -14,6 +14,7 @@ import {
   signal,
   untracked,
   type Signal,
+  type ViewContainerRef,
 } from '@angular/core';
 import { Router } from '@angular/router';
 import { TmConfirm } from '@tellma/core-ui/confirm';
@@ -21,7 +22,7 @@ import { TmErrorDialog, type TmErrorDialogButton, type TmErrorDialogOptions, typ
 import { TmIconRegistry } from '@tellma/core-ui/icon';
 import {
   TM_NOW,
-  type TmApiError,
+  TmApiError,
   TmClientStore,
   TmEntities,
   type TmJson,
@@ -36,13 +37,13 @@ import {
   TmShellMain,
   TmTelemetry,
   TmUrls,
-  ɵTM_API_UPDATES,
   ɵTmClientMetadataStore,
 } from '@tellma/core';
 import { CircleAlert, Clock, Lock, RefreshCw, SearchX } from 'lucide';
 
 import { TmErrorState } from './tm-error-state';
 import { TM_ERROR_STRINGS_EN } from './tm-error-strings';
+import { TmErrorUpdates } from './tm-error-updates';
 import { TM_VIEW_ERRORS, type TmErrorAction, type TmErrorContext, type TmErrorView } from './tm-error-view';
 
 // The error presenter (spec 0024 §8.3, §11): one table turns a `TmApiError`
@@ -78,7 +79,8 @@ const ICONS = { 'circle-alert': CircleAlert, clock: Clock, lock: Lock, 'refresh-
 /** The kinds whose write or action shows the 5xx dialog; the rest show the 400 dialog. */
 const FIVE_XX: ReadonlySet<string> = new Set(['offline', 'unavailable', 'client-outdated', 'server']);
 
-/** The kinds the presenter reports to telemetry when it shows them (spec 0026 §4.1). */
+// Spec 0026 §4.1.
+/** The kinds the presenter reports to telemetry when it shows them. */
 function reported(error: TmApiError): boolean {
   return (
     error.kind === 'server' ||
@@ -127,7 +129,7 @@ export class TmErrorPresenter {
   readonly #environment = inject(EnvironmentInjector);
   readonly #l10n = inject(TmLocalization);
   readonly #telemetry = inject(TmTelemetry);
-  readonly #updates = inject(ɵTM_API_UPDATES);
+  readonly #updates = inject(TmErrorUpdates);
   readonly #now = inject(TM_NOW);
   /** The tenants whose `tenant-not-found` is being handled, so a burst of refusals runs it once. */
   readonly #gone = new Set<number>();
@@ -213,7 +215,8 @@ export class TmErrorPresenter {
     return this.#injector.get(TmUrls);
   }
 
-  /** The table's row for an error (spec 0024 §11). */
+  // Spec 0024 §11's table.
+  /** The table's row for an error. */
   #row(error: TmApiError, context: TmErrorContext): TmErrorRow {
     const args = argumentsOf(error);
     const tenant = (): string => this.#tenantName(context.tenantId ?? this.#urls.tenantId());
@@ -522,4 +525,19 @@ export class TmErrorPresenter {
     }
     this.#injector.get(TmShellMain).replace(TmErrorState, { view: this.describe(error, { ...context, tenantId }) });
   }
+}
+
+/**
+ * Renders the inline state of a page whose chunk did not load because the
+ * app was updated, for the route's own error view, which hands it its
+ * Reload. Internal.
+ *
+ * @param slot - Where the state renders.
+ * @returns The state.
+ */
+export function tmClientOutdatedState(slot: ViewContainerRef): TmErrorState {
+  const state = slot.createComponent(TmErrorState);
+  const error = new TmApiError({ kind: 'client-outdated', status: 412, code: 'client-outdated' });
+  state.setInput('view', slot.injector.get(TmErrorPresenter).describe(error, { kind: 'read' }));
+  return state.instance;
 }

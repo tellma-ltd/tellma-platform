@@ -311,6 +311,19 @@ describe('TmUpdates', () => {
       expect(rig.container.registered[0]).toEqual({ url: '/ngsw-worker.js', options: { scope: '/', updateViaCache: 'none' } });
     });
 
+    it('checks once the worker is registered, so a version announced before the service started shows', async () => {
+      const rig = await setUp();
+      // The worker downloaded 1.1.0 before this tab listened: its answer names it.
+      rig.sw.script = () => {
+        rig.sw.versionUpdates.next({ type: 'NO_NEW_VERSION_DETECTED', version: version('1.1.0') });
+        return Promise.resolve(false);
+      };
+      const updates = rig.updates();
+      await vi.waitFor(() => expect(updates.available()).toBe('1.1.0'));
+      expect(rig.sw.checks).toBe(1);
+      expect(rig.container.registered).toHaveLength(1);
+    });
+
     it('registers after 30 s when the app never settles, and reports a refused registration', async () => {
       const rig = await setUp();
       vi.useFakeTimers();
@@ -363,10 +376,13 @@ describe('TmUpdates', () => {
       vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
       try {
         rig.updates();
-        await vi.advanceTimersByTimeAsync(TM_UPDATE_INTERVAL_MS - 1);
-        expect(rig.sw.checks).toBe(0);
-        await vi.advanceTimersByTimeAsync(1);
+        // The check once the worker is registered.
+        await vi.advanceTimersByTimeAsync(0);
         expect(rig.sw.checks).toBe(1);
+        await vi.advanceTimersByTimeAsync(TM_UPDATE_INTERVAL_MS - 1);
+        expect(rig.sw.checks).toBe(1);
+        await vi.advanceTimersByTimeAsync(1);
+        expect(rig.sw.checks).toBe(2);
 
         // Hidden less than an hour: no check on return, and the hidden time stops the 6-hour timer.
         rig.page.visibleNow = false;
@@ -374,7 +390,7 @@ describe('TmUpdates', () => {
         await vi.advanceTimersByTimeAsync(TM_UPDATE_HIDDEN_MS - 1);
         rig.page.visibleNow = true;
         rig.page.fire('document', 'visibilitychange');
-        expect(rig.sw.checks).toBe(1);
+        expect(rig.sw.checks).toBe(2);
 
         // Hidden an hour: a check on return.
         rig.page.visibleNow = false;
@@ -383,7 +399,7 @@ describe('TmUpdates', () => {
         rig.page.visibleNow = true;
         rig.page.fire('document', 'visibilitychange');
         await vi.advanceTimersByTimeAsync(0);
-        expect(rig.sw.checks).toBe(2);
+        expect(rig.sw.checks).toBe(3);
       } finally {
         vi.useRealTimers();
       }

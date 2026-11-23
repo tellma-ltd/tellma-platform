@@ -5,7 +5,9 @@
 ```ts
 
 import * as _angular_core from '@angular/core';
+import { InjectionToken } from '@angular/core';
 import { Signal } from '@angular/core';
+import { ViewContainerRef } from '@angular/core';
 
 // @public
 export type TmErrorAction = 'close' | 'continue' | 'reload' | 'reload-anyway' | 'retry' | 'sign-in' | 'switch-tenant';

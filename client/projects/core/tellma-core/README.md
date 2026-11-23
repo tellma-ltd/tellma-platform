@@ -417,8 +417,9 @@ injector of its own, outside development, whose own registration never runs.
 `TmUpdates.check()` answers `ready`, `none`, `failed`, `unreachable` or `disabled` from the
 worker's event during the check; a worker that already holds a newer version answers "no new
 version" naming it, which reads as `ready`. `update()` checks and reloads into the new version, or
-reloads plainly when no worker is in the way. The service checks when the tab comes back into view
-after an hour hidden and every 6 hours while visible, reloads at once when the worker's cache is
+reloads plainly when no worker is in the way. The service checks once the worker is registered, so
+a version announced before the entry point loaded still shows, when the tab comes back into view
+after an hour hidden, and every 6 hours while visible, reloads at once when the worker's cache is
 broken, and shows the update banner, dismissible for its version, while a newer version waits.
 
 ## Error presentation
@@ -428,7 +429,8 @@ table: its tone, icon, title and message, the server's items, the reference, the
 a `forbidden` refusal the permission it needs by its label, with the raw resource and action pair
 for support. A page renders a failed read inline with `tm-error-state`. `present(error, context)`
 shows a write's or an action's error in the shared 5xx dialog (Try again, or Reload, which gets the
-update first and offers Reload anyway from the second failed download) or the 400 dialog, and
+update first and offers Reload anyway from the second failed download; with no worker in the way
+it reloads at once, without loading the update service) or the 400 dialog, and
 registers the open dialog as an overlay page context. A step-up asks before it signs in again. On
 any call, a tenant that is gone sweeps its data and goes to the picker, and a suspended tenant
 replaces the shell's main area with the tenant-state page. A cancelled call and an ended session
@@ -487,7 +489,9 @@ Every page route renders `TmRouteHost`. It draws the page family's skeleton in t
 frame, loads the page's chunk beside a cold tenant entry's refresh, and creates the page once the
 tenant's launch documents are current. A page that names a `securable` the user lacks shows the
 forbidden view in place. A chunk that fails to load asks the service worker for an update and
-shows `client-outdated` or `offline`. Each page gets its own page scope and leave checks, which a
+shows `client-outdated` or `offline`. The `client-outdated` view loads `@tellma/core/errors` at
+once and renders its `tm-error-state` in its place, whose Reload gets the update first; when that
+entry point cannot load, Reload reloads plainly, which no worker is in the way of. Each page gets its own page scope and leave checks, which a
 navigation away runs, a move between My settings sections or into another tenant included; a
 settings tab change keeps the page and runs none. On every page route, the host registers a
 default page context of the route's kind, titled as the document is, whose route template names
@@ -760,7 +764,7 @@ language and no calendar, until the localization service), the cache refresher (
 nothing to revalidate), and the worker's update check, which loads `@tellma/core/updates` on its
 first call (`disabled` in an app without it, as a test app, and `unreachable` when it cannot load).
 The sync's refusals that end a tenant's use go through one more to the error presenter, which
-they load.
+they load through the same loader as the route's `client-outdated` view.
 
 The route host reads one more: the platform's text, which reads the loaded string packs and
 client tables until the localization service replaces it. A page's `securable` gate asks

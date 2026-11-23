@@ -9,7 +9,8 @@ import type { TmStringTree } from '@tellma/core';
 // the spec's table words them. They join the platform's `tm.errors` table
 // when the presenter loads; the rows the route's own error views already
 // show (offline, forbidden, client-outdated, Reload and Try again) stay
-// there, in the primary table, and the presenter reuses them.
+// there, in the primary table, and the presenter reuses them. Reload's
+// download flow is this entry point's alone, so its words are here.
 
 /** The error presenter's English strings, merged under `tm.errors`. */
 export const TM_ERROR_STRINGS_EN = {
@@ -43,5 +44,8 @@ export const TM_ERROR_STRINGS_EN = {
     message: "This needs you to sign in again. You'll come back to this page with your unsaved changes.",
     continue: 'Continue',
   },
+  updating: 'Getting the update…',
+  updateFailed: "Couldn't download the update. Check your connection and try again.",
+  reloadAnyway: 'Reload anyway',
   details: { status: 'Status', code: 'Code', time: 'Time', route: 'Page', version: 'Version', permission: 'Permission' },
 } as const satisfies TmStringTree;

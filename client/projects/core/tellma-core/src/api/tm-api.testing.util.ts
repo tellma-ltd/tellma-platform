@@ -3,13 +3,13 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-import { Injectable, signal } from '@angular/core';
+import { Injectable, signal, type Provider } from '@angular/core';
 
 import { TmTelemetry, type TmTelemetryItem, type TmTelemetryProps } from '../observe/tm-telemetry';
 import { TmRequestLog, type TmRequestEnd, type TmRequestHandle, type TmRequestStart } from '../requests/tm-request-log';
 import type { TmRecordedEvent } from '../session/tm-session.testing.util';
 import type { TmApiHost } from './tm-api-host';
-import type { TmApiCache, TmApiLocale, TmApiUpdateCheck, TmApiUpdates } from './tm-api-seams';
+import { TM_UPDATES_LOAD, type TmApiCache, type TmApiLocale, type TmApiUpdateCheck, type TmWorkerUpdates } from './tm-api-seams';
 
 // The HTTP layer's browser, faked for its specs: a `fetch` whose requests the
 // spec answers one by one, upload requests the spec drives, connectivity and
@@ -423,13 +423,19 @@ export class TmFakeApiCache implements TmApiCache {
   }
 }
 
-/** The worker's update check, faked: it answers what the spec says, or hangs. */
-export class TmFakeApiUpdates implements TmApiUpdates {
+/**
+ * The update service, faked: its check answers what the spec says, or
+ * hangs, and its reloads are counted. It also stands for the page behind
+ * the error views' Reload: whether a worker controls it, and its reload.
+ */
+export class TmFakeApiUpdates implements TmWorkerUpdates {
   /** The answer of the next checks, or `null` to hang. */
   answer: TmApiUpdateCheck | null = 'disabled';
+  /** Whether a service worker controls the page. */
+  worker = true;
   /** How many checks ran. */
   checks = 0;
-  /** How many plain reloads ran. */
+  /** How many reloads ran. */
   reloads = 0;
 
   /** Runs a check. */
@@ -439,15 +445,38 @@ export class TmFakeApiUpdates implements TmApiUpdates {
     return answer === null ? new Promise(() => undefined) : Promise.resolve(answer);
   }
 
-  /** Runs a check, as `update()` does; the page never reloads. */
-  update(): Promise<TmApiUpdateCheck> {
-    return this.check();
+  /** Runs a check, and counts the reload that `ready` and `disabled` start. */
+  async update(): Promise<TmApiUpdateCheck> {
+    const result = await this.check();
+    if (result === 'ready' || result === 'disabled') {
+      this.reload();
+    }
+    return result;
   }
 
-  /** Counts a plain reload; the page stays. */
+  /** Counts a reload; the page stays. */
   reload(): void {
     this.reloads++;
   }
+
+  /** Whether a service worker controls the page. */
+  controlled(): boolean {
+    return this.worker;
+  }
+}
+
+/**
+ * The providers that load a faked update service where the app would load
+ * the real one.
+ *
+ * @param updates - The fake.
+ * @returns The providers.
+ */
+export function tmFakeUpdatesProviders(updates: TmFakeApiUpdates): Provider[] {
+  return [
+    { provide: TmFakeApiUpdates, useValue: updates },
+    { provide: TM_UPDATES_LOAD, useValue: () => Promise.resolve({ TmUpdates: TmFakeApiUpdates }) },
+  ];
 }
 
 /** The request locale, fixed. */

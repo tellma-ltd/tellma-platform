@@ -38,9 +38,9 @@ import { TM_WORKER_SCRIPT, tmRegisterWorker, tmWorkerScriptUrl, type TmTrustedTy
 // The service worker's updates (spec 0024 §5.4, §5.5; spec 0028 §9.5). The
 // app loads this entry point after its first render: it registers the
 // worker, follows the worker's version events, checks for a newer version
-// when the tab comes back into view after an hour or more and every 6 hours
-// while it is visible, and shows the update banner while a newer version
-// waits. Angular's `checkForUpdate()` resolves `false` for three different
+// once the worker is registered, when the tab comes back into view after an
+// hour or more and every 6 hours while it is visible, and shows the update
+// banner while a newer version waits. Angular's `checkForUpdate()` resolves `false` for three different
 // outcomes, so a check reads the event that arrives while it runs. A worker
 // that already holds a newer version answers a check with "no new version"
 // naming that version, which reads as ready: the event that announced it may
@@ -183,12 +183,14 @@ export class TmUpdates {
     const destroyRef = inject(DestroyRef);
 
     // --- Registration, through the Trusted Types policy, once the app settles ---
+    // Then one check: a version the worker announced before this entry point
+    // loaded reached no listener, and the worker's answer names it again.
     void tmRegisterWorker(
       container,
       inject(ApplicationRef).whenStable(),
       () => tmWorkerScriptUrl(host.origin, host.trustedTypes),
       () => this.#telemetry.event('tm.sw.register-failed'),
-    );
+    ).then(() => this.check());
     // A worker that takes control of the page starts initializing at once,
     // as Angular's own registration has it do.
     const controllerChanged = (): void => {

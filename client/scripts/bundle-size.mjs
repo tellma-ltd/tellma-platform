@@ -227,9 +227,15 @@ for (const library of discoverLibraries(clientDir)) {
     // so the walk starts at the output whose entry point is this one's FESM.
     const entryInput = relative(clientDir, entryFesm).split(sep).join('/');
     const start = Object.keys(outputs).find((out) => outputs[out].entryPoint === entryInput);
+    if (start === undefined) {
+      // A walk with no start would pass without having looked.
+      console.error(`${library.name}: '${id}' has no output built from ${entryInput}, so its static graph cannot be walked.`);
+      failed = true;
+      continue;
+    }
     const seen = new Set();
     let reached = false;
-    const queue = start === undefined ? [] : [start];
+    const queue = [start];
     while (queue.length > 0) {
       const out = queue.pop();
       if (seen.has(out)) {

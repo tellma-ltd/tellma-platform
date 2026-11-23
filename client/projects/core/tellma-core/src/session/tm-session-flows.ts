@@ -323,7 +323,8 @@ export class TmSessionFlows {
     }
   }
 
-  /** The sign-out's steps (spec 0024 §8.4). */
+  // Spec 0024 §8.4.
+  /** The sign-out's steps. */
   async #signOut(): Promise<void> {
     const sub = this.#sub();
     if (sub === null || untracked(this.#paths.state) !== 'active') {
@@ -562,7 +563,7 @@ export class TmSessionFlows {
 
   /**
    * Opens the session-ended dialog, once: an alert dialog whose only way
-   * on is Sign in, so Escape and the backdrop do nothing.
+   * on is Sign in, so Escape, the backdrop and history navigation do nothing.
    *
    * @param signIn - What Sign in does.
    */
@@ -580,6 +581,9 @@ export class TmSessionFlows {
       showClose: false,
       backdropDismiss: false,
       escapeDismiss: false,
+      // Back or Forward must not close it either: the session is gone, and
+      // only Sign in leads on.
+      closeOnNavigation: false,
       data: {
         messageId,
         message: this.#text('ended.message')(),
