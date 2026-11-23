@@ -199,12 +199,14 @@ namespace Tellma.Core.Jobs
         /// <summary>The length a renewal extends the lease by, in seconds.</summary>
         public int LeaseSeconds => Handler.Options.LeaseSeconds;
 
-        // Spec 0020 §6.7: the final renewal binds the lease to the host's shutdown timeout. A handler
-        // still running may flush or jump after it, and its renewal must not undo the shortening, so
-        // once bound every renewal extends the lease only to the end the final one set. Once that
-        // renewal wrote the end, later ones keep it (KeepsStopEnd) and this length goes unused; until
-        // then the end is estimated on this instance's clock and rounded up to a whole second, since
-        // a lease that lapsed early would let another instance run the job while the handler lives.
+        // Spec 0020 §6.7: the final renewal binds the lease to the host's shutdown timeout, and the
+        // spec stops renewals after it. The worker still lets a handler running until its abandonment
+        // flush or jump, and that renewal writes progress and reads verdicts; so that it never moves
+        // the end the spec's stop intends, the worker's rule is that once bound every renewal extends
+        // the lease only to the end the final one set. Once that renewal wrote the end, later ones
+        // keep it (KeepsStopEnd) and this length goes unused; until then the end is estimated on this
+        // instance's clock and rounded up to a whole second, since a lease that lapsed early would let
+        // another instance run the job while the handler lives.
         /// <summary>
         ///     The length a renewal sent now extends the lease by, in seconds: its own, or, once the
         ///     final renewal bound it, what is left until the end that renewal set, rounded up and at
@@ -227,9 +229,10 @@ namespace Tellma.Core.Jobs
             }
         }
 
-        // Spec 0020 §6.7: the end the final renewal wrote is in the database's clock, to the
-        // millisecond; a later renewal extending the lease by whole seconds from its own statement's
-        // clock would end it later than that, so it keeps the stored end instead.
+        // The end the final renewal of spec 0020 §6.7 wrote is in the database's clock, to the
+        // millisecond. A flush or jump the worker still renews before the handler's abandonment
+        // would, extending the lease by whole seconds from its own statement's clock, end it later
+        // than that; it keeps the stored end instead, which is where the spec's stop leaves it.
         /// <summary>
         ///     Whether renewals keep the lease's stored end rather than extend it: the final renewal
         ///     that bound it to the host's stop wrote that end.

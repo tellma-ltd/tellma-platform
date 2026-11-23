@@ -39,10 +39,11 @@ namespace Tellma.Core.Jobs
     // row whose cancel was requested cancels its item; the carried rows leave the buffer, and
     // job.changed follows for those with a requester. A renewal that fails carries no verdict: its
     // failure reaches the caller and the leases wait for the next one. The final renewal of §6.7
-    // binds every lease to the host's shutdown timeout instead of its own length, and from then on a
-    // renewal a running handler's flush or jump asks for extends the lease only to that end: it
-    // keeps the end the final renewal wrote, or, when that renewal failed, the end it meant to set,
-    // estimated on this instance's clock.
+    // binds every lease to the host's shutdown timeout instead of its own length. §6.7 stops
+    // renewals there; the worker still renews for a running handler's flush or jump until the
+    // handler is abandoned, and such a renewal extends the lease only to the final end: it keeps the
+    // end the final renewal wrote, or, when that renewal failed, the end it meant to set, estimated
+    // on this instance's clock.
     /// <summary>Renews the leases a tenant's claims hold on this instance, carrying their buffered progress.</summary>
     internal sealed class JobRenewal : IJobRenewal
     {

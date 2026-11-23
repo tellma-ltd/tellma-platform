@@ -87,9 +87,11 @@ could not see it.
 
 ### Deviations
 
-- Spec 0020 §5.2's renew statement gains a third table parameter of kept tokens and a CASE on
-  `[LeaseExpiresAt]`. §6.7 does not say what a flush after the final renewal does. The code already
-  promised "only to that end", and only the database's own stored end meets that promise exactly.
+- Spec 0020 §6.7 stops renewals after the final one. The worker, already before this fix, still
+  lets a running handler's flush or jump renew in the window before abandonment, writing progress
+  and reading verdicts. With this fix that renewal leaves the lease's end where the final renewal
+  wrote it, so the end matches the spec's outcome. §5.2's renew statement gains the kept-token
+  table parameter and a CASE on `[LeaseExpiresAt]` for this. (Restated in review 1, R1-2.)
 
 ### Open risks
 
@@ -107,3 +109,81 @@ could not see it.
   a final renewal ever reach the kept list.
 - The determinism argument of `UntilTheClockPassesAsync`: the final renewal's `@now` is no later
   than the read's rounded clock, which is earlier than the flush's rounded clock.
+
+## Review 1
+
+### Findings
+
+Checked and holding: the kept CASE, the third table parameter and its golden; `KeepStopEnd` set only
+after the final renewal's round trip returned, for leases judged held (the UPDATE joins by token, so
+every row still `Running` under that token got the final end, completing rows included, and a lost
+lease is never carried again); a second final renewal, a cancelled or failed one, a lease lost
+meanwhile, and the drain path (abandonment right after the final renewals, so `Carried` stops
+carrying the lease and the kept end only governs the window before it); no early expiry, since the
+kept end is the end the spec's final renewal sets and it lies past the host's stop deadline; the
+rounding argument of `LeaseAsync` (same conversion as the statements' `@now`, monotonic) and of
+`UntilTheClockPassesAsync` (it waits only for the next clock tick; its loop ends as the clock
+advances); the sibling drain-lease test (`HostOptions.ShutdownTimeout` is a whole 3 s there, so the
+bound is exact); `BlobSweepTests.MinutesToExpiryAsync` (a millisecond of rounding moves
+`DATEDIFF(second)` by at most 1, which `/ 60` absorbs in every range it is asserted against); the
+other jobs and schedules time assertions (second-scale slack, or the rounded `DatabaseNowAsync`).
+Re-run locally: `dotnet build` of both test projects (0 warnings), `dotnet format --verify-no-changes`
+on the nine touched C# files (clean), unit `Tellma.Core.Tests.Jobs` 303/303, integration
+`JobRunLockingTests|JobRunSnapshotTests` 110/110, and the three changed lease tests 6 more times in
+both modes, all green.
+
+**R1-1 (minor). The failure side of the kept-end rule has no test.**
+`src/core/Tellma.Core/Jobs/JobRenewal.cs:207-214` marks a lease kept only once the final renewal's
+round trip returned, and the README, the class comment and the implementer notes all state the
+converse: after a failed final renewal, later renewals estimate the end and do not keep the stored
+one. No test fails if that breaks. For example, mark the leases kept in the binding loop at
+`JobRenewal.cs:174-180`, after `kept` is built, or in a `finally`. Every current test still passes,
+because none makes a final renewal fail. Yet after a failed final renewal, a flush would then keep
+the pre-final stored end. With `LeaseSeconds` 30 last renewed 6 s earlier and a 30 s
+`ShutdownTimeout`, the lease lapses about 6 s before the stop end while the process lives. That is
+the double run §6.7 forbids. With a 300 s lease, the final renewal's shortening is lost instead.
+Suggested fix: add an integration test in `JobRunTests.cs`. In the probe handler, open a second
+connection and begin a transaction that locks the job's row (for example
+`UPDATE [core].[Jobs] SET [ProgressPercent] = [ProgressPercent] WHERE [Id] = @id`). Call
+`RenewFinalAsync(FixtureTenantId, leaseSeconds: 5, token)` with a token that cancels after about
+200 ms, and assert the `OperationCanceledException`. The lease is bound by then, and the UPDATE is
+aborted. Roll the blocker back, then report and flush. Assert with `LeaseAsync` that the end lies
+within (0, 5 s] of the database clock, not at the handler's five-minute end. That shows the
+estimate served and the stale end was not kept.
+
+**R1-2 (minor). The deviation misstates §6.7, and the code comments attribute to it a rule it does not state.**
+The commit message's Deviations entry and the "Deviations" section above say "§6.7 is silent on
+renewals after the final one". In fact, §6.7 says that after the final renewal "renewals then stop
+and the handlers are abandoned". `src/core/Tellma.Core/Jobs/JobLeases.cs:202-207` (the comment
+starting "Spec 0020 §6.7") and `JobLeases.cs:230-232` likewise credit §6.7 with "every renewal
+extends the lease only to the end the final one set", which the spec does not say. Failure scenario:
+the orchestrator relays to Ahmad a deviation that describes the spec wrongly. The real divergence
+goes unrecorded. It predates this change: a running handler's flush or jump still renews between
+its tenant's final renewal and the abandonment at the end of `LeaveLeasedAsync`. It carries
+progress and verdicts, and before this change it also moved the end. Suggested fix: restate the
+deviation in this file, so the integration commit and DECISIONS carry it, along these lines:
+"§6.7 stops renewals after the final one. The worker still lets a running handler's flush or jump
+renew in the window before abandonment, writing progress and reading verdicts. With this change,
+that renewal leaves the lease's end where the final renewal wrote it, so the end matches the spec's
+outcome. §5.2's statement gains the kept-token parameter for this." Reword the two `JobLeases.cs`
+comments so they present the kept end as the worker's rule for that window, not a §6.7 requirement.
+
+Counts: 0 blocking, 0 major, 2 minor.
+
+### Responses
+
+- R1-1: fixed in the review 1 fixes commit. New integration test
+  `A_flush_after_a_final_renewal_that_failed_ends_the_lease_where_that_renewal_meant_to_not_where_it_was`
+  (`JobRunTests.cs`). It is seam-level and has no timing: a `JobRenewal` built over the host's own
+  `JobLeases`, with a scope factory that opens no scope, runs the final renewal. That renewal binds
+  the lease and then fails before its round trip. The handler then reports and flushes through the
+  host's renewal. The test asserts that the claim's end was the handler's own length (> 60 s), and
+  that after the flush the end lies within (0, 5 s] of the database clock, read rounded in the same
+  statement. With the regression (`KeepStopEnd()` in the binding loop, before the round trip), the
+  new test failed in both modes: the flush kept the claim's 300 s end. It passes with the code as
+  committed.
+- R1-2: fixed. The Deviations entry above is restated as suggested. The comments on
+  `JobLease.RenewalSeconds`, `JobLease.KeepsStopEnd`, the `JobRenewal` class and
+  `JobStatements.Renew` now say: §6.7 stops renewals after the final one; the worker still renews
+  for a flush or jump until abandonment; and the kept end is the worker's rule for that window. The
+  fix commit's Deviations carries the same wording.

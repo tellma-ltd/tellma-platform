@@ -155,6 +155,40 @@ namespace Tellma.Core.IntegrationTests.Jobs
         }
 
         [Fact]
+        public async Task A_flush_after_a_final_renewal_that_failed_ends_the_lease_where_that_renewal_meant_to_not_where_it_was()
+        {
+            int id = await fixture.InsertJobAsync(JobRunKeys.Probe);
+            (DateTimeOffset? ExpiresAt, DateTimeOffset Now) claimed = default;
+            (DateTimeOffset? ExpiresAt, DateTimeOffset Now) flushed = default;
+            fixture.Script.Probe = async (batch, context) =>
+            {
+                // --- A final renewal that binds the lease, then fails before its round trip: its scope cannot be opened ---
+                claimed = await fixture.LeaseAsync(id);
+                JobRenewal failing = new(
+                    new UnavailableScopes(),
+                    context.Services.GetRequiredService<JobLeases>(),
+                    context.Services.GetRequiredService<JobsMetrics>(),
+                    context.Services.GetRequiredService<Microsoft.Extensions.Logging.ILoggerFactory>());
+                _ = await Assert.ThrowsAsync<InvalidOperationException>(() => failing.RenewFinalAsync(FixtureTenantId, leaseSeconds: 5, Token));
+
+                // --- The handler then reports and flushes through the host's own renewal ---
+                batch.Single.Progress.Report(50, null, null);
+                await batch.Single.Progress.FlushAsync(Token);
+                flushed = await fixture.LeaseAsync(id);
+            };
+
+            PolledJob polled = Assert.Single(await PollAsync(JobRunKeys.Probe));
+
+            // --- The claim's lease ran for the handler's own length, well past five seconds ---
+            Assert.True(Assert.NotNull(claimed.ExpiresAt) - claimed.Now > TimeSpan.FromSeconds(60), "The claim leased the row for the handler's own length.");
+
+            // --- No end was written to keep, so the flush ended the lease within the five seconds the
+            // failed renewal meant to set, from its own clock, rather than keeping the claim's end ---
+            Assert.InRange(Assert.NotNull(flushed.ExpiresAt) - flushed.Now, TimeSpan.FromTicks(1), TimeSpan.FromSeconds(5));
+            Assert.Equal(JobStatus.Succeeded, polled.Status);
+        }
+
+        [Fact]
         public async Task A_last_attempt_that_throws_fails_its_jobs_and_raises_the_failure_notice_in_the_inbox_alone()
         {
             int requested = await fixture.InsertJobAsync(JobRunKeys.Inbox);
@@ -1038,6 +1072,16 @@ namespace Tellma.Core.IntegrationTests.Jobs
         /// <summary>A handler's checkpoint.</summary>
         /// <param name="Page">The page reached.</param>
         private sealed record Checkpoint(int Page);
+
+        /// <summary>A scope factory that opens no scope, so a renewal through it fails once it has bound its leases.</summary>
+        private sealed class UnavailableScopes : ITenantScopeFactory
+        {
+            /// <inheritdoc />
+            public Task<TenantScope> CreateScopeAsync(RequestContextSnapshot snapshot, bool allowNonActive = false, CancellationToken cancellationToken = default)
+            {
+                return Task.FromException<TenantScope>(new InvalidOperationException("The test's renewal scope is unavailable."));
+            }
+        }
     }
 
     /// <summary>Jobs run with read-committed snapshot on, as provisioning creates a tenant database.</summary>

@@ -240,8 +240,9 @@ namespace Tellma.Core.Jobs
         // Spec 0020 §5.2: one renewal per tenant per interval, joining the leases by token, so it is
         // idempotent and a re-run after an ambiguous failure extends the same leases. Progress columns
         // the buffered row leaves null keep their stored values; a message's arguments go with its key.
-        // A kept token's leases keep their stored end (§6.7: the end a final renewal wrote, which whole
-        // seconds from this statement's clock would overrun); they are still judged and carry progress.
+        // A kept token's leases keep their stored end: the end the final renewal of §6.7 wrote, which
+        // whole seconds from this statement's clock would overrun. They are still judged and carry
+        // progress.
         /// <summary>
         ///     Appends the renewal: it extends every running job leased under one of the tokens by that
         ///     token's lease length, or keeps its lease's end when the token is kept, writes the
