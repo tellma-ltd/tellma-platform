@@ -384,6 +384,23 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-246 (orchestrator, 2026-11-23): PC-F75 verification; fix 2 is the last round; PC-F75 follows PC-117
+
+- The targeted verification of c4c0ec34 confirmed that the R1-1 encoding bypass is closed. It found nothing that switches the reader's encoding: 46 declaration forms, 449 encoding names and aliases, BOM variants and split reads. The replay is exact over 546 M read boundaries, the settings hold, and deviations 3 and 4 open no gap.
+- V-1 (major, new in fix 1): XmlReader.Create over a TextReader reads at creation, so a refused worksheet part throws a raw XmlException from SheetReader.Open before its try. ImportMapper does not catch it, so the import does not end in ImportFaults.Malformed. A part is also never disposed when XlsxXml.Open throws, at all five call sites.
+- V-2 (minor): a PartTextReader refusal is not sticky; a later ReadToEnd returns the text. It is not reachable through XlsxXml.Open today.
+- PC-F75 has had two implementer rounds, so fix 2 is its third and last (section 4.4). The one targeted verification has run, so fix 2 gets no further review. I check its diff and the tests myself before integration.
+- Release order: PC-117 was released while this verification ran (amending D-245), so PC-F75 integrates right after PC-117 lands, ahead of PC-F73 and PC-111.
+
+### D-245 (orchestrator, 2026-11-22): PC-F75 takes R1-1; a targeted verification follows fix 1; it is released ahead of the held queue
+
+- R1-1 (blocking) is a V-1-class bypass: a part's XML declaration (for example iso-2022-jp or hz-gb-2312) switches XmlReader's decoder away from the encoding BoundedPartStream bounds. Microsoft.Data.SqlClient registers CodePagesEncodingProvider process-wide, so these encodings are live on every host. It stays in PC-F75 rather than a new fix item, because the defect class, the file and the implementer are the same.
+- Ruling for the fix: the reader decodes in exactly the encoding the stream detected, through XmlReader.Create over a TextReader in that encoding, so the two can never disagree. A declaration naming any encoding other than UTF-8 or UTF-16 is refused through ImportFaults.Malformed, because OPC allows only those two. Tests must register the code-pages provider.
+- R1-2: the cost theory becomes deterministic. It counts the units scanned one at a time and asserts a constant per opener. Any wall-clock check moves to the nightly perf tier (PLAN section 6) or is dropped.
+- R1-3: add the refusal theory with mark-dense fillers mixed with <, flooding one section past the bound in all three encodings at several read sizes, so that an early section close fails it.
+- Fix items get Review 1 only. Because R1-1 is blocking and security-bound, one targeted verification of fix 1 runs (section 4.4 allows at most one), scoped to the declared-encoding class and the new tests.
+- Release order: PC-F75 is a blocking fix (D-229), so once verified it integrates next after the item then integrating, ahead of PC-F72, PC-117, PC-F73 and PC-111 (as PC-F74 did under D-242).
+
 ### D-244 (orchestrator, 2026-11-22): PC-111 Review 1 rulings
 
 - R1-2: the route host registers a default page context on every page route. Its kind comes from the route data, its title from the title strategy, and its template is the route's with the segment filled in. Framework hosts replace it later under the same-scope rule. I chose this over a carry on each framework checkpoint because D-216 asked to replace PC-107's seam, not to narrow what recents count. The PC-107 whole-app behaviour (/17/centers counts and the list route does not) is restored and pinned again.
