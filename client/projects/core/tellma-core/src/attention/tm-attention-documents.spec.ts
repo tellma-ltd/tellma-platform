@@ -7,6 +7,7 @@ import { TestBed } from '@angular/core/testing';
 import {
   provideTellmaStateTesting,
   provideTellmaTesting,
+  tmFakeAssignmentsSummary,
   tmFakeInboxSummary,
   tmTestProfile,
   tmWarmTenant,
@@ -17,7 +18,7 @@ import { TM_T17_DOCS } from '../routes/tm-app.testing.util';
 import { TM_LEADER_DOCUMENTS } from '../state/leader/tm-leader-documents';
 import { TmClientStore } from '../state/store/tm-client-store';
 import type { TmTenantPartition } from '../state/store/tm-store-layout';
-import { TM_ATTENTION_DOCUMENTS, type TmInboxRunningJob } from './tm-attention-documents';
+import { TM_ATTENTION_DOCUMENTS, type TmAssignmentsSummary, type TmInboxRunningJob } from './tm-attention-documents';
 
 // The attention documents as leader documents: the inbox's route and events,
 // its poll while a job runs, and its round trip through the store.
@@ -53,5 +54,17 @@ describe('TM_ATTENTION_DOCUMENTS', () => {
     const summary = tmFakeInboxSummary({ unseen: 3, maxUnseenSeverity: 'Warning', version: '9007199254740993' as TmDecimal });
     await tmWarmTenant(store, partition, { ...TM_T17_DOCS, inbox: summary });
     expect(store.doc(partition, 'inbox')()?.data).toEqual(summary);
+  });
+
+  it('keeps the assignments as a plain store document, absent until written, with no leader registration', async () => {
+    TestBed.configureTestingModule({ providers: [provideTellmaTesting(), provideTellmaStateTesting()] });
+    const store = TestBed.inject(TmClientStore);
+    const partition: TmTenantPartition = { kind: 'tenant', sub: tmTestProfile().sub, tenantId: 17 };
+    expect(store.doc(partition, 'assignments')()).toBeUndefined();
+    const summary = tmFakeAssignmentsSummary({ open: 2, new: 1 });
+    await tmWarmTenant(store, partition, { ...TM_T17_DOCS, assignments: summary });
+    expect(store.doc(partition, 'assignments')()?.data).toEqual(summary);
+    await store.patch<TmAssignmentsSummary>(partition, 'assignments', (current) => current && { ...current, open: 3 });
+    expect(store.doc(partition, 'assignments')()?.data).toMatchObject({ open: 3, new: 1 });
   });
 });

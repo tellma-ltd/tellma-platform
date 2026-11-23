@@ -1060,6 +1060,7 @@ export class TmLaunchCache {
 
 // @public
 export interface TmLaunchDocs {
+    readonly assignments?: TmAssignmentsSummary;
     readonly inbox?: TmInboxSummary;
     readonly me: TmMeResult;
     readonly settings: TmTenantSettingsForClient;

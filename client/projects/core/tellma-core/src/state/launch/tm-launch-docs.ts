@@ -3,7 +3,7 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-import type { TmInboxSummary } from '../../attention/tm-attention-documents';
+import type { TmAssignmentsSummary, TmInboxSummary } from '../../attention/tm-attention-documents';
 import type { TmId, TmJson } from '../../json/tm-json';
 import type { TmTenantCategory } from '../../launch/tm-membership';
 
@@ -200,6 +200,8 @@ export interface TmLaunchDocs {
   readonly tenant: TmTenantFacts;
   /** The user's inbox summary, which the leader tab keeps fresh; absent until it is first read. */
   readonly inbox?: TmInboxSummary;
+  /** The user's assignments summary, which the leader tab keeps fresh once it reads it; absent until then. */
+  readonly assignments?: TmAssignmentsSummary;
 }
 
 /** A cacheable entity's whole list, as the tab holds it. */

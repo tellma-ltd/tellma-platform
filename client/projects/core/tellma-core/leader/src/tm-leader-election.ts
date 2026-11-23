@@ -24,6 +24,7 @@ import {
   TmTelemetry,
   type TmBusMessage,
   type TmHubStatusMessage,
+  type TmLeaderDocument,
   type TmPartition,
   ɵTM_API_HOST,
   ɵTM_UNIQUE_LEADER_DOCUMENTS,
@@ -371,17 +372,17 @@ export class TmLeaderElection {
     }
     term.tick = setTimeout(() => {
       term.tick = undefined;
-      if (untracked(this.#leader.hubStatus).state !== 'connected' || this.#docs.some((doc) => this.#pollWhile(term, doc.name))) {
+      if (untracked(this.#leader.hubStatus).state !== 'connected' || this.#docs.some((doc) => this.#pollWhile(term, doc))) {
         this.#probe(term);
       }
       this.#tick(term);
     }, PROBE_MS);
   }
 
-  /** Whether a leader document's stored copy asks for polling. */
-  #pollWhile(term: TmTerm, name: string): boolean {
-    const pollWhile = this.#docs.find((doc) => doc.name === name)?.pollWhile;
-    const stored = pollWhile && untracked(this.#store.doc(term.partition, name));
+  /** Whether a leader document's stored copy asks for polling, by the document's own rule. */
+  #pollWhile(term: TmTerm, doc: TmLeaderDocument): boolean {
+    const pollWhile = doc.pollWhile;
+    const stored = pollWhile && untracked(this.#store.doc(term.partition, doc.name));
     try {
       return stored !== undefined && pollWhile !== undefined && pollWhile(stored.data);
     } catch {

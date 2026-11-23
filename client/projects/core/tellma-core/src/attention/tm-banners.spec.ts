@@ -3,7 +3,7 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-import { signal } from '@angular/core';
+import { effect, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { TmFakeTelemetry } from '@tellma/core-testing';
 
@@ -309,6 +309,31 @@ describe('TmBanners', () => {
       expect(banners.visible()).toBe(false);
     });
 
+    it('never re-runs an effect that shows a banner when the tab turns idle or busy', async () => {
+      const { banners, type, wait } = await setUp();
+      type();
+      let runs = 0;
+      TestBed.runInInjectionContext(() =>
+        effect(() => {
+          runs++;
+          banners.show(banner('acme.a', 4));
+        }),
+      );
+      TestBed.tick();
+      expect(runs).toBe(1);
+      expect(banners.visible()).toBe(false);
+
+      // The gate opens the row at the idle moment; more typing and pauses follow.
+      await wait(2000);
+      TestBed.tick();
+      expect(banners.visible()).toBe(true);
+      type();
+      TestBed.tick();
+      await wait(2000);
+      TestBed.tick();
+      expect(runs).toBe(1);
+    });
+
     it("closes the row at once on the user's own dismiss", async () => {
       const { banners, type } = await setUp();
       banners.show(banner('acme.a', 4));
@@ -354,10 +379,12 @@ describe('TmBanners', () => {
     });
   });
 
-  it('reports the time from queued to shown once per banner', async () => {
+  it('reports the time from queued to shown once per banner, on the monotonic clock', async () => {
     const { banners, telemetry, type, wait } = await setUp();
     type();
     banners.show(banner('tm.offline', 1));
+    // A wall clock set back while the banner waits changes nothing.
+    vi.setSystemTime(Date.now() - 3_600_000);
     await wait(2000);
     banners.show(banner('acme.a', 4));
     banners.ɵpage(1);

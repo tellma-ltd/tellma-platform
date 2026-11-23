@@ -308,8 +308,10 @@ or `Running`, so a lost job event never strands the bell's progress ring). Its c
 `TmInboxSummary`, and `TmLaunchCache.docs.inbox` reads it for the routed tenant, so the bell and
 the home lists render warm with no request. `assignments` (`assignments/summary`, mirrored by
 `TmAssignmentsSummary`) joins it once the server maps its route; until then a registered read
-would fail on every leader refresh. Each name is registered once: a second registration of a name
-throws in development, and production keeps the first.
+would fail on every leader refresh. Meanwhile it is a plain store format in `TM_DOC_FORMATS`, so
+`TmLaunchCache.docs.assignments` reads `undefined` and the tray and the home widgets show their
+no-data state; do not register it in `TM_LEADER_DOCUMENTS` elsewhere. Each name is registered once:
+a second registration of a name throws in development, and production keeps the first.
 
 ## The HTTP layer
 

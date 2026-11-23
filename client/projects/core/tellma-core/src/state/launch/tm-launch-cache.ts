@@ -93,6 +93,7 @@ export class TmLaunchCache {
     me: this.#tenantDoc('me'),
     tenant: this.#tenantDoc('tenant'),
     inbox: this.#tenantDoc('inbox'),
+    assignments: this.#tenantDoc('assignments'),
   };
 
   /** Whether the routed tenant's `settings`, `me` and `tenant` are all present, so its chrome renders from them. */

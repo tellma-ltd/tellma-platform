@@ -3,11 +3,10 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-import { DestroyRef, inject, Injectable, signal, type Signal } from '@angular/core';
+import { DestroyRef, inject, Injectable, signal, untracked, type Signal } from '@angular/core';
 
 import { TM_API_HOST } from '../api/tm-api-host';
 import { TM_DEV_MODE } from '../app/tm-dev-mode';
-import { TM_NOW } from '../app/tm-now';
 import { TmTelemetry } from '../observe/tm-telemetry';
 import { TmInputIdle } from './tm-input-idle';
 
@@ -82,7 +81,7 @@ interface TmBannerEntry {
   scope: string | undefined;
   /** The order `show` first ran in. */
   readonly order: number;
-  /** When `show` first ran, for the time to show. */
+  /** When `show` first ran, on the page's monotonic clock, for the time to show. */
   readonly queuedAt: number;
   /** Whether the row has shown it, so its time to show is reported once. */
   shown: boolean;
@@ -113,7 +112,6 @@ function sameView(a: TmBannerView | null, b: TmBannerView | null): boolean {
 export class TmBanners {
   readonly #idle = inject(TmInputIdle);
   readonly #host = inject(TM_API_HOST);
-  readonly #now = inject(TM_NOW);
   readonly #telemetry = inject(TmTelemetry);
   readonly #devMode = inject(TM_DEV_MODE);
 
@@ -182,7 +180,7 @@ export class TmBanners {
         options: checked,
         scope,
         order: this.#order++,
-        queuedAt: this.#now(),
+        queuedAt: performance.now(),
         shown: false,
         ref: {
           update: (patch) => {
@@ -299,9 +297,23 @@ export class TmBanners {
    * while the page is hidden, and otherwise waits for the gate. An open row
    * whose last banner went shows nothing until it closes.
    *
+   * Untracked: a caller in a reactive context, such as an effect that calls
+   * `show` on each run, never comes to depend on the idle clock or the row's
+   * state, so a pause in typing never re-runs it.
+   *
    * @param now - Whether the change is the user's own, which applies at once.
    */
   #settle(now: boolean): void {
+    untracked(() => this.#update(now));
+  }
+
+  /**
+   * Brings the views up to date, in the untracked context the settle step
+   * runs it in.
+   *
+   * @param now - Whether the change is the user's own, which applies at once.
+   */
+  #update(now: boolean): void {
     const target = this.#target();
     this.#head.set(target);
     const wanted = target !== null;
@@ -320,7 +332,7 @@ export class TmBanners {
     const entry = target === null || !this.#open() ? undefined : this.#entries.find((live) => live.options === target.options);
     if (entry !== undefined && !entry.shown) {
       entry.shown = true;
-      this.#telemetry.timing('tm.attention.banner', this.#now() - entry.queuedAt, {
+      this.#telemetry.timing('tm.attention.banner', performance.now() - entry.queuedAt, {
         id: entry.options.id,
         level: entry.options.level,
       });

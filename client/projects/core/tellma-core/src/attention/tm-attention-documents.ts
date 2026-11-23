@@ -16,7 +16,9 @@ import type { TmNotificationSeverity } from './tm-notification-metadata';
 // null are absent. Only the inbox is registered for now: the server maps no
 // assignments/summary route until the assignments read side lands, and a
 // registered read of a route the server lacks would report a contract
-// mismatch on every leader refresh. That read side registers it here.
+// mismatch on every leader refresh. Meanwhile `assignments` is a plain store
+// format (TM_DOC_FORMATS), so the tray and the home widgets read it as
+// absent; that read side registers it here, and drops the plain format.
 
 /** One of the user's own jobs that is not over yet, as the inbox summary lists it. */
 export interface TmInboxRunningJob {

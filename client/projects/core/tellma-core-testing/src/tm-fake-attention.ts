@@ -34,7 +34,7 @@ export function tmFakeInboxSummary(members: Partial<TmInboxSummary> = {}): TmInb
  *
  * @example
  * ```ts
- * api.respond('assignments/summary', tmFakeAssignmentsSummary({ open: 2, new: 1 }));
+ * await tmWarmTenant(store, partition, { ...docs, assignments: tmFakeAssignmentsSummary({ open: 2, new: 1 }) });
  * ```
  */
 export function tmFakeAssignmentsSummary(members: Partial<TmAssignmentsSummary> = {}): TmAssignmentsSummary {

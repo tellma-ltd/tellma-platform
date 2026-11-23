@@ -3,13 +3,16 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-import type { TmBusMessage, TmClientEvent, ɵTmSyncDoc } from '@tellma/core';
-import type { TmFakeApiCall } from '@tellma/core-testing';
+import { TM_ATTENTION_DOCUMENTS, type TmBusMessage, type TmClientEvent, type ɵTmSyncDoc } from '@tellma/core';
+import { tmFakeAssignmentsSummary, tmFakeInboxSummary, type TmFakeApiCall } from '@tellma/core-testing';
 
 import { TmFakeApiHost } from '../../src/api/tm-api.testing.util';
+import { tmDevModeProvider } from '../../src/app/tm-dev-mode.testing.util';
 import {
+  TM_JOBS_DOC,
   TM_LEADER_T17,
   TM_LEADER_T18,
+  TM_TASKS_DOC,
   tmAdvance,
   tmLeaderRig,
   tmPause,
@@ -388,5 +391,54 @@ describe('TmLeadership', () => {
       expect(triggers(tab)).toEqual(['leader']);
       expect(tab.events('tm.realtime.polling')).toEqual([]);
     });
+  });
+});
+
+describe('TmLeadership over other registrations', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /** Fakes the timers, as the rig expects after its set-up. */
+  const fakeTimers = (): void => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+    vi.spyOn(Math, 'random').mockReturnValue(0);
+  };
+
+  it('reads each name once on election, by its first registration, in production', async () => {
+    const twice = { ...TM_JOBS_DOC, route: 'acme/jobs/other' };
+    const rig = await tmLeaderRig(() => new TmFakeApiHost(), [TM_JOBS_DOC, TM_TASKS_DOC, twice], [tmDevModeProvider(false)]);
+    rig.api.respond('acme/jobs/summary', { running: false });
+    rig.api.respond('acme/tasks/summary', { open: 0 });
+    rig.api.respond('acme/jobs/other', { running: false });
+    fakeTimers();
+
+    const tab = rig.tab({ noHub: true });
+    await tmUntil(() => tab.leader.isLeader());
+    await tmUntil(() => rig.store.doc(TM_LEADER_T17, 'acme.tasks')() !== undefined);
+    await tmPause();
+    const routes = rig.api.calls().map((call) => call.route);
+    expect(routes.filter((route) => route === 'acme/jobs/summary')).toHaveLength(1);
+    expect(routes).not.toContain('acme/jobs/other');
+  });
+
+  it("reads the platform's inbox on election, and never reads the assignments, which the store keeps all the same", async () => {
+    const rig = await tmLeaderRig(() => new TmFakeApiHost(), TM_ATTENTION_DOCUMENTS);
+    rig.api.respond('inbox/summary', tmFakeInboxSummary());
+    fakeTimers();
+
+    const tab = rig.tab({ noHub: true });
+    await tmUntil(() => tab.leader.isLeader());
+    await tmUntil(() => rig.store.doc(TM_LEADER_T17, 'inbox')() !== undefined);
+    await tmPause();
+    const routes = rig.api.calls().map((call) => call.route);
+    expect(routes.filter((route) => route === 'inbox/summary')).toHaveLength(1);
+    expect(routes).not.toContain('assignments/summary');
+
+    // The assignments document reads as absent, and stores and reads like any other.
+    expect(rig.store.doc(TM_LEADER_T17, 'assignments')()).toBeUndefined();
+    const summary = tmFakeAssignmentsSummary({ open: 2 });
+    await rig.store.put(TM_LEADER_T17, 'assignments', { tag: null, savedAt: Date.now(), data: summary });
+    expect(rig.store.doc(TM_LEADER_T17, 'assignments')()?.data).toEqual(summary);
   });
 });

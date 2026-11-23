@@ -6,10 +6,13 @@
 import type { TmClientEvent } from '@tellma/core';
 
 import { TmFakeApiHost } from '../../src/api/tm-api.testing.util';
+import { tmDevModeProvider } from '../../src/app/tm-dev-mode.testing.util';
 import {
+  TM_JOBS_DOC,
   TM_LEADER_LOCK,
   TM_LEADER_T17,
   TM_LEADER_T18,
+  TM_TASKS_DOC,
   tmAdvance,
   tmLeaderRig,
   tmPause,
@@ -383,5 +386,35 @@ describe('TmLeaderElection', () => {
       await follower();
       await tmUntil(() => statuses() === before + 1);
     });
+  });
+});
+
+describe('TmLeaderElection with a leader document registered twice', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("asks only a name's first registration whether to poll, in production", async () => {
+    // The second registration of acme.tasks would ask for polling; production keeps the first, which never does.
+    const twice = { ...TM_TASKS_DOC, route: 'acme/tasks/other', pollWhile: () => true };
+    const rig = await tmLeaderRig(() => new TmFakeApiHost(), [TM_JOBS_DOC, TM_TASKS_DOC, twice], [tmDevModeProvider(false)]);
+    rig.api.respond('acme/jobs/summary', { running: false });
+    rig.api.respond('acme/tasks/summary', { open: 0 });
+    rig.api.respond('acme/tasks/other', { open: 0 });
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+    vi.spyOn(Math, 'random').mockReturnValue(0);
+
+    await rig.realtime(true);
+    const a = rig.tab();
+    await tmUntil(() => a.leader.isLeader() && a.hubs.length === 1);
+    a.hubs[0]!.sink.state('connected');
+    const b = rig.tab();
+    await tmUntil(() => b.bus.posted.some((message) => message.type === 'leader.probe'));
+    await tmPause();
+    expect(b.leader.isLeader()).toBe(false);
+    await rig.store.put(TM_LEADER_T17, 'acme.tasks', { tag: null, savedAt: Date.now(), data: { open: 1 } });
+
+    await tmAdvance(60_000);
+    expect(b.bus.posted.filter((message) => message.type === 'leader.probe')).toHaveLength(1);
   });
 });

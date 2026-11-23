@@ -3,7 +3,7 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-import { DestroyRef, inject, Injectable, signal, type Signal } from '@angular/core';
+import { DestroyRef, inject, Injectable, signal, untracked, type Signal } from '@angular/core';
 
 import { TM_API_HOST } from '../api/tm-api-host';
 
@@ -70,7 +70,8 @@ export class TmInputIdle {
    * @returns A promise that resolves at once while the tab is idle, else when it next becomes idle.
    */
   whenIdle(): Promise<void> {
-    if (this.#idle()) {
+    // Untracked, so an effect that waits never comes to depend on the clock.
+    if (untracked(this.#idle)) {
       return Promise.resolve();
     }
     this.#next ??= new Promise<void>((resolve) => (this.#wake = resolve));

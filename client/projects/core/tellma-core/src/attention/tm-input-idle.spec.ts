@@ -3,6 +3,7 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+import { effect } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 
 import { TM_API_HOST } from '../api/tm-api-host';
@@ -79,6 +80,25 @@ describe('TmInputIdle', () => {
     expect(idle.idle()).toBe(false);
     await vi.advanceTimersByTimeAsync(1);
     expect(idle.idle()).toBe(true);
+  });
+
+  it('never re-runs an effect that waits for an idle moment when the tab turns idle or busy', async () => {
+    const { host, idle } = setUp();
+    let runs = 0;
+    TestBed.runInInjectionContext(() =>
+      effect(() => {
+        runs++;
+        void idle.whenIdle();
+      }),
+    );
+    TestBed.tick();
+    for (let i = 0; i < 2; i++) {
+      await vi.advanceTimersByTimeAsync(2000);
+      TestBed.tick();
+      host.fire('window', 'keydown');
+      TestBed.tick();
+    }
+    expect(runs).toBe(1);
   });
 
   it('resolves whenIdle at once while idle', async () => {

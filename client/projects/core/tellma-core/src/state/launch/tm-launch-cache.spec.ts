@@ -19,7 +19,7 @@ import { TmApiError } from '../../api/tm-api-error';
 import { TM_API_HOST } from '../../api/tm-api-host';
 import { TmFakeApiHost } from '../../api/tm-api.testing.util';
 import { TM_NOW } from '../../app/tm-now';
-import { TM_ATTENTION_DOCUMENTS, type TmInboxSummary } from '../../attention/tm-attention-documents';
+import { TM_ATTENTION_DOCUMENTS, type TmAssignmentsSummary, type TmInboxSummary } from '../../attention/tm-attention-documents';
 import type { TmDecimal } from '../../json/tm-json';
 import type { TmMembership } from '../../launch/tm-membership';
 import { TM_LEADER_DOCUMENTS } from '../leader/tm-leader-documents';
@@ -173,12 +173,17 @@ describe('TmLaunchCache', () => {
       expect(rig.calls('client/sync')).toEqual([]);
     });
 
-    it("reads the routed tenant's inbox summary from the store", async () => {
+    it("reads the routed tenant's inbox and assignments summaries from the store", async () => {
       const rig = await setUp({ attention: true });
-      const inbox: TmInboxSummary = { unseen: 2, unread: 3, latest: [], running: [], related: {}, version: '7' as TmDecimal };
-      await rig.store.put(T17, 'inbox', stored(inbox));
       await rig.launch.ɵenter(17);
+      // Nothing has read the assignments: they are absent, not an error.
+      expect(rig.launch.docs.assignments()).toBeUndefined();
+      const inbox: TmInboxSummary = { unseen: 2, unread: 3, latest: [], running: [], related: {}, version: '7' as TmDecimal };
+      const assignments: TmAssignmentsSummary = { open: 1, new: 1, openByMe: 0, latest: [], latestByMe: [], related: {} };
+      await rig.store.put(T17, 'inbox', stored(inbox));
+      await rig.store.put(T17, 'assignments', stored(assignments));
       expect(rig.launch.docs.inbox()).toEqual(inbox);
+      expect(rig.launch.docs.assignments()).toEqual(assignments);
     });
 
     it('rejects a cold entry whose sync fails, and syncs again on the next entry', async () => {
