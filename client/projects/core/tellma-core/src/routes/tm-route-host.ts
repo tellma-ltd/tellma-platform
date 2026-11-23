@@ -29,6 +29,7 @@ import { TM_BOOT_RESULT } from '../boot/tm-boot-result';
 import { provideTmPageScope } from '../context/tm-page-scope';
 import type { TmLazyComponent } from '../declarations/tm-declaration-types';
 import { TmEntities } from '../entity/tm-entities';
+import { TmPermissions } from '../entity/tm-permissions';
 import { TmLocalization } from '../l10n/tm-localization';
 import { TmTelemetry } from '../observe/tm-telemetry';
 import { TmLaunchRedirect } from '../launch/tm-launch-redirect';
@@ -39,7 +40,6 @@ import { TmPageFocus } from './tm-page-focus';
 import { TmPageSkeleton } from './tm-page-skeleton';
 import { TM_ROUTE_ERROR_VIEWS, TmRouteError, type TmRouteErrorKind } from './tm-route-error';
 import { TM_ROUTE_HOSTS } from './tm-route-hosts';
-import { TM_ROUTE_PERMISSIONS } from './tm-route-permissions';
 import { TmRouteRules } from './tm-route-rules';
 import type { TmRouteDataInternal } from './tm-routes';
 
@@ -186,7 +186,7 @@ export class TmRouteHost {
   readonly #launch = inject(TmLaunchCache);
   readonly #l10n = inject(TmLocalization);
   readonly #updates = inject(TM_API_UPDATES);
-  readonly #permissions = inject(TM_ROUTE_PERMISSIONS);
+  readonly #permissions = inject(TmPermissions);
   readonly #focus = inject(TmPageFocus);
   readonly #timer = inject(TmLaunchTimer);
   readonly #leave = inject(TmLeaveChecks);
@@ -212,10 +212,10 @@ export class TmRouteHost {
     return state.view === 'page' ? state.component : null;
   });
 
-  /** The forbidden view's placeholder: the permission the page needs. */
+  /** The forbidden view's placeholder: the permission the page needs, in the Access tab's words. */
   protected readonly permission = computed(() => {
     const securable = this.data().securable;
-    return { permission: securable ? `${securable[0]} · ${securable[1]}` : '' };
+    return { permission: securable ? this.#permissions.label(securable[0], securable[1])() : '' };
   });
 
   /** The route's error views. */

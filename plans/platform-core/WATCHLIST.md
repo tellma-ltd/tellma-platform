@@ -1129,6 +1129,7 @@ Size: about 37k LOC for 0030, 41k for 0031 and 41k for 0032, all including tests
 - Playwright multi-context, plus the debugger-pause ability (CDP Debugger.pause) for the steal scenario; WebKit for the @cross-engine hung-leader spec.
 
 - PC-096 → PC-110: TmErrorPresenter must provide the internal `ɵTM_SYNC_ERRORS` seam (`client/projects/core/tellma-core/src/state/sync/tm-cache-refresher.ts`, `present(error)`), and its `tenant-not-found` path must also run the `{ tenant: t }` sweep (spec 0025 §2.6, spec 0024 §11). TmCacheRefresher hands it every sync's `tenant-not-found` and `tenant-unavailable`, background syncs' included; until then the default drops them, so they reach neither the user nor `tm.sync.failed`, and only a cold entry's rejection reaches `ɵenter`'s caller.
+- PC-108 → PC-153 (TmHub, spec 0025 §8.1–§8.5): (a) `ɵTM_HUB_FACTORY` lives in the lazy `@tellma/core/leader` entry point and defaults to null. Its default there must become the dynamic import of `@tellma/core/realtime`; providing it from the primary would pull `./leader` into the first frame statically. (b) The followers' terminal refresh and the §8.5 sign-out on session-terminated belong in `TmLeaderElection.#received`. (c) `ended` calls the connection's `stop()` without awaiting it and `#terminal` later calls `start()` on the same connection: the connection must accept that order, or `#terminal` must await the stop (unless PC-108's review 1 fixes already made it await). Until PC-153, leaders poll as hub-down after 60 s.
 
 ## 0026
 

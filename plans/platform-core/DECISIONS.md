@@ -384,6 +384,51 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-240 (orchestrator, 2026-11-22): PC-176 verification found a UTF-32 bypass; PC-176 integrates, and PC-F75 follows it
+
+- The section 4.4 verification (D-236) of abc79003 confirmed that every R2-1 to R2-3 vector and every new shape was refused within its bound. It found three new defects:
+  - V-1 (blocking): BoundedPartStream guesses UTF-8 or UTF-16 from two bytes, but XmlReader detects and decodes UCS-4. A UTF-32 part whose characters carry a byte or unit read as < bypasses the run bound. A 390 KiB upload allocated 587 to 1,174 MiB and took about 40 s.
+  - V-2 (minor): CDATA, comments and processing instructions are scanned one byte at a time, about 34 times slower than content. About 4.5 MiB uploaded costs about 3.3 minutes.
+  - V-3 (minor, from before this commit): the header search decodes every row of an all-blank sheet. About 6 MiB uploaded costs about 4.3 minutes.
+- PC-176 has had its three implementer rounds, and section 4.4 forbids a fourth. So the defects are recorded here, and PC-176 integrates when released.
+- PC-F75 then fixes V-1 and V-2, by resuming PC-176's implementer in pc-f right after PC-176 lands:
+  - V-1: refuse a NUL byte or unit in the part (U+0000 is never legal XML; OPC allows only UTF-8 and UTF-16), with a test per UCS-4 byte order.
+  - V-2: vectorise the section scan.
+- PC-F75 is ranked as blocking under D-229. It is not an integration blocker, but it is a member-reachable resource exhaustion on the import route, so it goes ahead of T1.
+- For Ahmad: V-3 needs a spec 0019 ruling on how many rows the header search may read before it refuses or stops, for example the first N rows of a sheet.
+
+### D-239 (orchestrator, 2026-11-22): PC-105 verification found defects, fixed at integration
+
+- The section 4.4 verification (D-237) of 8162da65 reported 1 major and 2 minor findings, plus a side note:
+  - V-1 (major): the bounded TmPath and TmOrderInput unions still grow quadratically through their template-literal members, and tmEntity pays that cost through its constraint. At 60 entities x 100 scalars x 25 navigations, each declaration with a deep orderBy adds about 6.7 s of type-checking.
+  - V-2 (minor): annotated values skip the deep check, and spec 0029 section 3 promises exact checking of three navigation steps.
+  - V-3 (minor): the child-root fail-closed contradicts spec 0029 section 7's own example.
+  - V-4 (minor, the side note): a read-only root is emitted with a projected key that the server does not project.
+- Rulings, applied as "PC-105: integrate" fix commits:
+  - V-1: a cheap constraint, with TmCheckedDeclaration doing all the checking; a one-level annotation union; a cost regression test at about 100 x 25 that includes orderBy.
+  - V-2: a TSDoc correction only. The build check's unknown-path still catches what annotations miss.
+  - V-4: fixed if small, else carried.
+- For Ahmad:
+  - Spec 0029 section 3 should say that annotations check one level and tmEntity checks every literal segment, and that annotated values skip the deep check.
+  - Spec 0029 section 7's child-root example (a line reaching Invoice.PostingDate under a filtered Read) follows whichever way the D-237 direct-flag question is decided.
+- Correction: my verification brief cited spec 0027 for the registry. The registry is spec 0029.
+
+### D-238 (orchestrator, 2026-11-22): Windows build-test timeout opens blocking PC-F74, which preempts PC-F72
+
+- After PC-182 landed, both platform-core PR runs (45078227216 on 491ca1b3 and 45078365461 on 8d8c3050) were cancelled. build-test (windows-latest) hit timeout-minutes 30 while Tellma.Core.AspNetCore.Tests was still running ProblemMappingTests.
+- The green pc/PC-182 run's job took 25 minutes, of which the assembly took 19.5. The assembly's time ranges from 15 to 22 minutes across recent runs, and ProblemMappingTests' 68 cases run one after another at 5 to 14 s each.
+- That cost predates PC-F70, since e14934f0 shows the same pattern. So it is a standing per-case host cost, not a new regression. It now threatens every pc/** integration run.
+- PC-F74 is classed blocking. Under D-229 it goes ahead of the non-blocking PC-F72, which pauses and lends pc-f2 to it, keeping its work as a local commit, and resumes after.
+- PR runs do not gate done (D-154). PC-182 stays done.
+
+### D-237 (orchestrator, 2026-11-22): PC-105 fix 1 accepted; one verification runs alongside integration
+
+- Fix 1 (8162da65) fixes R1-1 to R1-5 with none pushed back. It is about 460 lines against about 4,240 in the implementation, so it is not an escalation under section 4.4.
+- R1-3 replaces how the primary entity registry's public types check paths: bounded TmPath, TmCheckedDeclaration and TmCheckFrom. Many Tier 1 items build on these types. So one section 4.4 verification of R1-1 to R1-3 runs against 8162da65 in a detached scratch worktree.
+- PROCESS says the verification runs before integration. To keep the queue moving, it runs alongside integration instead. The CI-green message waits for its report, and any defect it confirms is fixed as an integration commit. This is a judgement where PROCESS is silent on overlap.
+- New deviations: from a child root, the owner is judged like any other entity; annotations check two segments, while tmEntity checks every segment of its literal paths.
+- For Ahmad (extends D-233): when both a child's grant and its owner's are filtered, reachable cannot tell whether the child's grant is its own, so it fails closed and may under-offer owner columns. A direct flag on SecurableSummary would close the gap.
+
 ### D-236 (orchestrator, 2026-11-22): PC-176 Review 2 rulings
 
 - Review 2 (inherit, xhigh) found 1 blocking, 2 major, 2 minor. All five accepted:

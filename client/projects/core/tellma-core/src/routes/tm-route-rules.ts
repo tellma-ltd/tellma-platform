@@ -68,7 +68,7 @@ export class TmRouteRules {
    * @returns Whether it has one.
    */
   hasDetailsPage(summary: TmEntitySummary): boolean {
-    return summary.operations.includes('details') && this.#entities.declaration(summary.name)?.['details'] !== undefined;
+    return this.#entities.ɵhasDetailsPage(summary);
   }
 
   /**

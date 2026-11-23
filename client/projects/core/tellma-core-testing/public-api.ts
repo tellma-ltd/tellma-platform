@@ -18,5 +18,6 @@ export { TmFakeLocks } from './src/tm-fake-locks';
 export { TmFakeSession, tmTestProfile } from './src/tm-fake-session';
 export { TmFakeTabBus } from './src/tm-fake-tab-bus';
 export { TmFakeTelemetry } from './src/tm-fake-telemetry';
+export { tmTestEntities, type TmTestEntities } from './src/tm-test-entities';
 export { tmTestEntitiesChunk, tmTestMetadata } from './src/tm-test-metadata';
 export { tmWarmTenant, type TmWarmTenantOptions } from './src/tm-warm-tenant';
