@@ -4,9 +4,11 @@
   "lib": {
     "entryFile": "public-api.ts"
   },
+  "allowedNonPeerDependencies": ["lucide"],
   "assets": [
     "boot/tm-boot.template.js",
     "brand/*.svg",
+    "styles.css",
     "styles/*.css"
   ]
 }

@@ -29,6 +29,8 @@ import { TM_BOOT_RESULT } from '../boot/tm-boot-result';
 import { provideTmPageScope } from '../context/tm-page-scope';
 import type { TmLazyComponent } from '../declarations/tm-declaration-types';
 import { TmEntities } from '../entity/tm-entities';
+import { TmPermissions } from '../entity/tm-permissions';
+import { TmLocalization } from '../l10n/tm-localization';
 import { TmTelemetry } from '../observe/tm-telemetry';
 import { TmLaunchRedirect } from '../launch/tm-launch-redirect';
 import { tmTenantSegment } from '../launch/tm-routed-tenant';
@@ -38,7 +40,6 @@ import { TmPageFocus } from './tm-page-focus';
 import { TmPageSkeleton } from './tm-page-skeleton';
 import { TM_ROUTE_ERROR_VIEWS, TmRouteError, type TmRouteErrorKind } from './tm-route-error';
 import { TM_ROUTE_HOSTS } from './tm-route-hosts';
-import { TM_ROUTE_PERMISSIONS } from './tm-route-permissions';
 import { TmRouteRules } from './tm-route-rules';
 import type { TmRouteDataInternal } from './tm-routes';
 
@@ -46,12 +47,13 @@ import type { TmRouteDataInternal } from './tm-routes';
 // draws the page's skeleton in the click's frame, then loads the page's
 // component (and, on an entity route, the Entities chunk) while a cold
 // tenant entry runs its refresh, and creates the page only once the launch
-// documents are current. A `tmPage` whose permission the user lacks renders
-// the forbidden view in place. A chunk that fails to load asks the service
-// worker for an update: a newer version shows `client-outdated`, anything
-// else `offline`. Each page gets a page scope and a leave-check registry. A
-// load holds the focus move until its view renders; a load superseded, or a
-// host destroyed while it waits, gives its hold back.
+// documents are current and the tenant's language and calendar have loaded.
+// A `tmPage` whose permission the user lacks renders the forbidden view in
+// place. A chunk that fails to load asks the service worker for an update: a
+// newer version shows `client-outdated`, anything else `offline`. Each page
+// gets a page scope and a leave-check registry. A load holds the focus move
+// until its view renders; a load superseded, or a host destroyed while it
+// waits, gives its hold back.
 
 /** Where the host stands: the skeleton, the page, or an error view in its place. */
 type TmHostState =
@@ -182,8 +184,9 @@ export class TmRouteHost {
   readonly #rules = inject(TmRouteRules);
   readonly #entities = inject(TmEntities);
   readonly #launch = inject(TmLaunchCache);
+  readonly #l10n = inject(TmLocalization);
   readonly #updates = inject(TM_API_UPDATES);
-  readonly #permissions = inject(TM_ROUTE_PERMISSIONS);
+  readonly #permissions = inject(TmPermissions);
   readonly #focus = inject(TmPageFocus);
   readonly #timer = inject(TmLaunchTimer);
   readonly #leave = inject(TmLeaveChecks);
@@ -209,10 +212,10 @@ export class TmRouteHost {
     return state.view === 'page' ? state.component : null;
   });
 
-  /** The forbidden view's placeholder: the permission the page needs. */
+  /** The forbidden view's placeholder: the permission the page needs, in the Access tab's words. */
   protected readonly permission = computed(() => {
     const securable = this.data().securable;
-    return { permission: securable ? `${securable[0]} · ${securable[1]}` : '' };
+    return { permission: securable ? this.#permissions.label(securable[0], securable[1])() : '' };
   });
 
   /** The route's error views. */
@@ -350,6 +353,11 @@ export class TmRouteHost {
     const entry = await entered;
     if (!entry.ok && current()) {
       await this.#warm();
+    }
+    // --- The tenant's language and calendar load before the page: its first frame and read use them ---
+    // A load that fails keeps the previous ones, as at startup.
+    if (current()) {
+      await this.#l10n.ɵready();
     }
     if (!current()) {
       this.#rendered(release);

@@ -74,7 +74,9 @@ disabled/readonly/required).
 
 ## Consuming
 
-Add to the application's `styles` array:
+A Tellma app imports all of these through `@tellma/core/styles.css`. Any other
+application adds to its global styles (its `styles` array, or `@import` by
+package name from its one stylesheet):
 
 - `@tellma/core-ui-tokens`' emitted stylesheet (the token variables);
 - this package's `fonts/fonts.css` (the self-hosted Latin/Mono faces);

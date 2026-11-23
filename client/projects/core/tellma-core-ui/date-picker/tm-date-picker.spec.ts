@@ -158,6 +158,41 @@ describe('tm-date-picker', () => {
     expect(error.textContent).not.toContain('2020');
   });
 
+  it("names an Umm al-Qura day, month and year by the calendar's own table, where ICU's differs", async () => {
+    // 1979-11-20 is 1 Muharram 1400 in the table; ICU's Umm al-Qura dates it
+    // 30 Dhu al-Hijjah 1399, so every label the popup builds must come from
+    // the calendar, not from Intl's own conversion.
+    const { fixture, host, input } = await setup();
+    host.calendar.set(tmUmalquraCalendar());
+    await fixture.whenStable();
+    await type(fixture, input, '1979-11-20');
+    await blur(fixture, input);
+    (fixture.nativeElement.querySelector('.tm-date-picker__toggle') as HTMLButtonElement).click();
+    await fixture.whenStable();
+    const popup = document.querySelector('.tm-date-popup') as HTMLElement;
+    const viewSwitch = popup.querySelector('.tm-date-popup__view-switch') as HTMLButtonElement;
+
+    // The day view: the selected cell's accessible name and the header.
+    const selected = popup.querySelector('.tm-date-popup__day--selected') as HTMLElement;
+    expect(selected.getAttribute('data-tm-day')).toBe('1');
+    expect(selected.getAttribute('aria-label')).toBe('Muharram 1, 1400');
+    expect(viewSwitch.textContent?.trim()).toBe('Muharram 1400');
+
+    // The month view: month 1 carries Muharram's name, read off a mid-month day.
+    viewSwitch.click();
+    await fixture.whenStable();
+    const muharram = new Intl.DateTimeFormat('en-US', { month: 'short', calendar: 'islamic-umalqura', timeZone: 'UTC' }).format(
+      Date.UTC(1979, 11, 4, 12),
+    );
+    expect(popup.querySelector('[data-tm-month="1"]')?.textContent?.trim()).toBe(muharram);
+    expect(viewSwitch.textContent?.trim()).toBe('1400');
+
+    // The year view: 1400 is labelled 1400.
+    viewSwitch.click();
+    await fixture.whenStable();
+    expect(popup.querySelector('[data-tm-year="1400"]')?.textContent?.trim()).toBe('1400');
+  });
+
   it('hard bounds are parse errors: year 0000 never becomes a value', async () => {
     const { fixture, host, input } = await setup();
     await type(fixture, input, '0000-01-01');

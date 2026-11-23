@@ -35,19 +35,7 @@
                 "output": "/"
               }
             ],
-            "styles": [
-              "../../../../client/projects/core/tellma-core-ui-tokens/css/tellma-default.css",
-              "../../../../client/projects/core/tellma-core-ui/fonts/fonts.css",
-              "../../../../client/projects/core/tellma-core-ui/styles/tm-button.css",
-              "../../../../client/projects/core/tellma-core-ui/styles/tm-input.css",
-              "../../../../client/projects/core/tellma-core-ui/styles/tm-number.css",
-              "../../../../client/projects/core/tellma-core-ui/styles/tm-search.css",
-              "../../../../client/projects/core/tellma-core-ui/styles/tm-description-list.css",
-              "../../../../client/projects/core/tellma-core-ui/styles/tm-drop-target.css",
-              "../../../../client/projects/core/tellma-core/styles/tm-boot-page.css",
-              "../../../../client/projects/locale/tellma-locale-ar/fonts/fonts.css",
-              "src/styles.css"
-            ],
+            "styles": ["src/styles.css"],
             "serviceWorker": false,
             "outputHashing": "all",
             "optimization": {

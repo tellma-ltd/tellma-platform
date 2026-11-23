@@ -6,11 +6,14 @@
  */
 
 /*
- * Acme's global styles. The platform's stylesheets (the tokens, the fonts of
- * Latin and Arabic, the directive and boot-page styles) come first, through
- * angular.json; this file holds only Acme's deltas, each in the theme layer
- * so it wins over the tokens whatever the order of the files.
+ * Acme's global styles: the platform's stylesheets (the tokens, the Latin
+ * fonts, the directive and boot-page styles), Arabic's fonts, then Acme's
+ * deltas, each in the theme layer so it wins over the tokens whatever the
+ * order of the rules.
  */
+
+@import '@tellma/core/styles.css';
+@import '@tellma/locale-ar/styles.css';
 
 /* The page: the platform's surface, text colour and face. */
 body {

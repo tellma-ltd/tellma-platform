@@ -99,6 +99,16 @@ namespace Tellma.Testing.Entities.Migrations
                 startValue: 1000L);
 
             migrationBuilder.CreateSequence<int>(
+                name: "sq_Reports",
+                schema: "core",
+                startValue: 1000L);
+
+            migrationBuilder.CreateSequence<int>(
+                name: "sq_ReportShares",
+                schema: "core",
+                startValue: 1000L);
+
+            migrationBuilder.CreateSequence<int>(
                 name: "sq_RoleMemberships",
                 schema: "core",
                 startValue: 1000L);
@@ -579,6 +589,65 @@ namespace Tellma.Testing.Entities.Migrations
                 .Annotation("Tellma:LockEscalation", "DISABLE");
 
             migrationBuilder.CreateTable(
+                name: "Reports",
+                schema: "core",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false),
+                    Code = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: true),
+                    Title = table.Column<string>(type: "nvarchar(255)", maxLength: 255, nullable: false),
+                    Title2 = table.Column<string>(type: "nvarchar(255)", maxLength: 255, nullable: true),
+                    Title3 = table.Column<string>(type: "nvarchar(255)", maxLength: 255, nullable: true),
+                    Description = table.Column<string>(type: "nvarchar(1024)", maxLength: 1024, nullable: true),
+                    Description2 = table.Column<string>(type: "nvarchar(1024)", maxLength: 1024, nullable: true),
+                    Description3 = table.Column<string>(type: "nvarchar(1024)", maxLength: 1024, nullable: true),
+                    Root = table.Column<string>(type: "varchar(128)", maxLength: 128, nullable: false),
+                    Kind = table.Column<string>(type: "varchar(8)", unicode: false, maxLength: 8, nullable: false),
+                    DefinitionJson = table.Column<string>(type: "nvarchar(max)", nullable: false),
+                    QueryexVersion = table.Column<int>(type: "int", nullable: false),
+                    OwnerId = table.Column<int>(type: "int", nullable: true),
+                    BasedOnId = table.Column<int>(type: "int", nullable: true),
+                    IsActive = table.Column<bool>(type: "bit", nullable: false, defaultValue: true)
+                        .Annotation("Relational:DefaultConstraintName", "DF_Reports_IsActive"),
+                    ValidFrom = table.Column<DateTime>(type: "datetime2", nullable: false)
+                        .Annotation("SqlServer:TemporalIsPeriodStartColumn", true),
+                    ValidTo = table.Column<DateTime>(type: "datetime2", nullable: false)
+                        .Annotation("SqlServer:TemporalIsPeriodEndColumn", true),
+                    CreatedAt = table.Column<DateTimeOffset>(type: "datetimeoffset(7)", precision: 7, nullable: false),
+                    CreatedById = table.Column<int>(type: "int", nullable: false),
+                    ModifiedAt = table.Column<DateTimeOffset>(type: "datetimeoffset(7)", precision: 7, nullable: false),
+                    ModifiedById = table.Column<int>(type: "int", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_Reports", x => x.Id);
+                    table.CheckConstraint("CK_Reports_Id", "[Id] > 0");
+                    table.ForeignKey(
+                        name: "FK_Reports_CreatedById",
+                        column: x => x.CreatedById,
+                        principalSchema: "core",
+                        principalTable: "Users",
+                        principalColumn: "Id");
+                    table.ForeignKey(
+                        name: "FK_Reports_ModifiedById",
+                        column: x => x.ModifiedById,
+                        principalSchema: "core",
+                        principalTable: "Users",
+                        principalColumn: "Id");
+                    table.ForeignKey(
+                        name: "FK_Reports_OwnerId",
+                        column: x => x.OwnerId,
+                        principalSchema: "core",
+                        principalTable: "Users",
+                        principalColumn: "Id");
+                })
+                .Annotation("SqlServer:IsTemporal", true)
+                .Annotation("SqlServer:TemporalHistoryTableName", "ReportsHistory")
+                .Annotation("SqlServer:TemporalHistoryTableSchema", "core")
+                .Annotation("SqlServer:TemporalPeriodEndColumnName", "ValidTo")
+                .Annotation("SqlServer:TemporalPeriodStartColumnName", "ValidFrom");
+
+            migrationBuilder.CreateTable(
                 name: "Roles",
                 schema: "core",
                 columns: table => new
@@ -946,6 +1015,61 @@ namespace Tellma.Testing.Entities.Migrations
                 })
                 .Annotation("SqlServer:IsTemporal", true)
                 .Annotation("SqlServer:TemporalHistoryTableName", "PermissionsHistory")
+                .Annotation("SqlServer:TemporalHistoryTableSchema", "core")
+                .Annotation("SqlServer:TemporalPeriodEndColumnName", "ValidTo")
+                .Annotation("SqlServer:TemporalPeriodStartColumnName", "ValidFrom");
+
+            migrationBuilder.CreateTable(
+                name: "ReportShares",
+                schema: "core",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false),
+                    ReportId = table.Column<int>(type: "int", nullable: false),
+                    UserId = table.Column<int>(type: "int", nullable: true),
+                    RoleId = table.Column<int>(type: "int", nullable: true),
+                    Access = table.Column<string>(type: "varchar(8)", unicode: false, maxLength: 8, nullable: false),
+                    SharedById = table.Column<int>(type: "int", nullable: false),
+                    SharedAt = table.Column<DateTimeOffset>(type: "datetimeoffset(3)", precision: 3, nullable: false),
+                    ValidFrom = table.Column<DateTime>(type: "datetime2", nullable: false)
+                        .Annotation("SqlServer:TemporalIsPeriodStartColumn", true),
+                    ValidTo = table.Column<DateTime>(type: "datetime2", nullable: false)
+                        .Annotation("SqlServer:TemporalIsPeriodEndColumn", true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_ReportShares", x => x.Id);
+                    table.CheckConstraint("CK_ReportShares_EveryoneView", "[UserId] IS NOT NULL OR [RoleId] IS NOT NULL OR [Access] = 'View'");
+                    table.CheckConstraint("CK_ReportShares_Id", "[Id] > 0");
+                    table.CheckConstraint("CK_ReportShares_Target", "[UserId] IS NULL OR [RoleId] IS NULL");
+                    table.ForeignKey(
+                        name: "FK_ReportShares_ReportId",
+                        column: x => x.ReportId,
+                        principalSchema: "core",
+                        principalTable: "Reports",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                    table.ForeignKey(
+                        name: "FK_ReportShares_RoleId",
+                        column: x => x.RoleId,
+                        principalSchema: "core",
+                        principalTable: "Roles",
+                        principalColumn: "Id");
+                    table.ForeignKey(
+                        name: "FK_ReportShares_SharedById",
+                        column: x => x.SharedById,
+                        principalSchema: "core",
+                        principalTable: "Users",
+                        principalColumn: "Id");
+                    table.ForeignKey(
+                        name: "FK_ReportShares_UserId",
+                        column: x => x.UserId,
+                        principalSchema: "core",
+                        principalTable: "Users",
+                        principalColumn: "Id");
+                })
+                .Annotation("SqlServer:IsTemporal", true)
+                .Annotation("SqlServer:TemporalHistoryTableName", "ReportSharesHistory")
                 .Annotation("SqlServer:TemporalHistoryTableSchema", "core")
                 .Annotation("SqlServer:TemporalPeriodEndColumnName", "ValidTo")
                 .Annotation("SqlServer:TemporalPeriodStartColumnName", "ValidFrom");
@@ -3928,6 +4052,76 @@ namespace Tellma.Testing.Entities.Migrations
                 .Annotation("SqlServer:Include", new[] { "Resource", "Action", "Filter", "FilterQueryexVersion" });
 
             migrationBuilder.CreateIndex(
+                name: "IX_Reports_OwnerId",
+                schema: "core",
+                table: "Reports",
+                column: "OwnerId")
+                .Annotation("SqlServer:Include", new[] { "IsActive" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Reports_Root",
+                schema: "core",
+                table: "Reports",
+                column: "Root");
+
+            migrationBuilder.CreateIndex(
+                name: "UX_Reports_Code",
+                schema: "core",
+                table: "Reports",
+                column: "Code",
+                unique: true,
+                filter: "[Code] IS NOT NULL");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_ReportShares_ReportId",
+                schema: "core",
+                table: "ReportShares",
+                column: "ReportId")
+                .Annotation("SqlServer:Include", new[] { "UserId", "RoleId", "Access" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_ReportShares_RoleId",
+                schema: "core",
+                table: "ReportShares",
+                column: "RoleId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_ReportShares_SharedById",
+                schema: "core",
+                table: "ReportShares",
+                column: "SharedById");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_ReportShares_UserId",
+                schema: "core",
+                table: "ReportShares",
+                column: "UserId");
+
+            migrationBuilder.CreateIndex(
+                name: "UX_ReportShares_Everyone",
+                schema: "core",
+                table: "ReportShares",
+                column: "ReportId",
+                unique: true,
+                filter: "[UserId] IS NULL AND [RoleId] IS NULL");
+
+            migrationBuilder.CreateIndex(
+                name: "UX_ReportShares_Role",
+                schema: "core",
+                table: "ReportShares",
+                columns: new[] { "ReportId", "RoleId" },
+                unique: true,
+                filter: "[RoleId] IS NOT NULL");
+
+            migrationBuilder.CreateIndex(
+                name: "UX_ReportShares_User",
+                schema: "core",
+                table: "ReportShares",
+                columns: new[] { "ReportId", "UserId" },
+                unique: true,
+                filter: "[UserId] IS NOT NULL");
+
+            migrationBuilder.CreateIndex(
                 name: "IX_RoleMemberships_RoleId_UserId",
                 schema: "core",
                 table: "RoleMemberships",
@@ -4343,6 +4537,56 @@ namespace Tellma.Testing.Entities.Migrations
                 grants: new[] { "tellma_app" });
 
             migrationBuilder.CreateTableType(
+                name: "ReportSharesList",
+                physicalName: "ReportSharesList_5677d1f4",
+                schema: "core",
+                scope: "tellma.fixture",
+                definitionHash: "5677d1f4fec31c030804673c5a8408d2e70d49dec6fdd9ca053d368b6387fefc",
+                columns: new[]
+                {
+                    new TableTypeColumnDefinition { Name = "Id", StoreType = "int" },
+                    new TableTypeColumnDefinition { Name = "ReportId", StoreType = "int" },
+                    new TableTypeColumnDefinition { Name = "UserId", StoreType = "int", IsNullable = true },
+                    new TableTypeColumnDefinition { Name = "RoleId", StoreType = "int", IsNullable = true },
+                    new TableTypeColumnDefinition { Name = "Access", StoreType = "varchar(8)", MaxLength = 8 },
+                    new TableTypeColumnDefinition { Name = "SharedById", StoreType = "int" },
+                    new TableTypeColumnDefinition { Name = "SharedAt", StoreType = "datetimeoffset(3)", Precision = 3 },
+                },
+                primaryKey: new[] { "Id" },
+                grants: new[] { "tellma_app" });
+
+            migrationBuilder.CreateTableType(
+                name: "ReportsList",
+                physicalName: "ReportsList_61213b20",
+                schema: "core",
+                scope: "tellma.fixture",
+                definitionHash: "61213b20b349268634572bd88e159204693e61a2e4fc897a4489c9785b765735",
+                columns: new[]
+                {
+                    new TableTypeColumnDefinition { Name = "Id", StoreType = "int" },
+                    new TableTypeColumnDefinition { Name = "Code", StoreType = "nvarchar(50)", IsNullable = true, MaxLength = 50 },
+                    new TableTypeColumnDefinition { Name = "Title", StoreType = "nvarchar(255)", MaxLength = 255 },
+                    new TableTypeColumnDefinition { Name = "Title2", StoreType = "nvarchar(255)", IsNullable = true, MaxLength = 255 },
+                    new TableTypeColumnDefinition { Name = "Title3", StoreType = "nvarchar(255)", IsNullable = true, MaxLength = 255 },
+                    new TableTypeColumnDefinition { Name = "Description", StoreType = "nvarchar(1024)", IsNullable = true, MaxLength = 1024 },
+                    new TableTypeColumnDefinition { Name = "Description2", StoreType = "nvarchar(1024)", IsNullable = true, MaxLength = 1024 },
+                    new TableTypeColumnDefinition { Name = "Description3", StoreType = "nvarchar(1024)", IsNullable = true, MaxLength = 1024 },
+                    new TableTypeColumnDefinition { Name = "Root", StoreType = "varchar(128)", MaxLength = 128 },
+                    new TableTypeColumnDefinition { Name = "Kind", StoreType = "varchar(8)", MaxLength = 8 },
+                    new TableTypeColumnDefinition { Name = "DefinitionJson", StoreType = "nvarchar(max)" },
+                    new TableTypeColumnDefinition { Name = "QueryexVersion", StoreType = "int" },
+                    new TableTypeColumnDefinition { Name = "OwnerId", StoreType = "int", IsNullable = true },
+                    new TableTypeColumnDefinition { Name = "BasedOnId", StoreType = "int", IsNullable = true },
+                    new TableTypeColumnDefinition { Name = "IsActive", StoreType = "bit" },
+                    new TableTypeColumnDefinition { Name = "CreatedAt", StoreType = "datetimeoffset(7)", Precision = 7 },
+                    new TableTypeColumnDefinition { Name = "CreatedById", StoreType = "int" },
+                    new TableTypeColumnDefinition { Name = "ModifiedAt", StoreType = "datetimeoffset(7)", Precision = 7 },
+                    new TableTypeColumnDefinition { Name = "ModifiedById", StoreType = "int" },
+                },
+                primaryKey: new[] { "Id" },
+                grants: new[] { "tellma_app" });
+
+            migrationBuilder.CreateTableType(
                 name: "RoleMembershipsList",
                 physicalName: "RoleMembershipsList_fd20e92d",
                 schema: "core",
@@ -4740,6 +4984,23 @@ namespace Tellma.Testing.Entities.Migrations
                 grants: new[] { "tellma_app" });
 
             migrationBuilder.CreateTableType(
+                name: "ShareGrantList",
+                physicalName: "ShareGrantList_ac865ac1",
+                schema: "dbo",
+                scope: "tellma.fixture",
+                definitionHash: "ac865ac1f3605dfa51ee83736fd9fdbcf8850e9eb572a89a226bc7d1f6d002a4",
+                columns: new[]
+                {
+                    new TableTypeColumnDefinition { Name = "Index", StoreType = "int" },
+                    new TableTypeColumnDefinition { Name = "RowId", StoreType = "int" },
+                    new TableTypeColumnDefinition { Name = "UserId", StoreType = "int", IsNullable = true },
+                    new TableTypeColumnDefinition { Name = "RoleId", StoreType = "int", IsNullable = true },
+                    new TableTypeColumnDefinition { Name = "Access", StoreType = "varchar(8)", MaxLength = 8 },
+                },
+                primaryKey: new[] { "Index" },
+                grants: new[] { "tellma_app" });
+
+            migrationBuilder.CreateTableType(
                 name: "StringList",
                 physicalName: "StringList_bb8903a2",
                 schema: "dbo",
@@ -5038,7 +5299,7 @@ namespace Tellma.Testing.Entities.Migrations
                 primaryKey: new[] { "Id" },
                 grants: new[] { "tellma_app" });
 
-            migrationBuilder.CleanupTableTypes(scope: "tellma.fixture", keepList: new[] { "JobsList_a90a5696", "NotificationsList_45bbd83e", "OutgoingEmailAttachmentsList_69b8bfd2", "OutgoingEmailsList_c103cd34", "PermissionsList_c3b8a544", "RoleMembershipsList_fd20e92d", "RolesList_77bed563", "SchedulesList_5acfe7bf", "SettingEntriesList_609d1ba0", "SettingsList_254adc5a", "UsersList_860a025a", "BigIdList_7629c0a3", "DateList_566fd984", "EmailDeliveryEventList_f9c9c1c7", "GuidList_922aa933", "IdList_9b0dfe3c", "IdStampList_36427f71", "JobLeaseList_17bf60e1", "JobOutcomeList_6165fff7", "JobProgressList_33eeb232", "JobRequestList_f3ef6d1d", "NotificationPreferenceList_61bf7917", "NotificationRowList_2c2b24d8", "NotificationSliceList_29aa6852", "OutgoingEmailOutcomeList_9ab65983", "ScheduleNextList_e422990c", "StringList_bb8903a2", "UserInvitationOutcomeList_42e4ff20", "UserPreferenceList_8b1ed724", "VersionTagList_e552f6b8", "BlobFoldersList_5f21ddcb", "BlobOwnerFilesList_202e1a4a", "BlobOwnersList_225e542b", "ExportsList_f43dd628", "LinksList_da254281", "LookupsList_20dd89f0", "NodesList_133dd19b", "ShipmentsList_19cd4949", "WidgetPartNotesList_ff09ea87", "WidgetPartsList_60abe0b4", "WidgetsList_32217e51", "CentersList_f83bfb78" });
+            migrationBuilder.CleanupTableTypes(scope: "tellma.fixture", keepList: new[] { "JobsList_a90a5696", "NotificationsList_45bbd83e", "OutgoingEmailAttachmentsList_69b8bfd2", "OutgoingEmailsList_c103cd34", "PermissionsList_c3b8a544", "ReportSharesList_5677d1f4", "ReportsList_61213b20", "RoleMembershipsList_fd20e92d", "RolesList_77bed563", "SchedulesList_5acfe7bf", "SettingEntriesList_609d1ba0", "SettingsList_254adc5a", "UsersList_860a025a", "BigIdList_7629c0a3", "DateList_566fd984", "EmailDeliveryEventList_f9c9c1c7", "GuidList_922aa933", "IdList_9b0dfe3c", "IdStampList_36427f71", "JobLeaseList_17bf60e1", "JobOutcomeList_6165fff7", "JobProgressList_33eeb232", "JobRequestList_f3ef6d1d", "NotificationPreferenceList_61bf7917", "NotificationRowList_2c2b24d8", "NotificationSliceList_29aa6852", "OutgoingEmailOutcomeList_9ab65983", "ScheduleNextList_e422990c", "ShareGrantList_ac865ac1", "StringList_bb8903a2", "UserInvitationOutcomeList_42e4ff20", "UserPreferenceList_8b1ed724", "VersionTagList_e552f6b8", "BlobFoldersList_5f21ddcb", "BlobOwnerFilesList_202e1a4a", "BlobOwnersList_225e542b", "ExportsList_f43dd628", "LinksList_da254281", "LookupsList_20dd89f0", "NodesList_133dd19b", "ShipmentsList_19cd4949", "WidgetPartNotesList_ff09ea87", "WidgetPartsList_60abe0b4", "WidgetsList_32217e51", "CentersList_f83bfb78" });
         }
 
         /// <inheritdoc />
@@ -5107,6 +5368,15 @@ namespace Tellma.Testing.Entities.Migrations
                 schema: "core")
                 .Annotation("SqlServer:IsTemporal", true)
                 .Annotation("SqlServer:TemporalHistoryTableName", "PermissionsHistory")
+                .Annotation("SqlServer:TemporalHistoryTableSchema", "core")
+                .Annotation("SqlServer:TemporalPeriodEndColumnName", "ValidTo")
+                .Annotation("SqlServer:TemporalPeriodStartColumnName", "ValidFrom");
+
+            migrationBuilder.DropTable(
+                name: "ReportShares",
+                schema: "core")
+                .Annotation("SqlServer:IsTemporal", true)
+                .Annotation("SqlServer:TemporalHistoryTableName", "ReportSharesHistory")
                 .Annotation("SqlServer:TemporalHistoryTableSchema", "core")
                 .Annotation("SqlServer:TemporalPeriodEndColumnName", "ValidTo")
                 .Annotation("SqlServer:TemporalPeriodStartColumnName", "ValidFrom");
@@ -5182,6 +5452,15 @@ namespace Tellma.Testing.Entities.Migrations
             migrationBuilder.DropTable(
                 name: "OutgoingEmails",
                 schema: "core");
+
+            migrationBuilder.DropTable(
+                name: "Reports",
+                schema: "core")
+                .Annotation("SqlServer:IsTemporal", true)
+                .Annotation("SqlServer:TemporalHistoryTableName", "ReportsHistory")
+                .Annotation("SqlServer:TemporalHistoryTableSchema", "core")
+                .Annotation("SqlServer:TemporalPeriodEndColumnName", "ValidTo")
+                .Annotation("SqlServer:TemporalPeriodStartColumnName", "ValidFrom");
 
             migrationBuilder.DropTable(
                 name: "Roles",
@@ -5291,6 +5570,14 @@ namespace Tellma.Testing.Entities.Migrations
 
             migrationBuilder.DropSequence(
                 name: "sq_Permissions",
+                schema: "core");
+
+            migrationBuilder.DropSequence(
+                name: "sq_Reports",
+                schema: "core");
+
+            migrationBuilder.DropSequence(
+                name: "sq_ReportShares",
                 schema: "core");
 
             migrationBuilder.DropSequence(

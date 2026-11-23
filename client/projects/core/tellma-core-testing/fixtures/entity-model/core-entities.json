@@ -199,6 +199,31 @@
     "kind": "child"
   },
   {
+    "name": "core.Report",
+    "segment": "reports",
+    "labelKey": "Core_Report",
+    "pluralLabelKey": "Core_Report_Plural",
+    "newLabelKey": "Entity_New",
+    "labelFallback": "Report",
+    "operations": [
+      "query",
+      "details",
+      "save",
+      "delete"
+    ],
+    "capabilities": [
+      "activatable",
+      "multilingual",
+      "searchable",
+      "temporal"
+    ],
+    "displayName": {
+      "source": "Title",
+      "multilingual": true
+    },
+    "kind": "stack"
+  },
+  {
     "name": "core.Role",
     "segment": "roles",
     "labelKey": "Core_Role",

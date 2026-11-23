@@ -183,7 +183,7 @@ export abstract class TmApi {
    *
    * @param route - The route.
    * @param body - The request body, sent as JSON.
-   * @param options - Whether the send is background work.
+   * @param options - Whether the send is background work, and its tenant.
    */
   abstract send(route: string, body: unknown, options?: TmSendOptions): void;
 

@@ -1356,6 +1356,15 @@ describe('TmHttpApi', () => {
   });
 
   describe('send', () => {
+    it("sends to the caller's tenant, even from a tenantless page", async () => {
+      const rig = await setUp({ url: '/tenants' });
+      rig.api.send('users/me/locale', { language: 'ar' }, { tenantId: 18 });
+      await flush();
+      expect(rig.host.last().url).toBe('/18/api/web/users/me/locale');
+      rig.host.last().fail();
+      await flush();
+    });
+
     it('sends a keepalive POST whose answer is never read', async () => {
       const rig = await setUp();
       rig.api.send('users/me/preferences', { theme: 'dark' }, { background: true });

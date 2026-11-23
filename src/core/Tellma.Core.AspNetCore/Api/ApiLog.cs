@@ -54,6 +54,25 @@ namespace Tellma.Core.AspNetCore.Api
             Message = "The web surface projects {Count} child query surfaces: {Surfaces}.")]
         public static partial void ChildSurfacesProjected(ILogger logger, int count, string surfaces);
 
+        /// <summary>
+        ///     The endpoint audit refused the host's endpoints, so the host does not start: logged once,
+        ///     just before the startup throw that carries the same problems.
+        /// </summary>
+        /// <remarks>
+        ///     A refusal by the startup gate reaches every sink, because the failed run disposes the
+        ///     host. A refusal by <c>MapTellma</c> leaves the host undisposed, so <c>MapTellma</c>
+        ///     flushes OpenTelemetry's export before it throws. A sink that buffers outside
+        ///     OpenTelemetry, such as a buffered Serilog file sink, may lose that event.
+        /// </remarks>
+        /// <param name="logger">The logger.</param>
+        /// <param name="count">How many problems the audit found.</param>
+        /// <param name="problems">Every problem, each rendered as one line with its source and fix, separated by semicolons.</param>
+        [LoggerMessage(
+            EventName = "ApiSecurableAuditFailed",
+            Level = LogLevel.Critical,
+            Message = "The endpoint audit found {Count} problem(s), so the host does not start: {Problems}")]
+        public static partial void SecurableAuditFailed(ILogger logger, int count, string problems);
+
         /// <summary>A request was answered with a problem: at Information for a 4xx status, at Warning for a 5xx.</summary>
         /// <param name="logger">The logger.</param>
         /// <param name="level">The level, by the status's class.</param>

@@ -7,17 +7,22 @@ own.
 
 | Entry point | Holds | Loaded |
 |---|---|---|
-| `@tellma/core` | The distribution API: `bootstrapTellma`, `provideTellma`, `tmFeature`, the declaration functions (`tmEntity`, `tmPage`, `tmCodedReport`, `tmWidget`, `tmOverride`) and `TM_APP_DECLARATIONS`, the merged declarations; the client metadata's types, its loaders (`tmMetadataLoaders`) and the loaded Core chunk (`TM_CLIENT_METADATA`); the HTTP layer (`TmApi`, `TmApiError`, `TmProblem`), its plain-JSON value types (`TmJson`, `TmDecimal`, `TmId`) and the exact decimal helpers `TmDecimals`; the seams through which telemetry (`TmTelemetry`), the request log (`TmRequestLog`) and page scopes (`provideTmPageScope`) are provided; the session (`TmSession`, `tmSessionGuard`, `tmParseProfileCookie`), the launch mark (`TmLaunch`) and the single-membership rule (`tmSingleLiveTenant`); the client store (`TmClientStore`, `TmStoreRefusedError`, `TM_DOC_FORMATS`) and the tab bus (`TmTabBus`) with its message catalogue; the boot script's result types and the app clock (`TM_NOW`); the derived router's pieces: the root component (`TmApp`), the route data (`TmRouteData`), the title strategy (`TmTitleStrategy`), the URL builders and classifier (`TmUrls`) with the search query's types, and the entity lookups (`TmEntities`) | eager |
+| `@tellma/core` | The distribution API: `bootstrapTellma`, `provideTellma`, `tmFeature`, the declaration functions (`tmEntity`, `tmPage`, `tmCodedReport`, `tmWidget`, `tmOverride`) and `TM_APP_DECLARATIONS`, the merged declarations; the client metadata's types, its loaders (`tmMetadataLoaders`) and the loaded Core chunk (`TM_CLIENT_METADATA`); the HTTP layer (`TmApi`, `TmApiError`, `TmProblem`), its plain-JSON value types (`TmJson`, `TmDecimal`, `TmId`) and the exact decimal helpers `TmDecimals`; the seams through which telemetry (`TmTelemetry`), the request log (`TmRequestLog`) and page scopes (`provideTmPageScope`) are provided; the session (`TmSession`, `tmSessionGuard`, `tmParseProfileCookie`), the launch mark (`TmLaunch`) and the single-membership rule (`tmSingleLiveTenant`); the client store (`TmClientStore`, `TmStoreRefusedError`, `TM_DOC_FORMATS`) and the tab bus (`TmTabBus`) with its message catalogue; the boot script's result types and the app clock (`TM_NOW`); the derived router's pieces: the root component (`TmApp`), the route data (`TmRouteData`), the title strategy (`TmTitleStrategy`), the URL builders and classifier (`TmUrls`) with the search query's types; the entity registry (`TmEntities`, with its descriptors once the entity model loads, and the declaration types `tmEntity` takes, typed paths `TmPath` included), display names (`TmDisplayNames`, `tm-display-name`), client permissions (`TmPermissions`) and `tmRowsToObjects`; localization: `TmLocalization` (the language, the regional formats, the calendar and the zones, and their switches with the coalesced locale write), `TmServerText` (server codes and keys through the string packs) and `tmEnglish()`, the platform's English | eager |
 | `@tellma/core/shell` | The tenant shell, the tenant picker and the signed-out page, which the derived routes load; until their owners arrive they are plain stand-ins, beside one placeholder page for the platform's page families | eager, through `import()` |
 | `@tellma/core/memory` | The tab's memory of its pages: page state (`TmPageState`, `tmPageStateKey`), drafts (`TmDrafts`) and tree expansion (`TmTreeExpansion`), which the page hosts load with them | lazy |
 | `@tellma/core/recents` | The recently visited pages (`TmRecents`), which the launcher and the home page list; the app loads it with `import()` after its first render, when visits start to count | lazy, through `import()` after first render |
-| `@tellma/core/config-check` | `tmCheckAppConfig`, the check of an app's configuration against the client metadata, which the build runs in Node and a development app at startup | lazy |
+| `@tellma/core/config-check` | `tmCheckAppConfig`, the check of an app's configuration against the client metadata, which the build runs in Node and a development app at startup, and `tmCheckEntityDeclaration`, the check of one entity declaration against the Entities chunk | lazy |
 | `@tellma/core/private` | Wiring shared by the platform's own entry points and packages; no API goldens, no stability guarantee, never imported by app code | — |
 
 The other entry points of the framework arrive with the features they hold, each in the folder of
 its name. The package also ships plain assets: `boot/tm-boot.template.js`, the boot script's
-template, `styles/tm-boot-page.css`, the boot page's styles, and the default brand files
+template, `styles.css`, the app's global stylesheet, which a distribution's `src/styles.css`
+imports first (the tokens, the Latin fonts, the directive stylesheets and
+`styles/tm-boot-page.css`, the boot page's styles), and the default brand files
 `brand/{wordmark,mark}-on-{dark,light}.svg`.
+
+The platform's icon names live in `src/icons/platform-icons.ts`, which `provideTellma` registers
+before each feature's `icons`: a platform surface that draws a new name adds it there.
 
 The brand files are the Tellma logo: the wordmark, and the mark (the wordmark's round "a" with its
 teal dot), each in ink for light backgrounds and in white for dark ones. They are cleaned from the
@@ -365,6 +370,39 @@ list page's query, classifies a stored URL (`describe`) and loads a route's chun
 `q` stripped of bidi controls, and the free filter in the fragment as `#d=`, base64url JSON, which
 no server log sees.
 
+## Entities, display names and permissions
+
+`TmEntities` answers route matching, URLs and the shells from the Core chunk's entity summaries and
+the merged declarations: `summary`, `bySegment`, `declaration` and `label`. `load()` fetches the
+Entities chunk once, with the entity model, a lazy chunk of its own (`tm-entity-model`) that
+weighs nothing on the first frame. After it, `get` returns an entity's descriptor gated by the
+routed tenant's languages: a twin beyond them is no property, and with two or three languages each
+twin's label carries its language's symbol ("Name (ع)") and its `contentDir` its direction.
+`enum` labels a named enum's values, and `resolve` reads a column key or path: a scalar or twin
+(`value`), a group anchor (`text`), a navigation, or a blob navigation (`image`, `file`), with a
+slash label and the foreign key's path. Before the load a development app throws; a production
+app gets a descriptor of the summary alone.
+
+```ts
+await entities.load();
+const name2 = entities.get('acme.Customer').property('Name2'); // label "Name (ع)", contentDir "rtl"
+const manager = entities.resolve('gl.Center', 'Parent.Manager'); // a navigation end, fkPath "Parent.ManagerId"
+```
+
+`TmDisplayNames` renders any row's display name by the rule the server declares, in the active
+content slot: integers ungrouped, dates in the calendar's numeric style, the fixed " - " between a
+prefix and a name, "#7" when the row has neither, and no bidi control in the text.
+`tm-display-name` renders the parts, each in a `<bdi>`. By id, `label` answers from a cacheable
+entity's list, else from the rows the tab has read (`remember`, `rememberRelated`: at most 5,000
+per entity, least recently used first), and `resolve` fetches the unknown ids of a frame in one
+background query per 100, which a tenant change aborts. The held rows are dropped when the user,
+the tenant or the tenant's content languages change, and kept through any other move.
+
+`TmPermissions` answers from the access summary: `can` and `filtered` per securable, `allows` per
+entity operation (the details page and the tenant's `ReadOnly` or `Frozen` state included), the
+`disabledReason` a refused action shows, `label` in the Access tab's words, `sensitive`, and
+`reachable`, the traversal rule a query's paths obey.
+
 ## Decimals
 
 `decimal` and `long` values travel as JSON strings and stay strings: a `TmDecimal` is the value's
@@ -391,9 +429,9 @@ language and no calendar, until the localization service), the cache refresher (
 nothing to revalidate), and the worker's update check (`disabled`, as no worker controls the
 page yet).
 
-The route host reads two more: the permission check of a page's `securable` gate (allowing
-everything, until the entity model's permission service), and the platform's text, which reads the
-loaded string packs and client tables until the localization service replaces it.
+The route host reads one more: the platform's text, which reads the loaded string packs and
+client tables until the localization service replaces it. A page's `securable` gate asks
+`TmPermissions`.
 
 ## Import rules
 
