@@ -12,7 +12,9 @@ import type { TmEntityPickerPage } from '@tellma/core-ui/entity-picker';
 import { TM_DISPLAY_NAME_GOLDEN as golden } from '../../src/entity/tm-display-name-golden.testing.util';
 import { tmEntityRig, type TmEntityRig, type TmEntityRigOptions } from '../../src/entity/tm-entity.testing.util';
 import { TM_T17, tmSettle } from '../../src/routes/tm-app.testing.util';
-import { TmEntityPickers, ɵtmFindable, ɵtmPasteMatch, ɵTM_SEARCH_MATCH, type ɵTmFindablePlan, type ɵTmPickerTerm } from './tm-entity-pickers';
+import { ɵtmPasteLeaf, ɵtmPasteMatch, ɵTM_PIPELINE_LIMITS } from './tm-entity-paste';
+import { TmEntityPickers } from './tm-entity-pickers';
+import { ɵtmFindable, ɵTM_SEARCH_MATCH, type ɵTmFindablePlan, type ɵTmPickerTerm } from './tm-findable';
 import { TmLazyPickerPage } from './tm-lazy-picker-page';
 
 // The generic entity picker binding over the entity registry's test app:
@@ -120,6 +122,82 @@ function searchTimings(rig: TmEntityRig): Record<string, unknown>[] {
       expect(typeof ms).toBe('number');
       return { kind: item.kind, ...props };
     });
+}
+
+/** A paste leaf read apart: each `in` list's items, and the leaf with every list's items left out. */
+interface TmLeafParts {
+  /** Each list's items, as written. */
+  readonly lists: readonly (readonly string[])[];
+  /** The leaf with each list written `(…)`: its shape, whatever the labels. */
+  readonly shape: string;
+}
+
+/**
+ * Reads a paste leaf apart: its `in` lists, a quoted item read whole, and
+ * its shape without them.
+ *
+ * @param leaf - The leaf.
+ * @returns The parts.
+ */
+function leafParts(leaf: string): TmLeafParts {
+  const lists: string[][] = [];
+  let shape = '';
+  let index = 0;
+  for (let at = leaf.indexOf(' in (', index); at >= 0; at = leaf.indexOf(' in (', index)) {
+    shape += `${leaf.slice(index, at)} in (…)`;
+    index = at + ' in ('.length;
+    const items: string[] = [];
+    let item = '';
+    while (leaf[index] !== ')') {
+      if (leaf[index] === "'") {
+        // A quoted item, a quote inside it written twice.
+        let end = index + 1;
+        while (leaf[end] !== "'" || leaf[end + 1] === "'") {
+          end += leaf[end] === "'" ? 2 : 1;
+        }
+        item += leaf.slice(index, end + 1);
+        index = end + 1;
+      } else if (leaf.startsWith(', ', index)) {
+        items.push(item);
+        item = '';
+        index += 2;
+      } else {
+        item += leaf[index++];
+      }
+    }
+    items.push(item);
+    lists.push(items);
+    index++;
+  }
+  return { lists, shape: shape + leaf.slice(index) };
+}
+
+/**
+ * Checks the paste leaves a resolver sent against the server's ceilings:
+ * every list within the list ceiling, the literals within half of the
+ * parameter slots, and one shape, whose connectives and nesting stay far
+ * below the depth ceiling.
+ *
+ * @param leaves - The leaves.
+ */
+function expectWithinLimits(leaves: readonly string[]): void {
+  const parts = leaves.map(leafParts);
+  for (const { lists } of parts) {
+    expect(Math.max(...lists.map((list) => list.length))).toBeLessThanOrEqual(ɵTM_PIPELINE_LIMITS.maxListItems);
+    expect(lists.flat().length).toBeLessThanOrEqual(ɵTM_PIPELINE_LIMITS.maxParameters / 2);
+  }
+  const shapes = new Set(parts.map((part) => part.shape));
+  expect(shapes.size).toBe(1);
+  const [shape] = shapes;
+  // An upper bound of the parsed depth: every connective a level, and every parenthesis.
+  const connectives = shape!.split(/ or | and /).length - 1;
+  let nesting = 0;
+  let deepest = 0;
+  for (const char of shape!) {
+    nesting += char === '(' ? 1 : char === ')' ? -1 : 0;
+    deepest = Math.max(deepest, nesting);
+  }
+  expect(connectives + deepest).toBeLessThan(ɵTM_PIPELINE_LIMITS.maxSyntaxDepth / 4);
 }
 
 /** Currencies of a cached list: three active ones and an inactive one. */
@@ -365,7 +443,7 @@ describe('TmEntityPickers', () => {
       const names = "('1101 - Cash', 'cash', 'النقد', 'Bank', '2002', 'Nope', 'Twin', 'O''Brien')";
       expect(body).toEqual({
         select: 'Id,Name,Name2,Code',
-        filters: ['IsActive = true', `Name in ${names} or Name2 in ${names} or Code in ${names} or (Code = '1101' and (Name = 'Cash' or Name2 = 'Cash'))`],
+        filters: ['IsActive = true', `Name in ${names} or Name2 in ${names} or Code in ${names} or (Code in ('1101') and (Name in ('Cash') or Name2 in ('Cash')))`],
         take: 10000,
       });
     });
@@ -380,6 +458,61 @@ describe('TmEntityPickers', () => {
       expect(filters.every((filter) => filter.length <= 8192)).toBe(true);
       expect(filters.length).toBeLessThan(10);
       expect(resolved.size).toBe(400);
+    });
+
+    it('splits many prefixed names over several queries within the server’s ceilings, and resolves each', async () => {
+      const rig = await tmEntityRig({ ...SYSTEM, languages: 2 });
+      rig.api.respond('customers/query', serve(customers(300)));
+      const labels = customers(300).map((row) => `${row['code']} - ${row['name']}`);
+      const resolved = await pickers().ɵpasteResolver('acme.Customer', signal(null))(labels, { locale: 'en', signal: new AbortController().signal });
+
+      const leaves = bodies(rig, 'customers/query').map((body) => (body['filters'] as string[])[0]!);
+      expect(leaves.length).toBeGreaterThan(1);
+      expectWithinLimits(leaves);
+      expect(labels.map((label) => resolved.get(label))).toEqual(customers(300).map((row) => ({ value: row['id'] })));
+    });
+
+    it('splits more short codes than one list holds over several queries, and resolves each', async () => {
+      const rig = await tmEntityRig(SYSTEM);
+      const table = Array.from({ length: 600 }, (_, index) => ({ id: index + 1, code: `C${index}`, name: `Customer ${index}` }));
+      rig.api.respond('customers/query', serve(table));
+      const labels = table.map((row) => row.code);
+      const resolved = await pickers().ɵpasteResolver('acme.Customer', signal(null))(labels, { locale: 'en', signal: new AbortController().signal });
+
+      const leaves = bodies(rig, 'customers/query').map((body) => (body['filters'] as string[])[0]!);
+      expect(leaves.length).toBeGreaterThan(1);
+      expectWithinLimits(leaves);
+      expect(labels.map((label) => resolved.get(label))).toEqual(table.map((row) => ({ value: row.id })));
+    });
+
+    it('writes one leaf for a paste of every kind: names, integers, ids and halves, each half in one list', () => {
+      const plan: ɵTmFindablePlan = {
+        key: { name: 'Id', json: 'id', type: 'integer' },
+        slots: [{ name: 'Name', json: 'name', type: 'string' }],
+        prefix: { name: 'Number', json: 'number', type: 'integer' },
+      };
+      expect(ɵtmPasteLeaf(plan, ['١١٠١ - Cash', '1102 - Bank', '#7', '42', "O'Brien"])).toEqual({
+        text:
+          "Name in ('١١٠١ - Cash', '1102 - Bank', '#7', '42', 'O''Brien') or Number in (42) or Id in (7) " +
+          "or (Number in (1101, 1102) and (Name in ('Cash', 'Bank')))",
+        literals: 11,
+      });
+    });
+
+    it('reads nothing once the app ends: a search remembers no rows, and a paste sends no query', async () => {
+      const rig = await tmEntityRig(SYSTEM);
+      // The search's read answers only once the app has ended.
+      let answer: (() => void) | undefined;
+      rig.api.respond('customers/query', (call: TmFakeApiCall) => new Promise((resolve) => (answer = () => resolve(serve(customers(1))(call)))));
+      const searching = pickers().binding('acme.Customer').search('a', new AbortController().signal);
+      await vi.waitFor(() => expect(answer).toBeDefined());
+      const pasting = pickers().ɵpasteResolver('acme.Customer', signal(null))(['1001 - Customer 1'], { locale: 'en', signal: new AbortController().signal });
+      TestBed.resetTestingModule();
+      answer!();
+
+      await expect(searching).resolves.toEqual({ items: [] });
+      await expect(pasting).resolves.toEqual(new Map());
+      expect(bodies(rig, 'customers/query')).toHaveLength(1);
     });
   });
 });

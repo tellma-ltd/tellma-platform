@@ -39,7 +39,7 @@ export { tmGridColumnFor, type TmGridColumnConfig, type TmGridColumnOptions } fr
 export { TmEntityPickers, type TmEntityPickerBinding, type TmEntityPickerOptions } from './src/tm-entity-pickers';
 export { TmEntityField } from './src/tm-entity-field';
 export { TmEntityMultiField } from './src/tm-entity-multi-field';
-export { TmLazyPickerPage, type TmEntityPickerContext } from './src/tm-lazy-picker-page';
+export { TmLazyPickerPage, type TmEntityPickerContext, ɵTM_PICKER_PAGES, type ɵTmPickerPages } from './src/tm-lazy-picker-page';
 
 // Blob-kind policies.
 export { tmCheckBlobFile, type TmBlobFileCheck } from './src/tm-blob-check';

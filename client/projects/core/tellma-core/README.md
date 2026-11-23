@@ -541,7 +541,9 @@ reads the model's rows by their JSON names and edits only the root values the us
 multilingual group there edits the active language's slot, so a host that makes the config in a
 computed follows a language switch. A root navigation there edits its key through the target's
 picker binding with the column's filter: the cell shows the display name, its prefix and name
-each in its own isolate, and a paste resolves its names in one query.
+each in its own isolate, and a paste resolves its names in one query, or in as few as the server's
+filter limits allow (its length, 512 items in a list, and the parameters its literals take); the
+paste's code loads on the first paste.
 
 ### Entity pickers
 
@@ -565,7 +567,9 @@ column's.
   they may save it and it has a details page, Create unless turned off (by the options or the
   declaration's `picker.create`), Edit only to a single picker. Each opens `TmLazyPickerPage`,
   which loads the search page's or the details page's picker mode inside the modal, with
-  `{ entity, filter, kind }` as its context. Until those pages ship it says the page is not
+  `{ entity, filter, kind }` as its context: advanced search the search family's, Create and Edit
+  the details family's. Each family adds its own half to the internal `ɵTM_PICKER_PAGES`
+  multi-provider, so neither replaces the other. Until a family ships, its page says it is not
   available.
 
 ```ts

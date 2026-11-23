@@ -141,6 +141,17 @@ async function settle(fixture: ComponentFixture<unknown>): Promise<void> {
   await fixture.whenStable();
 }
 
+/**
+ * Waits for the next frame and the reads it starts: a display name read
+ * for an unknown row flushes on a frame, which must not outlive the test.
+ *
+ * @param fixture - The fixture.
+ */
+async function frame(fixture: ComponentFixture<unknown>): Promise<void> {
+  await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+  await settle(fixture);
+}
+
 describe('TmEntityField', () => {
   it('picks a row into the bound form field, described by its parent and named by its display name', async () => {
     const { loader, host, fixture } = await startHost();
@@ -201,6 +212,7 @@ describe('TmEntityField', () => {
     await settle(fixture);
     // The text clears the value, and the picker's parse error holds the field invalid beside the requirement.
     expect([host.model().centerId, host.form.centerId().errors().map((error) => error.kind)]).toEqual([null, ['parse', 'required']]);
+    await frame(fixture);
   });
 
   it('disables the picker with its field', async () => {
@@ -251,6 +263,7 @@ describe('TmEntityField', () => {
     const field = await (await within(loader, 'center')).getHarness(TmEntityFieldHarness);
     expect(await field.isReadonly()).toBe(true);
     expect(await (await field.getPicker()).hasMagnifier()).toBe(false);
+    await frame(fixture);
   });
 });
 
@@ -290,5 +303,6 @@ describe('TmEntityMultiField', () => {
     const field = await (await within(loader, 'centers')).getHarness(TmEntityMultiFieldHarness);
     expect(await field.isReadonly()).toBe(true);
     expect(await field.getChipLabels()).toEqual(['A', 'B']);
+    await frame(fixture);
   });
 });

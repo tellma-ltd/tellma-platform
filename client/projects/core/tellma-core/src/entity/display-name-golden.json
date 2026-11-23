@@ -236,6 +236,7 @@
       "columns": ["Id"]
     }
   ],
+  "findableColumns": "search: the ids the findable branches of a search find, on the server (the id, an integer source or prefix, and the prefix-and-name split) and in the client's cached search alike; the searchable columns' contains match is in neither column. paste: the ids the paste resolver's exact match finds.",
   "findable": [
     {
       "name": "a pasted prefix and name find the row by both halves",

@@ -4,15 +4,7 @@
 // LICENSE file in the root directory of this source tree.
 
 import { NgComponentOutlet } from '@angular/common';
-import {
-  ChangeDetectionStrategy,
-  Component,
-  DestroyRef,
-  inject,
-  InjectionToken,
-  signal,
-  type Type,
-} from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, inject, InjectionToken, signal, type Type } from '@angular/core';
 import { TmLocalization, TmTelemetry } from '@tellma/core';
 import { TM_UI_TRANSLATE } from '@tellma/core-ui';
 import { TmButton } from '@tellma/core-ui/button';
@@ -27,9 +19,10 @@ import { ɵTM_PICKER_STRINGS_EN } from './tm-entity-strings';
 // for every entity, which loads the search page's picker mode (spec 0030
 // §17) or the details page's (spec 0031 §15) inside the modal and renders
 // it there, the picker's data and the modal's ref reaching it through the
-// modal's injector. Which page a kind loads is a seam: until the search and
-// details pages land, it resolves to none and the shim says the page is not
-// available.
+// modal's injector. Which page a kind loads is a seam each page family
+// provides its own half of (the search pages Advanced search, the details
+// pages Create and Edit); until a family lands, the shim says its page is
+// not available.
 
 /**
  * What an entity picker's page is opened for, in the page's
@@ -46,20 +39,28 @@ export interface TmEntityPickerContext {
 }
 
 /**
- * Loads the component a picker page renders: the search page's picker mode
- * for `search`, the details page's for `details`; `null` while the page
- * family has none. Internal: the search and details pages provide it.
+ * A page family's half of the picker pages: the loader of the component
+ * its picker mode renders. Internal: the search and details pages each
+ * provide theirs.
  */
-export type ɵTmPickerPageLoader = (page: 'search' | 'details') => Promise<Type<unknown> | null>;
+export interface ɵTmPickerPages {
+  /** Loads the search page's picker mode, which advanced search renders. */
+  readonly search?: () => Promise<Type<unknown>>;
+  /** Loads the details page's picker mode, which Create and Edit render. */
+  readonly details?: () => Promise<Type<unknown>>;
+}
 
 /**
- * The loader of the picker pages. Internal: its default resolves every page
- * to none, which the shim shows as not available.
+ * The picker pages, a multi-provider each page family adds its half to, so
+ * neither replaces the other; a later provider of the same half wins.
+ * Internal: with none, every page shows as not available.
+ *
+ * @example
+ * ```ts
+ * { provide: ɵTM_PICKER_PAGES, multi: true, useValue: { search: () => import('./picker-mode').then((m) => m.SearchPickerMode) } }
+ * ```
  */
-export const ɵTM_PICKER_PAGES = new InjectionToken<ɵTmPickerPageLoader>('TM_PICKER_PAGES', {
-  providedIn: 'root',
-  factory: () => () => Promise.resolve(null),
-});
+export const ɵTM_PICKER_PAGES = new InjectionToken<readonly ɵTmPickerPages[]>('TM_PICKER_PAGES');
 
 /**
  * Registers the pickers' English strings, once per app. Internal.
@@ -136,7 +137,7 @@ export function ɵtmRegisterPickerStrings(localization: TmLocalization): void {
 })
 export class TmLazyPickerPage {
   readonly #ref: TmModalRef<unknown> = inject(TmModalRef);
-  readonly #loader = inject(ɵTM_PICKER_PAGES);
+  readonly #pages = inject(ɵTM_PICKER_PAGES, { optional: true }) ?? [];
   readonly #telemetry = inject(TmTelemetry);
   readonly #context = (inject(TM_MODAL_DATA) as TmEntityPickerPageData).context as TmEntityPickerContext;
 
@@ -187,9 +188,12 @@ export class TmLazyPickerPage {
   /** Loads the page the context names, showing it, or why there is none. */
   protected async load(): Promise<void> {
     this.state.set('loading');
+    // Advanced search is the search family's; Create and Edit the details family's, the last provider's.
+    const family = this.#context.kind === 'search' ? 'search' : 'details';
+    const loader = this.#pages.reduce<(() => Promise<Type<unknown>>) | undefined>((found, pages) => pages[family] ?? found, undefined);
     let page: Type<unknown> | null;
     try {
-      page = await this.#loader(this.#context.kind === 'search' ? 'search' : 'details');
+      page = loader === undefined ? null : await loader();
     } catch {
       if (!this.#destroyed) {
         this.state.set('failed');

@@ -3,7 +3,7 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-import { computed, inject, Injectable, Injector, untracked, type Signal } from '@angular/core';
+import { computed, DestroyRef, inject, Injectable, Injector, untracked, type Signal } from '@angular/core';
 import {
   TmApi,
   TmApiError,
@@ -15,7 +15,6 @@ import {
   TmTelemetry,
   tmRowsToObjects,
   type TmCachedEntitySet,
-  type TmDataType,
   type TmDisplayNameParts,
   type TmEntityDescriptor,
   type TmId,
@@ -30,6 +29,7 @@ import type { TmEntityPickerPage, TmEntitySearchFn, TmEntitySearchResult } from 
 import { tmStripBidiControls } from '@tellma/core-ui/l10n';
 import { tmSearchNormalize } from '@tellma/core/search-normalize';
 
+import { ɵtmFindable, ɵTM_SEARCH_MATCH, type ɵTmFindablePlan, type ɵTmPickerTerm } from './tm-findable';
 import { TmFormats } from './tm-formats';
 import { TmLazyPickerPage, ɵtmRegisterPickerStrings, type TmEntityPickerContext } from './tm-lazy-picker-page';
 import { tmSelectPlan, ɵtmDisplayNameOrder, type TmColumnPlan } from './tm-select-plan';
@@ -43,9 +43,6 @@ import { tmSelectPlan, ɵtmDisplayNameOrder, type TmColumnPlan } from './tm-sele
 
 /** The rows a picker shows of one search. */
 const PAGE = 20;
-
-/** The display name's fixed separator between its prefix and its name. */
-const SEPARATOR = ' - ';
 
 /** The separator between a description's parts. */
 const DESCRIPTION_SEPARATOR = ' · ';
@@ -94,40 +91,6 @@ export interface TmEntityPickerOptions {
   readonly multiple?: boolean;
 }
 
-/** One column the display name, the search or the paste reads: its path name, wire name and type. */
-export interface ɵTmPickerTerm {
-  /** The property's name, as Queryex spells it: `Name2`. */
-  readonly name: string;
-  /** The property's wire name: `name2`. */
-  readonly json: string;
-  /** The property's type; `null` when unknown. */
-  readonly type: TmDataType | null;
-}
-
-/**
- * What the findable rule reads of an entity: its key, its display name's
- * admitted slots in slot order (or its one scalar source), and its prefix.
- * Internal.
- */
-export interface ɵTmFindablePlan {
-  /** The key. */
-  readonly key: ɵTmPickerTerm;
-  /** The name's admitted slots, or the scalar source alone. */
-  readonly slots: readonly ɵTmPickerTerm[];
-  /** The prefix, when the rule declares one. */
-  readonly prefix: ɵTmPickerTerm | null;
-}
-
-/** How the findable rule compares text: loosely for a search, exactly for a paste. */
-export interface ɵTmFindableMatch {
-  /** Whether a row's text equals the given text. */
-  readonly equal: (value: string, text: string) => boolean;
-  /** Whether a row's text starts with the given text; equality for a paste. */
-  readonly startsWith: (value: string, text: string) => boolean;
-  /** Whether the bare id matches, as a search's does; a paste matches `#{id}` alone. */
-  readonly bareId: boolean;
-}
-
 /** Everything a binding reads of its target's descriptor, made once per descriptor. */
 interface TmPickerPlan extends ɵTmFindablePlan {
   /** The target's descriptor. */
@@ -148,164 +111,6 @@ interface TmPickerPlan extends ɵTmFindablePlan {
   readonly order: (slot: number) => string;
   /** Whether the target's list is cached on the client. */
   readonly cacheable: boolean;
-}
-
-/**
- * The digits of an integer written in Latin, Arabic-Indic or Extended
- * Arabic-Indic digits, as decimal text with no leading zeros.
- *
- * @param text - The text.
- * @param native - Whether Arabic-Indic digits read as Latin ones.
- * @returns The canonical digits, or `null` for text that is no integer.
- */
-function integerOf(text: string, native: boolean): string | null {
-  const latin = native
-    ? text.replace(/[٠-٩۰-۹]/g, (digit) => String((digit.charCodeAt(0) - 0x0660) % 0x90))
-    : text;
-  return /^-?[0-9]+$/.test(latin) ? latin.replace(/^(-?)0+(?=\d)/, '$1').replace(/^-0$/, '0') : null;
-}
-
-/**
- * A wire value's integer text: a number, or the decimal text of a `long`.
- *
- * @param value - The wire value.
- * @returns The canonical digits, or `null` for a value that is no integer.
- */
-function integerValue(value: unknown): string | null {
-  if (typeof value === 'number') {
-    return Number.isSafeInteger(value) ? String(value) : null;
-  }
-  return typeof value === 'string' ? integerOf(value, false) : null;
-}
-
-/**
- * Whether a wire value is text the comparison accepts.
- *
- * @param value - The wire value.
- * @param text - The text.
- * @param compare - The comparison.
- * @returns Whether it matches.
- */
-function textMatches(value: unknown, text: string, compare: (value: string, text: string) => boolean): boolean {
-  return typeof value === 'string' && compare(value, text);
-}
-
-/**
- * The findable rule as a row predicate: text holding the
- * separator splits at its first one, the prefix equal to the left part and
- * the name in an admitted slot starting with (for a paste, equal to) the
- * right part; an integer source or prefix equal to the text, native digits
- * normalized; `#{id}`, and for a search the bare id, equal to the key. A
- * date source is never findable. Internal: the cached search and the paste
- * resolver share it.
- *
- * @param plan - What the rule reads of the entity.
- * @param text - The search or pasted text, without bidi controls and trimmed.
- * @param match - How text compares.
- * @returns Whether a row is found by the text.
- */
-export function ɵtmFindable(plan: ɵTmFindablePlan, text: string, match: ɵTmFindableMatch): (row: TmJsonObject) => boolean {
-  const tests: ((row: TmJsonObject) => boolean)[] = [];
-
-  // --- The id: `#{id}`, or for a search the id itself, in Latin digits as the server reads it ---
-  const idText = text.startsWith('#') ? text.slice(1) : match.bareId ? text : null;
-  const id = idText === null ? null : integerOf(idText, false);
-  if (id !== null) {
-    tests.push((row) => integerValue(row[plan.key.json]) === id);
-  }
-
-  // --- An integer source or prefix: equal to the text, native digits normalized ---
-  const number = integerOf(text, true);
-  const source = plan.slots[0];
-  const prefix = plan.prefix;
-  if (number !== null && source?.type === 'integer') {
-    tests.push((row) => integerValue(row[source.json]) === number);
-  }
-  if (number !== null && prefix?.type === 'integer') {
-    tests.push((row) => integerValue(row[prefix.json]) === number);
-  }
-
-  // --- The split: "prefix - name", over a text source's admitted slots ---
-  const at = text.indexOf(SEPARATOR);
-  if (at >= 0 && prefix !== null && source?.type === 'string') {
-    const left = text.slice(0, at).trim();
-    const right = text.slice(at + SEPARATOR.length).trim();
-    const leftNumber = prefix.type === 'integer' ? integerOf(left, true) : null;
-    const prefixTest =
-      left === ''
-        ? null
-        : prefix.type === 'integer'
-          ? leftNumber === null
-            ? null
-            : (row: TmJsonObject) => integerValue(row[prefix.json]) === leftNumber
-          : prefix.type === 'string' || prefix.type === null
-            ? (row: TmJsonObject) => textMatches(row[prefix.json], left, match.equal)
-            : null;
-    if (prefixTest !== null) {
-      tests.push((row) => prefixTest(row) && plan.slots.some((slot) => textMatches(row[slot.json], right, match.startsWith)));
-    }
-  }
-  return (row) => tests.some((test) => test(row));
-}
-
-/** Each locale's exact-match collator: case-insensitive, accent-sensitive, as the database compares. */
-const EXACT = new Map<string, Intl.Collator>();
-
-/**
- * The paste's comparison in a locale: equal ignoring case, not accents.
- *
- * @param locale - The locale.
- * @returns The match.
- */
-function exactMatch(locale: string): ɵTmFindableMatch {
-  let collator = EXACT.get(locale);
-  if (collator === undefined) {
-    EXACT.set(locale, (collator = new Intl.Collator(locale, { usage: 'search', sensitivity: 'accent' })));
-  }
-  const equal = (value: string, text: string): boolean => collator.compare(value, text) === 0;
-  return { equal, startsWith: equal, bareId: false };
-}
-
-/**
- * A search's comparison: the folded texts, as the platform's client-side
- * matching folds them. Internal: the cached search uses it.
- */
-export const ɵTM_SEARCH_MATCH: ɵTmFindableMatch = {
-  equal: (value, text) => tmSearchNormalize(value) === tmSearchNormalize(text),
-  startsWith: (value, text) => tmSearchNormalize(value).startsWith(tmSearchNormalize(text)),
-  bareId: true,
-};
-
-/**
- * Whether a row is the one a pasted name names: a text slot of the display
- * name, or a text prefix, equal to the name, or the findable rule with
- * equality in place of a prefix match; case is ignored, accents are not.
- * Internal: the paste resolver uses it.
- *
- * @param plan - What the rule reads of the entity.
- * @param text - The pasted name, without bidi controls and trimmed.
- * @param locale - The locale whose collation compares text.
- * @returns The row predicate.
- */
-export function ɵtmPasteMatch(plan: ɵTmFindablePlan, text: string, locale: string): (row: TmJsonObject) => boolean {
-  const match = exactMatch(locale);
-  const findable = ɵtmFindable(plan, text, match);
-  const prefix = plan.prefix;
-  return (row) =>
-    plan.slots.some((slot) => slot.type === 'string' && textMatches(row[slot.json], text, match.equal)) ||
-    (prefix?.type === 'string' && textMatches(row[prefix.json], text, match.equal)) ||
-    findable(row);
-}
-
-/**
- * A Queryex string literal: the text in single quotes, a quote written
- * twice.
- *
- * @param text - The text.
- * @returns The literal.
- */
-function quote(text: string): string {
-  return `'${text.replaceAll("'", "''")}'`;
 }
 
 /**
@@ -373,6 +178,8 @@ export class TmEntityPickers {
   readonly #launch = inject(TmLaunchCache);
   readonly #telemetry = inject(TmTelemetry);
   readonly #formats = inject(TmFormats);
+  /** The app's lifetime: a search or a paste that outlives it reads nothing. */
+  readonly #app = inject(DestroyRef);
 
   /**
    * Each descriptor's plan, a descriptor being made once per entity and
@@ -481,11 +288,13 @@ export class TmEntityPickers {
   }
 
   /**
-   * The paste resolver of a grid's entity column: one query for the pasted
-   * labels, each matched against the display name's columns of every
-   * admitted slot, a text prefix, and the findable rule with equality in
-   * place of a prefix match. A label one row matches resolves to it; none,
-   * or several, is an error. Internal: `tmGridColumnFor` binds it.
+   * The paste resolver of a grid's entity column: the pasted labels in as
+   * few queries as the server's filter limits allow, one for most pastes,
+   * each label matched against the display name's columns of every admitted
+   * slot, a text prefix, and the findable rule with equality in place of a
+   * prefix match. A label one row matches resolves to it; none, or several,
+   * is an error. Its code loads on the first paste. Internal:
+   * `tmGridColumnFor` binds it.
    *
    * @param entity - The entity's name.
    * @param filter - The column's Queryex filter.
@@ -496,8 +305,29 @@ export class TmEntityPickers {
     filter: Signal<string | null>,
   ): (labels: string[], context: TmPasteContext) => Promise<ReadonlyMap<string, TmLabelResolution<TmId>>> {
     return async (labels, context) => {
-      await this.#entities.load();
-      return this.#resolveLabels(this.#plan(entity), labels, untracked(filter)?.trim() || null, context.signal);
+      // The resolver's code loads on the first paste, beside the Entities chunk.
+      const [{ ɵtmResolveLabels }] = await Promise.all([import('./tm-entity-paste'), this.#entities.load()]);
+      // An app that ended meanwhile reads nothing: its injector would throw.
+      if (this.#app.destroyed) {
+        return new Map();
+      }
+      const plan = this.#plan(entity);
+      const leaves = [plan.filter, untracked(filter)?.trim() || null].filter((leaf): leaf is string => leaf !== null);
+
+      // --- The room the paste's own leaf has beside the other leaves ---
+      const room = plan.descriptor.limits.maxFilterLength - leaves.reduce((length, leaf) => length + leaf.length + 5, 0);
+      const read = async (pasted: string): Promise<readonly TmJsonObject[]> => {
+        const body = { select: plan.select, filters: [...leaves, pasted], take: plan.descriptor.limits.maxTake };
+        const page = await this.#api.read<{ readonly rows: TmQueryRowSet }>(`${plan.segment}/query`, body, { signal: context.signal });
+        // An app that ended during the read remembers nothing.
+        if (this.#app.destroyed) {
+          return [];
+        }
+        const rows = tmRowsToObjects(plan.descriptor, page.rows);
+        this.#names.remember(plan.descriptor.name, rows);
+        return rows;
+      };
+      return ɵtmResolveLabels(plan, labels, room, untracked(this.#localization.locale), read);
     };
   }
 
@@ -702,8 +532,9 @@ export class TmEntityPickers {
    */
   #search(entity: string, text: string, signal: AbortSignal, fieldFilter: string | null): TmEntitySearchResult<TmJson> | Promise<TmEntitySearchResult<TmJson>> {
     if (!untracked(this.#entities.loaded)) {
-      // The binding works before the Entities chunk: its first search waits for it.
-      return this.#entities.load().then(() => this.#search(entity, text, signal, fieldFilter));
+      // The binding works before the Entities chunk: its first search waits for it,
+      // and finds nothing once the app ended meanwhile, whose injector would throw.
+      return this.#entities.load().then(() => (this.#app.destroyed ? { items: [] } : this.#search(entity, text, signal, fieldFilter)));
     }
     const started = performance.now();
     const plan = this.#plan(entity);
@@ -752,6 +583,10 @@ export class TmEntityPickers {
     };
     try {
       const page = await this.#api.read<{ readonly rows: TmQueryRowSet }>(`${plan.segment}/query`, body, { signal });
+      // An app that ended during the read remembers nothing.
+      if (this.#app.destroyed) {
+        return { items: [] };
+      }
       const items = tmRowsToObjects(plan.descriptor, page.rows);
       this.#names.remember(plan.descriptor.name, items);
       this.#telemetry.timing('tm.entity.picker-search', performance.now() - started, { cached: false, outcome: 'ok' });
@@ -814,140 +649,4 @@ export class TmEntityPickers {
     }
     return texts;
   }
-
-  /**
-   * Resolves pasted labels with as few queries as the filter length allows:
-   * one, unless the labels are too many for one filter.
-   *
-   * @param plan - The target's plan.
-   * @param labels - The pasted labels.
-   * @param fieldFilter - The column's filter.
-   * @param signal - Aborts the resolution.
-   * @returns Each label's resolution.
-   */
-  async #resolveLabels(
-    plan: TmPickerPlan,
-    labels: readonly string[],
-    fieldFilter: string | null,
-    signal: AbortSignal,
-  ): Promise<ReadonlyMap<string, TmLabelResolution<TmId>>> {
-    const resolutions = new Map<string, TmLabelResolution<TmId>>();
-    const texts = new Map<string, string[]>();
-    for (const label of labels) {
-      const text = tmStripBidiControls(label).trim();
-      if (text === '') {
-        resolutions.set(label, { error: 'notFound' });
-      } else {
-        texts.set(text, [...(texts.get(text) ?? []), label]);
-      }
-    }
-
-    // --- The texts in groups whose filter fits beside the other leaves ---
-    const leaves = [plan.filter, fieldFilter].filter((filter): filter is string => filter !== null);
-    const room = plan.descriptor.limits.maxFilterLength - leaves.reduce((length, leaf) => length + leaf.length + 5, 0);
-    const groups: string[][] = [];
-    let group: string[] = [];
-    for (const text of texts.keys()) {
-      if (group.length > 0 && pasteFilter(plan, [...group, text]).length > room) {
-        groups.push(group);
-        group = [];
-      }
-      group.push(text);
-    }
-    if (group.length > 0) {
-      groups.push(group);
-    }
-
-    // --- One query per group; each text keeps the rows it alone matches ---
-    const locale = untracked(this.#localization.locale);
-    const reads = groups.map(async (texts) => {
-      const filter = pasteFilter(plan, texts);
-      const rows =
-        filter === ''
-          ? []
-          : tmRowsToObjects(
-              plan.descriptor,
-              (
-                await this.#api.read<{ readonly rows: TmQueryRowSet }>(
-                  `${plan.segment}/query`,
-                  { select: plan.select, filters: [...leaves, filter], take: plan.descriptor.limits.maxTake },
-                  { signal },
-                )
-              ).rows,
-            );
-      this.#names.remember(plan.descriptor.name, rows);
-      return { texts, rows };
-    });
-    for (const { texts: resolved, rows } of await Promise.all(reads)) {
-      for (const text of resolved) {
-        const pasted = ɵtmPasteMatch(plan, text, locale);
-        const ids = new Map<string, TmId>();
-        for (const row of rows) {
-          if (pasted(row)) {
-            const id = row[plan.key.json] as TmId;
-            ids.set(String(id), id);
-          }
-        }
-        const resolution: TmLabelResolution<TmId> =
-          ids.size === 1 ? { value: [...ids.values()][0]! } : { error: ids.size === 0 ? 'notFound' : 'ambiguous' };
-        for (const label of texts.get(text)!) {
-          resolutions.set(label, resolution);
-        }
-      }
-    }
-    return resolutions;
-  }
-}
-
-/**
- * The one filter leaf of a paste's labels: every admitted text slot and a
- * text prefix `in` the labels, an integer source or prefix `in` the labels
- * that read as integers, the key `in` the `#{id}` labels, and each label
- * holding the separator as its prefix and name halves.
- *
- * @param plan - The target's plan.
- * @param texts - The labels, without bidi controls and trimmed.
- * @returns The leaf; empty when no label can match.
- */
-function pasteFilter(plan: ɵTmFindablePlan, texts: readonly string[]): string {
-  const terms: string[] = [];
-  const strings = texts.map(quote).join(', ');
-  const numbers = [...new Set(texts.map((text) => integerOf(text, true)).filter((text) => text !== null))].join(', ');
-  const ids = [...new Set(texts.filter((text) => text.startsWith('#')).map((text) => integerOf(text.slice(1), false)).filter((id) => id !== null))];
-  const source = plan.slots[0];
-  const prefix = plan.prefix;
-
-  // --- The display name's columns, each slot's and the prefix's ---
-  for (const slot of plan.slots) {
-    if (slot.type === 'string') {
-      terms.push(`${slot.name} in (${strings})`);
-    }
-  }
-  if (prefix?.type === 'string') {
-    terms.push(`${prefix.name} in (${strings})`);
-  }
-  if (numbers !== '' && source?.type === 'integer') {
-    terms.push(`${source.name} in (${numbers})`);
-  }
-  if (numbers !== '' && prefix?.type === 'integer') {
-    terms.push(`${prefix.name} in (${numbers})`);
-  }
-  if (ids.length > 0) {
-    terms.push(`${plan.key.name} in (${ids.join(', ')})`);
-  }
-
-  // --- The split, with equality in place of a prefix match ---
-  if (prefix !== null && source?.type === 'string') {
-    for (const text of texts) {
-      const at = text.indexOf(SEPARATOR);
-      const left = at < 0 ? '' : text.slice(0, at).trim();
-      const right = text.slice(at + SEPARATOR.length).trim();
-      const side = left === '' ? null : prefix.type === 'integer' ? integerOf(left, true) : prefix.type === 'string' ? quote(left) : null;
-      if (side !== null) {
-        const names = plan.slots.filter((slot) => slot.type === 'string').map((slot) => `${slot.name} = ${quote(right)}`);
-        terms.push(`(${prefix.name} = ${side} and (${names.join(' or ')}))`);
-      }
-    }
-  }
-  return terms.join(' or ');
 }
