@@ -40,8 +40,6 @@ import {
 } from './tm-api-seams';
 import {
   TM_OUTDATED,
-  tmCompareBuilds,
-  tmDispositionFileName,
   tmKindOf,
   tmParseProblem,
   tmParseStepUp,
@@ -219,42 +217,18 @@ const BLOB_READER: TmReader<Blob | null, TmBlobFetchResult> = {
 };
 
 /**
- * The reader of a download: streams the body, reporting the bytes received
- * and restarting the watchdog at each chunk, and names the file from
- * `Content-Disposition`.
+ * The reader of a download: the streamed read and the file name, which load
+ * with the first download's answer.
  *
  * @param onProgress - Receives the bytes received so far.
  * @returns The reader.
  */
-function downloadReader(onProgress: ((bytes: number) => void) | undefined): TmReader<Blob, TmDownload> {
+function downloadReader(onProgress: ((bytes: number) => void) | undefined): TmReader<TmDownload, TmDownload> {
   return {
     accepts: isSuccess,
-    read: async (response, rearm) => {
-      const type = response.headers.get('Content-Type') ?? '';
-      if (response.body === null) {
-        return new Blob([], { type });
-      }
-      const reader = response.body.getReader();
-      const chunks: Uint8Array<ArrayBuffer>[] = [];
-      let bytes = 0;
-      for (;;) {
-        const { done, value } = await reader.read();
-        if (done) {
-          break;
-        }
-        chunks.push(value);
-        bytes += value.byteLength;
-        // A slow export that keeps sending is alive: only a stall trips the watchdog.
-        rearm();
-        onProgress?.(bytes);
-      }
-      return new Blob(chunks, { type });
-    },
-    finish: (blob, answer) => ({
-      fileName: tmDispositionFileName(answer.header('Content-Disposition')) ?? 'download',
-      contentType: blob.type,
-      blob,
-    }),
+    // A chunk that cannot load fails the attempt as a network failure would.
+    read: async (response, rearm) => (await import('./tm-api-transfer')).tmReadDownload(response, rearm, onProgress),
+    finish: (download) => download,
   };
 }
 
@@ -934,7 +908,8 @@ export class TmHttpApi implements TmApi {
   }
 
   /**
-   * Sends an upload's one attempt over `XMLHttpRequest`.
+   * Sends an upload's one attempt over `XMLHttpRequest`, which loads with
+   * the first upload.
    *
    * @param call - The upload.
    * @param file - The file.
@@ -942,50 +917,25 @@ export class TmHttpApi implements TmApi {
    * @returns What the attempt produced.
    */
   #xhrAttempt(call: TmCall, file: Blob, onProgress: ((fraction: number) => void) | undefined): Promise<TmAttempt<TmBlobDescriptor>> {
-    return new Promise((resolve) => {
-      const xhr = this.#host.xhr();
-      const abort = (): void => xhr.abort();
-      // The watchdog restarts at each progress event: a slow upload that keeps
-      // sending is alive, while a stalled one, or a lost answer, ends.
-      let timedOut = false;
-      let timer: ReturnType<typeof setTimeout> | undefined;
-      const rearm = (): void => {
-        clearTimeout(timer);
-        timer = setTimeout(() => {
-          timedOut = true;
-          xhr.abort();
-        }, call.watchdogMs);
-      };
-      const settle = (attempt: Promise<TmAttempt<TmBlobDescriptor>> | TmAttempt<TmBlobDescriptor>): void => {
-        clearTimeout(timer);
-        call.cancel?.removeEventListener('abort', abort);
-        resolve(attempt);
-      };
-      xhr.open('POST', call.url);
-      // An empty type would leave the body undeclared, which the server refuses.
-      const headers = this.#headers(call.tenantId, call.client, call.traceId, file.type === '' ? 'application/octet-stream' : file.type);
-      for (const [name, value] of Object.entries(headers)) {
-        xhr.setRequestHeader(name, value);
-      }
-      xhr.upload.onprogress = (event): void => {
-        rearm();
-        if (event.lengthComputable && event.total > 0) {
-          onProgress?.(event.loaded / event.total);
-        }
-      };
-      xhr.onload = (): void => {
-        this.#connectivity.answered();
-        const answer: TmAnswer = { status: xhr.status, header: (name) => xhr.getResponseHeader(name) };
-        settle(
-          this.#conclude(call, answer, isSuccess(xhr.status), xhr.responseText, (text) => JSON.parse(text) as TmBlobDescriptor),
-        );
-      };
-      xhr.onerror = (): void => settle(this.#unanswered(call, false));
-      xhr.onabort = (): void => settle(this.#unanswered(call, timedOut));
-      call.cancel?.addEventListener('abort', abort, { once: true });
-      rearm();
-      xhr.send(file);
-    });
+    // An empty type would leave the body undeclared, which the server refuses.
+    const headers = this.#headers(call.tenantId, call.client, call.traceId, file.type === '' ? 'application/octet-stream' : file.type);
+    return import('./tm-api-transfer').then(
+      ({ tmSendFile }) =>
+        tmSendFile(
+          this.#host.xhr(),
+          call,
+          headers,
+          file,
+          onProgress,
+          (status, header, text) => {
+            this.#connectivity.answered();
+            return this.#conclude(call, { status, header }, isSuccess(status), text, (body) => JSON.parse(body) as TmBlobDescriptor);
+          },
+          (timedOut) => this.#unanswered(call, timedOut),
+        ),
+      // A chunk that cannot load fails the attempt as a network failure would.
+      () => this.#unanswered(call, false),
+    );
   }
 
   /**
@@ -1151,48 +1101,27 @@ export class TmHttpApi implements TmApi {
    * @returns The kind and the code.
    */
   async #verdict(build: string | null): Promise<{ kind: TmApiErrorKind; code: string }> {
-    const order = tmCompareBuilds(this.#uiVersion(), build);
-    if (order === 0) {
+    // The build rules load with the first such answer; a chunk that cannot
+    // load leaves the builds unordered, so the worker decides.
+    const decided = await import('./tm-api-verdict')
+      .then(({ tmBuildVerdict }) =>
+        tmBuildVerdict(this.#uiVersion(), build, this.#judgedOlder, this.#now(), SERVER_OUTDATED_WAIT_MS),
+      )
+      .catch(() => null);
+    if (decided === 'same') {
       // The same build refused its own contract: a bug, reported by the caller.
       return { kind: 'server', code: 'contract-mismatch' };
     }
-    let verdict: 'client-outdated' | 'server-outdated';
-    let source: 'build' | 'worker';
-    if (order === 1) {
-      verdict = 'client-outdated';
-      source = 'build';
+    if (decided === 'client-outdated') {
       // So an old tab whose only calls are background syncs still learns of the update.
       this.#updates.check().catch(() => undefined);
-    } else if (order === -1 && build !== null && this.#firstOlderVerdict(build)) {
-      verdict = 'server-outdated';
-      source = 'build';
-    } else {
-      // Unordered builds, or a second older verdict for the same build past
-      // the first one's retry window (a rollback): the worker decides, and
-      // only a confirmed `none` blames the server.
-      verdict = (await this.#askWorker()) === 'none' ? 'server-outdated' : 'client-outdated';
-      source = 'worker';
     }
-    this.#telemetry.event('tm.api.client-outdated', { verdict, source });
+    // Unordered builds, or a second older verdict for the same build past the
+    // first one's retry window (a rollback): the worker decides, and only a
+    // confirmed `none` blames the server.
+    const verdict = decided ?? ((await this.#askWorker()) === 'none' ? 'server-outdated' : 'client-outdated');
+    this.#telemetry.event('tm.api.client-outdated', { verdict, source: decided === null ? 'worker' : 'build' });
     return { kind: 'client-outdated', code: verdict };
-  }
-
-  /**
-   * Whether an older server build's verdict counts as its first: the first
-   * verdict for the build, or one within the first one's retry window, which
-   * the same slot swap answered.
-   *
-   * @param build - The older server build.
-   * @returns `true` for a first verdict, `false` for a second one.
-   */
-  #firstOlderVerdict(build: string): boolean {
-    const now = this.#now();
-    const first = this.#judgedOlder.get(build);
-    if (first === undefined) {
-      this.#judgedOlder.set(build, now);
-      return true;
-    }
-    return now - first < SERVER_OUTDATED_WAIT_MS;
   }
 
   /**

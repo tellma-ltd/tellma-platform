@@ -1069,5 +1069,26 @@ describe('TmClientStore', () => {
         ]),
       );
     });
+
+    it('sweeps nothing, and reports nothing, when the app ends before its idle moment', async () => {
+      const { store, telemetry } = setUp();
+      await tmWriteRawRecords([
+        ...warmRecords(),
+        { p: 'u:0b4f/ssh-0b4f', n: 'tree:/17/centers@1', tag: null, savedAt: NOW, data: [] },
+      ]);
+      store.boot.patch({ sub: FARAH });
+      const idle = holdIdleCallbacks();
+      const errors = vi.spyOn(telemetry, 'error');
+      await store.ɵstart(17);
+      TestBed.inject(ApplicationRef).tick();
+      await vi.waitFor(() => expect(idle).toHaveLength(1));
+
+      // The app ends; the browser's idle moment comes after.
+      TestBed.resetTestingModule();
+      idle[0]!({ didTimeout: false, timeRemaining: () => 50 });
+      await new Promise((resolve) => setTimeout(resolve));
+      expect(errors).not.toHaveBeenCalled();
+      expect((await tmReadRawKeys()).filter(([p]) => p.startsWith('u:0b4f/s'))).toHaveLength(4);
+    });
   });
 });

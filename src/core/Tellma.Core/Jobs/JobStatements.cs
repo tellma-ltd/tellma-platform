@@ -240,40 +240,48 @@ namespace Tellma.Core.Jobs
         // Spec 0020 §5.2: one renewal per tenant per interval, joining the leases by token, so it is
         // idempotent and a re-run after an ambiguous failure extends the same leases. Progress columns
         // the buffered row leaves null keep their stored values; a message's arguments go with its key.
+        // A kept token's leases keep their stored end: the end the final renewal of §6.7 wrote, which
+        // whole seconds from this statement's clock would overrun. They are still judged and carry
+        // progress.
         /// <summary>
         ///     Appends the renewal: it extends every running job leased under one of the tokens by that
-        ///     token's lease length, writes the buffered progress of the jobs it carries, and returns
-        ///     every job it extended with its cancel request.
+        ///     token's lease length, or keeps its lease's end when the token is kept, writes the
+        ///     buffered progress of the jobs it carries, and returns every job it renewed with its
+        ///     cancel request.
         /// </summary>
         /// <param name="batch">The renewal's batch.</param>
         /// <param name="leases">The tokens and their lease lengths.</param>
         /// <param name="progress">The buffered progress, one row per job.</param>
+        /// <param name="kept">The tokens, among <paramref name="leases" />, whose leases keep their stored end.</param>
         /// <returns>The jobs still leased, once the batch executed.</returns>
-        public static BatchResult<IReadOnlyList<RenewedJob>> Renew(DataBatch batch, IReadOnlyList<JobLeaseList> leases, IReadOnlyList<JobProgressList> progress)
+        public static BatchResult<IReadOnlyList<RenewedJob>> Renew(DataBatch batch, IReadOnlyList<JobLeaseList> leases, IReadOnlyList<JobProgressList> progress, IReadOnlyList<GuidList> kept)
         {
             ArgumentNullException.ThrowIfNull(batch);
             ArgumentNullException.ThrowIfNull(leases);
             ArgumentNullException.ThrowIfNull(progress);
+            ArgumentNullException.ThrowIfNull(kept);
 
             BatchResult<IReadOnlyList<RenewedJob>> result = new();
             StatementDraft draft = batch.Begin();
             try
             {
-                // --- The names and the two table-valued parameters ---
+                // --- The names and the three table-valued parameters ---
                 string now = draft.Name(ReservedSqlNames.StatementNames.Now);
                 string tokens = draft.Table(leases);
                 string rows = draft.Table(progress);
+                string keeping = draft.Table(kept);
 
                 // --- The text ---
                 StringBuilder text = new();
                 _ = text.Append(CultureInfo.InvariantCulture, $"DECLARE {now} datetimeoffset(3) = SYSUTCDATETIME();\n")
                     .Append("UPDATE [j]\n")
-                    .Append(CultureInfo.InvariantCulture, $"SET [LeaseExpiresAt] = DATEADD(second, [t].[LeaseSeconds], {now}),\n")
+                    .Append(CultureInfo.InvariantCulture, $"SET [LeaseExpiresAt] = CASE WHEN [k].[Id] IS NULL THEN DATEADD(second, [t].[LeaseSeconds], {now}) ELSE [j].[LeaseExpiresAt] END,\n")
                     .Append(ProgressAssignments)
                     .Append("OUTPUT [inserted].[Id], [inserted].[LeaseToken], [inserted].[CancelRequestedAt]\n")
                     .Append(CultureInfo.InvariantCulture, $"FROM {Jobs.Delimited} AS [j]\n")
                     .Append(CultureInfo.InvariantCulture, $"INNER JOIN {tokens} AS [t] ON [t].[Id] = [j].[LeaseToken]\n")
                     .Append(CultureInfo.InvariantCulture, $"LEFT JOIN {rows} AS [p] ON [p].[Id] = [j].[Id]\n")
+                    .Append(CultureInfo.InvariantCulture, $"LEFT JOIN {keeping} AS [k] ON [k].[Id] = [j].[LeaseToken]\n")
                     .Append(CultureInfo.InvariantCulture, $"WHERE [j].[Status] = '{JobStatus.Running}';");
 
                 // --- The reader: the jobs still leased ---

@@ -15,6 +15,7 @@
  *
  *   "tellma": {
  *     "budgetsInKb": { ".": 4, "./select": 8 },      // KB gzipped per entry point
+ *     "capsInKb": { ".": { "error": 52, "note": "…" } }, // a raised platform cap
  *     "docs": { "globalStyles": { "./input": "…" } } // directive-owned stylesheet
  *   }
  */

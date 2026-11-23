@@ -130,8 +130,42 @@ namespace Tellma.Core.IntegrationTests.Jobs
             IReadOnlyList<RenewedJob> renewed = await MaintenanceAsync(batch => JobStatements.Renew(
                 batch,
                 [new JobLeaseList { Id = lapsed, LeaseSeconds = 60 }, new JobLeaseList { Id = current, LeaseSeconds = 60 }],
+                [],
                 []));
             Assert.Equal([(id, current)], renewed.Select(static row => (row.Id, row.LeaseToken)));
+        }
+
+        [Fact]
+        public async Task A_renewal_keeps_the_stored_end_of_a_kept_lease_and_extends_the_others_from_its_own_clock()
+        {
+            int keptId = await fixture.InsertJobAsync(JobRunKeys.Probe);
+            int extendedId = await fixture.InsertJobAsync(JobRunKeys.Probe);
+            var kept = Guid.NewGuid();
+            var extended = Guid.NewGuid();
+            Assert.Equal(keptId, Assert.Single(await ClaimAsync(kept, size: 1)).Job.Id);
+            Assert.Equal(extendedId, Assert.Single(await ClaimAsync(extended, size: 1)).Job.Id);
+
+            // --- Both leases end in seven seconds; the renewal runs once the clock moved on ---
+            await SqlServerFixture.ExecuteAsync(
+                fixture.ConnectionString,
+                Invariant($"UPDATE [core].[Jobs] SET [LeaseExpiresAt] = DATEADD(second, 7, SYSUTCDATETIME()) WHERE [Id] IN ({keptId}, {extendedId});"));
+            (DateTimeOffset? stored, DateTimeOffset before) = await fixture.LeaseAsync(keptId);
+            await fixture.UntilTheClockPassesAsync(before);
+            IReadOnlyList<RenewedJob> renewed = await MaintenanceAsync(batch => JobStatements.Renew(
+                batch,
+                [new JobLeaseList { Id = kept, LeaseSeconds = 60 }, new JobLeaseList { Id = extended, LeaseSeconds = 60 }],
+                [new JobProgressList { Id = keptId, ProgressPercent = 30 }],
+                [new GuidList { Id = kept }]));
+
+            // --- Both are judged held; the kept lease ends where it did, with its progress written ---
+            Assert.Equal([(keptId, kept), (extendedId, extended)], renewed.Select(static row => (row.Id, row.LeaseToken)).Order());
+            JobRow keptRow = await fixture.JobAsync(keptId);
+            Assert.Equal((stored, (byte?)30), (keptRow.LeaseExpiresAt, keptRow.ProgressPercent));
+
+            // --- The other ends sixty seconds from the renewal's clock, which read after the reads above ---
+            (DateTimeOffset? end, DateTimeOffset now) = await fixture.LeaseAsync(extendedId);
+            Assert.InRange(Assert.NotNull(end) - now, TimeSpan.FromSeconds(50), TimeSpan.FromSeconds(60));
+            Assert.True(end > Assert.NotNull(stored).AddSeconds(53), "The renewal extended the lease from its own clock.");
         }
 
         [Fact]

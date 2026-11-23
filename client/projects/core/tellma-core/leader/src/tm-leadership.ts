@@ -5,7 +5,6 @@
 
 import { effect, inject, InjectionToken, Injector, untracked, type EffectRef } from '@angular/core';
 import {
-  TM_LEADER_DOCUMENTS,
   TM_NOW,
   TmApi,
   TmApiError,
@@ -24,6 +23,7 @@ import {
   type TmPartition,
   type TmTenantFacts,
   ɵTM_API_HOST,
+  ɵTM_UNIQUE_LEADER_DOCUMENTS,
   ɵTmClientMetadataStore,
   type ɵTmSyncDoc,
 } from '@tellma/core';
@@ -174,7 +174,7 @@ export class TmLeadership {
     this.#t = partition.tenantId;
     const now = this.#now();
     this.#since = this.#downSince = this.#polledAt = now;
-    this.#reads = inject(TM_LEADER_DOCUMENTS).map((doc) => ({ doc, inFlight: false, queued: false, timer: undefined, sentAt: -Infinity }));
+    this.#reads = inject(ɵTM_UNIQUE_LEADER_DOCUMENTS).map((doc) => ({ doc, inFlight: false, queued: false, timer: undefined, sentAt: -Infinity }));
 
     // --- Election: report, revalidate the warm launch, refresh the leader documents (spec 0025 §7.2 step 2) ---
     this.#post();

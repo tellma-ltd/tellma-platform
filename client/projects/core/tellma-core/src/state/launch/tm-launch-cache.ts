@@ -88,10 +88,12 @@ export class TmLaunchCache {
   } | null = null;
 
   /** The routed tenant's launch documents; each reads `undefined` while absent. */
-  readonly docs: { readonly [K in keyof TmLaunchDocs]: Signal<TmLaunchDocs[K] | undefined> } = {
+  readonly docs: { readonly [K in keyof TmLaunchDocs]-?: Signal<TmLaunchDocs[K] | undefined> } = {
     settings: this.#tenantDoc('settings'),
     me: this.#tenantDoc('me'),
     tenant: this.#tenantDoc('tenant'),
+    inbox: this.#tenantDoc('inbox'),
+    assignments: this.#tenantDoc('assignments'),
   };
 
   /** Whether the routed tenant's `settings`, `me` and `tenant` are all present, so its chrome renders from them. */
@@ -290,7 +292,10 @@ export class TmLaunchCache {
     // Spec 0025 §3.3.
     const { sub, tenantId } = partition;
     const key = `${sub}/${tenantId}:${name}`;
-    if (this.#loading.has(key) || this.#skips.get(key)?.()) {
+    // An app that ended before the load started, or during its sync, loads
+    // nothing: its injector resolves nothing. Its end cancels a read in flight.
+    const ended = (): boolean => this.#life.signal.aborted;
+    if (ended() || this.#loading.has(key) || this.#skips.get(key)?.()) {
       return;
     }
     this.#loading.add(key);
@@ -302,6 +307,9 @@ export class TmLaunchCache {
       // reports every list's, unless one in flight reports it ---
       if (tagOf() === undefined) {
         await this.#refresher.refresh(tenantId, [LIST + name], 'list');
+      }
+      if (ended()) {
+        return;
       }
       const tag = tagOf();
       const segment = this.#injector

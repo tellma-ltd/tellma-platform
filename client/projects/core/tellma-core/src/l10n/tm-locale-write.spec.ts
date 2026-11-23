@@ -9,6 +9,7 @@ import { TmFakeApi, type TmFakeApiCall } from '@tellma/core-testing';
 
 import { TmApi } from '../api/tm-api';
 import { TmApiError } from '../api/tm-api-error';
+import { tmUnhandled } from '../routes/tm-app.testing.util';
 import type { TmMeLocaleResult } from '../state/launch/tm-launch-docs';
 import { TmCacheRefresher } from '../state/sync/tm-cache-refresher';
 import { TmLocaleWrite } from './tm-locale-write';
@@ -292,5 +293,64 @@ describe('TmLocaleWrite', () => {
     await settle();
     expect(sent(api).map((call) => call.kind)).toEqual(['write', 'send']);
     expect(write.state()).toBe('saved');
+  });
+
+  describe("the app's end", () => {
+    it('adopts nothing when a write lands after the app has ended', async () => {
+      const { write, api, adopt } = rig();
+      const held = hold(api);
+      write.queue(17, { region: 'US' }, {});
+      await later();
+
+      // The app ends with the write in flight, and then it lands.
+      const unhandled = await tmUnhandled(async () => {
+        TestBed.resetTestingModule();
+        held[0].land();
+        await settle();
+      });
+
+      expect(adopt).not.toHaveBeenCalled();
+      expect(sent(api)).toHaveLength(1);
+      expect(unhandled).toEqual([]);
+    });
+
+    it('plans no further try when an offline failure lands after the app has ended', async () => {
+      const { write, api } = rig();
+      const held = hold(api);
+      write.queue(17, { region: 'US' }, {});
+      await later();
+
+      // The failure leaves the server counted reachable, which would arm the backoff's timer.
+      const unhandled = await tmUnhandled(async () => {
+        TestBed.resetTestingModule();
+        held[0].fail(new TmApiError({ kind: 'offline', code: 'outcome-unknown' }));
+        await settle();
+      });
+
+      expect(vi.getTimerCount()).toBe(0);
+      await later(60_000);
+      expect(sent(api)).toHaveLength(1);
+      expect(unhandled).toEqual([]);
+    });
+
+    it('sends nothing queued behind a write that lands after the app has ended', async () => {
+      const { write, api } = rig();
+      const held = hold(api);
+      write.queue(17, { region: 'US' }, {});
+      await later();
+      // A second change's timer runs out while the first write is in flight, so it waits for that write.
+      write.queue(17, { digits: 'Latin' }, {});
+      await later();
+      expect(sent(api)).toHaveLength(1);
+
+      const unhandled = await tmUnhandled(async () => {
+        TestBed.resetTestingModule();
+        held[0].land();
+        await settle();
+      });
+
+      expect(sent(api)).toHaveLength(1);
+      expect(unhandled).toEqual([]);
+    });
   });
 });

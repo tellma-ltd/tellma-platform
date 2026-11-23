@@ -6,10 +6,13 @@
 import type { TmClientEvent } from '@tellma/core';
 
 import { TmFakeApiHost } from '../../src/api/tm-api.testing.util';
+import { tmDevModeProvider } from '../../src/app/tm-dev-mode.testing.util';
 import {
+  TM_JOBS_DOC,
   TM_LEADER_LOCK,
   TM_LEADER_T17,
   TM_LEADER_T18,
+  TM_TASKS_DOC,
   tmAdvance,
   tmLeaderRig,
   tmPause,
@@ -59,8 +62,8 @@ describe('TmLeaderElection', () => {
 
   beforeEach(async () => {
     rig = await tmLeaderRig(() => new TmFakeApiHost());
-    rig.api.respond('inbox/summary', { running: false });
-    rig.api.respond('assignments/summary', { open: 0 });
+    rig.api.respond('acme/jobs/summary', { running: false });
+    rig.api.respond('acme/tasks/summary', { open: 0 });
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
     // No jitter before a steal, unless a test asks for one.
     vi.spyOn(Math, 'random').mockReturnValue(0);
@@ -356,7 +359,7 @@ describe('TmLeaderElection', () => {
       await tmUntil(() => a.hubs.length === 1);
       a.hubs[0]!.sink.state('connected');
       const b = await follower();
-      await rig.store.put(TM_LEADER_T17, 'inbox', { tag: null, savedAt: Date.now(), data: { running: true } });
+      await rig.store.put(TM_LEADER_T17, 'acme.jobs', { tag: null, savedAt: Date.now(), data: { running: true } });
       await tmAdvance(60_000);
       expect(probes(b)).toBe(2);
     });
@@ -367,13 +370,13 @@ describe('TmLeaderElection', () => {
       await tmUntil(() => a.hubs.length === 1);
       const b = await follower();
       const heard: TmClientEvent[] = [];
-      b.leader.events('inbox.changed').subscribe((event) => heard.push(event));
+      b.leader.events('acme.jobs.changed').subscribe((event) => heard.push(event));
       b.leader.events('x.unknown').subscribe((event) => heard.push(event));
       a.hubs[0]!.sink.event({ name: 'x.unknown', tenantId: 17, payload: null });
-      a.hubs[0]!.sink.event({ name: 'inbox.changed', tenantId: 17, payload: { id: 4 } });
+      a.hubs[0]!.sink.event({ name: 'acme.jobs.changed', tenantId: 17, payload: { id: 4 } });
       await tmUntil(() => heard.length > 0);
       await tmPause();
-      expect(heard).toEqual([{ name: 'inbox.changed', tenantId: 17, payload: { id: 4 } }]);
+      expect(heard).toEqual([{ name: 'acme.jobs.changed', tenantId: 17, payload: { id: 4 } }]);
     });
 
     it('is answered by a hidden leader at once', async () => {
@@ -383,5 +386,35 @@ describe('TmLeaderElection', () => {
       await follower();
       await tmUntil(() => statuses() === before + 1);
     });
+  });
+});
+
+describe('TmLeaderElection with a leader document registered twice', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("asks only a name's first registration whether to poll, in production", async () => {
+    // The second registration of acme.tasks would ask for polling; production keeps the first, which never does.
+    const twice = { ...TM_TASKS_DOC, route: 'acme/tasks/other', pollWhile: () => true };
+    const rig = await tmLeaderRig(() => new TmFakeApiHost(), [TM_JOBS_DOC, TM_TASKS_DOC, twice], [tmDevModeProvider(false)]);
+    rig.api.respond('acme/jobs/summary', { running: false });
+    rig.api.respond('acme/tasks/summary', { open: 0 });
+    rig.api.respond('acme/tasks/other', { open: 0 });
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+    vi.spyOn(Math, 'random').mockReturnValue(0);
+
+    await rig.realtime(true);
+    const a = rig.tab();
+    await tmUntil(() => a.leader.isLeader() && a.hubs.length === 1);
+    a.hubs[0]!.sink.state('connected');
+    const b = rig.tab();
+    await tmUntil(() => b.bus.posted.some((message) => message.type === 'leader.probe'));
+    await tmPause();
+    expect(b.leader.isLeader()).toBe(false);
+    await rig.store.put(TM_LEADER_T17, 'acme.tasks', { tag: null, savedAt: Date.now(), data: { open: 1 } });
+
+    await tmAdvance(60_000);
+    expect(b.bus.posted.filter((message) => message.type === 'leader.probe')).toHaveLength(1);
   });
 });

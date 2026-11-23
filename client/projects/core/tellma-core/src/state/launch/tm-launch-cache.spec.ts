@@ -19,7 +19,11 @@ import { TmApiError } from '../../api/tm-api-error';
 import { TM_API_HOST } from '../../api/tm-api-host';
 import { TmFakeApiHost } from '../../api/tm-api.testing.util';
 import { TM_NOW } from '../../app/tm-now';
+import { TM_ATTENTION_DOCUMENTS, type TmAssignmentsSummary, type TmInboxSummary } from '../../attention/tm-attention-documents';
+import type { TmDecimal } from '../../json/tm-json';
 import type { TmMembership } from '../../launch/tm-membership';
+import { tmUnhandled } from '../../routes/tm-app.testing.util';
+import { TM_LEADER_DOCUMENTS } from '../leader/tm-leader-documents';
 import { TmClientStore, type TmStoredDoc } from '../store/tm-client-store';
 import type { TmTenantPartition } from '../store/tm-store-layout';
 import type { TmDistributionInfo } from '../tm-distribution-info';
@@ -97,7 +101,9 @@ function stored<T>(data: T, tag: string | null = null): TmStoredDoc<T> {
 }
 
 /** Configures the launch cache on a URL, with tenant 17's launch documents stored unless `cold`. */
-async function setUp(options: { url?: string; cold?: boolean; entityTags?: Record<string, string> } = {}): Promise<TmRig> {
+async function setUp(
+  options: { url?: string; cold?: boolean; entityTags?: Record<string, string>; attention?: boolean } = {},
+): Promise<TmRig> {
   const idle: (() => void)[] = [];
   vi.spyOn(window, 'requestIdleCallback').mockImplementation((callback) => {
     idle.push(() => callback({ didTimeout: false, timeRemaining: () => 50 }));
@@ -110,6 +116,10 @@ async function setUp(options: { url?: string; cold?: boolean; entityTags?: Recor
       provideRouter([{ path: '**', component: TmPage }]),
       { provide: TM_API_HOST, useValue: new TmFakeApiHost() },
       { provide: TM_NOW, useValue: () => Date.now() },
+      // The attention documents, as provideTellma registers them, when the test reads them.
+      ...(options.attention === true
+        ? TM_ATTENTION_DOCUMENTS.map((document) => ({ provide: TM_LEADER_DOCUMENTS, multi: true, useValue: document }))
+        : []),
     ],
   });
   await TestBed.inject(Router).navigateByUrl(options.url ?? '/17/centers');
@@ -162,6 +172,19 @@ describe('TmLaunchCache', () => {
       await settle();
       expect(rig.launch.warm()).toBe(true);
       expect(rig.calls('client/sync')).toEqual([]);
+    });
+
+    it("reads the routed tenant's inbox and assignments summaries from the store", async () => {
+      const rig = await setUp({ attention: true });
+      await rig.launch.ɵenter(17);
+      // Nothing has read the assignments: they are absent, not an error.
+      expect(rig.launch.docs.assignments()).toBeUndefined();
+      const inbox: TmInboxSummary = { unseen: 2, unread: 3, latest: [], running: [], related: {}, version: '7' as TmDecimal };
+      const assignments: TmAssignmentsSummary = { open: 1, new: 1, openByMe: 0, latest: [], latestByMe: [], related: {} };
+      await rig.store.put(T17, 'inbox', stored(inbox));
+      await rig.store.put(T17, 'assignments', stored(assignments));
+      expect(rig.launch.docs.inbox()).toEqual(inbox);
+      expect(rig.launch.docs.assignments()).toEqual(assignments);
     });
 
     it('rejects a cold entry whose sync fails, and syncs again on the next entry', async () => {
@@ -240,6 +263,62 @@ describe('TmLaunchCache', () => {
       expect(customers()).toEqual({ items: CUSTOMERS, byId: new Map([[1, CUSTOMERS[0]], [2, CUSTOMERS[1]]]), stale: false });
       expect(rig.store.doc(T17, 'entity:acme.Customer')()?.tag).toBe('K1');
       expect(rig.launch.entitySet('acme.Customer')).toBe(customers);
+    });
+
+    it('loads nothing when the app ends before the load it queued starts', async () => {
+      const rig = await setUp();
+      rig.api.respond('customers/all', { entities: CUSTOMERS });
+      const error = vi.spyOn(rig.telemetry, 'error');
+      const unhandled = await tmUnhandled(async () => {
+        rig.launch.entitySet('acme.Customer')();
+        TestBed.resetTestingModule();
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      });
+      expect(unhandled).toEqual([]);
+      expect(error).not.toHaveBeenCalled();
+      expect(rig.calls('customers/all')).toEqual([]);
+    });
+
+    it("reads no rows when the app ends while the sync for the list's tag is in flight", async () => {
+      const rig = await setUp({ entityTags: {} });
+      let land!: () => void;
+      const landed = new Promise<void>((resolve) => (land = resolve));
+      rig.api.respond('client/sync', () => landed.then(() => COLD_ANSWER));
+      rig.api.respond('customers/all', { entities: CUSTOMERS });
+      const error = vi.spyOn(rig.telemetry, 'error');
+      rig.launch.entitySet('acme.Customer')();
+      await settle();
+      expect(rig.calls('client/sync')).toHaveLength(1);
+
+      const unhandled = await tmUnhandled(async () => {
+        TestBed.resetTestingModule();
+        land();
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      });
+      expect(unhandled).toEqual([]);
+      expect(error).not.toHaveBeenCalled();
+      expect(rig.calls('customers/all')).toEqual([]);
+    });
+
+    it('stores nothing when the app ends while the rows are read', async () => {
+      // The app's end cancels the read, which the cache counts as no failure.
+      const rig = await setUp();
+      let land!: () => void;
+      const landed = new Promise<void>((resolve) => (land = resolve));
+      rig.api.respond('customers/all', () => landed.then(() => ({ entities: CUSTOMERS })));
+      const error = vi.spyOn(rig.telemetry, 'error');
+      rig.launch.entitySet('acme.Customer')();
+      await settle();
+      expect(rig.calls('customers/all')).toHaveLength(1);
+
+      const unhandled = await tmUnhandled(async () => {
+        TestBed.resetTestingModule();
+        land();
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      });
+      expect(unhandled).toEqual([]);
+      expect(error).not.toHaveBeenCalled();
+      expect(rig.store.doc(T17, 'entity:acme.Customer')()).toBeUndefined();
     });
 
     it('keeps serving a stale list while the newer one loads', async () => {

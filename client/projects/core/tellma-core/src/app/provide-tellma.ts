@@ -25,6 +25,8 @@ import { provideTellmaIcons } from '@tellma/core-ui/icon';
 import { TM_BLOB_FETCHER, type TmBlobFetcher } from '@tellma/core-ui/image';
 
 import { TmApi } from '../api/tm-api';
+import { TM_ATTENTION_DOCUMENTS } from '../attention/tm-attention-documents';
+import { tmPlatformBanners } from '../attention/tm-platform-banners';
 import { TM_API_CACHE, TM_API_LOCALE, type TmApiLocale } from '../api/tm-api-seams';
 import { TM_CORE_FEATURE } from '../declarations/tm-core-feature';
 import { ɵtmMergeAppDeclarations } from '../declarations/tm-merge';
@@ -38,6 +40,7 @@ import { TmRouteReuse } from '../routes/tm-route-reuse';
 import { tmBuildRoutes } from '../routes/tm-routes';
 import { TmTitleStrategy } from '../routes/tm-title-strategy';
 import { TmUrlSerializer } from '../routes/tm-url-serializer';
+import { TM_LEADER_DOCUMENTS } from '../state/leader/tm-leader-documents';
 import { TmClientStore } from '../state/store/tm-client-store';
 import { TmCacheRefresher } from '../state/sync/tm-cache-refresher';
 import { TmNavigationFailure } from './tm-app';
@@ -64,8 +67,10 @@ const configs = new WeakMap<object, TmAppConfig>();
  * record's theme; the active locale, calendar and time zones, which
  * `TmLocalization` resolves; the merged declarations of its features, built
  * once from the loaded client metadata; the metadata loaders; `tm-image`'s
- * blob fetcher over `TmApi.fetchBlob`; the platform's and the features'
- * icons; and each feature's providers, in feature order.
+ * blob fetcher over `TmApi.fetchBlob`; the attention documents, which the
+ * leader tab keeps fresh; the platform's banners (the offline banner); the
+ * platform's and the features' icons; and each feature's providers, in
+ * feature order.
  *
  * @param config - The distribution's app configuration.
  * @returns The providers, for the app's `ApplicationConfig`.
@@ -99,6 +104,10 @@ export function provideTellma(config: TmAppConfig): EnvironmentProviders {
     { provide: RouteReuseStrategy, useClass: TmRouteReuse },
     tmStartup(config),
     { provide: ɵTM_APP_CONFIG, useValue: config },
+    // The attention documents, which only the leader tab refreshes, and the
+    // platform's banners, which run in every shell.
+    ...TM_ATTENTION_DOCUMENTS.map((document) => ({ provide: TM_LEADER_DOCUMENTS, multi: true, useValue: document })),
+    tmPlatformBanners(),
     // The component library reads the app's strings, languages and theme.
     provideTellmaUi({
       translations: tmTranslationsLoader(config.metadata, config.languages, isDevMode),

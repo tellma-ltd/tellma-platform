@@ -404,7 +404,7 @@ describe('TmShortcuts', () => {
       const content = element('section');
       dialog.append(content);
       const save = counted('Mod+S', { id: 'details.save' });
-      shortcuts.ɵregisterInDialog(content, save, lifetime().get(DestroyRef));
+      const remove = shortcuts.ɵregisterPage(save, content);
       const outside = counted('Mod+J');
       shortcuts.register(outside, lifetime().get(DestroyRef));
 
@@ -415,6 +415,21 @@ describe('TmShortcuts', () => {
       // A confirmation opened over the dialog takes the keys.
       const confirm = modal();
       press({ key: 's', code: 'KeyS', ctrlKey: true }, confirm);
+      expect(save.runs).toBe(1);
+
+      // The returned function ends the registration, and frees its keys.
+      remove!();
+      expect(shortcuts.active()).toEqual([outside]);
+      expect(refusalOf(shortcuts, counted('Mod+S', { id: 'details.other' }))).toBeNull();
+    });
+
+    it("runs a routed page action's shortcut, registered without a dialog, only while no modal is open", () => {
+      const { shortcuts } = rig();
+      const save = counted('Mod+S', { id: 'details.save' });
+      shortcuts.ɵregisterPage(save, null);
+      press({ key: 's', code: 'KeyS', ctrlKey: true });
+      const host = modal();
+      press({ key: 's', code: 'KeyS', ctrlKey: true }, host);
       expect(save.runs).toBe(1);
     });
   });

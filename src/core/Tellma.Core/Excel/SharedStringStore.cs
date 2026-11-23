@@ -85,7 +85,7 @@ namespace Tellma.Core.Excel
         ///     entry joins to more text than one string may hold.
         /// </exception>
         /// <exception cref="OperationCanceledException">The load was cancelled.</exception>
-        public static SharedStringStore Load(Stream part, long budget, int maxEntries, string scratchDirectory, CancellationToken cancellationToken = default)
+        public static SharedStringStore Load(BoundedPartStream part, long budget, int maxEntries, string scratchDirectory, CancellationToken cancellationToken = default)
         {
             ArgumentNullException.ThrowIfNull(part);
             ArgumentException.ThrowIfNullOrWhiteSpace(scratchDirectory);

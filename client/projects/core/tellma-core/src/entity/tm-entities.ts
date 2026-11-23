@@ -3,7 +3,7 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-import { computed, inject, Injectable, Injector, signal, type Signal } from '@angular/core';
+import { computed, DestroyRef, inject, Injectable, Injector, signal, type Signal } from '@angular/core';
 
 import { TM_APP_DECLARATIONS } from '../app/tm-app-declarations';
 import { TM_DEV_MODE } from '../app/tm-dev-mode';
@@ -47,6 +47,8 @@ export class TmEntities {
   readonly #l10n = inject(TmLocalization);
   readonly #devMode = inject(TM_DEV_MODE);
   readonly #telemetry = inject(TmTelemetry);
+  /** The app's lifetime, which the chunk's load checks once it lands. */
+  readonly #app = inject(DestroyRef);
 
   /** The summaries by lower-cased name, built at first use. */
   #byName: ReadonlyMap<string, TmEntitySummary> | null = null;
@@ -154,6 +156,10 @@ export class TmEntities {
       import('./tm-entity-model'),
     ]).then(
       ([chunk, { TmEntityModel: Model }]) => {
+        // A load that lands after the app's end keeps no model: the app's injector then throws.
+        if (this.#app.destroyed) {
+          return;
+        }
         const launch = this.#injector.get(TmLaunchCache);
         this.#model.set(
           new Model(chunk, {
