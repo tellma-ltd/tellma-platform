@@ -13,6 +13,7 @@ using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.AspNetCore.Routing.Patterns;
 using Microsoft.AspNetCore.SignalR;
+using Microsoft.Extensions.Logging;
 using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.Access;
@@ -29,12 +30,14 @@ namespace Tellma.Core.AspNetCore.Routing
     ///     controls, that requires a securable no feature registers, that takes a route word the
     ///     platform or the SPA owns, or that another endpoint already answers. <c>MapTellma</c> runs
     ///     it over the platform's endpoints, and the realised gate again over every endpoint, against
-    ///     the securable registry, beside the web surface's JSON contracts.
+    ///     the securable registry, beside the web surface's JSON contracts. Either run that finds a
+    ///     problem logs every problem at Critical before startup throws.
     /// </summary>
     /// <param name="mapped">The application's endpoint sources.</param>
     /// <param name="policies">The authorization policy provider.</param>
     /// <param name="stacks">The stacks' routes, whose resource segments the audit checks.</param>
-    internal sealed class TellmaEndpointAudit(MappedEndpoints mapped, IAuthorizationPolicyProvider policies, IStackRouteSource stacks) : IStartupCheck
+    /// <param name="loggers">Where a failed audit is logged.</param>
+    internal sealed class TellmaEndpointAudit(MappedEndpoints mapped, IAuthorizationPolicyProvider policies, IStackRouteSource stacks, ILoggerFactory loggers) : IStartupCheck
     {
         /// <summary>The check's name.</summary>
         public const string CheckName = "host.endpoint-audit";
@@ -57,6 +60,37 @@ namespace Tellma.Core.AspNetCore.Routing
         /// <inheritdoc />
         public async Task<IReadOnlyList<CompositionProblem>> CheckAsync(IServiceProvider services, CancellationToken cancellationToken)
         {
+            // The gate throws once every check has run, so a failure logged here precedes the throw.
+            IReadOnlyList<CompositionProblem> problems = await FindProblemsAsync(services).ConfigureAwait(false);
+            LogFailure(loggers.CreateLogger(ApiLog.Category), problems);
+            return problems;
+        }
+
+        /// <summary>
+        ///     Logs the audit's failure at Critical, once, ahead of the startup throw its problems cause;
+        ///     nothing when it found none.
+        /// </summary>
+        /// <param name="logger">The logger.</param>
+        /// <param name="problems">The problems the audit found.</param>
+        internal static void LogFailure(ILogger logger, IReadOnlyList<CompositionProblem> problems)
+        {
+            ArgumentNullException.ThrowIfNull(logger);
+            ArgumentNullException.ThrowIfNull(problems);
+
+            // Spec 0016 §10.1: the exception names the problems to whoever started the host; the
+            // event puts them in the host's logs, where a failed deployment is diagnosed.
+            if (problems.Count > 0 && logger.IsEnabled(LogLevel.Critical))
+            {
+                string described = string.Join("; ", problems.Select(static problem => problem.Describe()));
+                ApiLog.SecurableAuditFailed(logger, problems.Count, described);
+            }
+        }
+
+        /// <summary>Runs every rule of the gate's audit over the mapped endpoints.</summary>
+        /// <param name="services">The scope's services the gate passes.</param>
+        /// <returns>One problem per violation; empty when the endpoints pass.</returns>
+        private async Task<IReadOnlyList<CompositionProblem>> FindProblemsAsync(IServiceProvider services)
+        {
             if (!mapped.IsMapped)
             {
                 return [new CompositionProblem(
@@ -64,6 +98,10 @@ namespace Tellma.Core.AspNetCore.Routing
                     "MapTellma was not called, so the platform's endpoints and route groups are not mapped.",
                     "Call app.UseTellma() and then app.MapTellma() in the web host's Program.cs.")];
             }
+
+            // --- The final endpoints, sealed so the host serves exactly the endpoints audited here ---
+            // Sealing also builds each endpoint once, for this audit and every later reader.
+            mapped.Seal();
 
             // --- Every rule; the securables only against a registry that composed ---
             IReadOnlyList<Endpoint> endpoints = mapped.Endpoints();

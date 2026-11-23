@@ -92,7 +92,10 @@ namespace Tellma.Core.Abstractions.Access
         /// <summary>A user's contact mobile is not an international number: a plus sign and 7 to 15 digits, the first not zero.</summary>
         public const string MobileInvalid = "Users.MobileInvalid";
 
-        /// <summary>An action that serves individuals alone, such as an invitation, targets a service account or the system user.</summary>
+        /// <summary>
+        ///     An action that serves individuals alone, such as an invitation or another user's
+        ///     notification settings, targets a service account or the system user.
+        /// </summary>
         public const string NotIndividual = "Users.NotIndividual";
 
         /// <summary>An action that serves service accounts alone, such as issuing credentials, targets another kind of user.</summary>
@@ -121,6 +124,12 @@ namespace Tellma.Core.Abstractions.Access
         ///     server, since a sandbox never causes the identity server to email anyone.
         /// </summary>
         public const string SandboxRequiresExistingIdentity = "Users.SandboxRequiresExistingIdentity";
+
+        /// <summary>
+        ///     A user asks for a test message through the inbox, which cannot be tested: its rows are
+        ///     the notifications themselves.
+        /// </summary>
+        public const string ChannelNotTestable = "Users.ChannelNotTestable";
 
         /// <summary>Two windows of one user's memberships of one role overlap; a permanent one overlaps every other.</summary>
         public const string MembershipOverlap = "RoleMemberships.Overlap";

@@ -7,10 +7,13 @@
  * It holds the distribution API (`bootstrapTellma`, `provideTellma`,
  * `tmFeature` and the declaration functions), the app's root component, its
  * routes' data, title strategy and URLs with the search query codec, the
- * entity registry's summaries, the client metadata's types and loaders, the
+ * entity registry (summaries, and descriptors once the entity model loads),
+ * display names and client permissions, the client metadata's types and loaders, the
  * HTTP layer with its error and plain-JSON value types, the exact decimal
- * helpers, the client store and the tab bus, and the seams through which
- * telemetry, the request log and page scopes are provided.
+ * helpers, the client store and the tab bus, the app-level keyboard
+ * shortcut registry, the shell frame's seams (immersive mode and what the
+ * tenant shell's `main` shows), and the seams through which telemetry, the
+ * request log and page scopes are provided.
  *
  * @packageDocumentation
  */
@@ -79,6 +82,12 @@ export { TM_APP_DECLARATIONS, type TmAppDeclarations } from './src/app/tm-app-de
 export type { TmRouteData, TmRouteSkeleton } from './src/app/tm-route-data';
 export type { TmPageKind } from './src/context/tm-page-kind';
 
+// Localization: the language, the regional formats, the calendar and the zones, server text and English.
+export { TmLocalization, type TmLocaleChange } from './src/l10n/tm-localization';
+export type { TmLocaleSave } from './src/l10n/tm-locale-write';
+export { TmServerText, type TmProblemText } from './src/l10n/tm-server-text';
+export { tmEnglish } from './src/l10n/tm-english';
+
 // Routes and URLs: the title strategy, the app's URLs and the search query codec.
 export { TmTitleStrategy } from './src/routes/tm-title-strategy';
 export { TmUrls, type TmRouteMatch, type TmTenantUrls } from './src/urls/tm-urls';
@@ -88,16 +97,46 @@ export { TmLeaveChecks as ɵTmLeaveChecks, type TmLeaveCheck as ɵTmLeaveCheck }
 // The contract of the components the primary loads from the shell entry point; not for app code.
 export type { TmShellComponents as ɵTmShellComponents } from './src/routes/tm-route-hosts';
 
-// The entity registry's summaries.
+// The entity registry: summaries, descriptors and paths, display names, permissions.
 export { TmEntities } from './src/entity/tm-entities';
+export type {
+  TmChildDescriptor,
+  TmEntityActionDescriptor,
+  TmEntityDescriptor,
+  TmEnumDescriptor,
+  TmNavigationDescriptor,
+  TmPathEnd,
+  TmPathResolution,
+  TmPropertyDescriptor,
+} from './src/entity/tm-entity-descriptors';
+export { TmDisplayNames, type TmDisplayNameParts } from './src/entity/tm-display-names';
+export { TmDisplayName } from './src/entity/tm-display-name';
+export { TmPermissions, type TmPermissionOperation } from './src/entity/tm-permissions';
+export { tmRowsToObjects, type TmQueryRowSet, type TmQueryRowSetColumn } from './src/entity/tm-rows-to-objects';
 
 // Features and the declaration functions.
 export type { TmDeclarationKey, TmLazyComponent, TmSecurableRef } from './src/declarations/tm-declaration-types';
 export { tmFeature, type TmFeature, type TmFeatureDefinition } from './src/declarations/tm-feature';
 export { tmOverride, type TmDeclarationPatch, type TmOverride } from './src/declarations/tm-override';
 export { tmPage, type TmPageDeclaration, type TmPageDefinition } from './src/declarations/tm-page';
-export { tmEntity, type TmEntityDeclaration, type TmEntityDeclarationInput } from './src/entity/tm-entity-declaration';
-export type { TmEntityShapes, TmEntityType, TmEntityTypes } from './src/entity/tm-entity-types';
+export {
+  tmEntity,
+  type TmActionConfirmation,
+  type TmColumnInput,
+  type TmCustomFilterDeclaration,
+  type TmDetailsDeclaration,
+  type TmEntityActionDeclaration,
+  type TmEntityDeclaration,
+  type TmEntityDeclarationInput,
+  type TmFilterSource,
+  type TmOrderInput,
+  type TmPickerDeclaration,
+  type TmPlanRow,
+  type TmSearchPageActionDeclaration,
+  type TmTabDeclaration,
+  type TmTileDeclaration,
+} from './src/entity/tm-entity-declaration';
+export type { TmEntityShapes, TmEntityType, TmEntityTypes, TmPath } from './src/entity/tm-entity-types';
 export {
   tmCodedReport,
   type TmCodedReportDeclaration,
@@ -121,6 +160,19 @@ export {
 export type { TmSettingsTabDeclaration } from './src/admin/tm-settings-tab';
 export type { TmNavContext, TmNavEntry, TmNavSection } from './src/nav/tm-nav-declarations';
 export type { TmShellSlot } from './src/nav/tm-shell-slot';
+
+// App-level keyboard shortcuts and the shell frame's seams.
+export {
+  TM_BROWSER_KEYS,
+  TM_RESERVED_SHORTCUTS,
+  TmShortcutConflictError,
+  type TmReservedShortcut,
+  type TmShortcut,
+  type TmShortcutRefusal,
+} from './src/nav/tm-shortcut';
+export { TmShortcuts } from './src/nav/tm-shortcuts';
+export { TM_SHELL_LAYOUT, TmShell } from './src/nav/tm-shell';
+export { TmShellMain, type TmShellMainOverride } from './src/nav/tm-shell-main';
 export type {
   TmDistributionIdentityInfo,
   TmDistributionInfo,
@@ -184,6 +236,7 @@ export type {
   TmDraftsReplyMessage,
   TmHubEventMessage,
   TmHubStatusMessage,
+  TmLanguageSwitchedMessage,
   TmLeaderProbeMessage,
   TmPrefsChangedMessage,
   TmSessionMessage,
@@ -216,6 +269,12 @@ export {
   type TmSyncTrigger,
 } from './src/state/sync/tm-cache-refresher';
 
+// The user's preferences. The tab's memory (page state, drafts and tree
+// expansion) is @tellma/core/memory's, and recently visited pages are
+// @tellma/core/recents'.
+export { tmPreferenceKey, type TmPreferenceKey, type TmPreferenceKind } from './src/state/prefs/tm-preference-key';
+export { TmPreferences } from './src/state/prefs/tm-preferences';
+
 // The client metadata's holder, which @tellma/core-testing loads, and the
 // client store's browser, which it replaces; not for app code.
 export { TmClientMetadataStore as ɵTmClientMetadataStore } from './src/metadata/tm-client-metadata';
@@ -226,6 +285,28 @@ export type { TmSyncDoc as ɵTmSyncDoc } from './src/state/launch/tm-launch-docs
 // error presenter, which the app's error presenter provides; not for app code.
 export { TmLocks as ɵTmLocks } from './src/state/sync/tm-locks';
 export { TM_SYNC_ERRORS as ɵTM_SYNC_ERRORS, type TmSyncErrors as ɵTmSyncErrors } from './src/state/sync/tm-cache-refresher';
+// What @tellma/core/memory and @tellma/core/recents build on: the browser
+// seams, the routed tenant of a URL, the route data the route table adds, the
+// drafts' storage (which @tellma/core-testing replaces) and keys (which the
+// session's sign-in sweep shares), and the state's section of the support
+// dump with the parts the services report to it. Not for app code.
+export { TM_API_HOST as ɵTM_API_HOST, type TmApiHost as ɵTmApiHost } from './src/api/tm-api-host';
+export { tmRoutedTenant as ɵtmRoutedTenant } from './src/launch/tm-routed-tenant';
+export type { TmRouteDataInternal as ɵTmRouteDataInternal } from './src/routes/tm-routes';
+export {
+  TM_DRAFT_KEY_PREFIX as ɵTM_DRAFT_KEY_PREFIX,
+  TM_DRAFTS_STORAGE as ɵTM_DRAFTS_STORAGE,
+  tmDraftPrefix as ɵtmDraftPrefix,
+  tmRemoveDrafts as ɵtmRemoveDrafts,
+  tmStorageKeys as ɵtmStorageKeys,
+} from './src/state/memory/tm-draft-keys';
+export {
+  TM_STATE_PARTS as ɵTM_STATE_PARTS,
+  TmStateDump as ɵTmStateDump,
+  type TmStateDumpSection as ɵTmStateDumpSection,
+  type TmStateParts as ɵTmStateParts,
+} from './src/state/tm-state-dump';
+export type { TmStoredDocInfo as ɵTmStoredDocInfo } from './src/state/store/tm-client-store';
 
 // The launch: the single-membership rule and the automatic-entry mark.
 export { tmSingleLiveTenant } from './src/launch/tm-single-live-tenant';

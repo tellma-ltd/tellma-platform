@@ -5,7 +5,7 @@ end-to-end suites share.
 
 | Entry point | Holds | Runs in |
 |---|---|---|
-| `@tellma/core-testing` | `provideTellmaTesting()`, which replaces each platform seam with a fake a test can inspect and loads the test client metadata into its holder, as the Core chunk's load would; `TmFakeApi`, which answers each route from a script and records every call, image fetches scripted by URL included; `TmFakeTelemetry`, which records every telemetry item and sends nothing; `tmTestMetadata()` and `tmTestEntitiesChunk()`, the Core and Entities chunks of a small Acme distribution, each patchable member by member; `provideTellmaStateTesting()`, which adds the client state's fakes: `TmFakeTabBus`, which records posts and delivers the messages a test plays as other tabs', `TmFakeSession`, signed in as `tmTestProfile()`'s user and active until the test changes it, and `TmFakeLocks`, the browser's exclusive locks kept in memory, which shows the locks held; `tmWarmTenant()`, which stores a tenant's launch documents with a recent sync, so its entry is warm | the unit-test browser |
+| `@tellma/core-testing` | `provideTellmaTesting()`, which replaces each platform seam with a fake a test can inspect and loads the test client metadata into its holder, as the Core chunk's load would; `TmFakeApi`, which answers each route from a script and records every call, image fetches scripted by URL included; `TmFakeTelemetry`, which records every telemetry item and sends nothing; `tmTestMetadata()` and `tmTestEntitiesChunk()`, the Core and Entities chunks of a small Acme distribution, each patchable member by member; `provideTellmaStateTesting()`, which adds the client state's fakes: `TmFakeTabBus`, which records posts and delivers the messages a test plays as other tabs', `TmFakeSession`, signed in as `tmTestProfile()`'s user and active until the test changes it, `TmFakeLocks`, the browser's exclusive locks kept in memory, which shows the locks held, and a session storage of the test's own behind `@tellma/core/memory`'s `TmDrafts`, so no draft outlives the test; `tmWarmTenant()`, which stores a tenant's launch documents with a recent sync, so its entry is warm | the unit-test browser |
 | `@tellma/core-testing/e2e` | `expectNoAxeViolations` and `tmAxeViolations`: one axe-core scan of the WCAG 2.1 A and AA rules over a page or part of it | Node, inside Playwright tests; needs the optional peer `@playwright/test` |
 
 ```ts
@@ -51,7 +51,14 @@ await tmWarmTenant(TestBed.inject(TmClientStore), tenant, { settings, me, tenant
 `test/core/Tellma.Core.Tests` (rerun it with `TELLMA_UPDATE_GOLDENS=1` after a change to the model):
 `entities-chunk.json`, the Entities chunk, and `core-entities.json`, the Core chunk's summaries. The
 workspace's type tests (`tools/tests/entity-model.spec.mts`) check that each satisfies its client
-type, and compile the declarations the same model writes. They are fixtures, not part of the package.
+type, and compile the declarations the same model writes. `tmTestEntities()` returns both, a fresh
+copy per call, for tests of the entity registry, display names and permissions over the shapes the
+server sends:
+
+```ts
+const { summaries, chunk } = tmTestEntities();
+const metadata = tmTestMetadata({ entities: summaries });
+```
 
 The package builds against the built `@tellma/core` (`tsconfig.lib.json`), as a consumer would;
 `tsconfig.json` is the editor, lint and typecheck view over the sources.

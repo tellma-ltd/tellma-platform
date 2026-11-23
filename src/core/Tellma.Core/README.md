@@ -101,6 +101,7 @@ client is registered: a client may add a logger of its own, which then decides w
 | `core.time-zones` | never: it logs one warning (`TimeZoneUnresolvable`) per value of `core.TimeZone` the host cannot resolve as a tenant's zone (its time-zone data lacks the zone, or the pinned table maps it to no Windows name), the sign of an image with stale tzdata | yes |
 | `core.entity-metadata` | the tenant model cannot be built (the convention's message, naming the declaration), or an entity leaf in it breaks the entity contract (every problem at once, see [Entity metadata](#entity-metadata)); a referenced entity with no natural key is logged as a warning and never fails | no |
 | `core.version-tags` | an entity declares a tenant-level tag that is not a lower-case name (`^[a-z][a-z0-9.-]*`, at most 128 characters) or that starts with `entity:`; a cacheable entity's implied `entity:<schema>.<Class>` name is too long; a user-level tag names no mapped `int` property or is not `Permissions` or `Preferences`; two names differ in case alone | no |
+| `core.shareables` | a shareable's `OwnerId` is not server-owned; its share entity does not reference it exactly once, is also a stack or is a child collection; it has no stack, or its stack's service does not derive from `ShareableService<TEntity, TShare>` | no |
 | `jobs.handlers` | an entity-backed job handler processes an entity the tenant model does not map as a job entity; a built-in schedule whose handler key no handler on this host registers is logged as a warning (`SchedulerHandlerUnknown`) and never fails, since another host may run the handler | no |
 | `jobs.schedules` | a built-in schedule's cron expression does not parse as five-field Unix cron (Cronos, `CronFormat.Standard`), or has no next occurrence in its zone (the host's resolution of its `TimeZoneId`, else UTC) | no |
 
@@ -725,7 +726,10 @@ when the calendar renders it with the same three numbers.
 
 Each system's framework `Calendar` covers exactly the dates the system decomposes: `uq`'s is the
 table extended by the tabular calendar under the same rule (`UmAlQuraExtendedCalendar`), so month
-arithmetic works beyond the table too.
+arithmetic works beyond the table too, up to `DateOnly.MaxValue` (AD 9999-12-31, AH 9666-04-03).
+Month and year lengths follow the tabular rule to the end of AH 9666, so the months that end after
+that day still have lengths; a day after it does not compose, and `ToDateTime` and the arithmetic
+refuse it with `ArgumentOutOfRangeException`.
 
 Month names of `uq` and `et` are Core's resources, `Calendar_<code>_Month<n>` in
 `Resources/Strings.resx` (English) and its Arabic and Amharic satellites, taken from CLDR so the
@@ -950,7 +954,8 @@ display-name rule, kind), its key, owner, properties, navigations, children, act
 argument fields and JSON Schema, related select, default order, searchable and natural keys, extras
 and query limits, and every named enum: the C# enums with their wire names (a
 `[JsonStringEnumMemberName]` member travels by it) and the value sets with their aliases. It is built
-once from `QueryexSchemaProvider`'s full map, entities and enums in ordinal name order. A label
+once from `QueryexSchemaProvider`'s full map, entities and enums in ordinal name order, leaving
+out a shareable's share entity, which the client reads only through the `shares` extra. A label
 resolves to the first key of its chain a neutral resource declares, else to the chain's first key
 with a humanized `labelFallback`. A `[BlobReference]` property carries its kind's policy,
 its size the kind's own `MaxSize` (a host whose `Tellma:Blobs:MaxUploadSize` is smaller does not
@@ -1373,7 +1378,10 @@ in between is read again once. The pages run until one is short, or until a full
 nothing, which would otherwise be read again for ever. The rows deleted are counted on
 `tellma.outbox.retained`.
 
-`EmailNotificationChannel` is the `email` channel's sender: each addressed recipient gets one
+`EmailNotificationChannel` is the `email` channel's sender, which `CoreFeature` registers (the
+inbox has none: the notifier writes its rows), so email is a delivering channel in every
+distribution; it resolves `IEmailSender` only when a test is sent, so the gate creates it in its
+tenantless scope. Each addressed recipient gets one
 internal email, to their contact address or else their sign-in address (a recipient with neither
 is skipped), regarding the notification's target. Recipients sharing a localization share one
 rendering of the notification's text; the subject (`Email_Notification_Subject`, the text's title
@@ -1382,6 +1390,16 @@ line, cut to its column), the text body and the HTML body (`Email_Notification_T
 tenant's name in the recipient's content language, the text and the link to the target. All of
 them are enqueued in one call with the delivery job's frame, so they commit with the job's
 completion and none is written when the job fails.
+
+Its `SendTestAsync` sends the caller one internal email straight through `IEmailSender`, bypassing
+the outbox: to their contact address, else their sign-in address, rendered in their preferred
+language and calendar but in the tenant's time zone (`Email_TestNotification_Subject` and
+`Email_TestNotification_Text`, given the tenant's name and the time sent). A caller with no address,
+or one the outbox would refuse, answers `NoContactAddress`; a host with no email sender answers
+`NotConfigured`; a sent or sandboxed message answers `Sent`. A transport that throws, rejects the
+message or fails transiently is raised as the `email` dependency unavailable, logged as
+`TestEmailFailed` or `TestEmailNotSent` with the transport's detail (the channel adds no address
+of its own, but the detail may quote one).
 
 ## Entity stacks
 
@@ -2331,7 +2349,8 @@ deployment no longer offers stays until it changes.
 | `Users.LanguageNotOffered` / `Users.RegionNotOffered` | a language or a region the catalogue does not offer |
 | `Users.CalendarUnknown` / `Users.TimeZoneUnknown` | a calendar or a time zone outside its value set |
 | `Users.ContactEmailInvalid` / `Users.MobileInvalid` | a contact email that is not one plain address, a mobile that is not E.164 |
-| `Users.NotIndividual` / `Users.AlreadyJoined` / `Required` | an `invite` target that is not an individual, has joined, or has no email |
+| `Users.NotIndividual` / `Users.AlreadyJoined` / `Required` | an `invite` target that is not an individual, has joined, or has no email; a `notification-preferences` target that is not an individual |
+| `Users.ChannelNotTestable` | a `me/test-notification` of the `inbox` channel, at `channel` |
 | `Users.NotService` | an `issue-credentials` target that is not a service account |
 | `Users.Inactive` | an inactive target of either action, or an account deactivated while its credentials were issued |
 | `Users.CredentialsConcurrent` | an account whose client another request changed while its credentials were issued |
@@ -2359,7 +2378,10 @@ never called for an action that will not persist):
   slot (`Email_UserAdded_Subject`, `_Text` and `_Html` in Core's server resources, naming the tenant,
   the caller and the tenant's link, and telling an invited or reinvited user to set up their sign-in
   first). A user whose address the outbox would refuse is skipped and logged as
-  `WelcomeEmailSkipped`; the invite stands.
+  `WelcomeEmailSkipped`; the invite stands. The same users are noticed with `core.user.added` through
+  the action's `Notify` (arguments `tenantName` and `actorName`, both every content slot; no target;
+  the caller as actor, none for the platform; deduplicated by the type's key, so a re-invite before
+  the user read the first adds none), one request per `MaxRecipientsPerRequest` users.
 - **`issue-credentials`** (single target) creates a client, joins the account on its first
   credentials, links it to the client only while it is still active and still names the client it was
   loaded with (else `Users.Inactive` or `Users.CredentialsConcurrent`, and nothing commits), and
@@ -2393,6 +2415,7 @@ Every member reaches their own row without a role grant, through the users' memb
 | `me/save` | 3 | loads the caller's row with every mapped column and the last modifier's names, refuses a moved stamp as a conflict before anything is enlisted (unless `Override`), copies the request's eight members onto the stored row with the memberships left out, and enlists it through the action's open frame, its paths without the row index, so the users' rules run and no `Save` grant is asked |
 | `me/locale` | 1 | validates in memory (`Users.LocaleEmpty` at `language`, `Users.LocaleResetConflict` at `reset`, then the save's locale rules, each value stored as its set spells it), then one persist batch: the access guards' lock, the update of the caller's row (each member set, `NULL` for each reset; an unchanged value writes no row), the invariants and the stored values; a read-only tenant admits it |
 | `me/preferences/set`, `me/preferences/delete` | 1 | checks the keys and values in memory (paths `items[i].key`, `keys[i]`), then the bag's statement with the key cap asserted inside it (`Users.TooManyPreferenceKeys` at the request), then the bag; the answer carries the caller's moved preferences tag; a read-only tenant admits them |
+| `me/test-notification` | 0 | refuses the `inbox` (`Users.ChannelNotTestable`) and an unregistered channel (`Notifications.UnknownChannel`), both at `channel`; answers `NotConfigured` for a channel with no sender, else the sender's `SendTestAsync` from the connected user (a due connect prologue runs alone first); each answer and each unavailable transport is counted on `tellma.users.test_notifications` (tags `channel`, `outcome`: `Sent`, `NoContactAddress`, `NotConfigured`, `Unavailable`, and `Rejected` for a message a platform channel's transport refused outright, still answered as the dependency unavailable) |
 
 `client/sync` (`Client/ClientSyncService`, member-only, idempotent, hidden from agents) is the one
 call a browser tab revalidates a tenant's cached documents with. It takes the tags the tab holds
@@ -2409,7 +2432,13 @@ An administrator reads and writes another user's bag under `core.User` × `Prefe
 filter: `preferences/get` (one round trip; a user the filter hides is not found) and the
 single-target entity actions `preferences/set` and `preferences/delete` (two round trips, the
 target's bag answered and its preferences tag moved, each write logged as
-`UserPreferencesChangedByAdministrator` at Information). `UserActivityContributor<TUser>` produces
+`UserPreferencesChangedByAdministrator` at Information). The same grant reads and writes another
+individual's notification settings: `notification-preferences/get` (one round trip, the stored
+deviations of registered types and channels) and the single-target `notification-preferences/save`
+(two round trips: `NotificationPreferenceRules` at `Arguments.Preferences`, the target's stamp row
+locked, the deviations replaced and the target's preferences tag moved, logged as
+`UserPreferencesChangedByAdministrator` with the area `notification-preferences`); a service
+account is refused with `Users.NotIndividual`. `UserActivityContributor<TUser>` produces
 the users' `activity` details extra: each visible user's `LastActiveAt` from `core.UserStamps`,
 joined to the read's admitted ids.
 
@@ -2923,6 +2952,8 @@ are SpreadsheetML packages written with `DocumentFormat.OpenXml` (MIT), forward-
 | `Identity/` | `IdentityServerClient`; internally its transport and token cache, the wire shapes and their source-generated JSON metadata, the options' settling and validator, the composition step that binds them and registers the named HTTP client, the instruments and the log events. |
 | `Notifications/` | `NotificationTypeRegistry`, `NotificationChannelRegistry`, `ClientEventRegistry`, `NotificationsClientAssetContributor`, `ClientEventPublisher`, `NullClientEventPublisher`, `NotificationConfiguration` and `NotificationDeliveryArguments`; internally the notifier, its statements and the delivering channels, the email channel's sender, the renderer, the preference row, the metrics, the name grammars, the hub-less real-time status, the composition step and the log events. |
 | `Outbox/` | `OutgoingEmailService`; internally the outbox, the stored address lists, the outgoing emails' model configuration, the sending job's handler and the composition step that binds the outbox's options. |
+| `Sharing/` | Internally: the share tables' model configuration, a shareable's shape in the model, the bespoke access criteria and the shared-with-me filter, the shares extra, the sharing commands behind share, publish and transfer, the `core.shareables` check and the composition step that binds `Tellma:Sharing`. |
+| `Reports/` | `ReportService`, the reports' stack service, and `ReportServiceDependencies`; internally the reports' model configuration, the default titles, the document's binding and expressions, the dashboards' null read-through and the composition step that binds `Tellma:Reports`. |
 | `Client/` | Internally: the client entity model, its data types, the action arguments' fields and schema, the declarations writer and the client-asset contributor; and `ClientSyncService`, the `client/sync` route. |
 | `Localization/` | `LanguageCatalog`, `LanguageDeclaration`, `LocalizationNegotiator`, `ValueSetRegistry`, `IcuStringLocalizerFactory`, `ConventionalStringKeys`; internally the catalogue's data, the declaration's resolution, the `Accept-Language` reader, the negotiated cultures, the pinned culture data with its reader, writer and generator source, the localizer's resource reader, ICU renderer, calendar formatter, argument reader and missing-key telemetry, the string-pack composer with its resource sources and client-asset contributor, the label provider, the label key chains, the named enums, the key conventions and the name humanizer. |
 | `Resources/` | `Strings.resx`, Core's shared resources (English), with its `ar` and `am` satellites and the `Strings` marker; `ServerStrings.resx`, the server-only resources (the email notification's subject and bodies), with its `ar` satellite and its marker. |

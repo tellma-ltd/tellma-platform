@@ -45,4 +45,13 @@ Keep this email: its link takes you back to {tenantName} whenever you need it.</
   <data name="Email_UserAdded_Html" xml:space="preserve">
     <value>&lt;div dir="ltr"&gt;&lt;p&gt;{actorName} added you to {tenantName}.&lt;/p&gt;{status, select, Invited {&lt;p&gt;A separate email from the sign-in service carries a link that sets up how you sign in. Use that link before the one below.&lt;/p&gt;} Reinvited {&lt;p&gt;A separate email from the sign-in service carries a link that sets up how you sign in. Use that link before the one below.&lt;/p&gt;} other {}}&lt;p&gt;&lt;a href="{link}"&gt;Open {tenantName}&lt;/a&gt;&lt;/p&gt;&lt;p style="color:#6b7280;font-size:12px"&gt;Keep this email: its link takes you back to {tenantName} whenever you need it.&lt;/p&gt;&lt;/div&gt;</value>
   </data>
+  <!-- The test notification: the message a user sends themselves from their notification settings -->
+  <data name="Email_TestNotification_Subject" xml:space="preserve">
+    <value>Test message from {tenantName}</value>
+  </data>
+  <data name="Email_TestNotification_Text" xml:space="preserve">
+    <value>This is a test message from {tenantName}, sent on {sentAt, date, long} at {sentAt, time, short}.
+
+Email notifications reach you at this address. You choose which notifications you receive by email in your notification settings.</value>
+  </data>
 </root>

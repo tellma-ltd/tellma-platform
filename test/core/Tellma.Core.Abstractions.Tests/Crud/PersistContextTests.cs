@@ -151,22 +151,26 @@ namespace Tellma.Core.Abstractions.Tests.Crud
             QuerySpec spec = new() { Root = AccessFixture.Schema.FindEntity(AccessFixture.Widget)!, Select = "Id" };
             FormattableString sql = $"SELECT 1";
             Func<IReadOnlyList<Widget>, int> compute = static rows => rows.Count;
+            Func<IReadOnlyList<Widget>, IReadOnlyList<Widget>, int> computeOverRows = static (rows, read) => rows.Count + read.Count;
 
             plan.AddExtra("total", sql, null);
             plan.AddExtra("lines", spec, null);
             _ = plan.AddRead(spec, null);
             _ = plan.AddRead(sql, null);
             plan.AddComputedExtra("count", compute);
+            Assert.Same(compute, sink.Compute);
+            plan.AddComputedExtra("related", spec, null, computeOverRows);
+            Assert.Same(computeOverRows, sink.Compute);
             plan.OmitExtra("hidden");
             AccessDecision decision = plan.Decide("core.User", "Read");
 
-            Assert.Equal(["extra:total:sql", "extra:lines:query", "read:query", "read:sql", "computed:count", "omitted:hidden", "decide:core.User:Read"], sink.Calls);
-            Assert.Same(compute, sink.Compute);
+            Assert.Equal(["extra:total:sql", "extra:lines:query", "read:query", "read:sql", "computed:count", "computed:related:rows", "omitted:hidden", "decide:core.User:Read"], sink.Calls);
             Assert.Equal(AccessOutcome.Unrestricted, decision.Outcome);
             _ = Assert.Throws<ArgumentException>(() => plan.AddExtra(" ", sql, null));
             _ = Assert.Throws<ArgumentException>(() => plan.OmitExtra(" "));
             _ = Assert.Throws<ArgumentException>(() => plan.Decide("core.User", " "));
             _ = Assert.Throws<ArgumentNullException>(() => plan.AddRead((QuerySpec)null!, null));
+            _ = Assert.Throws<ArgumentNullException>(() => plan.AddComputedExtra("related", null!, null, computeOverRows));
         }
 
         [Fact]
@@ -280,6 +284,14 @@ namespace Tellma.Core.Abstractions.Tests.Crud
             public void AddComputedExtra<TValue>(string name, Func<IReadOnlyList<Widget>, TValue> compute)
             {
                 Calls.Add("computed:" + name);
+                Compute = compute;
+            }
+
+            /// <inheritdoc />
+            public void AddComputedExtra<TRow, TValue>(string name, QuerySpec spec, QueryArguments? arguments, Func<IReadOnlyList<Widget>, IReadOnlyList<TRow>, TValue> compute)
+                where TRow : class
+            {
+                Calls.Add("computed:" + name + ":rows");
                 Compute = compute;
             }
 

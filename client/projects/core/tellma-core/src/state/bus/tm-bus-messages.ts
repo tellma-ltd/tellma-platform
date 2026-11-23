@@ -58,8 +58,22 @@ export interface TmPrefsChangedMessage {
   readonly type: 'prefs.changed';
   /** The tenant whose preferences changed. */
   readonly tenantId: number;
-  /** The stored strings, by key; `null` resets a key. */
+  /** The stored strings, by key; `null` resets a key. With `revert`, the values the server refused. */
   readonly values: Readonly<Record<string, string | null>>;
+  /**
+   * Whether the values are choices the server refused rather than new ones:
+   * a tab that shows one of them shows its stored value again, and a tab
+   * with its own unsaved value of the key keeps it.
+   */
+  readonly revert?: true;
+}
+
+/** A tab switched the device's language, which the tabs that take their language from the device follow. */
+export interface TmLanguageSwitchedMessage {
+  /** The message's type. */
+  readonly type: 'l10n.switched';
+  /** The language switched to, such as `ar`. */
+  readonly lang: string;
 }
 
 /** A signing-out tab asks every tab about its unsaved work. */
@@ -97,6 +111,7 @@ export type TmBusMessage =
   | TmHubStatusMessage
   | TmLeaderProbeMessage
   | TmPrefsChangedMessage
+  | TmLanguageSwitchedMessage
   | TmDraftsQueryMessage
   | TmDraftsReplyMessage
   | TmSessionMessage;
@@ -118,6 +133,7 @@ export const TM_BUS_MESSAGE_TYPES: ReadonlySet<string> = new Set<TmBusMessage['t
   'hub.status',
   'leader.probe',
   'prefs.changed',
+  'l10n.switched',
   'drafts.query',
   'drafts.reply',
   'session.signing-out',

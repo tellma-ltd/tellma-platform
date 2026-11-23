@@ -24,7 +24,8 @@ namespace Tellma.Core.AspNetCore.Tests.OpenApi
     ///     decimals and longs as the string-or-number the wire carries, the members a save never
     ///     takes marked read-only, and every schema its real type, however deep it nests.
     /// </summary>
-    public sealed class WebOpenApiTests
+    /// <param name="fixture">The host the cases share.</param>
+    public sealed class WebOpenApiTests(WebOpenApiTests.Host fixture) : IClassFixture<WebOpenApiTests.Host>
     {
         private static CancellationToken Token => TestContext.Current.CancellationToken;
 
@@ -80,7 +81,7 @@ namespace Tellma.Core.AspNetCore.Tests.OpenApi
         [Fact]
         public async Task The_document_describes_the_web_surface_alone_with_securables_and_tags()
         {
-            await using TellmaTestHost host = await StartAsync("Development");
+            TellmaTestHost host = fixture.Started;
 
             JsonElement document = await ReadAsync(host);
 
@@ -110,7 +111,7 @@ namespace Tellma.Core.AspNetCore.Tests.OpenApi
         [Fact]
         public async Task An_entity_schema_marks_what_a_save_never_takes_and_encodes_its_long_key_and_decimals()
         {
-            await using TellmaTestHost host = await StartAsync("Development");
+            TellmaTestHost host = fixture.Started;
 
             JsonElement document = await ReadAsync(host);
             JsonElement ledger = document.GetProperty("components").GetProperty("schemas").GetProperty(nameof(PjLedger));
@@ -160,7 +161,7 @@ namespace Tellma.Core.AspNetCore.Tests.OpenApi
         [Fact]
         public async Task The_sync_answers_envelope_is_described_as_the_envelope()
         {
-            await using TellmaTestHost host = await StartAsync("Development");
+            TellmaTestHost host = fixture.Started;
 
             JsonElement document = await ReadAsync(host);
             JsonElement schemas = document.GetProperty("components").GetProperty("schemas");
@@ -290,7 +291,7 @@ namespace Tellma.Core.AspNetCore.Tests.OpenApi
         [Fact]
         public async Task The_schema_generator_reads_the_hosts_JSON_options_under_the_documents_own_nesting_limit()
         {
-            await using TellmaTestHost host = await StartAsync("Development");
+            TellmaTestHost host = fixture.Started;
             JsonSerializerOptions http = host.Services.GetRequiredService<IOptions<JsonOptions>>().Value.SerializerOptions;
 
             JsonSerializerOptions schema = SchemaJson.Create(host.Services).SerializerOptions;
@@ -399,6 +400,35 @@ namespace Tellma.Core.AspNetCore.Tests.OpenApi
         private static JsonElement Operation(JsonElement document, string path)
         {
             return Assert.Single(document.GetProperty("paths").GetProperty(path).EnumerateObject()).Value;
+        }
+
+        /// <summary>
+        ///     One Development host for the cases that read its document and options: serving the
+        ///     document changes nothing, so each case reads the same one. A case that composes another
+        ///     model or environment starts a host of its own.
+        /// </summary>
+        public sealed class Host : IAsyncLifetime
+        {
+            /// <summary>The host, once started.</summary>
+            private TellmaTestHost? _host;
+
+            /// <summary>The started host.</summary>
+            internal TellmaTestHost Started => _host ?? throw new InvalidOperationException("The host has not started.");
+
+            /// <inheritdoc />
+            public async ValueTask InitializeAsync()
+            {
+                _host = await StartAsync("Development");
+            }
+
+            /// <inheritdoc />
+            public async ValueTask DisposeAsync()
+            {
+                if (_host is not null)
+                {
+                    await _host.DisposeAsync();
+                }
+            }
         }
     }
 }

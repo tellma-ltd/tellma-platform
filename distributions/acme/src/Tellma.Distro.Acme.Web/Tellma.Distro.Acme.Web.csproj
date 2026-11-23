@@ -28,6 +28,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Tellma.Distro.Acme\Tellma.Distro.Acme.csproj" />
     <ProjectReference Include="..\..\..\..\src\core\Tellma.Core.AspNetCore\Tellma.Core.AspNetCore.csproj" />
+    <ProjectReference Include="..\..\..\..\src\core\Tellma.Core.Mcp\Tellma.Core.Mcp.csproj" />
     <ProjectReference Include="..\..\..\..\src\defaults\Tellma.Defaults.Azure.AspNetCore\Tellma.Defaults.Azure.AspNetCore.csproj" />
     <!-- The in-proc identity engine, selected by Tellma:Identity:Mode. Never its migrations: the
          engine's store check reads a constant, and the migrator migrates the store. -->

@@ -1,0 +1,42 @@
+/*
+ * Copyright (c) Tellma Ltd. All rights reserved.
+ *
+ * This source code is licensed under the Apache-2.0 license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/*
+ * The platform's global styles, which a distribution's src/styles.css
+ * imports first: the design tokens, the component library's Latin fonts,
+ * its directive stylesheets, the shell frame and the boot page. A locale
+ * package adds its own fonts (@tellma/locale-ar/styles.css), and a
+ * distribution's deltas live in @layer tm.theme, which wins over the tokens
+ * whatever the order.
+ */
+
+/* The design tokens, which declare the tm.base and tm.theme layers. */
+@import '@tellma/core-ui-tokens/css/tellma-default.css';
+
+/* The component library's Latin faces. */
+@import '@tellma/core-ui/fonts/fonts.css';
+
+/* The directive stylesheets: classes the directives put on native elements. */
+@import '@tellma/core-ui/styles/tm-button.css';
+@import '@tellma/core-ui/styles/tm-input.css';
+@import '@tellma/core-ui/styles/tm-number.css';
+@import '@tellma/core-ui/styles/tm-search.css';
+@import '@tellma/core-ui/styles/tm-description-list.css';
+@import '@tellma/core-ui/styles/tm-drop-target.css';
+
+/* The shell frame's root variables and grid, which pages and the toast host read. */
+@import './styles/tm-frame.css';
+
+/* The boot page, which the boot script builds when the app cannot start. */
+@import './styles/tm-boot-page.css';
+
+/* The browser's theme-color: the ink app bar's colour in both themes. */
+@layer tm.base {
+  :root {
+    --tm-theme-color: var(--ink-900);
+  }
+}

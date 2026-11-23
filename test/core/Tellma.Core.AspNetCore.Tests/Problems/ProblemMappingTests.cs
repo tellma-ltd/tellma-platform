@@ -31,7 +31,8 @@ namespace Tellma.Core.AspNetCore.Tests.Problems
     ///     and trace, the members its row adds, the headers that tell a client when to retry or how
     ///     to step up, and nothing of the server's internals.
     /// </summary>
-    public sealed class ProblemMappingTests
+    /// <param name="fixture">The host the cases share.</param>
+    public sealed class ProblemMappingTests(ProblemMappingTests.Host fixture) : IClassFixture<ProblemMappingTests.Host>
     {
         /// <summary>The members a problem body may carry; anything else would be a leak.</summary>
         private static readonly string[] BodyMembers = ["type", "title", "status", "detail", "instance", "code", "errors", "errorDetails", "arguments"];
@@ -117,7 +118,7 @@ namespace Tellma.Core.AspNetCore.Tests.Problems
         [MemberData(nameof(Table))]
         public async Task Each_exception_answers_its_problem_body(string name, int status, string code)
         {
-            await using TellmaTestHost host = await StartAsync();
+            TellmaTestHost host = fixture.Started;
 
             using HttpResponseMessage response = await ThrowAsync(host, name);
 
@@ -172,7 +173,7 @@ namespace Tellma.Core.AspNetCore.Tests.Problems
         [MemberData(nameof(Members))]
         public async Task Each_row_writes_the_members_it_adds(string name, string path, string value)
         {
-            await using TellmaTestHost host = await StartAsync();
+            TellmaTestHost host = fixture.Started;
 
             using JsonDocument body = await BodyAsync(host, name);
 
@@ -182,7 +183,7 @@ namespace Tellma.Core.AspNetCore.Tests.Problems
         [Fact]
         public async Task A_problem_without_extras_writes_null_error_details()
         {
-            await using TellmaTestHost host = await StartAsync();
+            TellmaTestHost host = fixture.Started;
 
             using JsonDocument body = await BodyAsync(host, "not-found");
 
@@ -197,7 +198,7 @@ namespace Tellma.Core.AspNetCore.Tests.Problems
         [InlineData("tenant-schema-behind", 30)]
         public async Task A_transient_problem_says_when_to_retry(string name, int seconds)
         {
-            await using TellmaTestHost host = await StartAsync();
+            TellmaTestHost host = fixture.Started;
 
             using HttpResponseMessage response = await ThrowAsync(host, name);
 
@@ -207,7 +208,7 @@ namespace Tellma.Core.AspNetCore.Tests.Problems
         [Fact]
         public async Task A_busy_image_processor_names_the_imaging_dependency()
         {
-            await using TellmaTestHost host = await StartAsync();
+            TellmaTestHost host = fixture.Started;
 
             using HttpResponseMessage response = await ThrowAsync(host, "imaging");
 
@@ -217,7 +218,7 @@ namespace Tellma.Core.AspNetCore.Tests.Problems
         [Fact]
         public async Task A_step_up_problem_carries_its_challenge()
         {
-            await using TellmaTestHost host = await StartAsync();
+            TellmaTestHost host = fixture.Started;
 
             using HttpResponseMessage response = await ThrowAsync(host, "step-up");
 
@@ -232,7 +233,7 @@ namespace Tellma.Core.AspNetCore.Tests.Problems
         [InlineData("forbidden-path", "restricted-path")]
         public async Task A_refusal_names_the_securable_and_its_reason_and_nothing_else(string name, string reason)
         {
-            await using TellmaTestHost host = await StartAsync();
+            TellmaTestHost host = fixture.Started;
 
             using JsonDocument body = await BodyAsync(host, name);
 
@@ -248,7 +249,7 @@ namespace Tellma.Core.AspNetCore.Tests.Problems
         [Fact]
         public async Task A_query_problem_carries_each_diagnostic_as_discovery_answers_it()
         {
-            await using TellmaTestHost host = await StartAsync();
+            TellmaTestHost host = fixture.Started;
 
             using JsonDocument body = await BodyAsync(host, "query-invalid");
 
@@ -275,7 +276,7 @@ namespace Tellma.Core.AspNetCore.Tests.Problems
         [Fact]
         public async Task A_validation_problem_renders_each_path_and_message()
         {
-            await using TellmaTestHost host = await StartAsync();
+            TellmaTestHost host = fixture.Started;
 
             using JsonDocument body = await BodyAsync(host, "validation");
 
@@ -289,7 +290,7 @@ namespace Tellma.Core.AspNetCore.Tests.Problems
         [Fact]
         public async Task An_import_problem_names_each_cell_and_the_committed_rows()
         {
-            await using TellmaTestHost host = await StartAsync();
+            TellmaTestHost host = fixture.Started;
 
             using JsonDocument body = await BodyAsync(host, "import");
 
@@ -309,7 +310,7 @@ namespace Tellma.Core.AspNetCore.Tests.Problems
         [Fact]
         public async Task A_confirmation_without_its_own_message_falls_back_to_the_general_detail()
         {
-            await using TellmaTestHost host = await StartAsync();
+            TellmaTestHost host = fixture.Started;
 
             using JsonDocument body = await BodyAsync(host, "confirmation");
 
@@ -321,7 +322,7 @@ namespace Tellma.Core.AspNetCore.Tests.Problems
         [Fact]
         public async Task An_internal_problem_never_names_the_failure_in_Production()
         {
-            await using TellmaTestHost host = await StartAsync();
+            TellmaTestHost host = fixture.Started;
 
             using HttpResponseMessage response = await ThrowAsync(host, "internal");
             string text = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
@@ -458,6 +459,35 @@ namespace Tellma.Core.AspNetCore.Tests.Problems
         private static IResult Throw(string name)
         {
             throw Exceptions[name]();
+        }
+
+        /// <summary>
+        ///     One Production host for the cases that read only a response: the throwing endpoint keeps
+        ///     no state, so each case's answer is its own. A case that changes the environment or reads
+        ///     the host's logs starts a host of its own.
+        /// </summary>
+        public sealed class Host : IAsyncLifetime
+        {
+            /// <summary>The host, once started.</summary>
+            private TellmaTestHost? _host;
+
+            /// <summary>The started host.</summary>
+            internal TellmaTestHost Started => _host ?? throw new InvalidOperationException("The host has not started.");
+
+            /// <inheritdoc />
+            public async ValueTask InitializeAsync()
+            {
+                _host = await StartAsync();
+            }
+
+            /// <inheritdoc />
+            public async ValueTask DisposeAsync()
+            {
+                if (_host is not null)
+                {
+                    await _host.DisposeAsync();
+                }
+            }
         }
     }
 }

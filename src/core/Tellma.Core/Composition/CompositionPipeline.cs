@@ -25,6 +25,8 @@ using Tellma.Core.Localization;
 using Tellma.Core.Notifications;
 using Tellma.Core.Outbox;
 using Tellma.Core.Provisioning;
+using Tellma.Core.Reports;
+using Tellma.Core.Sharing;
 using Tellma.Core.Tenancy;
 using Tellma.Core.Users;
 
@@ -199,6 +201,12 @@ namespace Tellma.Core.Composition
 
             // --- The users' and roles' stacks: the instruments, the services' collaborators and the administrator's invitation (spec 0018 §3, §4, §6.1) ---
             UsersRuntimeComposition.Register(services, _record);
+
+            // --- Sharing: the options and the shareables check (spec 0033 §5.1, §14) ---
+            SharingComposition.Register(services, _record, options);
+
+            // --- Stored reports: the options, the dashboards' read-through and the service's collaborators (spec 0033 §2, §5.7, §14) ---
+            ReportsComposition.Register(services, _record, options);
 
             // --- Server-built links (spec 0011 §5.10), over the stack registry's routes ---
             services.AddSingleton<ITellmaLinks, TellmaLinks>();

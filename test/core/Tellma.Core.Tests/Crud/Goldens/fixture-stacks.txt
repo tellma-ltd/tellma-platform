@@ -27,6 +27,9 @@ stack core.User
   action me: api member-only body - handler UserService<User>; idempotent; result MeResult; mcp Full, revision 0; -
   action me/save: api member-only body MeSaveRequest handler UserService<User>; mutation; result MeResult; mcp Full, revision 0; -
   action me/locale: api member-only body MeLocaleRequest handler UserService<User>; mutation, read-only-ok; result MeLocaleResult; mcp Full, revision 0; -
+  action me/test-notification: api member-only body TestNotificationRequest handler UserService<User>; mutation; result TestNotificationResult; mcp Full, revision 0; -
+  action notification-preferences/get: api core.User:Preferences body UserPreferencesRequest handler UserService<User>; idempotent; result IReadOnlyList<NotificationPreference>; mcp Full, revision 0; -
+  action notification-preferences/save: entity Preferences filtered single args NotificationPreferencesArguments; mutation, read-only-ok; result IReadOnlyList<NotificationPreference>; mcp Full, revision 0; -
   action me/preferences/set: api member-only body UserPreferencesArguments handler UserService<User>; mutation, read-only-ok; result PreferencesResult; mcp Full, revision 0; -
   action me/preferences/delete: api member-only body UserPreferenceKeysArguments handler UserService<User>; mutation, read-only-ok; result PreferencesResult; mcp Full, revision 0; -
   action preferences/get: api core.User:Preferences body UserPreferencesRequest handler UserService<User>; idempotent; result UserPreferencesResult; mcp Full, revision 0; -
@@ -208,6 +211,33 @@ stack core.Schedule
   action export: api core.Schedule:Read body ExportRequest handler ExcelOperations<Schedule>; idempotent, long; result ExportOutcome; mcp Full, revision 0; -
   action export-for-import: api core.Schedule:Read body ExportForImportRequest handler ExcelOperations<Schedule>; idempotent, long; result ExportOutcome; mcp Full, revision 0; -
   action inspect-import: api core.Schedule:Save body InspectImportRequest handler ExcelOperations<Schedule>; idempotent, long; result ImportPlan; mcp Full, revision 0; -
+stack core.Report
+  segment: reports
+  entity: Tellma.Core.Abstractions.Reports.Report
+  service: Tellma.Core.Reports.ReportService
+  key: int
+  description: Stored reports
+  operations: Query, Details, Save, Delete, Enlist
+  capabilities: activatable, temporal, multilingual, searchable
+  properties: Id:ServerOwned, CreatedAt:ServerOwned, CreatedById:ServerOwned, ModifiedAt:ServerOwned, ModifiedById:ServerOwned, Code:Editable, Title:Editable, Title2:Editable, Title3:Editable, Description:Editable, Description2:Editable, Description3:Editable, Root:Editable, Kind:Editable, DefinitionJson:Editable, QueryexVersion:Derived, OwnerId:ServerOwned, BasedOnId:WriteOnce, IsActive:ServerOwned
+  children: -
+  searchable: Title:Contains
+  natural-keys: Code
+  default-select: Id, Code, IsActive, CreatedAt, CreatedById, ModifiedAt, ModifiedById
+  related-select: Id, Title, Title2, Title3, Code
+  details-expand: CreatedBy, ModifiedBy, Owner
+  default-order-by: -
+  display-name: Title group Title prefix -
+  extras: shares, permissions
+  named-filters: shared-with-me=and[or[(OwnerId is null), (OwnerId != me())], exists core.ReportShare.Report or[(UserId is null and RoleId is null), (UserId = me()), via Role and[(IsActive = true), or[(IsPublic = true), exists core.RoleMembership.Role and[(UserId = me()), ((StartsAt is null or StartsAt <= now()) and (EndsAt is null or EndsAt > now()))]]]]]
+  limits: default
+  mcp: Full, revision 0
+  feature: core
+  action activate: entity Activate built-in filtered args -; mutation, idempotent; result EntitiesResult<Report>; mcp Full, revision 0; -
+  action deactivate: entity Activate built-in filtered args -; mutation, idempotent; result EntitiesResult<Report>; mcp Full, revision 0; -
+  action share: entity Share filtered args ShareArguments; mutation; result EntitiesResult<Report>; mcp Full, revision 0; Shares reports with users.
+  action publish: entity Publish filtered args PublishArguments; mutation; result EntitiesResult<Report>; mcp Full, revision 0; Shares reports with roles or everyone.
+  action transfer: entity Transfer filtered args TransferArguments; mutation; result EntitiesResult<Report>; mcp Full, revision 0; Changes the owner of reports.
 stack fixture.Widget
   segment: widgets
   entity: Tellma.Testing.Entities.Widget

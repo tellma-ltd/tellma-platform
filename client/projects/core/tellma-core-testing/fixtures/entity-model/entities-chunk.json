@@ -4637,6 +4637,565 @@
       }
     },
     {
+      "name": "core.Report",
+      "segment": "reports",
+      "labelKey": "Core_Report",
+      "pluralLabelKey": "Core_Report_Plural",
+      "newLabelKey": "Entity_New",
+      "labelFallback": "Report",
+      "operations": [
+        "query",
+        "details",
+        "save",
+        "delete"
+      ],
+      "capabilities": [
+        "activatable",
+        "multilingual",
+        "searchable",
+        "temporal"
+      ],
+      "displayName": {
+        "source": "Title",
+        "multilingual": true
+      },
+      "kind": "stack",
+      "key": {
+        "property": "Id",
+        "type": "int"
+      },
+      "properties": [
+        {
+          "name": "Id",
+          "json": "id",
+          "type": "integer",
+          "queryable": true,
+          "nullable": false,
+          "unique": true,
+          "labelKey": "Core_Report_Id",
+          "labelFallback": "Id",
+          "excel": true,
+          "ownership": "server-owned"
+        },
+        {
+          "name": "CreatedAt",
+          "json": "createdAt",
+          "type": "instant",
+          "queryable": true,
+          "nullable": false,
+          "labelKey": "CreatedAt",
+          "excel": true,
+          "ownership": "server-owned"
+        },
+        {
+          "name": "CreatedById",
+          "json": "createdById",
+          "type": "integer",
+          "queryable": true,
+          "nullable": false,
+          "labelKey": "Core_Report_CreatedById",
+          "labelFallback": "Created by id",
+          "excel": true,
+          "ownership": "server-owned",
+          "foreignKeyOf": "CreatedBy"
+        },
+        {
+          "name": "ModifiedAt",
+          "json": "modifiedAt",
+          "type": "instant",
+          "queryable": true,
+          "nullable": false,
+          "labelKey": "ModifiedAt",
+          "excel": true,
+          "ownership": "server-owned"
+        },
+        {
+          "name": "ModifiedById",
+          "json": "modifiedById",
+          "type": "integer",
+          "queryable": true,
+          "nullable": false,
+          "labelKey": "Core_Report_ModifiedById",
+          "labelFallback": "Modified by id",
+          "excel": true,
+          "ownership": "server-owned",
+          "foreignKeyOf": "ModifiedBy"
+        },
+        {
+          "name": "Code",
+          "json": "code",
+          "type": "string",
+          "queryable": true,
+          "nullable": true,
+          "unique": true,
+          "labelKey": "Code",
+          "excel": true,
+          "ownership": "editable",
+          "maxLength": 50
+        },
+        {
+          "name": "Title",
+          "json": "title",
+          "type": "string",
+          "queryable": true,
+          "nullable": false,
+          "labelKey": "Core_Report_Title",
+          "labelFallback": "Title",
+          "excel": true,
+          "ownership": "editable",
+          "defaulted": true,
+          "maxLength": 255,
+          "multilingual": {
+            "group": "Title",
+            "slot": 1
+          }
+        },
+        {
+          "name": "Title2",
+          "json": "title2",
+          "type": "string",
+          "queryable": true,
+          "nullable": true,
+          "labelKey": "Core_Report_Title",
+          "labelFallback": "Title",
+          "excel": true,
+          "ownership": "editable",
+          "maxLength": 255,
+          "multilingual": {
+            "group": "Title",
+            "slot": 2
+          }
+        },
+        {
+          "name": "Title3",
+          "json": "title3",
+          "type": "string",
+          "queryable": true,
+          "nullable": true,
+          "labelKey": "Core_Report_Title",
+          "labelFallback": "Title",
+          "excel": true,
+          "ownership": "editable",
+          "maxLength": 255,
+          "multilingual": {
+            "group": "Title",
+            "slot": 3
+          }
+        },
+        {
+          "name": "Description",
+          "json": "description",
+          "type": "string",
+          "queryable": true,
+          "nullable": true,
+          "labelKey": "Description",
+          "excel": true,
+          "ownership": "editable",
+          "maxLength": 1024,
+          "multilingual": {
+            "group": "Description",
+            "slot": 1
+          }
+        },
+        {
+          "name": "Description2",
+          "json": "description2",
+          "type": "string",
+          "queryable": true,
+          "nullable": true,
+          "labelKey": "Description",
+          "excel": true,
+          "ownership": "editable",
+          "maxLength": 1024,
+          "multilingual": {
+            "group": "Description",
+            "slot": 2
+          }
+        },
+        {
+          "name": "Description3",
+          "json": "description3",
+          "type": "string",
+          "queryable": true,
+          "nullable": true,
+          "labelKey": "Description",
+          "excel": true,
+          "ownership": "editable",
+          "maxLength": 1024,
+          "multilingual": {
+            "group": "Description",
+            "slot": 3
+          }
+        },
+        {
+          "name": "Root",
+          "json": "root",
+          "type": "string",
+          "queryable": true,
+          "nullable": false,
+          "labelKey": "Core_Report_Root",
+          "labelFallback": "Root",
+          "excel": true,
+          "ownership": "editable",
+          "maxLength": 128
+        },
+        {
+          "name": "Kind",
+          "json": "kind",
+          "type": "enum",
+          "queryable": true,
+          "nullable": false,
+          "labelKey": "Core_Report_Kind",
+          "labelFallback": "Kind",
+          "excel": true,
+          "ownership": "editable",
+          "enum": "core.ReportKind"
+        },
+        {
+          "name": "DefinitionJson",
+          "json": "definitionJson",
+          "type": "json",
+          "queryable": false,
+          "nullable": false,
+          "labelKey": "Core_Report_DefinitionJson",
+          "labelFallback": "Definition json",
+          "excel": true,
+          "ownership": "editable"
+        },
+        {
+          "name": "QueryexVersion",
+          "json": "queryexVersion",
+          "type": "integer",
+          "queryable": true,
+          "nullable": false,
+          "labelKey": "Core_Report_QueryexVersion",
+          "labelFallback": "Queryex version",
+          "excel": true,
+          "ownership": "derived"
+        },
+        {
+          "name": "OwnerId",
+          "json": "ownerId",
+          "type": "integer",
+          "queryable": true,
+          "nullable": true,
+          "labelKey": "Core_Report_OwnerId",
+          "labelFallback": "Owner id",
+          "excel": true,
+          "ownership": "server-owned",
+          "foreignKeyOf": "Owner"
+        },
+        {
+          "name": "BasedOnId",
+          "json": "basedOnId",
+          "type": "integer",
+          "queryable": true,
+          "nullable": true,
+          "labelKey": "Core_Report_BasedOnId",
+          "labelFallback": "Based on id",
+          "excel": true,
+          "ownership": "write-once"
+        },
+        {
+          "name": "IsActive",
+          "json": "isActive",
+          "type": "bool",
+          "queryable": true,
+          "nullable": false,
+          "labelKey": "IsActive",
+          "excel": true,
+          "ownership": "server-owned"
+        }
+      ],
+      "navigations": [
+        {
+          "name": "CreatedBy",
+          "json": "createdBy",
+          "foreignKey": "CreatedById",
+          "target": "core.User",
+          "kind": "reference",
+          "nullable": false,
+          "labelKey": "CreatedBy"
+        },
+        {
+          "name": "ModifiedBy",
+          "json": "modifiedBy",
+          "foreignKey": "ModifiedById",
+          "target": "core.User",
+          "kind": "reference",
+          "nullable": false,
+          "labelKey": "ModifiedBy"
+        },
+        {
+          "name": "Owner",
+          "json": "owner",
+          "foreignKey": "OwnerId",
+          "target": "core.User",
+          "kind": "reference",
+          "nullable": true,
+          "labelKey": "Core_Report_Owner",
+          "labelFallback": "Owner"
+        }
+      ],
+      "children": [],
+      "actions": [
+        {
+          "name": "activate",
+          "kind": "entity",
+          "builtIn": true,
+          "action": "Activate",
+          "labelKey": "Action_Activate",
+          "mutation": true,
+          "idempotent": true,
+          "destructive": false,
+          "singleTarget": false,
+          "supportsFilter": true,
+          "result": "entities"
+        },
+        {
+          "name": "deactivate",
+          "kind": "entity",
+          "builtIn": true,
+          "action": "Activate",
+          "labelKey": "Action_Deactivate",
+          "mutation": true,
+          "idempotent": true,
+          "destructive": false,
+          "singleTarget": false,
+          "supportsFilter": true,
+          "result": "entities"
+        },
+        {
+          "name": "share",
+          "kind": "entity",
+          "builtIn": false,
+          "action": "Share",
+          "labelKey": "Action_Share",
+          "mutation": true,
+          "idempotent": false,
+          "destructive": false,
+          "singleTarget": false,
+          "supportsFilter": true,
+          "result": "entities",
+          "arguments": {
+            "type": "object",
+            "properties": {
+              "set": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "userId": {
+                      "type": "integer"
+                    },
+                    "access": {
+                      "type": "string",
+                      "enum": [
+                        "View",
+                        "Edit"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "userId",
+                    "access"
+                  ]
+                }
+              },
+              "remove": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "fields": [
+            {
+              "name": "set",
+              "labelKey": "Core_Report_Action_Share_Set",
+              "labelFallback": "Set",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "remove",
+              "labelKey": "Core_Report_Action_Share_Remove",
+              "labelFallback": "Remove",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            }
+          ]
+        },
+        {
+          "name": "publish",
+          "kind": "entity",
+          "builtIn": false,
+          "action": "Publish",
+          "labelKey": "Action_Publish",
+          "mutation": true,
+          "idempotent": false,
+          "destructive": false,
+          "singleTarget": false,
+          "supportsFilter": true,
+          "result": "entities",
+          "arguments": {
+            "type": "object",
+            "properties": {
+              "set": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "roleId": {
+                      "type": "integer"
+                    },
+                    "access": {
+                      "type": "string",
+                      "enum": [
+                        "View",
+                        "Edit"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "roleId",
+                    "access"
+                  ]
+                }
+              },
+              "remove": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "integer"
+                }
+              },
+              "everyone": {
+                "type": [
+                  "boolean",
+                  "null"
+                ]
+              }
+            }
+          },
+          "fields": [
+            {
+              "name": "set",
+              "labelKey": "Core_Report_Action_Publish_Set",
+              "labelFallback": "Set",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "remove",
+              "labelKey": "Core_Report_Action_Publish_Remove",
+              "labelFallback": "Remove",
+              "required": false,
+              "value": {
+                "type": "json",
+                "nullable": true
+              }
+            },
+            {
+              "name": "everyone",
+              "labelKey": "Core_Report_Action_Publish_Everyone",
+              "labelFallback": "Everyone",
+              "required": false,
+              "value": {
+                "type": "bool",
+                "nullable": true
+              }
+            }
+          ]
+        },
+        {
+          "name": "transfer",
+          "kind": "entity",
+          "builtIn": false,
+          "action": "Transfer",
+          "labelKey": "Action_Transfer",
+          "mutation": true,
+          "idempotent": false,
+          "destructive": false,
+          "singleTarget": false,
+          "supportsFilter": true,
+          "result": "entities",
+          "arguments": {
+            "type": "object",
+            "properties": {
+              "ownerId": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "ownerId"
+            ]
+          },
+          "fields": [
+            {
+              "name": "ownerId",
+              "labelKey": "Core_Report_Action_Transfer_Owner",
+              "labelFallback": "Owner",
+              "required": true,
+              "value": {
+                "type": "integer",
+                "nullable": false,
+                "target": "core.User"
+              }
+            }
+          ]
+        }
+      ],
+      "relatedSelect": [
+        "Id",
+        "Title",
+        "Title2",
+        "Title3",
+        "Code"
+      ],
+      "defaultOrderBy": "Id desc",
+      "searchable": [
+        "Title"
+      ],
+      "naturalKeys": [
+        "Code"
+      ],
+      "extras": [
+        "shares",
+        "permissions"
+      ],
+      "limits": {
+        "maxTake": 10000,
+        "countCap": 10000,
+        "maxSkipWindow": 100000,
+        "maxSearchLength": 200,
+        "maxIds": 10000,
+        "maxExtras": 16,
+        "maxFilterLength": 8192
+      }
+    },
+    {
       "name": "core.Role",
       "segment": "roles",
       "labelKey": "Core_Role",
@@ -7761,6 +8320,137 @@
           ]
         },
         {
+          "name": "me/test-notification",
+          "kind": "api",
+          "builtIn": false,
+          "action": null,
+          "labelKey": "Core_User_Action_MeTestNotification",
+          "labelFallback": "Me test notification",
+          "mutation": true,
+          "idempotent": false,
+          "destructive": false,
+          "singleTarget": false,
+          "supportsFilter": false,
+          "result": "own",
+          "arguments": {
+            "type": "object",
+            "properties": {
+              "channel": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "channel"
+            ]
+          },
+          "fields": [
+            {
+              "name": "channel",
+              "labelKey": "Core_User_Action_MeTestNotification_Channel",
+              "labelFallback": "Channel",
+              "required": true,
+              "value": {
+                "type": "string",
+                "nullable": false
+              }
+            }
+          ]
+        },
+        {
+          "name": "notification-preferences/get",
+          "kind": "api",
+          "builtIn": false,
+          "action": "Preferences",
+          "labelKey": "Core_User_Action_NotificationPreferencesGet",
+          "labelFallback": "Notification preferences get",
+          "mutation": false,
+          "idempotent": true,
+          "destructive": false,
+          "singleTarget": false,
+          "supportsFilter": false,
+          "result": "own",
+          "arguments": {
+            "type": "object",
+            "properties": {
+              "userId": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "userId"
+            ]
+          },
+          "fields": [
+            {
+              "name": "userId",
+              "labelKey": "Core_User_Action_NotificationPreferencesGet_UserId",
+              "labelFallback": "User id",
+              "required": true,
+              "value": {
+                "type": "integer",
+                "nullable": false
+              }
+            }
+          ]
+        },
+        {
+          "name": "notification-preferences/save",
+          "kind": "entity",
+          "builtIn": false,
+          "action": "Preferences",
+          "labelKey": "Core_User_Action_NotificationPreferencesSave",
+          "labelFallback": "Notification preferences save",
+          "mutation": true,
+          "idempotent": false,
+          "destructive": false,
+          "allowWhenReadOnly": true,
+          "singleTarget": true,
+          "supportsFilter": true,
+          "result": "own",
+          "arguments": {
+            "type": "object",
+            "properties": {
+              "preferences": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string"
+                    },
+                    "channel": {
+                      "type": "string"
+                    },
+                    "enabled": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "channel",
+                    "enabled"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "preferences"
+            ]
+          },
+          "fields": [
+            {
+              "name": "preferences",
+              "labelKey": "Core_User_Action_NotificationPreferencesSave_Preferences",
+              "labelFallback": "Preferences",
+              "required": true,
+              "value": {
+                "type": "json",
+                "nullable": false
+              }
+            }
+          ]
+        },
+        {
           "name": "me/preferences/set",
           "kind": "api",
           "builtIn": false,
@@ -8610,9 +9300,7 @@
       ],
       "children": [],
       "actions": [],
-      "relatedSelect": [
-        "UserId"
-      ],
+      "relatedSelect": [],
       "defaultOrderBy": "UserId desc",
       "searchable": [],
       "naturalKeys": [],
@@ -10616,6 +11304,31 @@
       ]
     },
     {
+      "name": "core.ReportKind",
+      "values": [
+        {
+          "value": "List",
+          "labelKey": "Core_ReportKind_List",
+          "labelFallback": "List"
+        },
+        {
+          "value": "Summary",
+          "labelKey": "Core_ReportKind_Summary",
+          "labelFallback": "Summary"
+        },
+        {
+          "value": "Pivot",
+          "labelKey": "Core_ReportKind_Pivot",
+          "labelFallback": "Pivot"
+        },
+        {
+          "value": "Chart",
+          "labelKey": "Core_ReportKind_Chart",
+          "labelFallback": "Chart"
+        }
+      ]
+    },
+    {
       "name": "core.SchedulePausedReason",
       "values": [
         {
@@ -10632,6 +11345,21 @@
           "value": "HandlerRetired",
           "labelKey": "Core_SchedulePausedReason_HandlerRetired",
           "labelFallback": "Handler retired"
+        }
+      ]
+    },
+    {
+      "name": "core.ShareAccess",
+      "values": [
+        {
+          "value": "View",
+          "labelKey": "Core_ShareAccess_View",
+          "labelFallback": "View"
+        },
+        {
+          "value": "Edit",
+          "labelKey": "Core_ShareAccess_Edit",
+          "labelFallback": "Edit"
         }
       ]
     },

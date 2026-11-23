@@ -9,36 +9,57 @@ import {
   DOCUMENT,
   type EnvironmentProviders,
   inject,
+  InjectionToken,
   Injector,
   provideAppInitializer,
   provideEnvironmentInitializer,
+  type Type,
 } from '@angular/core';
 import { NavigationEnd, Router } from '@angular/router';
 
 import { TmApi } from '../api/tm-api';
 import { TmHttpApi } from '../api/tm-http-api';
 import { TM_BOOT_RESULT } from '../boot/tm-boot-result';
+import { TmLocalization } from '../l10n/tm-localization';
 import { tmRoutedTenant } from '../launch/tm-routed-tenant';
 import { TmClientMetadataStore } from '../metadata/tm-client-metadata';
 import { TmTelemetry } from '../observe/tm-telemetry';
 import { TmPageFocus } from '../routes/tm-page-focus';
 import { TmLaunchTimer } from '../routes/tm-route-host';
 import { TmSession } from '../session/tm-session';
+import { TmPreferences } from '../state/prefs/tm-preferences';
 import { TmClientStore } from '../state/store/tm-client-store';
 import { TmUrls } from '../urls/tm-urls';
 import type { TmAppConfig } from './tm-app-config';
-import { TmPlatformText, type TmLoadedStrings } from './tm-platform-text';
 
 // The startup sequence's initializers (spec 0024 §4.3), in parallel: the
-// Core chunk; the active language's string pack and client tables, and
+// Core chunk; the boot language's string pack and client tables, and
 // English's; the session's cookie parse; and the client store's boot step,
-// which the Core chunk's load never waits for. None awaits the API, so a warm
-// launch has no network wait. A chunk or string load that fails shows the
-// boot page `load-failed`, and the app never starts. Beside them, the router
+// which the Core chunk's load never waits for. Once the store's launch
+// documents are in, the language and calendar they resolve to load too, so
+// the first frame shows them and never another first. None awaits the API,
+// so a warm launch has no network wait. A chunk or boot-language load that
+// fails shows the boot page `load-failed`, and the app never starts. Beside them, the router
 // wiring: the routed tenant's `lastTenantId`, focus after navigation and the
 // launch's timing; and
-// after first render, at idle, the Contracts chunk, so the first API call
-// does not wait for it.
+// after first render, the recent pages' entry point, and at idle the
+// Contracts chunk, so the first API call does not wait for it.
+
+/** The recent pages' entry point, as far as the startup reads it. Internal. */
+export interface TmRecentsModule {
+  /** The service that counts visits once created. */
+  readonly TmRecents: Type<unknown>;
+}
+
+/**
+ * Loads the recent pages' entry point. Internal: the startup's seam, which a
+ * test replaces. The specifier is cast so that the package build does not
+ * report the import back as a cycle, as with the shell.
+ */
+export const TM_RECENTS_LOAD = new InjectionToken<() => Promise<TmRecentsModule>>('TM_RECENTS_LOAD', {
+  providedIn: 'root',
+  factory: () => () => import('@tellma/core/recents' as string) as Promise<TmRecentsModule>,
+});
 
 /** A promise that never settles: the app does not start under the boot page. */
 const NEVER = new Promise<never>(() => undefined);
@@ -56,7 +77,7 @@ export function tmStartup(config: TmAppConfig): EnvironmentProviders[] {
       const boot = inject(TM_BOOT_RESULT);
       const telemetry = inject(TmTelemetry);
       const metadata = inject(TmClientMetadataStore);
-      const text = inject(TmPlatformText);
+      const l10n = inject(TmLocalization);
       const failed =
         (chunk: string) =>
         (error: unknown): Promise<never> => {
@@ -76,40 +97,51 @@ export function tmStartup(config: TmAppConfig): EnvironmentProviders[] {
 
       // --- The Core chunk and the string packs of the active language and English ---
       const core = config.metadata.core().then((chunk) => metadata.set(chunk), failed('core'));
-      const language = document.documentElement.lang || 'en';
-      const strings = Promise.all(
-        [...new Set([language, 'en'])].map(
-          // The pack and the tables of one language load side by side.
-          async (code): Promise<TmLoadedStrings> => {
-            const [pack, tables] = await Promise.all([
-              config.metadata.strings[code]?.(),
-              config.languages.find((offered) => offered.code === code)?.strings(),
-            ]);
-            return { pack: pack ?? {}, tables };
-          },
-        ),
-      ).then((loaded) => text.ɵset(loaded), failed('strings'));
+      // The boot language is the one the boot script set on <html>, or the default when it is not offered.
+      const lang = document.documentElement.lang;
+      const language = config.languages.some((offered) => offered.code === lang) ? lang : (config.languages[0]?.code ?? 'en');
+      const strings = Promise.all([...new Set([language, 'en'])].map((code) => l10n.ɵloadLanguage(code))).then(
+        () => undefined,
+        failed('strings'),
+      );
 
       // --- The session, and the store's boot step, which never rejects ---
       inject(TmSession);
       const started = inject(TmClientStore).ɵstart(tmRoutedTenant(document.location.pathname));
-      return Promise.all([core, strings, started]).then(() => undefined);
+      // --- Then what the launch documents resolve to: the user's language and calendar ---
+      return Promise.all([core, strings, started]).then(() => l10n.ɵready());
     }),
     provideEnvironmentInitializer(() => {
       const router = inject(Router);
       const store = inject(TmClientStore);
       const injector = inject(Injector);
       const window = inject(DOCUMENT).defaultView;
-      // Created now, so the routed tenant is known before the first page's links.
+      const telemetry = inject(TmTelemetry);
+      // Created now, so the routed tenant is known before the first page's links,
+      // and the preferences hear the other tabs' choices from the start.
       inject(TmUrls);
+      inject(TmPreferences);
+      const loadRecents = inject(TM_RECENTS_LOAD);
       inject(TmPageFocus).ɵstart();
       inject(TmLaunchTimer).ɵstart();
-      // After first render, at idle: the Contracts chunk, which the HTTP layer keeps.
-      // An app torn down before its idle moment loads nothing.
+      // After first render: the recent pages' visit count; at idle, the
+      // Contracts chunk, which the HTTP layer keeps.
+      // An app torn down before either moment starts nothing.
       let alive = true;
       inject(DestroyRef).onDestroy(() => (alive = false));
       afterNextRender(
         () => {
+          // Recent pages count visits from the first page on (spec 0025 §13).
+          // Their entry point loads now, off the first frame. A failed load,
+          // or a service that fails to start, counts no visits until the next
+          // launch, and nothing else depends on it.
+          loadRecents()
+            .then((recents) => {
+              if (alive) {
+                injector.get(recents.TmRecents);
+              }
+            })
+            .catch((error: unknown) => telemetry.error(error, { source: 'tm-recents' }));
           const load = (): void => {
             const api = alive ? injector.get(TmApi) : null;
             if (api instanceof TmHttpApi) {

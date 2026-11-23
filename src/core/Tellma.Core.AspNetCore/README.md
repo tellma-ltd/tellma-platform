@@ -324,12 +324,28 @@ write-once mapped property that is `[JsonIgnore]`, and for any endpoint whose
 `RequireSecurable(resource, action)` names a pair no feature registers in the securable registry
 (compared ignoring case), or names it only through a renamed resource's alias; `MapTellma`'s own
 run leaves the pairs to the gate. When the securable registry did not compose, the gate's audit
-skips the pairs and says so in one line, leaving the cause to `core.securables`.
+skips the pairs and says so in one line, leaving the cause to `core.securables`. Either run that
+finds a problem logs `ApiSecurableAuditFailed` at Critical just before startup throws, with the
+problem count (`Count`) and every problem rendered on one line with its source and fix
+(`Problems`), so the host's logs name what the exception names. A failed gate disposes the host,
+which flushes every sink. `MapTellma` throws before the host runs, so it first flushes
+OpenTelemetry's export, for at most five seconds. A sink that buffers outside OpenTelemetry may
+lose a `MapTellma`-time event.
 
 - a distribution endpoint under a policy that names no authentication scheme;
 - an endpoint naming a rate policy that does not exist, more than one route policy, a tenant- or
   caller-within-tenant policy on a route that names no tenant, or a priority on a policy without
   lanes.
+
+The gate's run seals the application's endpoint sources before it reads them. A minimal-API
+source builds every endpoint afresh on each read, compiling a request delegate per handler, and
+the host reads its endpoints several times as it starts: the audit, the authorization policy
+cache, the router's matcher and the route-miss index. Sealed, each source builds its endpoints
+once and answers every later read with the same ones, and the set of sources is fixed. So the host
+serves exactly the endpoints the gate audited: an endpoint mapped after startup, in a sealed group
+or in a source of its own, is never served. The one exception is a source that signals a change,
+such as the in-proc identity server's controllers and pages under hot reload: it is read again
+after it does, and what it then adds is served without being audited.
 
 ## Sessions
 

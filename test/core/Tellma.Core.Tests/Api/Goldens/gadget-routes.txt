@@ -10,6 +10,9 @@ POST /{tenantId}/api/web/users/invite | invite | core.User | entity | IdsRequest
 POST /{tenantId}/api/web/users/me | me | core.User | api | - | MeResult | member-only | idempotent | IH8_utI43bnm
 POST /{tenantId}/api/web/users/me/save | me/save | core.User | api | MeSaveRequest | MeResult | member-only | mutation | CYPfnhdrbYmY
 POST /{tenantId}/api/web/users/me/locale | me/locale | core.User | api | MeLocaleRequest | MeLocaleResult | member-only | mutation, read-only | L02Kb4ZV7bKr
+POST /{tenantId}/api/web/users/me/test-notification | me/test-notification | core.User | api | TestNotificationRequest | TestNotificationResult | member-only | mutation | RlMiPTM0An2o
+POST /{tenantId}/api/web/users/notification-preferences/get | notification-preferences/get | core.User | api | UserPreferencesRequest | IReadOnlyList<NotificationPreference> | core.User:Preferences | idempotent | -rX0DQqaFail
+POST /{tenantId}/api/web/users/notification-preferences/save | notification-preferences/save | core.User | entity | IdRequest<NotificationPreferencesArguments> | IReadOnlyList<NotificationPreference> | core.User:Preferences | mutation, read-only | rROigsnlEFzK
 POST /{tenantId}/api/web/users/me/preferences/set | me/preferences/set | core.User | api | UserPreferencesArguments | PreferencesResult | member-only | mutation, read-only | wT8mDrlFjWQL
 POST /{tenantId}/api/web/users/me/preferences/delete | me/preferences/delete | core.User | api | UserPreferenceKeysArguments | PreferencesResult | member-only | mutation, read-only | -Wf3OrTgSmAG
 POST /{tenantId}/api/web/users/preferences/get | preferences/get | core.User | api | UserPreferencesRequest | UserPreferencesResult | core.User:Preferences | idempotent | aOMZhcdCDIhl
@@ -65,6 +68,16 @@ POST /{tenantId}/api/web/schedules/run-now | run-now | core.Schedule | entity | 
 POST /{tenantId}/api/web/schedules/export | export | core.Schedule | api | ExportRequest | ExportOutcome | core.Schedule:Read | long, idempotent | Fy5vEZu1-Mqy
 POST /{tenantId}/api/web/schedules/export-for-import | export-for-import | core.Schedule | api | ExportForImportRequest | ExportOutcome | core.Schedule:Read | long, idempotent | EaMkiCeHi04-
 POST /{tenantId}/api/web/schedules/inspect-import | inspect-import | core.Schedule | api | InspectImportRequest | ImportPlan | core.Schedule:Save | long, idempotent | CROEU7gfsOlj
+POST /{tenantId}/api/web/reports/query | query | core.Report | - | QueryRequest | RowPage | core.Report:Read | idempotent | PqV1-faRenCx
+POST /{tenantId}/api/web/reports/get | get | core.Report | - | GetRequest | EntitiesResult<Report> | core.Report:Read | idempotent | yUeb6aXiKiUT
+POST /{tenantId}/api/web/reports/get-by-ids | get-by-ids | core.Report | - | GetByIdsRequest | EntitiesResult<Report> | core.Report:Read | idempotent | TqNhUYS1mnI9
+POST /{tenantId}/api/web/reports/save | save | core.Report | - | SaveRequest<Report> | EntitiesResult<Report> | core.Report:Save | mutation | iBW4tWiwNMG5
+POST /{tenantId}/api/web/reports/delete | delete | core.Report | - | IdsRequest | AffectedResult | core.Report:Delete | mutation | lisU15N3Oj5S
+POST /{tenantId}/api/web/reports/activate | activate | core.Report | entity | EntityActionRequest | EntitiesResult<Report> | core.Report:Activate | mutation, idempotent | Iwkgekpd7t-9
+POST /{tenantId}/api/web/reports/deactivate | deactivate | core.Report | entity | EntityActionRequest | EntitiesResult<Report> | core.Report:Activate | mutation, idempotent | Iwkgekpd7t-9
+POST /{tenantId}/api/web/reports/share | share | core.Report | entity | EntityActionRequest<ShareArguments> | EntitiesResult<Report> | core.Report:Share | mutation | fuSY7nB-9A1e
+POST /{tenantId}/api/web/reports/publish | publish | core.Report | entity | EntityActionRequest<PublishArguments> | EntitiesResult<Report> | core.Report:Publish | mutation | ZiORrXV-G841
+POST /{tenantId}/api/web/reports/transfer | transfer | core.Report | entity | EntityActionRequest<TransferArguments> | EntitiesResult<Report> | core.Report:Transfer | mutation | bq570jZlNC8X
 POST /{tenantId}/api/web/gadgets/query | query | sm.SmGadget | - | QueryRequest | RowPage | sm.SmGadget:Read | idempotent | PqV1-faRenCx
 POST /{tenantId}/api/web/gadgets/get | get | sm.SmGadget | - | GetRequest | EntitiesResult<SmGadget> | sm.SmGadget:Read | idempotent | 5mezyF2jCvNp
 POST /{tenantId}/api/web/gadgets/get-by-ids | get-by-ids | sm.SmGadget | - | GetByIdsRequest | EntitiesResult<SmGadget> | sm.SmGadget:Read | idempotent | -dbsTnnQ9xYd

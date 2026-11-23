@@ -62,7 +62,10 @@ export function tmFormatMonthName(
   const year = calendar.toParts(REFERENCE_ISO).year;
   const iso =
     Number.isInteger(month) && month >= 1 && month <= calendar.monthsInYear(year)
-      ? calendar.fromParts({ year, month, day: 1 })
+      ? // The middle of the month: Intl names the month of the day it
+        // dates, and an own-conversion calendar's first day can be Intl's
+        // last day of the month before.
+        calendar.fromParts({ year, month, day: Math.min(15, calendar.daysInMonth(year, month)) })
       : null;
   const parts = iso === null ? null : ɵtmParseIsoDate(iso);
   if (parts === null) {

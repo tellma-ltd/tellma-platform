@@ -26,6 +26,7 @@ namespace Tellma.Core.Tests.Localization
         {
             // --- The permissions editor's reasons (spec 0032 §12.4) ---
             ["Access_Reason_self"] = "The permissions editor's label of a grant over the user's own records.",
+            ["Access_Reason_share"] = "The permissions editor's label of a grant over the records shared with the user.",
 
             // --- Reports and dashboards (specs 0033, 0035, and the export job of spec 0019) ---
             ["ReportKind_List"] = "A report's kind.",
@@ -35,11 +36,9 @@ namespace Tellma.Core.Tests.Localization
             ["ShareAccess_View"] = "A share's access.",
             ["ShareAccess_Edit"] = "A share's access.",
             ["Core_Report_Synonyms"] = "The reports' search synonyms.",
-            ["Core_Report_DefaultTitle"] = "A new report's title.",
             ["Core_Dashboard_Synonyms"] = "The dashboards' search synonyms.",
             ["Core_Dashboard_DefaultTitle"] = "A new dashboard's title.",
             ["Core_Job_ExportReport"] = "The report export job's label.",
-            ["Notification_core_report_shared"] = "The notification of a shared report.",
             ["Notification_core_dashboard_shared"] = "The notification of a shared dashboard.",
         };
 

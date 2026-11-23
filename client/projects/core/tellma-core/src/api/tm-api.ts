@@ -63,6 +63,8 @@ export interface TmUploadOptions {
 export interface TmSendOptions {
   /** Marks the send as background work, which renews no session. */
   readonly background?: boolean;
+  /** The tenant to send to; the routed tenant when omitted. Ignored on a tenantless route. */
+  readonly tenantId?: number;
 }
 
 /** A downloaded file. */
@@ -181,7 +183,7 @@ export abstract class TmApi {
    *
    * @param route - The route.
    * @param body - The request body, sent as JSON.
-   * @param options - Whether the send is background work.
+   * @param options - Whether the send is background work, and its tenant.
    */
   abstract send(route: string, body: unknown, options?: TmSendOptions): void;
 

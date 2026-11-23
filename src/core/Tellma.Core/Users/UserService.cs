@@ -147,10 +147,12 @@ namespace Tellma.Core.Users
 
             // --- An administrative preference write's arguments, checked in memory ---
             ValidatePreferenceArguments(action, context);
+            ValidateNotificationPreferenceArguments(action, context);
 
             bool invite = string.Equals(action, InviteAction, StringComparison.Ordinal);
             bool credentials = string.Equals(action, IssueCredentialsAction, StringComparison.Ordinal);
-            if (!invite && !credentials)
+            bool notifications = string.Equals(action, NotificationPreferencesSaveAction, StringComparison.Ordinal);
+            if (!invite && !credentials && !notifications)
             {
                 return;
             }
@@ -170,9 +172,14 @@ namespace Tellma.Core.Users
                 {
                     ValidateInvitee(context.Errors, at, user);
                 }
-                else
+                else if (credentials)
                 {
                     ValidateServiceAccount(context.Errors, at, user);
+                }
+                else if (user.Kind != UserKind.Individual)
+                {
+                    // Notification settings are an individual's; a service account receives none.
+                    context.Errors.Add(at, AccessCodes.NotIndividual);
                 }
             }
         }

@@ -44,7 +44,7 @@ namespace Tellma.Core.Tests.Data
             Assert.Equal(
                 [
                     "core.Blobs", "core.CalendarMonths", "core.Exports", "core.Imports", "core.JobWorkerState", "core.Jobs", "core.NotificationPreferences", "core.Notifications", "core.OutgoingEmailAttachments", "core.OutgoingEmails", "core.Permissions",
-                    "core.RoleMemberships", "core.Roles", "core.ScheduleStates", "core.Schedules", "core.SettingEntries", "core.Settings",
+                    "core.ReportShares", "core.Reports", "core.RoleMemberships", "core.Roles", "core.ScheduleStates", "core.Schedules", "core.SettingEntries", "core.Settings",
                     "core.UserPreferences", "core.UserStamps", "core.Users", "core.VersionTags",
                     "dbo.__TellmaProvisioning", "dbo.__TellmaSchema",
                     "fixture.Configured", "fixture.Links", "fixture.Nodes", "fixture.Shipments", "fixture.WidgetExtras",
@@ -84,7 +84,7 @@ namespace Tellma.Core.Tests.Data
                 .ToDictionary(static type => type.Name);
 
             Assert.Equal(
-                ["BigIdList", "CollatedKeyList", "DateList", "EmailDeliveryEventList", "GuidList", "IdList", "IdStampList", "JobLeaseList", "JobOutcomeList", "JobProgressList", "JobRequestList", "NotificationPreferenceList", "NotificationRowList", "NotificationSliceList", "OutgoingEmailOutcomeList", "ScheduleNextList", "StringList", "UserInvitationOutcomeList", "UserPreferenceList", "VersionTagList"],
+                ["BigIdList", "CollatedKeyList", "DateList", "EmailDeliveryEventList", "GuidList", "IdList", "IdStampList", "JobLeaseList", "JobOutcomeList", "JobProgressList", "JobRequestList", "NotificationPreferenceList", "NotificationRowList", "NotificationSliceList", "OutgoingEmailOutcomeList", "ScheduleNextList", "ShareGrantList", "StringList", "UserInvitationOutcomeList", "UserPreferenceList", "VersionTagList"],
                 standalone.Keys.Order(StringComparer.Ordinal));
             Assert.All(standalone.Values, static type => Assert.Equal(("dbo", "tellma_app"), (type.Schema, Assert.Single(type.Grants))));
             Assert.Equal("date", standalone[nameof(DateList)].Columns.Single().StoreType);

@@ -20,6 +20,7 @@ export interface TmCalendar {
     monthsInYear(year: number): number;
     today(): string;
     toParts(iso: string): TmCalendarParts;
+    // @internal
 }
 
 // @public

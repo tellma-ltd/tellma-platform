@@ -20,6 +20,15 @@ describe('Acme app configuration', () => {
     ]);
   });
 
+  it("ships the platform's and the library's strings for both languages", async () => {
+    const [english, arabic] = (await Promise.all(tmAppConfigOf(appConfig)!.languages.map((language) => language.strings()))).map(
+      (table) => table.tm['errors'] as Readonly<Record<string, unknown>>,
+    );
+
+    expect(english['retry']).toBe('Try again');
+    expect((arabic['forbidden'] as Readonly<Record<string, string>>)['title']).toBe('ليست لديك صلاحية لذلك');
+  });
+
   it("composes Acme's own feature last, under the server feature's name", () => {
     const config = tmAppConfigOf(appConfig);
 

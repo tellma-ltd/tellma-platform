@@ -14,17 +14,31 @@ describe('the @tellma/core entry-point table', () => {
 
   it('keeps the eager graph the app framework fixes', () => {
     expect([...tmAllowedImports(TM_CORE_ENTRY_POINTS, '.')]).toEqual([]);
-    expect([...tmAllowedImports(TM_CORE_ENTRY_POINTS, './attention')].sort()).toEqual(['.', './private']);
-    expect([...tmAllowedImports(TM_CORE_ENTRY_POINTS, './shell')].sort()).toEqual(['.', './attention', './private']);
-    expect([...tmAllowedImports(TM_CORE_ENTRY_POINTS, './private')]).toEqual(['.']);
+    expect([...tmAllowedImports(TM_CORE_ENTRY_POINTS, './attention')].sort()).toEqual([
+      '.',
+      './private',
+      './search-normalize',
+    ]);
+    expect([...tmAllowedImports(TM_CORE_ENTRY_POINTS, './shell')].sort()).toEqual([
+      '.',
+      './attention',
+      './private',
+      './search-normalize',
+    ]);
   });
 
-  it('lets lazy entry points import every eager one', () => {
+  it('keeps the shared entry points off the primary and out of each other', () => {
+    expect([...tmAllowedImports(TM_CORE_ENTRY_POINTS, './private')]).toEqual(['.']);
+    expect([...tmAllowedImports(TM_CORE_ENTRY_POINTS, './search-normalize')]).toEqual([]);
+  });
+
+  it('lets lazy entry points import every eager and shared one', () => {
     expect([...tmAllowedImports(TM_CORE_ENTRY_POINTS, './search')].sort()).toEqual([
       '.',
       './attention',
       './entity',
       './private',
+      './search-normalize',
       './shell',
     ]);
   });
