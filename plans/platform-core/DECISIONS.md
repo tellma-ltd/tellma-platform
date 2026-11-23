@@ -384,6 +384,14 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-246 (orchestrator, 2026-11-23): PC-F75 verification; fix 2 is the last round; PC-F75 follows PC-117
+
+- The targeted verification of c4c0ec34 confirmed that the R1-1 encoding bypass is closed. It found nothing that switches the reader's encoding: 46 declaration forms, 449 encoding names and aliases, BOM variants and split reads. The replay is exact over 546 M read boundaries, the settings hold, and deviations 3 and 4 open no gap.
+- V-1 (major, new in fix 1): XmlReader.Create over a TextReader reads at creation, so a refused worksheet part throws a raw XmlException from SheetReader.Open before its try. ImportMapper does not catch it, so the import does not end in ImportFaults.Malformed. A part is also never disposed when XlsxXml.Open throws, at all five call sites.
+- V-2 (minor): a PartTextReader refusal is not sticky; a later ReadToEnd returns the text. It is not reachable through XlsxXml.Open today.
+- PC-F75 has had two implementer rounds, so fix 2 is its third and last (section 4.4). The one targeted verification has run, so fix 2 gets no further review. I check its diff and the tests myself before integration.
+- Release order: PC-117 was released while this verification ran (amending D-245), so PC-F75 integrates right after PC-117 lands, ahead of PC-F73 and PC-111.
+
 ### D-245 (orchestrator, 2026-11-22): PC-F75 takes R1-1; a targeted verification follows fix 1; it is released ahead of the held queue
 
 - R1-1 (blocking) is a V-1-class bypass: a part's XML declaration (for example iso-2022-jp or hz-gb-2312) switches XmlReader's decoder away from the encoding BoundedPartStream bounds. Microsoft.Data.SqlClient registers CodePagesEncodingProvider process-wide, so these encodings are live on every host. It stays in PC-F75 rather than a new fix item, because the defect class, the file and the implementer are the same.
