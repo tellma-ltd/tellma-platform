@@ -15,6 +15,19 @@ import { describe, it } from 'vitest';
 // registers a describe block per rule and a test per case instead, which
 // keeps every test to one case's work and names the failing case in the
 // report.
+//
+// The functions sit on a subclass. RuleTester's describe, it and itOnly are
+// static accessors that store on the class they are called on, and `run`
+// reads them through its instance's constructor, so ESLint's own class is
+// never changed: a spec that uses RuleTester directly behaves the same
+// whichever spec files ran before it in the same process.
+
+/** ESLint's RuleTester, registering its cases through Vitest's describe and it. */
+class VitestRuleTester extends RuleTester {}
+
+VitestRuleTester.describe = describe;
+VitestRuleTester.it = it;
+VitestRuleTester.itOnly = it.only;
 
 /**
  * A RuleTester whose `run` registers each valid and invalid case as a Vitest
@@ -25,8 +38,5 @@ import { describe, it } from 'vitest';
  * @returns The rule tester.
  */
 export function createRuleTester(config: Linter.Config): RuleTester {
-  RuleTester.describe = describe;
-  RuleTester.it = it;
-  RuleTester.itOnly = it.only;
-  return new RuleTester(config);
+  return new VitestRuleTester(config);
 }

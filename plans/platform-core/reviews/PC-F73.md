@@ -52,9 +52,10 @@ reproduce it.
 
 `client/projects/core/tellma-core-tools/fixtures/rule-tester.ts` adds `createRuleTester(config)`.
 It hands RuleTester Vitest's `describe`, `it` and `it.only` (RuleTester's documented hooks for a
-test runner), so `run` registers a describe block per rule and one test per case. Each test then
-holds one case's work, and the first case in a file holds the cold cost alone. A failure now names
-the case. The specs call `run` inside a `describe` (it was inside an `it`), since Vitest refuses a
+test runner), so `run` registers a describe block per rule and one test per case. (Since fix 1
+the hooks sit on a private subclass, so ESLint's own class is never changed; see R1-1.) Each
+test then holds one case's work, and the first case in a file holds the cold cost alone. A
+failure now names the case. The specs call `run` inside a `describe` (it was inside an `it`), since Vitest refuses a
 test declared inside another test.
 
 No timeout was raised, and there are no retries or quarantine. Total work is unchanged (RuleTester's
@@ -139,3 +140,69 @@ this change. Logs and JSON reports are `PC-F73-*.log` / `PC-F73-*.json` in the s
   the `describe` budget of no-decimal-operators (120 s) still reaches its cases.
 - Whether the helper's home, the core-tools package's `fixtures/` (beside `fake-emit.ts`, outside
   the build's `src`), is the right one for a module the workspace's `tools/tests` specs also import.
+
+## Review 1
+
+### Findings
+
+What was checked, and held (no finding):
+
+- Every RuleTester case still runs. A setup-file probe counted the `valid` and `invalid` arrays
+  handed to each `run` (17 calls across the ten files) and matched them to the tests Vitest
+  reported per file: 19, 6, 22, 7, 49, 26, 18, 22, 19 and 9 RuleTester tests, 197 in all, all
+  passed (203 with the six untouched scope tests).
+- A broken rule fails its cases. A scratch Vitest config aliased each spec's rule import to a
+  wrapper around the real rule and ran the ten real spec files unchanged. With a rule that
+  reports nothing, all 105 invalid cases failed ("Should have 1 error but had 0") and the 92
+  valid ones passed. With a rule that reports once on `Program`, all 197 RuleTester tests failed
+  ("Should have no errors but had 1", messageId mismatch). The six scope tests load the rule
+  through `eslint.config.mjs`, not the alias, and passed, as expected.
+- `it.only`: a scratch spec with one `only: true` case ran that case and skipped the other two.
+  Vitest's chainables keep their context in a closure, so RuleTester calling them as
+  `this.constructor.describe(...)` does not matter.
+- No timeout raised. The diff touches no `timeout`. no-decimal-operators keeps
+  `{ timeout: 120_000 }` on its outer `describe`, and Vitest 4.1.9 copies a suite's options into
+  nested suites and their tests (`@vitest/runner` `suiteFn` merges `currentSuite.options`;
+  `createSuiteCollector` merges `suiteOptions` into each test), so the type-aware first case
+  still gets 120 s. Its first test took 1.6 s here.
+- No spec still calls `run` inside an `it`: all 17 calls sit in a `describe`. ESLint 10.6.0
+  skips the empty `valid` describe (`test.valid.length > 0`), so no-decimal-operators' `valid: []`
+  blocks raise no "No test found in suite".
+- The helper resolves the same `eslint@10.6.0` and `vitest@4.1.9` instances as the specs; the
+  fixture is outside the package build (`src/**` only) and outside `files`.
+- Re-run here: the ten changed files (203 passed), `tsc -p` on core-tools `tsconfig.spec.json` and
+  `tools/tsconfig.json`, and `eslint` on the eleven changed TypeScript files (the fixture is
+  linted, not ignored): all clean. The full lint:test runs in the commit message are not re-run.
+  The pc/PC-F73 push run 45114710359 is the usual pre-integration skip.
+
+**R1-1 (minor): the helper mutates the shared `RuleTester` class, so test order can matter
+when files share a worker.**
+`client/projects/core/tellma-core-tools/fixtures/rule-tester.ts:28-30` assigns
+`RuleTester.describe`, `.it` and `.itOnly`, which are static fields of ESLint's module-level
+class. Under this config's default per-file isolation that stays inside one file: a probe pair
+of files showed the second file, in its own process, still seeing ESLint's `itDefaultHandler`.
+But it is process-wide state, and nothing in the TSDoc or the comment says so. If the tools
+project ever runs with `isolate: false` (a common lint:test speed-up), files share one `eslint`
+module in a worker. Then a spec written the old way, `new RuleTester(...)` with `run` called
+inside an `it`, passes alone and throws Vitest's "test inside another test" error only when it
+is scheduled after a file that called `createRuleTester`. That is an order-dependent failure,
+the class this checkpoint removes.
+Suggested fix: keep the hooks on a subclass, which ESLint's static accessors support, since
+they read and write `this[...]` and `run` calls `this.constructor.describe`/`it`/`itOnly`:
+`class TmRuleTester extends RuleTester {}` with `TmRuleTester.describe = describe;
+TmRuleTester.it = it; TmRuleTester.itOnly = it.only;` at module level, and `createRuleTester`
+returning `new TmRuleTester(config)`. ESLint's own class is then never touched. At the least,
+say in the TSDoc that the call sets RuleTester's static hooks for the whole process.
+
+### Responses
+
+- R1-1: fixed in fix 1 (this commit). `fixtures/rule-tester.ts` now declares a private
+  `VitestRuleTester extends RuleTester` and sets `describe`, `it` and `itOnly` on it once, at module
+  level; `createRuleTester` returns `new VitestRuleTester(config)`. ESLint's static accessors store
+  on the class they are called on (`this[DESCRIBE]`), and `run` reads them through
+  `this.constructor`, so the subclass gets Vitest's functions and ESLint's own `RuleTester` keeps
+  its defaults. A throwaway spec checked both sides in one file: after `createRuleTester`,
+  `RuleTester.it` and `RuleTester.describe` are not Vitest's, and the returned tester's
+  constructor's `it` is. The file comment now says why the hooks sit on a subclass. Re-run: the ten
+  RuleTester spec files plus that probe (204 passed), `tsc -p` on core-tools `tsconfig.spec.json`
+  and `tools/tsconfig.json`, `eslint` on the fixture, `dotnet format --verify-no-changes`.
