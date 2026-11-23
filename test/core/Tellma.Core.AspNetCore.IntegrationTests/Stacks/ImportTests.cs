@@ -10,10 +10,11 @@ using Tellma.Core.AspNetCore.IntegrationTests.Infrastructure;
 namespace Tellma.Core.AspNetCore.IntegrationTests.Stacks
 {
     /// <summary>
-    ///     The import inspections the reference distribution projects for centers, users and roles,
-    ///     each a real request through the composed host: an editable export of a row is uploaded as
-    ///     the caller's import file, and its inspection answers the plan that maps it back, same-source,
-    ///     every column mapped. An inspection of an upload the caller does not hold is not found.
+    ///     The import inspections and imports the reference distribution projects for centers, users
+    ///     and roles, each a real request through the composed host: an editable export of a row is
+    ///     uploaded as the caller's import file, its inspection answers the plan that maps it back,
+    ///     same-source, every column mapped, and its import updates the row it came from. An inspection
+    ///     or an import of an upload the caller does not hold is not found.
     /// </summary>
     /// <param name="deployment">The suite's deployment.</param>
     [Trait("Category", "Integration")]
@@ -70,6 +71,48 @@ namespace Tellma.Core.AspNetCore.IntegrationTests.Stacks
 
             // --- An upload the caller does not hold ---
             _ = (await admin.PostAsync(Tenant, "centers/inspect-import", new JsonObject { ["fileId"] = int.MaxValue })).ExpectProblem(HttpStatusCode.NotFound, "not-found");
+        }
+
+        [Fact]
+        public async Task Every_center_user_and_role_imports_its_own_editable_export_back_by_id()
+        {
+            using SpaClient admin = await deployment.SteppedUpAsync(deployment.Administrator);
+
+            // --- The rows to export: a center, a role and a user holding the role ---
+            int center = await CenterOperationTests.CreateAsync(admin, "IM-U", "Updated center", await CenterOperationTests.RootAsync(admin));
+            int role = Assert.Single(Wire.IdsOf((await admin.PostAsync(Tenant, "roles/save", Wire.Save(new JsonObject
+            {
+                ["id"] = 0,
+                ["name"] = "Updated role",
+
+                // The membership sheet names its role by the role's natural key, so the role has one.
+                ["code"] = "IM-R",
+                ["permissions"] = new JsonArray(new JsonObject { ["id"] = 0, ["resource"] = "gl.Center", ["action"] = "Read" }),
+            }))).Expect(HttpStatusCode.OK)));
+            int user = Assert.Single(Wire.IdsOf((await admin.PostAsync(Tenant, "users/save", Wire.Save(new JsonObject
+            {
+                ["id"] = 0,
+                ["email"] = "updated@example.com",
+                ["name"] = "Updated User",
+                ["roleMemberships"] = new JsonArray(new JsonObject { ["id"] = 0, ["roleId"] = role }),
+            }))).Expect(HttpStatusCode.OK)));
+
+            // --- Each stack's own export, uploaded and imported back unchanged: one row updated, by id ---
+            foreach ((string stack, int id) in new[] { ("centers", center), ("roles", role), ("users", user) })
+            {
+                ApiResponse exported = await admin.PostAsync(Tenant, $"{stack}/export-for-import", new JsonObject { ["ids"] = Wire.Array(id) });
+                Assert.True(exported.Status == HttpStatusCode.OK, exported.ToString());
+                int fileId = (await admin.UploadAsync(Tenant, ImportFile, exported.Body, Xlsx, $"{stack}.xlsx")).Expect(HttpStatusCode.Created)["id"]!.GetValue<int>();
+
+                ApiResponse imported = await admin.PostAsync(Tenant, $"{stack}/import", new JsonObject { ["fileId"] = fileId, ["mode"] = "Update" });
+                Assert.True(imported.Status == HttpStatusCode.OK, imported.ToString());
+                JsonNode outcome = imported.Expect(HttpStatusCode.OK);
+
+                Assert.Equal((0, 1), (outcome["inserted"]!.GetValue<int>(), outcome["updated"]!.GetValue<int>()));
+            }
+
+            // --- An upload the caller does not hold ---
+            _ = (await admin.PostAsync(Tenant, "centers/import", new JsonObject { ["fileId"] = int.MaxValue })).ExpectProblem(HttpStatusCode.NotFound, "not-found");
         }
     }
 }

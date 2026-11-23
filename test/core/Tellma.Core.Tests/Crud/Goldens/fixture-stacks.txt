@@ -39,6 +39,7 @@ stack core.User
   action export: api core.User:Read body ExportRequest handler ExcelOperations<User>; idempotent, long; result ExportOutcome; mcp Full, revision 0; -
   action export-for-import: api core.User:Read body ExportForImportRequest handler ExcelOperations<User>; idempotent, long; result ExportOutcome; mcp Full, revision 0; -
   action inspect-import: api core.User:Save body InspectImportRequest handler ExcelOperations<User>; idempotent, long; result ImportPlan; mcp Full, revision 0; -
+  action import: api core.User:Save body ImportRequest handler ExcelOperations<User>; mutation, long; result ImportOutcome; mcp Full, revision 0; -
 stack core.Role
   segment: roles
   entity: Tellma.Core.Abstractions.Access.Role
@@ -66,6 +67,7 @@ stack core.Role
   action export: api core.Role:Read body ExportRequest handler ExcelOperations<Role>; idempotent, long; result ExportOutcome; mcp Full, revision 0; -
   action export-for-import: api core.Role:Read body ExportForImportRequest handler ExcelOperations<Role>; idempotent, long; result ExportOutcome; mcp Full, revision 0; -
   action inspect-import: api core.Role:Save body InspectImportRequest handler ExcelOperations<Role>; idempotent, long; result ImportPlan; mcp Full, revision 0; -
+  action import: api core.Role:Save body ImportRequest handler ExcelOperations<Role>; mutation, long; result ImportOutcome; mcp Full, revision 0; -
 stack core.Notification
   segment: notifications
   entity: Tellma.Core.Abstractions.Notifications.Notification
@@ -211,6 +213,7 @@ stack core.Schedule
   action export: api core.Schedule:Read body ExportRequest handler ExcelOperations<Schedule>; idempotent, long; result ExportOutcome; mcp Full, revision 0; -
   action export-for-import: api core.Schedule:Read body ExportForImportRequest handler ExcelOperations<Schedule>; idempotent, long; result ExportOutcome; mcp Full, revision 0; -
   action inspect-import: api core.Schedule:Save body InspectImportRequest handler ExcelOperations<Schedule>; idempotent, long; result ImportPlan; mcp Full, revision 0; -
+  action import: api core.Schedule:Save body ImportRequest handler ExcelOperations<Schedule>; mutation, long; result ImportOutcome; mcp Full, revision 0; -
 stack core.Report
   segment: reports
   entity: Tellma.Core.Abstractions.Reports.Report
@@ -265,6 +268,7 @@ stack fixture.Widget
   action export: api fixture.Widget:Read body ExportRequest handler ExcelOperations<Widget>; idempotent, long; result ExportOutcome; mcp Full, revision 0; -
   action export-for-import: api fixture.Widget:Read body ExportForImportRequest handler ExcelOperations<Widget>; idempotent, long; result ExportOutcome; mcp Full, revision 0; -
   action inspect-import: api fixture.Widget:Save body InspectImportRequest handler ExcelOperations<Widget>; idempotent, long; result ImportPlan; mcp Full, revision 0; -
+  action import: api fixture.Widget:Save body ImportRequest handler ExcelOperations<Widget>; mutation, long; result ImportOutcome; mcp Full, revision 0; -
 stack fixture.WidgetExtra
   segment: widget-extras
   entity: Tellma.Testing.Entities.WidgetExtra
@@ -290,6 +294,7 @@ stack fixture.WidgetExtra
   action export: api fixture.WidgetExtra:Read body ExportRequest handler ExcelOperations<WidgetExtra>; idempotent, long; result ExportOutcome; mcp Full, revision 0; -
   action export-for-import: api fixture.WidgetExtra:Read body ExportForImportRequest handler ExcelOperations<WidgetExtra>; idempotent, long; result ExportOutcome; mcp Full, revision 0; -
   action inspect-import: api fixture.WidgetExtra:Save body InspectImportRequest handler ExcelOperations<WidgetExtra>; idempotent, long; result ImportPlan; mcp Full, revision 0; -
+  action import: api fixture.WidgetExtra:Save body ImportRequest handler ExcelOperations<WidgetExtra>; mutation, long; result ImportOutcome; mcp Full, revision 0; -
 stack fixture.Node
   segment: nodes
   entity: Tellma.Testing.Entities.Node
@@ -317,6 +322,7 @@ stack fixture.Node
   action export: api fixture.Node:Read body ExportRequest handler ExcelOperations<Node>; idempotent, long; result ExportOutcome; mcp Full, revision 0; -
   action export-for-import: api fixture.Node:Read body ExportForImportRequest handler ExcelOperations<Node>; idempotent, long; result ExportOutcome; mcp Full, revision 0; -
   action inspect-import: api fixture.Node:Save body InspectImportRequest handler ExcelOperations<Node>; idempotent, long; result ImportPlan; mcp Full, revision 0; -
+  action import: api fixture.Node:Save body ImportRequest handler ExcelOperations<Node>; mutation, long; result ImportOutcome; mcp Full, revision 0; -
 stack fixture.Shipment
   segment: shipments
   entity: Tellma.Testing.Entities.Shipment
@@ -342,6 +348,7 @@ stack fixture.Shipment
   action export: api fixture.Shipment:Read body ExportRequest handler ExcelOperations<Shipment>; idempotent, long; result ExportOutcome; mcp Full, revision 0; -
   action export-for-import: api fixture.Shipment:Read body ExportForImportRequest handler ExcelOperations<Shipment>; idempotent, long; result ExportOutcome; mcp Full, revision 0; -
   action inspect-import: api fixture.Shipment:Save body InspectImportRequest handler ExcelOperations<Shipment>; idempotent, long; result ImportPlan; mcp Full, revision 0; -
+  action import: api fixture.Shipment:Save body ImportRequest handler ExcelOperations<Shipment>; mutation, long; result ImportOutcome; mcp Full, revision 0; -
 stack fixture.Parcel
   segment: parcels
   entity: Tellma.Testing.Entities.Parcel
@@ -367,6 +374,7 @@ stack fixture.Parcel
   action export: api fixture.Parcel:Read body ExportRequest handler ExcelOperations<Parcel>; idempotent, long; result ExportOutcome; mcp Full, revision 0; -
   action export-for-import: api fixture.Parcel:Read body ExportForImportRequest handler ExcelOperations<Parcel>; idempotent, long; result ExportOutcome; mcp Full, revision 0; -
   action inspect-import: api fixture.Parcel:Save body InspectImportRequest handler ExcelOperations<Parcel>; idempotent, long; result ImportPlan; mcp Full, revision 0; -
+  action import: api fixture.Parcel:Save body ImportRequest handler ExcelOperations<Parcel>; mutation, long; result ImportOutcome; mcp Full, revision 0; -
 stack fixture.Lookup
   segment: lookups
   entity: Tellma.Testing.Entities.Lookup
@@ -394,6 +402,7 @@ stack fixture.Lookup
   action export: api fixture.Lookup:Read body ExportRequest handler ExcelOperations<Lookup>; idempotent, long; result ExportOutcome; mcp Full, revision 0; -
   action export-for-import: api fixture.Lookup:Read body ExportForImportRequest handler ExcelOperations<Lookup>; idempotent, long; result ExportOutcome; mcp Full, revision 0; -
   action inspect-import: api fixture.Lookup:Save body InspectImportRequest handler ExcelOperations<Lookup>; idempotent, long; result ImportPlan; mcp Full, revision 0; -
+  action import: api fixture.Lookup:Save body ImportRequest handler ExcelOperations<Lookup>; mutation, long; result ImportOutcome; mcp Full, revision 0; -
 stack fixture.BlobOwner
   segment: blob-owners
   entity: Tellma.Testing.Entities.BlobOwner
@@ -419,6 +428,7 @@ stack fixture.BlobOwner
   action export: api fixture.BlobOwner:Read body ExportRequest handler ExcelOperations<BlobOwner>; idempotent, long; result ExportOutcome; mcp Full, revision 0; -
   action export-for-import: api fixture.BlobOwner:Read body ExportForImportRequest handler ExcelOperations<BlobOwner>; idempotent, long; result ExportOutcome; mcp Full, revision 0; -
   action inspect-import: api fixture.BlobOwner:Save body InspectImportRequest handler ExcelOperations<BlobOwner>; idempotent, long; result ImportPlan; mcp Full, revision 0; -
+  action import: api fixture.BlobOwner:Save body ImportRequest handler ExcelOperations<BlobOwner>; mutation, long; result ImportOutcome; mcp Full, revision 0; -
 stack fixture.BlobFolder
   segment: blob-folders
   entity: Tellma.Testing.Entities.BlobFolder
@@ -444,6 +454,7 @@ stack fixture.BlobFolder
   action export: api fixture.BlobFolder:Read body ExportRequest handler ExcelOperations<BlobFolder>; idempotent, long; result ExportOutcome; mcp Full, revision 0; -
   action export-for-import: api fixture.BlobFolder:Read body ExportForImportRequest handler ExcelOperations<BlobFolder>; idempotent, long; result ExportOutcome; mcp Full, revision 0; -
   action inspect-import: api fixture.BlobFolder:Save body InspectImportRequest handler ExcelOperations<BlobFolder>; idempotent, long; result ImportPlan; mcp Full, revision 0; -
+  action import: api fixture.BlobFolder:Save body ImportRequest handler ExcelOperations<BlobFolder>; mutation, long; result ImportOutcome; mcp Full, revision 0; -
 stack gl.Center
   segment: centers
   entity: Tellma.Module.Gl.Center
@@ -471,6 +482,7 @@ stack gl.Center
   action export: api gl.Center:Read body ExportRequest handler ExcelOperations<Center>; idempotent, long; result ExportOutcome; mcp Full, revision 0; -
   action export-for-import: api gl.Center:Read body ExportForImportRequest handler ExcelOperations<Center>; idempotent, long; result ExportOutcome; mcp Full, revision 0; -
   action inspect-import: api gl.Center:Save body InspectImportRequest handler ExcelOperations<Center>; idempotent, long; result ImportPlan; mcp Full, revision 0; -
+  action import: api gl.Center:Save body ImportRequest handler ExcelOperations<Center>; mutation, long; result ImportOutcome; mcp Full, revision 0; -
 child core.RoleMembership
   segment: role-memberships
   entity: Tellma.Core.Abstractions.Access.RoleMembership

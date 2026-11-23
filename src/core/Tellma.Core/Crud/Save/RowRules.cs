@@ -157,7 +157,7 @@ namespace Tellma.Core.Crud.Save
         /// <param name="entity">The entity.</param>
         /// <param name="property">The property.</param>
         /// <returns>True when it does.</returns>
-        private static bool PreservesWhitespace(EntityMetadata entity, PropertyMetadata property)
+        internal static bool PreservesWhitespace(EntityMetadata entity, PropertyMetadata property)
         {
             PropertyInfo? clr = entity.ClrType.GetProperty(property.Name, BindingFlags.Public | BindingFlags.Instance);
             return clr is not null && EntityShapes.GetAttribute<PreserveWhitespaceAttribute>(clr) is not null;

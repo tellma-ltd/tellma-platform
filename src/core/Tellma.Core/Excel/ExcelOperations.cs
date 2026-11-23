@@ -34,9 +34,12 @@ namespace Tellma.Core.Excel
         /// <summary>What the exports read: the stack's entity and its service's row source.</summary>
         private readonly ExportTarget _target;
 
+        /// <summary>The stack's service, whose row source an import's lookups read and which hydrates and saves its rows.</summary>
+        private readonly IStackExcelRows _service;
+
         /// <summary>
-        ///     The scope's import runner, resolved when an inspection first needs it: a composition
-        ///     without a blob store still exports.
+        ///     The scope's import runner, resolved when an inspection or an import first needs it: a
+        ///     composition without a blob store still exports.
         /// </summary>
         private readonly Func<ExcelImports> _imports;
 
@@ -45,14 +48,14 @@ namespace Tellma.Core.Excel
 
         /// <summary>Binds the operations to the stack's service.</summary>
         /// <param name="exports">The scope's export runner.</param>
-        /// <param name="imports">Resolves the scope's import runner, called only when an inspection runs.</param>
+        /// <param name="imports">Resolves the scope's import runner, called only when an inspection or an import runs.</param>
         /// <param name="service">The stack's service, as the Excel operations reach it.</param>
         /// <param name="entity">The stack's entity metadata.</param>
         /// <param name="limits">The stack's limits.</param>
         internal ExcelOperations(ExcelExports exports, Func<ExcelImports> imports, IStackExcelRows service, EntityMetadata entity, StackLimits limits)
         {
-            ArgumentNullException.ThrowIfNull(service);
             ArgumentNullException.ThrowIfNull(entity);
+            _service = service ?? throw new ArgumentNullException(nameof(service));
             _exports = exports ?? throw new ArgumentNullException(nameof(exports));
             _imports = imports ?? throw new ArgumentNullException(nameof(imports));
             _limits = limits ?? throw new ArgumentNullException(nameof(limits));
@@ -119,6 +122,29 @@ namespace Tellma.Core.Excel
             return _imports().InspectAsync(_target.Entity, _limits, request, cancellationToken);
         }
 
+        /// <summary>
+        ///     Imports the caller's uploaded workbook in one transaction: inserts, updates or upserts
+        ///     the parent rows and their collections at every depth, every reference looked up and
+        ///     every stored row overlaid as its sheet's columns say. Any error commits nothing.
+        /// </summary>
+        /// <param name="request">The upload, the mode, the row key and the overrides.</param>
+        /// <param name="cancellationToken">Cancels the read and the save.</param>
+        /// <returns>What the import committed.</returns>
+        /// <exception cref="BadRequestException">The request is malformed, or names a row key or collection the entity or file lacks.</exception>
+        /// <exception cref="NotFoundException">The file is not the caller's own staged upload of an import file.</exception>
+        /// <exception cref="ForbiddenException">The caller may not save a row the import writes.</exception>
+        /// <exception cref="ImportException">
+        ///     The workbook is refused, is above the synchronous limits (the background route runs
+        ///     the same request), or a row fails its mapping, resolution, validation or save.
+        /// </exception>
+        [ApiAction("import", Action = AccessActions.Save, Long = true)]
+        [RatePolicy(TellmaRatePolicies.Import)]
+        public Task<ImportOutcome> ImportAsync(ImportRequest request, CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(request);
+            return _imports().ImportAsync<TEntity>(_service, _target.Entity, _limits, request, cancellationToken);
+        }
+
         /// <summary>Creates the operations of the scope's stack over <typeparamref name="TEntity" />.</summary>
         /// <param name="services">The scope's services.</param>
         /// <returns>The operations.</returns>
@@ -131,7 +157,7 @@ namespace Tellma.Core.Excel
             var service = (IStackExcelRows)services.GetRequiredService(stack.ServiceType);
             EntityMetadata entity = services.GetRequiredService<IEntityMetadataProvider>().Get(typeof(TEntity));
 
-            // The import runner needs the host's blob store, so it is resolved only when an inspection runs.
+            // The import runner needs the host's blob store, so it is resolved only when an inspection or an import runs.
             return new ExcelOperations<TEntity>(services.GetRequiredService<ExcelExports>(), services.GetRequiredService<ExcelImports>, service, entity, stack.Limits);
         }
     }

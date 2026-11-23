@@ -925,9 +925,10 @@ the conventional keys walk too), the first declared key wins, then falls back to
 | Value-set value | the value's literal label, else its label key, else the value |
 
 `NamedEnums` names each C# enum once: `<schema>.<TypeName>` after its home schema, so
-`gl.CenterType`. The home schema is the ordinally smallest schema among the entities and action
-arguments declared in the enum's own assembly that carry it, else among every entity, setting key and
-action argument that carries it, so the order features compose in never renames an enum. Its values
+`gl.CenterType`. The home schema is the ordinally smallest schema among the entities, and the action
+arguments of stacks over entities, declared in the enum's own assembly that carry it, else among every
+entity, setting key and action argument that carries it, so neither the order features compose in nor
+a platform action riding another feature's stack (the import's `ImportMode`) ever renames an enum. Its values
 are labelled under every schema that carries it, the home schema's key first. The client metadata,
 the setting descriptors and the labels all use that name.
 
@@ -2918,6 +2919,26 @@ are SpreadsheetML packages written with `DocumentFormat.OpenXml` (MIT), forward-
   columns of a file from another tenant or deployment, and answers the `ImportPlan`: each sheet's and
   column's status, the row keys, the totals and whether the import must run in the background. A
   header past 255 characters is kept cut and maps only by an override.
+- **The import.** `import` (under the stack's `Save`) runs a file of at most
+  `MaxSynchronousImportRows` rows in the request; a larger one is refused whole as
+  `Import.TooLargeForSynchronous`. `ImportParser` reads every mapped sheet once, through
+  `ImportDecoders` and the cell codec, into an `ImportSession`: each row's assigned members, its row
+  key, its parent link and the references it names, with every cell error collected and the whole
+  file refused before anything is read from the database. Duplicate row keys, orphan child rows, the
+  child and descendant caps and parent cycles (Tarjan) are checked there; parents are ordered before
+  the children that name them (Kahn), and the order's hash pins a background import's chunks. One
+  chunk is then resolved in one transaction: one batch of lookups for every natural-key reference
+  and row key (through the row source, under the caller's read filter), one details read of the
+  stored rows the chunk updates, then each row overlaid on a copy of its stored row, child rows
+  matched by id, then natural key, else replaced (a replacing sheet must carry every column and
+  collection, `Import.IncompleteChildSheet`), and a write-once member's change refused. The save
+  runs the stack's own pipeline with `SaveSource.Import`, answering nothing. Its refusals come back
+  at the file's cells through the chunk's coordinate map: a validation error at its cell, a warning
+  as an error with `confirmable = true`, a concurrency conflict at the row's `Stamp` cell when the
+  file gave one. A conflict on a row the file did not stamp is read again and retried, up to
+  `ImportConcurrencyRetries` times. The answer is the inserted and updated counts at every depth,
+  the rows' range and the warnings; the import counts its rows, lookups, durations, refusals and
+  retries, and logs each completion and refusal.
 - **The records.** `core.Exports` and `core.Imports` record each workbook operation, each row its
   creator's alone (`ExportAccessCriteria`, `ImportAccessCriteria`), with its file a blob of the
   `export-file` or `import-file` kind and its job a `core.Jobs` row. Both stacks serve query, details
@@ -2951,7 +2972,7 @@ are SpreadsheetML packages written with `DocumentFormat.OpenXml` (MIT), forward-
 | `Tenancy/Catalog/` | The row classes the catalog model maps for its migrations. |
 | `Blobs/` | `FileSystemBlobStore`, its options, default root and validator, `AddFileSystemBlobStore`, the store instruments and log events; internally the content-type sniffer and the file-name sanitiser. |
 | `Calendars/` | `GregorianCalendarSystem`, `UmAlQuraCalendarSystem`, `EthiopianCalendarSystem`, `CalendarRegistry`; internally the Ethiopian and the extended Umm al-Qura framework calendars, the shared renderer and reader, the culture data and the date-pattern reader. |
-| `Excel/` | `ExcelContext`, `ExcelColumnSpec`, `ExcelColumnRole`, `ExcelKeyKind`, `ExcelDateEncoding`, `ExcelSheetPlan`, `ExcelWorkbookPlan`, `ExcelTableSpec`, `ExcelTableRow`, `ExcelRowStyle`, `IExcelExporter`, `ImportCheckpointState`, `ExcelOperations<TEntity>`, `ChildExportOperations<TChild>`; internally the cell codec and its decoding records, the cell reader, the column encodings, the number formats, the stylesheet, the package, worksheet and workbook writers, the manifest's header block and same-source gate, the serial dates, the sheet and file names, the column letters, the XML escapes and the scratch files; the exporter, the planner, the display columns and their folding row source, the request's sources, the context builder, the export runner, the companions' attachment and factories, the instruments, the log events, the checks and the composition step. |
+| `Excel/` | `ExcelContext`, `ExcelColumnSpec`, `ExcelColumnRole`, `ExcelKeyKind`, `ExcelDateEncoding`, `ExcelSheetPlan`, `ExcelWorkbookPlan`, `ExcelTableSpec`, `ExcelTableRow`, `ExcelRowStyle`, `IExcelExporter`, `ImportCheckpointState`, `ExcelOperations<TEntity>`, `ChildExportOperations<TChild>`; internally the cell codec and its decoding records, the cell reader, the column encodings, the number formats, the stylesheet, the package, worksheet and workbook writers, the manifest's header block and same-source gate, the serial dates, the sheet and file names, the column letters, the XML escapes and the scratch files; the exporter, the planner, the display columns and their folding row source, the request's sources, the context builder, the export runner, the companions' attachment and factories, the instruments, the log events, the checks and the composition step; the import's reader, manifest, header index and mapper, its parser, decoders, keys and session with the chunk's resolution, and the synchronous import. |
 | `Caching/` | The versioned cache base, its keys and kinds; internally, the cacheable entities' store and façade, the version-tag registry, its table's row, the prelude and bump contributors, the bump plan, the snapshots, the mismatch policies, the migrator's seeder, the instruments and the log events. |
 | `Jobs/` | Internally: the job tables' configurations and seeds, the handler, built-in-schedule and retired-key realizers with their cross-feature checks, `JobHandlerRegistry`, the `jobs.handlers` and `jobs.schedules` checks, the queue and its enqueue statement, the poller wake, the lease statements, the runner with its leases, renewal, progress, outcome rules, backoff, pending-confirmation record, notices and completion-failure translation, the job and system scopes, the `process` and `settle` activities and the log scope, the composition step that binds the jobs' options, and the log events; `JobService` with its action and retention statements, the self-scope criteria, the label renderer, the `jobHandlers` contributor, and the retention and tree-verify handlers. |
 | `Access/` | Internally: the access tables' configurations and seeds, the user stamp and preference rows, the securable registry with its name grammar and feature contributor, the securables section of the client metadata, the permission set build: the classifier, the builder, the interner and the access instruments and logs; and the user connection: the connect prologue, the connect, permissions and profile caches, the connector, the guarded runner and the connect initializer; and the permission filter rules the role save and the Queryex discovery share. |

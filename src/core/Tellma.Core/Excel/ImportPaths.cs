@@ -268,14 +268,17 @@ namespace Tellma.Core.Excel
                 return default;
             }
 
-            // --- The target's surrogate, or a scalar of the target that fits a cell ---
+            // --- The target's surrogate, or a scalar of the target that fits a cell and a key-set lookup ---
+            // Spec 0019 §5.4: a lookup restricts by a key set, so a key whose type cannot be one is no reference key.
             EntityMetadata target = reference.Target;
             if (keyName == Id || keyName == target.Key.Name)
             {
                 return Of(ImportPathKind.Reference, $"{navigation}.{Id}", reference.ForeignKey, reference, target.Key);
             }
 
-            if (target.Properties.FirstOrDefault(candidate => candidate.Name == keyName) is not PropertyMetadata key || !ExportPlanner.IsKeyable(target, key))
+            if (target.Properties.FirstOrDefault(candidate => candidate.Name == keyName) is not PropertyMetadata key
+                || !ExportPlanner.IsKeyable(target, key)
+                || !ImportKeys.IsRestrictable(key.ClrType))
             {
                 return default;
             }

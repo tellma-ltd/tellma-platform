@@ -218,6 +218,21 @@
   <data name="SheetMappings" xml:space="preserve">
     <value>مطابقة الأوراق</value>
   </data>
+  <data name="Action_Import" xml:space="preserve">
+    <value>استيراد</value>
+  </data>
+  <data name="Mode" xml:space="preserve">
+    <value>الوضع</value>
+  </data>
+  <data name="RowKey" xml:space="preserve">
+    <value>مفتاح الصف</value>
+  </data>
+  <data name="IgnoreUnmappedColumns" xml:space="preserve">
+    <value>تجاهل الأعمدة غير المطابقة</value>
+  </data>
+  <data name="IgnoreSheetStamps" xml:space="preserve">
+    <value>تجاهل أوقات التعديل في الملف</value>
+  </data>
   <!-- Entities: the create label and the display name of a record without one -->
   <data name="Entity_New" xml:space="preserve">
     <value>جديد</value>
@@ -1129,6 +1144,57 @@
   </data>
   <data name="Excel_Import_IdentityColumnIgnored" xml:space="preserve">
     <value>{reason, select, InsertMode {تُضاف سجلات جديدة، لذا لا يُستخدم العمود {path} للعثور على السجلات الموجودة.} NoManifest {لم يُصدَّر هذا الملف للاستيراد، لذا لا يُستخدم العمود {path} للعثور على السجلات الموجودة.} other {صُدِّر هذا الملف من منشأة أخرى، لذا لا يُستخدم العمود {path} للعثور على السجلات الموجودة.}}</value>
+  </data>
+  <data name="Excel_Import_TooLargeForSynchronous" xml:space="preserve">
+    <value>هذا الملف أكبر من أن يُستورد أثناء انتظارك: {rows, number} صفًا و{bytes, number} بايت، والحد الأقصى {maxRows, number} صفًا و{maxBytes, number} بايت. استورده في الخلفية بدلًا من ذلك (import/start).</value>
+  </data>
+  <data name="Excel_Import_OwnerSheetAbsent" xml:space="preserve">
+    <value>تتبع صفوف هذه الورقة صفوفَ ورقة أخرى مفقودة من المصنف أو ليس فيها عمود المعرّف.</value>
+  </data>
+  <data name="Excel_Import_WriteOnceChanged" xml:space="preserve">
+    <value>لا يمكن تغيير هذه القيمة بعد حفظ السجل ({path}). أبقِ القيمة المحفوظة.</value>
+  </data>
+  <data name="Excel_Import_RowNotFound" xml:space="preserve">
+    <value>لا يوجد سجل قائم قيمة {key} فيه «{value}».</value>
+  </data>
+  <data name="Excel_Import_DuplicateRowKey" xml:space="preserve">
+    <value>صف آخر في هذه الورقة يشير إلى السجل نفسه («{value}»). أبقِ أحدهما.</value>
+  </data>
+  <data name="Excel_Import_IdKeyRequiresSameTenant" xml:space="preserve">
+    <value>صُدِّر هذا الملف من منشأة أخرى، لذا لا يمكن لعمود المعرّف فيه العثور على السجلات هنا. اختر مفتاح صف آخر.</value>
+  </data>
+  <data name="Excel_Import_SurrogateReferenceFromOtherTenant" xml:space="preserve">
+    <value>صُدِّر هذا الملف من منشأة أخرى، لذا لا تشير المعرّفات في هذا العمود إلى سجلات هنا. طابق العمود مع مفتاح آخر للسجلات التي يشير إليها.</value>
+  </data>
+  <data name="Excel_Import_ReferenceNotFound" xml:space="preserve">
+    <value>{collation, select, true {لا يطابق أي سجل «{value}» تمامًا في {key}، مع أن سجلًا يطابقه عند تجاهل حالة الأحرف أو التشكيل. اكتب القيمة كما هي محفوظة.} other {لا يوجد سجل يمكنك استخدامه قيمة {key} فيه «{value}».}}</value>
+  </data>
+  <data name="Excel_Import_ReferenceAmbiguous" xml:space="preserve">
+    <value>{count, number} سجلات قيمة {key} فيها «{value}»، لذا لا يمكن تحديد السجل المقصود. استخدم مفتاحًا يشير إلى سجل واحد.</value>
+  </data>
+  <data name="Excel_Import_KeyTooLong" xml:space="preserve">
+    <value>هذا المفتاح أطول من {max, number} حرفًا، لذا لا يمكن العثور على أي سجل به.</value>
+  </data>
+  <data name="Excel_Import_OrphanChildRow" xml:space="preserve">
+    <value>يتبع هذا الصف «{value}»، ولا يحمله أي صف في الورقة المالكة.</value>
+  </data>
+  <data name="Excel_Import_IncompleteChildSheet" xml:space="preserve">
+    <value>تُغفل هذه الورقة أعمدة أو أوراقًا موجودة في الصفوف القائمة، لذا سيؤدي استيرادها إلى مسحها. صدِّر السجلات للاستيراد مرة أخرى، أو أضف ما ينقص.</value>
+  </data>
+  <data name="Excel_Import_ParentCycle" xml:space="preserve">
+    <value>تشير هذه الصفوف بعضها إلى بعض في حلقة عبر {path}، لذا لا يمكن حفظ أي منها أولًا.</value>
+  </data>
+  <data name="Excel_Import_TooManyChildren" xml:space="preserve">
+    <value>لهذا السجل {count, number} صفًا في هذه الورقة. والحد الأقصى {max, number}.</value>
+  </data>
+  <data name="Excel_Import_TooManyDescendants" xml:space="preserve">
+    <value>يبلغ هذا السجل والصفوف التابعة له {rows, number} صفًا. والحد الأقصى للسجل الواحد {max, number}.</value>
+  </data>
+  <data name="Excel_Import_InvalidCell" xml:space="preserve">
+    <value>{expected, select, Bool {«{value}» ليست نعم أو لا.} Integer {«{value}» ليس عددًا صحيحًا.} Numeric {«{value}» ليس رقمًا.} Choice {«{value}» ليس أحد الخيارات.} Date {«{value}» ليس تاريخًا.} DateTime {«{value}» ليس تاريخًا ووقتًا.} DateTimeOffset {«{value}» ليس تاريخًا ووقتًا.} Time {«{value}» ليس وقتًا.} Guid {«{value}» ليس معرّفًا.} other {لا يمكن قراءة «{value}» هنا.}}</value>
+  </data>
+  <data name="Excel_Import_ConcurrencyConflict" xml:space="preserve">
+    <value>غيّر أحدهم هذا السجل ({modifiedBy}، {modifiedAt}) بعد تصدير الملف. صدِّره مرة أخرى وأعد تعديلاتك.</value>
   </data>
   <!-- Queryex diagnostics, with the arguments the engine gives each -->
   <data name="Queryex_QX1001" xml:space="preserve">
