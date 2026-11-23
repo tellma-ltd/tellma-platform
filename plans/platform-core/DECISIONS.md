@@ -384,6 +384,22 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-251 (orchestrator, 2026-11-23): PC-F76 measures the 50 KB cap on the whole primary entry
+
+- PC-F76's implementation measured the primary as Acme's first-frame cut through source maps: 37.80 KB, against size:check's whole-entry "." of 44.97. Review 1 (R1-1, major) showed this is the wrong reading of "own weight":
+  - spec 0024 section 12 sums the shares;
+  - 0025 section 1 and 0028 section 1 allocate those shares per entry-point member;
+  - 0002 section 8 defines self-weight on the entry point.
+- With the first-frame reading, D-247's projection passes at about 42.5 KB. The line would then fail later, in whichever checkpoint first consumed a dormant module, even though that checkpoint added no bytes.
+- Ruling, adopted from R1-1:
+  - The cap is enforced on the whole primary entry. size:check gains a 50 KB gzip-level-9 line on "." that is raised only with a note.
+  - The tellma-client build line stays, and is restated as the first-frame figure. It remains a check a distribution can run on its own app build, and it is a lower bound, not the cap.
+  - Deviation 3 is restated to match.
+- R1-2 (silent zero), R1-3 (partial under-count) and R1-4 (bare "." and ".." imports) are fixed in fix 1.
+- Because fix 1 redesigns the measure, it gets one targeted verification (section 4.4) before it is held.
+- D-247 and D-248 stand, since they already used the whole-entry figure. PC-111 integrated at 46.74 (linked, level 6).
+- For Ahmad: confirm that "own weight" in 0024 section 12 means the whole entry point, not what one app ships of it. If the spec means the first frame, the cap gains about 7 KB of room today.
+
 ### D-250 (orchestrator, 2026-11-23): PC-F75's second CI run is red on a Core jobs flake; PC-F79 is opened as blocking
 
 - PC-F75's re-integration (pc run 45184031545 on 3f4e1c0d) was green in every job but integration. There, one test failed: JobRunLockingTests.A_flush_after_the_final_renewal_extends_the_lease_only_to_the_end_that_renewal_set read a remaining lease of 5001 ms against InRange(1, 5000). PC-F75 touches only the Excel import, so this is a flake in code that already landed.
