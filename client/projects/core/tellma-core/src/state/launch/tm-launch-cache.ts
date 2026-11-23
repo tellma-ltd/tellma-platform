@@ -290,7 +290,9 @@ export class TmLaunchCache {
     // Spec 0025 §3.3.
     const { sub, tenantId } = partition;
     const key = `${sub}/${tenantId}:${name}`;
-    if (this.#loading.has(key) || this.#skips.get(key)?.()) {
+    // An app that ended before the load started loads nothing: its injector resolves nothing.
+    const ended = (): boolean => this.#life.signal.aborted;
+    if (ended() || this.#loading.has(key) || this.#skips.get(key)?.()) {
       return;
     }
     this.#loading.add(key);
@@ -302,6 +304,9 @@ export class TmLaunchCache {
       // reports every list's, unless one in flight reports it ---
       if (tagOf() === undefined) {
         await this.#refresher.refresh(tenantId, [LIST + name], 'list');
+      }
+      if (ended()) {
+        return;
       }
       const tag = tagOf();
       const segment = this.#injector
@@ -321,6 +326,9 @@ export class TmLaunchCache {
         {},
         { signal: this.#refresher.ɵsignal(tenantId), background: true, tenantId },
       );
+      if (ended()) {
+        return;
+      }
       // --- Step 3: stored under the tag read before the rows; a list that
       // changed meanwhile is reported stale by the next sync ---
       await this.#store.put(partition, LIST + name, { tag, savedAt: this.#now(), data: result.entities });

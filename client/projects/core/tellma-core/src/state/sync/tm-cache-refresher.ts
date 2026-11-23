@@ -175,6 +175,8 @@ export class TmCacheRefresher {
   readonly #host = inject(TM_API_HOST);
   readonly #now = inject(TM_NOW);
   readonly #telemetry = inject(TmTelemetry);
+  /** The app's lifetime: once it ends, its injector resolves nothing, so no timer is armed again. */
+  readonly #app = inject(DestroyRef);
   readonly #errors = inject(TM_SYNC_ERRORS);
 
   /** Each tenant's run that has not sent its call yet, which a new call joins. */
@@ -259,11 +261,13 @@ export class TmCacheRefresher {
       });
     });
 
-    inject(DestroyRef).onDestroy(() => {
+    // --- The app's end: the timers stop, and the tenants' syncs and background reads are cancelled ---
+    this.#app.onDestroy(() => {
       subscription.unsubscribe();
       stops.forEach((stop) => stop());
       clearTimeout(this.#timer);
       this.#timers.forEach((timer) => clearTimeout(timer));
+      this.#aborts.forEach((controller) => controller.abort());
     });
   }
 
@@ -533,6 +537,9 @@ export class TmCacheRefresher {
 
   /** Runs work after a random delay of up to `spread` milliseconds. */
   #later(spread: number, work: () => void): void {
+    if (this.#app.destroyed) {
+      return;
+    }
     const timer = setTimeout(() => {
       this.#timers.delete(timer);
       work();
@@ -708,7 +715,8 @@ export class TmCacheRefresher {
   #arm(): void {
     clearTimeout(this.#timer);
     const boundary = this.#boundary;
-    if (boundary !== null && boundary.due < Infinity && this.#host.visible()) {
+    // A sync that lands after the app's end arms nothing.
+    if (!this.#app.destroyed && boundary !== null && boundary.due < Infinity && this.#host.visible()) {
       this.#timer = setTimeout(
         () => (this.#now() < boundary.due ? this.#arm() : this.#fire(boundary)),
         Math.min(boundary.due - this.#now(), MAX_TIMER_MS),

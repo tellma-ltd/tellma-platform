@@ -22,6 +22,7 @@ import { TM_APP_DECLARATIONS, type TmAppDeclarations } from '../../app/tm-app-de
 import { TM_NOW } from '../../app/tm-now';
 import type { TmBusMessage } from '../bus/tm-bus-messages';
 import type { TmMeResult, TmPreferencesResult, TmTenantFacts, TmTenantSettingsForClient } from '../launch/tm-launch-docs';
+import { tmUnhandled } from '../../routes/tm-app.testing.util';
 import { TmClientStore, type TmStoredDoc } from '../store/tm-client-store';
 import type { TmTenantPartition } from '../store/tm-store-layout';
 import { tmPreferenceKey } from './tm-preference-key';
@@ -705,6 +706,38 @@ describe('TmPreferences', () => {
       await rig.state('Active');
       expect(rig.writes().map((call) => call.route)).toEqual(['users/me/preferences/set']);
       expect(rig.bag['nav.pinnedBarVisible']).toBe('false');
+    });
+  });
+
+  describe("the app's end", () => {
+    it('sends nothing when the app ends with a flush queued for the end of its task', async () => {
+      const rig = await setUp();
+      const unhandled = await tmUnhandled(async () => {
+        rig.prefs.set(BAR, false);
+        TestBed.resetTestingModule();
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(unhandled).toEqual([]);
+      expect(rig.writes()).toEqual([]);
+    });
+
+    it('arms nothing when a write lands after the app has ended', async () => {
+      const rig = await setUp();
+      // The server answers once the app has ended.
+      let land!: () => void;
+      const landed = new Promise<void>((resolve) => (land = resolve));
+      rig.api.respond('users/me/preferences/set', () => landed.then(() => ({ preferences: { 'nav.pinnedBarVisible': 'false' }, preferencesTag: 'P2' })));
+      rig.prefs.set(BAR, false);
+      await flush();
+      expect(rig.writes()).toHaveLength(1);
+
+      const unhandled = await tmUnhandled(async () => {
+        TestBed.resetTestingModule();
+        land();
+        await vi.advanceTimersByTimeAsync(60_000);
+      });
+      expect(unhandled).toEqual([]);
+      expect(rig.writes()).toHaveLength(1);
     });
   });
 

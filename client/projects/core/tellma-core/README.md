@@ -144,6 +144,14 @@ channels open once the Core chunk names the slug (earlier posts wait for them), 
 page sits in the back-forward cache, and reopen when it comes back, when the store re-reads every
 mirrored document.
 
+**The app's end.** The root services resolve some collaborators through the injector when they use
+them, and a destroyed injector throws on every lookup. So none of their deferred work outlives the
+app. The display names' frame flush is cancelled. The cache refresher's timers stop, and its
+tenants' syncs and background reads are cancelled. The preferences flush and arm nothing more. The
+launch cache's list loads and the Entities chunk's model never run after the end. A service that
+defers work, to a frame, an idle moment, a timer, a microtask or the end of a read, checks for the
+app's end through `DestroyRef` before it resolves anything.
+
 ### Sync and the launch documents
 
 `TmCacheRefresher` (`src/state/sync/`) is the one path to `client/sync`, which answers a tenant's

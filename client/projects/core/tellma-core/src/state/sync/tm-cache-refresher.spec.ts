@@ -21,6 +21,7 @@ import { TmApiError } from '../../api/tm-api-error';
 import { TM_API_HOST } from '../../api/tm-api-host';
 import { TmFakeApiHost } from '../../api/tm-api.testing.util';
 import { TM_NOW } from '../../app/tm-now';
+import { tmUnhandled } from '../../routes/tm-app.testing.util';
 import { TmTabBus } from '../bus/tm-tab-bus';
 import { TmRecordingTabBus } from '../bus/tm-tab-bus.testing.util';
 import type {
@@ -716,6 +717,31 @@ describe('TmCacheRefresher', () => {
       await vi.advanceTimersByTimeAsync(159_000);
       await flush();
       expect(times).toEqual([0, 30, 90, 130, 160]);
+    });
+
+    it("arms nothing when the boundary's sync lands after the app has ended", async () => {
+      vi.spyOn(Math, 'random').mockReturnValue(0);
+      const stuck = me({ validUntil: new Date(NOW - 3_600_000).toISOString() });
+      // The server answers the boundary's sync once the app has ended.
+      const landed = gate<void>();
+      const rig = await setUp({ me: stuck, respond: () => landed.promise.then(() => answer({ me: stuck })) });
+      // The sync goes out once the store's re-read under the lock lands.
+      await vi.waitFor(async () => {
+        await flush();
+        expect(rig.syncs()).toHaveLength(1);
+      });
+      const error = vi.spyOn(rig.telemetry, 'error');
+
+      const unhandled = await tmUnhandled(async () => {
+        TestBed.resetTestingModule();
+        landed.resolve();
+        await vi.advanceTimersByTimeAsync(600_000);
+      });
+      expect(unhandled).toEqual([]);
+      // The app's end cancelled the sync, so nothing is stored or reported, and nothing syncs again.
+      expect(error).not.toHaveBeenCalled();
+      expect(items(rig, 'tm.sync.failed')).toEqual([]);
+      expect(rig.syncs()).toHaveLength(1);
     });
   });
 

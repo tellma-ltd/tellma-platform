@@ -3,7 +3,7 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-import { computed, DOCUMENT, inject, Injectable, Injector, signal, untracked, type Signal, type WritableSignal } from '@angular/core';
+import { computed, DestroyRef, DOCUMENT, inject, Injectable, Injector, signal, untracked, type Signal, type WritableSignal } from '@angular/core';
 import { tmFormatDate, tmFormatNumber, tmStripBidiControls, type TmCalendar } from '@tellma/core-ui/l10n';
 
 import { TmApi } from '../api/tm-api';
@@ -301,6 +301,8 @@ export class TmDisplayNames {
   readonly #l10n = inject(TmLocalization);
   readonly #telemetry = inject(TmTelemetry);
   readonly #document = inject(DOCUMENT);
+  /** The app's lifetime: a flush or a read that outlives it resolves nothing. */
+  readonly #app = inject(DestroyRef);
 
   /** Each entity's plan, by name, shape and whether the Entities chunk had loaded. */
   readonly #plans = new Map<string, ɵTmDisplayNamePlan>();
@@ -480,7 +482,7 @@ export class TmDisplayNames {
    */
   resolve(entity: string, ids: readonly TmId[]): void {
     const summary = this.#entities.summary(entity);
-    if (summary === undefined || summary.segment === null || !summary.operations.includes('query')) {
+    if (this.#app.destroyed || summary === undefined || summary.segment === null || !summary.operations.includes('query')) {
       return;
     }
     const bucket = untracked(() => this.#bucket(summary.name));
@@ -661,6 +663,11 @@ export class TmDisplayNames {
     this.#scheduled = false;
     const queue = this.#queue;
     this.#queue = new Map();
+    // A frame that comes after the app's end reads nothing: the app's
+    // injector, which resolves the refresher and the API, then throws.
+    if (this.#app.destroyed) {
+      return;
+    }
     const partition = untracked(this.#refresher.ɵpartition);
     if (partition === null) {
       return;
@@ -683,12 +690,19 @@ export class TmDisplayNames {
     const generation = this.#generation;
     try {
       await this.#entities.load();
+      // An app that ended while the chunk loaded reads nothing.
+      if (this.#app.destroyed) {
+        return;
+      }
       const descriptor = untracked(() => this.#entities.get(entity));
       const plan = untracked(() => this.#plan(entity));
       if (plan === null || !untracked(this.#permissions.allows(entity, 'query'))) {
         return;
       }
       const { ɵtmReadDisplayNames } = await import('./tm-entity-model');
+      if (this.#app.destroyed) {
+        return;
+      }
       await ɵtmReadDisplayNames(
         {
           api: this.#injector.get(TmApi),

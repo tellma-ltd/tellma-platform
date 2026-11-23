@@ -120,6 +120,15 @@ describe('TmEntities', () => {
       expect(entities.get('acme.Customer').property('Code')?.type).toBe('string');
     });
 
+    it('keep no model when the app ends while the chunk loads', async () => {
+      const { entities } = await tmEntityRig({ load: false });
+      const loading = entities.load();
+      TestBed.resetTestingModule();
+
+      await expect(loading).resolves.toBeUndefined();
+      expect(entities.loaded()).toBe(false);
+    });
+
     it('time the load once', async () => {
       const { entities, telemetry } = await tmEntityRig();
       await entities.load();
