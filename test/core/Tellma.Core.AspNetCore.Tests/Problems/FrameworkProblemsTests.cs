@@ -19,12 +19,13 @@ namespace Tellma.Core.AspNetCore.Tests.Problems
     ///     route it does not have, a status a component set without a body) and a credential the
     ///     surface does not take answer the same problem body as a handler's exception.
     /// </summary>
-    public sealed class FrameworkProblemsTests
+    /// <param name="fixture">The host the cases share.</param>
+    public sealed class FrameworkProblemsTests(FrameworkProblemsTests.Host fixture) : IClassFixture<FrameworkProblemsTests.Host>
     {
         [Fact]
         public async Task A_body_that_is_not_JSON_is_a_bad_request_for_malformed_JSON()
         {
-            await using TellmaTestHost host = await StartAsync();
+            TellmaTestHost host = fixture.Started;
 
             using HttpRequestMessage request = TellmaTestHost.SpaRequest(HttpMethod.Post, "/1/api/web/echo", host.Cookie(), "{\"name\": ");
             using HttpResponseMessage response = await host.Client.SendAsync(request, TestContext.Current.CancellationToken);
@@ -43,7 +44,7 @@ namespace Tellma.Core.AspNetCore.Tests.Problems
         [Fact]
         public async Task A_body_of_another_media_type_is_unsupported_media()
         {
-            await using TellmaTestHost host = await StartAsync();
+            TellmaTestHost host = fixture.Started;
 
             using HttpRequestMessage request = TellmaTestHost.SpaRequest(HttpMethod.Post, "/1/api/web/echo", host.Cookie());
             request.Content = new StringContent("name=x", Encoding.UTF8, "text/plain");
@@ -79,7 +80,7 @@ namespace Tellma.Core.AspNetCore.Tests.Problems
         [InlineData(504, "timeout")]
         public async Task A_bare_status_a_component_set_answers_its_problem(int status, string code)
         {
-            await using TellmaTestHost host = await StartAsync();
+            TellmaTestHost host = fixture.Started;
 
             using HttpRequestMessage request = TellmaTestHost.SpaRequest(HttpMethod.Get, "/1/api/web/status/" + status, host.Cookie());
             using HttpResponseMessage response = await host.Client.SendAsync(request, TestContext.Current.CancellationToken);
@@ -99,7 +100,7 @@ namespace Tellma.Core.AspNetCore.Tests.Problems
         [Fact]
         public async Task A_bare_forbidden_renders_the_general_refusal()
         {
-            await using TellmaTestHost host = await StartAsync();
+            TellmaTestHost host = fixture.Started;
 
             using HttpRequestMessage request = TellmaTestHost.SpaRequest(HttpMethod.Get, "/1/api/web/status/403", host.Cookie());
             using HttpResponseMessage response = await host.Client.SendAsync(request, TestContext.Current.CancellationToken);
@@ -113,7 +114,7 @@ namespace Tellma.Core.AspNetCore.Tests.Problems
         [Fact]
         public async Task A_route_the_tenant_surface_does_not_have_is_route_not_found()
         {
-            await using TellmaTestHost host = await StartAsync();
+            TellmaTestHost host = fixture.Started;
 
             using HttpRequestMessage request = TellmaTestHost.SpaRequest(HttpMethod.Get, "/1/api/web/no-such-route", host.Cookie());
             using HttpResponseMessage response = await host.Client.SendAsync(request, TestContext.Current.CancellationToken);
@@ -125,7 +126,7 @@ namespace Tellma.Core.AspNetCore.Tests.Problems
         [Fact]
         public async Task A_verb_the_route_does_not_take_is_method_not_allowed_naming_the_verbs_it_takes()
         {
-            await using TellmaTestHost host = await StartAsync();
+            TellmaTestHost host = fixture.Started;
 
             using HttpRequestMessage request = TellmaTestHost.SpaRequest(HttpMethod.Delete, "/1/api/web/probe", host.Cookie());
             using HttpResponseMessage response = await host.Client.SendAsync(request, TestContext.Current.CancellationToken);
@@ -138,7 +139,7 @@ namespace Tellma.Core.AspNetCore.Tests.Problems
         [Fact]
         public async Task A_wrong_verb_answers_the_same_for_a_tenant_that_does_not_exist()
         {
-            await using TellmaTestHost host = await StartAsync();
+            TellmaTestHost host = fixture.Started;
 
             // The answer reads the path alone: it never tells whether the tenant exists.
             using HttpRequestMessage existing = TellmaTestHost.SpaRequest(HttpMethod.Delete, "/1/api/web/probe", cookie: null);
@@ -153,7 +154,7 @@ namespace Tellma.Core.AspNetCore.Tests.Problems
         [Fact]
         public async Task A_path_no_route_serves_under_any_verb_stays_a_route_miss()
         {
-            await using TellmaTestHost host = await StartAsync();
+            TellmaTestHost host = fixture.Started;
 
             // The status route's constraint refuses a word, so its verb does not make this a 405.
             using HttpRequestMessage request = TellmaTestHost.SpaRequest(HttpMethod.Post, "/1/api/web/status/word", host.Cookie());
@@ -166,7 +167,7 @@ namespace Tellma.Core.AspNetCore.Tests.Problems
         [Fact]
         public async Task A_token_on_the_web_surface_is_an_unsupported_credential_with_or_without_a_session()
         {
-            await using TellmaTestHost host = await StartAsync();
+            TellmaTestHost host = fixture.Started;
             string token = TellmaTestHost.UserToken();
 
             // --- A token alone ---
@@ -186,7 +187,7 @@ namespace Tellma.Core.AspNetCore.Tests.Problems
         [Fact]
         public async Task A_web_request_without_a_session_is_unauthenticated()
         {
-            await using TellmaTestHost host = await StartAsync();
+            TellmaTestHost host = fixture.Started;
 
             using HttpRequestMessage request = TellmaTestHost.SpaRequest(HttpMethod.Get, "/1/api/web/probe", cookie: null);
             using HttpResponseMessage response = await host.Client.SendAsync(request, TestContext.Current.CancellationToken);
@@ -213,5 +214,30 @@ namespace Tellma.Core.AspNetCore.Tests.Problems
         /// <summary>The JSON body the echo endpoint reads.</summary>
         /// <param name="Name">A value.</param>
         internal sealed record EchoBody(string Name);
+
+        /// <summary>One host for the suite: its endpoints keep no state, so each case's answer is its own.</summary>
+        public sealed class Host : IAsyncLifetime
+        {
+            /// <summary>The host, once started.</summary>
+            private TellmaTestHost? _host;
+
+            /// <summary>The started host.</summary>
+            internal TellmaTestHost Started => _host ?? throw new InvalidOperationException("The host has not started.");
+
+            /// <inheritdoc />
+            public async ValueTask InitializeAsync()
+            {
+                _host = await StartAsync();
+            }
+
+            /// <inheritdoc />
+            public async ValueTask DisposeAsync()
+            {
+                if (_host is not null)
+                {
+                    await _host.DisposeAsync();
+                }
+            }
+        }
     }
 }
