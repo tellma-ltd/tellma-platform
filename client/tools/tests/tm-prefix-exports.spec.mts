@@ -3,13 +3,15 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-import { ESLint, RuleTester } from 'eslint';
+import { ESLint } from 'eslint';
 import tseslint from 'typescript-eslint';
 import { describe, expect, it } from 'vitest';
 
+import { createRuleTester } from '../../projects/core/tellma-core-tools/fixtures/rule-tester.js';
 import rule from '../eslint/tm-prefix-exports.mjs';
 
-const tester = new RuleTester({
+// Each case below runs as a test of its own (see createRuleTester).
+const tester = createRuleTester({
   languageOptions: {
     parser: tseslint.parser as never,
     ecmaVersion: 2022,
@@ -18,7 +20,7 @@ const tester = new RuleTester({
 });
 
 describe('tm/prefix-exports', () => {
-  it('accepts prefixed and allowlisted exports, rejects the rest', () => {
+  describe('accepts prefixed and allowlisted exports, rejects the rest', () => {
     tester.run('tm/prefix-exports', rule as never, {
       valid: [
         { code: 'export class TmSelect {}' },
