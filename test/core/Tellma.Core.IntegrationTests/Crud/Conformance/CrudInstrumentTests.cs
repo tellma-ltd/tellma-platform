@@ -30,8 +30,8 @@ namespace Tellma.Core.IntegrationTests.Crud.Conformance
     [Trait("Category", "Integration")]
     public sealed class CrudInstrumentTests(InstrumentDatabase fixture) : IClassFixture<InstrumentDatabase>
     {
-        /// <summary>The exports' resource.</summary>
-        private const string Exports = "fixture.Export";
+        /// <summary>The parcels' resource.</summary>
+        private const string Parcels = "fixture.Parcel";
 
         /// <summary>The nodes' resource.</summary>
         private const string Nodes = "fixture.Node";
@@ -53,28 +53,28 @@ namespace Tellma.Core.IntegrationTests.Crud.Conformance
             using CrudInstrumentCollector collector = new(fixture.Services.GetRequiredService<IMeterFactory>());
 
             // --- Saves: a create from each of two sources, its rounds and its entities ---
-            int created = await CreateExportAsync(subject, "instrumented");
-            _ = await InScopeAsync(subject, scope => Service<Export>(scope).SaveAsync([new Export { Name = "imported" }], new SaveOptions { Source = SaveSource.Import }, Token));
+            int created = await CreateParcelAsync(subject, "instrumented");
+            _ = await InScopeAsync(subject, scope => Service<Parcel>(scope).SaveAsync([new Parcel { Name = "imported" }], new SaveOptions { Source = SaveSource.Import }, Token));
 
             // --- Reads: a filter of a shape not seen before is discovered; a missing row is not found ---
-            _ = await InScopeAsync(subject, scope => Service<Export>(scope).QueryAsync(new QueryRequest { Select = "Id,Name", Filters = ["Name = 'instrumented'"] }, Token));
-            _ = await RefusedAsync<NotFoundException>(subject, scope => Service<Export>(scope).GetByIdAsync(2_000_000_000, DetailsRequest.None, Token));
+            _ = await InScopeAsync(subject, scope => Service<Parcel>(scope).QueryAsync(new QueryRequest { Select = "Id,Name", Filters = ["Name = 'instrumented'"] }, Token));
+            _ = await RefusedAsync<NotFoundException>(subject, scope => Service<Parcel>(scope).GetByIdAsync(2_000_000_000, DetailsRequest.None, Token));
 
             // --- A stale stamp, then the same payload under the override ---
-            Export stale = await ExportAsync(subject, created);
-            Export fresh = await ExportAsync(subject, created);
+            Parcel stale = await ParcelAsync(subject, created);
+            Parcel fresh = await ParcelAsync(subject, created);
             fresh.Name = "moved";
-            _ = await InScopeAsync(subject, scope => Service<Export>(scope).SaveAsync([fresh], new SaveOptions(), Token));
+            _ = await InScopeAsync(subject, scope => Service<Parcel>(scope).SaveAsync([fresh], new SaveOptions(), Token));
             stale.Name = "stale";
-            _ = await RefusedAsync<ConcurrencyException>(subject, scope => Service<Export>(scope).SaveAsync([stale], new SaveOptions(), Token));
-            _ = await InScopeAsync(subject, scope => Service<Export>(scope).SaveAsync([stale], new SaveOptions { Concurrency = ConcurrencyMode.Override }, Token));
+            _ = await RefusedAsync<ConcurrencyException>(subject, scope => Service<Parcel>(scope).SaveAsync([stale], new SaveOptions(), Token));
+            _ = await InScopeAsync(subject, scope => Service<Parcel>(scope).SaveAsync([stale], new SaveOptions { Concurrency = ConcurrencyMode.Override }, Token));
 
             // --- A row deleted on another connection before the persist: a missing conflict ---
-            int doomed = await CreateExportAsync(subject, "doomed");
-            Export vanishing = await ExportAsync(subject, doomed);
+            int doomed = await CreateParcelAsync(subject, "doomed");
+            Parcel vanishing = await ParcelAsync(subject, doomed);
             vanishing.Name = "vanished";
-            SaveOptions deleting = new() { OnPersist = Meanwhile(Invariant($"DELETE FROM [fixture].[Exports] WHERE [Id] = {doomed};")) };
-            _ = await RefusedAsync<NotFoundException>(subject, scope => Service<Export>(scope).SaveAsync([vanishing], deleting, Token));
+            SaveOptions deleting = new() { OnPersist = Meanwhile(Invariant($"DELETE FROM [fixture].[Parcels] WHERE [Id] = {doomed};")) };
+            _ = await RefusedAsync<NotFoundException>(subject, scope => Service<Parcel>(scope).SaveAsync([vanishing], deleting, Token));
 
             // --- A move another connection closes into a cycle before the persist: a cycle conflict ---
             Node a = await CreateNodeAsync(subject, "N-instrument-a");
@@ -86,29 +86,29 @@ namespace Tellma.Core.IntegrationTests.Crud.Conformance
 
             // --- Permissions moved between the validation round and the persist: a re-run ---
             SaveOptions bumping = new() { ReturnEntities = false, OnPersist = Meanwhile(() => fixture.Connect.BumpPermissionsAsync(userId)) };
-            _ = await InScopeAsync(subject, scope => Service<Export>(scope).SaveAsync([new Export { Name = "rerun" }], bumping, Token));
+            _ = await InScopeAsync(subject, scope => Service<Parcel>(scope).SaveAsync([new Parcel { Name = "rerun" }], bumping, Token));
 
             // --- A warning the caller did not confirm, then one it did ---
-            fixture.Probe.ValidateExports = static (_, context) =>
+            fixture.Probe.ValidateParcels = static (_, context) =>
             {
-                context.Host.Confirmations.Require(ConformanceDatabase.ExportConfirmation);
+                context.Host.Confirmations.Require(ConformanceDatabase.ParcelConfirmation);
                 return Task.CompletedTask;
             };
-            _ = await RefusedAsync<ConfirmationRequiredException>(subject, scope => Service<Export>(scope).SaveAsync([new Export { Name = "unconfirmed" }], new SaveOptions(), Token));
+            _ = await RefusedAsync<ConfirmationRequiredException>(subject, scope => Service<Parcel>(scope).SaveAsync([new Parcel { Name = "unconfirmed" }], new SaveOptions(), Token));
             _ = await InScopeAsync(subject, scope =>
             {
-                scope.GetRequiredService<Confirmations>().Seed([ConformanceDatabase.ExportConfirmation]);
-                return Service<Export>(scope).SaveAsync([new Export { Name = "confirmed" }], new SaveOptions(), Token);
+                scope.GetRequiredService<Confirmations>().Seed([ConformanceDatabase.ParcelConfirmation]);
+                return Service<Parcel>(scope).SaveAsync([new Parcel { Name = "confirmed" }], new SaveOptions(), Token);
             });
 
-            // --- A shipment enlisted with an export's save ---
-            fixture.Probe.ValidateExports = static async (service, context) => _ = await service.EnlistSaveAsync(context.Host, [new Shipment { Payload = "enlisted" }]);
-            _ = await InScopeAsync(subject, scope => Service<Export>(scope).SaveAsync([new Export { Name = "enlisting" }], new SaveOptions(), Token));
+            // --- A shipment enlisted with a parcel's save ---
+            fixture.Probe.ValidateParcels = static async (service, context) => _ = await service.EnlistSaveAsync(context.Host, [new Shipment { Payload = "enlisted" }]);
+            _ = await InScopeAsync(subject, scope => Service<Parcel>(scope).SaveAsync([new Parcel { Name = "enlisting" }], new SaveOptions(), Token));
 
             // --- A post-commit hook that fails, which never changes the answer ---
             fixture.Probe.Reset();
             fixture.Probe.AfterCommit = static () => throw new InvalidOperationException("The instrumented post-commit hook fails.");
-            _ = await InScopeAsync(subject, scope => Service<Export>(scope).SaveAsync([new Export { Name = "effect" }], new SaveOptions(), Token));
+            _ = await InScopeAsync(subject, scope => Service<Parcel>(scope).SaveAsync([new Parcel { Name = "effect" }], new SaveOptions(), Token));
             fixture.Probe.Reset();
 
             // --- Every instrument observed, each measurement within its shape ---
@@ -124,10 +124,10 @@ namespace Tellma.Core.IntegrationTests.Crud.Conformance
             Assert.Superset(new HashSet<string> { "web small", "import small" }, Values(collector, CrudTelemetryNames.SaveEntities, CrudTelemetryNames.SourceTag, CrudTelemetryNames.LaneTag));
             Assert.Superset(new HashSet<string> { "stamp", "missing", "cycle" }, Values(collector, CrudTelemetryNames.ConcurrencyConflicts, CrudTelemetryNames.KindTag));
             Assert.Superset(new HashSet<string> { "permissions" }, Values(collector, CrudTelemetryNames.StaleContextReruns, CrudTelemetryNames.TagTag));
-            Assert.Superset(new HashSet<string> { nameof(EnlistingExportService) }, Values(collector, CrudTelemetryNames.EffectFailures, CrudTelemetryNames.EffectTag));
+            Assert.Superset(new HashSet<string> { nameof(EnlistingParcelService) }, Values(collector, CrudTelemetryNames.EffectFailures, CrudTelemetryNames.EffectTag));
             Assert.Superset(new HashSet<string> { "save save ok" }, Values(collector, CrudTelemetryNames.Enlistments, CrudTelemetryNames.OperationTag, CrudTelemetryNames.KindTag, CrudTelemetryNames.OutcomeTag));
             Assert.Superset(
-                new HashSet<string> { $"{ConformanceDatabase.ExportConfirmation} required", $"{ConformanceDatabase.ExportConfirmation} confirmed" },
+                new HashSet<string> { $"{ConformanceDatabase.ParcelConfirmation} required", $"{ConformanceDatabase.ParcelConfirmation} confirmed" },
                 Values(collector, CrudTelemetryNames.Confirmations, CrudTelemetryNames.KeyTag, CrudTelemetryNames.OutcomeTag));
 
             // --- The lanes: a save counts its rows at every depth, for its duration and its entities
@@ -223,13 +223,13 @@ namespace Tellma.Core.IntegrationTests.Crud.Conformance
             return _ => Task.Run(write).GetAwaiter().GetResult();
         }
 
-        /// <summary>Seeds the caller, who reads and writes exports, nodes, shipments and widgets.</summary>
+        /// <summary>Seeds the caller, who reads and writes parcels, nodes, shipments and widgets.</summary>
         /// <returns>The caller's id and subject.</returns>
         private async Task<(int UserId, string Subject)> SeedCallerAsync()
         {
             StackConformanceCaller caller = await fixture.SeedCallerAsync(
                 [
-                    new(Exports, AccessActions.Read), new(Exports, AccessActions.Save), new(Exports, AccessActions.Delete),
+                    new(Parcels, AccessActions.Read), new(Parcels, AccessActions.Save), new(Parcels, AccessActions.Delete),
                     new(Nodes, AccessActions.Read), new(Nodes, AccessActions.Save),
                     new(Shipments, AccessActions.Read), new(Shipments, AccessActions.Save),
                     new(Widgets, AccessActions.Read), new(Widgets, AccessActions.Save),
@@ -238,13 +238,13 @@ namespace Tellma.Core.IntegrationTests.Crud.Conformance
             return (caller.UserId, caller.Subject);
         }
 
-        /// <summary>Creates an export.</summary>
+        /// <summary>Creates a parcel.</summary>
         /// <param name="subject">The caller's subject.</param>
-        /// <param name="name">The export's name.</param>
+        /// <param name="name">The parcel's name.</param>
         /// <returns>Its id.</returns>
-        private async Task<int> CreateExportAsync(string subject, string name)
+        private async Task<int> CreateParcelAsync(string subject, string name)
         {
-            EntitiesResult<Export> saved = await InScopeAsync(subject, scope => Service<Export>(scope).SaveAsync([new Export { Name = name }], new SaveOptions { ReturnEntities = false }, Token));
+            EntitiesResult<Parcel> saved = await InScopeAsync(subject, scope => Service<Parcel>(scope).SaveAsync([new Parcel { Name = name }], new SaveOptions { ReturnEntities = false }, Token));
             return (int)Assert.Single(saved.Ids);
         }
 
@@ -258,13 +258,13 @@ namespace Tellma.Core.IntegrationTests.Crud.Conformance
             return Assert.Single(saved.Entities);
         }
 
-        /// <summary>Reads an export.</summary>
+        /// <summary>Reads a parcel.</summary>
         /// <param name="subject">The caller's subject.</param>
-        /// <param name="id">The export's id.</param>
-        /// <returns>The export as stored.</returns>
-        private async Task<Export> ExportAsync(string subject, int id)
+        /// <param name="id">The parcel's id.</param>
+        /// <returns>The parcel as stored.</returns>
+        private async Task<Parcel> ParcelAsync(string subject, int id)
         {
-            return Assert.Single((await InScopeAsync(subject, scope => Service<Export>(scope).GetByIdAsync(id, DetailsRequest.None, Token))).Entities);
+            return Assert.Single((await InScopeAsync(subject, scope => Service<Parcel>(scope).GetByIdAsync(id, DetailsRequest.None, Token))).Entities);
         }
 
         /// <summary>Runs a call in a scope of the caller on the first tenant.</summary>

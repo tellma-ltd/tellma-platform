@@ -80,6 +80,9 @@ namespace Tellma.Core.Testing.Crud
         /// <summary>The audit column a stamped root carries its stamp in.</summary>
         private const string StampProperty = "ModifiedAt";
 
+        /// <summary>An upload id no blob row holds: far above any id the blob sequence hands out in a test run.</summary>
+        private const int MissingUploadId = int.MaxValue;
+
         /// <summary>The ordinal the next entity of this stack is created with, shared by every case of the closed class.</summary>
         private static int _ordinal;
 
@@ -246,7 +249,8 @@ namespace Tellma.Core.Testing.Crud
         /// <summary>
         ///     The body a declared API action of the stack runs with in the reachability case: one its
         ///     method answers without failing. By default the platform's workbook exports export one
-        ///     missing row's identity and the template, and any other action takes no body.
+        ///     missing row's identity and the template, an import inspection names an upload that
+        ///     does not exist (<see cref="MissingUploadId" />), and any other action takes no body.
         /// </summary>
         /// <param name="action">The action.</param>
         /// <returns>The body, of the action's request type; null for none.</returns>
@@ -257,6 +261,8 @@ namespace Tellma.Core.Testing.Crud
                 ? new ExportRequest { Ids = [long.CreateChecked(MissingId())], Columns = [new ExportColumn(Metadata.Key.Name, Header: null)] }
                 : action.RequestType == typeof(ExportForImportRequest)
                 ? new ExportForImportRequest { Ids = [] }
+                : action.RequestType == typeof(InspectImportRequest)
+                ? new InspectImportRequest { FileId = MissingUploadId }
                 : null;
         }
 

@@ -1359,6 +1359,105 @@
               }
             }
           ]
+        },
+        {
+          "name": "inspect-import",
+          "kind": "api",
+          "builtIn": false,
+          "action": "Save",
+          "labelKey": "Action_InspectImport",
+          "mutation": false,
+          "idempotent": true,
+          "destructive": false,
+          "singleTarget": false,
+          "supportsFilter": false,
+          "result": "own",
+          "arguments": {
+            "type": "object",
+            "properties": {
+              "fileId": {
+                "type": "integer"
+              },
+              "sheetMappings": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "sheet": {
+                      "type": "string"
+                    },
+                    "collection": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "sheet"
+                  ]
+                }
+              },
+              "columnMappings": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "sheet": {
+                      "type": "string"
+                    },
+                    "column": {
+                      "type": "string"
+                    },
+                    "path": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "sheet",
+                    "column"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "fileId",
+              "sheetMappings",
+              "columnMappings"
+            ]
+          },
+          "fields": [
+            {
+              "name": "fileId",
+              "labelKey": "FileId",
+              "required": true,
+              "value": {
+                "type": "integer",
+                "nullable": false
+              }
+            },
+            {
+              "name": "sheetMappings",
+              "labelKey": "SheetMappings",
+              "required": true,
+              "value": {
+                "type": "json",
+                "nullable": false
+              }
+            },
+            {
+              "name": "columnMappings",
+              "labelKey": "ColumnMappings",
+              "required": true,
+              "value": {
+                "type": "json",
+                "nullable": false
+              }
+            }
+          ]
         }
       ],
       "relatedSelect": [
@@ -2093,6 +2192,105 @@
               }
             }
           ]
+        },
+        {
+          "name": "inspect-import",
+          "kind": "api",
+          "builtIn": false,
+          "action": "Save",
+          "labelKey": "Action_InspectImport",
+          "mutation": false,
+          "idempotent": true,
+          "destructive": false,
+          "singleTarget": false,
+          "supportsFilter": false,
+          "result": "own",
+          "arguments": {
+            "type": "object",
+            "properties": {
+              "fileId": {
+                "type": "integer"
+              },
+              "sheetMappings": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "sheet": {
+                      "type": "string"
+                    },
+                    "collection": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "sheet"
+                  ]
+                }
+              },
+              "columnMappings": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "sheet": {
+                      "type": "string"
+                    },
+                    "column": {
+                      "type": "string"
+                    },
+                    "path": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "sheet",
+                    "column"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "fileId",
+              "sheetMappings",
+              "columnMappings"
+            ]
+          },
+          "fields": [
+            {
+              "name": "fileId",
+              "labelKey": "FileId",
+              "required": true,
+              "value": {
+                "type": "integer",
+                "nullable": false
+              }
+            },
+            {
+              "name": "sheetMappings",
+              "labelKey": "SheetMappings",
+              "required": true,
+              "value": {
+                "type": "json",
+                "nullable": false
+              }
+            },
+            {
+              "name": "columnMappings",
+              "labelKey": "ColumnMappings",
+              "required": true,
+              "value": {
+                "type": "json",
+                "nullable": false
+              }
+            }
+          ]
         }
       ],
       "relatedSelect": [
@@ -2311,6 +2509,532 @@
       "searchable": [],
       "naturalKeys": [],
       "extras": [],
+      "limits": {
+        "maxTake": 10000,
+        "countCap": 10000,
+        "maxSkipWindow": 100000,
+        "maxSearchLength": 200,
+        "maxIds": 10000,
+        "maxExtras": 16,
+        "maxFilterLength": 8192
+      }
+    },
+    {
+      "name": "core.Export",
+      "segment": "exports",
+      "labelKey": "Core_Export",
+      "pluralLabelKey": "Core_Export_Plural",
+      "newLabelKey": "Entity_New",
+      "labelFallback": "Export",
+      "operations": [
+        "query",
+        "details",
+        "delete"
+      ],
+      "capabilities": [
+        "blobs",
+        "job-entity"
+      ],
+      "displayName": {
+        "source": "Id",
+        "multilingual": false
+      },
+      "kind": "stack",
+      "key": {
+        "property": "Id",
+        "type": "int"
+      },
+      "properties": [
+        {
+          "name": "Id",
+          "json": "id",
+          "type": "integer",
+          "queryable": true,
+          "nullable": false,
+          "unique": true,
+          "labelKey": "Core_Export_Id",
+          "labelFallback": "Id",
+          "excel": true,
+          "ownership": "server-owned"
+        },
+        {
+          "name": "CreatedAt",
+          "json": "createdAt",
+          "type": "instant",
+          "queryable": true,
+          "nullable": false,
+          "labelKey": "CreatedAt",
+          "excel": true,
+          "ownership": "server-owned"
+        },
+        {
+          "name": "CreatedById",
+          "json": "createdById",
+          "type": "integer",
+          "queryable": true,
+          "nullable": false,
+          "labelKey": "Core_Export_CreatedById",
+          "labelFallback": "Created by id",
+          "excel": true,
+          "ownership": "server-owned",
+          "foreignKeyOf": "CreatedBy"
+        },
+        {
+          "name": "ModifiedAt",
+          "json": "modifiedAt",
+          "type": "instant",
+          "queryable": true,
+          "nullable": false,
+          "labelKey": "ModifiedAt",
+          "excel": true,
+          "ownership": "server-owned"
+        },
+        {
+          "name": "ModifiedById",
+          "json": "modifiedById",
+          "type": "integer",
+          "queryable": true,
+          "nullable": false,
+          "labelKey": "Core_Export_ModifiedById",
+          "labelFallback": "Modified by id",
+          "excel": true,
+          "ownership": "server-owned",
+          "foreignKeyOf": "ModifiedBy"
+        },
+        {
+          "name": "JobId",
+          "json": "jobId",
+          "type": "integer",
+          "queryable": true,
+          "nullable": true,
+          "unique": true,
+          "labelKey": "Core_Export_JobId",
+          "labelFallback": "Job id",
+          "excel": true,
+          "ownership": "server-owned",
+          "foreignKeyOf": "Job"
+        },
+        {
+          "name": "Resource",
+          "json": "resource",
+          "type": "string",
+          "queryable": true,
+          "nullable": false,
+          "labelKey": "Core_Export_Resource",
+          "labelFallback": "Resource",
+          "excel": true,
+          "ownership": "write-once",
+          "maxLength": 128
+        },
+        {
+          "name": "Kind",
+          "json": "kind",
+          "type": "enum",
+          "queryable": true,
+          "nullable": false,
+          "labelKey": "Core_Export_Kind",
+          "labelFallback": "Kind",
+          "excel": true,
+          "ownership": "write-once",
+          "enum": "core.ExportKind"
+        },
+        {
+          "name": "RequestJson",
+          "json": "requestJson",
+          "type": "string",
+          "queryable": true,
+          "nullable": true,
+          "labelKey": "Core_Export_RequestJson",
+          "labelFallback": "Request json",
+          "excel": true,
+          "ownership": "write-once"
+        },
+        {
+          "name": "FileName",
+          "json": "fileName",
+          "type": "string",
+          "queryable": true,
+          "nullable": true,
+          "labelKey": "Core_Export_FileName",
+          "labelFallback": "File name",
+          "excel": true,
+          "ownership": "editable",
+          "maxLength": 255
+        },
+        {
+          "name": "FileId",
+          "json": "fileId",
+          "type": "integer",
+          "queryable": true,
+          "nullable": true,
+          "unique": true,
+          "labelKey": "FileId",
+          "excel": true,
+          "ownership": "editable",
+          "foreignKeyOf": "File",
+          "blob": {
+            "kind": "export-file",
+            "accept": [
+              "application/pdf",
+              "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+              "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+              "image/jpeg",
+              "image/png",
+              "image/webp",
+              "image/gif",
+              "text/plain",
+              "text/csv",
+              "application/json",
+              "application/zip"
+            ],
+            "maxSize": 104857600,
+            "image": null,
+            "thumbnail": true,
+            "readAccess": "owner-read"
+          }
+        },
+        {
+          "name": "RowCount",
+          "json": "rowCount",
+          "type": "integer",
+          "queryable": true,
+          "nullable": true,
+          "labelKey": "Core_Export_RowCount",
+          "labelFallback": "Row count",
+          "excel": true,
+          "ownership": "editable"
+        },
+        {
+          "name": "ExpiresAt",
+          "json": "expiresAt",
+          "type": "instant",
+          "queryable": true,
+          "nullable": false,
+          "labelKey": "Core_Export_ExpiresAt",
+          "labelFallback": "Expires at",
+          "excel": true,
+          "ownership": "write-once"
+        }
+      ],
+      "navigations": [
+        {
+          "name": "CreatedBy",
+          "json": "createdBy",
+          "foreignKey": "CreatedById",
+          "target": "core.User",
+          "kind": "reference",
+          "nullable": false,
+          "labelKey": "CreatedBy"
+        },
+        {
+          "name": "ModifiedBy",
+          "json": "modifiedBy",
+          "foreignKey": "ModifiedById",
+          "target": "core.User",
+          "kind": "reference",
+          "nullable": false,
+          "labelKey": "ModifiedBy"
+        },
+        {
+          "name": "Job",
+          "json": "job",
+          "foreignKey": "JobId",
+          "target": "core.Job",
+          "kind": "reference",
+          "nullable": true,
+          "labelKey": "Core_Export_Job",
+          "labelFallback": "Job"
+        },
+        {
+          "name": "File",
+          "json": "file",
+          "foreignKey": "FileId",
+          "target": "core.Blob",
+          "kind": "reference",
+          "nullable": true,
+          "labelKey": "FileId"
+        }
+      ],
+      "children": [],
+      "actions": [],
+      "relatedSelect": [
+        "Id"
+      ],
+      "defaultOrderBy": "CreatedAt desc",
+      "searchable": [],
+      "naturalKeys": [],
+      "extras": [
+        "permissions"
+      ],
+      "limits": {
+        "maxTake": 10000,
+        "countCap": 10000,
+        "maxSkipWindow": 100000,
+        "maxSearchLength": 200,
+        "maxIds": 10000,
+        "maxExtras": 16,
+        "maxFilterLength": 8192
+      }
+    },
+    {
+      "name": "core.Import",
+      "segment": "imports",
+      "labelKey": "Core_Import",
+      "pluralLabelKey": "Core_Import_Plural",
+      "newLabelKey": "Entity_New",
+      "labelFallback": "Import",
+      "operations": [
+        "query",
+        "details",
+        "delete"
+      ],
+      "capabilities": [
+        "blobs",
+        "job-entity"
+      ],
+      "displayName": {
+        "source": "Id",
+        "multilingual": false
+      },
+      "kind": "stack",
+      "key": {
+        "property": "Id",
+        "type": "int"
+      },
+      "properties": [
+        {
+          "name": "Id",
+          "json": "id",
+          "type": "integer",
+          "queryable": true,
+          "nullable": false,
+          "unique": true,
+          "labelKey": "Core_Import_Id",
+          "labelFallback": "Id",
+          "excel": true,
+          "ownership": "server-owned"
+        },
+        {
+          "name": "CreatedAt",
+          "json": "createdAt",
+          "type": "instant",
+          "queryable": true,
+          "nullable": false,
+          "labelKey": "CreatedAt",
+          "excel": true,
+          "ownership": "server-owned"
+        },
+        {
+          "name": "CreatedById",
+          "json": "createdById",
+          "type": "integer",
+          "queryable": true,
+          "nullable": false,
+          "labelKey": "Core_Import_CreatedById",
+          "labelFallback": "Created by id",
+          "excel": true,
+          "ownership": "server-owned",
+          "foreignKeyOf": "CreatedBy"
+        },
+        {
+          "name": "ModifiedAt",
+          "json": "modifiedAt",
+          "type": "instant",
+          "queryable": true,
+          "nullable": false,
+          "labelKey": "ModifiedAt",
+          "excel": true,
+          "ownership": "server-owned"
+        },
+        {
+          "name": "ModifiedById",
+          "json": "modifiedById",
+          "type": "integer",
+          "queryable": true,
+          "nullable": false,
+          "labelKey": "Core_Import_ModifiedById",
+          "labelFallback": "Modified by id",
+          "excel": true,
+          "ownership": "server-owned",
+          "foreignKeyOf": "ModifiedBy"
+        },
+        {
+          "name": "JobId",
+          "json": "jobId",
+          "type": "integer",
+          "queryable": true,
+          "nullable": true,
+          "unique": true,
+          "labelKey": "Core_Import_JobId",
+          "labelFallback": "Job id",
+          "excel": true,
+          "ownership": "server-owned",
+          "foreignKeyOf": "Job"
+        },
+        {
+          "name": "Resource",
+          "json": "resource",
+          "type": "string",
+          "queryable": true,
+          "nullable": false,
+          "labelKey": "Core_Import_Resource",
+          "labelFallback": "Resource",
+          "excel": true,
+          "ownership": "write-once",
+          "maxLength": 128
+        },
+        {
+          "name": "Mode",
+          "json": "mode",
+          "type": "enum",
+          "queryable": true,
+          "nullable": false,
+          "labelKey": "Core_Import_Mode",
+          "labelFallback": "Mode",
+          "excel": true,
+          "ownership": "write-once",
+          "enum": "core.ImportMode"
+        },
+        {
+          "name": "RequestJson",
+          "json": "requestJson",
+          "type": "string",
+          "queryable": true,
+          "nullable": true,
+          "labelKey": "Core_Import_RequestJson",
+          "labelFallback": "Request json",
+          "excel": true,
+          "ownership": "write-once"
+        },
+        {
+          "name": "FileId",
+          "json": "fileId",
+          "type": "integer",
+          "queryable": true,
+          "nullable": true,
+          "unique": true,
+          "labelKey": "FileId",
+          "excel": true,
+          "ownership": "editable",
+          "foreignKeyOf": "File",
+          "blob": {
+            "kind": "import-file",
+            "accept": [
+              "application/pdf",
+              "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+              "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+              "image/jpeg",
+              "image/png",
+              "image/webp",
+              "image/gif",
+              "text/plain",
+              "text/csv",
+              "application/json",
+              "application/zip"
+            ],
+            "maxSize": 104857600,
+            "image": null,
+            "thumbnail": true,
+            "readAccess": "owner-read"
+          }
+        },
+        {
+          "name": "ResultJson",
+          "json": "resultJson",
+          "type": "string",
+          "queryable": true,
+          "nullable": true,
+          "labelKey": "Core_Import_ResultJson",
+          "labelFallback": "Result json",
+          "excel": true,
+          "ownership": "editable"
+        },
+        {
+          "name": "RowCount",
+          "json": "rowCount",
+          "type": "integer",
+          "queryable": true,
+          "nullable": true,
+          "labelKey": "Core_Import_RowCount",
+          "labelFallback": "Row count",
+          "excel": true,
+          "ownership": "editable"
+        },
+        {
+          "name": "ErrorCount",
+          "json": "errorCount",
+          "type": "integer",
+          "queryable": true,
+          "nullable": true,
+          "labelKey": "Core_Import_ErrorCount",
+          "labelFallback": "Error count",
+          "excel": true,
+          "ownership": "editable"
+        },
+        {
+          "name": "ExpiresAt",
+          "json": "expiresAt",
+          "type": "instant",
+          "queryable": true,
+          "nullable": false,
+          "labelKey": "Core_Import_ExpiresAt",
+          "labelFallback": "Expires at",
+          "excel": true,
+          "ownership": "write-once"
+        }
+      ],
+      "navigations": [
+        {
+          "name": "CreatedBy",
+          "json": "createdBy",
+          "foreignKey": "CreatedById",
+          "target": "core.User",
+          "kind": "reference",
+          "nullable": false,
+          "labelKey": "CreatedBy"
+        },
+        {
+          "name": "ModifiedBy",
+          "json": "modifiedBy",
+          "foreignKey": "ModifiedById",
+          "target": "core.User",
+          "kind": "reference",
+          "nullable": false,
+          "labelKey": "ModifiedBy"
+        },
+        {
+          "name": "Job",
+          "json": "job",
+          "foreignKey": "JobId",
+          "target": "core.Job",
+          "kind": "reference",
+          "nullable": true,
+          "labelKey": "Core_Import_Job",
+          "labelFallback": "Job"
+        },
+        {
+          "name": "File",
+          "json": "file",
+          "foreignKey": "FileId",
+          "target": "core.Blob",
+          "kind": "reference",
+          "nullable": true,
+          "labelKey": "FileId"
+        }
+      ],
+      "children": [],
+      "actions": [],
+      "relatedSelect": [
+        "Id"
+      ],
+      "defaultOrderBy": "CreatedAt desc",
+      "searchable": [],
+      "naturalKeys": [],
+      "extras": [
+        "permissions"
+      ],
       "limits": {
         "maxTake": 10000,
         "countCap": 10000,
@@ -3541,8 +4265,7 @@
           "queryable": true,
           "nullable": true,
           "unique": true,
-          "labelKey": "Core_OutgoingEmailAttachment_FileId",
-          "labelFallback": "File id",
+          "labelKey": "FileId",
           "excel": true,
           "ownership": "editable",
           "foreignKeyOf": "File",
@@ -3587,8 +4310,7 @@
           "target": "core.Blob",
           "kind": "reference",
           "nullable": true,
-          "labelKey": "Core_OutgoingEmailAttachment_File",
-          "labelFallback": "File"
+          "labelKey": "FileId"
         }
       ],
       "children": [],
@@ -5078,6 +5800,105 @@
               }
             }
           ]
+        },
+        {
+          "name": "inspect-import",
+          "kind": "api",
+          "builtIn": false,
+          "action": "Save",
+          "labelKey": "Action_InspectImport",
+          "mutation": false,
+          "idempotent": true,
+          "destructive": false,
+          "singleTarget": false,
+          "supportsFilter": false,
+          "result": "own",
+          "arguments": {
+            "type": "object",
+            "properties": {
+              "fileId": {
+                "type": "integer"
+              },
+              "sheetMappings": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "sheet": {
+                      "type": "string"
+                    },
+                    "collection": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "sheet"
+                  ]
+                }
+              },
+              "columnMappings": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "sheet": {
+                      "type": "string"
+                    },
+                    "column": {
+                      "type": "string"
+                    },
+                    "path": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "sheet",
+                    "column"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "fileId",
+              "sheetMappings",
+              "columnMappings"
+            ]
+          },
+          "fields": [
+            {
+              "name": "fileId",
+              "labelKey": "FileId",
+              "required": true,
+              "value": {
+                "type": "integer",
+                "nullable": false
+              }
+            },
+            {
+              "name": "sheetMappings",
+              "labelKey": "SheetMappings",
+              "required": true,
+              "value": {
+                "type": "json",
+                "nullable": false
+              }
+            },
+            {
+              "name": "columnMappings",
+              "labelKey": "ColumnMappings",
+              "required": true,
+              "value": {
+                "type": "json",
+                "nullable": false
+              }
+            }
+          ]
         }
       ],
       "relatedSelect": [
@@ -6133,6 +6954,105 @@
               "required": true,
               "value": {
                 "type": "bool",
+                "nullable": false
+              }
+            }
+          ]
+        },
+        {
+          "name": "inspect-import",
+          "kind": "api",
+          "builtIn": false,
+          "action": "Save",
+          "labelKey": "Action_InspectImport",
+          "mutation": false,
+          "idempotent": true,
+          "destructive": false,
+          "singleTarget": false,
+          "supportsFilter": false,
+          "result": "own",
+          "arguments": {
+            "type": "object",
+            "properties": {
+              "fileId": {
+                "type": "integer"
+              },
+              "sheetMappings": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "sheet": {
+                      "type": "string"
+                    },
+                    "collection": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "sheet"
+                  ]
+                }
+              },
+              "columnMappings": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "sheet": {
+                      "type": "string"
+                    },
+                    "column": {
+                      "type": "string"
+                    },
+                    "path": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "sheet",
+                    "column"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "fileId",
+              "sheetMappings",
+              "columnMappings"
+            ]
+          },
+          "fields": [
+            {
+              "name": "fileId",
+              "labelKey": "FileId",
+              "required": true,
+              "value": {
+                "type": "integer",
+                "nullable": false
+              }
+            },
+            {
+              "name": "sheetMappings",
+              "labelKey": "SheetMappings",
+              "required": true,
+              "value": {
+                "type": "json",
+                "nullable": false
+              }
+            },
+            {
+              "name": "columnMappings",
+              "labelKey": "ColumnMappings",
+              "required": true,
+              "value": {
+                "type": "json",
                 "nullable": false
               }
             }
@@ -8158,6 +9078,105 @@
               }
             }
           ]
+        },
+        {
+          "name": "inspect-import",
+          "kind": "api",
+          "builtIn": false,
+          "action": "Save",
+          "labelKey": "Action_InspectImport",
+          "mutation": false,
+          "idempotent": true,
+          "destructive": false,
+          "singleTarget": false,
+          "supportsFilter": false,
+          "result": "own",
+          "arguments": {
+            "type": "object",
+            "properties": {
+              "fileId": {
+                "type": "integer"
+              },
+              "sheetMappings": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "sheet": {
+                      "type": "string"
+                    },
+                    "collection": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "sheet"
+                  ]
+                }
+              },
+              "columnMappings": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "sheet": {
+                      "type": "string"
+                    },
+                    "column": {
+                      "type": "string"
+                    },
+                    "path": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "sheet",
+                    "column"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "fileId",
+              "sheetMappings",
+              "columnMappings"
+            ]
+          },
+          "fields": [
+            {
+              "name": "fileId",
+              "labelKey": "FileId",
+              "required": true,
+              "value": {
+                "type": "integer",
+                "nullable": false
+              }
+            },
+            {
+              "name": "sheetMappings",
+              "labelKey": "SheetMappings",
+              "required": true,
+              "value": {
+                "type": "json",
+                "nullable": false
+              }
+            },
+            {
+              "name": "columnMappings",
+              "labelKey": "ColumnMappings",
+              "required": true,
+              "value": {
+                "type": "json",
+                "nullable": false
+              }
+            }
+          ]
         }
       ],
       "relatedSelect": [
@@ -8929,6 +9948,105 @@
               }
             }
           ]
+        },
+        {
+          "name": "inspect-import",
+          "kind": "api",
+          "builtIn": false,
+          "action": "Save",
+          "labelKey": "Action_InspectImport",
+          "mutation": false,
+          "idempotent": true,
+          "destructive": false,
+          "singleTarget": false,
+          "supportsFilter": false,
+          "result": "own",
+          "arguments": {
+            "type": "object",
+            "properties": {
+              "fileId": {
+                "type": "integer"
+              },
+              "sheetMappings": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "sheet": {
+                      "type": "string"
+                    },
+                    "collection": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "sheet"
+                  ]
+                }
+              },
+              "columnMappings": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "sheet": {
+                      "type": "string"
+                    },
+                    "column": {
+                      "type": "string"
+                    },
+                    "path": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "sheet",
+                    "column"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "fileId",
+              "sheetMappings",
+              "columnMappings"
+            ]
+          },
+          "fields": [
+            {
+              "name": "fileId",
+              "labelKey": "FileId",
+              "required": true,
+              "value": {
+                "type": "integer",
+                "nullable": false
+              }
+            },
+            {
+              "name": "sheetMappings",
+              "labelKey": "SheetMappings",
+              "required": true,
+              "value": {
+                "type": "json",
+                "nullable": false
+              }
+            },
+            {
+              "name": "columnMappings",
+              "labelKey": "ColumnMappings",
+              "required": true,
+              "value": {
+                "type": "json",
+                "nullable": false
+              }
+            }
+          ]
         }
       ],
       "relatedSelect": [
@@ -9127,6 +10245,26 @@
       ]
     },
     {
+      "name": "core.ExportKind",
+      "values": [
+        {
+          "value": "Display",
+          "labelKey": "Core_ExportKind_Display",
+          "labelFallback": "Display"
+        },
+        {
+          "value": "ForImport",
+          "labelKey": "Core_ExportKind_ForImport",
+          "labelFallback": "For import"
+        },
+        {
+          "value": "Report",
+          "labelKey": "Core_ExportKind_Report",
+          "labelFallback": "Report"
+        }
+      ]
+    },
+    {
       "name": "core.Gender",
       "values": [
         {
@@ -9138,6 +10276,26 @@
           "value": "Male",
           "labelKey": "Core_Gender_Male",
           "labelFallback": "Male"
+        }
+      ]
+    },
+    {
+      "name": "core.ImportMode",
+      "values": [
+        {
+          "value": "Insert",
+          "labelKey": "Core_ImportMode_Insert",
+          "labelFallback": "Insert"
+        },
+        {
+          "value": "Update",
+          "labelKey": "Core_ImportMode_Update",
+          "labelFallback": "Update"
+        },
+        {
+          "value": "Upsert",
+          "labelKey": "Core_ImportMode_Upsert",
+          "labelFallback": "Upsert"
         }
       ]
     },

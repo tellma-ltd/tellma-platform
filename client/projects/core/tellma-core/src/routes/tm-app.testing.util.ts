@@ -292,3 +292,38 @@ export async function tmSettle(): Promise<void> {
     TestBed.tick();
   }
 }
+
+/** The browser's own timer, taken before a spec fakes the timers. */
+const realSetTimeout = globalThis.setTimeout;
+
+/**
+ * Runs work and collects what was left unhandled meanwhile: an error thrown
+ * in a task or a microtask, and a rejection no code handled. Each is kept
+ * from the test runner, so the spec's own assertion reports it. The page's
+ * report of a rejection is a task of its own, so the collection ends a real
+ * task after the work, even under faked timers.
+ *
+ * @param work - The work, which waits for what it started.
+ * @returns The errors and the rejections' reasons, in order.
+ */
+export async function tmUnhandled(work: () => Promise<void>): Promise<unknown[]> {
+  const caught: unknown[] = [];
+  const error = (event: ErrorEvent): void => {
+    caught.push(event.error);
+    event.preventDefault();
+  };
+  const rejection = (event: PromiseRejectionEvent): void => {
+    caught.push(event.reason);
+    event.preventDefault();
+  };
+  window.addEventListener('error', error);
+  window.addEventListener('unhandledrejection', rejection);
+  try {
+    await work();
+    await new Promise((resolve) => realSetTimeout(resolve, 10));
+  } finally {
+    window.removeEventListener('error', error);
+    window.removeEventListener('unhandledrejection', rejection);
+  }
+  return caught;
+}

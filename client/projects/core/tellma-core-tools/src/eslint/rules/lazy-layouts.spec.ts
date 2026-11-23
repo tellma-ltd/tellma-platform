@@ -3,18 +3,19 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-import { RuleTester } from 'eslint';
 import tseslint from 'typescript-eslint';
-import { describe, it } from 'vitest';
+import { describe } from 'vitest';
 
+import { createRuleTester } from '../../../fixtures/rule-tester.js';
 import { tmLazyLayouts } from './lazy-layouts.js';
 
-const tester = new RuleTester({
+// Each case below runs as a test of its own (see createRuleTester).
+const tester = createRuleTester({
   languageOptions: { parser: tseslint.parser as never, ecmaVersion: 2022, sourceType: 'module' },
 });
 
 describe('tm/lazy-layouts', () => {
-  it('accepts inline lazy loaders in every layout member', () => {
+  describe('accepts inline lazy loaders in every layout member', () => {
     tester.run('tm/lazy-layouts', tmLazyLayouts as never, {
       valid: [
         {

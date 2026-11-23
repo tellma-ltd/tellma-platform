@@ -40,7 +40,7 @@ namespace Tellma.Testing.Entities
                 .Entity<WidgetExtra>()
                 .Entity<Node>()
                 .Entity<Shipment>()
-                .Entity<Export>()
+                .Entity<Parcel>()
                 .Entity<Lookup>()
                 .Entity<BlobOwner>()
                 .Entity<BlobFolder>();
@@ -49,7 +49,7 @@ namespace Tellma.Testing.Entities
             _ = contribution
                 .JobHandler<ProbeJobHandler>()
                 .JobHandler<ShipJobHandler>()
-                .JobHandler<ExportJobHandler>();
+                .JobHandler<ParcelJobHandler>();
 
             // --- One built-in schedule, so the migrations seed a schedule row and its state ---
             _ = contribution.BuiltInSchedule(ProbeScheduleId, FixtureJobKeys.Probe, "0 1 * * *");

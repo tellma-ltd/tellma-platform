@@ -46,6 +46,9 @@ export const TM_DOC_FORMATS: Readonly<Record<string, number>>;
 export const TM_HELP_ARTICLES: InjectionToken<(key: string, language: string) => Promise<TmLazyComponent | null>>;
 
 // @public
+export const TM_LEADER_DOCUMENTS: InjectionToken<readonly TmLeaderDocument[]>;
+
+// @public
 export const TM_NOW: InjectionToken<() => number>;
 
 // @public
@@ -875,6 +878,13 @@ export interface TmFormField {
 }
 
 // @public
+export interface TmHubConnection {
+    nudge(): void;
+    start(): void;
+    stop(): Promise<void>;
+}
+
+// @public
 export interface TmHubEventMessage {
     readonly event: TmClientEvent;
     readonly tenantId: number;
@@ -882,7 +892,23 @@ export interface TmHubEventMessage {
 }
 
 // @public
+export interface TmHubSink {
+    connected(): void;
+    ended(reason: 'access-revoked' | 'session-terminated' | 'tenant-unavailable'): void;
+    event(event: TmClientEvent): void;
+    refused(status: 401 | 403 | 404): void;
+    state(state: Exclude<TmHubState, 'disabled'>): void;
+}
+
+// @public
 export type TmHubState = 'connected' | 'connecting' | 'disabled' | 'offline' | 'reconnecting';
+
+// @public
+export interface TmHubStatus {
+    readonly leaderVisible: boolean;
+    readonly since: number;
+    readonly state: TmHubState;
+}
 
 // @public
 export interface TmHubStatusMessage {
@@ -990,6 +1016,24 @@ export interface TmLaunchDocs {
 export type TmLazyComponent = () => Promise<Type<unknown> | {
     default: Type<unknown>;
 }>;
+
+// @public
+export class TmLeader {
+    events(name: string): Observable<TmClientEvent>;
+    readonly hubStatus: Signal<TmHubStatus>;
+    readonly isLeader: Signal<boolean>;
+    static ɵfac: i0.ɵɵFactoryDeclaration<TmLeader, never>;
+    static ɵprov: i0.ɵɵInjectableDeclaration<TmLeader>;
+}
+
+// @public
+export interface TmLeaderDocument {
+    readonly events: readonly string[];
+    readonly formatVersion: number;
+    readonly name: string;
+    readonly pollWhile?: (document: unknown) => boolean;
+    readonly route: string;
+}
 
 // @public
 export interface TmLeaderProbeMessage {

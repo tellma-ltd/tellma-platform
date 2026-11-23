@@ -20,7 +20,7 @@ import { TM_STATE_PARTS } from '../state/tm-state-dump';
 import { provideTellma, tmAppConfigOf } from './provide-tellma';
 import type { TmAppConfig } from './tm-app-config';
 import { TM_APP_DECLARATIONS } from './tm-app-declarations';
-import { TM_RECENTS_LOAD, type TmRecentsModule } from './tm-app-init';
+import { TM_LEADER_LOAD, TM_RECENTS_LOAD, type TmLeaderModule, type TmRecentsModule } from './tm-app-init';
 
 /** Loaders over the test metadata, which the startup initializer calls. */
 const loaders: TmMetadataLoaders = {
@@ -39,6 +39,18 @@ class TmCountedRecents {
   /** Counts the creation. */
   constructor() {
     recentsCreated++;
+  }
+}
+
+/** How many times the stand-in for the leader election was created. */
+let electionsCreated = 0;
+
+/** A stand-in for the leader election, which counts its creations. */
+@Injectable({ providedIn: 'root' })
+class TmCountedElection {
+  /** Counts the creation. */
+  constructor() {
+    electionsCreated++;
   }
 }
 
@@ -196,6 +208,35 @@ describe('the startup sequence', () => {
     const module = await TestBed.inject(TM_RECENTS_LOAD)();
     // The name the startup reads is the one the entry point exports.
     expect(module.TmRecents).toBe((await import('@tellma/core/recents')).TmRecents);
+  });
+
+  it('starts the leader election after the first render, from its entry point', async () => {
+    electionsCreated = 0;
+    const load = vi.fn(() => Promise.resolve<TmLeaderModule>({ ɵTmLeaderElection: TmCountedElection }));
+    await start(loaders, [{ provide: TM_LEADER_LOAD, useValue: load }]);
+    expect(load).not.toHaveBeenCalled();
+
+    TestBed.tick();
+    await vi.waitFor(() => expect(electionsCreated).toBe(1));
+    expect(load).toHaveBeenCalledTimes(1);
+  });
+
+  it('reports a failed load of the leader election as an error, and starts all the same', async () => {
+    const load = (): Promise<never> => Promise.reject(new TypeError('Failed to fetch dynamically imported module'));
+    await start(loaders, [{ provide: TM_LEADER_LOAD, useValue: load }]);
+    TestBed.tick();
+    const telemetry = TestBed.inject(TmFakeTelemetry);
+    await vi.waitFor(() =>
+      expect(telemetry.recent().filter((item) => item.name === 'tm.error.captured').map((item) => item.props['source'])).toEqual([
+        'tm-leader',
+      ]),
+    );
+  });
+
+  it('loads the leader election from its entry point by default', async () => {
+    const module = await TestBed.inject(TM_LEADER_LOAD)();
+    // The name the startup reads is the one the entry point exports.
+    expect(module?.ɵTmLeaderElection).toBe((await import('@tellma/core/leader')).ɵTmLeaderElection);
   });
 
   it('loads the Contracts chunk after the first render, at idle', async () => {

@@ -22,21 +22,21 @@ namespace Tellma.Core.IntegrationTests.Crud
     ///     widget stack runs through <see cref="WidgetService" />: a service that validates deletes and
     ///     actions through a probe a test arms, and declares an entity action. The first tenant is
     ///     seeded once with the rows every test may read but none deletes: four widgets with parts, a
-    ///     small tree of nodes with links between them, two lookups, and more exports than a delete
+    ///     small tree of nodes with links between them, two lookups, and more parcels than a delete
     ///     by query may match. Each test seeds its own caller and roles, and the rows it writes.
     /// </summary>
     /// <param name="sql">The SQL Server the databases are created on.</param>
     public sealed class WritePipelineDatabase(SqlServerFixture sql) : IAsyncLifetime
     {
-        /// <summary>The name every bulk export carries.</summary>
+        /// <summary>The name every bulk parcel carries.</summary>
         public const string BulkName = "bulk";
 
-        /// <summary>How many bulk exports the seed holds: one beyond a delete by query's default cap.</summary>
-        public const int BulkExports = 10_001;
+        /// <summary>How many bulk parcels the seed holds: one beyond a delete by query's default cap.</summary>
+        public const int BulkParcels = 10_001;
 
         /// <summary>
         ///     The seed: widgets 1 to 4 with parts, nodes 1 to 5 under two roots with links 1 to 3
-        ///     (1 on N111 at N12, 2 on N2 at N111, 3 on N12 at N2), lookups 1 and 2, and the bulk exports.
+        ///     (1 on N111 at N12, 2 on N2 at N111, 3 on N12 at N2), lookups 1 and 2, and the bulk parcels.
         /// </summary>
         private static readonly string[] Seed =
         [
@@ -61,8 +61,8 @@ namespace Tellma.Core.IntegrationTests.Crud
             string.Create(
                 CultureInfo.InvariantCulture,
                 $"""
-                WITH [Numbers] AS (SELECT TOP ({BulkExports}) ROW_NUMBER() OVER (ORDER BY (SELECT NULL)) AS [I] FROM sys.all_columns AS A CROSS JOIN sys.all_columns AS B)
-                INSERT INTO [fixture].[Exports] ([Id], [Name], [CreatedAt], [CreatedById], [ModifiedAt], [ModifiedById])
+                WITH [Numbers] AS (SELECT TOP ({BulkParcels}) ROW_NUMBER() OVER (ORDER BY (SELECT NULL)) AS [I] FROM sys.all_columns AS A CROSS JOIN sys.all_columns AS B)
+                INSERT INTO [fixture].[Parcels] ([Id], [Name], [CreatedAt], [CreatedById], [ModifiedAt], [ModifiedById])
                 SELECT 100000 + [I], N'{BulkName}', SYSDATETIMEOFFSET(), {WellKnownIds.SystemUserId}, SYSDATETIMEOFFSET(), {WellKnownIds.SystemUserId}
                 FROM [Numbers];
                 """),

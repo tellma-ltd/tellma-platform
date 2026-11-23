@@ -65,10 +65,12 @@ export const TM_CORE_ENTRY_POINTS: Readonly<Record<string, TmEntryPointRule>> = 
   './report-studio': { load: 'lazy', imports: ['./memory'] },
   './dashboards': { load: 'lazy', imports: ['./recents'] },
   './config-check': { load: 'lazy', imports: [] },
-  // Spec 0025's tab memory and recent pages, which spec 0025 §1 places in the
-  // primary; they load with the page hosts and after first render instead.
+  // Spec 0025's tab memory, recent pages and leader election, which spec 0025
+  // §1 places in the primary; they load with the page hosts and after first
+  // render instead.
   './memory': { load: 'lazy', imports: [] },
   './recents': { load: 'lazy', imports: [] },
+  './leader': { load: 'lazy', imports: [] },
   // Spec 0026's page-context snapshot, which spec 0026 §1 places in the
   // primary; nothing on the first frame reads it, so the support dump and a
   // future assistant load it with import().

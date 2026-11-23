@@ -7,11 +7,13 @@ own.
 
 | Entry point | Holds | Loaded |
 |---|---|---|
-| `@tellma/core` | The distribution API: `bootstrapTellma`, `provideTellma`, `tmFeature`, the declaration functions (`tmEntity`, `tmPage`, `tmCodedReport`, `tmWidget`, `tmOverride`) and `TM_APP_DECLARATIONS`, the merged declarations; the client metadata's types, its loaders (`tmMetadataLoaders`) and the loaded Core chunk (`TM_CLIENT_METADATA`); the HTTP layer (`TmApi`, `TmApiError`, `TmProblem`), its plain-JSON value types (`TmJson`, `TmDecimal`, `TmId`) and the exact decimal helpers `TmDecimals`; the seams through which telemetry (`TmTelemetry`) and the request log (`TmRequestLog`) are provided; the page context and page actions (`TmPageContexts`, `TmPageActions`, `provideTmPageScope`) and the help seam (`TM_HELP_ARTICLES`); the session (`TmSession`, `tmSessionGuard`, `tmParseProfileCookie`), the launch mark (`TmLaunch`) and the single-membership rule (`tmSingleLiveTenant`); the client store (`TmClientStore`, `TmStoreRefusedError`, `TM_DOC_FORMATS`) and the tab bus (`TmTabBus`) with its message catalogue; the boot script's result types and the app clock (`TM_NOW`); the derived router's pieces: the root component (`TmApp`), the route data (`TmRouteData`), the title strategy (`TmTitleStrategy`), the URL builders and classifier (`TmUrls`) with the search query's types; the entity registry (`TmEntities`, with its descriptors once the entity model loads, and the declaration types `tmEntity` takes, typed paths `TmPath` included), display names (`TmDisplayNames`, `tm-display-name`), client permissions (`TmPermissions`) and `tmRowsToObjects`; localization: `TmLocalization` (the language, the regional formats, the calendar and the zones, and their switches with the coalesced locale write), `TmServerText` (server codes and keys through the string packs) and `tmEnglish()`, the platform's English; the app-level keyboard shortcuts (`TmShortcuts`, `TmShortcut`, `TM_RESERVED_SHORTCUTS`, `TM_BROWSER_KEYS`, `TmShortcutConflictError`) and the shell frame's seams (`TmShell` with immersive mode, `TmShellMain`, `TM_SHELL_LAYOUT`) | eager |
+| `@tellma/core` | The distribution API: `bootstrapTellma`, `provideTellma`, `tmFeature`, the declaration functions (`tmEntity`, `tmPage`, `tmCodedReport`, `tmWidget`, `tmOverride`) and `TM_APP_DECLARATIONS`, the merged declarations; the client metadata's types, its loaders (`tmMetadataLoaders`) and the loaded Core chunk (`TM_CLIENT_METADATA`); the HTTP layer (`TmApi`, `TmApiError`, `TmProblem`), its plain-JSON value types (`TmJson`, `TmDecimal`, `TmId`) and the exact decimal helpers `TmDecimals`; the seams through which telemetry (`TmTelemetry`) and the request log (`TmRequestLog`) are provided; the page context and page actions (`TmPageContexts`, `TmPageActions`, `provideTmPageScope`) and the help seam (`TM_HELP_ARTICLES`); the session (`TmSession`, `tmSessionGuard`, `tmParseProfileCookie`), the launch mark (`TmLaunch`) and the single-membership rule (`tmSingleLiveTenant`); the client store (`TmClientStore`, `TmStoreRefusedError`, `TM_DOC_FORMATS`) and the tab bus (`TmTabBus`) with its message catalogue; the leader tab (`TmLeader`: whether this tab leads, the hub's status and the tenant's hub events) and the documents only the leader refreshes (`TM_LEADER_DOCUMENTS`); the boot script's result types and the app clock (`TM_NOW`); the derived router's pieces: the root component (`TmApp`), the route data (`TmRouteData`), the title strategy (`TmTitleStrategy`), the URL builders and classifier (`TmUrls`) with the search query's types; the entity registry (`TmEntities`, with its descriptors once the entity model loads, and the declaration types `tmEntity` takes, typed paths `TmPath` included), display names (`TmDisplayNames`, `tm-display-name`), client permissions (`TmPermissions`) and `tmRowsToObjects`; localization: `TmLocalization` (the language, the regional formats, the calendar and the zones, and their switches with the coalesced locale write), `TmServerText` (server codes and keys through the string packs) and `tmEnglish()`, the platform's English; the app-level keyboard shortcuts (`TmShortcuts`, `TmShortcut`, `TM_RESERVED_SHORTCUTS`, `TM_BROWSER_KEYS`, `TmShortcutConflictError`) and the shell frame's seams (`TmShell` with immersive mode, `TmShellMain`, `TM_SHELL_LAYOUT`) | eager |
 | `@tellma/core/shell` | The tenant shell, the tenant picker and the signed-out page, which the derived routes load; until their owners arrive they are plain stand-ins, beside one placeholder page for the platform's page families | eager, through `import()` |
 | `@tellma/core/memory` | The tab's memory of its pages: page state (`TmPageState`, `tmPageStateKey`), drafts (`TmDrafts`) and tree expansion (`TmTreeExpansion`), which the page hosts load with them | lazy |
 | `@tellma/core/page-snapshot` | `tmSerializePageContext` and `TmPageContextSnapshot`: a page context read once into plain JSON, for the support dump and a future assistant | lazy, through `import()` by its callers |
 | `@tellma/core/recents` | The recently visited pages (`TmRecents`), which the launcher and the home page list; the app loads it with `import()` after its first render, when visits start to count | lazy, through `import()` after first render |
+| `@tellma/core/entity` | What the search and details pages share over the entity model: select plans (`tmSelectPlan`), which turn column keys into one query's terms and type its rows; value formats (`TmFormats`); the typed value in view mode (`tm-value`) and in edit mode (`tm-value-editor`), with a form's uploads (`TmUploads`); a plan column's grid column (`tmGridColumnFor`); and the client check of a picked file against its blob kind (`tmCheckBlobFile`) | lazy, with the page families |
+| `@tellma/core/leader` | The leader election of the routed tenant over a Web Lock, and the leader tab's work: its realtime connection, the relay of hub events, the leader documents' reads and the polls of degraded mode; the app loads it with `import()` after its first render, and `TmLeader` reports what it decides | lazy, through `import()` after first render |
 | `@tellma/core/config-check` | `tmCheckAppConfig`, the check of an app's configuration against the client metadata, which the build runs in Node and a development app at startup, and `tmCheckEntityDeclaration`, the check of one entity declaration against the Entities chunk | lazy |
 | `@tellma/core/search-normalize` | `tmSearchNormalize`, the one text folding the launcher, the shortcuts filter, the field tree and the reports list match with | with the code that imports it |
 | `@tellma/core/private` | Wiring shared by the platform's own entry points and packages; no API goldens, no stability guarantee, never imported by app code | — |
@@ -143,6 +145,26 @@ channels open once the Core chunk names the slug (earlier posts wait for them), 
 page sits in the back-forward cache, and reopen when it comes back, when the store re-reads every
 mirrored document.
 
+**The app's end.** The root services resolve some collaborators through the injector when they use
+them, and a destroyed injector throws on every lookup. So a service that defers work, to a frame, an
+idle moment, a timer, a microtask or the end of a read, checks `DestroyRef.destroyed` before it
+resolves anything:
+
+- The display names' frame flush still runs after the end, and returns without reading.
+- The cache refresher's timers stop, and its tenants' syncs and background reads are cancelled.
+  After the end it arms no timer and knows no partition, so a late `adopt`, `refresh` or `observe`
+  does nothing.
+- The preferences send no flush and arm no timer after the end; a write that lands then is dropped
+  without a failure.
+- The launch cache loads no list whose load the end overtook before its read; a read in flight is
+  cancelled with the refresher's background reads. The Entities chunk keeps no model that lands
+  after the end.
+- The locale write's timers stop. A write that lands after the end is not adopted, an offline
+  failure plans no further try, and nothing queued behind it is sent.
+
+The HTTP layer's response observers are not yet covered: an answer that lands after the end can
+still throw from its user check or its version-tags observer.
+
 ### Sync and the launch documents
 
 `TmCacheRefresher` (`src/state/sync/`) is the one path to `client/sync`, which answers a tenant's
@@ -253,10 +275,54 @@ the launcher lands, titles, icons and access come from `ɵTM_RECENTS_NAVIGATION`
 runs on read.
 
 **The dump.** `ɵTmStateDump.read()` (in the primary) builds the state's support-dump section: the
-mirrored documents' partition kinds, stored names and tags, the last sync, and the unsaved
-preference, draft and page-state keys, never a value. The preferences, the drafts and the page
+mirrored documents' partition kinds, stored names and tags, the last sync, the unsaved
+preference, draft and page-state keys, never a value, and whether the tab leads with the hub's
+status as it sees it. The preferences, the drafts and the page
 state report their keys to it through `ɵTM_STATE_PARTS` when they are created, so reading the
 section creates none of them, and a tab that never loaded `@tellma/core/memory` reports no drafts.
+
+### The leader tab
+
+One tab per tenant per browser leads: it holds the tenant's realtime connection and relays its
+events to the other tabs, and it alone refreshes the leader documents. `TmLeader` (in the primary)
+tells every tab whether it leads (`isLeader`), the leader's connection as it last reported it
+(`hubStatus`: the state, since when, and whether the leader is visible) and the tenant's hub events
+by name (`events(name)`), whichever tab received them. The election itself is
+`@tellma/core/leader`'s, which the startup loads with `import()` after the first render;
+`provideTellmaStateTesting()` replaces the loader, so a test app has no election and every tab
+follows.
+
+- **Election.** While a tab shows tenant `t` to an active session, it queues on the exclusive Web
+  Lock `tm:<slug>:<sub>:<t>:hub`, and the holder leads (`tm.realtime.leader-acquired { how }`).
+  Leaving the tenant, `pagehide`, `freeze` and a session that is no longer active release the lock
+  or abort the queued request (`tm.realtime.leader-released { why }`); `pageshow` and `resume`
+  queue again. The browser hands the lock to the next queued tab when the leader closes, crashes
+  or is discarded, so the healthy case runs no timer. Where the page has no Web Locks, each tab
+  leads alone.
+- **Probes and steals.** A follower probes the leader (`leader.probe`, answered by `hub.status`)
+  when it starts and when it is shown, and every minute while visible if the leader's hub is not
+  connected or a leader document asks for polling. Only a visible follower steals the lock: from a
+  leader that has not answered within 5 s, or from a hidden one whose hub has been down for over
+  30 s; never from a visible leader, nor from one whose realtime is off. It waits a random 0–2 s
+  first, and steals only if the holder is still the one it probed; a new holder gets a new probe.
+- **The leader's work.** On election it reports `connecting`, revalidates the tenant and reads every
+  leader document. It connects the hub when the tenant facts say `realtime`, and reports the
+  connection's states to every tab; after every connect it catches up the same way. It relays every
+  event of its tenant on the bus; an event this build lists in the Core chunk's `clientEvents` reaches
+  `TmLeader.events`, in every tab, and the leader acts on it: `cache.changed` goes to the cache
+  refresher, and a leader document's event re-reads the document, coalesced over 250 ms, one read in
+  flight and one queued at most. A read's stored copy is stamped with the time it was sent, so it
+  never replaces a later copy. A refusal or the end of the user's access stops the connection, and a
+  background sync decides what follows.
+- **Degraded mode.** With realtime off, or a hub that has not connected for a minute, the leader
+  polls (`tm.realtime.polling { cause }`): a sync of the tenant and a read of every leader document,
+  each at most once a minute, while the leader is visible or a visible follower's probe asks. A
+  leader document whose stored copy passes its `pollWhile` is re-read the same way while the hub is
+  up.
+
+A feature declares a leader document with a `TM_LEADER_DOCUMENTS` multi provider: its stored name,
+the route the leader reads it from, the events that re-read it, its client format version, and an
+optional `pollWhile`. Every tab reads it from the store; none but the leader fetches it.
 
 ## The HTTP layer
 
@@ -500,6 +566,67 @@ entity operation (the details page and the tenant's `ReadOnly` or `Frozen` state
 `disabledReason` a refused action shows, `label` in the Access tab's words, `sensitive`, and
 `reachable`, the traversal rule a query's paths obey.
 
+### Select plans, formats and typed values
+
+`@tellma/core/entity` holds what the page families build on the registry. `tmSelectPlan(root,
+keys)` reads each column key against the root entity and returns one column per key the user may
+read: its kind (a value, a multilingual group, a navigation, an image or a file), its label and
+type, its filter kind and the query's ordering for it (`orderBy('asc')`). The plan's `select`
+holds every term the columns read, the root key first, each once: a group reads each of its slots, a navigation its
+key and its target's display-name members, an image its `Variants` and a file its `FileName`.
+Every term is checked against `TmPermissions.reachable`, and a key that names nothing, or that
+reaches a term the user may not read, is dropped and reported with the reason. `rows(response)`
+reads a query's rows into `TmPlanRow`s, keyed by column key and by term; an expression column
+takes its type from the response.
+
+```ts
+const plan = tmSelectPlan(entities.get('gl.Center'), ['Code', 'Name', 'Parent']);
+// plan.select === 'Id,Code,Name,Name2,Parent.Id,Parent.Code' in a two-language tenant
+const rows = plan.rows(result); // result: the query's row set
+```
+
+`TmFormats` writes a value as text by its type facts: decimals and longs exactly from their
+decimal text, in the locale's digits and with no bidi control; dates in the calendar; an instant
+in the display zone, labelled with its offset when the device's zone differs; enums and related
+rows by their labels; an id, a foreign key's or an entity's own key, is written ungrouped. A
+grid's cell leaves the zone label to the column header (`zoneSuffix`). `tm-value` renders the
+same text with the markup some types take: a check for a set flag in a grid, a badge per enum
+value, a
+related row's display name as a link to its page when the user may open it, with its avatar, a
+thumbnail asked for only when the blob lists one, and a file's name as its download link.
+`tm-value-editor` takes the control a value's type takes inside a `tm-form-field`, bound to a
+Signal Forms field: text, a textarea beyond 255 characters, numbers (decimals and longs held as
+exact text; text that reads as no number, or as more digits than a number holds, keeps the
+field's value and holds the field invalid, so a form's save waits), a checkbox, a date picker, a select per enum, and the image and file pickers, which
+check the file against its kind, crop a cover-square image to its square, and upload as soon as
+it is picked. A value the server owns, an instant, a related row and a type with no control show
+read-only; a write-once value edits only while the record is created. A form that provides
+`TmUploads` sees every upload in flight, to hold its save until they settle.
+
+`tmGridColumnFor(column)` makes the grid column of a plan's column: a search grid's reads the
+plan's rows by column key and sorts when the column orders; a form's child grid (`editable`)
+reads the model's rows by their JSON names and edits only the root values the user writes. A
+multilingual group there edits the active language's slot, so a host that makes the config in a
+computed follows a language switch.
+
+### Strings of a lazy entry point
+
+Strings that only a lazily loaded entry point reads ship with it, never in the primary's English
+table, so they weigh nothing on the first frame. The entry point registers its English table
+under a scope of `tm` once, before its first message resolves:
+
+```ts
+inject(TmLocalization).ɵregisterStrings('value', { none: '—', fileTooLarge: 'This file is too large. The limit is {max}.' });
+// l10n.ɵtext('tm.value.fileTooLarge', { max: '100 MB' }) formats as the platform's own strings do.
+```
+
+The strings merge into the English translation, so they format through the same ICU interpreter,
+and a language's table that holds the same keys (a locale pack's `tm.value`) wins, English being
+the fallback. A scope registers once and belongs to one entry point. `@tellma/core/entity`
+registers `tm.value` when `TmFormats` is first created; the entity picker's, the filters' and the
+expression editor's strings follow the same seam. The seam itself costs the primary one method
+and a set of the scopes registered.
+
 ## Decimals
 
 `decimal` and `long` values travel as JSON strings and stay strings: a `TmDecimal` is the value's
@@ -542,7 +669,7 @@ point's test rigs (`*.testing.util.ts`) by a relative path, since no build ships
 rule `tm/core-import-boundary` enforces the graph, and ng-packagr refuses a cycle between entry
 points.
 
-The primary reaches `/shell` and `/recents` only through `import()` with a specifier TypeScript
+The primary reaches `/shell`, `/recents` and `/leader` only through `import()` with a specifier TypeScript
 does not follow, since ng-packagr would count a followed one as a cycle. The components it loads
 from the shell are named in an internal contract that the shell's component map `satisfies`, so
 either side's rename fails the build. A build or test that compiles the primary from sources in

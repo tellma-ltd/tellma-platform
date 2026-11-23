@@ -209,11 +209,11 @@ namespace Tellma.Testing.Entities
     ///     A job entity with an <see cref="int" /> key, the second job entity type, so a call can
     ///     name rows of two types.
     /// </summary>
-    [Table("Exports", Schema = FixtureSchema.Name)]
+    [Table("Parcels", Schema = FixtureSchema.Name)]
     [TableType]
-    public class Export : TopLevelEntity, IJobEntity
+    public class Parcel : TopLevelEntity, IJobEntity
     {
-        /// <summary>The export's name.</summary>
+        /// <summary>The parcel's name.</summary>
         [MaxLength(255)]
         public string? Name { get; set; }
 
