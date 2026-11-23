@@ -384,6 +384,12 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-250 (orchestrator, 2026-11-23): PC-F75's second CI run is red on a Core jobs flake; PC-F79 is opened as blocking
+
+- PC-F75's re-integration (pc run 45184031545 on 3f4e1c0d) was green in every job but integration. There, one test failed: JobRunLockingTests.A_flush_after_the_final_renewal_extends_the_lease_only_to_the_end_that_renewal_set read a remaining lease of 5001 ms against InRange(1, 5000). PC-F75 touches only the Excel import, so this is a flake in code that already landed.
+- Per D-011 and D-113 there is no rerun. PC-F79 root-causes and fixes it as a blocking fix in pc-f, as PC-F77 did. pc/PC-F75 is pushed and waits. It is re-integrated right after PC-F79's platform-core push, and still goes ahead of the held queue (D-245).
+- The release order after PC-F75 is unchanged: PC-F73, PC-111, PC-109, PC-115, then PC-119.
+
 ### D-249 (orchestrator, 2026-11-23): PC-119 Review 2 rulings
 
 - R2 found 0 blocking, 0 major and 7 minor findings. All R1 fixes held under adversarial checks: the paste leaf stays within every Queryex ceiling, FindableGoldenTests runs the real QuerySearch.Lower, and the teardown guards compose with PC-F77. Fix 2 is PC-119's third and last round, with no review after it.
