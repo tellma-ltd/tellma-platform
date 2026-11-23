@@ -75,6 +75,31 @@ namespace Tellma.Core.AspNetCore.Tests.Routing
         }
 
         [Fact]
+        public async Task A_top_level_endpoint_mapped_after_the_host_started_is_neither_served_nor_offered_to_another_verb()
+        {
+            WebApplication? application = null;
+            await using TellmaTestHost host = await TellmaTestHost.StartAsync(options => options.Map = (app, _) => application = app);
+
+            // --- Mapped once the audit ran, in a source of its own, before the first route miss ---
+            IEndpointRouteBuilder routes = application!;
+            int before = routes.DataSources.Count;
+            _ = application!.MapPost("/late-top", static () => "late");
+            using HttpResponseMessage post = await host.Client.PostAsync(new Uri("/late-top", UriKind.Relative), null, TestContext.Current.CancellationToken);
+            using HttpResponseMessage get = await host.Client.GetAsync(new Uri("/late-top", UriKind.Relative), TestContext.Current.CancellationToken);
+
+            // --- The late source is on the application, yet neither verb finds a route: a tenantless miss ---
+            Assert.Equal(before + 1, routes.DataSources.Count);
+            Assert.Equal(HttpStatusCode.NotFound, post.StatusCode);
+            Assert.Equal("not-found", (await Problem.ReadAsync(post)).Code);
+            Assert.Equal(HttpStatusCode.NotFound, get.StatusCode);
+            Assert.Equal("not-found", (await Problem.ReadAsync(get)).Code);
+            Assert.Empty(get.Content.Headers.Allow);
+            Assert.DoesNotContain(
+                host.Services.GetRequiredService<MappedEndpoints>().Endpoints(),
+                static endpoint => endpoint is RouteEndpoint { RoutePattern.RawText: "/late-top" });
+        }
+
+        [Fact]
         public void A_sealed_source_keeps_its_endpoints_until_its_inner_source_signals_a_change()
         {
             using ChangingSource inner = new();
@@ -124,6 +149,22 @@ namespace Tellma.Core.AspNetCore.Tests.Routing
                 source => Assert.Same(first, Assert.IsType<SealedEndpointDataSource>(source).Inner),
                 source => Assert.Same(second, Assert.IsType<SealedEndpointDataSource>(source).Inner));
             Assert.Equal(once, sources);
+        }
+
+        [Fact]
+        public void Once_sealed_the_endpoints_are_read_from_the_sealed_sources_alone()
+        {
+            using ChangingSource first = new();
+            using ChangingSource late = new();
+            List<EndpointDataSource> sources = [first];
+            MappedEndpoints mapped = new();
+            mapped.Capture(sources);
+
+            mapped.Seal();
+            sources.Add(late);
+
+            _ = Assert.Single(mapped.Endpoints());
+            Assert.Equal(0, late.Reads);
         }
 
         /// <summary>Calls a route of the web group as the SPA does.</summary>

@@ -170,7 +170,155 @@ The CI unit filter selects every test in this project, because it has no traits.
 
 ### Findings
 
+Scope checked: 0011 §5.3 and 0016 §4.6 (the audit at `MapTellma` and again in the realised gate
+before traffic), PLAN §6-§7, D-238/D-241, the product diff, every converted test class and the
+implementer notes. Confirmed:
+
+- The root cause is measured, not assumed. `SealedEndpointsTests`' first case counts builds through
+  a `Finally` convention across two served requests, a route miss and a `MappedEndpoints` read, and
+  gets 1. So the policy cache, the router and the route-miss index all read the wrappers.
+- I checked the framework outside Tellma, in a scratch app on ASP.NET Core 10.0.12 that wraps
+  `app.DataSources` in `StartingAsync` the way `Seal` does:
+  - `StartingAsync` runs before `GenericWebHostService` builds the pipeline.
+  - `CompositeEndpointDataSource(IEnumerable)` copies the collection when it is constructed.
+  - Unsealed, a top-level endpoint and a group endpoint mapped after `StartAsync` were both served
+    (200), which is the old hole. Sealed, both answered 404, and the DI root composite held only the
+    early endpoints.
+- A request cannot race the seal. The server starts only after the pipeline build, and the build
+  follows every `StartingAsync`.
+- Routing results do not change. The wrappers keep the sources in order and hand back the same
+  `Endpoint` instances with the same metadata. The framework composites already cached between
+  change-token fires, so the router always used one set of instances.
+  - `GetGroupedEndpoints` passes through, and only top-level sources are wrapped. Nested group
+    sources are read through their parent group's `GetGroupedEndpoints`, so a group still builds
+    with its own prefix and conventions.
+  - A change-token source (MVC/Razor Pages for the in-proc identity) is re-read after its token
+    fires, because the token is taken before the read.
+- No legitimate mapping breaks:
+  - Every platform mapping runs inside `MapTellma`: health checks, OpenAPI in Development, the BFF,
+    admin, in-proc identity MVC/pages, the hub, the projection, blobs, the SPA and
+    `IPlatformEndpointSource` (webhooks).
+  - Acme's `Program.cs` maps nothing after `MapTellma`. No hosted service or startup filter in
+    `src/` or `distributions/` maps endpoints.
+  - SignalR's `MapHub` and the OpenAPI/ApiExplorer readers resolve the DI composite, which now
+    holds the wrappers.
+- The shared hosts leak nothing I could find:
+  - `PipelineLog.Reset` covers every mutable member: calls, workbooks, `SkipWitness`, `Refusal`.
+  - No problem mapping has host-level side effects. Nothing in `Problems/` invalidates or evicts.
+  - Each shared case awaits its full response, and `centers/rebuild` records at invocation, so no
+    server work outlives a case into the next one's log.
+  - A shared host's request volume stays well under the 600/min user rate and the 60/min anonymous
+    rate.
+  - The cases that read logs or meters, change configuration, the environment or the clock, or
+    watch the output cache store its first copy all keep their own hosts.
+  - The activity case filters by its own trace id, and `ActivitySource` listeners are dynamic.
+- No timeout raise, retry or quarantine. The diff touches no workflow, `timeout-minutes` or trait.
+- AGENTS.md: every new type and member has XML docs, and no spec, `docs/` or PC id appears in XML
+  docs, messages or test names.
+
+Tests I ran (Debug, this worktree):
+
+- `dotnet build test/core/Tellma.Core.AspNetCore.Tests`: Build succeeded, 0 warnings.
+- The six converted classes plus `SealedEndpointsTests`, 193 cases, under two xUnit seeds (`:12345`
+  and `:987`) to vary case order on the shared hosts: 193/193 green both times, about 56 s each.
+- A real-host integration subset, filtered `Category!=Nightly`, `Live!=true`:
+  - Tellma.Distro.Acme.IntegrationTests: WebHost, RealtimeHub, UserIdentity (in-proc identity MVC
+    and pages with a live change token), Blob, Limits and SelfService. 18/18 green.
+  - Tellma.Core.AspNetCore.IntegrationTests: Access, ProjectedRoute, Header and Health. 17/17
+    green.
+
+R1-1 (minor): after the seal, `MappedEndpoints` still reads the live collection, so a top-level
+source added later reaches the route-miss index but not the router.
+`src/core/Tellma.Core.AspNetCore/Routing/MappedEndpoints.cs:39-44` (`Endpoints()`) reads the
+captured `app.DataSources` as it stands. After `Seal` (lines 65-87), a late top-level
+`app.MapGet/MapPost(...)` gets a new `RouteEndpointDataSource`, because the framework's
+`GetOrAddRouteEndpointDataSource` no longer recognises the wrapped one. The same holds for a late
+`MapControllers`. My probe confirmed it: after the seal the list read `Wrap, Wrap,
+RouteEndpointDataSource`.
+
+- The router never sees the new source, because it copied the list at pipeline build.
+- `MappedEndpoints.Endpoints()`, and through it `RouteMisses.Candidates()`
+  (`Problems/RouteMisses.cs:91`), does see it. Suppose the first route miss comes after such a
+  mapping, say a late `app.MapPost("/api/x", …)`.
+  - `GET /api/x` answers `405` with `Allow: POST` for a route the host does not serve.
+  - The class remarks say "the endpoints the gate audited are the ones the host serves". For
+    `MappedEndpoints` itself that holds only for late group mappings.
+- `An_endpoint_mapped_after_the_host_started_is_neither_audited_nor_served` covers only the group
+  path (an endpoint added inside a wrapped group). Nothing pins the top-level path, whose non-serving
+  rests on the framework copying the list.
+
+Suggested fix: at the seal, snapshot the wrappers into an array field, and have `Endpoints()` read
+that snapshot once sealed. Then the index, the audit and the router read the same set by
+construction. Add a case to the late-mapping test that maps on `application` (the
+`WebApplication`) after start. It should assert `route-not-found` for the late route, absence from
+`MappedEndpoints`, and no `405` for another verb on its path.
+
+R1-2 (minor): ARCHITECTURE.md overstates the guarantee for sources that signal a change.
+`ARCHITECTURE.md:817` (the realised-gate paragraph, last sentence) says "the host serves exactly
+the endpoints it audited and an endpoint mapped after startup is never served". The class remarks
+of `MappedEndpoints.cs:16-21` make the same claim. But `SealedEndpointDataSource.Endpoints`
+(`SealedEndpointDataSource.cs:49-53`) re-reads a source whose change token fires. The in-proc
+identity's MVC/Razor Pages source does this when its action descriptors change, for example under
+hot reload. The router then serves the new endpoints, and the gate never audits them. This is not a
+regression, since such endpoints were never audited before either, and the package README states
+the exception. Still, ARCHITECTURE.md is where the platform rule now lives (D-241: "no endpoint may
+be added after startup"), and it states the rule without the exception.
+
+Suggested fix: add the README's qualifier to the ARCHITECTURE.md sentence and to the
+`MappedEndpoints` remarks: "a source that signals a change (the in-proc identity server's
+controllers and pages) is read again, unaudited, after it does". Alternatively, decide that a
+re-read after the seal is audited or refused, and record that decision.
+
+R1-3 (minor): the commit's test list leaves out the integration suites of the hosts whose routing
+it changes (PLAN §7.1 item 4).
+
+- The seal changes what every real host builds and serves:
+  - the in-proc identity's MVC and pages sources, with live change tokens;
+  - the hub;
+  - the blob surface;
+  - the Acme host's composition.
+- The commit message lists only unit filters: Core.AspNetCore.Tests, plus the D-151 runs of
+  Defaults.Azure.Tests, Webhooks.Tests and Acme.Web.Tests.
+- Two projects start real hosts under `Category=Integration`, and the commit did not run them:
+  - Tellma.Distro.Acme.IntegrationTests, through `AcmeHost`;
+  - Tellma.Core.AspNetCore.IntegrationTests, through `AcmeDeployment`.
+- The subsets I ran are green (see above), so I expect no defect. The integration CI run will cover
+  the rest.
+
+Suggested fix: at fix 1, run both projects under `Category=Integration&Category!=Nightly&Live!=true`
+and list them in the commit's Tests line.
+
 ### Responses
+
+R1-1: fixed in the "PC-F74: review 1 fixes" commit.
+- `MappedEndpoints.Seal` keeps the wrappers as a snapshot (`_sealed`, an array). Once sealed,
+  `Endpoints()` reads the snapshot alone, so the audit, the route-miss index and the router read the
+  same set by construction, and a source added to `app.DataSources` later is never read.
+- New `A_top_level_endpoint_mapped_after_the_host_started_is_neither_served_nor_offered_to_another_verb`:
+  - It maps `application.MapPost("/late-top", …)` after start and asserts the late source exists.
+  - POST and GET both answer `404 not-found` with no `Allow`. The path is tenantless, so the
+    fallback's code is `not-found`, not `route-not-found`.
+  - The route is absent from `MappedEndpoints`.
+- New `Once_sealed_the_endpoints_are_read_from_the_sealed_sources_alone`: a source added after
+  `Seal` is never read.
+- With the snapshot read reverted, both new cases fail, and GET answers `405`, reproducing the
+  finding.
+
+R1-2: fixed in the same commit. The qualifier now appears in three places: the ARCHITECTURE.md
+realised-gate sentence, the `MappedEndpoints` remarks and the package README. A source that
+signals a change, such as the in-proc identity server's controllers and pages under hot reload, is
+read again after it does, and what it then adds is served without being audited. The README's
+closing sentence also claimed "exactly", so it now carries the qualifier too. Auditing that re-read
+stays out of scope, per the orchestrator's ruling.
+
+R1-3: fixed in the same commit. Runs and counts are below, Debug in this worktree. The commit's
+Tests line lists them.
+
+| Run | Filter | Result | Duration |
+|---|---|---|---|
+| Tellma.Distro.Acme.IntegrationTests | `Category=Integration&Category!=Nightly&Live!=true` | 48/48 green | 5 m 54 s |
+| Tellma.Core.AspNetCore.IntegrationTests | same | 39/39 green | 42 s |
+| Tellma.Core.AspNetCore.Tests, in full | the unit filter | 1007/1007 green | 7 m 57 s |
 
 ## Review 2
 
