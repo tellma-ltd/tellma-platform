@@ -54,11 +54,12 @@ export type TmEntityType<N extends string> = N extends keyof TmEntityTypes ? TmE
 /** The path shape of an entity the emitted declarations register, else `never`. */
 type TmShapeOf<N extends string> = N extends keyof TmEntityShapes ? TmEntityShapes[N] : never;
 
-// The paths are never enumerated past two segments: the union of every path
-// grows with the cube of an entity's navigations, which a connected model
-// cannot afford (TS2590 and minutes of checking). An annotation checks the
-// first two segments exactly; a declaration passed to `tmEntity` checks each
-// literal segment by segment, at a cost linear in its length.
+// The paths are never enumerated past one segment: a union of every path
+// grows with the cube of an entity's navigations, and even two segments grow
+// with their square, which a connected model cannot afford (TS2590 and
+// minutes of checking). An annotation checks the first segment exactly; a
+// declaration passed to `tmEntity` checks each literal segment by segment, at
+// a cost linear in its length.
 
 /**
  * What one segment may name on an entity: a scalar, a multilingual group, a
@@ -78,28 +79,18 @@ type TmPathStep<N extends string> = [TmShapeOf<N>] extends [never]
 /**
  * A path from an entity, in PascalCase C# names: `Code`, `Parent.Name`,
  * `Parent.Manager`. Once the distribution's emitted declarations register
- * the entity, an annotation checks a path's first two segments exactly, and
- * editors complete them; `tmEntity` checks every segment of the paths its
- * declaration names. Without the declarations, any text is a path.
+ * the entity, an annotation checks a path's first segment exactly, a
+ * scalar, a group or a navigation, and accepts any text after a
+ * navigation's dot; editors complete that first segment. `tmEntity` checks
+ * every segment of the literal paths its declaration names. Without the
+ * declarations, any text is a path.
  *
  * @example
  * ```ts
- * const path: TmPath<'gl.Center'> = 'Parent.Manager.Name';
+ * const path: TmPath<'gl.Center'> = 'Parent.Manager.Name'; // checks Parent only
  * ```
  */
-export type TmPath<N extends string> = [TmShapeOf<N>] extends [never]
-  ? string
-  : TmShapeOf<N> extends {
-        readonly scalars: infer S extends string;
-        readonly groups: infer G extends string;
-        readonly navigations: infer V;
-      }
-    ?
-        | S
-        | G
-        | (keyof V & string)
-        | { [K in keyof V & string]: V[K] extends string ? `${K}.${TmPathStep<V[K]>}` : never }[keyof V & string]
-    : string;
+export type TmPath<N extends string> = TmPathStep<N>;
 
 /**
  * The rest of a literal path checked from an entity, one segment at a time:

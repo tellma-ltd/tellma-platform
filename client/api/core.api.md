@@ -1160,13 +1160,7 @@ export type TmPartition = {
 };
 
 // @public
-export type TmPath<N extends string> = [TmShapeOf<N>] extends [never] ? string : TmShapeOf<N> extends {
-    readonly scalars: infer S extends string;
-    readonly groups: infer G extends string;
-    readonly navigations: infer V;
-} ? G | S | {
-    [K in keyof V & string]: V[K] extends string ? `${K}.${TmPathStep<V[K]>}` : never;
-}[keyof V & string] | (keyof V & string) : string;
+export type TmPath<N extends string> = TmPathStep<N>;
 
 // @public
 export type TmPathEnd = {

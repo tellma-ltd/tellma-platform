@@ -8281,9 +8281,7 @@
       ],
       "children": [],
       "actions": [],
-      "relatedSelect": [
-        "UserId"
-      ],
+      "relatedSelect": [],
       "defaultOrderBy": "UserId desc",
       "searchable": [],
       "naturalKeys": [],

@@ -56,17 +56,23 @@ const refused = virtual('refused.check.ts');
 /** Paths over a synthetic, densely connected model, whose checking time is bounded. */
 const connected = virtual('connected.check.ts');
 
-// --- The synthetic model: 20 entities, each with 30 scalars, a group and 12 navigations to others ---
+// --- The synthetic model: 30 entities, each with 100 scalars, a group and 25 navigations to others ---
 
 /** The synthetic model's number of entities. */
-const ENTITIES = 20;
+const ENTITIES = 30;
+
+/** Each synthetic entity's number of scalars. */
+const SCALARS = 100;
 
 /** Each synthetic entity's number of navigations. */
-const NAVIGATIONS = 12;
+const NAVIGATIONS = 25;
+
+/** How many roots the connected file annotates and declares, each with an order. */
+const ROOTS = 10;
 
 /** The synthetic model's shapes, as the emitted declarations would augment them. */
 function connectedShapes(): string {
-  const scalars = Array.from({ length: 30 }, (_, index) => `'S${index}'`).join(' | ');
+  const scalars = Array.from({ length: SCALARS }, (_, index) => `'S${index}'`).join(' | ');
   const entities = Array.from({ length: ENTITIES }, (_, entity) => {
     const navigations = Array.from({ length: NAVIGATIONS }, (_, index) => `N${index}: 'syn.E${(entity + index + 1) % ENTITIES}'`).join('; ');
     return `    'syn.E${entity}': { scalars: ${scalars}; groups: 'G'; navigations: { ${navigations} }; children: {} };`;
@@ -75,9 +81,22 @@ function connectedShapes(): string {
 }
 
 /**
- * The most the connected model's file may take to check, in milliseconds:
- * about 0.2 s measured, against minutes, or TS2590, when every path was
- * enumerated.
+ * Paths over the connected model: per root, an annotated path and order, and
+ * a declaration with deep columns and an order.
+ */
+function connectedUses(): string[] {
+  return Array.from({ length: ROOTS }, (_, root) => [
+    `export const path${root}: TmPath<'syn.E${root}'> = 'N0.N1.N2.S3';`,
+    `export const order${root}: TmOrderInput<'syn.E${root}'> = 'N1.N2.S2:desc';`,
+    `export const declared${root} = tmEntity('syn.E${root}', { columns: ['N0.N1.N2.N3.S4', 'N24.G'], orderBy: 'N1.N2.N3.S0:desc', picker: { orderBy: 'N3.S1' } });`,
+  ]).flat();
+}
+
+/**
+ * The most the connected model's file may take to check, in milliseconds.
+ * It measured about 0.2 s; when an annotation enumerated two segments and
+ * the declaration's constraint checked against that union, the same file
+ * took about 42 s.
  */
 const CONNECTED_BUDGET_MS = 10_000;
 
@@ -120,7 +139,7 @@ const sources = new Map<string, string>([
       "export const target: TmEntityShapes['acme.Customer']['navigations']['Currency'] = 'acme.Currency';",
       "export const child: TmEntityShapes['acme.Customer']['children']['Contacts'] = 'acme.CustomerContact';",
       '',
-      '// An annotation checks the first two segments of a path exactly.',
+      '// An annotation checks the first segment of a path exactly.',
       "export const path: TmPath<'acme.Customer'> = 'Currency.Code';",
       "export const three: TmPath<'acme.Customer'> = 'Currency.CreatedBy.Image.FileName';",
       "export const four: TmPath<'acme.Customer'> = 'Currency.CreatedBy.ModifiedBy.Image.Anything';",
@@ -141,10 +160,18 @@ const sources = new Map<string, string>([
       "export const typo = tmEntity('acme.Customer', { columns: ['Cod'] });",
       '// @ts-expect-error a path steps only through navigations',
       "export const throughScalar: TmPath<'acme.Customer'> = 'Code.Length';",
-      '// @ts-expect-error an annotation checks the first two segments of a longer path',
-      "export const badPrefix: TmPath<'acme.Customer'> = 'Currency.Nope.CreatedBy.Image.Anything';",
+      '// @ts-expect-error an annotation checks the first segment',
+      "export const badFirst: TmPath<'acme.Customer'> = 'Curency.Code';",
       '// @ts-expect-error the path of an order is checked apart from its suffix',
-      "export const badOrder: TmOrderInput<'acme.Customer'> = 'Currency.Cod:desc';",
+      "export const badOrder: TmOrderInput<'acme.Customer'> = 'Cod:desc';",
+      '// @ts-expect-error tmEntity checks the second segment of a longer path',
+      "export const badPrefix = tmEntity('acme.Customer', { columns: ['Currency.Nope.CreatedBy.Image.Anything'] });",
+      '// @ts-expect-error tmEntity checks the second segment of an order',
+      "export const badSecond = tmEntity('acme.Customer', { orderBy: 'Currency.Cod:desc' });",
+      '// @ts-expect-error tmEntity checks the order of a picker',
+      "export const badPickerOrder = tmEntity('acme.Customer', { picker: { orderBy: 'Currency.Cod' } });",
+      '// @ts-expect-error tmEntity checks a path that steps through a scalar',
+      "export const badScalarStep = tmEntity('acme.Customer', { columns: ['Code.Length'] });",
       '// @ts-expect-error tmEntity checks the fourth segment of a column',
       "export const deepColumn = tmEntity('acme.Customer', { columns: ['Currency.CreatedBy.Image.Nope'] });",
       '// @ts-expect-error tmEntity checks the select of a column',
@@ -174,11 +201,11 @@ const sources = new Map<string, string>([
       '',
       connectedShapes(),
       '',
-      "export const path: TmPath<'syn.E0'> = 'N0.N1.N2.S3';",
-      "export const order: TmOrderInput<'syn.E0'> = 'N0.N1.S2:desc';",
-      "export const declared = tmEntity('syn.E0', { columns: ['N0.N1.N2.N3.S4', 'N11.G'], orderBy: 'N1.N2.N3.S0:desc' });",
+      ...connectedUses(),
       '// @ts-expect-error a fourth segment the entity lacks',
       "export const refusedPath = tmEntity('syn.E0', { columns: ['N0.N1.N2.Nope'] });",
+      '// @ts-expect-error an order whose fourth segment the entity lacks',
+      "export const refusedOrder = tmEntity('syn.E0', { orderBy: 'N0.N1.N2.Nope:desc' });",
     ].join('\n'),
   ],
   [

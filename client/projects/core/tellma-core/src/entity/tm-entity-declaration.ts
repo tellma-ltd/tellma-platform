@@ -167,11 +167,16 @@ export interface TmSearchPageActionDeclaration {
 
 /**
  * One column of an entity's grids: a path, a path with a custom cell, or a
- * computed column.
+ * computed column. An annotated column checks only its path's first segment;
+ * a column written in a `tmEntity` declaration checks every segment, and the
+ * build's config check reports a path that does not resolve either way.
  *
  * @example
  * ```ts
- * const columns: readonly TmColumnInput<'acme.Customer'>[] = ['Code', 'Name', { path: 'CreditLimit', display: () => import('./credit-cell') }];
+ * // Checked segment by segment, since tmEntity reads the literals:
+ * tmEntity('acme.Customer', { columns: ['Code', 'Currency.Code', { path: 'CreditLimit', display: () => import('./credit-cell') }] });
+ * // Checked on the first segment only, since the annotation widens the literals:
+ * const columns: readonly TmColumnInput<'acme.Customer'>[] = ['Code', 'Currency.Code'];
  * ```
  */
 export type TmColumnInput<N extends string> =
@@ -197,7 +202,10 @@ export type TmColumnInput<N extends string> =
       readonly type?: TmDataType;
     };
 
-/** An order: a path, ascending, or a path with `:desc`. */
+/**
+ * An order: a path, ascending, or a path with `:desc`. Like `TmPath`, an
+ * annotation checks the path's first segment; `tmEntity` checks every one.
+ */
 export type TmOrderInput<N extends string> = TmPath<N> | `${TmPath<N>}:desc`;
 
 /**
@@ -295,7 +303,9 @@ export interface TmTabDeclaration {
  * What a feature declares about one entity. Every member is optional; a
  * declaration with no member still names the entity. Rows are wire
  * camelCase objects, typed by the entity's name once the distribution's
- * emitted declarations register it; paths are PascalCase.
+ * emitted declarations register it; paths are PascalCase. A path in an
+ * annotated input checks its first segment only; passed to `tmEntity` as a
+ * literal, every segment is checked.
  *
  * @example
  * ```ts

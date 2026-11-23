@@ -252,7 +252,9 @@ namespace Tellma.Core.Client
                     [.. descriptor.Navigations.Select(navigation => Navigation(name, navigation, ClientNavigationKind.Reference, navigation.IsOptional || !navigation.ForeignKey.IsNotNull, navigation.ForeignKey.Name))],
                     Children: [],
                     Actions: [],
-                    RelatedSelect: [key.Name],
+                    // The traversal rule projects nothing of a table no entity maps (spec 0015 §5.2),
+                    // so a path through one is admitted only under an unrestricted read.
+                    RelatedSelect: [],
                     DefaultOrderBy: $"{key.Name} desc",
                     Searchable: [],
                     NaturalKeys: [],

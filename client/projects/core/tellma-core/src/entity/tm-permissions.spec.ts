@@ -4,7 +4,9 @@
 // LICENSE file in the root directory of this source tree.
 
 import { TestBed } from '@angular/core/testing';
+import { tmTestEntities } from '@tellma/core-testing';
 
+import type { TmEntitiesChunk } from '../metadata/tm-client-metadata';
 import type { TmAccessSummary } from '../state/launch/tm-launch-docs';
 import type { TmPermissionOperation } from './tm-permissions';
 import { tmEntityDocs, tmEntityRig, type TmEntityRigOptions } from './tm-entity.testing.util';
@@ -272,6 +274,27 @@ describe('TmPermissions', () => {
     ])('walks segment by segment from an unfiltered gl.Center with no core.User grant: %s is %s', async (key, reachable) => {
       const { permissions } = await rig([grant('gl.Center', 'Read')]);
       expect(permissions.reachable('gl.Center', key)()).toBe(reachable);
+    });
+
+    it('projects nothing of a read-only root, not even its key', async () => {
+      // No recorded entity navigates into core.UserStamp, so one is added to gl.Center.
+      const { chunk } = tmTestEntities();
+      const stamp: TmEntitiesChunk = {
+        ...chunk,
+        entities: chunk.entities.map((entity) =>
+          entity.name === 'gl.Center'
+            ? { ...entity, navigations: [...entity.navigations, { name: 'Stamp', json: 'stamp', foreignKey: 'ManagerId', target: 'core.UserStamp', kind: 'reference', nullable: true, labelKey: 'Gl_Center_ManagerId' }] }
+            : entity,
+        ),
+      };
+
+      const restricted = await rig([grant('gl.Center', 'Read')], { chunk: stamp });
+      expect(restricted.permissions.reachable('gl.Center', 'Stamp.UserId')()).toBe(false);
+      expect(restricted.permissions.reachable('gl.Center', 'Stamp')()).toBe(true);
+      TestBed.resetTestingModule();
+
+      const granted = await rig([grant('gl.Center', 'Read'), grant('core.UserStamp', 'Read')], { chunk: stamp });
+      expect(granted.permissions.reachable('gl.Center', 'Stamp.LastActiveAt')()).toBe(true);
     });
 
     it('needs the root’s Read', async () => {
