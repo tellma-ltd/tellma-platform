@@ -8,7 +8,8 @@ import { join } from 'node:path';
 
 import { tmCompressedSize, type TmCompressedSize } from '../common/files.js';
 import { TmBuildFailure, type TmBuildProblem } from '../common/problems.js';
-import { tmEchartsModule, tmEntryPointModule, type TmBuildGraph } from '../output/stats.js';
+import { tmCodeFromSources, tmReadSourceMap } from '../output/source-attribution.js';
+import { tmCorePrimaryModules, tmEchartsModule, tmEntryPointModule, type TmBuildGraph } from '../output/stats.js';
 
 // The application's budgets (spec 0024 §12), measured gzip level 9 on the
 // output, with Brotli reported beside. A distribution raises one in its
@@ -19,6 +20,13 @@ import { tmEchartsModule, tmEntryPointModule, type TmBuildGraph } from '../outpu
 // chunk no budget covers, a `@defer` block's or a distribution's route,
 // gets a line of its own with no level: the metafile records a dynamic
 // import, not whether a route or a `@defer` block made it.
+//
+// The `@tellma/core` primary's own weight is its share of the first frame:
+// the code its modules contributed to the initial JavaScript, which it
+// shares with the app and Angular, cut out of those files through their
+// hidden source maps and compressed alone. Primary code the app does not
+// use is shaken out before it is counted, and primary code that loads only
+// with import() later is not on the first frame, so neither counts.
 
 /** The name prefix of a lazily loaded chunk's own line, followed by the module it starts at. */
 export const TM_LAZY_BUDGET_PREFIX = 'lazy:';
@@ -54,6 +62,7 @@ export const TM_BUDGETS: readonly TmBudgetDefinition[] = Object.freeze([
   { name: 'detailsRoute', label: 'The details route beyond the initial set', warn: null, error: 80 },
   { name: 'echartsEngine', label: 'The ECharts engine beyond the initial set', warn: null, error: 170 },
   { name: 'workerShell', label: "The worker's shell group", warn: 1536, error: null },
+  { name: 'corePrimary', label: "The @tellma/core primary's own weight on the first frame", warn: null, error: 50 },
   { name: 'codedReports', label: "The Core chunk's codedReports section", warn: null, error: 16 },
   { name: 'bootScript', label: 'tm-boot.js', warn: null, error: 3 },
 ]);
@@ -146,6 +155,8 @@ export interface TmBudgetFigure extends TmCompressedSize {
 export interface TmBudgetInputs {
   /** The deployable output. */
   readonly browserDir: string;
+  /** The folder the hidden source maps moved to, each at its file's path with `.map` added. */
+  readonly sourceMapsDir: string;
   /** The build's chunk graph. */
   readonly graph: TmBuildGraph;
   /** The initial JavaScript: the scripts, their static imports and the modulepreloads. */
@@ -198,6 +209,23 @@ export function tmMeasureBudgets(inputs: TmBudgetInputs): TmBudgetFigure[] {
   const searchRoute = beyondInitial((input) => search(input) || entity(input));
   const detailsRoute = beyondInitial((input) => details(input) || entity(input));
   const echartsEngine = beyondInitial(tmEchartsModule);
+  // The primary's first-frame code: in each initial file that holds any of
+  // its modules, the runs its source map gives them, joined across files. A
+  // module can sit in a file with no code of its own there (a list of
+  // re-exports), so a file may give nothing; every file giving nothing means
+  // the maps name the modules differently from the stats, and the figure
+  // would be wrong.
+  const primary = tmCorePrimaryModules(inputs.graph);
+  const holding = inputs.graph.outputsHolding((input) => primary.has(input)).filter((file) => inputs.initialJs.has(file));
+  const corePrimary = holding
+    .map((file) => {
+      const map = tmReadSourceMap(join(inputs.sourceMapsDir, ...`${file}.map`.split('/')));
+      return tmCodeFromSources(readFileSync(join(inputs.browserDir, ...file.split('/')), 'utf8'), map, (source) => primary.has(source));
+    })
+    .filter((code) => code !== '');
+  if (holding.length > 0 && corePrimary.length === 0) {
+    throw new TmBuildFailure(`The source maps of ${holding.join(', ')} attribute none of their code to the @tellma/core primary, whose modules the build's stats place in them.`);
+  }
 
   const figures = [
     sum('initialJs', inputs.initialJs),
@@ -206,6 +234,7 @@ export function tmMeasureBudgets(inputs: TmBudgetInputs): TmBudgetFigure[] {
     sum('detailsRoute', detailsRoute),
     sum('echartsEngine', echartsEngine),
     sum('workerShell', inputs.shell),
+    { name: 'corePrimary', ...tmCompressedSize(corePrimary.join('')), files: corePrimary.length },
     { name: 'codedReports', ...tmCompressedSize(JSON.stringify(inputs.codedReports ?? [])), files: reports.length },
     sum('bootScript', ['tm-boot.js']),
   ];

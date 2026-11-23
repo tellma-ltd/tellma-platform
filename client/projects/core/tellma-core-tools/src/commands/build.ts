@@ -238,6 +238,7 @@ export async function tmBuild(context: TmCommandContext, options: TmEmitOptions)
   tmLogStep(context, 'Checking the output');
   const figures = tmMeasureBudgets({
     browserDir: browser,
+    sourceMapsDir: project.sourceMapsDir,
     graph,
     initialJs,
     initialCss: initial.stylesheets,

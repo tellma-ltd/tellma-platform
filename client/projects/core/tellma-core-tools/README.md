@@ -88,8 +88,16 @@ key is the declaration or file concerned and the feature its owner (the distribu
 own files). `label-missing` and `budget-warning` are warnings, which print and pass.
 
 **Budgets.** `initialJs` (warn 230 KB, error 260 KB), `initialCss` (40), `searchRoute` (110),
-`detailsRoute` (80), `echartsEngine` (170), `workerShell` (warn 1,536), `codedReports` (16) and
-`bootScript` (3 KB for the script with English, plus 0.4 KB per further string table). Every
+`detailsRoute` (80), `echartsEngine` (170), `workerShell` (warn 1,536), `corePrimary` (50),
+`codedReports` (16) and `bootScript` (3 KB for the script with English, plus 0.4 KB per further
+string table). `corePrimary` is the `@tellma/core` primary entry point's own weight on the first
+frame: the code its modules (the module it starts at and every module reached from it through
+relative imports, whether from the built package or its sources) contribute to the initial
+JavaScript, cut out of those files through their hidden source maps and compressed alone. Primary
+code the app never uses is shaken out first, and primary code that loads with `import()` later is
+not on the first frame, so neither counts; the build fails when a file holding primary code has no
+source map. It complements the per-entry-point ceilings `size:check` holds the package to, which
+measure the whole entry point on its own. Every
 lazily loaded chunk no budget covers, a `@defer` block's or a distribution route's, prints on a
 line of its own, `lazy:<the module it starts at>`, with no level: its static imports beyond the
 initial set. A distribution sets a level in `package.json`; a raise needs a note:
@@ -114,5 +122,7 @@ in a group of its own after every other spec file, so the build and the other sp
 processes never compete for the machine. The lint rule specs, here and the workspace's own under
 `client/tools/tests/`, build their ESLint `RuleTester` with `fixtures/rule-tester.ts`, which hands
 it Vitest's `describe` and `it` so that each valid and invalid case runs as a test of its own.
+`fixtures/source-maps.ts` writes source maps from plain runs of generated code, so the budget
+specs state which source each byte came from.
 The platform's own client workspace dogfoods every preset: its ESLint and stylelint configs
 register this package's rules, and its `tsconfig.json` extends the TypeScript preset.
