@@ -160,6 +160,8 @@ export class TmPreferences {
   readonly #host = inject(TM_API_HOST);
   readonly #now = inject(TM_NOW);
   readonly #telemetry = inject(TmTelemetry);
+  /** The app's lifetime: once it ends, its injector resolves nothing, so nothing more is flushed or armed. */
+  readonly #app = inject(DestroyRef);
 
   /** Each tenant's overlay: the values this tab shows before the bag holds them, by key. */
   readonly #overlay = signal<Readonly<Record<number, Readonly<Record<string, TmStoredText>>>>>({});
@@ -229,7 +231,7 @@ export class TmPreferences {
       }
     });
 
-    inject(DestroyRef).onDestroy(() => {
+    this.#app.onDestroy(() => {
       subscription.unsubscribe();
       stops.forEach((stop) => stop());
       this.#tenants.forEach((tenant) => clearTimeout(tenant.timer));
@@ -464,7 +466,8 @@ export class TmPreferences {
   /** Arms the tenant's next flush: at the end of the task when one is due, else at the earliest due time. */
   #schedule(t: number): void {
     const tenant = this.#tenants.get(t);
-    if (tenant === undefined) {
+    // A write that lands after the app's end arms nothing.
+    if (tenant === undefined || this.#app.destroyed) {
       return;
     }
     clearTimeout(tenant.timer);
@@ -494,7 +497,8 @@ export class TmPreferences {
 
   /** Flushes the tenant's due keys, one write per kind, then arms the next flush. */
   #fire(tenant: TmTenantPrefs, hidden: boolean): void {
-    if (this.#frozen(tenant.t)) {
+    // A flush the app's end overtook, such as the one queued for the end of its last task, sends nothing.
+    if (this.#app.destroyed || this.#frozen(tenant.t)) {
       return;
     }
     const now = this.#now();

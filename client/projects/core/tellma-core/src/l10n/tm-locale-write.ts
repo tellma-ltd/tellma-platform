@@ -124,6 +124,9 @@ export class TmLocaleWrite {
   readonly #api = inject(TmApi);
   readonly #refresher = inject(TmCacheRefresher);
 
+  /** The app's lifetime: once it ends, nothing more is sent, adopted or armed. */
+  readonly #app = inject(DestroyRef);
+
   /** Each tenant's queue, while it has members, a timer or a write. */
   readonly #queues = new Map<number, TmTenantQueue>();
 
@@ -143,7 +146,7 @@ export class TmLocaleWrite {
   constructor() {
     // --- Leaving the page: every queue goes out at once, its answer unread ---
     const stop = inject(TM_API_HOST).listen('window', 'pagehide', () => this.#sendNow());
-    inject(DestroyRef).onDestroy(() => {
+    this.#app.onDestroy(() => {
       stop();
       for (const entry of this.#queues.values()) {
         clearTimeout(entry.timer);
@@ -295,7 +298,8 @@ export class TmLocaleWrite {
    */
   #fire(tenantId: number): void {
     const entry = this.#queues.get(tenantId);
-    if (entry === undefined) {
+    // After the app's end nothing is sent, not even the members queued behind a write.
+    if (entry === undefined || this.#app.destroyed) {
       return;
     }
     clearTimeout(entry.timer);
@@ -313,6 +317,10 @@ export class TmLocaleWrite {
       .write<TmMeLocaleResult>(ROUTE, tmLocaleWriteBody(members), { tenantId })
       .then(
         (result) => {
+          // A write that lands after the app's end is not adopted: the refresher has ended with it.
+          if (this.#app.destroyed) {
+            return;
+          }
           entry.retries = 0;
           // The choices move onto the result before it shows, in the same pass.
           this.#rebase(tenantId, members, result);
@@ -354,6 +362,10 @@ export class TmLocaleWrite {
    * @param entry - Its queue.
    */
   #retry(tenantId: number, entry: TmTenantQueue): void {
+    // A failure that lands after the app's end plans no further try.
+    if (this.#app.destroyed) {
+      return;
+    }
     entry.awaitingOnline = true;
     if (!untracked(this.#api.online)) {
       return;

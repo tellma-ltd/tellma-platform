@@ -144,6 +144,26 @@ channels open once the Core chunk names the slug (earlier posts wait for them), 
 page sits in the back-forward cache, and reopen when it comes back, when the store re-reads every
 mirrored document.
 
+**The app's end.** The root services resolve some collaborators through the injector when they use
+them, and a destroyed injector throws on every lookup. So a service that defers work, to a frame, an
+idle moment, a timer, a microtask or the end of a read, checks `DestroyRef.destroyed` before it
+resolves anything:
+
+- The display names' frame flush still runs after the end, and returns without reading.
+- The cache refresher's timers stop, and its tenants' syncs and background reads are cancelled.
+  After the end it arms no timer and knows no partition, so a late `adopt`, `refresh` or `observe`
+  does nothing.
+- The preferences send no flush and arm no timer after the end; a write that lands then is dropped
+  without a failure.
+- The launch cache loads no list whose load the end overtook before its read; a read in flight is
+  cancelled with the refresher's background reads. The Entities chunk keeps no model that lands
+  after the end.
+- The locale write's timers stop. A write that lands after the end is not adopted, an offline
+  failure plans no further try, and nothing queued behind it is sent.
+
+The HTTP layer's response observers are not yet covered: an answer that lands after the end can
+still throw from its user check or its version-tags observer.
+
 ### Sync and the launch documents
 
 `TmCacheRefresher` (`src/state/sync/`) is the one path to `client/sync`, which answers a tenant's

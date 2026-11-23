@@ -10,7 +10,7 @@ import { tmGregorianCalendar } from '@tellma/core-ui/l10n';
 
 import { TmApiError } from '../api/tm-api-error';
 import type { TmDecimal, TmJsonObject } from '../json/tm-json';
-import { TM_T17 } from '../routes/tm-app.testing.util';
+import { TM_T17, tmUnhandled } from '../routes/tm-app.testing.util';
 import type { TmAccessSummary } from '../state/launch/tm-launch-docs';
 import { TmCacheRefresher } from '../state/sync/tm-cache-refresher';
 import golden from './display-name-golden.json';
@@ -358,6 +358,19 @@ describe('display names', () => {
         await vi.waitFor(() => expect(api.calls().filter((call) => call.route === 'customers/query')).toHaveLength(2));
         await new Promise((resolve) => setTimeout(resolve, 10));
         expect(names.label('acme.Customer', 8)()).toBeNull();
+      });
+
+      it('reads nothing once the app that queued the ids is destroyed', async () => {
+        const { names, api } = await start();
+        api.respond('customers/query', { rows: customerRows([7, 'Cash', '1101']) });
+        const unhandled = await tmUnhandled(async () => {
+          // The ids wait for the next frame, and the app ends before it comes.
+          names.resolve('acme.Customer', [7]);
+          TestBed.resetTestingModule();
+          await new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve, 50)));
+        });
+        expect(unhandled).toEqual([]);
+        expect(api.calls().filter((call) => call.route === 'customers/query')).toEqual([]);
       });
     });
   });

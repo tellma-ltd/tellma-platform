@@ -499,9 +499,12 @@ describe('TmLocalization', () => {
       expect(switches(bus)).toEqual([]);
 
       l10n.setLanguage('en');
-      await tmSettle();
-
-      expect(switches(bus)).toEqual([{ type: 'l10n.switched', lang: 'en' }]);
+      // The switch lands once its loads have, and a module loaded for the
+      // first time can take more than a settle while the whole suite runs.
+      await vi.waitFor(async () => {
+        await tmSettle();
+        expect(switches(bus)).toEqual([{ type: 'l10n.switched', lang: 'en' }]);
+      });
     });
 
     it("leaves a tenantless tab and a tenant tab with no preference as they are when another tab settles a preference, and follows a switch", async () => {
