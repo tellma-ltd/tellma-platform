@@ -105,14 +105,16 @@ export class TmBannerHost {
           return;
         }
         announced = id;
+        clearTimeout(timer);
+        this.announcement.set('');
         if (head !== null) {
           // The politeness changes with the region empty, and the text follows
           // a moment later, so the screen reader reads it at the new politeness.
-          clearTimeout(timer);
           this.politeness.set(head.options.level === 1 ? 'assertive' : 'polite');
-          this.announcement.set('');
           timer = setTimeout(() => this.announcement.set(head.options.message()), ANNOUNCE_DELAY_MS);
         }
+        // With no banner left, the region empties, so browsing the page never
+        // finds a condition that has ended.
       });
     });
   }

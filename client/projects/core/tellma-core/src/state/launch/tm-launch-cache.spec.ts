@@ -19,7 +19,10 @@ import { TmApiError } from '../../api/tm-api-error';
 import { TM_API_HOST } from '../../api/tm-api-host';
 import { TmFakeApiHost } from '../../api/tm-api.testing.util';
 import { TM_NOW } from '../../app/tm-now';
+import { TM_ATTENTION_DOCUMENTS, type TmInboxSummary } from '../../attention/tm-attention-documents';
+import type { TmDecimal } from '../../json/tm-json';
 import type { TmMembership } from '../../launch/tm-membership';
+import { TM_LEADER_DOCUMENTS } from '../leader/tm-leader-documents';
 import { TmClientStore, type TmStoredDoc } from '../store/tm-client-store';
 import type { TmTenantPartition } from '../store/tm-store-layout';
 import type { TmDistributionInfo } from '../tm-distribution-info';
@@ -97,7 +100,9 @@ function stored<T>(data: T, tag: string | null = null): TmStoredDoc<T> {
 }
 
 /** Configures the launch cache on a URL, with tenant 17's launch documents stored unless `cold`. */
-async function setUp(options: { url?: string; cold?: boolean; entityTags?: Record<string, string> } = {}): Promise<TmRig> {
+async function setUp(
+  options: { url?: string; cold?: boolean; entityTags?: Record<string, string>; attention?: boolean } = {},
+): Promise<TmRig> {
   const idle: (() => void)[] = [];
   vi.spyOn(window, 'requestIdleCallback').mockImplementation((callback) => {
     idle.push(() => callback({ didTimeout: false, timeRemaining: () => 50 }));
@@ -110,6 +115,10 @@ async function setUp(options: { url?: string; cold?: boolean; entityTags?: Recor
       provideRouter([{ path: '**', component: TmPage }]),
       { provide: TM_API_HOST, useValue: new TmFakeApiHost() },
       { provide: TM_NOW, useValue: () => Date.now() },
+      // The attention documents, as provideTellma registers them, when the test reads them.
+      ...(options.attention === true
+        ? TM_ATTENTION_DOCUMENTS.map((document) => ({ provide: TM_LEADER_DOCUMENTS, multi: true, useValue: document }))
+        : []),
     ],
   });
   await TestBed.inject(Router).navigateByUrl(options.url ?? '/17/centers');
@@ -162,6 +171,14 @@ describe('TmLaunchCache', () => {
       await settle();
       expect(rig.launch.warm()).toBe(true);
       expect(rig.calls('client/sync')).toEqual([]);
+    });
+
+    it("reads the routed tenant's inbox summary from the store", async () => {
+      const rig = await setUp({ attention: true });
+      const inbox: TmInboxSummary = { unseen: 2, unread: 3, latest: [], running: [], related: {}, version: '7' as TmDecimal };
+      await rig.store.put(T17, 'inbox', stored(inbox));
+      await rig.launch.ɵenter(17);
+      expect(rig.launch.docs.inbox()).toEqual(inbox);
     });
 
     it('rejects a cold entry whose sync fails, and syncs again on the next entry', async () => {

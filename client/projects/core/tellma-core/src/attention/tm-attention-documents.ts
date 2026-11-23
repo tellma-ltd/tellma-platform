@@ -13,7 +13,10 @@ import type { TmNotificationSeverity } from './tm-notification-metadata';
 // keeps fresh in the store and every tab renders the bell, the tray and the
 // home lists from, so a warm launch shows them before any call. The types
 // are camelCase mirrors of the server's records; members the server leaves
-// null are absent.
+// null are absent. Only the inbox is registered for now: the server maps no
+// assignments/summary route until the assignments read side lands, and a
+// registered read of a route the server lacks would report a contract
+// mismatch on every leader refresh. That read side registers it here.
 
 /** One of the user's own jobs that is not over yet, as the inbox summary lists it. */
 export interface TmInboxRunningJob {
@@ -90,8 +93,7 @@ export interface TmAssignmentsSummary {
 /**
  * The attention documents, which `provideTellma` registers as leader
  * documents: the inbox, re-read on inbox and job events and polled while a
- * job runs, so a lost job event never strands the bell's progress ring; and
- * the assignments, re-read on assignment events.
+ * job runs, so a lost job event never strands the bell's progress ring.
  */
 export const TM_ATTENTION_DOCUMENTS: readonly TmLeaderDocument[] = [
   {
@@ -101,5 +103,4 @@ export const TM_ATTENTION_DOCUMENTS: readonly TmLeaderDocument[] = [
     formatVersion: 1,
     pollWhile: (document) => (document as TmInboxSummary).running.some((job) => job.status === 'Pending' || job.status === 'Running'),
   },
-  { name: 'assignments', route: 'assignments/summary', events: ['assignments.changed'], formatVersion: 1 },
 ];

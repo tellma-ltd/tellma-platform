@@ -59,8 +59,8 @@ describe('TmLeaderElection', () => {
 
   beforeEach(async () => {
     rig = await tmLeaderRig(() => new TmFakeApiHost());
-    rig.api.respond('inbox/summary', { running: false });
-    rig.api.respond('assignments/summary', { open: 0 });
+    rig.api.respond('acme/jobs/summary', { running: false });
+    rig.api.respond('acme/tasks/summary', { open: 0 });
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
     // No jitter before a steal, unless a test asks for one.
     vi.spyOn(Math, 'random').mockReturnValue(0);
@@ -356,7 +356,7 @@ describe('TmLeaderElection', () => {
       await tmUntil(() => a.hubs.length === 1);
       a.hubs[0]!.sink.state('connected');
       const b = await follower();
-      await rig.store.put(TM_LEADER_T17, 'inbox', { tag: null, savedAt: Date.now(), data: { running: true } });
+      await rig.store.put(TM_LEADER_T17, 'acme.jobs', { tag: null, savedAt: Date.now(), data: { running: true } });
       await tmAdvance(60_000);
       expect(probes(b)).toBe(2);
     });
@@ -367,13 +367,13 @@ describe('TmLeaderElection', () => {
       await tmUntil(() => a.hubs.length === 1);
       const b = await follower();
       const heard: TmClientEvent[] = [];
-      b.leader.events('inbox.changed').subscribe((event) => heard.push(event));
+      b.leader.events('acme.jobs.changed').subscribe((event) => heard.push(event));
       b.leader.events('x.unknown').subscribe((event) => heard.push(event));
       a.hubs[0]!.sink.event({ name: 'x.unknown', tenantId: 17, payload: null });
-      a.hubs[0]!.sink.event({ name: 'inbox.changed', tenantId: 17, payload: { id: 4 } });
+      a.hubs[0]!.sink.event({ name: 'acme.jobs.changed', tenantId: 17, payload: { id: 4 } });
       await tmUntil(() => heard.length > 0);
       await tmPause();
-      expect(heard).toEqual([{ name: 'inbox.changed', tenantId: 17, payload: { id: 4 } }]);
+      expect(heard).toEqual([{ name: 'acme.jobs.changed', tenantId: 17, payload: { id: 4 } }]);
     });
 
     it('is answered by a hidden leader at once', async () => {

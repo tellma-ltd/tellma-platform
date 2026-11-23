@@ -18,7 +18,7 @@ const INPUTS = ['keydown', 'pointerdown', 'pointermove', 'wheel', 'touchstart'];
 
 /** Creates the clock over a faked window, with the clock faked first. */
 function setUp(): { host: TmFakeApiHost; idle: TmInputIdle } {
-  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date', 'performance'] });
   const host = new TmFakeApiHost();
   TestBed.configureTestingModule({ providers: [{ provide: TM_API_HOST, useValue: host }] });
   return { host, idle: TestBed.inject(TmInputIdle) };
@@ -70,6 +70,17 @@ describe('TmInputIdle', () => {
     expect(idle.idle()).toBe(true);
   });
 
+  it('turns idle 2 s after the last input when the wall clock is set back', async () => {
+    const { host, idle } = setUp();
+    await vi.advanceTimersByTimeAsync(2000);
+    host.fire('window', 'keydown');
+    vi.setSystemTime(Date.now() - 3_600_000);
+    await vi.advanceTimersByTimeAsync(1999);
+    expect(idle.idle()).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(idle.idle()).toBe(true);
+  });
+
   it('resolves whenIdle at once while idle', async () => {
     const { idle } = setUp();
     await vi.advanceTimersByTimeAsync(2000);
@@ -92,7 +103,7 @@ describe('TmInputIdle', () => {
   });
 
   it("hears the browser's own input on the window, even when a handler stops it", async () => {
-    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date', 'performance'] });
     const idle = TestBed.inject(TmInputIdle);
     await vi.advanceTimersByTimeAsync(2000);
     const target = document.body.appendChild(document.createElement('button'));

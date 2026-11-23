@@ -18,7 +18,7 @@ import { tmPlatformBanners } from './tm-platform-banners';
 
 /** Starts the banner sources over the fake API, with the clock faked first. */
 function setUp(): { api: TmFakeApi; banners: TmBanners } {
-  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date', 'performance'] });
   TestBed.configureTestingModule({
     providers: [
       provideTellmaTesting(),

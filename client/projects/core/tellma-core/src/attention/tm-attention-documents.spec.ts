@@ -7,7 +7,6 @@ import { TestBed } from '@angular/core/testing';
 import {
   provideTellmaStateTesting,
   provideTellmaTesting,
-  tmFakeAssignmentsSummary,
   tmFakeInboxSummary,
   tmTestProfile,
   tmWarmTenant,
@@ -20,8 +19,8 @@ import { TmClientStore } from '../state/store/tm-client-store';
 import type { TmTenantPartition } from '../state/store/tm-store-layout';
 import { TM_ATTENTION_DOCUMENTS, type TmInboxRunningJob } from './tm-attention-documents';
 
-// The attention documents as leader documents: their routes and events, the
-// inbox's poll while a job runs, and their round trip through the store.
+// The attention documents as leader documents: the inbox's route and events,
+// its poll while a job runs, and its round trip through the store.
 
 /** The inbox's registration. */
 const inbox = TM_ATTENTION_DOCUMENTS.find((document) => document.name === 'inbox')!;
@@ -32,12 +31,10 @@ function job(id: number, status: TmInboxRunningJob['status']): TmInboxRunningJob
 }
 
 describe('TM_ATTENTION_DOCUMENTS', () => {
-  it('registers the inbox and the assignments with their routes, events and formats', () => {
+  it('registers the inbox alone, with its route, events and format, until the server serves the assignments', () => {
     expect(TM_ATTENTION_DOCUMENTS.map(({ name, route, events, formatVersion }) => ({ name, route, events, formatVersion }))).toEqual([
       { name: 'inbox', route: 'inbox/summary', events: ['inbox.changed', 'job.changed'], formatVersion: 1 },
-      { name: 'assignments', route: 'assignments/summary', events: ['assignments.changed'], formatVersion: 1 },
     ]);
-    expect(TM_ATTENTION_DOCUMENTS[1].pollWhile).toBeUndefined();
   });
 
   it('polls the inbox while a job is pending or running, not while every job waits on a person', () => {
@@ -47,15 +44,14 @@ describe('TM_ATTENTION_DOCUMENTS', () => {
     expect(inbox.pollWhile?.(tmFakeInboxSummary({ running: [job(3, 'Running')] }))).toBe(true);
   });
 
-  it('round-trips through the client store under their formats, beside a warm tenant', async () => {
+  it('round-trips through the client store under its format, beside a warm tenant', async () => {
     // Registered as provideTellma registers them, which gives the store their formats.
     const documents = TM_ATTENTION_DOCUMENTS.map((document) => ({ provide: TM_LEADER_DOCUMENTS, multi: true, useValue: document }));
     TestBed.configureTestingModule({ providers: [provideTellmaTesting(), provideTellmaStateTesting(), ...documents] });
     const store = TestBed.inject(TmClientStore);
     const partition: TmTenantPartition = { kind: 'tenant', sub: tmTestProfile().sub, tenantId: 17 };
     const summary = tmFakeInboxSummary({ unseen: 3, maxUnseenSeverity: 'Warning', version: '9007199254740993' as TmDecimal });
-    await tmWarmTenant(store, partition, { ...TM_T17_DOCS, inbox: summary, assignments: tmFakeAssignmentsSummary({ open: 2 }) });
+    await tmWarmTenant(store, partition, { ...TM_T17_DOCS, inbox: summary });
     expect(store.doc(partition, 'inbox')()?.data).toEqual(summary);
-    expect(store.doc(partition, 'assignments')()?.data).toMatchObject({ open: 2, new: 0 });
   });
 });

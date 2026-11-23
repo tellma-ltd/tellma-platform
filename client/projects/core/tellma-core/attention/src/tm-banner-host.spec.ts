@@ -128,6 +128,29 @@ describe('TmBannerHost', () => {
     expect(live(element).textContent).toBe('acme.closing message');
   });
 
+  it('empties the live region when the last banner closes', async () => {
+    const { banners, element, render } = await setUp();
+    const ref = banners.show(banner('tm.offline', 1, { tone: 'error' }));
+    await vi.advanceTimersByTimeAsync(100);
+    await render();
+    expect(live(element).textContent).toBe('tm.offline message');
+
+    ref.close();
+    await render();
+    expect(live(element).textContent).toBe('');
+  });
+
+  it('never writes a banner that closed before its announcement was due', async () => {
+    const { banners, element, render } = await setUp();
+    const ref = banners.show(banner('acme.closing', 4));
+    await render();
+    ref.close();
+    await render();
+    await vi.advanceTimersByTimeAsync(100);
+    await render();
+    expect(live(element).textContent).toBe('');
+  });
+
   it('wires the action, the pager and the dismiss button back to the banners', async () => {
     const { banners, element, idle, render } = await setUp();
     idle.set(true);

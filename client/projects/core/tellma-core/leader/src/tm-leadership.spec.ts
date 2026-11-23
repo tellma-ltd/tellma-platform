@@ -29,8 +29,8 @@ describe('TmLeadership', () => {
 
   beforeEach(async () => {
     rig = await tmLeaderRig(() => new TmFakeApiHost());
-    rig.api.respond('inbox/summary', { running: false });
-    rig.api.respond('assignments/summary', { open: 0 });
+    rig.api.respond('acme/jobs/summary', { running: false });
+    rig.api.respond('acme/tasks/summary', { open: 0 });
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
     vi.spyOn(Math, 'random').mockReturnValue(0);
   });
@@ -77,10 +77,10 @@ describe('TmLeadership', () => {
     it('revalidates the tenant and reads every leader document in the background, stamped with the time it was sent', async () => {
       const sentAt = Date.now();
       const tab = await leader({ noHub: true });
-      await tmUntil(() => rig.store.doc(TM_LEADER_T17, 'assignments')() !== undefined);
+      await tmUntil(() => rig.store.doc(TM_LEADER_T17, 'acme.tasks')() !== undefined);
       expect(tab.refresher.refreshes).toEqual([{ tenantId: 17, docs: ['tenant'], trigger: 'leader' }]);
-      expect(reads('inbox/summary').map((call) => call.options)).toEqual([expect.objectContaining({ background: true, tenantId: 17 })]);
-      expect(rig.store.doc(TM_LEADER_T17, 'inbox')()).toEqual({ tag: null, savedAt: sentAt, data: { running: false } });
+      expect(reads('acme/jobs/summary').map((call) => call.options)).toEqual([expect.objectContaining({ background: true, tenantId: 17 })]);
+      expect(rig.store.doc(TM_LEADER_T17, 'acme.jobs')()).toEqual({ tag: null, savedAt: sentAt, data: { running: false } });
       expect(posted(tab, 'hub.status')).toEqual([{ type: 'hub.status', tenantId: 17, status: 'connecting', since: sentAt, leaderVisible: true }]);
     });
 
@@ -88,9 +88,9 @@ describe('TmLeadership', () => {
       const sync: ɵTmSyncDoc = { at: Date.now(), entities: null, entityTags: {} };
       await rig.store.put(TM_LEADER_T17, 'sync', { tag: null, savedAt: Date.now(), data: sync });
       const tab = await leader({ noHub: true });
-      await tmUntil(() => rig.store.doc(TM_LEADER_T17, 'assignments')() !== undefined);
+      await tmUntil(() => rig.store.doc(TM_LEADER_T17, 'acme.tasks')() !== undefined);
       expect(tab.refresher.refreshes).toEqual([]);
-      expect(reads('inbox/summary').length).toBe(1);
+      expect(reads('acme/jobs/summary').length).toBe(1);
     });
 
     it.each([
@@ -118,15 +118,15 @@ describe('TmLeadership', () => {
 
     it('stamps a read that lands late with its send time, so a later copy stored meanwhile wins', async () => {
       const answer = deferred<unknown>();
-      rig.api.respond('inbox/summary', () => answer.promise);
+      rig.api.respond('acme/jobs/summary', () => answer.promise);
       const sentAt = Date.now();
       await leader({ noHub: true });
       await tmAdvance(3_000);
       // Another tab stored a copy it read after this one was sent.
-      await rig.store.put(TM_LEADER_T17, 'inbox', { tag: null, savedAt: sentAt + 1_000, data: { running: true } });
+      await rig.store.put(TM_LEADER_T17, 'acme.jobs', { tag: null, savedAt: sentAt + 1_000, data: { running: true } });
       answer.resolve({ running: false });
       await tmPause();
-      expect(rig.store.doc(TM_LEADER_T17, 'inbox')()).toEqual({ tag: null, savedAt: sentAt + 1_000, data: { running: true } });
+      expect(rig.store.doc(TM_LEADER_T17, 'acme.jobs')()).toEqual({ tag: null, savedAt: sentAt + 1_000, data: { running: true } });
     });
 
     it('reports its visibility to the other tabs', async () => {
@@ -171,13 +171,13 @@ describe('TmLeadership', () => {
 
     it('catches up after every connect: revalidates the tenant and reads every leader document', async () => {
       const { tab, hub } = await connecting();
-      const before = reads('inbox/summary').length;
+      const before = reads('acme/jobs/summary').length;
       hub.sink.state('connected');
       hub.sink.connected();
       await tmPause();
       expect(triggers(tab)).toEqual(['leader', 'leader']);
-      expect(reads('inbox/summary').length).toBe(before + 1);
-      expect(reads('assignments/summary').length).toBe(before + 1);
+      expect(reads('acme/jobs/summary').length).toBe(before + 1);
+      expect(reads('acme/tasks/summary').length).toBe(before + 1);
     });
 
     it('starts the connection again after a refusal once a sync lands, and not when none does', async () => {
@@ -227,12 +227,12 @@ describe('TmLeadership', () => {
       const { tab, hub } = await connecting();
       const heard: TmClientEvent[] = [];
       tab.leader.events('x.unknown').subscribe((event) => heard.push(event));
-      tab.leader.events('assignments.changed').subscribe((event) => heard.push(event));
+      tab.leader.events('acme.tasks.changed').subscribe((event) => heard.push(event));
       hub.sink.event({ name: 'x.unknown', tenantId: 17, payload: null });
-      hub.sink.event({ name: 'assignments.changed', tenantId: 17, payload: null });
-      hub.sink.event({ name: 'assignments.changed', tenantId: 18, payload: null });
-      expect(posted(tab, 'hub.event').map((message) => message.event.name)).toEqual(['x.unknown', 'assignments.changed']);
-      expect(heard).toEqual([{ name: 'assignments.changed', tenantId: 17, payload: null }]);
+      hub.sink.event({ name: 'acme.tasks.changed', tenantId: 17, payload: null });
+      hub.sink.event({ name: 'acme.tasks.changed', tenantId: 18, payload: null });
+      expect(posted(tab, 'hub.event').map((message) => message.event.name)).toEqual(['x.unknown', 'acme.tasks.changed']);
+      expect(heard).toEqual([{ name: 'acme.tasks.changed', tenantId: 17, payload: null }]);
     });
 
     it('hands a cache change to the refresher, and drops one whose payload is malformed', async () => {
@@ -244,30 +244,30 @@ describe('TmLeadership', () => {
 
     it('coalesces a leader document events over 250 ms into one read, with one more queued behind a read in flight', async () => {
       const { hub } = await connecting();
-      const before = reads('inbox/summary').length;
+      const before = reads('acme/jobs/summary').length;
       const answer = deferred<unknown>();
-      rig.api.respond('inbox/summary', () => answer.promise);
+      rig.api.respond('acme/jobs/summary', () => answer.promise);
 
-      hub.sink.event({ name: 'inbox.changed', tenantId: 17, payload: null });
+      hub.sink.event({ name: 'acme.jobs.changed', tenantId: 17, payload: null });
       await tmAdvance(100);
       hub.sink.event({ name: 'job.changed', tenantId: 17, payload: null });
       await tmAdvance(149);
-      expect(reads('inbox/summary').length).toBe(before);
+      expect(reads('acme/jobs/summary').length).toBe(before);
       await tmAdvance(1);
-      expect(reads('inbox/summary').length).toBe(before + 1);
-      expect(reads('assignments/summary').length).toBe(before);
+      expect(reads('acme/jobs/summary').length).toBe(before + 1);
+      expect(reads('acme/tasks/summary').length).toBe(before);
 
       // While that read is in flight, any number of events queue one more.
       for (let i = 0; i < 5; i++) {
-        hub.sink.event({ name: 'inbox.changed', tenantId: 17, payload: null });
+        hub.sink.event({ name: 'acme.jobs.changed', tenantId: 17, payload: null });
         await tmAdvance(300);
       }
-      expect(reads('inbox/summary').length).toBe(before + 1);
-      rig.api.respond('inbox/summary', { running: false });
+      expect(reads('acme/jobs/summary').length).toBe(before + 1);
+      rig.api.respond('acme/jobs/summary', { running: false });
       answer.resolve({ running: false });
-      await tmUntil(() => reads('inbox/summary').length === before + 2);
+      await tmUntil(() => reads('acme/jobs/summary').length === before + 2);
       await tmPause();
-      expect(reads('inbox/summary').length).toBe(before + 2);
+      expect(reads('acme/jobs/summary').length).toBe(before + 2);
     });
   });
 
@@ -283,8 +283,8 @@ describe('TmLeadership', () => {
       expect(triggers(tab)).toEqual(['leader']);
       await tmAdvance(1_000);
       expect(triggers(tab)).toEqual(['leader', 'poll']);
-      expect(reads('inbox/summary').length).toBe(2);
-      expect(reads('assignments/summary').length).toBe(2);
+      expect(reads('acme/jobs/summary').length).toBe(2);
+      expect(reads('acme/tasks/summary').length).toBe(2);
       await tmAdvance(60_000);
       expect(triggers(tab)).toEqual(['leader', 'poll', 'poll']);
 
@@ -345,46 +345,46 @@ describe('TmLeadership', () => {
 
     it('re-reads a leader document whose stored copy starts to ask for it while connected', async () => {
       const { hub } = await connecting();
-      await tmUntil(() => rig.store.doc(TM_LEADER_T17, 'inbox')() !== undefined);
+      await tmUntil(() => rig.store.doc(TM_LEADER_T17, 'acme.jobs')() !== undefined);
       hub.sink.state('connected');
       await tmAdvance(30_000);
       // A panel stores a copy that asks for polling: the leader re-reads it a minute after its last read.
-      await rig.store.put(TM_LEADER_T17, 'inbox', { tag: null, savedAt: Date.now(), data: { running: true } });
+      await rig.store.put(TM_LEADER_T17, 'acme.jobs', { tag: null, savedAt: Date.now(), data: { running: true } });
       await tmAdvance(29_000);
-      expect(reads('inbox/summary').length).toBe(1);
+      expect(reads('acme/jobs/summary').length).toBe(1);
       await tmAdvance(1_000);
       await tmPause();
-      expect(reads('inbox/summary').length).toBe(2);
+      expect(reads('acme/jobs/summary').length).toBe(2);
     });
 
     it('re-reads a leader document whose own read starts to ask for it while connected', async () => {
       const { hub } = await connecting();
-      await tmUntil(() => rig.store.doc(TM_LEADER_T17, 'inbox')() !== undefined);
+      await tmUntil(() => rig.store.doc(TM_LEADER_T17, 'acme.jobs')() !== undefined);
       hub.sink.state('connected');
       // A job starts: its event's read stores a copy that asks, and its later events are lost.
-      rig.api.respond('inbox/summary', { running: true });
+      rig.api.respond('acme/jobs/summary', { running: true });
       hub.sink.event({ name: 'job.changed', tenantId: 17, payload: null });
       await tmAdvance(250);
-      await tmUntil(() => rig.store.doc<{ running: boolean }>(TM_LEADER_T17, 'inbox')()?.data.running === true);
-      expect(reads('inbox/summary').length).toBe(2);
+      await tmUntil(() => rig.store.doc<{ running: boolean }>(TM_LEADER_T17, 'acme.jobs')()?.data.running === true);
+      expect(reads('acme/jobs/summary').length).toBe(2);
       await tmAdvance(60_000);
       await tmPause();
-      expect(reads('inbox/summary').length).toBe(3);
+      expect(reads('acme/jobs/summary').length).toBe(3);
     });
 
     it('re-reads a leader document every minute while its stored copy asks for it, even while connected', async () => {
-      rig.api.respond('inbox/summary', { running: true });
+      rig.api.respond('acme/jobs/summary', { running: true });
       const { tab, hub } = await connecting();
-      await tmUntil(() => rig.store.doc(TM_LEADER_T17, 'inbox')() !== undefined);
+      await tmUntil(() => rig.store.doc(TM_LEADER_T17, 'acme.jobs')() !== undefined);
       hub.sink.state('connected');
-      rig.api.respond('inbox/summary', { running: false });
+      rig.api.respond('acme/jobs/summary', { running: false });
       await tmAdvance(60_000);
       await tmPause();
-      expect(reads('inbox/summary').length).toBe(2);
-      expect(reads('assignments/summary').length).toBe(1);
+      expect(reads('acme/jobs/summary').length).toBe(2);
+      expect(reads('acme/tasks/summary').length).toBe(1);
       // The copy no longer asks for it.
       await tmAdvance(180_000);
-      expect(reads('inbox/summary').length).toBe(2);
+      expect(reads('acme/jobs/summary').length).toBe(2);
       expect(triggers(tab)).toEqual(['leader']);
       expect(tab.events('tm.realtime.polling')).toEqual([]);
     });

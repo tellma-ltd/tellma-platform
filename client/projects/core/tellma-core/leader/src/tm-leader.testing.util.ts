@@ -63,25 +63,29 @@ export const TM_LEADER_T18: TmTenantPartition = { kind: 'tenant', sub: 'test-use
 /** The hub lock of tenant 17. */
 export const TM_LEADER_LOCK = 'tm:acme:test-user:17:hub';
 
-/** The inbox, as a leader document whose stored copy asks for polling while `running` is set. */
-export const TM_INBOX_DOC: TmLeaderDocument = {
-  name: 'inbox',
-  route: 'inbox/summary',
-  events: ['inbox.changed', 'job.changed'],
+/**
+ * A distribution's job list, as a leader document whose stored copy asks for
+ * polling while `running` is set. Named apart from the platform's own leader
+ * documents, so a rig that also has them registered never registers a name twice.
+ */
+export const TM_JOBS_DOC: TmLeaderDocument = {
+  name: 'acme.jobs',
+  route: 'acme/jobs/summary',
+  events: ['acme.jobs.changed', 'job.changed'],
   formatVersion: 1,
   pollWhile: (document) => (document as { running?: boolean } | null)?.running === true,
 };
 
-/** The assignments, as a leader document that never asks for polling. */
-export const TM_ASSIGNMENTS_DOC: TmLeaderDocument = {
-  name: 'assignments',
-  route: 'assignments/summary',
-  events: ['assignments.changed'],
+/** A distribution's task list, as a leader document that never asks for polling. */
+export const TM_TASKS_DOC: TmLeaderDocument = {
+  name: 'acme.tasks',
+  route: 'acme/tasks/summary',
+  events: ['acme.tasks.changed'],
   formatVersion: 1,
 };
 
 /** The hub events this build knows. */
-const CLIENT_EVENTS = ['cache.changed', 'inbox.changed', 'job.changed', 'assignments.changed', 'session.ended'];
+const CLIENT_EVENTS = ['cache.changed', 'acme.jobs.changed', 'job.changed', 'acme.tasks.changed', 'session.ended'];
 
 /** A tab bus network: what one tab's bus posts, every other tab's bus receives, a task later. */
 export class TmBusNetwork {
@@ -315,7 +319,7 @@ export interface TmLeaderRig {
  */
 export async function tmLeaderRig(
   page: () => TmLeaderPage,
-  docs: readonly TmLeaderDocument[] = [TM_INBOX_DOC, TM_ASSIGNMENTS_DOC],
+  docs: readonly TmLeaderDocument[] = [TM_JOBS_DOC, TM_TASKS_DOC],
   providers: Provider[] = [],
 ): Promise<TmLeaderRig> {
   TestBed.configureTestingModule({

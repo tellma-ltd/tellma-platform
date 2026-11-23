@@ -173,7 +173,10 @@ export class TmBanners {
    */
   ɵshow(options: TmBannerOptions, scope?: string): TmBannerRef {
     const checked = this.#check(options);
+    // What the row shows before this show, and whether the banner could already be seen.
+    const before = this.#target();
     let entry = this.#entries.find((live) => live.options.id === options.id);
+    const seen = entry !== undefined && this.#seeable(entry);
     if (entry === undefined) {
       const created: TmBannerEntry = {
         options: checked,
@@ -197,10 +200,12 @@ export class TmBanners {
       entry.options = checked;
       entry.scope = scope;
     }
-    // A banner that outranks the shown one takes the row from the user's page.
-    const shown = this.#target();
-    if (shown !== null && checked.level < shown.options.level) {
-      this.#paged = null;
+    // A banner that newly appears and outranks the shown one takes the row,
+    // even from the user's page: the pager moves to it, or back to the head
+    // when it is the head. An in-place update, or a show that a dismissal
+    // keeps hidden, leaves the user's page as it is.
+    if (!seen && this.#seeable(entry) && before !== null && checked.level < before.options.level) {
+      this.#paged = this.#showable()[0] === entry ? null : entry;
     }
     this.#settle(false);
     return entry.ref;
@@ -272,9 +277,12 @@ export class TmBanners {
 
   /** The banners the user can see and page through, in precedence order. */
   #showable(): TmBannerEntry[] {
-    return this.#entries
-      .filter((entry) => !this.#dismissed.has(entry.options.id) || this.#dismissed.get(entry.options.id) !== entry.scope)
-      .sort((a, b) => a.options.level - b.options.level || a.order - b.order);
+    return this.#entries.filter((entry) => this.#seeable(entry)).sort((a, b) => a.options.level - b.options.level || a.order - b.order);
+  }
+
+  /** Whether a banner is not dismissed for its current scope. */
+  #seeable(entry: TmBannerEntry): boolean {
+    return !this.#dismissed.has(entry.options.id) || this.#dismissed.get(entry.options.id) !== entry.scope;
   }
 
   /** What the row is to show: the banner the user paged to while it shows, else the head. */

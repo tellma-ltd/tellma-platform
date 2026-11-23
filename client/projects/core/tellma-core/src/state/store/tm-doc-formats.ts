@@ -5,7 +5,7 @@
 
 import { inject, InjectionToken } from '@angular/core';
 
-import { TM_LEADER_DOCUMENTS } from '../leader/tm-leader-documents';
+import { ɵTM_UNIQUE_LEADER_DOCUMENTS } from '../leader/tm-leader-documents';
 
 // The client formats of the stored documents (spec 0025 §2.4). A format is
 // bumped whenever a document's stored shape changes, a server FormatVersion
@@ -45,7 +45,7 @@ export const TM_STORE_FORMATS = new InjectionToken<Readonly<Record<string, numbe
  */
 export const TM_STORE_EXTRA_FORMATS = new InjectionToken<Readonly<Record<string, number>>>('TM_STORE_EXTRA_FORMATS', {
   providedIn: 'root',
-  factory: () => Object.fromEntries(inject(TM_LEADER_DOCUMENTS).map((doc) => [doc.name, doc.formatVersion])),
+  factory: () => Object.fromEntries(inject(ɵTM_UNIQUE_LEADER_DOCUMENTS).map((doc) => [doc.name, doc.formatVersion])),
 });
 
 /**

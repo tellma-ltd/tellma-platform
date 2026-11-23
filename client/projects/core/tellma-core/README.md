@@ -302,12 +302,14 @@ A feature declares a leader document with a `TM_LEADER_DOCUMENTS` multi provider
 the route the leader reads it from, the events that re-read it, its client format version, and an
 optional `pollWhile`. Every tab reads it from the store; none but the leader fetches it.
 
-`provideTellma` registers the platform's two, `TM_ATTENTION_DOCUMENTS`: `inbox` (`inbox/summary`,
-re-read on `inbox.changed` and `job.changed`, and polled while a job is `Pending` or `Running`, so a
-lost job event never strands the bell's progress ring) and `assignments` (`assignments/summary`,
-re-read on `assignments.changed`). Their client mirrors are `TmInboxSummary` and
-`TmAssignmentsSummary`, and `TmLaunchCache.docs.inbox` and `.assignments` read them for the routed
-tenant, so the bell, the tray and the home lists render warm with no request.
+`provideTellma` registers the platform's own, `TM_ATTENTION_DOCUMENTS`: for now only `inbox`
+(`inbox/summary`, re-read on `inbox.changed` and `job.changed`, and polled while a job is `Pending`
+or `Running`, so a lost job event never strands the bell's progress ring). Its client mirror is
+`TmInboxSummary`, and `TmLaunchCache.docs.inbox` reads it for the routed tenant, so the bell and
+the home lists render warm with no request. `assignments` (`assignments/summary`, mirrored by
+`TmAssignmentsSummary`) joins it once the server maps its route; until then a registered read
+would fail on every leader refresh. Each name is registered once: a second registration of a name
+throws in development, and production keeps the first.
 
 ## The HTTP layer
 

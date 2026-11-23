@@ -15,7 +15,6 @@ import {
   untracked,
 } from '@angular/core';
 import {
-  TM_LEADER_DOCUMENTS,
   TM_NOW,
   TmCacheRefresher,
   TmClientStore,
@@ -27,6 +26,7 @@ import {
   type TmHubStatusMessage,
   type TmPartition,
   ɵTM_API_HOST,
+  ɵTM_UNIQUE_LEADER_DOCUMENTS,
   ɵTmClientMetadataStore,
 } from '@tellma/core';
 
@@ -129,7 +129,7 @@ export class TmLeaderElection {
   readonly #telemetry = inject(TmTelemetry);
   readonly #locks = inject(TM_LEADER_LOCKS);
   readonly #metadata = inject(ɵTmClientMetadataStore);
-  readonly #docs = inject(TM_LEADER_DOCUMENTS);
+  readonly #docs = inject(ɵTM_UNIQUE_LEADER_DOCUMENTS);
 
   /** This tab's term, while it shows a tenant to an active session. */
   #term: TmTerm | null = null;

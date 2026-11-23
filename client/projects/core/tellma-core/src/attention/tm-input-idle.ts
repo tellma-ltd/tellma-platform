@@ -6,7 +6,6 @@
 import { DestroyRef, inject, Injectable, signal, type Signal } from '@angular/core';
 
 import { TM_API_HOST } from '../api/tm-api-host';
-import { TM_NOW } from '../app/tm-now';
 
 // The input-idle clock (spec 0028 §9.3): one per tab, so everything that
 // would move the page under the user's hands (the banner row opening or
@@ -15,7 +14,10 @@ import { TM_NOW } from '../app/tm-now';
 // wheel and touch before any handler can stop it, and never delay
 // scrolling. The handler only stamps the time; one timer re-arms itself
 // for whatever is left of the 2 s, so a stream of pointer moves costs no
-// timer churn.
+// timer churn. The stamps are the page's monotonic clock, never the wall
+// clock: a clock set back (by hand, by a time sync, or on waking a
+// suspended machine) would otherwise hold the tab busy for as long as it
+// moved.
 
 /** How long without input makes the tab idle, in milliseconds. */
 export const TM_INPUT_IDLE_MS = 2000;
@@ -38,10 +40,9 @@ const INPUTS = ['keydown', 'pointerdown', 'pointermove', 'wheel', 'touchstart'] 
  */
 @Injectable({ providedIn: 'root' })
 export class TmInputIdle {
-  readonly #now = inject(TM_NOW);
   readonly #idle = signal(false);
-  // When the last input came, or the clock started.
-  #last = this.#now();
+  // When the last input came, or the clock started, on the monotonic clock.
+  #last = performance.now();
   // The pending check, while the tab is not idle.
   #timer: ReturnType<typeof setTimeout> | undefined;
   // What the waiters of the next idle moment resolve, while any wait.
@@ -78,7 +79,7 @@ export class TmInputIdle {
 
   /** One input: the idle moment ends, and the check runs 2 s after the last input. */
   #input(): void {
-    this.#last = this.#now();
+    this.#last = performance.now();
     if (this.#idle()) {
       this.#idle.set(false);
     }
@@ -94,7 +95,7 @@ export class TmInputIdle {
 
   /** The tab turns idle when 2 s have passed since the last input; otherwise the check waits out the rest. */
   #check(): void {
-    const left = this.#last + TM_INPUT_IDLE_MS - this.#now();
+    const left = this.#last + TM_INPUT_IDLE_MS - performance.now();
     if (left > 0) {
       this.#arm(left);
       return;

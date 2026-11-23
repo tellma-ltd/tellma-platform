@@ -257,7 +257,7 @@ export type {
 // startup loads after the first render; the state testing providers replace
 // its loader.
 export { TmLeader } from './src/state/leader/tm-leader';
-export { TM_LEADER_DOCUMENTS, type TmLeaderDocument } from './src/state/leader/tm-leader-documents';
+export { TM_LEADER_DOCUMENTS, type TmLeaderDocument, ɵTM_UNIQUE_LEADER_DOCUMENTS } from './src/state/leader/tm-leader-documents';
 export { TM_LEADER_LOAD as ɵTM_LEADER_LOAD, type TmLeaderModule as ɵTmLeaderModule } from './src/app/tm-app-init';
 
 // The launch documents and their cache: the routed tenant's settings,

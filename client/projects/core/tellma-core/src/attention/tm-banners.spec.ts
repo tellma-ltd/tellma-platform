@@ -31,7 +31,7 @@ interface TmBannersRig {
 
 /** Creates the service in an idle tab, with the clock faked first. */
 async function setUp(options: { readonly dev?: boolean } = {}): Promise<TmBannersRig> {
-  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date', 'performance'] });
   const host = new TmFakeApiHost();
   TestBed.configureTestingModule({
     providers: [
@@ -115,6 +115,42 @@ describe('TmBanners', () => {
       expect(idOf(banners.current())).toBe('acme.c');
       banners.show(banner('tm.update', 3, { dismissible: true }));
       expect(idOf(banners.current())).toBe('tm.update');
+    });
+
+    it('moves the pager to a new banner that outranks the page, not back to the head', async () => {
+      const { banners } = await setUp();
+      banners.show(banner('tm.offline', 1));
+      banners.show(banner('acme.tip', 5));
+      banners.ɵpage(1);
+      expect(idOf(banners.current())).toBe('acme.tip');
+
+      banners.show(banner('acme.warning', 4));
+      expect(banners.current()).toMatchObject({ options: { id: 'acme.warning' }, index: 2, count: 3 });
+    });
+
+    it("keeps the user's page when a live banner of a higher level is shown again", async () => {
+      const { banners } = await setUp();
+      banners.show(banner('acme.warning', 4));
+      banners.show(banner('acme.tip', 5));
+      banners.ɵpage(1);
+
+      banners.show(banner('acme.warning', 4, { message: signal('A newer message') }));
+      expect(banners.current()).toMatchObject({ options: { id: 'acme.tip' }, index: 2, count: 2 });
+    });
+
+    it("keeps the user's page when a dismissed banner of a higher level is shown again", async () => {
+      const { banners } = await setUp();
+      const warning = banners.show(banner('acme.warning', 4));
+      banners.show(banner('acme.tip', 5));
+      banners.show(banner('acme.other-tip', 5));
+      banners.ɵdismiss('acme.warning');
+      banners.ɵpage(1);
+      expect(idOf(banners.current())).toBe('acme.other-tip');
+
+      // Closed and shown anew, it is still dismissed, so it stays hidden.
+      warning.close();
+      banners.show(banner('acme.warning', 4));
+      expect(banners.current()).toMatchObject({ options: { id: 'acme.other-tip' }, index: 2, count: 2 });
     });
 
     it('does not page a single banner', async () => {
@@ -252,8 +288,25 @@ describe('TmBanners', () => {
       banners.show(banner('acme.b', 4));
       expect(banners.visible()).toBe(true);
       expect(idOf(banners.current())).toBe('acme.b');
+      // The close it undid never reaches the row at the idle moment.
       await wait(2000);
+      expect(banners.visible()).toBe(true);
       expect(idOf(banners.current())).toBe('acme.b');
+    });
+
+    it('never opens the row for a banner that closed before the gate', async () => {
+      const { banners, type, wait } = await setUp();
+      type();
+      const ref = banners.show(banner('acme.a', 4));
+      expect(idOf(banners.ɵhead())).toBe('acme.a');
+      ref.close();
+      expect(banners.ɵhead()).toBeNull();
+
+      await wait(2000);
+      expect(banners.visible()).toBe(false);
+      expect(banners.current()).toBeNull();
+      await wait(10_000);
+      expect(banners.visible()).toBe(false);
     });
 
     it("closes the row at once on the user's own dismiss", async () => {
