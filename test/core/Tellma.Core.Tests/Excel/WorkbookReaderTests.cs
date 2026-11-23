@@ -338,6 +338,32 @@ namespace Tellma.Core.Tests.Excel
             Assert.Equal(("Data", ImportFaults.XmlReason), (refused.Errors[0].Sheet, Reason(refused)));
         }
 
+        [Theory]
+        [InlineData("declared iso-2022-jp")]
+        [InlineData("declaration too long")]
+        [InlineData("invalid first bytes")]
+        [InlineData("invalid byte at 3000")]
+        public void A_sheet_part_refused_as_its_reader_is_made_blames_its_sheet(string kind)
+        {
+            // The reader reads the part's first text as it is made, so these are refused on opening the sheet.
+            Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+            SyntheticWorkbook workbook = new(Producer.Excel, RawSheet.OfText("Data", ["a"]));
+            byte[] worksheet = Encoding.UTF8.GetBytes(Worksheet($"<row r=\"1\"><c t=\"inlineStr\"><is><t>{new string('a', 4000)}</t></is></c></row>"));
+            byte[] part = kind switch
+            {
+                "declared iso-2022-jp" => [.. Encoding.ASCII.GetBytes("<?xml version=\"1.0\" encoding=\"iso-2022-jp\"?>"), .. worksheet],
+                "declaration too long" => [.. Encoding.ASCII.GetBytes($"<?xml version=\"1.0\"{new string(' ', PartTextReader.MaxDeclarationLength)}?>"), .. worksheet],
+                "invalid first bytes" => [0xC3, 0x28, .. worksheet],
+                _ => [.. worksheet[..3000], 0xFF, .. worksheet[3000..]],
+            };
+            using WorkbookReader reader = Open(Replace(workbook.Build(), "xl/worksheets/sheet1.xml", part));
+
+            ImportException refused = Assert.Throws<ImportException>(() => reader.OpenSheet(reader.Sheets[0]).Dispose());
+
+            ImportError error = Assert.Single(refused.Errors);
+            Assert.Equal((ExcelErrorCodes.ImportMalformedWorkbook, "Data", ImportFaults.XmlReason), (error.Code, error.Sheet, (string?)error.Arguments["reason"]));
+        }
+
         [Fact]
         public void A_sheet_of_distinct_element_names_is_refused_once_its_names_pass_their_bound_and_holds_little_memory()
         {

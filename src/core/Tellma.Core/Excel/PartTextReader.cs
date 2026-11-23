@@ -3,6 +3,7 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+using System.Runtime.ExceptionServices;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Xml;
@@ -18,7 +19,9 @@ namespace Tellma.Core.Excel
     /// <remarks>
     ///     Refusals surface as <see cref="XmlException" />, as the reader's own do: a declaration of
     ///     another encoding, one that does not close within <see cref="MaxDeclarationLength" />
-    ///     characters, and a byte sequence that is not valid in the part's encoding.
+    ///     characters, and a byte sequence that is not valid in the part's encoding. The part's own
+    ///     refusals pass as they are. Whatever a read throws, every later read throws again, so no
+    ///     text past a refusal is ever returned.
     /// </remarks>
     /// <param name="part">The part; disposed with this reader.</param>
     internal sealed partial class PartTextReader(BoundedPartStream part) : TextReader
@@ -47,18 +50,37 @@ namespace Tellma.Core.Excel
         /// <summary>Where the next read starts in <see cref="_head" />.</summary>
         private int _headAt;
 
+        /// <summary>The refusal the part's text met, raised again by every later read; null while none.</summary>
+        private ExceptionDispatchInfo? _refusal;
+
         /// <inheritdoc />
         public override int Peek()
         {
-            StreamReader text = Text();
-            return _headAt < _head.Length ? _head[_headAt] : Decode(text.Peek);
+            try
+            {
+                StreamReader text = Text();
+                return _headAt < _head.Length ? _head[_headAt] : text.Peek();
+            }
+            catch (Exception exception)
+            {
+                Refuse(exception).Throw();
+                throw;
+            }
         }
 
         /// <inheritdoc />
         public override int Read()
         {
-            StreamReader text = Text();
-            return _headAt < _head.Length ? _head[_headAt++] : Decode(text.Read);
+            try
+            {
+                StreamReader text = Text();
+                return _headAt < _head.Length ? _head[_headAt++] : text.Read();
+            }
+            catch (Exception exception)
+            {
+                Refuse(exception).Throw();
+                throw;
+            }
         }
 
         /// <inheritdoc />
@@ -71,24 +93,25 @@ namespace Tellma.Core.Excel
         /// <inheritdoc />
         public override int Read(Span<char> buffer)
         {
-            StreamReader text = Text();
-
-            // --- The characters read ahead come first, then the decoder's ---
-            if (_headAt < _head.Length)
-            {
-                int taken = Math.Min(_head.Length - _headAt, buffer.Length);
-                _head.AsSpan(_headAt, taken).CopyTo(buffer);
-                _headAt += taken;
-                return taken;
-            }
-
             try
             {
+                StreamReader text = Text();
+
+                // --- The characters read ahead come first, then the decoder's ---
+                if (_headAt < _head.Length)
+                {
+                    int taken = Math.Min(_head.Length - _headAt, buffer.Length);
+                    _head.AsSpan(_headAt, taken).CopyTo(buffer);
+                    _headAt += taken;
+                    return taken;
+                }
+
                 return text.Read(buffer);
             }
-            catch (DecoderFallbackException)
+            catch (Exception exception)
             {
-                throw Invalid();
+                Refuse(exception).Throw();
+                throw;
             }
         }
 
@@ -111,35 +134,12 @@ namespace Tellma.Core.Excel
             base.Dispose(disposing);
         }
 
-        /// <summary>The refusal of a byte sequence not valid in the part's encoding.</summary>
-        /// <returns>The refusal.</returns>
-        private static XmlException Invalid()
-        {
-            return new XmlException("The part holds a byte sequence that is not valid in its encoding.");
-        }
-
         /// <summary>Whether a character is XML white space.</summary>
         /// <param name="character">The character.</param>
         /// <returns>True when it is.</returns>
         private static bool IsXmlWhiteSpace(char character)
         {
             return character is ' ' or '\t' or '\r' or '\n';
-        }
-
-        /// <summary>Reads a character from the decoder.</summary>
-        /// <param name="read">The decoder's read or peek.</param>
-        /// <returns>The character; -1 at the end.</returns>
-        /// <exception cref="XmlException">The bytes are not valid in the part's encoding.</exception>
-        private static int Decode(Func<int> read)
-        {
-            try
-            {
-                return read();
-            }
-            catch (DecoderFallbackException)
-            {
-                throw Invalid();
-            }
         }
 
         /// <summary>An XML declaration's encoding pseudo-attribute and its quoted value.</summary>
@@ -153,13 +153,14 @@ namespace Tellma.Core.Excel
         /// </summary>
         /// <param name="text">The decoder, at the start of the text.</param>
         /// <returns>The characters read ahead: the declaration, or the few that show there is none.</returns>
-        /// <exception cref="XmlException">The declaration names another encoding or does not close, or the bytes are not valid.</exception>
+        /// <exception cref="XmlException">The declaration names another encoding or does not close.</exception>
+        /// <exception cref="DecoderFallbackException">The bytes are not valid in the part's encoding.</exception>
         private static string ReadDeclaration(StreamReader text)
         {
             // --- '<?xml' and white space open a declaration; anything else is no declaration ---
             StringBuilder head = new();
             int next;
-            while (head.Length <= DeclarationOpener.Length && (next = Decode(text.Read)) >= 0)
+            while (head.Length <= DeclarationOpener.Length && (next = text.Read()) >= 0)
             {
                 _ = head.Append((char)next);
             }
@@ -179,7 +180,7 @@ namespace Tellma.Core.Excel
                     throw new XmlException("The part's XML declaration is too long.");
                 }
 
-                next = Decode(text.Read);
+                next = text.Read();
                 if (next < 0)
                 {
                     // An unclosed declaration is the reader's to refuse.
@@ -215,9 +216,11 @@ namespace Tellma.Core.Excel
         ///     with the part's XML declaration, when it has one, read ahead and checked.
         /// </summary>
         /// <returns>The decoder.</returns>
-        /// <exception cref="XmlException">The declaration names another encoding or does not close, or the bytes are not valid.</exception>
+        /// <exception cref="XmlException">The declaration names another encoding or does not close.</exception>
+        /// <exception cref="DecoderFallbackException">The bytes are not valid in the part's encoding.</exception>
         private StreamReader Text()
         {
+            _refusal?.Throw();
             if (_text is not null)
             {
                 return _text;
@@ -227,6 +230,19 @@ namespace Tellma.Core.Excel
             _text = new StreamReader(_part, _part.DetectEncoding(), detectEncodingFromByteOrderMarks: false, BufferSize, leaveOpen: false);
             _head = ReadDeclaration(_text);
             return _text;
+        }
+
+        /// <summary>
+        ///     Latches the first refusal a read met, so every later read raises it again: a byte
+        ///     sequence not valid in the part's encoding as one, and any other as it was thrown.
+        /// </summary>
+        /// <param name="exception">What the read threw.</param>
+        /// <returns>The refusal to raise.</returns>
+        private ExceptionDispatchInfo Refuse(Exception exception)
+        {
+            return _refusal ??= ExceptionDispatchInfo.Capture(exception is DecoderFallbackException
+                ? new XmlException("The part holds a byte sequence that is not valid in its encoding.", exception)
+                : exception);
         }
     }
 }

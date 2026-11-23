@@ -492,7 +492,23 @@ namespace Tellma.Core.Excel
             ArgumentNullException.ThrowIfNull(strings);
             ArgumentNullException.ThrowIfNull(text);
             ArgumentOutOfRangeException.ThrowIfNegative(rowBudget);
-            SheetReader reader = new(XlsxXml.Open(part), sheet, strings, rowBudget, text);
+
+            // --- The part's reader, which reads its first text as it is made; a refusal blames the sheet ---
+            XmlReader xml;
+            try
+            {
+                xml = XlsxXml.Open(part);
+            }
+            catch (XmlException)
+            {
+                throw ImportFaults.Malformed(ImportFaults.XmlReason, sheet);
+            }
+            catch (InvalidDataException)
+            {
+                throw ImportFaults.Malformed(ImportFaults.ZipReason, sheet);
+            }
+
+            SheetReader reader = new(xml, sheet, strings, rowBudget, text);
             try
             {
                 reader.Start();

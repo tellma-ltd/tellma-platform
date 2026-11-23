@@ -331,3 +331,53 @@ is feasible.**
 
 - The optional extension of the offset sweep was not taken. The 4,097-byte reads in both new
   theories cross read boundaries with vectors engaged.
+
+### Fix 2
+
+This round answers the targeted verification of fix 1 (D-246).
+
+**V-1 (fixed).**
+- `XmlReader.Create(TextReader)` reads its first text while it is being made, so `PartTextReader` can
+  refuse inside `XlsxXml.Open`.
+- `XlsxXml.Open` now disposes the text reader, and with it the part, when `Create` throws, then
+  rethrows. That covers all five call sites, and none of them has to dispose.
+- `SheetReader.Open` now makes the reader inside a try. An `XmlException` becomes
+  `ImportFaults.Malformed(xml, sheet)` and an `InvalidDataException` becomes
+  `Malformed(zip, sheet)`, as `Start` and `Read` already map them. `ImportMapper`'s two
+  `OpenSheet` calls therefore receive the sheet's `ImportException`.
+- The other call sites were checked:
+  - The content types, relationships and workbook parts (`WorkbookReader.cs`, `using … XlsxXml.Open`
+    in `ReadStructure`) run only inside `WorkbookReader.Open`'s try. That try maps `XmlException` to
+    xml and `InvalidDataException` to zip.
+  - `SharedStringStore.Load` opens inside its own try (`XmlException` to xml). Its
+    `InvalidDataException` reaches the same `WorkbookReader.Open` catch.
+  - So only the sheet path escaped, and none of the sites leaks the part now.
+- Tests:
+  - `WorkbookReaderTests.A_sheet_part_refused_as_its_reader_is_made_blames_its_sheet` reproduces the
+    verifier's four cases through `reader.OpenSheet(reader.Sheets[0])`. The cases are an iso-2022-jp
+    declaration, a declaration over 1,024 characters, a part opening `C3 28`, and `FF` at byte 3,000.
+    Each expects one `ImportMalformedWorkbook` error with sheet `Data` and reason `xml`.
+  - `PartTextReaderTests.A_part_is_closed_when_its_reader_cannot_be_made` checks that the part's
+    stream is closed when `Open` throws. Its cases are a declared code page, invalid first bytes, and
+    a NUL unit right after a UTF-16 start, which the stream refuses as an `ImportException`.
+
+**V-2 (fixed).**
+- `PartTextReader` now latches the first exception any read meets in an `ExceptionDispatchInfo`.
+  That covers a declaration refusal, an invalid sequence (mapped once to an `XmlException`), the
+  part's own `ImportException`, and an inflate error.
+- `Peek`, `Read()` and `Read(Span)` all go through `Text()`, which rethrows the latched exception
+  first. Every later read, `ReadToEnd` included, therefore raises the same exception object, and no
+  text past a refusal is returned.
+- The latch covers refusals mid-text as well as in the declaration.
+- `PartTextReaderTests.A_refusal_is_raised_again_by_every_later_read_so_no_text_past_it_is_returned`
+  covers five cases: a declared code page, invalid first bytes, an invalid byte at 10,000, a NUL
+  after the first two bytes, and a NUL at 10,000. Each drains to the refusal, then asserts that
+  `ReadToEnd`, `Read()`, `Peek()` and `Read(Span)` throw the same exception object.
+
+**Checked against fix 1.** I put fix 1's `PartTextReader.cs`, `XlsxXml.cs` and `WorkbookReader.cs`
+back, built, and ran the three new theories: all 12 cases failed. With the fix-2 sources restored
+(confirmed by `cmp`), all 12 pass.
+
+**Residual.** `BoundedPartStream` itself does not latch. A caller that reads on after its refusal
+would scan the bytes that follow. Every part, however, reaches a reader only through `XlsxXml.Open`
+and therefore through `PartTextReader`, which does latch.

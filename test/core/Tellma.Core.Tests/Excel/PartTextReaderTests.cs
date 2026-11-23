@@ -5,6 +5,7 @@
 
 using System.Text;
 using System.Xml;
+using Tellma.Core.Abstractions.Excel;
 using Tellma.Core.Excel;
 
 namespace Tellma.Core.Tests.Excel
@@ -90,6 +91,47 @@ namespace Tellma.Core.Tests.Excel
             Assert.False(inner.CanRead);
         }
 
+        [Theory]
+        [InlineData("declared iso-2022-jp")]
+        [InlineData("invalid first bytes")]
+        [InlineData("nul after the first two bytes")]
+        public void A_part_is_closed_when_its_reader_cannot_be_made(string kind)
+        {
+            byte[] part = Refused(kind, at: 0);
+            MemoryStream inner = new(part, writable: false);
+
+            Exception? refused = Record.Exception(() => XlsxXml.Open(new BoundedPartStream(inner, part.Length)).Dispose());
+
+            Assert.True(refused is XmlException or ImportException, refused?.ToString());
+            Assert.False(inner.CanRead);
+        }
+
+        [Theory]
+        [InlineData("declared iso-2022-jp", 0)]
+        [InlineData("invalid first bytes", 0)]
+        [InlineData("invalid byte", 10_000)]
+        [InlineData("nul after the first two bytes", 0)]
+        [InlineData("nul", 10_000)]
+        public void A_refusal_is_raised_again_by_every_later_read_so_no_text_past_it_is_returned(string kind, int at)
+        {
+            byte[] part = Refused(kind, at);
+            using PartTextReader text = new(new BoundedPartStream(new MemoryStream(part, writable: false), part.Length));
+            char[] buffer = new char[1024];
+
+            Exception? refused = Record.Exception(() =>
+            {
+                while (text.Read(buffer, 0, buffer.Length) > 0)
+                {
+                }
+            });
+
+            Assert.True(refused is XmlException or ImportException, refused?.ToString());
+            Assert.Same(refused, Record.Exception(text.ReadToEnd));
+            Assert.Same(refused, Record.Exception(() => text.Read()));
+            Assert.Same(refused, Record.Exception(() => text.Peek()));
+            Assert.Same(refused, Record.Exception(() => text.Read(buffer.AsSpan())));
+        }
+
         [Fact]
         public void A_document_type_is_refused()
         {
@@ -113,6 +155,23 @@ namespace Tellma.Core.Tests.Excel
             }
 
             return (name, attribute, text);
+        }
+
+        /// <summary>A part its text reader refuses, of 20,000 characters of text.</summary>
+        /// <param name="kind">What is refused: a declared code page, an invalid UTF-8 sequence, or a NUL.</param>
+        /// <param name="at">Where the invalid sequence or the NUL lies, in bytes.</param>
+        /// <returns>The part's bytes.</returns>
+        private static byte[] Refused(string kind, int at)
+        {
+            byte[] body = Encoding.UTF8.GetBytes($"<a>{new string('x', 20_000)}</a>");
+            return kind switch
+            {
+                "declared iso-2022-jp" => [.. Encoding.ASCII.GetBytes("<?xml version=\"1.0\" encoding=\"iso-2022-jp\"?>"), .. body],
+                "invalid first bytes" => [0xC3, 0x28, .. body],
+                "invalid byte" => [.. body[..at], 0xFF, .. body[at..]],
+                "nul after the first two bytes" => [0x3C, 0x00, 0x00, 0x00, .. Encoding.Unicode.GetBytes("a/>")],
+                _ => [.. body[..at], 0x00, .. body[at..]],
+            };
         }
 
         /// <summary>A text in one of the encodings a part's markup is found in.</summary>

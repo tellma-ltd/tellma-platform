@@ -89,20 +89,33 @@ namespace Tellma.Core.Excel
         ///     table of its own that bounds the part's distinct names. The reader parses the part's
         ///     text as decoded in the encoding the bounds are scanned in.
         /// </summary>
-        /// <param name="part">The part's bounded stream; closed with the reader.</param>
+        /// <param name="part">The part's bounded stream; closed with the reader, or at once when the reader cannot be made.</param>
         /// <returns>The reader.</returns>
+        /// <exception cref="XmlException">The part's first text is refused: its declaration, or a byte sequence not valid in its encoding.</exception>
+        /// <exception cref="Abstractions.Excel.ImportException">The part's first bytes are refused by its bounds.</exception>
+        /// <exception cref="InvalidDataException">The archive cannot inflate the part's first bytes.</exception>
         public static XmlReader Open(BoundedPartStream part)
         {
-            // A reader over text never switches to the encoding a declaration names.
-            return XmlReader.Create(new PartTextReader(part), new XmlReaderSettings
+            // A reader over text never switches to the encoding a declaration names. It reads its
+            // first text as it is made, so a refusal may come here, and the part is closed with it.
+            PartTextReader text = new(part);
+            try
             {
-                DtdProcessing = DtdProcessing.Prohibit,
-                XmlResolver = null,
-                NameTable = new BoundedNameTable(),
-                IgnoreComments = true,
-                IgnoreProcessingInstructions = true,
-                CloseInput = true,
-            });
+                return XmlReader.Create(text, new XmlReaderSettings
+                {
+                    DtdProcessing = DtdProcessing.Prohibit,
+                    XmlResolver = null,
+                    NameTable = new BoundedNameTable(),
+                    IgnoreComments = true,
+                    IgnoreProcessingInstructions = true,
+                    CloseInput = true,
+                });
+            }
+            catch
+            {
+                text.Dispose();
+                throw;
+            }
         }
 
         /// <summary>Whether the reader is on an element of a spreadsheet namespace with a local name.</summary>
