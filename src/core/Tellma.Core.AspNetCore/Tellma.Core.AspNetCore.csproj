@@ -35,6 +35,8 @@
     <InternalsVisibleTo Include="Tellma.Core.AspNetCore.Tests" />
     <!-- The MCP feature stamps its front-door marker, which no distribution may forge. -->
     <InternalsVisibleTo Include="Tellma.Core.Mcp" />
+    <!-- The MCP suite renders problems and reads the host's surface metadata as the server does. -->
+    <InternalsVisibleTo Include="Tellma.Core.Mcp.Tests" />
     <!-- The Azure web bundle contributes the webhook endpoint as one of the platform's own
          tenantless routes, a stamp no distribution may forge. -->
     <InternalsVisibleTo Include="Tellma.Defaults.Azure.AspNetCore" />

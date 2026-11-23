@@ -3,7 +3,7 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-import { signal, type Type } from '@angular/core';
+import type { Type } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { By, Title } from '@angular/platform-browser';
 import type { RouterTestingHarness } from '@angular/router/testing';
@@ -12,11 +12,20 @@ import type { TmApiUpdateCheck } from '../api/tm-api-seams';
 import { TM_BOOT_RESULT } from '../boot/tm-boot-result';
 import type { TmBootResult } from '../boot/tm-boot-types';
 import { TmClientStore } from '../state/store/tm-client-store';
-import { tmAppRig, tmLoadTestPage, tmNavigate, tmSettle, TM_COLD_SYNC, tmTestMembership, TmTestPage, type TmAppRig } from './tm-app.testing.util';
+import {
+  tmAppRig,
+  tmLoadTestPage,
+  tmNavigate,
+  tmSettle,
+  TM_COLD_SYNC,
+  TM_T17_DOCS,
+  tmTestMembership,
+  TmTestPage,
+  type TmAppRig,
+} from './tm-app.testing.util';
 import { TM_ROUTE_ERROR_VIEWS, TmRouteError, type TmRouteErrorKind } from './tm-route-error';
 import { TmPageSkeleton } from './tm-page-skeleton';
 import { TmRouteHost } from './tm-route-host';
-import { TM_ROUTE_PERMISSIONS } from './tm-route-permissions';
 
 /** A promise and the function that resolves it. */
 function deferred<T>(): { readonly promise: Promise<T>; readonly resolve: (value: T) => void } {
@@ -194,15 +203,23 @@ describe('the route host', () => {
   });
 
   it('renders the forbidden view in place of a page whose permission the user lacks', async () => {
-    const can = vi.fn(() => signal(false).asReadonly());
-    rig = await tmAppRig({ providers: [{ provide: TM_ROUTE_PERMISSIONS, useValue: { can } }] });
+    rig = await tmAppRig();
     const harness = await tmNavigate('/17/approvals');
     await tmSettle();
     const error = harness.fixture.debugElement.query(By.directive(TmRouteError));
     expect((error.componentInstance as TmRouteError).view().title).toBe('tm.errors.forbidden.title');
-    expect((error.nativeElement as HTMLElement).textContent).toContain('acme.Approval · Read');
-    expect(can).toHaveBeenCalledWith('acme.Approval', 'Read');
+    // The securables section does not list the pair, so the view names it by its raw names.
+    expect((error.nativeElement as HTMLElement).textContent).toContain('acme.Approval: Read');
     expect(hostElement(harness).querySelector('tm-test-page')).toBeNull();
+  });
+
+  it('renders a page whose permission the user holds', async () => {
+    const securables = [{ resource: 'acme.Approval', action: 'Read', hasFilter: false }];
+    rig = await tmAppRig({ docs: { ...TM_T17_DOCS, me: { ...TM_T17_DOCS.me, access: { ...TM_T17_DOCS.me.access, securables } } } });
+    const harness = await tmNavigate('/17/approvals');
+    await tmSettle();
+    expect(harness.fixture.debugElement.query(By.directive(TmRouteError))).toBeNull();
+    expect(hostElement(harness).querySelector('tm-test-page')).not.toBeNull();
   });
 
   it.each<[TmApiUpdateCheck, TmRouteErrorKind]>([

@@ -24,7 +24,8 @@ namespace Tellma.Core.AspNetCore.Tests.Api
     ///     and a problem renders in the request's language, except the one answer that must not
     ///     tell a missing tenant from a refused one.
     /// </summary>
-    public sealed class ResponseHeadersTests
+    /// <param name="fixture">The host the cases share.</param>
+    public sealed class ResponseHeadersTests(ResponseHeadersTests.Host fixture) : IClassFixture<ResponseHeadersTests.Host>
     {
         /// <summary>The Arabic range the SPA sends for a reader in Saudi Arabia with Latin digits.</summary>
         private const string Arabic = "ar-SA-u-nu-latn";
@@ -43,7 +44,7 @@ namespace Tellma.Core.AspNetCore.Tests.Api
         [Fact]
         public async Task An_admitted_answer_names_its_language_and_calendar()
         {
-            await using TellmaTestHost host = await StartAsync();
+            TellmaTestHost host = fixture.Started;
 
             using HttpResponseMessage response = await host.Client.SendAsync(Probe(host.Cookie()), TestContext.Current.CancellationToken);
 
@@ -55,7 +56,7 @@ namespace Tellma.Core.AspNetCore.Tests.Api
         [Fact]
         public async Task A_problem_after_admission_carries_the_same_headers()
         {
-            await using TellmaTestHost host = await StartAsync();
+            TellmaTestHost host = fixture.Started;
 
             using HttpResponseMessage response = await ProblemMappingTests.ThrowAsync(host, "not-found");
 
@@ -67,7 +68,7 @@ namespace Tellma.Core.AspNetCore.Tests.Api
         [Fact]
         public async Task A_routed_platform_service_refused_for_its_body_answers_the_mapped_problem_with_the_same_headers()
         {
-            await using TellmaTestHost host = await StartAsync();
+            TellmaTestHost host = fixture.Started;
 
             // The query discovery action, its request refused for a missing body before the service runs.
             using HttpRequestMessage request = TellmaTestHost.SpaRequest(HttpMethod.Post, "/1/api/web/queryex/discover", host.Cookie(), "null");
@@ -84,7 +85,7 @@ namespace Tellma.Core.AspNetCore.Tests.Api
         [Fact]
         public async Task A_refusal_before_admission_carries_none_of_them()
         {
-            await using TellmaTestHost host = await StartAsync();
+            TellmaTestHost host = fixture.Started;
 
             // --- A cross-site write: refused by the forgery check ---
             using HttpRequestMessage forged = TellmaTestHost.SpaRequest(HttpMethod.Post, "/1/api/web/probe", host.Cookie());
@@ -109,7 +110,7 @@ namespace Tellma.Core.AspNetCore.Tests.Api
         [Fact]
         public async Task An_offered_language_is_the_handlers_culture_and_the_answers_language()
         {
-            await using TellmaTestHost host = await StartAsync();
+            TellmaTestHost host = fixture.Started;
 
             using HttpRequestMessage request = Probe(host.Cookie());
             request.Headers.Add("Accept-Language", Arabic);
@@ -123,7 +124,7 @@ namespace Tellma.Core.AspNetCore.Tests.Api
         [Fact]
         public async Task A_problem_renders_its_texts_in_the_requests_language()
         {
-            await using TellmaTestHost host = await StartAsync();
+            TellmaTestHost host = fixture.Started;
 
             using HttpResponseMessage english = await ProblemMappingTests.ThrowAsync(host, "not-found");
             using HttpRequestMessage request = TellmaTestHost.SpaRequest(HttpMethod.Get, "/1/api/web/throw/not-found", host.Cookie());
@@ -140,7 +141,7 @@ namespace Tellma.Core.AspNetCore.Tests.Api
         [Fact]
         public async Task A_missing_tenant_and_a_refused_member_answer_the_same_body_in_any_language()
         {
-            await using TellmaTestHost host = await StartAsync();
+            TellmaTestHost host = fixture.Started;
             string stranger = host.Cookie(TellmaTestHost.Stranger);
 
             // --- A tenant that exists but the caller is no member of, and one that does not exist ---
@@ -193,7 +194,7 @@ namespace Tellma.Core.AspNetCore.Tests.Api
         [Fact]
         public async Task The_version_tags_header_reports_the_last_batch_with_the_callers_tags_only_when_it_read_them()
         {
-            await using TellmaTestHost host = await StartAsync();
+            TellmaTestHost host = fixture.Started;
             string cookie = host.Cookie();
 
             using HttpResponseMessage withUser = await host.Client.SendAsync(Tagged(cookie, "user"), TestContext.Current.CancellationToken);
@@ -221,7 +222,7 @@ namespace Tellma.Core.AspNetCore.Tests.Api
         [Fact]
         public async Task Server_timing_names_the_database_share_only_where_enabled()
         {
-            await using TellmaTestHost production = await StartAsync();
+            TellmaTestHost production = fixture.Started;
             await using TellmaTestHost enabled = await StartAsync(static options => options.Settings["Tellma:Api:ServerTiming"] = "true");
             await using TellmaTestHost development = await StartAsync(static options => options.Environment = "Development");
 
@@ -320,6 +321,35 @@ namespace Tellma.Core.AspNetCore.Tests.Api
                 .Where(static member => member.Name != "instance")
                 .ToDictionary(static member => member.Name, static member => member.Value, StringComparer.Ordinal);
             return JsonSerializer.Serialize(members);
+        }
+
+        /// <summary>
+        ///     One Production host for the cases that send requests and read the answers: its endpoints
+        ///     keep no state, so each case's answer is its own. A case that turns server timing on or
+        ///     changes the environment starts a host of its own.
+        /// </summary>
+        public sealed class Host : IAsyncLifetime
+        {
+            /// <summary>The host, once started.</summary>
+            private TellmaTestHost? _host;
+
+            /// <summary>The started host.</summary>
+            internal TellmaTestHost Started => _host ?? throw new InvalidOperationException("The host has not started.");
+
+            /// <inheritdoc />
+            public async ValueTask InitializeAsync()
+            {
+                _host = await StartAsync();
+            }
+
+            /// <inheritdoc />
+            public async ValueTask DisposeAsync()
+            {
+                if (_host is not null)
+                {
+                    await _host.DisposeAsync();
+                }
+            }
         }
     }
 }

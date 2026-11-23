@@ -55,8 +55,8 @@ namespace Tellma.Core.AspNetCore
         /// <param name="slug">The distribution's slug.</param>
         /// <param name="compose">Composes the distribution's features; the migrator runs the same delegate.</param>
         /// <param name="composeWeb">
-        ///     Web-only composition, such as service registrations that need the web host; never a
-        ///     feature or an entity, which the migrator would not see.
+        ///     Web-only composition, such as service registrations that need the web host; never an
+        ///     entity, a securable or a table, which the migrator would not see.
         /// </param>
         /// <returns>The builder, for chaining.</returns>
         /// <exception cref="TellmaCompositionException">The composition is invalid.</exception>
@@ -105,7 +105,6 @@ namespace Tellma.Core.AspNetCore
             bool development = environment.IsDevelopment();
             _ = services.Configure<ApiOptions>(options => options.ServerTiming = development);
             _ = HostOptionsBinding.Bind<ApiOptions>(services, ApiOptions.SectionPath, OptionsOwner);
-            _ = HostOptionsBinding.Bind<McpLimitOptions>(services, McpLimitOptions.SectionPath, OptionsOwner);
             _ = services.AddSingleton<IValidateOptions<IdentityHostOptions>, IdentityHostOptionsValidator>();
             _ = services.AddSingleton<IValidateOptions<TellmaSessionOptions>, TellmaSessionOptionsValidator>();
             _ = services.AddSingleton<IValidateOptions<DistributionLinksOptions>, DistributionLinksOptionsValidator>();

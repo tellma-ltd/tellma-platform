@@ -106,6 +106,16 @@ namespace Tellma.Core.Tests.Client
             Assert.Equal(JsonValueKind.Null, stamp.GetProperty("segment").ValueKind);
         }
 
+        /// <summary>
+        ///     A read-only root lists no related column, as the traversal rule projects none of it,
+        ///     so a client never admits a path through one that the server refuses.
+        /// </summary>
+        [Fact]
+        public void A_read_only_root_has_no_related_projection()
+        {
+            Assert.Equal(0, composition.Entity("core.UserStamp").GetProperty("relatedSelect").GetArrayLength());
+        }
+
         [Fact]
         public void Every_entity_carries_the_query_limits_with_the_longest_filter()
         {

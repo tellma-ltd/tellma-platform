@@ -37,11 +37,14 @@ export {
 } from './tm-anchored-overlay';
 export { tmPushEscapeDismissal } from './tm-dismiss-stack';
 // Private-by-convention wiring between the page-wide layers (modals,
-// toasts, the busy overlay), with no compatibility promise.
+// toasts, the busy overlay) and the code that must yield to them, with no
+// compatibility promise.
 export {
+  ɵtmIsBusy,
   ɵtmKeepAboveModals,
   ɵtmModalOpened,
   ɵtmOpenModals,
   ɵtmRaiseTopLayer,
+  ɵtmRegisterBusy,
   ɵtmWatchModals,
 } from './tm-top-layer';

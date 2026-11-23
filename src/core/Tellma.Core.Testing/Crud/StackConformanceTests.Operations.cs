@@ -4,10 +4,14 @@
 // LICENSE file in the root directory of this source tree.
 
 using Microsoft.Extensions.DependencyInjection;
+using System.Globalization;
 using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Api;
+using Tellma.Core.Abstractions.Blobs;
 using Tellma.Core.Abstractions.Crud;
+using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Errors;
+using Tellma.Core.Abstractions.Excel;
 using Xunit;
 
 namespace Tellma.Core.Testing.Crud
@@ -55,9 +59,11 @@ namespace Tellma.Core.Testing.Crud
                 operations.Add(($"the action {action.Name}", true, Reach.NotFound, (scope, id) => ActAsync(scope, action.Name, id, ActionArguments(action))));
             }
 
+            // An import inspection names an upload that does not exist, so it answers the upload as not found.
             foreach (ApiActionDescriptor action in Stack.Actions.OfType<ApiActionDescriptor>())
             {
-                operations.Add(($"the API action {action.Name}", true, Reach.Answers, (scope, _) => InvokeAsync(scope, action)));
+                Reach reach = action.RequestType == typeof(InspectImportRequest) ? Reach.UploadNotFound : Reach.Answers;
+                operations.Add(($"the API action {action.Name}", true, reach, (scope, _) => InvokeAsync(scope, action)));
             }
 
             operations.Add(("an undeclared action", false, Reach.Answers, (scope, id) => ActAsync(scope, "conformance-undeclared", id, null)));
@@ -81,6 +87,12 @@ namespace Tellma.Core.Testing.Crud
                         Assert.True(
                             failure is NotFoundException refusal && refusal.Resource == Stack.Resource && refusal.Ids.SequenceEqual([Text(missing)]),
                             $"{Stack.Resource}: {name} of a missing row answered {Describe(failure)} rather than as not found, naming it.");
+                        break;
+                    case Reach.UploadNotFound:
+                        string blob = Harness.Services.GetRequiredService<IEntityMetadataProvider>().Get(typeof(Blob)).Name;
+                        Assert.True(
+                            failure is NotFoundException missingUpload && missingUpload.Resource == blob && missingUpload.Ids.SequenceEqual([MissingUploadId.ToString(CultureInfo.InvariantCulture)]),
+                            $"{Stack.Resource}: {name} of a missing upload answered {Describe(failure)} rather than as not found, naming it.");
                         break;
                     case Reach.AnswersNone:
                         Assert.True(failure is null && rows == 0, $"{Stack.Resource}: {name} naming a missing row answered {(failure is null ? $"{rows} rows" : Describe(failure))} rather than none.");
@@ -297,6 +309,9 @@ namespace Tellma.Core.Testing.Crud
 
             /// <summary>A result that holds no rows.</summary>
             AnswersNone,
+
+            /// <summary>The upload the request names refused as not found, named by its id.</summary>
+            UploadNotFound,
 
             /// <summary>A refusal as not found, naming the stack's resource and the id.</summary>
             NotFound,

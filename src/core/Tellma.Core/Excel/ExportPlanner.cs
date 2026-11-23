@@ -499,12 +499,12 @@ namespace Tellma.Core.Excel
                 : null;
         }
 
-        /// <summary>Whether a property is an editable column of its sheet.</summary>
+        /// <summary>Whether a property is an editable column of its sheet, which the import writes from it.</summary>
         /// <param name="entity">The sheet's entity.</param>
         /// <param name="property">The property.</param>
         /// <param name="collection">The collection a child sheet stands for; null for the parent sheet.</param>
         /// <returns>True when the import writes it from the sheet.</returns>
-        private static bool IsEditable(EntityMetadata entity, PropertyMetadata property, ChildCollectionMetadata? collection)
+        public static bool IsEditable(EntityMetadata entity, PropertyMetadata property, ChildCollectionMetadata? collection)
         {
             return property.Ownership is PropertyOwnership.Editable or PropertyOwnership.WriteOnce
                 && property.Name != entity.Key.Name
@@ -518,7 +518,7 @@ namespace Tellma.Core.Excel
         /// <param name="entity">The entity declaring it.</param>
         /// <param name="property">The property.</param>
         /// <returns>True when they do.</returns>
-        private static bool IsKeyable(EntityMetadata entity, PropertyMetadata property)
+        public static bool IsKeyable(EntityMetadata entity, PropertyMetadata property)
         {
             Type type = Nullable.GetUnderlyingType(property.ClrType) ?? property.ClrType;
             return type != typeof(byte[])

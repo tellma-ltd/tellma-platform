@@ -337,6 +337,16 @@ lose a `MapTellma`-time event.
   caller-within-tenant policy on a route that names no tenant, or a priority on a policy without
   lanes.
 
+The gate's run seals the application's endpoint sources before it reads them. A minimal-API
+source builds every endpoint afresh on each read, compiling a request delegate per handler, and
+the host reads its endpoints several times as it starts: the audit, the authorization policy
+cache, the router's matcher and the route-miss index. Sealed, each source builds its endpoints
+once and answers every later read with the same ones, and the set of sources is fixed. So the host
+serves exactly the endpoints the gate audited: an endpoint mapped after startup, in a sealed group
+or in a source of its own, is never served. The one exception is a source that signals a change,
+such as the in-proc identity server's controllers and pages under hot reload: it is read again
+after it does, and what it then adds is served without being audited.
+
 ## Sessions
 
 The session cookie carries a reference to a row of `catalog.Sessions`, never the ticket: a random

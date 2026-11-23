@@ -7,10 +7,13 @@
  * It holds the distribution API (`bootstrapTellma`, `provideTellma`,
  * `tmFeature` and the declaration functions), the app's root component, its
  * routes' data, title strategy and URLs with the search query codec, the
- * entity registry's summaries, the client metadata's types and loaders, the
+ * entity registry (summaries, and descriptors once the entity model loads),
+ * display names and client permissions, the client metadata's types and loaders, the
  * HTTP layer with its error and plain-JSON value types, the exact decimal
- * helpers, the client store and the tab bus, and the seams through which
- * telemetry, the request log and page scopes are provided.
+ * helpers, the client store, the tab bus and the leader tab, the app-level
+ * keyboard shortcut registry, the shell frame's seams (immersive mode and what
+ * the tenant shell's `main` shows), and the seams through which telemetry, the
+ * request log and page scopes are provided.
  *
  * @packageDocumentation
  */
@@ -94,16 +97,46 @@ export { TmLeaveChecks as ɵTmLeaveChecks, type TmLeaveCheck as ɵTmLeaveCheck }
 // The contract of the components the primary loads from the shell entry point; not for app code.
 export type { TmShellComponents as ɵTmShellComponents } from './src/routes/tm-route-hosts';
 
-// The entity registry's summaries.
+// The entity registry: summaries, descriptors and paths, display names, permissions.
 export { TmEntities } from './src/entity/tm-entities';
+export type {
+  TmChildDescriptor,
+  TmEntityActionDescriptor,
+  TmEntityDescriptor,
+  TmEnumDescriptor,
+  TmNavigationDescriptor,
+  TmPathEnd,
+  TmPathResolution,
+  TmPropertyDescriptor,
+} from './src/entity/tm-entity-descriptors';
+export { TmDisplayNames, type TmDisplayNameParts } from './src/entity/tm-display-names';
+export { TmDisplayName } from './src/entity/tm-display-name';
+export { TmPermissions, type TmPermissionOperation } from './src/entity/tm-permissions';
+export { tmRowsToObjects, type TmQueryRowSet, type TmQueryRowSetColumn } from './src/entity/tm-rows-to-objects';
 
 // Features and the declaration functions.
 export type { TmDeclarationKey, TmLazyComponent, TmSecurableRef } from './src/declarations/tm-declaration-types';
 export { tmFeature, type TmFeature, type TmFeatureDefinition } from './src/declarations/tm-feature';
 export { tmOverride, type TmDeclarationPatch, type TmOverride } from './src/declarations/tm-override';
 export { tmPage, type TmPageDeclaration, type TmPageDefinition } from './src/declarations/tm-page';
-export { tmEntity, type TmEntityDeclaration, type TmEntityDeclarationInput } from './src/entity/tm-entity-declaration';
-export type { TmEntityShapes, TmEntityType, TmEntityTypes } from './src/entity/tm-entity-types';
+export {
+  tmEntity,
+  type TmActionConfirmation,
+  type TmColumnInput,
+  type TmCustomFilterDeclaration,
+  type TmDetailsDeclaration,
+  type TmEntityActionDeclaration,
+  type TmEntityDeclaration,
+  type TmEntityDeclarationInput,
+  type TmFilterSource,
+  type TmOrderInput,
+  type TmPickerDeclaration,
+  type TmPlanRow,
+  type TmSearchPageActionDeclaration,
+  type TmTabDeclaration,
+  type TmTileDeclaration,
+} from './src/entity/tm-entity-declaration';
+export type { TmEntityShapes, TmEntityType, TmEntityTypes, TmPath } from './src/entity/tm-entity-types';
 export {
   tmCodedReport,
   type TmCodedReportDeclaration,
@@ -127,6 +160,19 @@ export {
 export type { TmSettingsTabDeclaration } from './src/admin/tm-settings-tab';
 export type { TmNavContext, TmNavEntry, TmNavSection } from './src/nav/tm-nav-declarations';
 export type { TmShellSlot } from './src/nav/tm-shell-slot';
+
+// App-level keyboard shortcuts and the shell frame's seams.
+export {
+  TM_BROWSER_KEYS,
+  TM_RESERVED_SHORTCUTS,
+  TmShortcutConflictError,
+  type TmReservedShortcut,
+  type TmShortcut,
+  type TmShortcutRefusal,
+} from './src/nav/tm-shortcut';
+export { TmShortcuts } from './src/nav/tm-shortcuts';
+export { TM_SHELL_LAYOUT, TmShell } from './src/nav/tm-shell';
+export { TmShellMain, type TmShellMainOverride } from './src/nav/tm-shell-main';
 export type {
   TmDistributionIdentityInfo,
   TmDistributionInfo,
@@ -196,7 +242,22 @@ export type {
   TmSessionMessage,
   TmStoreChangedMessage,
 } from './src/state/bus/tm-bus-messages';
-export type { TmClientEvent, TmHubState } from './src/state/leader/tm-hub-types';
+export type {
+  TmClientEvent,
+  TmHubConnection,
+  TmHubSink,
+  TmHubState,
+  TmHubStatus,
+} from './src/state/leader/tm-hub-types';
+
+// The leader tab: whether this tab leads the routed tenant, the leader's
+// realtime connection and the tenant's hub events, and the documents only the
+// leader refreshes. The election itself is @tellma/core/leader's, which the
+// startup loads after the first render; the state testing providers replace
+// its loader.
+export { TmLeader } from './src/state/leader/tm-leader';
+export { TM_LEADER_DOCUMENTS, type TmLeaderDocument } from './src/state/leader/tm-leader-documents';
+export { TM_LEADER_LOAD as ɵTM_LEADER_LOAD, type TmLeaderModule as ɵTmLeaderModule } from './src/app/tm-app-init';
 
 // The launch documents and their cache: the routed tenant's settings,
 // envelope and facts, the cacheable lists, and the one path that syncs them.

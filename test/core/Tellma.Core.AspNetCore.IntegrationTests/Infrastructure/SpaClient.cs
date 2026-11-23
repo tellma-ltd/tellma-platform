@@ -61,6 +61,22 @@ namespace Tellma.Core.AspNetCore.IntegrationTests.Infrastructure
             return await SendAsync(request, cancellationToken ?? Token);
         }
 
+        /// <summary>Uploads a file to a tenant's blob surface, staging it as the caller's upload of a kind.</summary>
+        /// <param name="tenantId">The tenant.</param>
+        /// <param name="kind">The blob kind.</param>
+        /// <param name="content">The file's bytes.</param>
+        /// <param name="contentType">The file's declared content type.</param>
+        /// <param name="fileName">The file's name.</param>
+        /// <returns>The answer, read whole.</returns>
+        public async Task<ApiResponse> UploadAsync(int tenantId, string kind, ReadOnlyMemory<byte> content, string contentType, string fileName)
+        {
+            string path = string.Create(CultureInfo.InvariantCulture, $"/{tenantId}/blobs/{kind}?fileName={Uri.EscapeDataString(fileName)}");
+            using HttpRequestMessage request = Request(HttpMethod.Post, path);
+            request.Content = new ReadOnlyMemoryContent(content);
+            request.Content.Headers.ContentType = new MediaTypeHeaderValue(contentType);
+            return await SendAsync(request, Token);
+        }
+
         /// <summary>Gets a path of the host, with the browser's headers and no body.</summary>
         /// <param name="path">The path.</param>
         /// <param name="configure">Changes the request before it is sent; null for none.</param>

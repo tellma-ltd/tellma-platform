@@ -11,8 +11,9 @@ namespace Tellma.Core.AspNetCore.IntegrationTests.Stacks
 {
     /// <summary>
     ///     The routes the reference distribution projects for centers, users, roles and reports and
-    ///     their child surfaces are exactly the ones the operation and export cases drive end to end, so
-    ///     a route added to one of the four stacks fails here until a case drives it. It covers the stacks' routes
+    ///     their child surfaces, and for the export and import records, are exactly the ones the
+    ///     operation, report, export, import and record cases drive end to end, so a route added to one
+    ///     of these stacks fails here until a case drives it. It covers the stacks' routes
     ///     only: the platform's own service routes (access, notification preferences, settings and
     ///     the rest) are not stack routes and are not held to this list, though the round-trip
     ///     budget case measures the access and notification-preference ones the budget names.
@@ -24,13 +25,14 @@ namespace Tellma.Core.AspNetCore.IntegrationTests.Stacks
         /// <summary>The resources whose every route the operation cases drive.</summary>
         private static readonly HashSet<string> Resources = new(StringComparer.Ordinal)
         {
-            "gl.Center", "core.User", "core.Role", "core.RoleMembership", "core.Permission", "core.Report",
+            "gl.Center", "core.User", "core.Role", "core.RoleMembership", "core.Permission", "core.Report", "core.Export", "core.Import",
         };
 
         /// <summary>
         ///     Every route the operation cases drive, after <c>/{tenantId}/api/web/</c>: the center
         ///     cases, the user cases (the membership's child surface among them), the role cases
-        ///     (the permission's child surface among them), the report cases, and the export cases.
+        ///     (the permission's child surface among them), the report cases, the export cases, the
+        ///     import cases and the export and import record cases.
         /// </summary>
         private static readonly string[] Driven =
         [
@@ -47,10 +49,13 @@ namespace Tellma.Core.AspNetCore.IntegrationTests.Stacks
             "reports/share", "reports/publish", "reports/transfer",
             "centers/export", "centers/export-for-import", "users/export", "users/export-for-import", "roles/export", "roles/export-for-import",
             "permissions/export", "role-memberships/export",
+            "centers/inspect-import", "users/inspect-import", "roles/inspect-import",
+            "exports/query", "exports/get", "exports/get-by-ids", "exports/delete",
+            "imports/query", "imports/get", "imports/get-by-ids", "imports/delete",
         ];
 
         [Fact]
-        public void Every_center_user_role_and_report_route_the_host_projects_is_driven_end_to_end()
+        public void Every_center_user_role_report_export_and_import_route_the_host_projects_is_driven_end_to_end()
         {
             const string Prefix = "POST /{tenantId}/api/web/";
             IEnumerable<string> projected = deployment.Host.Services.GetRequiredService<IRouteContracts>().Routes
