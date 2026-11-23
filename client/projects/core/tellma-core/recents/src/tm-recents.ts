@@ -19,11 +19,11 @@ import {
   TM_NOW,
   TmCacheRefresher,
   type TmPageKind,
+  TmNavigation,
   TmPreferences,
   tmPreferenceKey,
   type TmRouteData,
   TmTitleStrategy,
-  TmUrls,
   ɵTM_API_HOST,
   type ɵTmRouteDataInternal,
 } from '@tellma/core';
@@ -32,8 +32,9 @@ import {
 // the routed tenant, at most ten, kept in the write-behind preference
 // `nav.recent` so they follow the user to every tab and browser. A visit is a
 // page of a listed kind that stays current for 2 s while the document is
-// visible. The launcher entry of a page names and draws it; access filters
-// the list on read, so a page whose access returns comes back. A tab keeps
+// visible. The launcher entry of a page names and draws it, and the
+// navigation registry's `resolve` filters the list on read, so a page whose
+// access returns comes back. A tab keeps
 // its own visits while they are among the ten and merges them back into a
 // list that lacks them, so a tab that started from an older stored list
 // cannot erase them.
@@ -64,33 +65,6 @@ export interface TmRoutedPage {
   readonly title: Signal<string>;
 }
 
-/** A page's launcher entry, as recents name and draw it. Internal. */
-export interface TmRecentsEntry {
-  /** The entry's label in the active language. */
-  readonly label: Signal<string>;
-  /** The entry's icon, or `null`. */
-  readonly icon: string | null;
-}
-
-/** The launcher's answers about a stored URL. Internal. */
-export interface TmRecentsNavigation {
-  /**
-   * The launcher entry whose path is the URL's.
-   *
-   * @param href - The URL, such as `/17/centers`.
-   * @returns The entry, or `undefined`.
-   */
-  entry(href: string): TmRecentsEntry | undefined;
-  /**
-   * Whether a stored URL still opens for the user; tracked, so the list
-   * follows the user's access.
-   *
-   * @param href - The URL.
-   * @returns `ok`, `no-access` or `unavailable`.
-   */
-  resolve(href: string): 'ok' | 'no-access' | 'unavailable';
-}
-
 /**
  * The routed page as visits count it: the deepest route's family and title.
  * Internal: the page context replaces it once it lands.
@@ -119,18 +93,6 @@ export const TM_ROUTED_PAGE = new InjectionToken<Signal<TmRoutedPage | null>>('T
     }
     inject(DestroyRef).onDestroy(() => subscription.unsubscribe());
     return page.asReadonly();
-  },
-});
-
-/**
- * The launcher's answers about stored URLs: until the launcher lands, no
- * entry, and a URL that no route reaches is unavailable. Internal.
- */
-export const TM_RECENTS_NAVIGATION = new InjectionToken<TmRecentsNavigation>('TM_RECENTS_NAVIGATION', {
-  providedIn: 'root',
-  factory: () => {
-    const urls = inject(TmUrls);
-    return { entry: () => undefined, resolve: (href) => (urls.describe(href) === null ? 'unavailable' : 'ok') };
   },
 });
 
@@ -216,7 +178,7 @@ function relative(url: string): string {
  */
 @Injectable({ providedIn: 'root' })
 export class TmRecents {
-  readonly #navigation = inject(TM_RECENTS_NAVIGATION);
+  readonly #navigation = inject(TmNavigation);
   readonly #now = inject(TM_NOW);
   readonly #prefs = inject(TmPreferences);
   readonly #refresher = inject(TmCacheRefresher);
@@ -230,8 +192,9 @@ export class TmRecents {
       : this.#stored()
           .map(({ p, k, t: at, n }) => {
             const url = `/${t}/${p}`;
-            const entry = this.#navigation.entry(url);
-            return { url, kind: k, title: entry?.label ?? signal(n).asReadonly(), icon: entry?.icon ?? null, visitedAt: at * 1_000 };
+            // The entry's label follows the language: the list recomputes with the entries.
+            const entry = this.#navigation.byHref(url);
+            return { url, kind: k, title: signal(entry?.label ?? n).asReadonly(), icon: entry?.icon ?? null, visitedAt: at * 1_000 };
           })
           // Filtered on read: the stored list keeps a page for when access returns.
           .filter((page) => this.#navigation.resolve(page.url) === 'ok');

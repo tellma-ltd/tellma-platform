@@ -48,6 +48,19 @@ export const TM_STRINGS_AR: TmStringTree = {
     reload: 'إعادة التحميل',
     retry: `${imperative('حاول', 'حاولي')} مرة أخرى`,
   },
+  nav: {
+    analysis: 'التحليل',
+    administration: 'الإدارة',
+    me: {
+      profile: 'ملفي الشخصي',
+      profile_Synonyms: 'الصورة، التوقيع، بيانات الاتصال',
+      region: 'اللغة والمنطقة',
+      region_Synonyms: 'المنطقة الزمنية، التقويم، الأرقام، التنسيقات',
+      display: 'العرض',
+      display_Synonyms: 'السمة، الشريط المثبت',
+      notifications: 'الإشعارات',
+    },
+  },
   shell: {
     tenantPicker: { title: `${imperative('اختر', 'اختاري')} شركة` },
     signedOut: { title: imperative('لقد سجّلت الخروج', 'لقد سجّلتِ الخروج'), signIn: 'تسجيل الدخول' },

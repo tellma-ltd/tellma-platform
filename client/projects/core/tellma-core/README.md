@@ -7,7 +7,7 @@ own.
 
 | Entry point | Holds | Loaded |
 |---|---|---|
-| `@tellma/core` | The distribution API: `bootstrapTellma`, `provideTellma`, `tmFeature`, the declaration functions (`tmEntity`, `tmPage`, `tmCodedReport`, `tmWidget`, `tmOverride`) and `TM_APP_DECLARATIONS`, the merged declarations; the client metadata's types, its loaders (`tmMetadataLoaders`) and the loaded Core chunk (`TM_CLIENT_METADATA`); the HTTP layer (`TmApi`, `TmApiError`, `TmProblem`), its plain-JSON value types (`TmJson`, `TmDecimal`, `TmId`) and the exact decimal helpers `TmDecimals`; the seams through which telemetry (`TmTelemetry`), the request log (`TmRequestLog`) and page scopes (`provideTmPageScope`) are provided; the session (`TmSession`, `tmSessionGuard`, `tmParseProfileCookie`), the launch mark (`TmLaunch`) and the single-membership rule (`tmSingleLiveTenant`); the client store (`TmClientStore`, `TmStoreRefusedError`, `TM_DOC_FORMATS`) and the tab bus (`TmTabBus`) with its message catalogue; the leader tab (`TmLeader`: whether this tab leads, the hub's status and the tenant's hub events) and the documents only the leader refreshes (`TM_LEADER_DOCUMENTS`); the boot script's result types and the app clock (`TM_NOW`); the derived router's pieces: the root component (`TmApp`), the route data (`TmRouteData`), the title strategy (`TmTitleStrategy`), the URL builders and classifier (`TmUrls`) with the search query's types; the entity registry (`TmEntities`, with its descriptors once the entity model loads, and the declaration types `tmEntity` takes, typed paths `TmPath` included), display names (`TmDisplayNames`, `tm-display-name`), client permissions (`TmPermissions`) and `tmRowsToObjects`; localization: `TmLocalization` (the language, the regional formats, the calendar and the zones, and their switches with the coalesced locale write), `TmServerText` (server codes and keys through the string packs) and `tmEnglish()`, the platform's English; the app-level keyboard shortcuts (`TmShortcuts`, `TmShortcut`, `TM_RESERVED_SHORTCUTS`, `TM_BROWSER_KEYS`, `TmShortcutConflictError`) and the shell frame's seams (`TmShell` with immersive mode, `TmShellMain`, `TM_SHELL_LAYOUT`) | eager |
+| `@tellma/core` | The distribution API: `bootstrapTellma`, `provideTellma`, `tmFeature`, the declaration functions (`tmEntity`, `tmPage`, `tmCodedReport`, `tmWidget`, `tmOverride`) and `TM_APP_DECLARATIONS`, the merged declarations; the client metadata's types, its loaders (`tmMetadataLoaders`) and the loaded Core chunk (`TM_CLIENT_METADATA`); the HTTP layer (`TmApi`, `TmApiError`, `TmProblem`), its plain-JSON value types (`TmJson`, `TmDecimal`, `TmId`) and the exact decimal helpers `TmDecimals`; the seams through which telemetry (`TmTelemetry`), the request log (`TmRequestLog`) and page scopes (`provideTmPageScope`) are provided; the session (`TmSession`, `tmSessionGuard`, `tmParseProfileCookie`), the launch mark (`TmLaunch`) and the single-membership rule (`tmSingleLiveTenant`); the client store (`TmClientStore`, `TmStoreRefusedError`, `TM_DOC_FORMATS`) and the tab bus (`TmTabBus`) with its message catalogue; the leader tab (`TmLeader`: whether this tab leads, the hub's status and the tenant's hub events) and the documents only the leader refreshes (`TM_LEADER_DOCUMENTS`); the boot script's result types and the app clock (`TM_NOW`); the derived router's pieces: the root component (`TmApp`), the route data (`TmRouteData`), the title strategy (`TmTitleStrategy`), the URL builders and classifier (`TmUrls`) with the search query's types; the entity registry (`TmEntities`, with its descriptors once the entity model loads, and the declaration types `tmEntity` takes, typed paths `TmPath` included), display names (`TmDisplayNames`, `tm-display-name`), client permissions (`TmPermissions`) and `tmRowsToObjects`; localization: `TmLocalization` (the language, the regional formats, the calendar and the zones, and their switches with the coalesced locale write), `TmServerText` (server codes and keys through the string packs) and `tmEnglish()`, the platform's English; the app-level keyboard shortcuts (`TmShortcuts`, `TmShortcut`, `TM_RESERVED_SHORTCUTS`, `TM_BROWSER_KEYS`, `TmShortcutConflictError`) the shell frame's seams (`TmShell` with immersive mode, `TmShellMain`, `TM_SHELL_LAYOUT`); the navigation registry (`TmNavigation`: the launcher's sections and entries, and a stored URL's state), the pins model (`tmPinsKey`, `tmPinnedBarVisibleKey` and the pin types) and the launcher's provider seam (`TM_LAUNCHER_PROVIDERS`) | eager |
 | `@tellma/core/shell` | The tenant shell, the tenant picker and the signed-out page, which the derived routes load; until their owners arrive they are plain stand-ins, beside one placeholder page for the platform's page families | eager, through `import()` |
 | `@tellma/core/memory` | The tab's memory of its pages: page state (`TmPageState`, `tmPageStateKey`), drafts (`TmDrafts`) and tree expansion (`TmTreeExpansion`), which the page hosts load with them | lazy |
 | `@tellma/core/recents` | The recently visited pages (`TmRecents`), which the launcher and the home page list; the app loads it with `import()` after its first render, when visits start to count | lazy, through `import()` after first render |
@@ -247,9 +247,10 @@ drafts.
 `@tellma/core/recents` holds **`TmRecents`**, which lists the routed tenant's ten most recent pages
 from the write-behind key `nav.recent`. The app loads it with `import()` after its first render.
 A visit is a search, report, dashboard, settings, access or custom page, not the drill-through
-list, current for 2 s while visible. Until the page context and the launcher land, the routed page
-comes from `ɵTM_ROUTED_PAGE` (the deepest route's data and the displayed title) and titles, icons
-and access from `ɵTM_RECENTS_NAVIGATION`; the access filter runs on read.
+list, current for 2 s while visible. Until the page context lands, the routed page comes from
+`ɵTM_ROUTED_PAGE` (the deepest route's data and the displayed title). A stored page takes the title
+and icon of the launcher entry at its URL from `TmNavigation`, and keeps only the pages whose URL
+`TmNavigation.resolve` finds `ok`; the access filter runs on read.
 
 **The dump.** `ɵTmStateDump.read()` (in the primary) builds the state's support-dump section: the
 mirrored documents' partition kinds, stored names and tags, the last sync, the unsaved
@@ -461,6 +462,44 @@ entry point of its own rather than part of the primary. The size gate's static-g
 (`"tellma".staticGraphExcludes`) proves that neither the primary nor the eager `/shell` reaches it
 through static imports, so the shell's deferred launcher panel and Shortcuts dialog load it with
 `import()`.
+
+## Navigation and pins
+
+`TmNavigation` (in the primary) derives the launcher's entries for the routed tenant from the merged
+declarations, after `hide`: every stack with a `query` operation and a segment (its plural label,
+`file-text`, and a create page when the user may save one that has a details page), every page
+without a path parameter (`square-dashed`, behind its securable), every coded report
+(`chart-column`, behind its securable) and every feature entry (`link`, behind any one of its
+`requires`). An entry with `visibleWhen` shows only while the distribution document is present and
+the predicate returns true; a predicate that throws hides its entry and is reported once as
+`tm.nav.visible-when`. `sections()` lists the sections with a visible entry, each ordered by `order`
+(100 by default), then by the label in the active language; `items()` adds the search-only entries,
+which name no shown section. The core feature contributes Analysis (800) and Administration (900),
+Settings under Administration (shown with `Read` on any settings category the Core chunk lists, unless
+a distribution gives it `requires`) and the search-only My settings entries.
+
+```ts
+const navigation = inject(TmNavigation);
+navigation.byHref('/17/centers')?.label; // 'Centers'
+navigation.resolve('/17/customers?f.CustomerType=in:Corporate'); // 'ok', 'no-access' or 'unavailable'
+```
+
+`resolve` judges a stored URL by the route table: `unavailable` when no route matches or
+`visibleWhen` hides the declaration that owns its route, `no-access` when the route's permission
+check fails, `ok` otherwise; a stored report's or dashboard's page reports a refusal itself.
+
+The pins model's types and keys live here too: `tmPinsKey` (`nav.pinned`, curated, per tenant)
+holds `{ v: 1, items }` of pins and one-level folders, and a value of another shape reads as no
+pins; `tmPinnedBarVisibleKey` (`nav.pinnedBarVisible`) is the bar's switch, which My settings
+writes. The rules the pinned bar applies to the items (8-character ids, URLs of at most 512
+characters, titles of at most 80, labels and folder names of 1 to 40, 30 pins and 10 folders per
+tenant, one level; what a pin captures of the routed URL; the current pin and a chip's label) live
+with the bar in `/shell`, as do the terms the launcher's search matches an entry by.
+`TM_LAUNCHER_PROVIDERS` is the multi token through which a feature adds a bucket of results below
+the launcher's pages.
+
+The registry adds no icon glyphs to the first frame: the default and core entry icons are names,
+which the launcher's own chunks register with their glyphs.
 
 ## Entities, display names and permissions
 
