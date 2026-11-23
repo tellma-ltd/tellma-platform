@@ -115,7 +115,7 @@ export interface TmActionSnapshot {
 export interface TmPageContextSnapshotOptions {
   /** Whether the snapshot carries page data: the rows, the form's values, the errors' messages and the user's text. */
   readonly includeData: boolean;
-  /** The injector that resolves the entities' labels; by default, the injection context's. */
+  /** The injector that resolves a masked details title's entity label; by default, the injection context's. */
   readonly injector?: Injector;
 }
 
@@ -167,7 +167,8 @@ function maskState(state: TmJson): TmJson {
  * report's `parameters`, becomes `"…"`, and a details page's title, which
  * is a record's display name, becomes the entity's singular label.
  *
- * Call it in an injection context, or pass `injector`.
+ * Masking a details page's title reads the entity's label: call it in an
+ * injection context, or pass `injector`. Every other snapshot needs neither.
  *
  * @param context - The context, such as `TmPageContexts.current()`.
  * @param options - Whether to carry page data, and the injector outside an injection context.
@@ -181,13 +182,17 @@ function maskState(state: TmJson): TmJson {
  */
 export function tmSerializePageContext(context: TmPageContext, options: TmPageContextSnapshotOptions): TmPageContextSnapshot {
   const { includeData } = options;
-  const injector = options.injector ?? inject(Injector);
   const { kind, entity, helpKey, form } = context;
   const visible = context.visible?.();
 
   // --- The title: a details page's names a record, so without page data it names the entity ---
+  // Only that label needs an injector, so only that branch asks for one.
   const title =
-    includeData || kind !== 'details' ? context.title() : entity === undefined ? MASK : injector.get(TmEntities).label(entity)();
+    includeData || kind !== 'details'
+      ? context.title()
+      : entity === undefined
+        ? MASK
+        : (options.injector ?? inject(Injector)).get(TmEntities).label(entity)();
 
   return {
     kind,

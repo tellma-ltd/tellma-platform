@@ -213,7 +213,18 @@ export function tmRouteTestConfig(): TmAppConfig {
     core: () => Promise.resolve(metadata),
     entities: () => Promise.resolve(tmTestEntitiesChunk()),
     contracts: () => Promise.resolve({ fingerprints: {}, long: [], idempotent: [] }),
-    strings: { en: () => Promise.resolve({ Distribution_DisplayName: 'Acme', gl_Center_Plural: 'Centers', gl_Center: 'Center' }) },
+    strings: {
+      en: () =>
+        Promise.resolve({
+          Distribution_DisplayName: 'Acme',
+          gl_Center_Plural: 'Centers',
+          gl_Center: 'Center',
+          // A destructive page action's label and confirmation.
+          Acme_Center_Delete: 'Delete center',
+          Acme_Center_DeleteTitle: 'Delete {name}?',
+          Acme_Center_DeleteMessage: '{name} and its {count} children will be deleted.',
+        }),
+    },
   };
   return {
     metadata: loaders,

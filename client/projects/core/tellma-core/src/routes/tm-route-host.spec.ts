@@ -356,11 +356,35 @@ describe('the route host', () => {
       expect(current.errors()[0]!.message).not.toBe('');
     });
 
-    it("publishes none for an entity's page, whose framework publishes its own", async () => {
+    it("publishes every page route's context, the entity's segment in its template, titled as the document is", async () => {
       rig = await tmAppRig();
-      await tmNavigate('/17/centers');
+      const harness = await tmNavigate('/17/centers');
       await tmSettle();
-      expect(TestBed.inject(TmPageContexts).current()).toBeNull();
+      const contexts = TestBed.inject(TmPageContexts);
+      const search = contexts.current()!;
+      expect(search).toMatchObject({ kind: 'search', routeTemplate: '/:t/centers' });
+      expect([search.status(), search.title()]).toEqual(['ready', 'Centers']);
+
+      // A reused route showing another entity publishes that entity's context in place of the first.
+      await harness.navigateByUrl('/17/currencies');
+      await tmSettle();
+      expect(contexts.current()!.routeTemplate).toBe('/:t/currencies');
+
+      // The drill-through list keeps its own template; the others name their route.
+      for (const [url, kind, template] of [
+        ['/17/list/centers', 'search', '/:t/list/:segment'],
+        ['/17/centers/5', 'details', '/:t/centers/:id'],
+        ['/17/centers/new', 'details', '/:t/centers/new'],
+        ['/17/settings/general', 'settings', '/:t/settings'],
+        ['/17/me', 'settings', '/:t/me'],
+        ['/17', 'home', '/:t'],
+      ] as const) {
+        await harness.navigateByUrl(url);
+        await tmSettle();
+        expect(contexts.current()).toMatchObject({ kind, routeTemplate: template });
+      }
+      // Only the routed page's context is live.
+      expect(contexts.overlays()).toEqual([]);
     });
   });
 });

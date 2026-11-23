@@ -356,11 +356,13 @@ tenant's launch documents are current. A page that names a `securable` the user 
 forbidden view in place. A chunk that fails to load asks the service worker for an update and
 shows `client-outdated` or `offline`. Each page gets its own page scope and leave checks, which a
 navigation away runs, a move between My settings sections or into another tenant included; a
-settings tab change keeps the page and runs none. On a feature page (`tmPage`), the host registers
-a default page context of the declaration's kind, titled by its `titleKey`: `loading` until the
-page or an error view renders, then `ready`, or `error` with the view's code (`forbidden`,
-`offline`, `client-outdated`) among its errors. A page that registers its own context replaces it
-and keeps its actions. After a path change, focus moves to the page's
+settings tab change keeps the page and runs none. On every page route, the host registers a
+default page context of the route's kind, titled as the document is, whose route template names
+the entity's segment (`/:t/centers`, `/:t/centers/:id`; the drill-through list keeps
+`/:t/list/:segment`): `loading` until the page or an error view renders, then `ready`, or `error`
+with the view's code (`forbidden`, `offline`, `client-outdated`) among its errors. A reused route
+that shows another entity registers it anew. A page, or its family's host, that registers its own
+context replaces it and keeps its actions. After a path change, focus moves to the page's
 `[tmPageTitle]`, except on a settings tab change, where it stays on the tab list. The document's
 title is the page's title and the display name. A stored report's and a dashboard's details pages
 draw the `report` and `dashboard` skeletons.

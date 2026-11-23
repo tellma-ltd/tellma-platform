@@ -148,4 +148,16 @@ describe('tmSerializePageContext', () => {
       actions: [],
     });
   });
+
+  it('needs no injection context and no injector for any snapshot but a masked details title', async () => {
+    await tmAppRig();
+    // Outside any injection context, as a promise callback is.
+    expect(tmSerializePageContext(search(), { includeData: false }).state).toMatchObject({
+      query: { q: '…' },
+    });
+    const details = tmTestContext('/:t/:entity/:id', { kind: 'details', entity: 'gl.Center' });
+    details.title.set('Main warehouse');
+    expect(tmSerializePageContext(details, { includeData: true }).title).toBe('Main warehouse');
+    expect(() => tmSerializePageContext(details, { includeData: false })).toThrow(/NG0203/);
+  });
 });

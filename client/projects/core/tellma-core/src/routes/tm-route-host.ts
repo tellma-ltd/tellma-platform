@@ -9,8 +9,10 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
+  createEnvironmentInjector,
   DestroyRef,
   effect,
+  EnvironmentInjector,
   inject,
   Injectable,
   Injector,
@@ -43,6 +45,7 @@ import { TmPageSkeleton } from './tm-page-skeleton';
 import { TM_ROUTE_ERROR_VIEWS, TmRouteError, type TmRouteErrorKind } from './tm-route-error';
 import { TM_ROUTE_HOSTS } from './tm-route-hosts';
 import { TmRouteRules } from './tm-route-rules';
+import { TmTitleStrategy } from './tm-title-strategy';
 import type { TmRouteDataInternal } from './tm-routes';
 
 // The route host (spec 0024 §4.4): the component of every page route. It
@@ -53,8 +56,8 @@ import type { TmRouteDataInternal } from './tm-routes';
 // A `tmPage` whose permission the user lacks renders the forbidden view in
 // place. A chunk that fails to load asks the service worker for an update: a
 // newer version shows `client-outdated`, anything else `offline`. Each page
-// gets a page scope and a leave-check registry, and a feature page a default
-// page context, which the page may replace with its own. A load holds the
+// gets a page scope and a leave-check registry, and a default page context,
+// which the page or its family's host replaces with its own. A load holds the
 // focus move until its view renders; a load superseded, or a host destroyed
 // while it waits, gives its hold back.
 
@@ -193,6 +196,9 @@ export class TmRouteHost {
   readonly #focus = inject(TmPageFocus);
   readonly #timer = inject(TmLaunchTimer);
   readonly #leave = inject(TmLeaveChecks);
+  readonly #contexts = inject(TmPageContexts);
+  readonly #titles = inject(TmTitleStrategy);
+  readonly #route = inject(ActivatedRoute);
 
   /** The route's data. */
   protected readonly data: Signal<TmRouteData & TmRouteDataInternal>;
@@ -283,6 +289,9 @@ export class TmRouteHost {
   /** Whether the current load's view has rendered. */
   readonly #painted = signal(false);
 
+  /** The default context's route template and the lifetime of its registration, once registered. */
+  #registered: { readonly template: string; readonly lifetime: EnvironmentInjector } | null = null;
+
   /** The default context's data state: `loading` until the view renders, then `ready`, or `error` for an error view. */
   readonly #status = computed<'loading' | 'ready' | 'error'>(() => {
     if (!this.#painted()) {
@@ -300,29 +309,17 @@ export class TmRouteHost {
 
   /** Creates the host, which loads its page now and again whenever the routed page changes in place. */
   constructor() {
-    const route = inject(ActivatedRoute);
+    const route = this.#route;
     inject(DestroyRef).onDestroy(() => {
       this.#destroyed = true;
       this.#run++;
       // A load that never renders, such as one waiting on a failed cold entry, holds focus no longer.
       this.#release();
+      this.#registered?.lifetime.destroy();
     });
     this.data = toSignal(route.data, { requireSync: true }) as Signal<TmRouteData & TmRouteDataInternal>;
     this.#params = toSignal(route.params, { requireSync: true });
     this.#query = toSignal(route.queryParams, { requireSync: true });
-    // --- A feature page's default context: its kind, title and status, until the page registers its own ---
-    const data = this.data();
-    if (data.ɵtemplate !== undefined) {
-      inject(TmPageContexts).register({
-        kind: data.kind,
-        routeTemplate: data.ɵtemplate,
-        title: this.#l10n.ɵtext(data.titleKey ?? ''),
-        status: this.#status,
-        state: signal({}),
-        errors: this.#errors,
-        actions: signal([]),
-      });
-    }
     // A reused route, such as another entity's search page, loads its page anew.
     effect(() => {
       this.#loader();
@@ -365,6 +362,7 @@ export class TmRouteHost {
     };
     this.#state.set({ view: 'loading' });
     this.#painted.set(false);
+    this.#publish();
 
     // --- The cold entry's refresh, the page's chunk and the Entities chunk, in parallel ---
     // The entry settles with whether it was cold; a failed one was cold too.
@@ -410,6 +408,39 @@ export class TmRouteHost {
       painted();
       this.#timer.rendered(routeKind, entry.cold);
     });
+  }
+
+  /**
+   * Registers the page's default context, or registers it anew when a reused
+   * route now shows another entity: its kind, its route template with the
+   * entity's segment in place, the title the document takes, and the host's
+   * status and errors. The page, or its family's host, replaces it by
+   * registering a context of its own in the same page scope.
+   */
+  #publish(): void {
+    // The drill-through list keeps its own template, which names it apart from the entity's search page.
+    const { kind, ɵtemplate, ɵentity } = this.data();
+    const segment = this.#params()['segment'];
+    const template =
+      ɵtemplate !== undefined && segment !== undefined && ɵentity !== 'list' ? ɵtemplate.replace(':segment', segment) : ɵtemplate;
+    if (template === undefined || template === this.#registered?.template) {
+      return;
+    }
+    this.#registered?.lifetime.destroy();
+    const lifetime = createEnvironmentInjector([], this.#injector.get(EnvironmentInjector));
+    this.#registered = { template, lifetime };
+    this.#contexts.register(
+      {
+        kind,
+        routeTemplate: template,
+        title: this.#titles.ɵtitleOf(this.#route.snapshot) ?? signal('').asReadonly(),
+        status: this.#status,
+        state: signal({}),
+        errors: this.#errors,
+        actions: signal([]),
+      },
+      lifetime.get(DestroyRef),
+    );
   }
 
   /** Releases every focus hold still taken. */

@@ -4,17 +4,20 @@
 // LICENSE file in the root directory of this source tree.
 
 import { LiveAnnouncer } from '@angular/cdk/a11y';
-import { DestroyRef, signal } from '@angular/core';
+import { TestbedHarnessEnvironment } from '@angular/cdk/testing/testbed';
+import { computed, DestroyRef, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { provideTellmaStateTesting, provideTellmaTesting, TmFakeTelemetry } from '@tellma/core-testing';
 import { TmConfirm } from '@tellma/core-ui/confirm';
 import { ɵtmModalOpened } from '@tellma/core-ui/overlay';
+import { TmConfirmHarness } from '@tellma/core-ui-testing';
 
 import { TmApiError } from '../api/tm-api-error';
 import { TM_DEV_MODE } from '../app/tm-dev-mode';
 import type { TmJsonObject } from '../json/tm-json';
 import { TmLocalization } from '../l10n/tm-localization';
 import { TmShortcuts } from '../nav/tm-shortcuts';
+import { tmAppRig, tmSettle } from '../routes/tm-app.testing.util';
 import type { TmActionOrigin, TmActionResult, TmPageAction } from './tm-page-action';
 import { TmPageActions } from './tm-page-actions';
 import { TmPageContexts } from './tm-page-contexts';
@@ -22,8 +25,8 @@ import { tmLifetime, tmTestAction, tmTestContext, tmTestInput, TmTestScope, type
 
 // The dispatcher's six steps for every origin, the registration defaults and
 // development checks, and the top context's shortcuts. The confirmation, the
-// announcer and the localization are fakes the specs read; one test asks
-// through the real dialog in a whole app.
+// announcer and the localization are fakes the specs read, except in the
+// last test, which asks through the real dialog in a whole app.
 
 /** Every origin an invocation has. */
 const ORIGINS: readonly TmActionOrigin[] = ['user', 'shortcut', 'launcher', 'assistant'];
@@ -233,11 +236,15 @@ describe('TmPageActions', () => {
       const { actions, confirm } = rig();
       const gone = deferred<boolean>();
       confirm.mockReturnValueOnce(gone.promise);
+      // The page beneath offers the same id, which never runs in the closed dialog's place.
+      const beneath = destructive('acme.x.delete');
+      page(beneath);
       const close = dialog(destructive('acme.x.delete'));
       const pending = actions.invoke('acme.x.delete', {}, 'user');
       close();
       gone.resolve(true);
       expect(await pending).toEqual({ outcome: 'refused', reason: 'not-found' });
+      expect(beneath.calls).toEqual([]);
 
       const disabled = deferred<boolean>();
       confirm.mockReturnValueOnce(disabled.promise);
@@ -249,6 +256,34 @@ describe('TmPageActions', () => {
       disabled.resolve(true);
       expect(await second).toEqual({ outcome: 'refused', reason: 'disabled', message: 'Posted meanwhile.' });
       expect(action.calls).toEqual([]);
+    });
+
+    it("runs the context's current action once answered, though its list was rebuilt meanwhile", async () => {
+      const { actions, confirm } = rig();
+      const answer = deferred<boolean>();
+      confirm.mockReturnValue(answer.promise);
+      // A framework's list, built anew whenever the record changes.
+      const record = signal(1);
+      const runs: number[] = [];
+      const context = tmTestContext('/:t/a');
+      const rebuilt = {
+        ...context,
+        actions: computed(() => {
+          const id = record();
+          const invoke = (): Promise<TmActionResult> => {
+            runs.push(id);
+            return Promise.resolve({ outcome: 'done' });
+          };
+          return [destructive('acme.a.delete', { invoke })];
+        }),
+      };
+      TestBed.inject(TmPageContexts).register(rebuilt, tmLifetime().get(DestroyRef));
+
+      const pending = actions.invoke('acme.a.delete', {}, 'user');
+      record.set(2);
+      answer.resolve(true);
+      expect(await pending).toEqual({ outcome: 'done' });
+      expect(runs).toEqual([2]);
     });
 
     it('answers failed when the question cannot be asked', async () => {
@@ -347,9 +382,9 @@ describe('TmPageActions', () => {
       expect(() => actions.register(tmTestInput('Save'), lifetime)).toThrow(
         'The page action id "Save" must be a lowercase scope and one to four kebab-case parts, such as "acme.credit-review.suggest-limits".',
       );
-      expect(() =>
-        actions.register(tmTestInput('acme.a.delete', { destructive: true }), lifetime),
-      ).toThrow('The destructive page action "acme.a.delete" needs a confirm with its title and message keys.');
+      expect(() => actions.register(tmTestInput('acme.a.delete', { destructive: true }), lifetime)).toThrow(
+        'The destructive page action "acme.a.delete" needs a confirm with its title and message keys.',
+      );
       const params: TmJsonObject = { type: 'object', required: ['limit'] };
       expect(() => actions.register(tmTestInput('acme.a.limit', { shortcut: 'Mod+J', params }), lifetime)).toThrow(
         'The page action "acme.a.limit" requires arguments, so it can take no shortcut.',
@@ -434,6 +469,57 @@ describe('TmPageActions', () => {
       page(tmTestAction('acme.a.limit', { shortcut: 'Mod+J', params }), tmTestAction('acme.a.save', { shortcut: 'Mod+Shift+J' }));
       TestBed.tick();
       expect(shortcuts.active().map((shortcut) => shortcut.id)).toEqual(['acme.a.save']);
+    });
+  });
+
+  describe('the real confirmation', () => {
+    it("asks in the localized danger dialog, labels its button with the action's label, and runs only once confirmed", async () => {
+      await tmAppRig();
+      const fixture = TestBed.createComponent(TmTestScope);
+      const { contexts, actions, destroyRef } = fixture.componentInstance;
+      contexts.register(tmTestContext('/:t/centers/:id'), destroyRef);
+      const runs = vi.fn(() => Promise.resolve<TmActionResult>({ outcome: 'done' }));
+      actions.register(
+        {
+          id: 'acme.center.delete',
+          labelKey: 'Acme_Center_Delete',
+          destructive: true,
+          confirm: {
+            titleKey: 'Acme_Center_DeleteTitle',
+            messageKey: 'Acme_Center_DeleteMessage',
+            args: signal({ name: 'Main warehouse', count: 3 }),
+          },
+          invoke: runs,
+        },
+        destroyRef,
+      );
+      const loader = TestbedHarnessEnvironment.documentRootLoader(fixture);
+
+      /** Invokes the action and waits for its question. */
+      const ask = async (): Promise<{
+        answer: Promise<TmActionResult>;
+        dialog: TmConfirmHarness;
+      }> => {
+        const answer = actions.invoke('acme.center.delete', {}, 'user');
+        await tmSettle();
+        return { answer, dialog: await loader.getHarness(TmConfirmHarness) };
+      };
+
+      const first = await ask();
+      expect(await first.dialog.getTitle()).toBe('Delete Main warehouse?');
+      expect(await first.dialog.getMessage()).toBe('Main warehouse and its 3 children will be deleted.');
+      expect(await first.dialog.getIcon()).toBe('warning');
+      expect(await first.dialog.getChoiceLabels()).toContain('Delete center');
+      // The danger form starts on the safe answer.
+      expect(await first.dialog.getFocusedChoiceLabel()).not.toBe('Delete center');
+      await first.dialog.choose('Delete center');
+      expect(await first.answer).toEqual({ outcome: 'done' });
+      expect(runs).toHaveBeenCalledTimes(1);
+
+      const second = await ask();
+      await second.dialog.pressEscape();
+      expect(await second.answer).toEqual({ outcome: 'cancelled' });
+      expect(runs).toHaveBeenCalledTimes(1);
     });
   });
 });

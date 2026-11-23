@@ -331,9 +331,28 @@ describe('the routed page and the launcher, until their owners land', () => {
     expect(current).toMatchObject({ kind: 'custom', routeTemplate: '/:t/credit-review' });
     expect(recents.pages()).toEqual([]);
     await tick(2_000);
-    expect(recents.pages().map((page) => [page.url, page.kind, page.title()])).toEqual([
-      ['/17/credit-review', 'custom', current.title()],
-    ]);
+    expect(recents.pages().map((page) => [page.url, page.kind, page.title()])).toEqual([['/17/credit-review', 'custom', current.title()]]);
+  });
+
+  it('counts a search page by the default context its host registers, and never the drill-through list', async () => {
+    await tmAppRig();
+    const recents = TestBed.inject(TmRecents);
+    // The home page, which never counts, renders the router outlet.
+    await tmNavigate('/17');
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    /** Navigates the app, and lets the page render. */
+    const go = async (url: string): Promise<void> => {
+      const navigated = TestBed.inject(Router).navigateByUrl(url);
+      for (let i = 0; i < 5; i++) {
+        await tick(0);
+      }
+      await navigated;
+    };
+    await go('/17/centers?q=jed');
+    await tick(2_000);
+    await go('/17/list/centers');
+    await tick(2_000);
+    expect(recents.pages().map((page) => [page.url, page.kind, page.title()])).toEqual([['/17/centers', 'search', 'Centers']]);
   });
 
   it('finds no launcher entry, and calls a URL no route reaches unavailable', async () => {

@@ -4,6 +4,7 @@
 
 ```ts
 
+import { ActivatedRouteSnapshot } from '@angular/router';
 import { ApplicationConfig } from '@angular/core';
 import { ApplicationRef } from '@angular/core';
 import { CanActivateFn } from '@angular/router';

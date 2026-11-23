@@ -75,6 +75,14 @@ interface TmActionEntry {
   readonly off: () => void;
 }
 
+/** An action as the dispatcher found it: the action and the published context that offers it. */
+interface TmFound {
+  /** The context, as the registry publishes it. */
+  readonly context: TmPageContext;
+  /** The context's action with the id. */
+  readonly action: TmPageAction;
+}
+
 /** The result for an action no context offers. */
 const NOT_FOUND: TmActionResult = { outcome: 'refused', reason: 'not-found' };
 
@@ -294,11 +302,11 @@ export class TmPageRegistry {
   async invoke(id: string, args: TmJson, origin: TmActionOrigin): Promise<TmActionResult> {
     const started = performance.now();
     // --- Step 1: the top context, then the lower dialogs, then the routed page ---
-    const action = this.#find(id);
-    if (action === undefined) {
+    const found = this.#find(id);
+    if (found === undefined) {
       return NOT_FOUND;
     }
-    const result = await this.#dispatch(action, args, origin);
+    const result = await this.#dispatch(found, args, origin);
     // --- Step 6: the usage signal, sampled ---
     this.#telemetry.event(
       'tm.action.invoked',
@@ -329,14 +337,14 @@ export class TmPageRegistry {
     return [...context.actions(), ...replaced, ...scoped].sort(byPlace);
   }
 
-  /** The action with the id in the top context, then the lower dialogs', then the routed page's. */
-  #find(id: string): TmPageAction | undefined {
+  /** The action with the id in the top context, then the lower dialogs', then the routed page's, with the context that offers it. */
+  #find(id: string): TmFound | undefined {
     return untracked(() => {
       const current = this.current();
       for (const context of [...this.overlays()].reverse().concat(current === null ? [] : [current])) {
         const action = context.actions().find((held) => held.id === id);
         if (action !== undefined) {
-          return action;
+          return { context, action };
         }
       }
       return undefined;
@@ -344,7 +352,8 @@ export class TmPageRegistry {
   }
 
   /** Steps 2 to 5 for a found action. */
-  async #dispatch(action: TmPageAction, args: TmJson, origin: TmActionOrigin): Promise<TmActionResult> {
+  async #dispatch(found: TmFound, args: TmJson, origin: TmActionOrigin): Promise<TmActionResult> {
+    let { action } = found;
     const { id } = action;
     let refusal = this.#gate(action, origin);
     if (refusal !== null) {
@@ -353,8 +362,8 @@ export class TmPageRegistry {
 
     // --- Step 4: a destructive action asks first, whoever invokes it ---
     // The id is busy while the question is open, so a second invocation
-    // cannot ask again; the action is checked again once answered, since the
-    // page may have changed meanwhile.
+    // cannot ask again; the action is looked up again once answered, since
+    // the page may have changed meanwhile.
     if (action.destructive) {
       if (typeof ngDevMode !== 'undefined' && ngDevMode && this.#devMode()) {
         checkAction(action);
@@ -369,9 +378,14 @@ export class TmPageRegistry {
       } finally {
         this.#confirming.delete(id);
       }
-      if (this.#find(id) !== action) {
+      // The same context must still offer the id first; its action then is
+      // the one that runs, though its list may have been rebuilt meanwhile.
+      // A dialog closed meanwhile never hands the id to the page beneath.
+      const again = this.#find(id);
+      if (again === undefined || again.context !== found.context) {
         return NOT_FOUND;
       }
+      action = again.action;
       refusal = this.#gate(action, origin);
       if (refusal !== null) {
         return refusal;
