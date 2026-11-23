@@ -458,6 +458,10 @@ export class TmCacheRefresher {
 
   /** The signed-in user's partition of a tenant, or `null` with no user. */
   #partitionOf(tenantId: number): TmTenantPartition | null {
+    // After the app's end there is none, so a late adopt, refresh or observe does nothing.
+    if (this.#app.destroyed) {
+      return null;
+    }
     const sub = untracked(this.#session.profile)?.sub;
     return sub === undefined ? null : { kind: 'tenant', sub, tenantId };
   }

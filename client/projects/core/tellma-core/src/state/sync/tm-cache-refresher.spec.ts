@@ -738,10 +738,28 @@ describe('TmCacheRefresher', () => {
         await vi.advanceTimersByTimeAsync(600_000);
       });
       expect(unhandled).toEqual([]);
+      // The boundary's timer is not armed again once the late sync settles.
+      expect(vi.getTimerCount()).toBe(0);
       // The app's end cancelled the sync, so nothing is stored or reported, and nothing syncs again.
       expect(error).not.toHaveBeenCalled();
       expect(items(rig, 'tm.sync.failed')).toEqual([]);
       expect(rig.syncs()).toHaveLength(1);
+    });
+
+    it('arms no jitter timer for a hub event that arrives after the app has ended', async () => {
+      const rig = await setUp();
+      rig.api.respond('client/sync', answer());
+
+      const unhandled = await tmUnhandled(async () => {
+        TestBed.resetTestingModule();
+        const timers = vi.getTimerCount();
+        rig.refresher.ɵcacheChanged(17, { tag: 'permissions' });
+        rig.refresher.ɵcacheChanged(17, { tag: 'settings', value: 'S2' });
+        expect(vi.getTimerCount()).toBe(timers);
+        await vi.advanceTimersByTimeAsync(10_000);
+      });
+      expect(unhandled).toEqual([]);
+      expect(rig.syncs()).toEqual([]);
     });
   });
 

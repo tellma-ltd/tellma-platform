@@ -738,6 +738,9 @@ describe('TmPreferences', () => {
       });
       expect(unhandled).toEqual([]);
       expect(rig.writes()).toHaveLength(1);
+      // The late result is dropped quietly: it is neither a failure nor an error.
+      expect(rig.telemetry.errors()).toEqual([]);
+      expect(rig.items('tm.prefs.flush-failed')).toEqual([]);
     });
   });
 

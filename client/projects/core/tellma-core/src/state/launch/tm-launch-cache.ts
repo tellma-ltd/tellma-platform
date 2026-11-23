@@ -290,7 +290,8 @@ export class TmLaunchCache {
     // Spec 0025 §3.3.
     const { sub, tenantId } = partition;
     const key = `${sub}/${tenantId}:${name}`;
-    // An app that ended before the load started loads nothing: its injector resolves nothing.
+    // An app that ended before the load started, or during its sync, loads
+    // nothing: its injector resolves nothing. Its end cancels a read in flight.
     const ended = (): boolean => this.#life.signal.aborted;
     if (ended() || this.#loading.has(key) || this.#skips.get(key)?.()) {
       return;
@@ -326,9 +327,6 @@ export class TmLaunchCache {
         {},
         { signal: this.#refresher.ɵsignal(tenantId), background: true, tenantId },
       );
-      if (ended()) {
-        return;
-      }
       // --- Step 3: stored under the tag read before the rows; a list that
       // changed meanwhile is reported stale by the next sync ---
       await this.#store.put(partition, LIST + name, { tag, savedAt: this.#now(), data: result.entities });

@@ -301,7 +301,7 @@ export class TmDisplayNames {
   readonly #l10n = inject(TmLocalization);
   readonly #telemetry = inject(TmTelemetry);
   readonly #document = inject(DOCUMENT);
-  /** The app's lifetime: a flush or a read that outlives it resolves nothing. */
+  /** The app's lifetime: a flush that comes after it resolves nothing. */
   readonly #app = inject(DestroyRef);
 
   /** Each entity's plan, by name, shape and whether the Entities chunk had loaded. */
@@ -482,7 +482,7 @@ export class TmDisplayNames {
    */
   resolve(entity: string, ids: readonly TmId[]): void {
     const summary = this.#entities.summary(entity);
-    if (this.#app.destroyed || summary === undefined || summary.segment === null || !summary.operations.includes('query')) {
+    if (summary === undefined || summary.segment === null || !summary.operations.includes('query')) {
       return;
     }
     const bucket = untracked(() => this.#bucket(summary.name));
@@ -690,19 +690,12 @@ export class TmDisplayNames {
     const generation = this.#generation;
     try {
       await this.#entities.load();
-      // An app that ended while the chunk loaded reads nothing.
-      if (this.#app.destroyed) {
-        return;
-      }
       const descriptor = untracked(() => this.#entities.get(entity));
       const plan = untracked(() => this.#plan(entity));
       if (plan === null || !untracked(this.#permissions.allows(entity, 'query'))) {
         return;
       }
       const { ɵtmReadDisplayNames } = await import('./tm-entity-model');
-      if (this.#app.destroyed) {
-        return;
-      }
       await ɵtmReadDisplayNames(
         {
           api: this.#injector.get(TmApi),
