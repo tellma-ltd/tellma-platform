@@ -14,6 +14,7 @@ using Tellma.Core.Composition;
 using Tellma.Core.IntegrationTests.Access;
 using Tellma.Core.IntegrationTests.Data;
 using Tellma.Core.Tenancy;
+using Tellma.Core.Testing.Blobs;
 using Tellma.Core.Testing.Crud;
 using Tellma.Testing.Entities;
 
@@ -21,11 +22,12 @@ namespace Tellma.Core.IntegrationTests.Crud.Conformance
 {
     /// <summary>
     ///     The two tenant databases of <see cref="ConnectDatabase" />, served by an instance of the
-    ///     fixture's stacks on their default services but for the export stack, whose service enlists
+    ///     fixture's stacks on their default services but for the parcel stack, whose service enlists
     ///     shipments from its validation, raises a confirmation and fails after its commit when a test
     ///     arms it. The first tenant holds one stored node, which every node's link may name. Each
     ///     scope's connections count their server round trips, so the conformance suite holds the
-    ///     platform's count to the driver's.
+    ///     platform's count to the driver's. Uploads, which an import's inspection reads, are held
+    ///     in memory.
     /// </summary>
     /// <param name="sql">The SQL Server the databases are created on.</param>
     public class ConformanceDatabase(SqlServerFixture sql) : IAsyncLifetime, IStackConformanceHarness
@@ -33,8 +35,8 @@ namespace Tellma.Core.IntegrationTests.Crud.Conformance
         /// <summary>The stored node every node's link may name.</summary>
         public const int AnchorNode = 1;
 
-        /// <summary>The confirmation the export service raises when armed.</summary>
-        public const string ExportConfirmation = "Conformance.ExportChecked";
+        /// <summary>The confirmation the parcel service raises when armed.</summary>
+        public const string ParcelConfirmation = "Conformance.ParcelChecked";
 
         /// <summary>The instance that serves the suite; null until initialised.</summary>
         private ServiceProvider? _instance;
@@ -42,7 +44,7 @@ namespace Tellma.Core.IntegrationTests.Crud.Conformance
         /// <summary>The two tenant databases and their composition.</summary>
         public ConnectDatabase Connect { get; } = new(sql);
 
-        /// <summary>The export service's probe, inert until a test arms it.</summary>
+        /// <summary>The parcel service's probe, inert until a test arms it.</summary>
         public ConformanceProbe Probe { get; } = new();
 
         /// <inheritdoc />
@@ -59,6 +61,9 @@ namespace Tellma.Core.IntegrationTests.Crud.Conformance
                 configure: services =>
                 {
                     _ = services.AddSingleton(Probe);
+
+                    // --- The uploads an import's inspection reads, in memory ---
+                    _ = services.AddInMemoryBlobs();
 
                     // --- The scope's connections, opened through the fixture's provider and counted ---
                     Func<IServiceProvider, object> open = services.Last(static descriptor => descriptor.ServiceType == typeof(ITenantConnectionProvider)).ImplementationFactory
@@ -129,7 +134,7 @@ namespace Tellma.Core.IntegrationTests.Crud.Conformance
             _ = tellma.AddFeature(new ConformanceFeature());
         }
 
-        /// <summary>The feature that runs the fixture's export stack through <see cref="EnlistingExportService" />.</summary>
+        /// <summary>The feature that runs the fixture's parcel stack through <see cref="EnlistingParcelService" />.</summary>
         private sealed class ConformanceFeature : ITellmaFeature
         {
             /// <inheritdoc />
@@ -149,8 +154,8 @@ namespace Tellma.Core.IntegrationTests.Crud.Conformance
             {
                 ArgumentNullException.ThrowIfNull(contribution);
                 _ = contribution
-                    .Entity<Export, EnlistingExportService>()
-                    .Confirmation(ExportConfirmation);
+                    .Entity<Parcel, EnlistingParcelService>()
+                    .Confirmation(ParcelConfirmation);
             }
         }
 
@@ -191,36 +196,36 @@ namespace Tellma.Core.IntegrationTests.Crud.Conformance
         }
     }
 
-    /// <summary>What the export service does when a test arms it: shared by every scope of the instance.</summary>
+    /// <summary>What the parcel service does when a test arms it: shared by every scope of the instance.</summary>
     public sealed class ConformanceProbe
     {
-        /// <summary>The exports' validation hook, given the service so it can enlist shipments; nothing when null.</summary>
-        public Func<EnlistingExportService, SaveContext<Export>, Task>? ValidateExports { get; set; }
+        /// <summary>The parcels' validation hook, given the service so it can enlist shipments; nothing when null.</summary>
+        public Func<EnlistingParcelService, SaveContext<Parcel>, Task>? ValidateParcels { get; set; }
 
-        /// <summary>The exports' post-commit hook, which may throw; nothing when null.</summary>
+        /// <summary>The parcels' post-commit hook, which may throw; nothing when null.</summary>
         public Action? AfterCommit { get; set; }
 
         /// <summary>Disarms the probe.</summary>
         public void Reset()
         {
-            ValidateExports = null;
+            ValidateParcels = null;
             AfterCommit = null;
         }
     }
 
-    /// <summary>The export stack's service: its validation runs what the probe arms, so a test enlists shipments from an export's save.</summary>
+    /// <summary>The parcel stack's service: its validation runs what the probe arms, so a test enlists shipments from a parcel's save.</summary>
     /// <param name="factory">The pipeline factory.</param>
     /// <param name="probe">The probe.</param>
-    public sealed class EnlistingExportService(IEntityPipelineFactory factory, ConformanceProbe probe) : EntityService<Export>(factory), IEnlists<Shipment>
+    public sealed class EnlistingParcelService(IEntityPipelineFactory factory, ConformanceProbe probe) : EntityService<Parcel>(factory), IEnlists<Shipment>
     {
         /// <inheritdoc />
-        protected override Task ValidateAsync(SaveContext<Export> context)
+        protected override Task ValidateAsync(SaveContext<Parcel> context)
         {
-            return probe.ValidateExports?.Invoke(this, context) ?? Task.CompletedTask;
+            return probe.ValidateParcels?.Invoke(this, context) ?? Task.CompletedTask;
         }
 
         /// <inheritdoc />
-        protected override Task AfterCommitAsync(PersistOutcome<Export> outcome)
+        protected override Task AfterCommitAsync(PersistOutcome<Parcel> outcome)
         {
             probe.AfterCommit?.Invoke();
             return Task.CompletedTask;

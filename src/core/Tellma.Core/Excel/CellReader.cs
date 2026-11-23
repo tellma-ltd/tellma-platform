@@ -17,6 +17,24 @@ namespace Tellma.Core.Excel
     /// </summary>
     internal static class CellReader
     {
+        /// <summary>The type of a shared string cell, <c>t="s"</c>.</summary>
+        public const string SharedStringType = "s";
+
+        /// <summary>The type of a formula's cached string, <c>t="str"</c>.</summary>
+        public const string StringType = "str";
+
+        /// <summary>The type of an inline string, <c>t="inlineStr"</c>.</summary>
+        public const string InlineStringType = "inlineStr";
+
+        /// <summary>The type of a boolean, <c>t="b"</c>.</summary>
+        public const string BooleanType = "b";
+
+        /// <summary>The type of an ISO 8601 date, <c>t="d"</c>.</summary>
+        public const string DateType = "d";
+
+        /// <summary>The type of an error value, <c>t="e"</c>.</summary>
+        public const string ErrorType = "e";
+
         /// <summary>Reads a cell.</summary>
         /// <param name="cell">The cell element.</param>
         /// <param name="sharedString">The workbook's shared string at an index; null for an index the table lacks.</param>
@@ -27,22 +45,40 @@ namespace Tellma.Core.Excel
             ArgumentNullException.ThrowIfNull(cell);
             ArgumentNullException.ThrowIfNull(sharedString);
 
-            CellValues type = cell.DataType?.Value ?? CellValues.Number;
-            string? value = cell.CellValue?.Text;
+            // The type attribute as stored, so the document and the streaming reader share one rule.
+            string? type = cell.DataType?.InnerText;
+            string? inline = type == InlineStringType && cell.InlineString is { } item ? TextOf(item) : null;
+            return Read(type, cell.CellValue?.Text, inline, sharedString);
+        }
+
+        /// <summary>
+        ///     Reads a stored cell from its parts: the type attribute, the cached value and, for an
+        ///     inline string, its text already joined. The streaming reader and the document reader
+        ///     both read through here.
+        /// </summary>
+        /// <param name="type">The cell's <c>t</c> attribute as stored; null for a number.</param>
+        /// <param name="value">The cell's <c>v</c> element's text, escapes not yet undone; null when it has none.</param>
+        /// <param name="inline">An inline string's text, its runs joined and escapes undone; null when the cell has no <c>is</c> element.</param>
+        /// <param name="sharedString">The workbook's shared string at an index; null for an index the table lacks.</param>
+        /// <returns>The cell's kind and text.</returns>
+        /// <exception cref="FormatException">A shared string cell names no string of the table.</exception>
+        public static ExcelRawCell Read(string? type, string? value, string? inline, Func<int, string?> sharedString)
+        {
+            ArgumentNullException.ThrowIfNull(sharedString);
 
             // An inline string carries its text in the cell; any other kind in its value.
-            if (type == CellValues.InlineString)
+            if (type == InlineStringType)
             {
-                return cell.InlineString is { } inline ? new ExcelRawCell(ExcelCellKind.Text, TextOf(inline)) : ExcelRawCell.Blank;
+                return inline is null ? ExcelRawCell.Blank : new ExcelRawCell(ExcelCellKind.Text, inline);
             }
 
             // A formula without a cached value has no value to import.
-            if (value is null || (value.Length == 0 && type != CellValues.String))
+            if (value is null || (value.Length == 0 && type != StringType))
             {
                 return ExcelRawCell.Blank;
             }
 
-            if (type == CellValues.SharedString)
+            if (type == SharedStringType)
             {
                 bool valid = int.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out int index);
                 string? text = valid ? sharedString(index) : null;
@@ -53,10 +89,10 @@ namespace Tellma.Core.Excel
 
             return type switch
             {
-                _ when type == CellValues.String => new ExcelRawCell(ExcelCellKind.Text, XmlStrings.Unescape(value)),
-                _ when type == CellValues.Boolean => new ExcelRawCell(ExcelCellKind.Boolean, value),
-                _ when type == CellValues.Date => new ExcelRawCell(ExcelCellKind.Date, value),
-                _ when type == CellValues.Error => new ExcelRawCell(ExcelCellKind.Error, value),
+                StringType => new ExcelRawCell(ExcelCellKind.Text, XmlStrings.Unescape(value)),
+                BooleanType => new ExcelRawCell(ExcelCellKind.Boolean, value),
+                DateType => new ExcelRawCell(ExcelCellKind.Date, value),
+                ErrorType => new ExcelRawCell(ExcelCellKind.Error, value),
                 _ => new ExcelRawCell(ExcelCellKind.Number, value),
             };
         }

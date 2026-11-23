@@ -384,6 +384,46 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-245 (orchestrator, 2026-11-22): PC-F75 takes R1-1; a targeted verification follows fix 1; it is released ahead of the held queue
+
+- R1-1 (blocking) is a V-1-class bypass: a part's XML declaration (for example iso-2022-jp or hz-gb-2312) switches XmlReader's decoder away from the encoding BoundedPartStream bounds. Microsoft.Data.SqlClient registers CodePagesEncodingProvider process-wide, so these encodings are live on every host. It stays in PC-F75 rather than a new fix item, because the defect class, the file and the implementer are the same.
+- Ruling for the fix: the reader decodes in exactly the encoding the stream detected, through XmlReader.Create over a TextReader in that encoding, so the two can never disagree. A declaration naming any encoding other than UTF-8 or UTF-16 is refused through ImportFaults.Malformed, because OPC allows only those two. Tests must register the code-pages provider.
+- R1-2: the cost theory becomes deterministic. It counts the units scanned one at a time and asserts a constant per opener. Any wall-clock check moves to the nightly perf tier (PLAN section 6) or is dropped.
+- R1-3: add the refusal theory with mark-dense fillers mixed with <, flooding one section past the bound in all three encodings at several read sizes, so that an early section close fails it.
+- Fix items get Review 1 only. Because R1-1 is blocking and security-bound, one targeted verification of fix 1 runs (section 4.4 allows at most one), scoped to the declared-encoding class and the new tests.
+- Release order: PC-F75 is a blocking fix (D-229), so once verified it integrates next after the item then integrating, ahead of PC-F72, PC-117, PC-F73 and PC-111 (as PC-F74 did under D-242).
+
+### D-244 (orchestrator, 2026-11-22): PC-111 Review 1 rulings
+
+- R1-2: the route host registers a default page context on every page route. Its kind comes from the route data, its title from the title strategy, and its template is the route's with the segment filled in. Framework hosts replace it later under the same-scope rule. I chose this over a carry on each framework checkpoint because D-216 asked to replace PC-107's seam, not to narrow what recents count. The PC-107 whole-app behaviour (/17/centers counts and the list route does not) is restored and pinned again.
+- R1-4: tmSerializePageContext stays in the primary, because spec 0026 section 1 places it there and the 50 KB cap of spec 0024 section 12 still has room. This is not a deviation. For Ahmad: should 0026 move the snapshot to a lazy entry point, given that its only callers (./support and the state dump) are lazy? That would save about 0.5 KB on the first frame.
+- R1-1, R1-3 and R1-5 are fixed as the review suggests.
+- Two majors and no blocking finding, so this is not an escalation under section 4.4 unless fix 1 reaches about a third of the checkpoint (about 1,000 lines).
+- Forward note: PC-111 takes 2.10 KB of 0026's 6 KB primary share, which leaves about 3.9 KB for PC-112 and PC-113.
+- For Ahmad (from deviations 2 and 3): spec 0026 section 9.6 should add the injector option beside includeData. Section 9.5 should record that the dispatcher answers busy while a destructive confirmation is open, and looks the action up again by id in the offering context after the answer.
+
+### D-243 (orchestrator, 2026-11-22): PC-117 fix 1 accepted; ids keep the locale's digits
+
+- Fix 1 (d49d7e35) addresses R1-1 to R1-9. It is about 690 lines against about 4,420 in the implementation, so it is not an escalation under section 4.4.
+- R1-2 adds a string-registration seam, TmLocalization.ɵregisterStrings, at a primary cost of 0.06 KB. The tm.value strings moved to ./entity, and "." is back to 42.45 of 42.5. PC-119 to PC-121 register their strings the same way, and the ./entity README documents the seam. ./entity is 12.18 against a ceiling of 12.5, honest under D-031.
+- R1-6: my ruling said ids display with Latin digits. The implementer followed the specs instead: spec 0029 section 5.2 says integers are ungrouped, and spec 0010 section D.15 says the digits stay the locale's. So ar-SA shows ١٢٨٤. I withdraw my ruling, because the specs govern.
+- R1-3 needed no spec change: a child-grid multilingual group edits its active slot by its JSON name.
+- R1-1's residual risk: typing "12abc" key by key leaves the field at 12 and invalid. Both that case and the paste case block Save.
+- During the fix, a language-switch test raced its settle under load. It now waits for the switch to land, which counts as root-caused.
+
+### D-242 (orchestrator, 2026-11-22): PC-F74 lands before PC-189
+
+- PC-189's integration run 45094742817 on 0e1aed83 was cancelled. build-test (windows-latest) hit its 30-minute limit with Tellma.Core.AspNetCore.Tests unfinished, and no test failed. This is the PC-F74 defect, not PC-189's.
+- Re-running would be a retry (D-011), and PC-189 cannot go green until the fix is on platform-core. So the release order changes: PC-F74 integrates straight after its review 1 fixes, without holding. Then PC-189 merges platform-core again and pushes a new integrate commit.
+- PC-106, PC-176 and PC-108 follow, in that order.
+
+### D-241 (orchestrator, 2026-11-22): PC-F74 root cause and the sealed-endpoints behaviour change
+
+- PC-F74 found the cause of the Windows timeout. Minimal-API endpoint data sources rebuild every endpoint on each read (about 1 s), and each test host read them five times, about 5 s per host. This matches PC-189's observation that a cold host spends up to 5 s in UseRouting.
+- The fix seals the host's endpoint sources once the startup endpoint audit has run. That changes product behaviour: an endpoint mapped after startup is now never served. Before, such an endpoint was served unaudited if it was mapped before the first request.
+- I accept the change pending Review 1, as a security improvement: every served endpoint is now an audited one. The implementer updated ARCHITECTURE.md. For Ahmad's awareness: it is a platform rule that no endpoint may be added after startup.
+- The classes that still build one host per case (Bff, EndpointAudit, Session, Hub, Backchannel and Admin) are now the long tail. The next levers are per-host startup checks and MapTellma's audit build, about 0.8 s.
+
 ### D-240 (orchestrator, 2026-11-22): PC-176 verification found a UTF-32 bypass; PC-176 integrates, and PC-F75 follows it
 
 - The section 4.4 verification (D-236) of abc79003 confirmed that every R2-1 to R2-3 vector and every new shape was refused within its bound. It found three new defects:

@@ -43,6 +43,10 @@ namespace Tellma.Core.Tests.Access
             string expected = /*lang=json,strict*/ """
                 [
                 {"resource":"acme.CreditExposureReport","action":"Read","isSensitive":false,"feature":"fixture","resourceLabelKey":"Securable_acme_CreditExposureReport","resourceLabelFallback":"Credit exposure report","actionLabelKey":"Action_Read","featureLabelKey":"Feature_fixture","featureLabelFallback":"Fixture"},
+                {"resource":"core.Export","action":"Read","filterRoot":"core.Export","isSensitive":false,"feature":"core","resourceLabelKey":"Core_Export_Plural","actionLabelKey":"Action_Read","featureLabelKey":"Feature_core"},
+                {"resource":"core.Export","action":"Delete","filterRoot":"core.Export","isSensitive":false,"feature":"core","resourceLabelKey":"Core_Export_Plural","actionLabelKey":"Action_Delete","featureLabelKey":"Feature_core"},
+                {"resource":"core.Import","action":"Read","filterRoot":"core.Import","isSensitive":false,"feature":"core","resourceLabelKey":"Core_Import_Plural","actionLabelKey":"Action_Read","featureLabelKey":"Feature_core"},
+                {"resource":"core.Import","action":"Delete","filterRoot":"core.Import","isSensitive":false,"feature":"core","resourceLabelKey":"Core_Import_Plural","actionLabelKey":"Action_Delete","featureLabelKey":"Feature_core"},
                 {"resource":"core.Job","action":"Read","filterRoot":"core.Job","isSensitive":false,"feature":"core","resourceLabelKey":"Core_Job_Plural","actionLabelKey":"Action_Read","featureLabelKey":"Feature_core"},
                 {"resource":"core.Job","action":"Retry","filterRoot":"core.Job","isSensitive":false,"feature":"core","resourceLabelKey":"Core_Job_Plural","actionLabelKey":"Action_Retry","featureLabelKey":"Feature_core"},
                 {"resource":"core.Job","action":"Cancel","filterRoot":"core.Job","isSensitive":false,"feature":"core","resourceLabelKey":"Core_Job_Plural","actionLabelKey":"Action_Cancel","featureLabelKey":"Feature_core"},

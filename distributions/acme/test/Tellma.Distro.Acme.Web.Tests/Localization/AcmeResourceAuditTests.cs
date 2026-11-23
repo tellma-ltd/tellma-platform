@@ -81,13 +81,14 @@ namespace Tellma.Distro.Acme.Web.Tests.Localization
             [
                 .. typeof(ExportRequest).GetProperties(BindingFlags.Public | BindingFlags.Instance).Select(static property => property.Name),
                 .. typeof(ExportForImportRequest).GetProperties(BindingFlags.Public | BindingFlags.Instance).Select(static property => property.Name),
+                .. typeof(InspectImportRequest).GetProperties(BindingFlags.Public | BindingFlags.Instance).Select(static property => property.Name),
             ];
             string[] shared =
             [
                 "_CreatedAt", "_CreatedBy", "_CreatedById", "_ModifiedAt", "_ModifiedBy", "_ModifiedById", "_Id", "_New",
                 "_Action_Read", "_Action_Save", "_Action_Delete", "_Action_Activate", "_Action_Deactivate",
-                "_Action_Export", "_Action_ExportForImport",
-                .. workbookFields.Distinct(StringComparer.Ordinal).SelectMany(static field => new[] { $"_Action_Export_{field}", $"_Action_ExportForImport_{field}", $"_{field}" }),
+                "_Action_Export", "_Action_ExportForImport", "_Action_InspectImport",
+                .. workbookFields.Distinct(StringComparer.Ordinal).SelectMany(static field => new[] { $"_Action_Export_{field}", $"_Action_ExportForImport_{field}", $"_Action_InspectImport_{field}", $"_{field}" }),
             ];
             // Acme's keys outside its own prefixes: the members it adds to GL's center, and its setting
             // categories. Each must be derived, so a renamed convention cannot leave them unchecked.

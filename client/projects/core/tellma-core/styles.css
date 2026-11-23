@@ -8,9 +8,10 @@
 /*
  * The platform's global styles, which a distribution's src/styles.css
  * imports first: the design tokens, the component library's Latin fonts,
- * its directive stylesheets and the boot page. A locale package adds its
- * own fonts (@tellma/locale-ar/styles.css), and a distribution's deltas
- * live in @layer tm.theme, which wins over the tokens whatever the order.
+ * its directive stylesheets, the shell frame and the boot page. A locale
+ * package adds its own fonts (@tellma/locale-ar/styles.css), and a
+ * distribution's deltas live in @layer tm.theme, which wins over the tokens
+ * whatever the order.
  */
 
 /* The design tokens, which declare the tm.base and tm.theme layers. */
@@ -26,6 +27,9 @@
 @import '@tellma/core-ui/styles/tm-search.css';
 @import '@tellma/core-ui/styles/tm-description-list.css';
 @import '@tellma/core-ui/styles/tm-drop-target.css';
+
+/* The shell frame's root variables and grid, which pages and the toast host read. */
+@import './styles/tm-frame.css';
 
 /* The boot page, which the boot script builds when the app cannot start. */
 @import './styles/tm-boot-page.css';

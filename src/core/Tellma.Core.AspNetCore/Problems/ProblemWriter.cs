@@ -165,7 +165,7 @@ namespace Tellma.Core.AspNetCore.Problems
         /// <param name="context">The request.</param>
         /// <param name="code">The problem code.</param>
         /// <returns>The scope, or null when the host has no request context.</returns>
-        private static IDisposable? Localize(HttpContext context, string code)
+        internal static IDisposable? Localize(HttpContext context, string code)
         {
             if (context.RequestServices.GetService<IRequestContextAccessor>() is not IRequestContextAccessor accessor)
             {

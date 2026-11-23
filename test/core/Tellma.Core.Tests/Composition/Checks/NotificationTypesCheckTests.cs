@@ -129,9 +129,9 @@ namespace Tellma.Core.Tests.Composition.Checks
         public async Task A_target_that_is_not_an_entity_of_the_model_is_refused()
         {
             CompositionProblem problem = Assert.Single((await CheckAsync(
-                new NotificationTypeDescriptor("fixture.export.ready", "files", false, "core.Export"))).From(Check));
+                new NotificationTypeDescriptor("fixture.export.ready", "files", false, "core.Archive"))).From(Check));
 
-            Assert.Equal("The notification type 'fixture.export.ready' of the feature 'fixture' targets 'core.Export', which is neither a stack resource nor a registered securable resource of the composition.", problem.Problem);
+            Assert.Equal("The notification type 'fixture.export.ready' of the feature 'fixture' targets 'core.Archive', which is neither a stack resource nor a registered securable resource of the composition.", problem.Problem);
         }
 
         [Fact]

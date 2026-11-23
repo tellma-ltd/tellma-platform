@@ -99,6 +99,10 @@ namespace Tellma.Core.AspNetCore.Routing
                     "Call app.UseTellma() and then app.MapTellma() in the web host's Program.cs.")];
             }
 
+            // --- The final endpoints, sealed so the host serves exactly the endpoints audited here ---
+            // Sealing also builds each endpoint once, for this audit and every later reader.
+            mapped.Seal();
+
             // --- Every rule; the securables only against a registry that composed ---
             IReadOnlyList<Endpoint> endpoints = mapped.Endpoints();
             (ISecurableRegistry? securables, bool failed) = SecurableRegistry.ForChecks(services);

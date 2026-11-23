@@ -6,10 +6,11 @@ table, a fake clock, a scripted user connection, a static identity server and pr
 every surface. Not a test project (it carries no test SDK, so `dotnet test` never tries to run it)
 and not a shipped package: it is referenced only by projects under `test/`.
 
-Its users are `Tellma.Core.AspNetCore.Tests` (the web host's own suite),
+Its users are `Tellma.Core.AspNetCore.Tests` (the web host's own suite), `Tellma.Core.Mcp.Tests`
+(the tenant MCP server composed into the host, driven through the SDK's client),
 `Tellma.Defaults.Azure.Tests` (the realtime line of the Azure web defaults, composed offline) and
 `Tellma.Defaults.Azure.AspNetCore.IntegrationTests` (the same line against a real Azure SignalR
-Service instance). Its types are internal, visible to those three.
+Service instance). Its types are internal, visible to those four.
 
 | File | Contents |
 |---|---|

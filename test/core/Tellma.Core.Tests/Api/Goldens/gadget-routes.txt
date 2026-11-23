@@ -21,6 +21,7 @@ POST /{tenantId}/api/web/users/preferences/delete | preferences/delete | core.Us
 POST /{tenantId}/api/web/users/invitation-status | invitation-status | core.User | api | IdsRequest | IReadOnlyList<InvitationStatus> | core.User:Read | idempotent | jS2fYFZnaXBe
 POST /{tenantId}/api/web/users/export | export | core.User | api | ExportRequest | ExportOutcome | core.User:Read | long, idempotent | Fy5vEZu1-Mqy
 POST /{tenantId}/api/web/users/export-for-import | export-for-import | core.User | api | ExportForImportRequest | ExportOutcome | core.User:Read | long, idempotent | EaMkiCeHi04-
+POST /{tenantId}/api/web/users/inspect-import | inspect-import | core.User | api | InspectImportRequest | ImportPlan | core.User:Save | long, idempotent | CROEU7gfsOlj
 POST /{tenantId}/api/web/roles/query | query | core.Role | - | QueryRequest | RowPage | core.Role:Read | idempotent | PqV1-faRenCx
 POST /{tenantId}/api/web/roles/get | get | core.Role | - | GetRequest | EntitiesResult<Role> | core.Role:Read | idempotent | UrE0C_S3Q0wA
 POST /{tenantId}/api/web/roles/get-by-ids | get-by-ids | core.Role | - | GetByIdsRequest | EntitiesResult<Role> | core.Role:Read | idempotent | _R-z6oPzKA_H
@@ -30,6 +31,7 @@ POST /{tenantId}/api/web/roles/activate | activate | core.Role | entity | Entity
 POST /{tenantId}/api/web/roles/deactivate | deactivate | core.Role | entity | EntityActionRequest | EntitiesResult<Role> | core.Role:Activate | mutation, idempotent | hSb5PbA2pzpR
 POST /{tenantId}/api/web/roles/export | export | core.Role | api | ExportRequest | ExportOutcome | core.Role:Read | long, idempotent | Fy5vEZu1-Mqy
 POST /{tenantId}/api/web/roles/export-for-import | export-for-import | core.Role | api | ExportForImportRequest | ExportOutcome | core.Role:Read | long, idempotent | EaMkiCeHi04-
+POST /{tenantId}/api/web/roles/inspect-import | inspect-import | core.Role | api | InspectImportRequest | ImportPlan | core.Role:Save | long, idempotent | CROEU7gfsOlj
 POST /{tenantId}/api/web/notifications/query | query | core.Notification | - | QueryRequest | RowPage | core.Notification:Read | idempotent | PqV1-faRenCx
 POST /{tenantId}/api/web/notifications/get | get | core.Notification | - | GetRequest | EntitiesResult<Notification> | core.Notification:Read | idempotent | X-lsgUqE_iPC
 POST /{tenantId}/api/web/notifications/get-by-ids | get-by-ids | core.Notification | - | GetByIdsRequest | EntitiesResult<Notification> | core.Notification:Read | idempotent | W3AaofMQvkDC
@@ -39,6 +41,14 @@ POST /{tenantId}/api/web/outgoing-emails/get-by-ids | get-by-ids | core.Outgoing
 POST /{tenantId}/api/web/outgoing-emails/delete | delete | core.OutgoingEmail | - | IdsRequest | AffectedResult | core.OutgoingEmail:Delete | mutation | lisU15N3Oj5S
 POST /{tenantId}/api/web/outgoing-emails/retry | retry | core.OutgoingEmail | entity | EntityActionRequest | EntitiesResult<OutgoingEmail> | core.OutgoingEmail:Retry | mutation | tFKwacIESP2v
 POST /{tenantId}/api/web/outgoing-emails/cancel | cancel | core.OutgoingEmail | entity | EntityActionRequest | EntitiesResult<OutgoingEmail> | core.OutgoingEmail:Cancel | mutation, read-only | tFKwacIESP2v
+POST /{tenantId}/api/web/exports/query | query | core.Export | - | QueryRequest | RowPage | core.Export:Read | idempotent | PqV1-faRenCx
+POST /{tenantId}/api/web/exports/get | get | core.Export | - | GetRequest | EntitiesResult<Export> | core.Export:Read | idempotent | IcbcKxHaleCo
+POST /{tenantId}/api/web/exports/get-by-ids | get-by-ids | core.Export | - | GetByIdsRequest | EntitiesResult<Export> | core.Export:Read | idempotent | 7m5atSM1ggcs
+POST /{tenantId}/api/web/exports/delete | delete | core.Export | - | IdsRequest | AffectedResult | core.Export:Delete | mutation | lisU15N3Oj5S
+POST /{tenantId}/api/web/imports/query | query | core.Import | - | QueryRequest | RowPage | core.Import:Read | idempotent | PqV1-faRenCx
+POST /{tenantId}/api/web/imports/get | get | core.Import | - | GetRequest | EntitiesResult<Import> | core.Import:Read | idempotent | fCRFAs2kCnD5
+POST /{tenantId}/api/web/imports/get-by-ids | get-by-ids | core.Import | - | GetByIdsRequest | EntitiesResult<Import> | core.Import:Read | idempotent | 6qwqhSRw1EFA
+POST /{tenantId}/api/web/imports/delete | delete | core.Import | - | IdsRequest | AffectedResult | core.Import:Delete | mutation | lisU15N3Oj5S
 POST /{tenantId}/api/web/jobs/query | query | core.Job | - | QueryRequest | RowPage | core.Job:Read | idempotent | PqV1-faRenCx
 POST /{tenantId}/api/web/jobs/get | get | core.Job | - | GetRequest | EntitiesResult<Job> | core.Job:Read | idempotent | -MjFr5wa1iWK
 POST /{tenantId}/api/web/jobs/get-by-ids | get-by-ids | core.Job | - | GetByIdsRequest | EntitiesResult<Job> | core.Job:Read | idempotent | BX5mwxCckWCS
@@ -57,6 +67,7 @@ POST /{tenantId}/api/web/schedules/take-over | take-over | core.Schedule | entit
 POST /{tenantId}/api/web/schedules/run-now | run-now | core.Schedule | entity | IdRequest | JobAccepted | core.Schedule:Save | mutation | WKivSNmxCXQw
 POST /{tenantId}/api/web/schedules/export | export | core.Schedule | api | ExportRequest | ExportOutcome | core.Schedule:Read | long, idempotent | Fy5vEZu1-Mqy
 POST /{tenantId}/api/web/schedules/export-for-import | export-for-import | core.Schedule | api | ExportForImportRequest | ExportOutcome | core.Schedule:Read | long, idempotent | EaMkiCeHi04-
+POST /{tenantId}/api/web/schedules/inspect-import | inspect-import | core.Schedule | api | InspectImportRequest | ImportPlan | core.Schedule:Save | long, idempotent | CROEU7gfsOlj
 POST /{tenantId}/api/web/reports/query | query | core.Report | - | QueryRequest | RowPage | core.Report:Read | idempotent | PqV1-faRenCx
 POST /{tenantId}/api/web/reports/get | get | core.Report | - | GetRequest | EntitiesResult<Report> | core.Report:Read | idempotent | yUeb6aXiKiUT
 POST /{tenantId}/api/web/reports/get-by-ids | get-by-ids | core.Report | - | GetByIdsRequest | EntitiesResult<Report> | core.Report:Read | idempotent | TqNhUYS1mnI9
@@ -80,6 +91,7 @@ POST /{tenantId}/api/web/gadgets/prices/reprice | prices/reprice | sm.SmGadget |
 POST /{tenantId}/api/web/gadgets/summary | summary | sm.SmGadget | api | SummaryRequest | string | sm.SmGadget:Read | idempotent | arxurgN3zpH_
 POST /{tenantId}/api/web/gadgets/export | export | sm.SmGadget | api | ExportRequest | ExportOutcome | sm.SmGadget:Read | long, idempotent | Fy5vEZu1-Mqy
 POST /{tenantId}/api/web/gadgets/export-for-import | export-for-import | sm.SmGadget | api | ExportForImportRequest | ExportOutcome | sm.SmGadget:Read | long, idempotent | EaMkiCeHi04-
+POST /{tenantId}/api/web/gadgets/inspect-import | inspect-import | sm.SmGadget | api | InspectImportRequest | ImportPlan | sm.SmGadget:Save | long, idempotent | CROEU7gfsOlj
 POST /{tenantId}/api/web/gadgets/tally | tally | sm.SmGadget | api | - | void | sm.SmGadget:Tally | - | lYZxNIK2Qbw7
 POST /{tenantId}/api/web/gadgets/count | count | sm.SmGadget | api | - | int | member-only | - | O-8g6frL8YBY
 POST /{tenantId}/api/web/gizmos/query | query | sm.SmGizmo | - | QueryRequest | RowPage | sm.SmGizmo:Read | idempotent | PqV1-faRenCx
@@ -90,6 +102,7 @@ POST /{tenantId}/api/web/gizmos/delete | delete | sm.SmGizmo | - | IdsRequest | 
 POST /{tenantId}/api/web/gizmos/delete-by-query | delete-by-query | sm.SmGizmo | - | DeleteByQueryRequest | AffectedResult | sm.SmGizmo:Delete | mutation | qslFj3HofcDO
 POST /{tenantId}/api/web/gizmos/export | export | sm.SmGizmo | api | ExportRequest | ExportOutcome | sm.SmGizmo:Read | long, idempotent | Fy5vEZu1-Mqy
 POST /{tenantId}/api/web/gizmos/export-for-import | export-for-import | sm.SmGizmo | api | ExportForImportRequest | ExportOutcome | sm.SmGizmo:Read | long, idempotent | EaMkiCeHi04-
+POST /{tenantId}/api/web/gizmos/inspect-import | inspect-import | sm.SmGizmo | api | InspectImportRequest | ImportPlan | sm.SmGizmo:Save | long, idempotent | CROEU7gfsOlj
 POST /{tenantId}/api/web/sprockets/query | query | sm.SmSprocket | - | QueryRequest | RowPage | sm.SmSprocket:Read | idempotent | PqV1-faRenCx
 POST /{tenantId}/api/web/sprockets/get | get | sm.SmSprocket | - | GetRequest | EntitiesResult<SmSprocket> | sm.SmSprocket:Read | idempotent | hRoBpoNz5Uwy
 POST /{tenantId}/api/web/sprockets/get-by-ids | get-by-ids | sm.SmSprocket | - | GetByIdsRequest | EntitiesResult<SmSprocket> | sm.SmSprocket:Read | idempotent | vLo3ySb9xKyK
@@ -98,6 +111,7 @@ POST /{tenantId}/api/web/sprockets/delete | delete | sm.SmSprocket | - | IdsRequ
 POST /{tenantId}/api/web/sprockets/delete-by-query | delete-by-query | sm.SmSprocket | - | DeleteByQueryRequest | AffectedResult | sm.SmSprocket:Delete | mutation | qslFj3HofcDO
 POST /{tenantId}/api/web/sprockets/export | export | sm.SmSprocket | api | ExportRequest | ExportOutcome | sm.SmSprocket:Read | long, idempotent | Fy5vEZu1-Mqy
 POST /{tenantId}/api/web/sprockets/export-for-import | export-for-import | sm.SmSprocket | api | ExportForImportRequest | ExportOutcome | sm.SmSprocket:Read | long, idempotent | EaMkiCeHi04-
+POST /{tenantId}/api/web/sprockets/inspect-import | inspect-import | sm.SmSprocket | api | InspectImportRequest | ImportPlan | sm.SmSprocket:Save | long, idempotent | CROEU7gfsOlj
 POST /{tenantId}/api/web/role-memberships/query | query | core.RoleMembership | - | QueryRequest | RowPage | core.RoleMembership:Read | idempotent | PqV1-faRenCx
 POST /{tenantId}/api/web/role-memberships/export | export | core.RoleMembership | api | ExportRequest | ExportOutcome | core.RoleMembership:Read | long, idempotent | Fy5vEZu1-Mqy
 POST /{tenantId}/api/web/permissions/query | query | core.Permission | - | QueryRequest | RowPage | core.Permission:Read | idempotent | PqV1-faRenCx
