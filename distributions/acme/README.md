@@ -73,8 +73,10 @@ the web host's derived values: `Tellma__PublicOrigin` and `--urls` override what
 
 ### Provisioning another tenant
 
-`dotnet run --project distributions/acme/src/Tellma.Distro.Acme.Migrator -- provision --name "Acme 2"`
-registers and provisions a tenant with the next free id. In Development, a tenant the admin surface
+`dotnet run --project distributions/acme/src/Tellma.Distro.Acme.Migrator -- provision --name "Acme 2" --category Live`
+registers and provisions a live tenant with the next free id; `--category Sandbox --live-tenant <id>`
+registers a sandbox of that live tenant instead. `provision --tenant <id>` resumes a provisioning that
+stopped part way. In Development, a tenant the admin surface
 registers (`Tellma:Admin:Enabled`) is provisioned by running the same migrator from this checkout.
 
 ## Configuration

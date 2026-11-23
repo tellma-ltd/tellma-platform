@@ -932,6 +932,9 @@
   <data name="Jobs_NotInitiator" xml:space="preserve">
     <value>لا يؤكد تحذيرات المهمة إلا المستخدم الذي بدأها.</value>
   </data>
+  <data name="Jobs_OwnerUnavailable" xml:space="preserve">
+    <value>لهذا العنصر مهمة قيد التنفيذ بالفعل. انتظر حتى تنتهي، ثم حاول مرة أخرى.</value>
+  </data>
   <data name="Jobs_RetentionProgress" xml:space="preserve">
     <value>أُوقفت {stopped, plural, zero {# مهمة} one {مهمة واحدة} two {مهمتان} few {# مهام} many {# مهمة} other {# مهمة}}، وحُذفت {succeeded, plural, zero {# مهمة ناجحة} one {مهمة ناجحة واحدة} two {مهمتان ناجحتان} few {# مهام ناجحة} many {# مهمة ناجحة} other {# مهمة ناجحة}} و{ended, plural, zero {# مهمة فاشلة أو ملغاة} one {مهمة واحدة فاشلة أو ملغاة} two {مهمتان فاشلتان أو ملغاتان} few {# مهام فاشلة أو ملغاة} many {# مهمة فاشلة أو ملغاة} other {# مهمة فاشلة أو ملغاة}}.</value>
   </data>

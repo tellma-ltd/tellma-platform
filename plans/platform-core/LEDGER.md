@@ -110,11 +110,11 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 
 | PC | Slot | Branch | Step | Implementer agent (name / id) | Reviewer agent (name / id) | Started (UTC) |
 |---|---|---|---|---|---|---|
-| PC-B05 | pc-2 | pc/PC-B05 | batch | Phase 5 (PC-085…PC-102) at 6b4b7599; Fable finders, Opus fixer integrates (D-256) | | 2026-11-23 |
-| PC-155 | pc-1 | pc/PC-155 | impl | T2; primary additions limited to first-frame seams of 0.05 KB or less (D-254) | | 2026-11-23 |
-| PC-110 | pc-f2 | pc/PC-110 | fix1 | impl 20c8839e; R1 0/3/6, no R2; fix1 adds lazy moves C1 (route Reload, ~0.26) and C2 (seam update/reload, ~0.04), aiming for "." +0.18 on 48.24 | | 2026-11-23 |
+| PC-125 | pc-3 | pc/PC-125 | impl | T1; primary additions limited to first-frame seams of 0.05 KB or less; ./entity at 18.14 of 18.5 (D-254) | | 2026-11-23 |
+| PC-120 | pc-2 | pc/PC-120 | impl | T1; primary additions limited to first-frame seams of 0.05 KB or less (D-254) | | 2026-11-23 |
+| PC-155 | pc-1 | pc/PC-155 | fix1 | impl 26b1f8bf; R1 0/2/5, no R2; R1-2 ruled by D-257; flakes to PC-F80; carry to PC-156 | | 2026-11-23 |
+| PC-110 | pc-f2 | pc/PC-110 | held 58a531e2 | merge-tree conflicts on 6b4b7599: core and locale-ar package.json budgets, strings-tm-ar.ts; 61 files +5366/-328; lazy candidates measured on its own base (verdict 0.16 is already lazy on platform-core via PC-115; route hand-off 0.085 costs §11 behaviour; rest under 0.02 each); impl 20c8839e; R1 0/3/6, no R2; fix1 58a531e2 fixed all (deviations 19-24; fix1 27% of impl lines, no R2); "." +0.43 on 48.24 (C1+C2 saved 0.05, not 0.30); projects about 49.83 on 49.40 before PC-119 and PC-F78; release after PC-177 | | 2026-11-23 |
 | PC-177 | pc-4 | pc/PC-177 | held 5a53cbbb | merge-tree clean on 19025de6, 53 files +8058/-129; impl 0db9f7a9; R1 0/3/6, no R2; fix1 5a53cbbb fixed all but R1-4 (carried to PC-178), deviations 16-18 (D-253); release after PC-F78 | | 2026-11-23 |
-| PC-119 | pc-3 | pc/PC-119 | integrating | released after PC-F76 (was held 81e1355e); re-measure "." and the gzip 9 cap (D-214, D-247) | | 2026-11-23 |
 
 ## Fix items
 
@@ -196,8 +196,10 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-F75 | Excel import hostile input after PC-176 (D-240): refuse UCS-4 parts (a NUL byte or unit) that bypass the BoundedPartStream run bound; vectorise the CDATA, comment and processing-instruction scan | done (88882295; pc 45205468686 green on 88882295; UCS-4 and non-UTF-8/16 declarations refused, decode in the detected encoding, vectorised CDATA/comment/PI scan, sticky PartTextReader fault and Malformed for SheetReader.Open; two red runs before were the PC-F77 and PC-F79 flakes; D-240, D-245, D-246, D-250) | c5f879c, c4c0ec3, 66871cd, 5f27577, 3f4e1c0, 8888229 (pc/PC-F75) | | |
 | PC-F76 | Spec 0024 section 12's 50 KB error budget on the @tellma/core primary's own weight is not enforced. TM_BUDGETS in tellma-core-tools/src/checks/budgets.ts, which tellma-client build checks, has no primary line, and size:check enforces only the per-entry ceiling (45). Add the primary line at gzip level 9 on the app build's output, as the spec states, with budget-exceeded and budget-note-missing behaviour and a test. Headroom today is 5.48 KB (44.52 linked, level 6) | done (6b4b7599, pc 45268500574 green; cap 49.30 of 50 at gzip 9, "." 49.40 of 49.5, first frame 43.15; D-251) | 9cdbdeb, 20bb7b6, 5d3cbe8, 6b4b759 (pc/PC-F76) | | |
 | PC-F77 | Client flake: an unhandled NG0205 rejection ("Injector has already been destroyed") from TmDisplayNames #flush via get #refresher (tm-display-names.ts:342/664/507), attributed to entity/src/tm-value-editor.spec.ts. It failed the client job of pc run 45146193126 (PC-F75, which changes no client code); PC-117's run on the same code passed. Root-cause it (a deferred flush outliving its injector), fix the cause, and add a deterministic test | done (174520cd; pc 45177360362 green on 174520cd; display-names flush and five siblings guarded with the root DestroyRef; "." 44.97 of 45; TmHttpApi gap is PC-F78) | 09a5053, d43f986, 174520c (pc/PC-F77) | | |
-| PC-F78 | TmHttpApi's post-end path (tm-http-api.ts:1040-1058), the last unguarded NG0205 sibling from PC-F77 R1-3: after the app ends, #check casts an NG0205 to TmApiError, #launch.settle resolves through the destroyed injector, and a version-tags setTimeout(observe) throws NG0205 in a timer. The guards cost about 0.04 KB of primary and "." is at 44.97 of 45, so it needs a D-031 raise, or the savings D-247 frees | held de799205 (fix1 fixed all three; "." 45.03 of 45.5; merge-tree clean on 5dd234a0; release after PC-119); earlier: R1 0/1/2: R1-1 post-end network failure still reached retry telemetry, fixed with an end guard in #unanswered; R1-2 cancelled TSDoc; R1-3 TmApiOnline probe re-arm folded in here, not a follow-up; deviation 1 confirmed; release after PC-119) (pc-f, non-blocking; impl: "." ceiling 45 to 45.5 under D-031, measured 45.03; deviation: post-end answers reject cancelled vs 0024 §10.5; scope +outdated-client verdict path; candidate follow-up TmApiOnline probe re-armed after the end) | | |
+| PC-F78 | TmHttpApi's post-end path (tm-http-api.ts:1040-1058), the last unguarded NG0205 sibling from PC-F77 R1-3: after the app ends, #check casts an NG0205 to TmApiError, #launch.settle resolves through the destroyed injector, and a version-tags setTimeout(observe) throws NG0205 in a timer. The guards cost about 0.04 KB of primary and "." is at 44.97 of 45, so it needs a D-031 raise, or the savings D-247 frees | CI: integrate 126669ce, run 45289276518; "." 49.46 of 49.5 (+0.07), cap 49.36 of 50 (released after PC-119; was held de799205 (fix1 fixed all three; "." 45.03 of 45.5; merge-tree clean on 5dd234a0; release after PC-119); earlier: R1 0/1/2: R1-1 post-end network failure still reached retry telemetry, fixed with an end guard in #unanswered; R1-2 cancelled TSDoc; R1-3 TmApiOnline probe re-arm folded in here, not a follow-up; deviation 1 confirmed; release after PC-119) (pc-f, non-blocking; impl: "." ceiling 45 to 45.5 under D-031, measured 45.03; deviation: post-end answers reject cancelled vs 0024 §10.5; scope +outdated-client verdict path; candidate follow-up TmApiOnline probe re-armed after the end)) | | |
 | PC-F79 | Core integration flake: JobRunLockingTests.A_flush_after_the_final_renewal_extends_the_lease_only_to_the_end_that_renewal_set (JobRunTests.cs:141) measured DATEDIFF(millisecond, SYSUTCDATETIME(), LeaseExpiresAt) = 5001 against InRange(1, 5000) in pc run 45184031545 (PC-F75, which changes no jobs code). Root-cause it (the lease is DATEADD(second, n, datetimeoffset(3) SYSUTCDATETIME()), so millisecond rounding, DATEDIFF boundary counting or a product overrun are candidates), fix the product if the flush can extend the lease past the final renewal, else the test, and add a deterministic test | done (2d612a7e; pc 45199173204 green on 2d612a7e; two causes: datetimeoffset(3) rounding plus the ~4 ms Linux SQL clock tick in the measurement, and a product overrun where a flush after the final renewal extended the lease up to 1 s past its end, now kept; restated deviation vs 0020 §6.7 for Ahmad; D-250) | 64a6fbd, 8e3fbbb, 2d612a7 (pc/PC-F79) | | |
+| PC-F80 | Two client core specs flake under load: TmNavigation "labels and re-sorts the entries when the language switches" and TmHttpApi "blames the client when the server is newer" each wait a fixed number of turns (tmSettle or flush) across a first-use dynamic import (tm-locale-write with the Arabic strings; tm-api-verdict). Reproduced 1446/1448 under CPU load by PC-155 R1. Wait on observable state instead, and check the other core specs that cross those imports | todo (D-229: non-blocking fix, after PC-120) | | | from PC-155 R1 (D-257) |
+| PC-F81 | Job engine gaps left open by PC-B05 FCS-1 (fixed for JobRunner only): (a) on a proven completion, the commit callbacks of the handler's enlisted writes publish no events (the unconditional wake covers their delivery jobs); (b) after a proven commit, ScheduleTick skips its wake. Fix both inside the job engine without changing spec 0012's ExecuteAsync contract, or report why not | todo (D-229: non-blocking fix, after PC-F80) | | | from PC-B05 (D-258) |
 | PC-F02 | systemic e2e flakiness: CI 42456030333 red on 5250c6c (plans-only) with 4 NEW flaky tests | done (R1 1/1/2; CI 42471952389 green), pc-f free | 2c91df4, 4c36d45, 4c89ae1 | 11.32M | grid bundle at its 38 KB ceiling; picker same-frame Enter race open | root-cause all 9; un-quarantine the fixed PC-F01 five |
 
 ## Batch reviews (one per phase)
@@ -208,7 +210,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-B02 | 2 (PC-015…PC-031) | done (5 findings 0/3/2: 5 fixed, 1 sub-point pushed back; fixes c771eead; integrated 65057698; green 44208803444) | | |
 | PC-B03 | 3 (PC-032…PC-061) | done (6 findings 0/3/3: 6 fixed; fixes 3adc83da; integrated b4849737; CI 44215268639 red → PC-F57; green 44231237483 on 735456ab) | | |
 | PC-B04 | 4 (PC-062…PC-084) | done (8 findings 0/6/2: 8 fixed, parts pushed back; fixes 27f8bb6a; integrated f8806aa8; pc 44730508322 green; PR 44733161670 green) | 27f8bb6a, 14dad323, f8806aa8 | D-147, D-149; 4 agents, 857k subagent tokens |
-| PC-B05 | 5 (PC-085…PC-102 at 6b4b7599) | in progress (pc-2) | | |
+| PC-B05 | 5 (PC-085…PC-102 at 6b4b7599) | done (4 findings 0/0/4: fixed, FCS-1 general fix pushed back; fixes a0800700; integrated fd0998ed; pc 45285651946 green) | a080070, c9aef3f, fd0998e (pc/PC-B05) | D-258; 4 agents, 655k subagent tokens; Fable finders |
 
 ## Merge-time tasks (before platform-core merges into main)
 
@@ -242,6 +244,8 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 
 | Test | Since | Tracking |
 |---|---|---|
+| client core TmNavigation spec "labels and re-sorts the entries when the language switches": failed once in a full core run under load, passed alone and on rerun | 2026-11-23 (PC-155 impl, local) | reproduced 1446/1448 under load by PC-155 R1; PC-F80 (D-257) |
+| client core TmHttpApi spec "blames the client when the server is newer": failed once in a full core run under load, passed alone and on rerun | 2026-11-23 (PC-155 impl, local) | reproduced 1446/1448 under load by PC-155 R1; PC-F80 (D-257) |
 | Core JobRunLockingTests.A_flush_after_the_final_renewal_extends_the_lease_only_to_the_end_that_renewal_set: remaining lease 5001 ms, expected at most 5000 | 2026-11-23 (PC-F75 pc run 45184031545) | fixed in PC-F79 2d612a7e |
 | client core: unhandled NG0205 from TmDisplayNames #flush after its injector is destroyed (tm-value-editor.spec.ts) | 2026-11-23 (PC-F75 pc run 45146193126) | PC-F77 |
 | client tools lint:test tm-prefix-exports spec: 5 s default timeout once under parallel load; passes alone | 2026-11-22 (PC-108 impl) | fixed in PC-F73 5a397918 |
@@ -453,13 +457,13 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-116 | 0027-c | 1 | todo | | | |
 | PC-117 | 0029-c | 1 | done (d0dda181; pc 45140827408 green on d0dda181; "." 44.87 of 45, ./entity 12.18 of 12.5 after re-measure, D-214; TmLocalization.ɵregisterStrings available to PC-119 to PC-121) | cbc8dd0, d49d7e3, d0dda18 (pc/PC-117) | | |
 | PC-118 | 0027-d | 1 | todo | | | |
-| PC-119 | 0029-e | 1 | in progress (pc-3) |  |  | carry (PC-058): tm-entity-multi-field must wire a length validator returning requiredError(); Signal Forms required() treats [] as a value |
-| PC-120 | 0029-d | 1 | todo | | | carry from PC-117 R1-4: expression columns skip the reachability check, so a stale preference can 403 the search page; check reachability for the paths an expression references |
+| PC-119 | 0029-e | 1 | done (835a4dd8, pc 45277059399 green on e0a10747; "." 49.39 of 49.5, no addition; ./entity 18.14 of 18.5) | 824918e, ab9ee41, 81e1355, e0a1074, 835a4dd (pc/PC-119) |  | carry (PC-058): tm-entity-multi-field must wire a length validator returning requiredError(); Signal Forms required() treats [] as a value |
+| PC-120 | 0029-d | 1 | in progress (pc-2) | | | carry from PC-117 R1-4: expression columns skip the reachability check, so a stale preference can 403 the search page; check reachability for the paths an expression references |
 | PC-121 | 0029-g | 1 | todo | | | |
 | PC-122 | 0027-e | 1 | todo | | | carry from PC-115 (D-248): register the entry-icon names the launcher draws in platform-icons.ts |
 | PC-123 | 0035-a1 | 1 | todo | | | carry from PC-115 (D-248): register the entry-icon names home recents draws in platform-icons.ts |
 | PC-124 | 0030-a | 1 | todo | | | |
-| PC-125 | 0031-a | 1 | todo | | | |
+| PC-125 | 0031-a | 1 | in progress (pc-3) | | | |
 | PC-126 | 0030-b | 1 | todo | | | |
 | PC-127 | 0031-b | 1 | todo | | | |
 | PC-128 | 0030-c | 1 | todo | | | |
@@ -490,7 +494,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-153 | 0025-d | 2 | todo | | | |
 | PC-154 | 0026-f | 2 | todo | | | carry (D-216): register PC-107's state dump with TmSupport (registerDumpSection) without pulling @tellma/core/memory onto the first frame |
 | PC-155 | 0028-d | 2 | in progress (pc-1) | | | carry from PC-106: add "./attention": ["./search-normalize"] to staticGraphExcludes in core-entry-points.ts; carry from PC-109: register the bell and tray strings with TmLocalization.ɵregisterStrings |
-| PC-156 | 0028-e | 2 | todo | | | |
+| PC-156 | 0028-e | 2 | todo | | | carry from PC-155 (D-257): move TmAttentionText (1.13 KB) out of the eager /attention graph before adding the bell and tray (/attention 5.93 of 6); report for a ruling if 6 KB still cannot hold them |
 | PC-157 | 0028-f | 2 | todo | | | |
 | PC-158 | 0030-e | 2 | todo | | | |
 | PC-159 | 0030-f1 | 2 | todo | | | |
