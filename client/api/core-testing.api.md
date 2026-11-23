@@ -49,6 +49,12 @@ export type TmFakeApiCallKind = 'download' | 'fetch-blob' | 'read' | 'send' | 'u
 export type TmFakeApiResponder = (call: TmFakeApiCall) => unknown;
 
 // @public
+export function tmFakeAssignmentsSummary(members?: Partial<TmAssignmentsSummary>): TmAssignmentsSummary;
+
+// @public
+export function tmFakeInboxSummary(members?: Partial<TmInboxSummary>): TmInboxSummary;
+
+// @public
 export class TmFakeLocks extends TmLocks {
     readonly held: Signal<readonly string[]>;
     run<T>(name: string, work: () => Promise<T>): Promise<T>;
@@ -94,6 +100,19 @@ export class TmFakeTelemetry extends TmTelemetry {
     timing(name: string, ms: number, props?: TmTelemetryProps): void;
     static ɵfac: i0.ɵɵFactoryDeclaration<TmFakeTelemetry, never>;
     static ɵprov: i0.ɵɵInjectableDeclaration<TmFakeTelemetry>;
+}
+
+// @public
+export class TmPageContextHarness {
+    action(id: string): TmPageAction | undefined;
+    actions(): readonly TmPageAction[];
+    current(includeData?: boolean): TmPageContextSnapshot | null;
+    invoke(id: string, args?: TmJson, origin?: TmActionOrigin): Promise<TmActionResult>;
+    overlays(includeData?: boolean): TmPageContextSnapshot[];
+    running(): ReadonlySet<string>;
+    top(includeData?: boolean): TmPageContextSnapshot | null;
+    static ɵfac: i0.ɵɵFactoryDeclaration<TmPageContextHarness, never>;
+    static ɵprov: i0.ɵɵInjectableDeclaration<TmPageContextHarness>;
 }
 
 // @public

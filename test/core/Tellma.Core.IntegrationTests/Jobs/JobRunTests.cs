@@ -121,26 +121,71 @@ namespace Tellma.Core.IntegrationTests.Jobs
         }
 
         [Fact]
-        public async Task A_flush_after_the_final_renewal_extends_the_lease_only_to_the_end_that_renewal_set()
+        public async Task A_flush_after_the_final_renewal_keeps_the_lease_end_that_renewal_wrote()
         {
             int id = await fixture.InsertJobAsync(JobRunKeys.Probe);
-            int? remaining = null;
+            (DateTimeOffset? ExpiresAt, DateTimeOffset Now) final = default;
+            DateTimeOffset? flushedEnd = null;
+            byte? flushedPercent = null;
             fixture.Script.Probe = async (batch, context) =>
             {
-                // --- The host's final renewal binds the lease to five seconds; the handler then reports and flushes ---
+                // --- The host's final renewal binds the lease to five seconds ---
                 _ = await context.Services.GetRequiredService<IJobRenewal>().RenewFinalAsync(FixtureTenantId, leaseSeconds: 5, Token);
+                final = await fixture.LeaseAsync(id);
+
+                // --- The handler reports and flushes once the database's clock moved on, so a flush
+                // that extended the lease from its own clock would end it later ---
+                await fixture.UntilTheClockPassesAsync(final.Now);
                 batch.Single.Progress.Report(50, null, null);
                 await batch.Single.Progress.FlushAsync(Token);
-                remaining = await SqlServerFixture.ScalarAsync<int>(
-                    fixture.ConnectionString, Invariant($"SELECT DATEDIFF(millisecond, SYSUTCDATETIME(), [LeaseExpiresAt]) FROM [core].[Jobs] WHERE [Id] = {id};"));
+                JobRow flushed = await fixture.JobAsync(id);
+                (flushedEnd, flushedPercent) = (flushed.LeaseExpiresAt, flushed.ProgressPercent);
             };
 
             PolledJob polled = Assert.Single(await PollAsync(JobRunKeys.Probe));
 
-            // --- The flush carried the report but left the lease ending within the five seconds, not its own five minutes ---
-            Assert.InRange(Assert.NotNull(remaining), 1, 5_000);
+            // --- The final renewal ended the lease within five seconds of its own clock, not the handler's five minutes ---
+            DateTimeOffset end = Assert.NotNull(final.ExpiresAt);
+            Assert.InRange(end - final.Now, TimeSpan.FromTicks(1), TimeSpan.FromSeconds(5));
+
+            // --- The flush carried the report and left the lease ending exactly where the final renewal ended it ---
+            Assert.Equal(((DateTimeOffset?)end, (byte?)50), (flushedEnd, flushedPercent));
             Assert.Equal(JobStatus.Succeeded, polled.Status);
             Assert.Equal((byte?)100, (await fixture.JobAsync(id)).ProgressPercent);
+        }
+
+        [Fact]
+        public async Task A_flush_after_a_final_renewal_that_failed_ends_the_lease_where_that_renewal_meant_to_not_where_it_was()
+        {
+            int id = await fixture.InsertJobAsync(JobRunKeys.Probe);
+            (DateTimeOffset? ExpiresAt, DateTimeOffset Now) claimed = default;
+            (DateTimeOffset? ExpiresAt, DateTimeOffset Now) flushed = default;
+            fixture.Script.Probe = async (batch, context) =>
+            {
+                // --- A final renewal that binds the lease, then fails before its round trip: its scope cannot be opened ---
+                claimed = await fixture.LeaseAsync(id);
+                JobRenewal failing = new(
+                    new UnavailableScopes(),
+                    context.Services.GetRequiredService<JobLeases>(),
+                    context.Services.GetRequiredService<JobsMetrics>(),
+                    context.Services.GetRequiredService<Microsoft.Extensions.Logging.ILoggerFactory>());
+                _ = await Assert.ThrowsAsync<InvalidOperationException>(() => failing.RenewFinalAsync(FixtureTenantId, leaseSeconds: 5, Token));
+
+                // --- The handler then reports and flushes through the host's own renewal ---
+                batch.Single.Progress.Report(50, null, null);
+                await batch.Single.Progress.FlushAsync(Token);
+                flushed = await fixture.LeaseAsync(id);
+            };
+
+            PolledJob polled = Assert.Single(await PollAsync(JobRunKeys.Probe));
+
+            // --- The claim's lease ran for the handler's own length, well past five seconds ---
+            Assert.True(Assert.NotNull(claimed.ExpiresAt) - claimed.Now > TimeSpan.FromSeconds(60), "The claim leased the row for the handler's own length.");
+
+            // --- No end was written to keep, so the flush ended the lease within the five seconds the
+            // failed renewal meant to set, from its own clock, rather than keeping the claim's end ---
+            Assert.InRange(Assert.NotNull(flushed.ExpiresAt) - flushed.Now, TimeSpan.FromTicks(1), TimeSpan.FromSeconds(5));
+            Assert.Equal(JobStatus.Succeeded, polled.Status);
         }
 
         [Fact]
@@ -1027,6 +1072,16 @@ namespace Tellma.Core.IntegrationTests.Jobs
         /// <summary>A handler's checkpoint.</summary>
         /// <param name="Page">The page reached.</param>
         private sealed record Checkpoint(int Page);
+
+        /// <summary>A scope factory that opens no scope, so a renewal through it fails once it has bound its leases.</summary>
+        private sealed class UnavailableScopes : ITenantScopeFactory
+        {
+            /// <inheritdoc />
+            public Task<TenantScope> CreateScopeAsync(RequestContextSnapshot snapshot, bool allowNonActive = false, CancellationToken cancellationToken = default)
+            {
+                return Task.FromException<TenantScope>(new InvalidOperationException("The test's renewal scope is unavailable."));
+            }
+        }
     }
 
     /// <summary>Jobs run with read-committed snapshot on, as provisioning creates a tenant database.</summary>

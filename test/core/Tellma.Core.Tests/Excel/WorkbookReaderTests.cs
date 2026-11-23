@@ -338,6 +338,32 @@ namespace Tellma.Core.Tests.Excel
             Assert.Equal(("Data", ImportFaults.XmlReason), (refused.Errors[0].Sheet, Reason(refused)));
         }
 
+        [Theory]
+        [InlineData("declared iso-2022-jp")]
+        [InlineData("declaration too long")]
+        [InlineData("invalid first bytes")]
+        [InlineData("invalid byte at 3000")]
+        public void A_sheet_part_refused_as_its_reader_is_made_blames_its_sheet(string kind)
+        {
+            // The reader reads the part's first text as it is made, so these are refused on opening the sheet.
+            Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+            SyntheticWorkbook workbook = new(Producer.Excel, RawSheet.OfText("Data", ["a"]));
+            byte[] worksheet = Encoding.UTF8.GetBytes(Worksheet($"<row r=\"1\"><c t=\"inlineStr\"><is><t>{new string('a', 4000)}</t></is></c></row>"));
+            byte[] part = kind switch
+            {
+                "declared iso-2022-jp" => [.. Encoding.ASCII.GetBytes("<?xml version=\"1.0\" encoding=\"iso-2022-jp\"?>"), .. worksheet],
+                "declaration too long" => [.. Encoding.ASCII.GetBytes($"<?xml version=\"1.0\"{new string(' ', PartTextReader.MaxDeclarationLength)}?>"), .. worksheet],
+                "invalid first bytes" => [0xC3, 0x28, .. worksheet],
+                _ => [.. worksheet[..3000], 0xFF, .. worksheet[3000..]],
+            };
+            using WorkbookReader reader = Open(Replace(workbook.Build(), "xl/worksheets/sheet1.xml", part));
+
+            ImportException refused = Assert.Throws<ImportException>(() => reader.OpenSheet(reader.Sheets[0]).Dispose());
+
+            ImportError error = Assert.Single(refused.Errors);
+            Assert.Equal((ExcelErrorCodes.ImportMalformedWorkbook, "Data", ImportFaults.XmlReason), (error.Code, error.Sheet, (string?)error.Arguments["reason"]));
+        }
+
         [Fact]
         public void A_sheet_of_distinct_element_names_is_refused_once_its_names_pass_their_bound_and_holds_little_memory()
         {
@@ -414,6 +440,50 @@ namespace Tellma.Core.Tests.Excel
 
             ImportError error = Assert.Single(refused.Errors);
             Assert.Equal((ExcelErrorCodes.ImportMalformedWorkbook, "Other", ImportFaults.CellsReason), (error.Code, error.Sheet, (string?)error.Arguments["reason"]));
+        }
+
+        [Theory]
+        [InlineData(false)]
+        [InlineData(true)]
+        public void A_ucs4_shared_string_part_is_refused_at_open_holding_little_memory(bool bigEndian)
+        {
+            // A reader decodes the part. Each character of its flood holds a byte, in UTF-8, or a unit,
+            // in UTF-16, that reads as '<', so a scan that took the part for either would see the
+            // flood as many short runs and let the reader decode it whole.
+            SyntheticWorkbook workbook = new(Producer.Excel, RawSheet.OfText("Data", ["a"]));
+            string flood = string.Concat(Enumerable.Repeat(char.ConvertFromUtf32(bigEndian ? 0x3C3C : 0x1003C), 2 << 20));
+            string sst = $"<sst xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><si><t>{flood}</t></si></sst>";
+            UTF32Encoding ucs4 = new(bigEndian, byteOrderMark: true);
+            byte[] package = Replace(workbook.Build(), "xl/sharedStrings.xml", [.. ucs4.GetPreamble(), .. ucs4.GetBytes(sst)]);
+
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            ImportException refused = Refuse(package);
+            long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+            Assert.Equal(ImportFaults.XmlReason, Reason(refused));
+            Assert.InRange(allocated, 0, MaxFloodAllocation);
+        }
+
+        [Theory]
+        [InlineData("iso-2022-jp", "$B", "<!", "(B")]
+        [InlineData("hz-gb-2312", "~{", "<a", "~}")]
+        public void A_part_declaring_a_code_page_encoding_is_refused_at_open_holding_little_memory(string encoding, string shiftIn, string pair, string shiftOut)
+        {
+            // With the code pages registered, as a database client does for the whole process, a
+            // reader that switched to the declared encoding would decode each pair of ASCII bytes
+            // ('<!', '<a') as one character: an attribute the scan took for many short runs.
+            Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+            SyntheticWorkbook workbook = new(Producer.Excel, RawSheet.OfText("Data", ["a"]));
+            string flood = string.Concat(Enumerable.Repeat(pair, 4 << 20));
+            string sst = $"<?xml version=\"1.0\" encoding=\"{encoding}\"?><sst xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" a=\"{shiftIn}{flood}{shiftOut}\"><si><t>a</t></si></sst>";
+            byte[] package = Replace(workbook.Build(), "xl/sharedStrings.xml", Encoding.ASCII.GetBytes(sst));
+
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            ImportException refused = Refuse(package);
+            long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+            Assert.Equal(ImportFaults.XmlReason, Reason(refused));
+            Assert.InRange(allocated, 0, MaxFloodAllocation);
         }
 
         [Theory]
@@ -574,7 +644,7 @@ namespace Tellma.Core.Tests.Excel
             using CancellationTokenSource source = new();
             source.Cancel();
 
-            _ = Assert.Throws<OperationCanceledException>(() => SharedStringStore.Load(new MemoryStream(part, writable: false), 64L << 20, 1_000_000, _scratch, source.Token).Dispose());
+            _ = Assert.Throws<OperationCanceledException>(() => SharedStringStore.Load(new BoundedPartStream(new MemoryStream(part, writable: false), part.Length), 64L << 20, 1_000_000, _scratch, source.Token).Dispose());
         }
 
         [Theory]
@@ -733,6 +803,25 @@ namespace Tellma.Core.Tests.Excel
             }
 
             Assert.Equal(ImportFaults.ZipReason, Reason(Assert.Throws<ImportException>(() => ZipDirectory.Check(stream))));
+        }
+
+        /// <summary>A package with one part's bytes replaced, for a part no text encodes.</summary>
+        /// <param name="package">The package's bytes.</param>
+        /// <param name="name">The part's name.</param>
+        /// <param name="bytes">The part's new bytes.</param>
+        /// <returns>The new package's bytes.</returns>
+        private static byte[] Replace(byte[] package, string name, byte[] bytes)
+        {
+            using MemoryStream stream = new();
+            stream.Write(package);
+            using (ZipArchive zip = new(stream, ZipArchiveMode.Update, leaveOpen: true))
+            {
+                zip.GetEntry(name)!.Delete();
+                using Stream writer = zip.CreateEntry(name, CompressionLevel.Fastest).Open();
+                writer.Write(bytes);
+            }
+
+            return stream.ToArray();
         }
 
         /// <summary>A worksheet part of the given rows.</summary>

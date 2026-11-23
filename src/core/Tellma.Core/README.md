@@ -2759,7 +2759,9 @@ leaves those states (logged as `JobPollerRetired`, its orphan sample dropped). T
   `DrainTimeout` for the polls in flight and every batch. The handlers still running then keep their
   lease: the renewals stop, one final renewal per tenant binds every such lease to the host's
   shutdown timeout, and each handler is abandoned (`WorkerDrainTimedOut`). A flush or jump of a
-  handler still running after its final renewal extends its lease only to the end that renewal set.
+  handler still running after its final renewal extends its lease only to the end that renewal set:
+  it keeps the end the renewal wrote, to the millisecond, or, when the renewal failed, estimates
+  that end on the instance's clock and rounds it up to a whole second.
 - **Telemetry.** Every `tellma.jobs.*` instrument and `tellma.schedules.gap_detected` are recorded
   on the `Tellma.Core` meter; `JobWorkerHeartbeat` is logged whenever a poll stamps a tenant, at most
   once a minute, for the log-based staleness alert under `infra/monitoring/jobs/`.
@@ -2894,9 +2896,13 @@ are SpreadsheetML packages written with `DocumentFormat.OpenXml` (MIT), forward-
   package's compressed size, its central directory (read by `ZipDirectory`, one disk, bounded entries
   and directory size), the declared uncompressed sum and its structure (content types, one workbook
   part, no external link or relationship) are checked before any sheet is parsed; every part is read
-  through `BoundedPartStream`, which refuses bytes beyond the part's declared length and any run
-  over 4 MiB from one `<` to the next (a CDATA section, comment or processing instruction counted
-  whole), so every node a reader materialises is bounded; text is read in chunks and refused before
+  through `BoundedPartStream`, which refuses bytes beyond the part's declared length, any NUL byte
+  in UTF-8 or unit in UTF-16 (so every UCS-4 part, whose units it could not otherwise see), and any
+  run over 4 MiB from one `<` to the next (a CDATA section, comment or processing instruction counted
+  whole), so every node a reader materialises is bounded; it skips content and sections a vector at a
+  time, at a cost that does not depend on what they hold; each part's text is decoded (by
+  `PartTextReader`) in exactly the encoding the stream scanned, never the one its XML declaration
+  names, and a declaration naming anything but UTF-8 or UTF-16 is refused; text is read in chunks and refused before
   it is read whole once it passes what a cell may hold; two sheets may not name one part; no reader processes a DTD, and each reader's name table
   (`BoundedNameTable`) refuses a part whose distinct names pass 1 MiB. Shared strings
   (`SharedStringStore`) are charged against a budget and spill to a scratch file beyond it, and their

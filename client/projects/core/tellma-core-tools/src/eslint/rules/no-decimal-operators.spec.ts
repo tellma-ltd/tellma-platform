@@ -5,10 +5,10 @@
 
 import { join } from 'node:path';
 
-import { RuleTester } from 'eslint';
 import tseslint from 'typescript-eslint';
-import { describe, it } from 'vitest';
+import { describe } from 'vitest';
 
+import { createRuleTester } from '../../../fixtures/rule-tester.js';
 import { tmNoDecimalOperators } from './no-decimal-operators.js';
 
 // The code under test imports the real TmDecimal type from @tellma/core's
@@ -17,7 +17,8 @@ const fixture = join(import.meta.dirname, '..', 'fixtures', 'decimals');
 const filename = join(fixture, 'file.ts');
 const header = "import type { TmDecimal, TmId } from '../../../../../tellma-core/src/json/tm-json';\n";
 
-const tester = new RuleTester({
+// Each case below runs as a test of its own (see createRuleTester).
+const tester = createRuleTester({
   languageOptions: {
     parser: tseslint.parser as never,
     parserOptions: {
@@ -27,11 +28,14 @@ const tester = new RuleTester({
   },
 });
 
+// Each case's test is named after its body alone, without the shared header.
+
 /** A valid case: the header, then `body`. */
-const valid = (body: string) => ({ code: header + body, filename });
+const valid = (body: string) => ({ name: body, code: header + body, filename });
 
 /** An invalid case reporting `operator` once. */
 const invalid = (body: string, operator: string, instead: string) => ({
+  name: body,
   code: header + body,
   filename,
   errors: [{ messageId: 'decimalOperator', data: { operator, instead } }],
@@ -40,7 +44,7 @@ const invalid = (body: string, operator: string, instead: string) => ({
 // The first case builds the TypeScript program, which takes seconds on a busy
 // or small machine.
 describe('tm/no-decimal-operators', { timeout: 120_000 }, () => {
-  it('refuses each operator TypeScript allows on strings when an operand is a TmDecimal', () => {
+  describe('refuses each operator TypeScript allows on strings when an operand is a TmDecimal', () => {
     tester.run('tm/no-decimal-operators', tmNoDecimalOperators as never, {
       valid: [],
       invalid: [
@@ -57,7 +61,7 @@ describe('tm/no-decimal-operators', { timeout: 120_000 }, () => {
     });
   });
 
-  it('follows the brand through unions, ids, type parameters and aliases', () => {
+  describe('follows the brand through unions, ids, type parameters and aliases', () => {
     tester.run('tm/no-decimal-operators', tmNoDecimalOperators as never, {
       valid: [],
       invalid: [
@@ -74,7 +78,7 @@ describe('tm/no-decimal-operators', { timeout: 120_000 }, () => {
     });
   });
 
-  it('passes the operators on numbers and plain strings, and the other operators on decimals', () => {
+  describe('passes the operators on numbers and plain strings, and the other operators on decimals', () => {
     tester.run('tm/no-decimal-operators', tmNoDecimalOperators as never, {
       valid: [
         valid('declare const a: number, b: number; const c = a + b; const d = a < b;'),

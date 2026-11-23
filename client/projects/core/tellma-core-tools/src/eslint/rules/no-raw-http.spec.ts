@@ -3,18 +3,19 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-import { RuleTester } from 'eslint';
 import tseslint from 'typescript-eslint';
-import { describe, it } from 'vitest';
+import { describe } from 'vitest';
 
+import { createRuleTester } from '../../../fixtures/rule-tester.js';
 import { tmNoRawHttp } from './no-raw-http.js';
 
-const tester = new RuleTester({
+// Each case below runs as a test of its own (see createRuleTester).
+const tester = createRuleTester({
   languageOptions: { parser: tseslint.parser as never, ecmaVersion: 2022, sourceType: 'module' },
 });
 
 describe('tm/no-raw-http', () => {
-  it('refuses fetch and XMLHttpRequest, bare or through the global object', () => {
+  describe('refuses fetch and XMLHttpRequest, bare or through the global object', () => {
     tester.run('tm/no-raw-http', tmNoRawHttp as never, {
       valid: [
         // A local binding of the same name is not the browser's.
@@ -39,7 +40,7 @@ describe('tm/no-raw-http', () => {
     });
   });
 
-  it("refuses Angular's HttpClient: any value import of @angular/common/http", () => {
+  describe("refuses Angular's HttpClient: any value import of @angular/common/http", () => {
     tester.run('tm/no-raw-http', tmNoRawHttp as never, {
       valid: [
         { code: "import type { HttpErrorResponse } from '@angular/common/http';" },

@@ -13,8 +13,3 @@
 
 export { TmRecents, type TmRecentPage } from './src/tm-recents';
 
-// The routed page that recents read until the page context lands; not for app code.
-export {
-  TM_ROUTED_PAGE as ɵTM_ROUTED_PAGE,
-  type TmRoutedPage as ɵTmRoutedPage,
-} from './src/tm-recents';

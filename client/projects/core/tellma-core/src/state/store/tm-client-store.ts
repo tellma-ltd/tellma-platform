@@ -209,6 +209,8 @@ export class TmClientStore {
   readonly #telemetry = inject(TmTelemetry);
   readonly #now = inject(TM_NOW);
   readonly #window = inject(DOCUMENT).defaultView;
+  // Whether the app has ended, so work it left for its idle moment does nothing.
+  #ended = false;
   // Extra formats are exact names, so they join the fixed ones in one table.
   readonly #formats: Readonly<Record<string, number>> = { ...inject(TM_STORE_FORMATS), ...inject(TM_STORE_EXTRA_FORMATS) };
 
@@ -274,6 +276,7 @@ export class TmClientStore {
     this.#host.events?.addEventListener('pageshow', show);
     // The app's end lets go of the bus, the page and the database.
     inject(DestroyRef).onDestroy(() => {
+      this.#ended = true;
       subscription.unsubscribe();
       this.#host.events?.removeEventListener('pageshow', show);
       void this.#connection?.then((db) => db?.close());
@@ -620,10 +623,14 @@ export class TmClientStore {
     // At idle after the first render, the user's other sessions go.
     afterNextRender(
       () => {
-        const sweep = (): void =>
-          void this.sweep({ sessionOtherThan: profile.sh }).catch((error: unknown) =>
-            this.#telemetry.error(error, { source: 'tm-client-store' }),
-          );
+        // An app that ended before its idle moment sweeps nothing: its injector is gone.
+        const sweep = (): void => {
+          if (!this.#ended) {
+            void this.sweep({ sessionOtherThan: profile.sh }).catch((error: unknown) =>
+              this.#telemetry.error(error, { source: 'tm-client-store' }),
+            );
+          }
+        };
         if (this.#window?.requestIdleCallback) {
           this.#window.requestIdleCallback(sweep);
         } else {

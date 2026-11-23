@@ -384,6 +384,91 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-252 (orchestrator, 2026-11-23): the primary's room after PC-109, and what PC-115 does at release
+
+- After PC-109's integration, "." measures 48.24 KB (linked, gzip 6), leaving 1.76 KB under the 50 KB cap. PC-109 is pending on CI.
+- The rest of the queue adds about:
+  - PC-115: +1.75.
+  - PC-F78: +0.06.
+  - PC-119: its own delta, still to be measured on the merged base.
+- That puts the primary at or just over 50 before any further primary checkpoint lands.
+- Ruling: when PC-115 is released, it must bring "." to 49.5 or below on the merged base, which leaves room for PC-F78 and PC-119. Its options, in this order:
+  1. Move bytes that no first-frame caller needs out of the primary into lazy entries, each move stated as a deviation from its spec's placement.
+  2. Trim within its own additions.
+- PC-115 reports every candidate with its saving, including ones outside its own code, such as the outdated-client verdict machinery that PC-F78's reviewer estimated at 0.3 to 0.4 KB.
+- If 49.5 cannot be reached without cutting spec behaviour, PC-115 stops with status=blocked and I decide.
+- PC-119 and PC-F78 re-measure at their releases (D-214). Any of them that would exceed 50 stops with status=blocked (D-247).
+- For Ahmad (sharpens D-247): the primary reaches its 50 KB cap with Tier 1 still incomplete. Raising 0024's cap, re-cutting the shares or moving members lazy is now needed soon. Until you rule, I keep it under 50 by lazy moves, each one a stated deviation.
+
+### D-251 (orchestrator, 2026-11-23): PC-F76 measures the 50 KB cap on the whole primary entry
+
+- PC-F76's implementation measured the primary as Acme's first-frame cut through source maps: 37.80 KB, against size:check's whole-entry "." of 44.97. Review 1 (R1-1, major) showed this is the wrong reading of "own weight":
+  - spec 0024 section 12 sums the shares;
+  - 0025 section 1 and 0028 section 1 allocate those shares per entry-point member;
+  - 0002 section 8 defines self-weight on the entry point.
+- With the first-frame reading, D-247's projection passes at about 42.5 KB. The line would then fail later, in whichever checkpoint first consumed a dormant module, even though that checkpoint added no bytes.
+- Ruling, adopted from R1-1:
+  - The cap is enforced on the whole primary entry. size:check gains a 50 KB gzip-level-9 line on "." that is raised only with a note.
+  - The tellma-client build line stays, and is restated as the first-frame figure. It remains a check a distribution can run on its own app build, and it is a lower bound, not the cap.
+  - Deviation 3 is restated to match.
+- R1-2 (silent zero), R1-3 (partial under-count) and R1-4 (bare "." and ".." imports) are fixed in fix 1.
+- Because fix 1 redesigns the measure, it gets one targeted verification (section 4.4) before it is held.
+- D-247 and D-248 stand, since they already used the whole-entry figure. PC-111 integrated at 46.74 (linked, level 6).
+- For Ahmad: confirm that "own weight" in 0024 section 12 means the whole entry point, not what one app ships of it. If the spec means the first frame, the cap gains about 7 KB of room today.
+
+### D-250 (orchestrator, 2026-11-23): PC-F75's second CI run is red on a Core jobs flake; PC-F79 is opened as blocking
+
+- PC-F75's re-integration (pc run 45184031545 on 3f4e1c0d) was green in every job but integration. There, one test failed: JobRunLockingTests.A_flush_after_the_final_renewal_extends_the_lease_only_to_the_end_that_renewal_set read a remaining lease of 5001 ms against InRange(1, 5000). PC-F75 touches only the Excel import, so this is a flake in code that already landed.
+- Per D-011 and D-113 there is no rerun. PC-F79 root-causes and fixes it as a blocking fix in pc-f, as PC-F77 did. pc/PC-F75 is pushed and waits. It is re-integrated right after PC-F79's platform-core push, and still goes ahead of the held queue (D-245).
+- The release order after PC-F75 is unchanged: PC-F73, PC-111, PC-109, PC-115, then PC-119.
+
+### D-249 (orchestrator, 2026-11-23): PC-119 Review 2 rulings
+
+- R2 found 0 blocking, 0 major and 7 minor findings. All R1 fixes held under adversarial checks: the paste leaf stays within every Queryex ceiling, FindableGoldenTests runs the real QuerySearch.Lower, and the teardown guards compose with PC-F77. Fix 2 is PC-119's third and last round, with no review after it.
+- R2-6: the cached client search follows the server. A SearchKind.Prefix column matches with startsWith, so ClientEntityModel emits the search kind, and the findable golden pins the parity. For Ahmad: spec 0029 section 14.2.3 says natural keys "contain" the search text, but the server uses startsWith for Prefix columns (acme.Currency Code). Which is intended?
+- R2-5: the ɵTM_PICKER_PAGES halves must be provided at the root injector. PC-160 and PC-161 carry that through a WATCHLIST line. For Ahmad: specs 0030 section 1, 0031 section 1 and 0029 section 14.4 still describe section 14.4's import(), which deviation 13 replaced with a multi-provider seam.
+- R2-1 to R2-4 and R2-7 are fixed as the review suggests. R2-2 bounds the paste's concurrent reads against the tenant limiter, which has 64 permits and queue 0.
+
+### D-248 (orchestrator, 2026-11-23): PC-115 Review 1 rulings, and closing D-247's gap
+
+- PC-115 R1 found 0 blocking, 1 major and 4 minor findings. Every primary byte it adds is placed there by spec 0027 section 1 or read by the eager pinned bar at first render, except about 0.08 KB.
+  - R1-1: the three synonyms strings move to a launcher-owned scope registered with ɵregisterStrings.
+  - R1-2: the ten entry-icon names stay off the first frame. That is a deviation from 0024 section 2.2's one-place rule, recorded as such. PC-122, PC-163 and PC-123 carry registering the names they draw.
+  - R1-3: an empty settingCategories must fail closed.
+  - R1-4 and R1-5 are fixed as the review suggests.
+  - Deviation 2 (pins validate checks shape only) is accepted on spec 0027 section 8.2's text. The CHECKPOINTS wording is what is wrong.
+- D-247's gap: PC-109 and PC-115 can save about 0.07 KB together, so the projection stays about 50.35 KB. No checkpoint can close it on its own.
+- Ruling: when PC-111 is released, it moves tmSerializePageContext (about 0.53 KB, no first-frame caller) into a lazy entry point, and its callers import() it. That is a deviation from spec 0026 section 1, which places it in the primary. It reverses my R1-4 ruling in D-244. The projection becomes about 49.8 KB.
+- I chose this over waiting for Ahmad's answer to D-247, because nothing waits for him and the move is reversible. The cap is the spec's hard error budget, while the snapshot's placement is a layout choice with no first-frame use.
+- PC-F76 (enforcing the 50 KB cap) moves to blocking rank once PC-111, PC-109 and PC-115 have landed (D-247).
+- For Ahmad:
+  - Does 0026 section 1 move the snapshot lazy, or does 0024's cap change?
+  - Should 0024 section 2.2's one-place rule for icon names allow lazy registration for names no first-frame surface draws?
+  - Should the CHECKPOINTS deliverable for 0027-b follow 0027 section 8.2 (validate checks shape; an item filter enforces caps)?
+
+### D-247 (orchestrator, 2026-11-23): the primary's projected size approaches spec 0024's 50 KB cap
+
+- platform-core's "." is 44.87 KB (linked, gzip 6). Three items in flight each add first-frame bytes:
+  - PC-111, held: +2.27 KB, measured 46.79.
+  - PC-109, in Review 1: +1.42 KB, measured 46.23.
+  - PC-115, in Review 1: +1.82 KB, measured 46.63.
+- Together they project to about 50.4 KB, above spec 0024 section 12's 50 KB error budget for the primary. Nothing enforces that cap yet (PC-F76), so the gate would not stop it.
+- Rulings:
+  - The Review 1 briefs for PC-109 and PC-115 ask the reviewers to name every byte that is not required on the first frame, and the KB each move saves.
+  - Each fix 1 takes those savings.
+  - Each item integrating after another re-measures "." (D-214) and reports the gap to 50.
+  - If an integration would take "." above 50, that item stops before pushing platform-core and returns status=blocked with the measurement. I then decide whether to hold it, or to cut bytes from it or from another item.
+  - PC-F76, the enforcement of the cap, moves up to the blocking rank of D-229 once these three have landed. Without it, the next primary checkpoint could overrun silently.
+- For Ahmad: spec shares on the primary (0026: 6 KB, 0027: 5 KB, 0028's share) plus what was there before do not fit together under 50 KB on today's base. Either 0024's cap rises, or the shares are re-cut, or some of the shares move lazy. Which?
+
+### D-246 (orchestrator, 2026-11-23): PC-F75 verification; fix 2 is the last round; PC-F75 follows PC-117
+
+- The targeted verification of c4c0ec34 confirmed that the R1-1 encoding bypass is closed. It found nothing that switches the reader's encoding: 46 declaration forms, 449 encoding names and aliases, BOM variants and split reads. The replay is exact over 546 M read boundaries, the settings hold, and deviations 3 and 4 open no gap.
+- V-1 (major, new in fix 1): XmlReader.Create over a TextReader reads at creation, so a refused worksheet part throws a raw XmlException from SheetReader.Open before its try. ImportMapper does not catch it, so the import does not end in ImportFaults.Malformed. A part is also never disposed when XlsxXml.Open throws, at all five call sites.
+- V-2 (minor): a PartTextReader refusal is not sticky; a later ReadToEnd returns the text. It is not reachable through XlsxXml.Open today.
+- PC-F75 has had two implementer rounds, so fix 2 is its third and last (section 4.4). The one targeted verification has run, so fix 2 gets no further review. I check its diff and the tests myself before integration.
+- Release order: PC-117 was released while this verification ran (amending D-245), so PC-F75 integrates right after PC-117 lands, ahead of PC-F73 and PC-111.
+
 ### D-245 (orchestrator, 2026-11-22): PC-F75 takes R1-1; a targeted verification follows fix 1; it is released ahead of the held queue
 
 - R1-1 (blocking) is a V-1-class bypass: a part's XML declaration (for example iso-2022-jp or hz-gb-2312) switches XmlReader's decoder away from the encoding BoundedPartStream bounds. Microsoft.Data.SqlClient registers CodePagesEncodingProvider process-wide, so these encodings are live on every host. It stays in PC-F75 rather than a new fix item, because the defect class, the file and the implementer are the same.

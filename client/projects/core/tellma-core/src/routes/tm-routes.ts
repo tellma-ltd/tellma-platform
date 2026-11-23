@@ -42,6 +42,11 @@ export interface TmRouteDataInternal {
   readonly ɵinPlace?: readonly string[];
   /** Whether the route renders outside any shell, so it brings its own `main`. */
   readonly ɵmain?: boolean;
+  /**
+   * The page's route template, such as `/:t/credit-review` or `/:t/:segment`,
+   * whose host registers the page's default context with `:segment` filled in.
+   */
+  readonly ɵtemplate?: string;
 }
 
 /** The not-found page's title key. */
@@ -175,19 +180,35 @@ function page(route: Route, data: TmRouteData & TmRouteDataInternal): Route {
  */
 export function tmBuildRoutes(pages: readonly TmPageDeclaration[]): Routes {
   const tenant: Routes = [
-    page({ path: '', pathMatch: 'full' }, { kind: 'home', skeleton: 'home', titleKey: 'tm.home.title', load: TM_ROUTE_HOSTS.home }),
+    page(
+      { path: '', pathMatch: 'full' },
+      { kind: 'home', skeleton: 'home', titleKey: 'tm.home.title', load: TM_ROUTE_HOSTS.home, ɵtemplate: '/:t' },
+    ),
     page(
       { matcher: settingsMatcher },
-      { kind: 'settings', skeleton: 'details', titleKey: 'tm.admin.settings.title', load: TM_ROUTE_HOSTS.settings, ɵinPlace: ['category'] },
+      {
+        kind: 'settings',
+        skeleton: 'details',
+        titleKey: 'tm.admin.settings.title',
+        load: TM_ROUTE_HOSTS.settings,
+        ɵinPlace: ['category'],
+        ɵtemplate: '/:t/settings',
+      },
     ),
     // The hub persists across its sections, which are child routes with no
     // component of their own; a section change still runs its leave check.
     page(
       { path: 'me', runGuardsAndResolvers: sectionChange, children: ['', ...TM_ME_SECTIONS].map((path) => ({ path, children: [] })) },
-      { kind: 'settings', skeleton: 'me', titleKey: 'tm.admin.me.title', load: TM_ROUTE_HOSTS.me },
+      { kind: 'settings', skeleton: 'me', titleKey: 'tm.admin.me.title', load: TM_ROUTE_HOSTS.me, ɵtemplate: '/:t/me' },
     ),
-    page({ path: 'list/:segment', canMatch: [listMatch] }, { kind: 'search', skeleton: 'search', ɵentity: 'list' }),
-    page({ path: 'reports/:key', canMatch: [reportMatch] }, { kind: 'report', skeleton: 'report', load: TM_ROUTE_HOSTS.report }),
+    page(
+      { path: 'list/:segment', canMatch: [listMatch] },
+      { kind: 'search', skeleton: 'search', ɵentity: 'list', ɵtemplate: '/:t/list/:segment' },
+    ),
+    page(
+      { path: 'reports/:key', canMatch: [reportMatch] },
+      { kind: 'report', skeleton: 'report', load: TM_ROUTE_HOSTS.report, ɵtemplate: '/:t/reports/:key' },
+    ),
     // The features' pages, in feature order, before the entity routes they may share a first segment with.
     ...pages.map((declared) =>
       page(
@@ -197,13 +218,23 @@ export function tmBuildRoutes(pages: readonly TmPageDeclaration[]): Routes {
           skeleton: declared.skeleton ?? 'blank',
           load: declared.component,
           titleKey: declared.titleKey,
+          ɵtemplate: `/:t/${declared.path}`,
           ...(declared.securable && { securable: declared.securable }),
         },
       ),
     ),
-    page({ path: ':segment', canMatch: [stackMatch] }, { kind: 'search', skeleton: 'search', ɵentity: 'search' }),
-    page({ path: ':segment/new', canMatch: [detailsMatch] }, { kind: 'details', skeleton: 'details', ɵentity: 'create' }),
-    page({ path: ':segment/:id', canMatch: [detailsMatch] }, { kind: 'details', skeleton: 'details', ɵentity: 'details' }),
+    page(
+      { path: ':segment', canMatch: [stackMatch] },
+      { kind: 'search', skeleton: 'search', ɵentity: 'search', ɵtemplate: '/:t/:segment' },
+    ),
+    page(
+      { path: ':segment/new', canMatch: [detailsMatch] },
+      { kind: 'details', skeleton: 'details', ɵentity: 'create', ɵtemplate: '/:t/:segment/new' },
+    ),
+    page(
+      { path: ':segment/:id', canMatch: [detailsMatch] },
+      { kind: 'details', skeleton: 'details', ɵentity: 'details', ɵtemplate: '/:t/:segment/:id' },
+    ),
     { path: '**', component: TmNotFoundPage, data: { titleKey: NOT_FOUND } satisfies Partial<TmRouteData> },
   ];
   return [

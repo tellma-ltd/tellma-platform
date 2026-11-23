@@ -13,8 +13,10 @@
  * helpers, the client store, the tab bus and the leader tab, the app-level
  * keyboard shortcut registry, the navigation registry with the pins model's
  * keys and the launcher's provider seam, the shell frame's seams (immersive
- * mode and what the tenant shell's `main` shows), and the seams through
- * which telemetry, the request log and page scopes are provided.
+ * mode and what the tenant shell's `main` shows), the page-context registry
+ * with the page actions and their dispatcher, the banners with the
+ * input-idle clock, the attention documents and the toast durations, and the
+ * seams through which telemetry and the request log are provided.
  *
  * @packageDocumentation
  */
@@ -65,8 +67,22 @@ export {
   type TmRequestStart,
 } from './src/requests/tm-request-log';
 
-// Page scopes.
+// The page context and the page actions: the registry, page scopes, the
+// dispatcher and the help seam. The snapshot is @tellma/core/page-snapshot.
+export type {
+  TmContextError,
+  TmFormContext,
+  TmFormField,
+  TmPageContext,
+  TmVisibleColumn,
+  TmVisibleData,
+  TmVisibleRow,
+} from './src/context/tm-page-context';
+export type { TmActionOrigin, TmActionResult, TmPageAction, TmPageActionInput } from './src/context/tm-page-action';
+export { TmPageContexts } from './src/context/tm-page-contexts';
+export { TmPageActions } from './src/context/tm-page-actions';
 export { provideTmPageScope } from './src/context/tm-page-scope';
+export { TM_HELP_ARTICLES } from './src/context/tm-help-articles';
 
 // The distribution API: the app configuration and its providers.
 export type {
@@ -267,7 +283,7 @@ export type {
 // startup loads after the first render; the state testing providers replace
 // its loader.
 export { TmLeader } from './src/state/leader/tm-leader';
-export { TM_LEADER_DOCUMENTS, type TmLeaderDocument } from './src/state/leader/tm-leader-documents';
+export { TM_LEADER_DOCUMENTS, type TmLeaderDocument, ɵTM_UNIQUE_LEADER_DOCUMENTS } from './src/state/leader/tm-leader-documents';
 export { TM_LEADER_LOAD as ɵTM_LEADER_LOAD, type TmLeaderModule as ɵTmLeaderModule } from './src/app/tm-app-init';
 
 // The launch documents and their cache: the routed tenant's settings,
@@ -384,3 +400,17 @@ export type {
   TmSettingVisibility,
 } from './src/admin/tm-admin-metadata';
 export type { TmNotificationSeverity, TmNotificationTypeMetadata } from './src/attention/tm-notification-metadata';
+
+// Attention: the banners and the input-idle clock their row waits for, the
+// attention documents the leader tab keeps fresh, and the toast policy's
+// durations.
+export { TmBanners, type TmBannerLevel, type TmBannerOptions, type TmBannerRef, type TmBannerView } from './src/attention/tm-banners';
+export { TmInputIdle } from './src/attention/tm-input-idle';
+export {
+  TM_ATTENTION_DOCUMENTS,
+  type TmAssignmentsSummary,
+  type TmInboxRunningJob,
+  type TmInboxSummary,
+  type TmInboxVerbResult,
+} from './src/attention/tm-attention-documents';
+export { TM_TOAST_ARRIVAL_MS, TM_TOAST_FEEDBACK_MS } from './src/attention/tm-toast-durations';

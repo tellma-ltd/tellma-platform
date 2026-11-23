@@ -30,10 +30,10 @@ export class TmNavTermsReader {
   readonly #l10n = inject(TmLocalization);
   readonly #entities = inject(TmEntities);
 
-  /** Creates the reader, which adds the launcher's English strings under `tm.launcher`. */
+  /** Creates the reader, which registers the launcher's English strings under `tm.launcher`. */
   constructor() {
-    // Merged into English alone, so a language's table that holds a key wins over it.
-    this.#transloco.setTranslation({ tm: { [TM_LAUNCHER_SCOPE]: TM_LAUNCHER_STRINGS_EN } }, 'en', { merge: true, emitChange: false });
+    // A language's table that holds a key wins over the registered English.
+    this.#l10n.ɵregisterStrings(TM_LAUNCHER_SCOPE, TM_LAUNCHER_STRINGS_EN);
   }
 
   /**

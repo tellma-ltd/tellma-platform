@@ -13,11 +13,13 @@
 
 export { provideTellmaTesting } from './src/provide-tellma-testing';
 export { provideTellmaStateTesting } from './src/provide-tellma-state-testing';
+export { tmFakeAssignmentsSummary, tmFakeInboxSummary } from './src/tm-fake-attention';
 export { TmFakeApi, type TmFakeApiCall, type TmFakeApiCallKind, type TmFakeApiResponder } from './src/tm-fake-api';
 export { TmFakeLocks } from './src/tm-fake-locks';
 export { TmFakeSession, tmTestProfile } from './src/tm-fake-session';
 export { TmFakeTabBus } from './src/tm-fake-tab-bus';
 export { TmFakeTelemetry } from './src/tm-fake-telemetry';
+export { TmPageContextHarness } from './src/tm-page-context-harness';
 export { tmTestEntities, type TmTestEntities } from './src/tm-test-entities';
 export { tmTestEntitiesChunk, tmTestMetadata } from './src/tm-test-metadata';
 export { tmWarmTenant, type TmWarmTenantOptions } from './src/tm-warm-tenant';
