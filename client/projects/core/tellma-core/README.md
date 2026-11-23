@@ -475,8 +475,10 @@ the predicate returns true; a predicate that throws hides its entry and is repor
 `tm.nav.visible-when`. `sections()` lists the sections with a visible entry, each ordered by `order`
 (100 by default), then by the label in the active language; `items()` adds the search-only entries,
 which name no shown section. The core feature contributes Analysis (800) and Administration (900),
-Settings under Administration (shown with `Read` on any settings category the Core chunk lists, unless
-a distribution gives it `requires`) and the search-only My settings entries.
+Settings under Administration (shown with `Read` on any settings category the Core chunk lists, so
+to no one when it lists none, unless a distribution gives it `requires`) and the search-only My
+settings entries, whose labels are platform strings and whose synonyms are the launcher's own
+`tm.launcher` strings, which load with the launcher.
 
 ```ts
 const navigation = inject(TmNavigation);

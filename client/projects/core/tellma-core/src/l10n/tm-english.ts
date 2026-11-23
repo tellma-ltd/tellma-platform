@@ -11,7 +11,8 @@ import type { TmLanguageDefinition, TmStringTree } from '../app/tm-app-config';
 // own `tm` table and the component library's English. Every other language
 // falls back to these strings key by key. The route error views are worded
 // as spec 0024 §11's table words them; the launcher's core sections and
-// entries, with their search synonyms, as spec 0027 §3.2 names them.
+// entries as spec 0027 §3.2 names them. Their search synonyms are the
+// launcher's own strings, which it registers when it loads.
 
 /** The platform's English strings, under `tm`. */
 export const TM_STRINGS_EN = {
@@ -45,11 +46,8 @@ export const TM_STRINGS_EN = {
     administration: 'Administration',
     me: {
       profile: 'My profile',
-      profile_Synonyms: 'Photo, Signature, Contact',
       region: 'Language & region',
-      region_Synonyms: 'Time zone, Calendar, Digits, Formats',
       display: 'Display',
-      display_Synonyms: 'Theme, Pinned bar',
       notifications: 'Notifications',
     },
   },

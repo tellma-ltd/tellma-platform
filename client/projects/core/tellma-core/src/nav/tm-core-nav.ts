@@ -25,13 +25,15 @@ export const TM_CORE_SECTIONS: readonly TmNavSection[] = [
  * The core entries: Settings under Administration, and My settings with its
  * four sections, which are search-only and open to every member. Settings
  * declares no `requires`: it shows with `Read` on any settings category,
- * which the navigation registry reads from the client metadata.
+ * which the navigation registry reads from the client metadata. Three My
+ * settings sections take their synonyms from the launcher's own strings,
+ * which only the launcher's search reads.
  */
 export const TM_CORE_ENTRIES: readonly TmNavEntry[] = [
   { id: TM_SETTINGS_ENTRY, section: 'administration', order: 40, labelKey: 'tm.admin.settings.title', icon: 'settings', url: (t) => `/${t}/settings` },
   { id: 'core.me', labelKey: 'tm.admin.me.title', icon: 'user-cog', url: (t) => `/${t}/me` },
-  { id: 'core.me.profile', labelKey: 'tm.nav.me.profile', icon: 'user', url: (t) => `/${t}/me/profile` },
-  { id: 'core.me.region', labelKey: 'tm.nav.me.region', icon: 'globe', url: (t) => `/${t}/me/region` },
-  { id: 'core.me.display', labelKey: 'tm.nav.me.display', icon: 'sun-moon', url: (t) => `/${t}/me/display` },
+  { id: 'core.me.profile', labelKey: 'tm.nav.me.profile', synonymsKey: 'tm.launcher.synonyms.meProfile', icon: 'user', url: (t) => `/${t}/me/profile` },
+  { id: 'core.me.region', labelKey: 'tm.nav.me.region', synonymsKey: 'tm.launcher.synonyms.meRegion', icon: 'globe', url: (t) => `/${t}/me/region` },
+  { id: 'core.me.display', labelKey: 'tm.nav.me.display', synonymsKey: 'tm.launcher.synonyms.meDisplay', icon: 'sun-moon', url: (t) => `/${t}/me/display` },
   { id: 'core.me.notifications', labelKey: 'tm.nav.me.notifications', icon: 'bell', url: (t) => `/${t}/me/notifications` },
 ];

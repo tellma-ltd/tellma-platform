@@ -205,6 +205,8 @@ export interface TmAppRigOptions {
   readonly languages?: readonly TmLanguageDefinition[];
   /** The distribution's strings by language, merged over the test strings in English. */
   readonly strings?: Readonly<Record<string, Readonly<Record<string, string>>>>;
+  /** The Core chunk, when not the route test metadata. */
+  readonly metadata?: TmClientMetadata;
 }
 
 /**
@@ -212,11 +214,11 @@ export interface TmAppRigOptions {
  * test metadata, English strings, and the test feature, unless the options
  * name others.
  *
- * @param options - The features, languages and strings, when not the defaults.
+ * @param options - The features, languages, strings and Core chunk, when not the defaults.
  * @returns The configuration.
  */
-export function tmRouteTestConfig(options: Pick<TmAppRigOptions, 'features' | 'languages' | 'strings'> = {}): TmAppConfig {
-  const metadata = tmRouteTestMetadata();
+export function tmRouteTestConfig(options: Pick<TmAppRigOptions, 'features' | 'languages' | 'strings' | 'metadata'> = {}): TmAppConfig {
+  const metadata = options.metadata ?? tmRouteTestMetadata();
   // English always holds the test strings; each language's own strings merge over them.
   const strings: Record<string, Readonly<Record<string, string>>> = {
     ...options.strings,

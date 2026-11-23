@@ -394,29 +394,31 @@ export class TmNavigation {
   /**
    * The permissions any one of which shows an entry: its `requires`, as a
    * list; for the core Settings entry without its own, `Read` on every
-   * settings category the client metadata lists.
+   * settings category the client metadata lists, so a Core chunk that lists
+   * none shows it to no one.
    *
    * @param entry - The entry.
    * @param metadata - The Core chunk.
-   * @returns The permissions; empty when the entry needs none.
+   * @returns The permissions, or `null` when the entry needs none.
    */
-  #requires(entry: TmNavEntry, metadata: TmClientMetadata): readonly TmSecurableRef[] {
+  #requires(entry: TmNavEntry, metadata: TmClientMetadata): readonly TmSecurableRef[] | null {
     const requires = entry.requires;
     if (requires === undefined) {
-      return entry.id === TM_SETTINGS_ENTRY ? metadata.settingCategories.map((category): TmSecurableRef => [category.resource, 'Read']) : [];
+      return entry.id === TM_SETTINGS_ENTRY ? metadata.settingCategories.map((category): TmSecurableRef => [category.resource, 'Read']) : null;
     }
     // A single permission is a pair of strings; a list holds pairs.
     return typeof requires[0] === 'string' ? [requires as TmSecurableRef] : (requires as readonly TmSecurableRef[]);
   }
 
   /**
-   * Whether any one of the permissions is granted; none needed passes.
+   * Whether any one of the permissions is granted. No requirement passes;
+   * an empty list fails, since none of its permissions can be granted.
    *
-   * @param requires - The permissions.
+   * @param requires - The permissions, or `null` for none needed.
    * @returns Whether it passes.
    */
-  #passes(requires: readonly TmSecurableRef[]): boolean {
-    return requires.length === 0 || requires.some(([resource, action]) => this.#permissions.can(resource, action)());
+  #passes(requires: readonly TmSecurableRef[] | null): boolean {
+    return requires === null || requires.some(([resource, action]) => this.#permissions.can(resource, action)());
   }
 
   /**

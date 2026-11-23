@@ -53,12 +53,16 @@ export const TM_STRINGS_AR: TmStringTree = {
     administration: 'الإدارة',
     me: {
       profile: 'ملفي الشخصي',
-      profile_Synonyms: 'الصورة، التوقيع، بيانات الاتصال',
       region: 'اللغة والمنطقة',
-      region_Synonyms: 'المنطقة الزمنية، التقويم، الأرقام، التنسيقات',
       display: 'العرض',
-      display_Synonyms: 'السمة، الشريط المثبت',
       notifications: 'الإشعارات',
+    },
+  },
+  launcher: {
+    synonyms: {
+      meProfile: 'الصورة، التوقيع، بيانات الاتصال',
+      meRegion: 'المنطقة الزمنية، التقويم، الأرقام، التنسيقات',
+      meDisplay: 'السمة، الشريط المثبت',
     },
   },
   shell: {

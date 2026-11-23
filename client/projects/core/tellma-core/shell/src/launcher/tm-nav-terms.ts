@@ -7,9 +7,13 @@ import { inject, Injectable } from '@angular/core';
 import { TranslocoService } from '@jsverse/transloco';
 import { TmEntities, TmLocalization, type TmNavItem } from '@tellma/core';
 
+import { TM_LAUNCHER_SCOPE, TM_LAUNCHER_STRINGS_EN } from './tm-launcher-strings';
+
 // The terms the launcher's search matches an entry by (spec 0027 §9.2): its
 // label and its synonyms, in the active language and in English. The
-// synonyms string is comma-separated, Arabic's comma counting too.
+// synonyms string is comma-separated, Arabic's comma counting too. The
+// reader brings the launcher's English strings, the platform entries'
+// synonyms among them, so they load with the launcher and not before.
 
 /** An entry's label and synonyms in one language. */
 export interface TmNavTerms {
@@ -25,6 +29,12 @@ export class TmNavTermsReader {
   readonly #transloco = inject(TranslocoService);
   readonly #l10n = inject(TmLocalization);
   readonly #entities = inject(TmEntities);
+
+  /** Creates the reader, which adds the launcher's English strings under `tm.launcher`. */
+  constructor() {
+    // Merged into English alone, so a language's table that holds a key wins over it.
+    this.#transloco.setTranslation({ tm: { [TM_LAUNCHER_SCOPE]: TM_LAUNCHER_STRINGS_EN } }, 'en', { merge: true, emitChange: false });
+  }
 
   /**
    * An entry's label and synonyms in a language. The active language's label

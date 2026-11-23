@@ -4,7 +4,8 @@
 // LICENSE file in the root directory of this source tree.
 
 import { TestBed } from '@angular/core/testing';
-import type { TmFakeTelemetry } from '@tellma/core-testing';
+import { Router } from '@angular/router';
+import { tmWarmTenant, type TmFakeApi, type TmFakeTelemetry } from '@tellma/core-testing';
 
 import type { TmLanguageDefinition } from '../app/tm-app-config';
 import { tmFeature, type TmFeature, type TmFeatureDefinition } from '../declarations/tm-feature';
@@ -13,8 +14,9 @@ import { tmPage } from '../declarations/tm-page';
 import { tmEntity } from '../entity/tm-entity-declaration';
 import { tmEnglish } from '../l10n/tm-english';
 import { TmLocalization } from '../l10n/tm-localization';
+import type { TmClientMetadata } from '../metadata/tm-client-metadata';
 import { tmCodedReport } from '../reports/tm-coded-report';
-import { tmAppRig, tmLoadTestPage, tmNavigate, tmSettle, TM_T17, TM_T17_DOCS, TM_TEST_SUB } from '../routes/tm-app.testing.util';
+import { tmAppRig, tmLoadTestPage, tmNavigate, tmRouteTestMetadata, tmSettle, TM_T17, TM_T17_DOCS, TM_TEST_SUB } from '../routes/tm-app.testing.util';
 import type { TmLaunchDocs, TmMeResult } from '../state/launch/tm-launch-docs';
 import type { TmClientStore } from '../state/store/tm-client-store';
 import type { TmDistributionInfo } from '../state/tm-distribution-info';
@@ -129,6 +131,10 @@ interface TmRigOptions {
   readonly grants?: readonly TmGrant[];
   /** Whether the user prefers Arabic, which the tenant offers. */
   readonly arabic?: boolean;
+  /** Whether the tenant offers Arabic beside English. */
+  readonly offersArabic?: boolean;
+  /** The Core chunk, when not the route test metadata. */
+  readonly metadata?: TmClientMetadata;
   /** The distribution document stored before the app enters the tenant. */
   readonly distribution?: TmDistributionInfo;
 }
@@ -141,6 +147,8 @@ interface TmRig {
   readonly store: TmClientStore;
   /** The fake telemetry. */
   readonly telemetry: TmFakeTelemetry;
+  /** The fake API. */
+  readonly api: TmFakeApi;
 }
 
 /** Starts the app, enters tenant 17 and returns the registry. */
@@ -149,11 +157,18 @@ async function rig(options: TmRigOptions = {}): Promise<TmRig> {
   const docs: TmLaunchDocs = {
     ...TM_T17_DOCS,
     me: { ...me, user: { ...me.user, ...(options.arabic && { preferredLanguage: 'ar' }) }, access: access(options.grants ?? ALL) },
-    settings: options.arabic
+    settings:
+      options.arabic || options.offersArabic
       ? { ...settings, languages: [...settings.languages, { code: 'ar', nativeName: 'العربية', symbol: 'ع', isRightToLeft: true }] }
       : settings,
   };
-  const app = await tmAppRig({ docs, features: [options.feature ?? feature(), tmFeature({ key: 'distro', ...options.distro })], languages: [tmEnglish(), ARABIC], strings: STRINGS });
+  const app = await tmAppRig({
+    docs,
+    features: [options.feature ?? feature(), tmFeature({ key: 'distro', ...options.distro })],
+    languages: [tmEnglish(), ARABIC],
+    strings: STRINGS,
+    ...(options.metadata && { metadata: options.metadata }),
+  });
   // The distribution document stays as the test stores it: its read fails.
   app.api.respond('/api/distribution-info', () => {
     throw new Error('The distribution document is unreachable.');
@@ -163,7 +178,7 @@ async function rig(options: TmRigOptions = {}): Promise<TmRig> {
   }
   await tmNavigate('/17/credit-review');
   await tmSettle();
-  return { navigation: TestBed.inject(TmNavigation), store: app.store, telemetry: app.telemetry };
+  return { navigation: TestBed.inject(TmNavigation), store: app.store, telemetry: app.telemetry, api: app.api };
 }
 
 /** Stores the distribution document. */
@@ -268,6 +283,13 @@ describe('TmNavigation', () => {
       expect(outline(granted.navigation)).toContain('administration: core.settings');
     });
 
+    it('hides Settings and refuses its routes when the Core chunk lists no settings category', async () => {
+      const { navigation } = await rig({ metadata: { ...tmRouteTestMetadata(), settingCategories: [] } });
+      expect(navigation.items().some((entry) => entry.id === 'core.settings')).toBe(false);
+      expect(navigation.resolve('/17/settings')).toBe('no-access');
+      expect(navigation.resolve('/17/settings/general')).toBe('no-access');
+    });
+
     it('follows the access when it changes', async () => {
       const { navigation, store } = await rig({ grants: [['gl.Center', 'Read']] });
       expect(navigation.items().some((entry) => entry.id === 'acme.Customer')).toBe(false);
@@ -305,6 +327,14 @@ describe('TmNavigation', () => {
       await tmSettle();
       expect(navigation.byHref('/17/credit-review')).toBeUndefined();
       expect(navigation.resolve('/17/credit-review?q=acme')).toBe('unavailable');
+    });
+
+    it('makes the URL of an entry it hides unavailable, though the page there has no predicate', async () => {
+      const desk: TmNavEntry = { id: 'acme.desk', labelKey: 'Acme_Nav_Desk', url: (t) => `/${t}/approvals`, visibleWhen: () => false };
+      const { navigation } = await rig({ feature: feature({ entries: [OVERDUE, desk] }), distribution: distribution(true) });
+      expect(navigation.byHref('/17/approvals')?.id).toBe('approvals');
+      expect(navigation.resolve('/17/approvals')).toBe('unavailable');
+      expect(navigation.resolve('/17/approvals?q=late')).toBe('unavailable');
     });
 
     it('hides the entries of an entity it hides, and its routes', async () => {
@@ -365,6 +395,38 @@ describe('TmNavigation', () => {
       expect(TestBed.inject(TmLocalization).language()).toBe('ar');
       expect(outline(navigation)).toContain('sales: acme.Customer credit-review acme.overdue');
       expect(item(navigation, 'acme.Customer').label).toBe('العملاء');
+    });
+  });
+
+  describe('recomputation', () => {
+    it('labels and re-sorts the entries when the language switches', async () => {
+      const { navigation } = await rig({ offersArabic: true });
+      expect(outline(navigation)).toContain('sales: credit-review acme.Customer acme.overdue');
+      TestBed.inject(TmLocalization).setLanguage('ar');
+      await tmSettle();
+      expect(TestBed.inject(TmLocalization).language()).toBe('ar');
+      expect(outline(navigation)).toContain('sales: acme.Customer credit-review acme.overdue');
+      expect(item(navigation, 'acme.Customer').label).toBe('العملاء');
+      expect(navigation.sections().find((section) => section.id === 'sales')?.label).toBe('المبيعات');
+    });
+
+    it('follows the routed tenant', async () => {
+      const { navigation, store } = await rig();
+      const t18 = { ...TM_T17, tenantId: 18 };
+      const docs = TM_T17_DOCS;
+      await tmWarmTenant(store, t18, {
+        ...docs,
+        settings: { ...docs.settings, tenantId: 18 },
+        tenant: { ...docs.tenant, id: 18 },
+        me: { ...docs.me, access: access(ALL) },
+      });
+      expect(navigation.items().every((entry) => entry.href.startsWith('/17/'))).toBe(true);
+      await TestBed.inject(Router).navigateByUrl('/18/credit-review');
+      await tmSettle();
+      expect(navigation.items().length).toBeGreaterThan(0);
+      expect(navigation.items().every((entry) => entry.href.startsWith('/18/'))).toBe(true);
+      expect(navigation.byHref('/18/centers')?.id).toBe('gl.Center');
+      expect(item(navigation, 'acme.Customer').createHref).toBe('/18/customers/new');
     });
   });
 
