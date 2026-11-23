@@ -384,6 +384,22 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-252 (orchestrator, 2026-11-23): the primary's room after PC-109, and what PC-115 does at release
+
+- After PC-109's integration, "." measures 48.24 KB (linked, gzip 6), leaving 1.76 KB under the 50 KB cap. PC-109 is pending on CI.
+- The rest of the queue adds about:
+  - PC-115: +1.75.
+  - PC-F78: +0.06.
+  - PC-119: its own delta, still to be measured on the merged base.
+- That puts the primary at or just over 50 before any further primary checkpoint lands.
+- Ruling: when PC-115 is released, it must bring "." to 49.5 or below on the merged base, which leaves room for PC-F78 and PC-119. Its options, in this order:
+  1. Move bytes that no first-frame caller needs out of the primary into lazy entries, each move stated as a deviation from its spec's placement.
+  2. Trim within its own additions.
+- PC-115 reports every candidate with its saving, including ones outside its own code, such as the outdated-client verdict machinery that PC-F78's reviewer estimated at 0.3 to 0.4 KB.
+- If 49.5 cannot be reached without cutting spec behaviour, PC-115 stops with status=blocked and I decide.
+- PC-119 and PC-F78 re-measure at their releases (D-214). Any of them that would exceed 50 stops with status=blocked (D-247).
+- For Ahmad (sharpens D-247): the primary reaches its 50 KB cap with Tier 1 still incomplete. Raising 0024's cap, re-cutting the shares or moving members lazy is now needed soon. Until you rule, I keep it under 50 by lazy moves, each one a stated deviation.
+
 ### D-251 (orchestrator, 2026-11-23): PC-F76 measures the 50 KB cap on the whole primary entry
 
 - PC-F76's implementation measured the primary as Acme's first-frame cut through source maps: 37.80 KB, against size:check's whole-entry "." of 44.97. Review 1 (R1-1, major) showed this is the wrong reading of "own weight":
