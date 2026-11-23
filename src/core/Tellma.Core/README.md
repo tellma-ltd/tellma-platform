@@ -2898,7 +2898,9 @@ are SpreadsheetML packages written with `DocumentFormat.OpenXml` (MIT), forward-
   in UTF-8 or unit in UTF-16 (so every UCS-4 part, whose units it could not otherwise see), and any
   run over 4 MiB from one `<` to the next (a CDATA section, comment or processing instruction counted
   whole), so every node a reader materialises is bounded; it skips content and sections a vector at a
-  time, at a cost that does not depend on what they hold; text is read in chunks and refused before
+  time, at a cost that does not depend on what they hold; each part's text is decoded (by
+  `PartTextReader`) in exactly the encoding the stream scanned, never the one its XML declaration
+  names, and a declaration naming anything but UTF-8 or UTF-16 is refused; text is read in chunks and refused before
   it is read whole once it passes what a cell may hold; two sheets may not name one part; no reader processes a DTD, and each reader's name table
   (`BoundedNameTable`) refuses a part whose distinct names pass 1 MiB. Shared strings
   (`SharedStringStore`) are charged against a budget and spill to a scratch file beyond it, and their

@@ -487,7 +487,7 @@ namespace Tellma.Core.Excel
         /// <param name="text">The text the workbook's sheets may still decode, charged by this sheet's reads too.</param>
         /// <returns>The reader.</returns>
         /// <exception cref="Abstractions.Excel.ImportException">The part is not well-formed.</exception>
-        public static SheetReader Open(Stream part, string sheet, SharedStringStore strings, long rowBudget, TextBudget text)
+        public static SheetReader Open(BoundedPartStream part, string sheet, SharedStringStore strings, long rowBudget, TextBudget text)
         {
             ArgumentNullException.ThrowIfNull(strings);
             ArgumentNullException.ThrowIfNull(text);

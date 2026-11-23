@@ -6,6 +6,7 @@
 using System.Buffers.Binary;
 using System.Numerics;
 using System.Runtime.InteropServices;
+using System.Text;
 
 namespace Tellma.Core.Excel
 {
@@ -21,12 +22,14 @@ namespace Tellma.Core.Excel
     /// </summary>
     /// <remarks>
     ///     The markup is found in UTF-8, and in UTF-16 of either byte order when the part opens
-    ///     with a byte order mark or an unmarked <c>&lt;</c>: a package's parts may be encoded in
-    ///     those alone. A part holding a NUL byte in UTF-8, or a NUL unit in UTF-16, is refused:
-    ///     no XML document may hold U+0000, and every UCS-4 part, which an XML reader would
-    ///     otherwise decode in units this scan cannot see, holds one. Content is skipped to its next
+    ///     with a byte order mark or an unmarked <c>&lt;</c>. <see cref="DetectEncoding" /> names
+    ///     the encoding found, and the part's text must be decoded in that encoding alone, whatever
+    ///     the part's XML declaration names, so that the bounds hold for the characters a reader
+    ///     sees. A part holding a NUL byte in UTF-8, or a NUL unit in UTF-16, is refused: no XML
+    ///     document may hold U+0000, and every UCS-4 part holds one. Content is skipped to its next
     ///     <c>&lt;</c>, and a markup section to its terminator, a vector at a time, so a part costs
-    ///     about the same to scan whatever its encoding and its markup, and whatever its text holds.
+    ///     about the same to scan whatever its encoding and its markup, and whatever its text holds;
+    ///     only the units of openers, and of terminators a read splits, are taken one at a time.
     /// </remarks>
     internal sealed class BoundedPartStream : Stream
     {
@@ -35,6 +38,15 @@ namespace Tellma.Core.Excel
 
         /// <summary>The rest of a character data section's opener after <c>&lt;![</c>.</summary>
         private const string CharacterDataOpener = "CDATA[";
+
+        /// <summary>UTF-8 as a part's text is decoded in: its byte order mark skipped, an invalid byte refused.</summary>
+        private static readonly Encoding Utf8 = new UTF8Encoding(encoderShouldEmitUTF8Identifier: true, throwOnInvalidBytes: true);
+
+        /// <summary>Little-endian UTF-16 as a part's text is decoded in: its byte order mark skipped, an invalid unit refused.</summary>
+        private static readonly Encoding Utf16LittleEndian = new UnicodeEncoding(bigEndian: false, byteOrderMark: true, throwOnInvalidBytes: true);
+
+        /// <summary>Big-endian UTF-16 as a part's text is decoded in: its byte order mark skipped, an invalid unit refused.</summary>
+        private static readonly Encoding Utf16BigEndian = new UnicodeEncoding(bigEndian: true, byteOrderMark: true, throwOnInvalidBytes: true);
 
         /// <summary>The units that can change a UTF-8 scan, as bytes.</summary>
         private static readonly Markup<byte> Utf8Markup = new(static unit => (byte)unit);
@@ -47,6 +59,9 @@ namespace Tellma.Core.Excel
 
         /// <summary>The part's stream, owned.</summary>
         private readonly Stream _inner;
+
+        /// <summary>The part's first bytes, read early to tell its encoding and returned by the next reads.</summary>
+        private readonly byte[] _head = new byte[2];
 
         /// <summary>The part's length as the directory declares it.</summary>
         private readonly long _declared;
@@ -74,6 +89,12 @@ namespace Tellma.Core.Excel
 
         /// <summary>The first byte of the part, held until the second tells the encoding; -1 when none.</summary>
         private int _first = -1;
+
+        /// <summary>Where the next read starts in <see cref="_head" />.</summary>
+        private int _headStart;
+
+        /// <summary>Where <see cref="_head" />'s bytes end; 0 when none were read early.</summary>
+        private int _headEnd;
 
         /// <summary>Wraps a part's stream.</summary>
         /// <param name="inner">The part's decompressing stream; disposed with this one.</param>
@@ -123,6 +144,12 @@ namespace Tellma.Core.Excel
             static abstract int Read(T unit);
         }
 
+        /// <summary>
+        ///     The code units the scan has taken one at a time: those of openers, of terminators a read
+        ///     splits, and the part's first two bytes. Every other unit is skipped a vector at a time.
+        /// </summary>
+        public long UnitsTakenSingly { get; private set; }
+
         /// <inheritdoc />
         public override bool CanRead => true;
 
@@ -151,6 +178,13 @@ namespace Tellma.Core.Excel
         /// <inheritdoc />
         public override int Read(Span<byte> buffer)
         {
+            // The first bytes, when they were read early to tell the encoding, are returned first.
+            int taken = TakeHead(buffer);
+            if (taken > 0)
+            {
+                return taken;
+            }
+
             int read = _inner.Read(buffer);
             Account(buffer[..read]);
             return read;
@@ -159,6 +193,13 @@ namespace Tellma.Core.Excel
         /// <inheritdoc />
         public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
         {
+            // The first bytes, when they were read early to tell the encoding, are returned first.
+            int taken = TakeHead(buffer.Span);
+            if (taken > 0)
+            {
+                return taken;
+            }
+
             int read = await _inner.ReadAsync(buffer, cancellationToken).ConfigureAwait(false);
             Account(buffer.Span[..read]);
             return read;
@@ -173,6 +214,33 @@ namespace Tellma.Core.Excel
         /// <inheritdoc />
         public override void Flush()
         {
+        }
+
+        /// <summary>
+        ///     The encoding the part's markup is scanned in, which its text must be decoded in: UTF-16
+        ///     of the byte order found, or UTF-8. Called before the part is read, it reads the first
+        ///     two bytes to tell the encoding, and the reads that follow return them first.
+        /// </summary>
+        /// <returns>
+        ///     The encoding, which skips the byte order mark the part begins with and refuses an
+        ///     invalid sequence; UTF-8 for a part of fewer than two bytes.
+        /// </returns>
+        /// <exception cref="Abstractions.Excel.ImportException">The first bytes run past the declared length or hold U+0000.</exception>
+        public Encoding DetectEncoding()
+        {
+            // --- The first two bytes, read and scanned once, before any other read ---
+            if (_read == 0 && _headEnd == 0)
+            {
+                int read;
+                while (_headEnd < _head.Length && (read = _inner.Read(_head.AsSpan(_headEnd))) > 0)
+                {
+                    _headEnd += read;
+                }
+
+                Account(_head.AsSpan(0, _headEnd));
+            }
+
+            return _width != 2 ? Utf8 : _bigEndian ? Utf16BigEndian : Utf16LittleEndian;
         }
 
         /// <inheritdoc />
@@ -209,6 +277,17 @@ namespace Tellma.Core.Excel
         private static Abstractions.Excel.ImportException Malformed()
         {
             return ImportFaults.Malformed(ImportFaults.XmlReason);
+        }
+
+        /// <summary>Returns the part's first bytes, when they were read early, ahead of any other.</summary>
+        /// <param name="buffer">The buffer they are copied to.</param>
+        /// <returns>How many were copied; 0 when none remain.</returns>
+        private int TakeHead(Span<byte> buffer)
+        {
+            int taken = Math.Min(_headEnd - _headStart, buffer.Length);
+            _head.AsSpan(_headStart, taken).CopyTo(buffer);
+            _headStart += taken;
+            return taken;
         }
 
         /// <summary>Finds a section's terminator in units read as bytes or as UTF-16 units.</summary>
@@ -480,6 +559,7 @@ namespace Tellma.Core.Excel
                 throw Malformed();
             }
 
+            UnitsTakenSingly++;
             _run = Advance(unit) ? _width : _run + _width;
             Bound();
         }

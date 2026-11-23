@@ -16,7 +16,9 @@ namespace Tellma.Core.Excel
     /// </summary>
     /// <remarks>
     ///     Every part is parsed with document types prohibited and no resolver, so nothing outside the
-    ///     package is ever fetched and no entity expands. Elements are matched by local name within
+    ///     package is ever fetched and no entity expands. Its text is decoded in the encoding its
+    ///     bounds are scanned in, never the one its XML declaration names, and a declaration naming
+    ///     an encoding other than UTF-8 or UTF-16 is refused. Elements are matched by local name within
     ///     the part's own namespace, transitional or strict; extension elements of other namespaces
     ///     are skipped.
     /// </remarks>
@@ -84,13 +86,15 @@ namespace Tellma.Core.Excel
 
         /// <summary>
         ///     Opens a reader over a part, with document types prohibited, no resolver, and a name
-        ///     table of its own that bounds the part's distinct names.
+        ///     table of its own that bounds the part's distinct names. The reader parses the part's
+        ///     text as decoded in the encoding the bounds are scanned in.
         /// </summary>
-        /// <param name="part">The part's stream; closed with the reader.</param>
+        /// <param name="part">The part's bounded stream; closed with the reader.</param>
         /// <returns>The reader.</returns>
-        public static XmlReader Open(Stream part)
+        public static XmlReader Open(BoundedPartStream part)
         {
-            return XmlReader.Create(part, new XmlReaderSettings
+            // A reader over text never switches to the encoding a declaration names.
+            return XmlReader.Create(new PartTextReader(part), new XmlReaderSettings
             {
                 DtdProcessing = DtdProcessing.Prohibit,
                 XmlResolver = null,

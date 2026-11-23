@@ -439,6 +439,28 @@ namespace Tellma.Core.Tests.Excel
         }
 
         [Theory]
+        [InlineData("iso-2022-jp", "$B", "<!", "(B")]
+        [InlineData("hz-gb-2312", "~{", "<a", "~}")]
+        public void A_part_declaring_a_code_page_encoding_is_refused_at_open_holding_little_memory(string encoding, string shiftIn, string pair, string shiftOut)
+        {
+            // With the code pages registered, as a database client does for the whole process, a
+            // reader that switched to the declared encoding would decode each pair of ASCII bytes
+            // ('<!', '<a') as one character: an attribute the scan took for many short runs.
+            Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+            SyntheticWorkbook workbook = new(Producer.Excel, RawSheet.OfText("Data", ["a"]));
+            string flood = string.Concat(Enumerable.Repeat(pair, 4 << 20));
+            string sst = $"<?xml version=\"1.0\" encoding=\"{encoding}\"?><sst xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" a=\"{shiftIn}{flood}{shiftOut}\"><si><t>a</t></si></sst>";
+            byte[] package = Replace(workbook.Build(), "xl/sharedStrings.xml", Encoding.ASCII.GetBytes(sst));
+
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            ImportException refused = Refuse(package);
+            long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+            Assert.Equal(ImportFaults.XmlReason, Reason(refused));
+            Assert.InRange(allocated, 0, MaxFloodAllocation);
+        }
+
+        [Theory]
         [InlineData("shared string", ImportFaults.CellsReason)]
         [InlineData("shared string character data", ImportFaults.XmlReason)]
         [InlineData("workbook properties attribute", ImportFaults.XmlReason)]
@@ -596,7 +618,7 @@ namespace Tellma.Core.Tests.Excel
             using CancellationTokenSource source = new();
             source.Cancel();
 
-            _ = Assert.Throws<OperationCanceledException>(() => SharedStringStore.Load(new MemoryStream(part, writable: false), 64L << 20, 1_000_000, _scratch, source.Token).Dispose());
+            _ = Assert.Throws<OperationCanceledException>(() => SharedStringStore.Load(new BoundedPartStream(new MemoryStream(part, writable: false), part.Length), 64L << 20, 1_000_000, _scratch, source.Token).Dispose());
         }
 
         [Theory]

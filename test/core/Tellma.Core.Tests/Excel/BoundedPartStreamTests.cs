@@ -30,6 +30,21 @@ namespace Tellma.Core.Tests.Excel
             { "2143", false, 4096 }, { "3412", false, 4096 }, { "1234", true, 1 }, { "4321", true, 1 },
         };
 
+        /// <summary>
+        ///     Each section's fillers dense in its terminator's units without forming it, each in UTF-8
+        ///     and in UTF-16 of either byte order, read a byte at a time, in reads that split units and
+        ///     terminators at every offset, and in reads that engage the vector search.
+        /// </summary>
+        public static readonly TheoryData<string, string, string, string, int> MarkDenseFloods = MarkDense();
+
+        /// <summary>Each kind of section, in UTF-8 and in UTF-16 of either byte order, in reads that engage the vector search.</summary>
+        public static readonly TheoryData<string, string, string, int> SectionsByEncoding = new()
+        {
+            { "utf-8", "<![CDATA[", "]]>", 4096 }, { "utf-8", "<!--", "-->", 4096 }, { "utf-8", "<?pi ", "?>", 4096 },
+            { "utf-16le", "<![CDATA[", "]]>", 4096 }, { "utf-16le", "<!--", "-->", 65536 }, { "utf-16le", "<?pi ", "?>", 4097 },
+            { "utf-16be bom", "<![CDATA[", "]]>", 4097 }, { "utf-16be bom", "<!--", "-->", 4096 }, { "utf-16be bom", "<?pi ", "?>", 65536 },
+        };
+
         [Theory]
         [InlineData(4096)]
         [InlineData(BoundedPartStream.MaxTokenBytes + 4096)]
@@ -198,6 +213,76 @@ namespace Tellma.Core.Tests.Excel
         }
 
         [Theory]
+        [MemberData(nameof(MarkDenseFloods))]
+        public void A_flood_of_marks_and_less_than_signs_in_one_section_is_one_run_refused_past_the_bound(string encoding, string opener, string filler, string terminator, int chunk)
+        {
+            // Each '<' inside the section is its text; were the section closed early, at a place
+            // that is no terminator, the '<' after it would start a run and the part would pass.
+            int width = encoding == "utf-8" ? 1 : 2;
+            string flood = Fill(filler + "<", (BoundedPartStream.MaxTokenBytes / width) + 64);
+            byte[] part = Encode($"<a>{opener}{flood}{terminator}</a>", encoding);
+
+            ImportException refused = Assert.Throws<ImportException>(() => Drain(part, chunk));
+
+            Assert.Equal(ImportFaults.XmlReason, Assert.Single(refused.Errors).Arguments["reason"]);
+        }
+
+        [Theory]
+        [MemberData(nameof(SectionsByEncoding))]
+        public void A_section_is_counted_whole_to_its_terminator_however_many_less_than_signs_precede_it(string encoding, string opener, string terminator, int chunk)
+        {
+            // Half the bound of section, ending on a block of '<', then half the bound of text: one
+            // run past the bound. Were the section closed anywhere short of its terminator, a '<' of
+            // the block would start a run of little more than the text, and the part would pass.
+            // The padding moves the terminator to other places within a vector.
+            int width = encoding == "utf-8" ? 1 : 2;
+            int half = BoundedPartStream.MaxTokenBytes / width / 2;
+            foreach (int padding in (int[])[0, 5, 10, 17])
+            {
+                string section = opener + new string('a', half - padding) + new string('<', 64) + terminator;
+                byte[] part = Encode($"<a>{section}{new string('a', half)}</a>", encoding);
+
+                ImportException refused = Assert.Throws<ImportException>(() => Drain(part, chunk));
+
+                Assert.Equal(ImportFaults.XmlReason, Assert.Single(refused.Errors).Arguments["reason"]);
+            }
+        }
+
+        [Theory]
+        [InlineData("utf-8", "<a><![CDATA[", "a", "]]></a>")]
+        [InlineData("utf-8", "<a><![CDATA[", "]a", "]]></a>")]
+        [InlineData("utf-8", "<a><![CDATA[", "]]a", "]]></a>")]
+        [InlineData("utf-8", "<a><![CDATA[", "]a>", "]]></a>")]
+        [InlineData("utf-8", "<a><![CDATA[", ">", "]]></a>")]
+        [InlineData("utf-8", "<a><!--", "-a", "--></a>")]
+        [InlineData("utf-8", "<a><!--", "-a>", "--></a>")]
+        [InlineData("utf-8", "<a><?pi ", "?a", "?></a>")]
+        [InlineData("utf-16le", "<a>", "a", "</a>")]
+        [InlineData("utf-16le", "<a><![CDATA[", "]a", "]]></a>")]
+        [InlineData("utf-16le", "<a><![CDATA[", "]a>", "]]></a>")]
+        [InlineData("utf-16be", "<a>", "a", "</a>")]
+        [InlineData("utf-16be", "<a><![CDATA[", "]a", "]]></a>")]
+        [InlineData("utf-16be", "<a><!--", "-a>", "--></a>")]
+        public void A_part_takes_a_few_units_one_at_a_time_per_opener_and_per_read_however_long_its_nodes(string encoding, string opener, string filler, string terminator)
+        {
+            // 16 nodes of 1 Mi units each, read in 64 KiB reads. Only an opener's units, and the unit
+            // after a run of marks a read splits, are taken one at a time; the rest, whatever it holds,
+            // is skipped a vector at a time, so the count does not grow with the nodes' length.
+            string body = Fill(filler, 1 << 20);
+            string text = string.Concat(Enumerable.Repeat(opener + body + terminator, 16));
+            byte[] part = Encode(text, encoding);
+            int chunk = 64 * 1024;
+            long openers = text.Count(static character => character == '<');
+            long reads = (part.Length / chunk) + 1;
+
+            using BoundedPartStream stream = new(new MemoryStream(part, writable: false), part.Length);
+            stream.CopyTo(Stream.Null, chunk);
+
+            Assert.InRange(stream.UnitsTakenSingly, 0, 12 * (openers + reads));
+        }
+
+        [Theory]
+        [Trait("Category", "Nightly")]
         [InlineData("utf-8", "<a><![CDATA[", "a", "]]></a>")]
         [InlineData("utf-8", "<a><![CDATA[", "]a", "]]></a>")]
         [InlineData("utf-8", "<a><![CDATA[", "]]a", "]]></a>")]
@@ -211,7 +296,9 @@ namespace Tellma.Core.Tests.Excel
         [InlineData("utf-16be", "<a><![CDATA[", "]a", "]]></a>")]
         public void A_part_costs_about_what_the_same_bytes_of_utf8_text_cost_to_scan_whatever_its_encoding_and_markup(string encoding, string opener, string filler, string terminator)
         {
-            // 64 MiB of runs within the bound, each a node of 1 Mi characters, against the same bytes of
+            // Nightly: a timing check, with ten times the baseline's cost as its allowance for a busy
+            // host. It pins what counting units cannot: that the terminator search, too, does not slow
+            // on fillers dense in places that begin and end like a terminator. 64 MiB of runs within the bound, each a node of 1 Mi characters, against the same bytes of
             // UTF-8 text. A section's filler may be dense in its terminator's marks without forming it;
             // scanned a unit at a time, such a section or any UTF-16 part would cost many times as much.
             string body = string.Concat(Enumerable.Repeat(filler, (1 << 20) / filler.Length));
@@ -247,6 +334,34 @@ namespace Tellma.Core.Tests.Excel
         private static string Fill(string pattern, int length)
         {
             return string.Concat(Enumerable.Repeat(pattern, (length / pattern.Length) + 1))[..length];
+        }
+
+        /// <summary>The floods of each section's mark-dense fillers, in each encoding and read size.</summary>
+        /// <returns>The theory's data.</returns>
+        private static TheoryData<string, string, string, string, int> MarkDense()
+        {
+            TheoryData<string, string, string, string, int> floods = [];
+            (string Opener, string Terminator, string[] Fillers)[] sections =
+            [
+                ("<![CDATA[", "]]>", ["]a>", "]]a", "]>", "]"]),
+                ("<!--", "-->", ["-a>", "->", "--a"]),
+                ("<?pi ", "?>", ["?a", "?"]),
+            ];
+            foreach (string encoding in (string[])["utf-8", "utf-16le", "utf-16be bom"])
+            {
+                foreach ((string opener, string terminator, string[] fillers) in sections)
+                {
+                    foreach (string filler in fillers)
+                    {
+                        foreach (int chunk in (int[])[1, 7, 4096, 4097])
+                        {
+                            floods.Add(encoding, opener, filler, terminator, chunk);
+                        }
+                    }
+                }
+            }
+
+            return floods;
         }
 
         /// <summary>The lesser of two times.</summary>
