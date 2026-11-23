@@ -417,6 +417,28 @@ namespace Tellma.Core.Tests.Excel
         }
 
         [Theory]
+        [InlineData(false)]
+        [InlineData(true)]
+        public void A_ucs4_shared_string_part_is_refused_at_open_holding_little_memory(bool bigEndian)
+        {
+            // A reader decodes the part. Each character of its flood holds a byte, in UTF-8, or a unit,
+            // in UTF-16, that reads as '<', so a scan that took the part for either would see the
+            // flood as many short runs and let the reader decode it whole.
+            SyntheticWorkbook workbook = new(Producer.Excel, RawSheet.OfText("Data", ["a"]));
+            string flood = string.Concat(Enumerable.Repeat(char.ConvertFromUtf32(bigEndian ? 0x3C3C : 0x1003C), 2 << 20));
+            string sst = $"<sst xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><si><t>{flood}</t></si></sst>";
+            UTF32Encoding ucs4 = new(bigEndian, byteOrderMark: true);
+            byte[] package = Replace(workbook.Build(), "xl/sharedStrings.xml", [.. ucs4.GetPreamble(), .. ucs4.GetBytes(sst)]);
+
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            ImportException refused = Refuse(package);
+            long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+            Assert.Equal(ImportFaults.XmlReason, Reason(refused));
+            Assert.InRange(allocated, 0, MaxFloodAllocation);
+        }
+
+        [Theory]
         [InlineData("shared string", ImportFaults.CellsReason)]
         [InlineData("shared string character data", ImportFaults.XmlReason)]
         [InlineData("workbook properties attribute", ImportFaults.XmlReason)]
@@ -733,6 +755,25 @@ namespace Tellma.Core.Tests.Excel
             }
 
             Assert.Equal(ImportFaults.ZipReason, Reason(Assert.Throws<ImportException>(() => ZipDirectory.Check(stream))));
+        }
+
+        /// <summary>A package with one part's bytes replaced, for a part no text encodes.</summary>
+        /// <param name="package">The package's bytes.</param>
+        /// <param name="name">The part's name.</param>
+        /// <param name="bytes">The part's new bytes.</param>
+        /// <returns>The new package's bytes.</returns>
+        private static byte[] Replace(byte[] package, string name, byte[] bytes)
+        {
+            using MemoryStream stream = new();
+            stream.Write(package);
+            using (ZipArchive zip = new(stream, ZipArchiveMode.Update, leaveOpen: true))
+            {
+                zip.GetEntry(name)!.Delete();
+                using Stream writer = zip.CreateEntry(name, CompressionLevel.Fastest).Open();
+                writer.Write(bytes);
+            }
+
+            return stream.ToArray();
         }
 
         /// <summary>A worksheet part of the given rows.</summary>

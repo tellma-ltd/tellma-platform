@@ -3,6 +3,10 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+using System.Buffers.Binary;
+using System.Numerics;
+using System.Runtime.InteropServices;
+
 namespace Tellma.Core.Excel
 {
     /// <summary>
@@ -17,8 +21,12 @@ namespace Tellma.Core.Excel
     /// </summary>
     /// <remarks>
     ///     The markup is found in UTF-8, and in UTF-16 of either byte order when the part opens
-    ///     with a byte order mark or an unmarked <c>&lt;</c>; XML allows no other encoding without a
-    ///     declaration, and a workbook's producers write UTF-8.
+    ///     with a byte order mark or an unmarked <c>&lt;</c>: a package's parts may be encoded in
+    ///     those alone. A part holding a NUL byte in UTF-8, or a NUL unit in UTF-16, is refused:
+    ///     no XML document may hold U+0000, and every UCS-4 part, which an XML reader would
+    ///     otherwise decode in units this scan cannot see, holds one. Content is skipped to its next
+    ///     <c>&lt;</c>, and a markup section to its terminator, a vector at a time, so a part costs
+    ///     about the same to scan whatever its encoding and its markup, and whatever its text holds.
     /// </remarks>
     internal sealed class BoundedPartStream : Stream
     {
@@ -27,6 +35,15 @@ namespace Tellma.Core.Excel
 
         /// <summary>The rest of a character data section's opener after <c>&lt;![</c>.</summary>
         private const string CharacterDataOpener = "CDATA[";
+
+        /// <summary>The units that can change a UTF-8 scan, as bytes.</summary>
+        private static readonly Markup<byte> Utf8Markup = new(static unit => (byte)unit);
+
+        /// <summary>The units that can change a UTF-16 scan read in the machine's byte order.</summary>
+        private static readonly Markup<char> NativeUtf16Markup = new(static unit => (char)unit);
+
+        /// <summary>The units that can change a UTF-16 scan read in the other byte order, each as it lies in memory.</summary>
+        private static readonly Markup<char> SwappedUtf16Markup = new(static unit => (char)BinaryPrimitives.ReverseEndianness((ushort)unit));
 
         /// <summary>The part's stream, owned.</summary>
         private readonly Stream _inner;
@@ -94,6 +111,16 @@ namespace Tellma.Core.Excel
 
             /// <summary>Inside a processing instruction, until <c>?&gt;</c>.</summary>
             Instruction,
+        }
+
+        /// <summary>How a unit, as it is read, reads as a code unit.</summary>
+        /// <typeparam name="T">The type the units are read as.</typeparam>
+        private interface ICodeUnit<T>
+        {
+            /// <summary>Reads a unit as a code unit.</summary>
+            /// <param name="unit">The unit as it is read.</param>
+            /// <returns>The code unit.</returns>
+            static abstract int Read(T unit);
         }
 
         /// <inheritdoc />
@@ -177,9 +204,71 @@ namespace Tellma.Core.Excel
             base.Dispose(disposing);
         }
 
+        /// <summary>Refuses a part that holds U+0000 or a run past the bound.</summary>
+        /// <returns>The refusal.</returns>
+        private static Abstractions.Excel.ImportException Malformed()
+        {
+            return ImportFaults.Malformed(ImportFaults.XmlReason);
+        }
+
+        /// <summary>Finds a section's terminator in units read as bytes or as UTF-16 units.</summary>
+        /// <typeparam name="T">The type the units are read as: a byte or a UTF-16 unit.</typeparam>
+        /// <param name="units">The units.</param>
+        /// <param name="terminator">The terminator, two or three units.</param>
+        /// <returns>Where the first terminator starts; -1 when none does.</returns>
+        private static int IndexOfTerminator<T>(ReadOnlySpan<T> units, ReadOnlySpan<T> terminator)
+            where T : unmanaged
+        {
+            // The units are compared as the unsigned integers of their width; the branch is the JIT's to fold.
+            return typeof(T) == typeof(byte)
+                ? FindTerminator(MemoryMarshal.Cast<T, byte>(units), MemoryMarshal.Cast<T, byte>(terminator))
+                : FindTerminator(MemoryMarshal.Cast<T, ushort>(units), MemoryMarshal.Cast<T, ushort>(terminator));
+        }
+
+        /// <summary>
+        ///     Finds a section's terminator, comparing each of its units at every position of a vector
+        ///     at once: the cost is the same whatever the units hold, where a search that confirms each
+        ///     place its first and last units match would slow on units dense in such places.
+        /// </summary>
+        /// <typeparam name="TNumber">The unsigned integer the units are compared as.</typeparam>
+        /// <param name="units">The units.</param>
+        /// <param name="terminator">The terminator, two or three units.</param>
+        /// <returns>Where the first terminator starts; -1 when none does.</returns>
+        private static int FindTerminator<TNumber>(ReadOnlySpan<TNumber> units, ReadOnlySpan<TNumber> terminator)
+            where TNumber : unmanaged, IBinaryInteger<TNumber>, IUnsignedNumber<TNumber>
+        {
+            int last = terminator.Length - 1;
+            int index = 0;
+
+            // --- A vector of starting places at a time: a place matches when each of its units does ---
+            if (Vector.IsHardwareAccelerated)
+            {
+                var first = new Vector<TNumber>(terminator[0]);
+                var middle = new Vector<TNumber>(terminator[last - 1]);
+                var end = new Vector<TNumber>(terminator[last]);
+                ref TNumber start = ref MemoryMarshal.GetReference(units);
+                for (; index + last + Vector<TNumber>.Count <= units.Length; index += Vector<TNumber>.Count)
+                {
+                    // A two-unit terminator compares its first unit twice, which changes nothing.
+                    Vector<TNumber> found = Vector.Equals(Vector.LoadUnsafe(ref start, (nuint)index), first)
+                        & Vector.Equals(Vector.LoadUnsafe(ref start, (nuint)(index + last - 1)), middle)
+                        & Vector.Equals(Vector.LoadUnsafe(ref start, (nuint)(index + last)), end);
+                    if (found != Vector<TNumber>.Zero)
+                    {
+                        // The first place that matches lies among this vector's places.
+                        return index + units.Slice(index, Vector<TNumber>.Count + last).IndexOf(terminator);
+                    }
+                }
+            }
+
+            // --- The places a vector no longer covers, or every place without vectors ---
+            int tail = units[index..].IndexOf(terminator);
+            return tail < 0 ? -1 : index + tail;
+        }
+
         /// <summary>Counts bytes just read and scans them for the markup that bounds a run.</summary>
         /// <param name="bytes">The bytes.</param>
-        /// <exception cref="Abstractions.Excel.ImportException">The part ran past its declared length, or a run exceeds the bound.</exception>
+        /// <exception cref="Abstractions.Excel.ImportException">The part ran past its declared length, holds U+0000, or a run exceeds the bound.</exception>
         private void Account(ReadOnlySpan<byte> bytes)
         {
             // --- The declared length: a part that inflates past it is refused at the first byte beyond ---
@@ -189,47 +278,186 @@ namespace Tellma.Core.Excel
                 throw ImportFaults.TooLarge(_read, _declared);
             }
 
-            // --- UTF-8, once known, skips to each '<' a chunk at a time; until then, and in UTF-16, unit by unit ---
-            for (int index = 0; index < bytes.Length; index++)
+            // --- The encoding, from the first two bytes, which may arrive in separate reads ---
+            int index = 0;
+            while (_width == 0 && index < bytes.Length)
             {
-                if (_width == 1)
-                {
-                    ScanUtf8(bytes[index..]);
-                    return;
-                }
+                Detect(bytes[index++]);
+            }
 
-                Scan(bytes[index]);
+            // --- The rest, scanned in the encoding's own units ---
+            if (_width == 1)
+            {
+                Scan<byte, Utf8Unit>(bytes[index..], Utf8Markup);
+            }
+            else if (_width == 2)
+            {
+                ScanUtf16(bytes[index..]);
             }
         }
 
-        /// <summary>Advances the scan over UTF-8 bytes.</summary>
-        /// <param name="bytes">The bytes.</param>
-        /// <exception cref="Abstractions.Excel.ImportException">A run exceeds the bound.</exception>
-        private void ScanUtf8(ReadOnlySpan<byte> bytes)
+        /// <summary>
+        ///     Takes one of the part's first two bytes: a UTF-16 byte order mark or an unmarked UTF-16
+        ///     <c>&lt;</c> tells UTF-16, and anything else UTF-8.
+        /// </summary>
+        /// <param name="b">The byte.</param>
+        /// <exception cref="Abstractions.Excel.ImportException">The bytes hold U+0000, or a run exceeds the bound.</exception>
+        private void Detect(byte b)
         {
-            // In content only a '<' changes the state, so the bytes before it are counted whole; a
-            // multi-byte character holds no byte below 0x80, so an ASCII byte is always that character.
-            int index = 0;
-            while (index < bytes.Length)
+            if (_first < 0)
             {
+                _first = b;
+                return;
+            }
+
+            (_width, _bigEndian) = (_first, b) switch
+            {
+                (0xFF, 0xFE) or (0x3C, 0x00) => (2, false),
+                (0xFE, 0xFF) or (0x00, 0x3C) => (2, true),
+                _ => (1, false),
+            };
+
+            // The two bytes are scanned as the encoding reads them: two UTF-8 units, or one UTF-16 unit.
+            int held = _first;
+            _first = -1;
+            if (_width == 1)
+            {
+                Unit(held);
+                Unit(b);
+            }
+            else
+            {
+                Unit(_bigEndian ? (held << 8) | b : (b << 8) | held);
+            }
+        }
+
+        /// <summary>Scans UTF-16 bytes, a code unit split across reads held for the next.</summary>
+        /// <param name="bytes">The bytes.</param>
+        /// <exception cref="Abstractions.Excel.ImportException">The bytes hold U+0000, or a run exceeds the bound.</exception>
+        private void ScanUtf16(ReadOnlySpan<byte> bytes)
+        {
+            // --- A unit whose first byte ended the last read ---
+            if (_pending >= 0 && bytes.Length > 0)
+            {
+                Unit(_bigEndian ? (_pending << 8) | bytes[0] : (bytes[0] << 8) | _pending);
+                _pending = -1;
+                bytes = bytes[1..];
+            }
+
+            // --- Whole units, read in place: in the machine's byte order, or compared byte-swapped ---
+            int whole = bytes.Length & ~1;
+            ReadOnlySpan<char> units = MemoryMarshal.Cast<byte, char>(bytes[..whole]);
+            if (_bigEndian == BitConverter.IsLittleEndian)
+            {
+                Scan<char, SwappedUtf16Unit>(units, SwappedUtf16Markup);
+            }
+            else
+            {
+                Scan<char, NativeUtf16Unit>(units, NativeUtf16Markup);
+            }
+
+            // --- A trailing first byte waits for its second ---
+            if (whole < bytes.Length)
+            {
+                _pending = bytes[whole];
+            }
+        }
+
+        /// <summary>
+        ///     Advances the scan over code units, after refusing any NUL among them. Content is skipped
+        ///     to its next <c>&lt;</c>, and a markup section to the end of its terminator, a vector at a
+        ///     time; a terminator a read splits is carried as the marks it ends on, and every other
+        ///     unit (an opener's) is taken one at a time.
+        /// </summary>
+        /// <typeparam name="T">The type the units are read as.</typeparam>
+        /// <typeparam name="TUnit">How a unit read reads as a code unit.</typeparam>
+        /// <param name="units">The units.</param>
+        /// <param name="markup">The units that can change the scan, as they are read.</param>
+        /// <exception cref="Abstractions.Excel.ImportException">The units hold U+0000, or a run exceeds the bound.</exception>
+        private void Scan<T, TUnit>(ReadOnlySpan<T> units, Markup<T> markup)
+            where T : unmanaged, IEquatable<T>
+            where TUnit : struct, ICodeUnit<T>
+        {
+            // --- U+0000, refused wherever it lies ---
+            if (units.Contains(markup.Nul))
+            {
+                throw Malformed();
+            }
+
+            int index = 0;
+            while (index < units.Length)
+            {
+                ReadOnlySpan<T> rest = units[index..];
+                Section<T>? section = _state switch
+                {
+                    ScanState.CharacterData => markup.CharacterData,
+                    ScanState.Comment => markup.Comment,
+                    ScanState.Instruction => markup.Instruction,
+                    ScanState.Content or ScanState.Open or ScanState.Bang or ScanState.Dash or ScanState.CharacterDataOpener => null,
+                    _ => null,
+                };
+
+                // --- Content: everything before the next '<' joins the run ---
                 if (_state == ScanState.Content)
                 {
-                    int next = bytes[index..].IndexOf((byte)'<');
+                    int next = rest.IndexOf(markup.Open);
                     if (next < 0)
                     {
-                        _run += bytes.Length - index;
-                        Bound();
+                        Count(rest.Length);
                         return;
                     }
 
-                    _run += next;
-                    Bound();
+                    Count(next);
                     index += next;
                 }
 
-                Unit(bytes[index]);
+                // --- A section with no terminator begun: to the end of its terminator, or past this read
+                // with the marks it ends on carried, since they may begin the terminator the next read ends ---
+                else if (section is not null && _matched == 0)
+                {
+                    int end = IndexOfTerminator(rest, section.Terminator);
+                    if (end < 0)
+                    {
+                        _matched = rest.Length - 1 - rest.LastIndexOfAnyExcept(section.Mark);
+                        Count(rest.Length);
+                        return;
+                    }
+
+                    int closed = end + section.Terminator.Length;
+                    Count(closed);
+                    _state = ScanState.Content;
+                    index += closed;
+                    continue;
+                }
+
+                // --- A terminator begun in the last read: its run of marks counted whole; the unit after
+                // them closes the section or not ---
+                else if (section is not null)
+                {
+                    int marks = rest.IndexOfAnyExcept(section.Mark);
+                    marks = marks < 0 ? rest.Length : marks;
+                    if (marks > 0)
+                    {
+                        _matched += marks;
+                        Count(marks);
+                        index += marks;
+                        continue;
+                    }
+                }
+
+                // --- A unit that may change the scan: a '<', one of an opener, or the one after a terminator's marks ---
+                Unit(TUnit.Read(units[index]));
                 index++;
             }
+        }
+
+        /// <summary>Counts code units skipped within the current run.</summary>
+        /// <param name="units">How many.</param>
+        /// <exception cref="Abstractions.Excel.ImportException">The run exceeds the bound.</exception>
+        private void Count(int units)
+        {
+            _run += (long)units * _width;
+            Bound();
         }
 
         /// <summary>Refuses the part once the current run exceeds the bound.</summary>
@@ -238,66 +466,20 @@ namespace Tellma.Core.Excel
         {
             if (_run > MaxTokenBytes)
             {
-                throw ImportFaults.Malformed(ImportFaults.XmlReason);
-            }
-        }
-
-        /// <summary>Advances the scan by one byte.</summary>
-        /// <param name="b">The byte.</param>
-        private void Scan(byte b)
-        {
-            // --- The encoding, from the first two bytes: a byte order mark, an unmarked UTF-16 '<', else UTF-8 ---
-            if (_width == 0)
-            {
-                if (_first < 0)
-                {
-                    _first = b;
-                    return;
-                }
-
-                (_width, _bigEndian) = (_first, b) switch
-                {
-                    (0xFF, 0xFE) or (0x3C, 0x00) => (2, false),
-                    (0xFE, 0xFF) or (0x00, 0x3C) => (2, true),
-                    _ => (1, false),
-                };
-
-                int held = _first;
-                _first = -1;
-                if (_width == 1)
-                {
-                    Unit(held);
-                    Unit(b);
-                }
-                else
-                {
-                    Unit(_bigEndian ? (held << 8) | b : (b << 8) | held);
-                }
-
-                return;
-            }
-
-            // --- A code unit: one byte in UTF-8, two in UTF-16, the first held across reads ---
-            if (_width == 1)
-            {
-                Unit(b);
-            }
-            else if (_pending < 0)
-            {
-                _pending = b;
-            }
-            else
-            {
-                Unit(_bigEndian ? (_pending << 8) | b : (b << 8) | _pending);
-                _pending = -1;
+                throw Malformed();
             }
         }
 
         /// <summary>Counts one code unit into the current run; a <c>&lt;</c> outside a markup section starts the next.</summary>
         /// <param name="unit">The code unit.</param>
-        /// <exception cref="Abstractions.Excel.ImportException">The run exceeds the bound.</exception>
+        /// <exception cref="Abstractions.Excel.ImportException">The unit is U+0000, or the run exceeds the bound.</exception>
         private void Unit(int unit)
         {
+            if (unit == 0)
+            {
+                throw Malformed();
+            }
+
             _run = Advance(unit) ? _width : _run + _width;
             Bound();
         }
@@ -384,6 +566,72 @@ namespace Tellma.Core.Excel
             {
                 _matched = 0;
             }
+        }
+
+        /// <summary>A UTF-8 byte, its own code unit.</summary>
+        private readonly struct Utf8Unit : ICodeUnit<byte>
+        {
+            /// <inheritdoc />
+            public static int Read(byte unit)
+            {
+                return unit;
+            }
+        }
+
+        /// <summary>A UTF-16 unit read in the machine's byte order.</summary>
+        private readonly struct NativeUtf16Unit : ICodeUnit<char>
+        {
+            /// <inheritdoc />
+            public static int Read(char unit)
+            {
+                return unit;
+            }
+        }
+
+        /// <summary>A UTF-16 unit read in the other byte order.</summary>
+        private readonly struct SwappedUtf16Unit : ICodeUnit<char>
+        {
+            /// <inheritdoc />
+            public static int Read(char unit)
+            {
+                return BinaryPrimitives.ReverseEndianness(unit);
+            }
+        }
+
+        /// <summary>The units that can change the scan, as they are read.</summary>
+        /// <typeparam name="T">The type the units are read as.</typeparam>
+        /// <param name="encode">Writes a code unit as it is read.</param>
+        private sealed class Markup<T>(Func<int, T> encode)
+            where T : IEquatable<T>
+        {
+            /// <summary>The <c>&lt;</c> that starts a run.</summary>
+            public T Open { get; } = encode('<');
+
+            /// <summary>The NUL every part is refused for.</summary>
+            public T Nul { get; } = encode(0);
+
+            /// <summary>A character data section's terminator.</summary>
+            public Section<T> CharacterData { get; } = new(encode, ']', "]]>");
+
+            /// <summary>A comment's terminator.</summary>
+            public Section<T> Comment { get; } = new(encode, '-', "-->");
+
+            /// <summary>A processing instruction's terminator.</summary>
+            public Section<T> Instruction { get; } = new(encode, '?', "?>");
+        }
+
+        /// <summary>A markup section's terminator, as it is read.</summary>
+        /// <typeparam name="T">The type the units are read as.</typeparam>
+        /// <param name="encode">Writes a code unit as it is read.</param>
+        /// <param name="mark">The mark the terminator repeats before its <c>&gt;</c>.</param>
+        /// <param name="terminator">The terminator.</param>
+        private sealed class Section<T>(Func<int, T> encode, char mark, string terminator)
+        {
+            /// <summary>The mark the terminator repeats before its <c>&gt;</c>.</summary>
+            public T Mark { get; } = encode(mark);
+
+            /// <summary>The terminator.</summary>
+            public T[] Terminator { get; } = [.. terminator.Select(unit => encode(unit))];
         }
     }
 }
