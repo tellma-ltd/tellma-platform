@@ -31,10 +31,12 @@ export interface TmPropertyDescriptor extends TmPropertyMetadata {
   readonly contentDir?: 'ltr' | 'rtl';
 }
 
-/** A navigation of an entity, labelled. */
+/** A navigation of an entity, labelled, with who writes its key. */
 export interface TmNavigationDescriptor extends TmNavigationMetadata {
   /** The navigation's label. */
   readonly label: Signal<string>;
+  /** Who writes the navigation's key property, so who may choose its related row; `editable` when the key is unknown. */
+  readonly ownership: TmPropertyMetadata['ownership'];
 }
 
 /** A child collection of an entity, labelled. */

@@ -5,15 +5,20 @@
 ```ts
 
 import * as _angular_core from '@angular/core';
+import { Field } from '@angular/forms/signals';
 import { FieldState } from '@angular/forms/signals';
 import { FieldTree } from '@angular/forms/signals';
+import { FormValueControl } from '@angular/forms/signals';
 import { Injector } from '@angular/core';
 import { InputSignal } from '@angular/core';
 import { InputSignalWithTransform } from '@angular/core';
 import * as lucide from 'lucide';
+import { ModelSignal } from '@angular/core';
+import { OutputEmitterRef } from '@angular/core';
 import { Signal } from '@angular/core';
 import { TemplateRef } from '@angular/core';
 import { Type } from '@angular/core';
+import { ValidationError } from '@angular/forms/signals';
 
 // @public
 export type TmBlobFileCheck = 'ok' | 'size' | 'type';
@@ -51,6 +56,100 @@ export interface TmDroppedKey {
 export type TmDroppedReason = 'unknown' | 'unreachable';
 
 // @public
+export class TmEntityField implements FormValueControl<TmId | null> {
+    readonly ariaDescribedby: InputSignal<string | null>;
+    readonly ariaLabel: InputSignal<string | null>;
+    protected readonly binding: Signal<TmEntityPickerBinding>;
+    protected readonly boundField: Signal<Field<TmId | null> | null>;
+    readonly create: InputSignalWithTransform<boolean, unknown>;
+    readonly dirty: InputSignalWithTransform<boolean, unknown>;
+    readonly disabled: InputSignalWithTransform<boolean, unknown>;
+    readonly entity: InputSignal<string>;
+    readonly errors: InputSignal<readonly ValidationError.WithOptionalFieldTree[]>;
+    readonly filter: InputSignal<string | null>;
+    focus(options?: FocusOptions): void;
+    readonly invalid: InputSignalWithTransform<boolean, unknown>;
+    readonly pending: InputSignalWithTransform<boolean, unknown>;
+    readonly picked: OutputEmitterRef<TmEntityPicked<TmJson, TmId>>;
+    readonly placeholder: InputSignal<string>;
+    readonly readonly: InputSignalWithTransform<boolean, unknown>;
+    readonly required: InputSignalWithTransform<boolean, unknown>;
+    protected readonly searchable: Signal<boolean>;
+    readonly touch: OutputEmitterRef<void>;
+    readonly touched: InputSignalWithTransform<boolean, unknown>;
+    readonly value: ModelSignal<TmId | null>;
+    static ɵcmp: _angular_core.ɵɵComponentDeclaration<TmEntityField, "tm-entity-field", never, { "entity": { "alias": "entity"; "required": true; "isSignal": true; }; "filter": { "alias": "filter"; "required": false; "isSignal": true; }; "create": { "alias": "create"; "required": false; "isSignal": true; }; "value": { "alias": "value"; "required": false; "isSignal": true; }; "disabled": { "alias": "disabled"; "required": false; "isSignal": true; }; "readonly": { "alias": "readonly"; "required": false; "isSignal": true; }; "required": { "alias": "required"; "required": false; "isSignal": true; }; "dirty": { "alias": "dirty"; "required": false; "isSignal": true; }; "invalid": { "alias": "invalid"; "required": false; "isSignal": true; }; "touched": { "alias": "touched"; "required": false; "isSignal": true; }; "pending": { "alias": "pending"; "required": false; "isSignal": true; }; "errors": { "alias": "errors"; "required": false; "isSignal": true; }; "placeholder": { "alias": "placeholder"; "required": false; "isSignal": true; }; "ariaLabel": { "alias": "aria-label"; "required": false; "isSignal": true; }; "ariaDescribedby": { "alias": "aria-describedby"; "required": false; "isSignal": true; }; }, { "value": "valueChange"; "picked": "picked"; "touch": "touch"; }, never, never, true, never>;
+    static ɵfac: _angular_core.ɵɵFactoryDeclaration<TmEntityField, never>;
+}
+
+// @public
+export class TmEntityMultiField implements FormValueControl<readonly TmId[]> {
+    constructor();
+    readonly ariaDescribedby: InputSignal<string | null>;
+    readonly ariaLabel: InputSignal<string | null>;
+    protected readonly binding: Signal<TmEntityPickerBinding>;
+    readonly create: InputSignalWithTransform<boolean, unknown>;
+    readonly dirty: InputSignalWithTransform<boolean, unknown>;
+    readonly disabled: InputSignalWithTransform<boolean, unknown>;
+    readonly entity: InputSignal<string>;
+    readonly errors: InputSignal<readonly ValidationError.WithOptionalFieldTree[]>;
+    readonly filter: InputSignal<string | null>;
+    focus(options?: FocusOptions): void;
+    readonly invalid: InputSignalWithTransform<boolean, unknown>;
+    readonly maxItems: InputSignal<number | undefined>;
+    readonly pending: InputSignalWithTransform<boolean, unknown>;
+    readonly picked: OutputEmitterRef<TmEntityPicked<TmJson, TmId>>;
+    readonly placeholder: InputSignal<string>;
+    readonly readonly: InputSignalWithTransform<boolean, unknown>;
+    readonly removed: OutputEmitterRef<TmId>;
+    readonly required: InputSignalWithTransform<boolean, unknown>;
+    reset(): void;
+    protected readonly searchable: Signal<boolean>;
+    readonly touch: OutputEmitterRef<void>;
+    readonly touched: InputSignalWithTransform<boolean, unknown>;
+    readonly value: ModelSignal<readonly TmId[]>;
+    static ɵcmp: _angular_core.ɵɵComponentDeclaration<TmEntityMultiField, "tm-entity-multi-field", never, { "entity": { "alias": "entity"; "required": true; "isSignal": true; }; "filter": { "alias": "filter"; "required": false; "isSignal": true; }; "create": { "alias": "create"; "required": false; "isSignal": true; }; "value": { "alias": "value"; "required": false; "isSignal": true; }; "maxItems": { "alias": "maxItems"; "required": false; "isSignal": true; }; "disabled": { "alias": "disabled"; "required": false; "isSignal": true; }; "readonly": { "alias": "readonly"; "required": false; "isSignal": true; }; "required": { "alias": "required"; "required": false; "isSignal": true; }; "dirty": { "alias": "dirty"; "required": false; "isSignal": true; }; "invalid": { "alias": "invalid"; "required": false; "isSignal": true; }; "touched": { "alias": "touched"; "required": false; "isSignal": true; }; "pending": { "alias": "pending"; "required": false; "isSignal": true; }; "errors": { "alias": "errors"; "required": false; "isSignal": true; }; "placeholder": { "alias": "placeholder"; "required": false; "isSignal": true; }; "ariaLabel": { "alias": "aria-label"; "required": false; "isSignal": true; }; "ariaDescribedby": { "alias": "aria-describedby"; "required": false; "isSignal": true; }; }, { "value": "valueChange"; "picked": "picked"; "removed": "removed"; "touch": "touch"; }, never, never, true, never>;
+    static ɵfac: _angular_core.ɵɵFactoryDeclaration<TmEntityMultiField, never>;
+}
+
+// @public
+export interface TmEntityPickerBinding {
+    readonly advancedSearch?: TmEntityPickerPage;
+    readonly create?: TmEntityPickerPage;
+    readonly createLabel?: string;
+    readonly displayWith: (id: TmId) => string | null;
+    readonly edit?: TmEntityPickerPage;
+    readonly editLabel?: string;
+    readonly itemDescription?: (item: TmJson) => string | null;
+    readonly itemId: (item: TmJson) => TmId;
+    readonly itemLabel: (item: TmJson) => string;
+    readonly itemLabelParts: (item: TmJson) => readonly string[];
+    readonly search: TmEntitySearchFn<TmJson>;
+}
+
+// @public
+export interface TmEntityPickerContext {
+    readonly entity: string;
+    readonly filter: string | null;
+    readonly kind: 'create' | 'edit' | 'search';
+}
+
+// @public
+export interface TmEntityPickerOptions {
+    readonly create?: boolean;
+    readonly filter?: Signal<string | null>;
+    readonly multiple?: boolean;
+}
+
+// @public
+export class TmEntityPickers {
+    constructor();
+    binding(entity: string, options?: TmEntityPickerOptions): TmEntityPickerBinding;
+    static ɵfac: _angular_core.ɵɵFactoryDeclaration<TmEntityPickers, never>;
+    static ɵprov: _angular_core.ɵɵInjectableDeclaration<TmEntityPickers>;
+}
+
+// @public
 export type TmFilterKind = 'bool' | 'date' | 'enum' | 'instant' | 'navigation' | 'number' | 'text';
 
 // @public
@@ -76,6 +175,21 @@ export interface TmGridColumnOptions {
     readonly editable?: boolean;
     readonly injector?: Injector;
     readonly rows?: 'model' | 'plan';
+}
+
+// @public
+export class TmLazyPickerPage {
+    constructor();
+    protected close(): void;
+    protected readonly closeText: _angular_core.Signal<string>;
+    protected readonly failedText: ReturnType<TmLocalization['ɵtext']>;
+    protected load(): Promise<void>;
+    protected readonly page: _angular_core.WritableSignal<Type<unknown> | null>;
+    protected readonly retryText: ReturnType<TmLocalization['ɵtext']>;
+    protected readonly state: _angular_core.WritableSignal<"failed" | "loading" | "ready" | "unavailable">;
+    protected readonly unavailableText: ReturnType<TmLocalization['ɵtext']>;
+    static ɵcmp: _angular_core.ɵɵComponentDeclaration<TmLazyPickerPage, "tm-lazy-picker-page", never, {}, {}, never, never, true, never>;
+    static ɵfac: _angular_core.ɵɵFactoryDeclaration<TmLazyPickerPage, never>;
 }
 
 // @public
@@ -142,6 +256,8 @@ export class TmValueEditor {
     protected readonly fieldState: _angular_core.Signal<FieldState<unknown, number | string>>;
     protected readonly fileHref: _angular_core.Signal<string | null>;
     protected readonly fileLabel: _angular_core.Signal<string | null>;
+    protected readonly idField: _angular_core.Signal<FieldTree<TmId | null>>;
+    protected readonly idsField: _angular_core.Signal<FieldTree<readonly TmId[]>>;
     protected readonly kind: _angular_core.Signal<TmEditorKind>;
     protected readonly maxLength: _angular_core.Signal<number | null>;
     protected readonly numberField: _angular_core.Signal<FieldTree<number | null>>;
@@ -162,6 +278,7 @@ export class TmValueEditor {
     protected readonly retryLabel: _angular_core.Signal<string>;
     protected readonly scale: _angular_core.Signal<number>;
     protected setExact(text: string): void;
+    protected readonly target: _angular_core.Signal<string>;
     protected readonly textField: _angular_core.Signal<FieldTree<string>>;
     protected readonly uploading: _angular_core.WritableSignal<boolean>;
     protected readonly writable: _angular_core.Signal<boolean>;

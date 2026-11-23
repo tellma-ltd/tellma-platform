@@ -6,9 +6,10 @@
 import type { TmStringTree } from '@tellma/core';
 
 // The English strings only this entry point reads. They register with
-// `TmLocalization` when `TmFormats` is first created, so they ship here
-// rather than in the primary's English table; a locale pack's table holds
-// their translations under the same keys.
+// `TmLocalization` when the service that reads them is first created
+// (`TmFormats` for `tm.value`, `TmEntityPickers` for `tm.picker`), so they
+// ship here rather than in the primary's English table; a locale pack's
+// table holds their translations under the same keys.
 
 /**
  * The typed values' English strings, under `tm.value`. Internal: the
@@ -23,4 +24,14 @@ export const ɵTM_VALUE_STRINGS_EN = {
   fileTooLarge: 'This file is too large. The limit is {max}.',
   fileType: "This type of file isn't accepted.",
   uploadFailed: 'Upload failed',
+} as const satisfies TmStringTree;
+
+/**
+ * The entity pickers' English strings, under `tm.picker`. Internal: the
+ * entry point registers them.
+ */
+export const ɵTM_PICKER_STRINGS_EN = {
+  newLabel: '{label}…',
+  unavailable: "This page isn't available yet.",
+  loadFailed: "This page couldn't be loaded.",
 } as const satisfies TmStringTree;

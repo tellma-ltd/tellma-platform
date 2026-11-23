@@ -1118,6 +1118,7 @@ export interface TmNavEntry {
 // @public
 export interface TmNavigationDescriptor extends TmNavigationMetadata {
     readonly label: Signal<string>;
+    readonly ownership: TmPropertyMetadata['ownership'];
 }
 
 // @public

@@ -11,7 +11,7 @@ own.
 | `@tellma/core/shell` | The tenant shell, the tenant picker and the signed-out page, which the derived routes load; until their owners arrive they are plain stand-ins, beside one placeholder page for the platform's page families | eager, through `import()` |
 | `@tellma/core/memory` | The tab's memory of its pages: page state (`TmPageState`, `tmPageStateKey`), drafts (`TmDrafts`) and tree expansion (`TmTreeExpansion`), which the page hosts load with them | lazy |
 | `@tellma/core/recents` | The recently visited pages (`TmRecents`), which the launcher and the home page list; the app loads it with `import()` after its first render, when visits start to count | lazy, through `import()` after first render |
-| `@tellma/core/entity` | What the search and details pages share over the entity model: select plans (`tmSelectPlan`), which turn column keys into one query's terms and type its rows; value formats (`TmFormats`); the typed value in view mode (`tm-value`) and in edit mode (`tm-value-editor`), with a form's uploads (`TmUploads`); a plan column's grid column (`tmGridColumnFor`); and the client check of a picked file against its blob kind (`tmCheckBlobFile`) | lazy, with the page families |
+| `@tellma/core/entity` | What the search and details pages share over the entity model: select plans (`tmSelectPlan`), which turn column keys into one query's terms and type its rows; value formats (`TmFormats`); the typed value in view mode (`tm-value`) and in edit mode (`tm-value-editor`), with a form's uploads (`TmUploads`); a plan column's grid column (`tmGridColumnFor`); the entity picker binding (`TmEntityPickers`), the entity fields over it (`tm-entity-field`, `tm-entity-multi-field`) and the page their pickers open (`TmLazyPickerPage`); and the client check of a picked file against its blob kind (`tmCheckBlobFile`) | lazy, with the page families |
 | `@tellma/core/leader` | The leader election of the routed tenant over a Web Lock, and the leader tab's work: its realtime connection, the relay of hub events, the leader documents' reads and the polls of degraded mode; the app loads it with `import()` after its first render, and `TmLeader` reports what it decides | lazy, through `import()` after first render |
 | `@tellma/core/config-check` | `tmCheckAppConfig`, the check of an app's configuration against the client metadata, which the build runs in Node and a development app at startup, and `tmCheckEntityDeclaration`, the check of one entity declaration against the Entities chunk | lazy |
 | `@tellma/core/search-normalize` | `tmSearchNormalize`, the one text folding the launcher, the shortcuts filter, the field tree and the reports list match with | with the code that imports it |
@@ -529,15 +529,62 @@ Signal Forms field: text, a textarea beyond 255 characters, numbers (decimals an
 exact text; text that reads as no number, or as more digits than a number holds, keeps the
 field's value and holds the field invalid, so a form's save waits), a checkbox, a date picker, a select per enum, and the image and file pickers, which
 check the file against its kind, crop a cover-square image to its square, and upload as soon as
-it is picked. A value the server owns, an instant, a related row and a type with no control show
-read-only; a write-once value edits only while the record is created. A form that provides
-`TmUploads` sees every upload in flight, to hold its save until they settle.
+it is picked. A related row, by its navigation or a value that names a target, takes the entity
+field, and a list of them the entity list field. A value the server owns (a navigation carries its
+key's ownership), an instant and a type with no control show read-only; a write-once value edits
+only while the record is created. A form that provides `TmUploads` sees every upload in flight, to
+hold its save until they settle.
 
 `tmGridColumnFor(column)` makes the grid column of a plan's column: a search grid's reads the
 plan's rows by column key and sorts when the column orders; a form's child grid (`editable`)
 reads the model's rows by their JSON names and edits only the root values the user writes. A
 multilingual group there edits the active language's slot, so a host that makes the config in a
-computed follows a language switch.
+computed follows a language switch. A root navigation there edits its key through the target's
+picker binding with the column's filter: the cell shows the display name, its prefix and name
+each in its own isolate, and a paste resolves its names in one query.
+
+### Entity pickers
+
+`TmEntityPickers.binding(entity, options)` turns `@tellma/core-ui`'s entity picker into a picker
+of an entity: every member binds to the picker's input of the same name, or to a grid entity
+column's.
+
+- **Search.** It reads `{segment}/query` 20 rows at a time (with one more to know whether there
+  are more): the key, the display name's and the description's columns, the text without bidi
+  controls, trimmed and capped at the entity's longest search, the declared picker filter and the
+  field's as separate leaves, ordered by the declared order or the display name. A cacheable
+  entity with no filter searches its cached list instead, at once and offline: its active rows
+  whose display name, natural keys or searchable columns contain the folded text, or that the
+  findable rule finds (`1101 - Cash`, an integer source or prefix in any digits, `#7`, or the id),
+  by display name. While the list is absent, the server answers.
+- **Rows.** `itemLabel` is the display name, `itemLabelParts` its prefix and name apart, and
+  `itemDescription` the second line: the declared description paths, else the natural keys the
+  name does not show and a tree's parent. A target with nothing to describe shows one line.
+  `displayWith` names a chosen id and reads an unknown one.
+- **Pages.** Advanced search is offered when the user may query the entity; Create and Edit when
+  they may save it and it has a details page, Create unless turned off (by the options or the
+  declaration's `picker.create`), Edit only to a single picker. Each opens `TmLazyPickerPage`,
+  which loads the search page's or the details page's picker mode inside the modal, with
+  `{ entity, filter, kind }` as its context. Until those pages ship it says the page is not
+  available.
+
+```ts
+readonly parent = inject(TmEntityPickers).binding('gl.Center', { filter: signal("CenterType = 'Abstract'") });
+```
+
+Forms rarely bind it by hand: `tm-entity-field` and `tm-entity-multi-field` are Signal Forms value
+controls over the picker and the multi-picker, which `tm-form-field` labels and describes as it
+does the bare picker. Bound to a form field, the entity field's text that names no row holds the
+field invalid; a required entity list field holds an empty list invalid, which Signal Forms'
+`required()` does not. Where the user may not query the entity, either field is read-only with
+its rows' names. `@tellma/core-testing` has `TmEntityFieldHarness` and
+`TmEntityMultiFieldHarness`.
+
+```html
+<tm-form-field label="Parent">
+  <tm-entity-field entity="gl.Center" [formField]="form.parentId" filter="CenterType = 'Abstract'" />
+</tm-form-field>
+```
 
 ### Strings of a lazy entry point
 
@@ -553,8 +600,8 @@ inject(TmLocalization).ɵregisterStrings('value', { none: '—', fileTooLarge: '
 The strings merge into the English translation, so they format through the same ICU interpreter,
 and a language's table that holds the same keys (a locale pack's `tm.value`) wins, English being
 the fallback. A scope registers once and belongs to one entry point. `@tellma/core/entity`
-registers `tm.value` when `TmFormats` is first created; the entity picker's, the filters' and the
-expression editor's strings follow the same seam. The seam itself costs the primary one method
+registers `tm.value` when `TmFormats` is first created, and `tm.picker` when `TmEntityPickers` is;
+the filters' and the expression editor's strings follow the same seam. The seam itself costs the primary one method
 and a set of the scopes registered.
 
 ## Decimals

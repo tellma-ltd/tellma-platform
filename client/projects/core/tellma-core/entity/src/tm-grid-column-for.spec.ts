@@ -81,14 +81,37 @@ describe('tmGridColumnFor', () => {
     expect(gridColumn('acme.Customer', 'IsActive')).toMatchObject({ type: 'boolean', readonly: true });
   });
 
-  it('keeps server-owned values, instants and navigations read-only in a child grid', async () => {
+  it('keeps server-owned values and instants read-only in a child grid', async () => {
     await tmEntityRig({ ...SYSTEM, languages: 2 });
     expect(gridColumn('acme.Customer', 'IsActive', { editable: true }).readonly).toBe(true);
     expect(gridColumn('acme.Customer', 'CreatedAt', { editable: true })).toMatchObject({ type: 'text', readonly: true });
+    expect(gridColumn('acme.Customer', 'Code', { editable: false }).readonly).toBe(true);
+  });
+
+  it('picks a navigation’s related row in a child grid through the binding, under its key’s JSON name', async () => {
+    const rig = await tmEntityRig({ ...SYSTEM, languages: 2 });
+    rig.names.remember('acme.Currency', [{ id: 3, code: 'SAR' }]);
     const currency = gridColumn('acme.Customer', 'Currency', { editable: true });
+    expect(currency).toMatchObject({ key: 'currencyId', type: 'entity', readonly: false, width: 200 });
+    expect([typeof currency.search, typeof currency.itemLabel, typeof currency.resolvePastedLabels]).toEqual(['function', 'function', 'function']);
+    expect(currency.format!(3, {})).toBe('SAR');
+    expect(currency.formatParts!(3, {})).toEqual(['SAR']);
+    expect([currency.format!(null, {}), currency.formatParts!(null, {})]).toEqual(['', null]);
+  });
+
+  it('keeps a navigation read-only in a child grid when the server writes its key or the user may not search its target', async () => {
+    await tmEntityRig({ ...SYSTEM });
+    expect(gridColumn('acme.Customer', 'CreatedBy', { editable: true })).toMatchObject({ type: 'entity', readonly: true });
+    TestBed.resetTestingModule();
+    await tmEntityRig({ access: { securables: [{ resource: 'acme.Customer', action: 'Read', hasFilter: false }] } });
+    expect(gridColumn('acme.Customer', 'Currency', { editable: true })).toMatchObject({ type: 'entity', readonly: true });
+  });
+
+  it('shows a navigation read-only in a form’s grid that does not edit', async () => {
+    await tmEntityRig(SYSTEM);
+    const currency = gridColumn('acme.Customer', 'Currency', { rows: 'model' });
     expect(currency).toMatchObject({ type: 'text', readonly: true });
     expect(currency.value!({ currencyId: 3, currency: { id: 3 } })).toBe(3);
-    expect(gridColumn('acme.Customer', 'Code', { editable: false }).readonly).toBe(true);
   });
 
   it('edits a write-once value in a new row only', async () => {

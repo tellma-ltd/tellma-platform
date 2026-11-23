@@ -235,5 +235,140 @@
       "navigation": null,
       "columns": ["Id"]
     }
+  ],
+  "findable": [
+    {
+      "name": "a pasted prefix and name find the row by both halves",
+      "rule": { "key": "Id", "twins": ["Name", "Name2", "Name3"], "prefix": "Code" },
+      "shape": "PrimaryAndSecondary",
+      "rows": [
+        { "id": 7, "code": "1101", "name": "Cash", "name2": "النقد" },
+        { "id": 11, "code": "1101", "name": "Cash float" },
+        { "id": 12, "code": "1102", "name": "Cash" }
+      ],
+      "text": "1101 - Cash",
+      "search": [7, 11],
+      "paste": [7]
+    },
+    {
+      "name": "the split matches the name in any admitted slot",
+      "rule": { "key": "Id", "twins": ["Name", "Name2", "Name3"], "prefix": "Code" },
+      "shape": "PrimaryAndSecondary",
+      "rows": [
+        { "id": 7, "code": "1101", "name": "Cash", "name2": "النقد" },
+        { "id": 12, "code": "1102", "name": "Cash", "name2": "النقد" }
+      ],
+      "text": "1101 - النقد",
+      "search": [7],
+      "paste": [7]
+    },
+    {
+      "name": "a name holding the separator splits at the first one",
+      "rule": { "key": "Id", "twins": ["Name", "Name2", "Name3"], "prefix": "Code" },
+      "shape": "Primary",
+      "rows": [
+        { "id": 8, "code": "A1", "name": "Rent - Office" },
+        { "id": 13, "code": "A1", "name": "Rent" },
+        { "id": 14, "code": "Rent", "name": "Office" }
+      ],
+      "text": "A1 - Rent - Office",
+      "search": [8],
+      "paste": [8]
+    },
+    {
+      "name": "a name holding the separator pasted alone also splits",
+      "rule": { "key": "Id", "twins": ["Name", "Name2", "Name3"], "prefix": "Code" },
+      "shape": "Primary",
+      "rows": [
+        { "id": 8, "code": "A1", "name": "Rent - Office" },
+        { "id": 13, "code": "A1", "name": "Rent" },
+        { "id": 14, "code": "Rent", "name": "Office" }
+      ],
+      "text": "Rent - Office",
+      "search": [14],
+      "paste": [8, 14]
+    },
+    {
+      "name": "an integer source equals the text, and a search the bare id too",
+      "rule": { "key": "Id", "source": "SerialNumber", "sourceType": "integer" },
+      "shape": "Primary",
+      "rows": [
+        { "id": 1, "serialNumber": 42 },
+        { "id": 42, "serialNumber": 7 },
+        { "id": 3, "serialNumber": 420 }
+      ],
+      "text": "42",
+      "search": [1, 42],
+      "paste": [1]
+    },
+    {
+      "name": "native digits read as Latin for an integer source, never for the id",
+      "rule": { "key": "Id", "source": "SerialNumber", "sourceType": "integer" },
+      "shape": "Primary",
+      "rows": [
+        { "id": 1, "serialNumber": 42 },
+        { "id": 42, "serialNumber": 7 }
+      ],
+      "text": "٤٢",
+      "search": [1],
+      "paste": [1]
+    },
+    {
+      "name": "an integer prefix equals the left half, native digits read as Latin",
+      "rule": { "key": "Id", "twins": ["Name", "Name2", "Name3"], "prefix": "Number", "prefixType": "integer" },
+      "shape": "Primary",
+      "rows": [
+        { "id": 5, "number": 1101, "name": "Cash" },
+        { "id": 6, "number": 1102, "name": "Cash" }
+      ],
+      "text": "١١٠١ - Cash",
+      "search": [5],
+      "paste": [5]
+    },
+    {
+      "name": "the hash and the id find the row by its key",
+      "rule": { "key": "Id", "twins": ["Name", "Name2", "Name3"], "prefix": "Code" },
+      "shape": "Primary",
+      "rows": [
+        { "id": 7, "code": "1101", "name": "Cash" },
+        { "id": 17, "code": "1117", "name": "Seven" }
+      ],
+      "text": "#7",
+      "search": [7],
+      "paste": [7]
+    },
+    {
+      "name": "a bare id is searched, never pasted",
+      "rule": { "key": "Id", "twins": ["Name", "Name2", "Name3"], "prefix": "Code" },
+      "shape": "Primary",
+      "rows": [
+        { "id": 7, "code": "1101", "name": "Cash" },
+        { "id": 17, "code": "1117", "name": "Seven" }
+      ],
+      "text": "7",
+      "search": [7],
+      "paste": []
+    },
+    {
+      "name": "a pasted name ignores case, never accents",
+      "rule": { "key": "Id", "twins": ["Name", "Name2", "Name3"], "prefix": "Code" },
+      "shape": "Primary",
+      "rows": [
+        { "id": 21, "code": "C1", "name": "Café" },
+        { "id": 22, "code": "C2", "name": "Cafe" }
+      ],
+      "text": "CAFÉ",
+      "search": [],
+      "paste": [21]
+    },
+    {
+      "name": "a date source is never findable",
+      "rule": { "key": "Id", "source": "PostedOn", "sourceType": "date" },
+      "shape": "Primary",
+      "rows": [{ "id": 2, "postedOn": "2026-03-01" }],
+      "text": "2026-03-01",
+      "search": [],
+      "paste": []
+    }
   ]
 }

@@ -13,6 +13,7 @@
 
 export { provideTellmaTesting } from './src/provide-tellma-testing';
 export { provideTellmaStateTesting } from './src/provide-tellma-state-testing';
+export { TmEntityFieldHarness, TmEntityMultiFieldHarness } from './src/tm-entity-field-harness';
 export { TmFakeApi, type TmFakeApiCall, type TmFakeApiCallKind, type TmFakeApiResponder } from './src/tm-fake-api';
 export { TmFakeLocks } from './src/tm-fake-locks';
 export { TmFakeSession, tmTestProfile } from './src/tm-fake-session';
