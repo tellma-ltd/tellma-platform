@@ -384,6 +384,12 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-242 (orchestrator, 2026-11-22): PC-F74 lands before PC-189
+
+- PC-189's integration run 45094742817 on 0e1aed83 was cancelled. build-test (windows-latest) hit its 30-minute limit with Tellma.Core.AspNetCore.Tests unfinished, and no test failed. This is the PC-F74 defect, not PC-189's.
+- Re-running would be a retry (D-011), and PC-189 cannot go green until the fix is on platform-core. So the release order changes: PC-F74 integrates straight after its review 1 fixes, without holding. Then PC-189 merges platform-core again and pushes a new integrate commit.
+- PC-106, PC-176 and PC-108 follow, in that order.
+
 ### D-241 (orchestrator, 2026-11-22): PC-F74 root cause and the sealed-endpoints behaviour change
 
 - PC-F74 found the cause of the Windows timeout. Minimal-API endpoint data sources rebuild every endpoint on each read (about 1 s), and each test host read them five times, about 5 s per host. This matches PC-189's observation that a cold host spends up to 5 s in UseRouting.
