@@ -384,6 +384,20 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-256 (orchestrator, 2026-11-23): PC-B05 starts late, in PC-F76's slot
+
+- Phase 5 (PC-085…PC-102) has been all done since PC-095 landed, and the §6.3 gate passes (R about 26, F about 9). PROCESS §5.2 says to start its batch review then, but I did not queue it. Ahmad's question surfaced the miss.
+- Ruling: PC-B05 takes pc-2, freed by PC-F76's landing; no Tier 1 item is ready (D-229).
+  - Finders run on Fable (meter 3%); the Opus fixer integrates per the §13 template.
+  - Its integration joins the D-087 queue as the fixer finds it, by re-merging if platform-core moved (§4.3).
+- PC-B06 is due when Phase 6 completes. PC-110, PC-119 and the other Phase 6 checkpoints are still open, so I check for it after every Phase 6 landing.
+
+### D-255 (Ahmad, 2026-11-23): held items keep their slots
+
+- At 21:22 UTC, weekly usage was 74% with 22.6 h to the reset: about 1.45 pts/h since D-178, while the rest needs about 1.15 pts/h.
+- Three slots held items in the D-087 release queue (PC-119, PC-F78, PC-177), leaving two agents working.
+- I offered to start T3 fills in those slots, with the held items integrating from whichever slot is free at release. Ahmad: keep as is. Held items keep their slots until they land.
+
 ### D-254 (orchestrator, 2026-11-23): PC-115 lands with two lazy chunks of the primary
 
 - PC-115 integrated under D-252. Merged, "." measured 50.09 KB; its two lazy moves brought it to 49.40, against a ceiling of 49.5 (D-031). It landed at 4231428e.
