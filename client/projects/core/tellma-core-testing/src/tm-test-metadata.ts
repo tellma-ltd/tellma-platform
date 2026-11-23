@@ -256,6 +256,7 @@ export function tmTestEntitiesChunk(patch: Partial<TmEntitiesChunk> = {}): TmEnt
         relatedSelect: [],
         defaultOrderBy: 'Id desc',
         searchable: ['Name'],
+        prefixSearchable: [],
         naturalKeys: [],
         extras: [],
         limits: {

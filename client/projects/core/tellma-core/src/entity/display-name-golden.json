@@ -316,7 +316,12 @@
     },
     {
       "name": "an integer prefix equals the left half, native digits read as Latin",
-      "rule": { "key": "Id", "twins": ["Name", "Name2", "Name3"], "prefix": "Number", "prefixType": "integer" },
+      "rule": {
+        "key": "Id",
+        "twins": ["Name", "Name2", "Name3"],
+        "prefix": "Number",
+        "prefixType": "integer"
+      },
       "shape": "Primary",
       "rows": [
         { "id": 5, "number": 1101, "name": "Cash" },
@@ -370,6 +375,92 @@
       "text": "2026-03-01",
       "search": [],
       "paste": []
+    }
+  ],
+  "searchTextColumns": "found: the ids the text columns' match of a search finds, on the server and in the client's cached search alike: each searchable column, display-name slot and text prefix from its start when it is prefix-searchable, and anywhere in it otherwise; the findable branches are in no row's column.",
+  "searchText": [
+    {
+      "name": "a prefix-searchable code matches from its start",
+      "rule": { "key": "Id", "twins": ["Name", "Name2", "Name3"], "prefix": "Code" },
+      "searchable": { "Code": "Prefix", "Name": "Contains" },
+      "shape": "Primary",
+      "rows": [
+        { "id": 1, "code": "USD", "name": "US Dollar", "name2": "دولار أمريكي" },
+        { "id": 2, "code": "SAR", "name": "Saudi Riyal", "name2": "ريال سعودي" },
+        { "id": 3, "code": "SDG", "name": "Sudanese Pound", "name2": "جنيه سوداني" }
+      ],
+      "text": "sd",
+      "found": [3]
+    },
+    {
+      "name": "a prefix-searchable code is no match inside it",
+      "rule": { "key": "Id", "twins": ["Name", "Name2", "Name3"], "prefix": "Code" },
+      "searchable": { "Code": "Prefix", "Name": "Contains" },
+      "shape": "Primary",
+      "rows": [
+        { "id": 1, "code": "USD", "name": "US Dollar", "name2": "دولار أمريكي" },
+        { "id": 2, "code": "SAR", "name": "Saudi Riyal", "name2": "ريال سعودي" },
+        { "id": 3, "code": "SDG", "name": "Sudanese Pound", "name2": "جنيه سوداني" }
+      ],
+      "text": "dg",
+      "found": []
+    },
+    {
+      "name": "a searchable name matches anywhere in it",
+      "rule": { "key": "Id", "twins": ["Name", "Name2", "Name3"], "prefix": "Code" },
+      "searchable": { "Code": "Prefix", "Name": "Contains" },
+      "shape": "Primary",
+      "rows": [
+        { "id": 1, "code": "USD", "name": "US Dollar", "name2": "دولار أمريكي" },
+        { "id": 2, "code": "SAR", "name": "Saudi Riyal", "name2": "ريال سعودي" },
+        { "id": 3, "code": "SDG", "name": "Sudanese Pound", "name2": "جنيه سوداني" }
+      ],
+      "text": "riyal",
+      "found": [2]
+    },
+    {
+      "name": "a second-language slot matches anywhere beside a prefix-searchable code",
+      "rule": { "key": "Id", "twins": ["Name", "Name2", "Name3"], "prefix": "Code" },
+      "searchable": { "Code": "Prefix", "Name": "Contains" },
+      "shape": "PrimaryAndSecondary",
+      "rows": [
+        { "id": 1, "code": "USD", "name": "US Dollar", "name2": "دولار أمريكي" },
+        { "id": 2, "code": "SAR", "name": "Saudi Riyal", "name2": "ريال سعودي" },
+        { "id": 3, "code": "SDG", "name": "Sudanese Pound", "name2": "جنيه سوداني" }
+      ],
+      "text": "أمريكي",
+      "found": [1]
+    },
+    {
+      "name": "a slot the shape does not admit is no match",
+      "rule": { "key": "Id", "twins": ["Name", "Name2", "Name3"], "prefix": "Code" },
+      "searchable": { "Code": "Prefix", "Name": "Contains" },
+      "shape": "Primary",
+      "rows": [
+        { "id": 1, "code": "USD", "name": "US Dollar", "name2": "دولار أمريكي" },
+        { "id": 2, "code": "SAR", "name": "Saudi Riyal", "name2": "ريال سعودي" },
+        { "id": 3, "code": "SDG", "name": "Sudanese Pound", "name2": "جنيه سوداني" }
+      ],
+      "text": "سعودي",
+      "found": []
+    },
+    {
+      "name": "a code searched by the convention matches anywhere in it",
+      "rule": { "key": "Id", "twins": ["Name", "Name2", "Name3"], "prefix": "Code" },
+      "searchable": {
+        "Name": "Contains",
+        "Name2": "Contains",
+        "Name3": "Contains",
+        "Code": "Contains"
+      },
+      "shape": "Primary",
+      "rows": [
+        { "id": 1, "code": "USD", "name": "US Dollar", "name2": "دولار أمريكي" },
+        { "id": 2, "code": "SAR", "name": "Saudi Riyal", "name2": "ريال سعودي" },
+        { "id": 3, "code": "SDG", "name": "Sudanese Pound", "name2": "جنيه سوداني" }
+      ],
+      "text": "sd",
+      "found": [1, 3]
     }
   ]
 }

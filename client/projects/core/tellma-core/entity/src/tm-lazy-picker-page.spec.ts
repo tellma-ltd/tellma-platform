@@ -203,6 +203,16 @@ describe('TmLazyPickerPage', () => {
     expect(loads).toEqual(['search', 'details', 'details']);
   });
 
+  it('loads the later provider’s half where two provide the same one, the other half kept', async () => {
+    const loads: string[] = [];
+    const { root } = await openSearch([
+      { search: stubFamily(loads, 'first search'), details: stubFamily(loads, 'details') },
+      { search: stubFamily(loads, 'second search') },
+    ]);
+    expect(loads).toEqual(['second search']);
+    expect(await (await root.getHarness(TmModalHarness)).getBodyText()).toContain('acme.Customer search');
+  });
+
   it('offers a retry when the page fails to load, and reports a dismissed page', async () => {
     let attempts = 0;
     const { rig, root, fixture } = await openSearch([

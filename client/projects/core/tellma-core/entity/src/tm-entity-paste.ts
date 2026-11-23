@@ -17,9 +17,10 @@ import { ɵtmFindable, ɵtmIntegerOf, ɵtmTextMatches, ɵTM_SEPARATOR, type ɵTm
 /**
  * The server's Queryex ceilings a paste's filter leaf is sized against: the
  * ones the query pipeline compiles every filter under (the server's
- * `QueryexProfiles.PipelineLimits`, over `QueryexLimits.Default`). The
- * filter's length is the entity's own ceiling, which the metadata sends.
- * Internal: the paste resolver reads it, and its tests.
+ * `QueryexProfiles.PipelineLimits`, over `QueryexLimits.Default`), and the
+ * longest number its lexer reads. The filter's length is the entity's own
+ * ceiling, which the metadata sends. Internal: the paste resolver reads it,
+ * and its tests.
  */
 export const ɵTM_PIPELINE_LIMITS = {
   /** The most items in one comma-separated list, such as an `in` list (`MaxListItems`). */
@@ -30,6 +31,8 @@ export const ɵTM_PIPELINE_LIMITS = {
   maxTokens: 4096,
   /** The deepest nesting of a parsed expression, a connective chain counting toward it (`MaxSyntaxDepth`). */
   maxSyntaxDepth: 64,
+  /** The most significant digits a number literal may have; the lexer refuses a longer one (the server's `Lexer`). */
+  maxNumberDigits: 38,
 } as const;
 
 /**
@@ -41,6 +44,15 @@ export const ɵTM_PIPELINE_LIMITS = {
  * whatever the labels, so its depth stays far below the depth ceiling.
  */
 const LITERALS = Math.min(ɵTM_PIPELINE_LIMITS.maxListItems, ɵTM_PIPELINE_LIMITS.maxParameters / 2);
+
+/**
+ * The most reads one paste keeps in flight. The server admits a tenant's
+ * requests through a concurrency limiter of 64 permits that queues none, a
+ * request beyond them refused at once (429); four overlap a large paste's
+ * reads while leaving the tenant's other requests, and its other users',
+ * nearly all the permits.
+ */
+const READS = 4;
 
 /** A paste's filter leaf and the literals it writes. */
 interface TmPasteLeaf {
@@ -90,6 +102,20 @@ export function ɵtmPasteMatch(plan: ɵTmFindablePlan, text: string, locale: str
 }
 
 /**
+ * The digits of an integer label as a Queryex number literal: the integer
+ * the text reads, or `null` when it reads none or more digits than the
+ * server's lexer accepts, which no integer column holds either.
+ *
+ * @param text - The text.
+ * @param native - Whether Arabic-Indic digits read as Latin ones.
+ * @returns The literal, or `null`.
+ */
+function integerLiteral(text: string, native: boolean): string | null {
+  const digits = ɵtmIntegerOf(text, native);
+  return digits !== null && digits.replace('-', '').length <= ɵTM_PIPELINE_LIMITS.maxNumberDigits ? digits : null;
+}
+
+/**
  * A Queryex string literal: the text in single quotes, a quote written
  * twice.
  *
@@ -107,8 +133,9 @@ function quote(text: string): string {
  * holding the separator as one term, the prefix `in` their left halves and
  * the name `in` their right ones. The split term finds a superset of its
  * labels' rows, which the exact match narrows; one term keeps the leaf's
- * depth the same however many labels it holds. Internal: the paste
- * resolver writes it, and its tests read it.
+ * depth the same however many labels it holds. A number longer than the
+ * server's lexer reads is left out, as no integer column can hold it.
+ * Internal: the paste resolver writes it, and its tests read it.
  *
  * @param plan - What the rule reads of the entity.
  * @param texts - The labels, without bidi controls and trimmed.
@@ -122,8 +149,8 @@ export function ɵtmPasteLeaf(plan: ɵTmFindablePlan, texts: readonly string[]):
     return `(${[...items].join(', ')})`;
   };
   const strings = new Set(texts.map(quote));
-  const numbers = new Set(texts.map((text) => ɵtmIntegerOf(text, true)).filter((text) => text !== null));
-  const ids = new Set(texts.filter((text) => text.startsWith('#')).map((text) => ɵtmIntegerOf(text.slice(1), false)).filter((id) => id !== null));
+  const numbers = new Set(texts.map((text) => integerLiteral(text, true)).filter((text) => text !== null));
+  const ids = new Set(texts.filter((text) => text.startsWith('#')).map((text) => integerLiteral(text.slice(1), false)).filter((id) => id !== null));
   const textSlots = plan.slots.filter((slot) => slot.type === 'string');
   const source = plan.slots[0];
   const prefix = plan.prefix;
@@ -152,7 +179,7 @@ export function ɵtmPasteLeaf(plan: ɵTmFindablePlan, texts: readonly string[]):
     for (const text of texts) {
       const at = text.indexOf(ɵTM_SEPARATOR);
       const left = at < 0 ? '' : text.slice(0, at).trim();
-      const side = left === '' ? null : prefix.type === 'integer' ? ɵtmIntegerOf(left, true) : prefix.type === 'string' ? quote(left) : null;
+      const side = left === '' ? null : prefix.type === 'integer' ? integerLiteral(left, true) : prefix.type === 'string' ? quote(left) : null;
       if (side !== null) {
         lefts.add(side);
         rights.add(quote(text.slice(at + ɵTM_SEPARATOR.length).trim()));
@@ -170,10 +197,10 @@ export function ɵtmPasteLeaf(plan: ɵTmFindablePlan, texts: readonly string[]):
 /**
  * The labels in groups whose leaf fits: within the room its length has
  * beside the other leaves, and within the literals the server's ceilings
- * allow one filter. A label too long for a leaf of its own goes alone.
+ * allow one filter.
  *
  * @param plan - What the rule reads of the entity.
- * @param texts - The distinct labels, without bidi controls and trimmed.
+ * @param texts - The distinct labels, without bidi controls and trimmed, each fitting a leaf alone.
  * @param room - The longest the leaf may be.
  * @returns The groups, in the labels' order.
  */
@@ -197,14 +224,51 @@ function groupsOf(plan: ɵTmFindablePlan, texts: readonly string[], room: number
 }
 
 /**
+ * A pool that runs at most a number of tasks at once, the others waiting
+ * their turn in order.
+ *
+ * @param size - The most tasks running at once.
+ * @returns Runs a task in the pool.
+ */
+function pool(size: number): <T>(task: () => Promise<T>) => Promise<T> {
+  let running = 0;
+  const waiting: (() => void)[] = [];
+  return async <T>(task: () => Promise<T>): Promise<T> => {
+    if (running < size) {
+      running++;
+    } else {
+      await new Promise<void>((resolve) => waiting.push(resolve));
+    }
+    try {
+      return await task();
+    } finally {
+      // The slot passes straight to the next task waiting, so no newcomer takes it in between.
+      const next = waiting.shift();
+      if (next === undefined) {
+        running--;
+      } else {
+        next();
+      }
+    }
+  };
+}
+
+/**
  * Resolves pasted labels with as few reads as the server's filter limits
- * allow: one, unless the labels are too many for one filter. A label one
- * row matches exactly resolves to that row's key; none is `notFound`, and
- * several `ambiguous`. Internal: `TmEntityPickers` calls it on a paste.
+ * allow: one, unless the labels are too many for one filter, and a few at
+ * once. A label one row matches exactly resolves to that row's key; none
+ * is `notFound`, and several `ambiguous`. A label no filter can carry is
+ * `notFound` with no read. The labels of a read that fails are
+ * `resolutionFailed`, which a paste again retries, while the other reads'
+ * labels resolve. A full page may stop short of a label's rows, so it
+ * decides only the labels it shows ambiguous; the others are read again in
+ * halves, and a lone label whose own page is full is `ambiguous`. Internal:
+ * `TmEntityPickers` calls it on a paste.
  *
  * @param plan - What the rule reads of the entity.
  * @param labels - The pasted labels.
  * @param room - The longest a group's leaf may be beside the other leaves.
+ * @param take - The most rows a read returns, a full page holding this many.
  * @param locale - The locale whose collation compares text.
  * @param read - Reads the rows a leaf finds, beside the other leaves.
  * @returns Each label's resolution.
@@ -213,6 +277,7 @@ export async function ɵtmResolveLabels(
   plan: ɵTmFindablePlan,
   labels: readonly string[],
   room: number,
+  take: number,
   locale: string,
   read: (leaf: string) => Promise<readonly TmJsonObject[]>,
 ): Promise<ReadonlyMap<string, TmLabelResolution<TmId>>> {
@@ -227,13 +292,36 @@ export async function ɵtmResolveLabels(
       texts.set(text, [...(texts.get(text) ?? []), label]);
     }
   }
+  const decide = (text: string, resolution: TmLabelResolution<TmId>): void => {
+    for (const label of texts.get(text)!) {
+      resolutions.set(label, resolution);
+    }
+  };
 
-  // --- One read per group; each text keeps the rows it alone matches ---
-  const reads = groupsOf(plan, [...texts.keys()], room).map(async (group) => {
-    const leaf = ɵtmPasteLeaf(plan, group).text;
-    return { group, rows: leaf === '' ? [] : await read(leaf) };
+  // --- A text too long for a leaf of its own is one the server never accepts: found nowhere, unread ---
+  const sendable = [...texts.keys()].filter((text) => {
+    const fits = ɵtmPasteLeaf(plan, [text]).text.length <= room;
+    if (!fits) {
+      decide(text, { error: 'notFound' });
+    }
+    return fits;
   });
-  for (const { group, rows } of await Promise.all(reads)) {
+
+  // --- One read per group, a few at once; a failed read leaves its own texts to a retry ---
+  const limit = pool(READS);
+  const settle = async (group: readonly string[]): Promise<void> => {
+    const leaf = ɵtmPasteLeaf(plan, group).text;
+    let rows: readonly TmJsonObject[];
+    try {
+      rows = leaf === '' ? [] : await limit(() => read(leaf));
+    } catch {
+      group.forEach((text) => decide(text, { error: 'resolutionFailed' }));
+      return;
+    }
+
+    // --- Each text keeps the rows it alone matches; a full page decides only what it shows ambiguous ---
+    const full = rows.length >= take;
+    const open: string[] = [];
     for (const text of group) {
       const pasted = ɵtmPasteMatch(plan, text, locale);
       const ids = new Map<string, TmId>();
@@ -243,12 +331,19 @@ export async function ɵtmResolveLabels(
           ids.set(String(id), id);
         }
       }
-      const resolution: TmLabelResolution<TmId> =
-        ids.size === 1 ? { value: [...ids.values()][0]! } : { error: ids.size === 0 ? 'notFound' : 'ambiguous' };
-      for (const label of texts.get(text)!) {
-        resolutions.set(label, resolution);
+      if (ids.size > 1 || (full && group.length === 1)) {
+        decide(text, { error: 'ambiguous' });
+      } else if (full) {
+        open.push(text);
+      } else {
+        decide(text, ids.size === 1 ? { value: [...ids.values()][0]! } : { error: 'notFound' });
       }
     }
-  }
+
+    // --- The texts a full page left open, read again in halves ---
+    const half = Math.ceil(open.length / 2);
+    await Promise.all([open.slice(0, half), open.slice(half)].filter((part) => part.length > 0).map(settle));
+  };
+  await Promise.all(groupsOf(plan, sendable, room).map(settle));
   return resolutions;
 }

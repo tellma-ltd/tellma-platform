@@ -689,7 +689,7 @@ export interface TmEntityDeclarationInput<N extends string = string> {
 }
 
 // @public
-export interface TmEntityDescriptor extends Omit<TmEntityMetadata, 'actions' | 'capabilities' | 'children' | 'navigations' | 'operations' | 'properties' | 'relatedSelect' | 'searchable'> {
+export interface TmEntityDescriptor extends Omit<TmEntityMetadata, 'actions' | 'capabilities' | 'children' | 'navigations' | 'operations' | 'prefixSearchable' | 'properties' | 'relatedSelect' | 'searchable'> {
     readonly actions: readonly TmEntityActionDescriptor[];
     readonly capabilities: ReadonlySet<string>;
     child(name: string): TmChildDescriptor | undefined;
@@ -700,6 +700,7 @@ export interface TmEntityDescriptor extends Omit<TmEntityMetadata, 'actions' | '
     readonly navigations: readonly TmNavigationDescriptor[];
     readonly operations: ReadonlySet<TmEntityOperation>;
     readonly pluralLabel: Signal<string>;
+    readonly prefixSearchable?: readonly string[];
     readonly properties: readonly TmPropertyDescriptor[];
     property(name: string): TmPropertyDescriptor | undefined;
     readonly relatedSelect: readonly string[];
@@ -733,6 +734,7 @@ export interface TmEntityMetadata extends TmEntitySummary {
         readonly navigation: string;
         readonly collection: string;
     };
+    readonly prefixSearchable: readonly string[];
     readonly properties: readonly TmPropertyMetadata[];
     readonly relatedSelect: readonly string[];
     readonly searchable: readonly string[];

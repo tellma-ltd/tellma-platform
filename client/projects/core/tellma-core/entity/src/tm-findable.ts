@@ -24,6 +24,32 @@ export interface ɵTmPickerTerm {
   readonly type: TmDataType | null;
 }
 
+/** A text column a search matches: from its start, or anywhere in it. Internal. */
+export interface ɵTmSearchColumn extends ɵTmPickerTerm {
+  /** Whether search text matches the column from its start, as the server matches a prefix-searchable column. */
+  readonly prefix: boolean;
+}
+
+/**
+ * Whether a row's text columns hold the search text, each column as it
+ * matches: from its start, or anywhere. Internal: the cached search and
+ * its tests read it.
+ *
+ * @param columns - The text columns.
+ * @param values - The row's folded value of each column, `null` where it has none.
+ * @param folded - The folded search text.
+ * @returns Whether a column matches.
+ */
+export function ɵtmSearchMatches(columns: readonly ɵTmSearchColumn[], values: readonly (string | null)[], folded: string): boolean {
+  return (
+    folded !== '' &&
+    columns.some((column, at) => {
+      const value = values[at];
+      return typeof value === 'string' && (column.prefix ? value.startsWith(folded) : value.includes(folded));
+    })
+  );
+}
+
 /**
  * What the findable rule reads of an entity: its key, its display name's
  * admitted slots in slot order (or its one scalar source), and its prefix.

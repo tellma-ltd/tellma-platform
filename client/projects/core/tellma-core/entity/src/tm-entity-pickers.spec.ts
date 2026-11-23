@@ -5,23 +5,26 @@
 
 import { signal, type Type } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { TmApiError, type TmDataType, type TmJson, type TmJsonObject, type TmQueryRowSet } from '@tellma/core';
+import { TmApiError, TmEntities, type TmDataType, type TmJson, type TmJsonObject, type TmQueryRowSet } from '@tellma/core';
 import type { TmFakeApiCall } from '@tellma/core-testing';
 import type { TmEntityPickerPage } from '@tellma/core-ui/entity-picker';
+import { tmSearchNormalize } from '@tellma/core/search-normalize';
 
 import { TM_DISPLAY_NAME_GOLDEN as golden } from '../../src/entity/tm-display-name-golden.testing.util';
 import { tmEntityRig, type TmEntityRig, type TmEntityRigOptions } from '../../src/entity/tm-entity.testing.util';
 import { TM_T17, tmSettle } from '../../src/routes/tm-app.testing.util';
-import { ɵtmPasteLeaf, ɵtmPasteMatch, ɵTM_PIPELINE_LIMITS } from './tm-entity-paste';
+import pasteGolden from './paste-leaf-golden.json';
+import { ɵtmPasteLeaf, ɵtmPasteMatch, ɵtmResolveLabels, ɵTM_PIPELINE_LIMITS } from './tm-entity-paste';
 import { TmEntityPickers } from './tm-entity-pickers';
-import { ɵtmFindable, ɵTM_SEARCH_MATCH, type ɵTmFindablePlan, type ɵTmPickerTerm } from './tm-findable';
+import { ɵtmFindable, ɵtmSearchMatches, ɵTM_SEARCH_MATCH, type ɵTmFindablePlan, type ɵTmPickerTerm, type ɵTmSearchColumn } from './tm-findable';
 import { TmLazyPickerPage } from './tm-lazy-picker-page';
 
 // The generic entity picker binding over the entity registry's test app:
 // the query it sends, the cached search of a cacheable list, the labels and
 // descriptions, the pages it offers by the user's grants, its telemetry,
-// the grid's paste resolver, and the findable rule's rows in the shared
-// display-name golden.
+// the grid's paste resolver, the findable rule's and the search text's rows
+// in the shared display-name golden, and the paste-leaf golden the server's
+// suite compiles.
 
 /** A user who may do everything. */
 const SYSTEM: TmEntityRigOptions = { access: { isSystem: true } };
@@ -319,6 +322,20 @@ describe('TmEntityPickers', () => {
       expect(searchTimings(rig)[0]).toEqual({ kind: 'timing', cached: true, outcome: 'ok' });
     });
 
+    it('matches a prefix-searchable column from its start only, as the server search does', async () => {
+      const rig = await tmEntityRig(SYSTEM);
+      await cacheCurrencies(rig);
+      const binding = pickers().binding('acme.Currency');
+      const codes = (text: string): readonly TmJson[] =>
+        (binding.search(text, new AbortController().signal) as TmSearchPage).items.map((item) => (item as TmJsonObject)['code']!);
+
+      // The recorded model searches the code from its start and the name anywhere.
+      expect(codes('us')).toEqual(['USD']);
+      expect(TestBed.inject(TmEntities).get('acme.Currency').prefixSearchable).toEqual(['Code']);
+      expect(codes('sd')).toEqual([]);
+      expect(codes('riyal')).toEqual(['SAR']);
+    });
+
     it('queries the server while the list is absent, and for a field with a filter', async () => {
       const rig = await tmEntityRig(SYSTEM);
       rig.api.respond('currencies/query', serve(CURRENCIES.slice(0, 2)));
@@ -499,6 +516,125 @@ describe('TmEntityPickers', () => {
       });
     });
 
+    it('leaves out a number longer than the server reads: no integer column holds it', () => {
+      const plan: ɵTmFindablePlan = {
+        key: { name: 'Id', json: 'id', type: 'integer' },
+        slots: [{ name: 'Name', json: 'name', type: 'string' }],
+        prefix: { name: 'Number', json: 'number', type: 'integer' },
+      };
+      const longest = '9'.repeat(ɵTM_PIPELINE_LIMITS.maxNumberDigits);
+      const longer = `${longest}9`;
+      const { lists } = leafParts(ɵtmPasteLeaf(plan, [longest, `-${longest}`, longer, `#${longer}`, `${longer} - Cash`]).text);
+      // The names' list holds every label as text; the numbers' list only the ones the server reads.
+      expect(lists).toEqual([[`'${longest}'`, `'-${longest}'`, `'${longer}'`, `'#${longer}'`, `'${longer} - Cash'`], [longest, `-${longest}`]]);
+    });
+
+    it('settles each query apart: a label no filter carries is not found, and a failed query leaves only its own labels to a retry', async () => {
+      const rig = await tmEntityRig(SYSTEM);
+      const table = Array.from({ length: 600 }, (_, index) => ({ id: index + 1, code: `C${index}`, name: `Customer ${index}` }));
+      // The query holding the first code fails; every other one answers.
+      rig.api.respond('customers/query', (call: TmFakeApiCall) => {
+        if ((call.body as { filters: string[] }).filters[0]!.includes("'C0'")) {
+          throw new Error('The query failed.');
+        }
+        return serve(table)(call);
+      });
+      const tooLong = 'x'.repeat(5000);
+      const labels = [...table.map((row) => row.code), tooLong];
+      const resolved = await pickers().ɵpasteResolver('acme.Customer', signal(null))(labels, { locale: 'en', signal: new AbortController().signal });
+
+      const leaves = bodies(rig, 'customers/query').map((body) => (body['filters'] as string[])[0]!);
+      expect(leaves.length).toBeGreaterThan(1);
+      expect(leaves.some((leaf) => leaf.includes(tooLong))).toBe(false);
+      expect(resolved.get(tooLong)).toEqual({ error: 'notFound' });
+      const failed = leafParts(leaves.find((leaf) => leaf.includes("'C0'"))!).lists[0]!.map((item) => item.slice(1, -1));
+      expect(failed.length).toBeGreaterThan(0);
+      expect(failed.length).toBeLessThan(table.length);
+      for (const row of table) {
+        expect(resolved.get(row.code)).toEqual(failed.includes(row.code) ? { error: 'resolutionFailed' } : { value: row.id });
+      }
+    });
+
+    it('keeps at most four queries in flight however many a paste needs', async () => {
+      const rig = await tmEntityRig(SYSTEM);
+      const table = Array.from({ length: 3000 }, (_, index) => ({ id: index + 1, code: `C${index}`, name: `Customer ${index}` }));
+      // Every query is held until released, so the ones in flight pile up.
+      const held: (() => void)[] = [];
+      let flying = 0;
+      let most = 0;
+      let release = false;
+      rig.api.respond('customers/query', (call: TmFakeApiCall) => {
+        flying++;
+        most = Math.max(most, flying);
+        return new Promise((resolve) => {
+          const answer = (): void => {
+            flying--;
+            resolve(serve(table)(call));
+          };
+          if (release) {
+            answer();
+          } else {
+            held.push(answer);
+          }
+        });
+      });
+      const pasting = pickers().ɵpasteResolver('acme.Customer', signal(null))(
+        table.map((row) => row.code),
+        { locale: 'en', signal: new AbortController().signal },
+      );
+      await vi.waitFor(() => expect(held).toHaveLength(4));
+      await tmSettle();
+      expect(held).toHaveLength(4);
+
+      release = true;
+      held.splice(0).forEach((answer) => answer());
+      const resolved = await pasting;
+      expect(bodies(rig, 'customers/query').length).toBeGreaterThan(4);
+      expect(most).toBe(4);
+      expect(table.map((row) => resolved.get(row.code))).toEqual(table.map((row) => ({ value: row.id })));
+    });
+
+    it('trusts a full page only about the labels it shows ambiguous, and reads the others again', async () => {
+      const plan: ɵTmFindablePlan = {
+        key: { name: 'Id', json: 'id', type: 'integer' },
+        slots: [{ name: 'Name', json: 'name', type: 'string' }],
+        prefix: null,
+      };
+      const table: readonly TmJsonObject[] = [
+        { id: 1, name: 'Twin' },
+        { id: 2, name: 'Twin' },
+        { id: 3, name: 'Solo' },
+        { id: 4, name: 'Many' },
+        { id: 5, name: 'Many' },
+        { id: 6, name: 'Many' },
+        { id: 7, name: 'Many' },
+        { id: 8, name: 'Résumé' },
+        { id: 9, name: 'Resume' },
+        { id: 10, name: 'Resumé' },
+      ];
+      const labels = ['Twin', 'Solo', 'Many', 'Gone', 'Resume'];
+      // The server's page: the rows equal to a label of the leaf, ignoring case and accents, cut at three.
+      const loose = (text: string): string => text.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
+      const reads: string[][] = [];
+      const read = (leaf: string): Promise<readonly TmJsonObject[]> => {
+        const asked = labels.filter((label) => leaf.includes(`'${label}'`));
+        reads.push(asked);
+        return Promise.resolve(table.filter((row) => asked.some((label) => loose(String(row['name'])) === loose(label))).slice(0, 3));
+      };
+      const resolved = await ɵtmResolveLabels(plan, labels, 8192, 3, 'en', read);
+
+      expect(Object.fromEntries(resolved)).toEqual({
+        Twin: { error: 'ambiguous' },
+        Solo: { value: 3 },
+        Many: { error: 'ambiguous' },
+        Gone: { error: 'notFound' },
+        // One exact match on a full page of its own: a duplicate may sit past the cut, so it is never chosen.
+        Resume: { error: 'ambiguous' },
+      });
+      expect(reads[0]).toEqual(labels);
+      expect(reads.every((asked) => !asked.includes('Twin') || asked.length === labels.length)).toBe(true);
+    });
+
     it('reads nothing once the app ends: a search remembers no rows, and a paste sends no query', async () => {
       const rig = await tmEntityRig(SYSTEM);
       // The search's read answers only once the app has ended.
@@ -545,7 +681,7 @@ const SLOTS = { Primary: 1, PrimaryAndSecondary: 2, All: 3 } as const;
  * @param row - The golden row.
  * @returns The plan.
  */
-function findablePlan(row: GoldenFindable): ɵTmFindablePlan {
+function findablePlan(row: Pick<GoldenFindable, 'rule' | 'shape'>): ɵTmFindablePlan {
   const term = (name: string, type: string): ɵTmPickerTerm => ({ name, json: name.charAt(0).toLowerCase() + name.slice(1), type: type as TmDataType });
   const { rule } = row;
   return {
@@ -566,5 +702,75 @@ describe('the findable golden', () => {
   it.each(rows.map((row) => [row.name, row] as const))('a paste: %s', (_, row) => {
     const pasted = ɵtmPasteMatch(findablePlan(row), row.text, 'en');
     expect(row.rows.filter(pasted).map((candidate) => candidate['id'])).toEqual(row.paste);
+  });
+});
+
+/** A search-text row of the shared golden: the text columns' match, each column by its kind. */
+interface GoldenSearchText extends Pick<GoldenFindable, 'name' | 'rule' | 'shape' | 'rows' | 'text'> {
+  /** The searchable columns and how each matches. */
+  readonly searchable: Readonly<Record<string, 'Prefix' | 'Contains'>>;
+  /** The ids the text columns' match finds. */
+  readonly found: readonly number[];
+}
+
+/**
+ * The text columns a cached search reads under a golden rule, as the
+ * binding's plan lists them: the admitted slots, a text prefix, then the
+ * admitted searchable columns, each once, a prefix-searchable one matched
+ * from its start.
+ *
+ * @param row - The golden row.
+ * @returns The columns.
+ */
+function searchColumns(row: GoldenSearchText): readonly ɵTmSearchColumn[] {
+  const plan = findablePlan(row);
+  const unadmitted = new Set((row.rule.twins ?? []).slice(SLOTS[row.shape]));
+  const names = [...plan.slots.map((slot) => slot.name), ...(plan.prefix ? [plan.prefix.name] : []), ...Object.keys(row.searchable)];
+  return [...new Set(names)]
+    .filter((name) => !unadmitted.has(name))
+    .map((name) => ({ name, json: name.charAt(0).toLowerCase() + name.slice(1), type: 'string', prefix: row.searchable[name] === 'Prefix' }));
+}
+
+describe('the search-text golden', () => {
+  const rows = (golden as unknown as { readonly searchText: readonly GoldenSearchText[] }).searchText;
+
+  it.each(rows.map((row) => [row.name, row] as const))('%s', (_, row) => {
+    const columns = searchColumns(row);
+    const folded = tmSearchNormalize(row.text);
+    const found = row.rows.filter((candidate) =>
+      ɵtmSearchMatches(
+        columns,
+        columns.map((column) => (typeof candidate[column.json] === 'string' ? tmSearchNormalize(candidate[column.json] as string) : null)),
+        folded,
+      ),
+    );
+    expect(found.map((candidate) => candidate['id'])).toEqual(row.found);
+  });
+});
+
+/** A paste leaf of the paste-leaf golden: a rule, a shape, the labels, and the leaf the client writes of them. */
+interface GoldenPasteLeaf extends Pick<GoldenFindable, 'name' | 'rule' | 'shape'> {
+  /** The pasted labels. */
+  readonly labels: readonly string[];
+  /** The literals the leaf's lists hold. */
+  readonly literals: number;
+  /** The leaf. */
+  readonly leaf: string;
+}
+
+describe('the paste-leaf golden', () => {
+  const leaves = (pasteGolden as unknown as { readonly leaves: readonly GoldenPasteLeaf[] }).leaves;
+
+  it.each(leaves.map((row) => [row.name, row] as const))('%s', async (_, row) => {
+    // The client writes the golden's leaf of its labels, and reads them in that one leaf.
+    const plan = findablePlan(row);
+    expect(ɵtmPasteLeaf(plan, row.labels)).toEqual({ text: row.leaf, literals: row.literals });
+    const read = vi.fn<(leaf: string) => Promise<readonly TmJsonObject[]>>(() => Promise.resolve([]));
+    await ɵtmResolveLabels(plan, row.labels, 8192, 10000, 'en', read);
+    expect(read.mock.calls).toEqual([[row.leaf]]);
+
+    // Each is as full as a leaf gets: at the literals' ceiling, or near the longest filter.
+    expectWithinLimits([row.leaf]);
+    expect(row.literals >= ɵTM_PIPELINE_LIMITS.maxParameters / 2 - 2 || row.leaf.length > 8000).toBe(true);
   });
 });

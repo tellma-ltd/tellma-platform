@@ -29,7 +29,7 @@ import type { TmEntityPickerPage, TmEntitySearchFn, TmEntitySearchResult } from 
 import { tmStripBidiControls } from '@tellma/core-ui/l10n';
 import { tmSearchNormalize } from '@tellma/core/search-normalize';
 
-import { ɵtmFindable, ɵTM_SEARCH_MATCH, type ɵTmFindablePlan, type ɵTmPickerTerm } from './tm-findable';
+import { ɵtmFindable, ɵtmSearchMatches, ɵTM_SEARCH_MATCH, type ɵTmFindablePlan, type ɵTmPickerTerm, type ɵTmSearchColumn } from './tm-findable';
 import { TmFormats } from './tm-formats';
 import { TmLazyPickerPage, ɵtmRegisterPickerStrings, type TmEntityPickerContext } from './tm-lazy-picker-page';
 import { tmSelectPlan, ɵtmDisplayNameOrder, type TmColumnPlan } from './tm-select-plan';
@@ -101,8 +101,8 @@ interface TmPickerPlan extends ɵTmFindablePlan {
   readonly select: string;
   /** The description's columns, in order; empty for none. */
   readonly description: readonly TmColumnPlan[];
-  /** The text columns a cached search contains-matches: the name's slots, a text prefix, natural keys and searchable columns. */
-  readonly text: readonly ɵTmPickerTerm[];
+  /** The text columns a cached search matches: the name's slots, a text prefix, natural keys and searchable columns, a prefix-searchable one from its start. */
+  readonly text: readonly ɵTmSearchColumn[];
   /** The declared picker filter; `null` for none. */
   readonly filter: string | null;
   /** The active flag's wire name, for an activatable target; `null` otherwise. */
@@ -188,7 +188,7 @@ export class TmEntityPickers {
   readonly #plans = new WeakMap<TmEntityDescriptor, Signal<TmPickerPlan>>();
 
   /** Each row's folded text columns, by plan, for the cached search. */
-  readonly #folded = new WeakMap<TmPickerPlan, WeakMap<object, readonly string[]>>();
+  readonly #folded = new WeakMap<TmPickerPlan, WeakMap<object, readonly (string | null)[]>>();
 
   /** Registers the pickers' strings, which the binding and its pages read. */
   constructor() {
@@ -327,7 +327,7 @@ export class TmEntityPickers {
         this.#names.remember(plan.descriptor.name, rows);
         return rows;
       };
-      return ɵtmResolveLabels(plan, labels, room, untracked(this.#localization.locale), read);
+      return ɵtmResolveLabels(plan, labels, room, plan.descriptor.limits.maxTake, untracked(this.#localization.locale), read);
     };
   }
 
@@ -400,11 +400,13 @@ export class TmEntityPickers {
     const injector = this.#injector;
     const plan = tmSelectPlan(descriptor, paths, this.#names.select(descriptor.name), { injector });
 
-    // --- The text a cached search contains-matches, each column once ---
-    const text = new Map<string, ɵTmPickerTerm>();
+    // --- The text a cached search matches, each column once: a prefix-searchable one from its
+    // start, as the server's search does (QuerySearch), every other one anywhere ---
+    const prefixed = new Set(descriptor.prefixSearchable?.map((name) => name.toLowerCase()));
+    const text = new Map<string, ɵTmSearchColumn>();
     const addText = (property: TmPropertyDescriptor | undefined): void => {
       if (property?.type === 'string' && !text.has(property.name)) {
-        text.set(property.name, term(property));
+        text.set(property.name, { ...term(property), prefix: prefixed.has(property.name.toLowerCase()) });
       }
     };
     [...twins, sourceProperty, prefixProperty].forEach(addText);
@@ -600,8 +602,9 @@ export class TmEntityPickers {
   }
 
   /**
-   * Searches a cached list: its active rows whose text columns contain the
-   * folded text, or that the findable rule finds, ordered by display name.
+   * Searches a cached list: its active rows whose text columns hold the
+   * folded text (a prefix-searchable column from its start, any other
+   * anywhere), or that the findable rule finds, ordered by display name.
    *
    * @param plan - The target's plan.
    * @param list - The cached list.
@@ -617,7 +620,7 @@ export class TmEntityPickers {
     if (query !== '') {
       const folded = tmSearchNormalize(query);
       const findable = ɵtmFindable(plan, query, ɵTM_SEARCH_MATCH);
-      matched = rows.filter((row) => (folded !== '' && this.#foldedText(plan, row).some((text) => text.includes(folded))) || findable(row));
+      matched = rows.filter((row) => ɵtmSearchMatches(plan.text, this.#foldedText(plan, row), folded) || findable(row));
     }
 
     // --- Ordered by display name, in the locale's collation ---
@@ -632,18 +635,18 @@ export class TmEntityPickers {
    *
    * @param plan - The target's plan.
    * @param row - The row.
-   * @returns The folded texts.
+   * @returns The folded text of each of the plan's text columns, `null` where the row has none.
    */
-  #foldedText(plan: TmPickerPlan, row: TmJsonObject): readonly string[] {
+  #foldedText(plan: TmPickerPlan, row: TmJsonObject): readonly (string | null)[] {
     let byRow = this.#folded.get(plan);
     if (byRow === undefined) {
       this.#folded.set(plan, (byRow = new WeakMap()));
     }
     let texts = byRow.get(row);
     if (texts === undefined) {
-      texts = plan.text.flatMap((column) => {
+      texts = plan.text.map((column) => {
         const value = row[column.json];
-        return typeof value === 'string' && value !== '' ? [tmSearchNormalize(value)] : [];
+        return typeof value === 'string' && value !== '' ? tmSearchNormalize(value) : null;
       });
       byRow.set(row, texts);
     }

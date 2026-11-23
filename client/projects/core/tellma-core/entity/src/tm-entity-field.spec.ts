@@ -21,8 +21,8 @@ import { TmEntityMultiField } from './tm-entity-multi-field';
 // The entity fields in a form over the entity registry's test app: a
 // search and a pick into the bound field, the row's display name, the
 // field's state forwarded to the picker and labelled by tm-form-field, an
-// unbound field's model, a required empty list, and the read-only field of
-// an entity the user may not search.
+// unbound field's model, a required empty list, a list's cap, and the
+// read-only field of an entity the user may not search.
 
 /** A user who may do everything. */
 const SYSTEM: TmEntityRigOptions = { access: { isSystem: true } };
@@ -64,7 +64,7 @@ let start: { centerId: TmId | null; centerIds: readonly TmId[]; disable: boolean
       <tm-entity-field entity="gl.Center" [formField]="form.centerId" />
     </tm-form-field>
     <tm-form-field label="Centers" data-testid="centers">
-      <tm-entity-multi-field entity="gl.Center" [formField]="form.centerIds" />
+      <tm-entity-multi-field entity="gl.Center" [formField]="form.centerIds" [maxItems]="maxItems()" />
     </tm-form-field>
     <div data-testid="currency">
       <tm-entity-field entity="acme.Currency" aria-label="Currency" [(value)]="currencyId" />
@@ -85,6 +85,8 @@ class TmFieldsHost {
       disabled(path.centerId);
     }
   });
+  /** The most centers the list field takes; no cap when unset. */
+  readonly maxItems = signal<number | undefined>(undefined);
   /** The unbound currency field's value. */
   readonly currencyId = signal<TmId | null>(null);
   /** The unbound customer field's value. */
@@ -284,6 +286,19 @@ describe('TmEntityMultiField', () => {
     await settle(fixture);
     expect(host.model().centerIds).toEqual([]);
     expect(host.form.centerIds().invalid()).toBe(true);
+  });
+
+  it('forwards its maxItems to the multi-picker, which refuses a pick past it', async () => {
+    const { loader, host, fixture } = await startHost();
+    host.maxItems.set(1);
+    await settle(fixture);
+    const field = await (await within(loader, 'centers')).getHarness(TmEntityMultiFieldHarness);
+    await field.pick('A');
+    await settle(fixture);
+    await field.pick('B');
+    await settle(fixture);
+    expect(host.model().centerIds).toEqual([1]);
+    expect(document.querySelector('.tm-entity-picker__notice')?.textContent.trim()).toBe('You can choose up to 1');
   });
 
   it('stays invalid when a form’s reset clears its errors', async () => {

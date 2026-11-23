@@ -52,12 +52,18 @@ export interface ɵTmPickerPages {
 
 /**
  * The picker pages, a multi-provider each page family adds its half to, so
- * neither replaces the other; a later provider of the same half wins.
- * Internal: with none, every page shows as not available.
+ * neither replaces the other; a later provider of the same half wins. A
+ * family loads its half with an `import()` of its own entry point, which
+ * this one never reaches statically. Both halves must be provided at the
+ * root environment injector, in the app's providers: `TmModal` opens its
+ * dialogs without an injector of their own, so a provider on a route or a
+ * component is never seen. Internal: with none, every page shows as not
+ * available.
  *
  * @example
  * ```ts
- * { provide: ɵTM_PICKER_PAGES, multi: true, useValue: { search: () => import('./picker-mode').then((m) => m.SearchPickerMode) } }
+ * // The app's providers, beside the search family's routes.
+ * { provide: ɵTM_PICKER_PAGES, multi: true, useValue: { search: () => import('@tellma/core/search').then((m) => m.TmSearchPickerPage) } }
  * ```
  */
 export const ɵTM_PICKER_PAGES = new InjectionToken<readonly ɵTmPickerPages[]>('TM_PICKER_PAGES');

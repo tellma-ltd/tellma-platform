@@ -542,8 +542,12 @@ multilingual group there edits the active language's slot, so a host that makes 
 computed follows a language switch. A root navigation there edits its key through the target's
 picker binding with the column's filter: the cell shows the display name, its prefix and name
 each in its own isolate, and a paste resolves its names in one query, or in as few as the server's
-filter limits allow (its length, 512 items in a list, and the parameters its literals take); the
-paste's code loads on the first paste.
+filter limits allow (its length, 512 items in a list, and the parameters its literals take), four
+at a time at most; the paste's code loads on the first paste. A name no filter can carry (longer
+than the filter, or a number longer than the server reads) is not found without a query; a
+failed query leaves only its own names to retry, by pasting again; and a full page of rows
+decides only the names it shows several rows for, the others being read again in smaller
+queries, so a name whose own page is full is ambiguous rather than guessed.
 
 ### Entity pickers
 
@@ -556,8 +560,9 @@ column's.
   controls, trimmed and capped at the entity's longest search, the declared picker filter and the
   field's as separate leaves, ordered by the declared order or the display name. A cacheable
   entity with no filter searches its cached list instead, at once and offline: its active rows
-  whose display name, natural keys or searchable columns contain the folded text, or that the
-  findable rule finds (`1101 - Cash`, an integer source or prefix in any digits, `#7`, or the id),
+  whose display name, natural keys or searchable columns hold the folded text (a column the
+  server searches from its start, from its start; any other anywhere), or that the findable rule
+  finds (`1101 - Cash`, an integer source or prefix in any digits, `#7`, or the id),
   by display name. While the list is absent, the server answers.
 - **Rows.** `itemLabel` is the display name, `itemLabelParts` its prefix and name apart, and
   `itemDescription` the second line: the declared description paths, else the natural keys the
@@ -569,8 +574,11 @@ column's.
   which loads the search page's or the details page's picker mode inside the modal, with
   `{ entity, filter, kind }` as its context: advanced search the search family's, Create and Edit
   the details family's. Each family adds its own half to the internal `ɵTM_PICKER_PAGES`
-  multi-provider, so neither replaces the other. Until a family ships, its page says it is not
-  available.
+  multi-provider, so neither replaces the other, with an `import()` of its own entry point, which
+  this one never reaches statically; a later provider of the same half wins. Both halves are
+  provided at the root environment injector, in the app's providers: `TmModal` opens its dialogs
+  without an injector of their own, so a provider on a route or a component is never seen. Until
+  a family ships, its page says it is not available.
 
 ```ts
 readonly parent = inject(TmEntityPickers).binding('gl.Center', { filter: signal("CenterType = 'Abstract'") });

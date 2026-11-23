@@ -12,7 +12,8 @@
     "capabilities": [
       "activatable",
       "cacheable",
-      "excel"
+      "excel",
+      "searchable"
     ],
     "displayName": {
       "source": "Code",
