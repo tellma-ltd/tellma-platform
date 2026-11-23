@@ -384,6 +384,31 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-254 (orchestrator, 2026-11-23): PC-115 lands with two lazy chunks of the primary
+
+- PC-115 integrated under D-252. Merged, "." measured 50.09 KB; its two lazy moves brought it to 49.40, against a ceiling of 49.5 (D-031). It landed at 4231428e.
+  - The outdated-client verdict moved to the lazy chunk tm-api-verdict (0.51 KB, -0.34 from the primary). If the chunk cannot load, the builds count as unordered and the worker's update check decides.
+  - The file transfers moved to the lazy chunk tm-api-transfer (0.75 KB, -0.35). If the chunk cannot load, the attempt fails as a network failure would.
+  - Both moves are stated deviations (reviews/PC-115.md, Deviations 8 and 9) from spec 0024 placing the HTTP layer in the primary.
+- The chunk-load fallbacks have no test: making a dynamic import fail in vitest browser mode was not practical. Accepted.
+- Misalignment: ARCHITECTURE.md's @tellma/core row lists only the entity model as a lazy chunk of the primary. It now also has tm-api-verdict, tm-api-transfer and, once PC-110 lands, tm-session-flows. PC-110 updates that row; until then it is out of date.
+- Room left: 0.60 KB. PC-F76, PC-119, PC-F78 and PC-110 (+0.48 as built) re-measure at integration (D-214), and any that would exceed 50 stops with status=blocked (D-247). PC-110's R1 is asked to list further lazy candidates.
+- For Ahmad: the D-247/D-252 question is now pressing. Should spec 0024 allow these lazy chunks, or should the cap change?
+
+### D-253 (orchestrator, 2026-11-23): PC-177's export default reference key skips nullable natural keys
+
+- PC-177's R1 (R1-3) found a spec gap in 0019 §6.2 and §9.4. The editable export references a target by its default reference key, which may be a nullable natural key (core.Role.Code). For a target whose key value is null, the export writes a blank cell.
+  - Re-import then fails with Required, which breaks the export-fix-import loop.
+  - Worse, a nullable foreign key to such a target clears silently on Update.
+- Ruling: PC-177's fix1 takes the reviewer's option (c), as a stated deviation from 0019 §6.2. The default reference key becomes the first non-nullable NaturalKeys member, else the surrogate Id. Role would export by Name.
+  - The change is in the export planner (PC-176's code). It is applied here because PC-177 owns the round trip, and the silent clear is data loss.
+  - It comes with a round-trip test for a target whose nullable natural key is null.
+- Rejected:
+  - Option (a), a per-row key kind: it adds a column shape that 0019 does not describe.
+  - Option (b), a blank cell keeps the stored reference: it makes a deliberate clear impossible.
+- PC-177 R1-4 (no ordering edge from child-sheet references to new parent rows) carries to PC-178, whose chunked import is where it can fail.
+- For Ahmad: confirm option (c), or say which 0019 should state.
+
 ### D-252 (orchestrator, 2026-11-23): the primary's room after PC-109, and what PC-115 does at release
 
 - After PC-109's integration, "." measures 48.24 KB (linked, gzip 6), leaving 1.76 KB under the 50 KB cap. PC-109 is pending on CI.
