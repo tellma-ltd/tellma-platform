@@ -384,6 +384,191 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-243 (orchestrator, 2026-11-22): PC-117 fix 1 accepted; ids keep the locale's digits
+
+- Fix 1 (d49d7e35) addresses R1-1 to R1-9. It is about 690 lines against about 4,420 in the implementation, so it is not an escalation under section 4.4.
+- R1-2 adds a string-registration seam, TmLocalization.ɵregisterStrings, at a primary cost of 0.06 KB. The tm.value strings moved to ./entity, and "." is back to 42.45 of 42.5. PC-119 to PC-121 register their strings the same way, and the ./entity README documents the seam. ./entity is 12.18 against a ceiling of 12.5, honest under D-031.
+- R1-6: my ruling said ids display with Latin digits. The implementer followed the specs instead: spec 0029 section 5.2 says integers are ungrouped, and spec 0010 section D.15 says the digits stay the locale's. So ar-SA shows ١٢٨٤. I withdraw my ruling, because the specs govern.
+- R1-3 needed no spec change: a child-grid multilingual group edits its active slot by its JSON name.
+- R1-1's residual risk: typing "12abc" key by key leaves the field at 12 and invalid. Both that case and the paste case block Save.
+- During the fix, a language-switch test raced its settle under load. It now waits for the switch to land, which counts as root-caused.
+
+### D-242 (orchestrator, 2026-11-22): PC-F74 lands before PC-189
+
+- PC-189's integration run 45094742817 on 0e1aed83 was cancelled. build-test (windows-latest) hit its 30-minute limit with Tellma.Core.AspNetCore.Tests unfinished, and no test failed. This is the PC-F74 defect, not PC-189's.
+- Re-running would be a retry (D-011), and PC-189 cannot go green until the fix is on platform-core. So the release order changes: PC-F74 integrates straight after its review 1 fixes, without holding. Then PC-189 merges platform-core again and pushes a new integrate commit.
+- PC-106, PC-176 and PC-108 follow, in that order.
+
+### D-241 (orchestrator, 2026-11-22): PC-F74 root cause and the sealed-endpoints behaviour change
+
+- PC-F74 found the cause of the Windows timeout. Minimal-API endpoint data sources rebuild every endpoint on each read (about 1 s), and each test host read them five times, about 5 s per host. This matches PC-189's observation that a cold host spends up to 5 s in UseRouting.
+- The fix seals the host's endpoint sources once the startup endpoint audit has run. That changes product behaviour: an endpoint mapped after startup is now never served. Before, such an endpoint was served unaudited if it was mapped before the first request.
+- I accept the change pending Review 1, as a security improvement: every served endpoint is now an audited one. The implementer updated ARCHITECTURE.md. For Ahmad's awareness: it is a platform rule that no endpoint may be added after startup.
+- The classes that still build one host per case (Bff, EndpointAudit, Session, Hub, Backchannel and Admin) are now the long tail. The next levers are per-host startup checks and MapTellma's audit build, about 0.8 s.
+
+### D-240 (orchestrator, 2026-11-22): PC-176 verification found a UTF-32 bypass; PC-176 integrates, and PC-F75 follows it
+
+- The section 4.4 verification (D-236) of abc79003 confirmed that every R2-1 to R2-3 vector and every new shape was refused within its bound. It found three new defects:
+  - V-1 (blocking): BoundedPartStream guesses UTF-8 or UTF-16 from two bytes, but XmlReader detects and decodes UCS-4. A UTF-32 part whose characters carry a byte or unit read as < bypasses the run bound. A 390 KiB upload allocated 587 to 1,174 MiB and took about 40 s.
+  - V-2 (minor): CDATA, comments and processing instructions are scanned one byte at a time, about 34 times slower than content. About 4.5 MiB uploaded costs about 3.3 minutes.
+  - V-3 (minor, from before this commit): the header search decodes every row of an all-blank sheet. About 6 MiB uploaded costs about 4.3 minutes.
+- PC-176 has had its three implementer rounds, and section 4.4 forbids a fourth. So the defects are recorded here, and PC-176 integrates when released.
+- PC-F75 then fixes V-1 and V-2, by resuming PC-176's implementer in pc-f right after PC-176 lands:
+  - V-1: refuse a NUL byte or unit in the part (U+0000 is never legal XML; OPC allows only UTF-8 and UTF-16), with a test per UCS-4 byte order.
+  - V-2: vectorise the section scan.
+- PC-F75 is ranked as blocking under D-229. It is not an integration blocker, but it is a member-reachable resource exhaustion on the import route, so it goes ahead of T1.
+- For Ahmad: V-3 needs a spec 0019 ruling on how many rows the header search may read before it refuses or stops, for example the first N rows of a sheet.
+
+### D-239 (orchestrator, 2026-11-22): PC-105 verification found defects, fixed at integration
+
+- The section 4.4 verification (D-237) of 8162da65 reported 1 major and 2 minor findings, plus a side note:
+  - V-1 (major): the bounded TmPath and TmOrderInput unions still grow quadratically through their template-literal members, and tmEntity pays that cost through its constraint. At 60 entities x 100 scalars x 25 navigations, each declaration with a deep orderBy adds about 6.7 s of type-checking.
+  - V-2 (minor): annotated values skip the deep check, and spec 0029 section 3 promises exact checking of three navigation steps.
+  - V-3 (minor): the child-root fail-closed contradicts spec 0029 section 7's own example.
+  - V-4 (minor, the side note): a read-only root is emitted with a projected key that the server does not project.
+- Rulings, applied as "PC-105: integrate" fix commits:
+  - V-1: a cheap constraint, with TmCheckedDeclaration doing all the checking; a one-level annotation union; a cost regression test at about 100 x 25 that includes orderBy.
+  - V-2: a TSDoc correction only. The build check's unknown-path still catches what annotations miss.
+  - V-4: fixed if small, else carried.
+- For Ahmad:
+  - Spec 0029 section 3 should say that annotations check one level and tmEntity checks every literal segment, and that annotated values skip the deep check.
+  - Spec 0029 section 7's child-root example (a line reaching Invoice.PostingDate under a filtered Read) follows whichever way the D-237 direct-flag question is decided.
+- Correction: my verification brief cited spec 0027 for the registry. The registry is spec 0029.
+
+### D-238 (orchestrator, 2026-11-22): Windows build-test timeout opens blocking PC-F74, which preempts PC-F72
+
+- After PC-182 landed, both platform-core PR runs (45078227216 on 491ca1b3 and 45078365461 on 8d8c3050) were cancelled. build-test (windows-latest) hit timeout-minutes 30 while Tellma.Core.AspNetCore.Tests was still running ProblemMappingTests.
+- The green pc/PC-182 run's job took 25 minutes, of which the assembly took 19.5. The assembly's time ranges from 15 to 22 minutes across recent runs, and ProblemMappingTests' 68 cases run one after another at 5 to 14 s each.
+- That cost predates PC-F70, since e14934f0 shows the same pattern. So it is a standing per-case host cost, not a new regression. It now threatens every pc/** integration run.
+- PC-F74 is classed blocking. Under D-229 it goes ahead of the non-blocking PC-F72, which pauses and lends pc-f2 to it, keeping its work as a local commit, and resumes after.
+- PR runs do not gate done (D-154). PC-182 stays done.
+
+### D-237 (orchestrator, 2026-11-22): PC-105 fix 1 accepted; one verification runs alongside integration
+
+- Fix 1 (8162da65) fixes R1-1 to R1-5 with none pushed back. It is about 460 lines against about 4,240 in the implementation, so it is not an escalation under section 4.4.
+- R1-3 replaces how the primary entity registry's public types check paths: bounded TmPath, TmCheckedDeclaration and TmCheckFrom. Many Tier 1 items build on these types. So one section 4.4 verification of R1-1 to R1-3 runs against 8162da65 in a detached scratch worktree.
+- PROCESS says the verification runs before integration. To keep the queue moving, it runs alongside integration instead. The CI-green message waits for its report, and any defect it confirms is fixed as an integration commit. This is a judgement where PROCESS is silent on overlap.
+- New deviations: from a child root, the owner is judged like any other entity; annotations check two segments, while tmEntity checks every segment of its literal paths.
+- For Ahmad (extends D-233): when both a child's grant and its owner's are filtered, reachable cannot tell whether the child's grant is its own, so it fails closed and may under-offer owner columns. A direct flag on SecurableSummary would close the gap.
+
+### D-236 (orchestrator, 2026-11-22): PC-176 Review 2 rulings
+
+- Review 2 (inherit, xhigh) found 1 blocking, 2 major, 2 minor. All five accepted:
+  - R2-1: the token bound did not bound one node, because a literal > ends a run. Runs now end only at <. CDATA, comments and processing instructions count as one run each, and the text caps apply before a value is materialised.
+  - R2-2: refuse sheets that name the same part, charge the text budget per workbook, and skip the rows of Duplicate sheets.
+  - R2-3: the zip64 deferral now covers the directory-offset trigger.
+  - R2-4: distinct ModifiedById seeds.
+  - R2-5: the header-block cap counts rows read and checks cancellation.
+- Then PC-176 holds behind PC-182, PC-105, PC-189 and PC-106. If fix 2 rewrites the stream bounding substantially, one section 4.4 verification of R2-1 to R2-3 runs before integration.
+- For Ahmad: 0019 section 12.1 lists delete-by-query among the import routes. Its own Stack sketch omits it, and the D-132/D-134 startup gate refuses it for ImportService. The implementation omits it. Should the spec drop it?
+- Carries: PC-178's job handler must cope with a Pending job whose import row is gone, which a retry racing a delete can leave. PC-177's synchronous path must not trust the plan's row count.
+
+### D-235 (orchestrator, 2026-11-22): PC-106 Review 1 rulings
+
+PC-106 Review 1 found 0/0/3.
+
+What the review confirmed:
+- The +2.13 KB raise of "." is honest: register must refuse synchronously, and TmShell and TmShellMain belong in the primary under 0027 §1.
+- All 9 deviations are sound. Mod+Enter's exemption settles D-057 item 4.
+- Accessibility: no single-character shortcuts (WCAG 2.1.4), IME composition respected, no focus trap.
+- With PC-105, "." comes to about 44.5 KB. Whichever of the two integrates second re-measures it (D-214).
+
+Rulings:
+- R1-1: a tm. id uses its reserved combination on both platforms.
+- R1-2: the size gate guards ./search-normalize from ./shell and ./attention, not only from ".".
+- R1-3: assert the frame CSS order.
+
+PC-106 holds after fix1.
+
+For Ahmad, from PC-106:
+- 0027 §1 and ARCHITECTURE.md should say that tmSearchNormalize lives in the shared @tellma/core/search-normalize entry point, not the primary.
+- WATCHLIST ## 0035 should note that 0035's Escape shortcut must use the id dashboard.exit-presentation.
+
+### D-234 (orchestrator, 2026-11-22): PC-189 fix1 accepted; held
+
+Fix1 (ed5d0edc) fixed all six findings under D-232. While writing the tests, the implementer found a real bug: distribution ToolTypes were never registered, because WithTools(Type[]) bound to the SDK's generic WithTools<T>(T target). It is fixed and covered by a test.
+
+In one loaded run, the non-member's initialize took 2m22s and returned no reply. A request that never answers on an authentication path needs a root cause, so the held agent root-causes it now (D-011). It changes code only on a proven cause.
+
+PC-189 holds. Release order: PC-182 (CI fixes), PC-105, PC-189.
+
+For Ahmad (as in D-232): ResourceGrantValidator still issues tokens that combine a distribution's origin with its tenant resources. Every MCP endpoint now refuses those tokens. Either Identity refuses a grant that includes an MCP resource with others, or 0016 §11.2 relaxes.
+
+### D-233 (orchestrator, 2026-11-22): PC-105 Review 1 rulings
+
+PC-105 Review 1 found 0/3/2.
+
+What the review confirmed:
+- The +3.86 KB raise of "." is honest under D-031. What stays on the first frame is what the route gate, the forbidden view, the shell and the bell read synchronously.
+- The lazy tm-entity-model chunk is sound. It loads in the same Promise.all as the Entities chunk, so it adds no async boundary.
+
+Rulings:
+- R1-1: fail closed. reachable skips the owner step only as the server does, and a case AccessSummary cannot decide is not reachable.
+- R1-2: walk segment by segment, like the server.
+- R1-3: validate paths segment by segment rather than as one enumerated union, with a type-cost regression test.
+- R1-4: the golden uses the production plan.
+- R1-5: resolve uses the cached list.
+
+Escalation: if R1-3 rewrites much of tm-entity-types, fix1 is judged for Review 2 under §4.4.
+
+PC-105 holds after fix1, behind PC-182.
+
+For Ahmad: AccessSummary cannot tell a direct child grant from an owner-derived one. With a direct child grant and a filtered owner grant, the client cannot decide whether a path is reachable, so it answers not reachable. Exact parity would need AccessSummary (0014 / 0029) to mark direct grants.
+
+### D-232 (orchestrator, 2026-11-22): PC-189 Review 1 rulings
+
+PC-189 Review 1 found 0/2/4.
+
+What the review confirmed:
+- describe does not depend on permissions, so its cache leaks nothing;
+- the read tools go through EntityService and IChildQueryService;
+- the request limits match spec 0016;
+- the 5/8 tool split is planned in PC-190.
+
+Rulings:
+- R1-1: follow spec 0016 §11.2 on the MCP path only. An MCP token carries exactly one aud value, equal to the tenant's resource; a multi-audience token is refused. This fails closed. Test it.
+- R1-2: add the listed tests and the missing integration refusals.
+- R1-3: fail closed.
+- R1-4: rename the feature to core.mcp.
+- R1-5: window tellma_get before materialising, grandchildren included.
+- R1-6: the trailer always fits the cap.
+
+PC-189 holds after fix1.
+
+For Ahmad, from PC-189:
+- Tellma.Identity's ResourceGrantValidator lets one interactive token name several tenants (and the origin), while 0016 §11.2 requires an MCP token's aud to equal the tenant's resource exactly. The MCP path now refuses multi-audience tokens. Should Identity also refuse a multi-resource request that includes an MCP resource?
+- 0016 §1.2 composes AddMcp() in the shared delegate, but the code requires composeWeb. The spec illustration needs aligning.
+- Deviation 10: 0016 §11.2's resource_name drops the tenant name, to avoid tenant enumeration. This needs sign-off.
+
+### D-231 (orchestrator, 2026-11-22): PC-182 fix1 accepted, not escalated; held
+
+Fix1 (4855edd5) fixed R1-1..R1-5. R1-6 and R1-7 needed no code change (D-227).
+
+The privacy fix (R1-2) is one Via(row navigation, Share or Publish filter) on the grants read, which replaces the separate key read. That is not a reshaping beyond one filter, so D-227's escalation test is not met and Review 2 does not run.
+
+New deviations accepted:
+- 15: with filtered decisions, the extra omits admitted rows that hold no grants. This is equivalent, because the dialog reads an omitted row as no grants.
+- 16: an internal set-based Notifier.WithdrawEach runs inside the delete's transaction, because DeletePersistContext carries ids, not entities.
+- 17: the delete-by-query contradiction in spec 0033 is recorded.
+
+The share-count backstop held under a concurrent test with a side TABLOCKX, so the existing range locks serialise it.
+
+PC-182 holds. Release order: PC-F69 (integrating), then PC-182.
+
+### D-230 (orchestrator, 2026-11-22): PC-176 Review 1 rulings; escalated to Review 2
+
+PC-176 Review 1 found 2 blocking, 3 major and 6 minor.
+
+Blocking:
+- R1-1: every export fails without IBlobStore. 8 of the 9 ExcelExportTests fail. The implementer did not run them, and deviation 12 claimed the opposite.
+- R1-2: the XML name table is unbounded. An upload within the 100 MiB limit can reach about 4 GB resident.
+
+Every finding is to be fixed, as Review 1 proposes. R1-6 records three departures as deviations, including the real-producer corpus deferral (acceptable under PLAN §6). R1-4 adds core.Export and core.Import to ProjectedRouteTests and tests the own-rows criteria on an ungranted user.
+
+The blocking findings escalate PC-176 to Review 2 under §4.4, inherit at xhigh, as an off-list item. R2 judges the memory bounds (R1-2, R1-3) as hostile-input defences.
+
+Lesson for briefs: an implementer's "tests passed" lists only what it ran. The R1 briefs already ask reviewers to run the touched integration classes, and that is how R1-1 was caught.
+
 ### D-229 (orchestrator, 2026-11-22): Tier 1 was unblocked and left idle; slots re-ordered
 
 PC-107 and PC-104 landed and made PC-105 (0029-b), PC-106 (0027-a) and PC-108 (0025-c) ready. I did not re-run check_deps --ready at those landings, so PC-F69 (mandated by D-214) and PC-F72 (a once-seen flake that blocks nothing) took the freed slots, and the T3 fills kept theirs. Ahmad noticed that no T1 item was in flight.

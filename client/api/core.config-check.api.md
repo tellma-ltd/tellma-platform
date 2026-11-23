@@ -13,6 +13,9 @@ import { Type } from '@angular/core';
 export function tmCheckAppConfig(config: TmAppConfig, metadata: TmClientMetadata, entities: TmEntitiesChunk, strings?: Readonly<Record<string, Readonly<Record<string, string>>>>): readonly TmConfigProblem[];
 
 // @public
+export function tmCheckEntityDeclaration(declaration: TmEntityDeclaration, entities: TmEntitiesChunk | TmPathResolver): TmEntityFinding[];
+
+// @public
 export interface TmConfigProblem {
     readonly code: TmConfigProblemCode;
     readonly feature: string;
@@ -23,5 +26,19 @@ export interface TmConfigProblem {
 
 // @public
 export type TmConfigProblemCode = 'app-bar-overflow' | 'app-bar-reserved-id' | 'calendar-missing' | 'coded-report-not-registered' | 'coded-report-redeclared' | 'coded-report-source' | 'dangling-hide' | 'dangling-override' | 'default-language-mismatch' | 'duplicate-key' | 'entity-not-routable' | 'feature-not-composed' | 'invalid-path' | 'invalid-report-key' | 'label-missing' | 'language-missing' | 'language-not-offered' | 'operation-missing' | 'reserved-path' | 'string-key-collision' | 'unknown-action' | 'unknown-entity' | 'unknown-path' | 'unknown-section' | 'unknown-setting-category' | 'widget-missing' | 'widget-not-registered';
+
+// @public
+export interface TmEntityFinding {
+    readonly code: 'entity-not-routable' | 'operation-missing' | 'unknown-action' | 'unknown-path';
+    readonly facts: TmProblemFacts;
+    readonly member: string;
+}
+
+// @public
+export class TmPathResolver {
+    constructor(chunk: TmEntitiesChunk);
+    entity(name: string): TmEntityMetadata | undefined;
+    resolves(root: string, path: string): boolean;
+}
 
 ```

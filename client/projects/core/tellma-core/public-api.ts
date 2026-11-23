@@ -7,7 +7,8 @@
  * It holds the distribution API (`bootstrapTellma`, `provideTellma`,
  * `tmFeature` and the declaration functions), the app's root component, its
  * routes' data, title strategy and URLs with the search query codec, the
- * entity registry's summaries, the client metadata's types and loaders, the
+ * entity registry (summaries, and descriptors once the entity model loads),
+ * display names and client permissions, the client metadata's types and loaders, the
  * HTTP layer with its error and plain-JSON value types, the exact decimal
  * helpers, the client store and the tab bus, the app-level keyboard
  * shortcut registry, the shell frame's seams (immersive mode and what the
@@ -96,16 +97,46 @@ export { TmLeaveChecks as ɵTmLeaveChecks, type TmLeaveCheck as ɵTmLeaveCheck }
 // The contract of the components the primary loads from the shell entry point; not for app code.
 export type { TmShellComponents as ɵTmShellComponents } from './src/routes/tm-route-hosts';
 
-// The entity registry's summaries.
+// The entity registry: summaries, descriptors and paths, display names, permissions.
 export { TmEntities } from './src/entity/tm-entities';
+export type {
+  TmChildDescriptor,
+  TmEntityActionDescriptor,
+  TmEntityDescriptor,
+  TmEnumDescriptor,
+  TmNavigationDescriptor,
+  TmPathEnd,
+  TmPathResolution,
+  TmPropertyDescriptor,
+} from './src/entity/tm-entity-descriptors';
+export { TmDisplayNames, type TmDisplayNameParts } from './src/entity/tm-display-names';
+export { TmDisplayName } from './src/entity/tm-display-name';
+export { TmPermissions, type TmPermissionOperation } from './src/entity/tm-permissions';
+export { tmRowsToObjects, type TmQueryRowSet, type TmQueryRowSetColumn } from './src/entity/tm-rows-to-objects';
 
 // Features and the declaration functions.
 export type { TmDeclarationKey, TmLazyComponent, TmSecurableRef } from './src/declarations/tm-declaration-types';
 export { tmFeature, type TmFeature, type TmFeatureDefinition } from './src/declarations/tm-feature';
 export { tmOverride, type TmDeclarationPatch, type TmOverride } from './src/declarations/tm-override';
 export { tmPage, type TmPageDeclaration, type TmPageDefinition } from './src/declarations/tm-page';
-export { tmEntity, type TmEntityDeclaration, type TmEntityDeclarationInput } from './src/entity/tm-entity-declaration';
-export type { TmEntityShapes, TmEntityType, TmEntityTypes } from './src/entity/tm-entity-types';
+export {
+  tmEntity,
+  type TmActionConfirmation,
+  type TmColumnInput,
+  type TmCustomFilterDeclaration,
+  type TmDetailsDeclaration,
+  type TmEntityActionDeclaration,
+  type TmEntityDeclaration,
+  type TmEntityDeclarationInput,
+  type TmFilterSource,
+  type TmOrderInput,
+  type TmPickerDeclaration,
+  type TmPlanRow,
+  type TmSearchPageActionDeclaration,
+  type TmTabDeclaration,
+  type TmTileDeclaration,
+} from './src/entity/tm-entity-declaration';
+export type { TmEntityShapes, TmEntityType, TmEntityTypes, TmPath } from './src/entity/tm-entity-types';
 export {
   tmCodedReport,
   type TmCodedReportDeclaration,

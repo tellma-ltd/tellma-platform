@@ -17,7 +17,8 @@ namespace Tellma.Core.AspNetCore.Tests.Limits
     ///     response, and configuration turns it off; the tenant-independent public documents are
     ///     served from one cached copy whoever asks.
     /// </summary>
-    public sealed class CompressionAndCachingTests
+    /// <param name="fixture">The host the cases share.</param>
+    public sealed class CompressionAndCachingTests(CompressionAndCachingTests.Host fixture) : IClassFixture<CompressionAndCachingTests.Host>
     {
         /// <summary>A body well past the compression minimum.</summary>
         private static readonly string Large = new('x', 4096);
@@ -36,7 +37,7 @@ namespace Tellma.Core.AspNetCore.Tests.Limits
         [InlineData("gzip", "gzip")]
         public async Task A_large_json_body_is_compressed_brotli_first(string accepted, string encoding)
         {
-            await using TellmaTestHost host = await StartAsync();
+            TellmaTestHost host = fixture.Started;
 
             using HttpResponseMessage response = await SendAsync(host, "/1/api/web/large-json", accepted);
 
@@ -47,7 +48,7 @@ namespace Tellma.Core.AspNetCore.Tests.Limits
         [Fact]
         public async Task A_body_of_another_type_is_not_compressed()
         {
-            await using TellmaTestHost host = await StartAsync();
+            TellmaTestHost host = fixture.Started;
 
             using HttpResponseMessage response = await SendAsync(host, "/1/api/web/large-text", "br");
 
@@ -58,7 +59,7 @@ namespace Tellma.Core.AspNetCore.Tests.Limits
         [Fact]
         public async Task A_declared_body_under_a_kilobyte_is_not_compressed()
         {
-            await using TellmaTestHost host = await StartAsync();
+            TellmaTestHost host = fixture.Started;
 
             // The problem writer declares its length; this one is far under the minimum.
             using HttpResponseMessage response = await SendAsync(host, "/99/api/web/probe", "br");
@@ -70,7 +71,7 @@ namespace Tellma.Core.AspNetCore.Tests.Limits
         [Fact]
         public async Task A_blob_surface_response_is_never_compressed()
         {
-            await using TellmaTestHost host = await StartAsync();
+            TellmaTestHost host = fixture.Started;
 
             using HttpResponseMessage response = await SendAsync(host, "/1/blobs/large/1", "br");
 
@@ -110,7 +111,7 @@ namespace Tellma.Core.AspNetCore.Tests.Limits
         [Fact]
         public async Task A_tenant_response_is_never_served_from_the_cache()
         {
-            await using TellmaTestHost host = await StartAsync();
+            TellmaTestHost host = fixture.Started;
             string cookie = host.Cookie();
 
             using HttpResponseMessage first = await host.Client.SendAsync(TellmaTestHost.SpaRequest(HttpMethod.Get, "/1/api/web/probe", cookie), Token);
@@ -147,6 +148,35 @@ namespace Tellma.Core.AspNetCore.Tests.Limits
             using HttpRequestMessage request = TellmaTestHost.SpaRequest(HttpMethod.Get, path, host.Cookie());
             request.Headers.Add("Accept-Encoding", accepted);
             return await host.Client.SendAsync(request, Token);
+        }
+
+        /// <summary>
+        ///     One host for the cases that send a request and read only its answer's encoding and
+        ///     caching headers. The case that watches the output cache store its first copy, and the
+        ///     case that turns compression off, start hosts of their own.
+        /// </summary>
+        public sealed class Host : IAsyncLifetime
+        {
+            /// <summary>The host, once started.</summary>
+            private TellmaTestHost? _host;
+
+            /// <summary>The started host.</summary>
+            internal TellmaTestHost Started => _host ?? throw new InvalidOperationException("The host has not started.");
+
+            /// <inheritdoc />
+            public async ValueTask InitializeAsync()
+            {
+                _host = await StartAsync();
+            }
+
+            /// <inheritdoc />
+            public async ValueTask DisposeAsync()
+            {
+                if (_host is not null)
+                {
+                    await _host.DisposeAsync();
+                }
+            }
         }
     }
 }

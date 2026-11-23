@@ -121,6 +121,9 @@ namespace Tellma.Core.Composition
         /// <summary>What the distribution declared about languages: the offered codes and the added languages.</summary>
         public LanguageDeclaration Languages { get; private set; } = LanguageDeclaration.None;
 
+        /// <summary>The shareable entities the features declared, in realisation order; the startup gate checks each pair.</summary>
+        public List<ContributedShareable> Shareables { get; } = [];
+
         /// <summary>The entity shapes features require of other features' entities, in realisation order.</summary>
         public List<ShapeRequirement> ShapeRequirements { get; } = [];
 
@@ -260,6 +263,13 @@ namespace Tellma.Core.Composition
     /// <param name="Key">The key as declared.</param>
     /// <param name="Owner">The feature that declared it.</param>
     internal sealed record ContributedConfirmation(string Key, ITellmaFeature Owner);
+
+    /// <summary>A shareable entity a feature declared, with its share entity.</summary>
+    /// <param name="EntityType">The shareable entity, before leaf substitution.</param>
+    /// <param name="ShareType">The share entity.</param>
+    /// <param name="NotificationType">The notification type a new user grant raises.</param>
+    /// <param name="Owner">The feature that declared it.</param>
+    internal sealed record ContributedShareable(Type EntityType, Type ShareType, string NotificationType, ITellmaFeature Owner);
 
     /// <summary>A shape a feature requires of another feature's entity.</summary>
     /// <param name="EntityType">The entity whose leaf must carry the shape.</param>

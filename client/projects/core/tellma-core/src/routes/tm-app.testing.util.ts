@@ -191,6 +191,8 @@ export interface TmAppRig {
 export interface TmAppRigOptions {
   /** Whether tenant 17's launch documents are missing, so its entry is cold. */
   readonly cold?: boolean;
+  /** Tenant 17's launch documents, when not `TM_T17_DOCS`. */
+  readonly docs?: TmLaunchDocs;
   /** The memberships stored for the user, if any. */
   readonly tenants?: readonly TmMembership[];
   /** What the worker's update check answers. */
@@ -242,7 +244,7 @@ export async function tmAppRig(options: TmAppRigOptions = {}): Promise<TmAppRig>
   await TestBed.inject(ApplicationInitStatus).donePromise;
   const store = TestBed.inject(TmClientStore);
   if (options.cold !== true) {
-    await tmWarmTenant(store, TM_T17, TM_T17_DOCS);
+    await tmWarmTenant(store, TM_T17, options.docs ?? TM_T17_DOCS);
   }
   if (options.tenants !== undefined) {
     await store.put({ kind: 'user', sub: TM_TEST_SUB }, 'tenants', stored(options.tenants));

@@ -35,8 +35,9 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- The suites that host the web host: the host's own, and the Azure web defaults' offline and live. -->
+    <!-- The suites that host the web host: the host's own, the MCP server's, and the Azure web defaults' offline and live. -->
     <InternalsVisibleTo Include="Tellma.Core.AspNetCore.Tests" />
+    <InternalsVisibleTo Include="Tellma.Core.Mcp.Tests" />
     <InternalsVisibleTo Include="Tellma.Defaults.Azure.Tests" />
     <InternalsVisibleTo Include="Tellma.Defaults.Azure.AspNetCore.IntegrationTests" />
   </ItemGroup>

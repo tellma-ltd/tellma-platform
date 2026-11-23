@@ -15,7 +15,9 @@ using Tellma.Core.Abstractions.Jobs;
 using Tellma.Core.Abstractions.Localization;
 using Tellma.Core.Abstractions.Notifications;
 using Tellma.Core.Abstractions.Realtime;
+using Tellma.Core.Abstractions.Reports;
 using Tellma.Core.Abstractions.Settings;
+using Tellma.Core.Abstractions.Sharing;
 using Tellma.Core.Abstractions.TableTypes;
 using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.Access;
@@ -31,6 +33,7 @@ using Tellma.Core.Localization;
 using Tellma.Core.Notifications;
 using Tellma.Core.Outbox;
 using Tellma.Core.Provisioning;
+using Tellma.Core.Reports;
 using Tellma.Core.Settings;
 using Tellma.Core.Users;
 
@@ -314,6 +317,16 @@ namespace Tellma.Core.Composition
                 .NotificationType(JobNotices.GapDescriptor)
                 .NotificationType(JobNotices.SchedulePausedDescriptor)
                 .ClientEvent(JobNotices.ChangedEvent);
+
+            // --- Stored reports and their grants (spec 0033 §2, §5, §7) ---
+            // The reports' stack is shareable: its share table, criteria, commands, shares extra,
+            // shared-with-me filter and the core.report.shared notice all come with the declaration.
+            // The grants merge through the share-grant table type.
+            _ = contribution
+                .Entity<Report, ReportService>()
+                .Shareable<Report, ReportShare>(ReportNotices.SharedType)
+                .Model<ReportConfiguration>()
+                .TableType<ShareGrantList>();
 
             // --- The standalone table types: the canonical bulk-operation shapes, and the version-tag guard's ---
             _ = contribution

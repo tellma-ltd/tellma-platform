@@ -7283,6 +7283,1236 @@
         }
       }
     },
+    "/{tenantId}/api/web/reports/query": {
+      "post": {
+        "tags": [
+          "reports"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QueryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RowPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "Precondition Failed",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Payload Too Large",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "x-tellma-securable": {
+          "resource": "core.Report",
+          "action": "Read"
+        }
+      }
+    },
+    "/{tenantId}/api/web/reports/get": {
+      "post": {
+        "tags": [
+          "reports"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GetRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EntitiesResultOfReport"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "Precondition Failed",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Payload Too Large",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "x-tellma-securable": {
+          "resource": "core.Report",
+          "action": "Read"
+        }
+      }
+    },
+    "/{tenantId}/api/web/reports/get-by-ids": {
+      "post": {
+        "tags": [
+          "reports"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GetByIdsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EntitiesResultOfReport"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "Precondition Failed",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Payload Too Large",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "x-tellma-securable": {
+          "resource": "core.Report",
+          "action": "Read"
+        }
+      }
+    },
+    "/{tenantId}/api/web/reports/save": {
+      "post": {
+        "tags": [
+          "reports"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveRequestOfReport"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EntitiesResultOfReport"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "Precondition Failed",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Payload Too Large",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "x-tellma-securable": {
+          "resource": "core.Report",
+          "action": "Save"
+        }
+      }
+    },
+    "/{tenantId}/api/web/reports/delete": {
+      "post": {
+        "tags": [
+          "reports"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IdsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AffectedResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "Precondition Failed",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Payload Too Large",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "x-tellma-securable": {
+          "resource": "core.Report",
+          "action": "Delete"
+        }
+      }
+    },
+    "/{tenantId}/api/web/reports/activate": {
+      "post": {
+        "tags": [
+          "reports"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EntityActionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EntitiesResultOfReport"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "Precondition Failed",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Payload Too Large",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "x-tellma-securable": {
+          "resource": "core.Report",
+          "action": "Activate"
+        }
+      }
+    },
+    "/{tenantId}/api/web/reports/deactivate": {
+      "post": {
+        "tags": [
+          "reports"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EntityActionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EntitiesResultOfReport"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "Precondition Failed",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Payload Too Large",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "x-tellma-securable": {
+          "resource": "core.Report",
+          "action": "Activate"
+        }
+      }
+    },
+    "/{tenantId}/api/web/reports/share": {
+      "post": {
+        "tags": [
+          "reports"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EntityActionRequestOfShareArguments"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EntitiesResultOfReport"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "Precondition Failed",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Payload Too Large",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "x-tellma-securable": {
+          "resource": "core.Report",
+          "action": "Share"
+        }
+      }
+    },
+    "/{tenantId}/api/web/reports/publish": {
+      "post": {
+        "tags": [
+          "reports"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EntityActionRequestOfPublishArguments"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EntitiesResultOfReport"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "Precondition Failed",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Payload Too Large",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "x-tellma-securable": {
+          "resource": "core.Report",
+          "action": "Publish"
+        }
+      }
+    },
+    "/{tenantId}/api/web/reports/transfer": {
+      "post": {
+        "tags": [
+          "reports"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EntityActionRequestOfTransferArguments"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EntitiesResultOfReport"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "Precondition Failed",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Payload Too Large",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "x-tellma-securable": {
+          "resource": "core.Report",
+          "action": "Transfer"
+        }
+      }
+    },
     "/{tenantId}/api/web/centers/query": {
       "post": {
         "tags": [
@@ -16465,6 +17695,9 @@
       "EntitiesResultOfOutgoingEmail": {
         "description": "The answer of every operation that returns rows in details shape: `get`,\n`get-by-ids`, `all`, `save`, `activate`, `deactivate` and an\nentity action without a result of its own."
       },
+      "EntitiesResultOfReport": {
+        "description": "The answer of every operation that returns rows in details shape: `get`,\n`get-by-ids`, `all`, `save`, `activate`, `deactivate` and an\nentity action without a result of its own."
+      },
       "EntitiesResultOfRole": {
         "description": "The answer of every operation that returns rows in details shape: `get`,\n`get-by-ids`, `all`, `save`, `activate`, `deactivate` and an\nentity action without a result of its own."
       },
@@ -16539,6 +17772,44 @@
         },
         "description": "The body of an entity action that answers its target rows read back and takes arguments."
       },
+      "EntityActionRequestOfPublishArguments": {
+        "required": [
+          "arguments"
+        ],
+        "type": "object",
+        "properties": {
+          "arguments": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "description": "The action's arguments; never null.",
+                "$ref": "#/components/schemas/PublishArguments"
+              }
+            ]
+          },
+          "ids": {
+            "type": "array",
+            "description": "The target rows' ids; numbers or strings on the wire, narrowed to the stack's key type. Never null."
+          },
+          "returnEntities": {
+            "type": "boolean",
+            "description": "Whether the answer carries the target rows read back in details shape; true by default."
+          },
+          "include": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "The details extras to include with the rows read back, by name; null or empty for none."
+          }
+        },
+        "description": "The body of an entity action that answers its target rows read back and takes arguments."
+      },
       "EntityActionRequestOfSetCreditLimitArguments": {
         "required": [
           "arguments"
@@ -16553,6 +17824,82 @@
               {
                 "description": "The action's arguments; never null.",
                 "$ref": "#/components/schemas/SetCreditLimitArguments"
+              }
+            ]
+          },
+          "ids": {
+            "type": "array",
+            "description": "The target rows' ids; numbers or strings on the wire, narrowed to the stack's key type. Never null."
+          },
+          "returnEntities": {
+            "type": "boolean",
+            "description": "Whether the answer carries the target rows read back in details shape; true by default."
+          },
+          "include": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "The details extras to include with the rows read back, by name; null or empty for none."
+          }
+        },
+        "description": "The body of an entity action that answers its target rows read back and takes arguments."
+      },
+      "EntityActionRequestOfShareArguments": {
+        "required": [
+          "arguments"
+        ],
+        "type": "object",
+        "properties": {
+          "arguments": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "description": "The action's arguments; never null.",
+                "$ref": "#/components/schemas/ShareArguments"
+              }
+            ]
+          },
+          "ids": {
+            "type": "array",
+            "description": "The target rows' ids; numbers or strings on the wire, narrowed to the stack's key type. Never null."
+          },
+          "returnEntities": {
+            "type": "boolean",
+            "description": "Whether the answer carries the target rows read back in details shape; true by default."
+          },
+          "include": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "The details extras to include with the rows read back, by name; null or empty for none."
+          }
+        },
+        "description": "The body of an entity action that answers its target rows read back and takes arguments."
+      },
+      "EntityActionRequestOfTransferArguments": {
+        "required": [
+          "arguments"
+        ],
+        "type": "object",
+        "properties": {
+          "arguments": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "description": "The action's arguments; never null.",
+                "$ref": "#/components/schemas/TransferArguments"
               }
             ]
           },
@@ -18025,6 +19372,45 @@
           }
         }
       },
+      "PublishArguments": {
+        "required": [
+          "set",
+          "remove",
+          "everyone"
+        ],
+        "type": "object",
+        "properties": {
+          "set": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/RoleGrant"
+            },
+            "description": "The role grants to add, or whose access to change; null for none."
+          },
+          "remove": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "integer",
+              "format": "int32"
+            },
+            "description": "The roles whose grants to remove; null for none."
+          },
+          "everyone": {
+            "type": [
+              "null",
+              "boolean"
+            ],
+            "description": "True adds the Everyone grant, at view access; false removes it; null leaves it as it is."
+          }
+        },
+        "description": "The arguments of the `publish` action: role grants and the Everyone grant merged into\neach target's grants. Grants the arguments do not name are kept."
+      },
       "QueryDiagnostic": {
         "required": [
           "clause",
@@ -18531,6 +19917,159 @@
       "RelatedEntities": {
         "description": "The related entities a read carries beside its main entities, one typed set per entity name, each\nrestricted to that entity's related projection. Serialised as entity name to array."
       },
+      "Report": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "maxLength": 50,
+            "type": [
+              "null",
+              "string"
+            ],
+            "description": "The natural key seeds find the report by, `nvarchar(50)`, unique when present; a feature's prefix is reserved to its seeds."
+          },
+          "title": {
+            "maxLength": 255,
+            "type": "string",
+            "description": "The title in the tenant's primary language, `nvarchar(255)`; a save that leaves it empty takes the default title."
+          },
+          "title2": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "description": "The title in the tenant's secondary language."
+          },
+          "title3": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "description": "The title in the tenant's tertiary language."
+          },
+          "description": {
+            "maxLength": 1024,
+            "type": [
+              "null",
+              "string"
+            ],
+            "description": "The description in the tenant's primary language, `nvarchar(1024)`."
+          },
+          "description2": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "description": "The description in the tenant's secondary language."
+          },
+          "description3": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "description": "The description in the tenant's tertiary language."
+          },
+          "root": {
+            "maxLength": 128,
+            "type": "string",
+            "description": "The entity the report reads, by its name, such as `acme.SalesInvoiceLine`; `varchar(128)`."
+          },
+          "kind": {
+            "description": "The report's kind, which names the one block its document holds.",
+            "$ref": "#/components/schemas/ReportKind"
+          },
+          "definitionJson": {
+            "type": "string",
+            "description": "The definition document, camelCase JSON read into ReportDocument."
+          },
+          "queryexVersion": {
+            "type": "integer",
+            "description": "The query language version the document's expressions are read under; derived by the service.",
+            "format": "int32",
+            "readOnly": true,
+            "x-tellma-derived": true
+          },
+          "ownerId": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "description": "The user who owns the report; stamped by the service on insert, kept by every update, changed only by a transfer; null for a standard report.",
+            "format": "int32",
+            "readOnly": true
+          },
+          "basedOnId": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "description": "The report a \"save as\" copied, set on insert only; lineage, with no foreign key, since the source may be deleted later.",
+            "format": "int32",
+            "readOnly": true,
+            "x-tellma-write-once": true
+          },
+          "isActive": {
+            "type": "boolean",
+            "description": "Whether the report shows on the reports page by default; server-owned, changed by the activate and deactivate actions.",
+            "readOnly": true
+          },
+          "createdAt": {
+            "description": "When the row was created; server-owned, `datetimeoffset(7)`.",
+            "format": "date-time",
+            "readOnly": true
+          },
+          "createdById": {
+            "type": "integer",
+            "description": "The user who created the row; server-owned, a foreign key to `core.Users`.",
+            "format": "int32",
+            "readOnly": true
+          },
+          "modifiedAt": {
+            "description": "When the row was last changed by a user-visible mutation; server-owned,\n`datetimeoffset(7)`, and the row's concurrency token.",
+            "format": "date-time",
+            "readOnly": true
+          },
+          "modifiedById": {
+            "type": "integer",
+            "description": "The user who last changed the row; server-owned, a foreign key to `core.Users`.",
+            "format": "int32",
+            "readOnly": true
+          },
+          "id": {
+            "type": "integer",
+            "description": "The primary key. Server-owned: the allocator assigns it to a new row, and a client value\non an existing row only addresses that row.",
+            "format": "int32",
+            "readOnly": true
+          }
+        },
+        "description": "A stored report: a definition document over one root entity, of one kind, owned by the user\nwho created it and shared through its grants beside it.",
+        "x-tellma-related-select": {
+          "createdBy": [
+            "id",
+            "name",
+            "name2",
+            "name3",
+            "imageId"
+          ],
+          "modifiedBy": [
+            "id",
+            "name",
+            "name2",
+            "name3",
+            "imageId"
+          ],
+          "owner": [
+            "id",
+            "name",
+            "name2",
+            "name3",
+            "imageId"
+          ]
+        }
+      },
+      "ReportKind": {
+        "description": "What a report shows, which names the one block its document holds."
+      },
       "Role": {
         "type": "object",
         "properties": {
@@ -18693,6 +20232,25 @@
           }
         },
         "description": "One stored permission of an active role that reaches the caller: through a membership, with\nits window, or through a public role, which reaches every user."
+      },
+      "RoleGrant": {
+        "required": [
+          "roleId",
+          "access"
+        ],
+        "type": "object",
+        "properties": {
+          "roleId": {
+            "type": "integer",
+            "description": "The grantee: an active role.",
+            "format": "int32"
+          },
+          "access": {
+            "description": "What the grant lets the role's members do.",
+            "$ref": "#/components/schemas/ShareAccess"
+          }
+        },
+        "description": "A role grant the `publish` action adds, or whose access it changes."
       },
       "RoleMembership": {
         "type": "object",
@@ -19008,6 +20566,40 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/MyCenter"
+            },
+            "description": "The entities to save; never null."
+          },
+          "returnEntities": {
+            "type": "boolean",
+            "description": "Whether the answer carries the saved rows read back in details shape; true by default."
+          },
+          "include": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "The details extras to include with the rows read back, by name; null or empty for none."
+          },
+          "concurrency": {
+            "description": "Whether an update's stamp is compared: the details page sends\nConcurrencyMode.Check, the default, then\nConcurrencyMode.Override once the user chooses to overwrite.",
+            "$ref": "#/components/schemas/ConcurrencyMode"
+          }
+        },
+        "description": "The body of a stack's `save`: one or more entities, inserts and updates together."
+      },
+      "SaveRequestOfReport": {
+        "required": [
+          "entities"
+        ],
+        "type": "object",
+        "properties": {
+          "entities": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Report"
             },
             "description": "The entities to save; never null."
           },
@@ -19520,6 +21112,40 @@
         },
         "description": "What a settings save answers: the editor's view and the client's, as committed, so neither reloads."
       },
+      "ShareAccess": {
+        "description": "What a grant of a shareable row lets its grantee do. Stored by name."
+      },
+      "ShareArguments": {
+        "required": [
+          "set",
+          "remove"
+        ],
+        "type": "object",
+        "properties": {
+          "set": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/UserGrant"
+            },
+            "description": "The user grants to add, or whose access to change; null for none."
+          },
+          "remove": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "integer",
+              "format": "int32"
+            },
+            "description": "The users whose grants to remove; null for none."
+          }
+        },
+        "description": "The arguments of the `share` action: user grants merged into each target's grants.\nGrants the arguments do not name are kept."
+      },
       "TenantCategory": {
         "description": "Whether a tenant is a business's live books or a sandbox. Fixed when the tenant is\nregistered and never changed afterwards."
       },
@@ -19801,6 +21427,20 @@
       "TestNotificationResult": {
         "description": "What a channel's test send to the caller came to."
       },
+      "TransferArguments": {
+        "required": [
+          "ownerId"
+        ],
+        "type": "object",
+        "properties": {
+          "ownerId": {
+            "type": "integer",
+            "description": "The new owner: an active individual member. Their own user grant, if any, is removed.",
+            "format": "int32"
+          }
+        },
+        "description": "The arguments of the `transfer` action."
+      },
       "User": {
         "type": "object",
         "properties": {
@@ -20043,6 +21683,25 @@
             "variants"
           ]
         }
+      },
+      "UserGrant": {
+        "required": [
+          "userId",
+          "access"
+        ],
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "integer",
+            "description": "The grantee: an active individual member other than the row's owner.",
+            "format": "int32"
+          },
+          "access": {
+            "description": "What the grant lets the grantee do.",
+            "$ref": "#/components/schemas/ShareAccess"
+          }
+        },
+        "description": "A user grant the `share` action adds, or whose access it changes."
       },
       "UserKind": {
         "description": "What a user row stands for. Stored as the member's name, `varchar(10)`, and fixed when\nthe row is created."
@@ -20304,6 +21963,9 @@
     },
     {
       "name": "queryex"
+    },
+    {
+      "name": "reports"
     },
     {
       "name": "role-memberships"

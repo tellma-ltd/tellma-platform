@@ -1,6 +1,7 @@
 /**
  * Public API Surface of @tellma/core/config-check — the check of an app's
- * configuration against the client metadata.
+ * configuration against the client metadata, and of one entity declaration
+ * against the Entities chunk.
  *
  * The build runs it in Node after the metadata emit, and the app runs it at
  * startup in development; a production app never loads it.
@@ -14,4 +15,5 @@
 // LICENSE file in the root directory of this source tree.
 
 export { tmCheckAppConfig } from './src/tm-check-app-config';
+export { tmCheckEntityDeclaration, TmPathResolver, type TmEntityFinding } from './src/tm-entity-checks';
 export type { TmConfigProblem, TmConfigProblemCode } from './src/tm-config-problem';

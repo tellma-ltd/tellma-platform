@@ -112,6 +112,11 @@ function align(a: Scaled, b: Scaled): readonly [bigint, bigint, number] {
   ];
 }
 
+// The helpers' object is frozen behind a pure annotation, so an app that never
+// uses them drops them: the primary ships as one module, and a bundler keeps
+// every top-level call it cannot prove free of side effects, which
+// `Object.freeze` is not to it.
+
 /**
  * Exact helpers for {@link TmDecimal} values. Sums and comparisons of
  * decimals go through these, never through `+`, `<` or the other operators,
@@ -123,7 +128,7 @@ function align(a: Scaled, b: Scaled): readonly [bigint, bigint, number] {
  * if (TmDecimals.compare(total, limit) > 0) { … }
  * ```
  */
-export const TmDecimals = Object.freeze({
+export const TmDecimals = /* @__PURE__ */ Object.freeze({
   /**
    * Reads number text into canonical decimal text, or `null` when the text is
    * not a number. Accepts an optional sign, an optional point and an optional

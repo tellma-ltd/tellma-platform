@@ -220,6 +220,9 @@
   <data name="Access_Reason_self" xml:space="preserve">
     <value>Their own records</value>
   </data>
+  <data name="Access_Reason_share" xml:space="preserve">
+    <value>Records shared with them</value>
+  </data>
   <data name="Core_User_Plural" xml:space="preserve">
     <value>Users</value>
   </data>
@@ -837,6 +840,39 @@
   </data>
   <data name="Core_Report_DefaultTitle" xml:space="preserve">
     <value>{entity} – {kind, select, List {list} Summary {summary} Pivot {pivot} other {chart}}</value>
+  </data>
+  <data name="Core_Report_Plural" xml:space="preserve">
+    <value>Reports</value>
+  </data>
+  <data name="Report_UnknownMember" xml:space="preserve">
+    <value>The report’s definition has a member that isn’t recognized or has the wrong shape, at {pointer}.</value>
+  </data>
+  <data name="Report_CodeReserved" xml:space="preserve">
+    <value>Codes that start with “{prefix}” are reserved for standard reports.</value>
+  </data>
+  <data name="Report_InUse" xml:space="preserve">
+    <value>{named, plural, =0 {This report is shown on {others, plural, one {a dashboard} other {# dashboards}}; remove it from them before deleting it.} other {This report is shown on {dashboards}{others, plural, =0 {} one { and one other dashboard} other { and # other dashboards}}; remove it from them before deleting it.}}</value>
+  </data>
+  <data name="Sharing_StandardReadOnly" xml:space="preserve">
+    <value>Standard records can be shared and published, but not changed, deleted or transferred.</value>
+  </data>
+  <data name="Sharing_BasedOnInvisible" xml:space="preserve">
+    <value>The record this one is based on doesn’t exist, or you can’t see it.</value>
+  </data>
+  <data name="Sharing_UserInvalid" xml:space="preserve">
+    <value>Only active individual members can be shared with.</value>
+  </data>
+  <data name="Sharing_RoleInvalid" xml:space="preserve">
+    <value>Only active roles can be published to.</value>
+  </data>
+  <data name="Sharing_OwnerIsImplicit" xml:space="preserve">
+    <value>The owner already has full access.</value>
+  </data>
+  <data name="Sharing_TooManyGrants" xml:space="preserve">
+    <value>{kind, select, user {A record can be shared with at most {max} users.} other {A record can be published to at most {max} roles.}}</value>
+  </data>
+  <data name="Sharing_OwnerInvalid" xml:space="preserve">
+    <value>The new owner must be an active individual member.</value>
   </data>
   <data name="Core_Dashboard_DefaultTitle" xml:space="preserve">
     <value>Untitled dashboard</value>

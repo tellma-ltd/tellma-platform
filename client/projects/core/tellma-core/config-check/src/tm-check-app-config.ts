@@ -13,7 +13,7 @@ import {
 } from '@tellma/core';
 
 import { type TmConfigProblem, type TmConfigProblemCode, tmConfigProblem, type TmProblemFacts } from './tm-config-problem';
-import { tmEntityFindings, TmPathResolver } from './tm-entity-checks';
+import { tmCheckEntityDeclaration, TmPathResolver } from './tm-entity-checks';
 
 // The config check (spec 0024 §3.6): one function that checks an app's
 // configuration against the client metadata, in the build and at startup in
@@ -340,7 +340,7 @@ function checkEntities(context: CheckContext, entities: TmEntitiesChunk): void {
   const resolver = new TmPathResolver(entities);
   for (const declaration of context.declarations.entities.values()) {
     const key = `entity:${declaration.name}`;
-    for (const finding of tmEntityFindings(declaration, resolver)) {
+    for (const finding of tmCheckEntityDeclaration(declaration, resolver)) {
       context.report(finding.code, key, context.merge.origin(key, finding.member) ?? '', finding.facts);
     }
   }

@@ -154,6 +154,13 @@ namespace Tellma.Core.Composition.Checks
         public const string OutboxSender = "outbox.sender";
 
         /// <summary>
+        ///     Every shareable entity's pair is whole: its share entity references it once and is
+        ///     neither a stack nor a child collection, and its stack's service derives from the
+        ///     shareable service.
+        /// </summary>
+        public const string Shareables = "core.shareables";
+
+        /// <summary>
         ///     Exactly one blob store is registered; the blob options are positive and the upload
         ///     ceiling covers every kind; and the file-system store's root and the scratch directory
         ///     are usable.

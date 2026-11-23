@@ -9,11 +9,19 @@ import type { TmProblemFacts } from './tm-config-problem';
 
 // The checks of merged entity declarations against the Entities chunk (spec
 // 0029 §3): `operation-missing`, `entity-not-routable`, `unknown-action` and
-// `unknown-path`. The declaration members are typed loosely until the entity
-// model lands, so every member is read defensively: a member of an
+// `unknown-path`. `tmEntity` types its members, but a merged declaration is
+// read as plain data, from a pack compiled without the emitted types or
+// from JavaScript, so every member is read defensively: a member of an
 // unexpected shape is skipped, never thrown on.
 
-/** One problem an entity declaration has, before it is worded. */
+/**
+ * One problem an entity declaration has, before it is worded.
+ *
+ * @example
+ * ```ts
+ * const finding: TmEntityFinding = { code: 'unknown-path', member: 'columns', facts: { member: 'columns', path: 'Cod' } };
+ * ```
+ */
 export interface TmEntityFinding {
   /** What is wrong. */
   readonly code: 'operation-missing' | 'entity-not-routable' | 'unknown-action' | 'unknown-path';
@@ -49,6 +57,12 @@ function isObject(value: unknown): value is Readonly<Record<string, unknown>> {
  * Resolves entity paths against the Entities chunk: every segment but the
  * last names a navigation, and the last names a property or a navigation,
  * matched ignoring case.
+ *
+ * @example
+ * ```ts
+ * const resolver = new TmPathResolver(chunk);
+ * resolver.resolves('gl.Center', 'Parent.Code'); // true
+ * ```
  */
 export class TmPathResolver {
   /** Each entity's metadata, by name. */
@@ -165,13 +179,24 @@ function declaredPaths(declaration: TmEntityDeclaration): (readonly [member: str
 }
 
 /**
- * Checks one merged entity declaration against its metadata.
+ * Checks one merged entity declaration against the Entities chunk: members
+ * that need an operation the entity lacks (`operation-missing`), a launcher
+ * section on an entity with no route or query (`entity-not-routable`),
+ * actions the metadata does not list (`unknown-action`) and paths that do
+ * not resolve (`unknown-path`). It needs no DOM.
  *
  * @param declaration - The merged declaration.
- * @param resolver - The Entities chunk's paths.
+ * @param entities - The Entities chunk, or its paths indexed once for many declarations.
  * @returns What is wrong, empty when nothing is; also empty when the chunk lacks the entity.
+ *
+ * @example
+ * ```ts
+ * const findings = tmCheckEntityDeclaration(tmEntity('gl.Center', { columns: ['Cod'] }), chunk);
+ * // [{ code: 'unknown-path', member: 'columns', facts: { member: 'columns', path: 'Cod' } }]
+ * ```
  */
-export function tmEntityFindings(declaration: TmEntityDeclaration, resolver: TmPathResolver): TmEntityFinding[] {
+export function tmCheckEntityDeclaration(declaration: TmEntityDeclaration, entities: TmEntitiesChunk | TmPathResolver): TmEntityFinding[] {
+  const resolver = entities instanceof TmPathResolver ? entities : new TmPathResolver(entities);
   const metadata = resolver.entity(declaration.name);
   if (metadata === undefined) {
     return [];

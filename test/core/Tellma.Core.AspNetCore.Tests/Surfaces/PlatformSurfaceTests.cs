@@ -86,6 +86,9 @@ namespace Tellma.Core.AspNetCore.Tests.Surfaces
             Assert.Equal([TellmaTestHost.Issuer], metadata.GetProperty("authorization_servers").EnumerateArray().Select(static server => server.GetString()));
             Assert.Equal(["tellma_api"], metadata.GetProperty("scopes_supported").EnumerateArray().Select(static scope => scope.GetString()));
             Assert.Equal(["header"], metadata.GetProperty("bearer_methods_supported").EnumerateArray().Select(static method => method.GetString()));
+
+            // Named by the distribution alone: a tenant's name would tell a stranger which ids exist.
+            Assert.Equal("Acme ERP", metadata.GetProperty("resource_name").GetString());
         }
 
         [Fact]
