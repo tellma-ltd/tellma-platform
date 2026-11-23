@@ -29,6 +29,7 @@ import {
   TmUrls,
   type TmBlobDescriptor,
   type TmBlobKindPolicy,
+  type TmId,
   type TmNavigationDescriptor,
   type TmPropertyDescriptor,
   type TmValueDescriptor,
@@ -50,12 +51,15 @@ import { ɵtmCropCoverSquare, tmCheckBlobFile } from './tm-blob-check';
 import { TmFormats } from './tm-formats';
 import { ɵTmExactBinding, ɵtmParseExact } from './tm-exact-number';
 import { ɵTmFormFieldDelegate } from './tm-form-field-delegate';
+import { TmEntityField } from './tm-entity-field';
+import { TmEntityMultiField } from './tm-entity-multi-field';
 import { TmUploads } from './tm-uploads';
 
 // A typed value in edit mode (spec 0029 §12.2's control column): the one
 // control a value descriptor takes, bound to a Signal Forms field and placed
 // in the caller's `tm-form-field`. Values the user may not write show as
-// read-only text; an image or a file uploads as soon as it is picked, its
+// read-only text; a related row takes the entity field, a list of them the
+// entity list field; an image or a file uploads as soon as it is picked, its
 // path listed in the nearest `TmUploads` until the upload settles, and the
 // staged blob's id becomes the value.
 
@@ -72,7 +76,9 @@ type TmEditorKind =
   | 'enum'
   | 'enums'
   | 'image'
-  | 'file';
+  | 'file'
+  | 'entity'
+  | 'entities';
 
 /** What an editor knows of the property it edits. */
 type TmEditedProperty = TmValueDescriptor | TmPropertyDescriptor | TmNavigationDescriptor;
@@ -105,11 +111,13 @@ function valueOf(property: TmEditedProperty): TmValueDescriptor {
  * textarea when it may be longer than 255 characters; numbers take a
  * number input, decimals and longs held exactly as decimal text; dates a
  * date picker; enums a select in the enum's order; images and files their
- * pickers, which upload as soon as a file is picked. A value the server
- * owns, an instant, a related row (edited by the entity field) and a type
- * with no control show as read-only text; a related row's key property
- * shows its id, so pass the navigation to show the row's display name. A
- * write-once value edits only while the record is being created.
+ * pickers, which upload as soon as a file is picked; a related row, a
+ * navigation or a value that names a target, takes the entity field, and
+ * a list of them the entity list field. A value the server owns, an
+ * instant and a type with no control show as read-only text; a related
+ * row's key property shows its id, so pass the navigation to choose the
+ * row by its display name. A write-once value edits only while the record
+ * is being created.
  *
  * @example
  * ```html
@@ -120,7 +128,23 @@ function valueOf(property: TmEditedProperty): TmValueDescriptor {
  */
 @Component({
   selector: 'tm-value-editor',
-  imports: [FormField, ɵTmExactBinding, TmButton, TmCheckbox, TmChip, TmDatePicker, TmFilePicker, TmImage, TmInput, TmMultiSelect, TmNumber, TmOption, TmSelect],
+  imports: [
+    FormField,
+    ɵTmExactBinding,
+    TmButton,
+    TmCheckbox,
+    TmChip,
+    TmDatePicker,
+    TmEntityField,
+    TmEntityMultiField,
+    TmFilePicker,
+    TmImage,
+    TmInput,
+    TmMultiSelect,
+    TmNumber,
+    TmOption,
+    TmSelect,
+  ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   providers: [{ provide: TM_FORM_FIELD_CONTROL, useFactory: () => inject(TmValueEditor).ɵcontrol }],
   host: { class: 'tm-value-editor' },
@@ -200,6 +224,13 @@ function valueOf(property: TmEditedProperty): TmValueDescriptor {
             <tm-option [value]="option.value" [label]="option.label">{{ option.label }}</tm-option>
           }
         </tm-multi-select>
+      }
+      <!-- A related row: the entity field; a list of them: the entity list field -->
+      @case ('entity') {
+        <tm-entity-field [entity]="target()" [formField]="idField()" />
+      }
+      @case ('entities') {
+        <tm-entity-multi-field [entity]="target()" [formField]="idsField()" />
       }
       <!-- An image: the image editor, uploading each committed pick -->
       @case ('image') {
@@ -360,11 +391,14 @@ export class TmValueEditor {
     if (policy !== null) {
       return policy.image === null ? 'file' : 'image';
     }
-    // A related row is edited by the entity field, which is not this editor's:
-    // its navigation, a reference by type facts, or the key property itself.
+    // A related row, its navigation or a reference by type facts, takes the
+    // entity field; the key property itself names no target, so it shows its id.
     const keyOf = (property as Partial<TmPropertyDescriptor>).foreignKeyOf;
-    if (!this.#owned() || 'foreignKey' in property || of.target !== undefined || keyOf !== undefined) {
+    if (!this.#owned() || keyOf !== undefined) {
       return 'readonly';
+    }
+    if (of.target !== undefined) {
+      return of.array ? 'entities' : 'entity';
     }
     switch (of.type) {
       case 'string':
@@ -417,6 +451,15 @@ export class TmValueEditor {
 
   /** The field as enum values, for the multi-select. */
   protected readonly enumsField = computed(() => this.field() as FieldTree<readonly string[]>);
+
+  /** The entity a related row is chosen from. */
+  protected readonly target = computed(() => this.descriptor().target ?? '');
+
+  /** The field as an id, for the entity field. */
+  protected readonly idField = computed(() => this.field() as FieldTree<TmId | null>);
+
+  /** The field as ids, for the entity list field. */
+  protected readonly idsField = computed(() => this.field() as FieldTree<readonly TmId[]>);
 
   /** An enum's values with their labels, in the enum's order. */
   protected readonly options = computed(() => {

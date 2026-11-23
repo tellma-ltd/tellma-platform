@@ -34,9 +34,12 @@ function slot(id: string): TmShellSlot {
   return { id, icon: 'bell', labelKey: `Slot_${id}`, panel: lazy };
 }
 
-/** Merges features against the test metadata. */
+/** An empty platform feature, so a test sees only the declarations it makes. */
+const EMPTY_CORE = tmFeature({ key: 'core' });
+
+/** Merges features against the test metadata, after an empty platform feature. */
 function merge(...definitions: TmFeatureDefinition[]): ɵTmMergeResult {
-  return ɵtmMergeAppDeclarations(definitions.map(tmFeature), tmTestMetadata());
+  return ɵtmMergeAppDeclarations(definitions.map(tmFeature), tmTestMetadata(), EMPTY_CORE);
 }
 
 /** The problems of a merge as `code key feature` lines. */
@@ -400,6 +403,43 @@ describe('ɵtmMergeAppDeclarations', () => {
       );
       expect(result.problems).toEqual([]);
       expect(result.declarations.appBar.map((s) => s.id)).toEqual(['help', 'one', 'two', 'three']);
+    });
+  });
+
+  describe('the platform feature', () => {
+    it('contributes the Analysis and Administration sections and the settings entries', () => {
+      const result = ɵtmMergeAppDeclarations([tmFeature({ key: 'acme', sections: [section('sales')] })], tmTestMetadata());
+      expect(result.problems).toEqual([]);
+      expect(result.declarations.sections.map((s) => [s.id, s.order])).toEqual([
+        ['analysis', 800],
+        ['administration', 900],
+        ['sales', 10],
+      ]);
+      expect(result.declarations.entries.map((e) => [e.id, e.section ?? null])).toEqual([
+        ['core.settings', 'administration'],
+        ['core.me', null],
+        ['core.me.profile', null],
+        ['core.me.region', null],
+        ['core.me.display', null],
+        ['core.me.notifications', null],
+      ]);
+    });
+
+    it('lets a feature relabel and hide the platform entries', () => {
+      const result = ɵtmMergeAppDeclarations(
+        [
+          tmFeature({
+            key: 'acme',
+            overrides: [tmOverride('section:analysis', { order: 50 }), tmOverride('entry:core.me', { labelKey: 'Acme_Me' })],
+            hide: ['entry:core.settings'],
+          }),
+        ],
+        tmTestMetadata(),
+      );
+      expect(result.problems).toEqual([]);
+      expect(result.declarations.sections.find((s) => s.id === 'analysis')?.order).toBe(50);
+      expect(result.declarations.entries.find((e) => e.id === 'core.me')?.labelKey).toBe('Acme_Me');
+      expect(result.declarations.entries.some((e) => e.id === 'core.settings')).toBe(false);
     });
   });
 });

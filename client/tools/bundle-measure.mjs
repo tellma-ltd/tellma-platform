@@ -70,15 +70,21 @@ const UNLINKED = /ngDeclare/;
  * the package, such as a lazy chunk an entry point loads with import()) stay
  * out of the bundle, so a chunk with its own ceiling is measured on its own.
  *
+ * The bundle is gzipped twice: at zlib's default level, which the ceilings
+ * are stated at, and at level 9, which the caps are.
+ *
  * @param {string} clientDir absolute path of the client workspace
- * @returns {Promise<(fesm: string, external?: readonly string[]) => Promise<number>>}
- *   gzipped bytes of one FESM or chunk, given its absolute path; rejects
- *   when the bundle still holds an unlinked declaration
+ * @returns {Promise<(fesm: string, external?: readonly string[]) =>
+ *   Promise<{ gzip: number; gzip9: number }>>} gzipped bytes of one FESM or
+ *   chunk, given its absolute path, at the default level and at level 9;
+ *   rejects when the bundle still holds an unlinked declaration
  */
 export async function createBundleMeasurer(clientDir) {
   const bundle = await createProductionBundler(clientDir);
-  return async (fesm, external) =>
-    gzipSync((await bundle(fesm, undefined, external)).contents).length;
+  return async (fesm, external) => {
+    const { contents } = await bundle(fesm, undefined, external);
+    return { gzip: gzipSync(contents).length, gzip9: gzipSync(contents, { level: 9 }).length };
+  };
 }
 
 /**

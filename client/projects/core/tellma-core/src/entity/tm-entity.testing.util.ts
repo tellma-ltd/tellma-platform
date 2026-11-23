@@ -4,7 +4,7 @@
 // LICENSE file in the root directory of this source tree.
 
 import { provideLocationMocks } from '@angular/common/testing';
-import { ApplicationInitStatus } from '@angular/core';
+import { ApplicationInitStatus, type Provider } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import {
   provideTellmaStateTesting,
@@ -30,7 +30,7 @@ import type { TmAccessSummary, TmLaunchDocs, TmMeResult, TmTenantFacts, TmTenant
 import { TmClientStore } from '../state/store/tm-client-store';
 import { TmDisplayNames } from './tm-display-names';
 import { TmEntities } from './tm-entities';
-import { tmEntity } from './tm-entity-declaration';
+import { tmEntity, type TmPickerDeclaration } from './tm-entity-declaration';
 import { TmPermissions } from './tm-permissions';
 
 // The entity registry's test app: the server's recorded entity model (the
@@ -83,6 +83,7 @@ const ENGLISH: Readonly<Record<string, string>> = {
   Distribution_DisplayName: 'Acme',
   Acme_Customer: 'Customer',
   Acme_Customer_Plural: 'Customers',
+  Acme_Customer_New: 'New customer',
   Acme_Customer_Currency: 'Currency',
   Acme_Customer_Image: 'Image',
   Acme_Currency: 'Currency',
@@ -125,6 +126,10 @@ export interface TmEntityRigOptions {
   readonly devMode?: boolean;
   /** Whether the rig loads the Entities chunk before it returns; it does when omitted. */
   readonly load?: boolean;
+  /** Providers beside the app's, such as a test's own seam; none when omitted. */
+  readonly providers?: readonly Provider[];
+  /** The picker options each declared entity declares; none when omitted. */
+  readonly pickers?: Partial<Readonly<Record<'acme.Customer' | 'gl.Center' | 'acme.Currency', TmPickerDeclaration<string>>>>;
 }
 
 /** What an entity registry spec drives and inspects. */
@@ -194,6 +199,7 @@ export function tmEntityDocs(options: TmEntityRigOptions = {}): TmLaunchDocs {
 export async function tmEntityRig(options: TmEntityRigOptions = {}): Promise<TmEntityRig> {
   const { summaries, chunk } = tmTestEntities();
   const base = tmRouteTestConfig();
+  const pickers = options.pickers ?? {};
   TestBed.configureTestingModule({
     providers: [
       provideTellma({
@@ -208,9 +214,13 @@ export async function tmEntityRig(options: TmEntityRigOptions = {}): Promise<TmE
           tmFeature({
             key: 'acme',
             entities: [
-              tmEntity('acme.Customer', { details: tmLoadTestPage, actions: [{ name: 'set-credit-limit', button: true }] }),
-              tmEntity('gl.Center', { details: { page: tmLoadTestPage } }),
-              tmEntity('acme.Currency', {}),
+              tmEntity('acme.Customer', {
+                details: tmLoadTestPage,
+                actions: [{ name: 'set-credit-limit', button: true }],
+                ...(pickers['acme.Customer'] && { picker: pickers['acme.Customer'] as never }),
+              }),
+              tmEntity('gl.Center', { details: { page: tmLoadTestPage }, ...(pickers['gl.Center'] && { picker: pickers['gl.Center'] as never }) }),
+              tmEntity('acme.Currency', { ...(pickers['acme.Currency'] && { picker: pickers['acme.Currency'] as never }) }),
             ],
           }),
         ],
@@ -220,6 +230,7 @@ export async function tmEntityRig(options: TmEntityRigOptions = {}): Promise<TmE
       provideLocationMocks(),
       { provide: TM_API_UPDATES, useValue: { check: () => Promise.resolve('none') } },
       { provide: TM_DEV_MODE, useValue: () => options.devMode !== false },
+      ...(options.providers ?? []),
     ],
   });
   await TestBed.inject(ApplicationInitStatus).donePromise;

@@ -246,6 +246,11 @@ export class TmEntityPickerHarness extends ComponentHarness {
     return magnifier.click();
   }
 
+  /** Whether the input is read-only: it shows the committed text and searches nothing. */
+  async isReadonly(): Promise<boolean> {
+    return (await this.input()).getProperty<boolean>('readOnly');
+  }
+
   /** Whether the input currently announces itself as invalid (aria-invalid). */
   async isInvalid(): Promise<boolean> {
     return (await (await this.input()).getAttribute('aria-invalid')) === 'true';

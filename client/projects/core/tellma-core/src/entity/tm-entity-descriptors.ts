@@ -31,10 +31,12 @@ export interface TmPropertyDescriptor extends TmPropertyMetadata {
   readonly contentDir?: 'ltr' | 'rtl';
 }
 
-/** A navigation of an entity, labelled. */
+/** A navigation of an entity, labelled, with who writes its key. */
 export interface TmNavigationDescriptor extends TmNavigationMetadata {
   /** The navigation's label. */
   readonly label: Signal<string>;
+  /** Who writes the navigation's key property, so who may choose its related row; `editable` when the key is unknown. */
+  readonly ownership: TmPropertyMetadata['ownership'];
 }
 
 /** A child collection of an entity, labelled. */
@@ -75,7 +77,7 @@ export interface TmEnumDescriptor extends TmEnumMetadata {
 export interface TmEntityDescriptor
   extends Omit<
     TmEntityMetadata,
-    'properties' | 'navigations' | 'children' | 'actions' | 'relatedSelect' | 'searchable' | 'capabilities' | 'operations'
+    'properties' | 'navigations' | 'children' | 'actions' | 'relatedSelect' | 'searchable' | 'prefixSearchable' | 'capabilities' | 'operations'
   > {
   /** The entity's singular label. */
   readonly label: Signal<string>;
@@ -87,6 +89,8 @@ export interface TmEntityDescriptor
   readonly relatedSelect: readonly string[];
   /** The properties search matches, twins beyond the shape removed. */
   readonly searchable: readonly string[];
+  /** The searchable properties search matches from their start; absent before the Entities chunk loads. */
+  readonly prefixSearchable?: readonly string[];
   /** The entity's navigations. */
   readonly navigations: readonly TmNavigationDescriptor[];
   /** The entity's child collections. */

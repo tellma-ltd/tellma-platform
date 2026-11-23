@@ -5,14 +5,23 @@
 
 import type { Provider } from '@angular/core';
 
-// The page-scope seam (spec 0026 §9.2, §9.4). Every routed page and every
-// context-bearing dialog provides a page scope: the injector region that owns
-// its page context and the actions registered inside it. Until the page
-// context registry is provided, a scope holds nothing of its own.
+import { TmPageActions } from './tm-page-actions';
+import { TmPageContexts } from './tm-page-contexts';
+import { TmPageScope } from './tm-page-registry';
+
+// The page scope (spec 0026 §9.2, §9.4). Every routed page and every
+// context-bearing dialog provides one: the injector region that owns its
+// page context and the actions registered inside it. The scope gives the
+// region its own `TmPageContexts` and `TmPageActions`, bound to it, so a
+// dialog's action never lands on the page beneath.
 
 /**
- * The providers of one page scope, for the providers of a routed page's host
- * or of a dialog that publishes its own page context.
+ * The providers of one page scope, for a routed page's host or a dialog that
+ * publishes its own page context (`overlay: true`). Inside it,
+ * `TmPageContexts.register` and `TmPageActions.register` belong to the
+ * scope, and everything registered in it ends with it.
+ *
+ * @returns The providers.
  *
  * @example
  * ```ts
@@ -20,5 +29,5 @@ import type { Provider } from '@angular/core';
  * ```
  */
 export function provideTmPageScope(): Provider[] {
-  return [];
+  return [TmPageScope, TmPageContexts, TmPageActions];
 }

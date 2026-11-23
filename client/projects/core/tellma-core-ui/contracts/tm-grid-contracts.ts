@@ -109,10 +109,12 @@ export interface TmPasteContext extends TmParseContext {
 
 /**
  * One label's outcome from a batched label resolution: the resolved value,
- * or a definitive failure — `notFound` (no match) or `ambiguous` (several
- * matches; the resolver must not guess).
+ * a definitive failure — `notFound` (no match) or `ambiguous` (several
+ * matches; the resolver must not guess) — or `resolutionFailed`, a
+ * retryable one: the label was never checked, as when the read that would
+ * have checked it failed while the batch's other labels resolved.
  */
-export type TmLabelResolution<V> = { value: V } | { error: 'notFound' | 'ambiguous' };
+export type TmLabelResolution<V> = { value: V } | { error: 'notFound' | 'ambiguous' | 'resolutionFailed' };
 
 /**
  * Registration sink a grid provides to the editor views it creates. A token

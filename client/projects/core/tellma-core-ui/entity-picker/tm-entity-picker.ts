@@ -182,7 +182,8 @@ function isThenable<T>(
  *
  * Display text for a committed id resolves through `displayWith` (reactive
  * — an implementation reading the ambient locale re-renders in place), then
- * the pick-time label memo, then `String(id)` with a dev-mode warning.
+ * the pick-time label memo, then `String(id)`, with a dev-mode warning when
+ * no `displayWith` is bound.
  *
  * Result rows can carry a second line (`itemDescription`) that tells
  * same-named entities apart, and a label drawn in parts (`itemLabelParts`)
@@ -1238,8 +1239,10 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
   /**
    * The display text for a committed id: `displayWith` when provided and
    * non-null (the reactive, recommended path); else the memoized pick-time
-   * label; else `String(id)` with a one-shot dev warning — visible and
-   * honest, never a silently empty field that claims to hold a value.
+   * label; else `String(id)` — visible and honest, never a silently empty
+   * field that claims to hold a value — with a one-shot dev warning when no
+   * `displayWith` is bound (a bound one that answers `null` is still
+   * loading the label, and renders it once known).
    */
   private displayFor(id: Id | null): string {
     if (id === null) {
@@ -1260,7 +1263,9 @@ export class TmEntityPicker<T, Id extends TmEntityId = TmEntityId>
     if (memoized !== undefined) {
       return memoized;
     }
-    if (typeof ngDevMode !== 'undefined' && ngDevMode && !this.warnedMissingDisplay) {
+    // A bound `displayWith` that answers null is still loading the label,
+    // which it renders once known: only a missing one is a mistake.
+    if (typeof ngDevMode !== 'undefined' && ngDevMode && displayWith === undefined && !this.warnedMissingDisplay) {
       this.warnedMissingDisplay = true;
       console.warn(
         `tm-entity-picker: no display text for committed id "${String(id)}" — ` +

@@ -20,7 +20,7 @@ import {
 
 import { TM_API_UPDATES, type TmApiUpdateCheck } from '../api/tm-api-seams';
 import { provideTellma } from '../app/provide-tellma';
-import type { TmAppConfig } from '../app/tm-app-config';
+import type { TmAppConfig, TmLanguageDefinition } from '../app/tm-app-config';
 import { tmFeature, type TmFeature } from '../declarations/tm-feature';
 import { tmPage } from '../declarations/tm-page';
 import { tmEntity } from '../entity/tm-entity-declaration';
@@ -199,26 +199,50 @@ export interface TmAppRigOptions {
   readonly update?: TmApiUpdateCheck;
   /** More providers, after the rig's. */
   readonly providers?: readonly Provider[];
+  /** The app's features, when not the test feature alone. */
+  readonly features?: readonly TmFeature[];
+  /** The app's languages, when not English alone. */
+  readonly languages?: readonly TmLanguageDefinition[];
+  /** The distribution's strings by language, merged over the test strings in English. */
+  readonly strings?: Readonly<Record<string, Readonly<Record<string, string>>>>;
+  /** The Core chunk, when not the route test metadata. */
+  readonly metadata?: TmClientMetadata;
 }
 
 /**
  * The test app's configuration: resolving metadata loaders over the route
- * test metadata, English strings, and the test feature.
+ * test metadata, English strings, and the test feature, unless the options
+ * name others.
  *
+ * @param options - The features, languages, strings and Core chunk, when not the defaults.
  * @returns The configuration.
  */
-export function tmRouteTestConfig(): TmAppConfig {
-  const metadata = tmRouteTestMetadata();
+export function tmRouteTestConfig(options: Pick<TmAppRigOptions, 'features' | 'languages' | 'strings' | 'metadata'> = {}): TmAppConfig {
+  const metadata = options.metadata ?? tmRouteTestMetadata();
+  // English always holds the test strings; each language's own strings merge over them.
+  const strings: Record<string, Readonly<Record<string, string>>> = {
+    ...options.strings,
+    en: {
+      Distribution_DisplayName: 'Acme',
+      gl_Center_Plural: 'Centers',
+      gl_Center: 'Center',
+      // A destructive page action's label and confirmation.
+      Acme_Center_Delete: 'Delete center',
+      Acme_Center_DeleteTitle: 'Delete {name}?',
+      Acme_Center_DeleteMessage: '{name} and its {count} children will be deleted.',
+      ...options.strings?.['en'],
+    },
+  };
   const loaders: TmMetadataLoaders = {
     core: () => Promise.resolve(metadata),
     entities: () => Promise.resolve(tmTestEntitiesChunk()),
     contracts: () => Promise.resolve({ fingerprints: {}, long: [], idempotent: [] }),
-    strings: { en: () => Promise.resolve({ Distribution_DisplayName: 'Acme', gl_Center_Plural: 'Centers', gl_Center: 'Center' }) },
+    strings: Object.fromEntries(Object.entries(strings).map(([code, table]) => [code, () => Promise.resolve(table)])),
   };
   return {
     metadata: loaders,
-    languages: [tmEnglish()],
-    features: [tmRouteTestFeature()],
+    languages: options.languages ?? [tmEnglish()],
+    features: options.features ?? [tmRouteTestFeature()],
   };
 }
 
@@ -232,7 +256,7 @@ export function tmRouteTestConfig(): TmAppConfig {
 export async function tmAppRig(options: TmAppRigOptions = {}): Promise<TmAppRig> {
   TestBed.configureTestingModule({
     providers: [
-      provideTellma(tmRouteTestConfig()),
+      provideTellma(tmRouteTestConfig(options)),
       provideTellmaTesting(),
       provideTellmaStateTesting(),
       // The router writes to a mock location, never the test page's address.

@@ -5,7 +5,7 @@
 
 import { inject, InjectionToken } from '@angular/core';
 
-import { TM_LEADER_DOCUMENTS } from '../leader/tm-leader-documents';
+import { ɵTM_UNIQUE_LEADER_DOCUMENTS } from '../leader/tm-leader-documents';
 
 // The client formats of the stored documents (spec 0025 §2.4). A format is
 // bumped whenever a document's stored shape changes, a server FormatVersion
@@ -16,7 +16,8 @@ import { TM_LEADER_DOCUMENTS } from '../leader/tm-leader-documents';
 /**
  * The client format of each fixed document name, and of each name prefix
  * (a key ending in `:`, such as `entity:`), which covers every name that
- * starts with it. A leader document's format comes from its own registration.
+ * starts with it. A leader document's format comes from its own registration,
+ * which takes precedence over an entry here.
  */
 export const TM_DOC_FORMATS: Readonly<Record<string, number>> = Object.freeze({
   tenants: 1,
@@ -26,6 +27,10 @@ export const TM_DOC_FORMATS: Readonly<Record<string, number>> = Object.freeze({
   tenant: 1,
   sync: 1,
   zone: 1,
+  // The assignments summary is a stored document before the leader reads it:
+  // until the server serves its route, no leader document is registered for
+  // it, so it reads as absent. Its leader registration supersedes this entry.
+  assignments: 1,
   'entity:': 1,
   'tree:': 1,
 });
@@ -45,7 +50,7 @@ export const TM_STORE_FORMATS = new InjectionToken<Readonly<Record<string, numbe
  */
 export const TM_STORE_EXTRA_FORMATS = new InjectionToken<Readonly<Record<string, number>>>('TM_STORE_EXTRA_FORMATS', {
   providedIn: 'root',
-  factory: () => Object.fromEntries(inject(TM_LEADER_DOCUMENTS).map((doc) => [doc.name, doc.formatVersion])),
+  factory: () => Object.fromEntries(inject(ɵTM_UNIQUE_LEADER_DOCUMENTS).map((doc) => [doc.name, doc.formatVersion])),
 });
 
 /**

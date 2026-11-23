@@ -88,10 +88,12 @@ export class TmLaunchCache {
   } | null = null;
 
   /** The routed tenant's launch documents; each reads `undefined` while absent. */
-  readonly docs: { readonly [K in keyof TmLaunchDocs]: Signal<TmLaunchDocs[K] | undefined> } = {
+  readonly docs: { readonly [K in keyof TmLaunchDocs]-?: Signal<TmLaunchDocs[K] | undefined> } = {
     settings: this.#tenantDoc('settings'),
     me: this.#tenantDoc('me'),
     tenant: this.#tenantDoc('tenant'),
+    inbox: this.#tenantDoc('inbox'),
+    assignments: this.#tenantDoc('assignments'),
   };
 
   /** Whether the routed tenant's `settings`, `me` and `tenant` are all present, so its chrome renders from them. */

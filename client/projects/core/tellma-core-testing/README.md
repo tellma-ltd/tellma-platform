@@ -5,7 +5,7 @@ end-to-end suites share.
 
 | Entry point | Holds | Runs in |
 |---|---|---|
-| `@tellma/core-testing` | `provideTellmaTesting()`, which replaces each platform seam with a fake a test can inspect and loads the test client metadata into its holder, as the Core chunk's load would; `TmFakeApi`, which answers each route from a script and records every call, image fetches scripted by URL included; `TmFakeTelemetry`, which records every telemetry item and sends nothing; `tmTestMetadata()` and `tmTestEntitiesChunk()`, the Core and Entities chunks of a small Acme distribution, each patchable member by member; `provideTellmaStateTesting()`, which adds the client state's fakes: `TmFakeTabBus`, which records posts and delivers the messages a test plays as other tabs', `TmFakeSession`, signed in as `tmTestProfile()`'s user and active until the test changes it, `TmFakeLocks`, the browser's exclusive locks kept in memory, which shows the locks held, and a session storage of the test's own behind `@tellma/core/memory`'s `TmDrafts`, so no draft outlives the test; `tmWarmTenant()`, which stores a tenant's launch documents with a recent sync, so its entry is warm | the unit-test browser |
+| `@tellma/core-testing` | `provideTellmaTesting()`, which replaces each platform seam with a fake a test can inspect and loads the test client metadata into its holder, as the Core chunk's load would; `TmFakeApi`, which answers each route from a script and records every call, image fetches scripted by URL included; `TmFakeTelemetry`, which records every telemetry item and sends nothing; `TmPageContextHarness`, which reads the page-context registry as snapshots (the routed page's, the dialogs' and the top one), lists the top context's actions and invokes them through the dispatcher; `tmTestMetadata()` and `tmTestEntitiesChunk()`, the Core and Entities chunks of a small Acme distribution, each patchable member by member; `provideTellmaStateTesting()`, which adds the client state's fakes: `TmFakeTabBus`, which records posts and delivers the messages a test plays as other tabs', `TmFakeSession`, signed in as `tmTestProfile()`'s user and active until the test changes it, `TmFakeLocks`, the browser's exclusive locks kept in memory, which shows the locks held, and a session storage of the test's own behind `@tellma/core/memory`'s `TmDrafts`, so no draft outlives the test; `tmWarmTenant()`, which stores a tenant's launch documents with a recent sync, so its entry is warm, and the inbox and assignments summaries when the test gives them (the inbox when it also registers `TM_ATTENTION_DOCUMENTS`, as `provideTellma` does); `tmFakeInboxSummary()` and `tmFakeAssignmentsSummary()`, an empty inbox and an empty tray with the members a test names; `TmEntityFieldHarness` and `TmEntityMultiFieldHarness`, the harnesses of `@tellma/core/entity`'s entity fields, which drive the picker inside and hand it out (they compose `@tellma/core-ui-testing`'s picker harnesses) | the unit-test browser |
 | `@tellma/core-testing/e2e` | `expectNoAxeViolations` and `tmAxeViolations`: one axe-core scan of the WCAG 2.1 A and AA rules over a page or part of it | Node, inside Playwright tests; needs the optional peer `@playwright/test` |
 
 ```ts
@@ -58,6 +58,12 @@ server sends:
 ```ts
 const { summaries, chunk } = tmTestEntities();
 const metadata = tmTestMetadata({ entities: summaries });
+```
+
+```ts
+const field = await loader.getHarness(TmEntityFieldHarness);
+await field.pick('1101 - Cash');
+expect(await field.getText()).toBe('1101 - Cash');
 ```
 
 The package builds against the built `@tellma/core` (`tsconfig.lib.json`), as a consumer would;

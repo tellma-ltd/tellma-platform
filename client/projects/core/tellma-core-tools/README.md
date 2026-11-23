@@ -88,8 +88,21 @@ key is the declaration or file concerned and the feature its owner (the distribu
 own files). `label-missing` and `budget-warning` are warnings, which print and pass.
 
 **Budgets.** `initialJs` (warn 230 KB, error 260 KB), `initialCss` (40), `searchRoute` (110),
-`detailsRoute` (80), `echartsEngine` (170), `workerShell` (warn 1,536), `codedReports` (16) and
-`bootScript` (3 KB for the script with English, plus 0.4 KB per further string table). Every
+`detailsRoute` (80), `echartsEngine` (170), `workerShell` (warn 1,536), `corePrimaryFirstFrame`
+(50), `codedReports` (16) and `bootScript` (3 KB for the script with English, plus 0.4 KB per
+further string table).
+
+`corePrimaryFirstFrame` is the `@tellma/core` primary entry point's code on this app's first frame:
+what its modules (the module it starts at and every module reached from it through relative
+imports, whether from the built package or its sources) contribute to the initial JavaScript, cut
+out of those files through their hidden source maps and compressed alone. Primary code the app
+never uses is shaken out first, and primary code that loads with `import()` later is not on the
+first frame, so the figure is a lower bound of the primary's own weight, not its cap: the
+platform's `size:check` holds the whole entry point to the 50 KB cap, and this line lets a
+distribution check the same level on its own app. A build in which no module is the primary's, no
+initial file holds its code, or a file's source map disagrees with the stats' count of its primary
+bytes (beyond 0.5% under or 1% over, plus 16 bytes) reports `budget-unmeasurable`; a file holding
+primary code without a source map fails the build. Every
 lazily loaded chunk no budget covers, a `@defer` block's or a distribution route's, prints on a
 line of its own, `lazy:<the module it starts at>`, with no level: its static imports beyond the
 initial set. A distribution sets a level in `package.json`; a raise needs a note:
@@ -111,6 +124,10 @@ minimal distribution client (`fixtures/app/`) and the data of a stand-in Migrato
 answer the emit's `dotnet run` from that data, and `src/commands/build.fixture.spec.ts` runs one
 real `ng build` of it, through every later step and the output checks. `lint:test` runs that spec
 in a group of its own after every other spec file, so the build and the other specs' real
-processes never compete for the machine. The platform's own client
-workspace dogfoods every preset: its ESLint and stylelint configs register this package's rules,
-and its `tsconfig.json` extends the TypeScript preset.
+processes never compete for the machine. The lint rule specs, here and the workspace's own under
+`client/tools/tests/`, build their ESLint `RuleTester` with `fixtures/rule-tester.ts`, which hands
+it Vitest's `describe` and `it` so that each valid and invalid case runs as a test of its own.
+`fixtures/source-maps.ts` writes source maps from plain runs of generated code, so the budget
+specs state which source each byte came from.
+The platform's own client workspace dogfoods every preset: its ESLint and stylelint configs
+register this package's rules, and its `tsconfig.json` extends the TypeScript preset.
