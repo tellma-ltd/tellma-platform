@@ -487,12 +487,28 @@ namespace Tellma.Core.Excel
         /// <param name="text">The text the workbook's sheets may still decode, charged by this sheet's reads too.</param>
         /// <returns>The reader.</returns>
         /// <exception cref="Abstractions.Excel.ImportException">The part is not well-formed.</exception>
-        public static SheetReader Open(Stream part, string sheet, SharedStringStore strings, long rowBudget, TextBudget text)
+        public static SheetReader Open(BoundedPartStream part, string sheet, SharedStringStore strings, long rowBudget, TextBudget text)
         {
             ArgumentNullException.ThrowIfNull(strings);
             ArgumentNullException.ThrowIfNull(text);
             ArgumentOutOfRangeException.ThrowIfNegative(rowBudget);
-            SheetReader reader = new(XlsxXml.Open(part), sheet, strings, rowBudget, text);
+
+            // --- The part's reader, which reads its first text as it is made; a refusal blames the sheet ---
+            XmlReader xml;
+            try
+            {
+                xml = XlsxXml.Open(part);
+            }
+            catch (XmlException)
+            {
+                throw ImportFaults.Malformed(ImportFaults.XmlReason, sheet);
+            }
+            catch (InvalidDataException)
+            {
+                throw ImportFaults.Malformed(ImportFaults.ZipReason, sheet);
+            }
+
+            SheetReader reader = new(xml, sheet, strings, rowBudget, text);
             try
             {
                 reader.Start();

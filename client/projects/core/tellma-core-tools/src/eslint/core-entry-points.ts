@@ -49,16 +49,21 @@ export const TM_CORE_ENTRY_POINTS: Readonly<Record<string, TmEntryPointRule>> = 
   // from reaching it statically.
   './search-normalize': { load: 'shared', imports: [] },
   './realtime': { load: 'lazy', imports: [] },
-  './support': { load: 'lazy', imports: [] },
+  // The support dump reads the page contexts' snapshots.
+  './support': { load: 'lazy', imports: ['./page-snapshot'] },
   './entity': { load: 'lazy', imports: [] },
   './sharing': { load: 'lazy', imports: [] },
-  './search': { load: 'lazy', imports: ['./entity'] },
-  './details': { load: 'lazy', imports: ['./entity'] },
-  './admin': { load: 'lazy', imports: [] },
+  // The page hosts load the tab's memory with them: the search page's state
+  // and tree expansion, the details page's drafts and state, the stock
+  // pages' and the report studio's drafts, a report's state. The home page,
+  // in `/dashboards`, lists the recent pages.
+  './search': { load: 'lazy', imports: ['./entity', './memory'] },
+  './details': { load: 'lazy', imports: ['./entity', './memory'] },
+  './admin': { load: 'lazy', imports: ['./memory'] },
   './attention-pages': { load: 'lazy', imports: [] },
-  './reports': { load: 'lazy', imports: [] },
-  './report-studio': { load: 'lazy', imports: [] },
-  './dashboards': { load: 'lazy', imports: [] },
+  './reports': { load: 'lazy', imports: ['./memory'] },
+  './report-studio': { load: 'lazy', imports: ['./memory'] },
+  './dashboards': { load: 'lazy', imports: ['./recents'] },
   './config-check': { load: 'lazy', imports: [] },
   // Spec 0025's tab memory, recent pages and leader election, which spec 0025
   // §1 places in the primary; they load with the page hosts and after first
@@ -66,6 +71,10 @@ export const TM_CORE_ENTRY_POINTS: Readonly<Record<string, TmEntryPointRule>> = 
   './memory': { load: 'lazy', imports: [] },
   './recents': { load: 'lazy', imports: [] },
   './leader': { load: 'lazy', imports: [] },
+  // Spec 0026's page-context snapshot, which spec 0026 §1 places in the
+  // primary; nothing on the first frame reads it, so the support dump and a
+  // future assistant load it with import().
+  './page-snapshot': { load: 'lazy', imports: [] },
 });
 
 /**

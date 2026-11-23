@@ -3,7 +3,7 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-import { computed, DOCUMENT, inject, Injectable, Injector, signal, untracked, type Signal, type WritableSignal } from '@angular/core';
+import { computed, DestroyRef, DOCUMENT, inject, Injectable, Injector, signal, untracked, type Signal, type WritableSignal } from '@angular/core';
 import { tmFormatDate, tmFormatNumber, tmStripBidiControls, type TmCalendar } from '@tellma/core-ui/l10n';
 
 import { TmApi } from '../api/tm-api';
@@ -301,6 +301,8 @@ export class TmDisplayNames {
   readonly #l10n = inject(TmLocalization);
   readonly #telemetry = inject(TmTelemetry);
   readonly #document = inject(DOCUMENT);
+  /** The app's lifetime: a flush that comes after it resolves nothing. */
+  readonly #app = inject(DestroyRef);
 
   /** Each entity's plan, by name, shape and whether the Entities chunk had loaded. */
   readonly #plans = new Map<string, ɵTmDisplayNamePlan>();
@@ -661,6 +663,11 @@ export class TmDisplayNames {
     this.#scheduled = false;
     const queue = this.#queue;
     this.#queue = new Map();
+    // A frame that comes after the app's end reads nothing: the app's
+    // injector, which resolves the refresher and the API, then throws.
+    if (this.#app.destroyed) {
+      return;
+    }
     const partition = untracked(this.#refresher.ɵpartition);
     if (partition === null) {
       return;

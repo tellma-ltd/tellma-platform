@@ -111,6 +111,8 @@ minimal distribution client (`fixtures/app/`) and the data of a stand-in Migrato
 answer the emit's `dotnet run` from that data, and `src/commands/build.fixture.spec.ts` runs one
 real `ng build` of it, through every later step and the output checks. `lint:test` runs that spec
 in a group of its own after every other spec file, so the build and the other specs' real
-processes never compete for the machine. The platform's own client
-workspace dogfoods every preset: its ESLint and stylelint configs register this package's rules,
-and its `tsconfig.json` extends the TypeScript preset.
+processes never compete for the machine. The lint rule specs, here and the workspace's own under
+`client/tools/tests/`, build their ESLint `RuleTester` with `fixtures/rule-tester.ts`, which hands
+it Vitest's `describe` and `it` so that each valid and invalid case runs as a test of its own.
+The platform's own client workspace dogfoods every preset: its ESLint and stylelint configs
+register this package's rules, and its `tsconfig.json` extends the TypeScript preset.

@@ -103,6 +103,19 @@ export class TmFakeTelemetry extends TmTelemetry {
 }
 
 // @public
+export class TmPageContextHarness {
+    action(id: string): TmPageAction | undefined;
+    actions(): readonly TmPageAction[];
+    current(includeData?: boolean): TmPageContextSnapshot | null;
+    invoke(id: string, args?: TmJson, origin?: TmActionOrigin): Promise<TmActionResult>;
+    overlays(includeData?: boolean): TmPageContextSnapshot[];
+    running(): ReadonlySet<string>;
+    top(includeData?: boolean): TmPageContextSnapshot | null;
+    static ɵfac: i0.ɵɵFactoryDeclaration<TmPageContextHarness, never>;
+    static ɵprov: i0.ɵɵInjectableDeclaration<TmPageContextHarness>;
+}
+
+// @public
 export interface TmTestEntities {
     readonly chunk: TmEntitiesChunk;
     readonly summaries: readonly TmEntitySummary[];

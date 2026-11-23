@@ -14,24 +14,23 @@ import {
   untracked,
   type Signal,
 } from '@angular/core';
-import { type ActivatedRouteSnapshot, NavigationEnd, Router } from '@angular/router';
+import { NavigationEnd, Router } from '@angular/router';
 import {
   TM_NOW,
   TmCacheRefresher,
   type TmPageKind,
+  TmPageContexts,
   TmPreferences,
   tmPreferenceKey,
-  type TmRouteData,
-  TmTitleStrategy,
   TmUrls,
   ɵTM_API_HOST,
-  type ɵTmRouteDataInternal,
 } from '@tellma/core';
 
 // Recently visited pages (spec 0025 §13): the pages the user last visited in
 // the routed tenant, at most ten, kept in the write-behind preference
 // `nav.recent` so they follow the user to every tab and browser. A visit is a
-// page of a listed kind that stays current for 2 s while the document is
+// page whose context (`TmPageContexts.current`) is of a listed kind, not the
+// drill-through list, and stays current for 2 s while the document is
 // visible. The launcher entry of a page names and draws it; access filters
 // the list on read, so a page whose access returns comes back. A tab keeps
 // its own visits while they are among the ten and merges them back into a
@@ -50,18 +49,6 @@ export interface TmRecentPage {
   readonly icon: string | null;
   /** When the user last visited it, in epoch milliseconds, to the second. */
   readonly visitedAt: number;
-}
-
-/** The routed page, as visits count it. Internal. */
-export interface TmRoutedPage {
-  /** The router's URL, such as `/17/centers?q=jed`. */
-  readonly url: string;
-  /** The page's family. */
-  readonly kind: TmPageKind;
-  /** Whether the route is the drill-through list, which never counts. */
-  readonly list: boolean;
-  /** The page's title as displayed. */
-  readonly title: Signal<string>;
 }
 
 /** A page's launcher entry, as recents name and draw it. Internal. */
@@ -92,37 +79,6 @@ export interface TmRecentsNavigation {
 }
 
 /**
- * The routed page as visits count it: the deepest route's family and title.
- * Internal: the page context replaces it once it lands.
- */
-export const TM_ROUTED_PAGE = new InjectionToken<Signal<TmRoutedPage | null>>('TM_ROUTED_PAGE', {
-  providedIn: 'root',
-  factory: () => {
-    const router = inject(Router);
-    const title = inject(TmTitleStrategy).pageTitle;
-    const page = signal<TmRoutedPage | null>(null);
-    const read = (): void => {
-      let route: ActivatedRouteSnapshot = router.routerState.snapshot.root;
-      while (route.firstChild !== null) {
-        route = route.firstChild;
-      }
-      const data = route.data as Partial<TmRouteData & ɵTmRouteDataInternal>;
-      page.set(data.kind === undefined ? null : { url: router.url, kind: data.kind, list: data.ɵentity === 'list', title });
-    };
-    const subscription = router.events.subscribe((event) => {
-      if (event instanceof NavigationEnd) {
-        read();
-      }
-    });
-    if (router.navigated) {
-      read();
-    }
-    inject(DestroyRef).onDestroy(() => subscription.unsubscribe());
-    return page.asReadonly();
-  },
-});
-
-/**
  * The launcher's answers about stored URLs: until the launcher lands, no
  * entry, and a URL that no route reaches is unavailable. Internal.
  */
@@ -148,6 +104,9 @@ interface TmStoredVisit {
 
 /** The kinds a visit counts for. */
 const KINDS: readonly TmPageKind[] = ['search', 'report', 'dashboard', 'settings', 'access', 'custom'];
+
+/** The drill-through list's route template: its visits never count. */
+const LIST = '/:t/list/:segment';
 
 /** How many pages the list keeps. */
 const CAPACITY = 10;
@@ -251,18 +210,30 @@ export class TmRecents {
   /** Creates the service, which counts the routed page's visits from now on. */
   constructor() {
     const host = inject(ɵTM_API_HOST);
-    const page = inject(TM_ROUTED_PAGE);
+    const contexts = inject(TmPageContexts);
+    const router = inject(Router);
     const visible = signal(host.visible());
     const stop = host.listen('document', 'visibilitychange', () => visible.set(host.visible()));
+    // Each navigation that lands, so a path that changes under the same context is a visit of its own.
+    const navigated = signal(0);
+    const navigations = router.events.subscribe((event) => {
+      if (event instanceof NavigationEnd) {
+        navigated.update((count) => count + 1);
+      }
+    });
 
     // --- A visit: a page of a listed kind, current for 2 s while visible ---
-    // A query change on the same path is the same visit; a hidden document
-    // stops the clock, and showing it again starts the 2 s afresh.
+    // The page is the routed context at the router's URL. A query change on
+    // the same path is the same visit, and so is a context that replaces
+    // another on it; a hidden document stops the clock, and showing it again
+    // starts the 2 s afresh.
     effect(() => {
-      const routed = page();
+      const routed = contexts.current();
       const shown = visible();
+      navigated();
       untracked(() => {
-        const path = routed !== null && !routed.list && KINDS.includes(routed.kind) ? pathOf(routed.url) : null;
+        const counts = routed !== null && routed.routeTemplate !== LIST && KINDS.includes(routed.kind);
+        const path = counts ? pathOf(router.url) : null;
         if (path !== this.#path) {
           this.#path = path;
           this.#counted = false;
@@ -275,7 +246,11 @@ export class TmRecents {
             this.#timer = setTimeout(() => {
               this.#counted = true;
               this.#armed = null;
-              this.#visit(routed!);
+              // The context as it stands at the end of the 2 s, which names the page.
+              const page = contexts.current();
+              if (page !== null && KINDS.includes(page.kind)) {
+                this.#visit(armed, page.kind, page.title);
+              }
             }, DWELL_MS);
           }
         }
@@ -299,18 +274,26 @@ export class TmRecents {
 
     inject(DestroyRef).onDestroy(() => {
       stop();
+      navigations.unsubscribe();
       clearTimeout(this.#timer);
     });
   }
 
-  /** Records a visit at the front of the list; a revisit moves its entry, and the eleventh falls off. */
-  #visit(page: TmRoutedPage): void {
+  /**
+   * Records a visit at the front of the list; a revisit moves its entry, and
+   * the eleventh falls off.
+   *
+   * @param path - The page's path, such as `/17/reports/42`.
+   * @param kind - The page's family.
+   * @param title - The page's title as displayed.
+   */
+  #visit(path: string, kind: TmPageKind, title: Signal<string>): void {
     const t = untracked(this.#refresher.ɵpartition)?.tenantId;
     if (t === undefined) {
       return;
     }
-    const p = relative(page.url);
-    const visit: TmStoredVisit = { p, k: page.kind, t: Math.floor(this.#now() / 1_000), n: untracked(page.title) };
+    const p = relative(path);
+    const visit: TmStoredVisit = { p, k: kind, t: Math.floor(this.#now() / 1_000), n: untracked(title) };
     const own = [visit, ...(this.#own.get(t) ?? []).filter((held) => held.p !== p)];
     this.#keep(t, own, untracked(this.#stored));
   }

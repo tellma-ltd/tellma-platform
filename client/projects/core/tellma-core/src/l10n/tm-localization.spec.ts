@@ -499,9 +499,12 @@ describe('TmLocalization', () => {
       expect(switches(bus)).toEqual([]);
 
       l10n.setLanguage('en');
-      await tmSettle();
-
-      expect(switches(bus)).toEqual([{ type: 'l10n.switched', lang: 'en' }]);
+      // The switch lands once its loads have, and a module loaded for the
+      // first time can take more than a settle while the whole suite runs.
+      await vi.waitFor(async () => {
+        await tmSettle();
+        expect(switches(bus)).toEqual([{ type: 'l10n.switched', lang: 'en' }]);
+      });
     });
 
     it("leaves a tenantless tab and a tenant tab with no preference as they are when another tab settles a preference, and follows a switch", async () => {
@@ -769,6 +772,24 @@ describe('TmLocalization', () => {
 
       expect(l10n.ɵtext('tm.home.title')()).toBe('Home');
       expect(warnings).toHaveBeenCalledWith(expect.stringContaining('string-key-collision'));
+    });
+
+    it("merges an entry point's English strings under its scope, formatting their arguments, once", async () => {
+      const { l10n } = await rig();
+      const greeting = l10n.ɵtext('tm.probe.greeting', { name: 'Farah' });
+      l10n.ɵregisterStrings('probe', { greeting: 'Hello {name}' });
+      expect(greeting()).toBe('Hello Farah');
+      // The platform's own strings stay, and a second registration of the scope changes nothing.
+      expect(l10n.ɵtext('tm.errors.retry')()).toBe('Try again');
+      l10n.ɵregisterStrings('probe', { greeting: 'Bye {name}' });
+      expect(greeting()).toBe('Hello Farah');
+
+      // A language whose table lacks the scope falls back to the registered English.
+      l10n.setLanguage('ar');
+      await tmSettle();
+      expect(l10n.language()).toBe('ar');
+      expect(greeting()).toBe('Hello Farah');
+      expect(l10n.ɵtext('tm.errors.retry')()).not.toBe('Try again');
     });
 
     it('renders a missing key as itself, with one development warning', async () => {

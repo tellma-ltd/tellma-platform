@@ -39,8 +39,11 @@ namespace Tellma.Core.Jobs
     // row whose cancel was requested cancels its item; the carried rows leave the buffer, and
     // job.changed follows for those with a requester. A renewal that fails carries no verdict: its
     // failure reaches the caller and the leases wait for the next one. The final renewal of §6.7
-    // binds every lease to the host's shutdown timeout instead of its own length, and from then on a
-    // renewal a running handler's flush or jump asks for extends the lease only to that end.
+    // binds every lease to the host's shutdown timeout instead of its own length. §6.7 stops
+    // renewals there; the worker still renews for a running handler's flush or jump until the
+    // handler is abandoned, and such a renewal extends the lease only to the final end: it keeps the
+    // end the final renewal wrote, or, when that renewal failed, the end it meant to set, estimated
+    // on this instance's clock.
     /// <summary>Renews the leases a tenant's claims hold on this instance, carrying their buffered progress.</summary>
     internal sealed class JobRenewal : IJobRenewal
     {
@@ -177,7 +180,9 @@ namespace Tellma.Core.Jobs
                 }
             }
 
+            // --- Each lease's length, and the leases whose end a final renewal already wrote, which keep it ---
             List<JobLeaseList> tokens = [.. leases.Select(static lease => new JobLeaseList { Id = lease.Token, LeaseSeconds = lease.RenewalSeconds })];
+            List<GuidList> kept = [.. leases.Where(static lease => lease.KeepsStopEnd).Select(static lease => new GuidList { Id = lease.Token })];
             List<JobProgressList> rows = [];
             List<(JobSlot Slot, long Version, byte? Percent)> carried = [];
             foreach (JobSlot slot in leases.SelectMany(static lease => lease.Slots))
@@ -194,14 +199,19 @@ namespace Tellma.Core.Jobs
             await using TenantScope scope = await _scopes.CreateScopeAsync(JobScopes.System(tenantId), cancellationToken: cancellationToken).ConfigureAwait(false);
             var batch = (DataBatch)scope.Services.GetRequiredService<ITenantDatabase>().CreateBatch(BatchPurpose.Maintenance);
             batch.TransactionMode = TransactionMode.None;
-            BatchResult<IReadOnlyList<RenewedJob>> renewed = JobStatements.Renew(batch, tokens, rows);
+            BatchResult<IReadOnlyList<RenewedJob>> renewed = JobStatements.Renew(batch, tokens, rows, kept);
             _ = await batch.ExecuteAsync(cancellationToken).ConfigureAwait(false);
 
-            // --- The verdicts; each lease lost is logged with the jobs it held and counted once ---
+            // --- The verdicts; each lease lost is logged with the jobs it held and counted once. A
+            // lease the final renewal returned holds the end it wrote, which later renewals keep ---
             IReadOnlyList<JobLease> lost = Judge(leases, renewed.Value);
             foreach (JobLease lease in leases.Except(lost))
             {
                 lease.Renewed(sentAt);
+                if (leaseSeconds is not null)
+                {
+                    lease.KeepStopEnd();
+                }
             }
 
             foreach (JobLease lease in lost)

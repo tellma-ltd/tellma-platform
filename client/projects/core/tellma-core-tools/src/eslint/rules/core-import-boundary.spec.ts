@@ -5,10 +5,10 @@
 
 import { join } from 'node:path';
 
-import { RuleTester } from 'eslint';
 import tseslint from 'typescript-eslint';
-import { describe, it } from 'vitest';
+import { describe } from 'vitest';
 
+import { createRuleTester } from '../../../fixtures/rule-tester.js';
 import { tmCoreImportBoundary } from './core-import-boundary.js';
 
 // The fixture is a miniature @tellma/core on disk: a package.json named
@@ -19,12 +19,13 @@ const fixture = join(import.meta.dirname, '..', 'fixtures', 'boundary');
 const core = (path: string): string => join(fixture, 'tellma-core', path);
 const app = (path: string): string => join(fixture, 'app', path);
 
-const tester = new RuleTester({
+// Each case below runs as a test of its own (see createRuleTester).
+const tester = createRuleTester({
   languageOptions: { parser: tseslint.parser as never, ecmaVersion: 2022, sourceType: 'module' },
 });
 
 describe('tm/core-import-boundary', () => {
-  it('lets each eager entry point import only down the graph', () => {
+  describe('lets each eager entry point import only down the graph', () => {
     tester.run('tm/core-import-boundary', tmCoreImportBoundary as never, {
       valid: [
         { code: "import { a } from '@tellma/core';", filename: core('attention/a.ts') },
@@ -61,7 +62,7 @@ describe('tm/core-import-boundary', () => {
     });
   });
 
-  it('refuses an eager import of a lazy entry point, and lets import() and import type cross', () => {
+  describe('refuses an eager import of a lazy entry point, and lets import() and import type cross', () => {
     tester.run('tm/core-import-boundary', tmCoreImportBoundary as never, {
       valid: [
         { code: "const load = () => import('@tellma/core/search');", filename: core('src/a.ts') },
@@ -99,7 +100,7 @@ describe('tm/core-import-boundary', () => {
     });
   });
 
-  it('lets a lazy entry point import the eager ones and the lazy ones it lists, and nothing that closes a cycle', () => {
+  describe('lets a lazy entry point import the eager ones and the lazy ones it lists, and nothing that closes a cycle', () => {
     tester.run('tm/core-import-boundary', tmCoreImportBoundary as never, {
       valid: [
         { code: "import { a } from '@tellma/core';", filename: core('search/a.ts') },
@@ -123,7 +124,7 @@ describe('tm/core-import-boundary', () => {
     });
   });
 
-  it('refuses relative imports across entry points and imports of its own entry point by name', () => {
+  describe('refuses relative imports across entry points and imports of its own entry point by name', () => {
     tester.run('tm/core-import-boundary', tmCoreImportBoundary as never, {
       valid: [
         // A spec reaches another entry point's test rigs: no build ships either.
@@ -186,7 +187,7 @@ describe('tm/core-import-boundary', () => {
     });
   });
 
-  it('keeps other packages on the public entry points', () => {
+  describe('keeps other packages on the public entry points', () => {
     tester.run('tm/core-import-boundary', tmCoreImportBoundary as never, {
       valid: [
         { code: "import { a } from '@tellma/core';", filename: app('src/a.ts') },

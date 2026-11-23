@@ -16,7 +16,9 @@ namespace Tellma.Core.Excel
     /// </summary>
     /// <remarks>
     ///     Every part is parsed with document types prohibited and no resolver, so nothing outside the
-    ///     package is ever fetched and no entity expands. Elements are matched by local name within
+    ///     package is ever fetched and no entity expands. Its text is decoded in the encoding its
+    ///     bounds are scanned in, never the one its XML declaration names, and a declaration naming
+    ///     an encoding other than UTF-8 or UTF-16 is refused. Elements are matched by local name within
     ///     the part's own namespace, transitional or strict; extension elements of other namespaces
     ///     are skipped.
     /// </remarks>
@@ -84,21 +86,36 @@ namespace Tellma.Core.Excel
 
         /// <summary>
         ///     Opens a reader over a part, with document types prohibited, no resolver, and a name
-        ///     table of its own that bounds the part's distinct names.
+        ///     table of its own that bounds the part's distinct names. The reader parses the part's
+        ///     text as decoded in the encoding the bounds are scanned in.
         /// </summary>
-        /// <param name="part">The part's stream; closed with the reader.</param>
+        /// <param name="part">The part's bounded stream; closed with the reader, or at once when the reader cannot be made.</param>
         /// <returns>The reader.</returns>
-        public static XmlReader Open(Stream part)
+        /// <exception cref="XmlException">The part's first text is refused: its declaration, or a byte sequence not valid in its encoding.</exception>
+        /// <exception cref="Abstractions.Excel.ImportException">The part's first bytes are refused by its bounds.</exception>
+        /// <exception cref="InvalidDataException">The archive cannot inflate the part's first bytes.</exception>
+        public static XmlReader Open(BoundedPartStream part)
         {
-            return XmlReader.Create(part, new XmlReaderSettings
+            // A reader over text never switches to the encoding a declaration names. It reads its
+            // first text as it is made, so a refusal may come here, and the part is closed with it.
+            PartTextReader text = new(part);
+            try
             {
-                DtdProcessing = DtdProcessing.Prohibit,
-                XmlResolver = null,
-                NameTable = new BoundedNameTable(),
-                IgnoreComments = true,
-                IgnoreProcessingInstructions = true,
-                CloseInput = true,
-            });
+                return XmlReader.Create(text, new XmlReaderSettings
+                {
+                    DtdProcessing = DtdProcessing.Prohibit,
+                    XmlResolver = null,
+                    NameTable = new BoundedNameTable(),
+                    IgnoreComments = true,
+                    IgnoreProcessingInstructions = true,
+                    CloseInput = true,
+                });
+            }
+            catch
+            {
+                text.Dispose();
+                throw;
+            }
         }
 
         /// <summary>Whether the reader is on an element of a spreadsheet namespace with a local name.</summary>

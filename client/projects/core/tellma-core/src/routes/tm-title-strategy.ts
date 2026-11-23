@@ -54,13 +54,19 @@ export class TmTitleStrategy extends TitleStrategy {
   override updateTitle(snapshot: RouterStateSnapshot): void {
     let found: Signal<string> | null = null;
     for (let route: ActivatedRouteSnapshot | null = snapshot.root; route; route = route.firstChild) {
-      found = this.#titleOf(route) ?? found;
+      found = this.ɵtitleOf(route) ?? found;
     }
     this.#page.set(found);
   }
 
-  /** A route's title, or `null` when it names none. */
-  #titleOf(route: ActivatedRouteSnapshot): Signal<string> | null {
+  /**
+   * A route's title, or `null` when it names none. Internal: the route host
+   * titles its page's default context with it.
+   *
+   * @param route - The route.
+   * @returns The title.
+   */
+  ɵtitleOf(route: ActivatedRouteSnapshot): Signal<string> | null {
     const data = route.data as Partial<TmRouteData & TmRouteDataInternal>;
     if (data.titleKey) {
       return this.#l10n.ɵtext(data.titleKey);

@@ -22,6 +22,7 @@ import { TM_NOW } from '../../app/tm-now';
 import { TM_ATTENTION_DOCUMENTS, type TmAssignmentsSummary, type TmInboxSummary } from '../../attention/tm-attention-documents';
 import type { TmDecimal } from '../../json/tm-json';
 import type { TmMembership } from '../../launch/tm-membership';
+import { tmUnhandled } from '../../routes/tm-app.testing.util';
 import { TM_LEADER_DOCUMENTS } from '../leader/tm-leader-documents';
 import { TmClientStore, type TmStoredDoc } from '../store/tm-client-store';
 import type { TmTenantPartition } from '../store/tm-store-layout';
@@ -262,6 +263,62 @@ describe('TmLaunchCache', () => {
       expect(customers()).toEqual({ items: CUSTOMERS, byId: new Map([[1, CUSTOMERS[0]], [2, CUSTOMERS[1]]]), stale: false });
       expect(rig.store.doc(T17, 'entity:acme.Customer')()?.tag).toBe('K1');
       expect(rig.launch.entitySet('acme.Customer')).toBe(customers);
+    });
+
+    it('loads nothing when the app ends before the load it queued starts', async () => {
+      const rig = await setUp();
+      rig.api.respond('customers/all', { entities: CUSTOMERS });
+      const error = vi.spyOn(rig.telemetry, 'error');
+      const unhandled = await tmUnhandled(async () => {
+        rig.launch.entitySet('acme.Customer')();
+        TestBed.resetTestingModule();
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      });
+      expect(unhandled).toEqual([]);
+      expect(error).not.toHaveBeenCalled();
+      expect(rig.calls('customers/all')).toEqual([]);
+    });
+
+    it("reads no rows when the app ends while the sync for the list's tag is in flight", async () => {
+      const rig = await setUp({ entityTags: {} });
+      let land!: () => void;
+      const landed = new Promise<void>((resolve) => (land = resolve));
+      rig.api.respond('client/sync', () => landed.then(() => COLD_ANSWER));
+      rig.api.respond('customers/all', { entities: CUSTOMERS });
+      const error = vi.spyOn(rig.telemetry, 'error');
+      rig.launch.entitySet('acme.Customer')();
+      await settle();
+      expect(rig.calls('client/sync')).toHaveLength(1);
+
+      const unhandled = await tmUnhandled(async () => {
+        TestBed.resetTestingModule();
+        land();
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      });
+      expect(unhandled).toEqual([]);
+      expect(error).not.toHaveBeenCalled();
+      expect(rig.calls('customers/all')).toEqual([]);
+    });
+
+    it('stores nothing when the app ends while the rows are read', async () => {
+      // The app's end cancels the read, which the cache counts as no failure.
+      const rig = await setUp();
+      let land!: () => void;
+      const landed = new Promise<void>((resolve) => (land = resolve));
+      rig.api.respond('customers/all', () => landed.then(() => ({ entities: CUSTOMERS })));
+      const error = vi.spyOn(rig.telemetry, 'error');
+      rig.launch.entitySet('acme.Customer')();
+      await settle();
+      expect(rig.calls('customers/all')).toHaveLength(1);
+
+      const unhandled = await tmUnhandled(async () => {
+        TestBed.resetTestingModule();
+        land();
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      });
+      expect(unhandled).toEqual([]);
+      expect(error).not.toHaveBeenCalled();
+      expect(rig.store.doc(T17, 'entity:acme.Customer')()).toBeUndefined();
     });
 
     it('keeps serving a stale list while the newer one loads', async () => {

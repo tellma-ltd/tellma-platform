@@ -86,7 +86,7 @@ namespace Tellma.Core.Tests.Jobs
         // --- The renewal ---
 
         [Fact]
-        public void A_renewal_extends_the_leases_by_token_writes_the_buffered_progress_and_returns_the_rows_still_leased()
+        public void A_renewal_extends_the_leases_by_token_or_keeps_their_end_writes_the_buffered_progress_and_returns_the_rows_still_leased()
         {
             DataBatch batch = _harness.Batch(BatchPurpose.Maintenance);
             Guid other = new("4b8d7e21-6c0f-4f3a-9d15-7e2a1c8b5f60");
@@ -94,14 +94,15 @@ namespace Tellma.Core.Tests.Jobs
             _ = JobStatements.Renew(
                 batch,
                 [new JobLeaseList { Id = Token, LeaseSeconds = 300 }, new JobLeaseList { Id = other, LeaseSeconds = 60 }],
-                [new JobProgressList { Id = 11, ProgressPercent = 40, ProgressKey = "Acme_Shipping", ProgressArgumentsJson = /*lang=json,strict*/ """{"count":3}""" }]);
+                [new JobProgressList { Id = 11, ProgressPercent = 40, ProgressKey = "Acme_Shipping", ProgressArgumentsJson = /*lang=json,strict*/ """{"count":3}""" }],
+                [new GuidList { Id = other }]);
 
             BatchStatement statement = Assert.Single(batch.Statements);
             Assert.Equal(
                 """
                 DECLARE @tb0_now datetimeoffset(3) = SYSUTCDATETIME();
                 UPDATE [j]
-                SET [LeaseExpiresAt] = DATEADD(second, [t].[LeaseSeconds], @tb0_now),
+                SET [LeaseExpiresAt] = CASE WHEN [k].[Id] IS NULL THEN DATEADD(second, [t].[LeaseSeconds], @tb0_now) ELSE [j].[LeaseExpiresAt] END,
                     [ProgressPercent] = COALESCE([p].[ProgressPercent], [j].[ProgressPercent]),
                     [ProgressKey] = COALESCE([p].[ProgressKey], [j].[ProgressKey]),
                     [ProgressArgumentsJson] = CASE WHEN [p].[ProgressKey] IS NULL THEN [j].[ProgressArgumentsJson] ELSE [p].[ProgressArgumentsJson] END,
@@ -110,6 +111,7 @@ namespace Tellma.Core.Tests.Jobs
                 FROM [core].[Jobs] AS [j]
                 INNER JOIN @tb0_t0 AS [t] ON [t].[Id] = [j].[LeaseToken]
                 LEFT JOIN @tb0_t1 AS [p] ON [p].[Id] = [j].[Id]
+                LEFT JOIN @tb0_t2 AS [k] ON [k].[Id] = [j].[LeaseToken]
                 WHERE [j].[Status] = 'Running';
                 """,
                 statement.Text,
@@ -117,13 +119,14 @@ namespace Tellma.Core.Tests.Jobs
             Assert.Equal([new TableName("core", "Jobs")], statement.Writes);
             Assert.True(statement.MayRunTwice);
 
-            // --- The tokens and the progress, each as its own table ---
+            // --- The tokens, the progress and the kept tokens, each as its own table ---
             Assert.Equal([Token, other], Rows(statement, 0).Select(static row => row["Id"]));
             IReadOnlyDictionary<string, object?> progress = Assert.Single(Rows(statement, 1));
             Assert.Equal(11, progress["Id"]);
             Assert.Equal((byte)40, progress["ProgressPercent"]);
             Assert.Equal("Acme_Shipping", progress["ProgressKey"]);
             Assert.Null(progress["StateJson"]);
+            Assert.Equal(other, Assert.Single(Rows(statement, 2))["Id"]);
         }
 
         // --- The fenced progress append ---

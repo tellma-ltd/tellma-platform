@@ -61,4 +61,14 @@ export const TM_STRINGS_AR: TmStringTree = {
   attention: {
     banners: { offline: 'انقطع الاتصال. جارٍ إعادة الاتصال…' },
   },
+  value: {
+    none: '—',
+    yes: 'نعم',
+    no: 'لا',
+    file: 'ملف',
+    chooseFile: `${imperative('اختر', 'اختاري')} ملفًا`,
+    fileTooLarge: 'هذا الملف كبير جدًا. الحد الأقصى هو {max}.',
+    fileType: 'هذا النوع من الملفات غير مقبول.',
+    uploadFailed: 'تعذّر الرفع',
+  },
 };
