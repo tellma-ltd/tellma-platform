@@ -15,6 +15,7 @@ import {
   signal,
   untracked,
   type Signal,
+  type Type,
 } from '@angular/core';
 import { NavigationEnd, Router } from '@angular/router';
 
@@ -77,18 +78,35 @@ export interface TmSyncErrors {
    * Shows a `tenant-not-found` or `tenant-unavailable` refusal of a sync.
    *
    * @param error - The refusal.
+   * @param tenantId - The tenant the sync was for, which need not be the routed one.
    */
-  present(error: TmApiError): void;
+  present(error: TmApiError, tenantId: number): void;
+}
+
+/** The error presenter's entry point, as far as the refresher reads it. Internal. */
+export interface TmErrorsModule {
+  /** The error presenter. */
+  readonly TmErrorPresenter: Type<{ present(error: TmApiError, context: { kind: 'read'; tenantId: number }): Promise<void> }>;
 }
 
 /**
  * Where the refresher hands a sync's `tenant-not-found` and
  * `tenant-unavailable` refusals, even from a background sync: the app's
- * error presenter. Until one is provided, they are dropped. Internal.
+ * error presenter, in the lazily loaded `@tellma/core/errors`, which these
+ * refusals load. A test replaces it. Internal.
  */
 export const TM_SYNC_ERRORS = new InjectionToken<TmSyncErrors>('TM_SYNC_ERRORS', {
   providedIn: 'root',
-  factory: (): TmSyncErrors => ({ present: () => undefined }),
+  factory: (): TmSyncErrors => {
+    const injector = inject(Injector);
+    return {
+      present: (error, tenantId) =>
+        // The specifier is cast so that the package build does not report the import back as a cycle.
+        void (import('@tellma/core/errors' as string) as Promise<TmErrorsModule>)
+          .then((errors) => injector.get(errors.TmErrorPresenter).present(error, { kind: 'read', tenantId }))
+          .catch((failure: unknown) => injector.get(TmTelemetry).error(failure, { source: 'tm-cache-refresher' })),
+    };
+  },
 });
 
 /** The answer of `client/sync`. */
@@ -405,7 +423,7 @@ export class TmCacheRefresher {
     try {
       release = this.#store.ɵshow(partition, updates);
     } catch (error) {
-      this.#failed(error);
+      this.#failed(error, partition.tenantId);
       return;
     }
     // An out-of-order adoption may store an older bag; the next header repairs it.
@@ -536,7 +554,7 @@ export class TmCacheRefresher {
 
   /** Runs a write under the tenant's sync lock; a failure is reported. */
   #locked(partition: TmTenantPartition, work: () => Promise<void>): void {
-    this.#locks.run(this.#lock(partition), work).catch((error: unknown) => this.#failed(error));
+    this.#locks.run(this.#lock(partition), work).catch((error: unknown) => this.#failed(error, partition.tenantId));
   }
 
   /** Runs work after a random delay of up to `spread` milliseconds. */
@@ -621,7 +639,7 @@ export class TmCacheRefresher {
     } catch (error) {
       close();
       // --- Step 7: the refusals that end the tenant's use are presented ---
-      this.#failed(error);
+      this.#failed(error, partition.tenantId);
       if (run.trigger === 'cold') {
         throw error;
       }
@@ -701,11 +719,11 @@ export class TmCacheRefresher {
    * end and an outdated client, and a cancel is the tab's own; anything else
    * is reported, and the next trigger retries.
    */
-  #failed(error: unknown): void {
+  #failed(error: unknown, tenantId: number): void {
     if (error instanceof TmApiError) {
       const kind = error.kind;
       if (kind === 'tenant-not-found' || kind === 'tenant-unavailable') {
-        this.#errors.present(error);
+        this.#errors.present(error, tenantId);
       } else if (kind !== 'cancelled' && kind !== 'unauthenticated' && kind !== 'client-outdated') {
         this.#telemetry.event('tm.sync.failed', { kind });
       }

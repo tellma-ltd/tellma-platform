@@ -15,6 +15,8 @@ own.
 | `@tellma/core/recents` | The recently visited pages (`TmRecents`), which the launcher and the home page list; the app loads it with `import()` after its first render, when visits start to count | lazy, through `import()` after first render |
 | `@tellma/core/entity` | What the search and details pages share over the entity model: select plans (`tmSelectPlan`), which turn column keys into one query's terms and type its rows; value formats (`TmFormats`); the typed value in view mode (`tm-value`) and in edit mode (`tm-value-editor`), with a form's uploads (`TmUploads`); a plan column's grid column (`tmGridColumnFor`); and the client check of a picked file against its blob kind (`tmCheckBlobFile`) | lazy, with the page families |
 | `@tellma/core/leader` | The leader election of the routed tenant over a Web Lock, and the leader tab's work: its realtime connection, the relay of hub events, the leader documents' reads and the polls of degraded mode; the app loads it with `import()` after its first render, and `TmLeader` reports what it decides | lazy, through `import()` after first render |
+| `@tellma/core/updates` | The app's updates through its service worker (`TmUpdates`): the worker's registration through the `tellma` Trusted Types policy, the update checks, the reload into a new version and the update banner; the app loads it with `import()` after its first render, and the HTTP layer's update check loads it on demand | lazy, through `import()` after first render |
+| `@tellma/core/errors` | Error presentation: `TmErrorPresenter`, whose one table turns a `TmApiError` into an error view, and which shows a write's or an action's error in the shared 5xx or 400 dialog, asks before a step-up, and handles a tenant that is gone or suspended; `tm-error-state` (`TmErrorState`), the inline state a page renders for a failed read | lazy, through `import()` with the first error presented |
 | `@tellma/core/config-check` | `tmCheckAppConfig`, the check of an app's configuration against the client metadata, which the build runs in Node and a development app at startup, and `tmCheckEntityDeclaration`, the check of one entity declaration against the Entities chunk | lazy |
 | `@tellma/core/search-normalize` | `tmSearchNormalize`, the one text folding the launcher, the shortcuts filter, the field tree and the reports list match with | with the code that imports it |
 | `@tellma/core/private` | Wiring shared by the platform's own entry points and packages; no API goldens, no stability guarantee, never imported by app code | — |
@@ -81,14 +83,38 @@ again on every `check()`, never the network: `same`, `missing` (the expiry path)
 the app at `/`). `tmSessionGuard` runs the check on every route but `/signed-out`. `signIn()` writes
 the sign-in mark and leaves for `/bff/login` in the document's language; a step-up adds
 `acr_values` and `max_age`. After a sign-in it consumes the mark the boot script reported: it
-reports an expiry that led there and drops a previous user's drafts. Until the drafts and the
-session-ended dialog arrive, the paths beyond the tab's own state are tab-local: an expiry sweeps
-every user's stored data (in a 1 s box; a sweep cut short, failed or unable to reach the disk
-clears the boot record's user, so the next launch sweeps again), deletes the stale profile cookie and signs in again, returning to the
-same page, so the user's data leaves the disk and the screen and the expiry is reported once. An
-expiry within a minute of coming back from a sign-in shows the sign-in-failed boot page instead, so
-a server that keeps refusing fresh sessions cannot loop the tab through sign-ins; the sweep runs at
-the expiry either way.
+reports an expiry that led there and drops a previous user's drafts, and tells the user's other
+tabs that the session started.
+
+The paths beyond the tab's own state reach every tab of the user over the tab bus. The primary
+holds the session's state (`active`, `expired` or `signing-out`), the expiry's first step (the
+state turns `expired` at once, after the expiry is reported and flushed) and the routing of the
+other tabs' session messages; the flows themselves are a chunk of their own, which loads after the
+first render. A chunk that cannot load falls back to what the boot script does: an expiry or a
+session signed out elsewhere deletes the stale cookie and reloads into the boot's expiry branch,
+and a changed user restarts the app at `/`.
+
+- **Sign-out** (`TmSession.signOut()`) shows the busy overlay in the click's frame, asks every
+  tab of the user for its unsaved drafts and running saves (`drafts.query`, 300 ms to answer),
+  and waits up to 60 s while any tab saves, saying so. With nothing at risk it signs out with no
+  question; otherwise it asks once, and a confirmed sign-out never asks again. It reports and
+  flushes the sign-out, turns every tab `signing-out`, writes `/bff/logout`, runs the session
+  clean-up (every user's stored data, every other `tm` store but the store's database and the
+  boot record, the boot record's user and last tenant, and the user's drafts), tells the other
+  tabs, which follow to `/signed-out`, and follows the identity server's sign-out. A failed
+  sign-out restores the session and says so in a sticky toast; the other tabs lift their overlay
+  after 15 s.
+- **The expiry path** runs the same clean-up but keeps the drafts and the boot record's user and
+  last tenant, deletes the stale cookie, tells the other tabs, and shows the session-ended alert
+  dialog in every tab, whose only way on is Sign in. An expiry within a minute of coming back from
+  a sign-in shows the sign-in-failed boot page instead, so a server that keeps refusing fresh
+  sessions cannot loop the tab through sign-ins. A clean-up sweep cut short (1 s), failed or
+  unable to reach the disk clears the boot record's user, so the next launch sweeps again.
+- **A changed user** drops the previous user's drafts, tells the other tabs and restarts at `/`.
+- **Signed out elsewhere**, which the leader tab hears from the hub, cleans up for every tab and
+  sends them all to `/signed-out`.
+- **Re-checks** run the cookie check when the tab comes into view and when it returns from the
+  back-forward cache.
 
 `TmLaunch` holds the tenant this document entered without the user choosing it, seeded from the
 boot script and set by the launch redirect; it ends at the tenant's first 2xx, at a route into
@@ -379,6 +405,34 @@ production both reject `server` unsent.
 `provideTellma` points `tm-image`'s blob fetcher at `TmApi.fetchBlob`, so an image request gets the
 user check, the session's headers and the caller's signal, whose reason an aborted fetch rejects
 with; under `provideTellmaTesting()`, `TmFakeApi` answers it.
+
+## Service worker updates
+
+`@tellma/core/updates` registers Angular's service worker once the app settles after its first
+render, or after 30 s, at the root scope with every update check bypassing the HTTP cache. The CSP
+enforces Trusted Types, so the script URL goes through the `tellma` policy, created once per
+document, which admits only the same-origin `/ngsw-worker.js`. Angular's worker client runs in an
+injector of its own, outside development, whose own registration never runs.
+
+`TmUpdates.check()` answers `ready`, `none`, `failed`, `unreachable` or `disabled` from the
+worker's event during the check; a worker that already holds a newer version answers "no new
+version" naming it, which reads as `ready`. `update()` checks and reloads into the new version, or
+reloads plainly when no worker is in the way. The service checks when the tab comes back into view
+after an hour hidden and every 6 hours while visible, reloads at once when the worker's cache is
+broken, and shows the update banner, dismissible for its version, while a newer version waits.
+
+## Error presentation
+
+`@tellma/core/errors` holds `TmErrorPresenter`. `describe(error, context)` words an error by one
+table: its tone, icon, title and message, the server's items, the reference, the actions, and for
+a `forbidden` refusal the permission it needs by its label, with the raw resource and action pair
+for support. A page renders a failed read inline with `tm-error-state`. `present(error, context)`
+shows a write's or an action's error in the shared 5xx dialog (Try again, or Reload, which gets the
+update first and offers Reload anyway from the second failed download) or the 400 dialog, and
+registers the open dialog as an overlay page context. A step-up asks before it signs in again. On
+any call, a tenant that is gone sweeps its data and goes to the picker, and a suspended tenant
+replaces the shell's main area with the tenant-state page. A cancelled call and an ended session
+show nothing.
 
 ## Features and the merge rule
 
@@ -703,8 +757,10 @@ site. Tests replace them through `@tellma/core-testing`, which also puts `TmFake
 The HTTP layer reaches three services that arrive later through internal seams in `src/api/`, each
 with a default that is correct until its owner replaces it: the request locale (the document's
 language and no calendar, until the localization service), the cache refresher (nothing cached, so
-nothing to revalidate), and the worker's update check (`disabled`, as no worker controls the
-page yet).
+nothing to revalidate), and the worker's update check, which loads `@tellma/core/updates` on its
+first call (`disabled` in an app without it, as a test app, and `unreachable` when it cannot load).
+The sync's refusals that end a tenant's use go through one more to the error presenter, which
+they load.
 
 The route host reads one more: the platform's text, which reads the loaded string packs and
 client tables until the localization service replaces it. A page's `securable` gate asks
@@ -722,7 +778,7 @@ point's test rigs (`*.testing.util.ts`) by a relative path, since no build ships
 rule `tm/core-import-boundary` enforces the graph, and ng-packagr refuses a cycle between entry
 points.
 
-The primary reaches `/shell`, `/recents` and `/leader` only through `import()` with a specifier TypeScript
+The primary reaches `/shell`, `/recents`, `/leader`, `/updates` and `/errors` only through `import()` with a specifier TypeScript
 does not follow, since ng-packagr would count a followed one as a cycle. The components it loads
 from the shell are named in an internal contract that the shell's component map `satisfies`, so
 either side's rename fails the build. A build or test that compiles the primary from sources in

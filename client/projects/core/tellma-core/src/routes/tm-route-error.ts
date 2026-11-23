@@ -3,17 +3,20 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-import { ChangeDetectionStrategy, Component, computed, DOCUMENT, inject, input, output } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, input, output, signal } from '@angular/core';
 import { TmButton } from '@tellma/core-ui/button';
 import { TmEmptyState } from '@tellma/core-ui/empty-state';
 
+import { TM_API_UPDATES } from '../api/tm-api-seams';
 import { TmLocalization } from '../l10n/tm-localization';
 
 // The route's own error views (spec 0024 §11), each 0023's empty state,
 // inline where the page would be: a page whose chunk failed to load
 // (`client-outdated` or `offline`), a `tmPage` the user may not open
 // (`forbidden`, reason `no-grant`), and a path no route matches
-// (`not-found`).
+// (`not-found`). Reload downloads the new version first (§11): the button
+// turns busy, a failed download says so and keeps the view, and from the
+// second failure "Reload anyway" reloads as the browser would.
 
 /** The error views a route renders when a chunk does not load. */
 export type TmRouteErrorKind = 'client-outdated' | 'offline';
@@ -61,18 +64,32 @@ export const TM_ROUTE_ERROR_VIEWS: Readonly<Record<TmRouteErrorKind | 'forbidden
   imports: [TmButton, TmEmptyState],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <!-- The heading, the message, and the view's one action. -->
+    <!-- The heading, the message, and the view's action; Reload anyway after a second failed download. -->
     <tm-empty-state [heading]="title()" [tone]="view().tone ?? 'error'" live="polite">
       {{ message() }}
       @if (view().action; as action) {
-        <button tmButton variant="primary" tmEmptyStateActions type="button" (click)="act(action[0])">{{ label() }}</button>
+        <ng-container tmEmptyStateActions>
+          <button
+            tmButton
+            variant="primary"
+            type="button"
+            [pending]="pending()"
+            [attr.aria-label]="pending() ? updating() : null"
+            (click)="act(action[0])"
+          >
+            {{ label() }}
+          </button>
+          @if (failures() > 1) {
+            <button tmButton type="button" (click)="reload()">{{ reloadAnyway() }}</button>
+          }
+        </ng-container>
       }
     </tm-empty-state>
   `,
 })
 export class TmRouteError {
   readonly #l10n = inject(TmLocalization);
-  readonly #document = inject(DOCUMENT);
+  readonly #updates = inject(TM_API_UPDATES);
 
   /** Which view. */
   readonly view = input.required<TmRouteErrorView>();
@@ -89,8 +106,22 @@ export class TmRouteError {
   /** The heading. */
   protected readonly title = computed(() => this.#l10n.ɵtext(this.view().title, this.#params())());
 
-  /** The message. */
-  protected readonly message = computed(() => this.#l10n.ɵtext(this.view().message, this.#params())());
+  /** How many times Reload failed to download the update. */
+  protected readonly failures = signal(0);
+
+  /** Whether Reload is getting the update. */
+  protected readonly pending = signal(false);
+
+  /** The message: the view's, or the failed download's. */
+  protected readonly message = computed(() =>
+    this.#l10n.ɵtext(this.failures() > 0 ? 'tm.errors.updateFailed' : this.view().message, this.#params())(),
+  );
+
+  /** Reload's accessible name while it gets the update. */
+  protected readonly updating = this.#l10n.ɵtext('tm.errors.updating');
+
+  /** The label of Reload anyway. */
+  protected readonly reloadAnyway = this.#l10n.ɵtext('tm.errors.reloadAnyway');
 
   /** The action's label. */
   protected readonly label = computed(() => {
@@ -99,15 +130,27 @@ export class TmRouteError {
   });
 
   /**
-   * Runs the view's action: a reload of the document, or a retry its host runs.
+   * Runs the view's action: Reload gets the new version and reloads into
+   * it, and a retry is its host's.
    *
    * @param action - The action.
    */
-  protected act(action: 'reload' | 'retry'): void {
-    if (action === 'reload') {
-      this.#document.location.reload();
-    } else {
+  protected async act(action: 'reload' | 'retry'): Promise<void> {
+    if (action === 'retry') {
       this.retry.emit();
+      return;
     }
+    this.pending.set(true);
+    const result = await this.#updates.update();
+    // On `ready` and `disabled` the page is reloading already.
+    if (result !== 'ready' && result !== 'disabled') {
+      this.pending.set(false);
+      this.failures.update((failures) => failures + 1);
+    }
+  }
+
+  /** Reloads as the browser would: the degraded worker sends the load to the network. */
+  protected reload(): void {
+    this.#updates.reload();
   }
 }

@@ -8,5 +8,11 @@
  * point is one line here. An app over the installed package needs none of it.
  */
 {
-  "files": ["shell/public-api.ts", "recents/public-api.ts", "leader/public-api.ts"]
+  "files": [
+    "shell/public-api.ts",
+    "recents/public-api.ts",
+    "leader/public-api.ts",
+    "updates/public-api.ts",
+    "errors/public-api.ts"
+  ]
 }

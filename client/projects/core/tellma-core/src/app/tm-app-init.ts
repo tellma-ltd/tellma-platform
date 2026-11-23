@@ -18,6 +18,7 @@ import {
 import { NavigationEnd, Router } from '@angular/router';
 
 import { TmApi } from '../api/tm-api';
+import { TM_UPDATES_LOAD } from '../api/tm-api-seams';
 import { TmHttpApi } from '../api/tm-http-api';
 import { TM_BOOT_RESULT } from '../boot/tm-boot-result';
 import { TmLocalization } from '../l10n/tm-localization';
@@ -27,6 +28,7 @@ import { TmTelemetry } from '../observe/tm-telemetry';
 import { TmPageFocus } from '../routes/tm-page-focus';
 import { TmLaunchTimer } from '../routes/tm-route-host';
 import { TmSession } from '../session/tm-session';
+import { TmSessionPaths } from '../session/tm-session-paths';
 import { TmPreferences } from '../state/prefs/tm-preferences';
 import { TmClientStore } from '../state/store/tm-client-store';
 import { TmUrls } from '../urls/tm-urls';
@@ -41,9 +43,10 @@ import type { TmAppConfig } from './tm-app-config';
 // so a warm launch has no network wait. A chunk or boot-language load that
 // fails shows the boot page `load-failed`, and the app never starts. Beside
 // them, the router wiring: the routed tenant's `lastTenantId`, focus after
-// navigation and the launch's timing; after first render, the entry points of
-// the recent pages and the leader election; and at idle the Contracts chunk,
-// so the first API call does not wait for it.
+// navigation and the launch's timing; the session's cross-tab paths; after
+// first render, the entry points of the recent pages, the leader election
+// and the worker's updates; and at idle the Contracts chunk, so the first
+// API call does not wait for it.
 
 /** The recent pages' entry point, as far as the startup reads it. Internal. */
 export interface TmRecentsModule {
@@ -140,10 +143,14 @@ export function tmStartup(config: TmAppConfig): EnvironmentProviders[] {
       inject(TmPreferences);
       const loadRecents = inject(TM_RECENTS_LOAD);
       const loadLeader = inject(TM_LEADER_LOAD);
+      const loadUpdates = inject(TM_UPDATES_LOAD);
+      // The other tabs' session messages are heard from the start.
+      inject(TmSessionPaths).ɵstart();
       inject(TmPageFocus).ɵstart();
       inject(TmLaunchTimer).ɵstart();
-      // After first render: the recent pages' visit count and the leader
-      // election; at idle, the Contracts chunk, which the HTTP layer keeps.
+      // After first render: the recent pages' visit count, the leader
+      // election and the worker's updates; at idle, the Contracts chunk,
+      // which the HTTP layer keeps.
       // An app torn down before either moment starts nothing.
       let alive = true;
       inject(DestroyRef).onDestroy(() => (alive = false));
@@ -155,7 +162,9 @@ export function tmStartup(config: TmAppConfig): EnvironmentProviders[] {
           // points load now, off the first frame. A failed load, or a service
           // that fails to start, goes without until the next launch: no
           // visits count, or the tab neither leads nor hears hub events, and
-          // nothing else depends on either.
+          // nothing else depends on either. The worker registers once the
+          // app settles (spec 0024 §5.4), and the update banner shows from
+          // then on; an update check loads the entry point itself.
           const start = <M>(load: () => Promise<M | null>, type: (loaded: M) => Type<unknown>, source: string): void => {
             load()
               .then((loaded) => {
@@ -167,6 +176,7 @@ export function tmStartup(config: TmAppConfig): EnvironmentProviders[] {
           };
           start(loadRecents, (recents) => recents.TmRecents, 'tm-recents');
           start(loadLeader, (leader) => leader.ɵTmLeaderElection, 'tm-leader');
+          start(loadUpdates, (updates) => updates.TmUpdates, 'tm-updates');
           const load = (): void => {
             const api = alive ? injector.get(TmApi) : null;
             if (api instanceof TmHttpApi) {

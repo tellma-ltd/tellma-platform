@@ -71,6 +71,8 @@ export class TmFakeSession implements TmSessionSurface {
     setState(state: TmSessionState): void;
     signIn(options?: TmSignInOptions): Promise<never>;
     readonly signIns: Signal<readonly TmSignInOptions[]>;
+    signOut(): Promise<void>;
+    readonly signOuts: Signal<number>;
     readonly state: Signal<TmSessionState>;
     static ɵfac: i0.ɵɵFactoryDeclaration<TmFakeSession, never>;
     static ɵprov: i0.ɵɵInjectableDeclaration<TmFakeSession>;

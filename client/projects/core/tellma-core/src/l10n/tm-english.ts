@@ -38,6 +38,9 @@ export const TM_STRINGS_EN = {
     },
     reload: 'Reload',
     retry: 'Try again',
+    updating: 'Getting the update…',
+    updateFailed: "Couldn't download the update. Check your connection and try again.",
+    reloadAnyway: 'Reload anyway',
   },
   shell: {
     tenantPicker: { title: 'Choose a company' },

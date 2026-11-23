@@ -429,12 +429,24 @@ export class TmFakeApiUpdates implements TmApiUpdates {
   answer: TmApiUpdateCheck | null = 'disabled';
   /** How many checks ran. */
   checks = 0;
+  /** How many plain reloads ran. */
+  reloads = 0;
 
   /** Runs a check. */
   check(): Promise<TmApiUpdateCheck> {
     this.checks++;
     const answer = this.answer;
     return answer === null ? new Promise(() => undefined) : Promise.resolve(answer);
+  }
+
+  /** Runs a check, as `update()` does; the page never reloads. */
+  update(): Promise<TmApiUpdateCheck> {
+    return this.check();
+  }
+
+  /** Counts a plain reload; the page stays. */
+  reload(): void {
+    this.reloads++;
   }
 }
 

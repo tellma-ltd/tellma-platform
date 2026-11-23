@@ -230,6 +230,8 @@ export {
   type TmStepUpChallenge,
 } from './src/session/tm-session';
 export type { TmSessionState } from './src/session/tm-session-paths';
+// The session's paths, which the leader tab runs a session ended elsewhere through; not for app code.
+export { TmSessionPaths as ɵTmSessionPaths } from './src/session/tm-session-paths';
 export { tmSessionGuard } from './src/session/tm-session-guard';
 
 // The client state: the store of cached documents and the boot record, and
@@ -322,11 +324,21 @@ export { TM_SYNC_ERRORS as ɵTM_SYNC_ERRORS, type TmSyncErrors as ɵTmSyncErrors
 // session's sign-in sweep shares), and the state's section of the support
 // dump with the parts the services report to it. Not for app code.
 export { TM_API_HOST as ɵTM_API_HOST, type TmApiHost as ɵTmApiHost } from './src/api/tm-api-host';
+// The worker's update check, which the error presenter's Reload runs, and its
+// entry point's loader, which @tellma/core-testing replaces; not for app code.
+export {
+  TM_API_UPDATES as ɵTM_API_UPDATES,
+  TM_UPDATES_LOAD as ɵTM_UPDATES_LOAD,
+  type TmApiUpdateCheck as ɵTmApiUpdateCheck,
+  type TmApiUpdates as ɵTmApiUpdates,
+  type TmUpdatesModule as ɵTmUpdatesModule,
+} from './src/api/tm-api-seams';
 export { tmRoutedTenant as ɵtmRoutedTenant } from './src/launch/tm-routed-tenant';
 export type { TmRouteDataInternal as ɵTmRouteDataInternal } from './src/routes/tm-routes';
 export {
   TM_DRAFT_KEY_PREFIX as ɵTM_DRAFT_KEY_PREFIX,
   TM_DRAFTS_STORAGE as ɵTM_DRAFTS_STORAGE,
+  tmDraftKeyTail as ɵtmDraftKeyTail,
   tmDraftPrefix as ɵtmDraftPrefix,
   tmRemoveDrafts as ɵtmRemoveDrafts,
   tmStorageKeys as ɵtmStorageKeys,
