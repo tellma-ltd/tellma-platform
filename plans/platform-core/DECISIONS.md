@@ -384,6 +384,31 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-258 (orchestrator, 2026-11-23): PC-B05 result and its open items
+
+- PC-B05 found 4 minor issues (0/0/4). Its fixer fixed them, pushing back on part of FCS-1. It integrated fd0998ed onto platform-core as a fast-forward (pc 45285651946 green). Verdicts are in reviews/PC-B05.md.
+- XC-2 extends spec 0021 §3.1: a request that names WellKnownIds.SystemUserId as its actor stores no actor in any scope, and all job-engine notices now name it. For Ahmad: spec 0021 should state this.
+- FCS-1 is fixed for JobRunner only. The fixer pushed back on the general fix, a DataBatch replay of every commit callback at every proven-commit site, because it changes spec 0012's ExecuteAsync contract. I accept the pushback. The two gaps it leaves become PC-F81, a non-blocking fix after PC-F80:
+  - (a) the commit callbacks of enlisted writes publish no events on a proven completion;
+  - (b) ScheduleTick skips its wake after a proven commit.
+- PC-F78's CI run was started on a merge of 835a4dd8, before PC-B05 landed. Its platform-core push will be rejected by non-plans commits and must re-integrate (D-144); I accept that cost of D-256.
+
+### D-257 (orchestrator, 2026-11-23): PC-155's arrival baseline, its seams, and the load-dependent core flakes
+
+- PC-155's R1-2: spec 0028 §8.2 step 1 makes the first copy saved at or after a tab's start its silent baseline. In a follower tab (spec 0025 §8.6), that copy is usually the leader's first real refresh, so the first real arrival never toasts. The first ReadOnly or Frozen change to the tenant document is lost the same way.
+- Ruling: fix1 applies the reviewer's rule as a stated deviation from 0028 §8.2. It keeps the spec's intent that nothing which arrived before the tab started pops up.
+  - The first copy observed becomes `previous`, whatever its savedAt.
+  - When `previous` was saved before the tab's start, the next copy's arrivals are only the rows created or assigned at or after that start.
+  - The tenant state is compared whatever the savedAt, but toasts only when the new copy's savedAt is at or after the start.
+- Deviation 5 (the tenant-state toast ignores notifications.toasts) is accepted as a ruling: a state change that blocks saves must reach the user.
+- Misalignment: spec 0024 §2.2 and 0028 §8.1 have provideTellma install the toast overflow. PC-155 installs it through the core-ui seam TmToasts.ɵsetOverflow, called from TmArrivals, which keeps it out of the primary.
+- Carry to PC-156: /attention is at 5.93 of spec 0028's 6 KB. PC-156 moves TmAttentionText (1.13 KB) out of the eager /attention graph before adding the bell and tray. If that is not enough, it reports for a ruling on the 6 KB figure.
+- PC-155's R1 reproduced the two load-dependent core flakes (1446/1448 under CPU load). TmNavigation "labels and re-sorts the entries when the language switches" and TmHttpApi "blames the client when the server is newer" each wait a fixed number of turns across a first-use dynamic import: tm-locale-write with the Arabic strings, and PC-115's lazy tm-api-verdict. PC-F80 is opened as a non-blocking fix (D-229).
+- For Ahmad:
+  - confirm the 0028 §8.2 baseline rule;
+  - align 0024 §2.2 and 0028 §8.1 with the overflow seam;
+  - expect a /attention budget question at PC-156.
+
 ### D-256 (orchestrator, 2026-11-23): PC-B05 starts late, in PC-F76's slot
 
 - Phase 5 (PC-085…PC-102) has been all done since PC-095 landed, and the §6.3 gate passes (R about 26, F about 9). PROCESS §5.2 says to start its batch review then, but I did not queue it. Ahmad's question surfaced the miss.
