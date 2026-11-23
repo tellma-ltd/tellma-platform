@@ -384,6 +384,15 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-244 (orchestrator, 2026-11-22): PC-111 Review 1 rulings
+
+- R1-2: the route host registers a default page context on every page route. Its kind comes from the route data, its title from the title strategy, and its template is the route's with the segment filled in. Framework hosts replace it later under the same-scope rule. I chose this over a carry on each framework checkpoint because D-216 asked to replace PC-107's seam, not to narrow what recents count. The PC-107 whole-app behaviour (/17/centers counts and the list route does not) is restored and pinned again.
+- R1-4: tmSerializePageContext stays in the primary, because spec 0026 section 1 places it there and the 50 KB cap of spec 0024 section 12 still has room. This is not a deviation. For Ahmad: should 0026 move the snapshot to a lazy entry point, given that its only callers (./support and the state dump) are lazy? That would save about 0.5 KB on the first frame.
+- R1-1, R1-3 and R1-5 are fixed as the review suggests.
+- Two majors and no blocking finding, so this is not an escalation under section 4.4 unless fix 1 reaches about a third of the checkpoint (about 1,000 lines).
+- Forward note: PC-111 takes 2.10 KB of 0026's 6 KB primary share, which leaves about 3.9 KB for PC-112 and PC-113.
+- For Ahmad (from deviations 2 and 3): spec 0026 section 9.6 should add the injector option beside includeData. Section 9.5 should record that the dispatcher answers busy while a destructive confirmation is open, and looks the action up again by id in the offering context after the answer.
+
 ### D-243 (orchestrator, 2026-11-22): PC-117 fix 1 accepted; ids keep the locale's digits
 
 - Fix 1 (d49d7e35) addresses R1-1 to R1-9. It is about 690 lines against about 4,420 in the implementation, so it is not an escalation under section 4.4.
