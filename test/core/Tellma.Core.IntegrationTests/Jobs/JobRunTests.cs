@@ -121,24 +121,35 @@ namespace Tellma.Core.IntegrationTests.Jobs
         }
 
         [Fact]
-        public async Task A_flush_after_the_final_renewal_extends_the_lease_only_to_the_end_that_renewal_set()
+        public async Task A_flush_after_the_final_renewal_keeps_the_lease_end_that_renewal_wrote()
         {
             int id = await fixture.InsertJobAsync(JobRunKeys.Probe);
-            int? remaining = null;
+            (DateTimeOffset? ExpiresAt, DateTimeOffset Now) final = default;
+            DateTimeOffset? flushedEnd = null;
+            byte? flushedPercent = null;
             fixture.Script.Probe = async (batch, context) =>
             {
-                // --- The host's final renewal binds the lease to five seconds; the handler then reports and flushes ---
+                // --- The host's final renewal binds the lease to five seconds ---
                 _ = await context.Services.GetRequiredService<IJobRenewal>().RenewFinalAsync(FixtureTenantId, leaseSeconds: 5, Token);
+                final = await fixture.LeaseAsync(id);
+
+                // --- The handler reports and flushes once the database's clock moved on, so a flush
+                // that extended the lease from its own clock would end it later ---
+                await fixture.UntilTheClockPassesAsync(final.Now);
                 batch.Single.Progress.Report(50, null, null);
                 await batch.Single.Progress.FlushAsync(Token);
-                remaining = await SqlServerFixture.ScalarAsync<int>(
-                    fixture.ConnectionString, Invariant($"SELECT DATEDIFF(millisecond, SYSUTCDATETIME(), [LeaseExpiresAt]) FROM [core].[Jobs] WHERE [Id] = {id};"));
+                JobRow flushed = await fixture.JobAsync(id);
+                (flushedEnd, flushedPercent) = (flushed.LeaseExpiresAt, flushed.ProgressPercent);
             };
 
             PolledJob polled = Assert.Single(await PollAsync(JobRunKeys.Probe));
 
-            // --- The flush carried the report but left the lease ending within the five seconds, not its own five minutes ---
-            Assert.InRange(Assert.NotNull(remaining), 1, 5_000);
+            // --- The final renewal ended the lease within five seconds of its own clock, not the handler's five minutes ---
+            DateTimeOffset end = Assert.NotNull(final.ExpiresAt);
+            Assert.InRange(end - final.Now, TimeSpan.FromTicks(1), TimeSpan.FromSeconds(5));
+
+            // --- The flush carried the report and left the lease ending exactly where the final renewal ended it ---
+            Assert.Equal(((DateTimeOffset?)end, (byte?)50), (flushedEnd, flushedPercent));
             Assert.Equal(JobStatus.Succeeded, polled.Status);
             Assert.Equal((byte?)100, (await fixture.JobAsync(id)).ProgressPercent);
         }

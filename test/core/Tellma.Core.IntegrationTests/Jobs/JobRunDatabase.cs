@@ -333,6 +333,44 @@ namespace Tellma.Core.IntegrationTests.Jobs
                     $"INSERT INTO [fixture].[Shipments] ([Id], [State], [Payload], [JobId], [CreatedAt], [CreatedById], [ModifiedAt], [ModifiedById]) VALUES ({id}, 'Pending', {Literal(payload)}, {jobId}, SYSDATETIMEOFFSET(), 1, SYSDATETIMEOFFSET(), 1);"));
         }
 
+        // The lease statements read the clock as datetimeoffset(3), which rounds the datetime2(7) value
+        // SYSUTCDATETIME() returns to the nearest millisecond, possibly up; and SQL Server on Linux
+        // advances that clock in steps of a few milliseconds, so two statements a moment apart often
+        // read the same value. A lease end measured against the raw clock, or with DATEDIFF counting
+        // millisecond boundaries, can therefore lie a millisecond past the length the statement added.
+        // Reading the clock rounded the same way, in the same statement as the end, keeps the
+        // comparison exact: the clock never runs backwards and the rounding is monotonic, so a lease
+        // a statement set n seconds from its own clock ends at most n seconds after this one.
+        /// <summary>
+        ///     Reads a job's lease end with the database's clock, read in the same statement and rounded
+        ///     to the millisecond as the lease statements round it.
+        /// </summary>
+        /// <param name="id">The job.</param>
+        /// <returns>The lease end, null when the job holds no lease, and the clock.</returns>
+        public async Task<(DateTimeOffset? ExpiresAt, DateTimeOffset Now)> LeaseAsync(int id)
+        {
+            await using SqlConnection connection = new(ConnectionString);
+            await connection.OpenAsync(TestContext.Current.CancellationToken);
+            await using SqlCommand command = connection.CreateCommand();
+            command.CommandText = "SELECT [LeaseExpiresAt], CAST(SYSUTCDATETIME() AS datetimeoffset(3)) FROM [core].[Jobs] WHERE [Id] = @id;";
+            _ = command.Parameters.AddWithValue("@id", id);
+            await using SqlDataReader reader = await command.ExecuteReaderAsync(TestContext.Current.CancellationToken);
+            Assert.True(await reader.ReadAsync(TestContext.Current.CancellationToken), $"The job {id} is stored.");
+            return (reader.IsDBNull(0) ? null : reader.GetDateTimeOffset(0), reader.GetDateTimeOffset(1));
+        }
+
+        /// <summary>Waits until the database's clock, rounded to the millisecond, has passed an instant it read.</summary>
+        /// <param name="instant">The instant, read from the database's clock rounded to the millisecond.</param>
+        /// <returns>A task that completes once a statement started now reads a later clock.</returns>
+        public async Task UntilTheClockPassesAsync(DateTimeOffset instant)
+        {
+            // --- A few clock steps at most: each read is its own round trip ---
+            while (await SqlServerFixture.ScalarAsync<DateTimeOffset>(ConnectionString, "SELECT CAST(SYSUTCDATETIME() AS datetimeoffset(3));") <= instant)
+            {
+                TestContext.Current.CancellationToken.ThrowIfCancellationRequested();
+            }
+        }
+
         /// <summary>Reads a job's row, every column by name.</summary>
         /// <param name="id">The job.</param>
         /// <returns>The row.</returns>
@@ -528,6 +566,9 @@ namespace Tellma.Core.IntegrationTests.Jobs
 
         /// <summary>The lease token; null when not leased.</summary>
         public Guid? LeaseToken => (Guid?)Columns["LeaseToken"];
+
+        /// <summary>When the lease ends; null when not leased.</summary>
+        public DateTimeOffset? LeaseExpiresAt => (DateTimeOffset?)Columns["LeaseExpiresAt"];
 
         /// <summary>The progress percent; null for none.</summary>
         public byte? ProgressPercent => (byte?)Columns["ProgressPercent"];

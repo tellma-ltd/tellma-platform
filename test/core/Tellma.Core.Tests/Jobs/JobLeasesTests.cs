@@ -235,6 +235,23 @@ namespace Tellma.Core.Tests.Jobs
         }
 
         [Fact]
+        public void A_lease_keeps_the_end_its_final_renewal_wrote_only_once_bound_to_the_hosts_stop()
+        {
+            using JobLease lease = Track([Row(1)], Token);
+            Assert.False(lease.KeepsStopEnd);
+
+            // --- Unbound, there is no final end to keep ---
+            _ = Assert.Throws<InvalidOperationException>(lease.KeepStopEnd);
+            Assert.False(lease.KeepsStopEnd);
+
+            // --- Bound, then written by the final renewal: later renewals keep that end ---
+            lease.BindToStop(_time.GetTimestamp(), leaseSeconds: 30);
+            Assert.False(lease.KeepsStopEnd);
+            lease.KeepStopEnd();
+            Assert.True(lease.KeepsStopEnd);
+        }
+
+        [Fact]
         public void A_jump_of_five_points_from_the_carried_percent_renews_at_most_once_every_five_seconds()
         {
             using JobLease lease = Track([Row(1)], Token);

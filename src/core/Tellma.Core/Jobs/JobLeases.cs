@@ -167,6 +167,9 @@ namespace Tellma.Core.Jobs
         /// <summary>The clock's timestamp and the length of the final renewal that bound the lease to the host's stop; null until one did.</summary>
         private (long At, int Seconds)? _boundToStop;
 
+        /// <summary>1 once the final renewal that bound the lease wrote its end, which later renewals then keep.</summary>
+        private int _keepsStopEnd;
+
         /// <summary>Creates the lease.</summary>
         /// <param name="owner">The registry that tracks it.</param>
         /// <param name="tenantId">The tenant.</param>
@@ -198,10 +201,14 @@ namespace Tellma.Core.Jobs
 
         // Spec 0020 §6.7: the final renewal binds the lease to the host's shutdown timeout. A handler
         // still running may flush or jump after it, and its renewal must not undo the shortening, so
-        // once bound every renewal extends the lease only to the end the final one set.
+        // once bound every renewal extends the lease only to the end the final one set. Once that
+        // renewal wrote the end, later ones keep it (KeepsStopEnd) and this length goes unused; until
+        // then the end is estimated on this instance's clock and rounded up to a whole second, since
+        // a lease that lapsed early would let another instance run the job while the handler lives.
         /// <summary>
         ///     The length a renewal sent now extends the lease by, in seconds: its own, or, once the
-        ///     final renewal bound it, what is left until the end that renewal set, at least a second.
+        ///     final renewal bound it, what is left until the end that renewal set, rounded up and at
+        ///     least a second.
         /// </summary>
         public int RenewalSeconds
         {
@@ -219,6 +226,15 @@ namespace Tellma.Core.Jobs
                 }
             }
         }
+
+        // Spec 0020 §6.7: the end the final renewal wrote is in the database's clock, to the
+        // millisecond; a later renewal extending the lease by whole seconds from its own statement's
+        // clock would end it later than that, so it keeps the stored end instead.
+        /// <summary>
+        ///     Whether renewals keep the lease's stored end rather than extend it: the final renewal
+        ///     that bound it to the host's stop wrote that end.
+        /// </summary>
+        public bool KeepsStopEnd => Volatile.Read(ref _keepsStopEnd) == 1;
 
         /// <summary>The scope token: cancelled when the lease is lost or the host stops, never for a requested cancel.</summary>
         public CancellationToken ScopeToken => _scope.Token;
@@ -335,6 +351,21 @@ namespace Tellma.Core.Jobs
             lock (_gate)
             {
                 _boundToStop ??= (at, leaseSeconds);
+            }
+        }
+
+        /// <summary>Records that the final renewal that bound the lease wrote its end, so later renewals keep that end.</summary>
+        /// <exception cref="InvalidOperationException">The lease was not bound to the host's stop.</exception>
+        public void KeepStopEnd()
+        {
+            lock (_gate)
+            {
+                if (_boundToStop is null)
+                {
+                    throw new InvalidOperationException("Only a lease bound to the host's stop keeps the end its final renewal wrote.");
+                }
+
+                Volatile.Write(ref _keepsStopEnd, 1);
             }
         }
 

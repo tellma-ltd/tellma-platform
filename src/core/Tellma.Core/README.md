@@ -2759,7 +2759,9 @@ leaves those states (logged as `JobPollerRetired`, its orphan sample dropped). T
   `DrainTimeout` for the polls in flight and every batch. The handlers still running then keep their
   lease: the renewals stop, one final renewal per tenant binds every such lease to the host's
   shutdown timeout, and each handler is abandoned (`WorkerDrainTimedOut`). A flush or jump of a
-  handler still running after its final renewal extends its lease only to the end that renewal set.
+  handler still running after its final renewal extends its lease only to the end that renewal set:
+  it keeps the end the renewal wrote, to the millisecond, or, when the renewal failed, estimates
+  that end on the instance's clock and rounds it up to a whole second.
 - **Telemetry.** Every `tellma.jobs.*` instrument and `tellma.schedules.gap_detected` are recorded
   on the `Tellma.Core` meter; `JobWorkerHeartbeat` is logged whenever a poll stamps a tenant, at most
   once a minute, for the log-based staleness alert under `infra/monitoring/jobs/`.
