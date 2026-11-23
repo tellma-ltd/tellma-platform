@@ -1194,7 +1194,7 @@
     <value>{expected, select, Bool {«{value}» ليست نعم أو لا.} Integer {«{value}» ليس عددًا صحيحًا.} Numeric {«{value}» ليس رقمًا.} Choice {«{value}» ليس أحد الخيارات.} Date {«{value}» ليس تاريخًا.} DateTime {«{value}» ليس تاريخًا ووقتًا.} DateTimeOffset {«{value}» ليس تاريخًا ووقتًا.} Time {«{value}» ليس وقتًا.} Guid {«{value}» ليس معرّفًا.} other {لا يمكن قراءة «{value}» هنا.}}</value>
   </data>
   <data name="Excel_Import_ConcurrencyConflict" xml:space="preserve">
-    <value>غيّر أحدهم هذا السجل ({modifiedBy}، {modifiedAt}) بعد تصدير الملف. صدِّره مرة أخرى وأعد تعديلاتك.</value>
+    <value>{exported, select, true {غيّر أحدهم هذا السجل ({modifiedBy}، {modifiedAt}) بعد تصدير الملف. صدِّره مرة أخرى وأعد تعديلاتك.} other {غيّر أحدهم هذا السجل ({modifiedBy}، {modifiedAt}) أثناء استيراده. استورد الملف مرة أخرى.}}</value>
   </data>
   <!-- Queryex diagnostics, with the arguments the engine gives each -->
   <data name="Queryex_QX1001" xml:space="preserve">

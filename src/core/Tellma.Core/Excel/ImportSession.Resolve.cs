@@ -5,6 +5,7 @@
 
 using System.Collections;
 using System.Globalization;
+using System.Text;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Excel;
 using Tellma.Core.Abstractions.Validation;
@@ -64,6 +65,8 @@ namespace Tellma.Core.Excel
             {
                 builder.Identify(Order[position], stored);
             }
+
+            builder.RefuseCycles(Cycles);
 
             List<object> entities = [];
             List<ImportChunkRow> rows = [];
@@ -243,8 +246,11 @@ namespace Tellma.Core.Excel
             /// <summary>Each target and key's ids, by normal value.</summary>
             private readonly Dictionary<(string Target, string Key), Dictionary<object, List<long>>> _found = [];
 
-            /// <summary>The targets and keys of which a stored row matched no value the chunk asked for.</summary>
-            private readonly HashSet<(string Target, string Key)> _unattributed = [];
+            /// <summary>
+            ///     Each target and key's stored text values that matched no value the chunk asked for,
+            ///     folded loosely: the rows a collation equivalence found that the codec cannot tell.
+            /// </summary>
+            private readonly Dictionary<(string Target, string Key), HashSet<string>> _unattributed = [];
 
             /// <summary>Reads the lookups' rows: each a key and an id, or an id alone for a lookup by identity.</summary>
             /// <param name="lookupRows">Each lookup with the rows it read.</param>
@@ -278,7 +284,18 @@ namespace Tellma.Core.Excel
                         object? value = row.Count == 1 ? id : ImportKeys.Normalize(row[0]);
                         if (value is null || !asked.Contains(value))
                         {
-                            _ = _unattributed.Add(name);
+                            // Only text has a looser form to attribute it by; another value hints at nothing.
+                            if (value is string text)
+                            {
+                                if (!_unattributed.TryGetValue(name, out HashSet<string>? loose))
+                                {
+                                    loose = new HashSet<string>(StringComparer.Ordinal);
+                                    _unattributed[name] = loose;
+                                }
+
+                                _ = loose.Add(Fold(text));
+                            }
+
                             continue;
                         }
 
@@ -308,13 +325,40 @@ namespace Tellma.Core.Excel
                     : [];
             }
 
-            /// <summary>Whether a stored row of a target and key matched no value asked for: a collation equivalence the codec cannot tell.</summary>
+            /// <summary>
+            ///     Whether a stored row of a target and key that matched no value asked for matches this
+            ///     one loosely: a collation equivalence the codec cannot tell, so the value hints at it.
+            /// </summary>
             /// <param name="target">The target entity.</param>
             /// <param name="key">The key property.</param>
-            /// <returns>True when one did.</returns>
-            public bool Unattributed(EntityMetadata target, PropertyMetadata key)
+            /// <param name="value">The normal value the cell asked for.</param>
+            /// <returns>True when one does.</returns>
+            public bool Unattributed(EntityMetadata target, PropertyMetadata key, object value)
             {
-                return _unattributed.Contains((target.Name, key.Name));
+                return value is string text
+                    && _unattributed.TryGetValue((target.Name, key.Name), out HashSet<string>? loose)
+                    && loose.Contains(Fold(text));
+            }
+
+            /// <summary>
+            ///     A text's loose form, as a case- and accent-insensitive collation compares it: the
+            ///     compatibility decomposition without its combining marks, upper-cased invariantly.
+            /// </summary>
+            /// <param name="text">The text.</param>
+            /// <returns>The loose form.</returns>
+            private static string Fold(string text)
+            {
+                string decomposed = text.Normalize(NormalizationForm.FormKD);
+                StringBuilder kept = new(decomposed.Length);
+                foreach (char character in decomposed)
+                {
+                    if (CharUnicodeInfo.GetUnicodeCategory(character) is not (UnicodeCategory.NonSpacingMark or UnicodeCategory.SpacingCombiningMark or UnicodeCategory.EnclosingMark))
+                    {
+                        _ = kept.Append(character);
+                    }
+                }
+
+                return kept.ToString().Normalize(NormalizationForm.FormC).ToUpperInvariant();
             }
         }
 
@@ -397,6 +441,34 @@ namespace Tellma.Core.Excel
                 }
 
                 _identities[row.Position] = identity;
+            }
+
+            /// <summary>
+            ///     Refuses each deferred cycle the chunk holds whole when every row on it is new: a
+            ///     stored row on it already has its id, so the new rows bind to it in any order.
+            /// </summary>
+            /// <param name="cycles">The session's deferred cycles.</param>
+            public void RefuseCycles(IReadOnlyList<ImportCycle> cycles)
+            {
+                // A cycle split by a chunk boundary is checked in no chunk; the order places every
+                // cycle's rows after the rest, together, so a chunking that keeps them in one chunk sees it.
+                foreach (ImportCycle cycle in cycles)
+                {
+                    if (cycle.Rows.Any(row => row.Position < fromRow || row.Position > toRow) || cycle.Rows.Any(row => !_identities[row.Position].IsNew))
+                    {
+                        continue;
+                    }
+
+                    long[] cycleRows = [.. cycle.Rows.Select(static row => (long)row.Row)];
+                    for (int i = 0; i < cycle.Rows.Count; i++)
+                    {
+                        Raise(cycle.Rows[i], cycle.Columns[i], ExcelErrorCodes.ImportParentCycle, new()
+                        {
+                            ["rows"] = cycleRows,
+                            ["path"] = cycle.Columns[i].Path.Text,
+                        });
+                    }
+                }
             }
 
             /// <summary>Builds a parent row's entity and the cells of its payload paths.</summary>
@@ -598,14 +670,15 @@ namespace Tellma.Core.Excel
                 }
 
                 // --- Else the lookup: exactly one row binds ---
-                List<long> ids = LookedUp(row, column, fromRow, toRow) is object asked ? lookups.Find(targetEntity, key, asked) : [];
+                object? asked = LookedUp(row, column, fromRow, toRow);
+                List<long> ids = asked is not null ? lookups.Find(targetEntity, key, asked) : [];
                 switch (ids.Count)
                 {
                     case 1:
                         value = ids[0];
                         return true;
                     case 0:
-                        ReferenceNotFound(row, column, lookups.Unattributed(targetEntity, key));
+                        ReferenceNotFound(row, column, asked is not null && lookups.Unattributed(targetEntity, key, asked));
                         return false;
                     default:
                         Raise(row, column, ExcelErrorCodes.ImportReferenceAmbiguous, new()
@@ -622,7 +695,7 @@ namespace Tellma.Core.Excel
             /// <summary>Raises a reference cell that names no readable row.</summary>
             /// <param name="row">The row.</param>
             /// <param name="column">The reference column.</param>
-            /// <param name="collation">Whether a stored row matched no value asked for, which hints at a collation equivalence.</param>
+            /// <param name="collation">Whether a stored row that matched no value asked for matches this one loosely, which hints at a collation equivalence.</param>
             private void ReferenceNotFound(ImportRow row, ImportColumn column, bool collation)
             {
                 Dictionary<string, object?> arguments = new(StringComparer.Ordinal)

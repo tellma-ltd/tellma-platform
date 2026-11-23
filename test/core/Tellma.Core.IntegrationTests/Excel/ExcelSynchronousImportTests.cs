@@ -5,6 +5,8 @@
 
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.Metrics.Testing;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Testing;
 using System.Diagnostics.Metrics;
 using System.Globalization;
 using System.Reflection;
@@ -30,7 +32,7 @@ namespace Tellma.Core.IntegrationTests.Excel
     ///     tenant and into another; the write-once, replacement, renaming and stale-identity cases;
     ///     a reference the caller cannot read; a row the caller cannot write; a row changed after it
     ///     was read, retried, and one changed after it was exported, refused unless the file's stamps
-    ///     are ignored; the synchronous cap; and a warning to confirm.
+    ///     are ignored; the synchronous cap; a warning to confirm; and the instruments and log events.
     /// </summary>
     /// <param name="fixture">The seeded tenant databases and their instance.</param>
     [Trait("Category", "Integration")]
@@ -105,6 +107,42 @@ namespace Tellma.Core.IntegrationTests.Excel
         }
 
         [Fact]
+        public async Task An_upsert_by_id_matches_a_stored_widgets_parts_by_id_and_inserts_a_new_widget_whose_part_ids_are_new()
+        {
+            int twelfth = ExcelImportDatabase.FirstWidget + 11;
+            int kept = ExcelImportDatabase.PartOf(twelfth, 1);
+            (int userId, string subject) = await WidgetCallerAsync();
+            (byte[] exported, ImportPlan plan) = await ExportPlannedAsync(userId, subject, Widgets, [twelfth]);
+
+            // --- The stored widget keeps its first part and adds one; the new widget's part carries a positive id of the file's own ---
+            byte[] workbook = WorkbookEdits.WithRows(
+                exported,
+                plan,
+                (plan.Sheets[0].Sheet, [Widget(twelfth, ExcelImportDatabase.CodeOf(twelfth), $"s{twelfth}", "Upserted by id"), Widget(-1, "UI-1", "ui1")]),
+                (plan.Sheets[1].Sheet,
+                [
+                    Row(("Widget.Id", twelfth), ("Id", kept), ("Ordinal", 1), ("Notes", "kept")),
+                    Row(("Widget.Id", twelfth), ("Id", -10), ("Ordinal", 3), ("Notes", "added")),
+                    Row(("Widget.Id", -1), ("Id", 77), ("Ordinal", 1), ("Notes", "new")),
+                ]),
+                (plan.Sheets[2].Sheet,
+                [
+                    Row(("WidgetPart.Id", kept), ("Id", ExcelImportDatabase.NoteOf(twelfth, 1, 1)), ("Text", "kept note")),
+                    Row(("WidgetPart.Id", -10), ("Text", "added note")),
+                    Row(("WidgetPart.Id", 77), ("Text", "new note")),
+                ]));
+
+            ImportOutcome outcome = await ImportAsync(subject, Widgets, new ImportRequest { FileId = await StageAsync(userId, workbook), Mode = ImportMode.Upsert });
+
+            // --- Two parts and two notes inserted, the kept part and its note updated, the second part deleted with its note ---
+            Assert.Equal((1, 1, 4, 2, 1), (outcome.Inserted, outcome.Updated, outcome.ChildrenInserted, outcome.ChildrenUpdated, outcome.ChildrenDeleted));
+            Assert.Equal("kept note", await fixture.Connect.ScalarAsync<string>(TenantA, $"SELECT [Text] FROM [fixture].[WidgetPartNotes] WHERE [Id] = {ExcelImportDatabase.NoteOf(twelfth, 1, 1)};"));
+            Assert.Equal(2, await CountAsync($"SELECT COUNT(*) FROM [fixture].[WidgetPartNotes] n JOIN [fixture].[WidgetParts] p ON p.[Id] = n.[WidgetPartId] WHERE p.[WidgetId] = {twelfth};"));
+            Assert.Equal(0, await CountAsync($"SELECT COUNT(*) FROM [fixture].[WidgetParts] WHERE [Id] = {ExcelImportDatabase.PartOf(twelfth, 2)};"));
+            Assert.Equal(1, await CountAsync("SELECT COUNT(*) FROM [fixture].[WidgetPartNotes] n JOIN [fixture].[WidgetParts] p ON p.[Id] = n.[WidgetPartId] JOIN [fixture].[Widgets] w ON w.[Id] = p.[WidgetId] WHERE w.[Code] = 'UI-1' AND p.[Id] <> 77;"));
+        }
+
+        [Fact]
         public async Task An_export_of_one_tenant_inserts_into_another_linking_every_depth_by_the_files_identities()
         {
             int first = ExcelImportDatabase.FirstWidget;
@@ -116,6 +154,37 @@ namespace Tellma.Core.IntegrationTests.Excel
 
             Assert.Equal((2, 0, 8, 0, 0), (outcome.Inserted, outcome.Updated, outcome.ChildrenInserted, outcome.ChildrenUpdated, outcome.ChildrenDeleted));
             Assert.Equal(4, await fixture.Connect.ScalarAsync<int>(TenantB, $"SELECT COUNT(*) FROM [fixture].[WidgetPartNotes] n JOIN [fixture].[WidgetParts] p ON p.[Id] = n.[WidgetPartId] JOIN [fixture].[Widgets] w ON w.[Id] = p.[WidgetId] WHERE w.[Code] = '{ExcelImportDatabase.CodeOf(first)}';"));
+        }
+
+        [Fact]
+        public async Task An_export_of_one_tenant_updates_and_upserts_another_by_code_replacing_the_parts()
+        {
+            int fourteenth = ExcelImportDatabase.FirstWidget + 13;
+            string code = ExcelImportDatabase.CodeOf(fourteenth);
+            (_, string exporter) = await WidgetCallerAsync();
+            byte[] workbook = await ExportAsync(exporter, Widgets, [fourteenth]);
+            (int userId, string subject) = await fixture.SeedCallerAsync(TenantB, (Widgets, AccessActions.Read, null), (Widgets, AccessActions.Save, null));
+            string parts = $"FROM [fixture].[WidgetParts] p JOIN [fixture].[Widgets] w ON w.[Id] = p.[WidgetId] WHERE w.[Code] = '{code}'";
+
+            // --- Inserted first, as a file of another tenant can only be ---
+            ImportOutcome inserted = await ImportAsync(subject, Widgets, new ImportRequest { FileId = await StageAsync(userId, workbook, TenantB) }, TenantB);
+            Assert.Equal((1, 0, 4, 0, 0), (inserted.Inserted, inserted.Updated, inserted.ChildrenInserted, inserted.ChildrenUpdated, inserted.ChildrenDeleted));
+
+            // --- The file's identities name rows of its own tenant, so they cannot key an update here ---
+            int byIdFile = await StageAsync(userId, workbook, TenantB);
+            ImportException refused = await Assert.ThrowsAsync<ImportException>(() => ImportAsync(subject, Widgets, new ImportRequest { FileId = byIdFile, Mode = ImportMode.Update, RowKey = "Id" }, TenantB));
+            Assert.Contains(refused.Errors, static error => error.Code == ExcelErrorCodes.ImportIdKeyRequiresSameTenant);
+
+            // --- Each of Update and Upsert by code finds the widget and replaces its two parts: deleted, and the file's inserted with their notes ---
+            foreach (ImportMode mode in new[] { ImportMode.Update, ImportMode.Upsert })
+            {
+                int before = await fixture.Connect.ScalarAsync<int>(TenantB, $"SELECT MAX(p.[Id]) {parts};");
+                ImportOutcome outcome = await ImportAsync(subject, Widgets, new ImportRequest { FileId = await StageAsync(userId, workbook, TenantB), Mode = mode, RowKey = "Code" }, TenantB);
+
+                Assert.Equal((0, 1, 4, 0, 2), (outcome.Inserted, outcome.Updated, outcome.ChildrenInserted, outcome.ChildrenUpdated, outcome.ChildrenDeleted));
+                Assert.Equal((2, 0), (await fixture.Connect.ScalarAsync<int>(TenantB, $"SELECT COUNT(*) {parts};"), await fixture.Connect.ScalarAsync<int>(TenantB, $"SELECT COUNT(*) {parts} AND p.[Id] <= {before};")));
+                Assert.Equal(2, await fixture.Connect.ScalarAsync<int>(TenantB, $"SELECT COUNT(*) FROM [fixture].[WidgetPartNotes] n JOIN [fixture].[WidgetParts] p ON p.[Id] = n.[WidgetPartId] JOIN [fixture].[Widgets] w ON w.[Id] = p.[WidgetId] WHERE w.[Code] = '{code}';"));
+            }
         }
 
         [Fact]
@@ -308,6 +377,92 @@ namespace Tellma.Core.IntegrationTests.Excel
             Assert.Equal(1, await CountAsync("SELECT COUNT(*) FROM [fixture].[Nodes] c JOIN [fixture].[Nodes] p ON p.[Id] = c.[ParentId] WHERE c.[Code] = 'T2' AND p.[Code] = 'T1' AND c.[IsActive] = 1;"));
         }
 
+        [Fact]
+        public async Task A_tree_export_imports_back_re_parenting_its_rows_under_rows_of_the_file_by_update_and_by_upsert()
+        {
+            int third = ExcelImportDatabase.FirstNode + 2;
+            int fourth = ExcelImportDatabase.FirstNode + 3;
+            (int userId, string subject) = await fixture.SeedCallerAsync(TenantA, (Nodes, AccessActions.Read, null), (Nodes, AccessActions.Save, null));
+            (byte[] exported, ImportPlan plan) = await ExportPlannedAsync(userId, subject, Nodes, [third, fourth]);
+
+            // --- Update by id: N4 moves under N3, a stored row the file updates too ---
+            byte[] moved = WorkbookEdits.WithRows(
+                exported,
+                plan,
+                (plan.Sheets[0].Sheet, [Row(("Id", third), ("Code", "N3"), ("Name", "Three")), Row(("Id", fourth), ("Code", "N4"), ("Name", "Four"), ("Parent.Code", "N3"))]));
+
+            ImportOutcome updated = await ImportAsync(subject, Nodes, new ImportRequest { FileId = await StageAsync(userId, moved), Mode = ImportMode.Update });
+
+            Assert.Equal((0, 2), (updated.Inserted, updated.Updated));
+            Assert.Equal(third, await fixture.Connect.ScalarAsync<int>(TenantA, "SELECT [ParentId] FROM [fixture].[Nodes] WHERE [Code] = 'N4';"));
+
+            // --- Upsert by code: N4 moves under a new row that comes after it in the file, itself under N3 ---
+            byte[] grown = WorkbookEdits.WithRows(
+                exported,
+                plan,
+                (plan.Sheets[0].Sheet, [Row(("Code", "N4"), ("Name", "Four"), ("Parent.Code", "T6")), Row(("Code", "T6"), ("Name", "Tee six"), ("Parent.Code", "N3")), Row(("Code", "N3"), ("Name", "Three"))]));
+
+            ImportOutcome upserted = await ImportAsync(subject, Nodes, new ImportRequest { FileId = await StageAsync(userId, grown), Mode = ImportMode.Upsert, RowKey = "Code" });
+
+            Assert.Equal((1, 2), (upserted.Inserted, upserted.Updated));
+            int six = await fixture.Connect.ScalarAsync<int>(TenantA, "SELECT [Id] FROM [fixture].[Nodes] WHERE [Code] = 'T6';");
+            Assert.Equal((third, six), (await fixture.Connect.ScalarAsync<int>(TenantA, "SELECT [ParentId] FROM [fixture].[Nodes] WHERE [Code] = 'T6';"), await fixture.Connect.ScalarAsync<int>(TenantA, "SELECT [ParentId] FROM [fixture].[Nodes] WHERE [Code] = 'N4';")));
+        }
+
+        [Fact]
+        public async Task Each_import_records_its_rows_duration_and_lookups_each_refusal_its_errors_and_both_are_logged()
+        {
+            int thirteenth = ExcelImportDatabase.FirstWidget + 12;
+            (int userId, string subject) = await WidgetCallerAsync();
+            (byte[] exported, ImportPlan plan) = await ExportPlannedAsync(userId, subject, Widgets, [thirteenth]);
+            byte[] changed = WorkbookEdits.WithRows(exported, plan, (plan.Sheets[0].Sheet, [Widget(thirteenth, ExcelImportDatabase.CodeOf(thirteenth), "changed")]));
+            int refusedFile = await StageAsync(userId, changed);
+            int importedFile = await StageAsync(userId, exported);
+
+            // The tests of this class run one at a time, so the instruments and the log hold this test's imports alone.
+            IMeterFactory meters = fixture.Instance.GetRequiredService<IMeterFactory>();
+            using MetricCollector<long> rows = new(meters, ExcelTelemetryNames.MeterName, ExcelTelemetryNames.ImportRows);
+            using MetricCollector<double> durations = new(meters, ExcelTelemetryNames.MeterName, ExcelTelemetryNames.ImportDuration);
+            using MetricCollector<long> lookups = new(meters, ExcelTelemetryNames.MeterName, ExcelTelemetryNames.ImportLookups);
+            using MetricCollector<long> errors = new(meters, ExcelTelemetryNames.MeterName, ExcelTelemetryNames.ImportErrors);
+            FakeLogCollector log = fixture.Instance.GetFakeLogCollector();
+            log.Clear();
+
+            // --- A refusal, then an import ---
+            _ = await Assert.ThrowsAsync<ImportException>(() => ImportAsync(subject, Widgets, new ImportRequest { FileId = refusedFile, Mode = ImportMode.Update }));
+            ImportOutcome outcome = await ImportAsync(subject, Widgets, new ImportRequest { FileId = importedFile, Mode = ImportMode.Update });
+            Assert.Equal(1, outcome.Updated);
+
+            // --- The import's rows and duration, tagged by entity, mode and route; its lookups by entity ---
+            CollectedMeasurement<long> read = Assert.Single(rows.GetMeasurementSnapshot());
+            Assert.Equal((1L, Widgets, "update", false), (read.Value, Tag(read.Tags, ExcelTelemetryNames.EntityTag), Tag(read.Tags, ExcelTelemetryNames.ModeTag), read.Tags[ExcelTelemetryNames.BackgroundTag] is true));
+            CollectedMeasurement<double> timed = Assert.Single(durations.GetMeasurementSnapshot());
+            Assert.Equal((Widgets, "update", false), (Tag(timed.Tags, ExcelTelemetryNames.EntityTag), Tag(timed.Tags, ExcelTelemetryNames.ModeTag), timed.Tags[ExcelTelemetryNames.BackgroundTag] is true));
+            Assert.True(timed.Value > 0);
+            CollectedMeasurement<long> looked = Assert.Single(lookups.GetMeasurementSnapshot());
+            Assert.Equal((0L, Widgets), (looked.Value, Tag(looked.Tags, ExcelTelemetryNames.EntityTag)));
+
+            // --- The refusal's one error, under its code ---
+            CollectedMeasurement<long> refused = Assert.Single(errors.GetMeasurementSnapshot());
+            Assert.Equal((1L, Widgets, ExcelErrorCodes.ImportWriteOnceChanged), (refused.Value, Tag(refused.Tags, ExcelTelemetryNames.EntityTag), Tag(refused.Tags, ExcelTelemetryNames.CodeTag)));
+
+            // --- The refusal logged at Warning with its first code, the import at Information with its counts ---
+            (string?, LogLevel, string?, string?, string?, string?)[] events =
+            [
+                ("ImportFailed", LogLevel.Warning, Widgets, "update", "1", ExcelErrorCodes.ImportWriteOnceChanged),
+                ("ImportCompleted", LogLevel.Information, Widgets, "update", "0", "1"),
+            ];
+            Assert.Equal(
+                events,
+                log.GetSnapshot().Where(static record => record.Category == ExcelLog.Category).Select(static record => (
+                    record.Id.Name,
+                    record.Level,
+                    record.GetStructuredStateValue("Entity"),
+                    record.GetStructuredStateValue("Mode"),
+                    record.GetStructuredStateValue("TotalErrors") ?? record.GetStructuredStateValue("Inserted"),
+                    record.GetStructuredStateValue("FirstCode") ?? record.GetStructuredStateValue("Updated"))));
+        }
+
         /// <summary>A widget row by path.</summary>
         /// <param name="id">The sheet identity; blank when null.</param>
         /// <param name="code">The code.</param>
@@ -325,6 +480,15 @@ namespace Tellma.Core.IntegrationTests.Excel
         private static Dictionary<string, object?> Row(params (string Path, object? Value)[] cells)
         {
             return cells.ToDictionary(static cell => cell.Path, static cell => cell.Value, StringComparer.Ordinal);
+        }
+
+        /// <summary>A measurement's tag as text.</summary>
+        /// <param name="tags">The measurement's tags.</param>
+        /// <param name="name">The tag's name.</param>
+        /// <returns>The value.</returns>
+        private static string? Tag(IReadOnlyDictionary<string, object?> tags, string name)
+        {
+            return tags[name] as string;
         }
 
         /// <summary>The letters of a plan sheet's column of a path.</summary>

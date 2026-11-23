@@ -89,6 +89,48 @@ namespace Tellma.Core.Tests.Excel
         }
 
         [Fact]
+        public async Task An_upsert_by_code_refuses_a_cycle_only_once_every_row_on_it_is_known_to_be_new()
+        {
+            using ExportScope scope = new(composition.Services, "en", "en", "ar");
+            byte[] workbook = await NodesAsync(scope, Node(code: "A", parent: "B"), Node(code: "B", parent: "A"));
+            ImportRequest upsert = new() { FileId = 1, Mode = ImportMode.Upsert, RowKey = "Code" };
+
+            // --- The parse cannot tell which rows exist, so it refuses nothing ---
+            ExcelImportSession<Node> session = await _kit.ParseAsync<Node>(workbook, scope.Context, upsert);
+            IReadOnlyList<ExcelQuery> queries = session.LookupsFor(0, 1);
+
+            // --- Both rows new: the cycle is refused at each ---
+            ExcelChunk<Node> allNew = session.Resolve(0, 1, Answer(queries), [], NoCommitted);
+            Assert.Equal([(2, ExcelErrorCodes.ImportParentCycle), (3, ExcelErrorCodes.ImportParentCycle)], allNew.Errors.Select(static error => (error.Row!.Value, error.Code)).Order());
+
+            // --- A stored: no cycle among new rows, so A takes the new B as its parent and B takes A ---
+            Node storedA = new() { Id = 7, Code = "A", Name = "Node A", IsActive = true, ModifiedAt = ExcelTestKit.Now.AddDays(-1) };
+            ExcelChunk<Node> oneStored = session.Resolve(0, 1, Answer(queries, ("A", 7L)), [storedA], NoCommitted);
+            Assert.Empty(oneStored.Errors);
+            Node a = oneStored.Entities.Single(static node => node.Code == "A");
+            Node b = oneStored.Entities.Single(static node => node.Code == "B");
+            Assert.Equal((7, b.Id, 7), (a.Id, a.ParentId, b.ParentId));
+            Assert.True(b.Id < 0);
+        }
+
+        [Fact]
+        public async Task Only_a_value_a_stored_row_matches_loosely_is_hinted_as_a_collation_miss()
+        {
+            using ExportScope scope = new(composition.Services, "en", "en", "ar");
+
+            // The first parent is written full-width; the second is a typo.
+            byte[] workbook = await NodesAsync(scope, Node(code: "X", parent: "\uFF3A1"), Node(code: "Y", parent: "typo"));
+            ExcelImportSession<Node> session = await _kit.ParseAsync<Node>(workbook, scope.Context);
+
+            // --- The database's collation matched the full-width value to "Z1", which the file never names ---
+            ExcelChunk<Node> chunk = session.Resolve(0, 1, Answer(session.LookupsFor(0, 1), ("Z1", 5L)), [], NoCommitted);
+
+            Assert.Equal(
+                [(2, true), (3, false)],
+                chunk.Errors.Where(static error => error.Code == ExcelErrorCodes.ImportReferenceNotFound).Select(static error => (error.Row!.Value, (bool)error.Arguments["collation"]!)).Order());
+        }
+
+        [Fact]
         public async Task A_later_chunk_binds_a_new_row_of_an_earlier_one_through_its_committed_id_and_without_it_finds_none()
         {
             using ExportScope scope = new(composition.Services, "en", "en", "ar");
@@ -260,16 +302,31 @@ namespace Tellma.Core.Tests.Excel
         }
 
         [Fact]
-        public async Task A_synchronous_import_counts_the_rows_it_reads_whatever_the_sheet_declares_and_refuses_beyond_its_limit()
+        public async Task A_synchronous_import_refuses_the_rows_it_reads_beyond_its_limit_though_the_sheet_declares_fewer()
         {
             using ExportScope scope = new(composition.Services, "en", "en", "ar");
-            byte[] workbook = await NodesAsync(scope, Node(code: "A"), Node(code: "B"), Node(code: "C"));
+            byte[] exported = await NodesAsync(scope, Node(code: "A"), Node(code: "B"), Node(code: "C"));
 
+            // The sheet claims one data row below its header; it holds three.
+            byte[] workbook = WorkbookEdits.WithDimension(exported, Nodes, "A1:F2");
             ImportException refused = await Assert.ThrowsAsync<ImportException>(() => _kit.ParseAsync<Node>(workbook, scope.Context, options: new ExcelOptions { MaxSynchronousImportRows = 2 }));
 
             ImportError error = Assert.Single(refused.Errors);
             Assert.Equal(ExcelErrorCodes.ImportTooLargeForSynchronous, error.Code);
             Assert.Equal((3L, 2L), (error.Arguments["rows"], error.Arguments["maxRows"]));
+        }
+
+        [Fact]
+        public async Task A_synchronous_import_reads_a_sheet_that_declares_more_rows_than_its_limit_but_holds_fewer()
+        {
+            using ExportScope scope = new(composition.Services, "en", "en", "ar");
+            byte[] exported = await NodesAsync(scope, Node(code: "A"));
+
+            // The sheet claims 99,999 data rows below its header; it holds one.
+            byte[] workbook = WorkbookEdits.WithDimension(exported, Nodes, "A1:F100000");
+            ExcelImportSession<Node> session = await _kit.ParseAsync<Node>(workbook, scope.Context, options: new ExcelOptions { MaxSynchronousImportRows = 2 });
+
+            Assert.Equal(1, session.RowCount);
         }
 
         /// <inheritdoc />
@@ -348,6 +405,22 @@ namespace Tellma.Core.Tests.Excel
                 ModifiedAt = ExcelTestKit.Now.AddDays(-1),
                 Parts = [.. parts],
             };
+        }
+
+        /// <summary>
+        ///     The rows a database answers a chunk's lookups with: each query on the code key answers
+        ///     the stored codes given, whatever it asked, as a collation that folds them would.
+        /// </summary>
+        /// <param name="queries">The chunk's lookups.</param>
+        /// <param name="stored">Each stored code with its id.</param>
+        /// <returns>Each lookup with its rows.</returns>
+        private static Dictionary<ExcelQuery, IReadOnlyList<IReadOnlyList<object?>>> Answer(IReadOnlyList<ExcelQuery> queries, params (string Code, long Id)[] stored)
+        {
+            return queries.ToDictionary(
+                static query => query,
+                query => (IReadOnlyList<IReadOnlyList<object?>>)(query.SelectPaths[0] == "Code"
+                    ? [.. stored.Select(static row => (IReadOnlyList<object?>)[row.Code, row.Id])]
+                    : []));
         }
 
         /// <summary>A node template with its rows.</summary>

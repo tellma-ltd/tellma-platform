@@ -11,9 +11,10 @@ using Tellma.Core.Abstractions.Excel;
 namespace Tellma.Core.Tests.Excel
 {
     /// <summary>
-    ///     Edits of a written workbook, as a user makes them in Excel: a sheet's data rows replaced by
-    ///     rows of values given by each column's import path, a sheet removed, a header renamed. The
-    ///     manifest, the styles and the other sheets stay as they were written.
+    ///     Edits of a written workbook, as a user or another producer makes them: a sheet's data rows
+    ///     replaced by rows of values given by each column's import path, a sheet removed, a sheet's
+    ///     declared dimension forged. The manifest, the styles and the other sheets stay as they were
+    ///     written.
     /// </summary>
     internal static class WorkbookEdits
     {
@@ -79,6 +80,23 @@ namespace Tellma.Core.Tests.Excel
                 {
                     defined.Remove();
                 }
+            });
+        }
+
+        /// <summary>
+        ///     Writes a sheet's declared dimension, the range a producer claims its cells span, whatever
+        ///     the cells really are, as a hostile or careless producer may.
+        /// </summary>
+        /// <param name="workbook">The workbook's bytes.</param>
+        /// <param name="name">The sheet's name.</param>
+        /// <param name="reference">The range declared, such as <c>A1:F2</c>.</param>
+        /// <returns>The edited workbook's bytes.</returns>
+        public static byte[] WithDimension(byte[] workbook, string name, string reference)
+        {
+            return Edit(workbook, document =>
+            {
+                var worksheet = (Worksheet)Data(document, name).Parent!;
+                worksheet.SheetDimension = new SheetDimension { Reference = reference };
             });
         }
 

@@ -451,7 +451,7 @@ namespace Tellma.Core.Excel
                 if (!rows.TryGetValue(changed.Id, out ImportChunkRow? row))
                 {
                     // A row the import did not name is placed nowhere in the workbook.
-                    errors.Add(new ImportError(Sheet: null, Row: null, Column: null, Header: null, Property: null, ExcelErrorCodes.ImportConcurrencyConflict, ChangedBy(changed)));
+                    errors.Add(new ImportError(Sheet: null, Row: null, Column: null, Header: null, Property: null, ExcelErrorCodes.ImportConcurrencyConflict, ChangedBy(changed, exported: false)));
                 }
                 else if (changed.IsMissing)
                 {
@@ -459,7 +459,7 @@ namespace Tellma.Core.Excel
                 }
                 else
                 {
-                    errors.Add(session.AtRow(row, row.SheetStamp ? row.StampColumn : null, ExcelErrorCodes.ImportConcurrencyConflict, ChangedBy(changed)));
+                    errors.Add(session.AtRow(row, row.SheetStamp ? row.StampColumn : null, ExcelErrorCodes.ImportConcurrencyConflict, ChangedBy(changed, row.SheetStamp)));
                 }
             }
 
@@ -501,15 +501,19 @@ namespace Tellma.Core.Excel
             });
         }
 
-        /// <summary>The arguments of a changed row: when it changed and who changed it, by name when the save read one.</summary>
+        /// <summary>The arguments of a changed row: when it changed, who changed it (by name when the save read one), and whether the file's stamp was the one expected.</summary>
         /// <param name="changed">The conflict.</param>
+        /// <param name="exported">Whether the expected stamp was the file's, so the row changed after the export rather than during the import.</param>
         /// <returns>The arguments.</returns>
-        private static Dictionary<string, object?> ChangedBy(ConcurrencyConflict changed)
+        private static Dictionary<string, object?> ChangedBy(ConcurrencyConflict changed, bool exported)
         {
+            // "exported" tells the message whether the file's stamp was the one expected, so the
+            // change came after the export, or the row was read in the import and changed during it.
             return new(StringComparer.Ordinal)
             {
                 ["modifiedAt"] = changed.ModifiedAt,
                 ["modifiedBy"] = changed.ModifiedByName ?? (object?)changed.ModifiedById,
+                ["exported"] = exported,
             };
         }
 

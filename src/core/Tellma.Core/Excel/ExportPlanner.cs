@@ -423,8 +423,8 @@ namespace Tellma.Core.Excel
 
         /// <summary>
         ///     A foreign key's reference column, in the key the request names, else the target's
-        ///     natural key, else its surrogate id. A multilingual key reads the slot of its language,
-        ///     the primary language's for the group's primary.
+        ///     default reference key. A multilingual key reads the slot of its language, the primary
+        ///     language's for the group's primary.
         /// </summary>
         /// <param name="entity">The entity carrying the foreign key.</param>
         /// <param name="reference">The reference.</param>
@@ -439,11 +439,11 @@ namespace Tellma.Core.Excel
             string navigation = reference.Navigation;
             string at = $"{keysLocation}.{reference.ForeignKey.Name}";
 
-            // --- The key: the requested scalar, the natural key, else the surrogate id ---
+            // --- The key: the requested scalar, else the default reference key ---
             PropertyMetadata key = requested is not null
                 ? target.Properties.FirstOrDefault(property => property.Name == requested && IsKeyable(target, property))
                     ?? throw Fault($"The reference key '{requested}' at {at} is not a scalar property of {target.Name}.", at, requested)
-                : target.NaturalKey ?? target.Key;
+                : DefaultReferenceKey(target);
 
             bool surrogate = key.Name == target.Key.Name;
             string keyName = key.Name;
@@ -512,6 +512,21 @@ namespace Tellma.Core.Excel
                 && (collection is null || property.Name != collection.ParentKey.Name)
                 && !entity.BlobReferences.Any(blob => blob.Property.Name == property.Name)
                 && IsKeyable(entity, property);
+        }
+
+        /// <summary>
+        ///     The key an export names a target by when the request names none: the first natural key
+        ///     that cannot be null, else the surrogate id. A nullable natural key is skipped because a
+        ///     row without a value would write a blank cell, which reads back as no reference at all.
+        /// </summary>
+        /// <param name="target">The referenced entity.</param>
+        /// <returns>The key property.</returns>
+        public static PropertyMetadata DefaultReferenceKey(EntityMetadata target)
+        {
+            ArgumentNullException.ThrowIfNull(target);
+
+            // Spec 0019 §6.2 names Target.NaturalKey; a nullable one is skipped so the loop round-trips.
+            return target.NaturalKeys.Select(static natural => natural.Property).FirstOrDefault(static property => !property.IsNullable) ?? target.Key;
         }
 
         /// <summary>Whether a property's values fit a cell: never a binary, a hierarchy path or a JSON document.</summary>

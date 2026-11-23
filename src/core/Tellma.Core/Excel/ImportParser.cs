@@ -48,6 +48,9 @@ namespace Tellma.Core.Excel
         /// <summary>What each mapped column decodes into.</summary>
         private readonly ImportDecoders _decoders = decoders ?? throw new ArgumentNullException(nameof(decoders));
 
+        /// <summary>The cycles left for resolution to refuse, once the rows' identities are known.</summary>
+        private readonly List<ImportCycle> _cycles = [];
+
         /// <summary>The errors found so far.</summary>
         private readonly List<ImportError> _errors = [];
 
@@ -109,7 +112,8 @@ namespace Tellma.Core.Excel
                     order,
                     warnings,
                     OrderHash(order, sheets),
-                    workbook.Sheets);
+                    workbook.Sheets,
+                    _cycles);
         }
 
         /// <summary>Refuses a package above a synchronous byte limit, with the rows its dimensions declare.</summary>
@@ -822,9 +826,11 @@ namespace Tellma.Core.Excel
             }
 
             // --- The rows left over: those on a cycle refused, every one placed after the rest ---
+            // Spec 0019 §9.6 refuses a cycle among new rows. An upsert by a natural key cannot tell
+            // which rows are new before its lookups, so its cycles wait for resolution.
             if (order.Count < count)
             {
-                RefuseCycles(parent!, rows, needs, placed);
+                RefuseCycles(parent!, rows, needs, placed, deferred: mode == ImportMode.Upsert && rowKey != ImportPaths.Id);
                 order.AddRange(rows.Where((_, i) => !placed[i]));
             }
 
@@ -859,13 +865,14 @@ namespace Tellma.Core.Excel
         /// <summary>
         ///     Refuses each row on a cycle of self-references among the rows no order reached: every
         ///     strongly connected group of more than one row, or a row naming itself, at the column
-        ///     naming another row of its cycle.
+        ///     naming another row of its cycle. A deferred cycle is kept for resolution instead.
         /// </summary>
         /// <param name="parent">The parent sheet.</param>
         /// <param name="rows">The parent rows, in Excel order.</param>
         /// <param name="needs">Each row's edges: the rows it names that may be new, and the column naming each.</param>
         /// <param name="placed">Whether each row was placed.</param>
-        private void RefuseCycles(ImportSheet parent, List<ImportRow> rows, List<(int Target, ImportColumn Column)>[] needs, bool[] placed)
+        /// <param name="deferred">Whether the rows' newness is unknown until resolution, which then refuses the cycle.</param>
+        private void RefuseCycles(ImportSheet parent, List<ImportRow> rows, List<(int Target, ImportColumn Column)>[] needs, bool[] placed, bool deferred)
         {
             foreach (List<int> group in StronglyConnected(needs, placed))
             {
@@ -875,14 +882,21 @@ namespace Tellma.Core.Excel
                     continue;
                 }
 
-                long[] cycleRows = [.. group.Select(index => (long)rows[index].Row).Order()];
-                foreach (int index in group)
+                int[] ordered = [.. group.OrderBy(index => rows[index].Row)];
+                ImportColumn[] columns = [.. ordered.Select(index => needs[index].First(need => members.Contains(need.Target)).Column)];
+                if (deferred)
                 {
-                    ImportColumn column = needs[index].First(need => members.Contains(need.Target)).Column;
-                    Raise(parent.Name, rows[index].Row, column, ExcelErrorCodes.ImportParentCycle, new()
+                    _cycles.Add(new ImportCycle([.. ordered.Select(index => rows[index])], columns));
+                    continue;
+                }
+
+                long[] cycleRows = [.. ordered.Select(index => (long)rows[index].Row)];
+                for (int i = 0; i < ordered.Length; i++)
+                {
+                    Raise(parent.Name, rows[ordered[i]].Row, columns[i], ExcelErrorCodes.ImportParentCycle, new()
                     {
                         ["rows"] = cycleRows,
-                        ["path"] = column.Path.Text,
+                        ["path"] = columns[i].Path.Text,
                     });
                 }
             }

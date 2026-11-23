@@ -1194,7 +1194,7 @@
     <value>{expected, select, Bool {“{value}” isn’t yes or no.} Integer {“{value}” isn’t a whole number.} Numeric {“{value}” isn’t a number.} Choice {“{value}” isn’t one of the choices.} Date {“{value}” isn’t a date.} DateTime {“{value}” isn’t a date and time.} DateTimeOffset {“{value}” isn’t a date and time.} Time {“{value}” isn’t a time.} Guid {“{value}” isn’t an identifier.} other {“{value}” can’t be read here.}}</value>
   </data>
   <data name="Excel_Import_ConcurrencyConflict" xml:space="preserve">
-    <value>Someone changed this record ({modifiedBy}, {modifiedAt}) after the file was exported. Export it again and redo your changes.</value>
+    <value>{exported, select, true {Someone changed this record ({modifiedBy}, {modifiedAt}) after the file was exported. Export it again and redo your changes.} other {Someone changed this record ({modifiedBy}, {modifiedAt}) while it was being imported. Import the file again.}}</value>
   </data>
   <!-- Queryex diagnostics, with the arguments the engine gives each -->
   <data name="Queryex_QX1001" xml:space="preserve">

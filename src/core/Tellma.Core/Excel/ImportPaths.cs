@@ -269,7 +269,7 @@ namespace Tellma.Core.Excel
             }
 
             // --- The target's surrogate, or a scalar of the target that fits a cell and a key-set lookup ---
-            // Spec 0019 §5.4: a lookup restricts by a key set, so a key whose type cannot be one is no reference key.
+            // Spec 0019 §10.1: a lookup restricts by a key set, so a key whose type cannot be one is no reference key.
             EntityMetadata target = reference.Target;
             if (keyName == Id || keyName == target.Key.Name)
             {

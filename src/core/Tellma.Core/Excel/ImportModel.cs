@@ -77,6 +77,14 @@ namespace Tellma.Core.Excel
         public ImportColumn? InSheetKey { get; init; }
     }
 
+    /// <summary>
+    ///     A cycle of self-references among parent rows whose newness the parse cannot tell, refused
+    ///     at resolution only when every row on it is new.
+    /// </summary>
+    /// <param name="Rows">The rows on the cycle, in Excel order.</param>
+    /// <param name="Columns">For each row, the column naming another row of the cycle.</param>
+    internal sealed record ImportCycle(IReadOnlyList<ImportRow> Rows, IReadOnlyList<ImportColumn> Columns);
+
     /// <summary>One data row of a parsed sheet: its Excel row, its decoded values, and its links.</summary>
     /// <param name="sheet">The row's sheet.</param>
     /// <param name="row">The row's one-based Excel row.</param>

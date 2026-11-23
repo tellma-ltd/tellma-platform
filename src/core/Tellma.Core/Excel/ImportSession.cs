@@ -64,6 +64,7 @@ namespace Tellma.Core.Excel
         /// <param name="warnings">The warnings the import reports.</param>
         /// <param name="orderHash">The order's fingerprint.</param>
         /// <param name="workbookSheets">The workbook's sheets, whose tab order sorts the errors.</param>
+        /// <param name="cycles">The cycles among rows whose newness the parse could not tell, refused at resolution when every row on one is new.</param>
         public ImportSession(
             ImportSessionShape shape,
             ImportSheet? parent,
@@ -71,7 +72,8 @@ namespace Tellma.Core.Excel
             IReadOnlyList<ImportRow> order,
             IReadOnlyList<ImportError> warnings,
             string orderHash,
-            IReadOnlyList<WorkbookSheet> workbookSheets)
+            IReadOnlyList<WorkbookSheet> workbookSheets,
+            IReadOnlyList<ImportCycle> cycles)
         {
             Shape = shape ?? throw new ArgumentNullException(nameof(shape));
             Parent = parent;
@@ -80,6 +82,7 @@ namespace Tellma.Core.Excel
             Warnings = warnings ?? throw new ArgumentNullException(nameof(warnings));
             OrderHash = orderHash ?? throw new ArgumentNullException(nameof(orderHash));
             WorkbookSheets = workbookSheets ?? throw new ArgumentNullException(nameof(workbookSheets));
+            Cycles = cycles ?? throw new ArgumentNullException(nameof(cycles));
             SheetRows = [.. order.Select(static row => row.Row)];
             foreach (ImportSheet sheet in sheets)
             {
@@ -110,6 +113,9 @@ namespace Tellma.Core.Excel
 
         /// <summary>The workbook's sheets.</summary>
         public IReadOnlyList<WorkbookSheet> WorkbookSheets { get; }
+
+        /// <summary>The cycles among rows whose newness the parse could not tell.</summary>
+        public IReadOnlyList<ImportCycle> Cycles { get; }
 
         /// <summary>The Excel row of each position.</summary>
         public IReadOnlyList<int> SheetRows { get; }
