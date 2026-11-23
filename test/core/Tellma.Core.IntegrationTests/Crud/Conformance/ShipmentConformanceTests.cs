@@ -14,20 +14,20 @@ namespace Tellma.Core.IntegrationTests.Crud.Conformance
 {
     /// <summary>
     ///     The stack conformance suite closed over the fixture's shipment stack: a long-keyed job
-    ///     entity that serves enlisted writes, which the export stack's service enlists from its save.
+    ///     entity that serves enlisted writes, which the parcel stack's service enlists from its save.
     /// </summary>
     /// <param name="fixture">The tenant databases.</param>
     [Trait("Category", "Integration")]
     public sealed class ShipmentConformanceTests(ConformanceDatabase fixture) : StackConformanceTests<Shipment, long>, IClassFixture<ConformanceDatabase>
     {
-        /// <summary>The exports' resource, whose save hosts the enlisted writes.</summary>
-        private const string Exports = "fixture.Export";
+        /// <summary>The parcels' resource, whose save hosts the enlisted writes.</summary>
+        private const string Parcels = "fixture.Parcel";
 
         /// <inheritdoc />
         protected override IStackConformanceHarness Harness => fixture;
 
         /// <inheritdoc />
-        protected override IReadOnlyList<StackGrant> AdditionalGrants { get; } = [new(Exports, AccessActions.Read), new(Exports, AccessActions.Save)];
+        protected override IReadOnlyList<StackGrant> AdditionalGrants { get; } = [new(Parcels, AccessActions.Read), new(Parcels, AccessActions.Save)];
 
         /// <inheritdoc />
         protected override Shipment NewValidEntity(int ordinal)
@@ -41,12 +41,12 @@ namespace Tellma.Core.IntegrationTests.Crud.Conformance
             ArgumentNullException.ThrowIfNull(scope);
             ArgumentNullException.ThrowIfNull(enlist);
 
-            // --- An export's save, whose validation enlists through the export service ---
-            fixture.Probe.ValidateExports = (service, context) => enlist(context.Host, service);
+            // --- A parcel's save, whose validation enlists through the parcel service ---
+            fixture.Probe.ValidateParcels = (service, context) => enlist(context.Host, service);
             try
             {
-                EntityService<Export, int> exports = scope.GetRequiredService<EntityService<Export, int>>();
-                _ = await exports.SaveAsync([new Export { Name = "Host" }], new SaveOptions { ReturnEntities = false }, TestContext.Current.CancellationToken);
+                EntityService<Parcel, int> parcels = scope.GetRequiredService<EntityService<Parcel, int>>();
+                _ = await parcels.SaveAsync([new Parcel { Name = "Host" }], new SaveOptions { ReturnEntities = false }, TestContext.Current.CancellationToken);
             }
             finally
             {

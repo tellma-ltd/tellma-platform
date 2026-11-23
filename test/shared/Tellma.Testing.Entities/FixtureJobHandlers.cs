@@ -16,8 +16,8 @@ namespace Tellma.Testing.Entities
         /// <summary>The handler over the shipments, <see cref="ShipJobHandler" />.</summary>
         public const string Ship = "fixture.ship";
 
-        /// <summary>The handler over the exports, <see cref="ExportJobHandler" />.</summary>
-        public const string Export = "fixture.export";
+        /// <summary>The handler over the parcels, <see cref="ParcelJobHandler" />.</summary>
+        public const string Parcel = "fixture.parcel";
     }
 
     // The fixture's handlers give the queue registered keys to enqueue under. A suite that runs a
@@ -46,12 +46,12 @@ namespace Tellma.Testing.Entities
         }
     }
 
-    /// <summary>A handler over the <see cref="Export" /> rows, which are keyed by an <see cref="int" />.</summary>
-    [JobHandler(FixtureJobKeys.Export)]
-    public sealed class ExportJobHandler : IEntityJobHandler<Export>
+    /// <summary>A handler over the <see cref="Parcel" /> rows, which are keyed by an <see cref="int" />.</summary>
+    [JobHandler(FixtureJobKeys.Parcel)]
+    public sealed class ParcelJobHandler : IEntityJobHandler<Parcel>
     {
         /// <inheritdoc />
-        public Task ExecuteAsync(JobBatch<Export> batch)
+        public Task ExecuteAsync(JobBatch<Parcel> batch)
         {
             return Task.CompletedTask;
         }

@@ -6,11 +6,13 @@
 import { TestBed } from '@angular/core/testing';
 import {
   TmClientStore,
+  TmLeader,
   TmSession,
   TmStoreRefusedError,
   TmTabBus,
   type TmBusMessage,
   type TmPartition,
+  ɵTM_LEADER_LOAD,
 } from '@tellma/core';
 import { TmDrafts } from '@tellma/core/memory';
 
@@ -62,6 +64,11 @@ describe('provideTellmaStateTesting', () => {
       .recent()
       .filter((item) => item.name === 'tm.store.refused');
     expect(refusals.map((item) => item.props['reason'])).toEqual(['cookie', 'session']);
+  });
+
+  it('starts no leader election, so the tab reports a follower', async () => {
+    await expect(TestBed.inject(ɵTM_LEADER_LOAD)()).resolves.toBeNull();
+    expect(TestBed.inject(TmLeader).isLeader()).toBe(false);
   });
 
   it("keeps drafts in a session storage of the test's own, never the browser's", () => {

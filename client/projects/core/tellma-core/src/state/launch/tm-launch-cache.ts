@@ -290,7 +290,10 @@ export class TmLaunchCache {
     // Spec 0025 §3.3.
     const { sub, tenantId } = partition;
     const key = `${sub}/${tenantId}:${name}`;
-    if (this.#loading.has(key) || this.#skips.get(key)?.()) {
+    // An app that ended before the load started, or during its sync, loads
+    // nothing: its injector resolves nothing. Its end cancels a read in flight.
+    const ended = (): boolean => this.#life.signal.aborted;
+    if (ended() || this.#loading.has(key) || this.#skips.get(key)?.()) {
       return;
     }
     this.#loading.add(key);
@@ -302,6 +305,9 @@ export class TmLaunchCache {
       // reports every list's, unless one in flight reports it ---
       if (tagOf() === undefined) {
         await this.#refresher.refresh(tenantId, [LIST + name], 'list');
+      }
+      if (ended()) {
+        return;
       }
       const tag = tagOf();
       const segment = this.#injector

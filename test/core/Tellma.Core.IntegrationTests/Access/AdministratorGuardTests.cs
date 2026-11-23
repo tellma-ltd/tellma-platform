@@ -240,15 +240,15 @@ namespace Tellma.Core.IntegrationTests.Access
         {
             await fixture.ResetAdministratorsAsync();
             (int ann, string subject) = await fixture.SeedAdministratorAsync("Ann");
-            int exports = await fixture.ScalarAsync<int>(ConnectDatabase.TenantA, "SELECT COUNT(*) FROM [fixture].[Exports];");
+            int parcels = await fixture.ScalarAsync<int>(ConnectDatabase.TenantA, "SELECT COUNT(*) FROM [fixture].[Parcels];");
             SaveOptions options = new() { ReturnEntities = false, OnPersist = batch => RemoveMemberships(batch, ann) };
 
-            // --- An export's save, whose caller statement declares a write of the memberships: the
+            // --- A parcel's save, whose caller statement declares a write of the memberships: the
             // users' stack owns them, so the statement is refused at append ---
             await using (AsyncServiceScope scope = await fixture.SteppedUpScopeAsync(subject))
             {
                 InvalidOperationException unowned = await Assert.ThrowsAsync<InvalidOperationException>(
-                    () => scope.ServiceProvider.GetRequiredService<EntityService<Export, int>>().SaveAsync([new Export { Name = "beside" }], options, Token));
+                    () => scope.ServiceProvider.GetRequiredService<EntityService<Parcel, int>>().SaveAsync([new Parcel { Name = "beside" }], options, Token));
                 Assert.Contains("'core.User'", unowned.Message, StringComparison.Ordinal);
             }
 
@@ -258,13 +258,13 @@ namespace Tellma.Core.IntegrationTests.Access
             await using (AsyncServiceScope scope = await fixture.SteppedUpScopeAsync(subject, instance))
             {
                 ValidationException refused = await Assert.ThrowsAsync<ValidationException>(
-                    () => scope.ServiceProvider.GetRequiredService<EntityService<Export, int>>().SaveAsync([new Export { Name = "beside" }], options, Token));
+                    () => scope.ServiceProvider.GetRequiredService<EntityService<Parcel, int>>().SaveAsync([new Parcel { Name = "beside" }], options, Token));
                 Assert.Equal([AccessCodes.LastAdministrator], refused.Codes());
             }
 
-            // --- Neither the export nor the removal committed ---
+            // --- Neither the parcel nor the removal committed ---
             Assert.Equal(1, await fixture.AdministratorsAsync());
-            Assert.Equal(exports, await fixture.ScalarAsync<int>(ConnectDatabase.TenantA, "SELECT COUNT(*) FROM [fixture].[Exports];"));
+            Assert.Equal(parcels, await fixture.ScalarAsync<int>(ConnectDatabase.TenantA, "SELECT COUNT(*) FROM [fixture].[Parcels];"));
             Assert.Equal([AccessTelemetryNames.GuardLastAdministrator], Tags(guards));
         }
 
@@ -273,15 +273,15 @@ namespace Tellma.Core.IntegrationTests.Access
         {
             await fixture.ResetAdministratorsAsync();
             (int ann, string subject) = await fixture.SeedAdministratorAsync("Ann");
-            int export;
+            int parcel;
             await using (AsyncServiceScope scope = await fixture.SteppedUpScopeAsync(subject))
             {
-                EntitiesResult<Export> saved = await scope.ServiceProvider.GetRequiredService<EntityService<Export, int>>()
-                    .SaveAsync([new Export { Name = "doomed" }], new SaveOptions { ReturnEntities = false }, Token);
-                export = checked((int)saved.Ids[0]);
+                EntitiesResult<Parcel> saved = await scope.ServiceProvider.GetRequiredService<EntityService<Parcel, int>>()
+                    .SaveAsync([new Parcel { Name = "doomed" }], new SaveOptions { ReturnEntities = false }, Token);
+                parcel = checked((int)saved.Ids[0]);
             }
 
-            // --- An instance whose effect on the exports' persists removes Ann's memberships, as a raw
+            // --- An instance whose effect on the parcels' persists removes Ann's memberships, as a raw
             // write: the users' stack owns them, so the effect's statement is refused at append ---
             await using (ServiceProvider owned = fixture.CreateInstance(
                 services => services.AddSingleton(new MembershipRemoval(ann)),
@@ -289,7 +289,7 @@ namespace Tellma.Core.IntegrationTests.Access
             {
                 await using AsyncServiceScope scope = await fixture.SteppedUpScopeAsync(subject, owned);
                 InvalidOperationException unowned = await Assert.ThrowsAsync<InvalidOperationException>(
-                    () => scope.ServiceProvider.GetRequiredService<EntityService<Export, int>>().DeleteByIdsAsync([export], null, Token));
+                    () => scope.ServiceProvider.GetRequiredService<EntityService<Parcel, int>>().DeleteByIdsAsync([parcel], null, Token));
                 Assert.Contains("'core.User'", unowned.Message, StringComparison.Ordinal);
             }
 
@@ -305,13 +305,13 @@ namespace Tellma.Core.IntegrationTests.Access
             await using (AsyncServiceScope scope = await fixture.SteppedUpScopeAsync(subject, instance))
             {
                 ValidationException refused = await Assert.ThrowsAsync<ValidationException>(
-                    () => scope.ServiceProvider.GetRequiredService<EntityService<Export, int>>().DeleteByIdsAsync([export], null, Token));
+                    () => scope.ServiceProvider.GetRequiredService<EntityService<Parcel, int>>().DeleteByIdsAsync([parcel], null, Token));
                 Assert.Equal([AccessCodes.LastAdministrator], refused.Codes());
             }
 
             // --- Neither the delete nor the removal committed ---
             Assert.Equal(1, await fixture.AdministratorsAsync());
-            Assert.Equal(1, await fixture.ScalarAsync<int>(ConnectDatabase.TenantA, string.Create(CultureInfo.InvariantCulture, $"SELECT COUNT(*) FROM [fixture].[Exports] WHERE [Id] = {export};")));
+            Assert.Equal(1, await fixture.ScalarAsync<int>(ConnectDatabase.TenantA, string.Create(CultureInfo.InvariantCulture, $"SELECT COUNT(*) FROM [fixture].[Parcels] WHERE [Id] = {parcel};")));
             Assert.Equal([AccessTelemetryNames.GuardLastAdministrator], Tags(guards));
         }
 
@@ -342,19 +342,19 @@ namespace Tellma.Core.IntegrationTests.Access
             _ = services.Replace(ServiceDescriptor.Singleton<IStackTableOwners, NoStackTableOwners>());
         }
 
-        /// <summary>The user whose memberships the exports' effect removes.</summary>
+        /// <summary>The user whose memberships the parcels' effect removes.</summary>
         /// <param name="UserId">The user.</param>
         private sealed record MembershipRemoval(int UserId);
 
         /// <summary>
-        ///     An effect of the exports, a stack that owns no security table, whose statement removes a
+        ///     An effect of the parcels, a stack that owns no security table, whose statement removes a
         ///     user's memberships raw, as a careless participant would.
         /// </summary>
         /// <param name="removal">The user.</param>
-        private sealed class MembershipRemovalEffect(MembershipRemoval removal) : IPersistEffect<Export>
+        private sealed class MembershipRemovalEffect(MembershipRemoval removal) : IPersistEffect<Parcel>
         {
             /// <inheritdoc />
-            public Task ContributeAsync(PersistContext<Export> context)
+            public Task ContributeAsync(PersistContext<Parcel> context)
             {
                 ArgumentNullException.ThrowIfNull(context);
                 RemoveMemberships(context.Batch, removal.UserId);
@@ -362,7 +362,7 @@ namespace Tellma.Core.IntegrationTests.Access
             }
         }
 
-        /// <summary>The feature that attaches <see cref="MembershipRemovalEffect" /> to the fixture's exports.</summary>
+        /// <summary>The feature that attaches <see cref="MembershipRemovalEffect" /> to the fixture's parcels.</summary>
         private sealed class MembershipRemovalFeature : ITellmaFeature
         {
             /// <inheritdoc />
@@ -377,7 +377,7 @@ namespace Tellma.Core.IntegrationTests.Access
             public void Contribute(FeatureContribution contribution)
             {
                 ArgumentNullException.ThrowIfNull(contribution);
-                _ = contribution.PersistEffect<Export, MembershipRemovalEffect>();
+                _ = contribution.PersistEffect<Parcel, MembershipRemovalEffect>();
             }
         }
 

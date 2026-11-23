@@ -9,6 +9,7 @@ using System.ComponentModel.DataAnnotations;
 using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.Abstractions.Email;
+using Tellma.Core.Abstractions.Excel;
 using Tellma.Core.Abstractions.Jobs;
 using Tellma.Core.Abstractions.Notifications;
 using Tellma.Core.Abstractions.Reports;
@@ -44,7 +45,7 @@ namespace Tellma.Core.Tests.Access
             Assert.Equal(
                 [typeof(UserConfiguration<AcmeUser>), typeof(RoleConfiguration<AcmeRole>), typeof(RoleMembershipConfiguration<AcmeMembership>), typeof(PermissionConfiguration<AcmeGrant>), typeof(ScheduleConfiguration<Schedule>), typeof(ShareRowConfiguration<ReportShare, Report>)],
                 _model.Definition.Configurations.Where(static configuration => configuration.IsGenericType));
-            Assert.Equal([typeof(AcmeUser), typeof(AcmeMembership), typeof(AcmeRole), typeof(AcmeGrant), typeof(Notification), typeof(OutgoingEmail), typeof(OutgoingEmailAttachment), typeof(Job), typeof(Schedule), typeof(Report)], _model.Definition.EntityTypes);
+            Assert.Equal([typeof(AcmeUser), typeof(AcmeMembership), typeof(AcmeRole), typeof(AcmeGrant), typeof(Notification), typeof(OutgoingEmail), typeof(OutgoingEmailAttachment), typeof(Export), typeof(Import), typeof(Job), typeof(Schedule), typeof(Report)], _model.Definition.EntityTypes);
         }
 
         [Fact]

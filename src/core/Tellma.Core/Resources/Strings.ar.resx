@@ -169,7 +169,7 @@
   <data name="Action_Resume" xml:space="preserve">
     <value>استئناف</value>
   </data>
-  <!-- Workbook actions: the labels of the platform's exports on every stack, and of their request's fields -->
+  <!-- Workbook actions: the labels of the platform's exports and imports on every stack, and of their request's fields -->
   <data name="Action_Export" xml:space="preserve">
     <value>تصدير</value>
   </data>
@@ -205,6 +205,18 @@
   </data>
   <data name="Search" xml:space="preserve">
     <value>بحث</value>
+  </data>
+  <data name="Action_InspectImport" xml:space="preserve">
+    <value>فحص الاستيراد</value>
+  </data>
+  <data name="ColumnMappings" xml:space="preserve">
+    <value>مطابقة الأعمدة</value>
+  </data>
+  <data name="FileId" xml:space="preserve">
+    <value>الملف</value>
+  </data>
+  <data name="SheetMappings" xml:space="preserve">
+    <value>مطابقة الأوراق</value>
   </data>
   <!-- Entities: the create label and the display name of a record without one -->
   <data name="Entity_New" xml:space="preserve">
@@ -1071,6 +1083,52 @@
   </data>
   <data name="Notification_core_schedule_paused" xml:space="preserve">
     <value>أُوقف الجدول {name} مؤقتًا: {reason, select, OwnerInactive {لم يعد المستخدم الذي يعمل باسمه نشطًا} Exhausted {لن يتكرر تعبير cron الخاص به مرة أخرى} other {لم يعد نوع مهمته متاحًا}}. يعمل مجددًا بعد تفعيله.</value>
+  </data>
+  <!-- Excel exports and imports: the export and import records' labels, the import records' guard, and the import's codes with their arguments -->
+  <data name="Core_Export_Plural" xml:space="preserve">
+    <value>عمليات التصدير</value>
+  </data>
+  <data name="Core_Import_Plural" xml:space="preserve">
+    <value>عمليات الاستيراد</value>
+  </data>
+  <data name="Imports_JobActive" xml:space="preserve">
+    <value>لم ينتهِ هذا الاستيراد بعد. انتظر حتى ينتهي أو ألغِ مهمته قبل حذفه.</value>
+  </data>
+  <data name="Excel_Import_PackageTooLarge" xml:space="preserve">
+    <value>الملف كبير جدًا: {bytes, number} بايت. الحد الأقصى المسموح به {max, number} بايت.</value>
+  </data>
+  <data name="Excel_Import_TooManySharedStrings" xml:space="preserve">
+    <value>يحتوي المصنف على {entries, number} نصًا مختلفًا. الحد الأقصى المسموح به {max, number}.</value>
+  </data>
+  <data name="Excel_Import_MalformedWorkbook" xml:space="preserve">
+    <value>{reason, select, entity {صُدِّر هذا المصنف من نوع آخر من السجلات، لذا لا يمكن استيراده هنا.} other {لا يمكن قراءة هذا الملف كمصنف Excel. احفظه مرة أخرى بصيغة xlsx ثم ارفعه من جديد.}}</value>
+  </data>
+  <data name="Excel_Import_UnknownSheet" xml:space="preserve">
+    <value>لا توجد في المصنف ورقة بهذا الاسم.</value>
+  </data>
+  <data name="Excel_Import_DuplicateSheet" xml:space="preserve">
+    <value>تحتوي ورقة أخرى في المصنف على السجلات نفسها. أبقِ إحداهما، أو اختر أيهما تتجاهل.</value>
+  </data>
+  <data name="Excel_Import_UnmappedColumn" xml:space="preserve">
+    <value>العمود «{header}» لا يطابق أي حقل. اختر الحقل الذي يحتويه، أو تجاهله.</value>
+  </data>
+  <data name="Excel_Import_UnknownColumn" xml:space="preserve">
+    <value>لا يوجد في صف عناوين هذه الورقة عمود بهذا الحرف.</value>
+  </data>
+  <data name="Excel_Import_UnknownPath" xml:space="preserve">
+    <value>«{path}» ليس حقلًا من حقول هذه السجلات.</value>
+  </data>
+  <data name="Excel_Import_DuplicateColumn" xml:space="preserve">
+    <value>يحتوي عمود آخر في هذه الورقة على الحقل نفسه ({path}). أبقِ أحدهما.</value>
+  </data>
+  <data name="Excel_Import_ServerOwnedColumn" xml:space="preserve">
+    <value>يحتوي هذا العمود على حقل يضبطه النظام ({path})، لذا لا يمكن استيراده. تجاهله.</value>
+  </data>
+  <data name="Excel_Import_UnconfiguredLanguageColumn" xml:space="preserve">
+    <value>لغة هذا العمود ({language}) ليست من لغات المنشأة، لذا يُتجاهل العمود.</value>
+  </data>
+  <data name="Excel_Import_IdentityColumnIgnored" xml:space="preserve">
+    <value>{reason, select, InsertMode {تُضاف سجلات جديدة، لذا لا يُستخدم العمود {path} للعثور على السجلات الموجودة.} NoManifest {لم يُصدَّر هذا الملف للاستيراد، لذا لا يُستخدم العمود {path} للعثور على السجلات الموجودة.} other {صُدِّر هذا الملف من منشأة أخرى، لذا لا يُستخدم العمود {path} للعثور على السجلات الموجودة.}}</value>
   </data>
   <!-- Queryex diagnostics, with the arguments the engine gives each -->
   <data name="Queryex_QX1001" xml:space="preserve">
