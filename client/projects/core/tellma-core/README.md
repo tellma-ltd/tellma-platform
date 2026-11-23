@@ -7,9 +7,11 @@ own.
 
 | Entry point | Holds | Loaded |
 |---|---|---|
-| `@tellma/core` | The distribution API: `bootstrapTellma`, `provideTellma`, `tmFeature`, the declaration functions (`tmEntity`, `tmPage`, `tmCodedReport`, `tmWidget`, `tmOverride`) and `TM_APP_DECLARATIONS`, the merged declarations; the client metadata's types, its loaders (`tmMetadataLoaders`) and the loaded Core chunk (`TM_CLIENT_METADATA`); the HTTP layer (`TmApi`, `TmApiError`, `TmProblem`), its plain-JSON value types (`TmJson`, `TmDecimal`, `TmId`) and the exact decimal helpers `TmDecimals`; the seams through which telemetry (`TmTelemetry`), the request log (`TmRequestLog`) and page scopes (`provideTmPageScope`) are provided; the session (`TmSession`, `tmSessionGuard`, `tmParseProfileCookie`), the launch mark (`TmLaunch`) and the single-membership rule (`tmSingleLiveTenant`); the client store (`TmClientStore`, `TmStoreRefusedError`, `TM_DOC_FORMATS`) and the tab bus (`TmTabBus`) with its message catalogue; the leader tab (`TmLeader`: whether this tab leads, the hub's status and the tenant's hub events) and the documents only the leader refreshes (`TM_LEADER_DOCUMENTS`); the boot script's result types and the app clock (`TM_NOW`); the derived router's pieces: the root component (`TmApp`), the route data (`TmRouteData`), the title strategy (`TmTitleStrategy`), the URL builders and classifier (`TmUrls`) with the search query's types; the entity registry (`TmEntities`, with its descriptors once the entity model loads, and the declaration types `tmEntity` takes, typed paths `TmPath` included), display names (`TmDisplayNames`, `tm-display-name`), client permissions (`TmPermissions`) and `tmRowsToObjects`; localization: `TmLocalization` (the language, the regional formats, the calendar and the zones, and their switches with the coalesced locale write), `TmServerText` (server codes and keys through the string packs) and `tmEnglish()`, the platform's English; the app-level keyboard shortcuts (`TmShortcuts`, `TmShortcut`, `TM_RESERVED_SHORTCUTS`, `TM_BROWSER_KEYS`, `TmShortcutConflictError`) and the shell frame's seams (`TmShell` with immersive mode, `TmShellMain`, `TM_SHELL_LAYOUT`) | eager |
+| `@tellma/core` | The distribution API: `bootstrapTellma`, `provideTellma`, `tmFeature`, the declaration functions (`tmEntity`, `tmPage`, `tmCodedReport`, `tmWidget`, `tmOverride`) and `TM_APP_DECLARATIONS`, the merged declarations; the client metadata's types, its loaders (`tmMetadataLoaders`) and the loaded Core chunk (`TM_CLIENT_METADATA`); the HTTP layer (`TmApi`, `TmApiError`, `TmProblem`), its plain-JSON value types (`TmJson`, `TmDecimal`, `TmId`) and the exact decimal helpers `TmDecimals`; the seams through which telemetry (`TmTelemetry`) and the request log (`TmRequestLog`) are provided; the page context and page actions (`TmPageContexts`, `TmPageActions`, `provideTmPageScope`) and the help seam (`TM_HELP_ARTICLES`); the session (`TmSession`, `tmSessionGuard`, `tmParseProfileCookie`), the launch mark (`TmLaunch`) and the single-membership rule (`tmSingleLiveTenant`); the client store (`TmClientStore`, `TmStoreRefusedError`, `TM_DOC_FORMATS`) and the tab bus (`TmTabBus`) with its message catalogue; the leader tab (`TmLeader`: whether this tab leads, the hub's status and the tenant's hub events) and the documents only the leader refreshes (`TM_LEADER_DOCUMENTS`); the boot script's result types and the app clock (`TM_NOW`); the derived router's pieces: the root component (`TmApp`), the route data (`TmRouteData`), the title strategy (`TmTitleStrategy`), the URL builders and classifier (`TmUrls`) with the search query's types; the entity registry (`TmEntities`, with its descriptors once the entity model loads, and the declaration types `tmEntity` takes, typed paths `TmPath` included), display names (`TmDisplayNames`, `tm-display-name`), client permissions (`TmPermissions`) and `tmRowsToObjects`; localization: `TmLocalization` (the language, the regional formats, the calendar and the zones, and their switches with the coalesced locale write), `TmServerText` (server codes and keys through the string packs) and `tmEnglish()`, the platform's English; the app-level keyboard shortcuts (`TmShortcuts`, `TmShortcut`, `TM_RESERVED_SHORTCUTS`, `TM_BROWSER_KEYS`, `TmShortcutConflictError`) and the shell frame's seams (`TmShell` with immersive mode, `TmShellMain`, `TM_SHELL_LAYOUT`); the banners (`TmBanners`) with the input-idle clock (`TmInputIdle`), the attention documents (`TM_ATTENTION_DOCUMENTS`, `TmInboxSummary`, `TmAssignmentsSummary`) and the toast durations (`TM_TOAST_FEEDBACK_MS`, `TM_TOAST_ARRIVAL_MS`); the navigation registry (`TmNavigation`: the launcher's sections and entries, and a stored URL's state), the pins model (`tmPinsKey`, `tmPinnedBarVisibleKey` and the pin types) and the launcher's provider seam (`TM_LAUNCHER_PROVIDERS`) | eager |
+| `@tellma/core/attention` | The attention surfaces every page shows; for now the banner host (`tm-banner-host`), which renders the banner row from `TmBanners` and announces each banner as it is queued | eager, preloaded with the app |
 | `@tellma/core/shell` | The tenant shell, the tenant picker and the signed-out page, which the derived routes load; until their owners arrive they are plain stand-ins, beside one placeholder page for the platform's page families | eager, through `import()` |
 | `@tellma/core/memory` | The tab's memory of its pages: page state (`TmPageState`, `tmPageStateKey`), drafts (`TmDrafts`) and tree expansion (`TmTreeExpansion`), which the page hosts load with them | lazy |
+| `@tellma/core/page-snapshot` | `tmSerializePageContext` and `TmPageContextSnapshot`: a page context read once into plain JSON, for the support dump and a future assistant | lazy, through `import()` by its callers |
 | `@tellma/core/recents` | The recently visited pages (`TmRecents`), which the launcher and the home page list; the app loads it with `import()` after its first render, when visits start to count | lazy, through `import()` after first render |
 | `@tellma/core/entity` | What the search and details pages share over the entity model: select plans (`tmSelectPlan`), which turn column keys into one query's terms and type its rows; value formats (`TmFormats`); the typed value in view mode (`tm-value`) and in edit mode (`tm-value-editor`), with a form's uploads (`TmUploads`); a plan column's grid column (`tmGridColumnFor`); and the client check of a picked file against its blob kind (`tmCheckBlobFile`) | lazy, with the page families |
 | `@tellma/core/leader` | The leader election of the routed tenant over a Web Lock, and the leader tab's work: its realtime connection, the relay of hub events, the leader documents' reads and the polls of degraded mode; the app loads it with `import()` after its first render, and `TmLeader` reports what it decides | lazy, through `import()` after first render |
@@ -268,9 +270,11 @@ drafts.
 `@tellma/core/recents` holds **`TmRecents`**, which lists the routed tenant's ten most recent pages
 from the write-behind key `nav.recent`. The app loads it with `import()` after its first render.
 A visit is a search, report, dashboard, settings, access or custom page, not the drill-through
-list, current for 2 s while visible. Until the page context and the launcher land, the routed page
-comes from `ɵTM_ROUTED_PAGE` (the deepest route's data and the displayed title) and titles, icons
-and access from `ɵTM_RECENTS_NAVIGATION`; the access filter runs on read.
+list (route template `/:t/list/:segment`), whose context (`TmPageContexts.current`) stays current
+for 2 s while visible; the visit stores the router's path and the context's kind and title. A
+stored page takes the title and icon of the launcher entry at its URL from `TmNavigation`, and the
+list keeps only the pages whose URL `TmNavigation.resolve` finds `ok`; the access filter runs on
+read.
 
 **The dump.** `ɵTmStateDump.read()` (in the primary) builds the state's support-dump section: the
 mirrored documents' partition kinds, stored names and tags, the last sync, the unsaved
@@ -322,6 +326,17 @@ A feature declares a leader document with a `TM_LEADER_DOCUMENTS` multi provider
 the route the leader reads it from, the events that re-read it, its client format version, and an
 optional `pollWhile`. Every tab reads it from the store; none but the leader fetches it.
 
+`provideTellma` registers the platform's own, `TM_ATTENTION_DOCUMENTS`: for now only `inbox`
+(`inbox/summary`, re-read on `inbox.changed` and `job.changed`, and polled while a job is `Pending`
+or `Running`, so a lost job event never strands the bell's progress ring). Its client mirror is
+`TmInboxSummary`, and `TmLaunchCache.docs.inbox` reads it for the routed tenant, so the bell and
+the home lists render warm with no request. `assignments` (`assignments/summary`, mirrored by
+`TmAssignmentsSummary`) joins it once the server maps its route; until then a registered read
+would fail on every leader refresh. Meanwhile it is a plain store format in `TM_DOC_FORMATS`, so
+`TmLaunchCache.docs.assignments` reads `undefined` and the tray and the home widgets show their
+no-data state; do not register it in `TM_LEADER_DOCUMENTS` elsewhere. Each name is registered once:
+a second registration of a name throws in development, and production keeps the first.
+
 ## The HTTP layer
 
 Every request the app makes goes through `TmApi`, over `fetch`; an upload, the one call that
@@ -361,6 +376,13 @@ production both reject `server` unsent.
   SemVer precedence; when the builds do not say, the worker's update check decides, capped at 3 s.
 - **`online`** is false while the browser is offline or after a network failure; a visible tab then
   probes `GET /health/live` every 5 s, backing off to 30 s, until any answer.
+
+Two parts of the layer are chunks of their own, loaded with `import()`, because no first-frame
+call needs them: the build comparison behind the outdated-client verdict (`tm-api-verdict`), loaded
+with the first such answer, and the file transfers (`tm-api-transfer`), a download's streamed read
+and an upload's send, loaded with the first download's answer or the first upload. A verdict whose
+chunk cannot load leaves the builds to the worker's update check; a transfer whose chunk cannot load
+fails as a network failure would.
 
 `provideTellma` points `tm-image`'s blob fetcher at `TmApi.fetchBlob`, so an image request gets the
 user check, the session's headers and the caller's signal, whose reason an aborted fetch rejects
@@ -421,7 +443,13 @@ tenant's launch documents are current. A page that names a `securable` the user 
 forbidden view in place. A chunk that fails to load asks the service worker for an update and
 shows `client-outdated` or `offline`. Each page gets its own page scope and leave checks, which a
 navigation away runs, a move between My settings sections or into another tenant included; a
-settings tab change keeps the page and runs none. After a path change, focus moves to the page's
+settings tab change keeps the page and runs none. On every page route, the host registers a
+default page context of the route's kind, titled as the document is, whose route template names
+the entity's segment (`/:t/centers`, `/:t/centers/:id`; the drill-through list keeps
+`/:t/list/:segment`): `loading` until the page or an error view renders, then `ready`, or `error`
+with the view's code (`forbidden`, `offline`, `client-outdated`) among its errors. A reused route
+that shows another entity registers it anew. A page, or its family's host, that registers its own
+context replaces it and keeps its actions. After a path change, focus moves to the page's
 `[tmPageTitle]`, except on a settings tab change, where it stays on the tab list. The document's
 title is the page's title and the display name. A stored report's and a dashboard's details pages
 draw the `report` and `dashboard` skeletons.
@@ -447,7 +475,7 @@ so `Mod+K` works while an Arabic layout types `ن`. In an editable field only `i
 run (the default for keys with `Mod` or `Ctrl`), and on an Apple platform a key that Option turns
 into another character is typing. While a modal is open only `overModals` shortcuts run, besides
 the page shortcuts of the top dialog's own page context, which the page actions register through
-the internal `ɵregisterInDialog`. A shortcut that runs is prevented, stopped and reported as the
+the internal `ɵregisterPage`. A shortcut that runs is prevented, stopped and reported as the
 sampled `tm.shortcut.used`.
 
 ```ts
@@ -479,9 +507,132 @@ same way: bidi controls stripped, NFKD with Latin and Arabic marks removed, lowe
 interchangeable Arabic letters folded and tatweel dropped, Arabic-Indic digits as 0-9, and
 punctuation and symbols as single spaces. Nothing on the first frame matches text, so it is an
 entry point of its own rather than part of the primary. The size gate's static-graph check
-(`"tellma".staticGraphExcludes`) proves that neither the primary nor the eager `/shell` reaches it
-through static imports, so the shell's deferred launcher panel and Shortcuts dialog load it with
+(`"tellma".staticGraphExcludes`) proves that neither the primary nor the eager `/shell` and
+`/attention` reach it through static imports, so the shell's deferred launcher panel and Shortcuts dialog load it with
 `import()`.
+
+## Banners and the input-idle clock
+
+`TmBanners` holds the conditions the shell's 32 px banner row shows, one at a time: the head by
+level (1 connection lost, 2 reserved for critical announcements, 3 update, 4 warning, 5 info), then
+by the order `show` first ran, or the banner the user paged to, until it closes or is dismissed. A
+banner of a higher level takes the row at once; one of a lower or equal level adds to the pager's
+"1 of 3". `show` with a live id updates it, and the handle's `update` and `close` change or remove
+it. Levels 1-3 are the platform's: a distribution's banner there throws in development, as does a
+dismissible banner at level 1 or 2. A dismissal holds for the rest of the tab's life, and the update
+banner's (shown through the internal `ɵshow` with the version as its scope) for that version only.
+
+```ts
+const ref = inject(TmBanners).show({ id: 'acme.period-closing', level: 4, tone: 'warning', dismissible: true,
+  message: computed(() => t('Acme_Banner_PeriodClosing')) });
+// When the condition ends:
+ref.close();
+```
+
+The row never moves the page under the user's hands. `current` (what the row renders) and `visible`
+(the row is open; the shell sets `--tm-banner-height` from it) change the row's height only at an
+idle moment: `TmInputIdle`, the tab's one clock, turns `idle` 2 s after the last `keydown`,
+`pointerdown`, `pointermove`, `wheel` or `touchstart` on the window, heard by passive capture
+listeners, and `whenIdle()` waits for it; spec 0024's time-zone prompt waits on the same clock. A
+message swap in an open row, the user's own dismiss and any change while the page is hidden apply at
+once, and a row whose last banner closes while it waits stays open and empty until the gate. The
+internal `ɵhead` follows every change at once, so the banner host announces a banner when it is
+queued, before the row opens. Each banner's time from queued to shown is the timing
+`tm.attention.banner { id, level }`.
+
+`provideTellma` starts the platform's offline banner, `tm.offline`, in every shell: it shows once
+`TmApi.online()` has been false for 5 s, and closes when it turns true. The update banner,
+`tm.update`, is the update service's.
+
+`@tellma/core/attention` holds `tm-banner-host`, which the shells place in the banner row. It renders
+`tm-banner-bar` from `current`, wires its action, pager and dismiss buttons back, never takes focus,
+and owns the one visually hidden live region: assertive for level 1, polite otherwise, written once
+per banner that becomes the row's.
+
+The toast policy's durations are `TM_TOAST_FEEDBACK_MS` (4 s, an outcome the acting tab raises) and
+`TM_TOAST_ARRIVAL_MS` (6 s, an arriving notification or assignment).
+
+## Page context and page actions
+
+Every routed page and context-bearing dialog publishes one `TmPageContext`: its kind, route
+template, title, data status, kind-specific state, visible rows, form, errors and actions, each a
+signal read only when a reader asks. `TmPageContexts` holds them: `current` is the newest routed
+context, `overlays` the dialogs' (`overlay: true`) in registration order, and `top` the topmost
+dialog's, else `current`. `provideTmPageScope()` gives a page or a dialog its own scope, with its
+own `TmPageContexts` and `TmPageActions` bound to it: inside it, a second routed context replaces
+the first and keeps the first one's actions after its own, and everything registered in it ends
+with it or with its `DestroyRef`.
+
+```ts
+inject(TmPageActions).register({
+  id: 'acme.credit-review.suggest-limits', labelKey: 'Acme_CreditReview_SuggestLimits', icon: 'wand',
+  group: 'primary', shortcut: 'Mod+Shift+A',
+  invoke: async () => { await this.suggestLimits(); return { outcome: 'done' }; },
+});
+```
+
+`TmPageActions.register` adds an action to its scope's context, even before that context registers;
+outside any scope, to `current`. A context's published `actions()` are its own, those of the
+contexts it replaced, then its scope's, ordered by group (toolbar first), `order` (default 100) and
+registration. While a context is `top`, its actions' shortcuts are live in `TmShortcuts` (scope
+`page`); a dialog's run while that dialog is the top modal. Every origin invokes through
+`TmPageActions.invoke(id, args, origin)`: it finds the action in `top`, the lower dialogs, then
+`current`; refuses a disabled one with its `disabledReason` as the message, announced politely to a
+user or a shortcut; refuses one already running or asking; asks `TmConfirm` (loaded on the first
+question) with the danger choice for a destructive one, whoever invokes it, and checks it again
+once answered; then runs it while `running` holds its id. A throw becomes `failed`, and one that is
+not a `TmApiError` is reported to telemetry. Each found action's invocation emits the sampled
+`tm.action.invoked`. Development throws for a malformed id, a destructive action without
+`confirm`, and a shortcut on an action whose `params` require members.
+
+`tmSerializePageContext(context, { includeData })`, in `@tellma/core/page-snapshot`, reads a
+context once into plain JSON for the support dump and a future assistant. Nothing on the first
+frame reads it, so its callers load it with `import()`. Without page data it leaves out the rows, the form's values
+and the errors' messages, masks every string of the search query's `q`, `filter`, `columnFilters`
+and `custom` and of `parameters` as `"…"`, and titles a details page by its entity's singular
+label, which alone needs an injection context or an `injector`. `TM_HELP_ARTICLES` is the help drawer's
+seam, declared and never provided here. `@tellma/core-testing`'s `TmPageContextHarness` reads the
+registry and invokes actions in tests.
+
+## Navigation and pins
+
+`TmNavigation` (in the primary) derives the launcher's entries for the routed tenant from the merged
+declarations, after `hide`: every stack with a `query` operation and a segment (its plural label,
+`file-text`, and a create page when the user may save one that has a details page), every page
+without a path parameter (`square-dashed`, behind its securable), every coded report
+(`chart-column`, behind its securable) and every feature entry (`link`, behind any one of its
+`requires`). An entry with `visibleWhen` shows only while the distribution document is present and
+the predicate returns true; a predicate that throws hides its entry and is reported once as
+`tm.nav.visible-when`. `sections()` lists the sections with a visible entry, each ordered by `order`
+(100 by default), then by the label in the active language; `items()` adds the search-only entries,
+which name no shown section. The core feature contributes Analysis (800) and Administration (900),
+Settings under Administration (shown with `Read` on any settings category the Core chunk lists, so
+to no one when it lists none, unless a distribution gives it `requires`) and the search-only My
+settings entries, whose labels are platform strings and whose synonyms are the launcher's own
+`tm.launcher` strings, which load with the launcher.
+
+```ts
+const navigation = inject(TmNavigation);
+navigation.byHref('/17/centers')?.label; // 'Centers'
+navigation.resolve('/17/customers?f.CustomerType=in:Corporate'); // 'ok', 'no-access' or 'unavailable'
+```
+
+`resolve` judges a stored URL by the route table: `unavailable` when no route matches or
+`visibleWhen` hides the declaration that owns its route, `no-access` when the route's permission
+check fails, `ok` otherwise; a stored report's or dashboard's page reports a refusal itself.
+
+The pins model's types and keys live here too: `tmPinsKey` (`nav.pinned`, curated, per tenant)
+holds `{ v: 1, items }` of pins and one-level folders, and a value of another shape reads as no
+pins; `tmPinnedBarVisibleKey` (`nav.pinnedBarVisible`) is the bar's switch, which My settings
+writes. The rules the pinned bar applies to the items (8-character ids, URLs of at most 512
+characters, titles of at most 80, labels and folder names of 1 to 40, 30 pins and 10 folders per
+tenant, one level; what a pin captures of the routed URL; the current pin and a chip's label) live
+with the bar in `/shell`, as do the terms the launcher's search matches an entry by.
+`TM_LAUNCHER_PROVIDERS` is the multi token through which a feature adds a bucket of results below
+the launcher's pages.
+
+The registry adds no icon glyphs to the first frame: the default and core entry icons are names,
+which the launcher's own chunks register with their glyphs.
 
 ## Entities, display names and permissions
 
@@ -592,7 +743,7 @@ if (TmDecimals.compare(total, creditLimit) > 0) { … }
 ## Seams
 
 `TmTelemetry` and `TmRequestLog` are abstract classes provided in root with quiet defaults that
-keep nothing and send nothing, and `provideTmPageScope()` returns no providers yet. Code records
+keep nothing and send nothing. Code records
 against them today; the observability features replace the defaults without changing a call
 site. Tests replace them through `@tellma/core-testing`, which also puts `TmFakeApi` behind
 `TmApi`.

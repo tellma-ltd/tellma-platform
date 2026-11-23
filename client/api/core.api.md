@@ -4,6 +4,7 @@
 
 ```ts
 
+import { ActivatedRouteSnapshot } from '@angular/router';
 import { ApplicationConfig } from '@angular/core';
 import { ApplicationRef } from '@angular/core';
 import { CanActivateFn } from '@angular/router';
@@ -33,6 +34,9 @@ export function provideTmPageScope(): Provider[];
 export const TM_APP_DECLARATIONS: InjectionToken<TmAppDeclarations>;
 
 // @public
+export const TM_ATTENTION_DOCUMENTS: readonly TmLeaderDocument[];
+
+// @public
 export const TM_BROWSER_KEYS: readonly TmKeys[];
 
 // @public
@@ -40,6 +44,12 @@ export const TM_CLIENT_METADATA: InjectionToken<TmClientMetadata>;
 
 // @public
 export const TM_DOC_FORMATS: Readonly<Record<string, number>>;
+
+// @public
+export const TM_HELP_ARTICLES: InjectionToken<(key: string, language: string) => Promise<TmLazyComponent | null>>;
+
+// @public
+export const TM_LAUNCHER_PROVIDERS: InjectionToken<readonly TmLauncherProvider[]>;
 
 // @public
 export const TM_LEADER_DOCUMENTS: InjectionToken<readonly TmLeaderDocument[]>;
@@ -56,6 +66,12 @@ export const TM_SHELL_LAYOUT: Readonly<{
     readonly banner: 32;
     readonly pinnedBar: 32;
 }>;
+
+// @public
+export const TM_TOAST_ARRIVAL_MS = 6000;
+
+// @public
+export const TM_TOAST_FEEDBACK_MS = 4000;
 
 // @public
 export interface TmAccessProblem {
@@ -111,6 +127,24 @@ export interface TmActionMetadata {
     readonly singleTarget: boolean;
     readonly supportsFilter: boolean;
 }
+
+// @public
+export type TmActionOrigin = 'assistant' | 'launcher' | 'shortcut' | 'user';
+
+// @public
+export type TmActionResult = {
+    readonly outcome: 'cancelled';
+} | {
+    readonly outcome: 'done';
+    readonly data?: TmJson;
+} | {
+    readonly outcome: 'failed';
+    readonly error: unknown;
+} | {
+    readonly outcome: 'refused';
+    readonly reason: 'busy' | 'disabled' | 'not-found';
+    readonly message?: string;
+};
 
 // @public
 export interface TmAdoptedDocs {
@@ -199,6 +233,57 @@ export interface TmAppDeclarations {
     readonly sections: readonly TmNavSection[];
     readonly settingsTabs: readonly TmSettingsTabDeclaration[];
     readonly widgets: readonly TmWidgetTypeDeclaration[];
+}
+
+// @public
+export interface TmAssignmentsSummary {
+    readonly latest: readonly TmEntityType<'core.Assignment'>[];
+    readonly latestByMe: readonly TmEntityType<'core.Assignment'>[];
+    readonly new: number;
+    readonly open: number;
+    readonly openByMe: number;
+    readonly related: Readonly<Record<string, readonly TmJson[]>>;
+    readonly seenAt?: string;
+}
+
+// @public
+export type TmBannerLevel = 1 | 2 | 3 | 4 | 5;
+
+// @public
+export interface TmBannerOptions {
+    readonly action?: {
+        readonly label: Signal<string>;
+        readonly run: () => void;
+    };
+    readonly dismissible: boolean;
+    readonly icon?: string;
+    readonly id: string;
+    readonly level: TmBannerLevel;
+    readonly message: Signal<string>;
+    readonly tone: 'error' | 'info' | 'warning';
+}
+
+// @public
+export interface TmBannerRef {
+    close(): void;
+    update(patch: Partial<Omit<TmBannerOptions, 'id' | 'level'>>): void;
+}
+
+// @public
+export class TmBanners {
+    constructor();
+    readonly current: Signal<TmBannerView | null>;
+    show(options: TmBannerOptions): TmBannerRef;
+    readonly visible: Signal<boolean>;
+    static ɵfac: i0.ɵɵFactoryDeclaration<TmBanners, never>;
+    static ɵprov: i0.ɵɵInjectableDeclaration<TmBanners>;
+}
+
+// @public
+export interface TmBannerView {
+    readonly count: number;
+    readonly index: number;
+    readonly options: TmBannerOptions;
 }
 
 // @public
@@ -436,6 +521,15 @@ export type TmColumnInput<N extends string> = TmPath<N> | {
     readonly select?: readonly TmPath<N>[];
     readonly filter?: string;
 };
+
+// @public
+export interface TmContextError {
+    readonly code: string;
+    readonly message: string;
+    readonly path?: string;
+    readonly source: 'client' | 'render' | 'request' | 'validation';
+    readonly traceId?: string;
+}
 
 // @public
 export interface TmContracts {
@@ -829,6 +923,24 @@ export type TmFilterSource = {
 };
 
 // @public
+export interface TmFormContext {
+    readonly assisted: Signal<ReadonlySet<string>>;
+    readonly dirty: Signal<boolean>;
+    readonly fields: Signal<readonly TmFormField[]>;
+    propose(path: string, value: TmJson): boolean;
+}
+
+// @public
+export interface TmFormField {
+    readonly editable: boolean;
+    readonly errors: readonly string[];
+    readonly label: string;
+    readonly labelKey: string;
+    readonly path: string;
+    readonly value: TmJson;
+}
+
+// @public
 export interface TmHubConnection {
     nudge(): void;
     start(): void;
@@ -872,6 +984,48 @@ export interface TmHubStatusMessage {
 
 // @public
 export type TmId = number | TmDecimal;
+
+// @public
+export interface TmInboxRunningJob {
+    readonly cancelRequestedAt?: string;
+    readonly createdAt: string;
+    readonly handlerKey: string;
+    readonly id: number;
+    readonly labelArgumentsJson?: string;
+    readonly labelKey?: string;
+    readonly progressArgumentsJson?: string;
+    readonly progressKey?: string;
+    readonly progressPercent?: number;
+    readonly startedAt?: string;
+    readonly status: 'Held' | 'Pending' | 'PendingConfirmation' | 'Running';
+}
+
+// @public
+export interface TmInboxSummary {
+    readonly latest: readonly TmEntityType<'core.Notification'>[];
+    readonly maxUnseenSeverity?: TmNotificationSeverity;
+    readonly related: Readonly<Record<string, readonly TmJson[]>>;
+    readonly running: readonly TmInboxRunningJob[];
+    readonly seenAt?: string;
+    readonly unread: number;
+    readonly unseen: number;
+    readonly version: TmDecimal;
+}
+
+// @public
+export interface TmInboxVerbResult {
+    readonly count: number;
+    readonly version: TmDecimal;
+}
+
+// @public
+export class TmInputIdle {
+    constructor();
+    readonly idle: Signal<boolean>;
+    whenIdle(): Promise<void>;
+    static ɵfac: i0.ɵɵFactoryDeclaration<TmInputIdle, never>;
+    static ɵprov: i0.ɵɵInjectableDeclaration<TmInputIdle>;
+}
 
 // @public
 export interface TmJobHandlerMetadata {
@@ -946,7 +1100,7 @@ export class TmLaunchCache {
     constructor();
     readonly distribution: Signal<TmDistributionInfo | undefined>;
     readonly docs: {
-        readonly [K in keyof TmLaunchDocs]: Signal<TmLaunchDocs[K] | undefined>;
+        readonly [K in keyof TmLaunchDocs]-?: Signal<TmLaunchDocs[K] | undefined>;
     };
     entitySet<T = TmJson>(name: string): Signal<TmCachedEntitySet<T> | undefined>;
     revalidateUser(): Promise<void>;
@@ -958,9 +1112,37 @@ export class TmLaunchCache {
 
 // @public
 export interface TmLaunchDocs {
+    readonly assignments?: TmAssignmentsSummary;
+    readonly inbox?: TmInboxSummary;
     readonly me: TmMeResult;
     readonly settings: TmTenantSettingsForClient;
     readonly tenant: TmTenantFacts;
+}
+
+// @public
+export interface TmLauncherItem {
+    readonly description?: string;
+    readonly href: string;
+    readonly icon?: string;
+    readonly id: string;
+    readonly label: string;
+}
+
+// @public
+export interface TmLauncherProvider {
+    readonly id: string;
+    readonly labelKey: string;
+    readonly minLength?: number;
+    readonly order: number;
+    search(query: string, context: TmLauncherSearchContext): Promise<readonly TmLauncherItem[]>;
+}
+
+// @public
+export interface TmLauncherSearchContext {
+    readonly language: string;
+    readonly limit: number;
+    readonly signal: AbortSignal;
+    readonly tenantId: number;
 }
 
 // @public
@@ -1116,6 +1298,16 @@ export interface TmNavEntry {
 }
 
 // @public
+export class TmNavigation {
+    byHref(href: string): TmNavItem | undefined;
+    readonly items: Signal<readonly TmNavItem[]>;
+    resolve(href: string): 'no-access' | 'ok' | 'unavailable';
+    readonly sections: Signal<readonly TmNavSectionView[]>;
+    static ɵfac: i0.ɵɵFactoryDeclaration<TmNavigation, never>;
+    static ɵprov: i0.ɵɵInjectableDeclaration<TmNavigation>;
+}
+
+// @public
 export interface TmNavigationDescriptor extends TmNavigationMetadata {
     readonly label: Signal<string>;
 }
@@ -1133,11 +1325,29 @@ export interface TmNavigationMetadata {
 }
 
 // @public
+export interface TmNavItem extends TmNavEntry {
+    readonly createHref: string | null;
+    readonly entity?: string;
+    readonly href: string;
+    readonly icon: string;
+    readonly kind: 'entity' | 'entry' | 'page' | 'report';
+    readonly label: string;
+    readonly order: number;
+    readonly synonymsKey: string;
+}
+
+// @public
 export interface TmNavSection {
     readonly icon: string;
     readonly id: string;
     readonly labelKey: string;
     readonly order: number;
+}
+
+// @public
+export interface TmNavSectionView extends TmNavSection {
+    readonly entries: readonly TmNavItem[];
+    readonly label: string;
 }
 
 // @public
@@ -1174,6 +1384,61 @@ export function tmOverride(key: TmDeclarationKey, members: Readonly<Record<strin
 
 // @public
 export function tmPage(path: string, page: TmPageDefinition): TmPageDeclaration;
+
+// @public
+export interface TmPageAction {
+    readonly confirm?: TmActionConfirmation;
+    readonly descriptionKey?: string;
+    readonly destructive: boolean;
+    readonly disabledReason: Signal<string | null>;
+    readonly enabled: Signal<boolean>;
+    readonly group: 'menu' | 'primary';
+    readonly icon?: string;
+    readonly id: string;
+    invoke(args: TmJson, origin: TmActionOrigin): Promise<TmActionResult>;
+    readonly labelKey: string;
+    readonly order?: number;
+    readonly params?: TmJsonSchema;
+    readonly shortcut?: TmKeys;
+}
+
+// @public
+export type TmPageActionInput = Omit<TmPageAction, 'destructive' | 'disabledReason' | 'enabled' | 'group'> & Partial<Pick<TmPageAction, 'destructive' | 'disabledReason' | 'enabled' | 'group'>>;
+
+// @public
+export class TmPageActions {
+    invoke(id: string, args: TmJson, origin: TmActionOrigin): Promise<TmActionResult>;
+    register(action: TmPageActionInput, destroyRef?: DestroyRef): void;
+    readonly running: Signal<ReadonlySet<string>>;
+    static ɵfac: i0.ɵɵFactoryDeclaration<TmPageActions, never>;
+    static ɵprov: i0.ɵɵInjectableDeclaration<TmPageActions>;
+}
+
+// @public
+export interface TmPageContext {
+    readonly actions: Signal<readonly TmPageAction[]>;
+    readonly entity?: string;
+    readonly errors: Signal<readonly TmContextError[]>;
+    readonly form?: TmFormContext;
+    readonly helpKey?: string;
+    readonly kind: TmPageKind;
+    readonly overlay?: boolean;
+    readonly routeTemplate: string;
+    readonly state: Signal<TmJson>;
+    readonly status: Signal<'error' | 'loading' | 'ready'>;
+    readonly title: Signal<string>;
+    readonly visible?: Signal<TmVisibleData | undefined>;
+}
+
+// @public
+export class TmPageContexts {
+    readonly current: Signal<TmPageContext | null>;
+    readonly overlays: Signal<readonly TmPageContext[]>;
+    register(context: TmPageContext, destroyRef?: DestroyRef): void;
+    readonly top: Signal<TmPageContext | null>;
+    static ɵfac: i0.ɵɵFactoryDeclaration<TmPageContexts, never>;
+    static ɵprov: i0.ɵɵInjectableDeclaration<TmPageContexts>;
+}
 
 // @public
 export interface TmPageDeclaration extends TmPageDefinition {
@@ -1269,6 +1534,36 @@ export interface TmPickerDeclaration<N extends string> {
     readonly filter?: string;
     readonly orderBy?: TmOrderInput<N>;
 }
+
+// @public
+export interface TmPin {
+    readonly id: string;
+    readonly label?: string;
+    readonly title: string;
+    readonly url: string;
+}
+
+// @public
+export interface TmPinFolder {
+    readonly folder: string;
+    readonly id: string;
+    readonly items: readonly TmPin[];
+}
+
+// @public
+export type TmPinItem = TmPin | TmPinFolder;
+
+// @public
+export const tmPinnedBarVisibleKey: TmPreferenceKey<boolean>;
+
+// @public
+export interface TmPinsDoc {
+    readonly items: readonly TmPinItem[];
+    readonly v: 1;
+}
+
+// @public
+export const tmPinsKey: TmPreferenceKey<TmPinsDoc>;
 
 // @public
 export interface TmPlanRow {
@@ -1994,6 +2289,26 @@ export interface TmValueDescriptor {
     readonly scale?: number;
     readonly target?: string;
     readonly type: TmDataType;
+}
+
+// @public
+export interface TmVisibleColumn {
+    readonly label: string;
+    readonly path: string;
+}
+
+// @public
+export interface TmVisibleData {
+    readonly columns: readonly TmVisibleColumn[];
+    readonly rows: readonly TmVisibleRow[];
+    readonly total: number | null;
+    readonly truncated: boolean;
+}
+
+// @public
+export interface TmVisibleRow {
+    readonly cells: Readonly<Record<string, TmJson>>;
+    readonly id: TmId | null;
 }
 
 // @public

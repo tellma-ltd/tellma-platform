@@ -131,33 +131,38 @@ export class TmShortcuts {
    * @throws TmShortcutConflictError in development, when the registration is refused.
    */
   register(shortcut: TmShortcut, destroyRef: DestroyRef = inject(DestroyRef)): void {
-    this.#register(shortcut, destroyRef, null);
+    const remove = this.#register(shortcut, null);
+    if (remove !== null) {
+      destroyRef.onDestroy(remove);
+    }
   }
 
   /**
-   * Registers a page shortcut of a dialog's own page context until
-   * `destroyRef` ends. While modal dialogs are open, it runs when its dialog
-   * is the topmost one, as a shortcut over modals would. Not for app code:
-   * the page actions register their dialogs' shortcuts through it.
+   * Registers the shortcut of a page action while its page context is on
+   * top, until the returned function runs. With `dialog`, the shortcut
+   * belongs to a dialog's own page context: while modal dialogs are open, it
+   * runs when that dialog is the topmost one, as a shortcut over modals
+   * would. Not for app code: the page actions register their shortcuts
+   * through it.
    *
-   * @param dialog - An element inside the dialog, such as its content's host.
    * @param shortcut - The shortcut.
-   * @param destroyRef - What ends the registration; by default, the caller's injection context's.
+   * @param dialog - An element inside the dialog whose context the action belongs to, or `null` for the routed page's.
+   * @returns The function that unregisters it, or `null` when production refused it.
    * @throws TmShortcutConflictError in development, when the registration is refused.
    */
-  ɵregisterInDialog(dialog: Element, shortcut: TmShortcut, destroyRef: DestroyRef = inject(DestroyRef)): void {
-    this.#register(shortcut, destroyRef, dialog);
+  ɵregisterPage(shortcut: TmShortcut, dialog: Element | null): (() => void) | null {
+    return this.#register(shortcut, dialog);
   }
 
-  /** Checks one registration and, unless it is refused, keeps it until `destroyRef` ends. */
-  #register(shortcut: TmShortcut, destroyRef: DestroyRef, dialog: Element | null): void {
+  /** Checks one registration and, unless it is refused, keeps it until the returned function runs. */
+  #register(shortcut: TmShortcut, dialog: Element | null): (() => void) | null {
     // Section: the checks, once per registration.
     let parts: TmKeyParts;
     try {
       parts = tmKeyParts(shortcut.keys);
     } catch (error) {
       this.#refuse(shortcut, 'invalid', error);
-      return;
+      return null;
     }
     const live = this.#live;
     const refusal = tmShortcutRefusal(
@@ -167,13 +172,13 @@ export class TmShortcuts {
     );
     if (refusal !== null) {
       this.#refuse(shortcut, refusal, live.find((entry) => tmSameKeys(parts, entry.parts))?.shortcut.id);
-      return;
+      return null;
     }
 
-    // Section: keep it until its owner ends.
+    // Section: keep it until its owner ends it.
     const registration: TmRegistration = { shortcut, parts, inFields: tmRunsInFields(shortcut, parts), dialog };
     this.#set([...live, registration]);
-    destroyRef.onDestroy(() => this.#set(this.#live.filter((entry) => entry !== registration)));
+    return () => this.#set(this.#live.filter((entry) => entry !== registration));
   }
 
   /** Replaces the live registrations, and the active list with their shortcuts. */

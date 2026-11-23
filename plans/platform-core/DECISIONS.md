@@ -384,6 +384,63 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-254 (orchestrator, 2026-11-23): PC-115 lands with two lazy chunks of the primary
+
+- PC-115 integrated under D-252. Merged, "." measured 50.09 KB; its two lazy moves brought it to 49.40, against a ceiling of 49.5 (D-031). It landed at 4231428e.
+  - The outdated-client verdict moved to the lazy chunk tm-api-verdict (0.51 KB, -0.34 from the primary). If the chunk cannot load, the builds count as unordered and the worker's update check decides.
+  - The file transfers moved to the lazy chunk tm-api-transfer (0.75 KB, -0.35). If the chunk cannot load, the attempt fails as a network failure would.
+  - Both moves are stated deviations (reviews/PC-115.md, Deviations 8 and 9) from spec 0024 placing the HTTP layer in the primary.
+- The chunk-load fallbacks have no test: making a dynamic import fail in vitest browser mode was not practical. Accepted.
+- Misalignment: ARCHITECTURE.md's @tellma/core row lists only the entity model as a lazy chunk of the primary. It now also has tm-api-verdict, tm-api-transfer and, once PC-110 lands, tm-session-flows. PC-110 updates that row; until then it is out of date.
+- Room left: 0.60 KB. PC-F76, PC-119, PC-F78 and PC-110 (+0.48 as built) re-measure at integration (D-214), and any that would exceed 50 stops with status=blocked (D-247). PC-110's R1 is asked to list further lazy candidates.
+- For Ahmad: the D-247/D-252 question is now pressing. Should spec 0024 allow these lazy chunks, or should the cap change?
+
+### D-253 (orchestrator, 2026-11-23): PC-177's export default reference key skips nullable natural keys
+
+- PC-177's R1 (R1-3) found a spec gap in 0019 §6.2 and §9.4. The editable export references a target by its default reference key, which may be a nullable natural key (core.Role.Code). For a target whose key value is null, the export writes a blank cell.
+  - Re-import then fails with Required, which breaks the export-fix-import loop.
+  - Worse, a nullable foreign key to such a target clears silently on Update.
+- Ruling: PC-177's fix1 takes the reviewer's option (c), as a stated deviation from 0019 §6.2. The default reference key becomes the first non-nullable NaturalKeys member, else the surrogate Id. Role would export by Name.
+  - The change is in the export planner (PC-176's code). It is applied here because PC-177 owns the round trip, and the silent clear is data loss.
+  - It comes with a round-trip test for a target whose nullable natural key is null.
+- Rejected:
+  - Option (a), a per-row key kind: it adds a column shape that 0019 does not describe.
+  - Option (b), a blank cell keeps the stored reference: it makes a deliberate clear impossible.
+- PC-177 R1-4 (no ordering edge from child-sheet references to new parent rows) carries to PC-178, whose chunked import is where it can fail.
+- For Ahmad: confirm option (c), or say which 0019 should state.
+
+### D-252 (orchestrator, 2026-11-23): the primary's room after PC-109, and what PC-115 does at release
+
+- After PC-109's integration, "." measures 48.24 KB (linked, gzip 6), leaving 1.76 KB under the 50 KB cap. PC-109 is pending on CI.
+- The rest of the queue adds about:
+  - PC-115: +1.75.
+  - PC-F78: +0.06.
+  - PC-119: its own delta, still to be measured on the merged base.
+- That puts the primary at or just over 50 before any further primary checkpoint lands.
+- Ruling: when PC-115 is released, it must bring "." to 49.5 or below on the merged base, which leaves room for PC-F78 and PC-119. Its options, in this order:
+  1. Move bytes that no first-frame caller needs out of the primary into lazy entries, each move stated as a deviation from its spec's placement.
+  2. Trim within its own additions.
+- PC-115 reports every candidate with its saving, including ones outside its own code, such as the outdated-client verdict machinery that PC-F78's reviewer estimated at 0.3 to 0.4 KB.
+- If 49.5 cannot be reached without cutting spec behaviour, PC-115 stops with status=blocked and I decide.
+- PC-119 and PC-F78 re-measure at their releases (D-214). Any of them that would exceed 50 stops with status=blocked (D-247).
+- For Ahmad (sharpens D-247): the primary reaches its 50 KB cap with Tier 1 still incomplete. Raising 0024's cap, re-cutting the shares or moving members lazy is now needed soon. Until you rule, I keep it under 50 by lazy moves, each one a stated deviation.
+
+### D-251 (orchestrator, 2026-11-23): PC-F76 measures the 50 KB cap on the whole primary entry
+
+- PC-F76's implementation measured the primary as Acme's first-frame cut through source maps: 37.80 KB, against size:check's whole-entry "." of 44.97. Review 1 (R1-1, major) showed this is the wrong reading of "own weight":
+  - spec 0024 section 12 sums the shares;
+  - 0025 section 1 and 0028 section 1 allocate those shares per entry-point member;
+  - 0002 section 8 defines self-weight on the entry point.
+- With the first-frame reading, D-247's projection passes at about 42.5 KB. The line would then fail later, in whichever checkpoint first consumed a dormant module, even though that checkpoint added no bytes.
+- Ruling, adopted from R1-1:
+  - The cap is enforced on the whole primary entry. size:check gains a 50 KB gzip-level-9 line on "." that is raised only with a note.
+  - The tellma-client build line stays, and is restated as the first-frame figure. It remains a check a distribution can run on its own app build, and it is a lower bound, not the cap.
+  - Deviation 3 is restated to match.
+- R1-2 (silent zero), R1-3 (partial under-count) and R1-4 (bare "." and ".." imports) are fixed in fix 1.
+- Because fix 1 redesigns the measure, it gets one targeted verification (section 4.4) before it is held.
+- D-247 and D-248 stand, since they already used the whole-entry figure. PC-111 integrated at 46.74 (linked, level 6).
+- For Ahmad: confirm that "own weight" in 0024 section 12 means the whole entry point, not what one app ships of it. If the spec means the first frame, the cap gains about 7 KB of room today.
+
 ### D-250 (orchestrator, 2026-11-23): PC-F75's second CI run is red on a Core jobs flake; PC-F79 is opened as blocking
 
 - PC-F75's re-integration (pc run 45184031545 on 3f4e1c0d) was green in every job but integration. There, one test failed: JobRunLockingTests.A_flush_after_the_final_renewal_extends_the_lease_only_to_the_end_that_renewal_set read a remaining lease of 5001 ms against InRange(1, 5000). PC-F75 touches only the Excel import, so this is a flake in code that already landed.

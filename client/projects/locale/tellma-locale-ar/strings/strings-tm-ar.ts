@@ -48,6 +48,23 @@ export const TM_STRINGS_AR: TmStringTree = {
     reload: 'إعادة التحميل',
     retry: `${imperative('حاول', 'حاولي')} مرة أخرى`,
   },
+  nav: {
+    analysis: 'التحليل',
+    administration: 'الإدارة',
+    me: {
+      profile: 'ملفي الشخصي',
+      region: 'اللغة والمنطقة',
+      display: 'العرض',
+      notifications: 'الإشعارات',
+    },
+  },
+  launcher: {
+    synonyms: {
+      meProfile: 'الصورة، التوقيع، بيانات الاتصال',
+      meRegion: 'المنطقة الزمنية، التقويم، الأرقام، التنسيقات',
+      meDisplay: 'السمة، الشريط المثبت',
+    },
+  },
   shell: {
     tenantPicker: { title: `${imperative('اختر', 'اختاري')} شركة` },
     signedOut: { title: imperative('لقد سجّلت الخروج', 'لقد سجّلتِ الخروج'), signIn: 'تسجيل الدخول' },
@@ -57,6 +74,9 @@ export const TM_STRINGS_AR: TmStringTree = {
     tenantReadOnly: '{tenant} للقراءة فقط.',
     tenantFrozen: '{tenant} قيد الصيانة.',
     permissionNeeded: `يتطلب ذلك صلاحية «{permission}». ${imperative('اطلب', 'اطلبي')} من المسؤول منحها لك.`,
+  },
+  attention: {
+    banners: { offline: 'انقطع الاتصال. جارٍ إعادة الاتصال…' },
   },
   value: {
     none: '—',

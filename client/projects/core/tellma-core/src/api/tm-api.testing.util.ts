@@ -206,6 +206,8 @@ export class TmFakeApiHost implements TmApiHost {
   responder: ((request: TmFakeRequest) => Response | Error | null) | null = null;
   /** The event listeners, by target and event. */
   readonly #listeners = new Map<string, Set<() => void>>();
+  /** The options of the latest listener of each target and event. */
+  readonly #options = new Map<string, AddEventListenerOptions | undefined>();
 
   /** Records a request, and answers it when a responder is set. */
   fetch(url: string, init: RequestInit): Promise<Response> {
@@ -237,13 +239,36 @@ export class TmFakeApiHost implements TmApiHost {
     return this.visibleNow;
   }
 
-  /** Records a listener. */
-  listen(target: 'window' | 'document', type: string, listener: () => void): () => void {
+  /** Records a listener and its options. */
+  listen(target: 'window' | 'document', type: string, listener: () => void, options?: AddEventListenerOptions): () => void {
     const key = `${target}:${type}`;
+    this.#options.set(key, options);
     const set = this.#listeners.get(key) ?? new Set();
     set.add(listener);
     this.#listeners.set(key, set);
     return () => set.delete(listener);
+  }
+
+  /**
+   * The number of live listeners of an event.
+   *
+   * @param target - Where it fires.
+   * @param type - The event's name.
+   * @returns How many listen.
+   */
+  listeners(target: 'window' | 'document', type: string): number {
+    return this.#listeners.get(`${target}:${type}`)?.size ?? 0;
+  }
+
+  /**
+   * The options the latest listener of an event was added with.
+   *
+   * @param target - Where it fires.
+   * @param type - The event's name.
+   * @returns The options, or `undefined` when none were given.
+   */
+  listenOptions(target: 'window' | 'document', type: string): AddEventListenerOptions | undefined {
+    return this.#options.get(`${target}:${type}`);
   }
 
   /**
