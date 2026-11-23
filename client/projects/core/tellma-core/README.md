@@ -11,6 +11,7 @@ own.
 | `@tellma/core/shell` | The tenant shell, the tenant picker and the signed-out page, which the derived routes load; until their owners arrive they are plain stand-ins, beside one placeholder page for the platform's page families | eager, through `import()` |
 | `@tellma/core/memory` | The tab's memory of its pages: page state (`TmPageState`, `tmPageStateKey`), drafts (`TmDrafts`) and tree expansion (`TmTreeExpansion`), which the page hosts load with them | lazy |
 | `@tellma/core/recents` | The recently visited pages (`TmRecents`), which the launcher and the home page list; the app loads it with `import()` after its first render, when visits start to count | lazy, through `import()` after first render |
+| `@tellma/core/entity` | What the search and details pages share over the entity model: select plans (`tmSelectPlan`), which turn column keys into one query's terms and type its rows; value formats (`TmFormats`); the typed value in view mode (`tm-value`) and in edit mode (`tm-value-editor`), with a form's uploads (`TmUploads`); a plan column's grid column (`tmGridColumnFor`); and the client check of a picked file against its blob kind (`tmCheckBlobFile`) | lazy, with the page families |
 | `@tellma/core/config-check` | `tmCheckAppConfig`, the check of an app's configuration against the client metadata, which the build runs in Node and a development app at startup, and `tmCheckEntityDeclaration`, the check of one entity declaration against the Entities chunk | lazy |
 | `@tellma/core/private` | Wiring shared by the platform's own entry points and packages; no API goldens, no stability guarantee, never imported by app code | — |
 
@@ -402,6 +403,44 @@ the tenant or the tenant's content languages change, and kept through any other 
 entity operation (the details page and the tenant's `ReadOnly` or `Frozen` state included), the
 `disabledReason` a refused action shows, `label` in the Access tab's words, `sensitive`, and
 `reachable`, the traversal rule a query's paths obey.
+
+### Select plans, formats and typed values
+
+`@tellma/core/entity` holds what the page families build on the registry. `tmSelectPlan(root,
+keys)` reads each column key against the root entity and returns one column per key the user may
+read: its kind (a value, a multilingual group, a navigation, an image or a file), its label and
+type, its filter kind and the query's ordering for it (`orderBy('asc')`). The plan's `select` holds every term the
+columns read, the root key first, each once: a group reads each of its slots, a navigation its
+key and its target's display-name members, an image its `Variants` and a file its `FileName`.
+Every term is checked against `TmPermissions.reachable`, and a key that names nothing, or that
+reaches a term the user may not read, is dropped and reported with the reason. `rows(response)`
+reads a query's rows into `TmPlanRow`s, keyed by column key and by term; an expression column
+takes its type from the response.
+
+```ts
+const plan = tmSelectPlan(entities.get('gl.Center'), ['Code', 'Name', 'Parent']);
+// plan.select === 'Id,Code,Name,Name2,Parent.Id,Parent.Code' in a two-language tenant
+const rows = plan.rows(result); // result: the query's row set
+```
+
+`TmFormats` writes a value as text by its type facts: decimals and longs exactly from their
+decimal text, in the locale's digits and with no bidi control; dates in the calendar; an instant
+in the display zone, labelled with its offset when the device's zone differs; enums and related
+rows by their labels. A grid's cell leaves the zone label to the column header (`zoneSuffix`).
+`tm-value` renders the same text with the markup some types take: a badge per enum value, a
+related row's display name as a link to its page when the user may open it, with its avatar, a
+thumbnail asked for only when the blob lists one, and a file's name as its download link.
+`tm-value-editor` takes the control a value's type takes inside a `tm-form-field`, bound to a
+Signal Forms field: text, a textarea beyond 255 characters, numbers (decimals and longs held as
+exact text), a checkbox, a date picker, a select per enum, and the image and file pickers, which
+check the file against its kind, crop a cover-square image to its square, and upload as soon as
+it is picked. A value the server owns, an instant, a related row and a type with no control show
+read-only; a write-once value edits only while the record is created. A form that provides
+`TmUploads` sees every upload in flight, to hold its save until they settle.
+
+`tmGridColumnFor(column)` makes the grid column of a plan's column: a search grid's reads the
+plan's rows by column key and sorts when the column orders; a form's child grid (`editable`)
+reads the model's rows by their JSON names and edits only the root values the user writes.
 
 ## Decimals
 
