@@ -995,8 +995,9 @@ export class TmHttpApi implements TmApi {
   }
 
   /**
-   * The attempt of a call that got no answer: cancelled by its caller or
-   * the session, ended by the watchdog, or failed at the network level.
+   * The attempt of a call that got no answer: cancelled by its caller, the
+   * session or the app's end, ended by the watchdog, or failed at the
+   * network level.
    *
    * @param call - The call.
    * @param timedOut - Whether the watchdog ended it.
@@ -1004,7 +1005,9 @@ export class TmHttpApi implements TmApi {
    */
   #unanswered(call: TmCall, timedOut: boolean): TmAttempt<never> {
     const traceId = call.traceId;
-    if (call.cancel?.aborted === true) {
+    // A failure that lands after the app's end is cancelled too: it plans no
+    // retry, and does not mark the server unreachable for an app that is gone.
+    if (call.cancel?.aborted === true || this.#app.destroyed) {
       return { ok: false, error: new TmApiError({ kind: 'cancelled', traceId }), retry: null, build: null };
     }
     if (timedOut) {

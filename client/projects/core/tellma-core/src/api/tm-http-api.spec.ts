@@ -1249,6 +1249,26 @@ describe('TmHttpApi', () => {
       expect(read.error).toMatchObject({ kind: 'cancelled' });
     });
 
+    it('cancels a read whose network failure lands after the app has ended', async () => {
+      const rig = await setUp();
+      const read = track(rig.api.read('centers/query', {}, signal()));
+      await flush();
+      expect(rig.host.requests).toHaveLength(1);
+
+      const unhandled = await tmUnhandled(async () => {
+        TestBed.resetTestingModule();
+        rig.host.last().fail();
+        await vi.advanceTimersByTimeAsync(10_000);
+      });
+      expect(unhandled).toEqual([]);
+      expect(read.error).toBeInstanceOf(TmApiError);
+      expect(read.error).toMatchObject({ kind: 'cancelled' });
+      // No retry is planned, and the server is not marked unreachable.
+      expect(retries(rig)).toEqual([]);
+      expect(rig.host.requests).toHaveLength(1);
+      expect(rig.api.online()).toBe(true);
+    });
+
     it('cancels a refusal whose worker check ends after the app has ended', async () => {
       const rig = await setUp();
       // The worker does not answer, so its check ends at the 3 s cap.

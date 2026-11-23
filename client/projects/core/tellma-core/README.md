@@ -160,11 +160,16 @@ resolves anything:
   after the end.
 - The locale write's timers stop. A write that lands after the end is not adopted, an offline
   failure plans no further try, and nothing queued behind it is sent.
-- The HTTP layer admits no call after the end, and no retry whose wait the end overtook. An answer
-  that lands after the end can no longer be checked against the session, so its call rejects
-  `cancelled` without settling the launch or reporting its version tags; so does an outdated-client
-  refusal whose update check the end overtook. Version tags due one task after an answer are
-  dropped if the app ends in between.
+- The HTTP layer sends no call made after the end, and no retry whose wait the end overtook; each
+  rejects `cancelled`. A call whose answer lands after the end rejects `cancelled` too, because the
+  answer can no longer be checked against the session: the launch is not settled and its version
+  tags are not reported. So does a call that fails at the network level or times out after the
+  end: it plans no retry and does not mark the server unreachable. So does an outdated-client
+  refusal whose update check the end overtook, without its verdict event. Version tags due one
+  task after an answer are dropped if the app ends in between. A write cancelled this way was
+  still sent, and it may have completed on the server.
+- The reachability probe arms nothing after the end: its timer stops, and a probe in flight at the
+  end that fails is the last one.
 
 ### Sync and the launch documents
 
