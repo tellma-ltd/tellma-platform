@@ -49,6 +49,9 @@ export const TM_STRINGS_EN = {
     tenantFrozen: '{tenant} is under maintenance.',
     permissionNeeded: 'Needs “{permission}”. Ask your administrator to grant it.',
   },
+  attention: {
+    banners: { offline: 'Connection lost. Reconnecting…' },
+  },
 } as const satisfies TmStringTree;
 
 /**

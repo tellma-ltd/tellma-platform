@@ -7,7 +7,8 @@ own.
 
 | Entry point | Holds | Loaded |
 |---|---|---|
-| `@tellma/core` | The distribution API: `bootstrapTellma`, `provideTellma`, `tmFeature`, the declaration functions (`tmEntity`, `tmPage`, `tmCodedReport`, `tmWidget`, `tmOverride`) and `TM_APP_DECLARATIONS`, the merged declarations; the client metadata's types, its loaders (`tmMetadataLoaders`) and the loaded Core chunk (`TM_CLIENT_METADATA`); the HTTP layer (`TmApi`, `TmApiError`, `TmProblem`), its plain-JSON value types (`TmJson`, `TmDecimal`, `TmId`) and the exact decimal helpers `TmDecimals`; the seams through which telemetry (`TmTelemetry`), the request log (`TmRequestLog`) and page scopes (`provideTmPageScope`) are provided; the session (`TmSession`, `tmSessionGuard`, `tmParseProfileCookie`), the launch mark (`TmLaunch`) and the single-membership rule (`tmSingleLiveTenant`); the client store (`TmClientStore`, `TmStoreRefusedError`, `TM_DOC_FORMATS`) and the tab bus (`TmTabBus`) with its message catalogue; the leader tab (`TmLeader`: whether this tab leads, the hub's status and the tenant's hub events) and the documents only the leader refreshes (`TM_LEADER_DOCUMENTS`); the boot script's result types and the app clock (`TM_NOW`); the derived router's pieces: the root component (`TmApp`), the route data (`TmRouteData`), the title strategy (`TmTitleStrategy`), the URL builders and classifier (`TmUrls`) with the search query's types; the entity registry (`TmEntities`, with its descriptors once the entity model loads, and the declaration types `tmEntity` takes, typed paths `TmPath` included), display names (`TmDisplayNames`, `tm-display-name`), client permissions (`TmPermissions`) and `tmRowsToObjects`; localization: `TmLocalization` (the language, the regional formats, the calendar and the zones, and their switches with the coalesced locale write), `TmServerText` (server codes and keys through the string packs) and `tmEnglish()`, the platform's English; the app-level keyboard shortcuts (`TmShortcuts`, `TmShortcut`, `TM_RESERVED_SHORTCUTS`, `TM_BROWSER_KEYS`, `TmShortcutConflictError`) and the shell frame's seams (`TmShell` with immersive mode, `TmShellMain`, `TM_SHELL_LAYOUT`) | eager |
+| `@tellma/core` | The distribution API: `bootstrapTellma`, `provideTellma`, `tmFeature`, the declaration functions (`tmEntity`, `tmPage`, `tmCodedReport`, `tmWidget`, `tmOverride`) and `TM_APP_DECLARATIONS`, the merged declarations; the client metadata's types, its loaders (`tmMetadataLoaders`) and the loaded Core chunk (`TM_CLIENT_METADATA`); the HTTP layer (`TmApi`, `TmApiError`, `TmProblem`), its plain-JSON value types (`TmJson`, `TmDecimal`, `TmId`) and the exact decimal helpers `TmDecimals`; the seams through which telemetry (`TmTelemetry`), the request log (`TmRequestLog`) and page scopes (`provideTmPageScope`) are provided; the session (`TmSession`, `tmSessionGuard`, `tmParseProfileCookie`), the launch mark (`TmLaunch`) and the single-membership rule (`tmSingleLiveTenant`); the client store (`TmClientStore`, `TmStoreRefusedError`, `TM_DOC_FORMATS`) and the tab bus (`TmTabBus`) with its message catalogue; the leader tab (`TmLeader`: whether this tab leads, the hub's status and the tenant's hub events) and the documents only the leader refreshes (`TM_LEADER_DOCUMENTS`); the boot script's result types and the app clock (`TM_NOW`); the derived router's pieces: the root component (`TmApp`), the route data (`TmRouteData`), the title strategy (`TmTitleStrategy`), the URL builders and classifier (`TmUrls`) with the search query's types; the entity registry (`TmEntities`, with its descriptors once the entity model loads, and the declaration types `tmEntity` takes, typed paths `TmPath` included), display names (`TmDisplayNames`, `tm-display-name`), client permissions (`TmPermissions`) and `tmRowsToObjects`; localization: `TmLocalization` (the language, the regional formats, the calendar and the zones, and their switches with the coalesced locale write), `TmServerText` (server codes and keys through the string packs) and `tmEnglish()`, the platform's English; the app-level keyboard shortcuts (`TmShortcuts`, `TmShortcut`, `TM_RESERVED_SHORTCUTS`, `TM_BROWSER_KEYS`, `TmShortcutConflictError`) and the shell frame's seams (`TmShell` with immersive mode, `TmShellMain`, `TM_SHELL_LAYOUT`); the banners (`TmBanners`) with the input-idle clock (`TmInputIdle`), the attention documents (`TM_ATTENTION_DOCUMENTS`, `TmInboxSummary`, `TmAssignmentsSummary`) and the toast durations (`TM_TOAST_FEEDBACK_MS`, `TM_TOAST_ARRIVAL_MS`) | eager |
+| `@tellma/core/attention` | The attention surfaces every page shows; for now the banner host (`tm-banner-host`), which renders the banner row from `TmBanners` and announces each banner as it is queued | eager, preloaded with the app |
 | `@tellma/core/shell` | The tenant shell, the tenant picker and the signed-out page, which the derived routes load; until their owners arrive they are plain stand-ins, beside one placeholder page for the platform's page families | eager, through `import()` |
 | `@tellma/core/memory` | The tab's memory of its pages: page state (`TmPageState`, `tmPageStateKey`), drafts (`TmDrafts`) and tree expansion (`TmTreeExpansion`), which the page hosts load with them | lazy |
 | `@tellma/core/recents` | The recently visited pages (`TmRecents`), which the launcher and the home page list; the app loads it with `import()` after its first render, when visits start to count | lazy, through `import()` after first render |
@@ -301,6 +302,13 @@ A feature declares a leader document with a `TM_LEADER_DOCUMENTS` multi provider
 the route the leader reads it from, the events that re-read it, its client format version, and an
 optional `pollWhile`. Every tab reads it from the store; none but the leader fetches it.
 
+`provideTellma` registers the platform's two, `TM_ATTENTION_DOCUMENTS`: `inbox` (`inbox/summary`,
+re-read on `inbox.changed` and `job.changed`, and polled while a job is `Pending` or `Running`, so a
+lost job event never strands the bell's progress ring) and `assignments` (`assignments/summary`,
+re-read on `assignments.changed`). Their client mirrors are `TmInboxSummary` and
+`TmAssignmentsSummary`, and `TmLaunchCache.docs.inbox` and `.assignments` read them for the routed
+tenant, so the bell, the tray and the home lists render warm with no request.
+
 ## The HTTP layer
 
 Every request the app makes goes through `TmApi`, over `fetch`; an upload, the one call that
@@ -458,9 +466,50 @@ same way: bidi controls stripped, NFKD with Latin and Arabic marks removed, lowe
 interchangeable Arabic letters folded and tatweel dropped, Arabic-Indic digits as 0-9, and
 punctuation and symbols as single spaces. Nothing on the first frame matches text, so it is an
 entry point of its own rather than part of the primary. The size gate's static-graph check
-(`"tellma".staticGraphExcludes`) proves that neither the primary nor the eager `/shell` reaches it
-through static imports, so the shell's deferred launcher panel and Shortcuts dialog load it with
+(`"tellma".staticGraphExcludes`) proves that neither the primary nor the eager `/shell` and
+`/attention` reach it through static imports, so the shell's deferred launcher panel and Shortcuts dialog load it with
 `import()`.
+
+## Banners and the input-idle clock
+
+`TmBanners` holds the conditions the shell's 32 px banner row shows, one at a time: the head by
+level (1 connection lost, 2 reserved for critical announcements, 3 update, 4 warning, 5 info), then
+by the order `show` first ran, or the banner the user paged to, until it closes or is dismissed. A
+banner of a higher level takes the row at once; one of a lower or equal level adds to the pager's
+"1 of 3". `show` with a live id updates it, and the handle's `update` and `close` change or remove
+it. Levels 1-3 are the platform's: a distribution's banner there throws in development, as does a
+dismissible banner at level 1 or 2. A dismissal holds for the rest of the tab's life, and the update
+banner's (shown through the internal `ɵshow` with the version as its scope) for that version only.
+
+```ts
+const ref = inject(TmBanners).show({ id: 'acme.period-closing', level: 4, tone: 'warning', dismissible: true,
+  message: computed(() => t('Acme_Banner_PeriodClosing')) });
+// When the condition ends:
+ref.close();
+```
+
+The row never moves the page under the user's hands. `current` (what the row renders) and `visible`
+(the row is open; the shell sets `--tm-banner-height` from it) change the row's height only at an
+idle moment: `TmInputIdle`, the tab's one clock, turns `idle` 2 s after the last `keydown`,
+`pointerdown`, `pointermove`, `wheel` or `touchstart` on the window, heard by passive capture
+listeners, and `whenIdle()` waits for it; spec 0024's time-zone prompt waits on the same clock. A
+message swap in an open row, the user's own dismiss and any change while the page is hidden apply at
+once, and a row whose last banner closes while it waits stays open and empty until the gate. The
+internal `ɵhead` follows every change at once, so the banner host announces a banner when it is
+queued, before the row opens. Each banner's time from queued to shown is the timing
+`tm.attention.banner { id, level }`.
+
+`provideTellma` starts the platform's offline banner, `tm.offline`, in every shell: it shows once
+`TmApi.online()` has been false for 5 s, and closes when it turns true. The update banner,
+`tm.update`, is the update service's.
+
+`@tellma/core/attention` holds `tm-banner-host`, which the shells place in the banner row. It renders
+`tm-banner-bar` from `current`, wires its action, pager and dismiss buttons back, never takes focus,
+and owns the one visually hidden live region: assertive for level 1, polite otherwise, written once
+per banner that becomes the row's.
+
+The toast policy's durations are `TM_TOAST_FEEDBACK_MS` (4 s, an outcome the acting tab raises) and
+`TM_TOAST_ARRIVAL_MS` (6 s, an arriving notification or assignment).
 
 ## Entities, display names and permissions
 

@@ -49,6 +49,12 @@ export type TmFakeApiCallKind = 'download' | 'fetch-blob' | 'read' | 'send' | 'u
 export type TmFakeApiResponder = (call: TmFakeApiCall) => unknown;
 
 // @public
+export function tmFakeAssignmentsSummary(members?: Partial<TmAssignmentsSummary>): TmAssignmentsSummary;
+
+// @public
+export function tmFakeInboxSummary(members?: Partial<TmInboxSummary>): TmInboxSummary;
+
+// @public
 export class TmFakeLocks extends TmLocks {
     readonly held: Signal<readonly string[]>;
     run<T>(name: string, work: () => Promise<T>): Promise<T>;

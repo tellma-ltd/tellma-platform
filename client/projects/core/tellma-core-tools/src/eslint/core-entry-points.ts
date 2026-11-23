@@ -45,8 +45,8 @@ export const TM_CORE_ENTRY_POINTS: Readonly<Record<string, TmEntryPointRule>> = 
   // Spec 0027's search normalization, which spec 0027 §1 places in the
   // primary; nothing on the first frame matches text, so it loads with the
   // code that does. The eager entry points may import it, but the size gate's
-  // staticGraphExcludes keeps every one of them that exists from reaching it
-  // statically (`/attention` joins that list when it lands).
+  // staticGraphExcludes keeps every one of them (`/shell` and `/attention`)
+  // from reaching it statically.
   './search-normalize': { load: 'shared', imports: [] },
   './realtime': { load: 'lazy', imports: [] },
   './support': { load: 'lazy', imports: [] },

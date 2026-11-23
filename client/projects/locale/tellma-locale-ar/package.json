@@ -25,11 +25,11 @@
   "tellma": {
     "budgetsInKb": {
       ".": 0.5,
-      "./strings": 6.5
+      "./strings": 7
     },
     "budgetNotes": {
       ".": "Born at 0.41 KB measured: provideTellmaLocaleAr and tmArabic, which loads the strings entry point with import().",
-      "./strings": "Born at 6.39 KB measured: the component library's Arabic and the platform's Arabic table. An app loads it on the first switch to Arabic, never in its initial bundle.",
+      "./strings": "Born at 6.39 KB measured: the component library's Arabic and the platform's Arabic table. An app loads it on the first switch to Arabic, never in its initial bundle. Raised from 6.5 to 7 for the platform's Arabic banner string (spec 0028's offline banner): measured 6.51 with it against the 6.5 ceiling (the string adds about 0.03 KB), the ceiling rounded up to the next 0.5 KB. Lazy, so nothing reaches the initial bundle.",
       "_": "Ceilings are ratchets. Any raise belongs here with its reason; a raise with no note is a bug."
     }
   }

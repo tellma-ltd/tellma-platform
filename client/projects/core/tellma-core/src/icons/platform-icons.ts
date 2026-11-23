@@ -17,6 +17,7 @@ import {
   PanelLeftOpen,
   Redo,
   Undo,
+  WifiOff,
 } from 'lucide';
 
 // The platform's icon names (spec 0024 §2.2): the one place the platform
@@ -40,4 +41,5 @@ export const TM_PLATFORM_ICONS: Readonly<Record<string, TmIconSource>> = {
   'panel-left-open': { node: PanelLeftOpen, mirrorInRtl: true },
   redo: { node: Redo, mirrorInRtl: true },
   undo: { node: Undo, mirrorInRtl: true },
+  'wifi-off': WifiOff,
 };

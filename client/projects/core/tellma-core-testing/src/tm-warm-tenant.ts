@@ -25,7 +25,10 @@ export interface TmWarmTenantOptions {
  *
  * @param store - The client store, such as `provideTellmaStateTesting()` provides.
  * @param partition - The tenant's partition.
- * @param docs - The tenant's `settings`, `me` and `tenant` documents.
+ * @param docs - The tenant's `settings`, `me` and `tenant` documents, and the
+ * `inbox` and `assignments` summaries a test gives, which need
+ * `TM_ATTENTION_DOCUMENTS` registered as `TM_LEADER_DOCUMENTS`, as
+ * `provideTellma` registers them.
  * @param options - The sync's time and list tags.
  * @returns A promise that settles once every document is stored.
  *
@@ -44,8 +47,11 @@ export async function tmWarmTenant(
   const at = options.at ?? Date.now();
   const sync: ɵTmSyncDoc = { at, entities: docs.me.tags['entities'] ?? null, entityTags: options.entityTags ?? {} };
   // The documents first, then the stamp that makes them current.
-  for (const name of ['settings', 'me', 'tenant'] as const) {
-    await store.put(partition, name, { tag: null, savedAt: at, data: docs[name] });
+  for (const name of ['settings', 'me', 'tenant', 'inbox', 'assignments'] as const) {
+    // The attention documents are stored only when the test gives them.
+    if (docs[name] !== undefined) {
+      await store.put(partition, name, { tag: null, savedAt: at, data: docs[name] });
+    }
   }
   await store.put(partition, 'sync', { tag: null, savedAt: at, data: sync });
 }

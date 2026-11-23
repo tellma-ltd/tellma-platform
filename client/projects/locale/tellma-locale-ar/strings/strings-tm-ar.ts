@@ -58,4 +58,7 @@ export const TM_STRINGS_AR: TmStringTree = {
     tenantFrozen: '{tenant} قيد الصيانة.',
     permissionNeeded: `يتطلب ذلك صلاحية «{permission}». ${imperative('اطلب', 'اطلبي')} من المسؤول منحها لك.`,
   },
+  attention: {
+    banners: { offline: 'انقطع الاتصال. جارٍ إعادة الاتصال…' },
+  },
 };

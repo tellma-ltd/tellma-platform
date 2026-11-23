@@ -12,8 +12,9 @@
  * HTTP layer with its error and plain-JSON value types, the exact decimal
  * helpers, the client store, the tab bus and the leader tab, the app-level
  * keyboard shortcut registry, the shell frame's seams (immersive mode and what
- * the tenant shell's `main` shows), and the seams through which telemetry, the
- * request log and page scopes are provided.
+ * the tenant shell's `main` shows), the banners with the input-idle clock, the
+ * attention documents and the toast durations, and the seams through which
+ * telemetry, the request log and page scopes are provided.
  *
  * @packageDocumentation
  */
@@ -373,3 +374,17 @@ export type {
   TmSettingVisibility,
 } from './src/admin/tm-admin-metadata';
 export type { TmNotificationSeverity, TmNotificationTypeMetadata } from './src/attention/tm-notification-metadata';
+
+// Attention: the banners and the input-idle clock their row waits for, the
+// attention documents the leader tab keeps fresh, and the toast policy's
+// durations.
+export { TmBanners, type TmBannerLevel, type TmBannerOptions, type TmBannerRef, type TmBannerView } from './src/attention/tm-banners';
+export { TmInputIdle } from './src/attention/tm-input-idle';
+export {
+  TM_ATTENTION_DOCUMENTS,
+  type TmAssignmentsSummary,
+  type TmInboxRunningJob,
+  type TmInboxSummary,
+  type TmInboxVerbResult,
+} from './src/attention/tm-attention-documents';
+export { TM_TOAST_ARRIVAL_MS, TM_TOAST_FEEDBACK_MS } from './src/attention/tm-toast-durations';
