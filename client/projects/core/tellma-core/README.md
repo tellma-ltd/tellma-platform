@@ -160,9 +160,11 @@ resolves anything:
   after the end.
 - The locale write's timers stop. A write that lands after the end is not adopted, an offline
   failure plans no further try, and nothing queued behind it is sent.
-
-The HTTP layer's response observers are not yet covered: an answer that lands after the end can
-still throw from its user check or its version-tags observer.
+- The HTTP layer admits no call after the end, and no retry whose wait the end overtook. An answer
+  that lands after the end can no longer be checked against the session, so its call rejects
+  `cancelled` without settling the launch or reporting its version tags; so does an outdated-client
+  refusal whose update check the end overtook. Version tags due one task after an answer are
+  dropped if the app ends in between.
 
 ### Sync and the launch documents
 
