@@ -48,15 +48,27 @@ namespace Tellma.Core.AspNetCore.Tests.Api
     ///     metadata, binds every body shape to the service call it selects, and refuses an outdated
     ///     client, an oversized save and an over-long confirmation header before anything runs.
     /// </summary>
-    public sealed class WebApiProjectionTests
+    public sealed class WebApiProjectionTests : IClassFixture<WebApiProjectionTests.Host>
     {
         /// <summary>The web surface's path for tenant 1.</summary>
         private const string Web = "/1/api/web/";
 
-        [Fact]
-        public async Task The_host_maps_exactly_the_route_model()
+        /// <summary>The host the cases share.</summary>
+        private readonly Host _fixture;
+
+        /// <summary>Takes the shared host, its recorded calls forgotten and its stand-ins answering again.</summary>
+        /// <param name="fixture">The host the cases share.</param>
+        public WebApiProjectionTests(Host fixture)
         {
-            await using TellmaTestHost host = await StartAsync();
+            ArgumentNullException.ThrowIfNull(fixture);
+            _fixture = fixture;
+            fixture.Started.Services.GetRequiredService<PipelineLog>().Reset();
+        }
+
+        [Fact]
+        public void The_host_maps_exactly_the_route_model()
+        {
+            TellmaTestHost host = _fixture.Started;
             IReadOnlyList<RouteContract> routes = host.Services.GetRequiredService<IRouteContracts>().Routes;
             List<RouteEndpoint> projected = Projected(host);
 
@@ -75,9 +87,9 @@ namespace Tellma.Core.AspNetCore.Tests.Api
         }
 
         [Fact]
-        public async Task A_rate_policy_an_action_method_declares_reaches_its_endpoint_ahead_of_the_groups()
+        public void A_rate_policy_an_action_method_declares_reaches_its_endpoint_ahead_of_the_groups()
         {
-            await using TellmaTestHost host = await StartAsync();
+            TellmaTestHost host = _fixture.Started;
             List<RouteEndpoint> projected = Projected(host);
 
             // --- The export's and the report's own policies, chained ahead of the web group's; the report's lane by priority ---
@@ -136,10 +148,10 @@ namespace Tellma.Core.AspNetCore.Tests.Api
 
         [Theory]
         [MemberData(nameof(Table))]
-        public async Task Each_route_carries_the_metadata_of_its_contract(
+        public void Each_route_carries_the_metadata_of_its_contract(
             string relative, string? securable, bool mutation, bool readOnly, bool isLong, bool polling, bool stepUp, string kind)
         {
-            await using TellmaTestHost host = await StartAsync();
+            TellmaTestHost host = _fixture.Started;
             RouteEndpoint endpoint = Assert.Single(Projected(host), endpoint => endpoint.RoutePattern.RawText!.EndsWith("/api/web/" + relative, StringComparison.Ordinal));
             EndpointMetadataCollection metadata = endpoint.Metadata;
             ProjectedRouteMetadata projected = metadata.GetRequiredMetadata<ProjectedRouteMetadata>();
@@ -168,9 +180,9 @@ namespace Tellma.Core.AspNetCore.Tests.Api
         }
 
         [Fact]
-        public async Task The_HTTP_JSON_options_follow_the_platform_rules()
+        public void The_HTTP_JSON_options_follow_the_platform_rules()
         {
-            await using TellmaTestHost host = await StartAsync();
+            TellmaTestHost host = _fixture.Started;
             JsonSerializerOptions options = host.Services.GetRequiredService<IOptions<JsonOptions>>().Value.SerializerOptions;
 
             Assert.Equal(JsonNamingPolicy.CamelCase, options.PropertyNamingPolicy);
@@ -219,7 +231,7 @@ namespace Tellma.Core.AspNetCore.Tests.Api
         [Fact]
         public async Task A_save_refused_by_validation_names_each_entity_and_its_property_by_its_label()
         {
-            await using TellmaTestHost host = await StartAsync();
+            TellmaTestHost host = _fixture.Started;
             host.Services.GetRequiredService<PipelineLog>().Refusal = new ValidationException(
                 [new ValidationError(ValidationPath.Root.Index(1).Property(nameof(PjCenter.IsActive)), "Pj.Untidy", new Dictionary<string, object?> { ["property"] = nameof(PjCenter.IsActive) })]);
 
@@ -261,7 +273,7 @@ namespace Tellma.Core.AspNetCore.Tests.Api
         [Fact]
         public async Task A_save_awaiting_confirmation_renders_its_first_warnings_own_message()
         {
-            await using TellmaTestHost host = await StartAsync();
+            TellmaTestHost host = _fixture.Started;
             host.Services.GetRequiredService<PipelineLog>().Refusal = new ConfirmationRequiredException(
                 [new ConfirmationRequest(ProjectionModel.ConfirmationKeys[0], [1], new Dictionary<string, object?>())]);
 
@@ -277,7 +289,7 @@ namespace Tellma.Core.AspNetCore.Tests.Api
         [Fact]
         public async Task The_standard_operations_bind_their_bodies_to_the_service()
         {
-            await using TellmaTestHost host = await StartAsync();
+            TellmaTestHost host = _fixture.Started;
             string cookie = host.Cookie();
 
             // --- Reads: the extras become the details request; get-by-parent-ids answers a page of rows alone ---
@@ -317,7 +329,7 @@ namespace Tellma.Core.AspNetCore.Tests.Api
         [Fact]
         public async Task Each_entity_action_shape_binds_its_body_to_the_action_call()
         {
-            await using TellmaTestHost host = await StartAsync();
+            TellmaTestHost host = _fixture.Started;
             string cookie = host.Cookie();
 
             // --- Entities results: EntityActionRequest and EntityActionRequest<T>, the built-in activation among them ---
@@ -360,7 +372,7 @@ namespace Tellma.Core.AspNetCore.Tests.Api
         [InlineData("centers/get", /*lang=json,strict*/ """{"id":3000000000}""", "id")]
         public async Task An_id_outside_an_int_key_is_a_bad_request_naming_its_path(string relative, string body, string path)
         {
-            await using TellmaTestHost host = await StartAsync();
+            TellmaTestHost host = _fixture.Started;
 
             using HttpResponseMessage response = await SendAsync(host, host.Cookie(), relative, body);
 
@@ -374,7 +386,7 @@ namespace Tellma.Core.AspNetCore.Tests.Api
         [Fact]
         public async Task An_action_without_arguments_it_requires_is_a_bad_request()
         {
-            await using TellmaTestHost host = await StartAsync();
+            TellmaTestHost host = _fixture.Started;
 
             using HttpResponseMessage response = await SendAsync(host, host.Cookie(), "centers/score", /*lang=json,strict*/ """{"ids":[1]}""");
 
@@ -385,7 +397,7 @@ namespace Tellma.Core.AspNetCore.Tests.Api
         [Fact]
         public async Task The_API_actions_child_queries_and_routed_services_reach_their_services()
         {
-            await using TellmaTestHost host = await StartAsync();
+            TellmaTestHost host = _fixture.Started;
             string cookie = host.Cookie();
 
             using JsonDocument summary = await PostAsync(host, cookie, "centers/summary", /*lang=json,strict*/ """{"language":"ar"}""", HttpStatusCode.OK);
@@ -405,7 +417,7 @@ namespace Tellma.Core.AspNetCore.Tests.Api
         [Fact]
         public async Task A_job_hand_off_answers_202_with_its_polling_target()
         {
-            await using TellmaTestHost host = await StartAsync();
+            TellmaTestHost host = _fixture.Started;
 
             using JsonDocument accepted = await PostAsync(host, host.Cookie(), "centers/rebuild", /*lang=json,strict*/ """{"ids":[1]}""", HttpStatusCode.Accepted);
 
@@ -415,7 +427,7 @@ namespace Tellma.Core.AspNetCore.Tests.Api
         [Fact]
         public async Task A_pre_serialized_document_is_written_as_its_bytes()
         {
-            await using TellmaTestHost host = await StartAsync();
+            TellmaTestHost host = _fixture.Started;
 
             using HttpResponseMessage response = await SendAsync(host, host.Cookie(), "pj-inbox/document", null);
 
@@ -427,7 +439,7 @@ namespace Tellma.Core.AspNetCore.Tests.Api
         [Fact]
         public async Task The_settings_client_document_is_written_as_its_bytes()
         {
-            await using TellmaTestHost host = await StartAsync();
+            TellmaTestHost host = _fixture.Started;
 
             // --- The platform's own action: a member route on the settings service, declared in Tellma.Core ---
             RouteEndpoint endpoint = Assert.Single(Projected(host), static endpoint => endpoint.RoutePattern.RawText!.EndsWith("/api/web/settings/client", StringComparison.Ordinal));
@@ -453,7 +465,7 @@ namespace Tellma.Core.AspNetCore.Tests.Api
         [InlineData("settings/refresh-caches", HttpStatusCode.NoContent, true)]
         public async Task Each_settings_route_answers_through_the_witness(string relative, HttpStatusCode status, bool stepUp)
         {
-            await using TellmaTestHost host = await StartAsync();
+            TellmaTestHost host = _fixture.Started;
             PipelineLog log = host.Services.GetRequiredService<PipelineLog>();
             string cookie = host.Cookie();
 
@@ -471,7 +483,7 @@ namespace Tellma.Core.AspNetCore.Tests.Api
         [Fact]
         public async Task A_workbook_streams_as_an_attachment_and_is_disposed()
         {
-            await using TellmaTestHost host = await StartAsync();
+            TellmaTestHost host = _fixture.Started;
 
             using HttpResponseMessage response = await SendAsync(host, host.Cookie(), "pj-inbox/export", null);
 
@@ -512,7 +524,7 @@ namespace Tellma.Core.AspNetCore.Tests.Api
                 },
             };
             ActivitySource.AddActivityListener(listener);
-            await using TellmaTestHost host = await StartAsync();
+            TellmaTestHost host = _fixture.Started;
 
             using HttpRequestMessage request = Request(relative, relative.StartsWith("pj-inbox", StringComparison.Ordinal) ? null : /*lang=json,strict*/ """{"ids":[1]}""", host.Cookie());
             request.Headers.Add("traceparent", $"00-{trace.ToHexString()}-{ActivitySpanId.CreateRandom().ToHexString()}-01");
@@ -563,7 +575,7 @@ namespace Tellma.Core.AspNetCore.Tests.Api
         [Fact]
         public async Task Tenant_JSON_answers_carry_no_store()
         {
-            await using TellmaTestHost host = await StartAsync();
+            TellmaTestHost host = _fixture.Started;
             string cookie = host.Cookie();
 
             using HttpResponseMessage answer = await SendAsync(host, cookie, "centers/query", "{}");
@@ -617,7 +629,7 @@ namespace Tellma.Core.AspNetCore.Tests.Api
         [Fact]
         public async Task Seventeen_confirmation_keys_are_a_bad_request()
         {
-            await using TellmaTestHost host = await StartAsync();
+            TellmaTestHost host = _fixture.Started;
             string keys = string.Join(", ", Enumerable.Range(1, 17).Select(static i => "Pj.Key" + i));
 
             using HttpResponseMessage response = await SendAsync(host, host.Cookie(), "centers/delete", /*lang=json,strict*/ """{"ids":[1]}""", confirm: keys);
@@ -632,7 +644,7 @@ namespace Tellma.Core.AspNetCore.Tests.Api
         [InlineData("Pj.Bäckdated")]
         public async Task A_confirmation_key_outside_visible_ASCII_is_a_bad_request(string key)
         {
-            await using TellmaTestHost host = await StartAsync();
+            TellmaTestHost host = _fixture.Started;
 
             using HttpRequestMessage request = Request("centers/delete", /*lang=json,strict*/ """{"ids":[1]}""", host.Cookie());
             _ = request.Headers.TryAddWithoutValidation(TellmaHeaders.Confirm, System.Text.Encoding.Latin1.GetString(System.Text.Encoding.Latin1.GetBytes(key)));
@@ -647,7 +659,7 @@ namespace Tellma.Core.AspNetCore.Tests.Api
         [InlineData(101, HttpStatusCode.BadRequest)]
         public async Task A_confirmation_key_is_at_most_100_characters(int length, HttpStatusCode status)
         {
-            await using TellmaTestHost host = await StartAsync();
+            TellmaTestHost host = _fixture.Started;
             string key = "Pj." + new string('K', length - 3);
 
             using HttpResponseMessage response = await SendAsync(host, host.Cookie(), "centers/delete", /*lang=json,strict*/ """{"ids":[1]}""", confirm: key);
@@ -659,7 +671,7 @@ namespace Tellma.Core.AspNetCore.Tests.Api
         [Fact]
         public async Task Sixteen_confirmation_keys_seed_the_declared_ones_before_the_call()
         {
-            await using TellmaTestHost host = await StartAsync();
+            TellmaTestHost host = _fixture.Started;
             string keys = string.Join(",", ProjectionModel.ConfirmationKeys.Concat(Enumerable.Range(1, 14).Select(static i => "Pj.Undeclared" + i)));
 
             await PostAsync(host, host.Cookie(), "centers/delete", /*lang=json,strict*/ """{"ids":[1]}""", HttpStatusCode.OK, confirm: keys);
@@ -692,7 +704,7 @@ namespace Tellma.Core.AspNetCore.Tests.Api
         public async Task A_stack_ceiling_below_the_web_ceiling_wins()
         {
             // The web ceiling is the default 1,000; the ledger's own is 2.
-            await using TellmaTestHost host = await StartAsync();
+            TellmaTestHost host = _fixture.Started;
             string cookie = host.Cookie();
 
             using HttpResponseMessage refused = await SendAsync(host, cookie, "ledgers/save", /*lang=json,strict*/ """{"entities":[{"name":"A"},{"name":"B"},{"name":"C"}]}""");
@@ -729,7 +741,7 @@ namespace Tellma.Core.AspNetCore.Tests.Api
         [Fact]
         public async Task A_success_without_its_witness_is_an_internal_error()
         {
-            await using TellmaTestHost host = await StartAsync();
+            TellmaTestHost host = _fixture.Started;
             PipelineLog log = host.Services.GetRequiredService<PipelineLog>();
             string cookie = host.Cookie();
 
@@ -746,7 +758,7 @@ namespace Tellma.Core.AspNetCore.Tests.Api
         [Fact]
         public async Task A_member_route_is_witnessed_by_the_connection()
         {
-            await using TellmaTestHost host = await StartAsync();
+            TellmaTestHost host = _fixture.Started;
             host.Services.GetRequiredService<PipelineLog>().SkipWitness = true;
 
             await PostAsync(host, host.Cookie(), "centers/ping", null, HttpStatusCode.NoContent);
@@ -1051,6 +1063,36 @@ namespace Tellma.Core.AspNetCore.Tests.Api
             public override JsonConverter? CreateConverter(Type typeToConvert, JsonSerializerOptions options)
             {
                 throw new NotSupportedException($"{typeToConvert.Name} has no converter.");
+            }
+        }
+
+        /// <summary>
+        ///     One host over the suite's model for the cases that read its endpoints or send requests:
+        ///     each case starts from a log with no calls and stand-ins that answer. A case that changes
+        ///     the composition, the configuration or the environment, or that reads the host's logs or
+        ///     instruments, starts a host of its own.
+        /// </summary>
+        public sealed class Host : IAsyncLifetime
+        {
+            /// <summary>The host, once started.</summary>
+            private TellmaTestHost? _host;
+
+            /// <summary>The started host.</summary>
+            internal TellmaTestHost Started => _host ?? throw new InvalidOperationException("The host has not started.");
+
+            /// <inheritdoc />
+            public async ValueTask InitializeAsync()
+            {
+                _host = await StartAsync();
+            }
+
+            /// <inheritdoc />
+            public async ValueTask DisposeAsync()
+            {
+                if (_host is not null)
+                {
+                    await _host.DisposeAsync();
+                }
             }
         }
     }
