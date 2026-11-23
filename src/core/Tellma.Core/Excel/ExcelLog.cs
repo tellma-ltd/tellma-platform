@@ -39,6 +39,15 @@ namespace Tellma.Core.Excel
             Message = "An export of {Entity} was refused: {Rows} rows against a cap of {Cap}.")]
         public static partial void ExportRejected(ILogger logger, string entity, int rows, int cap);
 
+        /// <summary>An import's shared strings outgrew their memory budget and spilled to scratch files.</summary>
+        /// <param name="logger">The logger.</param>
+        /// <param name="bytes">The bytes the shared strings were charged, text and overhead together.</param>
+        [LoggerMessage(
+            EventName = "SharedStringsSpilled",
+            Level = LogLevel.Information,
+            Message = "An import's shared strings were charged {Bytes} bytes and spilled to scratch files.")]
+        public static partial void SharedStringsSpilled(ILogger logger, long bytes);
+
         /// <summary>
         ///     A property the server owns is marked as excluded from Excel, which it already is: the
         ///     editable shape never carries it, and the display shape carries it only when selected.

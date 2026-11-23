@@ -21,6 +21,7 @@ import {
   ɵtmKeepAboveModals,
   ɵtmOpenModals,
   ɵtmRaiseTopLayer,
+  ɵtmRegisterBusy,
   ɵtmWatchModals,
 } from '@tellma/core-ui/overlay';
 
@@ -177,8 +178,12 @@ export class TmBusyOverlay {
     // --- The page-wide layers: on top while blocking, standing aside for a new modal ---
     const releaseLayer = ɵtmKeepAboveModals(this.element, 2, () => this.blocked());
     const stopWatching = ɵtmWatchModals(() => this.modalsChanged());
+    // Code that must stay still while a run is in progress asks the layers,
+    // without creating this overlay.
+    const releaseBusy = ɵtmRegisterBusy(() => this.active());
     inject(DestroyRef).onDestroy(() => {
       clearTimeout(readyTimer);
+      releaseBusy();
       stopWatching();
       releaseLayer();
       this.release();

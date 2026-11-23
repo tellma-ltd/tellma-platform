@@ -42,6 +42,9 @@ namespace Tellma.Core.Notifications
         /// <summary>The client event announcing that a user's inbox changed.</summary>
         public const string InboxChangedEvent = "inbox.changed";
 
+        /// <summary>The most characters an id appended to a key prefix spells: a negative bigint's.</summary>
+        private const int MaxIdLength = 20;
+
         /// <summary>The scope's tenant database, which the asynchronous calls create their batch from.</summary>
         private readonly ITenantDatabase _database;
 
@@ -225,6 +228,39 @@ namespace Tellma.Core.Notifications
                 BatchResult<WithdrawOutcome> result = NotificationStatements.Withdraw(data, key, recipients);
                 Requests(data).Withdrawn.Add(new WithdrawnRequest(key, result));
             }
+        }
+
+        /// <summary>
+        ///     Appends one statement to <paramref name="batch" /> deleting the rows of every key that is
+        ///     a prefix followed by one id of a batch table, such as the notices of the rows a delete
+        ///     removes, whose ids exist only inside the batch. Returns at once; nothing runs until the
+        ///     batch executes, and the changed inboxes are announced after it commits, as
+        ///     <see cref="Withdraw" />'s are.
+        /// </summary>
+        /// <param name="batch">The caller's persist batch.</param>
+        /// <param name="keyPrefix">The keys' common start, such as <c>core.Report:</c>.</param>
+        /// <param name="ids">The batch table of ids, in its <c>Id</c> column, that complete the keys.</param>
+        /// <exception cref="ArgumentNullException">An argument is null.</exception>
+        /// <exception cref="InvalidOperationException">The prefix leaves no room for an id under the key's length.</exception>
+        public void WithdrawEach(IDataBatch batch, string keyPrefix, SqlIdentifier ids)
+        {
+            ArgumentNullException.ThrowIfNull(batch);
+            ArgumentNullException.ThrowIfNull(keyPrefix);
+            ArgumentNullException.ThrowIfNull(ids);
+
+            // --- A persist participant's recording view: recorded, so a recomposed persist appends it again ---
+            if (batch is RecordingBatch recording)
+            {
+                recording.Record(inner => WithdrawEach(inner, keyPrefix, ids));
+                return;
+            }
+
+            // --- The longest key the prefix can make, a bigint's 20 characters after it, within the key's length ---
+            DedupKey(keyPrefix + new string('0', MaxIdLength), required: true, "The withdrawal");
+            DataBatch data = Writable(batch);
+            EnsureCapacity(data, 1);
+            BatchResult<WithdrawOutcome> result = NotificationStatements.WithdrawEach(data, keyPrefix, ids);
+            Requests(data).Withdrawn.Add(new WithdrawnRequest(keyPrefix + "*", result));
         }
 
         /// <inheritdoc />

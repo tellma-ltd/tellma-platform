@@ -26,8 +26,14 @@ export type CoreEmailAudience = 'Internal' | 'External';
 /** The values of the enum `core.EmailDeliveryStatus`, as the wire spells them. */
 export type CoreEmailDeliveryStatus = 'Deferred' | 'Delivered' | 'Dropped' | 'Failed' | 'Bounced' | 'SpamReported';
 
+/** The values of the enum `core.ExportKind`, as the wire spells them. */
+export type CoreExportKind = 'Display' | 'ForImport' | 'Report';
+
 /** The values of the enum `core.Gender`, as the wire spells them. */
 export type CoreGender = 'Female' | 'Male';
+
+/** The values of the enum `core.ImportMode`, as the wire spells them. */
+export type CoreImportMode = 'Insert' | 'Update' | 'Upsert';
 
 /** The values of the enum `core.InviteStatus`, as the wire spells them. */
 export type CoreInviteStatus = 'Invited' | 'Reinvited' | 'Active';
@@ -50,8 +56,14 @@ export type CoreOutgoingEmailState = 'Pending' | 'Sending' | 'Sent' | 'Sandboxed
 /** The values of the enum `core.OverlapPolicy`, as the wire spells them. */
 export type CoreOverlapPolicy = 'Skip' | 'Allow';
 
+/** The values of the enum `core.ReportKind`, as the wire spells them. */
+export type CoreReportKind = 'List' | 'Summary' | 'Pivot' | 'Chart';
+
 /** The values of the enum `core.SchedulePausedReason`, as the wire spells them. */
 export type CoreSchedulePausedReason = 'OwnerInactive' | 'Exhausted' | 'HandlerRetired';
+
+/** The values of the enum `core.ShareAccess`, as the wire spells them. */
+export type CoreShareAccess = 'View' | 'Edit';
 
 /** The values of the enum `core.UserKind`, as the wire spells them. */
 export type CoreUserKind = 'Individual' | 'System' | 'Service';
@@ -178,6 +190,68 @@ export interface CoreBlob {
   committedAt?: string | null;
   /** The property `ExpiresAt`. */
   expiresAt?: string | null;
+}
+
+/** A row of the entity `core.Export`, as the wire carries it. */
+export interface CoreExport {
+  /** The property `Id`. */
+  id: number;
+  /** The property `CreatedAt`. */
+  createdAt: string;
+  /** The property `CreatedById`. */
+  createdById: number;
+  /** The property `ModifiedAt`. */
+  modifiedAt: string;
+  /** The property `ModifiedById`. */
+  modifiedById: number;
+  /** The property `JobId`. */
+  jobId?: number | null;
+  /** The property `Resource`. */
+  resource: string;
+  /** The property `Kind`. */
+  kind: CoreExportKind;
+  /** The property `RequestJson`. */
+  requestJson?: string | null;
+  /** The property `FileName`. */
+  fileName?: string | null;
+  /** The property `FileId`. */
+  fileId?: number | null;
+  /** The property `RowCount`. */
+  rowCount?: number | null;
+  /** The property `ExpiresAt`. */
+  expiresAt: string;
+}
+
+/** A row of the entity `core.Import`, as the wire carries it. */
+export interface CoreImport {
+  /** The property `Id`. */
+  id: number;
+  /** The property `CreatedAt`. */
+  createdAt: string;
+  /** The property `CreatedById`. */
+  createdById: number;
+  /** The property `ModifiedAt`. */
+  modifiedAt: string;
+  /** The property `ModifiedById`. */
+  modifiedById: number;
+  /** The property `JobId`. */
+  jobId?: number | null;
+  /** The property `Resource`. */
+  resource: string;
+  /** The property `Mode`. */
+  mode: CoreImportMode;
+  /** The property `RequestJson`. */
+  requestJson?: string | null;
+  /** The property `FileId`. */
+  fileId?: number | null;
+  /** The property `ResultJson`. */
+  resultJson?: string | null;
+  /** The property `RowCount`. */
+  rowCount?: number | null;
+  /** The property `ErrorCount`. */
+  errorCount?: number | null;
+  /** The property `ExpiresAt`. */
+  expiresAt: string;
 }
 
 /** A row of the entity `core.Job`, as the wire carries it. */
@@ -360,6 +434,48 @@ export interface CorePermission {
   filterQueryexVersion?: number | null;
   /** The property `Notes`. */
   notes?: string | null;
+}
+
+/** A row of the entity `core.Report`, as the wire carries it. */
+export interface CoreReport {
+  /** The property `Id`. */
+  id: number;
+  /** The property `CreatedAt`. */
+  createdAt: string;
+  /** The property `CreatedById`. */
+  createdById: number;
+  /** The property `ModifiedAt`. */
+  modifiedAt: string;
+  /** The property `ModifiedById`. */
+  modifiedById: number;
+  /** The property `Code`. */
+  code?: string | null;
+  /** The property `Title`. */
+  title: string;
+  /** The property `Title2`. */
+  title2?: string | null;
+  /** The property `Title3`. */
+  title3?: string | null;
+  /** The property `Description`. */
+  description?: string | null;
+  /** The property `Description2`. */
+  description2?: string | null;
+  /** The property `Description3`. */
+  description3?: string | null;
+  /** The property `Root`. */
+  root: string;
+  /** The property `Kind`. */
+  kind: CoreReportKind;
+  /** The property `DefinitionJson`. */
+  definitionJson: TmJson;
+  /** The property `QueryexVersion`. */
+  queryexVersion: number;
+  /** The property `OwnerId`. */
+  ownerId?: number | null;
+  /** The property `BasedOnId`. */
+  basedOnId?: number | null;
+  /** The property `IsActive`. */
+  isActive: boolean;
 }
 
 /** A row of the entity `core.Role`, as the wire carries it. */
@@ -623,6 +739,10 @@ declare module '@tellma/core' {
     'acme.CustomerExtra': AcmeCustomerExtra;
     /** The entity `core.Blob`. */
     'core.Blob': CoreBlob;
+    /** The entity `core.Export`. */
+    'core.Export': CoreExport;
+    /** The entity `core.Import`. */
+    'core.Import': CoreImport;
     /** The entity `core.Job`. */
     'core.Job': CoreJob;
     /** The entity `core.Notification`. */
@@ -633,6 +753,8 @@ declare module '@tellma/core' {
     'core.OutgoingEmailAttachment': CoreOutgoingEmailAttachment;
     /** The entity `core.Permission`. */
     'core.Permission': CorePermission;
+    /** The entity `core.Report`. */
+    'core.Report': CoreReport;
     /** The entity `core.Role`. */
     'core.Role': CoreRole;
     /** The entity `core.RoleMembership`. */
@@ -688,6 +810,20 @@ declare module '@tellma/core' {
       navigations: { CreatedBy: 'core.User' };
       children: {};
     };
+    /** The path shape of the entity `core.Export`. */
+    'core.Export': {
+      scalars: 'Id' | 'CreatedAt' | 'CreatedById' | 'ModifiedAt' | 'ModifiedById' | 'JobId' | 'Resource' | 'Kind' | 'RequestJson' | 'FileName' | 'FileId' | 'RowCount' | 'ExpiresAt';
+      groups: never;
+      navigations: { CreatedBy: 'core.User'; ModifiedBy: 'core.User'; Job: 'core.Job'; File: 'core.Blob' };
+      children: {};
+    };
+    /** The path shape of the entity `core.Import`. */
+    'core.Import': {
+      scalars: 'Id' | 'CreatedAt' | 'CreatedById' | 'ModifiedAt' | 'ModifiedById' | 'JobId' | 'Resource' | 'Mode' | 'RequestJson' | 'FileId' | 'ResultJson' | 'RowCount' | 'ErrorCount' | 'ExpiresAt';
+      groups: never;
+      navigations: { CreatedBy: 'core.User'; ModifiedBy: 'core.User'; Job: 'core.Job'; File: 'core.Blob' };
+      children: {};
+    };
     /** The path shape of the entity `core.Job`. */
     'core.Job': {
       scalars: 'Id' | 'HandlerKey' | 'LabelKey' | 'LabelArgumentsJson' | 'Status' | 'DueAt' | 'Attempts' | 'LeaseExpiresAt' | 'LeaseOwner' | 'StartedAt' | 'CompletedAt' | 'CancelRequestedAt' | 'ArgumentsJson' | 'ProgressPercent' | 'ProgressKey' | 'ProgressArgumentsJson' | 'ErrorCode' | 'ErrorArgumentsJson' | 'ErrorTraceId' | 'PendingConfirmationsJson' | 'TraceParent' | 'RunAsUserId' | 'RequestedById' | 'ScheduleId' | 'ScheduledFor' | 'CreatedAt';
@@ -721,6 +857,13 @@ declare module '@tellma/core' {
       scalars: 'Id' | 'RoleId' | 'Resource' | 'Action' | 'Filter' | 'FilterQueryexVersion' | 'Notes';
       groups: never;
       navigations: { Role: 'core.Role' };
+      children: {};
+    };
+    /** The path shape of the entity `core.Report`. */
+    'core.Report': {
+      scalars: 'Id' | 'CreatedAt' | 'CreatedById' | 'ModifiedAt' | 'ModifiedById' | 'Code' | 'Title' | 'Title2' | 'Title3' | 'Description' | 'Description2' | 'Description3' | 'Root' | 'Kind' | 'QueryexVersion' | 'OwnerId' | 'BasedOnId' | 'IsActive';
+      groups: 'Title' | 'Description';
+      navigations: { CreatedBy: 'core.User'; ModifiedBy: 'core.User'; Owner: 'core.User' };
       children: {};
     };
     /** The path shape of the entity `core.Role`. */

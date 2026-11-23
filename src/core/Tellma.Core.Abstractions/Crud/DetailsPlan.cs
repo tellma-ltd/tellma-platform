@@ -144,6 +144,40 @@ namespace Tellma.Core.Abstractions.Crud
         }
 
         /// <summary>
+        ///     Adds an extra computed in C# once after the details batch, over the visible entities in
+        ///     request order and the rows of a query of another entity: the query's own columns fill
+        ///     instances of <typeparamref name="TRow" />, in row order, and the columns it selects
+        ///     through navigations join the read's related entities, each entity once. Its value is
+        ///     serialised under the platform's JSON options.
+        /// </summary>
+        /// <remarks>
+        ///     The query is one statement of the details batch, rooted at <typeparamref name="TRow" />'s
+        ///     entity; a related column is selected with its navigation's key, so the related entity can
+        ///     be found by id.
+        /// </remarks>
+        /// <typeparam name="TRow">The query's entity type.</typeparam>
+        /// <typeparam name="TValue">The extra's value type.</typeparam>
+        /// <param name="name">The extra's name.</param>
+        /// <param name="spec">The query; it may restrict by <see cref="IdsSource" />.</param>
+        /// <param name="arguments">The values of the parameters the query mentions; null for none.</param>
+        /// <param name="compute">Computes the value from the visible entities and the query's rows.</param>
+        /// <exception cref="ArgumentException"><paramref name="name" /> is null, empty or white space.</exception>
+        /// <exception cref="ArgumentNullException"><paramref name="spec" /> or <paramref name="compute" /> is null.</exception>
+        /// <exception cref="InvalidOperationException">
+        ///     The name is not requested or not declared, or was added already; or the query is not
+        ///     rooted at <typeparamref name="TRow" />'s entity.
+        /// </exception>
+        public void AddComputedExtra<TRow, TValue>(
+            string name, QuerySpec spec, QueryArguments? arguments, Func<IReadOnlyList<TEntity>, IReadOnlyList<TRow>, TValue> compute)
+            where TRow : class
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(name);
+            ArgumentNullException.ThrowIfNull(spec);
+            ArgumentNullException.ThrowIfNull(compute);
+            Planner().AddComputedExtra(name, spec, arguments, compute);
+        }
+
+        /// <summary>
         ///     Leaves a requested extra out of the result on purpose, as when the caller may not read
         ///     what it would show: no statement is added and the extra is absent. By the name rules of
         ///     <see cref="AddExtra(string, QuerySpec, QueryArguments)" />, an extra is added or omitted
@@ -234,6 +268,16 @@ namespace Tellma.Core.Abstractions.Crud
         /// <param name="name">The extra's name.</param>
         /// <param name="compute">Computes the value.</param>
         void AddComputedExtra<TValue>(string name, Func<IReadOnlyList<TEntity>, TValue> compute);
+
+        /// <summary>Records a computed extra over the rows of a query of another entity, whose related columns join the read's related entities.</summary>
+        /// <typeparam name="TRow">The query's entity type.</typeparam>
+        /// <typeparam name="TValue">The extra's value type.</typeparam>
+        /// <param name="name">The extra's name.</param>
+        /// <param name="spec">The query.</param>
+        /// <param name="arguments">The query's arguments.</param>
+        /// <param name="compute">Computes the value.</param>
+        void AddComputedExtra<TRow, TValue>(string name, QuerySpec spec, QueryArguments? arguments, Func<IReadOnlyList<TEntity>, IReadOnlyList<TRow>, TValue> compute)
+            where TRow : class;
 
         /// <summary>Records a requested extra left out on purpose.</summary>
         /// <param name="name">The extra's name.</param>

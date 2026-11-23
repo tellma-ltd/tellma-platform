@@ -415,7 +415,7 @@ namespace Tellma.Core.IntegrationTests.Jobs
             [
                 New("never", FixtureJobKeys.Probe, "0 0 30 2 *"),
                 New("alias", FixtureJobKeys.Probe, "0 3 * * *", zone: "Asia/Calcutta"),
-                New("export", FixtureJobKeys.Export, "0 3 * * *"),
+                New("parcel", FixtureJobKeys.Parcel, "0 3 * * *"),
             ];
 
             ValidationException refused = await Assert.ThrowsAsync<ValidationException>(() => Schedules(scope).SaveAsync(schedules, new SaveOptions(), Token));

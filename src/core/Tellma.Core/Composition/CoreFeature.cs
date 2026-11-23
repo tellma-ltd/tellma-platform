@@ -10,12 +10,15 @@ using Tellma.Core.Abstractions.Client;
 using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Email;
+using Tellma.Core.Abstractions.Excel;
 using Tellma.Core.Abstractions.Identity;
 using Tellma.Core.Abstractions.Jobs;
 using Tellma.Core.Abstractions.Localization;
 using Tellma.Core.Abstractions.Notifications;
 using Tellma.Core.Abstractions.Realtime;
+using Tellma.Core.Abstractions.Reports;
 using Tellma.Core.Abstractions.Settings;
+using Tellma.Core.Abstractions.Sharing;
 using Tellma.Core.Abstractions.TableTypes;
 using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.Access;
@@ -25,12 +28,14 @@ using Tellma.Core.Caching;
 using Tellma.Core.Calendars;
 using Tellma.Core.Client;
 using Tellma.Core.Data;
+using Tellma.Core.Excel;
 using Tellma.Core.Identity;
 using Tellma.Core.Jobs;
 using Tellma.Core.Localization;
 using Tellma.Core.Notifications;
 using Tellma.Core.Outbox;
 using Tellma.Core.Provisioning;
+using Tellma.Core.Reports;
 using Tellma.Core.Settings;
 using Tellma.Core.Users;
 
@@ -281,6 +286,19 @@ namespace Tellma.Core.Composition
                 .TableType<OutgoingEmailOutcomeList>()
                 .TableType<EmailDeliveryEventList>();
 
+            // --- The Excel artifacts: the exports' and imports' rows and their stacks, each self-scoped ---
+            // spec 0019 §12.1. Both are Query | Details | Delete | Enlist stacks: a row is only ever
+            // written by a save its start or its job enlists, so neither registers a save securable.
+            // Every member reads and deletes the rows they created; an import whose job may still run
+            // refuses a delete. The two blob kinds come from the rows' blob references.
+            _ = contribution
+                .Entity<Export, ExportService>()
+                .Model<ExportConfiguration>()
+                .Singleton<IAccessCriteriaProvider, ExportAccessCriteria>()
+                .Entity<Import, ImportService>()
+                .Model<ImportConfiguration>()
+                .Singleton<IAccessCriteriaProvider, ImportAccessCriteria>();
+
             // --- Background jobs: the job and schedule tables, their machinery's tables and table types,
             // and the notices and client event a completion raises ---
             // spec 0020 §2, §7, §10, §11, §14.4, §14.5, §15. Job's service serves the reads and the four
@@ -314,6 +332,16 @@ namespace Tellma.Core.Composition
                 .NotificationType(JobNotices.GapDescriptor)
                 .NotificationType(JobNotices.SchedulePausedDescriptor)
                 .ClientEvent(JobNotices.ChangedEvent);
+
+            // --- Stored reports and their grants (spec 0033 §2, §5, §7) ---
+            // The reports' stack is shareable: its share table, criteria, commands, shares extra,
+            // shared-with-me filter and the core.report.shared notice all come with the declaration.
+            // The grants merge through the share-grant table type.
+            _ = contribution
+                .Entity<Report, ReportService>()
+                .Shareable<Report, ReportShare>(ReportNotices.SharedType)
+                .Model<ReportConfiguration>()
+                .TableType<ShareGrantList>();
 
             // --- The standalone table types: the canonical bulk-operation shapes, and the version-tag guard's ---
             _ = contribution

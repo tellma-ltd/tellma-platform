@@ -32,7 +32,8 @@ describe('the declaration functions', () => {
   });
 
   it('let the key argument win over a key member in the definition', () => {
-    const entity = tmEntity('acme.Customer', { name: 'acme.Other' });
+    // The typed input has no `name`; a definition built at run time may still carry one.
+    const entity = tmEntity('acme.Customer', { name: 'acme.Other' } as never);
     expect(entity.name).toBe('acme.Customer');
   });
 

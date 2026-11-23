@@ -110,12 +110,9 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 
 | PC | Slot | Branch | Step | Implementer agent (name / id) | Reviewer agent (name / id) | Started (UTC) |
 |---|---|---|---|---|---|---|
-| PC-176 | pc-f | pc/PC-176 | fix1 | T3 fill (D-140); only T3 ready; impl 7cdca0bc (13 deviations; BoundedPartStream token-bound fix; Subject Unique is a row-key candidate; 64-bit counts as wire strings; exports/imports/inspect-import routes not in ProjectedRouteTests; synthetic corpus only); R1 2/3/6 (exports need IBlobStore, 8/9 ExcelExportTests fail; XML name table unbounded, ~4 GB resident; per-row cell text unbounded; export/import routes undriven, own-rows criteria untested; spill metric unasserted; +6 minor); fix1 then R2 (escalated, D-230) | 3; R1+R2 (escalated) | 2026-11-22 |
-| PC-182 | pc-f2 | pc/PC-182 | integrating | T3 fill (D-140); only T3 ready; usage 36% at 15:50 UTC, on pace; impl 2bb25b2c (14 deviations; OwnerId ServerOwned not Derived (0012 §9.1 refuses derived column updates); reports category hard-coded per shareable; delete leaves share notices; user select Name2/3 fix; integration 12/12); R1 0/3/4 (delete leaves share notices; shares extra leaks other grantees via related; caps and grantee checks untested; ArgumentsJson unasserted; ReportShare client metadata; delete-by-query contradiction; reports category); fix1 then hold; D-227; fix1 4855edd5 (R1-1..5 fixed: set-based Notifier.WithdrawEach on delete; Via admission filter in the grants read; caps, backstop and grantee tests; ArgumentsJson asserted; share entities off the client model; deviations 15-17); not escalated (D-231); merge-tree clean; held after PC-F69; released after PC-F69 landed (f3c7a73a); integrating | 3; R1 only | 2026-11-22 |
-| PC-189 | pc-2 | pc/PC-189 | fix1 | T3 fill (D-140); only T3 ready; impl ecede977 (19 deviations; 5 read tools, write tools left to PC-190; integration in Acme McpTests; McpFeature options only; describe cache keyed by VersionTag and culture; audience and scope challenges via JwtBearerEvents); R1 0/2/4 (multi-aud token accepted at each tenant; listed unit and refusal tests missing; guard skipped without services; feature name; tellma_get materialises before windowing; trailer can overflow); describe not permission-dependent; fix1 then hold; D-232 | 3; R1 only | 2026-11-22 |
-| PC-105 | pc-3 | pc/PC-105 | impl | T1; slot freed from PC-F72 (D-229) | 1; R1 only | 2026-11-22 |
-| PC-106 | pc-4 | pc/PC-106 | impl | T1 (D-229) | 1; R1 only | 2026-11-22 |
-| PC-108 | pc-1 | pc/PC-108 | impl | T1 (D-229); carry (D-216): leader member in the state dump | 1; R1 only | 2026-11-22 |
+| PC-117 | pc-3 | pc/PC-117 | held d49d7e35 | T1 (D-229): the only ready T1 after PC-105 landed; PC-F72 R1 waits for the next slot; impl cbc8dd0a (6 deviations; "." 42.39 to 42.50, ceiling 43, measured before PC-106; locale-ar/strings ceiling 7; ./entity 11.30/11.5; a foreignKeyOf property is read-only in tm-value-editor; tmGridColumnFor has its own column config); R1 launched; R1 0/3/6 (an invalid decimal silently nulls and saves; the tm.value strings belong behind a registration seam, not on the first frame; a multilingual group is read-only in child grids); fix1 then hold; fix1 d49d7e35 (R1-1..9; about 690 of 4,420 lines, not escalated; string seam at 0.06 KB primary cost; "." 42.45/42.5, measured before PC-106; ./entity 12.18/12.5; ids keep the locale's digits per the specs, D-243); merge-tree clean | | 2026-11-22 |
+| PC-108 | pc-1 | pc/PC-108 | integrating | T1 (D-229); carry (D-216): leader member in the state dump; impl 241b37fd (8 deviations; lazy ./leader 3.73/3.8; "." 38.49 to 38.77, ceiling 39, accepted under D-031; the section 7.2 step 2 refresh is skipped when the stored sync is newer than the page; the section 8.5 sign-out is deferred to PC-153 TmHub; the election is off in provideTellmaStateTesting); R1 launched; R1 0/1/4 (poll not re-armed when a stored leader document starts to need it; a steal race orphans a leadership; why tenant; timeOrigin skip too broad; hand-off to PC-153 in WATCHLIST); fix1 then hold; fix1 c73fc374 (R1-1..5 fixed; ./leader 3.84, ceiling 3.9; "." unchanged at 38.77/39; merge-tree clean); released 2026-11-22 after PC-176 (D-087), re-measures "." (D-214) | 1; R1 only | 2026-11-22 |
+| PC-111 | pc-4 | pc/PC-111 | fix1 | T1 (D-229): pc-4 freed by PC-106; PC-115 (T1) waits for the next free slot; carries D-216 and D-218 sent to the implementer; impl 4ff5d24f (33 files +3113/-157, 10 deviations; "." 45 to 47, measured 46.62; D-216 seam removed, D-218 lists pinned; dispatcher busy/re-resolve beyond 0026 section 9.5; serialize injector option); R1 0/2/3 (R1-1 dispatcher identity re-check, R1-2 recents regression); fix1 per D-244, then hold | | 2026-11-22 |
 
 ## Fix items
 
@@ -191,7 +188,11 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-F69 | Re-split the @tellma/core primary entry point by spec family (D-031 revisit clause: the "." ceiling has risen seven times, four under D-031; 0024's services ~22 KB against their 14 KB §12 share after PC-103; D-200) | done (f3c7a73a; pc 45063961943 green on f3c7a73a; no new entry points, "." 38.49/38.5, D-228) | be5219bc, 62bf5953, f3c7a73a | from PC-103 R1-4 |
 | PC-F70 | Platform never emits the ApiSecurableAuditFailed log event (0016 §10.1): TellmaEndpointAudit throws at startup without logging it; emit it before the throw and assert it in a unit test | done (d07130b0; pc 45057688226 green on d07130b0) | 5c274bc6, 222dcad6, d07130b0 | from PC-095 fix1 (D-209) |
 | PC-F71 | Server UmAlQuraExtendedCalendar.DaysIn(9666, month >= 5) throws, so the shared calendar vectors stop at AH 9665; fix the extended range or bound it explicitly with a refusal and a test | done (d5421aa9; pc 45053120869 green on d5421aa9) | 071cc228, 492510e3, bef9b90b, 0c996709, d5421aa9 | from PC-104 impl |
-| PC-F72 | Core IntegrationTests ScheduleTests.A_schedule_paused_for_its_inactive_owner_is_taken_over_then_activated_and_its_notice_withdrawn_with_the_commit: Assert.True failure at ScheduleTests.cs:516 (ubuntu integration, PR run 45044779464 on 08ebc1cc; green on pc run 45042095713, same code); root-cause, no retry (D-011) | todo (after the ready T1 items, D-229) | | | from PR run 45044779464 (D-226) |
+| PC-F72 | Core IntegrationTests ScheduleTests.A_schedule_paused_for_its_inactive_owner_is_taken_over_then_activated_and_its_notice_withdrawn_with_the_commit: Assert.True failure at ScheduleTests.cs:516 (ubuntu integration, PR run 45044779464 on 08ebc1cc; green on pc run 45042095713, same code); root-cause, no retry (D-011) | impl 3899a16c (the test was wrong: a minute boundary falls between the scope's RequestContext.Now and a later database-clock read; it now pins NextDueAt to the spec 0020 section 7.8 rule; the same race is fixed in the built-in initialisation test); R1 0/0/1 (root cause confirmed; the activation assertion is zone-blind under * * * * *); held 578fd704 (fix1: a zone-sensitive 0 3 * * * schedule under Asia/Riyadh, exact, with a UTC-differs guard; a wrong-zone probe failed as expected; merge-tree clean); release order PC-189, PC-106, PC-176 (then PC-F75), PC-108, PC-F72, PC-117 | 3899a16, 578fd70 (pc/PC-F72) | from PR run 45044779464 (D-226) |
+| PC-F73 | client tools lint:test tm-prefix-exports spec hit its 5 s default timeout once under parallel load and passes alone (PC-108 impl). This is the same class as the union-order spec fixed in PC-F69 62bf5953: root-cause the cost and fix it, with no retries and no timeout-only raise unless the cost is shown to be inherent (D-011) | held 78dceb89 (pc-2; released after PC-117 per D-087; fix1 2 files +84/-7, merge-tree clean; R1 0/0/1, R1-1 moves the hooks onto a RuleTester subclass; impl 205abfc8: ESLint RuleTester found no global describe/it under Vitest and ran all cases in one it; all ten RuleTester specs now use a Vitest-aware createRuleTester; no timeout raised) | 205abfc, 78dceb8 (pc/PC-F73)
+| PC-F74 | Windows build-test exceeds its 30-minute job timeout: Tellma.Core.AspNetCore.Tests takes 15 to 22 min, with ProblemMappingTests running 68 cases one after another at 5 to 14 s each. PR runs 45078227216 and 45078365461 were cancelled at the timeout. Root-cause the per-case host cost; no timeout raise (D-011). Lead from PC-189: a cold host's first request spends up to 5 s in UseRouting building the endpoint matcher | done (0e602df0; pc 45101389430 green, Windows build-test 11m48s, down from 25-30+; endpoint sources sealed after the startup audit; R1 0/0/3 fixed in 664ee4ba) | 5c8508c, 664ee4b, 0e602df (pc/PC-F74)
+| PC-F75 | Excel import hostile input after PC-176 (D-240): refuse UCS-4 parts (a NUL byte or unit) that bypass the BoundedPartStream run bound; vectorise the CDATA, comment and processing-instruction scan | in progress (pc-f; PC-176's implementer; blocking rank, D-240) | | |
+| PC-F76 | Spec 0024 section 12's 50 KB error budget on the @tellma/core primary's own weight is not enforced. TM_BUDGETS in tellma-core-tools/src/checks/budgets.ts, which tellma-client build checks, has no primary line, and size:check enforces only the per-entry ceiling (45). Add the primary line at gzip level 9 on the app build's output, as the spec states, with budget-exceeded and budget-note-missing behaviour and a test. Headroom today is 5.48 KB (44.52 linked, level 6) | todo (non-blocking; after the ready T1/T2, D-229) | | |
 | PC-F02 | systemic e2e flakiness: CI 42456030333 red on 5250c6c (plans-only) with 4 NEW flaky tests | done (R1 1/1/2; CI 42471952389 green), pc-f free | 2c91df4, 4c36d45, 4c89ae1 | 11.32M | grid bundle at its 38 KB ceiling; picker same-frame Enter race open | root-cause all 9; un-quarantine the fixed PC-F01 five |
 
 ## Batch reviews (one per phase)
@@ -235,6 +236,8 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 
 | Test | Since | Tracking |
 |---|---|---|
+| client tools lint:test tm-prefix-exports spec: 5 s default timeout once under parallel load; passes alone | 2026-11-22 (PC-108 impl) | PC-F73 |
+| Acme McpTests non-member initialize: 2m22s then no reply in one full Acme project run with the AspNetCore suite alongside; ~3 s alone; passed twice after | 2026-11-22 (PC-189 fix1) | fixed in PC-189 905e9f45: a cold host's first request (routing matcher build up to 5 s) outlasted the SDK client's 5 s discover probe; the test helpers now disable that probe timeout |
 | client tools lint:test union-order.spec.mts bigint case: 5 s default timeout hit (5.8 s) under the lint:test fixture build; passes alone | 2026-11-22 (PC-F69 impl) | fixed in PC-F69 fix1 62bf5953: 120 transpile+parse calls under CPU contention (32 s file); now one sorted source (160 to 31 ms alone) |
 | client unit core tm-localization.spec "at startup: resolves the address's tenant before the first render…": document dir ltr, expected rtl, on both OSes; green at 16:08 UTC (pc run 45042095713), red from 16:38 UTC on the same code (PR run 45044779464, pc run 45046747313) | 2026-11-22 | fixed in PC-F71 CI fixes d5421aa9: the test read html dir before a tick flushed the root effect (D-227) |
 | Core IntegrationTests ScheduleTests "a schedule paused for its inactive owner is taken over…": Assert.True at ScheduleTests.cs:516 (ubuntu; PR run 45044779464); next run green | 2026-11-22 | PC-F72 |
@@ -302,7 +305,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | e2e basics-glyphs "validation bubble bullets its message" failed in a loaded full run; passed alone | 2026-11-16 (PC-F50 integrate) | watch; host load |
 | e2e grid-lazy-editing "entity draft committed before the code arrives" failed in a loaded full run; passed alone | 2026-11-16 (PC-F50 integrate) | watch; host load |
 | e2e tiles "arrow move that re-binds the focused tile" failed in a loaded full run; passed alone | 2026-11-16 (PC-F50 integrate) | watch; host load |
-| dotnet Core integration DataQueryTests.Two_pages_of_one_query_share_one_plan: 30 s SQL timeout under host load; passed on a filtered rerun | 2026-11-16 (PC-052 R1) | watch; host load |
+| dotnet Core integration DataQueryTests.Two_pages_of_one_query_share_one_plan: 30 s SQL timeout under host load; passed on a filtered rerun; recurred 2026-11-22 locally in PC-176's whole-project integration run (33 s, SqlServerFixture.ScalarAsync at DataQueryTests.cs:292), passed alone | 2026-11-16 (PC-052 R1) | watch; host load |
 | client unit tm-grid-lazy-editing "a failed load leaves the draft whole…" (full-suite load only) | 2026-11-17 | PC-194 note |
 | client unit tm-grid-selectable "…paired ink under forced colors" 15 s timeout (full-suite load only) | 2026-11-17 | PC-194 note |
 | dotnet Core integration (integration-windows, LocalDB): Test Assembly Cleanup Failure (Xunit.Sdk.TestPipelineException) after 395/398 passed | 2026-11-17 (CI 44110298098, 1e9332ad) | first hit; next run green; PC-F56 |
@@ -312,6 +315,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 
 | Test | Spec | Reason |
 |---|---|---|
+| Excel import real-producer corpus: workbooks saved by Excel, LibreOffice and Google Sheets (PC-176 deviation 21) | 0019 §15 | this host has no LibreOffice, and Excel and Sheets need a human; deferred to the human milestone (D-230) |
 | Decide excludes inactive-role grants (PC-043 checkpoint test list) | 0014 §5.2, §6.2 | inactive roles are excluded by the load; carried into PC-050 (PC-043 R1-4) |
 | Acme §10 rows skipped in PC-141 (6): first request binds UserId, Frozen read, ReadOnly read stamps activity (connect initializer + administrator bootstrap); AllowWhenReadOnly me/locale action (users-stack projection); RunsWhenReadOnly job (job worker); composed platform provisioning steps | 0011 §3.3, §4.3, §10 | conditional skips (PlatformSeams) since 15d1369d; carried to PC-078, PC-090, PC-100, PC-089 (D-096) |
 | tm-pivot pixel baselines: light, dark and RTL (PC-193 R1-9; computed-style checks stand in) | 0034 §14 | land with the repo's pixel-baseline infrastructure, next to the chart visual suite (WATCHLIST c10 #7) |
@@ -427,22 +431,22 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-102 | 0029-f | 1 | done (1b83923c; green 44655600178) | c586d072, 2187f29c, 1b83923c | | D-136, D-138 |
 | PC-103 | 0024-g | 1 | done (257f1ed6; pc 45004914780 green on 257f1ed6; PR run 45006613021) | 93091a54, 0052365e, 155d35a1, 257f1ed6 | | carry from PC-094: replace Acme's interim main.ts (bootstrapApplication) and AcmeApp with bootstrapTellma/TmApp |
 | PC-104 | 0024-h | 1 | done (5bfbd41c; pc 45042095713 green on 5bfbd41c) | 2330b361, 8dbe71bf, 7f087f0d, 5bfbd41c | | carry from PC-094: switch Acme to tmEnglish()/tmArabic() and cut angular.json styles to src/styles.css importing @tellma/core/styles.css and @tellma/locale-ar/styles.css |
-| PC-105 | 0029-b | 1 | in progress (pc-3) | | | |
-| PC-106 | 0027-a | 1 | in progress (pc-4) | | | |
+| PC-105 | 0029-b | 1 | done (363fe762; pc 45088988534 green on 363fe762; platform-core push approved by Ahmad after a permission block) | 1a17e29, 8162da6, a6b4085, 363fe76 (pc/PC-105) | | |
+| PC-106 | 0027-a | 1 | done (1ed4995a; pc 45111645085 green on 1ed4995a; "." 44.52, ceiling 45, re-measured after PC-105 per D-214) | ba40a2b, 73bc7e6, 1ed4995 (pc/PC-106) | | |
 | PC-107 | 0025-e | 1 | done (5a41bd43; pc 45037802056 green on 5a41bd43; PR run 45040306696) | 7c63b401, e9406aaf, a0919af3, 5a41bd43 | | |
 | PC-108 | 0025-c | 1 | in progress (pc-1) | | | carry (D-216): add the leader member to PC-107's state dump |
 | PC-109 | 0028-c | 1 | todo | | | |
 | PC-110 | 0024-i | 1 | todo | | | carry (D-216): answer drafts.reply (busy flag, sign-out wait) for PC-107's TmDrafts; carry (D-218): drafts.reply and the state dump count session-storage drafts when TmDrafts is not loaded |
-| PC-111 | 0026-a | 1 | todo | | | carry (D-216): replace PC-107's internal TM_ROUTED_PAGE seam with TmPageContexts; carry (D-218): page-host import lists include ./memory and ./recents |
+| PC-111 | 0026-a | 1 | in progress | | | carry (D-216): replace PC-107's internal TM_ROUTED_PAGE seam with TmPageContexts; carry (D-218): page-host import lists include ./memory and ./recents |
 | PC-112 | 0026-b | 1 | todo | | | |
 | PC-113 | 0026-c | 1 | todo | | | |
 | PC-114 | 0024-k | 1 | todo | | | |
 | PC-115 | 0027-b | 1 | todo | | | carry (D-216): replace PC-107's internal TM_RECENTS_NAVIGATION seam with TmNavigation; carry (D-218): the launcher in eager ./shell reaches @tellma/core/recents only by import() or the seam, never a static import |
 | PC-116 | 0027-c | 1 | todo | | | |
-| PC-117 | 0029-c | 1 | todo | | | |
+| PC-117 | 0029-c | 1 | in progress (pc-3; T1, D-229) | | | |
 | PC-118 | 0027-d | 1 | todo | | | |
 | PC-119 | 0029-e | 1 | todo |  |  | carry (PC-058): tm-entity-multi-field must wire a length validator returning requiredError(); Signal Forms required() treats [] as a value |
-| PC-120 | 0029-d | 1 | todo | | | |
+| PC-120 | 0029-d | 1 | todo | | | carry from PC-117 R1-4: expression columns skip the reachability check, so a stale preference can 403 the search page; check reachability for the paths an expression references |
 | PC-121 | 0029-g | 1 | todo | | | |
 | PC-122 | 0027-e | 1 | todo | | | |
 | PC-123 | 0035-a1 | 1 | todo | | | |
@@ -477,7 +481,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-152 | 0024-j | 2 | todo | | | |
 | PC-153 | 0025-d | 2 | todo | | | |
 | PC-154 | 0026-f | 2 | todo | | | carry (D-216): register PC-107's state dump with TmSupport (registerDumpSection) without pulling @tellma/core/memory onto the first frame |
-| PC-155 | 0028-d | 2 | todo | | | |
+| PC-155 | 0028-d | 2 | todo | | | carry from PC-106: add "./attention": ["./search-normalize"] to staticGraphExcludes in core-entry-points.ts |
 | PC-156 | 0028-e | 2 | todo | | | |
 | PC-157 | 0028-f | 2 | todo | | | |
 | PC-158 | 0030-e | 2 | todo | | | |
@@ -498,20 +502,20 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-173 | 0019-a | 3 | done (c316f5b4; CI 44034804023 green) | 8f3e494, 437a88f2, c316f5b4 (pc/PC-173) | | |
 | PC-174 | 0015-j | 3 | done (2659f734; pc 44942165063 green on 4eb600b6) | dc83114f, ad91dc10, 4eb600b6, 2659f734 | | carry from PC-142 (D-131): extend StackConformanceTests with the excel_rows lane and its §16.2 budget rows |
 | PC-175 | 0019-b | 3 | done (8611c15e; pc 45002266309 green on 8611c15e; PR run 45004401720) | df9e5804, 6eb3f3c9, c6e50d56, 6ced57c6, 1ca89416, 8611c15e | | carry from PC-173: implement IExcelExporter over the internal WorkbookWriter (WriteAsync takes ExcelContext + CancellationToken), and bind Tellma:ScratchPath in C# (none exists yet; spec 0017 needs it too); WriteAsync (exporter and WorkbookWriter) takes a `Func<Stream>` openDestination, called once after the first page passes the cap |
-| PC-176 | 0019-c | 3 | in progress (pc-f; T3 fill, D-140) | | | carry from PC-142 (D-131): extend StackConformanceTests with export/import reachability and their budget rows (with PC-177) |
+| PC-176 | 0019-c | 3 | done (54f2860e; pc 45122926971 green on 54f2860e; 17 conflicts with PC-182, migrations regenerated; UCS-4 bypass follows as PC-F75) | 7cdca0b, cb9ca1b, abc7900, 7a51ff4, 54f2860 (pc/PC-176) | carry from PC-142 (D-131): extend StackConformanceTests with export/import reachability and their budget rows (with PC-177) |
 | PC-177 | 0019-d | 3 | todo | | | |
 | PC-178 | 0019-e | 3 | todo | | | |
 | PC-179 | 0030-f2 | 3 | todo | | | |
 | PC-180 | 0032-b2 | 3 | todo | | | |
 | PC-181 | 0010-f6 | 3 | done (838975ec; pc 44957047158 green on f2226aff) | 19eb6762, 651abb4c, efec0cc6, f2226aff, 838975ec | | |
-| PC-182 | 0033-a | 3 | in progress (pc-f2; T3 fill, D-140) | | | |
+| PC-182 | 0033-a | 3 | done (491ca1b3; pc 45075565563 green on 491ca1b3; CI red at bff27d11: five tests pinned the pre-PC-182 model) | 2bb25b2, 4855edd, bff27d1, 491ca1b (pc/PC-182) | | |
 | PC-183 | 0033-b | 3 | todo | | | |
 | PC-184 | 0033-c | 3 | todo | | | |
 | PC-185 | 0033-d | 3 | todo | | | |
 | PC-186 | 0033-e | 3 | todo | | | |
 | PC-187 | 0033-f | 3 | todo | | | |
 | PC-188 | 0033-g | 3 | todo | | | |
-| PC-189 | 0016-g | 3 | in progress (pc-2; T3 fill, D-140) | | | |
+| PC-189 | 0016-g | 3 | done (5db6ce36; pc 45106690719 green on 5db6ce36; the earlier run 45094742817 was cancelled by the Windows timeout fixed in PC-F74) | ecede97, ed5d0ed, 22dfbd3, 905e9f4, 0e1aed8, 5db6ce3 (pc/PC-189) | | |
 | PC-190 | 0016-h | 3 | todo | | | carry (D-159): tellma_action must refuse the sensitive core.User invite and issue-credentials actions (both mcp Full in the stack golden today) |
 | PC-191 | 0033-h | 3 | todo | | | carry from PC-173: PC-191 is not gated on PC-175, so until PC-175 lands it reaches the table writer only through internal WorkbookWriter.WriteTableAsync |
 | PC-192 | 0033-i | 3 | todo | | | |

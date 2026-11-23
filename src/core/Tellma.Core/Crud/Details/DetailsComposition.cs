@@ -54,6 +54,9 @@ namespace Tellma.Core.Crud.Details
         /// <summary>The grouped reads of what each collection level points at.</summary>
         private readonly List<(DetailsTargets Targets, BatchResult<RowPage> Rows)> _targets = [];
 
+        /// <summary>The producers' reads of other entities whose rows a computed extra receives and whose related columns join the related entities.</summary>
+        private readonly List<EntityRowsRead> _rowReads = [];
+
         /// <summary>The extras the producers added, by name, each producing its value after the batch; null for one omitted on purpose.</summary>
         private readonly Dictionary<string, Func<IReadOnlyList<TEntity>, JsonElement>?> _extras = new(StringComparer.Ordinal);
 
@@ -263,7 +266,7 @@ namespace Tellma.Core.Crud.Details
         /// <returns>The related entities.</returns>
         private RelatedEntities Related(RelatedEntities rows)
         {
-            if (_targets.Count == 0)
+            if (_targets.Count == 0 && _rowReads.Count == 0)
             {
                 return rows;
             }
@@ -278,6 +281,13 @@ namespace Tellma.Core.Crud.Details
             {
                 // The level's own instances are empty shells: every column of the grouped read is a related one.
                 _ = _materials.Materializer.Read(_materials.Map, targets.Child, read.Value.Rows, collector);
+            }
+
+            // --- The producers' reads of other entities: their own columns fill the rows a computed
+            // extra receives, and their related columns join the related entities ---
+            foreach (EntityRowsRead read in _rowReads)
+            {
+                read.Rows = _materials.Materializer.Read(_materials.Map, read.Entity, read.Read.Value.Rows, collector).Instances;
             }
 
             return _materials.Materializer.Build(collector);
@@ -430,6 +440,25 @@ namespace Tellma.Core.Crud.Details
             }
 
             /// <inheritdoc />
+            public void AddComputedExtra<TRow, TValue>(
+                string name, QuerySpec spec, QueryArguments? arguments, Func<IReadOnlyList<TEntity>, IReadOnlyList<TRow>, TValue> compute)
+                where TRow : class
+            {
+                // --- The query is rooted at the rows' entity, so its own columns fill the rows ---
+                EntityMetadata entity = owner._materials.Map.Metadata(spec.Root);
+                if (!typeof(TRow).IsAssignableFrom(entity.ClrType))
+                {
+                    throw new InvalidOperationException(
+                        $"{producer.Name} adds the details extra '{name}' over a query rooted at {entity.Name}, whose rows are not {typeof(TRow).Name}. Root the query at the rows' entity.");
+                }
+
+                EntityRowsRead? read = null;
+                owner.Add(producer, declared, name, visible => Serialize(compute(visible, [.. read!.Rows.Cast<TRow>()])));
+                read = new EntityRowsRead(entity, owner._batch.Rows(spec, arguments, options: null));
+                owner._rowReads.Add(read);
+            }
+
+            /// <inheritdoc />
             public void OmitExtra(string name)
             {
                 owner.Add(producer, declared, name, produce: null);
@@ -441,6 +470,21 @@ namespace Tellma.Core.Crud.Details
                 return owner._decide(resource, action);
             }
         }
+    }
+
+    /// <summary>A producer's read of another entity: its statement, and the rows it filled once the batch ran.</summary>
+    /// <param name="entity">The read's entity.</param>
+    /// <param name="read">The read's statement.</param>
+    internal sealed class EntityRowsRead(EntityMetadata entity, BatchResult<RowPage> read)
+    {
+        /// <summary>The read's entity.</summary>
+        public EntityMetadata Entity { get; } = entity;
+
+        /// <summary>The read's statement.</summary>
+        public BatchResult<RowPage> Read { get; } = read;
+
+        /// <summary>The rows the read's own columns filled, in row order; empty until the related entities are assembled.</summary>
+        public IReadOnlyList<object> Rows { get; set; } = [];
     }
 
     /// <summary>What a details composition turns rows read into related entities with.</summary>

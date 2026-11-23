@@ -109,6 +109,20 @@ public static class ExcelTelemetryNames
     public const string ShapeTag = "shape"
     public const string SharedStringsSpilled = "tellma.excel.sst.spilled"
 
+public sealed class Export : TopLevelEntity, IJobEntity
+    public DateTimeOffset ExpiresAt { get; set; }
+    public ExportKind Kind { get; set; }
+    public const int FileNameLength = 255
+    public const int ResourceLength = 128
+    public const string FileKind = "export-file"
+    public ctor()
+    public int? FileId { get; set; }
+    public int? JobId { get; set; }
+    public int? RowCount { get; set; }
+    public string Resource { get; set; }
+    public string? FileName { get; set; }
+    public string? RequestJson { get; set; }
+
 public sealed record ExportCollection : IEquatable<ExportCollection>
     public IReadOnlyDictionary<string, string>? ReferenceKeys { get; init; }
     public IReadOnlyList<ExportCollection>? Children { get; init; }
@@ -237,6 +251,20 @@ public class ExportSourceRequest
 public interface IExcelRowSource
     public IAsyncEnumerable<ExcelPage> Pages(ExcelQuery query, CancellationToken cancellationToken = default)
     public Task<IReadOnlyList<IReadOnlyList<IReadOnlyList<object?>>>> ReadAsync(IReadOnlyList<ExcelQuery> queries, CancellationToken cancellationToken = default)
+
+public sealed class Import : TopLevelEntity, IJobEntity
+    public DateTimeOffset ExpiresAt { get; set; }
+    public ImportMode Mode { get; set; }
+    public const int ResourceLength = 128
+    public const string FileKind = "import-file"
+    public ctor()
+    public int? ErrorCount { get; set; }
+    public int? FileId { get; set; }
+    public int? JobId { get; set; }
+    public int? RowCount { get; set; }
+    public string Resource { get; set; }
+    public string? RequestJson { get; set; }
+    public string? ResultJson { get; set; }
 
 public sealed record ImportColumnMapping : IEquatable<ImportColumnMapping>
     public bool Equals(ImportColumnMapping? other)

@@ -67,6 +67,15 @@ namespace Tellma.Core.AspNetCore.Tests.Api
             _calls.Enqueue(call);
         }
 
+        /// <summary>Forgets every call and workbook and answers again, for the next case on a shared host.</summary>
+        public void Reset()
+        {
+            _calls.Clear();
+            _workbooks.Clear();
+            SkipWitness = false;
+            Refusal = null;
+        }
+
         /// <summary>A new workbook over <see cref="WorkbookBytes" />, whose stream the log keeps to observe its disposal.</summary>
         /// <returns>The workbook.</returns>
         public ExportOutcome Workbook()

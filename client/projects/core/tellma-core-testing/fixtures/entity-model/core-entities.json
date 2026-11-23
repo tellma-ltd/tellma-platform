@@ -106,6 +106,50 @@
     "kind": "readonly"
   },
   {
+    "name": "core.Export",
+    "segment": "exports",
+    "labelKey": "Core_Export",
+    "pluralLabelKey": "Core_Export_Plural",
+    "newLabelKey": "Entity_New",
+    "labelFallback": "Export",
+    "operations": [
+      "query",
+      "details",
+      "delete"
+    ],
+    "capabilities": [
+      "blobs",
+      "job-entity"
+    ],
+    "displayName": {
+      "source": "Id",
+      "multilingual": false
+    },
+    "kind": "stack"
+  },
+  {
+    "name": "core.Import",
+    "segment": "imports",
+    "labelKey": "Core_Import",
+    "pluralLabelKey": "Core_Import_Plural",
+    "newLabelKey": "Entity_New",
+    "labelFallback": "Import",
+    "operations": [
+      "query",
+      "details",
+      "delete"
+    ],
+    "capabilities": [
+      "blobs",
+      "job-entity"
+    ],
+    "displayName": {
+      "source": "Id",
+      "multilingual": false
+    },
+    "kind": "stack"
+  },
+  {
     "name": "core.Job",
     "segment": "jobs",
     "labelKey": "Core_Job",
@@ -197,6 +241,31 @@
       "multilingual": false
     },
     "kind": "child"
+  },
+  {
+    "name": "core.Report",
+    "segment": "reports",
+    "labelKey": "Core_Report",
+    "pluralLabelKey": "Core_Report_Plural",
+    "newLabelKey": "Entity_New",
+    "labelFallback": "Report",
+    "operations": [
+      "query",
+      "details",
+      "save",
+      "delete"
+    ],
+    "capabilities": [
+      "activatable",
+      "multilingual",
+      "searchable",
+      "temporal"
+    ],
+    "displayName": {
+      "source": "Title",
+      "multilingual": true
+    },
+    "kind": "stack"
   },
   {
     "name": "core.Role",

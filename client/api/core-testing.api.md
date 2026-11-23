@@ -97,6 +97,15 @@ export class TmFakeTelemetry extends TmTelemetry {
 }
 
 // @public
+export interface TmTestEntities {
+    readonly chunk: TmEntitiesChunk;
+    readonly summaries: readonly TmEntitySummary[];
+}
+
+// @public
+export function tmTestEntities(): TmTestEntities;
+
+// @public
 export function tmTestEntitiesChunk(patch?: Partial<TmEntitiesChunk>): TmEntitiesChunk;
 
 // @public

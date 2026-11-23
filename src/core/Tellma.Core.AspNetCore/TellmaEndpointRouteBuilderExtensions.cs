@@ -138,6 +138,13 @@ namespace Tellma.Core.AspNetCore
             // --- The blob upload and download, on the Blobs group ---
             _ = groups.Blobs.MapTellmaBlobs();
 
+            // --- The tenant surfaces a host adapter maps outside the groups, such as the MCP server ---
+            // Each installs its own front door, which the audit below requires of its surface.
+            foreach (ITenantSurfaceSource source in app.Services.GetServices<ITenantSurfaceSource>())
+            {
+                source.Map(app);
+            }
+
             // --- The SPA, whose fallback answers every request nothing else matched ---
             SpaHosting.Map(app);
 

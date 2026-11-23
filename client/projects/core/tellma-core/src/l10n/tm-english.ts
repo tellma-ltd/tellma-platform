@@ -43,6 +43,12 @@ export const TM_STRINGS_EN = {
     tenantPicker: { title: 'Choose a company' },
     signedOut: { title: "You're signed out", signIn: 'Sign in' },
   },
+  entity: {
+    permission: '{resource}: {action}',
+    tenantReadOnly: '{tenant} is read-only.',
+    tenantFrozen: '{tenant} is under maintenance.',
+    permissionNeeded: 'Needs “{permission}”. Ask your administrator to grant it.',
+  },
 } as const satisfies TmStringTree;
 
 /**

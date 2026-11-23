@@ -40,10 +40,19 @@ namespace Tellma.Core.IntegrationTests.Access
         /// </summary>
         private static readonly (string Resource, string Action)[] SelfScoped =
         [
+            (CoreResources.Export, AccessActions.Delete),
+            (CoreResources.Export, AccessActions.Read),
+            (CoreResources.Import, AccessActions.Delete),
+            (CoreResources.Import, AccessActions.Read),
             (CoreResources.Job, AccessActions.Cancel),
             (CoreResources.Job, JobService.Confirm),
             (CoreResources.Job, AccessActions.Read),
             (CoreResources.Notification, AccessActions.Read),
+            (CoreResources.Report, AccessActions.Activate),
+            (CoreResources.Report, AccessActions.Delete),
+            (CoreResources.Report, AccessActions.Read),
+            (CoreResources.Report, AccessActions.Save),
+            (CoreResources.Report, AccessActions.Share),
             ("core.RoleMembership", AccessActions.Read),
             (CoreResources.User, AccessActions.Read),
             ("core.UserStamp", AccessActions.Read),
@@ -172,7 +181,9 @@ namespace Tellma.Core.IntegrationTests.Access
             IReadOnlyList<AccessDecision> summary = await evaluator.EvaluateAllAsync(Token);
 
             // A caller without grants still reads their own user row, and its owned memberships and
-            // stamp follow their owner; every other securable is denied.
+            // stamp follow their owner; the reports they own or are granted are theirs through the
+            // sharing criteria, and the exports and imports they created through their creator
+            // criteria; every other securable is denied.
             Assert.Equal(AccessOutcome.Denied, second.Outcome);
             // With no role grants, the self-scoped securables are filtered by their bespoke criteria alone and every other is denied.
             Assert.Equal(

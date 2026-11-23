@@ -101,6 +101,7 @@ client is registered: a client may add a logger of its own, which then decides w
 | `core.time-zones` | never: it logs one warning (`TimeZoneUnresolvable`) per value of `core.TimeZone` the host cannot resolve as a tenant's zone (its time-zone data lacks the zone, or the pinned table maps it to no Windows name), the sign of an image with stale tzdata | yes |
 | `core.entity-metadata` | the tenant model cannot be built (the convention's message, naming the declaration), or an entity leaf in it breaks the entity contract (every problem at once, see [Entity metadata](#entity-metadata)); a referenced entity with no natural key is logged as a warning and never fails | no |
 | `core.version-tags` | an entity declares a tenant-level tag that is not a lower-case name (`^[a-z][a-z0-9.-]*`, at most 128 characters) or that starts with `entity:`; a cacheable entity's implied `entity:<schema>.<Class>` name is too long; a user-level tag names no mapped `int` property or is not `Permissions` or `Preferences`; two names differ in case alone | no |
+| `core.shareables` | a shareable's `OwnerId` is not server-owned; its share entity does not reference it exactly once, is also a stack or is a child collection; it has no stack, or its stack's service does not derive from `ShareableService<TEntity, TShare>` | no |
 | `jobs.handlers` | an entity-backed job handler processes an entity the tenant model does not map as a job entity; a built-in schedule whose handler key no handler on this host registers is logged as a warning (`SchedulerHandlerUnknown`) and never fails, since another host may run the handler | no |
 | `jobs.schedules` | a built-in schedule's cron expression does not parse as five-field Unix cron (Cronos, `CronFormat.Standard`), or has no next occurrence in its zone (the host's resolution of its `TimeZoneId`, else UTC) | no |
 
@@ -953,7 +954,8 @@ display-name rule, kind), its key, owner, properties, navigations, children, act
 argument fields and JSON Schema, related select, default order, searchable and natural keys, extras
 and query limits, and every named enum: the C# enums with their wire names (a
 `[JsonStringEnumMemberName]` member travels by it) and the value sets with their aliases. It is built
-once from `QueryexSchemaProvider`'s full map, entities and enums in ordinal name order. A label
+once from `QueryexSchemaProvider`'s full map, entities and enums in ordinal name order, leaving
+out a shareable's share entity, which the client reads only through the `shares` extra. A label
 resolves to the first key of its chain a neutral resource declares, else to the chain's first key
 with a humanized `labelFallback`. A `[BlobReference]` property carries its kind's policy,
 its size the kind's own `MaxSize` (a host whose `Tellma:Blobs:MaxUploadSize` is smaller does not
@@ -2885,6 +2887,35 @@ are SpreadsheetML packages written with `DocumentFormat.OpenXml` (MIT), forward-
   binds `Tellma:Excel`, registers the exporter, the context builder from the request context and the
   export runner, and the two checks: `excel` warns about each server-owned property excluded from
   Excel, and `excel.deployment` refuses a scratch directory that does not exist or takes no file.
+- **The import intake.** `inspect-import` (under the stack's `Save`, attached beside the exports when
+  the stack serves `Import`) checks the request's sheet and column overrides by form, then resolves
+  the caller's own staged `import-file` upload in the one round trip the connect prologue rides and
+  copies it, bounded, to a delete-on-close scratch file. `WorkbookReader` reads that copy: the
+  package's compressed size, its central directory (read by `ZipDirectory`, one disk, bounded entries
+  and directory size), the declared uncompressed sum and its structure (content types, one workbook
+  part, no external link or relationship) are checked before any sheet is parsed; every part is read
+  through `BoundedPartStream`, which refuses bytes beyond the part's declared length and any run
+  over 4 MiB from one `<` to the next (a CDATA section, comment or processing instruction counted
+  whole), so every node a reader materialises is bounded; text is read in chunks and refused before
+  it is read whole once it passes what a cell may hold; two sheets may not name one part; no reader processes a DTD, and each reader's name table
+  (`BoundedNameTable`) refuses a part whose distinct names pass 1 MiB. Shared strings
+  (`SharedStringStore`) are charged against a budget and spill to a scratch file beyond it, and their
+  entry count is capped. Decoded cell text is charged against a per-row budget and one budget for
+  the whole workbook, and a sheet's rows are counted, when its dimension cannot be trusted, by skimming each row
+  for a filled cell without decoding its text. Every loop checks the inspection's cancellation.
+  `ImportManifest` reads the hidden manifest sheet as untrusted, dropping any row it cannot use or
+  whose field passes 255 characters, and stops its column table at a byte bound. `HeaderIndex` matches headers by every form an export writes them in, rendered in
+  the reader's culture, each tenant language's and English, NFC-composed, white space collapsed and
+  case ignored; a key two paths give matches neither and is offered as a suggestion. `ImportMapper`
+  binds sheets (override, manifest, sheet names, then the first visible sheet when there is no
+  manifest) and columns (override, manifest, header index) to `ImportPaths`, gates the identity
+  columns of a file from another tenant or deployment, and answers the `ImportPlan`: each sheet's and
+  column's status, the row keys, the totals and whether the import must run in the background. A
+  header past 255 characters is kept cut and maps only by an override.
+- **The records.** `core.Exports` and `core.Imports` record each workbook operation, each row its
+  creator's alone (`ExportAccessCriteria`, `ImportAccessCriteria`), with its file a blob of the
+  `export-file` or `import-file` kind and its job a `core.Jobs` row. Both stacks serve query, details
+  and delete; an import whose job may still run cannot be deleted (`Imports.JobActive`).
 
 ## Layout
 
@@ -2921,6 +2952,8 @@ are SpreadsheetML packages written with `DocumentFormat.OpenXml` (MIT), forward-
 | `Identity/` | `IdentityServerClient`; internally its transport and token cache, the wire shapes and their source-generated JSON metadata, the options' settling and validator, the composition step that binds them and registers the named HTTP client, the instruments and the log events. |
 | `Notifications/` | `NotificationTypeRegistry`, `NotificationChannelRegistry`, `ClientEventRegistry`, `NotificationsClientAssetContributor`, `ClientEventPublisher`, `NullClientEventPublisher`, `NotificationConfiguration` and `NotificationDeliveryArguments`; internally the notifier, its statements and the delivering channels, the email channel's sender, the renderer, the preference row, the metrics, the name grammars, the hub-less real-time status, the composition step and the log events. |
 | `Outbox/` | `OutgoingEmailService`; internally the outbox, the stored address lists, the outgoing emails' model configuration, the sending job's handler and the composition step that binds the outbox's options. |
+| `Sharing/` | Internally: the share tables' model configuration, a shareable's shape in the model, the bespoke access criteria and the shared-with-me filter, the shares extra, the sharing commands behind share, publish and transfer, the `core.shareables` check and the composition step that binds `Tellma:Sharing`. |
+| `Reports/` | `ReportService`, the reports' stack service, and `ReportServiceDependencies`; internally the reports' model configuration, the default titles, the document's binding and expressions, the dashboards' null read-through and the composition step that binds `Tellma:Reports`. |
 | `Client/` | Internally: the client entity model, its data types, the action arguments' fields and schema, the declarations writer and the client-asset contributor; and `ClientSyncService`, the `client/sync` route. |
 | `Localization/` | `LanguageCatalog`, `LanguageDeclaration`, `LocalizationNegotiator`, `ValueSetRegistry`, `IcuStringLocalizerFactory`, `ConventionalStringKeys`; internally the catalogue's data, the declaration's resolution, the `Accept-Language` reader, the negotiated cultures, the pinned culture data with its reader, writer and generator source, the localizer's resource reader, ICU renderer, calendar formatter, argument reader and missing-key telemetry, the string-pack composer with its resource sources and client-asset contributor, the label provider, the label key chains, the named enums, the key conventions and the name humanizer. |
 | `Resources/` | `Strings.resx`, Core's shared resources (English), with its `ar` and `am` satellites and the `Strings` marker; `ServerStrings.resx`, the server-only resources (the email notification's subject and bodies), with its `ar` satellite and its marker. |

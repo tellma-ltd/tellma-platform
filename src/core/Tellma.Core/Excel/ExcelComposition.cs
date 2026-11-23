@@ -5,7 +5,9 @@
 
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Tellma.Core.Abstractions.Blobs;
 using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.Abstractions.Excel;
 using Tellma.Core.Abstractions.Localization;
@@ -49,9 +51,24 @@ namespace Tellma.Core.Excel
                 provider.GetRequiredService<DeploymentVersions>().PlatformVersion,
                 provider.GetRequiredService<IValueSetRegistry>()));
 
-            // --- Per scope: the request's context and the export runner over it ---
+            // --- The importer, one per process, with the header indexes it caches for the life of the process ---
+            services.TryAddSingleton<HeaderIndexCache>();
+            services.TryAddSingleton<IExcelImporter>(static provider => new ExcelImporter(
+                provider.GetRequiredService<IOptions<ExcelOptions>>().Value,
+                provider.GetRequiredService<ScratchDirectory>().Path,
+                provider.GetRequiredService<IBlobKindRegistry>(),
+                provider.GetRequiredService<HeaderIndexCache>(),
+                provider.GetRequiredService<ExcelMetrics>(),
+                provider.GetRequiredService<ILoggerFactory>()));
+
+            // --- Per scope: the request's context and the export and import runners over it ---
             services.TryAddScoped<ExcelContextFactory>();
             services.TryAddScoped<ExcelExports>();
+
+            // A factory, as the store is the host's to register: a composition without one still
+            // builds and validates, and the operations resolve the runner only when an inspection
+            // runs, so only an import fails to activate there.
+            services.TryAddScoped(static provider => ActivatorUtilities.CreateInstance<ExcelImports>(provider));
 
             // --- The checks, after the built-in checks registered before them: the model's, then the deployment's ---
             foreach (IStartupCheck check in new[] { new ExcelCheck(deployment: false), new ExcelCheck(deployment: true) })

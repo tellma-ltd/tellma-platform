@@ -12,7 +12,9 @@
 // the hosts kept above them are re-shown in rank order (the toasts, then a
 // blocking busy overlay), and a service that must yield to a modal hears
 // when one opens or closes, in the same task, before the modal's content
-// takes focus.
+// takes focus. The busy overlay also reports here whether a run is in
+// progress, so code that must stay still meanwhile (an app's shortcut
+// registry) asks without creating the overlay.
 
 /** A host kept above the modals, and when it is. */
 interface KeptLayer {
@@ -32,6 +34,9 @@ const modals: HTMLElement[] = [];
 
 /** Who hears a modal open or close. */
 const watchers = new Set<() => void>();
+
+/** Whether the busy overlay has a run in progress, once the overlay exists. */
+let busy: (() => boolean) | null = null;
 
 /**
  * Keeps `element`, a shown `popover="manual"` host, above every modal and
@@ -124,4 +129,29 @@ function notify(): void {
   for (const watcher of [...watchers]) {
     watcher();
   }
+}
+
+/**
+ * Records how to ask the busy overlay whether a run is in progress, and
+ * returns the idempotent release. The overlay calls it once, when created.
+ *
+ * Library wiring with no compatibility promise.
+ */
+export function ɵtmRegisterBusy(active: () => boolean): () => void {
+  busy = active;
+  return () => {
+    if (busy === active) {
+      busy = null;
+    }
+  };
+}
+
+/**
+ * Whether the busy overlay has a run in progress, standing aside for a modal
+ * or not; `false` while no overlay exists.
+ *
+ * Library wiring with no compatibility promise.
+ */
+export function ɵtmIsBusy(): boolean {
+  return busy?.() ?? false;
 }

@@ -52,4 +52,10 @@ export const TM_STRINGS_AR: TmStringTree = {
     tenantPicker: { title: `${imperative('اختر', 'اختاري')} شركة` },
     signedOut: { title: imperative('لقد سجّلت الخروج', 'لقد سجّلتِ الخروج'), signIn: 'تسجيل الدخول' },
   },
+  entity: {
+    permission: '{resource}: {action}',
+    tenantReadOnly: '{tenant} للقراءة فقط.',
+    tenantFrozen: '{tenant} قيد الصيانة.',
+    permissionNeeded: `يتطلب ذلك صلاحية «{permission}». ${imperative('اطلب', 'اطلبي')} من المسؤول منحها لك.`,
+  },
 };
