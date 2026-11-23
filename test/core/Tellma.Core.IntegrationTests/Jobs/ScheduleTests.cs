@@ -10,6 +10,7 @@ using System.Text.Json;
 using System.Xml.Linq;
 using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Api;
+using Tellma.Core.Abstractions.Caching;
 using Tellma.Core.Abstractions.Crud;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Errors;
@@ -53,6 +54,12 @@ namespace Tellma.Core.IntegrationTests.Jobs
 
         /// <summary>The zone of a schedule pinned to minutes in UTC.</summary>
         private const string Utc = "Etc/UTC";
+
+        /// <summary>An expression that occurs once a day, at 03:00 in the zone it is evaluated in.</summary>
+        private const string DailyAtThree = "0 3 * * *";
+
+        /// <summary>A zone three hours ahead of UTC, all year.</summary>
+        private const string RiyadhZone = "Asia/Riyadh";
 
         /// <summary>The test's cancellation.</summary>
         private static CancellationToken Token => TestContext.Current.CancellationToken;
@@ -498,8 +505,12 @@ namespace Tellma.Core.IntegrationTests.Jobs
         [Fact]
         public async Task A_schedule_paused_for_its_inactive_owner_is_taken_over_then_activated_and_its_notice_withdrawn_with_the_commit()
         {
-            int id = await InsertScheduleAsync(FixtureJobKeys.Probe, runAs: DeactivatedUserId, nextDueAt: (await DatabaseNowAsync()).AddMinutes(-1));
-            await SqlServerFixture.ExecuteAsync(fixture.ConnectionString, Sql($"UPDATE [core].[Users] SET [IsActive] = 0 WHERE [Id] = {DeactivatedUserId};"));
+            // --- A daily schedule in the tenant's zone, which is not UTC, so its next occurrence depends on the zone it is evaluated in ---
+            int id = await InsertScheduleAsync(FixtureJobKeys.Probe, cron: DailyAtThree, runAs: DeactivatedUserId, nextDueAt: (await DatabaseNowAsync()).AddMinutes(-1));
+            await SqlServerFixture.ExecuteAsync(
+                fixture.ConnectionString,
+                Sql($"UPDATE [core].[Users] SET [IsActive] = 0 WHERE [Id] = {DeactivatedUserId};"),
+                Sql($"UPDATE [core].[Settings] SET [TimeZone] = N'{RiyadhZone}'; UPDATE [core].[VersionTags] SET [Tag] = NEWID() WHERE [Name] = N'{VersionTagNames.Settings}';"));
             _ = await TickAsync();
             Assert.Equal(nameof(SchedulePausedReason.OwnerInactive), (await ScheduleAsync(id)).Get<string>("PausedReason"));
 
@@ -523,10 +534,14 @@ namespace Tellma.Core.IntegrationTests.Jobs
 
             // The next due time is the expression's first occurrence after the request's instant, which
             // the scope stamped when it began (spec 0020 §7.8: the one place the application clock
-            // enters). It is held to that instant, not to a later read of the database clock: a minute
-            // that turns between the two leaves it in the past.
+            // enters), in the tenant's zone. It is held to that instant, not to a later read of the
+            // database clock: an occurrence that falls between the two leaves it in the past. The same
+            // expression evaluated in UTC gives another instant, so an activation that ignored the
+            // tenant's zone would fail here.
             DateTimeOffset requested = scope.ServiceProvider.GetRequiredService<IRequestContextAccessor>().Current.Now;
-            DateTimeOffset due = Cronos.CronExpression.Parse(EveryMinute).GetNextOccurrence(requested, await TenantZoneAsync())!.Value.ToUniversalTime();
+            var expression = Cronos.CronExpression.Parse(DailyAtThree);
+            DateTimeOffset due = expression.GetNextOccurrence(requested, TimeZoneInfo.FindSystemTimeZoneById(RiyadhZone))!.Value.ToUniversalTime();
+            Assert.NotEqual(expression.GetNextOccurrence(requested, TimeZoneInfo.Utc)!.Value, due);
             Assert.Equal(due, (await StateAsync(id)).Get<DateTimeOffset>("NextDueAt"));
             Assert.Equal([JobNotices.SchedulePausedKey(id)], fixture.Notices.Withdrawn.Select(static withdrawal => withdrawal.DedupKey));
         }

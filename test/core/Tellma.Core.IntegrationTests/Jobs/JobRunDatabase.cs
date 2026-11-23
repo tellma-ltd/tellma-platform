@@ -68,12 +68,16 @@ namespace Tellma.Core.IntegrationTests.Jobs
         /// <summary>The fixture's built-in schedule's expression, as the migrations seed it.</summary>
         public const string BuiltInCron = "0 1 * * *";
 
+        /// <summary>The tenant's zone, as the migrations seed it and each reset restores it.</summary>
+        public const string TenantZone = "UTC";
+
         /// <summary>
         ///     The statements that return the database to its state after creation, the seeded rows kept:
         ///     the user schedules go with their states, and the fixture's built-in schedule is active, as
         ///     seeded, and not yet initialised, so a poll only ever fires it once a test makes it due.
         ///     The platform's own built-in schedules are kept stopped, so a tick leases and fires the
-        ///     fixture's schedules alone.
+        ///     fixture's schedules alone. The tenant's zone is UTC, as seeded; a test that moved it has
+        ///     the settings tag moved again, so the next request reads the seeded zone.
         /// </summary>
         private static readonly string ResetText = string.Create(CultureInfo.InvariantCulture, $"""
             DELETE FROM [test].[RunLog];
@@ -87,6 +91,8 @@ namespace Tellma.Core.IntegrationTests.Jobs
             UPDATE [core].[Schedules] SET [IsActive] = 0
             WHERE [Id] <> {FixtureFeature.ProbeScheduleId} AND [Id] <= {WellKnownIds.ReservedIdBandEnd} AND [IsActive] = 1;
             UPDATE [core].[JobWorkerState] SET [LastTickAt] = NULL, [LastTickOwner] = NULL;
+            UPDATE [core].[Settings] SET [TimeZone] = N'{TenantZone}' WHERE [TimeZone] <> N'{TenantZone}';
+            IF @@ROWCOUNT > 0 UPDATE [core].[VersionTags] SET [Tag] = NEWID() WHERE [Name] = N'{VersionTagNames.Settings}';
             """);
 
         /// <summary>The suite's server.</summary>
