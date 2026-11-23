@@ -5,6 +5,7 @@
 
 import { ChangeDetectionStrategy, Component, computed, effect, inject, input, untracked, type InputSignal } from '@angular/core';
 import { RouterLink } from '@angular/router';
+import { Check } from 'lucide';
 import {
   TmDisplayName,
   TmDisplayNames,
@@ -24,6 +25,7 @@ import {
 } from '@tellma/core';
 import { TmAvatar } from '@tellma/core-ui/avatar';
 import { TmBadge } from '@tellma/core-ui/badge';
+import { TmIcon } from '@tellma/core-ui/icon';
 import { TmImage } from '@tellma/core-ui/image';
 
 import { TmFormats, type TmValueStyle } from './tm-formats';
@@ -51,6 +53,7 @@ type TmValueView =
   | { readonly kind: 'text'; readonly text: string; readonly mono: boolean; readonly dir: string }
   | { readonly kind: 'none'; readonly text: string }
   | { readonly kind: 'badges'; readonly labels: readonly string[] }
+  | { readonly kind: 'flag'; readonly on: boolean; readonly label: string }
   | { readonly kind: 'rows'; readonly items: readonly TmValueItem[] }
   | { readonly kind: 'image'; readonly src: string; readonly alt: string }
   | { readonly kind: 'file'; readonly name: string; readonly href: string };
@@ -95,7 +98,7 @@ function objectOf(value: unknown): TmJsonObject | null {
  */
 @Component({
   selector: 'tm-value',
-  imports: [RouterLink, TmAvatar, TmBadge, TmDisplayName, TmImage],
+  imports: [RouterLink, TmAvatar, TmBadge, TmDisplayName, TmIcon, TmImage],
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: { class: 'tm-value' },
   styles: `
@@ -111,6 +114,14 @@ function objectOf(value: unknown): TmJsonObject | null {
     }
     .tm-value__none {
       color: var(--tm-color-text-subtle, inherit);
+    }
+    .tm-value__hidden {
+      position: absolute;
+      inline-size: 1px;
+      block-size: 1px;
+      overflow: hidden;
+      clip-path: inset(50%);
+      white-space: nowrap;
     }
     .tm-value__row {
       display: inline-flex;
@@ -132,6 +143,14 @@ function objectOf(value: unknown): TmJsonObject | null {
       @case ('badges') {
         @for (label of shown.labels; track $index) {
           <tm-badge tone="neutral">{{ label }}</tm-badge>
+        }
+      }
+      <!-- A flag in a grid: a check for yes, nothing visible for no; each named for assistive technology -->
+      @case ('flag') {
+        @if (shown.on) {
+          <tm-icon size="sm" [svg]="checkIcon" [label]="shown.label" />
+        } @else {
+          <span class="tm-value__hidden">{{ shown.label }}</span>
         }
       }
       <!-- Related rows: avatar, then the display name, a link when the user may open it -->
@@ -178,6 +197,9 @@ export class TmValue {
 
   /** The surface: a details view shows "—" for no value and a larger thumbnail; a grid shows nothing. */
   readonly surface: InputSignal<TmValueStyle> = input<TmValueStyle>('details');
+
+  /** The glyph a flag that is set shows in a grid. */
+  protected readonly checkIcon = Check;
 
   /** A blob URL as built, for the thumbnail. */
   protected readonly asIs = AS_IS;
@@ -313,6 +335,9 @@ export class TmValue {
     }
     if (of.target !== undefined) {
       return this.#rowsView(of.target, value, style);
+    }
+    if (of.type === 'bool' && style === 'grid' && !Array.isArray(value)) {
+      return { kind: 'flag', on: value === true, label: this.#formats.text(value, of, style) };
     }
     if (of.type === 'enum') {
       const item = { ...of, array: undefined };

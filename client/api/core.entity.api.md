@@ -10,7 +10,9 @@ import { FieldTree } from '@angular/forms/signals';
 import { Injector } from '@angular/core';
 import { InputSignal } from '@angular/core';
 import { InputSignalWithTransform } from '@angular/core';
+import * as lucide from 'lucide';
 import { Signal } from '@angular/core';
+import { TemplateRef } from '@angular/core';
 import { Type } from '@angular/core';
 
 // @public
@@ -53,6 +55,7 @@ export type TmFilterKind = 'bool' | 'date' | 'enum' | 'instant' | 'navigation' |
 
 // @public
 export class TmFormats {
+    constructor();
     cell(column: TmColumnPlan, row: TmPlanRow): string;
     text(value: unknown, of: TmValueDescriptor, style?: TmValueStyle): string;
     zoneSuffix(of: TmColumnPlan | TmValueDescriptor): Signal<string>;
@@ -61,22 +64,9 @@ export class TmFormats {
 }
 
 // @public
-export interface TmGridColumnConfig<T = unknown> {
-    readonly align: TmGridColumnAlign;
-    readonly format: (value: unknown, row: T) => string;
-    readonly key: string;
-    readonly maxDecimals: number;
-    readonly minDecimals: number;
-    readonly optionLabel: (option: never) => string;
-    readonly options: readonly unknown[];
-    readonly optionValue: (option: never) => unknown;
-    readonly parse: (text: string, context: TmParseContext) => unknown;
-    readonly readonly: boolean | ((row: T) => boolean);
-    readonly sortable: boolean;
-    readonly type: TmGridColumnType;
-    readonly value: (row: T) => unknown;
-    readonly width: number;
-}
+export type TmGridColumnConfig<T = unknown> = {
+    readonly [K in TmBoundInput]: TmGridColumn<T, unknown>[K] extends () => infer V ? Exclude<V, undefined> : never;
+};
 
 // @public
 export function tmGridColumnFor(column: TmColumnPlan, options?: TmGridColumnOptions): Partial<TmGridColumnConfig>;
@@ -121,6 +111,7 @@ export class TmUploads {
 export class TmValue {
     constructor();
     protected readonly asIs: (src: string) => string;
+    protected readonly checkIcon: lucide.IconNode;
     readonly property: InputSignal<TmColumnPlan | TmPathResolution | TmValueDescriptor>;
     protected readonly size: _angular_core.Signal<number>;
     readonly surface: InputSignal<TmValueStyle>;
@@ -170,7 +161,7 @@ export class TmValueEditor {
     protected readonly retryable: _angular_core.Signal<boolean>;
     protected readonly retryLabel: _angular_core.Signal<string>;
     protected readonly scale: _angular_core.Signal<number>;
-    protected setExact(value: number | null): void;
+    protected setExact(text: string): void;
     protected readonly textField: _angular_core.Signal<FieldTree<string>>;
     protected readonly uploading: _angular_core.WritableSignal<boolean>;
     protected readonly writable: _angular_core.Signal<boolean>;

@@ -150,6 +150,23 @@ async function formField(loader: HarnessLoader, name: string): Promise<TmFormFie
   throw new Error(`No field is named '${name}'.`);
 }
 
+/**
+ * Pastes text into a field's input as one edit, as a paste or an
+ * autofill does, and leaves the input.
+ *
+ * @param fixture - The host's fixture.
+ * @param name - The field's name.
+ * @param text - The text.
+ */
+async function paste(fixture: ComponentFixture<TmEditorHost>, name: string, text: string): Promise<void> {
+  const input = (fixture.nativeElement as HTMLElement).querySelector<HTMLInputElement>(`[data-testid="${name}"] input`)!;
+  input.focus();
+  input.value = text;
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+  input.blur();
+  await fixture.whenStable();
+}
+
 /** A blob the fake API's upload returns. */
 const BLOB: TmBlobDescriptor = { id: 88, kind: 'customer-image', contentType: 'image/webp', size: '512' as TmDecimal };
 
@@ -238,6 +255,53 @@ describe('tm-value-editor', () => {
       expect(host.model()['externalReference']).toBe('77');
     });
 
+    it('keeps a decimal’s value, and holds the form invalid, while its text reads as no number', async () => {
+      const { loader, host, fixture } = await start((entities) => [
+        { name: 'creditLimit', property: entities.get('acme.Customer').property('CreditLimit')!, value: '1500.2500' },
+      ]);
+      const limit = await inField(loader, 'creditLimit', TmNumberHarness);
+      const field = await formField(loader, 'creditLimit');
+
+      // Text that is no number.
+      await paste(fixture, 'creditLimit', '12abc');
+      expect(host.model()['creditLimit']).toBe('1500.2500');
+      expect(host.form().invalid()).toBe(true);
+      expect(await limit.isInvalid()).toBe(true);
+      expect(await field.getErrorText()).toContain('1,234.5000');
+
+      // A pasted 19-digit amount, more than a number holds exactly.
+      await paste(fixture, 'creditLimit', '1,234,567,890,123,456.78');
+      expect(host.model()['creditLimit']).toBe('1500.2500');
+      expect(host.form().invalid()).toBe(true);
+      expect(await field.getErrorText()).toContain('15');
+
+      // Text that reads again clears the error and writes the value.
+      await paste(fixture, 'creditLimit', '2000');
+      expect(host.model()['creditLimit']).toBe('2000');
+      expect(host.form().invalid()).toBe(false);
+    });
+
+    it('leaves a 28-digit stored decimal as it is when the user only passes through it', async () => {
+      const { loader, host, fixture } = await start(() => [
+        { name: 'balance', property: { type: 'decimal', nullable: true, scale: 0 }, value: '1234567890123456789012345678' },
+      ]);
+      const balance = await inField(loader, 'balance', TmNumberHarness);
+      await balance.focus();
+      await balance.blur();
+      await fixture.whenStable();
+      expect(host.model()['balance']).toBe('1234567890123456789012345678');
+      expect(host.form().invalid()).toBe(false);
+      expect(host.form().dirty()).toBe(false);
+    });
+
+    it('re-enters an equal decimal without rewriting its text', async () => {
+      const { host, fixture } = await start((entities) => [
+        { name: 'creditLimit', property: entities.get('acme.Customer').property('CreditLimit')!, value: '1500.2500' },
+      ]);
+      await paste(fixture, 'creditLimit', '1500.25');
+      expect(host.model()['creditLimit']).toBe('1500.2500');
+    });
+
     it('edits a flag in a checkbox and a date in a date picker', async () => {
       const { loader, host } = await start(() => [
         { name: 'active', property: { type: 'bool', nullable: false }, value: false },
@@ -309,12 +373,13 @@ describe('tm-value-editor', () => {
       expect([await currency.isReadonly(), await currency.getValue()]).toEqual([true, 'SAR']);
     });
 
-    it('keeps a related row’s key property read-only, by its id', async () => {
+    it('keeps a related row’s key property read-only, by its ungrouped id', async () => {
       const { loader } = await start((entities) => [
-        { name: 'currencyId', property: entities.get('acme.Customer').property('CurrencyId')!, value: 3 },
+        { name: 'currencyId', property: entities.get('acme.Customer').property('CurrencyId')!, value: 1284 },
       ]);
       const currency = await inField(loader, 'currencyId', TmInputHarness);
-      expect([await currency.isReadonly(), await currency.getValue()]).toEqual([true, '3']);
+      // An id is written ungrouped.
+      expect([await currency.isReadonly(), await currency.getValue()]).toEqual([true, '1284']);
     });
   });
 
@@ -361,8 +426,12 @@ describe('tm-value-editor', () => {
       expect(await chip.getLabel()).toBe('invoice.pdf');
       expect(await chip.getHref()).toContain('/blobs/email-attachment/51');
 
+      expect(host.uploads.staged('fileId')?.id).toBe(51);
+
+      // A removal clears the value and the blob staged for it.
       await chip.remove();
       expect(host.model()['fileId']).toBeNull();
+      expect(host.uploads.staged('fileId')).toBeUndefined();
     });
 
     it('refuses a file too large for its kind, naming the limit, and uploads nothing', async () => {

@@ -29,12 +29,11 @@ import {
   TmUrls,
   type TmBlobDescriptor,
   type TmBlobKindPolicy,
-  type TmDecimal,
   type TmNavigationDescriptor,
   type TmPropertyDescriptor,
   type TmValueDescriptor,
 } from '@tellma/core';
-import { TM_UI_TRANSLATE, tmResolveFieldErrors } from '@tellma/core-ui';
+import { TM_UI_TRANSLATE, TmL10n, tmResolveFieldErrors } from '@tellma/core-ui';
 import { TmButton } from '@tellma/core-ui/button';
 import { TmCheckbox } from '@tellma/core-ui/checkbox';
 import { TmChip } from '@tellma/core-ui/chip';
@@ -49,6 +48,7 @@ import { TmMultiSelect, TmOption, TmSelect } from '@tellma/core-ui/select';
 
 import { ɵtmCropCoverSquare, tmCheckBlobFile } from './tm-blob-check';
 import { TmFormats } from './tm-formats';
+import { ɵTmExactBinding, ɵtmParseExact } from './tm-exact-number';
 import { ɵTmFormFieldDelegate } from './tm-form-field-delegate';
 import { TmUploads } from './tm-uploads';
 
@@ -120,13 +120,16 @@ function valueOf(property: TmEditedProperty): TmValueDescriptor {
  */
 @Component({
   selector: 'tm-value-editor',
-  imports: [FormField, TmButton, TmCheckbox, TmChip, TmDatePicker, TmFilePicker, TmImage, TmInput, TmMultiSelect, TmNumber, TmOption, TmSelect],
+  imports: [FormField, ɵTmExactBinding, TmButton, TmCheckbox, TmChip, TmDatePicker, TmFilePicker, TmImage, TmInput, TmMultiSelect, TmNumber, TmOption, TmSelect],
   changeDetection: ChangeDetectionStrategy.OnPush,
   providers: [{ provide: TM_FORM_FIELD_CONTROL, useFactory: () => inject(TmValueEditor).ɵcontrol }],
   host: { class: 'tm-value-editor' },
   styles: `
     :host {
       display: contents;
+    }
+    .tm-value-editor__binding {
+      display: none;
     }
     .tm-value-editor__blob {
       display: flex;
@@ -157,10 +160,13 @@ function valueOf(property: TmEditedProperty): TmValueDescriptor {
         <input tmNumber [formField]="numberField()" [maxDecimals]="0" />
       }
       @case ('exact') {
+        <!-- The field's binding: it writes what the text reads as and carries a refusal into the field -->
+        <span tmExactBinding class="tm-value-editor__binding" [formField]="field()"></span>
         <input
+          #exact
           tmNumber
           [value]="exactNumber()"
-          (valueChange)="setExact($event)"
+          (input)="setExact(exact.value)"
           (touch)="state.markAsTouched()"
           [minDecimals]="scale()"
           [maxDecimals]="scale()"
@@ -260,6 +266,7 @@ export class TmValueEditor {
   readonly #entities = inject(TmEntities);
   readonly #formats = inject(TmFormats);
   readonly #localization = inject(TmLocalization);
+  readonly #l10n = inject(TmL10n);
   readonly #serverText = inject(TmServerText);
   readonly #uploads = inject(TmUploads, { optional: true });
 
@@ -283,6 +290,9 @@ export class TmValueEditor {
 
   /** The inner control the field labels, once the view renders one. */
   private readonly inner = viewChild(TM_FORM_FIELD_CONTROL);
+
+  /** The field binding of a decimal or a long. */
+  private readonly exactBinding = viewChild(ɵTmExactBinding);
 
   /** The bound field's state. */
   protected readonly fieldState = computed<FieldState<unknown>>(() => this.field()());
@@ -475,19 +485,15 @@ export class TmValueEditor {
   }
 
   /**
-   * Writes a decimal or a long from its control's number.
+   * Reads a decimal's or a long's edit text into its field: decimal text at
+   * the scale, or a refusal that keeps the field's value and holds it
+   * invalid.
    *
-   * @param value - The number, or `null` for none.
+   * @param text - The control's text.
    */
-  protected setExact(value: number | null): void {
-    const state = untracked(this.fieldState);
-    let decimal: TmDecimal | null = null;
-    if (value !== null && Number.isFinite(value)) {
-      const scale = untracked(this.scale);
-      decimal = TmDecimals.fromNumber(this.descriptor().long ? Math.trunc(value) : Number(value.toFixed(scale)));
-    }
-    state.value.set(decimal);
-    state.markAsDirty();
+  protected setExact(text: string): void {
+    this.exactBinding()?.write(ɵtmParseExact(text, untracked(this.#l10n.locale), untracked(this.scale)));
+    untracked(this.fieldState).markAsDirty();
   }
 
   /**
@@ -545,9 +551,10 @@ export class TmValueEditor {
     untracked(this.#retry)?.();
   }
 
-  /** Clears the value, aborting any upload in flight. */
+  /** Clears the value, aborting any upload in flight and unstaging the path's blob. */
   protected clear(): void {
     this.#abort();
+    this.#uploads?.stage(untracked(() => this.#path()), null);
     this.#local.set([]);
     this.#retry.set(null);
     const state = untracked(this.fieldState);

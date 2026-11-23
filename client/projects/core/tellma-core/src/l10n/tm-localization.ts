@@ -22,7 +22,7 @@ import { tmGregorianCalendar, tmStripBidiControls, type TmCalendar } from '@tell
 import { firstValueFrom } from 'rxjs';
 
 import { TM_API_HOST } from '../api/tm-api-host';
-import { ɵTM_APP_CONFIG, type TmLanguageDefinition } from '../app/tm-app-config';
+import { ɵTM_APP_CONFIG, type TmLanguageDefinition, type TmStringTree } from '../app/tm-app-config';
 import { TM_DEV_MODE } from '../app/tm-dev-mode';
 import { TmClientMetadataStore } from '../metadata/tm-client-metadata';
 import { TmTelemetry } from '../observe/tm-telemetry';
@@ -157,6 +157,9 @@ export class TmLocalization {
 
   /** Bumped by every language switch and string load, so messages resolve again. */
   readonly #version = signal(0);
+
+  /** The scopes entry points registered strings under. */
+  readonly #scopes = new Set<string>();
 
   /** The browser's time zone, read again when the page shows. */
   readonly #deviceZone = signal(browserZone());
@@ -513,6 +516,28 @@ export class TmLocalization {
       return typeof value === 'string' && value !== '';
     };
     return has(this.#language()) || has('en');
+  }
+
+  /**
+   * Merges an entry point's English strings into the platform's under
+   * `tm.<scope>` (`'value'` serves `'tm.value.none'`), so strings that only a
+   * lazily loaded entry point reads ship with it rather than with the
+   * first frame. They resolve and format exactly as the platform's own: a
+   * language's table that holds the key wins, and the registered English is
+   * the fallback. A scope registers once; it must be the entry point's own.
+   * Internal to the platform's entry points.
+   *
+   * @param scope - The scope under `tm`.
+   * @param strings - The scope's English strings.
+   */
+  ɵregisterStrings(scope: string, strings: TmStringTree): void {
+    if (!this.#scopes.has(scope)) {
+      this.#scopes.add(scope);
+      // Merged into English without re-publishing the language; the version
+      // bump re-resolves every message instead.
+      this.#transloco.setTranslation({ tm: { [scope]: strings } }, 'en', { merge: true, emitChange: false });
+      this.#version.update((version) => version + 1);
+    }
   }
 
   /**

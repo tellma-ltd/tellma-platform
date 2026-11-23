@@ -48,6 +48,31 @@ async function picture(width: number, height: number): Promise<Blob> {
   return canvas.convertToBlob({ type: 'image/png' });
 }
 
+/**
+ * A JPEG of a picture, its EXIF orientation set: the camera's sensor holds
+ * the picture as drawn, and a viewer turns it as the tag says.
+ *
+ * @param picture - The picture, as the sensor holds it.
+ * @param orientation - The EXIF orientation, such as 6 for a quarter turn clockwise.
+ * @returns The JPEG.
+ */
+async function withOrientation(picture: Blob, orientation: number): Promise<Blob> {
+  const bitmap = await createImageBitmap(picture);
+  const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+  canvas.getContext('2d')!.drawImage(bitmap, 0, 0);
+  const jpeg = new Uint8Array(await (await canvas.convertToBlob({ type: 'image/jpeg', quality: 1 })).arrayBuffer());
+
+  // An APP1 segment: "Exif" and a little-endian TIFF header with one IFD
+  // entry, Orientation (0x0112), a SHORT holding the tag's value.
+  const tiff = [0x49, 0x49, 0x2a, 0x00, 0x08, 0x00, 0x00, 0x00, 0x01, 0x00, 0x12, 0x01, 0x03, 0x00, 0x01, 0x00, 0x00, 0x00, orientation, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
+  const payload = [0x45, 0x78, 0x69, 0x66, 0x00, 0x00, ...tiff];
+  const length = payload.length + 2;
+  const app1 = new Uint8Array([0xff, 0xe1, length >> 8, length & 0xff, ...payload]);
+
+  // The segment goes right after the start-of-image marker.
+  return new Blob([jpeg.slice(0, 2), app1, jpeg.slice(2)], { type: 'image/jpeg' });
+}
+
 describe('tmCheckBlobFile', () => {
   it('passes a file of an accepted type within the size', () => {
     expect(tmCheckBlobFile(IMAGE, file(1024, 'image/png'))).toBe('ok');
@@ -88,6 +113,28 @@ describe('cover-square crop', () => {
     const [red, , blue] = context.getImageData(32, 32, 1, 1).data;
     expect(blue).toBeGreaterThan(200);
     expect(red).toBeLessThan(50);
+  });
+
+  it('frames a photo as it is shown, turned by its EXIF orientation', async () => {
+    // The sensor holds a 200 × 100 picture, red left and blue right; turned a
+    // quarter clockwise it shows 100 × 200, red above and blue below. The
+    // user framed the lower half of what they saw.
+    const photo = await withOrientation(await picture(200, 100), 6);
+    const shown = await createImageBitmap(photo, { imageOrientation: 'from-image' });
+    expect([shown.width, shown.height]).toEqual([100, 200]);
+
+    const cropped = await ɵtmCropCoverSquare(photo, { rect: { x: 0, y: 0.5, width: 1, height: 0.5 }, focal: { x: 0.5, y: 0.75 } }, IMAGE.image!);
+    const bitmap = await createImageBitmap(cropped);
+    expect([bitmap.width, bitmap.height]).toEqual([64, 64]);
+    const canvas = new OffscreenCanvas(64, 64);
+    const context = canvas.getContext('2d')!;
+    context.drawImage(bitmap, 0, 0);
+    // Blue across the square; a crop of the unturned picture would be red on its left.
+    for (const [x, y] of [[8, 32], [32, 32], [56, 32]] as const) {
+      const [red, , blue] = context.getImageData(x, y, 1, 1).data;
+      expect(blue).toBeGreaterThan(180);
+      expect(red).toBeLessThan(70);
+    }
   });
 
   it('keeps a small crop at its own size', async () => {

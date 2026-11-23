@@ -92,6 +92,18 @@ describe('tm-value', () => {
     expect((await show({ type: 'decimal', nullable: true, scale: 2 }, null, 'grid')).textContent?.trim()).toBe('');
   });
 
+  it('shows a flag in a grid as a check for yes, named for assistive technology, and as words in a details view', async () => {
+    const { show } = await start();
+    const flag = { type: 'bool', nullable: false } as const;
+    const yes = await show(flag, true, 'grid');
+    expect(yes.querySelector('tm-icon')?.getAttribute('aria-label')).toBe('Yes');
+    expect(yes.textContent?.trim()).toBe('');
+    const no = await show(flag, false, 'grid');
+    expect(no.querySelector('tm-icon')).toBeNull();
+    expect(no.querySelector('.tm-value__hidden')?.textContent).toBe('No');
+    expect((await show(flag, true)).textContent?.trim()).toBe('Yes');
+  });
+
   it('shows a guid mono and a slot in its content direction', async () => {
     const { show, rig } = await start();
     const guid = await show({ type: 'guid', nullable: false }, '0b4f2a');

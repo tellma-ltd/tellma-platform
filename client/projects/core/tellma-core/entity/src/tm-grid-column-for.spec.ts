@@ -3,11 +3,13 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+import { computed, Injector } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { TmEntities, type TmColumnInput, type TmPlanRow } from '@tellma/core';
+import { TmEntities, TmLocalization, type TmColumnInput, type TmPlanRow } from '@tellma/core';
 import { TM_PARSE_ERROR } from '@tellma/core-ui/contracts';
 
 import { tmEntityRig, type TmEntityRigOptions } from '../../src/entity/tm-entity.testing.util';
+import { tmSettle } from '../../src/routes/tm-app.testing.util';
 import { tmGridColumnFor, type TmGridColumnOptions } from './tm-grid-column-for';
 import { tmSelectPlan, type TmSelectPlan } from './tm-select-plan';
 
@@ -79,11 +81,10 @@ describe('tmGridColumnFor', () => {
     expect(gridColumn('acme.Customer', 'IsActive')).toMatchObject({ type: 'boolean', readonly: true });
   });
 
-  it('keeps server-owned values, instants, groups and navigations read-only in a child grid', async () => {
+  it('keeps server-owned values, instants and navigations read-only in a child grid', async () => {
     await tmEntityRig({ ...SYSTEM, languages: 2 });
     expect(gridColumn('acme.Customer', 'IsActive', { editable: true }).readonly).toBe(true);
     expect(gridColumn('acme.Customer', 'CreatedAt', { editable: true })).toMatchObject({ type: 'text', readonly: true });
-    expect(gridColumn('acme.Customer', 'Name', { editable: true })).toMatchObject({ type: 'text', readonly: true });
     const currency = gridColumn('acme.Customer', 'Currency', { editable: true });
     expect(currency).toMatchObject({ type: 'text', readonly: true });
     expect(currency.value!({ currencyId: 3, currency: { id: 3 } })).toBe(3);
@@ -98,14 +99,45 @@ describe('tmGridColumnFor', () => {
     expect(readonly({ id: null })).toBe(false);
   });
 
-  it('reads a form model’s row by its JSON names, a group in the active slot', async () => {
+  it('reads a form model’s row by its JSON names, a read-only group in the active slot', async () => {
     await tmEntityRig({ ...SYSTEM, languages: 2, language: 'ar' });
-    const name = gridColumn('acme.Customer', 'Name', { editable: true });
+    const name = gridColumn('acme.Customer', 'Name', { rows: 'model' });
+    expect(name).toMatchObject({ type: 'text', readonly: true });
     expect(name.key).toBeUndefined();
     expect(name.value!({ name: 'Acme', name2: 'أكمي' })).toBe('أكمي');
     expect(name.value!({ name: 'Beta', name2: null })).toBe('Beta');
     const code = gridColumn('acme.Customer', 'Currency.Code', { editable: true });
     expect(code.value!({ currency: { code: 'SAR' } })).toBe('SAR');
+  });
+
+  it('edits a group’s active slot in a child grid, by the slot’s JSON name', async () => {
+    await tmEntityRig({ ...SYSTEM, languages: 2, language: 'ar' });
+    expect(gridColumn('acme.Customer', 'Name', { editable: true })).toMatchObject({ key: 'name2', type: 'text', readonly: false });
+  });
+
+  it('edits slot 1 of a group in a child grid in the first language, and in a one-language tenant', async () => {
+    await tmEntityRig({ ...SYSTEM, languages: 2 });
+    expect(gridColumn('acme.Customer', 'Name', { editable: true })).toMatchObject({ key: 'name', type: 'text', readonly: false });
+    TestBed.resetTestingModule();
+    await tmEntityRig(SYSTEM);
+    expect(gridColumn('acme.Customer', 'Name', { editable: true })).toMatchObject({ key: 'name', type: 'text', readonly: false });
+  });
+
+  it('makes a group’s column again for the new slot after a language switch, when made in a computed', async () => {
+    await tmEntityRig({ ...SYSTEM, languages: 2 });
+    const column = plan('acme.Customer', ['Name']).columns[0]!;
+    const injector = TestBed.inject(Injector);
+    const config = computed(() => tmGridColumnFor(column, { editable: true, injector }));
+    expect(config().key).toBe('name');
+    const l10n = TestBed.inject(TmLocalization);
+    l10n.setLanguage('ar');
+    // The switch lands once the language's strings have loaded, which can
+    // take more than one settle while the whole suite runs.
+    await vi.waitFor(async () => {
+      await tmSettle();
+      expect(l10n.language()).toBe('ar');
+    });
+    expect(config().key).toBe('name2');
   });
 
   it('formats a search grid’s cell as the plan does', async () => {

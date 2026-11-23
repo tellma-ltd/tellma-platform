@@ -49,16 +49,6 @@ export const TM_STRINGS_EN = {
     tenantFrozen: '{tenant} is under maintenance.',
     permissionNeeded: 'Needs “{permission}”. Ask your administrator to grant it.',
   },
-  value: {
-    none: '—',
-    yes: 'Yes',
-    no: 'No',
-    file: 'File',
-    chooseFile: 'Choose a file',
-    fileTooLarge: 'This file is too large. The limit is {max}.',
-    fileType: "This type of file isn't accepted.",
-    uploadFailed: 'Upload failed',
-  },
 } as const satisfies TmStringTree;
 
 /**

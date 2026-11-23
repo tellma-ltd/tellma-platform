@@ -6,7 +6,8 @@
 import { createEnvironmentInjector, EnvironmentInjector, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { TmEntities, type TmJson, type TmQueryRowSet, type TmValueDescriptor } from '@tellma/core';
-import { TM_DEVICE_TIME_ZONE, TM_NOW, TM_TIME_ZONE, TmL10n } from '@tellma/core-ui';
+import { TM_ACTIVE_LOCALE, TM_CALENDAR, TM_DEVICE_TIME_ZONE, TM_NOW, TM_TIME_ZONE, TmL10n } from '@tellma/core-ui';
+import { tmUmalquraCalendar } from '@tellma/core-ui/calendar-umalqura';
 import { TM_BIDI_CONTROLS } from '@tellma/core-ui/l10n';
 
 import { tmEntityRig, type TmEntityRigOptions } from '../../src/entity/tm-entity.testing.util';
@@ -44,6 +45,25 @@ function zoned(zone: string, device: string, now: string): TmFormats {
       { provide: TM_TIME_ZONE, useValue: signal(zone) },
       { provide: TM_DEVICE_TIME_ZONE, useValue: signal(device) },
       { provide: TM_NOW, useValue: () => Date.parse(now) },
+    ],
+    TestBed.inject(EnvironmentInjector),
+  );
+  return injector.get(TmFormats);
+}
+
+/**
+ * The formats in a locale and the Umm al-Qura calendar.
+ *
+ * @param locale - The locale.
+ * @returns The formats.
+ */
+function inUmmAlQura(locale: string): TmFormats {
+  const injector = createEnvironmentInjector(
+    [
+      TmFormats,
+      TmL10n,
+      { provide: TM_ACTIVE_LOCALE, useValue: signal(locale) },
+      { provide: TM_CALENDAR, useValue: signal(tmUmalquraCalendar()) },
     ],
     TestBed.inject(EnvironmentInjector),
   );
@@ -113,10 +133,28 @@ describe('TmFormats', () => {
     it('formats a date in the active calendar, medium in details and numeric in a grid', async () => {
       await tmEntityRig(SYSTEM);
       const formats = TestBed.inject(TmFormats);
-      const l10n = TestBed.inject(TmL10n);
       const of: TmValueDescriptor = { type: 'date', nullable: false };
-      expect(formats.text('2026-03-01', of)).toBe(l10n.formatDate('2026-03-01', { dateStyle: 'medium' }));
-      expect(formats.text('2026-03-01', of, 'grid')).toBe(l10n.formatDate('2026-03-01', { dateStyle: 'numeric' }));
+      expect(formats.text('2026-03-01', of)).toBe('Mar 1, 2026');
+      expect(formats.text('2026-03-01', of, 'grid')).toBe('3/1/2026');
+    });
+
+    it('formats a date in the Umm al-Qura calendar, in the locale’s digits', async () => {
+      await tmEntityRig(SYSTEM);
+      const of: TmValueDescriptor = { type: 'date', nullable: false };
+      // 2026-03-01 is 12 Ramadan 1447.
+      expect(inUmmAlQura('ar-SA').text('2026-03-01', of, 'grid')).toBe('١٢/٩/١٤٤٧');
+      expect(inUmmAlQura('ar-SA-u-nu-latn').text('2026-03-01', of, 'grid')).toBe('12/9/1447');
+      expect(inUmmAlQura('ar-SA-u-nu-latn').text('2026-03-01', of)).toBe('12 رمضان 1447');
+      expect(inUmmAlQura('en').text('2026-03-01', of, 'grid')).toBe('9/12/1447');
+    });
+
+    it('shows a date-time in the Umm al-Qura calendar as stored, in UTC, in the locale’s digits', async () => {
+      await tmEntityRig(SYSTEM);
+      const of: TmValueDescriptor = { type: 'datetime', nullable: false };
+      expect(inUmmAlQura('ar-SA').text('2026-03-01T10:30:00', of, 'grid')).toBe('١٢/٩/١٤٤٧، ١٠:٣٠ ص');
+      expect(inUmmAlQura('ar-SA-u-nu-latn').text('2026-03-01T10:30:00', of, 'grid')).toBe('12/9/1447، 10:30 ص');
+      // Late in the evening it stays the same day: a date-time is never moved into a zone.
+      expect(inUmmAlQura('ar-SA-u-nu-latn').text('2026-03-01T22:30:00', of)).toBe('12 رمضان 1447، 10:30 م');
     });
 
     it('shows a date-time as stored, in UTC and never labelled', async () => {
@@ -125,6 +163,15 @@ describe('TmFormats', () => {
       const text = formats.text('2026-03-01T10:30:00', { type: 'datetime', nullable: false }, 'grid');
       expect(text).toContain('10:30');
       expect(text).not.toContain('GMT');
+    });
+
+    it('writes a foreign key’s id ungrouped, in the locale’s digits', async () => {
+      const { entities } = await tmEntityRig(SYSTEM);
+      const formats = TestBed.inject(TmFormats);
+      const currencyId = entities.get('acme.Customer').property('CurrencyId')!;
+      expect(formats.text(1284, currencyId)).toBe('1284');
+      expect(formats.text(1284, { type: 'integer', nullable: false })).toBe('1,284');
+      expect(inUmmAlQura('ar-SA').text(1284, currencyId)).toBe('١٢٨٤');
     });
 
     it('names an id by its row once it is known', async () => {
@@ -200,6 +247,17 @@ describe('TmFormats', () => {
         rows: [[4, 51, 'invoice.pdf']],
       });
       expect(formats.cell(files.columns[0]!, file!)).toBe('invoice.pdf');
+    });
+
+    it('writes the key’s and a foreign key’s ids ungrouped', async () => {
+      const { entities } = await tmEntityRig(SYSTEM);
+      const formats = TestBed.inject(TmFormats);
+      const plan = TestBed.runInInjectionContext(() => tmSelectPlan(entities.get('acme.Customer'), ['Id', 'CurrencyId', 'ExternalReference']));
+      const [row] = plan.rows({
+        columns: plan.select.split(',').map((term) => ({ name: term, type: 'String', nullable: true, path: term.split('.'), groupingKey: false })),
+        rows: [[1284, 2048, '4096']],
+      });
+      expect(plan.columns.map((column) => formats.cell(column, row!))).toEqual(['1284', '2048', '4,096']);
     });
 
     it('shows an empty cell for a navigation with no related row', async () => {

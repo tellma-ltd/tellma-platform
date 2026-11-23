@@ -12,11 +12,13 @@ import {
   type TmId,
   type TmJsonObject,
   type TmPlanRow,
+  type TmPropertyDescriptor,
   type TmValueDescriptor,
 } from '@tellma/core';
 import { TmL10n, type TmZoneLabelMode } from '@tellma/core-ui';
 import { tmFormatDateTime, tmStripBidiControls, type TmDateStyle } from '@tellma/core-ui/l10n';
 
+import { ɵTM_VALUE_STRINGS_EN } from './tm-entity-strings';
 import { ɵtmPlanNames, type TmColumnPlan } from './tm-select-plan';
 
 // Typed values as text (spec 0029 §12): one format per value descriptor, the
@@ -40,16 +42,17 @@ const LISTS = new Map<string, Intl.ListFormat>();
  *
  * @param locale - The locale.
  * @param decimals - The fraction digits to show, at least and at most; free when omitted.
+ * @param grouping - Whether the digits are grouped.
  * @returns The formatter.
  */
-function formatter(locale: string, decimals: number | undefined): Intl.NumberFormat {
-  const key = `${locale}\n${decimals ?? ''}`;
+function formatter(locale: string, decimals: number | undefined, grouping: boolean): Intl.NumberFormat {
+  const key = `${locale}\n${decimals ?? ''}\n${grouping}`;
   let format = FORMATTERS.get(key);
   if (format === undefined) {
-    format = new Intl.NumberFormat(
-      locale,
-      decimals === undefined ? { maximumFractionDigits: 20 } : { minimumFractionDigits: decimals, maximumFractionDigits: decimals },
-    );
+    format = new Intl.NumberFormat(locale, {
+      ...(decimals === undefined ? { maximumFractionDigits: 20 } : { minimumFractionDigits: decimals, maximumFractionDigits: decimals }),
+      ...(!grouping && { useGrouping: false }),
+    });
     FORMATTERS.set(key, format);
   }
   return format;
@@ -62,15 +65,16 @@ function formatter(locale: string, decimals: number | undefined): Intl.NumberFor
  * @param value - The number or decimal text.
  * @param locale - The locale.
  * @param decimals - The fraction digits to show; free when omitted.
+ * @param grouping - Whether the digits are grouped; they are when omitted.
  * @returns The text, or `null` when the value is no number.
  */
-export function ɵtmFormatExact(value: unknown, locale: string, decimals?: number): string | null {
+export function ɵtmFormatExact(value: unknown, locale: string, decimals?: number, grouping = true): string | null {
   if (typeof value === 'number' ? !Number.isFinite(value) : typeof value !== 'string' || !/^-?\d+(?:\.\d+)?$/.test(value)) {
     return null;
   }
   // The ES2023 signature takes decimal text as an exact decimal; the
   // project's library target predates it.
-  const format = formatter(locale, decimals).format as (value: number | string) => string;
+  const format = formatter(locale, decimals, grouping).format as (value: number | string) => string;
   return tmStripBidiControls(format(value as number | TmDecimal));
 }
 
@@ -94,6 +98,11 @@ export class TmFormats {
   readonly #localization = inject(TmLocalization);
   readonly #entities = inject(TmEntities);
   readonly #names = inject(TmDisplayNames);
+
+  /** Registers the entry point's strings, which every typed value reads through this service. */
+  constructor() {
+    this.#localization.ɵregisterStrings('value', ɵTM_VALUE_STRINGS_EN);
+  }
 
   /** The related rows a navigation cell names, by row and column, so a row's display name is computed once. */
   readonly #related = new WeakMap<TmPlanRow, Map<TmColumnPlan, TmJsonObject>>();
@@ -143,7 +152,10 @@ export class TmFormats {
       }
       default: {
         const of = column.descriptor;
-        return of === null ? (empty(value) ? '' : String(value)) : this.#text(value, of, 'grid', 'column');
+        // The key property of the column's entity is an id, written ungrouped as a foreign key is.
+        const end = column.resolution?.end;
+        const key = end?.kind === 'value' && this.#entities.get(column.resolution!.entity).key.property === end.property.name;
+        return of === null ? (empty(value) ? '' : String(value)) : this.#text(value, of, 'grid', 'column', key);
       }
     }
   }
@@ -187,9 +199,10 @@ export class TmFormats {
    * @param of - Its type facts.
    * @param style - The surface.
    * @param zone - How an instant is labelled.
+   * @param id - Whether the value is an entity's key, written ungrouped.
    * @returns The text.
    */
-  #text(value: unknown, of: TmValueDescriptor, style: TmValueStyle, zone: TmZoneLabelMode): string {
+  #text(value: unknown, of: TmValueDescriptor, style: TmValueStyle, zone: TmZoneLabelMode, id = false): string {
     if (empty(value)) {
       return style === 'grid' ? '' : this.#localization.ɵtext('tm.value.none')();
     }
@@ -219,8 +232,12 @@ export class TmFormats {
 
     const dateStyle: TmDateStyle = style === 'grid' ? 'numeric' : 'medium';
     switch (of.type) {
-      case 'integer':
-        return ɵtmFormatExact(value, this.#l10n.locale(), 0) ?? String(value);
+      case 'integer': {
+        // An id, a foreign key or an entity's key, is written ungrouped in the
+        // locale's digits (spec 0029 §5.2, spec 0010 §D.15).
+        const ungrouped = id || (of as Partial<TmPropertyDescriptor>).foreignKeyOf !== undefined;
+        return ɵtmFormatExact(value, this.#l10n.locale(), 0, !ungrouped) ?? String(value);
+      }
       case 'decimal':
         return ɵtmFormatExact(value, this.#l10n.locale(), of.scale) ?? String(value);
       case 'float':
