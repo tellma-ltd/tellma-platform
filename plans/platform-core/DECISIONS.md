@@ -384,6 +384,15 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-243 (orchestrator, 2026-11-22): PC-117 fix 1 accepted; ids keep the locale's digits
+
+- Fix 1 (d49d7e35) addresses R1-1 to R1-9. It is about 690 lines against about 4,420 in the implementation, so it is not an escalation under section 4.4.
+- R1-2 adds a string-registration seam, TmLocalization.ɵregisterStrings, at a primary cost of 0.06 KB. The tm.value strings moved to ./entity, and "." is back to 42.45 of 42.5. PC-119 to PC-121 register their strings the same way, and the ./entity README documents the seam. ./entity is 12.18 against a ceiling of 12.5, honest under D-031.
+- R1-6: my ruling said ids display with Latin digits. The implementer followed the specs instead: spec 0029 section 5.2 says integers are ungrouped, and spec 0010 section D.15 says the digits stay the locale's. So ar-SA shows ١٢٨٤. I withdraw my ruling, because the specs govern.
+- R1-3 needed no spec change: a child-grid multilingual group edits its active slot by its JSON name.
+- R1-1's residual risk: typing "12abc" key by key leaves the field at 12 and invalid. Both that case and the paste case block Save.
+- During the fix, a language-switch test raced its settle under load. It now waits for the switch to land, which counts as root-caused.
+
 ### D-242 (orchestrator, 2026-11-22): PC-F74 lands before PC-189
 
 - PC-189's integration run 45094742817 on 0e1aed83 was cancelled. build-test (windows-latest) hit its 30-minute limit with Tellma.Core.AspNetCore.Tests unfinished, and no test failed. This is the PC-F74 defect, not PC-189's.
