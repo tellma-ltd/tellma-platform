@@ -504,9 +504,8 @@ namespace Tellma.Core.IntegrationTests.Jobs
 
             // --- The row is still leased, now until the shutdown timeout from the final renewal ---
             Assert.Equal(nameof(JobStatus.Running), (await fixture.JobAsync(id)).Status);
-            int remaining = await SqlServerFixture.ScalarAsync<int>(
-                fixture.ConnectionString, Invariant($"SELECT DATEDIFF(millisecond, SYSUTCDATETIME(), [LeaseExpiresAt]) FROM [core].[Jobs] WHERE [Id] = {id};"));
-            Assert.InRange(remaining, 1, (int)Worker.ShutdownTimeout.TotalMilliseconds);
+            (DateTimeOffset? expiresAt, DateTimeOffset now) = await fixture.LeaseAsync(id);
+            Assert.InRange(Assert.NotNull(expiresAt) - now, TimeSpan.FromTicks(1), Worker.ShutdownTimeout);
             FakeLogRecord abandoned = Assert.Single(fixture.Log.GetSnapshot(), static record => record.Id.Name == "JobHandlerAbandoned");
             Assert.Equal(LogLevel.Warning, abandoned.Level);
             Assert.Contains(fixture.Log.GetSnapshot(), static record => record.Id.Name == "WorkerDrainTimedOut");
