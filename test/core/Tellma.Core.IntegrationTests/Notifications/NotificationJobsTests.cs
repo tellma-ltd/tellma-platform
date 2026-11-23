@@ -24,7 +24,8 @@ namespace Tellma.Core.IntegrationTests.Notifications
     ///     The delivery and retention handlers under the worker against a fixture database: a raised
     ///     request's delivery job resolving each channel's recipients from their preferences, with each
     ///     recipient's own localization, on the job's write host; a failing channel's job failing with
-    ///     its notice in the administrator's inbox only; and retention deleting each band a page at a
+    ///     its notice in the administrator's inbox only; a failure notice naming no actor whichever scope
+    ///     completes the job; and retention deleting each band a page at a
     ///     time. Every batch's writes are audited against change tracking.
     /// </summary>
     /// <param name="fixture">The class's database, reset before each test.</param>
@@ -111,6 +112,37 @@ namespace Tellma.Core.IntegrationTests.Notifications
             Assert.Equal(
                 [jobId],
                 await IdsAsync($"SELECT [Id] FROM [core].[Jobs] WHERE [HandlerKey] = N'{Delivery}' ORDER BY [Id];"));
+        }
+
+        [Theory]
+        [InlineData(11)]
+        [InlineData(12)]
+        public async Task A_failed_job_run_as_a_user_raises_its_notice_with_no_actor_whether_its_handler_or_the_system_completes_it(int attempts)
+        {
+            // --- A delivery job run as and requested by Ada: on its last attempt the handler fails in
+            // Ada's scope; past its attempts it fails without the handler, in the system scope ---
+            fixture.Deliveries.SmsFails = true;
+            await PreferAsync((AdaId, CoreFeature.EmailChannel, true));
+            await NotifyAsync(new NotificationRequest(FixtureNotifications.Shipped, [AdaId], null, FixtureNotifications.ShipmentResource, 42, null, null));
+            int jobId = await SqlServerFixture.ScalarAsync<int>(fixture.ConnectionString, $"SELECT [Id] FROM [core].[Jobs] WHERE [HandlerKey] = N'{Delivery}';");
+            await SqlServerFixture.ExecuteAsync(
+                fixture.ConnectionString,
+                string.Create(CultureInfo.InvariantCulture, $"UPDATE [core].[Jobs] SET [Attempts] = {attempts}, [RunAsUserId] = {AdaId}, [RequestedById] = {AdaId} WHERE [Id] = {jobId};"));
+
+            PolledJob polled = Assert.Single(await JobPollDriver.PollOnceAsync(fixture.Tenant, [Delivery], Token, Token));
+
+            // --- The notice reaches Ada, caused by the system rather than by Ada herself ---
+            Assert.Equal((jobId, JobStatus.Failed), (polled.JobId, polled.Status));
+            Assert.Equal(
+                0,
+                await SqlServerFixture.ScalarAsync<int>(
+                    fixture.ConnectionString,
+                    string.Create(CultureInfo.InvariantCulture, $"SELECT COUNT(*) FROM [core].[Notifications] WHERE [UserId] = {AdaId} AND [Type] = N'{JobNotices.FailedDescriptor.Key}' AND [ActorUserId] IS NOT NULL;")));
+            Assert.Equal(
+                1,
+                await SqlServerFixture.ScalarAsync<int>(
+                    fixture.ConnectionString,
+                    string.Create(CultureInfo.InvariantCulture, $"SELECT COUNT(*) FROM [core].[Notifications] WHERE [UserId] = {AdaId} AND [Type] = N'{JobNotices.FailedDescriptor.Key}';")));
         }
 
         [Fact]

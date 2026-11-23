@@ -14,6 +14,8 @@ using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Blobs;
 using Tellma.Core.Abstractions.Email;
 using Tellma.Core.Abstractions.Errors;
+using Tellma.Core.Abstractions.Jobs;
+using Tellma.Core.Abstractions.Notifications;
 using Tellma.Core.Abstractions.Settings;
 using Tellma.Core.Abstractions.Validation;
 using Tellma.Core.Composition.Checks;
@@ -132,16 +134,27 @@ namespace Tellma.Core.Tests.Localization
             // pipeline raises is rendered from the key its dots make, so a missing key would put the
             // bare code on the wire. Every public constant of the code catalogues counts; the blob
             // refusals' and the outbox's catalogues also name their arguments, which are not codes.
-            Type[] catalogues = [typeof(ValidationCodes), typeof(SettingsValidationCodes), typeof(AccessCodes), typeof(BlobRejectedException), typeof(OutgoingEmailCodes)];
+            Type[] catalogues =
+            [
+                typeof(ValidationCodes), typeof(SettingsValidationCodes), typeof(AccessCodes), typeof(BlobRejectedException), typeof(OutgoingEmailCodes),
+                typeof(JobEnqueueCodes), typeof(JobErrorCodes), typeof(JobValidationCodes), typeof(ScheduleValidationCodes), typeof(NotificationValidationCodes),
+            ];
+
+            // The codes that never reach a user: the two lease codes are caught by the worker and the
+            // scheduler, which drop the statement's work, and an enqueue outside a transaction is a
+            // defect of the caller's batch rather than a condition a user can meet or act on.
+            string[] internalCodes = [JobErrorCodes.LeaseLost, JobErrorCodes.TickLeaseLost, JobEnqueueCodes.OutsideTransaction];
             string[] codes = [.. catalogues
                 .SelectMany(static type => type.GetFields(BindingFlags.Public | BindingFlags.Static))
                 .Where(static field => field.IsLiteral && field.FieldType == typeof(string) && !field.Name.EndsWith("Argument", StringComparison.Ordinal))
                 .Select(static field => (string)field.GetRawConstantValue()!)
+                .Except(internalCodes, StringComparer.Ordinal)
                 .Distinct(StringComparer.Ordinal)];
             Dictionary<string, string> neutral = Entries(string.Empty);
             Dictionary<string, string> arabic = Entries("ar");
 
             Assert.Contains(AccessCodes.CannotDeleteSelf, codes);
+            Assert.Contains(JobEnqueueCodes.OwnerUnavailable, codes);
             Assert.All(codes, code =>
             {
                 string key = code.Replace('.', '_');
