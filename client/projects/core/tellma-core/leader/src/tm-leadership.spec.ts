@@ -93,6 +93,29 @@ describe('TmLeadership', () => {
       expect(reads('inbox/summary').length).toBe(1);
     });
 
+    it.each([
+      ['window', 'pagehide', 'pageshow'],
+      ['document', 'freeze', 'resume'],
+    ] as const)('revalidates the tenant on a return after %s %s, though the page saw the last sync', async (target, away, back) => {
+      const sync: ɵTmSyncDoc = { at: Date.now(), entities: null, entityTags: {} };
+      await rig.store.put(TM_LEADER_T17, 'sync', { tag: null, savedAt: Date.now(), data: sync });
+      const tab = await leader({ noHub: true });
+      expect(triggers(tab)).toEqual([]);
+      tab.fire(target, away);
+      await tmUntil(() => !tab.leader.isLeader());
+      await tmAdvance(10_000);
+      tab.fire(target, back);
+      await tmUntil(() => tab.leader.isLeader());
+      expect(triggers(tab)).toEqual(['leader']);
+    });
+
+    it('revalidates the tenant when the last sync is stamped ahead of the clock', async () => {
+      const sync: ɵTmSyncDoc = { at: Date.now() + 3_600_000, entities: null, entityTags: {} };
+      await rig.store.put(TM_LEADER_T17, 'sync', { tag: null, savedAt: Date.now(), data: sync });
+      const tab = await leader({ noHub: true });
+      expect(triggers(tab)).toEqual(['leader']);
+    });
+
     it('stamps a read that lands late with its send time, so a later copy stored meanwhile wins', async () => {
       const answer = deferred<unknown>();
       rig.api.respond('inbox/summary', () => answer.promise);
@@ -318,6 +341,35 @@ describe('TmLeadership', () => {
       await tmAdvance(60_000);
       expect(tab.events('tm.realtime.polling')).toEqual([{ cause: 'hub-down' }]);
       expect(tab.leader.hubStatus().state).toBe('connecting');
+    });
+
+    it('re-reads a leader document whose stored copy starts to ask for it while connected', async () => {
+      const { hub } = await connecting();
+      await tmUntil(() => rig.store.doc(TM_LEADER_T17, 'inbox')() !== undefined);
+      hub.sink.state('connected');
+      await tmAdvance(30_000);
+      // A panel stores a copy that asks for polling: the leader re-reads it a minute after its last read.
+      await rig.store.put(TM_LEADER_T17, 'inbox', { tag: null, savedAt: Date.now(), data: { running: true } });
+      await tmAdvance(29_000);
+      expect(reads('inbox/summary').length).toBe(1);
+      await tmAdvance(1_000);
+      await tmPause();
+      expect(reads('inbox/summary').length).toBe(2);
+    });
+
+    it('re-reads a leader document whose own read starts to ask for it while connected', async () => {
+      const { hub } = await connecting();
+      await tmUntil(() => rig.store.doc(TM_LEADER_T17, 'inbox')() !== undefined);
+      hub.sink.state('connected');
+      // A job starts: its event's read stores a copy that asks, and its later events are lost.
+      rig.api.respond('inbox/summary', { running: true });
+      hub.sink.event({ name: 'job.changed', tenantId: 17, payload: null });
+      await tmAdvance(250);
+      await tmUntil(() => rig.store.doc<{ running: boolean }>(TM_LEADER_T17, 'inbox')()?.data.running === true);
+      expect(reads('inbox/summary').length).toBe(2);
+      await tmAdvance(60_000);
+      await tmPause();
+      expect(reads('inbox/summary').length).toBe(3);
     });
 
     it('re-reads a leader document every minute while its stored copy asks for it, even while connected', async () => {

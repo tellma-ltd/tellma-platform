@@ -137,6 +137,8 @@ export class TmLeaderElection {
   #stopping: Promise<void> = Promise.resolve();
   /** The page events that keep the tab out of the election until they are undone. */
   readonly #suspended = new Set<'pagehide' | 'freeze'>();
+  /** When the page last came back from the back-forward cache or a freeze, in epoch milliseconds. */
+  #returnedAt = -Infinity;
   #destroyed = false;
 
   /** Starts the election, which follows the routed tenant, the session and the page's life. */
@@ -174,7 +176,10 @@ export class TmLeaderElection {
   #suspend(kind: 'pagehide' | 'freeze', on: boolean): void {
     if (on) {
       this.#suspended.add(kind);
-    } else if (!this.#suspended.delete(kind)) {
+    } else if (this.#suspended.delete(kind)) {
+      // Back: a leadership it begins revalidates what the pause missed.
+      this.#returnedAt = this.#now();
+    } else {
       return;
     }
     this.#reconcile();
@@ -193,7 +198,7 @@ export class TmLeaderElection {
           ? 'freeze'
           : this.#suspended.has('pagehide')
             ? 'pagehide'
-            : !active || partition?.sub !== term.partition.sub
+            : !active || (partition !== null && partition.sub !== term.partition.sub)
               ? 'session'
               : 'tenant';
       this.#end(term, why);
@@ -284,8 +289,10 @@ export class TmLeaderElection {
     const options: LockOptions = controller === null ? { steal: true } : { signal: controller.signal };
     locks
       .request(term.lock, options, () => {
-        if (term.ended || term !== this.#term) {
-          // Granted after the tab left: the lock goes at once.
+        if (term.ended || term !== this.#term || term.leadership !== null) {
+          // Granted after the tab left, or a steal granted after the queued
+          // request it raced with already led: the lock goes at once, and the
+          // leadership it was taken from ends as stolen.
           return undefined;
         }
         if (term.request === controller) {
@@ -312,7 +319,8 @@ export class TmLeaderElection {
     this.#telemetry.event('tm.realtime.leader-acquired', { how });
     this.#leader.ɵisLeader.set(true);
     try {
-      term.leadership = runInInjectionContext(this.#injector, () => new TmLeadership(term.partition));
+      const seenSince = Math.max(performance.timeOrigin, this.#returnedAt);
+      term.leadership = runInInjectionContext(this.#injector, () => new TmLeadership(term.partition, seenSince));
     } catch (error) {
       // A leader that cannot start lets the lock go, so another tab may lead.
       this.#telemetry.error(error, { source: 'tm-leader' });

@@ -134,6 +134,8 @@ export class TmLeadership {
   readonly #reads: TmDocReads[];
   /** Follows the tenant's realtime flag. */
   readonly #realtime: EffectRef;
+  /** Re-arms the polls when a leader document's stored copy starts or stops asking for them. */
+  readonly #asking: EffectRef;
 
   /** The connection's state, and when it entered it. */
   #state: TmHubState = 'connecting';
@@ -158,12 +160,16 @@ export class TmLeadership {
 
   /**
    * Starts the leadership: reports `connecting`, revalidates the tenant
-   * unless the page has seen a sync of it, and refreshes the leader
-   * documents, then follows the tenant's realtime flag.
+   * unless the page has seen a sync of it since it last came back, and
+   * refreshes the leader documents, then follows the tenant's realtime flag
+   * and the leader documents' stored copies.
    *
    * @param partition - The tenant's partition.
+   * @param seenSince - Since when the page has run without a pause, in epoch
+   *   milliseconds: its load, or its last return from the back-forward cache
+   *   or from a freeze.
    */
-  constructor(partition: TmTenantPartition) {
+  constructor(partition: TmTenantPartition, seenSince: number) {
     this.#partition = partition;
     this.#t = partition.tenantId;
     const now = this.#now();
@@ -173,11 +179,13 @@ export class TmLeadership {
     // --- Election: report, revalidate the warm launch, refresh the leader documents (spec 0025 §7.2 step 2) ---
     this.#post();
     // The refresh revalidates a warm launch, whose stored sync is older than
-    // the page. A sync sent since the page loaded, such as a cold entry's,
-    // already did, and another tab's sync since then left the documents as
-    // fresh; so the leader adds no second sync to a cold launch.
+    // the page, and a page back from the back-forward cache or a freeze
+    // (§7.2 step 4). A sync sent since the page last came back, such as a
+    // cold entry's, already did, and another tab's sync since then left the
+    // documents as fresh; so the leader adds no second sync to a cold launch.
+    // A stamp ahead of the clock, left by a clock set back, proves nothing.
     const syncedAt = untracked(this.#store.doc<ɵTmSyncDoc>(partition, 'sync'))?.data.at ?? -Infinity;
-    if (syncedAt < performance.timeOrigin) {
+    if (syncedAt < seenSince || syncedAt > now) {
       void this.#refresher.refresh(this.#t, ['tenant'], 'leader');
     }
     this.#reads.forEach((reads) => this.#read(reads));
@@ -190,6 +198,29 @@ export class TmLeadership {
       () => {
         const realtime = this.#store.doc<TmTenantFacts>(partition, 'tenant')()?.data.realtime;
         untracked(() => this.#follow(realtime));
+      },
+      { injector: this.#injector, manualCleanup: true },
+    );
+
+    // --- A leader document that starts or stops asking for polls re-arms the timer (§8.6) ---
+    // Its stored copy changes on this leader's reads and on another tab's or
+    // a panel's put; a copy that starts to ask while the hub is connected
+    // would otherwise wait for the next change of state or visibility.
+    let asked: string | null = null;
+    this.#asking = effect(
+      () => {
+        for (const reads of this.#reads) {
+          if (reads.doc.pollWhile !== undefined) {
+            this.#store.doc(partition, reads.doc.name)();
+          }
+        }
+        untracked(() => {
+          const asking = this.#reads.map((reads) => this.#pollWhile(reads)).join();
+          if (asked !== null && asking !== asked) {
+            this.#arm();
+          }
+          asked = asking;
+        });
       },
       { injector: this.#injector, manualCleanup: true },
     );
@@ -233,6 +264,7 @@ export class TmLeadership {
     this.#generation++;
     this.#abort.abort();
     this.#realtime.destroy();
+    this.#asking.destroy();
     clearTimeout(this.#timer);
     clearTimeout(this.#probeTimer);
     this.#reads.forEach((reads) => clearTimeout(reads.timer));
@@ -321,11 +353,12 @@ export class TmLeadership {
       ended: () => {
         if (live()) {
           // The server ended the user's access, or the session: the
-          // connection stops, and a sync decides what the user sees. A
-          // terminated session's own sign-out (spec 0024 §8.5) is not wired
-          // here yet, so until it is, that sync's 401 takes the expiry path.
-          this.#hub?.stop().catch((error: unknown) => this.#telemetry.error(error, { source: 'tm-leader' }));
-          this.#terminal(generation);
+          // connection stops, and a sync decides what the user sees; the
+          // connection starts again only once it has closed. A terminated
+          // session's own sign-out (spec 0024 §8.5) is not wired here yet, so
+          // until it is, that sync's 401 takes the expiry path.
+          const stopped = this.#hub?.stop().catch((error: unknown) => this.#telemetry.error(error, { source: 'tm-leader' }));
+          this.#terminal(generation, stopped);
         }
       },
     };
@@ -333,11 +366,12 @@ export class TmLeadership {
 
   /**
    * A terminal signal: a background sync decides what it means (§8.5). A sync
-   * that lands restarts the connection; one reporting realtime off stops it.
+   * that lands restarts the connection, once a stop in progress has settled;
+   * one reporting realtime off stops it.
    */
-  #terminal(generation: number): void {
+  #terminal(generation: number, stopped: Promise<unknown> = Promise.resolve()): void {
     const requested = this.#now();
-    void this.#refresher.refresh(this.#t, ['tenant'], 'terminal').then(() => {
+    void Promise.all([this.#refresher.refresh(this.#t, ['tenant'], 'terminal'), stopped]).then(() => {
       const at = untracked(this.#store.doc<ɵTmSyncDoc>(this.#partition, 'sync'))?.data.at ?? -Infinity;
       if (!this.#stopped && generation === this.#generation && this.#state !== 'disabled' && at >= requested) {
         this.#hub?.start();

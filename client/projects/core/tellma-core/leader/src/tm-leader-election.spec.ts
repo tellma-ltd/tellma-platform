@@ -23,6 +23,37 @@ import {
 // real time (tmUntil, tmPause), while the election's own waits run on faked
 // timers (tmAdvance).
 
+/**
+ * A lock manager the test grants by hand, for a race the browser's own one
+ * cannot be made to show on demand. The holder it reports is another tab.
+ */
+class TmScriptedLocks {
+  /** Every request, oldest first, with what the test may do to it. */
+  readonly requests: {
+    readonly options: LockOptions;
+    /** Grants the lock: the callback runs, and the request settles with what it returns. */
+    readonly grant: () => void;
+    /** Takes a granted lock away, as another request's steal does. */
+    readonly steal: () => void;
+  }[] = [];
+
+  /** Reports the hub lock as held by another tab. */
+  query(): Promise<LockManagerSnapshot> {
+    return Promise.resolve({ held: [{ name: TM_LEADER_LOCK, mode: 'exclusive', clientId: 'other-tab' }], pending: [] });
+  }
+
+  /** Records a request, which the test settles. */
+  request(name: string, options: LockOptions, callback: (lock: Lock | null) => unknown): Promise<unknown> {
+    return new Promise((resolve, reject) => {
+      this.requests.push({
+        options,
+        grant: () => void Promise.resolve(callback({ name, mode: 'exclusive' } as Lock)).then(resolve, reject),
+        steal: () => reject(new DOMException('The lock was stolen.', 'AbortError')),
+      });
+    });
+  }
+}
+
 describe('TmLeaderElection', () => {
   let rig: TmLeaderRig;
 
@@ -112,6 +143,15 @@ describe('TmLeaderElection', () => {
       await tmUntil(() => a.leader.isLeader());
     });
 
+    it('releases on leaving for no tenant, as leaving the tenant', async () => {
+      const a = await leader();
+      a.refresher.partition.set(null);
+      await tmUntil(() => !a.leader.isLeader());
+      expect(a.events('tm.realtime.leader-released')).toEqual([{ why: 'tenant' }]);
+      const held = await a.frame.contentWindow!.navigator.locks.query();
+      expect(held.held).toEqual([]);
+    });
+
     it('releases when the session is no longer active', async () => {
       const a = await leader();
       rig.session.setState('expired');
@@ -160,6 +200,32 @@ describe('TmLeaderElection', () => {
 
       b.fire('document', 'resume');
       await tmUntil(() => b.leader.isLeader());
+    });
+
+    it('keeps one leadership when its steal races a grant of its own queued request', async () => {
+      const locks = new TmScriptedLocks();
+      const b = rig.tab({ locks: locks as unknown as LockManager, noHub: true });
+      await tmUntil(() => locks.requests.length === 1);
+      // Nobody answers the probe: after 5 s and the jitter, the tab steals.
+      await tmAdvance(5_000);
+      await tmUntil(() => locks.requests.length === 2, { step: 1 });
+      const [queued, steal] = locks.requests;
+      expect(steal!.options.steal).toBe(true);
+
+      // The holder let go just before the steal: the queued request was
+      // granted first, and the steal then took the lock from it.
+      queued!.grant();
+      steal!.grant();
+      queued!.steal();
+      await tmUntil(() => locks.requests.length === 3);
+      locks.requests[2]!.grant();
+      await tmUntil(() => b.leader.isLeader());
+      expect(b.events('tm.realtime.leader-acquired')).toEqual([{ how: 'granted' }, { how: 'granted' }]);
+      expect(b.events('tm.realtime.leader-released')).toEqual([{ why: 'stolen' }]);
+
+      // One leadership is left, so one poll a minute.
+      await tmAdvance(60_000);
+      expect(b.refresher.triggers().filter((trigger) => trigger === 'poll')).toEqual(['poll']);
     });
 
     it('leads alone where the page has no Web Locks', async () => {

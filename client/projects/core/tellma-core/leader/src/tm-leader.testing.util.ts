@@ -284,6 +284,8 @@ export interface TmLeaderTabOptions {
   readonly noHub?: boolean;
   /** No Web Locks in the page. */
   readonly noLocks?: boolean;
+  /** A lock manager the test scripts, in place of the iframe's real one. */
+  readonly locks?: LockManager;
 }
 
 /** The rig: the root's services, and a way to open tabs. */
@@ -374,7 +376,7 @@ export async function tmLeaderRig(
           { provide: TmTabBus, useValue: bus },
           { provide: TmTelemetry, useValue: telemetry },
           { provide: TmCacheRefresher, useValue: refresher },
-          { provide: TM_LEADER_LOCKS, useValue: options.noLocks === true ? null : frame.contentWindow!.navigator.locks },
+          { provide: TM_LEADER_LOCKS, useValue: options.noLocks === true ? null : (options.locks ?? frame.contentWindow!.navigator.locks) },
           { provide: TM_HUB_FACTORY, useValue: options.noHub === true ? null : factory },
         ],
         root,
