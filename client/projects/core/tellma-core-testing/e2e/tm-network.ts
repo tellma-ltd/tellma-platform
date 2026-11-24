@@ -13,7 +13,9 @@ import { tmCallsRoute, tmIsServerPath, type TmFakeProblem, tmProblemResponse } f
 // the service worker controls sends its requests through the worker, which
 // page-level routes never see; context-level routes and offline mode do. So
 // a helper reaches every tab of the context, which is what a multi-tab flow
-// wants.
+// wants. None of them unroutes to let go: a request the browser intercepts
+// while its route is removed can be lost, never sent and never answered. So a
+// helper that lets go keeps its route and passes every later request on.
 
 /** One request {@link holdNetwork} holds. */
 export interface TmHeldRequest {
@@ -29,7 +31,7 @@ export interface TmHeldRequest {
 export interface TmNetworkHold {
   /** The requests held so far, in the order they were made. */
   held(): readonly TmHeldRequest[];
-  /** Lets every held request continue and stops holding new ones. */
+  /** Lets every held request continue, and every later one pass. */
   release(): Promise<void>;
 }
 
@@ -62,8 +64,8 @@ export async function holdNetwork(page: Page): Promise<TmNetworkHold> {
   return {
     held: () => held.map((entry) => entry.request),
     release: async () => {
+      // The route stays: from here on the handler passes every request on.
       holding = false;
-      await context.unroute(matcher, handler);
       // A request whose page has gone answers nothing; that is not a failure of the release.
       await Promise.all(held.map((entry) => entry.route.fallback().catch(() => undefined)));
     },
@@ -90,7 +92,7 @@ export async function goOffline(page: Page): Promise<() => Promise<void>> {
  * @param page - A page of the context whose calls are answered.
  * @param route - The route after `/api/`, such as `web/client/sync`, under a tenant or not; or a whole path, such as `/bff/user`.
  * @param problem - The problem: its status, code, headers and further members.
- * @returns A function that stops answering the route.
+ * @returns A function that stops answering the route, after which its calls pass.
  */
 export async function fakeProblem(
   page: Page,
@@ -99,8 +101,14 @@ export async function fakeProblem(
 ): Promise<() => Promise<void>> {
   const context = page.context();
   const response = tmProblemResponse(problem);
+  let answering = true;
   const matcher = (url: URL): boolean => tmCallsRoute(url.pathname, route);
-  const handler = (intercepted: Route): Promise<void> => intercepted.fulfill(response);
+  const handler = (intercepted: Route): Promise<void> =>
+    answering ? intercepted.fulfill(response) : intercepted.fallback();
   await context.route(matcher, handler);
-  return () => context.unroute(matcher, handler);
+  // Stopping keeps the route, which passes the calls on from then.
+  return () => {
+    answering = false;
+    return Promise.resolve();
+  };
 }
