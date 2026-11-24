@@ -61,9 +61,9 @@ namespace Tellma.Identity.Services.BackchannelLogout
             // each back their own refresh tokens.
             foreach (IdentitySessionClient registration in clients)
             {
-                foreach (IdentitySessionClientAuthorization used in registration.Authorizations)
+                foreach (string authorizationId in UsedAuthorizationIds(registration))
                 {
-                    object? authorization = await authorizationManager.FindByIdAsync(used.AuthorizationId, cancellationToken);
+                    object? authorization = await authorizationManager.FindByIdAsync(authorizationId, cancellationToken);
                     if (authorization is not null && await authorizationManager.TryRevokeAsync(authorization, cancellationToken))
                     {
                         await auditLogger.LogAsync(
@@ -88,6 +88,21 @@ namespace Tellma.Identity.Services.BackchannelLogout
             {
                 await DeliverAsync(subject, registration, cancellationToken);
             }
+        }
+
+        /// <summary>
+        ///     Every authorization a registration records, each once: the rows, and the latest one
+        ///     in the registration's own column. The column alone holds the authorization of a
+        ///     registration that the previous engine release made, which wrote no rows.
+        /// </summary>
+        /// <param name="registration">The client's registration under a session.</param>
+        /// <returns>The distinct authorization ids.</returns>
+        private static IEnumerable<string> UsedAuthorizationIds(IdentitySessionClient registration)
+        {
+            IEnumerable<string> rows = registration.Authorizations.Select(static used => used.AuthorizationId);
+            return registration.AuthorizationId is { } latest
+                ? rows.Prepend(latest).Distinct(StringComparer.Ordinal)
+                : rows.Distinct(StringComparer.Ordinal);
         }
 
         /// <summary>Delivers one logout token; failures are audited, never thrown.</summary>

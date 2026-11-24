@@ -218,9 +218,15 @@ for a scope set no authorization holds creates its own, and so do two first gran
 The session registry therefore records every authorization a client's grants used under a session
 (`SessionClientAuthorizations`, keyed by session, client and authorization, beneath the session's
 `SessionClients` row), and a logout of the session, or sign-out everywhere, revokes them all before
-it delivers one back-channel logout token per client. Grants of one session registering the same
-client at once both succeed: a lost insert's duplicate key is read as the other grant's row, and
-any other failure, such as the session ending meanwhile, fails the grant. The consent and device-approval pages name each place (`ConsentTargetCatalog`: a distribution's host
+it delivers one back-channel logout token per client. `SessionClients.AuthorizationId` still holds
+the latest of them for one more release, because the previous engine release reads only that
+column during a rollout or after a rollback, and a logout revokes it too, which covers the
+registrations that release made. Grants of one session registering the same client at once both
+succeed: a lost insert's duplicate key is read as the other grant's row, and any other failure,
+such as the session's row being deleted meanwhile, fails the grant. A registration commits only
+while its session is still active, and a logout marks the session ended before it reads what to
+revoke, so a grant that loses to a logout answers `login_required` rather than holding an
+authorization no logout reaches. The consent and device-approval pages name each place (`ConsentTargetCatalog`: a distribution's host
 in ASCII form, or its host and a tenant id). `Seed:InterimClients` holds such entries keyed by client id (each must be a third-party
 `Native` entry whose client id is its key); they seed beside `Seed:Clients`, and any entry of either
 with `Enabled=false` is neither validated nor seeded.

@@ -19,6 +19,14 @@ namespace Tellma.Identity.Data.Entities
         /// <summary>The client identifier.</summary>
         public string ClientId { get; set; } = string.Empty;
 
+        /// <summary>
+        ///     The physical id of the OpenIddict authorization the client's latest grant under the
+        ///     session used. It is still written beside <see cref="Authorizations" /> because the
+        ///     previous engine release reads only this column, and a logout revokes it too, since a
+        ///     registration that release made has nothing else.
+        /// </summary>
+        public string? AuthorizationId { get; set; }
+
         /// <summary>When the client first obtained tokens under this session.</summary>
         public DateTimeOffset CreatedUtc { get; set; }
 

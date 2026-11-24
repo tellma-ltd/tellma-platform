@@ -11,11 +11,6 @@ namespace Tellma.Identity.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropColumn(
-                name: "AuthorizationId",
-                schema: "idsvr",
-                table: "SessionClients");
-
             migrationBuilder.CreateTable(
                 name: "SessionClientAuthorizations",
                 schema: "idsvr",
@@ -45,14 +40,6 @@ namespace Tellma.Identity.Migrations
             migrationBuilder.DropTable(
                 name: "SessionClientAuthorizations",
                 schema: "idsvr");
-
-            migrationBuilder.AddColumn<string>(
-                name: "AuthorizationId",
-                schema: "idsvr",
-                table: "SessionClients",
-                type: "nvarchar(450)",
-                maxLength: 450,
-                nullable: true);
         }
     }
 }

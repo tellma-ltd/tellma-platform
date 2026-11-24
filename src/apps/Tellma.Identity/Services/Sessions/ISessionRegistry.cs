@@ -33,16 +33,25 @@ namespace Tellma.Identity.Services.Sessions
         ///     authorization backing them. A client keeps one registration per session and every
         ///     authorization its grants used there, none replacing another, so a logout can revoke
         ///     them all. Grants of one session may register the same client at once, as two tabs
-        ///     signing in do: each succeeds, and both authorizations are kept.
+        ///     signing in do: each succeeds, and both authorizations are kept. A session that has
+        ///     ended registers nothing, so a grant that loses to a logout is refused rather than
+        ///     left with an authorization no logout will revoke.
         /// </summary>
         /// <param name="sid">The session identifier.</param>
         /// <param name="clientId">The client that obtained tokens.</param>
         /// <param name="authorizationId">The OpenIddict authorization backing the grant.</param>
         /// <param name="cancellationToken">Aborts the operation.</param>
-        /// <returns>A task that completes when the registration is stored.</returns>
-        Task RegisterClientAsync(string sid, string clientId, string? authorizationId, CancellationToken cancellationToken);
+        /// <returns>
+        ///     True when the registration is stored; false when the session has ended or is gone,
+        ///     and nothing was recorded.
+        /// </returns>
+        Task<bool> RegisterClientAsync(string sid, string clientId, string? authorizationId, CancellationToken cancellationToken);
 
-        /// <summary>Marks a session terminated and returns its registered clients for fan-out.</summary>
+        /// <summary>
+        ///     Marks a session terminated and returns its registered clients for fan-out. The
+        ///     registrations are read after the session is marked, so none committed meanwhile is
+        ///     missed.
+        /// </summary>
         /// <param name="sid">The session identifier.</param>
         /// <param name="cancellationToken">Aborts the operation.</param>
         /// <returns>
@@ -51,7 +60,10 @@ namespace Tellma.Identity.Services.Sessions
         /// </returns>
         Task<IReadOnlyList<IdentitySessionClient>> TerminateAsync(string sid, CancellationToken cancellationToken);
 
-        /// <summary>Terminates every active session of a user ("sign out everywhere").</summary>
+        /// <summary>
+        ///     Terminates every active session of a user ("sign out everywhere"). The registrations
+        ///     are read after the sessions are marked, so none committed meanwhile is missed.
+        /// </summary>
         /// <param name="userId">The user.</param>
         /// <param name="cancellationToken">Aborts the operation.</param>
         /// <returns>

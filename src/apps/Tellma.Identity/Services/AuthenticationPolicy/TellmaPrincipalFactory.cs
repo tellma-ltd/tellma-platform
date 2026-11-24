@@ -222,7 +222,12 @@ namespace Tellma.Identity.Services.AuthenticationPolicy
             string authorizationId = (await authorizationManager.GetIdAsync(authorization, cancellationToken))!;
             identity.SetAuthorizationId(authorizationId);
 
-            await sessionRegistry.RegisterClientAsync(sid, grant.ClientId, authorizationId, cancellationToken);
+            // A session a logout ended while this grant was in flight registers nothing, and the
+            // grant gets no tokens that the logout could not reach.
+            if (!await sessionRegistry.RegisterClientAsync(sid, grant.ClientId, authorizationId, cancellationToken))
+            {
+                return new PrincipalResult(null, Errors.LoginRequired, "The session has ended; sign in again.");
+            }
 
             identity.SetDestinations(TellmaClaimDestinations.Resolve);
             return new PrincipalResult(identity, null, null);

@@ -335,3 +335,311 @@ the same gap already exists without the race. The registry should hold every aut
       `Migrations` then passed 13 of 13.
   - Acme integration tests, filtered to `MigratorTests` and `WebHostTests`: 14 passed.
   - `ConcurrentGrantTests` run 20 times: 20 of 20 runs were green, each running all 6 tests.
+
+## Review 2
+
+Scope: 04056370 and 322845ef together, against the LEDGER row PC-F82, D-266 (R1-4), D-277, spec
+0003 §7.3, spec 0010 Part A (identity migrations and the store check) and spec 0012 §4.3 (the N−1
+rule that 0010 Part A cites). There is no CHECKPOINTS entry, and WATCHLIST.md has no spec 0003
+section; its 0010-A leads are about fixtures and client metadata, not the registry.
+
+Verified locally on 322845ef:
+
+- `dotnet build` of `Tellma.Identity.IntegrationTests` and `Tellma.Identity.Tests`: Build succeeded,
+  0 warnings, 0 errors.
+- Identity unit, `IdentityStoreMigrationsTests` (the latest-migration pin and the collation pin): 2
+  passed.
+- Identity integration, `--no-build`, with `Category=Integration&Category!=Nightly&Live!=true`:
+  - ConcurrentGrant, Migrations, StoreCheck, BackchannelLogout, EndSession, SessionPrune, Consent,
+    DeviceFlow, Revocation, SecurityStampRefresh, AuthorizationCodeFlow and TenantResource: 64
+    passed, 0 failed.
+  - DocumentClient, ParAndPkce, ResourceIndicator, AssurancePolicy, TokenExchange and Userinfo
+    (other flows that reach `RegisterClientAsync`, which fix1's list left out): 31 passed, 0 failed.
+  - `ConcurrentGrantTests` alone, 5 consecutive runs: 5 of 5 green, 6 of 6 tests each.
+- The pc/PC-F82 CI runs (45390556674, 45397993516) were skipped, so there is no CI evidence yet.
+
+The orchestrator's five questions:
+
+1. **Does every path that should stop renewal revoke all of a session's authorizations?** For
+   registrations made after the upgrade, yes, with the exceptions in R2-1 (sessions that exist at
+   upgrade) and R2-3 (a logout racing a grant).
+   - All three callers go through `BackchannelLogoutService.NotifyAsync`, which revokes every row:
+     `Logout.cshtml.cs:45`, `EndSessionController.cs:130` and `Manage/Sessions.cshtml.cs:61`.
+   - No admin, operator or user-disable path exists in `src`. `OperatorController` has only
+     get-user and issue-TAP, and nothing sets `UserLifecycleState.Disabled`. Password reset relies
+     on the stamp, as before.
+   - Nothing in `src`, `test` or `distributions` reads a single authorization any more.
+2. **Is the migration EF-generated, reversible and safe for existing rows?**
+   - It is EF-generated as far as can be checked without re-scaffolding. The operations come in
+     the differ's order (drop, then create), and the Designer and snapshot agree with the model.
+     `MigrateAsync`, which refuses pending model changes, runs in `MigrationsTests` and
+     `StoreCheckTests`.
+   - It is reversible in shape, but lossy in both directions, and it is not safe for existing rows
+     (R2-1).
+3. **Can the duplicate-key retry loop or misattribute?** No.
+   - It cannot loop: the filter needs `attempt < 3`, so the third failure propagates.
+   - It cannot turn a foreign failure into a success. The filter needs rows this save added and an
+     inner `SqlException` 2627 or 2601. A duplicate from any other pending entity fails again on
+     every attempt until the third one rethrows. The session-deleted cases (FK 547, or the 0-row
+     `DbUpdateConcurrencyException` on the session's `LastSeenUtc` update) are not matched.
+   - The detach and re-read are exercised for a conflict on the client row. A conflict on the
+     authorization row alone is not (R2-2).
+4. **Do the two new tests fail without the fix, and is the interleaving real?** Yes to both.
+   - On 04056370 the registry kept one `AuthorizationId` per `(sid, client)`, overwritten by each
+     grant, and `NotifyAsync` revoked only that one. In both tests one authorization therefore
+     stays valid, and `AssertEndedAsync` fails on its status and on its refresh token, as the
+     implementer's red run reports.
+   - The barriers still stage the real two-tab interleaving:
+     - `creates` holds both creates until both grants have read and found nothing.
+     - `registrations` holds both registry saves until both have run `StageRegistrationAsync`.
+     - The loser's retry is the third matching save, so it passes straight through.
+     - The `BothArrived` asserts remain, so neither test can pass vacuously.
+5. **Is the StoreCheckTests change legitimate?** Yes, it generalizes the assertion without weakening
+   it.
+   - `Assert.Single` meant "the second migrate applied nothing more" only because the chain held
+     one migration.
+   - `Assert.Equal(applied, …)` checks the same property for any chain length.
+   - `Assert.Contains(LatestMigration, applied)` still checks that the first run reached the end of
+     the chain.
+
+Review 1's responses: the implementer accepted both findings, so there is no pushback to judge.
+
+- R1-1's fix holds for grants made after the upgrade, and the two new tests prove it. It does not
+  hold for sessions that exist at upgrade (R2-1).
+- R1-2's test pins the property that matters: a session deleted mid-registration gets no code.
+  - The exact mutation R1-2 named, a widened filter, no longer fails that test.
+  - Under fix1's bounded loop that mutation cannot issue a code either, because the third attempt
+    rethrows. So the property is still pinned.
+
+### Findings
+
+**R2-1 (major): The migration drops `SessionClients.AuthorizationId` in the same release that stops
+using it. That breaks the N−1 rule every identity migration must follow, and it discards the
+revocation link of every session that exists at upgrade.**
+
+- **Where:**
+  - `src/apps/Tellma.Identity.Migrations/Migrations/20261124122036_SessionClientAuthorizations.cs:14-17`:
+    the drop, with no copy into the new table.
+  - `:45-55`: `Down`.
+  - The property's removal from `IdentitySessionClient`, and from its mapping in
+    `EngineEntityConfigurations.cs:49-52`.
+- **The rule:**
+  - Spec 0010 Part A: every migration after `Initial` "follows the N−1 rule of spec 0012 §4.3. It
+    lands before the engine deploys, so the previous engine release runs on it during a rollout."
+  - §4.3 drops a column only "when no version that can still be running writes it", and it moves
+    data in three releases: add and copy, then copy again, then drop.
+  - `src/apps/Tellma.Identity.Migrations/README.md:24` repeats the rule.
+  - Neither commit records a deviation from it.
+- **Failure 1, during a rollout or after a rollback:**
+  1. The migrator applies `SessionClientAuthorizations` before the new engine is deployed, or the
+     engine is rolled back after it.
+  2. The previous engine starts. Its store check needs only its own `Initial` row, and later rows
+     do not fail it (`IdentityStoreCheck.cs:224-231`).
+  3. Its model still maps `SessionClients.AuthorizationId`. These calls select every mapped column,
+     so they fail with "Invalid column name 'AuthorizationId'":
+     - `RegisterClientAsync`'s `FindAsync`;
+     - the `Include(Clients)` in `TerminateAsync` and `TerminateAllAsync`.
+  4. Every authorize request with a session then answers 500. So do logout, end-session and sign-out
+     everywhere, until the new engine runs everywhere.
+- **Failure 2, rows that exist at upgrade:**
+  1. A session that exists at upgrade has a `SessionClients` row whose `AuthorizationId` the
+     migration discards. It gets no `SessionClientAuthorizations` row.
+  2. After the upgrade, the user logs out. `TerminateAsync` returns the client with an empty
+     `Authorizations`, and `NotifyAsync` revokes nothing.
+  3. A public or native client's refresh tokens issued before the upgrade keep renewing. This is
+     R1-1's break of spec 0003 §7.3 ("stop token renewal"), now for every pre-upgrade session
+     instead of one race. It lasts until that session makes another grant to the client.
+  4. `Down` loses data the same way. It drops the table and re-adds an empty column, so a store
+     migrated back loses every registration's authorization.
+- **Tests:** `MigrationsTests` migrates only an empty database, so no test runs an upgrade over
+  existing rows.
+- **Suggested fix.** It needs no hand-edited migration, so it stays within D-277.
+  1. Keep `IdentitySessionClient.AuthorizationId` mapped (nullable, 450) for one more release,
+     documented as kept for the previous engine. Have `RegisterClientAsync` keep writing the latest
+     authorization id to it, so a rolled-back engine still revokes what it always did.
+  2. Have `NotifyAsync` revoke the union of the rows and that column. That covers sessions that
+     exist at upgrade, and registrations the previous engine writes during the rollout.
+  3. Re-scaffold the migration. It then only creates the table.
+  4. Add an upgrade test:
+     - migrate to `Initial`, and insert a session and a client registration that carries an
+       authorization id;
+     - migrate to the latest, end the session, and assert that the authorization is revoked.
+  5. Open a fix item for the contract step one release later: copy the column into the table, then
+     drop the column.
+- **Alternative:** Ahmad may rule that no identity store at `Initial` has been deployed anywhere, so
+  no previous release can ever run on this migration. In that case, record the ruling as a
+  deviation from 0010 Part A in the fix commit, rather than leave the rule silently broken.
+
+**R2-2 (minor): Three new paths have no test, and the first one would fail silently.**
+
+- **(a) Sign-out everywhere.**
+  - `TerminateAllAsync` loads the rows through the new `.ThenInclude(static c => c.Authorizations)`
+    (`SqlSessionRegistry.cs:123`).
+  - The old id was a scalar column and always loaded. The rows load only through this include,
+    since the context has no lazy loading.
+  - If an edit dropped the include, `NotifyAsync` would see empty collections and revoke nothing,
+    with no error.
+  - No test checks the authorizations' status after `OnPostSignOutEverywhereAsync` or
+    `TerminateAllSessionsAsync`. A refresh-only assertion would not catch the loss either, because
+    the stamp bump already fails the refresh.
+  - `TerminateAsync`'s include is pinned, by the end-session tests here and by
+    `BackchannelLogoutTests`.
+- **(b) Session prune.**
+  - `Retention_removes_long_terminated_rows_and_their_client_registrations` registers with
+    `authorizationId: null` (`SessionPruneTests.cs:69`).
+  - So the retention pass never deletes a session that holds a `SessionClientAuthorizations` row,
+    and the new cascade (Sessions → SessionClients → SessionClientAuthorizations) is never
+    exercised.
+  - If a later regeneration or model edit lost that cascade, every retention sweep would fail on
+    FK 547, and no test would show it.
+- **(c) A conflict on the authorization row alone.**
+  - Scenario: two tabs of one session, with the client already registered, both record an
+    authorization that is new to the session.
+  - Only the conflict on the client row is staged (`Two_tabs_making_a_sessions_first_grant…`).
+- **Suggested fix:**
+  - (a) A `ConcurrentGrantTests` case: make two authorizations, post the Manage/Sessions sign-out
+    everywhere, and assert that both are `revoked`.
+  - (b) Pass an authorization id in the retention test, and assert that
+    `SessionClientAuthorizations` holds only "recent".
+  - (c) Optional: after one ordinary grant has registered the client, a `SaveBarrier` on
+    `IdentitySessionClientAuthorization` `Added`.
+
+**R2-3 (minor): A logout that races an in-flight grant of the same session can still leave a valid
+authorization.**
+
+- **Where:** `BackchannelLogoutService.cs:66-79`, and `SqlSessionRegistry.cs:203-229` together with
+  `TellmaPrincipalFactory.cs:280-305`.
+- **(a) A lost revoke is dropped silently.** This is pre-existing, but it is in the loop fix1
+  rewrote.
+  - `NotifyAsync` reads the authorization (`FindByIdAsync`, `:66`) and then calls
+    `TryRevokeAsync`, which writes on the authorization's concurrency token.
+  - When that write loses, `TryRevokeAsync` catches the store's concurrency exception and returns
+    `false`. That happens when a second tab's extend of the same authorization commits between the
+    two calls.
+  - `NotifyAsync` treats `false` as nothing to do: no log, no audit row, no retry.
+  - The authorization stays valid, so every refresh token it backed before the logout keeps
+    renewing.
+- **(b) The new retry turns the opposite order into a live grant.**
+  1. The revoke commits first, so the tab's extend loses.
+  2. The re-read (`Statuses.Valid`) finds nothing, and `CreateAuthorizationAsync` makes a new
+     authorization.
+  3. `RegisterClientAsync` records it under the session that `TerminateAsync` has just closed:
+     `StageRegistrationAsync` never checks `TerminatedUtc`.
+  4. A code is issued, and no later logout of that sid reaches the new authorization.
+     `TerminateAsync` returns `[]` for a session already terminated, and `TerminateAllAsync`
+     filters such sessions out.
+  - On platform-core the same grant got `temporarily_unavailable`.
+  - It is minor because the outcome is already reachable without the retry: a first grant in
+    flight, or any request still carrying the pre-logout SSO cookie, reaches it too, since spec
+    0003 §7.3 defers server-side cookie termination.
+- **Suggested fix.** A follow-up fix item is enough.
+  - (a) On `false`, detach the request's copy, read the authorization again and retry the revoke a
+    bounded number of times. If it still fails, log a Warning and audit `TokenRevoked` with outcome
+    `failure`.
+  - (b) Make `RegisterClientAsync` refuse a terminated session atomically:
+    - The session-row write it already makes in the same transaction as the inserts should apply
+      only while `TerminatedUtc IS NULL`, for example by making `TerminatedUtc` a concurrency
+      token. When no row matches, fail the grant with `login_required`.
+    - `TerminateAsync` should set `TerminatedUtc` before it reads the registrations, or read them
+      again after its save.
+    - A registration then either lands before the terminate's read, or fails.
+
+### Responses
+
+- **R2-1: fixed in fix2 (D-279), as an expand step under the N−1 rule.**
+  - `IdentitySessionClient.AuthorizationId` is mapped again (`nvarchar(450)`, nullable, as on
+    `Initial`). `StageRegistrationAsync` writes it as before: the authorization on a new
+    registration, or the latest one over an existing registration. It still adds the
+    `SessionClientAuthorizations` row beside it. A rolled-back engine therefore still revokes what
+    it always did.
+  - `BackchannelLogoutService.NotifyAsync` revokes the column's authorization plus every row, each
+    id once (`UsedAuthorizationIds`, distinct and ordinal), so no id is audited twice. That covers
+    sessions that exist at upgrade, and registrations the previous release makes during a rollout.
+  - The fix1 migration was removed with `dotnet ef migrations remove`, which reverted the snapshot
+    to 04056370's content.
+  - It was re-scaffolded with the README's `dotnet ef migrations add` command as
+    `20261124132011_SessionClientAuthorizations`. It now only creates the table, its key and its
+    cascade foreign key, and `Down` only drops the table.
+  - The only edit after scaffolding is the normalization the committed files already show. The
+    migration file loses its BOM and the scaffolder's CRLF. The Designer and snapshot keep the BOM,
+    as `Initial`'s Designer and the snapshot do. (fix1 had stripped the snapshot's BOM, which is
+    now back.)
+  - The migration has no data-copy SQL. `TellmaIdentityConstants.LatestMigration` points at the new
+    id.
+  - The column is not dropped. That is PC-F90's contract step.
+  - New upgrade test,
+    `A_session_registered_before_the_upgrade_is_still_ended_by_a_logout_after_it`:
+    1. The CLI is granted and redeemed.
+    2. The store is migrated back to `Initial` (the migration's `Down`), then forward to the latest
+       (`Up`), through the host context's `IMigrator`. What remains is exactly what the previous
+       release writes: the registration with the authorization in the column, and no rows (the
+       test asserts that the rows are empty).
+    3. The end-session logout then revokes the authorization, and the refresh token no longer
+       renews.
+    - It was red on 322845ef's product code ("valid" where "revoked" was expected): fix1's `Down`
+      re-added an empty column and its `Up` dropped it.
+- **R2-2: fixed in fix2.** Three tests, each shown to fail under a mutation of what it pins. fix1
+  already has the behaviour, so none can be red on 322845ef.
+  - (a) `Signing_out_everywhere_revokes_every_authorization_a_session_used`:
+    - Two authorizations under one session (a wider scope set makes the second). Posting the
+      Manage/Sessions sign-out-everywhere form revokes both.
+    - Mutation: drop the `Include(Authorizations)` from the registrations read that both terminate
+      paths now share. Only the column's latest authorization is then revoked, and the test fails
+      ("valid").
+  - (b) `Retention_removes_long_terminated_rows_and_their_client_registrations`:
+    - It now registers `authorization-<sid>` and asserts that `SessionClientAuthorizations` keeps
+      only `authorization-recent`.
+    - Mutation: the migration's cascade changed to `NoAction`. The retention delete then fails on
+      FK `FK_SessionClientAuthorizations_SessionClients_Sid_ClientId`.
+  - (c) `Two_tabs_recording_an_authorization_new_to_the_session_at_once_both_get_a_code`:
+    1. Another session of the user's creates authorization A (default scopes, tenant 17).
+    2. This session registers the CLI with its own B (`+ profile`, tenant 18).
+    3. Two tabs then both use A at once, held by a `SaveBarrier` on
+       `IdentitySessionClientAuthorization` `Added`, so they race on that row alone.
+    - Both get a code. The session records {A, B} and the other session records {A}.
+    - Mutation: retry only when the client row was refused. The losing tab then answers 500.
+- **R2-3(b): fixed in fix2.** Registration refuses a terminated session atomically.
+  - `RegisterClientAsync` now returns `bool`. It runs in its own transaction, inside the context's
+    execution strategy, so a host that configures retries still works.
+  - After the rows are saved (a lost duplicate key rolls back to EF's savepoint and retries as
+    before), it runs `UPDATE Sessions SET LastSeenUtc … WHERE Sid = @sid AND TerminatedUtc IS NULL`
+    in the same transaction. On 0 rows it rolls back, forgets the rows it tracked and returns
+    `false`. The factory then answers `login_required` ("The session has ended; sign in again.").
+  - The update replaces the old tracked `LastSeenUtc` write. It always issues, so it always takes
+    the session row's lock, even when the clock value is unchanged.
+  - `TerminateAsync` and `TerminateAllAsync` now write `TerminatedUtc` first and read the
+    registrations after that save (a shared `ReadRegistrationsAsync`). A registration therefore
+    either committed before the terminate's write took the session row, and is read, or it sees
+    the end and is refused.
+  - Two tests, both red on 322845ef:
+    - `A_grant_whose_session_a_logout_ends_while_it_registers_the_client_gets_no_code`: the
+      `SessionEnder`, now parameterized by its statement, sets `TerminatedUtc` from another
+      connection when the registration's save is about to run. On fix1 a code was issued.
+    - `A_logout_that_waits_on_a_grants_registration_revokes_the_authorization_it_registers`
+      pins the terminate's read order.
+      1. A `DbTransactionInterceptor` holds the registration's commit with its rows written and its
+         locks taken.
+      2. The end-session confirmation is posted. The test waits on `sys.dm_exec_requests` until the
+         logout's `SET [TerminatedUtc]` waits on that lock, then releases the commit.
+      3. The grant gets its code, and the logout revokes its authorization.
+      - On fix1 the logout had already read the registrations, so the authorization stayed
+        "valid".
+  - A refused grant's authorization, created before the registration, stays valid but registered
+    nowhere, and no token was issued from it. A later grant that it covers registers it in that
+    grant's own session.
+  - R2-3(a), the dropped lost revoke, is PC-F89 and was left.
+- **Gates (fix2).**
+  - `dotnet build Tellma.slnx`: "Build succeeded", 0 warnings, 0 errors.
+  - `dotnet format Tellma.slnx --verify-no-changes`: clean. The only output was the usual
+    workspace-loading warnings line.
+  - Identity unit tests (whole project): 1360 passed.
+  - Identity integration tests, filtered to the classes R2 ran (ConcurrentGrant, Migrations,
+    StoreCheck, BackchannelLogout, EndSession, SessionPrune, Consent, DeviceFlow, Revocation,
+    SecurityStampRefresh, AuthorizationCodeFlow, TenantResource, DocumentClient, ParAndPkce,
+    ResourceIndicator, AssurancePolicy, TokenExchange, Userinfo): 100 passed, 0 failed.
+  - Acme integration tests, filtered to `MigratorTests` and `WebHostTests`: 14 passed.
+  - `ConcurrentGrantTests` run 20 times: 20 of 20 runs green, each with all 11 tests passing.
+  - Red runs:
+    - On 322845ef's product code: the upgrade test, the logout-race test and the logout-wait test
+      failed. The other 12 tests in the run passed.
+    - Under the three R2-2 mutations: all 3 tests failed.

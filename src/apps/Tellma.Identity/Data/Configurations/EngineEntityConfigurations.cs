@@ -49,6 +49,7 @@ namespace Tellma.Identity.Data.Configurations
             builder.HasKey(static client => new { client.Sid, client.ClientId });
             builder.Property(static client => client.Sid).HasMaxLength(64);
             builder.Property(static client => client.ClientId).HasMaxLength(100);
+            builder.Property(static client => client.AuthorizationId).HasMaxLength(450);
 
             builder.HasIndex(static client => client.ClientId);
 

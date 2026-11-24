@@ -32,7 +32,7 @@ namespace Tellma.Identity
         ///     store carries no migrations at all. A unit test keeps it equal to the assembly's last
         ///     migration.
         /// </summary>
-        public const string LatestMigration = "20261124122036_SessionClientAuthorizations";
+        public const string LatestMigration = "20261124132011_SessionClientAuthorizations";
 
         /// <summary>The scope requested to call a distribution API.</summary>
         public const string ApiScope = "tellma_api";
