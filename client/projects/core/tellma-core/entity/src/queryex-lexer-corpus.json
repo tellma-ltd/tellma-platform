@@ -1,0 +1,1236 @@
+{
+  "description": "What the engine's lexer makes of each text: its tokens, with the runs it could not read as error tokens; its parameters, grouped by name; and its problems. The client's lexer must agree with every case.",
+  "regenerate": "dotnet run --project eng/queryex-client-corpus/Tellma.Queryex.ClientCorpus",
+  "cases": [
+    {
+      "text": "Name",
+      "tokens": [
+        {"kind": "identifier", "start": 0, "length": 4, "text": "Name"}
+      ],
+      "parameters": [],
+      "diagnostics": []
+    },
+    {
+      "text": "_x1",
+      "tokens": [
+        {"kind": "identifier", "start": 0, "length": 3, "text": "_x1"}
+      ],
+      "parameters": [],
+      "diagnostics": []
+    },
+    {
+      "text": "Notes Ordering Internal",
+      "tokens": [
+        {"kind": "identifier", "start": 0, "length": 5, "text": "Notes"},
+        {"kind": "identifier", "start": 6, "length": 8, "text": "Ordering"},
+        {"kind": "identifier", "start": 15, "length": 8, "text": "Internal"}
+      ],
+      "parameters": [],
+      "diagnostics": []
+    },
+    {
+      "text": "a1.b2.c3",
+      "tokens": [
+        {"kind": "identifier", "start": 0, "length": 2, "text": "a1"},
+        {"kind": "punctuator", "start": 2, "length": 1, "text": "."},
+        {"kind": "identifier", "start": 3, "length": 2, "text": "b2"},
+        {"kind": "punctuator", "start": 5, "length": 1, "text": "."},
+        {"kind": "identifier", "start": 6, "length": 2, "text": "c3"}
+      ],
+      "parameters": [],
+      "diagnostics": []
+    },
+    {
+      "text": "Name2",
+      "tokens": [
+        {"kind": "identifier", "start": 0, "length": 5, "text": "Name2"}
+      ],
+      "parameters": [],
+      "diagnostics": []
+    },
+    {
+      "text": "and or not in is null true false asc desc",
+      "tokens": [
+        {"kind": "keyword", "start": 0, "length": 3, "text": "and"},
+        {"kind": "keyword", "start": 4, "length": 2, "text": "or"},
+        {"kind": "keyword", "start": 7, "length": 3, "text": "not"},
+        {"kind": "keyword", "start": 11, "length": 2, "text": "in"},
+        {"kind": "keyword", "start": 14, "length": 2, "text": "is"},
+        {"kind": "keyword", "start": 17, "length": 4, "text": "null"},
+        {"kind": "keyword", "start": 22, "length": 4, "text": "true"},
+        {"kind": "keyword", "start": 27, "length": 5, "text": "false"},
+        {"kind": "keyword", "start": 33, "length": 3, "text": "asc"},
+        {"kind": "keyword", "start": 37, "length": 4, "text": "desc"}
+      ],
+      "parameters": [],
+      "diagnostics": []
+    },
+    {
+      "text": "AND Or nOt IN iS NULL True FALSE ASC Desc",
+      "tokens": [
+        {"kind": "keyword", "start": 0, "length": 3, "text": "AND"},
+        {"kind": "keyword", "start": 4, "length": 2, "text": "Or"},
+        {"kind": "keyword", "start": 7, "length": 3, "text": "nOt"},
+        {"kind": "keyword", "start": 11, "length": 2, "text": "IN"},
+        {"kind": "keyword", "start": 14, "length": 2, "text": "iS"},
+        {"kind": "keyword", "start": 17, "length": 4, "text": "NULL"},
+        {"kind": "keyword", "start": 22, "length": 4, "text": "True"},
+        {"kind": "keyword", "start": 27, "length": 5, "text": "FALSE"},
+        {"kind": "keyword", "start": 33, "length": 3, "text": "ASC"},
+        {"kind": "keyword", "start": 37, "length": 4, "text": "Desc"}
+      ],
+      "parameters": [],
+      "diagnostics": []
+    },
+    {
+      "text": "ın ıs ſ",
+      "tokens": [
+        {"kind": "identifier", "start": 0, "length": 2, "text": "ın"},
+        {"kind": "identifier", "start": 3, "length": 2, "text": "ıs"},
+        {"kind": "identifier", "start": 6, "length": 1, "text": "ſ"}
+      ],
+      "parameters": [],
+      "diagnostics": []
+    },
+    {
+      "text": "iſ aſc deſc",
+      "tokens": [
+        {"kind": "identifier", "start": 0, "length": 2, "text": "iſ"},
+        {"kind": "identifier", "start": 3, "length": 3, "text": "aſc"},
+        {"kind": "identifier", "start": 7, "length": 4, "text": "deſc"}
+      ],
+      "parameters": [],
+      "diagnostics": []
+    },
+    {
+      "text": "İS İN",
+      "tokens": [
+        {"kind": "identifier", "start": 0, "length": 2, "text": "İS"},
+        {"kind": "identifier", "start": 3, "length": 2, "text": "İN"}
+      ],
+      "parameters": [],
+      "diagnostics": []
+    },
+    {
+      "text": "Key",
+      "tokens": [
+        {"kind": "identifier", "start": 0, "length": 3, "text": "Key"}
+      ],
+      "parameters": [],
+      "diagnostics": []
+    },
+    {
+      "text": "android island notes",
+      "tokens": [
+        {"kind": "identifier", "start": 0, "length": 7, "text": "android"},
+        {"kind": "identifier", "start": 8, "length": 6, "text": "island"},
+        {"kind": "identifier", "start": 15, "length": 5, "text": "notes"}
+      ],
+      "parameters": [],
+      "diagnostics": []
+    },
+    {
+      "text": "ناصر.الاسم",
+      "tokens": [
+        {"kind": "identifier", "start": 0, "length": 4, "text": "ناصر"},
+        {"kind": "punctuator", "start": 4, "length": 1, "text": "."},
+        {"kind": "identifier", "start": 5, "length": 5, "text": "الاسم"}
+      ],
+      "parameters": [],
+      "diagnostics": []
+    },
+    {
+      "text": "名前 = 1",
+      "tokens": [
+        {"kind": "identifier", "start": 0, "length": 2, "text": "名前"},
+        {"kind": "punctuator", "start": 3, "length": 1, "text": "="},
+        {"kind": "number", "start": 5, "length": 1, "text": "1"}
+      ],
+      "parameters": [],
+      "diagnostics": []
+    },
+    {
+      "text": "\uD835\uDCB3y",
+      "tokens": [
+        {"kind": "identifier", "start": 0, "length": 3, "text": "\uD835\uDCB3y"}
+      ],
+      "parameters": [],
+      "diagnostics": []
+    },
+    {
+      "text": "x\u0301",
+      "tokens": [
+        {"kind": "identifier", "start": 0, "length": 1, "text": "x"},
+        {"kind": "error", "start": 1, "length": 1, "text": "\u0301"}
+      ],
+      "parameters": [],
+      "diagnostics": [
+        {"code": "QX1005", "start": 1, "length": 1}
+      ]
+    },
+    {
+      "text": "x٢",
+      "tokens": [
+        {"kind": "identifier", "start": 0, "length": 2, "text": "x٢"}
+      ],
+      "parameters": [],
+      "diagnostics": []
+    },
+    {
+      "text": "[not]",
+      "tokens": [
+        {"kind": "identifier", "start": 0, "length": 5, "text": "not"}
+      ],
+      "parameters": [],
+      "diagnostics": []
+    },
+    {
+      "text": "[Order].[in]",
+      "tokens": [
+        {"kind": "identifier", "start": 0, "length": 7, "text": "Order"},
+        {"kind": "punctuator", "start": 7, "length": 1, "text": "."},
+        {"kind": "identifier", "start": 8, "length": 4, "text": "in"}
+      ],
+      "parameters": [],
+      "diagnostics": []
+    },
+    {
+      "text": "[a b] + [c-d]",
+      "tokens": [
+        {"kind": "identifier", "start": 0, "length": 5, "text": "a b"},
+        {"kind": "punctuator", "start": 6, "length": 1, "text": "+"},
+        {"kind": "identifier", "start": 8, "length": 5, "text": "c-d"}
+      ],
+      "parameters": [],
+      "diagnostics": []
+    },
+    {
+      "text": "[]",
+      "tokens": [
+        {"kind": "error", "start": 0, "length": 2, "text": "[]"}
+      ],
+      "parameters": [],
+      "diagnostics": [
+        {"code": "QX1005", "start": 0, "length": 2}
+      ]
+    },
+    {
+      "text": "[unterminated",
+      "tokens": [
+        {"kind": "error", "start": 0, "length": 13, "text": "[unterminated"}
+      ],
+      "parameters": [],
+      "diagnostics": [
+        {"code": "QX1002", "start": 0, "length": 13}
+      ]
+    },
+    {
+      "text": "[a]]",
+      "tokens": [
+        {"kind": "identifier", "start": 0, "length": 3, "text": "a"},
+        {"kind": "error", "start": 3, "length": 1, "text": "]"}
+      ],
+      "parameters": [],
+      "diagnostics": [
+        {"code": "QX1005", "start": 3, "length": 1}
+      ]
+    },
+    {
+      "text": "[[a]",
+      "tokens": [
+        {"kind": "identifier", "start": 0, "length": 4, "text": "[a"}
+      ],
+      "parameters": [],
+      "diagnostics": []
+    },
+    {
+      "text": "[ın]",
+      "tokens": [
+        {"kind": "identifier", "start": 0, "length": 4, "text": "ın"}
+      ],
+      "parameters": [],
+      "diagnostics": []
+    },
+    {
+      "text": "1",
+      "tokens": [
+        {"kind": "number", "start": 0, "length": 1, "text": "1"}
+      ],
+      "parameters": [],
+      "diagnostics": []
+    },
+    {
+      "text": "0",
+      "tokens": [
+        {"kind": "number", "start": 0, "length": 1, "text": "0"}
+      ],
+      "parameters": [],
+      "diagnostics": []
+    },
+    {
+      "text": "3.14",
+      "tokens": [
+        {"kind": "number", "start": 0, "length": 4, "text": "3.14"}
+      ],
+      "parameters": [],
+      "diagnostics": []
+    },
+    {
+      "text": "0.500",
+      "tokens": [
+        {"kind": "number", "start": 0, "length": 5, "text": "0.500"}
+      ],
+      "parameters": [],
+      "diagnostics": []
+    },
+    {
+      "text": "007",
+      "tokens": [
+        {"kind": "number", "start": 0, "length": 3, "text": "007"}
+      ],
+      "parameters": [],
+      "diagnostics": []
+    },
+    {
+      "text": ".5",
+      "tokens": [
+        {"kind": "error", "start": 0, "length": 2, "text": ".5"}
+      ],
+      "parameters": [],
+      "diagnostics": [
+        {"code": "QX1003", "start": 0, "length": 2}
+      ]
+    },
+    {
+      "text": "5.",
+      "tokens": [
+        {"kind": "error", "start": 0, "length": 2, "text": "5."}
+      ],
+      "parameters": [],
+      "diagnostics": [
+        {"code": "QX1003", "start": 0, "length": 2}
+      ]
+    },
+    {
+      "text": "1e3",
+      "tokens": [
+        {"kind": "error", "start": 0, "length": 3, "text": "1e3"}
+      ],
+      "parameters": [],
+      "diagnostics": [
+        {"code": "QX1003", "start": 0, "length": 3}
+      ]
+    },
+    {
+      "text": "0x0A",
+      "tokens": [
+        {"kind": "error", "start": 0, "length": 4, "text": "0x0A"}
+      ],
+      "parameters": [],
+      "diagnostics": [
+        {"code": "QX1003", "start": 0, "length": 4}
+      ]
+    },
+    {
+      "text": "1_000",
+      "tokens": [
+        {"kind": "error", "start": 0, "length": 5, "text": "1_000"}
+      ],
+      "parameters": [],
+      "diagnostics": [
+        {"code": "QX1003", "start": 0, "length": 5}
+      ]
+    },
+    {
+      "text": "1.5.6",
+      "tokens": [
+        {"kind": "number", "start": 0, "length": 3, "text": "1.5"},
+        {"kind": "error", "start": 3, "length": 2, "text": ".6"}
+      ],
+      "parameters": [],
+      "diagnostics": [
+        {"code": "QX1003", "start": 3, "length": 2}
+      ]
+    },
+    {
+      "text": "12abc",
+      "tokens": [
+        {"kind": "error", "start": 0, "length": 5, "text": "12abc"}
+      ],
+      "parameters": [],
+      "diagnostics": [
+        {"code": "QX1003", "start": 0, "length": 5}
+      ]
+    },
+    {
+      "text": "1٢",
+      "tokens": [
+        {"kind": "error", "start": 0, "length": 2, "text": "1٢"}
+      ],
+      "parameters": [],
+      "diagnostics": [
+        {"code": "QX1003", "start": 0, "length": 2}
+      ]
+    },
+    {
+      "text": "١٢",
+      "tokens": [
+        {"kind": "error", "start": 0, "length": 1, "text": "١"},
+        {"kind": "error", "start": 1, "length": 1, "text": "٢"}
+      ],
+      "parameters": [],
+      "diagnostics": [
+        {"code": "QX1005", "start": 0, "length": 1},
+        {"code": "QX1005", "start": 1, "length": 1}
+      ]
+    },
+    {
+      "text": "12345678901234567890123456789012345678",
+      "tokens": [
+        {"kind": "number", "start": 0, "length": 38, "text": "12345678901234567890123456789012345678"}
+      ],
+      "parameters": [],
+      "diagnostics": []
+    },
+    {
+      "text": "123456789012345678901234567890123456789",
+      "tokens": [
+        {"kind": "error", "start": 0, "length": 39, "text": "123456789012345678901234567890123456789"}
+      ],
+      "parameters": [],
+      "diagnostics": [
+        {"code": "QX1004", "start": 0, "length": 39}
+      ]
+    },
+    {
+      "text": "0.00000000000000000000000000000000000001",
+      "tokens": [
+        {"kind": "number", "start": 0, "length": 40, "text": "0.00000000000000000000000000000000000001"}
+      ],
+      "parameters": [],
+      "diagnostics": []
+    },
+    {
+      "text": "1.000000000000000000000000000000000000001",
+      "tokens": [
+        {"kind": "error", "start": 0, "length": 41, "text": "1.000000000000000000000000000000000000001"}
+      ],
+      "parameters": [],
+      "diagnostics": [
+        {"code": "QX1004", "start": 0, "length": 41}
+      ]
+    },
+    {
+      "text": "a.5",
+      "tokens": [
+        {"kind": "identifier", "start": 0, "length": 1, "text": "a"},
+        {"kind": "error", "start": 1, "length": 2, "text": ".5"}
+      ],
+      "parameters": [],
+      "diagnostics": [
+        {"code": "QX1003", "start": 1, "length": 2}
+      ]
+    },
+    {
+      "text": "1.a",
+      "tokens": [
+        {"kind": "error", "start": 0, "length": 3, "text": "1.a"}
+      ],
+      "parameters": [],
+      "diagnostics": [
+        {"code": "QX1003", "start": 0, "length": 3}
+      ]
+    },
+    {
+      "text": "1\uD835\uDCB3",
+      "tokens": [
+        {"kind": "error", "start": 0, "length": 2, "text": "1\uD835"},
+        {"kind": "error", "start": 2, "length": 1, "text": "\uDCB3"}
+      ],
+      "parameters": [],
+      "diagnostics": [
+        {"code": "QX1003", "start": 0, "length": 2},
+        {"code": "QX1005", "start": 2, "length": 1}
+      ]
+    },
+    {
+      "text": "1\uD83D\uDE00",
+      "tokens": [
+        {"kind": "number", "start": 0, "length": 1, "text": "1"},
+        {"kind": "error", "start": 1, "length": 1, "text": "\uD83D"},
+        {"kind": "error", "start": 2, "length": 1, "text": "\uDE00"}
+      ],
+      "parameters": [],
+      "diagnostics": [
+        {"code": "QX1005", "start": 1, "length": 1},
+        {"code": "QX1005", "start": 2, "length": 1}
+      ]
+    },
+    {
+      "text": "'Hello'",
+      "tokens": [
+        {"kind": "string", "start": 0, "length": 7, "text": "Hello"}
+      ],
+      "parameters": [],
+      "diagnostics": []
+    },
+    {
+      "text": "''",
+      "tokens": [
+        {"kind": "string", "start": 0, "length": 2, "text": ""}
+      ],
+      "parameters": [],
+      "diagnostics": []
+    },
+    {
+      "text": "'It''s fine'",
+      "tokens": [
+        {"kind": "string", "start": 0, "length": 12, "text": "It's fine"}
+      ],
+      "parameters": [],
+      "diagnostics": []
+    },
+    {
+      "text": "'back\\slash'",
+      "tokens": [
+        {"kind": "string", "start": 0, "length": 12, "text": "back\\slash"}
+      ],
+      "parameters": [],
+      "diagnostics": []
+    },
+    {
+      "text": "'a@b'",
+      "tokens": [
+        {"kind": "string", "start": 0, "length": 5, "text": "a@b"}
+      ],
+      "parameters": [],
+      "diagnostics": []
+    },
+    {
+      "text": "'line\nbreak'",
+      "tokens": [
+        {"kind": "string", "start": 0, "length": 12, "text": "line\nbreak"}
+      ],
+      "parameters": [],
+      "diagnostics": []
+    },
+    {
+      "text": "'unterminated",
+      "tokens": [
+        {"kind": "error", "start": 0, "length": 13, "text": "'unterminated"}
+      ],
+      "parameters": [],
+      "diagnostics": [
+        {"code": "QX1001", "start": 0, "length": 13}
+      ]
+    },
+    {
+      "text": "'ends with a quote'''",
+      "tokens": [
+        {"kind": "string", "start": 0, "length": 21, "text": "ends with a quote'"}
+      ],
+      "parameters": [],
+      "diagnostics": []
+    },
+    {
+      "text": "''''",
+      "tokens": [
+        {"kind": "string", "start": 0, "length": 4, "text": "'"}
+      ],
+      "parameters": [],
+      "diagnostics": []
+    },
+    {
+      "text": "'a' 'b'",
+      "tokens": [
+        {"kind": "string", "start": 0, "length": 3, "text": "a"},
+        {"kind": "string", "start": 4, "length": 3, "text": "b"}
+      ],
+      "parameters": [],
+      "diagnostics": []
+    },
+    {
+      "text": "'x''",
+      "tokens": [
+        {"kind": "error", "start": 0, "length": 4, "text": "'x''"}
+      ],
+      "parameters": [],
+      "diagnostics": [
+        {"code": "QX1001", "start": 0, "length": 4}
+      ]
+    },
+    {
+      "text": "@From",
+      "tokens": [
+        {"kind": "parameter", "start": 0, "length": 5, "text": "From"}
+      ],
+      "parameters": [
+        {"name": "From", "sites": [{"start": 0, "length": 5}]}
+      ],
+      "diagnostics": []
+    },
+    {
+      "text": "@From = @from and @FROM > @to",
+      "tokens": [
+        {"kind": "parameter", "start": 0, "length": 5, "text": "From"},
+        {"kind": "punctuator", "start": 6, "length": 1, "text": "="},
+        {"kind": "parameter", "start": 8, "length": 5, "text": "from"},
+        {"kind": "keyword", "start": 14, "length": 3, "text": "and"},
+        {"kind": "parameter", "start": 18, "length": 5, "text": "FROM"},
+        {"kind": "punctuator", "start": 24, "length": 1, "text": ">"},
+        {"kind": "parameter", "start": 26, "length": 3, "text": "to"}
+      ],
+      "parameters": [
+        {"name": "From", "sites": [{"start": 0, "length": 5}, {"start": 8, "length": 5}, {"start": 18, "length": 5}]},
+        {"name": "to", "sites": [{"start": 26, "length": 3}]}
+      ],
+      "diagnostics": []
+    },
+    {
+      "text": "@[order]",
+      "tokens": [
+        {"kind": "parameter", "start": 0, "length": 8, "text": "order"}
+      ],
+      "parameters": [
+        {"name": "order", "sites": [{"start": 0, "length": 8}]}
+      ],
+      "diagnostics": []
+    },
+    {
+      "text": "@[Order] = @order",
+      "tokens": [
+        {"kind": "parameter", "start": 0, "length": 8, "text": "Order"},
+        {"kind": "punctuator", "start": 9, "length": 1, "text": "="},
+        {"kind": "parameter", "start": 11, "length": 6, "text": "order"}
+      ],
+      "parameters": [
+        {"name": "Order", "sites": [{"start": 0, "length": 8}, {"start": 11, "length": 6}]}
+      ],
+      "diagnostics": []
+    },
+    {
+      "text": "@",
+      "tokens": [
+        {"kind": "error", "start": 0, "length": 1, "text": "@"}
+      ],
+      "parameters": [],
+      "diagnostics": [
+        {"code": "QX1005", "start": 0, "length": 1}
+      ]
+    },
+    {
+      "text": "@ x",
+      "tokens": [
+        {"kind": "error", "start": 0, "length": 1, "text": "@"},
+        {"kind": "identifier", "start": 2, "length": 1, "text": "x"}
+      ],
+      "parameters": [],
+      "diagnostics": [
+        {"code": "QX1005", "start": 0, "length": 1}
+      ]
+    },
+    {
+      "text": "@1",
+      "tokens": [
+        {"kind": "error", "start": 0, "length": 1, "text": "@"},
+        {"kind": "number", "start": 1, "length": 1, "text": "1"}
+      ],
+      "parameters": [],
+      "diagnostics": [
+        {"code": "QX1005", "start": 0, "length": 1}
+      ]
+    },
+    {
+      "text": "@[",
+      "tokens": [
+        {"kind": "error", "start": 0, "length": 2, "text": "@["}
+      ],
+      "parameters": [],
+      "diagnostics": [
+        {"code": "QX1002", "start": 1, "length": 1}
+      ]
+    },
+    {
+      "text": "@[]",
+      "tokens": [
+        {"kind": "error", "start": 0, "length": 3, "text": "@[]"}
+      ],
+      "parameters": [],
+      "diagnostics": [
+        {"code": "QX1005", "start": 1, "length": 2}
+      ]
+    },
+    {
+      "text": "@@x",
+      "tokens": [
+        {"kind": "error", "start": 0, "length": 1, "text": "@"},
+        {"kind": "parameter", "start": 1, "length": 2, "text": "x"}
+      ],
+      "parameters": [
+        {"name": "x", "sites": [{"start": 1, "length": 2}]}
+      ],
+      "diagnostics": [
+        {"code": "QX1005", "start": 0, "length": 1}
+      ]
+    },
+    {
+      "text": "@_",
+      "tokens": [
+        {"kind": "parameter", "start": 0, "length": 2, "text": "_"}
+      ],
+      "parameters": [
+        {"name": "_", "sites": [{"start": 0, "length": 2}]}
+      ],
+      "diagnostics": []
+    },
+    {
+      "text": "'@x' = @x",
+      "tokens": [
+        {"kind": "string", "start": 0, "length": 4, "text": "@x"},
+        {"kind": "punctuator", "start": 5, "length": 1, "text": "="},
+        {"kind": "parameter", "start": 7, "length": 2, "text": "x"}
+      ],
+      "parameters": [
+        {"name": "x", "sites": [{"start": 7, "length": 2}]}
+      ],
+      "diagnostics": []
+    },
+    {
+      "text": "@ن",
+      "tokens": [
+        {"kind": "parameter", "start": 0, "length": 2, "text": "ن"}
+      ],
+      "parameters": [
+        {"name": "ن", "sites": [{"start": 0, "length": 2}]}
+      ],
+      "diagnostics": []
+    },
+    {
+      "text": "!= <= >= || = < > + - * / % ( ) , .",
+      "tokens": [
+        {"kind": "punctuator", "start": 0, "length": 2, "text": "!="},
+        {"kind": "punctuator", "start": 3, "length": 2, "text": "<="},
+        {"kind": "punctuator", "start": 6, "length": 2, "text": ">="},
+        {"kind": "punctuator", "start": 9, "length": 2, "text": "||"},
+        {"kind": "punctuator", "start": 12, "length": 1, "text": "="},
+        {"kind": "punctuator", "start": 14, "length": 1, "text": "<"},
+        {"kind": "punctuator", "start": 16, "length": 1, "text": ">"},
+        {"kind": "punctuator", "start": 18, "length": 1, "text": "+"},
+        {"kind": "punctuator", "start": 20, "length": 1, "text": "-"},
+        {"kind": "punctuator", "start": 22, "length": 1, "text": "*"},
+        {"kind": "punctuator", "start": 24, "length": 1, "text": "/"},
+        {"kind": "punctuator", "start": 26, "length": 1, "text": "%"},
+        {"kind": "punctuator", "start": 28, "length": 1, "text": "("},
+        {"kind": "punctuator", "start": 30, "length": 1, "text": ")"},
+        {"kind": "punctuator", "start": 32, "length": 1, "text": ","},
+        {"kind": "punctuator", "start": 34, "length": 1, "text": "."}
+      ],
+      "parameters": [],
+      "diagnostics": []
+    },
+    {
+      "text": "a<=b>=c!=d||e",
+      "tokens": [
+        {"kind": "identifier", "start": 0, "length": 1, "text": "a"},
+        {"kind": "punctuator", "start": 1, "length": 2, "text": "<="},
+        {"kind": "identifier", "start": 3, "length": 1, "text": "b"},
+        {"kind": "punctuator", "start": 4, "length": 2, "text": ">="},
+        {"kind": "identifier", "start": 6, "length": 1, "text": "c"},
+        {"kind": "punctuator", "start": 7, "length": 2, "text": "!="},
+        {"kind": "identifier", "start": 9, "length": 1, "text": "d"},
+        {"kind": "punctuator", "start": 10, "length": 2, "text": "||"},
+        {"kind": "identifier", "start": 12, "length": 1, "text": "e"}
+      ],
+      "parameters": [],
+      "diagnostics": []
+    },
+    {
+      "text": "!",
+      "tokens": [
+        {"kind": "error", "start": 0, "length": 1, "text": "!"}
+      ],
+      "parameters": [],
+      "diagnostics": [
+        {"code": "QX1005", "start": 0, "length": 1}
+      ]
+    },
+    {
+      "text": "|",
+      "tokens": [
+        {"kind": "error", "start": 0, "length": 1, "text": "|"}
+      ],
+      "parameters": [],
+      "diagnostics": [
+        {"code": "QX1005", "start": 0, "length": 1}
+      ]
+    },
+    {
+      "text": "a & b",
+      "tokens": [
+        {"kind": "identifier", "start": 0, "length": 1, "text": "a"},
+        {"kind": "error", "start": 2, "length": 1, "text": "&"},
+        {"kind": "identifier", "start": 4, "length": 1, "text": "b"}
+      ],
+      "parameters": [],
+      "diagnostics": [
+        {"code": "QX1005", "start": 2, "length": 1}
+      ]
+    },
+    {
+      "text": "#",
+      "tokens": [
+        {"kind": "error", "start": 0, "length": 1, "text": "#"}
+      ],
+      "parameters": [],
+      "diagnostics": [
+        {"code": "QX1005", "start": 0, "length": 1}
+      ]
+    },
+    {
+      "text": "a; b",
+      "tokens": [
+        {"kind": "identifier", "start": 0, "length": 1, "text": "a"},
+        {"kind": "error", "start": 1, "length": 1, "text": ";"},
+        {"kind": "identifier", "start": 3, "length": 1, "text": "b"}
+      ],
+      "parameters": [],
+      "diagnostics": [
+        {"code": "QX1005", "start": 1, "length": 1}
+      ]
+    },
+    {
+      "text": "{x}",
+      "tokens": [
+        {"kind": "error", "start": 0, "length": 1, "text": "{"},
+        {"kind": "identifier", "start": 1, "length": 1, "text": "x"},
+        {"kind": "error", "start": 2, "length": 1, "text": "}"}
+      ],
+      "parameters": [],
+      "diagnostics": [
+        {"code": "QX1005", "start": 0, "length": 1},
+        {"code": "QX1005", "start": 2, "length": 1}
+      ]
+    },
+    {
+      "text": "\"quoted\"",
+      "tokens": [
+        {"kind": "error", "start": 0, "length": 1, "text": "\""},
+        {"kind": "identifier", "start": 1, "length": 6, "text": "quoted"},
+        {"kind": "error", "start": 7, "length": 1, "text": "\""}
+      ],
+      "parameters": [],
+      "diagnostics": [
+        {"code": "QX1005", "start": 0, "length": 1},
+        {"code": "QX1005", "start": 7, "length": 1}
+      ]
+    },
+    {
+      "text": "a..b",
+      "tokens": [
+        {"kind": "identifier", "start": 0, "length": 1, "text": "a"},
+        {"kind": "punctuator", "start": 1, "length": 1, "text": "."},
+        {"kind": "punctuator", "start": 2, "length": 1, "text": "."},
+        {"kind": "identifier", "start": 3, "length": 1, "text": "b"}
+      ],
+      "parameters": [],
+      "diagnostics": []
+    },
+    {
+      "text": "a.",
+      "tokens": [
+        {"kind": "identifier", "start": 0, "length": 1, "text": "a"},
+        {"kind": "punctuator", "start": 1, "length": 1, "text": "."}
+      ],
+      "parameters": [],
+      "diagnostics": []
+    },
+    {
+      "text": "-1",
+      "tokens": [
+        {"kind": "punctuator", "start": 0, "length": 1, "text": "-"},
+        {"kind": "number", "start": 1, "length": 1, "text": "1"}
+      ],
+      "parameters": [],
+      "diagnostics": []
+    },
+    {
+      "text": "--1",
+      "tokens": [
+        {"kind": "punctuator", "start": 0, "length": 1, "text": "-"},
+        {"kind": "punctuator", "start": 1, "length": 1, "text": "-"},
+        {"kind": "number", "start": 2, "length": 1, "text": "1"}
+      ],
+      "parameters": [],
+      "diagnostics": []
+    },
+    {
+      "text": "<>",
+      "tokens": [
+        {"kind": "punctuator", "start": 0, "length": 1, "text": "<"},
+        {"kind": "punctuator", "start": 1, "length": 1, "text": ">"}
+      ],
+      "parameters": [],
+      "diagnostics": []
+    },
+    {
+      "text": "=>",
+      "tokens": [
+        {"kind": "punctuator", "start": 0, "length": 1, "text": "="},
+        {"kind": "punctuator", "start": 1, "length": 1, "text": ">"}
+      ],
+      "parameters": [],
+      "diagnostics": []
+    },
+    {
+      "text": "=<",
+      "tokens": [
+        {"kind": "punctuator", "start": 0, "length": 1, "text": "="},
+        {"kind": "punctuator", "start": 1, "length": 1, "text": "<"}
+      ],
+      "parameters": [],
+      "diagnostics": []
+    },
+    {
+      "text": "a\tb\nc\rd",
+      "tokens": [
+        {"kind": "identifier", "start": 0, "length": 1, "text": "a"},
+        {"kind": "identifier", "start": 2, "length": 1, "text": "b"},
+        {"kind": "identifier", "start": 4, "length": 1, "text": "c"},
+        {"kind": "identifier", "start": 6, "length": 1, "text": "d"}
+      ],
+      "parameters": [],
+      "diagnostics": []
+    },
+    {
+      "text": "a\u00A0b\u2003c\u2028d\u3000e",
+      "tokens": [
+        {"kind": "identifier", "start": 0, "length": 1, "text": "a"},
+        {"kind": "identifier", "start": 2, "length": 1, "text": "b"},
+        {"kind": "identifier", "start": 4, "length": 1, "text": "c"},
+        {"kind": "identifier", "start": 6, "length": 1, "text": "d"},
+        {"kind": "identifier", "start": 8, "length": 1, "text": "e"}
+      ],
+      "parameters": [],
+      "diagnostics": []
+    },
+    {
+      "text": "a\u200Bb",
+      "tokens": [
+        {"kind": "identifier", "start": 0, "length": 1, "text": "a"},
+        {"kind": "error", "start": 1, "length": 1, "text": "\u200B"},
+        {"kind": "identifier", "start": 2, "length": 1, "text": "b"}
+      ],
+      "parameters": [],
+      "diagnostics": [
+        {"code": "QX1005", "start": 1, "length": 1}
+      ]
+    },
+    {
+      "text": "a\uFEFFb",
+      "tokens": [
+        {"kind": "identifier", "start": 0, "length": 1, "text": "a"},
+        {"kind": "error", "start": 1, "length": 1, "text": "\uFEFF"},
+        {"kind": "identifier", "start": 2, "length": 1, "text": "b"}
+      ],
+      "parameters": [],
+      "diagnostics": [
+        {"code": "QX1005", "start": 1, "length": 1}
+      ]
+    },
+    {
+      "text": "a\u0085b",
+      "tokens": [
+        {"kind": "identifier", "start": 0, "length": 1, "text": "a"},
+        {"kind": "identifier", "start": 2, "length": 1, "text": "b"}
+      ],
+      "parameters": [],
+      "diagnostics": []
+    },
+    {
+      "text": "  ",
+      "tokens": [],
+      "parameters": [],
+      "diagnostics": []
+    },
+    {
+      "text": "",
+      "tokens": [],
+      "parameters": [],
+      "diagnostics": []
+    },
+    {
+      "text": "\uD800",
+      "tokens": [
+        {"kind": "error", "start": 0, "length": 1, "text": "\uD800"}
+      ],
+      "parameters": [],
+      "diagnostics": [
+        {"code": "QX1005", "start": 0, "length": 1}
+      ]
+    },
+    {
+      "text": "\uDC00",
+      "tokens": [
+        {"kind": "error", "start": 0, "length": 1, "text": "\uDC00"}
+      ],
+      "parameters": [],
+      "diagnostics": [
+        {"code": "QX1005", "start": 0, "length": 1}
+      ]
+    },
+    {
+      "text": "a\uD800b",
+      "tokens": [
+        {"kind": "identifier", "start": 0, "length": 1, "text": "a"},
+        {"kind": "error", "start": 1, "length": 1, "text": "\uD800"},
+        {"kind": "identifier", "start": 2, "length": 1, "text": "b"}
+      ],
+      "parameters": [],
+      "diagnostics": [
+        {"code": "QX1005", "start": 1, "length": 1}
+      ]
+    },
+    {
+      "text": "\uD83D\uDE00",
+      "tokens": [
+        {"kind": "error", "start": 0, "length": 1, "text": "\uD83D"},
+        {"kind": "error", "start": 1, "length": 1, "text": "\uDE00"}
+      ],
+      "parameters": [],
+      "diagnostics": [
+        {"code": "QX1005", "start": 0, "length": 1},
+        {"code": "QX1005", "start": 1, "length": 1}
+      ]
+    },
+    {
+      "text": "contains(Name, 'jed')",
+      "tokens": [
+        {"kind": "identifier", "start": 0, "length": 8, "text": "contains", "call": true},
+        {"kind": "punctuator", "start": 8, "length": 1, "text": "("},
+        {"kind": "identifier", "start": 9, "length": 4, "text": "Name"},
+        {"kind": "punctuator", "start": 13, "length": 1, "text": ","},
+        {"kind": "string", "start": 15, "length": 5, "text": "jed"},
+        {"kind": "punctuator", "start": 20, "length": 1, "text": ")"}
+      ],
+      "parameters": [],
+      "diagnostics": []
+    },
+    {
+      "text": "today()",
+      "tokens": [
+        {"kind": "identifier", "start": 0, "length": 5, "text": "today", "call": true},
+        {"kind": "punctuator", "start": 5, "length": 1, "text": "("},
+        {"kind": "punctuator", "start": 6, "length": 1, "text": ")"}
+      ],
+      "parameters": [],
+      "diagnostics": []
+    },
+    {
+      "text": "f (x)",
+      "tokens": [
+        {"kind": "identifier", "start": 0, "length": 1, "text": "f", "call": true},
+        {"kind": "punctuator", "start": 2, "length": 1, "text": "("},
+        {"kind": "identifier", "start": 3, "length": 1, "text": "x"},
+        {"kind": "punctuator", "start": 4, "length": 1, "text": ")"}
+      ],
+      "parameters": [],
+      "diagnostics": []
+    },
+    {
+      "text": "[Count](1)",
+      "tokens": [
+        {"kind": "identifier", "start": 0, "length": 7, "text": "Count", "call": true},
+        {"kind": "punctuator", "start": 7, "length": 1, "text": "("},
+        {"kind": "number", "start": 8, "length": 1, "text": "1"},
+        {"kind": "punctuator", "start": 9, "length": 1, "text": ")"}
+      ],
+      "parameters": [],
+      "diagnostics": []
+    },
+    {
+      "text": "a.f(b)",
+      "tokens": [
+        {"kind": "identifier", "start": 0, "length": 1, "text": "a"},
+        {"kind": "punctuator", "start": 1, "length": 1, "text": "."},
+        {"kind": "identifier", "start": 2, "length": 1, "text": "f", "call": true},
+        {"kind": "punctuator", "start": 3, "length": 1, "text": "("},
+        {"kind": "identifier", "start": 4, "length": 1, "text": "b"},
+        {"kind": "punctuator", "start": 5, "length": 1, "text": ")"}
+      ],
+      "parameters": [],
+      "diagnostics": []
+    },
+    {
+      "text": "count()",
+      "tokens": [
+        {"kind": "identifier", "start": 0, "length": 5, "text": "count", "call": true},
+        {"kind": "punctuator", "start": 5, "length": 1, "text": "("},
+        {"kind": "punctuator", "start": 6, "length": 1, "text": ")"}
+      ],
+      "parameters": [],
+      "diagnostics": []
+    },
+    {
+      "text": "x(",
+      "tokens": [
+        {"kind": "identifier", "start": 0, "length": 1, "text": "x", "call": true},
+        {"kind": "punctuator", "start": 1, "length": 1, "text": "("}
+      ],
+      "parameters": [],
+      "diagnostics": []
+    },
+    {
+      "text": "Invoice.PostingDate >= @From and Accnt.Code = '1101'",
+      "tokens": [
+        {"kind": "identifier", "start": 0, "length": 7, "text": "Invoice"},
+        {"kind": "punctuator", "start": 7, "length": 1, "text": "."},
+        {"kind": "identifier", "start": 8, "length": 11, "text": "PostingDate"},
+        {"kind": "punctuator", "start": 20, "length": 2, "text": ">="},
+        {"kind": "parameter", "start": 23, "length": 5, "text": "From"},
+        {"kind": "keyword", "start": 29, "length": 3, "text": "and"},
+        {"kind": "identifier", "start": 33, "length": 5, "text": "Accnt"},
+        {"kind": "punctuator", "start": 38, "length": 1, "text": "."},
+        {"kind": "identifier", "start": 39, "length": 4, "text": "Code"},
+        {"kind": "punctuator", "start": 44, "length": 1, "text": "="},
+        {"kind": "string", "start": 46, "length": 6, "text": "1101"}
+      ],
+      "parameters": [
+        {"name": "From", "sites": [{"start": 23, "length": 5}]}
+      ],
+      "diagnostics": []
+    },
+    {
+      "text": "CreditLimit >= 100000 and CreditLimit <= 500000",
+      "tokens": [
+        {"kind": "identifier", "start": 0, "length": 11, "text": "CreditLimit"},
+        {"kind": "punctuator", "start": 12, "length": 2, "text": ">="},
+        {"kind": "number", "start": 15, "length": 6, "text": "100000"},
+        {"kind": "keyword", "start": 22, "length": 3, "text": "and"},
+        {"kind": "identifier", "start": 26, "length": 11, "text": "CreditLimit"},
+        {"kind": "punctuator", "start": 38, "length": 2, "text": "<="},
+        {"kind": "number", "start": 41, "length": 6, "text": "500000"}
+      ],
+      "parameters": [],
+      "diagnostics": []
+    },
+    {
+      "text": "contains(Name, 'O''Neil') or Code = '7'",
+      "tokens": [
+        {"kind": "identifier", "start": 0, "length": 8, "text": "contains", "call": true},
+        {"kind": "punctuator", "start": 8, "length": 1, "text": "("},
+        {"kind": "identifier", "start": 9, "length": 4, "text": "Name"},
+        {"kind": "punctuator", "start": 13, "length": 1, "text": ","},
+        {"kind": "string", "start": 15, "length": 9, "text": "O'Neil"},
+        {"kind": "punctuator", "start": 24, "length": 1, "text": ")"},
+        {"kind": "keyword", "start": 26, "length": 2, "text": "or"},
+        {"kind": "identifier", "start": 29, "length": 4, "text": "Code"},
+        {"kind": "punctuator", "start": 34, "length": 1, "text": "="},
+        {"kind": "string", "start": 36, "length": 3, "text": "7"}
+      ],
+      "parameters": [],
+      "diagnostics": []
+    },
+    {
+      "text": "Name asc, Code desc",
+      "tokens": [
+        {"kind": "identifier", "start": 0, "length": 4, "text": "Name"},
+        {"kind": "keyword", "start": 5, "length": 3, "text": "asc"},
+        {"kind": "punctuator", "start": 8, "length": 1, "text": ","},
+        {"kind": "identifier", "start": 10, "length": 4, "text": "Code"},
+        {"kind": "keyword", "start": 15, "length": 4, "text": "desc"}
+      ],
+      "parameters": [],
+      "diagnostics": []
+    },
+    {
+      "text": "not a = b",
+      "tokens": [
+        {"kind": "keyword", "start": 0, "length": 3, "text": "not"},
+        {"kind": "identifier", "start": 4, "length": 1, "text": "a"},
+        {"kind": "punctuator", "start": 6, "length": 1, "text": "="},
+        {"kind": "identifier", "start": 8, "length": 1, "text": "b"}
+      ],
+      "parameters": [],
+      "diagnostics": []
+    },
+    {
+      "text": "a or b and c",
+      "tokens": [
+        {"kind": "identifier", "start": 0, "length": 1, "text": "a"},
+        {"kind": "keyword", "start": 2, "length": 2, "text": "or"},
+        {"kind": "identifier", "start": 5, "length": 1, "text": "b"},
+        {"kind": "keyword", "start": 7, "length": 3, "text": "and"},
+        {"kind": "identifier", "start": 11, "length": 1, "text": "c"}
+      ],
+      "parameters": [],
+      "diagnostics": []
+    },
+    {
+      "text": "CenterType in ('Service', 'Sale')",
+      "tokens": [
+        {"kind": "identifier", "start": 0, "length": 10, "text": "CenterType"},
+        {"kind": "keyword", "start": 11, "length": 2, "text": "in"},
+        {"kind": "punctuator", "start": 14, "length": 1, "text": "("},
+        {"kind": "string", "start": 15, "length": 9, "text": "Service"},
+        {"kind": "punctuator", "start": 24, "length": 1, "text": ","},
+        {"kind": "string", "start": 26, "length": 6, "text": "Sale"},
+        {"kind": "punctuator", "start": 32, "length": 1, "text": ")"}
+      ],
+      "parameters": [],
+      "diagnostics": []
+    },
+    {
+      "text": "DueDate is not null",
+      "tokens": [
+        {"kind": "identifier", "start": 0, "length": 7, "text": "DueDate"},
+        {"kind": "keyword", "start": 8, "length": 2, "text": "is"},
+        {"kind": "keyword", "start": 11, "length": 3, "text": "not"},
+        {"kind": "keyword", "start": 15, "length": 4, "text": "null"}
+      ],
+      "parameters": [],
+      "diagnostics": []
+    },
+    {
+      "text": "-a * b",
+      "tokens": [
+        {"kind": "punctuator", "start": 0, "length": 1, "text": "-"},
+        {"kind": "identifier", "start": 1, "length": 1, "text": "a"},
+        {"kind": "punctuator", "start": 3, "length": 1, "text": "*"},
+        {"kind": "identifier", "start": 5, "length": 1, "text": "b"}
+      ],
+      "parameters": [],
+      "diagnostics": []
+    },
+    {
+      "text": "x # y $ z",
+      "tokens": [
+        {"kind": "identifier", "start": 0, "length": 1, "text": "x"},
+        {"kind": "error", "start": 2, "length": 1, "text": "#"},
+        {"kind": "identifier", "start": 4, "length": 1, "text": "y"},
+        {"kind": "error", "start": 6, "length": 1, "text": "$"},
+        {"kind": "identifier", "start": 8, "length": 1, "text": "z"}
+      ],
+      "parameters": [],
+      "diagnostics": [
+        {"code": "QX1005", "start": 2, "length": 1},
+        {"code": "QX1005", "start": 6, "length": 1}
+      ]
+    },
+    {
+      "text": "'a' = 'b' and 12x = 3",
+      "tokens": [
+        {"kind": "string", "start": 0, "length": 3, "text": "a"},
+        {"kind": "punctuator", "start": 4, "length": 1, "text": "="},
+        {"kind": "string", "start": 6, "length": 3, "text": "b"},
+        {"kind": "keyword", "start": 10, "length": 3, "text": "and"},
+        {"kind": "error", "start": 14, "length": 3, "text": "12x"},
+        {"kind": "punctuator", "start": 18, "length": 1, "text": "="},
+        {"kind": "number", "start": 20, "length": 1, "text": "3"}
+      ],
+      "parameters": [],
+      "diagnostics": [
+        {"code": "QX1003", "start": 14, "length": 3}
+      ]
+    }
+  ]
+}

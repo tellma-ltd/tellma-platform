@@ -309,7 +309,7 @@ export class TmLeaderElection {
           this.#end(term, 'stolen');
           this.#reconcile();
         } else if ((error as { readonly name?: unknown } | null)?.name !== 'AbortError') {
-          this.#telemetry.error(error, { source: 'tm-leader' });
+          this.#telemetry.error(error, { where: 'tm-leader' });
         }
       });
   }
@@ -324,7 +324,7 @@ export class TmLeaderElection {
       term.leadership = runInInjectionContext(this.#injector, () => new TmLeadership(term.partition, seenSince));
     } catch (error) {
       // A leader that cannot start lets the lock go, so another tab may lead.
-      this.#telemetry.error(error, { source: 'tm-leader' });
+      this.#telemetry.error(error, { where: 'tm-leader' });
       this.#leader.ɵisLeader.set(false);
       term.ended = true;
       term.release?.();

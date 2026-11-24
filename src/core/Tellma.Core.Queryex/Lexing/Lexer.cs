@@ -33,13 +33,22 @@ namespace Tellma.Core.Queryex.Lexing
         /// <param name="text">The expression text.</param>
         /// <param name="budget">The ceilings for this call site.</param>
         /// <param name="scope">Where to report problems.</param>
-        /// <param name="tokens">The tokens, ending with an end-of-input token, when scanning succeeded.</param>
+        /// <param name="tokens">
+        ///     The tokens, ending with an end-of-input token. When a run could not be read, the
+        ///     tokens read around it, the run itself left out, so a tool can still show what was
+        ///     read; empty when the input or its tokens exceed the ceilings.
+        /// </param>
+        /// <param name="unreadable">
+        ///     When given, receives the range of each run that could not be read, in order: the
+        ///     stretches an authoring tool marks as errors between the tokens.
+        /// </param>
         /// <returns>True when the whole input scanned without a problem.</returns>
         internal static bool TryTokenize(
             string text,
             ParseBudget budget,
             in DiagnosticScope scope,
-            out Token[] tokens)
+            out Token[] tokens,
+            ICollection<QueryexSpan>? unreadable = null)
         {
             tokens = [];
             if (!budget.TryAcceptInput(text, scope))
@@ -107,6 +116,7 @@ namespace Tellma.Core.Queryex.Lexing
                 if (failed)
                 {
                     healthy = false;
+                    unreadable?.Add(new QueryexSpan(start, Math.Max(index - start, 1)));
                     continue;
                 }
 
@@ -119,14 +129,11 @@ namespace Tellma.Core.Queryex.Lexing
                 }
             }
 
+            // Handed out even when a run was unreadable: the parser never sees them, since the caller
+            // stops at the failure, but the readable tokens are what an authoring tool highlights.
             scanned.Add(new Token(TokenKind.EndOfInput, new QueryexSpan(text.Length, 0)));
-            if (!healthy)
-            {
-                return false;
-            }
-
             tokens = [.. scanned];
-            return true;
+            return healthy;
         }
 
         /// <summary>Whether a character is one of the ten digits a number is written with.</summary>

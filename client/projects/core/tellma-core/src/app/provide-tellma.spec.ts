@@ -233,7 +233,7 @@ describe('the startup sequence', () => {
     TestBed.tick();
     const telemetry = TestBed.inject(TmFakeTelemetry);
     await vi.waitFor(() =>
-      expect(telemetry.recent().filter((item) => item.name === 'tm.error.captured').map((item) => item.props['source'])).toEqual([
+      expect(telemetry.recent().filter((item) => item.name === 'tm.error.captured').map((item) => item.props['where'])).toEqual([
         'tm-recents',
       ]),
     );
@@ -262,7 +262,7 @@ describe('the startup sequence', () => {
     TestBed.tick();
     const telemetry = TestBed.inject(TmFakeTelemetry);
     await vi.waitFor(() =>
-      expect(telemetry.recent().filter((item) => item.name === 'tm.error.captured').map((item) => item.props['source'])).toEqual([
+      expect(telemetry.recent().filter((item) => item.name === 'tm.error.captured').map((item) => item.props['where'])).toEqual([
         'tm-leader',
       ]),
     );

@@ -39,6 +39,7 @@ describe('the ESLint preset', { timeout: 120_000 }, () => {
       'no-decimal-operators',
       'no-raw-http',
       'no-web-storage',
+      'telemetry-names',
     ]);
   });
 

@@ -271,7 +271,7 @@ export class TmLeadership {
     this.#reads.forEach((reads) => clearTimeout(reads.timer));
     const hub = this.#hub;
     this.#hub = null;
-    return hub === null ? Promise.resolve() : hub.stop().catch((error: unknown) => this.#telemetry.error(error, { source: 'tm-leader' }));
+    return hub === null ? Promise.resolve() : hub.stop().catch((error: unknown) => this.#telemetry.error(error, { where: 'tm-leader' }));
   }
 
   // --- The connection ---
@@ -313,7 +313,7 @@ export class TmLeadership {
       },
       (error: unknown) => {
         this.#loading = false;
-        this.#telemetry.error(error, { source: 'tm-leader' });
+        this.#telemetry.error(error, { where: 'tm-leader' });
       },
     );
   }
@@ -324,7 +324,7 @@ export class TmLeadership {
     this.#loading = false;
     const hub = this.#hub;
     this.#hub = null;
-    void hub?.stop().catch((error: unknown) => this.#telemetry.error(error, { source: 'tm-leader' }));
+    void hub?.stop().catch((error: unknown) => this.#telemetry.error(error, { where: 'tm-leader' }));
   }
 
   /** The sink a connection reports to; a connection stopped since is ignored. */
@@ -359,7 +359,7 @@ export class TmLeadership {
           // The server ended the user's access to the tenant: the connection
           // stops, and a sync decides what the user sees; the connection
           // starts again only once it has closed.
-          const stopped = this.#hub?.stop().catch((error: unknown) => this.#telemetry.error(error, { source: 'tm-leader' }));
+          const stopped = this.#hub?.stop().catch((error: unknown) => this.#telemetry.error(error, { where: 'tm-leader' }));
           this.#terminal(generation, stopped);
         }
       },
@@ -478,7 +478,7 @@ export class TmLeadership {
         // A failed read waits for the next trigger: the HTTP layer and the
         // store report what needs reporting.
         if (!(error instanceof TmApiError) && !(error instanceof TmStoreRefusedError)) {
-          this.#telemetry.error(error, { source: 'tm-leader' });
+          this.#telemetry.error(error, { where: 'tm-leader' });
         }
       })
       .finally(() => {
@@ -497,7 +497,7 @@ export class TmLeadership {
     try {
       return stored !== undefined && pollWhile !== undefined && pollWhile(stored.data);
     } catch (error) {
-      this.#telemetry.error(error, { source: 'tm-leader' });
+      this.#telemetry.error(error, { where: 'tm-leader' });
       return false;
     }
   }

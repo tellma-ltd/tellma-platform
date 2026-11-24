@@ -919,7 +919,7 @@ describe('TmHttpApi', () => {
       const rig = await setUp();
       const write = await verdictOf(rig, UI_VERSION);
       expect(write.error).toMatchObject({ kind: 'server', code: 'contract-mismatch', status: 412 });
-      expect(rig.telemetry.errors).toEqual([{ error: write.error, context: { route: 'centers/save', build: UI_VERSION } }]);
+      expect(rig.telemetry.errors).toEqual([{ error: write.error, context: { api: 'centers/save', build: UI_VERSION } }]);
       expect(verdicts(rig)).toEqual([]);
     });
 

@@ -4,12 +4,14 @@
 
 ```ts
 
+import { BaseHarnessFilters } from '@angular/cdk/testing';
 import { ComponentHarness } from '@angular/cdk/testing';
 import { EnvironmentProviders } from '@angular/core';
 import { HarnessPredicate } from '@angular/cdk/testing';
 import * as i0 from '@angular/core';
 import { Observable } from 'rxjs';
 import { Signal } from '@angular/core';
+import { TestKey } from '@angular/cdk/testing';
 
 // @public
 export function provideTellmaStateTesting(): EnvironmentProviders;
@@ -25,6 +27,28 @@ export class TmBannerHostHarness extends ComponentHarness {
     static hostSelector: string;
     isEmpty(): Promise<boolean>;
     isOpen(): Promise<boolean>;
+}
+
+// @public
+export class TmColumnFilterHarness extends ComponentHarness {
+    apply(): Promise<void>;
+    clear(): Promise<void>;
+    getCheckboxes(): Promise<TmCheckboxHarness[]>;
+    getDatePicker(): Promise<TmDatePickerHarness | null>;
+    getDateRange(): Promise<TmDateRangeHarness | null>;
+    getEntityField(): Promise<TmEntityMultiFieldHarness | null>;
+    getEnumPicker(): Promise<TmEntityMultiPickerHarness | null>;
+    getGroupLabel(): Promise<string | null>;
+    getMultiSelect(): Promise<TmMultiSelectHarness | null>;
+    getNumberInputs(): Promise<TmNumberHarness[]>;
+    getOperator(): Promise<TmSelectHarness | null>;
+    getOperatorText(): Promise<string | null>;
+    getRadioGroup(): Promise<TmRadioGroupHarness | null>;
+    getTextInput(): Promise<TmInputHarness | null>;
+    static hostSelector: string;
+    isApplyEnabled(): Promise<boolean>;
+    pressEnter(): Promise<void>;
+    selectOperator(label: string): Promise<void>;
 }
 
 // @public
@@ -130,11 +154,11 @@ export class TmFakeTelemetry extends TmTelemetry {
     clear(): void;
     error(error: unknown, context?: Readonly<Record<string, string>>): void;
     readonly errors: Signal<readonly unknown[]>;
-    event(name: string, props?: TmTelemetryProps): void;
+    event(name: string, props?: TmTelemetryProps, options?: TmTelemetryOptions): void;
     flush(): void;
     readonly flushes: Signal<number>;
     readonly recent: Signal<readonly TmTelemetryItem[]>;
-    timing(name: string, ms: number, props?: TmTelemetryProps): void;
+    timing(name: string, ms: number, props?: TmTelemetryProps, options?: TmTelemetryOptions): void;
     static ɵfac: i0.ɵɵFactoryDeclaration<TmFakeTelemetry, never>;
     static ɵprov: i0.ɵɵInjectableDeclaration<TmFakeTelemetry>;
 }

@@ -16,8 +16,9 @@ namespace Tellma.Core.Tests.Data.Batches
     ///     The recording view a persist's participants append through: every append reaches the batch
     ///     at once and is recorded, a replay appends the recording onto a recomposed batch in order
     ///     and completes the results handed out from it, a replay that names a table otherwise or
-    ///     whose compose-time answer moved is refused, and the view neither executes the batch nor
-    ///     changes its mode or limits.
+    ///     whose compose-time answer moved is refused, commit callbacks and the announcements of a
+    ///     commit only the probe proved reach every batch the recording lands on, and the view neither
+    ///     executes the batch nor changes its mode or limits.
     /// </summary>
     public sealed class RecordingBatchTests
     {
@@ -132,7 +133,7 @@ namespace Tellma.Core.Tests.Data.Batches
         [Fact]
         public async Task A_commit_callback_that_fails_is_reported_with_the_callback_and_fails_no_other()
         {
-            List<(Action<BatchOutcome> Callback, Exception Failure)> failed = [];
+            List<(Delegate Callback, Exception Failure)> failed = [];
             ScriptedBatch batch = _script.NewBatch(BatchPurpose.Persist);
             RecordingBatch view = new(batch, (callback, failure) => failed.Add((callback, failure)));
             InvalidOperationException thrown = new("The callback failed.");
@@ -143,10 +144,50 @@ namespace Tellma.Core.Tests.Data.Batches
             view.OnCommitted(_ => ran = true);
             _ = await batch.ExecuteAsync(Token);
 
-            (Action<BatchOutcome> callback, Exception failure) = Assert.Single(failed);
+            (Delegate callback, Exception failure) = Assert.Single(failed);
             Assert.Same(failing, callback);
             Assert.Same(thrown, failure);
             Assert.True(ran);
+        }
+
+        // --- The announcements of a commit only the probe proved ---
+
+        [Fact]
+        public async Task An_announcement_of_a_proven_commit_reaches_the_batch_and_every_replay_and_one_that_fails_is_reported_with_it()
+        {
+            using BatchHarness harness = new();
+            List<(Delegate Callback, Exception Failure)> failed = [];
+            DataBatch first = harness.Batch(BatchPurpose.Persist);
+            RecordingBatch view = new(first, (callback, failure) => failed.Add((callback, failure)));
+            InvalidOperationException thrown = new("The announcement failed.");
+            List<string> ran = [];
+            Action failing = () => throw thrown;
+
+            view.OnCommitProven(failing);
+            view.OnCommitProven(() => ran.Add("second"));
+
+            // --- The recomposed batch takes the recording, the announcements with it ---
+            DataBatch again = harness.Batch(BatchPurpose.Persist);
+            view.Replay(again);
+            _ = await BatchHarness.SealAsync(again);
+            again.RunProvenCommitCallbacks(static failure => Assert.Fail(failure.ToString()));
+
+            (Delegate callback, Exception failure) = Assert.Single(failed);
+            Assert.Same(failing, callback);
+            Assert.Same(thrown, failure);
+            Assert.Equal(["second"], ran);
+        }
+
+        [Fact]
+        public void An_announcement_of_a_proven_commit_is_ignored_by_a_batch_that_takes_none()
+        {
+            ScriptedBatch batch = _script.NewBatch(BatchPurpose.Persist);
+            RecordingBatch view = new(batch);
+
+            view.OnCommitProven(static () => throw new InvalidOperationException("Never run."));
+
+            Assert.Equal(1, view.Recorded);
+            Assert.Empty(batch.Statements);
         }
 
         // --- A deferred view: an action's method composes before its persist batch exists ---

@@ -10,6 +10,7 @@ import { ApplicationRef } from '@angular/core';
 import { CanActivateFn } from '@angular/router';
 import { DestroyRef } from '@angular/core';
 import { EnvironmentProviders } from '@angular/core';
+import { ErrorHandler } from '@angular/core';
 import * as i0 from '@angular/core';
 import { InjectionToken } from '@angular/core';
 import { InputSignal } from '@angular/core';
@@ -587,6 +588,33 @@ export interface TmDetailsDeclaration<N extends string> {
 }
 
 // @public
+export interface TmDetailsDraft {
+    readonly baseModifiedAt: string | null;
+    readonly clonedFrom?: TmId;
+    readonly contract: string;
+    readonly mode: 'create' | 'edit';
+    readonly model: TmJson;
+    readonly savingAt?: number;
+    readonly tabs?: Readonly<Record<string, string>>;
+    readonly uploads?: readonly TmBlobDescriptor[];
+    readonly v: 1;
+}
+
+// @public
+export interface TmDetailsSnapshot {
+    readonly cards: Readonly<Record<string, boolean>>;
+    readonly entity: TmJsonObject;
+    readonly extras: Readonly<Record<string, TmJson>>;
+    readonly related: Readonly<Record<string, readonly TmJsonObject[]>>;
+    readonly scroll: {
+        readonly body: number;
+        readonly aside: number;
+        readonly panels: Readonly<Record<string, number>>;
+    };
+    readonly tabs: Readonly<Record<string, string>>;
+}
+
+// @public
 export type TmDigitStyle = 'Latin' | 'Native';
 
 // @public
@@ -882,6 +910,32 @@ export interface TmEnumValueMetadata {
     readonly labelKey?: string;
     readonly value: string;
 }
+
+// @public
+export class TmErrorHandler implements ErrorHandler {
+    handleError(error: unknown): void;
+    static ɵfac: i0.ɵɵFactoryDeclaration<TmErrorHandler, never>;
+    static ɵprov: i0.ɵɵInjectableDeclaration<TmErrorHandler>;
+}
+
+// @public
+export interface TmErrorRecord {
+    readonly at: number;
+    readonly code?: string;
+    readonly errorClass: string;
+    readonly fingerprint: string;
+    readonly kind?: TmApiErrorKind;
+    readonly message?: string;
+    readonly recentTraceIds: readonly string[];
+    readonly routeTemplate: string;
+    readonly source: TmErrorSource;
+    readonly stack: string;
+    readonly status?: number;
+    readonly traceId?: string;
+}
+
+// @public
+export type TmErrorSource = 'api' | 'global' | 'render';
 
 // @public
 export type TmFeature = TmFeatureDefinition & {
@@ -2144,6 +2198,7 @@ export interface TmTelemetryItem {
 // @public
 export interface TmTelemetryOptions {
     readonly sampled?: boolean;
+    readonly traceId?: string;
 }
 
 // @public

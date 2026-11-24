@@ -4,7 +4,7 @@
 // LICENSE file in the root directory of this source tree.
 
 import { Injectable, signal, type Signal } from '@angular/core';
-import { TmTelemetry, type TmTelemetryItem, type TmTelemetryProps } from '@tellma/core';
+import { TmTelemetry, type TmTelemetryItem, type TmTelemetryOptions, type TmTelemetryProps } from '@tellma/core';
 
 /**
  * A {@link TmTelemetry} that records every item and sends nothing, so a test
@@ -37,14 +37,14 @@ export class TmFakeTelemetry extends TmTelemetry {
   /** How many times {@link TmFakeTelemetry.flush} was called. */
   readonly flushes: Signal<number> = this.#flushes.asReadonly();
 
-  /** Records an event item. */
-  override event(name: string, props: TmTelemetryProps = {}): void {
-    this.#record('event', name, props);
+  /** Records an event item, with the trace id the options name. */
+  override event(name: string, props: TmTelemetryProps = {}, options?: TmTelemetryOptions): void {
+    this.#record('event', name, props, options?.traceId);
   }
 
-  /** Records a timing item, with the duration as the property `ms`. */
-  override timing(name: string, ms: number, props: TmTelemetryProps = {}): void {
-    this.#record('timing', name, { ...props, ms });
+  /** Records a timing item, with the duration as the property `ms` and the trace id the options name. */
+  override timing(name: string, ms: number, props: TmTelemetryProps = {}, options?: TmTelemetryOptions): void {
+    this.#record('timing', name, { ...props, ms }, options?.traceId);
   }
 
   /**
@@ -71,8 +71,8 @@ export class TmFakeTelemetry extends TmTelemetry {
   }
 
   /** Appends one item. */
-  #record(kind: TmTelemetryItem['kind'], name: string, props: TmTelemetryProps): void {
-    const item: TmTelemetryItem = { kind, name, at: Date.now(), tenantId: null, props };
+  #record(kind: TmTelemetryItem['kind'], name: string, props: TmTelemetryProps, traceId?: string): void {
+    const item: TmTelemetryItem = { kind, name, at: Date.now(), ...(traceId === undefined ? {} : { traceId }), tenantId: null, props };
     this.#items.update((items) => [...items, item]);
   }
 }

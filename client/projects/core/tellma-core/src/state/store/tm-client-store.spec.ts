@@ -782,7 +782,7 @@ describe('TmClientStore', () => {
         failTransactions(failure, ['readwrite']);
         await expect(store.put(USER, 'tenants', docOf(['acme']))).resolves.toBeUndefined();
         expect([store.mode, store.doc(USER, 'tenants')()?.data, bus.posted]).toEqual(['memory', ['acme'], []]);
-        expect(errors).toHaveBeenCalledExactlyOnceWith(failure, { source: 'tm-client-store' });
+        expect(errors).toHaveBeenCalledExactlyOnceWith(failure, { where: 'tm-client-store' });
         expect(eventsNamed(telemetry, 'tm.store.unavailable')).toEqual([{ reason: 'failed' }]);
       });
 

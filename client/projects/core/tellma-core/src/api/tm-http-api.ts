@@ -1101,7 +1101,7 @@ export class TmHttpApi implements TmApi {
       this.#cache.refresh(call.tenantId, ['tenant'], 'header').catch(() => undefined);
     }
     if (code === 'contract-mismatch') {
-      this.#telemetry.error(error, { route: call.route, build: build ?? '' });
+      this.#telemetry.error(error, { api: call.route, build: build ?? '' });
     }
 
     // --- The retry §10.5 allows; the wait follows the status and headers alone ---
