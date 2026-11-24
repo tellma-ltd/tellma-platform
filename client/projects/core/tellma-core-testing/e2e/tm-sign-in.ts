@@ -292,21 +292,22 @@ async function mailFiles(host: TmE2eHost): Promise<readonly string[]> {
 }
 
 /**
- * Runs a code sign-in under a per-principal lock, so two workers that find
- * no kept sign-in at once spend one code between them, not two: the second
- * one, once it holds the lock, finds the first one's sign-in kept and uses
- * it. A lock older than {@link LOCK_STALE_MS} is a crashed worker's and is
- * broken.
+ * Runs a step under a per-principal lock. A code sign-in runs under it, so
+ * two workers that find no kept sign-in at once spend one code between them,
+ * not two: the second one, once it holds the lock, finds the first one's
+ * sign-in kept and uses it. Writing the kept sign-in runs under it too, so
+ * two workers never replace the file at once, which Windows refuses. A lock
+ * older than {@link LOCK_STALE_MS} is a crashed worker's and is broken.
  *
  * @param host - The host.
  * @param email - The principal's email address.
- * @param signIn - The sign-in to run while the lock is held.
- * @returns A promise that settles when the sign-in is done.
+ * @param step - The step to run while the lock is held.
+ * @returns A promise that settles when the step is done.
  */
 async function withLock(
   host: TmE2eHost,
   email: string,
-  signIn: () => Promise<void>,
+  step: () => Promise<void>,
 ): Promise<void> {
   const lock = join(host.stateDir, `${fileName(email)}.lock`);
   for (;;) {
@@ -326,7 +327,7 @@ async function withLock(
     }
   }
   try {
-    await signIn();
+    await step();
   } finally {
     await rm(lock, { recursive: true, force: true });
   }
@@ -359,7 +360,8 @@ async function readIdentity(host: TmE2eHost, email: string): Promise<TmKeptIdent
 
 /**
  * Keeps a principal's identity sign-in, written under a temporary name and
- * renamed, so a reader in another worker never sees half a file.
+ * renamed, so a reader in another worker never sees half a file, and under
+ * the principal's lock, so two writers never rename onto it at once.
  *
  * @param host - The host.
  * @param email - The principal's email address.
@@ -372,9 +374,11 @@ async function writeIdentity(
   cookies: readonly Cookie[],
 ): Promise<void> {
   const file = join(host.stateDir, `${fileName(email)}.json`);
-  const partial = `${file}.${process.pid}.${Date.now()}.partial`;
-  await writeFile(partial, JSON.stringify(cookies));
-  await rename(partial, file);
+  await withLock(host, email, async () => {
+    const partial = `${file}.${process.pid}.${Date.now()}.partial`;
+    await writeFile(partial, JSON.stringify(cookies));
+    await rename(partial, file);
+  });
 }
 
 /** The file name a principal's state is kept under. */

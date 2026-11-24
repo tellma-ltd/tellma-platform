@@ -38,7 +38,9 @@ node distributions/acme/test/Tellma.Distro.Acme.E2E/scripts/e2e.mjs --grep "@nig
 
 Arguments pass through to `playwright test`; `--project chromium` or `--project chromium-ar` runs
 one language. The report and traces go to `.artifacts/`, beside the host's log
-(`.artifacts/host/host.log`), its mail drop and blob root, and the kept sign-ins.
+(`.artifacts/host/host.log`), its mail drop and blob root, and the kept sign-ins. CI passes
+`--global-timeout` below its step's limit, the host's start included, so a run out of time still
+writes its report for the upload.
 `pnpm --dir distributions/acme/test/Tellma.Distro.Acme.E2E run typecheck` and `run lint` check the
 sources without a host, and `run test` runs the host's own unit tests; `run format` formats the
 sources with the client's Prettier settings.
@@ -72,7 +74,10 @@ sources with the client's Prettier settings.
    development certificate, which the host creates. The web host's sign-in fetches the identity
    engine's discovery document from its own origin, so .NET must trust that certificate: on Linux
    the host runs `dotnet dev-certs https --trust`, which needs no prompt there; on Windows,
-   where trusting asks, trust it once yourself with the same command.
+   where trusting asks, trust it once yourself with the same command. The browsers need no trust:
+   the config ignores certificate errors per context and launches Chromium with
+   `--ignore-certificate-errors`, without which Chromium refuses to register the service worker
+   on Linux, where its own certificate store does not hold the development certificate.
 
 `TELLMA_E2E_CONFIGURATION` sets the .NET build configuration (Debug by default). The port is
 `ACME_WEB_E2E` from `.dev-ports.local`, else one the OS assigns, so the suite never collides with

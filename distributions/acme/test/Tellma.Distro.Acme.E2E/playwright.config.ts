@@ -52,8 +52,14 @@ export default defineConfig({
   globalSetup: './support/global-setup.ts',
   use: {
     baseURL: origin,
-    // The host serves Kestrel's development certificate, which no runner trusts.
+    // The host serves Kestrel's development certificate, which no runner's browser trusts:
+    // Chromium reads the OS store on Windows but its own NSS store on Linux, which the host
+    // leaves alone.
     ignoreHTTPSErrors: true,
+    // Ignoring the errors per context is not enough for the service worker: Chromium refuses to
+    // register a worker whose script came with a certificate error unless the browser itself
+    // runs with the switch, and a warm launch needs the worker.
+    launchOptions: { args: ['--ignore-certificate-errors'] },
     trace: 'on-first-retry',
   },
   projects: [

@@ -372,14 +372,17 @@ jobs:
       # The browser suite on the Acme e2e host (spec 0024 §13), on Linux: a SQL Server container,
       # the Migrator's migrate, and the web host in Development over the app the publish above
       # built, so no second client build runs. Chromium is the one installed above (one catalog
-      # version of Playwright). Windows runs it in the nightly tier, against LocalDB.
+      # version of Playwright). Windows runs it in the nightly tier, against LocalDB. Playwright's
+      # global timeout (17 minutes, the host's start included) ends a run below the step's limit,
+      # so a run out of time still stops on its own and writes its report, traces and errors for
+      # the upload below; a step killed at its limit leaves none of them.
       - name: Acme browser suite (Linux)
         if: runner.os == 'Linux'
         timeout-minutes: 20
         env:
           TELLMA_E2E_WEBROOT: ${{ runner.temp }}/acme-web/wwwroot
           TELLMA_E2E_CONFIGURATION: Release
-        run: node distributions/acme/test/Tellma.Distro.Acme.E2E/scripts/e2e.mjs --grep-invert "@nightly|@perf|@quarantine"
+        run: node distributions/acme/test/Tellma.Distro.Acme.E2E/scripts/e2e.mjs --grep-invert "@nightly|@perf|@quarantine" --global-timeout 1020000
       - name: Upload the Acme Playwright report on failure
         if: failure() && runner.os == 'Linux'
         uses: actions/upload-artifact@v4
