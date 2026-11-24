@@ -71,6 +71,15 @@ takes `https://localhost:<ACME_CLIENT>` as its public origin; the dev server lis
 `ACME_CLIENT` (rebuild after changing it). Environment variables and the command line still win over
 the web host's derived values: `Tellma__PublicOrigin` and `--urls` override what the file derives.
 
+The browser suite (`test/Tellma.Distro.Acme.E2E`) starts a web host of its own, beside the
+development one, so it never listens on `ACME_WEB`. It reads `ACME_WEB_E2E` from the same file, and
+without it takes a port the OS assigns. Pinning it keeps the suite's origin, and so its identity
+authorizations and kept sign-ins, the same from run to run:
+
+```
+ACME_WEB_E2E=7121
+```
+
 ### Provisioning another tenant
 
 `dotnet run --project distributions/acme/src/Tellma.Distro.Acme.Migrator -- provision --name "Acme 2" --category Live`

@@ -5,17 +5,16 @@
 
 import { signInAs } from '@tellma/core-testing/e2e';
 
-import { ACME_PRINCIPALS, expect, removeWebLocks, test } from '../support/acme';
+import { expect, removeWebLocks, test } from '../support/acme';
 
 // Bidi-free text (spec 0024 §14): no text the app writes holds a
-// bidirectional control character; direction comes from markup.
+// bidirectional control character; direction comes from markup. Both
+// projects run it, so the Arabic one checks the texts in Arabic.
 
 /** The bidirectional control characters no text may hold: ALM, LRM, RLM, the embeddings, overrides and isolates. */
 const BIDI_CONTROLS = /[\u061C\u200E\u200F\u202A-\u202E\u2066-\u2069]/u;
 
 test.describe('bidi-free', () => {
-  test.use({ locale: 'ar' });
-
   test('the boot page and its title hold no bidirectional control character', async ({ page }) => {
     await removeWebLocks(page.context());
 
@@ -38,10 +37,8 @@ test.describe('bidi-free', () => {
     expect(await page.title()).not.toMatch(BIDI_CONTROLS);
   });
 
-  test('a tenant page title in Arabic holds no bidirectional control character', async ({
-    page,
-  }) => {
-    await signInAs(page, ACME_PRINCIPALS.admin);
+  test('a tenant page title holds no bidirectional control character', async ({ page, cast }) => {
+    await signInAs(page, cast.user);
     await page.goto('/1/customers');
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
 

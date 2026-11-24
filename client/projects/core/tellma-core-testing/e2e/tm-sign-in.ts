@@ -174,6 +174,8 @@ async function tmSessionCookies(browser: Browser, email: string): Promise<readon
  * round trip then ends at a server error with "try again": parallel workers
  * signing one principal in on a host whose authorization does not yet cover
  * it meet that, so a round trip that ends at a server error is run again.
+ * The retry guards the harness only: the identity engine's race is a product
+ * fault tracked on its own, and a fix there leaves this retry idle.
  *
  * @param page - A page of the scratch context.
  * @param host - The host.

@@ -15,7 +15,6 @@ import {
 } from '@tellma/core-testing/e2e';
 
 import {
-  ACME_PRINCIPALS,
   comeIntoViewUntil,
   expect,
   expireInApp,
@@ -32,8 +31,9 @@ import {
 test.describe('session', () => {
   test("an expired session deletes the user's stored data before it leaves to sign in", async ({
     page,
+    cast,
   }) => {
-    await signInAs(page, ACME_PRINCIPALS.admin);
+    await signInAs(page, cast.user);
     await warmUp(page, '/1');
     const { sub } = await tmBootFacts(page);
     expect(await tmStoredDocs(page, `u:${sub}/`)).not.toEqual([]);
@@ -51,27 +51,37 @@ test.describe('session', () => {
     expect(record?.lastTenantId ?? null).toBeNull();
   });
 
-  test('a changed user reaches a tab that never came into view', async ({ page, context }) => {
-    await signInAs(page, ACME_PRINCIPALS.admin);
+  test('a changed user reaches a tab that never came into view', async ({
+    page,
+    context,
+    text,
+    cast,
+  }) => {
+    await signInAs(page, cast.user);
     await page.goto('/1');
-    await expect(page.getByRole('heading', { level: 1, name: 'Home' })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1, name: text.home })).toBeVisible();
     const [hidden] = await openTabs(context, 1, '/1');
 
     // Another user signs in on the device; only the first tab comes into view.
-    await signInAs(page, ACME_PRINCIPALS.sales);
+    await signInAs(page, cast.other);
     await expect(async () => {
       await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
-      expect((await tmBootFacts(page)).email).toBe(ACME_PRINCIPALS.sales);
+      expect((await tmBootFacts(page)).email).toBe(cast.other);
     }).toPass({ timeout: 30_000 });
 
     // The other tab learns of the new user from the first, and restarts as that user.
     await expect
       .poll(async () => (await tmBootFacts(hidden!)).email, { timeout: 30_000 })
-      .toBe(ACME_PRINCIPALS.sales);
+      .toBe(cast.other);
   });
 
-  test("the user's other tabs reload when the session starts again", async ({ page, context }) => {
-    await signInAs(page, ACME_PRINCIPALS.admin);
+  test("the user's other tabs reload when the session starts again", async ({
+    page,
+    context,
+    text,
+    cast,
+  }) => {
+    await signInAs(page, cast.user);
     await warmUp(page, '/1');
     const [other] = await openTabs(context, 1, '/1/customers');
     await expireInApp(page);
@@ -79,19 +89,21 @@ test.describe('session', () => {
     await expect(sessionEndedDialog(other!)).toBeVisible();
 
     const reloaded = other!.waitForEvent('load');
-    await sessionEndedDialog(page).getByRole('button', { name: 'Sign in' }).click();
+    await sessionEndedDialog(page).getByRole('button', { name: text.signIn }).click();
     await expect(page).toHaveURL('/1');
     await reloaded;
 
-    await expect(other!.getByRole('heading', { level: 1, name: 'Customers' })).toBeVisible();
+    await expect(other!.getByRole('heading', { level: 1, name: text.customers })).toBeVisible();
     await expect(sessionEndedDialog(other!)).toHaveCount(0);
     expect((await tmBootFacts(other!)).state).toBe('run');
   });
 
   test("another user signing in from the session-ended dialog finds none of the previous user's drafts", async ({
     page,
+    text,
+    cast,
   }) => {
-    await signInAs(page, ACME_PRINCIPALS.admin);
+    await signInAs(page, cast.user);
     await warmUp(page, '/1');
     const { sub } = await tmBootFacts(page);
     await page.evaluate((owner) => {
@@ -102,27 +114,32 @@ test.describe('session', () => {
     }, sub);
     await expireInApp(page);
     // The administrator's identity sign-in is gone too: the sales representative signs in here.
-    await tmSignInToIdentityAs(page.context(), ACME_PRINCIPALS.sales);
+    await tmSignInToIdentityAs(page.context(), cast.other);
 
-    await sessionEndedDialog(page).getByRole('button', { name: 'Sign in' }).click();
+    await sessionEndedDialog(page).getByRole('button', { name: text.signIn }).click();
 
     await expect
       .poll(async () => (await tmBootFacts(page)).email, { timeout: 30_000 })
-      .toBe(ACME_PRINCIPALS.sales);
+      .toBe(cast.other);
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
     const keys = await page.evaluate(() => Object.keys(sessionStorage));
     expect(keys.filter((key) => key.startsWith(`tm.draft:${sub}:`))).toEqual([]);
   });
 
-  test('a tab whose session ended re-checks when it comes into view', async ({ page }) => {
-    await signInAs(page, ACME_PRINCIPALS.admin);
+  test('a tab whose session ended re-checks when it comes into view', async ({
+    page,
+    text,
+    cast,
+  }) => {
+    await signInAs(page, cast.user);
     await page.goto('/1');
-    await expect(page.getByRole('heading', { level: 1, name: 'Home' })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1, name: text.home })).toBeVisible();
     await tmExpireSession(page.context());
 
     await comeIntoViewUntil(page, sessionEndedDialog(page));
 
-    await expect(sessionEndedDialog(page)).toContainText('Sign in to continue. Your work is kept.');
+    await expect(sessionEndedDialog(page)).toHaveAccessibleName(text.sessionEnded);
+    await expect(sessionEndedDialog(page)).toContainText(text.sessionEndedMessage);
   });
 
   // --- Pending: signed out elsewhere needs the hub's sign-out message (spec 0025) ---

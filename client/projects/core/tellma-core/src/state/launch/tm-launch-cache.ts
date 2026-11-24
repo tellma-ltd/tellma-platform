@@ -4,7 +4,7 @@
 // LICENSE file in the root directory of this source tree.
 
 import {
-  afterNextRender,
+  afterEveryRender,
   computed,
   DestroyRef,
   DOCUMENT,
@@ -15,6 +15,7 @@ import {
   untracked,
   type Signal,
 } from '@angular/core';
+import { Router } from '@angular/router';
 
 import { TmApi } from '../../api/tm-api';
 import { TmApiError } from '../../api/tm-api-error';
@@ -108,21 +109,41 @@ export class TmLaunchCache {
   /** Creates the launch cache, which follows the routed tenant. */
   constructor() {
     // --- Entering a tenant; on a tenantless route, the user's tenants are read again ---
+    // A launch's first request starts after its shell renders (spec 0024 §14): the
+    // first render once the launch's first navigation has ended, so its page is in
+    // it, not one while the page's chunk still loads. The read a launch on a
+    // tenantless route asks for waits for that render; every later tenantless
+    // entry reads at once. A launch whose first navigation fails reads once a
+    // later one ends. Whether one waits; `null` once the shell rendered.
+    let waiting: boolean | null = false;
     effect(() => {
       const partition = this.#refresher.ɵpartition();
       untracked(() => {
         if (partition !== null) {
           this.ɵenter(partition.tenantId).catch(() => undefined);
         } else if (this.#session.profile() !== null) {
-          void this.#revalidate(['tenants']);
+          if (waiting === null) {
+            void this.#revalidate(['tenants']);
+          } else {
+            waiting = true;
+          }
         }
       });
     });
 
-    // --- Once per launch, at idle: the user documents this launch has not read yet ---
+    // --- Once the shell rendered: the deferred tenants read; at idle, the user documents this launch has not read yet ---
     const window = inject(DOCUMENT).defaultView;
-    afterNextRender(
+    const router = inject(Router);
+    const shell = afterEveryRender(
       () => {
+        if (!router.navigated) {
+          return;
+        }
+        shell.destroy();
+        if (waiting) {
+          void this.#revalidate(['tenants']);
+        }
+        waiting = null;
         // An app torn down before its idle moment reads nothing.
         const read = (): void => {
           if (!this.#life.signal.aborted) {

@@ -5,14 +5,7 @@
 
 import { expectNoAxeViolations, signInAs, tmBootFacts } from '@tellma/core-testing/e2e';
 
-import {
-  ACME_PRINCIPALS,
-  expect,
-  expireInApp,
-  removeWebLocks,
-  sessionEndedDialog,
-  test,
-} from '../support/acme';
+import { expect, expireInApp, removeWebLocks, sessionEndedDialog, test } from '../support/acme';
 
 // Keyboard use of the error surfaces (spec 0024 §14): the session-ended
 // alert dialog takes the focus, keeps it, ignores Escape and leads on with
@@ -22,14 +15,16 @@ import {
 test.describe('keyboard and errors', () => {
   test('the session-ended dialog takes and keeps the focus, ignores Escape and signs in with Enter', async ({
     page,
+    text,
+    cast,
   }) => {
-    await signInAs(page, ACME_PRINCIPALS.admin);
+    await signInAs(page, cast.user);
     await page.goto('/1/customers');
-    await expect(page.getByRole('heading', { level: 1, name: 'Customers' })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1, name: text.customers })).toBeVisible();
     await expireInApp(page);
 
     const dialog = sessionEndedDialog(page);
-    const signIn = dialog.getByRole('button', { name: 'Sign in' });
+    const signIn = dialog.getByRole('button', { name: text.signIn });
     await expect(signIn).toBeFocused();
     await expectNoAxeViolations(page);
 
@@ -69,15 +64,19 @@ test.describe('keyboard and errors', () => {
     await expect(page.locator('main.tm-boot-page h1')).toBeFocused();
   });
 
-  test("an in-app navigation moves the focus to the new page's title", async ({ page }) => {
-    await signInAs(page, ACME_PRINCIPALS.admin);
+  test("an in-app navigation moves the focus to the new page's title", async ({
+    page,
+    text,
+    cast,
+  }) => {
+    await signInAs(page, cast.user);
     await page.goto('/tenants');
-    await expect(page.getByRole('heading', { level: 1, name: 'Choose a company' })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1, name: text.chooseCompany })).toBeVisible();
 
     await page.getByRole('link', { name: 'Acme', exact: true }).focus();
     await page.keyboard.press('Enter');
 
-    await expect(page.getByRole('heading', { level: 1, name: 'Home' })).toBeFocused();
+    await expect(page.getByRole('heading', { level: 1, name: text.home })).toBeFocused();
   });
 
   // The error dialogs of a page's failed read need those pages (specs 0030, 0031).

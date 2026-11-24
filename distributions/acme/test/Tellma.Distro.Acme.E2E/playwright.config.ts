@@ -48,16 +48,26 @@ export default defineConfig({
   workers: process.env['CI'] ? undefined : Math.max(2, Math.floor(cpus().length / 3)),
   reporter: [['html', { outputFolder: './.artifacts/report', open: 'never' }], ['list']],
   outputDir: './.artifacts/results',
+  // Once the host is up: the Arabic project's principal reads Arabic.
+  globalSetup: './support/global-setup.ts',
   use: {
     baseURL: origin,
     // The host serves Kestrel's development certificate, which no runner trusts.
     ignoreHTTPSErrors: true,
-    locale: 'en-US',
     trace: 'on-first-retry',
   },
   projects: [
-    // Chromium runs every flow; the CDP-driven nightly checks need it too.
-    { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
+    // Chromium runs every flow in English; the CDP-driven nightly checks need it too.
+    { name: 'chromium', use: { ...devices['Desktop Chrome'], locale: 'en-US' } },
+    // And every flow again in Arabic, as an Arabic reader's browser and account. The flows
+    // that pick their own languages (responsive, per test; the right-to-left boot, Arabic)
+    // run once, in the English project, and so do the nightly gates, which time one launch
+    // whatever its language.
+    {
+      name: 'chromium-ar',
+      use: { ...devices['Desktop Chrome'], locale: 'ar' },
+      testIgnore: ['**/responsive.spec.ts', '**/rtl-boot.spec.ts', '**/nightly.spec.ts'],
+    },
   ],
   webServer: {
     // The host migrates, builds the client and starts the web host; its

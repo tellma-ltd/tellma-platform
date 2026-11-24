@@ -340,6 +340,10 @@ jobs:
         timeout-minutes: 15
         run: pnpm --dir distributions/acme/src/Tellma.Distro.Acme.Client exec playwright install chromium
       - run: pnpm --dir distributions/acme/src/Tellma.Distro.Acme.Client run lint
+      # The browser suite's own sources, on both legs: Playwright transpiles them without a type
+      # check, and the client's lint does not reach them.
+      - run: pnpm --dir distributions/acme/test/Tellma.Distro.Acme.E2E run typecheck
+      - run: pnpm --dir distributions/acme/test/Tellma.Distro.Acme.E2E run lint
       - run: dotnet publish distributions/acme/src/Tellma.Distro.Acme.Web -c Release -o "${{ runner.temp }}/acme-web"
       - name: The published wwwroot serves the hashed app and its worker
         shell: bash

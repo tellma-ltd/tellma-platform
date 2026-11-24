@@ -3,7 +3,7 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-import { ChangeDetectionStrategy, Component, inject, type Signal } from '@angular/core';
+import { afterNextRender, ChangeDetectionStrategy, Component, inject, type Signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { TmLaunchCache, TmLocalization, type TmMembership, TmUrls } from '@tellma/core';
 import { TmSkeleton } from '@tellma/core-ui/skeleton';
@@ -55,8 +55,10 @@ export class TmTenantPicker {
   /** The user's memberships, or `undefined` before the first read. */
   protected readonly tenants: Signal<readonly TmMembership[] | undefined> = this.#cache.tenants;
 
-  /** Creates the picker, which revalidates the memberships in the background. */
+  /** Creates the picker, which revalidates the memberships in the background once it has rendered. */
   constructor() {
-    void this.#cache.revalidateUser();
+    // The picker renders from the cache first: a launch's first request starts
+    // after its shell renders (spec 0024 §14).
+    afterNextRender(() => void this.#cache.revalidateUser());
   }
 }

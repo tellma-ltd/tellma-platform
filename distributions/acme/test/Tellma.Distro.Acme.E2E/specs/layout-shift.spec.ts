@@ -5,14 +5,18 @@
 
 import { holdNetwork, signInAs, warmUp } from '@tellma/core-testing/e2e';
 
-import { ACME_PRINCIPALS, expect, test } from '../support/acme';
+import { expect, test } from '../support/acme';
 
 // Stable layout (spec 0024 §14): the skeleton a cold entry holds has the
 // page's final geometry, so the page replaces it with no layout shift.
 
 test.describe('layout shift', () => {
-  test('a cold entry moves from its skeleton to its chrome with zero shift', async ({ page }) => {
-    await signInAs(page, ACME_PRINCIPALS.admin);
+  test('a cold entry moves from its skeleton to its chrome with zero shift', async ({
+    page,
+    text,
+    cast,
+  }) => {
+    await signInAs(page, cast.user);
     // The shell and its fonts are on the device; the tenant's launch documents are not.
     await warmUp(page, '/tenants');
     // Every layout shift of the next document, from its first frame on.
@@ -34,7 +38,7 @@ test.describe('layout shift', () => {
     await page.goto('/1/customers');
     await expect(page.locator('tm-page-skeleton')).toBeVisible();
     await hold.release();
-    await expect(page.getByRole('heading', { level: 1, name: 'Customers' })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1, name: text.customers })).toBeVisible();
 
     // A shift is reported in the frame after it happens: two frames settle the last one.
     const shifts = await page.evaluate(

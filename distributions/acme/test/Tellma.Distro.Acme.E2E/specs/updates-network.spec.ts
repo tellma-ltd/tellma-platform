@@ -5,28 +5,28 @@
 
 import { holdNetwork, signInAs, warmUp } from '@tellma/core-testing/e2e';
 
-import { ACME_PRINCIPALS, expect, test } from '../support/acme';
+import { expect, test } from '../support/acme';
 
 // The updates and network flows (spec 0024 §13). The update and offline
 // banners are spec 0028's, so the flows that read them are pending; the
 // hung request is the foundation's own.
 
 test.describe('updates and network', () => {
-  test('a hung request does not block navigation', async ({ page }) => {
-    await signInAs(page, ACME_PRINCIPALS.admin);
+  test('a hung request does not block navigation', async ({ page, text, cast }) => {
+    await signInAs(page, cast.user);
     await warmUp(page, '/tenants');
     await warmUp(page, '/1');
     await page.goto('/tenants');
-    await expect(page.getByRole('heading', { level: 1, name: 'Choose a company' })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1, name: text.chooseCompany })).toBeVisible();
     const hold = await holdNetwork(page);
 
     // Every server request from here on hangs; the warm app still moves between pages.
     await page.getByRole('link', { name: 'Acme', exact: true }).click();
 
     await expect(page).toHaveURL('/1');
-    await expect(page.getByRole('heading', { level: 1, name: 'Home' })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1, name: text.home })).toBeVisible();
     await page.goBack();
-    await expect(page.getByRole('heading', { level: 1, name: 'Choose a company' })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1, name: text.chooseCompany })).toBeVisible();
     await hold.release();
   });
 

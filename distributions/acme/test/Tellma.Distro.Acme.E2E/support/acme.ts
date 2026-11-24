@@ -32,16 +32,104 @@ export const ACME_PRINCIPALS = {
 /** The seeded tenants. */
 export const ACME_TENANTS = { live: 1, sandbox: 2 } as const;
 
+/**
+ * The principal whose account reads Arabic: the run's global setup sets its
+ * language, since the development seed creates every account in English.
+ */
+export const ACME_ARABIC_READER = ACME_PRINCIPALS.sales;
+
+/** A language the suite's projects run in. */
+export type AcmeLanguage = 'en' | 'ar';
+
+/** The principals a flow signs in as, by their parts in it. */
+export interface AcmeCast {
+  /** The flow's user, a member of the live tenant (1) and its sandbox (2), whose account reads the project's language. */
+  readonly user: string;
+  /** Another member of both tenants, who takes the device over. */
+  readonly other: string;
+  /** The sandbox tester, a member of the sandbox (2) alone. Its account reads English in every project. */
+  readonly sandbox: string;
+}
+
+/** Each project's cast: the Arabic project's user is the account that reads Arabic. */
+const CASTS: Readonly<Record<AcmeLanguage, AcmeCast>> = {
+  en: {
+    user: ACME_PRINCIPALS.admin,
+    other: ACME_PRINCIPALS.sales,
+    sandbox: ACME_PRINCIPALS.sandbox,
+  },
+  ar: {
+    user: ACME_ARABIC_READER,
+    other: ACME_PRINCIPALS.centers,
+    sandbox: ACME_PRINCIPALS.sandbox,
+  },
+};
+
+/** The texts the flows match, in a project's language. */
+export interface AcmeText {
+  /** The tenant home's heading. */
+  readonly home: string | RegExp;
+  /** The customers pages' heading. */
+  readonly customers: string | RegExp;
+  /** The tenant picker's heading. */
+  readonly chooseCompany: string | RegExp;
+  /** The session-ended dialog's title. */
+  readonly sessionEnded: string | RegExp;
+  /** The session-ended dialog's message. */
+  readonly sessionEndedMessage: string | RegExp;
+  /** The sign-in button of the signed-out page and the session-ended dialog. */
+  readonly signIn: string | RegExp;
+  /** The signed-out page's heading. */
+  readonly signedOut: string | RegExp;
+}
+
+/** The texts in each language, as the app's string packs word them; an Arabic imperative takes either gender's form. */
+export const ACME_TEXT: Readonly<Record<AcmeLanguage, AcmeText>> = {
+  en: {
+    home: 'Home',
+    customers: 'Customers',
+    chooseCompany: 'Choose a company',
+    sessionEnded: 'Your session ended',
+    sessionEndedMessage: 'Sign in to continue. Your work is kept.',
+    signIn: 'Sign in',
+    signedOut: "You're signed out",
+  },
+  ar: {
+    home: 'الرئيسية',
+    customers: 'العملاء',
+    chooseCompany: /^(?:اختر|اختاري) شركة$/,
+    sessionEnded: 'انتهت جلستك',
+    sessionEndedMessage: /(?:سجّل|سجّلي) الدخول للمتابعة\. عملك محفوظ\./,
+    signIn: 'تسجيل الدخول',
+    signedOut: /^(?:لقد سجّلت الخروج|لقد سجّلتِ الخروج)$/,
+  },
+};
+
 /** What a test gets beyond Playwright's own fixtures. */
 export interface AcmeFixtures {
   /** The policy watch of the test's own context, checked when the test ends. */
   readonly csp: TmCspWatch;
   /** Opens another context like the test's own, under its own policy watch, checked when the test ends. */
   readonly newContext: () => Promise<BrowserContext>;
+  /** The project's language, from its browser locale. */
+  readonly lang: AcmeLanguage;
+  /** The texts the flows match, in the project's language. */
+  readonly text: AcmeText;
+  /** The principals the flows sign in as, in the project's language. */
+  readonly cast: AcmeCast;
 }
 
 /** The suite's `test`: Playwright's, with every context under the policy watch. */
 export const test = base.extend<AcmeFixtures>({
+  lang: async ({ locale }, use) => {
+    await use(locale?.startsWith('ar') === true ? 'ar' : 'en');
+  },
+  text: async ({ lang }, use) => {
+    await use(ACME_TEXT[lang]);
+  },
+  cast: async ({ lang }, use) => {
+    await use(CASTS[lang]);
+  },
   csp: [
     async ({ context }, use) => {
       const watch = await tmCspWatch(context);
@@ -74,13 +162,14 @@ export const test = base.extend<AcmeFixtures>({
 export { expect };
 
 /**
- * The session-ended dialog.
+ * The session-ended dialog: the one alert dialog these flows meet. Its title
+ * is checked in the project's language by the flow that reads it.
  *
  * @param page - The page.
  * @returns Its locator.
  */
 export function sessionEndedDialog(page: Page): Locator {
-  return page.getByRole('alertdialog', { name: 'Your session ended' });
+  return page.getByRole('alertdialog');
 }
 
 /**
@@ -314,19 +403,47 @@ export function issuedRequests(page: Page): Promise<readonly IssuedRequest[]> {
  * did, in milliseconds since the document's navigation started.
  *
  * @param page - The page.
- * @param text - The heading's text.
+ * @param text - The heading's text, or a pattern it matches.
  * @returns The time, checked on every animation frame.
  */
-export async function headingShownAt(page: Page, text: string): Promise<number> {
+export async function headingShownAt(page: Page, text: string | RegExp): Promise<number> {
+  const wanted = typeof text === 'string' ? { text } : { source: text.source, flags: text.flags };
   const handle = await page.waitForFunction(
     (wanted) => {
       const heading = document.querySelector('h1');
-      return heading?.textContent?.trim() === wanted && heading.checkVisibility()
-        ? performance.now()
-        : false;
+      const shown = heading?.textContent?.trim() ?? '';
+      const matches =
+        wanted.text !== undefined
+          ? shown === wanted.text
+          : new RegExp(wanted.source!, wanted.flags).test(shown);
+      return matches && heading!.checkVisibility() ? performance.now() : false;
     },
-    text,
+    wanted as { text?: string; source?: string; flags?: string },
     { polling: 'raf' },
   );
   return (await handle.jsonValue()) as number;
+}
+
+/**
+ * The timing budgets' multiplier: `TM_PERF_MULTIPLIER` when set, else 2 on
+ * CI, whose shared runners are slower and noisier than a quiet machine.
+ */
+export const ACME_PERF_MULTIPLIER = Number(
+  process.env['TM_PERF_MULTIPLIER'] ?? (process.env['CI'] ? 2 : 1),
+);
+
+/** How many times a timing gate measures before it judges the median. */
+export const ACME_TIMING_SAMPLES = 3;
+
+/**
+ * The median of some samples: one slow sample on a busy machine moves it no
+ * more than one fast sample does.
+ *
+ * @param samples - The samples; at least one.
+ * @returns The middle sample, or the mean of the middle two.
+ */
+export function median(samples: readonly number[]): number {
+  const sorted = [...samples].sort((a, b) => a - b);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 1 ? sorted[middle]! : (sorted[middle - 1]! + sorted[middle]!) / 2;
 }

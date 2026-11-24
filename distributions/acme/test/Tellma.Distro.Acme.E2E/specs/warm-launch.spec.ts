@@ -7,93 +7,93 @@ import { type Page } from '@playwright/test';
 import { goOffline, holdNetwork, signInAs, tmIsServerPath, warmUp } from '@tellma/core-testing/e2e';
 
 import {
-  ACME_PRINCIPALS,
+  ACME_PERF_MULTIPLIER,
+  ACME_TIMING_SAMPLES,
+  type AcmeText,
   expect,
   headingShownAt,
   issuedRequests,
+  median,
   recordRequests,
   test,
 } from '../support/acme';
 
-// The instant warm launch (spec 0024 §14, §15): once the app is warm, every
-// route family shows its chrome within a second from the device alone, with
-// every server request held and with the device offline; and the app's first
+// The instant warm launch (spec 0024 §14): once the app is warm, every route
+// family shows its chrome within a second from the device alone, with every
+// server request held and with the device offline; and the app's first
 // server request starts only after its first render.
 
 /** One page of each route family, and the heading its chrome shows. */
 const FAMILIES = [
-  { family: 'the tenant home', path: '/1', heading: 'Home' },
-  { family: 'a search page', path: '/1/customers', heading: 'Customers' },
-  { family: 'a drill-through list', path: '/1/list/customers', heading: 'Customers' },
-  { family: 'the tenant picker', path: '/tenants', heading: 'Choose a company' },
-] as const;
+  { family: 'the tenant home', path: '/1', heading: 'home' },
+  { family: 'a search page', path: '/1/customers', heading: 'customers' },
+  { family: 'a drill-through list', path: '/1/list/customers', heading: 'customers' },
+  { family: 'the tenant picker', path: '/tenants', heading: 'chooseCompany' },
+] as const satisfies readonly { family: string; path: string; heading: keyof AcmeText }[];
 
-/** The chrome's budget on a warm launch. */
+/** The chrome's budget on a warm launch, on a quiet machine. */
 const WARM_CHROME_MS = 1_000;
 
 /**
- * Launches a family's page warm and checks its chrome's budget and its
- * requests: every server request the document's app issued came after the
- * app's first render. The device's own files (the shell, the metadata) may
- * come first.
+ * Launches a family's page warm a few times and checks the median time to
+ * its chrome against the budget. With `requests` set, it also checks every
+ * launch's requests: every server request the document's app issued came
+ * after the app's first render. The device's own files (the shell, the
+ * metadata) may come first.
  *
- * @param page - The page, warm, with every server request held.
+ * @param page - The page, warm.
  * @param family - The route family.
+ * @param text - The project's texts.
+ * @param requests - Whether to check the requests' order.
  */
-async function launchWarm(page: Page, family: (typeof FAMILIES)[number]): Promise<void> {
-  await page.goto(family.path, { waitUntil: 'commit' });
+async function launchWarm(
+  page: Page,
+  family: (typeof FAMILIES)[number],
+  text: AcmeText,
+  requests: boolean,
+): Promise<void> {
+  const shown: number[] = [];
+  for (let sample = 0; sample < ACME_TIMING_SAMPLES; sample++) {
+    await page.goto(family.path, { waitUntil: 'commit' });
+    shown.push(await headingShownAt(page, text[family.heading]));
 
-  expect(await headingShownAt(page, family.heading), family.family).toBeLessThan(WARM_CHROME_MS);
-
-  const requests = (await issuedRequests(page)).filter((request) =>
-    tmIsServerPath(new URL(request.url).pathname),
-  );
-  for (const request of requests) {
-    expect(request.afterShell, `${family.family}: ${request.url}`).toBe(true);
+    if (requests) {
+      const issued = (await issuedRequests(page)).filter((request) =>
+        tmIsServerPath(new URL(request.url).pathname),
+      );
+      for (const request of issued) {
+        expect(request.afterShell, `${family.family}: ${request.url}`).toBe(true);
+      }
+    }
   }
+  expect(median(shown), `${family.family}: ${shown.map(Math.round).join(', ')} ms`).toBeLessThan(
+    WARM_CHROME_MS * ACME_PERF_MULTIPLIER,
+  );
 }
 
 test.describe('warm launch', () => {
-  test.beforeEach(async ({ page }) => {
+  test.beforeEach(async ({ page, cast }) => {
     await recordRequests(page.context());
-    await signInAs(page, ACME_PRINCIPALS.admin);
+    await signInAs(page, cast.user);
     await warmUp(page, '/tenants');
     await warmUp(page, '/1');
   });
 
-  test('every tenant route family shows its chrome within a second, its first server request after its first render', async ({
+  test('every route family shows its chrome within a second with every server request held, its first server request after its first render', async ({
     page,
+    text,
   }) => {
     const hold = await holdNetwork(page);
-    for (const family of FAMILIES.filter((each) => each.path !== '/tenants')) {
-      await launchWarm(page, family);
+    for (const family of FAMILIES) {
+      await launchWarm(page, family, text, true);
     }
     await hold.release();
   });
 
-  test('the tenant picker shows its chrome within a second, its first server request after its first render', async ({
-    page,
-  }) => {
-    // The launch cache reads the user's tenants again as soon as a tenantless
-    // route is routed (spec 0025 §2.3), before the app's first render, where
-    // spec 0024 §15 starts the first request after it. The render never waits
-    // on that read; only the order is out of line, so this test is expected
-    // to fail until the read moves after the first render.
-    test.fail();
-    const hold = await holdNetwork(page);
-    await launchWarm(
-      page,
-      FAMILIES.find((each) => each.path === '/tenants')!,
-    );
-    await hold.release();
-  });
-
-  test('every route family shows its chrome within a second offline', async ({ page }) => {
+  test('every route family shows its chrome within a second offline', async ({ page, text }) => {
     const online = await goOffline(page);
-    for (const { family, path, heading } of FAMILIES) {
-      await page.goto(path, { waitUntil: 'commit' });
-
-      expect(await headingShownAt(page, heading), family).toBeLessThan(WARM_CHROME_MS);
+    for (const family of FAMILIES) {
+      await launchWarm(page, family, text, false);
     }
     await online();
   });

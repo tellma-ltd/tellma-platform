@@ -8,12 +8,12 @@ import {
   signInAs,
   tmBootFacts,
   tmBootRecord,
+  tmIsServerPath,
   tmSignInToIdentityAs,
   warmUp,
 } from '@tellma/core-testing/e2e';
 
 import {
-  ACME_PRINCIPALS,
   expect,
   expireInApp,
   firstPaint,
@@ -29,18 +29,26 @@ import {
 
 test.describe('launch', () => {
   // --- Cold launches ---
-  test('a cold launch of a user with one live tenant lands in that tenant', async ({ page }) => {
-    await tmSignInToIdentityAs(page.context(), ACME_PRINCIPALS.admin);
+  test('a cold launch of a user with one live tenant lands in that tenant', async ({
+    page,
+    text,
+    cast,
+  }) => {
+    await tmSignInToIdentityAs(page.context(), cast.user);
 
     await page.goto('/');
 
     await expect(page).toHaveURL('/1');
-    await expect(page.getByRole('heading', { level: 1, name: 'Home' })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1, name: text.home })).toBeVisible();
     expect((await tmBootFacts(page)).cold).toBe(true);
   });
 
-  test('a cold launch of a user with two live tenants lands on the picker', async ({ page }) => {
-    await signInAs(page, ACME_PRINCIPALS.admin);
+  test('a cold launch of a user with two live tenants lands on the picker', async ({
+    page,
+    text,
+    cast,
+  }) => {
+    await signInAs(page, cast.user);
     // The user's memberships, with the sandbox made a second live tenant.
     await page.context().route(
       (url) => url.pathname === '/bff/user',
@@ -61,13 +69,16 @@ test.describe('launch', () => {
     await page.goto('/');
 
     await expect(page).toHaveURL('/tenants');
-    await expect(page.getByRole('heading', { level: 1, name: 'Choose a company' })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1, name: text.chooseCompany })).toBeVisible();
     await expect(page.getByRole('link', { name: 'Acme', exact: true })).toBeVisible();
     await expect(page.getByRole('link', { name: 'Acme Sandbox' })).toBeVisible();
   });
 
-  test('a cold launch of a user with no live tenant lands on the picker', async ({ page }) => {
-    await tmSignInToIdentityAs(page.context(), ACME_PRINCIPALS.sandbox);
+  test('a cold launch of a user with no live tenant lands on the picker', async ({
+    page,
+    cast,
+  }) => {
+    await tmSignInToIdentityAs(page.context(), cast.sandbox);
 
     await page.goto('/');
 
@@ -75,12 +86,12 @@ test.describe('launch', () => {
     await expect(page.getByRole('link', { name: 'Acme Sandbox' })).toBeVisible();
   });
 
-  test('a cold deep link opens its page', async ({ page }) => {
-    await signInAs(page, ACME_PRINCIPALS.admin);
+  test('a cold deep link opens its page', async ({ page, text, cast }) => {
+    await signInAs(page, cast.user);
 
     await page.goto('/1/customers');
 
-    await expect(page.getByRole('heading', { level: 1, name: 'Customers' })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1, name: text.customers })).toBeVisible();
     await expect(page).toHaveURL('/1/customers');
     expect((await tmBootFacts(page)).cold).toBe(true);
   });
@@ -88,36 +99,42 @@ test.describe('launch', () => {
   // --- Fragments across a sign-in ---
   test('a signed-out drill-through link keeps its fragment across the sign-in', async ({
     page,
+    text,
+    cast,
   }) => {
-    await tmSignInToIdentityAs(page.context(), ACME_PRINCIPALS.admin);
+    await tmSignInToIdentityAs(page.context(), cast.user);
 
     await page.goto('/1/list/customers#d=eyJmIjoiQ29kZSBlcSAnQzEnIn0');
 
-    await expect(page.getByRole('heading', { level: 1, name: 'Customers' })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1, name: text.customers })).toBeVisible();
     await expect(page).toHaveURL('/1/list/customers#d=eyJmIjoiQ29kZSBlcSAnQzEnIn0');
-    expect((await tmBootFacts(page)).email).toBe(ACME_PRINCIPALS.admin);
+    expect((await tmBootFacts(page)).email).toBe(cast.user);
   });
 
   test('a search page keeps its filter fragment across a sign-in at a cold launch', async ({
     page,
+    text,
+    cast,
   }) => {
-    await tmSignInToIdentityAs(page.context(), ACME_PRINCIPALS.admin);
+    await tmSignInToIdentityAs(page.context(), cast.user);
 
     await page.goto('/1/customers#d=eyJxIjoiYWNtZSJ9');
 
-    await expect(page.getByRole('heading', { level: 1, name: 'Customers' })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1, name: text.customers })).toBeVisible();
     await expect(page).toHaveURL('/1/customers#d=eyJxIjoiYWNtZSJ9');
   });
 
   test('a search page keeps its filter fragment across the sign-in after an in-app expiry', async ({
     page,
+    text,
+    cast,
   }) => {
-    await signInAs(page, ACME_PRINCIPALS.admin);
+    await signInAs(page, cast.user);
     await page.goto('/1/customers#d=eyJxIjoiYWNtZSJ9');
-    await expect(page.getByRole('heading', { level: 1, name: 'Customers' })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1, name: text.customers })).toBeVisible();
 
     await expireInApp(page);
-    await sessionEndedDialog(page).getByRole('button', { name: 'Sign in' }).click();
+    await sessionEndedDialog(page).getByRole('button', { name: text.signIn }).click();
 
     await expect(page).toHaveURL('/1/customers#d=eyJxIjoiYWNtZSJ9');
     await expect(sessionEndedDialog(page)).toHaveCount(0);
@@ -125,22 +142,26 @@ test.describe('launch', () => {
   });
 
   // --- Warm launches ---
-  test('a warm launch runs from the device and returns to the last tenant', async ({ page }) => {
-    await signInAs(page, ACME_PRINCIPALS.admin);
+  test('a warm launch runs from the device and returns to the last tenant', async ({
+    page,
+    text,
+    cast,
+  }) => {
+    await signInAs(page, cast.user);
     await warmUp(page, '/1/customers');
 
     await page.goto('/');
 
     await expect(page).toHaveURL('/1');
-    await expect(page.getByRole('heading', { level: 1, name: 'Home' })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1, name: text.home })).toBeVisible();
     const facts = await tmBootFacts(page);
     expect(facts.cold).toBe(false);
     expect(facts.auto).toBe(1);
   });
 
-  test('the theme is in place before the first paint', async ({ page }) => {
+  test('the theme is in place before the first paint', async ({ page, cast }) => {
     await recordFirstPaint(page.context());
-    await signInAs(page, ACME_PRINCIPALS.admin);
+    await signInAs(page, cast.user);
     await warmUp(page, '/1');
 
     // A dark device on a cold boot record, then the user's own light choice on a warm one.
@@ -172,20 +193,34 @@ test.describe('launch', () => {
     await expectNoAxeViolations(page);
   });
 
-  test('the signed-out page renders with no API or BFF request', async ({ page }) => {
-    const requests: string[] = [];
+  test('the signed-out page renders from the Core chunk and the string packs, with no server request', async ({
+    page,
+    text,
+    lang,
+  }) => {
+    const server: string[] = [];
+    const metadata: string[] = [];
     page.context().on('request', (request) => {
       const { pathname } = new URL(request.url());
-      if (/^\/(?:api|bff|mcp)(?:\/|$)|^\/\d+\/(?:api|hub)(?:\/|$)/.test(pathname)) {
-        requests.push(pathname);
+      if (tmIsServerPath(pathname)) {
+        server.push(pathname);
+      } else if (pathname.startsWith('/tm-metadata/')) {
+        metadata.push(pathname);
       }
     });
 
     await page.goto('/signed-out');
 
-    await expect(page.getByRole('heading', { level: 1, name: "You're signed out" })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Sign in' })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1, name: text.signedOut })).toBeVisible();
+    await expect(page.getByRole('button', { name: text.signIn })).toBeVisible();
     await expectNoAxeViolations(page);
-    expect(requests).toEqual([]);
+    expect(server).toEqual([]);
+    // The Core chunk's metadata and the string packs of the page's language and English, nothing
+    // else. The Contracts chunk, which the HTTP layer keeps, loads at idle after the page renders.
+    const packs = [...new Set(['en', lang])].map((code) => `strings-${code}`);
+    const chunks = metadata
+      .map((path) => /^\/tm-metadata\/([a-z]+(?:-[a-z]+)?)-/.exec(path)?.[1])
+      .filter((chunk) => chunk !== 'contracts');
+    expect([...new Set(chunks)].sort()).toEqual(['core', ...packs].sort());
   });
 });

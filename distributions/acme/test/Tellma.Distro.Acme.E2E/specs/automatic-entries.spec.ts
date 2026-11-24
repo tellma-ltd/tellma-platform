@@ -11,7 +11,7 @@ import {
   warmUp,
 } from '@tellma/core-testing/e2e';
 
-import { ACME_PRINCIPALS, expect, expireInApp, recordSeen, test, wasSeen } from '../support/acme';
+import { expect, expireInApp, recordSeen, test, wasSeen } from '../support/acme';
 
 // The automatic entries (spec 0024 §13): the tenant the platform picks for a
 // launch at the root after an expiry, and what an entry the user did not
@@ -23,25 +23,31 @@ const TENANTLESS_SKELETON = 'main.tm-launch-redirect';
 test.describe('automatic entries', () => {
   test('an expired session at the root returns to the one live tenant, with no tenantless skeleton', async ({
     page,
+    text,
+    cast,
   }) => {
     await recordSeen(page.context(), TENANTLESS_SKELETON);
-    await signInAs(page, ACME_PRINCIPALS.admin);
+    await signInAs(page, cast.user);
     await warmUp(page, '/1');
     await tmExpireSession(page.context());
 
     await page.goto('/');
 
     await expect(page).toHaveURL('/1');
-    await expect(page.getByRole('heading', { level: 1, name: 'Home' })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1, name: text.home })).toBeVisible();
     expect(await wasSeen(page, TENANTLESS_SKELETON)).toBe(false);
     expect((await tmBootFacts(page)).auto).toBe(1);
   });
 
-  test('an expired session at the root returns to the last of two tenants', async ({ page }) => {
-    await signInAs(page, ACME_PRINCIPALS.admin);
+  test('an expired session at the root returns to the last of two tenants', async ({
+    page,
+    text,
+    cast,
+  }) => {
+    await signInAs(page, cast.user);
     await warmUp(page, '/1');
     await page.goto('/2');
-    await expect(page.getByRole('heading', { level: 1, name: 'Home' })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1, name: text.home })).toBeVisible();
     await expect
       .poll(() =>
         page.evaluate(
@@ -65,11 +71,13 @@ test.describe('automatic entries', () => {
   test('a tab closed at the session-ended dialog leaves a launch at the root to the last tenant', async ({
     page,
     context,
+    text,
+    cast,
   }) => {
-    await signInAs(page, ACME_PRINCIPALS.admin);
+    await signInAs(page, cast.user);
     await warmUp(page, '/1');
     await page.goto('/2');
-    await expect(page.getByRole('heading', { level: 1, name: 'Home' })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1, name: text.home })).toBeVisible();
     await expireInApp(page);
     await page.close();
 
@@ -77,32 +85,38 @@ test.describe('automatic entries', () => {
     await next.goto('/');
 
     await expect(next).toHaveURL('/2');
-    await expect(next.getByRole('heading', { level: 1, name: 'Home' })).toBeVisible();
+    await expect(next.getByRole('heading', { level: 1, name: text.home })).toBeVisible();
   });
 
   test('a shared device whose second user is not in the last tenant shows the picker without a notice', async ({
     page,
+    cast,
   }) => {
-    await signInAs(page, ACME_PRINCIPALS.admin);
+    await signInAs(page, cast.user);
     await warmUp(page, '/1');
     // The administrator's session ends, and the sandbox tester signs in on the same device.
-    await tmSignInToIdentityAs(page.context(), ACME_PRINCIPALS.sandbox);
+    await tmSignInToIdentityAs(page.context(), cast.sandbox);
 
     await page.goto('/');
 
     await expect(page).toHaveURL('/tenants');
     await expect(page.getByRole('link', { name: 'Acme Sandbox' })).toBeVisible();
-    expect((await tmBootFacts(page)).email).toBe(ACME_PRINCIPALS.sandbox);
+    expect((await tmBootFacts(page)).email).toBe(cast.sandbox);
   });
 
-  test("a typed tenant that is not the user's shows the picker with the notice", async ({
+  test("a typed tenant that is not the user's lands on the picker with the notice in its address", async ({
     page,
+    text,
+    cast,
   }) => {
-    await signInAs(page, ACME_PRINCIPALS.admin);
+    await signInAs(page, cast.user);
 
     await page.goto('/99');
 
     await expect(page).toHaveURL('/tenants?notice=tenant-not-found&from=99');
-    await expect(page.getByRole('heading', { level: 1, name: 'Choose a company' })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1, name: text.chooseCompany })).toBeVisible();
   });
+
+  // The picker renders the not-found notice from its address with the tenant shell (spec 0027).
+  test.fixme("a typed tenant that is not the user's shows the picker's not-found notice", async () => {});
 });

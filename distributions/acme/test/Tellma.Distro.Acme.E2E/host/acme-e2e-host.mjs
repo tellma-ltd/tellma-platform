@@ -172,8 +172,16 @@ async function bringUpSql() {
       process.env['TELLMA_TEST_SQL_IMAGE'] || 'mcr.microsoft.com/mssql/server:2022-latest';
     const name = `tellma-e2e-acme-${port}`;
     const password = `Tm-${randomBytes(12).toString('hex')}-A1`;
-    // A container a killed run left behind holds the name; it is this run's to replace.
-    spawnSync('docker', ['rm', '-f', name], { stdio: 'ignore' });
+    // Every container of this worktree's runs carries its label. A run that was
+    // killed before its cleanup left one behind, under another run's port; it
+    // is this run's to remove, as is one that holds this run's name.
+    const label = `tellma-e2e=${suffix || 'default'}`;
+    const leftovers = spawnSync('docker', ['ps', '-aq', '--filter', `label=${label}`], {
+      encoding: 'utf8',
+    })
+      .stdout?.split(/\s+/)
+      .filter((id) => id !== '');
+    spawnSync('docker', ['rm', '-f', name, ...(leftovers ?? [])], { stdio: 'ignore' });
     log(`starting SQL Server (${image})`);
     const started = spawnSync(
       'docker',
@@ -182,6 +190,8 @@ async function bringUpSql() {
         '-d',
         '--name',
         name,
+        '--label',
+        label,
         '-e',
         'ACCEPT_EULA=Y',
         '-e',

@@ -5,21 +5,25 @@
 
 import { signInAs } from '@tellma/core-testing/e2e';
 
-import { ACME_PRINCIPALS, expect, headings, recordHeadings, test } from '../support/acme';
+import { expect, headings, recordHeadings, test } from '../support/acme';
 
 // Stable layout on a cold deep link (spec 0024 §14): the route skeleton holds
 // until the launch documents arrive, so the link renders its own page and
 // never flashes another one, a forbidden state or the picker first.
 
 test.describe('cold deep link', () => {
-  test('a cold deep link renders its page and never another first', async ({ page }) => {
+  test('a cold deep link renders its page and never another first', async ({
+    page,
+    text,
+    cast,
+  }) => {
     await recordHeadings(page.context());
-    await signInAs(page, ACME_PRINCIPALS.admin);
+    await signInAs(page, cast.user);
 
     await page.goto('/1/list/customers');
 
-    await expect(page.getByRole('heading', { level: 1, name: 'Customers' })).toBeVisible();
-    expect(await headings(page)).toEqual(['Customers']);
+    await expect(page.getByRole('heading', { level: 1, name: text.customers })).toBeVisible();
+    expect(await headings(page)).toEqual([text.customers]);
     await expect(page).toHaveURL('/1/list/customers');
   });
 

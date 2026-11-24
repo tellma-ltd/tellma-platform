@@ -6,11 +6,14 @@
   "type": "module",
   "scripts": {
     "e2e": "node scripts/e2e.mjs",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "prettier --config ../../../../client/.prettierrc --check \"*.ts\" \"host/**/*.mjs\" \"scripts/**/*.mjs\" \"specs/**/*.ts\" \"support/**/*.ts\"",
+    "format": "prettier --config ../../../../client/.prettierrc --write \"*.ts\" \"host/**/*.mjs\" \"scripts/**/*.mjs\" \"specs/**/*.ts\" \"support/**/*.ts\""
   },
   "devDependencies": {
     "@playwright/test": "catalog:",
     "@types/node": "catalog:",
+    "prettier": "catalog:",
     "typescript": "catalog:"
   }
 }

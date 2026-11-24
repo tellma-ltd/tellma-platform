@@ -36,12 +36,18 @@ const pinned = existsSync(portsFile)
   : undefined;
 const port = pinned !== undefined && /^\d+$/.test(pinned) ? Number(pinned) : await osAssignedPort();
 
+// --- The caller's paths: the host runs in this package's folder, so a relative webroot is made absolute here ---
+const env = { ...process.env, ACME_E2E_PORT: String(port) };
+if (env['TELLMA_E2E_WEBROOT']) {
+  env['TELLMA_E2E_WEBROOT'] = resolve(process.cwd(), env['TELLMA_E2E_WEBROOT']);
+}
+
 // --- The run: Playwright in this package, its exit code the script's ---
 // A run killed by a signal has no exit code and counts as a failure: a suite
 // that did not finish must never read as green.
 const child = spawn(process.execPath, [playwrightCli, 'test', ...process.argv.slice(2)], {
   cwd: packageDir,
-  env: { ...process.env, ACME_E2E_PORT: String(port) },
+  env,
   stdio: 'inherit',
 });
 child.on('exit', (code, signal) => process.exit(code ?? (signal ? 1 : 0)));
