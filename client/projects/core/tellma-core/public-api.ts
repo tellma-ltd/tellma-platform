@@ -58,15 +58,17 @@ export {
   type TmProblemError,
 } from './src/api/tm-api-error';
 
-// The request log.
+// The request log with Copy diagnostics, and the UI version's identity.
 export {
   TmRequestLog,
+  type TmDiagnosticsTrigger,
   type TmRequestEnd,
   type TmRequestHandle,
   type TmRequestOutcome,
   type TmRequestRecord,
   type TmRequestStart,
 } from './src/requests/tm-request-log';
+export { TmAppVersion, type TmFeatureVersion } from './src/requests/tm-app-version';
 
 // The page context and the page actions: the registry, page scopes, the
 // dispatcher and the help seam. The snapshot is @tellma/core/page-snapshot.

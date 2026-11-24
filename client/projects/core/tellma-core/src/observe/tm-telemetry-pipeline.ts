@@ -10,7 +10,8 @@ import { TM_DEV_MODE } from '../app/tm-dev-mode';
 import { TM_NOW } from '../app/tm-now';
 import { TmPageContexts } from '../context/tm-page-contexts';
 import { TmClientMetadataStore } from '../metadata/tm-client-metadata';
-import { TmRequestLog } from '../requests/tm-request-log';
+import { TmRequestLog, type TmRequestRecord } from '../requests/tm-request-log';
+import { type TmRequestCollection, TmRequestMeasures } from '../requests/tm-request-measures';
 import { TmSession } from '../session/tm-session';
 import { TmTabBus } from '../state/bus/tm-tab-bus';
 import { TmLaunchCache } from '../state/launch/tm-launch-cache';
@@ -30,8 +31,12 @@ import type { TmTelemetryCall, TmTelemetryCallContext, TmTelemetryItem, TmTeleme
 // recent requests from what its call saw where it was made, so a call the
 // front held until this chunk loaded is recorded as it was made. Offline,
 // without an active session or before the UI version is known, the queue
-// holds within its cap of 200. Nothing here awaits, retries or throws in
-// production.
+// holds within its cap of 200. The request outcomes (§5.3) are measured here
+// too: each change of the request log is collected into the flush window's
+// summaries, and its slow requests are recorded as they settle; each flush
+// first records the window's summaries, and the page hidden for good first
+// records the slow requests still pending. Nothing here awaits, retries or
+// throws in production.
 
 /** The relay's route. */
 export const TM_TELEMETRY_ROUTE = '/api/client-telemetry';
@@ -109,6 +114,8 @@ export interface TmTelemetryHost {
   readonly held: () => boolean;
   /** The three most recent requests' trace ids, newest first. */
   readonly recentTraceIds: () => readonly string[];
+  /** The request log, newest first. */
+  readonly requests: () => readonly TmRequestRecord[];
   /** Sends a batch: unread, `keepalive`, background. */
   readonly send: (batch: TmTelemetryBatch) => void;
   /** Writes an item to the console, in development. */
@@ -185,6 +192,7 @@ const UTF8 = new TextEncoder();
 export class TmTelemetryPipeline {
   readonly #host: TmTelemetryHost;
   readonly #capture: TmErrorCapture;
+  readonly #measures = new TmRequestMeasures();
 
   /** The tab's one random draw: sampled items are queued when it is below the rate. */
   readonly #draw: number;
@@ -269,8 +277,12 @@ export class TmTelemetryPipeline {
       if (this.#host.settings()?.enabled === false) {
         this.#queue.length = 0;
         this.#drops.clear();
+        this.#measures.clear();
         return;
       }
+      // --- The flush window's request summaries, which end with it ---
+      this.#measure(this.#measures.collect(this.#host.requests(), this.#host.now()));
+      this.#measure({ events: this.#measures.drain(this.#host.now()), throttled: 0 });
       if ((this.#queue.length === 0 && this.#drops.size === 0) || this.#paceTimer !== undefined) {
         return;
       }
@@ -287,6 +299,33 @@ export class TmTelemetryPipeline {
         this.flush();
       }, PACE_MS);
     });
+  }
+
+  /**
+   * Collects the requests that settled since the last change of the request
+   * log, recording the slow ones; a window with requests is flushed within
+   * 30 s.
+   */
+  measure(): void {
+    this.#guarded(() => {
+      this.#measure(this.#measures.collect(this.#host.requests(), this.#host.now()));
+      if (this.#measures.waiting) {
+        this.#armFirstTimer();
+      }
+    });
+  }
+
+  /**
+   * Flushes as the page is hidden for good: after the requests that settled,
+   * the slow ones still pending are recorded as pending.
+   */
+  pagehide(): void {
+    this.#guarded(() => {
+      const now = this.#host.now();
+      this.#measure(this.#measures.collect(this.#host.requests(), now));
+      this.#measure(this.#measures.pending(this.#host.requests(), now));
+    });
+    this.flush();
   }
 
   /** Stops the pipeline's timers, as the app is destroyed. */
@@ -380,6 +419,21 @@ export class TmTelemetryPipeline {
       } else {
         this.#drop('throttled');
       }
+    }
+  }
+
+  /**
+   * Records request measurements, which are always sent, and counts the
+   * slow events the throttle held back.
+   *
+   * @param collection - The measurements and the throttled count.
+   */
+  #measure({ events, throttled }: TmRequestCollection): void {
+    for (const { name, at, tenantId, traceId, props } of events) {
+      this.#keep({ kind: 'event', name, at, ...(traceId === undefined ? {} : { traceId }), tenantId, props: this.#reserved(props) }, true);
+    }
+    for (let count = 0; count < throttled; count++) {
+      this.#drop('throttled');
     }
   }
 
@@ -715,6 +769,7 @@ function tmAppTelemetryHost(injector: Injector, recent: WritableSignal<readonly 
     },
     held: () => !api.online() || session.state() !== 'active',
     recentTraceIds: () => requests.recent().slice(0, 3).map((request) => request.traceId),
+    requests: () => requests.recent(),
     send: (batch) => api.send(TM_TELEMETRY_ROUTE, batch, { background: true }),
     // Development builds write every item to the console (spec 0026 §3.6).
     debug: (name, props) => console.debug('[tm]', name, props),
@@ -761,13 +816,22 @@ export function tmStartTelemetry(
     { injector },
   );
 
+  // --- Each change of the request log is measured ---
+  effect(
+    () => {
+      host.requests();
+      untracked(() => pipeline.measure());
+    },
+    { injector },
+  );
+
   // --- The tab hiding, and the page being hidden ---
   const hidden = (): void => {
     if (document.visibilityState === 'hidden') {
       pipeline.flush();
     }
   };
-  const pagehide = (): void => pipeline.flush();
+  const pagehide = (): void => pipeline.pagehide();
   document.addEventListener('visibilitychange', hidden);
   document.defaultView?.addEventListener('pagehide', pagehide);
   injector.get(DestroyRef).onDestroy(() => {

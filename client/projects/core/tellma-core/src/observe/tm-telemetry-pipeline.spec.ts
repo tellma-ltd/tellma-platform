@@ -6,6 +6,7 @@
 import { signal } from '@angular/core';
 
 import { TmApiError } from '../api/tm-api-error';
+import type { TmRequestRecord } from '../requests/tm-request-log';
 import type { TmTelemetryCall, TmTelemetryItem, TmTelemetryProps } from './tm-telemetry';
 import {
   type TmTelemetryBatch,
@@ -36,6 +37,7 @@ interface TmHostState {
   page: TmTelemetryPage | null;
   held: boolean;
   traceIds: readonly string[];
+  requests: readonly TmRequestRecord[];
   failSend: boolean;
 }
 
@@ -67,6 +69,7 @@ function rig(patch: Partial<TmHostState> = {}): TmPipelineRig {
     page: PAGE,
     held: false,
     traceIds: [],
+    requests: [],
     failSend: false,
     ...patch,
   };
@@ -86,6 +89,7 @@ function rig(patch: Partial<TmHostState> = {}): TmPipelineRig {
     page: () => state.page,
     held: () => state.held,
     recentTraceIds: () => state.traceIds,
+    requests: () => state.requests,
     send: (batch) => {
       if (state.failSend) {
         throw new Error('send failed');
@@ -694,6 +698,93 @@ describe('TmTelemetryPipeline', () => {
       const { recent, event } = rig({ settings: { enabled: true, sampleRate: 1.5 } });
       event('acme.report.run');
       expect(recent()[0]?.props['sampleRate']).toBe(1);
+    });
+  });
+
+  describe('request outcomes', () => {
+    /** A request in the log: a quick success on `centers/query` in tenant 17, unless patched. */
+    const request = (traceId: string, patch: Partial<TmRequestRecord> = {}): TmRequestRecord => ({
+      traceId,
+      route: 'centers/query',
+      tenantId: 17,
+      method: 'POST',
+      background: false,
+      startedAt: T0,
+      durationMs: 120,
+      outcome: 'ok',
+      status: 200,
+      slow: false,
+      ...patch,
+    });
+
+    it("sends each window's summaries at its flush, unsampled, with the page and the requests' tenant", () => {
+      const { state, sent, pipeline } = rig({ draw: 0.9, settings: { enabled: true, sampleRate: 0.1 } });
+      state.requests = [request('a'), request('b', { route: '/bff/user', tenantId: null, method: 'GET' })];
+      pipeline.measure();
+      vi.advanceTimersByTime(30_000);
+
+      expect(sent.map((batch) => [batch.tenantId, batch.items.map((item) => [item.name, item.properties])])).toEqual([
+        [17, [['tm.api.requests', { ...PAGE, api: 'centers/query', count: 1, ok: 1, failed: 0, cancelled: 0, network: 0, sumMs: 120, maxMs: 120, over1s: 0, over3s: 0, background: 0 }]]],
+      ]);
+      vi.advanceTimersByTime(1_000);
+      expect(sent[1]?.tenantId).toBeNull();
+      expect(namesOf(sent)).toEqual(['tm.api.requests', 'tm.api.requests']);
+
+      // The next window holds only what settled since.
+      pipeline.measure();
+      pipeline.flush();
+      expect(sent).toHaveLength(2);
+    });
+
+    it('records a slow request as it settles, with its trace id', () => {
+      const { state, recent, pipeline } = rig();
+      state.requests = [request(TRACE_ID, { durationMs: 4_810, slow: true })];
+      pipeline.measure();
+
+      expect(recent()).toEqual([
+        {
+          kind: 'event',
+          name: 'tm.api.slow',
+          at: T0 + 4_810,
+          traceId: TRACE_ID,
+          tenantId: 17,
+          props: { ...PAGE, api: 'centers/query', durationMs: 4_810, outcome: 'ok', status: 200 },
+        },
+      ]);
+    });
+
+    it('counts the slow events past the throttle as throttled drops', () => {
+      const { state, sent, pipeline } = rig();
+      state.requests = Array.from({ length: 23 }, (_, i) => request(`s${i}`, { durationMs: 3_000, slow: true }));
+      pipeline.measure();
+      pipeline.flush();
+
+      expect(namesOf(sent).filter((name) => name === 'tm.api.slow')).toHaveLength(20);
+      expect(itemsOf(sent).find((item) => item.name === 'tm.telemetry.dropped')?.properties).toMatchObject({ count: 3, reason: 'throttled' });
+    });
+
+    it('records a slow request still pending at pagehide once, then flushes', () => {
+      const { state, sent, pipeline } = rig();
+      state.requests = [request(TRACE_ID, { durationMs: null, outcome: 'pending', status: undefined, slow: true })];
+      vi.advanceTimersByTime(6_200);
+      pipeline.pagehide();
+      pipeline.pagehide();
+      vi.advanceTimersByTime(1_000);
+
+      expect(itemsOf(sent)).toEqual([
+        { kind: 'event', name: 'tm.api.slow', at: iso(T0 + 6_200), traceId: TRACE_ID, properties: { ...PAGE, api: 'centers/query', durationMs: 6_200, outcome: 'pending' } },
+      ]);
+    });
+
+    it('sends nothing, and forgets the window, while telemetry is off', () => {
+      const { state, sent, pipeline } = rig({ settings: { enabled: false, sampleRate: 1 } });
+      state.requests = [request('a')];
+      pipeline.measure();
+      pipeline.flush();
+      state.settings = { enabled: true, sampleRate: 1 };
+      pipeline.flush();
+
+      expect(sent).toEqual([]);
     });
   });
 });
