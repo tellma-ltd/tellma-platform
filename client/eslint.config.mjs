@@ -34,6 +34,13 @@ const UNPREFIXED_EXPORTS = [
   'provideTmPageScope',
   // The Playwright assertion the app-foundation spec names for every suite.
   'expectNoAxeViolations',
+  // The other e2e helpers the app-foundation spec names for every suite.
+  'warmUp',
+  'holdNetwork',
+  'goOffline',
+  'openTabs',
+  'signInAs',
+  'fakeProblem',
   // The app's one provider call, which the app-foundation spec names; the
   // prefix pattern expects a suffix after `provideTellma`.
   'provideTellma',

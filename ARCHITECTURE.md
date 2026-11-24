@@ -190,7 +190,7 @@ tellma-platform/
 │           ├── Tellma.Distro.Acme.Web.Tests/       # no database; Snapshots/ holds contracts.json and web.json, the wire's checked-in review artifacts
 │           ├── Tellma.Distro.Acme.IntegrationTests/
 │           ├── Tellma.Distro.Acme.TestSupport/     # not a suite: the in-process migrator, web host and sign-in the Acme and platform web integration suites share
-│           └── Tellma.Distro.Acme.E2E/          # Playwright; empty until the UI specs ship
+│           └── Tellma.Distro.Acme.E2E/          # Playwright flows over the Acme e2e host: a pnpm workspace package, not a .NET project
 ├── client/                              # the Angular workspace of every published @tellma/* package; project folders match npm package kebab-case
 │   ├── projects/
 │   │   ├── core/                                  # Core-layer Angular packages (every distribution references)
@@ -523,7 +523,7 @@ tellma-<slug>/
 │       └── Tellma.Distro.<Slug>.Migrator.csproj
 ├── test/
 │   ├── Tellma.Distro.<Slug>.Web.Tests/
-│   └── Tellma.Distro.<Slug>.E2E/        # Playwright
+│   └── Tellma.Distro.<Slug>.E2E/        # Playwright flows over the distribution's e2e host (a pnpm package on @tellma/core-testing/e2e)
 ├── .dev-ports.local                     # gitignored, written once by `dotnet tellma setup-worktree`
 ├── .editorconfig
 ├── .gitattributes
@@ -1225,7 +1225,7 @@ Other notes:
 
 - Per-distribution GitHub Actions pipelines: build, test, deploy.
 - Coding agents drive most PR work; humans review.
-- Required tests on every PR: unit, integration against a real SQL Server, and the distribution's E2E project (Playwright; the project runs empty until the UI specs ship).
+- Required tests on every PR: unit, integration against a real SQL Server, and the distribution's browser suite (Playwright over its e2e host, which migrates a database, builds the client and serves the built app from the web host in Development with the in-process identity engine; Linux on every PR, Windows nightly).
 - Client gates ([docs/specs/0024-client-app-foundation.md](docs/specs/0024-client-app-foundation.md)): on every PR, unit and harness suites, Playwright against the reference distribution's host (multi-tab, offline, network hang, sign-out broadcast, service-worker update), axe in both themes and both directions, and bundle budgets; nightly, the installability check and warm-launch timing; on deploy, a staging smoke of request cancellation, the hub, cache headers and the CSP. The client job runs on Ubuntu and Windows.
 - Tests run in two tiers. The **PR tier** (`ci.yml`) gates every push to a pull request, with one CI run per commit that is never cancelled, so each push gets its own verdict. The **nightly tier** (`nightly-tier.yml`) runs what is too slow, broad or timing-sensitive for that: full viewport × language matrices, Firefox and WebKit, performance budgets, soaks. Tests opt into the nightly tier by tag — `[Trait("Category", "Nightly")]` in .NET, `@nightly` and `@perf` in Playwright — and the PR tier excludes those tags. A Playwright test that passes only on retry fails the run; a flaky test is quarantined with `@quarantine`, which the PR tier excludes. A separate nightly job runs the quarantined tests repeatedly and reports each one's pass, flake and fail counts without deciding the nightly verdict, until each is fixed. A Playwright `@cross-engine` test runs on Chromium in the PR tier and on Chromium, Firefox and WebKit nightly; the PR tier's e2e runs on the Chromium engine only. Wall-clock waits are driven by fake clocks wherever possible rather than moved to nightly. GitHub schedules and dispatches workflows only from the default branch, so while the platform-core work lives on its own branch, `main` carries a trampoline `nightly-tier.yml` that dispatches that branch's version each night. CONTRIBUTING.md lists the exact commands of both tiers.
 - .NET suites are tiered by three xUnit traits, and CI filters on them rather than on project paths — a suite added later is gated automatically. `Category=Integration` marks a suite that needs infrastructure it brings up itself (Testcontainers); `Category=Nightly` (beside a test's own category) moves it to the nightly tier; `Live=true` marks one that talks to a real third-party API. Live suites never run on a PR: an external service on the merge path is a flakiness tax, and fork PRs cannot read the secrets anyway. They run nightly and on manual dispatch, filtered by the same traits rather than by project path, and skip cleanly wherever their credentials are absent — except in the nightly workflow itself, which fails outright on a missing credential, because a run that skipped everything and reported green is the failure mode a nightly exists to prevent.

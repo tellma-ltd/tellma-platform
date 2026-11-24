@@ -8,6 +8,7 @@ using Tellma.Core.Composition;
 using Tellma.Core.Mcp;
 using Tellma.Core.Tenancy;
 using Tellma.Defaults.Azure.AspNetCore;
+using Tellma.Distro.Acme.Web.Development;
 using Tellma.Distro.Acme.Web.Provisioning;
 
 namespace Tellma.Distro.Acme.Web
@@ -19,8 +20,9 @@ namespace Tellma.Distro.Acme.Web
     public static class AcmeWebComposition
     {
         /// <summary>
-        ///     Composes the web host's additions: the Azure web defaults, the tenant MCP server and, in
-        ///     Development, the provisioning trigger that runs the distribution's own migrator.
+        ///     Composes the web host's additions: the Azure web defaults, the tenant MCP server, the
+        ///     development mail drop and, in Development, the provisioning trigger that runs the
+        ///     distribution's own migrator.
         /// </summary>
         /// <param name="tellma">The composition builder.</param>
         public static void Compose(TellmaBuilder tellma)
@@ -37,6 +39,10 @@ namespace Tellma.Distro.Acme.Web
             {
                 tellma.Services.Replace(ServiceDescriptor.Singleton<ITenantProvisioningTrigger, LocalMigratorProvisioningTrigger>());
             }
+
+            // --- The development mail drop, which the browser suites read sign-in codes from ---
+            // Registered everywhere and refused outside Development by its startup check.
+            AcmeMailDrop.Register(tellma);
         }
     }
 

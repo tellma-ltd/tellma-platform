@@ -23,9 +23,12 @@ body {
   font-family: var(--font-ui);
 }
 
-/* Acme's one theme delta: teal as the primary colour. */
+/* Acme's one theme delta: a deeper teal as the light theme's primary colour.
+   The dark theme keeps the platform's lighter teal, which its dark button
+   text needs: the theme layer wins over the tokens whatever the selector, so
+   a delta on every :root would reach the dark theme too. */
 @layer tm.theme {
-  :root {
+  :root:not([data-theme='dark']) {
     --color-primary: var(--teal-700);
   }
 }

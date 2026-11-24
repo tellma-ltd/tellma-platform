@@ -1,0 +1,16 @@
+{
+  "name": "tellma-distro-acme-e2e",
+  "version": "0.0.0",
+  "description": "The Acme distribution's browser suite: Playwright flows over the e2e host, which migrates a database, builds the client and serves the built app from the Acme web host with in-process identity.",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "e2e": "node scripts/e2e.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "@playwright/test": "catalog:",
+    "@types/node": "catalog:",
+    "typescript": "catalog:"
+  }
+}

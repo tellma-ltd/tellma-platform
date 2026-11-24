@@ -14,7 +14,7 @@ distributions/acme/
 └── test/
     ├── Tellma.Distro.Acme.Web.Tests/          # unit: composition, audit, dependencies, configuration
     ├── Tellma.Distro.Acme.IntegrationTests/   # Category=Integration: migrate, provision, sign-in, sessions
-    └── Tellma.Distro.Acme.E2E/                # Playwright, scaffolded with no tests until the client ships
+    └── Tellma.Distro.Acme.E2E/                # Playwright flows over the Acme e2e host (a pnpm package)
 ```
 
 The slug is `acme`: the OIDC client is `acme` (its service client `acme-svc`), the Data Protection
