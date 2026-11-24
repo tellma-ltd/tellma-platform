@@ -580,7 +580,13 @@ language menu (with two languages or more) and the account menu (My account whil
 distribution's identity facts are stored, and Sign out) in it; the signed-out page shows the
 wordmark alone. Its pages are a lazy chunk of `/shell`, so a tenant's first frame carries none of
 them; `tellma-client build` prefetches that chunk, so a launch to either page fetches it beside
-`/shell` rather than after it. The tenant picker renders the stored memberships in its first frame and reads them again with
+`/shell` rather than after it. Their menus and the avatar's image stay out of the first frame too.
+An app's bundler puts the code a lazy chunk uses from a file into the first frame's chunks
+whenever the first frame reaches that file through static imports. So the size gate's
+static-graph check (`"tellma".staticGraphExcludes`) fails if any chain of static imports from
+the primary reaches `@tellma/core-ui/menu` or `@tellma/core-ui/image`, even one the primary
+never uses. The primary takes `TM_BLOB_FETCHER` from `@tellma/core-ui/blob-fetcher` for this
+reason. The tenant picker renders the stored memberships in its first frame and reads them again with
 `TmLaunchCache.revalidateUser()` only after that frame: live tenants by their name in the active
 language, each sandbox indented under its live tenant, the badges and the reason a tenant cannot be
 opened, a search from seven memberships kept in `?q=` (Enter follows the only enabled match, Mod+K

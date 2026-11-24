@@ -5,7 +5,7 @@
 
 import { inject, Injectable, InjectionToken } from '@angular/core';
 
-import { TM_BLOB_FETCHER } from '../tm-blob-fetcher';
+import { TM_BLOB_FETCHER } from '@tellma/core-ui/blob-fetcher';
 
 /**
  * The `CacheStorage` seam — `null` where the Cache API is unavailable
