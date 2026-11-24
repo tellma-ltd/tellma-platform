@@ -15,6 +15,7 @@ own.
 | `@tellma/core/recents` | The recently visited pages (`TmRecents`), which the launcher and the home page list; the app loads it with `import()` after its first render, when visits start to count | lazy, through `import()` after first render |
 | `@tellma/core/entity` | What the search and details pages share over the entity model: select plans (`tmSelectPlan`), which turn column keys into one query's terms and type its rows; value formats (`TmFormats`); the typed value in view mode (`tm-value`) and in edit mode (`tm-value-editor`), with a form's uploads (`TmUploads`); a plan column's grid column (`tmGridColumnFor`); the entity picker binding (`TmEntityPickers`), the entity fields over it (`tm-entity-field`, `tm-entity-multi-field`) and the page their pickers open (`TmLazyPickerPage`); the client check of a picked file against its blob kind (`tmCheckBlobFile`); the entity actions (`TmEntityActions`) with their dialogs (`injectTmActionDialog`) and the confirmation loop (`TmConfirmations`), whose dialogs load on first use; the server error paths a form's errors land by (`tmSplitErrorPath`, `tmWalkErrorPath`); client Queryex: the lexer (`tmQxLex`, `tmQxParameters`), the tree builder (`tmQx`), the canonical printer (`tmQxPrint`) and the editor's insertion (`tmQxInsert`); and column filters: the `f.` value (`tmParseFilter`, `tmFormatFilter`), its leaf (`tmFilterLeaf`) and its chip sentence (`tmDescribeFilter`, `tm-filter-description`) | lazy, with the page families |
 | `@tellma/core/column-filter` | `tm-column-filter`, the control that edits one column's filter: the operator, the values each column kind takes (a text input, exact number inputs, a date or a date range, an enum's checkboxes, multi-select or searchable multi-picker, true or false, related rows), Clear and Apply | lazy, when a column header's filter popover first opens |
+| `@tellma/core/search` | An entity's search page, a picker's advanced search and the drill-through list, one host; its query model (where a page's query state comes from, its canonical URL, how a change reaches history and the preferences, the rows request and its diagnostics) is internal, and the host lands on it. It exports nothing yet; the types a declaration and the details page name (`TmTileDeclaration`, `TmCustomFilterDeclaration`, `TmSearchPageActionDeclaration`, `TmColumnPreference`, `TmSearchSnapshot`) are the primary's, types only | lazy, with the route |
 | `@tellma/core/leader` | The leader election of the routed tenant over a Web Lock, and the leader tab's work: its realtime connection, the relay of hub events, the leader documents' reads and the polls of degraded mode; the app loads it with `import()` after its first render, and `TmLeader` reports what it decides | lazy, through `import()` after first render |
 | `@tellma/core/updates` | The app's updates through its service worker (`TmUpdates`): the worker's registration through the `tellma` Trusted Types policy, the update checks, the reload into a new version and the update banner; the app loads it with `import()` after its first render, and the HTTP layer's update check loads it on demand | lazy, through `import()` after first render |
 | `@tellma/core/errors` | Error presentation: `TmErrorPresenter`, whose one table turns a `TmApiError` into an error view, and which shows a write's or an action's error in the shared 5xx or 400 dialog, asks before a step-up, and handles a tenant that is gone or suspended; `tm-error-state` (`TmErrorState`), the inline state a page renders for a failed read | lazy, through `import()` with the first error presented |
@@ -961,6 +962,30 @@ the same seam. `@tellma/core/attention`
 registers `tm.attention` when its first service is created, and its arrival toasts' chunk registers
 `tm.arrivals` as it loads. The seam itself costs the primary one method
 and a set of the scopes registered.
+
+## The search page's query model
+
+`@tellma/core/search` keeps a page's query state as plain data: a setting (the mode, the entity's
+descriptor and declaration, the width class and the user's three preferences) and a state (the
+canonical `TmSearchQuery`, the shown columns and their source). Pure functions over them, in
+`search/src/`, give the host what it needs:
+
+- **Opening.** `tmSearchResolve` takes the state from a snapshot that supersedes the URL, the URL,
+  the page state, then the preferences and the code defaults. A URL cannot tell a value left out
+  from one at its code default, so both read as left out, and a canonical URL reopens the state it
+  was printed from.
+- **The canonical query.** `tmSearchCanonical` drops what the entity cannot have (an inactive flag
+  on an entity that is not activatable, an unknown tab or custom value, a column key that does not
+  resolve or that the user may not read, an `f.` value its control rejects, a size the page does
+  not offer, a page past the skip window) and leaves out every code default. A dropped column key
+  is reported as `tm.entity.column-dropped`.
+- **Changes.** `tmSearchUpdate`, `tmSearchSetColumns`, `tmSearchApply` and `tmSearchResize` return
+  the new state, its URL, whether the URL is pushed (a page change alone) or replaced, and the
+  preferences to write.
+- **The request.** `tmSearchPlan` and `tmSearchRequest` build the select plan (the shown columns,
+  with the tile's paths and the tree's keys beside them) and the rows request, its leaves and
+  named filters in a fixed order with their origins; `tmSearchDiagnose` maps a refused query's
+  diagnostics back to those origins.
 
 ## Decimals
 

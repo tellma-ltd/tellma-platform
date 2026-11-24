@@ -7,6 +7,7 @@
  * It holds the distribution API (`bootstrapTellma`, `provideTellma`,
  * `tmFeature` and the declaration functions), the app's root component, its
  * routes' data, title strategy and URLs with the search query codec, the
+ * types of what the search and details pages keep between visits, the
  * entity registry (summaries, and descriptors once the entity model loads),
  * display names and client permissions, the client metadata's types and loaders, the
  * HTTP layer with its error and plain-JSON value types, the exact decimal
@@ -133,6 +134,9 @@ export { tmRowsToObjects, type TmQueryRowSet, type TmQueryRowSetColumn } from '.
 
 // What a details page keeps between visits: its drafts and its snapshots (types only).
 export type { TmDetailsDraft, TmDetailsSnapshot } from './src/details/tm-details-types';
+
+// What a search page keeps between visits and in the user's column preference (types only).
+export type { TmColumnPreference, TmSearchSnapshot } from './src/search/tm-search-types';
 
 // Features and the declaration functions.
 export type { TmDeclarationKey, TmLazyComponent, TmSecurableRef } from './src/declarations/tm-declaration-types';

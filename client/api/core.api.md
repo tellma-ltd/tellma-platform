@@ -523,6 +523,11 @@ export type TmColumnInput<N extends string> = TmPath<N> | {
 };
 
 // @public
+export type TmColumnPreference = string | {
+    readonly expression: string;
+};
+
+// @public
 export interface TmContextError {
     readonly code: string;
     readonly message: string;
@@ -1890,6 +1895,29 @@ export interface TmSearchQuery {
     readonly size?: number;
     readonly tab?: string;
     readonly view?: 'grid' | 'tiles';
+}
+
+// @public
+export interface TmSearchSnapshot {
+    readonly canonical: string;
+    readonly entity: string;
+    readonly expanded?: readonly TmId[];
+    readonly highlight: TmId | null;
+    readonly ids: readonly TmId[];
+    readonly query: TmSearchQuery;
+    readonly request: {
+        readonly route: string;
+        readonly body: TmJsonObject;
+    } | null;
+    readonly result: {
+        readonly set: TmQueryRowSet;
+        readonly ancestors?: TmQueryRowSet;
+        readonly total: number | null;
+        readonly capped: boolean;
+    } | null;
+    readonly scroll?: number;
+    readonly selection: readonly TmId[];
+    readonly supersedes?: string;
 }
 
 // @public
