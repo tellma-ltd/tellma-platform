@@ -384,6 +384,25 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-262 (orchestrator, 2026-11-24): PC-110's integration adds flake stopgaps that PC-F80 replaces
+
+- PC-110's integration merge found the full core suite red in two of three local runs. The failures were the known load flakes that PC-F80 fixes: two TmHttpApi specs and one TmNavigation spec, across tm-api-verdict, tm-api-transfer and tm-locale-write.
+- PC-110 added two test-only stopgaps in its merge commit:
+  - a beforeAll that preloads tm-api-verdict and tm-api-transfer in tm-http-api.spec;
+  - a wait for the 'ar' language in tm-navigation.spec.
+
+  The suite then passed twice.
+- Ruling: they stay for PC-110's CI run, so the queue does not stall on a known flake. They are not root fixes (D-011, D-113). PC-115 had found that a per-test preload in tm-http-api.spec broke timer-sensitive tests; a once-per-file beforeAll is a different setup.
+- PC-F80 releases next (D-261). Its integration removes both stopgaps in favour of its tmSettleUntil and flushUntil waits, and shows the suite green under the 300 ms import-delay injection.
+
+### D-261 (orchestrator, 2026-11-24): PC-F80 releases ahead of PC-155 and PC-125
+
+- PC-F80, a non-blocking test fix, finished after PC-155 and PC-125 were held. D-087 would release it after them.
+- Ruling: it releases right after PC-110, ahead of both.
+  - Its tmSettleUntil and tmWaitUntil helpers are what those two items' integrations need, to move their new on-demand chunks' specs off turn-counted waits (PC-F80 R1). Releasing PC-F80 first lets them do that in their integration step.
+  - It also takes the known load flakes off every later CI run.
+  - It is test-only, so it cannot move a budget.
+
 ### D-260 (orchestrator, 2026-11-23): PC-120's R1 rulings
 
 - PC-120's R1 found 0 blocking, 3 major and 7 minor issues. All 8 deviations are accepted, and there is no R2.
@@ -395,6 +414,7 @@ Format, one entry per ruling:
   The ceiling is then reset to the measure rounded up to 0.5 KB, about 24. With PC-125, /entity is then about 25 of spec 0029's roughly 28, which leaves PC-121 room.
 - R1-3: an any-of `in` chip joins with Intl.ListFormat type 'disjunction', so it reads correctly in Arabic and Amharic. This is a stated deviation: English then reads "Type: Service or Sale" where 0029 §13.2's example shows "Type: Service, Sale". For Ahmad: confirm, or prefer a translatable separator.
 - For Ahmad: 0029 §8.2's `[Order]` example should read `[not]`, because Order is not a keyword (PC-120 deviation 1).
+- PC-120 fix1 made the column filter its own lazy entry point, @tellma/core/column-filter (3.99 KB), because hosts put the control in templates. /entity is now 24.12 of 24.5. Misalignment: spec 0029 §1 places the control in /entity. For Ahmad: confirm.
 
 ### D-259 (orchestrator, 2026-11-23): PC-125's R1 rulings
 
