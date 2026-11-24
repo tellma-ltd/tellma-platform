@@ -7,7 +7,7 @@ the identity store's migrations.
 
 ```bash
 dotnet run --project distributions/acme/src/Tellma.Distro.Acme.Migrator -- migrate
-dotnet run --project distributions/acme/src/Tellma.Distro.Acme.Migrator -- provision --name "Acme 2"
+dotnet run --project distributions/acme/src/Tellma.Distro.Acme.Migrator -- provision --name "Acme 2" --category Live
 dotnet run --project distributions/acme/src/Tellma.Distro.Acme.Migrator -- status
 dotnet run --project distributions/acme/src/Tellma.Distro.Acme.Migrator -- emit-client-assets <dir>
 ```

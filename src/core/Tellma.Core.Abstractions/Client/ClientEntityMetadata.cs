@@ -30,6 +30,7 @@ namespace Tellma.Core.Abstractions.Client
     /// <param name="RelatedSelect">The paths a related row's projection selects.</param>
     /// <param name="DefaultOrderBy">The order a query takes when it names none.</param>
     /// <param name="Searchable">The properties search text matches.</param>
+    /// <param name="PrefixSearchable">The properties search text matches from their start, which an index can seek; every other searchable property matches it anywhere.</param>
     /// <param name="NaturalKeys">The properties that identify a row to people, in order.</param>
     /// <param name="Extras">The names of the extras a details read may ask for.</param>
     /// <param name="Limits">The entity's query ceilings.</param>
@@ -54,6 +55,7 @@ namespace Tellma.Core.Abstractions.Client
         [property: JsonPropertyOrder(ClientEntityMetadata.DetailsOrder)] IReadOnlyList<string> RelatedSelect,
         [property: JsonPropertyOrder(ClientEntityMetadata.DetailsOrder)] string DefaultOrderBy,
         [property: JsonPropertyOrder(ClientEntityMetadata.DetailsOrder)] IReadOnlyList<string> Searchable,
+        [property: JsonPropertyOrder(ClientEntityMetadata.DetailsOrder)] IReadOnlyList<string> PrefixSearchable,
         [property: JsonPropertyOrder(ClientEntityMetadata.DetailsOrder)] IReadOnlyList<string> NaturalKeys,
         [property: JsonPropertyOrder(ClientEntityMetadata.DetailsOrder)] IReadOnlyList<string> Extras,
         [property: JsonPropertyOrder(ClientEntityMetadata.DetailsOrder)] ClientEntityLimits Limits)

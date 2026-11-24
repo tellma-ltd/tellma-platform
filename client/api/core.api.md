@@ -49,6 +49,9 @@ export const TM_DOC_FORMATS: Readonly<Record<string, number>>;
 export const TM_HELP_ARTICLES: InjectionToken<(key: string, language: string) => Promise<TmLazyComponent | null>>;
 
 // @public
+export const TM_LAUNCHER_PROVIDERS: InjectionToken<readonly TmLauncherProvider[]>;
+
+// @public
 export const TM_LEADER_DOCUMENTS: InjectionToken<readonly TmLeaderDocument[]>;
 
 // @public
@@ -780,7 +783,7 @@ export interface TmEntityDeclarationInput<N extends string = string> {
 }
 
 // @public
-export interface TmEntityDescriptor extends Omit<TmEntityMetadata, 'actions' | 'capabilities' | 'children' | 'navigations' | 'operations' | 'properties' | 'relatedSelect' | 'searchable'> {
+export interface TmEntityDescriptor extends Omit<TmEntityMetadata, 'actions' | 'capabilities' | 'children' | 'navigations' | 'operations' | 'prefixSearchable' | 'properties' | 'relatedSelect' | 'searchable'> {
     readonly actions: readonly TmEntityActionDescriptor[];
     readonly capabilities: ReadonlySet<string>;
     child(name: string): TmChildDescriptor | undefined;
@@ -791,6 +794,7 @@ export interface TmEntityDescriptor extends Omit<TmEntityMetadata, 'actions' | '
     readonly navigations: readonly TmNavigationDescriptor[];
     readonly operations: ReadonlySet<TmEntityOperation>;
     readonly pluralLabel: Signal<string>;
+    readonly prefixSearchable?: readonly string[];
     readonly properties: readonly TmPropertyDescriptor[];
     property(name: string): TmPropertyDescriptor | undefined;
     readonly relatedSelect: readonly string[];
@@ -824,6 +828,7 @@ export interface TmEntityMetadata extends TmEntitySummary {
         readonly navigation: string;
         readonly collection: string;
     };
+    readonly prefixSearchable: readonly string[];
     readonly properties: readonly TmPropertyMetadata[];
     readonly relatedSelect: readonly string[];
     readonly searchable: readonly string[];
@@ -1117,6 +1122,32 @@ export interface TmLaunchDocs {
 }
 
 // @public
+export interface TmLauncherItem {
+    readonly description?: string;
+    readonly href: string;
+    readonly icon?: string;
+    readonly id: string;
+    readonly label: string;
+}
+
+// @public
+export interface TmLauncherProvider {
+    readonly id: string;
+    readonly labelKey: string;
+    readonly minLength?: number;
+    readonly order: number;
+    search(query: string, context: TmLauncherSearchContext): Promise<readonly TmLauncherItem[]>;
+}
+
+// @public
+export interface TmLauncherSearchContext {
+    readonly language: string;
+    readonly limit: number;
+    readonly signal: AbortSignal;
+    readonly tenantId: number;
+}
+
+// @public
 export type TmLazyComponent = () => Promise<Type<unknown> | {
     default: Type<unknown>;
 }>;
@@ -1269,8 +1300,19 @@ export interface TmNavEntry {
 }
 
 // @public
+export class TmNavigation {
+    byHref(href: string): TmNavItem | undefined;
+    readonly items: Signal<readonly TmNavItem[]>;
+    resolve(href: string): 'no-access' | 'ok' | 'unavailable';
+    readonly sections: Signal<readonly TmNavSectionView[]>;
+    static ɵfac: i0.ɵɵFactoryDeclaration<TmNavigation, never>;
+    static ɵprov: i0.ɵɵInjectableDeclaration<TmNavigation>;
+}
+
+// @public
 export interface TmNavigationDescriptor extends TmNavigationMetadata {
     readonly label: Signal<string>;
+    readonly ownership: TmPropertyMetadata['ownership'];
 }
 
 // @public
@@ -1286,11 +1328,29 @@ export interface TmNavigationMetadata {
 }
 
 // @public
+export interface TmNavItem extends TmNavEntry {
+    readonly createHref: string | null;
+    readonly entity?: string;
+    readonly href: string;
+    readonly icon: string;
+    readonly kind: 'entity' | 'entry' | 'page' | 'report';
+    readonly label: string;
+    readonly order: number;
+    readonly synonymsKey: string;
+}
+
+// @public
 export interface TmNavSection {
     readonly icon: string;
     readonly id: string;
     readonly labelKey: string;
     readonly order: number;
+}
+
+// @public
+export interface TmNavSectionView extends TmNavSection {
+    readonly entries: readonly TmNavItem[];
+    readonly label: string;
 }
 
 // @public
@@ -1477,6 +1537,36 @@ export interface TmPickerDeclaration<N extends string> {
     readonly filter?: string;
     readonly orderBy?: TmOrderInput<N>;
 }
+
+// @public
+export interface TmPin {
+    readonly id: string;
+    readonly label?: string;
+    readonly title: string;
+    readonly url: string;
+}
+
+// @public
+export interface TmPinFolder {
+    readonly folder: string;
+    readonly id: string;
+    readonly items: readonly TmPin[];
+}
+
+// @public
+export type TmPinItem = TmPin | TmPinFolder;
+
+// @public
+export const tmPinnedBarVisibleKey: TmPreferenceKey<boolean>;
+
+// @public
+export interface TmPinsDoc {
+    readonly items: readonly TmPinItem[];
+    readonly v: 1;
+}
+
+// @public
+export const tmPinsKey: TmPreferenceKey<TmPinsDoc>;
 
 // @public
 export interface TmPlanRow {

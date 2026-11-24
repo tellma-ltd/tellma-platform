@@ -8,7 +8,8 @@ import { join } from 'node:path';
 
 import { tmCompressedSize, type TmCompressedSize } from '../common/files.js';
 import { TmBuildFailure, type TmBuildProblem } from '../common/problems.js';
-import { tmEchartsModule, tmEntryPointModule, type TmBuildGraph } from '../output/stats.js';
+import { tmCodeFromSources, tmReadSourceMap } from '../output/source-attribution.js';
+import { tmCorePrimaryModules, tmEchartsModule, tmEntryPointModule, type TmBuildGraph } from '../output/stats.js';
 
 // The application's budgets (spec 0024 §12), measured gzip level 9 on the
 // output, with Brotli reported beside. A distribution raises one in its
@@ -19,6 +20,16 @@ import { tmEchartsModule, tmEntryPointModule, type TmBuildGraph } from '../outpu
 // chunk no budget covers, a `@defer` block's or a distribution's route,
 // gets a line of its own with no level: the metafile records a dynamic
 // import, not whether a route or a `@defer` block made it.
+//
+// The `@tellma/core` primary on the first frame: the code its modules
+// contributed to the initial JavaScript, which it shares with the app and
+// Angular, cut out of those files through their hidden source maps and
+// compressed alone. It is what this app ships of the primary at once:
+// primary code the app does not use is shaken out first, and primary code
+// that loads only with import() later is not on the first frame. So it is a
+// lower bound of the primary's own weight, the whole entry point, whose
+// 50 KB cap the platform's size gate holds; a distribution checks it here
+// against the same level on its own app.
 
 /** The name prefix of a lazily loaded chunk's own line, followed by the module it starts at. */
 export const TM_LAZY_BUDGET_PREFIX = 'lazy:';
@@ -29,6 +40,11 @@ export const TM_BUDGET_EXCEEDED = 'budget-exceeded';
 export const TM_BUDGET_WARNING = 'budget-warning';
 /** The build problem code of a raised budget without a note. */
 export const TM_BUDGET_NOTE_MISSING = 'budget-note-missing';
+/** The build problem code of a budget the output does not let the build measure. */
+export const TM_BUDGET_UNMEASURABLE = 'budget-unmeasurable';
+
+/** The name of the line that weighs the `@tellma/core` primary's code on the first frame. */
+export const TM_CORE_PRIMARY_FIRST_FRAME = 'corePrimaryFirstFrame';
 
 /** A budget's levels in KB (1,024 bytes); null where the budget has none. */
 export interface TmBudgetLevels {
@@ -54,6 +70,7 @@ export const TM_BUDGETS: readonly TmBudgetDefinition[] = Object.freeze([
   { name: 'detailsRoute', label: 'The details route beyond the initial set', warn: null, error: 80 },
   { name: 'echartsEngine', label: 'The ECharts engine beyond the initial set', warn: null, error: 170 },
   { name: 'workerShell', label: "The worker's shell group", warn: 1536, error: null },
+  { name: TM_CORE_PRIMARY_FIRST_FRAME, label: "The @tellma/core primary's code on the first frame, a lower bound of its own weight", warn: null, error: 50 },
   { name: 'codedReports', label: "The Core chunk's codedReports section", warn: null, error: 16 },
   { name: 'bootScript', label: 'tm-boot.js', warn: null, error: 3 },
 ]);
@@ -140,12 +157,16 @@ export interface TmBudgetFigure extends TmCompressedSize {
   readonly name: string;
   /** The files measured; zero means the build has nothing the budget measures. */
   readonly files: number;
+  /** Why the output does not let the build measure the figure, when it does not; the figure then counts nothing. */
+  readonly unmeasurable?: string;
 }
 
 /** What the budgets measure, from the finished output. */
 export interface TmBudgetInputs {
   /** The deployable output. */
   readonly browserDir: string;
+  /** The folder the hidden source maps moved to, each at its file's path with `.map` added. */
+  readonly sourceMapsDir: string;
   /** The build's chunk graph. */
   readonly graph: TmBuildGraph;
   /** The initial JavaScript: the scripts, their static imports and the modulepreloads. */
@@ -206,6 +227,7 @@ export function tmMeasureBudgets(inputs: TmBudgetInputs): TmBudgetFigure[] {
     sum('detailsRoute', detailsRoute),
     sum('echartsEngine', echartsEngine),
     sum('workerShell', inputs.shell),
+    measurePrimary(inputs),
     { name: 'codedReports', ...tmCompressedSize(JSON.stringify(inputs.codedReports ?? [])), files: reports.length },
     sum('bootScript', ['tm-boot.js']),
   ];
@@ -221,13 +243,76 @@ export function tmMeasureBudgets(inputs: TmBudgetInputs): TmBudgetFigure[] {
   return figures;
 }
 
+// How far a file's code attributed to the primary through its source map
+// may stray from the bytes the stats give the primary's modules in it. With
+// the chunks' trailing export statements left out, Acme's six files holding
+// primary code read exact but one: the 65 KB shared chunk reads +294 bytes
+// (+0.45%), constants the Angular compiler hoists out of a component with no
+// mapping of their own, which the run before them takes. Single modules
+// stray by up to 40 bytes either way where a run ends a little early or
+// late, but within a file those shifts cancel, so no file reads under. The
+// band is twice the drift seen over, half that under, and a few bytes for
+// the files the primary has little code in. Past it the maps and the stats
+// disagree on what the file holds, and the figure would be wrong.
+/** The share of the stats' count the attribution may fall under it. */
+const ATTRIBUTION_UNDER = 0.005;
+/** The share of the stats' count the attribution may run over it. */
+const ATTRIBUTION_OVER = 0.01;
+/** The bytes the attribution may stray beyond those shares, for files the primary has little code in. */
+const ATTRIBUTION_SLACK = 16;
+
+/**
+ * Weighs the `@tellma/core` primary's code on the first frame: in each
+ * initial file holding any of its modules, the runs the file's source map
+ * gives them, joined across files and compressed alone. Every app imports the
+ * primary, so a build in which no module is the primary's, or no initial
+ * file holds its code, is not measurable, and neither is a file whose map
+ * disagrees with the stats.
+ *
+ * @param inputs - What the budgets measure.
+ * @returns The figure, with why it is not measurable when it is not.
+ * @throws TmBuildFailure when a file holding primary code has no readable source map.
+ */
+function measurePrimary(inputs: TmBudgetInputs): TmBudgetFigure {
+  const unmeasurable = (reason: string): TmBudgetFigure => ({ name: TM_CORE_PRIMARY_FIRST_FRAME, gzip: 0, brotli: 0, files: 0, unmeasurable: reason });
+  const primary = tmCorePrimaryModules(inputs.graph);
+  if (primary.size === 0) {
+    return unmeasurable("No module of the build is the @tellma/core primary's: neither its built bundle (fesm2022/tellma-core.mjs) nor its public API (tellma-core/public-api.ts).");
+  }
+  // --- Each initial file's primary code, checked against the stats' count ---
+  const pieces: string[] = [];
+  for (const file of inputs.graph.outputsHolding((input) => primary.has(input)).filter((path) => inputs.initialJs.has(path))) {
+    const bytes = inputs.graph.outputs.get(file)?.bytes ?? {};
+    const counted = Object.entries(bytes).reduce((total, [input, held]) => total + (primary.has(input) ? held : 0), 0);
+    // A file can hold primary modules with no code there, such as a list of re-exports.
+    if (counted === 0) {
+      continue;
+    }
+    const map = tmReadSourceMap(join(inputs.sourceMapsDir, ...`${file}.map`.split('/')));
+    const code = tmCodeFromSources(readFileSync(join(inputs.browserDir, ...file.split('/')), 'utf8'), map, (source) => primary.has(source));
+    const attributed = Buffer.byteLength(code);
+    if (attributed < counted * (1 - ATTRIBUTION_UNDER) - ATTRIBUTION_SLACK || attributed > counted * (1 + ATTRIBUTION_OVER) + ATTRIBUTION_SLACK) {
+      return unmeasurable(
+        `The source map of ${file} attributes ${attributed} bytes to the @tellma/core primary, where the build's stats count ${counted}; the two disagree on what the file holds.`,
+      );
+    }
+    pieces.push(code);
+  }
+  if (pieces.length === 0) {
+    return unmeasurable('No initial file holds code of the @tellma/core primary, which every app loads at startup.');
+  }
+  return { name: TM_CORE_PRIMARY_FIRST_FRAME, ...tmCompressedSize(pieces.join('')), files: pieces.length };
+}
+
 /**
  * Compares the figures with their levels.
  *
  * @param figures - The measured figures.
  * @param levels - The levels by budget name.
  * @param feature - The distribution's slug.
- * @returns A `budget-exceeded` error or a `budget-warning` per figure over a level.
+ * @returns A `budget-unmeasurable` error per figure the output does not let
+ * the build measure, and a `budget-exceeded` error or a `budget-warning` per
+ * figure over a level.
  */
 export function tmBudgetProblems(
   figures: readonly TmBudgetFigure[],
@@ -238,7 +323,9 @@ export function tmBudgetProblems(
   for (const figure of figures) {
     const level = levels.get(figure.name);
     const kb = figure.gzip / 1024;
-    if (level?.error != null && kb > level.error) {
+    if (figure.unmeasurable !== undefined) {
+      problems.push({ code: TM_BUDGET_UNMEASURABLE, severity: 'error', key: `budget:${figure.name}`, feature, message: figure.unmeasurable });
+    } else if (level?.error != null && kb > level.error) {
       problems.push({
         code: TM_BUDGET_EXCEEDED,
         severity: 'error',

@@ -101,6 +101,23 @@ export const TM_STRINGS_AR: TmStringTree = {
     },
   },
   updates: { banner: 'يتوفر إصدار جديد.' },
+  nav: {
+    analysis: 'التحليل',
+    administration: 'الإدارة',
+    me: {
+      profile: 'ملفي الشخصي',
+      region: 'اللغة والمنطقة',
+      display: 'العرض',
+      notifications: 'الإشعارات',
+    },
+  },
+  launcher: {
+    synonyms: {
+      meProfile: 'الصورة، التوقيع، بيانات الاتصال',
+      meRegion: 'المنطقة الزمنية، التقويم، الأرقام، التنسيقات',
+      meDisplay: 'السمة، الشريط المثبت',
+    },
+  },
   shell: {
     tenantPicker: { title: `${imperative('اختر', 'اختاري')} شركة` },
     signedOut: { title: imperative('لقد سجّلت الخروج', 'لقد سجّلتِ الخروج'), signIn: 'تسجيل الدخول' },
@@ -123,5 +140,10 @@ export const TM_STRINGS_AR: TmStringTree = {
     fileTooLarge: 'هذا الملف كبير جدًا. الحد الأقصى هو {max}.',
     fileType: 'هذا النوع من الملفات غير مقبول.',
     uploadFailed: 'تعذّر الرفع',
+  },
+  picker: {
+    newLabel: '{label}…',
+    unavailable: 'هذه الصفحة غير متاحة بعد.',
+    loadFailed: 'تعذّر تحميل هذه الصفحة.',
   },
 };

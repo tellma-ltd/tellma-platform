@@ -219,6 +219,7 @@ namespace Tellma.Core.Client
                     [.. relatedSelect],
                     stack is not null ? stack.DefaultOrderBy ?? $"{entity.Key.Name} desc" : child?.DefaultOrderBy ?? $"{entity.Key.Name} desc",
                     [.. searchable.Select(static item => item.Property)],
+                    [.. searchable.Where(static item => item.Kind == SearchKind.Prefix).Select(static item => item.Property)],
                     [.. entity.NaturalKeys.Select(static natural => natural.Property.Name)],
                     stack is null ? [] : [.. stack.Extras],
                     Limits(limits));
@@ -257,6 +258,7 @@ namespace Tellma.Core.Client
                     RelatedSelect: [],
                     DefaultOrderBy: $"{key.Name} desc",
                     Searchable: [],
+                    PrefixSearchable: [],
                     NaturalKeys: [],
                     Extras: [],
                     Limits(StackLimits.Default));

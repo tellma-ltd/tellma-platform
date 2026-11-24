@@ -14,6 +14,7 @@ using System.Diagnostics.Metrics;
 using System.Globalization;
 using System.Text;
 using System.Text.Json;
+using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Api;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Notifications;
@@ -225,16 +226,16 @@ namespace Tellma.Core.Tests.Notifications
         }
 
         [Fact]
-        public void The_actor_defaults_to_the_scopes_user_and_to_none_in_a_system_scope()
+        public void The_actor_defaults_to_the_scopes_user_and_to_none_in_a_system_scope_and_the_system_user_stores_none()
         {
             DataBatch user = _plain.Batch(BatchPurpose.Persist);
             DataBatch system = _plain.Batch(BatchPurpose.Persist);
 
-            Notifier(_plain, UserScope).Notify(user, [Order([5], actor: null), Order([5], actor: 12)]);
-            Notifier(_plain, SystemScope).Notify(system, [Order([5], actor: null), Order([5], actor: 12)]);
+            Notifier(_plain, UserScope).Notify(user, [Order([5], actor: null), Order([5], actor: 12), Order([5], actor: WellKnownIds.SystemUserId)]);
+            Notifier(_plain, SystemScope).Notify(system, [Order([5], actor: null), Order([5], actor: 12), Order([5], actor: WellKnownIds.SystemUserId)]);
 
-            Assert.Equal([UserId, 12], user.Statements.Select(static statement => Scalar(statement, 5)));
-            Assert.Equal([null, 12], system.Statements.Select(static statement => Scalar(statement, 5)));
+            Assert.Equal([UserId, 12, null], user.Statements.Select(static statement => Scalar(statement, 5)));
+            Assert.Equal([null, 12, null], system.Statements.Select(static statement => Scalar(statement, 5)));
         }
 
         [Fact]

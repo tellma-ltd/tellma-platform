@@ -13,9 +13,3 @@
 
 export { TmRecents, type TmRecentPage } from './src/tm-recents';
 
-// The launcher's answers that recents read until the launcher lands; not for app code.
-export {
-  TM_RECENTS_NAVIGATION as ɵTM_RECENTS_NAVIGATION,
-  type TmRecentsEntry as ɵTmRecentsEntry,
-  type TmRecentsNavigation as ɵTmRecentsNavigation,
-} from './src/tm-recents';

@@ -21,6 +21,7 @@ using Tellma.Core.Abstractions.Notifications;
 using Tellma.Core.Abstractions.Realtime;
 using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.Crud;
+using Tellma.Core.Data;
 using Tellma.Core.Data.Batches;
 using Tellma.Core.Jobs;
 using Tellma.Core.Queryex;
@@ -211,6 +212,7 @@ namespace Tellma.Core.IntegrationTests.Jobs
         public async Task ResetAsync()
         {
             Audit.Suspended = false;
+            Audit.Reset();
             await SqlServerFixture.ExecuteAsync(
                 ConnectionString,
                 ResetText,
@@ -501,7 +503,7 @@ namespace Tellma.Core.IntegrationTests.Jobs
     ///     The fixture's change-tracking audit behind a switch. The audit attributes every change in a
     ///     batch's window to that batch, which holds only while one batch at a time writes, so a test
     ///     that runs batches side by side suspends it; a batch begun while it was suspended is not
-    ///     checked when it ends.
+    ///     checked when it ends. A test may also have one batch lose its response once it committed.
     /// </summary>
     internal sealed class SuspendableAudit : IDataBatchAudit
     {
@@ -510,6 +512,9 @@ namespace Tellma.Core.IntegrationTests.Jobs
 
         /// <summary>Whether the audit is suspended.</summary>
         private volatile bool _suspended;
+
+        /// <summary>How many batches end before the one that loses its response; -1 when none is armed.</summary>
+        private int _losesResponseIn = -1;
 
         /// <summary>The fixture's audit; null when the host has none.</summary>
         public IDataBatchAudit? Inner { get; set; }
@@ -527,9 +532,37 @@ namespace Tellma.Core.IntegrationTests.Jobs
             return _suspended || Inner is not IDataBatchAudit inner ? Unchecked : await inner.BeforeAsync(cancellationToken).ConfigureAwait(false);
         }
 
+        /// <summary>
+        ///     Arms a lost response: the batch that ends after <paramref name="batchesAhead" /> others
+        ///     committed, but its caller learns so only from the probe, as when the connection drops
+        ///     during the commit and the probe finds the batch's rows. Its results are never completed
+        ///     and its commit callbacks never run, as the executor's are not on that path.
+        /// </summary>
+        /// <param name="batchesAhead">How many batches end, as they are, before that one.</param>
+        public void LoseResponse(int batchesAhead)
+        {
+            ArgumentOutOfRangeException.ThrowIfNegative(batchesAhead);
+            _ = Interlocked.Exchange(ref _losesResponseIn, batchesAhead);
+        }
+
+        /// <summary>Disarms a lost response that has not happened yet.</summary>
+        public void Reset()
+        {
+            _ = Interlocked.Exchange(ref _losesResponseIn, -1);
+        }
+
         /// <inheritdoc />
         public async ValueTask AfterAsync(object? state, IReadOnlySet<TableName> writtenTables, CancellationToken cancellationToken)
         {
+            // --- The armed batch committed, and the probe is all its caller hears ---
+            if (Interlocked.Decrement(ref _losesResponseIn) == -1)
+            {
+                throw new DataAccessAmbiguousException(new TimeoutException("The test dropped the connection during the commit."), CommitVerdict.Committed);
+            }
+
+            // Below -1, nothing is armed: the count is put back so it never wraps.
+            _ = Interlocked.CompareExchange(ref _losesResponseIn, -1, -2);
+
             if (ReferenceEquals(state, Unchecked) || Inner is not IDataBatchAudit inner)
             {
                 return;

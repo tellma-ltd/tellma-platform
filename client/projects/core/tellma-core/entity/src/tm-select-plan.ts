@@ -611,7 +611,7 @@ function columnSpec(
           ...(target.key.type === 'long' && { long: true }),
         },
         terms: [idTerm, ...select],
-        order: () => navigationOrder(target, path, entities, l10n.contentSlot()),
+        order: () => ɵtmDisplayNameOrder(target, entities, l10n.contentSlot(), path),
         value: (row) => row.get(idTerm) ?? null,
         names: { entity: target.name, members },
       };
@@ -652,27 +652,30 @@ function groupOrder(slots: readonly string[], slot: number): readonly string[] {
 }
 
 /**
- * A navigation's order terms: the display name's prefix, then its name, as
- * a group orders when the name is multilingual.
+ * The order terms of an entity's display name: its prefix, then its name,
+ * as a group orders when the name is multilingual. Internal: a navigation
+ * column sorts by them under its path, and the entity pickers order their
+ * results by them from the root.
  *
- * @param target - The related entity's descriptor.
- * @param path - The navigation's path.
+ * @param target - The entity's descriptor.
  * @param entities - The entity registry.
  * @param slot - The active slot.
+ * @param path - The navigation's path; the root's own terms when omitted.
  * @returns The terms.
  */
-function navigationOrder(target: TmEntityDescriptor, path: string, entities: TmEntities, slot: number): readonly string[] {
+export function ɵtmDisplayNameOrder(target: TmEntityDescriptor, entities: TmEntities, slot: number, path?: string): readonly string[] {
+  const under = (name: string): string => (path ? `${path}.${name}` : name);
   const rule = entities.summary(target.name)?.displayName;
   if (rule === undefined) {
-    return [`${path}.${target.key.property}`];
+    return [under(target.key.property)];
   }
-  const canonical = (name: string): string => `${path}.${target.property(name)?.name ?? name}`;
+  const canonical = (name: string): string => under(target.property(name)?.name ?? name);
   const terms: string[] = rule.prefix === undefined ? [] : [canonical(rule.prefix)];
   if (rule.multilingual) {
     const slots = target.properties
       .filter((property: TmPropertyDescriptor) => property.multilingual?.group.toLowerCase() === rule.source.toLowerCase())
       .sort((a, b) => a.multilingual!.slot - b.multilingual!.slot)
-      .map((property) => `${path}.${property.name}`);
+      .map((property) => under(property.name));
     terms.push(...(slots.length > 0 ? groupOrder(slots, slot) : [canonical(rule.source)]));
   } else {
     terms.push(canonical(rule.source));

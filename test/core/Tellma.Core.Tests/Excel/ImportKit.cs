@@ -8,6 +8,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using System.Runtime.CompilerServices;
 using Tellma.Core.Abstractions.Blobs;
+using Tellma.Core.Abstractions.Calendars;
 using Tellma.Core.Abstractions.Crud;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Excel;
@@ -19,8 +20,8 @@ namespace Tellma.Core.Tests.Excel
 {
     /// <summary>
     ///     What the import suites share: editable workbooks written by the real planner and writer
-    ///     over generated rows, and the importer over a fixture composition with the options and
-    ///     limits a test chooses.
+    ///     over generated rows, and the importer, its inspection and its parse, over a fixture
+    ///     composition with the options and limits a test chooses.
     /// </summary>
     /// <param name="services">The fixture composition's services.</param>
     internal sealed class ImportKit(IServiceProvider services) : IDisposable
@@ -85,6 +86,25 @@ namespace Tellma.Core.Tests.Excel
             return await Importer(options, loggers).InspectAsync(stream, entity, limits ?? StackLimits.Default, request, context, TestContext.Current.CancellationToken);
         }
 
+        /// <summary>Parses a workbook for an import into an entity.</summary>
+        /// <typeparam name="TEntity">The stack's entity.</typeparam>
+        /// <param name="workbook">The workbook's bytes.</param>
+        /// <param name="context">The importing request's context.</param>
+        /// <param name="request">The mode, the row key and the overrides; an insert when null.</param>
+        /// <param name="options">The codec's options; the defaults when null.</param>
+        /// <param name="limits">The stack's limits; the defaults when null.</param>
+        /// <param name="synchronous">Whether the synchronous limits apply.</param>
+        /// <returns>The session.</returns>
+        public async Task<ExcelImportSession<TEntity>> ParseAsync<TEntity>(byte[] workbook, ExcelContext context, ImportRequest? request = null, ExcelOptions? options = null, StackLimits? limits = null, bool synchronous = true)
+            where TEntity : class
+        {
+            request ??= new ImportRequest { FileId = 1 };
+            EntityMetadata entity = Entity<TEntity>();
+            ImportRequests.Check(entity, request);
+            using MemoryStream stream = new(workbook, writable: false);
+            return await Importer(options).ParseAsync<TEntity>(stream, entity, limits ?? StackLimits.Default, request, context, synchronous, TestContext.Current.CancellationToken);
+        }
+
         /// <summary>An importer over the composition's blob kinds and metrics, with its own header cache.</summary>
         /// <param name="options">The codec's options; the defaults when null.</param>
         /// <param name="loggers">The importer's loggers; none when null.</param>
@@ -97,7 +117,9 @@ namespace Tellma.Core.Tests.Excel
                 services.GetRequiredService<IBlobKindRegistry>(),
                 new HeaderIndexCache(),
                 services.GetRequiredService<ExcelMetrics>(),
-                loggers ?? NullLoggerFactory.Instance);
+                loggers ?? NullLoggerFactory.Instance,
+                services.GetRequiredService<IValueSetRegistry>(),
+                services.GetRequiredService<ICalendarRegistry>());
         }
 
         /// <summary>A context for a tenant: the exporting scope's, with another tenant, deployment, languages or culture.</summary>

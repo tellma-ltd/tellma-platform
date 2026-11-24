@@ -17,10 +17,12 @@ using Tellma.Core.Abstractions.Crud;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Jobs;
 using Tellma.Core.Abstractions.Notifications;
+using Tellma.Core.Abstractions.Realtime;
 using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.Abstractions.Validation;
 using Tellma.Core.Crud.Validation;
 using Tellma.Core.Jobs;
+using Tellma.Core.Notifications;
 using Tellma.Testing.Entities;
 using static Tellma.Core.IntegrationTests.Jobs.JobRunDatabase;
 
@@ -275,6 +277,47 @@ namespace Tellma.Core.IntegrationTests.Jobs
             Assert.Equal(
                 [exhausted, exhaustedWithError, inactive],
                 fixture.Notices.Raised.Where(static notice => notice.Type == JobNotices.FailedType).Select(static notice => (int)notice.TargetId!.Value).Order());
+        }
+
+        // --- A completion whose commit only the probe proved ---
+
+        [Fact]
+        public async Task A_completion_whose_response_is_lost_after_its_commit_still_wakes_the_poller_and_tells_the_requester_and_the_recipients()
+        {
+            int requested = await fixture.InsertJobAsync(JobRunKeys.Inbox);
+            int unrequested = await fixture.InsertJobAsync(JobRunKeys.Inbox, requestedBy: null);
+            fixture.Script.Inbox = (_, _) =>
+            {
+                // The completion is the next batch to end.
+                fixture.Audit.LoseResponse(batchesAhead: 0);
+                throw new InvalidOperationException("The test handler breaks.");
+            };
+
+            IReadOnlyList<PolledJob> polled = await PollAsync(JobRunKeys.Inbox);
+
+            // --- The outcomes committed, and no commit callback ran: the recording notifier heard nothing ---
+            Assert.Equal([(requested, JobStatus.Failed), (unrequested, JobStatus.Failed)], polled.Select(static job => (job.JobId, job.Status)));
+            Assert.Equal(nameof(JobStatus.Failed), (await fixture.JobAsync(requested)).Status);
+            Assert.Empty(fixture.Notices.Raised);
+
+            // --- What the callbacks would have done is done anyway ---
+            AssertAnnouncedAfterLostResponse(requested, [ActiveUserId, AdministratorId]);
+        }
+
+        [Fact]
+        public async Task A_completion_without_the_handler_whose_response_is_lost_after_its_commit_still_wakes_the_poller_and_tells_the_requester()
+        {
+            int exhausted = await fixture.InsertJobAsync(JobRunKeys.Probe, attempts: 3);
+
+            // The claim's maintenance batch ends first, then the completion.
+            fixture.Audit.LoseResponse(batchesAhead: 1);
+            PolledJob polled = Assert.Single(await PollAsync(JobRunKeys.Probe));
+
+            Assert.Equal((exhausted, JobStatus.Failed, JobErrorCodes.AttemptsExhausted), (polled.JobId, polled.Status, polled.ErrorCode));
+            Assert.Equal(nameof(JobStatus.Failed), (await fixture.JobAsync(exhausted)).Status);
+            Assert.Empty(fixture.Script.Invocations);
+            Assert.Empty(fixture.Notices.Raised);
+            AssertAnnouncedAfterLostResponse(exhausted, [ActiveUserId]);
         }
 
         [Fact]
@@ -1042,6 +1085,21 @@ namespace Tellma.Core.IntegrationTests.Jobs
                 Assert.Equal((JobNotices.ChangedEvent, ActiveUserId), (published.Name, Assert.Single(published.UserIds)));
                 return Assert.IsType<JobChangedPayload>(published.Payload).JobId;
             })];
+        }
+
+        /// <summary>
+        ///     Asserts what a completion whose response was lost announced: the poller woken, the job's
+        ///     change to its requester, and one inbox change to every recipient its notices named.
+        /// </summary>
+        /// <param name="jobId">The requested job.</param>
+        /// <param name="recipients">The notices' recipients, in ascending order.</param>
+        private void AssertAnnouncedAfterLostResponse(int jobId, int[] recipients)
+        {
+            Assert.True(fixture.Wakes > 0);
+            ClientEvent changed = Assert.Single(fixture.Events.Published, static published => published.Name == JobNotices.ChangedEvent);
+            Assert.Equal((ActiveUserId, jobId), (Assert.Single(changed.UserIds), Assert.IsType<JobChangedPayload>(changed.Payload).JobId));
+            ClientEvent inbox = Assert.Single(fixture.Events.Published, static published => published.Name == Notifier.InboxChangedEvent);
+            Assert.Equal(recipients, inbox.UserIds);
         }
 
         /// <summary>The trace id a log record's scopes carry, as the logger factory adds it from the current activity.</summary>

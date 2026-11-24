@@ -16,6 +16,7 @@ import { TmClientMetadataStore, type TmContracts } from '../metadata/tm-client-m
 import { TM_METADATA_LOADERS, type TmMetadataLoaders } from '../metadata/tm-metadata-loaders';
 import { TmTelemetry } from '../observe/tm-telemetry';
 import { TmRequestLog } from '../requests/tm-request-log';
+import { tmUnhandled } from '../routes/tm-app.testing.util';
 import { tmProfileCookies, tmProfileCookieValue } from '../session/tm-profile.testing.util';
 import { TmSession } from '../session/tm-session';
 import { TmSessionPaths } from '../session/tm-session-paths';
@@ -166,6 +167,13 @@ const retries = (rig: TmRig): unknown[] =>
   rig.telemetry.events.filter((event) => event.name === 'tm.api.retry').map((event) => event.props?.['reason']);
 
 describe('TmHttpApi', () => {
+  // The layer's lazy chunks load once, before any spec: a first load can take
+  // longer than a spec's flush while the whole suite runs, and later loads
+  // come from the module map within it.
+  beforeAll(async () => {
+    await Promise.all([import('./tm-api-verdict'), import('./tm-api-transfer')]);
+  });
+
   afterEach(() => {
     vi.useRealTimers();
   });
@@ -1182,6 +1190,124 @@ describe('TmHttpApi', () => {
       expect(rig.host.uploads[0].aborted).toBe(true);
       expect(rig.host.requests.find((request) => request.url.endsWith('centers/save'))?.aborted).toBe(false);
       expect(write.settled).toBe(false);
+    });
+  });
+
+  // The root injector is destroyed by TestBed's reset, as ApplicationRef.destroy()
+  // destroys it in an app; every lookup through it then throws.
+  describe("the app's end", () => {
+    it('cancels an answer that lands after the app has ended, unchecked and unobserved', async () => {
+      const rig = await setUp();
+      const launch = TestBed.inject(TmLaunch);
+      launch.markAutomatic(17);
+      const write = track(rig.api.write('centers/save', {}));
+      await flush();
+      expect(rig.host.requests).toHaveLength(1);
+
+      const unhandled = await tmUnhandled(async () => {
+        TestBed.resetTestingModule();
+        rig.host.last().answer(tmAnswer(200, {}, { 'Tellma-Version-Tags': 'settings=1.9f04' }));
+        await flush();
+      });
+      expect(unhandled).toEqual([]);
+      // No session can check the answer any more, so it is not delivered.
+      expect(write.error).toBeInstanceOf(TmApiError);
+      expect(write.error).toMatchObject({ kind: 'cancelled' });
+      expect(rig.log.entries[0].end).toMatchObject({ outcome: 'cancelled' });
+      expect(launch.automatic()).toBe(17);
+      expect(rig.cache.observed).toEqual([]);
+    });
+
+    it('reports no version tags whose task runs after the app has ended', async () => {
+      const rig = await setUp();
+      const write = rig.api.write('centers/save', {});
+      await flush();
+      rig.host.last().answer(tmAnswer(200, { ok: true }, { 'Tellma-Version-Tags': 'settings=1.9f04' }));
+      // The body is delivered; the tags wait for the next task.
+      expect(await write).toEqual({ ok: true });
+      expect(rig.cache.observed).toEqual([]);
+
+      const unhandled = await tmUnhandled(async () => {
+        TestBed.resetTestingModule();
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(unhandled).toEqual([]);
+      expect(rig.cache.observed).toEqual([]);
+    });
+
+    it('cancels a read whose retry falls due after the app has ended', async () => {
+      const rig = await setUp();
+      const read = track(rig.api.read('centers/query', {}, signal()));
+      await flush();
+      rig.host.last().fail();
+      await flush();
+      expect(retries(rig)).toEqual(['network']);
+
+      const unhandled = await tmUnhandled(async () => {
+        TestBed.resetTestingModule();
+        await vi.advanceTimersByTimeAsync(10_000);
+      });
+      expect(unhandled).toEqual([]);
+      expect(rig.host.requests).toHaveLength(1);
+      expect(read.error).toBeInstanceOf(TmApiError);
+      expect(read.error).toMatchObject({ kind: 'cancelled' });
+    });
+
+    it('cancels a read whose network failure lands after the app has ended', async () => {
+      const rig = await setUp();
+      const read = track(rig.api.read('centers/query', {}, signal()));
+      await flush();
+      expect(rig.host.requests).toHaveLength(1);
+
+      const unhandled = await tmUnhandled(async () => {
+        TestBed.resetTestingModule();
+        rig.host.last().fail();
+        await vi.advanceTimersByTimeAsync(10_000);
+      });
+      expect(unhandled).toEqual([]);
+      expect(read.error).toBeInstanceOf(TmApiError);
+      expect(read.error).toMatchObject({ kind: 'cancelled' });
+      // No retry is planned, and the server is not marked unreachable.
+      expect(retries(rig)).toEqual([]);
+      expect(rig.host.requests).toHaveLength(1);
+      expect(rig.api.online()).toBe(true);
+    });
+
+    it('cancels a refusal whose worker check ends after the app has ended', async () => {
+      const rig = await setUp();
+      // The worker does not answer, so its check ends at the 3 s cap.
+      rig.updates.answer = null;
+      const write = track(rig.api.write('centers/save', {}));
+      await flush();
+      rig.host.last().answer(tmProblemAnswer(412, 'client-outdated', { 'Tellma-Build': '1.0.0+fedcba9' }));
+      await flush();
+      expect(rig.updates.checks).toBe(1);
+      expect(write.settled).toBe(false);
+
+      const unhandled = await tmUnhandled(async () => {
+        TestBed.resetTestingModule();
+        await vi.advanceTimersByTimeAsync(3_000);
+      });
+      expect(unhandled).toEqual([]);
+      expect(write.error).toBeInstanceOf(TmApiError);
+      expect(write.error).toMatchObject({ kind: 'cancelled' });
+      expect(rig.telemetry.events.filter((event) => event.name === 'tm.api.client-outdated')).toEqual([]);
+    });
+
+    it('sends no call made after the app has ended, and cancels it', async () => {
+      const rig = await setUp();
+      // The Contracts chunk is loaded while the app runs.
+      track(rig.api.read('centers/query', {}, signal()));
+      await flush();
+      TestBed.resetTestingModule();
+      const read = track(rig.api.read('centers/query', {}, signal()));
+      const write = track(rig.api.write('centers/save', {}));
+      await flush();
+      for (const call of [read, write]) {
+        expect(call.error).toBeInstanceOf(TmApiError);
+        expect(call.error).toMatchObject({ kind: 'cancelled' });
+      }
+      expect(rig.host.requests).toHaveLength(1);
     });
   });
 

@@ -10,7 +10,9 @@ import type { TmLanguageDefinition, TmStringTree } from '../app/tm-app-config';
 // English, the platform's default language (spec 0024 §7.3): the platform's
 // own `tm` table and the component library's English. Every other language
 // falls back to these strings key by key. The route error views are worded
-// as spec 0024 §11's table words them.
+// as spec 0024 §11's table words them; the launcher's core sections and
+// entries as spec 0027 §3.2 names them. Their search synonyms are the
+// launcher's own strings, which it registers when it loads.
 
 /** The platform's English strings, under `tm`. */
 export const TM_STRINGS_EN = {
@@ -38,6 +40,16 @@ export const TM_STRINGS_EN = {
     },
     reload: 'Reload',
     retry: 'Try again',
+  },
+  nav: {
+    analysis: 'Analysis',
+    administration: 'Administration',
+    me: {
+      profile: 'My profile',
+      region: 'Language & region',
+      display: 'Display',
+      notifications: 'Notifications',
+    },
   },
   shell: {
     tenantPicker: { title: 'Choose a company' },

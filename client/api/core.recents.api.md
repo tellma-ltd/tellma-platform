@@ -5,7 +5,6 @@
 ```ts
 
 import * as i0 from '@angular/core';
-import { InjectionToken } from '@angular/core';
 import { Signal } from '@angular/core';
 
 // @public

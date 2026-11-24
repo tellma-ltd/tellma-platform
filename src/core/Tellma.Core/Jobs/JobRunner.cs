@@ -23,6 +23,7 @@ using Tellma.Core.Crud.Save;
 using Tellma.Core.Crud.Validation;
 using Tellma.Core.Data;
 using Tellma.Core.Data.Batches;
+using Tellma.Core.Notifications;
 
 namespace Tellma.Core.Jobs
 {
@@ -83,6 +84,9 @@ namespace Tellma.Core.Jobs
 
         /// <summary>What follows a failure of the post-commit work after a committed completion.</summary>
         private const string PostCommitNext = "the jobs completed, but the post-commit work of a write they enlisted did not finish.";
+
+        /// <summary>What follows a failure to announce a completion whose commit was proven but whose response was lost.</summary>
+        private const string ProvenCommitNext = "the jobs completed, but the wake and the events their commit would have sent did not all go out.";
 
         /// <summary>Why a handler may not execute its invocation's completion batch.</summary>
         private const string CompletionBatchReserved =
@@ -583,13 +587,15 @@ namespace Tellma.Core.Jobs
             Exception? unsent = main.Frame.CompletionBroken || !main.Batch.IsComposing
                 ? main.Thrown ?? new InvalidOperationException("The job's completion batch was left unfit to send by the work composed onto it.")
                 : null;
+            List<NotificationRequest> notices = [];
             if (unsent is null)
             {
                 try
                 {
                     IReadOnlyList<int> administrators = await AdministratorsAsync(services, handler, completions).ConfigureAwait(false);
                     main.Bound.AddRange(Rows(completions));
-                    AppendWorkerStatements(main.Batch, partition.TenantId, completions, Notices(completions, handler.Options, administrators, successNotices), services);
+                    notices = Notices(completions, handler.Options, administrators, successNotices);
+                    AppendWorkerStatements(main.Batch, partition.TenantId, completions, notices, services);
                 }
                 catch (Exception failure) when (failure is not OutOfMemoryException)
                 {
@@ -657,8 +663,10 @@ namespace Tellma.Core.Jobs
             }
             catch (DataAccessAmbiguousException ambiguous) when (ambiguous.Verdict == CommitVerdict.Committed)
             {
-                // The probe found the batch committed; its response was lost with the connection.
+                // The probe found the batch committed; its response was lost with the connection, and
+                // with it the batch's commit callbacks.
                 await AfterCommitAsync(main.Frame, committed: null, handler).ConfigureAwait(false);
+                AfterProvenCommit(services, partition.TenantId, handler, completions, notices);
                 Completed(partition.TenantId, handler, completions, partition.ClaimedAt);
                 return (Settled(completions), null);
             }
@@ -825,7 +833,9 @@ namespace Tellma.Core.Jobs
             }
             catch (DataAccessAmbiguousException ambiguous) when (ambiguous.Verdict == CommitVerdict.Committed)
             {
-                // The probe found the batch committed; its response was lost with the connection.
+                // The probe found the batch committed; its response was lost with the connection, and
+                // with it the batch's commit callbacks.
+                AfterProvenCommit(services, tenantId, handler, completions, notices);
             }
 
             Completed(tenantId, handler, completions, claimedAt);
@@ -861,6 +871,48 @@ namespace Tellma.Core.Jobs
             if (completions.Any(static completion => completion.Outcome.RunsAgainNow))
             {
                 batch.OnCommitted(_ => _wake.Wake(tenantId));
+            }
+        }
+
+        // A batch's commit callbacks run only when its response is read, so a commit the probe proved
+        // runs none: not the notifier's (inbox.changed and the wake for the delivery jobs), not the
+        // publisher's (job.changed), not the queue's or the worker's wakes. What they would have done
+        // is done here without the lost results: the wake unconditionally, job.changed to each
+        // requester, and inbox.changed to every recipient a notice named, a superset of the inboxes
+        // that changed, which only costs a client a refetch.
+        /// <summary>Wakes the poller and publishes the events a completion's commit would have, after a commit the probe proved; never throws.</summary>
+        /// <param name="services">The scope's services.</param>
+        /// <param name="tenantId">The tenant.</param>
+        /// <param name="handler">The jobs' handler.</param>
+        /// <param name="completions">The outcomes.</param>
+        /// <param name="notices">The notices the completion carried.</param>
+        private void AfterProvenCommit(
+            IServiceProvider services, int tenantId, JobHandlerRegistration handler, IReadOnlyList<JobCompletion> completions, IReadOnlyList<NotificationRequest> notices)
+        {
+            try
+            {
+                // --- The wake: the jobs the batch queued, whoever queued them, are claimed now ---
+                _wake.Wake(tenantId);
+
+                // --- The events, each sent now rather than on a commit that already happened ---
+                IClientEventPublisher publisher = services.GetRequiredService<IClientEventPublisher>();
+                foreach (JobCompletion completion in completions)
+                {
+                    if (completion.Job.RequestedById is int requester)
+                    {
+                        publisher.Publish(null, JobNotices.Changed(completion.Job.Id, requester));
+                    }
+                }
+
+                int[] recipients = [.. notices.SelectMany(static notice => notice.RecipientIds).Distinct().Order()];
+                if (recipients.Length > 0)
+                {
+                    publisher.Publish(null, new ClientEvent(Notifier.InboxChangedEvent, recipients, null));
+                }
+            }
+            catch (Exception failure) when (failure is not OutOfMemoryException)
+            {
+                JobsLog.JobCompletionFailed(_logger, failure, handler.Key, ProvenCommitNext);
             }
         }
 

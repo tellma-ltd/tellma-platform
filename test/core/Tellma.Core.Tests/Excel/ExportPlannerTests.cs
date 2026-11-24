@@ -183,16 +183,18 @@ namespace Tellma.Core.Tests.Excel
         }
 
         [Fact]
-        public void A_reference_defaults_to_the_targets_natural_key()
+        public void A_reference_defaults_to_the_targets_first_natural_key_that_cannot_be_null()
         {
             using ExportScope scope = new(composition.Services, "en", "en");
 
             ExcelSheetPlan memberships = Plan<User>(scope, new ExportForImportRequest { Columns = ["Email"] }).Sheets[1];
 
+            // The role's declared key, its code, may be null, so a role without one would export a
+            // blank cell; its name, a required natural key, names every role.
             ExcelColumnSpec role = Assert.Single(memberships.Columns, static column => column.Role == ExcelColumnRole.Reference);
-            Assert.Equal(("Role.Code", ExcelKeyKind.Natural, "core.Role", null), (role.PathText, role.KeyKind, role.ReferenceEntity, role.Language));
-            Assert.Contains("Role.Code", memberships.Query.SelectPaths);
-            Assert.EndsWith(" / Code", role.Header, StringComparison.Ordinal);
+            Assert.Equal(("Role.Name", ExcelKeyKind.Natural, "core.Role", "en"), (role.PathText, role.KeyKind, role.ReferenceEntity, role.Language));
+            Assert.Contains("Role.Name", memberships.Query.SelectPaths);
+            Assert.DoesNotContain("Role.Code", memberships.Query.SelectPaths);
         }
 
         [Fact]

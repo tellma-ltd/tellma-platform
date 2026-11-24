@@ -29,6 +29,8 @@ const PROBE_URL = '/health/live';
 @Injectable({ providedIn: 'root' })
 export class TmApiOnline {
   readonly #host = inject(TM_API_HOST);
+  /** The app's lifetime: once it ends, no probe is armed again. */
+  readonly #app = inject(DestroyRef);
   readonly #browserOnline = signal(this.#host.onLine());
   readonly #failed = signal(false);
   #timer: ReturnType<typeof setTimeout> | null = null;
@@ -62,7 +64,7 @@ export class TmApiOnline {
         }
       }),
     ];
-    inject(DestroyRef).onDestroy(() => {
+    this.#app.onDestroy(() => {
       this.#cancel();
       stops.forEach((stop) => stop());
     });
@@ -84,7 +86,15 @@ export class TmApiOnline {
 
   /** Arms the next probe, unless one is armed or running, or no probe is due. */
   #schedule(): void {
-    if (this.#timer === null && !this.#probing && this.#failed() && this.#browserOnline() && this.#host.visible()) {
+    // After the app's end nothing is armed, so a probe in flight then that fails is the last.
+    if (
+      !this.#app.destroyed &&
+      this.#timer === null &&
+      !this.#probing &&
+      this.#failed() &&
+      this.#browserOnline() &&
+      this.#host.visible()
+    ) {
       this.#timer = setTimeout(() => {
         this.#timer = null;
         void this.#probe();

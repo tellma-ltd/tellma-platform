@@ -526,6 +526,7 @@ describe('tm-entity-picker', () => {
       ) as HTMLInputElement;
       expect(input.readOnly).toBe(true);
       expect(input.getAttribute('readonly')).not.toBeNull();
+      expect(await (await TestbedHarnessEnvironment.loader(fixture).getHarness(TmEntityPickerHarness)).isReadonly()).toBe(true);
     });
 
     it('going disabled with the dropdown open closes it', async () => {
@@ -2206,6 +2207,21 @@ describe('tm-entity-picker', () => {
       host.displayWith.set(() => 'Overridden');
       await settle(fixture);
       expect(input.value).toBe('Overridden');
+    });
+
+    it('a bound displayWith that answers null is loading: String(id) until it answers, with no warning', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const { fixture, host, input } = await setup();
+      const label = signal<string | null>(null);
+      host.displayWith.set(() => label());
+      host.model.set({ agentId: 4 });
+      await settle(fixture);
+      expect(input.value).toBe('4');
+      label.set('Dan Brown');
+      await settle(fixture);
+      expect(input.value).toBe('Dan Brown');
+      expect(warn).not.toHaveBeenCalled();
+      warn.mockRestore();
     });
 
     it('a live locale switch re-renders a KEPT resolution error in the new language', async () => {

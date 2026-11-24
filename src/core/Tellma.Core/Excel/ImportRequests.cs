@@ -103,6 +103,35 @@ namespace Tellma.Core.Excel
             }
         }
 
+        /// <summary>
+        ///     Refuses an import request whose file id or overrides are malformed, whose mode is none
+        ///     of the three, or whose row key is neither <c>Id</c> nor a natural key of the entity.
+        /// </summary>
+        /// <param name="entity">The stack's entity.</param>
+        /// <param name="request">The request.</param>
+        /// <exception cref="BadRequestException">A fault of the request.</exception>
+        public static void Check(EntityMetadata entity, ImportRequest request)
+        {
+            ArgumentNullException.ThrowIfNull(entity);
+            ArgumentNullException.ThrowIfNull(request);
+            Check(entity, request.FileId, request.SheetMappings, request.ColumnMappings);
+
+            // --- The mode, one of the three ---
+            if (!Enum.IsDefined(request.Mode))
+            {
+                throw Fault("The mode must be Insert, Update or Upsert.", "mode");
+            }
+
+            // --- The row key: the identity, or a natural key the entity declares or infers ---
+            if (request.RowKey is string rowKey
+                && rowKey != ImportPaths.Id
+                && !entity.NaturalKeys.Any(key => string.Equals(key.Property.Name, rowKey, StringComparison.Ordinal)))
+            {
+                string offered = string.Join(", ", [ImportPaths.Id, .. entity.NaturalKeys.Select(static key => key.Property.Name)]);
+                throw Fault($"The row key '{rowKey}' is neither Id nor a natural key of {entity.Name}; it is one of {offered}.", "rowKey", rowKey);
+            }
+        }
+
         /// <summary>A request fault, with the path at fault and the name it carried.</summary>
         /// <param name="detail">The English sentence.</param>
         /// <param name="path">The path in the request.</param>

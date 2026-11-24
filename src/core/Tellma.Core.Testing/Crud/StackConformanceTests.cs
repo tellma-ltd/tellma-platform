@@ -249,8 +249,9 @@ namespace Tellma.Core.Testing.Crud
         /// <summary>
         ///     The body a declared API action of the stack runs with in the reachability case: one its
         ///     method answers without failing. By default the platform's workbook exports export one
-        ///     missing row's identity and the template, an import inspection names an upload that
-        ///     does not exist (<see cref="MissingUploadId" />), and any other action takes no body.
+        ///     missing row's identity and the template, an import inspection and an import name an
+        ///     upload that does not exist (<see cref="MissingUploadId" />), and any other action takes
+        ///     no body.
         /// </summary>
         /// <param name="action">The action.</param>
         /// <returns>The body, of the action's request type; null for none.</returns>
@@ -263,6 +264,8 @@ namespace Tellma.Core.Testing.Crud
                 ? new ExportForImportRequest { Ids = [] }
                 : action.RequestType == typeof(InspectImportRequest)
                 ? new InspectImportRequest { FileId = MissingUploadId }
+                : action.RequestType == typeof(ImportRequest)
+                ? new ImportRequest { FileId = MissingUploadId }
                 : null;
         }
 

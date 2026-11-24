@@ -10,6 +10,8 @@ import {
   TM_NOW,
   TmClientStore,
   type TmMeResult,
+  TmNavigation,
+  type TmNavItem,
   type TmPageContext,
   TmPageContexts,
   type TmPageKind,
@@ -21,13 +23,13 @@ import {
 import { provideTellmaStateTesting, provideTellmaTesting, TmFakeApi, TmFakeTabBus } from '@tellma/core-testing';
 
 import { TmFakeApiHost } from '../../src/api/tm-api.testing.util';
-import { tmAppRig, tmNavigate, TM_T17_DOCS } from '../../src/routes/tm-app.testing.util';
-import { TM_RECENTS_NAVIGATION, TmRecents, type TmRecentsNavigation } from './tm-recents';
+import { tmAppRig, tmNavigate, tmSettle, TM_T17_DOCS } from '../../src/routes/tm-app.testing.util';
+import { TmRecents } from './tm-recents';
 
 // Recent pages over the preferences, an in-memory store, routed page
-// contexts the spec registers at the router's URL, a launcher the spec
-// scripts, and faked timers; then a feature page's default context in a
-// whole test app.
+// contexts the spec registers at the router's URL, a navigation registry the
+// spec scripts, and faked timers; then the page contexts and the navigation
+// registry in a whole test app.
 
 /** A page for every route. */
 @Component({ template: '' })
@@ -55,8 +57,8 @@ interface TmRig {
 async function setUp(bag: Readonly<Record<string, string>> = {}): Promise<TmRig> {
   const host = new TmFakeApiHost();
   const access = signal<Readonly<Record<string, 'ok' | 'no-access' | 'unavailable'>>>({});
-  const navigation: TmRecentsNavigation = {
-    entry: (href) => (href === '/17/centers' ? { label: signal('Centers').asReadonly(), icon: 'building' } : undefined),
+  const navigation: Pick<TmNavigation, 'byHref' | 'resolve'> = {
+    byHref: (href) => (href === '/17/centers' ? ({ label: 'Centers', icon: 'building' } as TmNavItem) : undefined),
     resolve: (href) => access()[href] ?? 'ok',
   };
   TestBed.configureTestingModule({
@@ -66,7 +68,7 @@ async function setUp(bag: Readonly<Record<string, string>> = {}): Promise<TmRig>
       provideRouter([{ path: '**', component: TmPage }]),
       { provide: ɵTM_API_HOST, useValue: host },
       { provide: TM_NOW, useValue: () => Date.now() },
-      { provide: TM_RECENTS_NAVIGATION, useValue: navigation },
+      { provide: TmNavigation, useValue: navigation },
     ],
   });
   await TestBed.inject(Router).navigateByUrl('/17/centers');
@@ -314,7 +316,7 @@ describe('TmRecents', () => {
   });
 });
 
-describe('the routed page and the launcher, until their owners land', () => {
+describe('recents in a whole test app, over the page contexts and the navigation registry', () => {
   afterEach(() => vi.useRealTimers());
 
   it('counts a feature page by the default context its host registers', async () => {
@@ -335,7 +337,8 @@ describe('the routed page and the launcher, until their owners land', () => {
   });
 
   it('counts a search page by the default context its host registers, and never the drill-through list', async () => {
-    await tmAppRig();
+    const access = { ...TM_T17_DOCS.me.access, securables: [{ resource: 'gl.Center', action: 'Read', hasFilter: false }] };
+    await tmAppRig({ docs: { ...TM_T17_DOCS, me: { ...TM_T17_DOCS.me, access } } });
     const recents = TestBed.inject(TmRecents);
     // The home page, which never counts, renders the router outlet.
     await tmNavigate('/17');
@@ -355,11 +358,22 @@ describe('the routed page and the launcher, until their owners land', () => {
     expect(recents.pages().map((page) => [page.url, page.kind, page.title()])).toEqual([['/17/centers', 'search', 'Centers']]);
   });
 
-  it('finds no launcher entry, and calls a URL no route reaches unavailable', async () => {
-    await tmAppRig();
-    const navigation = TestBed.inject(TM_RECENTS_NAVIGATION);
-    expect(navigation.entry('/17/centers')).toBeUndefined();
-    expect(navigation.resolve('/17/centers')).toBe('ok');
-    expect(navigation.resolve('/17/nothing-here/5/6')).toBe('unavailable');
+  it('names a stored page after its launcher entry and keeps only the pages the user may open', async () => {
+    const visits = [
+      { p: 'centers', k: 'search', t: 1_792_400_000, n: 'Cost centers' },
+      { p: 'approvals', k: 'custom', t: 1_792_399_000, n: 'Approvals' },
+      { p: 'nothing-here', k: 'custom', t: 1_792_398_000, n: 'Gone' },
+      { p: 'credit-review', k: 'custom', t: 1_792_397_000, n: 'Credit review' },
+    ];
+    const access = { ...TM_T17_DOCS.me.access, securables: [{ resource: 'gl.Center', action: 'Read', hasFilter: false }] };
+    await tmAppRig({ docs: { ...TM_T17_DOCS, me: { ...TM_T17_DOCS.me, access, preferences: { 'nav.recent': JSON.stringify(visits) } } } });
+    await tmNavigate('/17/centers');
+    await tmSettle();
+    const recents = TestBed.inject(TmRecents);
+    // Centers takes its entry's label and icon; the gated page and the unknown path drop out.
+    expect(recents.pages().map((page) => [page.url, page.title(), page.icon])).toEqual([
+      ['/17/centers', 'Centers', 'file-text'],
+      ['/17/credit-review', 'Acme_CreditReview', 'square-dashed'],
+    ]);
   });
 });

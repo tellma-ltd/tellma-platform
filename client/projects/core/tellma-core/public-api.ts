@@ -11,11 +11,12 @@
  * display names and client permissions, the client metadata's types and loaders, the
  * HTTP layer with its error and plain-JSON value types, the exact decimal
  * helpers, the client store, the tab bus and the leader tab, the app-level
- * keyboard shortcut registry, the shell frame's seams (immersive mode and what
- * the tenant shell's `main` shows), the page-context registry with the page
- * actions and their dispatcher, the banners with the input-idle clock, the
- * attention documents and the toast durations, and the seams through which
- * telemetry and the request log are provided.
+ * keyboard shortcut registry, the navigation registry with the pins model's
+ * keys and the launcher's provider seam, the shell frame's seams (immersive
+ * mode and what the tenant shell's `main` shows), the page-context registry
+ * with the page actions and their dispatcher, the banners with the
+ * input-idle clock, the attention documents and the toast durations, and the
+ * seams through which telemetry and the request log are provided.
  *
  * @packageDocumentation
  */
@@ -176,6 +177,16 @@ export {
 export type { TmSettingsTabDeclaration } from './src/admin/tm-settings-tab';
 export type { TmNavContext, TmNavEntry, TmNavSection } from './src/nav/tm-nav-declarations';
 export type { TmShellSlot } from './src/nav/tm-shell-slot';
+
+// The navigation registry, the pins model's keys and the launcher's provider seam.
+export { TmNavigation, type TmNavItem, type TmNavSectionView } from './src/nav/tm-navigation';
+export { tmPinnedBarVisibleKey, tmPinsKey, type TmPin, type TmPinFolder, type TmPinItem, type TmPinsDoc } from './src/nav/tm-pins';
+export {
+  TM_LAUNCHER_PROVIDERS,
+  type TmLauncherItem,
+  type TmLauncherProvider,
+  type TmLauncherSearchContext,
+} from './src/nav/tm-launcher-providers';
 
 // App-level keyboard shortcuts and the shell frame's seams.
 export {

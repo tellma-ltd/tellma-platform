@@ -96,7 +96,7 @@ namespace Tellma.Core.Jobs
             foreach (int[] chunk in recipients.Chunk(maxRecipientsPerRequest))
             {
                 yield return new NotificationRequest(
-                    SchedulePausedType, chunk, arguments, CoreResources.Schedule, scheduleId, ActorUserId: null, DedupKey: SchedulePausedKey(scheduleId));
+                    SchedulePausedType, chunk, arguments, CoreResources.Schedule, scheduleId, ActorUserId: WellKnownIds.SystemUserId, DedupKey: SchedulePausedKey(scheduleId));
             }
         }
 
@@ -130,7 +130,7 @@ namespace Tellma.Core.Jobs
             SchedulerGapArguments arguments = new(previousTickAt, gap.Now, gap.HeldCount);
             foreach (int[] recipients in administrators.Distinct().Chunk(maxRecipientsPerRequest))
             {
-                yield return new NotificationRequest(GapType, recipients, arguments, TargetResource: null, TargetId: null, ActorUserId: null, DedupKey: GapType);
+                yield return new NotificationRequest(GapType, recipients, arguments, TargetResource: null, TargetId: null, ActorUserId: WellKnownIds.SystemUserId, DedupKey: GapType);
             }
 
             foreach (JobHeldCount held in gap.Held)
@@ -138,7 +138,7 @@ namespace Tellma.Core.Jobs
                 if (held.RequestedById is int requester && held.Count > 0)
                 {
                     yield return new NotificationRequest(
-                        HeldType, [requester], new JobHeldArguments(held.Count), TargetResource: null, TargetId: null, ActorUserId: null, DedupKey: HeldType);
+                        HeldType, [requester], new JobHeldArguments(held.Count), TargetResource: null, TargetId: null, ActorUserId: WellKnownIds.SystemUserId, DedupKey: HeldType);
                 }
             }
         }
@@ -182,7 +182,7 @@ namespace Tellma.Core.Jobs
                     new JobFailedArguments(job.HandlerKey, outcome.ErrorCode!),
                     CoreResources.Job,
                     job.Id,
-                    ActorUserId: null,
+                    ActorUserId: WellKnownIds.SystemUserId,
                     DedupKey: null,
                     InboxOnly: options.InboxOnlyFailureNotices),
                 JobOutcomeKind.PendingConfirmation => new NotificationRequest(
@@ -191,7 +191,7 @@ namespace Tellma.Core.Jobs
                     new JobPendingConfirmationArguments(job.HandlerKey, CountOf(outcome.PendingConfirmationsJson!)),
                     CoreResources.Job,
                     job.Id,
-                    ActorUserId: null,
+                    ActorUserId: WellKnownIds.SystemUserId,
                     DedupKey: PendingConfirmationKey(job.Id)),
                 JobOutcomeKind.Succeeded or JobOutcomeKind.Retry or JobOutcomeKind.Released or JobOutcomeKind.Cancelled => null,
                 _ => throw new InvalidOperationException($"The outcome kind {outcome.Kind} is not defined."),
