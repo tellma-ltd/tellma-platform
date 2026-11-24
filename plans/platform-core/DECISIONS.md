@@ -384,6 +384,50 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-273 (orchestrator, 2026-11-24): PC-153 review 1 rulings
+
+- R1 found 0 blocking, 0 major and 8 minor on 86f53add, so there is no R2. Sizes were confirmed on a clean build:
+  - "." 49.89, unchanged;
+  - ./leader 4.04 of 4.1, its second raise, honest under D-031;
+  - ./realtime 15.77 of 16, with SignalR tree-shaken as far as its public API allows.
+- Accepted deviations:
+  - a failed user check is reported to the sink as refused(401), which is faithful to §8.2;
+  - restart on the first sync after a terminal signal, from any source;
+  - the 100 s attempt deadline and the 5 s stop grace. These go beyond spec 0025 and are sound; neither leaks timers.
+- fix1 fixes all eight findings:
+  - R1-1 aligns the attempt numbering with 0025 §8.3's table;
+  - R1-2 makes the offline wait state-based;
+  - R1-3 rejects sync stamps ahead of the clock;
+  - R1-4 makes session.ended tenant-scoped, as §8.4 says;
+  - R1-5 makes the ESLint signalr ban cover every block;
+  - R1-6 adds two missing specs;
+  - R1-7 makes the fake hub's end() report reconnecting first;
+  - R1-8 removes a spec citation from the TSDoc.
+- PC-153 holds after fix1 and is released in queue order.
+
+### D-272 (orchestrator, 2026-11-24): PC-116 review 1 rulings
+
+- R1 found 0 blocking, 1 major and 6 minor issues on b9d8f3f8, so there is no R2. A clean-build re-measure matched the implementer's figures.
+- R1-1, major: the tenantless chunk (13.9 KB) was fetched after /shell, in series. That goes against spec 0024's eager, modulepreloaded /shell and spec 0027 Decision 1's parallel cold path. fix1 keeps the chunk lazy but starts fetching it in parallel.
+- fix1 also fixes R1-2 to R1-7:
+  - the picker's loading status;
+  - an errors-chunk failure, which now shows Try again;
+  - the RTL safe-area sides;
+  - the live-region announcement;
+  - the Arabic Connect button's label-in-name;
+  - tests for frame order and row heights.
+- Deviations accepted:
+  1. The tenantless pages are a lazy chunk with types-only /shell exports, against spec 0027 §1.
+  2. revalidateUser() returns Promise<TmApiError | null>. For Ahmad: should spec 0025 §3.1 gain this return type?
+  3. The tmEntryPointRoot modulepreload rule.
+  4. The size raises on its base: "." +4 B and /shell 1.35 to 2.35.
+  5. The title key lives in the frame.
+  6. The two adjusted specs.
+- At its integration, PC-116's Arabic would make ./platform-strings' third raise (about 4.02 of 4). Under D-031 it re-splits instead: the spec 0027 Arabic blocks move to a new @tellma/locale-ar/shell-strings, loaded in tmArabic()'s Promise.all. Each part gets an honest ceiling, and ./platform-strings goes back under 4.
+- Merge with held PC-114:
+  - keep PC-114's TmLaunchCache, which does not read before the first render;
+  - PC-114's memoized loader memoizes the class that the inner loader returns.
+
 ### D-271 (orchestrator, 2026-11-24): PC-120 integration — a refused command form, and /entity at 25
 
 - PC-120's agent ran api:approve and the Acme client build together in one nested-subshell command. The safety check refused it because it "could not be checked for dangerous rm operations". The command contains no rm.
