@@ -5,13 +5,15 @@
 
 using Microsoft.Extensions.Logging;
 using Tellma.Core.Abstractions.Blobs;
+using Tellma.Core.Abstractions.Calendars;
 using Tellma.Core.Abstractions.Crud;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Excel;
+using Tellma.Core.Abstractions.Localization;
 
 namespace Tellma.Core.Excel
 {
-    /// <summary>The import's workbook reader and mapper, one per process: it holds the limits and the caches and no request state.</summary>
+    /// <summary>The import's workbook reader, mapper and parser, one per process: it holds the limits and the caches and no request state.</summary>
     internal sealed class ExcelImporter : IExcelImporter
     {
         /// <summary>The codec's options.</summary>
@@ -29,6 +31,12 @@ namespace Tellma.Core.Excel
         /// <summary>The codec's instruments.</summary>
         private readonly ExcelMetrics _metrics;
 
+        /// <summary>The value sets, whose values a value-set column is read by.</summary>
+        private readonly IValueSetRegistry _valueSets;
+
+        /// <summary>The calendars a manifest's text dates are read in.</summary>
+        private readonly ICalendarRegistry _calendars;
+
         /// <summary>The codec's logger.</summary>
         private readonly ILogger _logger;
 
@@ -39,7 +47,17 @@ namespace Tellma.Core.Excel
         /// <param name="cache">The header and sheet-name indexes.</param>
         /// <param name="metrics">The codec's instruments.</param>
         /// <param name="loggers">The logger factory.</param>
-        public ExcelImporter(ExcelOptions options, string scratchDirectory, IBlobKindRegistry kinds, HeaderIndexCache cache, ExcelMetrics metrics, ILoggerFactory loggers)
+        /// <param name="valueSets">The value sets, whose values a value-set column is read by.</param>
+        /// <param name="calendars">The calendars a manifest's text dates are read in.</param>
+        public ExcelImporter(
+            ExcelOptions options,
+            string scratchDirectory,
+            IBlobKindRegistry kinds,
+            HeaderIndexCache cache,
+            ExcelMetrics metrics,
+            ILoggerFactory loggers,
+            IValueSetRegistry valueSets,
+            ICalendarRegistry calendars)
         {
             ArgumentNullException.ThrowIfNull(kinds);
             ArgumentNullException.ThrowIfNull(loggers);
@@ -48,6 +66,8 @@ namespace Tellma.Core.Excel
             _scratchDirectory = scratchDirectory;
             _cache = cache ?? throw new ArgumentNullException(nameof(cache));
             _metrics = metrics ?? throw new ArgumentNullException(nameof(metrics));
+            _valueSets = valueSets ?? throw new ArgumentNullException(nameof(valueSets));
+            _calendars = calendars ?? throw new ArgumentNullException(nameof(calendars));
             _logger = loggers.CreateLogger(ExcelLog.Category);
 
             _limits = new WorkbookLimits(
@@ -94,6 +114,32 @@ namespace Tellma.Core.Excel
             using WorkbookReader reader = Open(workbook, cancellationToken);
             ImportMapping mapping = new ImportMapper(entity, limits, _options, context, _cache).Map(reader, request.SheetMappings, request.ColumnMappings, cancellationToken);
             return Task.FromResult(mapping.Plan);
+        }
+
+        /// <inheritdoc />
+        public Task<ExcelImportSession<TEntity>> ParseAsync<TEntity>(
+            Stream workbook,
+            EntityMetadata entity,
+            StackLimits limits,
+            ImportRequest request,
+            ExcelContext context,
+            bool synchronous,
+            CancellationToken cancellationToken = default)
+            where TEntity : class
+        {
+            ArgumentNullException.ThrowIfNull(workbook);
+            ArgumentNullException.ThrowIfNull(entity);
+            ArgumentNullException.ThrowIfNull(limits);
+            ArgumentNullException.ThrowIfNull(request);
+            ArgumentNullException.ThrowIfNull(context);
+            cancellationToken.ThrowIfCancellationRequested();
+
+            // --- The package, the mapping, then every row; the session holds the rows, never the reader ---
+            using WorkbookReader reader = Open(workbook, cancellationToken);
+            ImportMapping mapping = new ImportMapper(entity, limits, _options, context, _cache).Map(reader, request.SheetMappings, request.ColumnMappings, cancellationToken);
+            ImportDecoders decoders = new(_valueSets, _calendars, _cache, context, mapping.Manifest);
+            ImportSession session = new ImportParser(entity, limits, _options, context, decoders).Parse(reader, mapping, request, synchronous, cancellationToken);
+            return Task.FromResult(new ExcelImportSession<TEntity>(session));
         }
 
         /// <summary>Opens a workbook within the limits, recording a spill of its shared strings.</summary>

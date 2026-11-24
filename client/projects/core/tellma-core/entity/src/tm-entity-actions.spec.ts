@@ -18,7 +18,7 @@ import { tmTestEntities, type TmFakeApiCall } from '@tellma/core-testing';
 import { TmBusyOverlay } from '@tellma/core-ui/busy-overlay';
 
 import { tmEntityRig, type TmEntityRig } from '../../src/entity/tm-entity.testing.util';
-import { tmSettle } from '../../src/routes/tm-app.testing.util';
+import { tmSettle, tmSettleUntil } from '../../src/routes/tm-app.testing.util';
 import { TmConfirmations } from './tm-confirmations';
 import { ɵtmActionBody } from './tm-action-run';
 import { injectTmActionDialog, ɵtmLoad, TmEntityActions, type TmActionDialogContext, type TmEntityActionOutcome } from './tm-entity-actions';
@@ -182,18 +182,6 @@ function top(): HTMLElement {
   const all = modals();
   expect(all.length).toBeGreaterThan(0);
   return all.at(-1)!;
-}
-
-/**
- * Settles until a condition holds, or fails.
- *
- * @param condition - The condition.
- */
-async function until(condition: () => boolean): Promise<void> {
-  for (let tries = 0; tries < 40 && !condition(); tries++) {
-    await tmSettle();
-  }
-  expect(condition()).toBe(true);
 }
 
 /**
@@ -381,7 +369,7 @@ describe('TmEntityActions', () => {
       rig.api.respond('customers/set-credit-limit', { ids: [77], entities: [{ id: 77, creditLimit: '250000' }], extras: { permissions: {} } });
 
       const opened = actions.dialog('acme.Customer', 'set-credit-limit', [77]);
-      await until(() => modals().length === 1);
+      await tmSettleUntil(() => modals().length === 1);
       const modal = top();
       expect(modal.querySelector('.tm-modal__title, [id^="tm-modal-title"]')?.textContent?.trim() ?? modal.textContent).toContain('Set credit limit');
       expect(modal.querySelectorAll('tm-form-field').length).toBe(1);
@@ -397,7 +385,7 @@ describe('TmEntityActions', () => {
       const [call] = callsTo(rig, 'customers/set-credit-limit');
       expect(JSON.stringify(call!.body)).toBe('{"ids":[77],"returnEntities":true,"include":["permissions"],"arguments":{"creditLimit":"250000"}}');
       expect(outcome).toEqual({ kind: 'entities', result: { ids: [77], entities: [{ id: 77, creditLimit: '250000' }], extras: { permissions: {} } } });
-      await until(() => modals().length === 0);
+      await tmSettleUntil(() => modals().length === 0);
     });
 
     it("lands an argument's error on its field and lists a row's in the alert, keeping the dialog open", async () => {
@@ -423,10 +411,10 @@ describe('TmEntityActions', () => {
       });
 
       const opened = actions.dialog('acme.Customer', 'set-credit-limit', [77, 2]);
-      await until(() => modals().length === 1);
+      await tmSettleUntil(() => modals().length === 1);
       await type('5000000');
       await click('Set credit limit');
-      await until(() => top().querySelector('tm-alert') !== null);
+      await tmSettleUntil(() => top().querySelector('tm-alert') !== null);
 
       const modal = top();
       expect(modal.querySelector('tm-form-field')!.textContent).toContain('Must be at most 1,000,000.');
@@ -459,10 +447,10 @@ describe('TmEntityActions', () => {
       const field = (): string => top().querySelector('tm-form-field')!.textContent!;
 
       void actions.dialog('acme.Customer', 'set-credit-limit', [77]);
-      await until(() => modals().length === 1);
+      await tmSettleUntil(() => modals().length === 1);
       await type('5000000');
       await click('Set credit limit');
-      await until(() => field().includes('Must be at most 1,000,000.'));
+      await tmSettleUntil(() => field().includes('Must be at most 1,000,000.'));
       // Every error sits on a field: no alert.
       expect(top().querySelector('tm-alert')).toBeNull();
 
@@ -474,7 +462,7 @@ describe('TmEntityActions', () => {
 
       // The next run, failing elsewhere, clears it though the field was not edited.
       await click('Set credit limit');
-      await until(() => top().querySelector('tm-alert') !== null);
+      await tmSettleUntil(() => top().querySelector('tm-alert') !== null);
       expect(field()).not.toContain('Must be at most');
       const alert = top().querySelector('tm-alert')!;
       expect(alert.textContent).toContain('Something went wrong on our side');
@@ -485,7 +473,7 @@ describe('TmEntityActions', () => {
       const { rig, actions } = await start();
       rig.api.respond('customers/hold', null);
       const opened = actions.dialog('acme.Customer', 'hold', [1]);
-      await until(() => modals().length === 1);
+      await tmSettleUntil(() => modals().length === 1);
       expect(top().textContent).toContain('Notify the customer');
       await click('Hold');
       expect(await opened).toEqual({ kind: 'own', result: null });
@@ -499,7 +487,7 @@ describe('TmEntityActions', () => {
       const busy = TestBed.inject(TmBusyOverlay);
 
       void actions.dialog('acme.Customer', 'hold', [1]);
-      await until(() => modals().length === 1);
+      await tmSettleUntil(() => modals().length === 1);
       expect(button('Hold').getAttribute('aria-busy')).toBeNull();
       button('Hold').click();
       expect(busy.active()).toBe(true);
@@ -507,9 +495,9 @@ describe('TmEntityActions', () => {
       expect(button('Hold').getAttribute('aria-busy')).toBe('true');
       expect(button('Hold').classList).toContain('tm-button--pending');
 
-      await until(() => fail !== undefined);
+      await tmSettleUntil(() => fail !== undefined);
       fail!(serverError('trace-3'));
-      await until(() => top().querySelector('tm-alert') !== null);
+      await tmSettleUntil(() => top().querySelector('tm-alert') !== null);
       expect(busy.active()).toBe(false);
       expect(button('Hold').getAttribute('aria-busy')).toBeNull();
     });
@@ -524,12 +512,12 @@ describe('TmEntityActions', () => {
       });
 
       void actions.dialog('acme.Customer', 'set-credit-limit', [1, 2, 3]);
-      await until(() => modals().length === 1);
+      await tmSettleUntil(() => modals().length === 1);
       await type('250000');
       await click('Set credit limit');
-      await until(() => modals().length === 2);
+      await tmSettleUntil(() => modals().length === 2);
       await click('Continue without this one');
-      await until(() => modals().length === 1 && top().querySelector('tm-alert') !== null);
+      await tmSettleUntil(() => modals().length === 1 && top().querySelector('tm-alert') !== null);
 
       // ids[1] of [1, 3] is Delta Traders, not Cedar Mills, the second row asked for.
       const alert = top().querySelector('tm-alert')!.textContent!;
@@ -575,7 +563,7 @@ describe('TmEntityActions', () => {
       rig.api.respond('customers/invite', () => answers.shift()!());
 
       const opened = actions.dialog('acme.Customer', 'invite', [1, 2, 3], { arguments: { message: 'Welcome' } });
-      await until(() => invite !== null);
+      await tmSettleUntil(() => invite !== null);
       const context = invite!;
       expect(context.entity).toBe('acme.Customer');
       expect(context.action.name).toBe('invite');
@@ -597,7 +585,7 @@ describe('TmEntityActions', () => {
 
       // Any other failure lists in the alert atop the dialog.
       expect(await context.run({ message: 'Hi' }, { keepOpen: true, rethrow: ['partial-failure'] })).toBeNull();
-      await until(() => top().querySelector('tm-alert') !== null);
+      await tmSettleUntil(() => top().querySelector('tm-alert') !== null);
       expect(top().querySelector('tm-alert')!.textContent).toContain('Something went wrong on our side');
 
       // Closed with its X, the dialog still reports the run that succeeded, so the page re-reads.
@@ -613,13 +601,13 @@ describe('TmEntityActions', () => {
       const busy = TestBed.inject(TmBusyOverlay);
 
       const opened = actions.dialog('acme.Customer', 'invite', [1]);
-      await until(() => invite !== null);
+      await tmSettleUntil(() => invite !== null);
       const context = invite!;
       expect(context.running()).toBe(false);
       const running = context.run({ message: 'Hi' }, { keepOpen: true });
       expect(context.running()).toBe(true);
       expect(busy.active()).toBe(true);
-      await until(() => answer !== undefined);
+      await tmSettleUntil(() => answer !== undefined);
       expect(context.running()).toBe(true);
 
       answer!({ invited: 1 });
@@ -637,9 +625,9 @@ describe('TmEntityActions', () => {
         throw warning({ key: 'Acme.AlreadyInvited', ids: [1] });
       });
       const opened = actions.dialog('acme.Customer', 'invite', [1]);
-      await until(() => invite !== null);
+      await tmSettleUntil(() => invite !== null);
       const running = invite!.run({ message: 'Hi' });
-      await until(() => modals().length === 2);
+      await tmSettleUntil(() => modals().length === 2);
       await click('Cancel');
       expect(await running).toEqual({ kind: 'declined' });
       expect(modals().length).toBe(1);
@@ -660,10 +648,10 @@ describe('TmEntityActions', () => {
         throw answers.shift()!;
       });
       void actions.dialog('acme.Customer', 'invite', [1]);
-      await until(() => invite !== null);
+      await tmSettleUntil(() => invite !== null);
 
       expect(await invite!.run({ message: 'Hi' })).toBeNull();
-      await until(() => top().querySelector('tm-alert') !== null);
+      await tmSettleUntil(() => top().querySelector('tm-alert') !== null);
       let alert = top().querySelector('tm-alert')!;
       expect(alert.textContent).toContain("We couldn't confirm this");
       expect(alert.textContent).toContain('Check whether it went through');
@@ -697,7 +685,7 @@ describe('TmEntityActions', () => {
       });
 
       const running = actions.run('acme.Customer', 'set-credit-limit', [77], { arguments: { creditLimit: '250000' } });
-      await until(() => modals().length === 1);
+      await tmSettleUntil(() => modals().length === 1);
       const dialog = top();
       expect(dialog.closest('[role="alertdialog"]')).not.toBeNull();
       expect(dialog.textContent).toContain('Confirm to continue');
@@ -726,7 +714,7 @@ describe('TmEntityActions', () => {
       });
 
       const running = actions.run('acme.Customer', 'archive', [1, 2, 3], { returnEntities: false });
-      await until(() => modals().length === 1);
+      await tmSettleUntil(() => modals().length === 1);
       expect(top().textContent).toContain('Cedar Mills');
       await click('Continue without this one');
       expect(await running).toEqual({ kind: 'own', result: null });
@@ -741,7 +729,7 @@ describe('TmEntityActions', () => {
         throw warning({ key: 'Acme.OpenOrders', ids: [1, 2, 3, 4, 5, 6, 77] });
       });
       const running = actions.run('acme.Customer', 'archive', [1]);
-      await until(() => modals().length === 1);
+      await tmSettleUntil(() => modals().length === 1);
       const rows = [...top().querySelectorAll('.tm-confirmations ul li')].map((row) => row.textContent!.trim());
       expect(rows).toEqual(['Bayt Foods', 'Cedar Mills', 'Delta Traders', 'Eagle Supplies', 'Falcon Rail', 'and 2 more']);
       await click('Cancel');
@@ -763,9 +751,9 @@ describe('TmEntityActions', () => {
       });
 
       const running = actions.run('acme.Customer', 'archive', [1, 2, 3], { returnEntities: false });
-      await until(() => modals().length === 1);
+      await tmSettleUntil(() => modals().length === 1);
       await click('Continue without this one');
-      await until(() => callsTo(rig, 'customers/archive').length === 2 && modals().length === 1);
+      await tmSettleUntil(() => callsTo(rig, 'customers/archive').length === 2 && modals().length === 1);
       await click('Continue without this one');
       expect(await running).toEqual({ kind: 'own', result: null });
       expect(callsTo(rig, 'customers/archive').map((call) => call.body)).toEqual([{ ids: [1, 2, 3] }, { ids: [1, 3] }, { ids: [1] }]);
@@ -778,7 +766,7 @@ describe('TmEntityActions', () => {
         throw warning(...keys);
       });
       const running = actions.run('acme.Customer', 'archive', [1]).catch((error: unknown) => error);
-      await until(() => modals().length === 1);
+      await tmSettleUntil(() => modals().length === 1);
       await click('Continue');
       const error = (await running) as TmApiError;
       expect(error.kind).toBe('server');
@@ -796,9 +784,9 @@ describe('TmEntityActions', () => {
 
       const running = actions.run('acme.Customer', 'archive', [1]).catch((error: unknown) => error);
       for (let answered = 0; answered < 4; answered++) {
-        await until(() => modals().length === 1);
+        await tmSettleUntil(() => modals().length === 1);
         await click('Continue');
-        await until(() => modals().length === 0 || round > answered + 1);
+        await tmSettleUntil(() => modals().length === 0 || round > answered + 1);
       }
       const error = (await running) as TmApiError;
       expect(error).toBeInstanceOf(TmApiError);
@@ -814,7 +802,7 @@ describe('TmEntityActions', () => {
         throw warning({ key: 'Acme.OpenOrders', ids: [1] });
       });
       const running = actions.run('acme.Customer', 'archive', [1]);
-      await until(() => modals().length === 1);
+      await tmSettleUntil(() => modals().length === 1);
       await click('Cancel');
       expect(await running).toEqual({ kind: 'declined' });
       expect(callsTo(rig, 'customers/archive').length).toBe(1);

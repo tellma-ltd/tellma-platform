@@ -12,6 +12,7 @@ using Microsoft.Extensions.Options;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Diagnostics.Metrics;
+using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Jobs;
 using Tellma.Core.Abstractions.Notifications;
@@ -73,8 +74,8 @@ namespace Tellma.Core.IntegrationTests.Jobs
             // --- The administrators hear of the gap and its total; each requester of their own held rows ---
             Assert.Equal(
                 [
-                    new NotificationRequest(JobNotices.GapType, [AdministratorId], new SchedulerGapArguments(previous, result.Gap.Now, 4), null, null, null, JobNotices.GapType),
-                    new NotificationRequest(JobNotices.HeldType, [ActiveUserId], new JobHeldArguments(3), null, null, null, JobNotices.HeldType),
+                    new NotificationRequest(JobNotices.GapType, [AdministratorId], new SchedulerGapArguments(previous, result.Gap.Now, 4), null, null, WellKnownIds.SystemUserId, JobNotices.GapType),
+                    new NotificationRequest(JobNotices.HeldType, [ActiveUserId], new JobHeldArguments(3), null, null, WellKnownIds.SystemUserId, JobNotices.HeldType),
                 ],
                 fixture.Notices.Raised,
                 NoticeComparer.Instance);

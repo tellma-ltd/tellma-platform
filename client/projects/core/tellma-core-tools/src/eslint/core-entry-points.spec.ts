@@ -68,6 +68,15 @@ describe('the @tellma/core entry-point table', () => {
     }
   });
 
+  it('keeps the worker updates and the error presenter off the first frame', () => {
+    for (const lazy of ['./updates', './errors']) {
+      expect(TM_CORE_ENTRY_POINTS[lazy]).toEqual({ load: 'lazy', imports: [] });
+      for (const eager of ['.', './attention', './shell']) {
+        expect(tmAllowedImports(TM_CORE_ENTRY_POINTS, eager).has(lazy)).toBe(false);
+      }
+    }
+  });
+
   it('names an import of an unknown entry point', () => {
     const table: Record<string, TmEntryPointRule> = {
       '.': { load: 'eager', imports: [] },

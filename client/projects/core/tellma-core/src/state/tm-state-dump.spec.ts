@@ -8,6 +8,7 @@ import { provideTellmaStateTesting, provideTellmaTesting } from '@tellma/core-te
 
 import { tmAppRig, tmNavigate, TM_T17 } from '../routes/tm-app.testing.util';
 import { TmLeader } from './leader/tm-leader';
+import { TM_DRAFTS_STORAGE } from './memory/tm-draft-keys';
 import { tmPreferenceKey } from './prefs/tm-preference-key';
 import { TmPreferences } from './prefs/tm-preferences';
 import { TM_STATE_PARTS, TmStateDump } from './tm-state-dump';
@@ -64,5 +65,17 @@ describe('TmStateDump', () => {
     expect(dump.leader).toEqual({ isLeader: false, hubStatus: { state: 'connecting', since: expect.any(Number), leaderVisible: true } });
     // No service reported, so none was created by the read.
     expect(parts).toEqual({});
+  });
+
+  it('lists the drafts session storage holds from before a reload while the drafts service is not loaded', () => {
+    TestBed.configureTestingModule({ providers: [provideTellmaTesting(), provideTellmaStateTesting()] });
+    const storage = TestBed.inject(TM_DRAFTS_STORAGE)!;
+    storage.setItem('tm.draft:test-user:17:gl.Center:5', '{"name":"Secret name"}');
+    storage.setItem('tm.draft:test-user:17:gl.Center:new:2', '{}');
+    storage.setItem('tm.unrelated', 'x');
+    const dump = TestBed.inject(TmStateDump).read();
+    expect([...dump.drafts].sort()).toEqual(['17:gl.Center:5', '17:gl.Center:new:2']);
+    expect(JSON.stringify(dump)).not.toMatch(/Secret/);
+    expect(TestBed.inject(TM_STATE_PARTS)).toEqual({});
   });
 });

@@ -22,7 +22,9 @@ import { TM_PIVOT_STRINGS_EN } from '@tellma/core-ui/pivot';
 import { TM_TILES_TREE_STRINGS_EN } from '@tellma/core-ui/tiles-tree';
 
 import { provideTellmaLocaleAr } from './provide-tellma-locale-ar';
-import { TM_LOCALE_AR_STRINGS, TM_STRINGS_AR } from '@tellma/locale-ar/strings';
+import { TM_STRINGS_AR } from '@tellma/locale-ar/platform-strings';
+import { TM_LOCALE_AR_STRINGS } from '@tellma/locale-ar/strings';
+import { tmArabic } from './tm-arabic';
 
 @Component({
   imports: [TmInput, TmFormField, FormField],
@@ -396,5 +398,13 @@ describe("the platform's Arabic plurals", () => {
       'و11 عنصرًا آخر',
       'و100 عنصر آخر',
     ]);
+  });
+});
+
+describe('tmArabic', () => {
+  it("loads the platform's table and the component library's, each from its own entry point", async () => {
+    const arabic = tmArabic();
+    expect(arabic).toMatchObject({ code: 'ar', dir: 'rtl' });
+    await expect(arabic.strings()).resolves.toEqual({ tm: TM_STRINGS_AR, tmUi: TM_LOCALE_AR_STRINGS });
   });
 });

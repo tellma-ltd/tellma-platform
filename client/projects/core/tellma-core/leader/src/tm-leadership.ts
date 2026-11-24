@@ -25,6 +25,7 @@ import {
   ɵTM_API_HOST,
   ɵTM_UNIQUE_LEADER_DOCUMENTS,
   ɵTmClientMetadataStore,
+  ɵTmSessionPaths,
   type ɵTmSyncDoc,
 } from '@tellma/core';
 
@@ -350,13 +351,14 @@ export class TmLeadership {
           this.#terminal(generation);
         }
       },
-      ended: () => {
-        if (live()) {
-          // The server ended the user's access, or the session: the
-          // connection stops, and a sync decides what the user sees; the
-          // connection starts again only once it has closed. A terminated
-          // session's own sign-out (spec 0024 §8.5) is not wired here yet, so
-          // until it is, that sync's 401 takes the expiry path.
+      ended: (reason) => {
+        if (live() && reason === 'session-terminated') {
+          // The session ended elsewhere (spec 0024 §8.5): every tab signs out.
+          this.#injector.get(ɵTmSessionPaths).ɵsignedOutElsewhere();
+        } else if (live()) {
+          // The server ended the user's access to the tenant: the connection
+          // stops, and a sync decides what the user sees; the connection
+          // starts again only once it has closed.
           const stopped = this.#hub?.stop().catch((error: unknown) => this.#telemetry.error(error, { source: 'tm-leader' }));
           this.#terminal(generation, stopped);
         }

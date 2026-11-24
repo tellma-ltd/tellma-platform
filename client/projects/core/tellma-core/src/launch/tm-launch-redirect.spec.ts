@@ -7,7 +7,7 @@ import { Location } from '@angular/common';
 import { TestBed } from '@angular/core/testing';
 
 import { TmApiError } from '../api/tm-api-error';
-import { tmAppRig, tmNavigate, tmSettle, TM_TEST_SUB, tmTestMembership, type TmAppRig, type TmAppRigOptions } from '../routes/tm-app.testing.util';
+import { tmAppRig, tmNavigate, tmSettle, tmSettleUntil, TM_TEST_SUB, tmTestMembership, type TmAppRig, type TmAppRigOptions } from '../routes/tm-app.testing.util';
 import { TmClientStore } from '../state/store/tm-client-store';
 import { TmLaunch } from './tm-launch';
 
@@ -57,7 +57,8 @@ describe('the launch redirect', () => {
     rig.api.respond('/bff/user', { tenants: [tmTestMembership(17)] });
     const harness = await tmNavigate('/');
     expect(harness.routeNativeElement?.querySelector('main[aria-busy="true"] tm-skeleton')).not.toBeNull();
-    await tmSettle();
+    // The redirect follows the memberships' read, and its page loads the shell's chunk.
+    await tmSettleUntil(() => rig.router.url !== '/');
     expect(rig.router.url).toBe('/17');
     expect(automatic()).toBe(17);
   });
@@ -68,7 +69,8 @@ describe('the launch redirect', () => {
       throw new TmApiError({ kind: 'offline' });
     });
     await tmNavigate('/');
-    await tmSettle();
+    // The redirect follows the memberships' read, and its page loads the shell's chunk.
+    await tmSettleUntil(() => rig.router.url !== '/');
     expect(rig.router.url).toBe('/tenants');
     expect(automatic()).toBeNull();
   });

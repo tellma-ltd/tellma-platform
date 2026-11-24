@@ -1462,6 +1462,165 @@
               }
             }
           ]
+        },
+        {
+          "name": "import",
+          "kind": "api",
+          "builtIn": false,
+          "action": "Save",
+          "labelKey": "Action_Import",
+          "mutation": true,
+          "idempotent": false,
+          "destructive": false,
+          "singleTarget": false,
+          "supportsFilter": false,
+          "result": "own",
+          "arguments": {
+            "type": "object",
+            "properties": {
+              "fileId": {
+                "type": "integer"
+              },
+              "mode": {
+                "type": "string",
+                "enum": [
+                  "Insert",
+                  "Update",
+                  "Upsert"
+                ]
+              },
+              "rowKey": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "sheetMappings": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "sheet": {
+                      "type": "string"
+                    },
+                    "collection": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "sheet"
+                  ]
+                }
+              },
+              "columnMappings": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "sheet": {
+                      "type": "string"
+                    },
+                    "column": {
+                      "type": "string"
+                    },
+                    "path": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "sheet",
+                    "column"
+                  ]
+                }
+              },
+              "ignoreUnmappedColumns": {
+                "type": "boolean"
+              },
+              "ignoreSheetStamps": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "fileId",
+              "mode",
+              "sheetMappings",
+              "columnMappings",
+              "ignoreUnmappedColumns",
+              "ignoreSheetStamps"
+            ]
+          },
+          "fields": [
+            {
+              "name": "fileId",
+              "labelKey": "FileId",
+              "required": true,
+              "value": {
+                "type": "integer",
+                "nullable": false
+              }
+            },
+            {
+              "name": "mode",
+              "labelKey": "Mode",
+              "required": true,
+              "value": {
+                "type": "enum",
+                "nullable": false,
+                "enum": "core.ImportMode"
+              }
+            },
+            {
+              "name": "rowKey",
+              "labelKey": "RowKey",
+              "required": false,
+              "value": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            {
+              "name": "sheetMappings",
+              "labelKey": "SheetMappings",
+              "required": true,
+              "value": {
+                "type": "json",
+                "nullable": false
+              }
+            },
+            {
+              "name": "columnMappings",
+              "labelKey": "ColumnMappings",
+              "required": true,
+              "value": {
+                "type": "json",
+                "nullable": false
+              }
+            },
+            {
+              "name": "ignoreUnmappedColumns",
+              "labelKey": "IgnoreUnmappedColumns",
+              "required": true,
+              "value": {
+                "type": "bool",
+                "nullable": false
+              }
+            },
+            {
+              "name": "ignoreSheetStamps",
+              "labelKey": "IgnoreSheetStamps",
+              "required": true,
+              "value": {
+                "type": "bool",
+                "nullable": false
+              }
+            }
+          ]
         }
       ],
       "relatedSelect": [
@@ -2297,6 +2456,165 @@
               }
             }
           ]
+        },
+        {
+          "name": "import",
+          "kind": "api",
+          "builtIn": false,
+          "action": "Save",
+          "labelKey": "Action_Import",
+          "mutation": true,
+          "idempotent": false,
+          "destructive": false,
+          "singleTarget": false,
+          "supportsFilter": false,
+          "result": "own",
+          "arguments": {
+            "type": "object",
+            "properties": {
+              "fileId": {
+                "type": "integer"
+              },
+              "mode": {
+                "type": "string",
+                "enum": [
+                  "Insert",
+                  "Update",
+                  "Upsert"
+                ]
+              },
+              "rowKey": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "sheetMappings": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "sheet": {
+                      "type": "string"
+                    },
+                    "collection": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "sheet"
+                  ]
+                }
+              },
+              "columnMappings": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "sheet": {
+                      "type": "string"
+                    },
+                    "column": {
+                      "type": "string"
+                    },
+                    "path": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "sheet",
+                    "column"
+                  ]
+                }
+              },
+              "ignoreUnmappedColumns": {
+                "type": "boolean"
+              },
+              "ignoreSheetStamps": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "fileId",
+              "mode",
+              "sheetMappings",
+              "columnMappings",
+              "ignoreUnmappedColumns",
+              "ignoreSheetStamps"
+            ]
+          },
+          "fields": [
+            {
+              "name": "fileId",
+              "labelKey": "FileId",
+              "required": true,
+              "value": {
+                "type": "integer",
+                "nullable": false
+              }
+            },
+            {
+              "name": "mode",
+              "labelKey": "Mode",
+              "required": true,
+              "value": {
+                "type": "enum",
+                "nullable": false,
+                "enum": "core.ImportMode"
+              }
+            },
+            {
+              "name": "rowKey",
+              "labelKey": "RowKey",
+              "required": false,
+              "value": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            {
+              "name": "sheetMappings",
+              "labelKey": "SheetMappings",
+              "required": true,
+              "value": {
+                "type": "json",
+                "nullable": false
+              }
+            },
+            {
+              "name": "columnMappings",
+              "labelKey": "ColumnMappings",
+              "required": true,
+              "value": {
+                "type": "json",
+                "nullable": false
+              }
+            },
+            {
+              "name": "ignoreUnmappedColumns",
+              "labelKey": "IgnoreUnmappedColumns",
+              "required": true,
+              "value": {
+                "type": "bool",
+                "nullable": false
+              }
+            },
+            {
+              "name": "ignoreSheetStamps",
+              "labelKey": "IgnoreSheetStamps",
+              "required": true,
+              "value": {
+                "type": "bool",
+                "nullable": false
+              }
+            }
+          ]
         }
       ],
       "relatedSelect": [
@@ -2899,8 +3217,7 @@
           "type": "enum",
           "queryable": true,
           "nullable": false,
-          "labelKey": "Core_Import_Mode",
-          "labelFallback": "Mode",
+          "labelKey": "Mode",
           "excel": true,
           "ownership": "write-once",
           "enum": "core.ImportMode"
@@ -5915,6 +6232,165 @@
               }
             }
           ]
+        },
+        {
+          "name": "import",
+          "kind": "api",
+          "builtIn": false,
+          "action": "Save",
+          "labelKey": "Action_Import",
+          "mutation": true,
+          "idempotent": false,
+          "destructive": false,
+          "singleTarget": false,
+          "supportsFilter": false,
+          "result": "own",
+          "arguments": {
+            "type": "object",
+            "properties": {
+              "fileId": {
+                "type": "integer"
+              },
+              "mode": {
+                "type": "string",
+                "enum": [
+                  "Insert",
+                  "Update",
+                  "Upsert"
+                ]
+              },
+              "rowKey": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "sheetMappings": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "sheet": {
+                      "type": "string"
+                    },
+                    "collection": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "sheet"
+                  ]
+                }
+              },
+              "columnMappings": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "sheet": {
+                      "type": "string"
+                    },
+                    "column": {
+                      "type": "string"
+                    },
+                    "path": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "sheet",
+                    "column"
+                  ]
+                }
+              },
+              "ignoreUnmappedColumns": {
+                "type": "boolean"
+              },
+              "ignoreSheetStamps": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "fileId",
+              "mode",
+              "sheetMappings",
+              "columnMappings",
+              "ignoreUnmappedColumns",
+              "ignoreSheetStamps"
+            ]
+          },
+          "fields": [
+            {
+              "name": "fileId",
+              "labelKey": "FileId",
+              "required": true,
+              "value": {
+                "type": "integer",
+                "nullable": false
+              }
+            },
+            {
+              "name": "mode",
+              "labelKey": "Mode",
+              "required": true,
+              "value": {
+                "type": "enum",
+                "nullable": false,
+                "enum": "core.ImportMode"
+              }
+            },
+            {
+              "name": "rowKey",
+              "labelKey": "RowKey",
+              "required": false,
+              "value": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            {
+              "name": "sheetMappings",
+              "labelKey": "SheetMappings",
+              "required": true,
+              "value": {
+                "type": "json",
+                "nullable": false
+              }
+            },
+            {
+              "name": "columnMappings",
+              "labelKey": "ColumnMappings",
+              "required": true,
+              "value": {
+                "type": "json",
+                "nullable": false
+              }
+            },
+            {
+              "name": "ignoreUnmappedColumns",
+              "labelKey": "IgnoreUnmappedColumns",
+              "required": true,
+              "value": {
+                "type": "bool",
+                "nullable": false
+              }
+            },
+            {
+              "name": "ignoreSheetStamps",
+              "labelKey": "IgnoreSheetStamps",
+              "required": true,
+              "value": {
+                "type": "bool",
+                "nullable": false
+              }
+            }
+          ]
         }
       ],
       "relatedSelect": [
@@ -7071,6 +7547,165 @@
               "required": true,
               "value": {
                 "type": "json",
+                "nullable": false
+              }
+            }
+          ]
+        },
+        {
+          "name": "import",
+          "kind": "api",
+          "builtIn": false,
+          "action": "Save",
+          "labelKey": "Action_Import",
+          "mutation": true,
+          "idempotent": false,
+          "destructive": false,
+          "singleTarget": false,
+          "supportsFilter": false,
+          "result": "own",
+          "arguments": {
+            "type": "object",
+            "properties": {
+              "fileId": {
+                "type": "integer"
+              },
+              "mode": {
+                "type": "string",
+                "enum": [
+                  "Insert",
+                  "Update",
+                  "Upsert"
+                ]
+              },
+              "rowKey": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "sheetMappings": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "sheet": {
+                      "type": "string"
+                    },
+                    "collection": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "sheet"
+                  ]
+                }
+              },
+              "columnMappings": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "sheet": {
+                      "type": "string"
+                    },
+                    "column": {
+                      "type": "string"
+                    },
+                    "path": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "sheet",
+                    "column"
+                  ]
+                }
+              },
+              "ignoreUnmappedColumns": {
+                "type": "boolean"
+              },
+              "ignoreSheetStamps": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "fileId",
+              "mode",
+              "sheetMappings",
+              "columnMappings",
+              "ignoreUnmappedColumns",
+              "ignoreSheetStamps"
+            ]
+          },
+          "fields": [
+            {
+              "name": "fileId",
+              "labelKey": "FileId",
+              "required": true,
+              "value": {
+                "type": "integer",
+                "nullable": false
+              }
+            },
+            {
+              "name": "mode",
+              "labelKey": "Mode",
+              "required": true,
+              "value": {
+                "type": "enum",
+                "nullable": false,
+                "enum": "core.ImportMode"
+              }
+            },
+            {
+              "name": "rowKey",
+              "labelKey": "RowKey",
+              "required": false,
+              "value": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            {
+              "name": "sheetMappings",
+              "labelKey": "SheetMappings",
+              "required": true,
+              "value": {
+                "type": "json",
+                "nullable": false
+              }
+            },
+            {
+              "name": "columnMappings",
+              "labelKey": "ColumnMappings",
+              "required": true,
+              "value": {
+                "type": "json",
+                "nullable": false
+              }
+            },
+            {
+              "name": "ignoreUnmappedColumns",
+              "labelKey": "IgnoreUnmappedColumns",
+              "required": true,
+              "value": {
+                "type": "bool",
+                "nullable": false
+              }
+            },
+            {
+              "name": "ignoreSheetStamps",
+              "labelKey": "IgnoreSheetStamps",
+              "required": true,
+              "value": {
+                "type": "bool",
                 "nullable": false
               }
             }
@@ -9198,6 +9833,165 @@
               }
             }
           ]
+        },
+        {
+          "name": "import",
+          "kind": "api",
+          "builtIn": false,
+          "action": "Save",
+          "labelKey": "Action_Import",
+          "mutation": true,
+          "idempotent": false,
+          "destructive": false,
+          "singleTarget": false,
+          "supportsFilter": false,
+          "result": "own",
+          "arguments": {
+            "type": "object",
+            "properties": {
+              "fileId": {
+                "type": "integer"
+              },
+              "mode": {
+                "type": "string",
+                "enum": [
+                  "Insert",
+                  "Update",
+                  "Upsert"
+                ]
+              },
+              "rowKey": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "sheetMappings": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "sheet": {
+                      "type": "string"
+                    },
+                    "collection": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "sheet"
+                  ]
+                }
+              },
+              "columnMappings": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "sheet": {
+                      "type": "string"
+                    },
+                    "column": {
+                      "type": "string"
+                    },
+                    "path": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "sheet",
+                    "column"
+                  ]
+                }
+              },
+              "ignoreUnmappedColumns": {
+                "type": "boolean"
+              },
+              "ignoreSheetStamps": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "fileId",
+              "mode",
+              "sheetMappings",
+              "columnMappings",
+              "ignoreUnmappedColumns",
+              "ignoreSheetStamps"
+            ]
+          },
+          "fields": [
+            {
+              "name": "fileId",
+              "labelKey": "FileId",
+              "required": true,
+              "value": {
+                "type": "integer",
+                "nullable": false
+              }
+            },
+            {
+              "name": "mode",
+              "labelKey": "Mode",
+              "required": true,
+              "value": {
+                "type": "enum",
+                "nullable": false,
+                "enum": "core.ImportMode"
+              }
+            },
+            {
+              "name": "rowKey",
+              "labelKey": "RowKey",
+              "required": false,
+              "value": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            {
+              "name": "sheetMappings",
+              "labelKey": "SheetMappings",
+              "required": true,
+              "value": {
+                "type": "json",
+                "nullable": false
+              }
+            },
+            {
+              "name": "columnMappings",
+              "labelKey": "ColumnMappings",
+              "required": true,
+              "value": {
+                "type": "json",
+                "nullable": false
+              }
+            },
+            {
+              "name": "ignoreUnmappedColumns",
+              "labelKey": "IgnoreUnmappedColumns",
+              "required": true,
+              "value": {
+                "type": "bool",
+                "nullable": false
+              }
+            },
+            {
+              "name": "ignoreSheetStamps",
+              "labelKey": "IgnoreSheetStamps",
+              "required": true,
+              "value": {
+                "type": "bool",
+                "nullable": false
+              }
+            }
+          ]
         }
       ],
       "relatedSelect": [
@@ -10066,6 +10860,165 @@
               "required": true,
               "value": {
                 "type": "json",
+                "nullable": false
+              }
+            }
+          ]
+        },
+        {
+          "name": "import",
+          "kind": "api",
+          "builtIn": false,
+          "action": "Save",
+          "labelKey": "Action_Import",
+          "mutation": true,
+          "idempotent": false,
+          "destructive": false,
+          "singleTarget": false,
+          "supportsFilter": false,
+          "result": "own",
+          "arguments": {
+            "type": "object",
+            "properties": {
+              "fileId": {
+                "type": "integer"
+              },
+              "mode": {
+                "type": "string",
+                "enum": [
+                  "Insert",
+                  "Update",
+                  "Upsert"
+                ]
+              },
+              "rowKey": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "sheetMappings": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "sheet": {
+                      "type": "string"
+                    },
+                    "collection": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "sheet"
+                  ]
+                }
+              },
+              "columnMappings": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "sheet": {
+                      "type": "string"
+                    },
+                    "column": {
+                      "type": "string"
+                    },
+                    "path": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "sheet",
+                    "column"
+                  ]
+                }
+              },
+              "ignoreUnmappedColumns": {
+                "type": "boolean"
+              },
+              "ignoreSheetStamps": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "fileId",
+              "mode",
+              "sheetMappings",
+              "columnMappings",
+              "ignoreUnmappedColumns",
+              "ignoreSheetStamps"
+            ]
+          },
+          "fields": [
+            {
+              "name": "fileId",
+              "labelKey": "FileId",
+              "required": true,
+              "value": {
+                "type": "integer",
+                "nullable": false
+              }
+            },
+            {
+              "name": "mode",
+              "labelKey": "Mode",
+              "required": true,
+              "value": {
+                "type": "enum",
+                "nullable": false,
+                "enum": "core.ImportMode"
+              }
+            },
+            {
+              "name": "rowKey",
+              "labelKey": "RowKey",
+              "required": false,
+              "value": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            {
+              "name": "sheetMappings",
+              "labelKey": "SheetMappings",
+              "required": true,
+              "value": {
+                "type": "json",
+                "nullable": false
+              }
+            },
+            {
+              "name": "columnMappings",
+              "labelKey": "ColumnMappings",
+              "required": true,
+              "value": {
+                "type": "json",
+                "nullable": false
+              }
+            },
+            {
+              "name": "ignoreUnmappedColumns",
+              "labelKey": "IgnoreUnmappedColumns",
+              "required": true,
+              "value": {
+                "type": "bool",
+                "nullable": false
+              }
+            },
+            {
+              "name": "ignoreSheetStamps",
+              "labelKey": "IgnoreSheetStamps",
+              "required": true,
+              "value": {
+                "type": "bool",
                 "nullable": false
               }
             }

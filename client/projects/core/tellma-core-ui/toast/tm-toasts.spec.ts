@@ -4,7 +4,7 @@
 // LICENSE file in the root directory of this source tree.
 
 import { OverlayContainer } from '@angular/cdk/overlay';
-import { Component, ErrorHandler } from '@angular/core';
+import { Component, ErrorHandler, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { TestbedHarnessEnvironment } from '@angular/cdk/testing/testbed';
 
@@ -95,6 +95,29 @@ describe('TmToasts — queue and timers', () => {
     expect(pill.textContent?.trim()).toBe('+1');
     pill.click();
     expect(run).toHaveBeenCalledTimes(1);
+  });
+
+  it('lets an installed overflow pill win over the configured one, fall back when it declines, and uninstall', () => {
+    const run = vi.fn();
+    const { toasts } = setup({ maxVisible: 1, overflow: (hidden) => ({ label: `+${hidden}` }) });
+    const installed = signal<{ readonly label: string; readonly run?: () => void } | null>(null);
+    toasts.ɵsetOverflow(() => installed());
+    toasts.show({ tone: 'neutral', title: 'One' });
+    toasts.show({ tone: 'neutral', title: 'Two' });
+    // Declined: the configured pill.
+    expect(titles()).toEqual(['Two']);
+    expect(hostElement().querySelector('.tm-toasts__pill')?.textContent?.trim()).toBe('+1');
+    // Installed, and read reactively.
+    installed.set({ label: 'Open all', run });
+    TestBed.tick();
+    const pill = hostElement().querySelector<HTMLButtonElement>('button.tm-toasts__pill')!;
+    expect(pill.textContent?.trim()).toBe('Open all');
+    pill.click();
+    expect(run).toHaveBeenCalledTimes(1);
+    // Uninstalled: the configured pill again.
+    toasts.ɵsetOverflow(null);
+    TestBed.tick();
+    expect(hostElement().querySelector('.tm-toasts__pill')?.textContent?.trim()).toBe('+1');
   });
 
   it('replaces an open toast with the same key in place', () => {

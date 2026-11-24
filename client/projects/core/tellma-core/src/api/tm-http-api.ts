@@ -3,7 +3,7 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-import { effect, inject, Injectable, Injector, signal, untracked, type Signal } from '@angular/core';
+import { DestroyRef, effect, inject, Injectable, Injector, signal, untracked, type Signal } from '@angular/core';
 import { Router } from '@angular/router';
 import type { TmBlobFetchOptions, TmBlobFetchResult } from '@tellma/core-ui/image';
 
@@ -254,6 +254,8 @@ export class TmHttpApi implements TmApi {
   readonly #log = inject(TmRequestLog);
   readonly #loaders = inject(TM_METADATA_LOADERS, { optional: true });
   readonly #injector = inject(Injector);
+  /** The app's lifetime: once it ends, its injector resolves nothing, so no call goes on. */
+  readonly #app = inject(DestroyRef);
   readonly #now = inject(TM_NOW);
   readonly #writes = signal(0);
   readonly #random = (array: Uint8Array<ArrayBuffer>): Uint8Array<ArrayBuffer> => this.#host.random(array);
@@ -651,10 +653,14 @@ export class TmHttpApi implements TmApi {
    * @returns Whether the call is authenticated.
    */
   #admit(route: string, mode: 'read' | 'write' | 'upload', cancel: AbortSignal | null, traceId: string): boolean {
-    if (cancel?.aborted === true) {
-      throw new TmApiError({ kind: 'cancelled', traceId });
-    }
-    if (this.#session.state() !== 'active' && !(mode === 'write' && route === LOGOUT_ROUTE)) {
+    // Cancelled: by the caller, by the app's end (which may overtake a retry's
+    // wait; the session is not read then, as its injector is gone), or by the
+    // session leaving the tab, which still sends its sign-out.
+    if (
+      cancel?.aborted === true ||
+      this.#app.destroyed ||
+      (this.#session.state() !== 'active' && !(mode === 'write' && route === LOGOUT_ROUTE))
+    ) {
       throw new TmApiError({ kind: 'cancelled', traceId });
     }
     const authenticated = !ANONYMOUS_ROUTE.test(route);
@@ -939,8 +945,9 @@ export class TmHttpApi implements TmApi {
   }
 
   /**
-   * The attempt of a call that got no answer: cancelled by its caller or
-   * the session, ended by the watchdog, or failed at the network level.
+   * The attempt of a call that got no answer: cancelled by its caller, the
+   * session or the app's end, ended by the watchdog, or failed at the
+   * network level.
    *
    * @param call - The call.
    * @param timedOut - Whether the watchdog ended it.
@@ -948,7 +955,9 @@ export class TmHttpApi implements TmApi {
    */
   #unanswered(call: TmCall, timedOut: boolean): TmAttempt<never> {
     const traceId = call.traceId;
-    if (call.cancel?.aborted === true) {
+    // A failure that lands after the app's end is cancelled too: it plans no
+    // retry, and does not mark the server unreachable for an app that is gone.
+    if (call.cancel?.aborted === true || this.#app.destroyed) {
       return { ok: false, error: new TmApiError({ kind: 'cancelled', traceId }), retry: null, build: null };
     }
     if (timedOut) {
@@ -986,6 +995,11 @@ export class TmHttpApi implements TmApi {
     const build = answer.header('Tellma-Build');
     const traceId = answer.header('Tellma-Trace-Id') || call.traceId;
 
+    // --- The app's end: an answer that lands afterwards cannot be checked, so it is cancelled unobserved ---
+    if (this.#app.destroyed) {
+      return { ok: false, error: new TmApiError({ kind: 'cancelled', traceId }), retry: null, build };
+    }
+
     // --- Step 4: the response check; another user's answer is discarded ---
     if (call.checksAnswer) {
       try {
@@ -1001,7 +1015,12 @@ export class TmHttpApi implements TmApi {
       const tags = tmParseVersionTags(answer.header('Tellma-Version-Tags'));
       if (tags !== null) {
         // One task later, so the caller adopts its own result before the refresher compares tags.
-        setTimeout(() => this.#cache.observe(tenantId, tags, 'header'), 0);
+        // The app may end within that task, and then the tags go nowhere.
+        setTimeout(() => {
+          if (!this.#app.destroyed) {
+            this.#cache.observe(tenantId, tags, 'header');
+          }
+        }, 0);
       }
       if (isSuccess(answer.status)) {
         this.#launch.settle(tenantId);
@@ -1043,7 +1062,12 @@ export class TmHttpApi implements TmApi {
 
     // --- The kind, and §5.6's verdict for an outdated side ---
     if (mapped === TM_OUTDATED) {
-      ({ kind, code } = await this.#verdict(build));
+      const judged = await this.#verdict(build);
+      // The app ended while the verdict was decided, so the call is cancelled like an answer that lands after the end.
+      if (judged === null) {
+        return { ok: false, error: new TmApiError({ kind: 'cancelled', traceId }), retry: null, build };
+      }
+      ({ kind, code } = judged);
     } else {
       kind = mapped;
       if (kind === 'server' && problem === null) {
@@ -1098,9 +1122,9 @@ export class TmHttpApi implements TmApi {
    * worker's update check, capped at 3 s.
    *
    * @param build - The server's build, from `Tellma-Build`.
-   * @returns The kind and the code.
+   * @returns The kind and the code, or `null` when the app ended while the verdict was decided.
    */
-  async #verdict(build: string | null): Promise<{ kind: TmApiErrorKind; code: string }> {
+  async #verdict(build: string | null): Promise<{ kind: TmApiErrorKind; code: string } | null> {
     // The build rules load with the first such answer; a chunk that cannot
     // load leaves the builds unordered, so the worker decides.
     const decided = await import('./tm-api-verdict')
@@ -1108,7 +1132,16 @@ export class TmHttpApi implements TmApi {
         tmBuildVerdict(this.#uiVersion(), build, this.#judgedOlder, this.#now(), SERVER_OUTDATED_WAIT_MS),
       )
       .catch(() => null);
-    if (decided === 'same') {
+    // Unordered builds, or a second older verdict for the same build past the
+    // first one's retry window (a rollback): the worker decides, and only a
+    // confirmed `none` blames the server.
+    const verdict = decided ?? ((await this.#askWorker()) === 'none' ? 'server-outdated' : 'client-outdated');
+    // The chunk's load or the worker's check (up to 3 s) may outlast the app;
+    // then nothing is asked or reported.
+    if (this.#app.destroyed) {
+      return null;
+    }
+    if (verdict === 'same') {
       // The same build refused its own contract: a bug, reported by the caller.
       return { kind: 'server', code: 'contract-mismatch' };
     }
@@ -1116,10 +1149,6 @@ export class TmHttpApi implements TmApi {
       // So an old tab whose only calls are background syncs still learns of the update.
       this.#updates.check().catch(() => undefined);
     }
-    // Unordered builds, or a second older verdict for the same build past the
-    // first one's retry window (a rollback): the worker decides, and only a
-    // confirmed `none` blames the server.
-    const verdict = decided ?? ((await this.#askWorker()) === 'none' ? 'server-outdated' : 'client-outdated');
     this.#telemetry.event('tm.api.client-outdated', { verdict, source: decided === null ? 'worker' : 'build' });
     return { kind: 'client-outdated', code: verdict };
   }

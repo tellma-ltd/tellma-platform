@@ -9,8 +9,8 @@ namespace Tellma.Core.Excel
 {
     /// <summary>
     ///     The import faults that refuse a workbook as a whole: a package above a size limit, a
-    ///     shared-string table with too many entries, and a package or part that is not a readable
-    ///     workbook. Each is an <see cref="ImportException" /> carrying one error, at the sheet when one
+    ///     workbook above the synchronous import's limits, a shared-string table with too many
+    ///     entries, and a package or part that is not a readable workbook. Each is an <see cref="ImportException" /> carrying one error, at the sheet when one
     ///     is to blame and at no row.
     /// </summary>
     internal static class ImportFaults
@@ -71,6 +71,23 @@ namespace Tellma.Core.Excel
             {
                 ["entries"] = entries,
                 ["max"] = max,
+            });
+        }
+
+        /// <summary>A workbook above a limit of the synchronous import, which the background import runs instead.</summary>
+        /// <param name="rows">The data rows the workbook holds against the row limit: every sheet's, or the parent sheet's against the parent ceiling.</param>
+        /// <param name="maxRows">The row limit: the one crossed, else the synchronous import's.</param>
+        /// <param name="bytes">The workbook's bytes against the byte limit: its uncompressed parts' when that limit was crossed, else the file's.</param>
+        /// <param name="maxBytes">The byte limit: the one crossed, else the file's.</param>
+        /// <returns>The exception.</returns>
+        public static ImportException TooLargeForSynchronous(long rows, long maxRows, long bytes, long maxBytes)
+        {
+            return One(ExcelErrorCodes.ImportTooLargeForSynchronous, sheet: null, new Dictionary<string, object?>(StringComparer.Ordinal)
+            {
+                ["rows"] = rows,
+                ["maxRows"] = maxRows,
+                ["bytes"] = bytes,
+                ["maxBytes"] = maxBytes,
             });
         }
 

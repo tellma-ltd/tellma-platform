@@ -39,6 +39,11 @@
   color: var(--text-secondary);
 }
 
+/* A machine value among the details, such as an identifier support reads. */
+.tm-error-dialog__code {
+  font-family: var(--font-mono);
+}
+
 /* The Details disclosure: a quiet text button with a leading chevron. */
 .tm-error-dialog__details {
   display: flex;

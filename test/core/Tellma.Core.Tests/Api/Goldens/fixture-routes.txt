@@ -22,6 +22,7 @@ POST /{tenantId}/api/web/users/invitation-status | invitation-status | core.User
 POST /{tenantId}/api/web/users/export | export | core.User | api | ExportRequest | ExportOutcome | core.User:Read | long, idempotent | Fy5vEZu1-Mqy
 POST /{tenantId}/api/web/users/export-for-import | export-for-import | core.User | api | ExportForImportRequest | ExportOutcome | core.User:Read | long, idempotent | EaMkiCeHi04-
 POST /{tenantId}/api/web/users/inspect-import | inspect-import | core.User | api | InspectImportRequest | ImportPlan | core.User:Save | long, idempotent | CROEU7gfsOlj
+POST /{tenantId}/api/web/users/import | import | core.User | api | ImportRequest | ImportOutcome | core.User:Save | mutation, long | yhjc1_H5L8Ze
 POST /{tenantId}/api/web/roles/query | query | core.Role | - | QueryRequest | RowPage | core.Role:Read | idempotent | PqV1-faRenCx
 POST /{tenantId}/api/web/roles/get | get | core.Role | - | GetRequest | EntitiesResult<Role> | core.Role:Read | idempotent | UrE0C_S3Q0wA
 POST /{tenantId}/api/web/roles/get-by-ids | get-by-ids | core.Role | - | GetByIdsRequest | EntitiesResult<Role> | core.Role:Read | idempotent | _R-z6oPzKA_H
@@ -32,6 +33,7 @@ POST /{tenantId}/api/web/roles/deactivate | deactivate | core.Role | entity | En
 POST /{tenantId}/api/web/roles/export | export | core.Role | api | ExportRequest | ExportOutcome | core.Role:Read | long, idempotent | Fy5vEZu1-Mqy
 POST /{tenantId}/api/web/roles/export-for-import | export-for-import | core.Role | api | ExportForImportRequest | ExportOutcome | core.Role:Read | long, idempotent | EaMkiCeHi04-
 POST /{tenantId}/api/web/roles/inspect-import | inspect-import | core.Role | api | InspectImportRequest | ImportPlan | core.Role:Save | long, idempotent | CROEU7gfsOlj
+POST /{tenantId}/api/web/roles/import | import | core.Role | api | ImportRequest | ImportOutcome | core.Role:Save | mutation, long | yhjc1_H5L8Ze
 POST /{tenantId}/api/web/notifications/query | query | core.Notification | - | QueryRequest | RowPage | core.Notification:Read | idempotent | PqV1-faRenCx
 POST /{tenantId}/api/web/notifications/get | get | core.Notification | - | GetRequest | EntitiesResult<Notification> | core.Notification:Read | idempotent | X-lsgUqE_iPC
 POST /{tenantId}/api/web/notifications/get-by-ids | get-by-ids | core.Notification | - | GetByIdsRequest | EntitiesResult<Notification> | core.Notification:Read | idempotent | W3AaofMQvkDC
@@ -68,6 +70,7 @@ POST /{tenantId}/api/web/schedules/run-now | run-now | core.Schedule | entity | 
 POST /{tenantId}/api/web/schedules/export | export | core.Schedule | api | ExportRequest | ExportOutcome | core.Schedule:Read | long, idempotent | Fy5vEZu1-Mqy
 POST /{tenantId}/api/web/schedules/export-for-import | export-for-import | core.Schedule | api | ExportForImportRequest | ExportOutcome | core.Schedule:Read | long, idempotent | EaMkiCeHi04-
 POST /{tenantId}/api/web/schedules/inspect-import | inspect-import | core.Schedule | api | InspectImportRequest | ImportPlan | core.Schedule:Save | long, idempotent | CROEU7gfsOlj
+POST /{tenantId}/api/web/schedules/import | import | core.Schedule | api | ImportRequest | ImportOutcome | core.Schedule:Save | mutation, long | yhjc1_H5L8Ze
 POST /{tenantId}/api/web/reports/query | query | core.Report | - | QueryRequest | RowPage | core.Report:Read | idempotent | PqV1-faRenCx
 POST /{tenantId}/api/web/reports/get | get | core.Report | - | GetRequest | EntitiesResult<Report> | core.Report:Read | idempotent | yUeb6aXiKiUT
 POST /{tenantId}/api/web/reports/get-by-ids | get-by-ids | core.Report | - | GetByIdsRequest | EntitiesResult<Report> | core.Report:Read | idempotent | TqNhUYS1mnI9
@@ -89,6 +92,7 @@ POST /{tenantId}/api/web/widgets/deactivate | deactivate | fixture.Widget | enti
 POST /{tenantId}/api/web/widgets/export | export | fixture.Widget | api | ExportRequest | ExportOutcome | fixture.Widget:Read | long, idempotent | Fy5vEZu1-Mqy
 POST /{tenantId}/api/web/widgets/export-for-import | export-for-import | fixture.Widget | api | ExportForImportRequest | ExportOutcome | fixture.Widget:Read | long, idempotent | EaMkiCeHi04-
 POST /{tenantId}/api/web/widgets/inspect-import | inspect-import | fixture.Widget | api | InspectImportRequest | ImportPlan | fixture.Widget:Save | long, idempotent | CROEU7gfsOlj
+POST /{tenantId}/api/web/widgets/import | import | fixture.Widget | api | ImportRequest | ImportOutcome | fixture.Widget:Save | mutation, long | yhjc1_H5L8Ze
 POST /{tenantId}/api/web/widget-extras/query | query | fixture.WidgetExtra | - | QueryRequest | RowPage | fixture.WidgetExtra:Read | idempotent | PqV1-faRenCx
 POST /{tenantId}/api/web/widget-extras/get | get | fixture.WidgetExtra | - | GetRequest | EntitiesResult<WidgetExtra> | fixture.WidgetExtra:Read | idempotent | X7TjD4TW34N1
 POST /{tenantId}/api/web/widget-extras/get-by-ids | get-by-ids | fixture.WidgetExtra | - | GetByIdsRequest | EntitiesResult<WidgetExtra> | fixture.WidgetExtra:Read | idempotent | ZoO6E9We6a6X
@@ -98,6 +102,7 @@ POST /{tenantId}/api/web/widget-extras/delete-by-query | delete-by-query | fixtu
 POST /{tenantId}/api/web/widget-extras/export | export | fixture.WidgetExtra | api | ExportRequest | ExportOutcome | fixture.WidgetExtra:Read | long, idempotent | Fy5vEZu1-Mqy
 POST /{tenantId}/api/web/widget-extras/export-for-import | export-for-import | fixture.WidgetExtra | api | ExportForImportRequest | ExportOutcome | fixture.WidgetExtra:Read | long, idempotent | EaMkiCeHi04-
 POST /{tenantId}/api/web/widget-extras/inspect-import | inspect-import | fixture.WidgetExtra | api | InspectImportRequest | ImportPlan | fixture.WidgetExtra:Save | long, idempotent | CROEU7gfsOlj
+POST /{tenantId}/api/web/widget-extras/import | import | fixture.WidgetExtra | api | ImportRequest | ImportOutcome | fixture.WidgetExtra:Save | mutation, long | yhjc1_H5L8Ze
 POST /{tenantId}/api/web/nodes/query | query | fixture.Node | - | QueryRequest | RowPage | fixture.Node:Read | idempotent | PqV1-faRenCx
 POST /{tenantId}/api/web/nodes/get-by-parent-ids | get-by-parent-ids | fixture.Node | - | ParentIdsRequest | RowPage | fixture.Node:Read | idempotent | cl9JkVt-Dxju
 POST /{tenantId}/api/web/nodes/get | get | fixture.Node | - | GetRequest | EntitiesResult<Node> | fixture.Node:Read | idempotent | ag77MLyKoLfi
@@ -111,6 +116,7 @@ POST /{tenantId}/api/web/nodes/deactivate | deactivate | fixture.Node | entity |
 POST /{tenantId}/api/web/nodes/export | export | fixture.Node | api | ExportRequest | ExportOutcome | fixture.Node:Read | long, idempotent | Fy5vEZu1-Mqy
 POST /{tenantId}/api/web/nodes/export-for-import | export-for-import | fixture.Node | api | ExportForImportRequest | ExportOutcome | fixture.Node:Read | long, idempotent | EaMkiCeHi04-
 POST /{tenantId}/api/web/nodes/inspect-import | inspect-import | fixture.Node | api | InspectImportRequest | ImportPlan | fixture.Node:Save | long, idempotent | CROEU7gfsOlj
+POST /{tenantId}/api/web/nodes/import | import | fixture.Node | api | ImportRequest | ImportOutcome | fixture.Node:Save | mutation, long | yhjc1_H5L8Ze
 POST /{tenantId}/api/web/shipments/query | query | fixture.Shipment | - | QueryRequest | RowPage | fixture.Shipment:Read | idempotent | PqV1-faRenCx
 POST /{tenantId}/api/web/shipments/get | get | fixture.Shipment | - | GetRequest | EntitiesResult<Shipment> | fixture.Shipment:Read | idempotent | pOttzqWOqBFp
 POST /{tenantId}/api/web/shipments/get-by-ids | get-by-ids | fixture.Shipment | - | GetByIdsRequest | EntitiesResult<Shipment> | fixture.Shipment:Read | idempotent | f6AA3xXYNZiz
@@ -120,6 +126,7 @@ POST /{tenantId}/api/web/shipments/delete-by-query | delete-by-query | fixture.S
 POST /{tenantId}/api/web/shipments/export | export | fixture.Shipment | api | ExportRequest | ExportOutcome | fixture.Shipment:Read | long, idempotent | Fy5vEZu1-Mqy
 POST /{tenantId}/api/web/shipments/export-for-import | export-for-import | fixture.Shipment | api | ExportForImportRequest | ExportOutcome | fixture.Shipment:Read | long, idempotent | EaMkiCeHi04-
 POST /{tenantId}/api/web/shipments/inspect-import | inspect-import | fixture.Shipment | api | InspectImportRequest | ImportPlan | fixture.Shipment:Save | long, idempotent | CROEU7gfsOlj
+POST /{tenantId}/api/web/shipments/import | import | fixture.Shipment | api | ImportRequest | ImportOutcome | fixture.Shipment:Save | mutation, long | yhjc1_H5L8Ze
 POST /{tenantId}/api/web/parcels/query | query | fixture.Parcel | - | QueryRequest | RowPage | fixture.Parcel:Read | idempotent | PqV1-faRenCx
 POST /{tenantId}/api/web/parcels/get | get | fixture.Parcel | - | GetRequest | EntitiesResult<Parcel> | fixture.Parcel:Read | idempotent | XBiQ0UF1W6EJ
 POST /{tenantId}/api/web/parcels/get-by-ids | get-by-ids | fixture.Parcel | - | GetByIdsRequest | EntitiesResult<Parcel> | fixture.Parcel:Read | idempotent | YVTPy0EP4DJe
@@ -129,6 +136,7 @@ POST /{tenantId}/api/web/parcels/delete-by-query | delete-by-query | fixture.Par
 POST /{tenantId}/api/web/parcels/export | export | fixture.Parcel | api | ExportRequest | ExportOutcome | fixture.Parcel:Read | long, idempotent | Fy5vEZu1-Mqy
 POST /{tenantId}/api/web/parcels/export-for-import | export-for-import | fixture.Parcel | api | ExportForImportRequest | ExportOutcome | fixture.Parcel:Read | long, idempotent | EaMkiCeHi04-
 POST /{tenantId}/api/web/parcels/inspect-import | inspect-import | fixture.Parcel | api | InspectImportRequest | ImportPlan | fixture.Parcel:Save | long, idempotent | CROEU7gfsOlj
+POST /{tenantId}/api/web/parcels/import | import | fixture.Parcel | api | ImportRequest | ImportOutcome | fixture.Parcel:Save | mutation, long | yhjc1_H5L8Ze
 POST /{tenantId}/api/web/lookups/query | query | fixture.Lookup | - | QueryRequest | RowPage | fixture.Lookup:Read | idempotent | PqV1-faRenCx
 POST /{tenantId}/api/web/lookups/get | get | fixture.Lookup | - | GetRequest | EntitiesResult<Lookup> | fixture.Lookup:Read | idempotent | Y_eWXBH3S9wn
 POST /{tenantId}/api/web/lookups/get-by-ids | get-by-ids | fixture.Lookup | - | GetByIdsRequest | EntitiesResult<Lookup> | fixture.Lookup:Read | idempotent | ja9_NFJs7XaB
@@ -141,6 +149,7 @@ POST /{tenantId}/api/web/lookups/deactivate | deactivate | fixture.Lookup | enti
 POST /{tenantId}/api/web/lookups/export | export | fixture.Lookup | api | ExportRequest | ExportOutcome | fixture.Lookup:Read | long, idempotent | Fy5vEZu1-Mqy
 POST /{tenantId}/api/web/lookups/export-for-import | export-for-import | fixture.Lookup | api | ExportForImportRequest | ExportOutcome | fixture.Lookup:Read | long, idempotent | EaMkiCeHi04-
 POST /{tenantId}/api/web/lookups/inspect-import | inspect-import | fixture.Lookup | api | InspectImportRequest | ImportPlan | fixture.Lookup:Save | long, idempotent | CROEU7gfsOlj
+POST /{tenantId}/api/web/lookups/import | import | fixture.Lookup | api | ImportRequest | ImportOutcome | fixture.Lookup:Save | mutation, long | yhjc1_H5L8Ze
 POST /{tenantId}/api/web/blob-owners/query | query | fixture.BlobOwner | - | QueryRequest | RowPage | fixture.BlobOwner:Read | idempotent | PqV1-faRenCx
 POST /{tenantId}/api/web/blob-owners/get | get | fixture.BlobOwner | - | GetRequest | EntitiesResult<BlobOwner> | fixture.BlobOwner:Read | idempotent | LjL_RoVFuLGD
 POST /{tenantId}/api/web/blob-owners/get-by-ids | get-by-ids | fixture.BlobOwner | - | GetByIdsRequest | EntitiesResult<BlobOwner> | fixture.BlobOwner:Read | idempotent | 5GNLSjYB8HOc
@@ -150,6 +159,7 @@ POST /{tenantId}/api/web/blob-owners/delete-by-query | delete-by-query | fixture
 POST /{tenantId}/api/web/blob-owners/export | export | fixture.BlobOwner | api | ExportRequest | ExportOutcome | fixture.BlobOwner:Read | long, idempotent | Fy5vEZu1-Mqy
 POST /{tenantId}/api/web/blob-owners/export-for-import | export-for-import | fixture.BlobOwner | api | ExportForImportRequest | ExportOutcome | fixture.BlobOwner:Read | long, idempotent | EaMkiCeHi04-
 POST /{tenantId}/api/web/blob-owners/inspect-import | inspect-import | fixture.BlobOwner | api | InspectImportRequest | ImportPlan | fixture.BlobOwner:Save | long, idempotent | CROEU7gfsOlj
+POST /{tenantId}/api/web/blob-owners/import | import | fixture.BlobOwner | api | ImportRequest | ImportOutcome | fixture.BlobOwner:Save | mutation, long | yhjc1_H5L8Ze
 POST /{tenantId}/api/web/blob-folders/query | query | fixture.BlobFolder | - | QueryRequest | RowPage | fixture.BlobFolder:Read | idempotent | PqV1-faRenCx
 POST /{tenantId}/api/web/blob-folders/get-by-parent-ids | get-by-parent-ids | fixture.BlobFolder | - | ParentIdsRequest | RowPage | fixture.BlobFolder:Read | idempotent | cl9JkVt-Dxju
 POST /{tenantId}/api/web/blob-folders/get | get | fixture.BlobFolder | - | GetRequest | EntitiesResult<BlobFolder> | fixture.BlobFolder:Read | idempotent | zoQAD2QjAbBY
@@ -161,6 +171,7 @@ POST /{tenantId}/api/web/blob-folders/delete-with-descendants | delete-with-desc
 POST /{tenantId}/api/web/blob-folders/export | export | fixture.BlobFolder | api | ExportRequest | ExportOutcome | fixture.BlobFolder:Read | long, idempotent | Fy5vEZu1-Mqy
 POST /{tenantId}/api/web/blob-folders/export-for-import | export-for-import | fixture.BlobFolder | api | ExportForImportRequest | ExportOutcome | fixture.BlobFolder:Read | long, idempotent | EaMkiCeHi04-
 POST /{tenantId}/api/web/blob-folders/inspect-import | inspect-import | fixture.BlobFolder | api | InspectImportRequest | ImportPlan | fixture.BlobFolder:Save | long, idempotent | CROEU7gfsOlj
+POST /{tenantId}/api/web/blob-folders/import | import | fixture.BlobFolder | api | ImportRequest | ImportOutcome | fixture.BlobFolder:Save | mutation, long | yhjc1_H5L8Ze
 POST /{tenantId}/api/web/centers/query | query | gl.Center | - | QueryRequest | RowPage | gl.Center:Read | idempotent | PqV1-faRenCx
 POST /{tenantId}/api/web/centers/get-by-parent-ids | get-by-parent-ids | gl.Center | - | ParentIdsRequest | RowPage | gl.Center:Read | idempotent | cl9JkVt-Dxju
 POST /{tenantId}/api/web/centers/get | get | gl.Center | - | GetRequest | EntitiesResult<Center> | gl.Center:Read | idempotent | 2ASVCvneJUib
@@ -173,6 +184,7 @@ POST /{tenantId}/api/web/centers/deactivate | deactivate | gl.Center | entity | 
 POST /{tenantId}/api/web/centers/export | export | gl.Center | api | ExportRequest | ExportOutcome | gl.Center:Read | long, idempotent | Fy5vEZu1-Mqy
 POST /{tenantId}/api/web/centers/export-for-import | export-for-import | gl.Center | api | ExportForImportRequest | ExportOutcome | gl.Center:Read | long, idempotent | EaMkiCeHi04-
 POST /{tenantId}/api/web/centers/inspect-import | inspect-import | gl.Center | api | InspectImportRequest | ImportPlan | gl.Center:Save | long, idempotent | CROEU7gfsOlj
+POST /{tenantId}/api/web/centers/import | import | gl.Center | api | ImportRequest | ImportOutcome | gl.Center:Save | mutation, long | yhjc1_H5L8Ze
 POST /{tenantId}/api/web/role-memberships/query | query | core.RoleMembership | - | QueryRequest | RowPage | core.RoleMembership:Read | idempotent | PqV1-faRenCx
 POST /{tenantId}/api/web/role-memberships/export | export | core.RoleMembership | api | ExportRequest | ExportOutcome | core.RoleMembership:Read | long, idempotent | Fy5vEZu1-Mqy
 POST /{tenantId}/api/web/permissions/query | query | core.Permission | - | QueryRequest | RowPage | core.Permission:Read | idempotent | PqV1-faRenCx

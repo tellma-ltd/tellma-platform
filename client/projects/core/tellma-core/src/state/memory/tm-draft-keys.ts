@@ -35,6 +35,16 @@ export function tmDraftPrefix(sub: string): string {
 }
 
 /**
+ * A draft key without its prefix and user part, as the support dump lists it.
+ *
+ * @param key - The key, such as `tm.draft:<sub>:17:gl.Center:5`.
+ * @returns The rest, such as `17:gl.Center:5`.
+ */
+export function tmDraftKeyTail(key: string): string {
+  return key.slice(key.indexOf(':', TM_DRAFT_KEY_PREFIX.length) + 1);
+}
+
+/**
  * The keys of the session storage that start with a prefix; none when the
  * storage refuses.
  *

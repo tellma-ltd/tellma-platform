@@ -196,6 +196,28 @@ namespace Tellma.Core.IntegrationTests.Outbox
         }
 
         [Fact]
+        public async Task A_retry_is_refused_whole_when_another_retry_gave_the_email_a_live_job_since_its_validation()
+        {
+            int id = Assert.Single(await EnqueueAsync(Request()));
+            _ = await DispatchAsync();
+            await SetAsync(id, "[State] = 'Failed', [ErrorCode] = N'Email.AttemptsExhausted'");
+            object? job = (await RowAsync(id))["JobId"];
+            int jobs = (await fixture.RowsAsync("SELECT [Id] FROM [core].[Jobs];")).Count;
+
+            // --- Another administrator's retry leaves the row's job live between this retry's two rounds ---
+            fixture.Race.Arm(() => SqlServerFixture.ExecuteAsync(fixture.ConnectionString, Query($"UPDATE [core].[Jobs] SET [Status] = 'Pending' WHERE [Id] = {job};")));
+            ValidationException refused = await Assert.ThrowsAsync<ValidationException>(() => ActAsync(OutgoingEmailService.RetryAction, id));
+
+            // --- The row passes the update, the enqueue refuses it, and nothing is written ---
+            Assert.True(fixture.Race.Ran);
+            ValidationError error = Assert.Single(refused.Errors);
+            Assert.Equal((JobEnqueueCodes.OwnerUnavailable, ValidationPath.Root), (error.Code, error.Path));
+            IReadOnlyDictionary<string, object?> row = await RowAsync(id);
+            Assert.Equal((nameof(OutgoingEmailState.Failed), job), (row["State"], row["JobId"]));
+            Assert.Equal(jobs, (await fixture.RowsAsync("SELECT [Id] FROM [core].[Jobs];")).Count);
+        }
+
+        [Fact]
         public async Task A_retry_of_a_rejected_email_is_refused_and_changes_nothing()
         {
             int id = Assert.Single(await EnqueueAsync(Request()));
