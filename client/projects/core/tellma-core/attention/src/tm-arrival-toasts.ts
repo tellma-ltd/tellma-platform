@@ -65,19 +65,24 @@ const STRINGS_EN = {
   download: 'Download',
 } as const;
 
+// The row helpers are generic over the row's type: a distribution's emitted
+// declarations type a notification or an assignment as a closed interface,
+// and without them the row is an open JSON object, so a member is one the
+// row's own type names.
+
 /** A row's member as non-empty text, else `undefined`. */
-function textOf(row: TmEntityType<'core.Notification'>, member: string): string | undefined {
-  const value = row[member];
+function textOf<R extends object>(row: R, member: keyof R): string | undefined {
+  const value: unknown = row[member];
   return typeof value === 'string' && value !== '' ? value : undefined;
 }
 
 /** A row's instant member in epoch milliseconds, else `NaN`. */
-function timeOf(row: TmEntityType<'core.Notification'>, member: string): number {
+function timeOf<R extends object>(row: R, member: keyof R): number {
   return Date.parse(textOf(row, member) ?? '');
 }
 
 /** The newest instant among rows, or `-Infinity` for none. */
-function newest(rows: readonly TmEntityType<'core.Notification'>[], member: string): number {
+function newest<R extends object>(rows: readonly R[], member: keyof R): number {
   return rows.reduce((latest, row) => Math.max(latest, timeOf(row, member) || -Infinity), -Infinity);
 }
 

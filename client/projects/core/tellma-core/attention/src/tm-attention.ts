@@ -99,15 +99,15 @@ const CAP = 100;
 /** How long the hub stays neither connected nor disabled before live updates read as paused. */
 const PAUSE_MS = 5000;
 
-/** A row's member as a number, else `undefined`. */
-function numberOf(row: TmEntityType<'core.Notification'>, member: string): number | undefined {
-  const value = row[member];
+/** A notification's member as a number, else `undefined`; a member the row's type names, emitted or open. */
+function numberOf(row: TmEntityType<'core.Notification'>, member: keyof TmEntityType<'core.Notification'>): number | undefined {
+  const value: unknown = row[member];
   return typeof value === 'number' ? value : undefined;
 }
 
-/** A row's instant member in epoch milliseconds, else `NaN`. */
-function timeOf(row: TmEntityType<'core.Notification'>, member: string): number {
-  const value = row[member];
+/** A notification's instant member in epoch milliseconds, else `NaN`; a member the row's type names, emitted or open. */
+function timeOf(row: TmEntityType<'core.Notification'>, member: keyof TmEntityType<'core.Notification'>): number {
+  const value: unknown = row[member];
   return typeof value === 'string' ? Date.parse(value) : Number.NaN;
 }
 
