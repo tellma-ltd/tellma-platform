@@ -21,10 +21,11 @@ import type { TmQueryexDiscoverResult, TmQueryexWireDiagnostic } from './tm-quer
 
 // The expression editor over the fake discover route, through its harness:
 // the status line and the problems list, no stale answer, F8, an insertion
-// as one undo step, a drop re-spaced, Mod+Enter, the parameter chips, an
-// offline check and its retry, the editor as a grid's popup cell editor,
-// a shared draft, a geometry that never moves with the problems or the
-// parameters, and the editor's own strings in Arabic.
+// as one undo step, a drop re-spaced by its selection, Mod+Enter, the
+// parameter chips, an offline check and its retry, the editor as a grid's
+// popup cell editor and its cancel, a shared draft, a geometry that never
+// moves with the problems or the parameters, and the editor's own strings
+// in Arabic.
 
 /** An answer with no problem, path or parameter. */
 const EMPTY: TmQueryexDiscoverResult = { diagnostics: [], parameters: [], paths: [], usesAggregation: false };
@@ -339,6 +340,22 @@ describe('TmExpressionEditor', () => {
       expect(await harness.getSelection()).toEqual([7, 8]);
       expect(TestBed.inject(TmFakeTelemetry).recent().filter((item) => item.name === 'tm.queryex.insert').map((item) => item.props)).toEqual([{ via: 'drop' }]);
     });
+
+    it('re-spaces a drop by the selection the browser leaves, when the drop repeats the text after it', async () => {
+      await rig();
+      const { fixture, harness } = await editor();
+      await harness.setValue("Name2 = 'x'");
+
+      // The browser drops "Name" at the start and leaves it selected; the
+      // texts alone cannot tell it from a drop after "Name".
+      const textarea = textareaOf(fixture);
+      textarea.value = "NameName2 = 'x'";
+      textarea.setSelectionRange(0, 4);
+      textarea.dispatchEvent(new InputEvent('input', { inputType: 'insertFromDrop', data: 'Name', bubbles: true }));
+      await fixture.whenStable();
+      expect(await harness.getValue()).toBe("Name Name2 = 'x'");
+      expect(await harness.getSelection()).toEqual([0, 4]);
+    });
   });
 
   describe('the parameters', () => {
@@ -431,6 +448,54 @@ describe('TmExpressionEditor', () => {
       expect(keydown(textarea, 'Enter', MOD).defaultPrevented).toBe(true);
       await tmSettleUntil(() => pane() === null, 'the popup editor closes');
       expect(fixture.componentInstance.model()[0]!.filter).toBe('IsActive = true\nand Code = 1');
+    });
+
+    it('returns to the text it opened with on Escape, however many keystrokes came between', async () => {
+      await rig();
+      const fixture = TestBed.createComponent(GridHost);
+      await fixture.whenStable();
+      const scroller = (fixture.nativeElement as HTMLElement).querySelector<HTMLElement>('.tm-grid__scroller')!;
+      const cell = (): HTMLElement => scroller.querySelector<HTMLElement>('[data-tm-cell][data-row="0"][data-col="1"]')!;
+      const pane = (): HTMLElement | null => scroller.querySelector<HTMLElement>('[data-tm-popup]');
+      const press: PointerEventInit = { bubbles: true, cancelable: true, button: 0, pointerType: 'mouse' };
+      cell().dispatchEvent(new PointerEvent('pointerdown', press));
+      cell().dispatchEvent(new PointerEvent('pointerup', press));
+      await tmSettle();
+      keydown(cell(), 'F2');
+      await tmSettleUntil(() => pane()?.querySelector('textarea') != null, 'the popup editor opens');
+
+      // Two keystrokes, each written through, then Escape.
+      const textarea = pane()!.querySelector('textarea')!;
+      for (const text of ['IsActive = false', 'IsActive = false and']) {
+        textarea.value = text;
+        textarea.dispatchEvent(new Event('input', { bubbles: true }));
+        await tmSettle();
+      }
+      keydown(textarea, 'Escape');
+      await tmSettleUntil(() => pane() === null, 'the popup editor closes');
+      expect(fixture.componentInstance.model()[0]!.filter).toBe('IsActive = true');
+      expect(cell().textContent).toContain('IsActive = true');
+    });
+
+    it('cancels back to the text it was last given, never to a keystroke of its own', async () => {
+      await rig();
+      const { fixture, harness } = await editor();
+      fixture.componentInstance.value.set('IsActive = true');
+      await fixture.whenStable();
+
+      // Two keystrokes, each written through to the host.
+      const textarea = textareaOf(fixture);
+      for (const text of ['IsActive = false', 'IsActive = false and']) {
+        textarea.value = text;
+        textarea.dispatchEvent(new InputEvent('input', { inputType: 'insertText', bubbles: true }));
+        await fixture.whenStable();
+      }
+      expect(fixture.componentInstance.value()).toBe('IsActive = false and');
+
+      fixture.componentInstance.editor().cancel();
+      await fixture.whenStable();
+      expect(fixture.componentInstance.value()).toBe('IsActive = true');
+      expect(await harness.getValue()).toBe('IsActive = true');
     });
   });
 

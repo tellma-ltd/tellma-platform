@@ -14,7 +14,8 @@ import type { TmQueryexDiscoverResult } from './tm-queryex-wire';
 
 // The draft one query's editors share, over the fake discover route: one
 // check of every clause once the typing pauses, each change aborting the
-// check in flight, the server's problems only on the text they answered,
+// check in flight, the server's problems only on the text they answered
+// and only while the root, the aggregation and the confirmed types hold,
 // the lexer's at once, offline and failed checks and their retry, the
 // permission profile, aggregation, and the parameters' merged types.
 
@@ -112,6 +113,71 @@ describe('injectTmQueryexDraft', () => {
     await settled(draft);
     expect(draft.diagnostics('filter')()).toEqual([]);
     expect(TestBed.inject(TmFakeApi).calls().filter((call) => call.route === 'queryex/discover')).toHaveLength(2);
+  });
+
+  it('aborts the call in flight, and stays checking until the latest answer lands', async () => {
+    const { draft, discover, api } = await draftRig();
+    // Each answer waits for its own release, so the two land in the order the test picks.
+    const releases = new Map<string, () => void>();
+    discover.respond((request) => new Promise((resolve) => releases.set(request.filters?.[0] ?? '', () => resolve(EMPTY))));
+    draft.text('filter').set('Code = 1');
+    await tmSettleUntil(() => releases.has('Code = 1'), 'the first check is sent');
+
+    draft.text('filter').set('Code = 2');
+    TestBed.tick();
+    const calls = api.calls().filter((call) => call.route === 'queryex/discover');
+    expect((calls[0]?.options as { readonly signal?: AbortSignal }).signal?.aborted).toBe(true);
+    await tmSettleUntil(() => releases.has('Code = 2'), 'the second check is sent');
+
+    // The first answer comes back late: it is not applied, and the check goes on.
+    releases.get('Code = 1')!();
+    await tmSettle();
+    expect(draft.status()).toBe('checking');
+
+    releases.get('Code = 2')!();
+    await settled(draft);
+  });
+
+  it('drops an answer once the root, the aggregation or the confirmed types change, or nothing is left to check', async () => {
+    const root = signal('acme.Customer');
+    const aggregate = signal(false);
+    const parameters = signal<readonly { readonly name: string; readonly type: string }[]>([]);
+    const { draft, discover } = await draftRig({ root, aggregate, parameters });
+    discover.respond({
+      ...EMPTY,
+      diagnostics: [{ clause: 'filters[0]', code: 'QX2001', start: 15, length: 5, arguments: { name: 'Accnt' } }],
+      paths: [{ segments: ['Code'], site: { clause: 'filters[0]', start: 0, length: 4 }, entity: 'acme.Customer', reachable: true }],
+    });
+    const filter = "Code = 1 and Accnt.Code = 'x'";
+    draft.text('filter').set(filter);
+    const checked = async (): Promise<void> => {
+      TestBed.tick();
+      await settled(draft);
+      expect(draft.diagnostics('filter')().map((problem) => problem.code)).toEqual(['QX2001']);
+      expect(draft.paths()).toHaveLength(1);
+    };
+    const dropped = (): void => {
+      expect(draft.diagnostics('filter')()).toEqual([]);
+      expect(draft.paths()).toEqual([]);
+    };
+    await checked();
+
+    // Each change of what the check is made against drops the answer before the next check.
+    root.set('gl.Center');
+    dropped();
+    await checked();
+    aggregate.set(true);
+    dropped();
+    await checked();
+    parameters.set([{ name: 'From', type: 'Date' }]);
+    dropped();
+    await checked();
+
+    // With nothing left to check, the draft is idle and holds no answer.
+    root.set('');
+    TestBed.tick();
+    dropped();
+    expect(draft.status()).toBe('idle');
   });
 
   it("shows the server's problems only while the clause still reads what was checked", async () => {

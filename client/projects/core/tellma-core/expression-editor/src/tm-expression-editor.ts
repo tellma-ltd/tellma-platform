@@ -315,6 +315,7 @@ export class TmExpressionEditor implements TmFormFieldControl, TmCellEditor<stri
 
   /** The span tinted after an insertion. */
   readonly #tint = signal<TmSpan | null>(null);
+  /** Clears the tint once its moment is over. */
   #tintTimer: ReturnType<typeof setTimeout> | undefined;
 
   /** Whether the editor has had focus, so an insertion goes to its caret rather than the end. */
@@ -663,14 +664,22 @@ export class TmExpressionEditor implements TmFormFieldControl, TmCellEditor<stri
    * @param after - The text after it.
    */
   #respaceDrop(before: string, after: string): void {
-    // The dropped run: what the text gained between the common head and tail.
-    let head = 0;
-    while (head < before.length && head < after.length && before[head] === after[head]) {
-      head++;
-    }
-    let tail = 0;
-    while (tail < before.length - head && tail < after.length - head && before[before.length - 1 - tail] === after[after.length - 1 - tail]) {
-      tail++;
+    // The dropped run: the selection the browser leaves on it, when the
+    // text without it is the text before the drop.
+    const { selectionStart, selectionEnd } = this.textareaRef().nativeElement;
+    let head = selectionStart;
+    let tail = after.length - selectionEnd;
+    if (after.slice(0, head) + after.slice(selectionEnd) !== before) {
+      // Otherwise what the text gained between the common head and tail,
+      // which is ambiguous when the drop repeats the text after it.
+      head = 0;
+      while (head < before.length && head < after.length && before[head] === after[head]) {
+        head++;
+      }
+      tail = 0;
+      while (tail < before.length - head && tail < after.length - head && before[before.length - 1 - tail] === after[after.length - 1 - tail]) {
+        tail++;
+      }
     }
     const dropped = after.slice(head, after.length - tail);
     if (dropped === '') {

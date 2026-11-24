@@ -132,6 +132,8 @@ export interface TmQueryexDraftOptions {
 
 /** An applied answer and the texts it answered, by wire clause. */
 interface TmAppliedAnswer {
+  /** What the check was made against beside the texts: the root and, for a query, the aggregation and the sent parameter types. */
+  readonly context: string;
   /** The text each sent clause had when it was sent. */
   readonly sent: ReadonlyMap<string, string>;
   /** The server's answer. */
@@ -180,14 +182,17 @@ class TmQueryexDraftImpl implements TmQueryexDraft {
   /** Where the check stands. */
   readonly status: Signal<TmQueryexStatus> = this.#status.asReadonly();
 
-  /** The paths the last check found. */
-  readonly paths: Signal<readonly TmQxPathUse[]> = computed(() => this.#answer()?.result.paths ?? []);
-
   /**
-   * The body the next check sends, with its clauses' texts, or `null` when
-   * there is nothing to check. Its key changes only when the body does.
+   * The body the next check sends, with its clauses' texts and what it is
+   * checked against beside them, or `null` when there is nothing to check.
+   * Its key changes only when the body does.
    */
-  readonly #request = computed<{ readonly key: string; readonly body: TmQueryexDiscoverRequest; readonly sent: ReadonlyMap<string, string> } | null>(
+  readonly #request = computed<{
+    readonly key: string;
+    readonly context: string;
+    readonly body: TmQueryexDiscoverRequest;
+    readonly sent: ReadonlyMap<string, string>;
+  } | null>(
     () => {
       const root = this.root();
       if (root === '') {
@@ -210,7 +215,9 @@ class TmQueryexDraftImpl implements TmQueryexDraft {
       // --- The permission profile: one filter, nothing else ---
       if (this.#options.profile === 'permission') {
         const filter = take('filter');
-        return filter === undefined ? null : { key: JSON.stringify([root, filter]), body: { root, filters: [filter], profile: 'Permission' }, sent };
+        return filter === undefined
+          ? null
+          : { key: JSON.stringify([root, filter]), context: root, body: { root, filters: [filter], profile: 'Permission' }, sent };
       }
 
       // --- A query: every non-blank clause; having and measures only when it aggregates ---
@@ -243,16 +250,30 @@ class TmQueryexDraftImpl implements TmQueryexDraft {
         ...(aggregate && { aggregate: true }),
         ...(parameters.length > 0 && { parameters }),
       };
-      return { key: JSON.stringify(body), body, sent };
+      return { key: JSON.stringify(body), context: JSON.stringify([root, aggregate, parameters]), body, sent };
     },
     { equal: (a, b) => a?.key === b?.key },
   );
+
+  /**
+   * The last answer, while the next check would still be made against what
+   * it was: the same root, aggregation and parameter types. A change of
+   * any of these, or nothing left to check, drops it at once.
+   */
+  readonly #applied = computed<TmAppliedAnswer | null>(() => {
+    const answer = this.#answer();
+    const request = this.#request();
+    return answer !== null && request !== null && answer.context === request.context ? answer : null;
+  });
+
+  /** The paths the last check found. */
+  readonly paths: Signal<readonly TmQxPathUse[]> = computed(() => this.#applied()?.result.paths ?? []);
 
   /** The parameters every clause names, with the confirmed types and the last answer's. */
   readonly parameters: Signal<readonly TmQxParameter[]> = computed(() => {
     // The confirmed types and the answer's, by folded name.
     const confirmed = new Map((this.#options.parameters?.() ?? []).map((parameter) => [ɵtmQxFold(parameter.name), parameter.type]));
-    const inferred = new Map((this.#answer()?.result.parameters ?? []).map((info) => [ɵtmQxFold(info.name), info]));
+    const inferred = new Map((this.#applied()?.result.parameters ?? []).map((info) => [ɵtmQxFold(info.name), info]));
     const parameters = new Map<string, TmQxParameter>();
     for (const clause of CLAUSES) {
       for (const { name } of tmQxParameters(this.text(clause)())) {
@@ -320,7 +341,7 @@ class TmQueryexDraftImpl implements TmQueryexDraft {
       diagnostics = computed(() => {
         const text = this.text(clause)();
         const wire = WIRE_CLAUSES[clause];
-        const answer = this.#answer();
+        const answer = this.#applied();
         const server: readonly TmQueryexWireDiagnostic[] =
           wire !== undefined && answer !== null && answer.sent.get(wire) === text
             ? answer.result.diagnostics.filter((diagnostic) => diagnostic.clause === wire)
@@ -404,7 +425,7 @@ class TmQueryexDraftImpl implements TmQueryexDraft {
         return;
       }
       this.#controller = null;
-      this.#answer.set({ sent: request.sent, result });
+      this.#answer.set({ context: request.context, sent: request.sent, result });
       this.#status.set('checked');
       this.#telemetry.timing('tm.queryex.discover', performance.now() - started, {
         clauses: Math.min(request.sent.size, 4),

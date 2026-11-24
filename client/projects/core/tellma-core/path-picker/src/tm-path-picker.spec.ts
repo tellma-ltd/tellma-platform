@@ -8,7 +8,9 @@ import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { TestbedHarnessEnvironment } from '@angular/cdk/testing/testbed';
 import { TmLocalization, type TmEntitiesChunk } from '@tellma/core';
 import { TmPathPickerHarness, tmTestEntities } from '@tellma/core-testing';
+import { TmDragDrop } from '@tellma/core-ui/drag-drop';
 import { tmGregorianCalendar } from '@tellma/core-ui/l10n';
+import { Calendar, Hash, Image, Languages, Link2, Paperclip, ToggleLeft, Type } from 'lucide';
 import { TM_STRINGS_AR } from '@tellma/locale-ar/platform-strings';
 import { TM_QUERYEX_STRINGS_AR } from '@tellma/locale-ar/queryex-strings';
 
@@ -22,8 +24,8 @@ import type { TmPathNode } from './tm-path-tree';
 // group, navigations as branches, image and file navigations, hidden
 // foreign keys, non-queryable fields and unreachable paths), the order, the
 // twins of the column keys, the date parts in each calendar, the search's
-// depth and cap, the drag payload, activation, multiple selection, and the
-// picker's own strings in Arabic.
+// depth and cap, the glyphs, the drag payload and its path label,
+// activation, multiple selection, and the picker's own strings in Arabic.
 
 /** The English labels the recorded model's fields read. */
 const LABELS: Readonly<Record<string, string>> = {
@@ -168,6 +170,49 @@ function dragText(fixture: ComponentFixture<unknown>, key: string): string | nul
   return data.get('text/plain') ?? null;
 }
 
+/**
+ * The drawn glyph of a row.
+ *
+ * @param fixture - The fixture.
+ * @param key - The row's key.
+ * @returns The glyph's elements.
+ */
+function glyphElements(fixture: ComponentFixture<unknown>, key: string): Element[] {
+  const row = (fixture.nativeElement as HTMLElement).querySelector<HTMLElement>(`.tm-tree__item[data-key="${CSS.escape(key)}"] > .tm-tree__row`)!;
+  return [...(row.querySelector('.tm-path-picker__icon svg')?.children ?? [])];
+}
+
+/**
+ * The element names of a row's drawn glyph.
+ *
+ * @param fixture - The fixture.
+ * @param key - The row's key.
+ * @returns The names, in order.
+ */
+function glyphOf(fixture: ComponentFixture<unknown>, key: string): string[] {
+  return glyphElements(fixture, key).map((element) => element.tagName);
+}
+
+/**
+ * Whether a row's drawn glyph is an icon: the same elements, in order, with
+ * the icon's attributes.
+ *
+ * @param fixture - The fixture.
+ * @param key - The row's key.
+ * @param icon - The icon.
+ * @returns Whether it is.
+ */
+function glyphIs(fixture: ComponentFixture<unknown>, key: string, icon: typeof Hash): boolean {
+  const elements = glyphElements(fixture, key);
+  return (
+    elements.length === icon.length &&
+    icon.every(([tag, attributes], index) => {
+      const element = elements[index]!;
+      return element.tagName === tag && Object.entries(attributes).every(([name, value]) => element.getAttribute(name) === String(value));
+    })
+  );
+}
+
 describe('TmPathPicker', () => {
   afterEach(() => TestBed.resetTestingModule());
 
@@ -186,6 +231,24 @@ describe('TmPathPicker', () => {
       expect(await harness.getKind('Attachment')).toBe('file');
       expect(await harness.getPill('Currency')).toBe('Currency');
       expect(await harness.getPill('Code')).toBeNull();
+    });
+
+    it("draws each value type's glyph, and each other kind's", async () => {
+      const { fixture } = await picker(system({ languages: 3 }));
+      const expected: readonly (readonly [string, typeof Hash])[] = [
+        ['Code', Type],
+        ['CreditLimit', Hash],
+        ['IsActive', ToggleLeft],
+        ['DueDate', Calendar],
+        ['Name', Languages],
+        ['Currency', Link2],
+        ['Image', Image],
+        ['Attachment', Paperclip],
+      ];
+      for (const [key, icon] of expected) {
+        expect(glyphOf(fixture, key), key).toEqual(icon.map(([tag]) => tag));
+        expect(glyphIs(fixture, key, icon), key).toBe(true);
+      }
     });
 
     it('orders by label, with the key and the audit fields last', async () => {
@@ -331,6 +394,26 @@ describe('TmPathPicker', () => {
       expect(dragText(fixture, 'Currency.Code')).toBe('Currency.Code');
       await (await harness.getNode('DueDate')).expand();
       expect(dragText(fixture, 'startOfMonth(DueDate)')).toBe('startOfMonth(DueDate)');
+    });
+
+    it('drags a tm.path payload of the node, named by its slash-joined path label', async () => {
+      const { fixture, harness } = await picker(system(), (host) => {
+        host.draggable.set(true);
+        host.dateParts.set(true);
+      });
+      const drags = TestBed.inject(TmDragDrop);
+      await (await harness.getNode('Currency')).expand();
+      dragText(fixture, 'Currency.Code');
+      const nested = drags.current();
+      expect(nested?.kind).toBe('tm.path');
+      expect((nested?.data as TmPathNode).key).toBe('Currency.Code');
+      expect((nested?.data as TmPathNode).pathLabel()).toBe('Currency / Code');
+      expect(nested?.label).toBe('Currency / Code');
+
+      await (await harness.getNode('DueDate')).expand();
+      dragText(fixture, 'month(DueDate)');
+      expect(drags.current()?.kind).toBe('tm.path');
+      expect(drags.current()?.label).toBe('Due date / Month of year');
     });
 
     it('activates a field on Enter and on a double-click, and never a field the host refuses', async () => {
