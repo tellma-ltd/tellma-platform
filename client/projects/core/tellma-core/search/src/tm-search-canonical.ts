@@ -3,8 +3,8 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-import { untracked } from '@angular/core';
-import { TmLocalization, TmTelemetry, TmUrls, type TmColumnInput, type TmSearchQuery } from '@tellma/core';
+import { Injector, signal, untracked, type Signal } from '@angular/core';
+import { TmLocalization, TmTelemetry, TmUrls, type TmColumnInput, type TmSearchQuery, type TmTelemetryItem } from '@tellma/core';
 import { tmFilterLeaf, tmFormatFilter, tmParseFilter, tmSelectPlan, type TmColumnPlan, type TmColumnSource } from '@tellma/core/entity';
 import { tmStripBidiControls } from '@tellma/core-ui/l10n';
 
@@ -31,10 +31,61 @@ import {
 // A column key that does not resolve or that the user may not read drops
 // through the select plan, which reports it; an `f.` value its control
 // rejects, and an order on a column that cannot order, drop here with
-// `reason: 'invalid-value'`.
+// `reason: 'invalid-value'`, and an order on an expression column with
+// `reason: 'expression'`. Each drop is reported once, where the value enters
+// the state: a step that only re-reads a state plans under a quiet setting.
 
 /** A query field's mutable form, for building the canonical query in the codec's order. */
 type TmMutableQuery = { -readonly [K in keyof TmSearchQuery]: TmSearchQuery[K] };
+
+/** Why a query value dropped, beyond the select plan's reasons. */
+type TmSearchDropReason = 'invalid-value' | 'expression';
+
+/** Telemetry that accepts every item and keeps none, for planning a state again without reporting its drops again. */
+class TmSearchQuietTelemetry extends TmTelemetry {
+  /** Always empty: nothing is recorded. */
+  override readonly recent: Signal<readonly TmTelemetryItem[]> = signal<readonly TmTelemetryItem[]>([]).asReadonly();
+
+  /** Accepts the event and drops it. */
+  override event(): void {
+    // Quiet by design: the drop was reported when the state took it.
+  }
+
+  /** Accepts the timing and drops it. */
+  override timing(): void {
+    // Quiet by design.
+  }
+
+  /** Accepts the error and drops it. */
+  override error(): void {
+    // Quiet by design.
+  }
+
+  /** Has nothing to send. */
+  override flush(): void {
+    // Quiet by design.
+  }
+}
+
+/** The quiet injector over each page's injector, made once. */
+const QUIET_INJECTORS = new WeakMap<Injector, Injector>();
+
+/**
+ * The page's setting with telemetry that reports nothing, for a step that
+ * plans values the state already holds, or plans a value provisionally, so
+ * a drop is reported once.
+ *
+ * @param setting - The page's setting.
+ * @returns The quiet setting.
+ */
+export function tmSearchQuiet(setting: TmSearchSetting): TmSearchSetting {
+  let injector = QUIET_INJECTORS.get(setting.injector);
+  if (injector === undefined) {
+    injector = Injector.create({ providers: [{ provide: TmTelemetry, useClass: TmSearchQuietTelemetry }], parent: setting.injector });
+    QUIET_INJECTORS.set(setting.injector, injector);
+  }
+  return { ...setting, injector };
+}
 
 /**
  * One column key planned against the page's entity: the column it shows,
@@ -71,13 +122,14 @@ export function tmSearchPlanColumns(
 }
 
 /**
- * Reports a URL value its control rejects as `tm.entity.column-dropped`.
+ * Reports a query value that dropped as `tm.entity.column-dropped`.
  *
  * @param setting - The page's setting.
+ * @param reason - Why it dropped.
  */
-function dropInvalid(setting: TmSearchSetting): void {
+function drop(setting: TmSearchSetting, reason: TmSearchDropReason): void {
   const telemetry = setting.injector.get(TmTelemetry);
-  untracked(() => telemetry.event('tm.entity.column-dropped', { reason: 'invalid-value', source: 'url' }));
+  untracked(() => telemetry.event('tm.entity.column-dropped', { reason, source: 'url' }));
 }
 
 /**
@@ -118,7 +170,7 @@ function columnFilters(setting: TmSearchSetting, filters: Readonly<Record<string
     }
     const spec = tmParseFilter(filters[key]!);
     if (spec === null || column.filter === null || tmFilterLeaf(column, spec, { timeZone }) === null) {
-      dropInvalid(setting);
+      drop(setting, 'invalid-value');
       continue;
     }
     // Two spellings of one key keep the first, in the codec's order.
@@ -156,20 +208,27 @@ function customFilters(setting: TmSearchSetting, custom: Readonly<Record<string,
 
 /**
  * The order a query keeps: a key that resolves to a column that can order,
- * in its canonical case, with its direction.
+ * in its canonical case, with its direction. An expression column never
+ * orders, as an order travels in the URL and the URL carries paths only.
  *
  * @param setting - The page's setting.
  * @param order - The order, `Key` or `Key:desc`.
+ * @param columns - The shown columns.
  * @returns The kept order, or `undefined`.
  */
-function keptOrder(setting: TmSearchSetting, order: string): string | undefined {
+function keptOrder(setting: TmSearchSetting, order: string, columns: readonly TmColumnInput<string>[]): string | undefined {
   const desc = order.endsWith(':desc');
-  const column = tmSearchColumnPlan(setting, desc ? order.slice(0, -5) : order, 'url');
+  const key = desc ? order.slice(0, -5) : order;
+  if (columns.some((column) => tmSearchIsExpression(column) && column.expression === key)) {
+    drop(setting, 'expression');
+    return undefined;
+  }
+  const column = tmSearchColumnPlan(setting, key, 'url');
   if (column === null) {
     return undefined;
   }
   if (column.orderBy('asc') === null) {
-    dropInvalid(setting);
+    drop(setting, 'invalid-value');
     return undefined;
   }
   return desc ? `${column.key}:desc` : column.key;
@@ -214,7 +273,7 @@ export function tmSearchCanonical(setting: TmSearchSetting, query: TmSearchQuery
   if (custom !== undefined) {
     canonical.custom = custom;
   }
-  const kept = query.order === undefined ? undefined : keptOrder(setting, query.order);
+  const kept = query.order === undefined ? undefined : keptOrder(setting, query.order, columns);
   if (kept !== undefined) {
     canonical.order = kept;
   }
@@ -246,14 +305,19 @@ export function tmSearchCanonical(setting: TmSearchSetting, query: TmSearchQuery
 /**
  * The canonical URL of a query state: the search page's, or in list mode
  * the drill-through list's with its payload, which carries the fixed filter
- * and the columns. A picker's state has none.
+ * and the columns. A picker's state has none, and nor has a list's whose
+ * payload is not valid: the address bar keeps the link as it came, so it
+ * never turns into an unfiltered list's URL.
  *
  * @param setting - The page's setting.
  * @param state - The state.
- * @returns The URL, such as `/17/centers?q=jed`; empty in picker mode.
+ * @returns The URL, such as `/17/centers?q=jed`; empty, for nothing to write, in picker mode and for a list's invalid payload.
  */
 export function tmSearchUrl(setting: TmSearchSetting, state: TmSearchState): string {
   const urls = setting.injector.get(TmUrls);
+  if (state.payloadInvalid) {
+    return '';
+  }
   switch (setting.mode) {
     case 'picker':
       return '';

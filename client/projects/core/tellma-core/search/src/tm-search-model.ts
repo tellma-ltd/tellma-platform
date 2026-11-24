@@ -92,6 +92,12 @@ export interface TmSearchState {
   readonly columnsFrom: TmColumnSource;
   /** In list mode, the list's fixed filter from its `#d=` payload; `null` for none. */
   readonly listFilter?: string | null;
+  /**
+   * In list mode, set when the `#d=` payload is missing or malformed: the
+   * page shows that the link's filter is not valid, the state prints no URL
+   * to write, and no request is built from it.
+   */
+  readonly payloadInvalid?: true;
 }
 
 /** A query state's every field at its value, the code defaults filled in. */

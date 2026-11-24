@@ -6,7 +6,7 @@
 import { TmLocalization, type TmId, type TmJsonObject } from '@tellma/core';
 import { tmFilterLeaf, tmParseFilter, tmSelectPlan, type TmSelectPlan } from '@tellma/core/entity';
 
-import { tmSearchColumnPlan } from './tm-search-canonical';
+import { tmSearchColumnPlan, tmSearchQuiet } from './tm-search-canonical';
 import {
   tmSearchEffective,
   tmSearchIsActivatable,
@@ -80,17 +80,22 @@ export interface TmSearchRequestOptions {
 
 /**
  * The select plan of a state: the shown columns, with the tile's paths and
- * the tree's keys read beside them but never shown. A path that does not
- * resolve or that the user may not read is reported under the columns'
- * source.
+ * the tree's keys read beside them but never shown. A tile path or tree key
+ * that does not resolve or that the user may not read is reported under
+ * the declaration, where it comes from; a shown column the user can no
+ * longer read, under the columns' source.
  *
  * @param setting - The page's setting.
  * @param state - The state.
  * @returns The plan.
  */
 export function tmSearchPlan(setting: TmSearchSetting, state: TmSearchState): TmSelectPlan {
-  const extra = [...tmSearchTilePaths(setting), ...tmSearchTreeKeys(setting.descriptor)];
-  return tmSelectPlan(setting.descriptor, state.columns, extra, { injector: setting.injector, source: state.columnsFrom });
+  const { descriptor, injector } = setting;
+  // The declaration's paths are checked on their own, so each drop is reported under its own source.
+  const extra = [...tmSearchTilePaths(setting), ...tmSearchTreeKeys(descriptor)];
+  const dropped = new Set(tmSelectPlan(descriptor, [], extra, { injector, source: 'declaration' }).dropped.map((drop) => drop.key));
+  const kept = extra.filter((path) => !dropped.has(path));
+  return tmSelectPlan(descriptor, state.columns, kept, { injector, source: state.columnsFrom });
 }
 
 /**
@@ -110,14 +115,25 @@ export function tmSearchPlan(setting: TmSearchSetting, state: TmSearchState): Tm
  * - **Flags.** Inactive rows when asked for, and always in a drill-through
  *   list; a search tree's ancestors.
  *
+ * The state is canonical, so its column keys were reported when they
+ * dropped; one the user can no longer read is left out without being
+ * reported again.
+ *
  * @param setting - The page's setting.
  * @param state - The state.
  * @param plan - The state's select plan.
  * @param options - The remembered expansion of a browse tree.
  * @returns The request.
+ * @throws Error when the state is a drill-through list's whose payload is
+ *   missing or malformed, which reads nothing.
  */
 export function tmSearchRequest(setting: TmSearchSetting, state: TmSearchState, plan: TmSelectPlan, options: TmSearchRequestOptions = {}): TmSearchRequest {
+  // A list without its fixed filter would read every row: the page shows the link as not valid instead.
+  if (state.payloadInvalid) {
+    throw new Error('A drill-through list whose link has no valid filter reads nothing.');
+  }
   const { descriptor, declaration, mode } = setting;
+  const quiet = tmSearchQuiet(setting);
   const { query } = state;
   const effective = tmSearchEffective(setting, query);
   const filters: string[] = [];
@@ -152,8 +168,8 @@ export function tmSearchRequest(setting: TmSearchSetting, state: TmSearchState, 
   const columnFilters = query.columnFilters ?? {};
   for (const key of Object.keys(columnFilters).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))) {
     const value = columnFilters[key]!;
-    // A column the user can no longer read since the state resolved is left out, and reported.
-    const column = tmSearchColumnPlan(setting, key, 'url');
+    // A column the user can no longer read since the state resolved is left out.
+    const column = tmSearchColumnPlan(quiet, key, 'url');
     const spec = tmParseFilter(value);
     const leaf = column && spec && tmFilterLeaf(column, spec, { timeZone });
     if (leaf) {
@@ -164,7 +180,7 @@ export function tmSearchRequest(setting: TmSearchSetting, state: TmSearchState, 
   fixed.forEach((leaf, index) => apply({ queryex: leaf }, { kind: 'fixed', index }));
 
   // --- The order, the flags and the tree's form ---
-  const orderBy = orderOf(setting, query.order);
+  const orderBy = orderOf(quiet, query.order);
   const includeInactive = mode === 'list' || (query.inactive === true && tmSearchIsActivatable(descriptor));
   const tree = !effective.tree ? null : effective.q === '' && filters.length === 0 && named.length === 0 ? 'browse' : 'search';
   const segment = setting.segment ?? descriptor.segment ?? '';

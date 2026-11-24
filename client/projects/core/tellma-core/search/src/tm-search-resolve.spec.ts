@@ -8,9 +8,19 @@ import type { TmFakeTelemetry } from '@tellma/core-testing';
 
 import { tmEntityRig, type TmEntityRigOptions } from '../../src/entity/tm-entity.testing.util';
 import { tmSearchCanonical, tmSearchUrl } from './tm-search-canonical';
+import { tmSearchUpdate } from './tm-search-change';
 import { TM_SEARCH_EXPRESSION_LABEL, type TmSearchSetting } from './tm-search-model';
+import { tmSearchPlan, tmSearchRequest } from './tm-search-request';
 import { tmSearchResolve } from './tm-search-resolve';
-import { TM_TEST_CUSTOMERS, TM_TEST_CUSTOMERS_WITH_EXPRESSION, tmSearchTestHash, tmSearchTestOpening, tmSearchTestPayload, tmSearchTestSetting } from './tm-search.testing.util';
+import {
+  TM_TEST_CUSTOMERS,
+  TM_TEST_CUSTOMERS_WITH_EXPRESSION,
+  tmSearchTestHash,
+  tmSearchTestHistory,
+  tmSearchTestOpening,
+  tmSearchTestPayload,
+  tmSearchTestSetting,
+} from './tm-search.testing.util';
 
 // Where a search page's query state comes from when it opens: the vectors of
 // the precedence (a superseding snapshot, the URL, a `#d=`-only URL, the
@@ -57,11 +67,12 @@ describe('search state resolution', () => {
       await tmEntityRig(SYSTEM);
     });
 
-    it('takes the whole query from a URL that carries any of it, its absent fields from the preferences', () => {
+    it('takes the whole query from a URL that carries any of it, its absent fields from the preferences, and the selection from the page state', () => {
       const setting = tmSearchTestSetting('gl.Center', {}, { preferences: { columns: ['Code', 'Name', 'Parent'], view: {}, pageSize: 100 } });
       const resolved = tmSearchResolve(setting, tmSearchTestOpening('/17/centers?f.CenterType=in:Service', snapshot('gl.Center', { q: 'jed' }, '/17/centers?q=jed')));
       expect(resolved.source).toBe('url');
-      expect(resolved.snapshot).toBeNull();
+      // The selection restores from the page's snapshot whatever the query's source.
+      expect(resolved.snapshot?.selection).toEqual([6]);
       expect(resolved.state.query).toEqual({ columnFilters: { CenterType: 'in:Service' }, cols: ['Code', 'Name', 'Parent'], size: 100 });
       expect(resolved.state.columns).toEqual(['Code', 'Name', 'Parent']);
       expect(resolved.state.columnsFrom).toBe('preference');
@@ -95,6 +106,34 @@ describe('search state resolution', () => {
       // The snapshot's page size is its code default, never the preference.
       expect(resolved.state.query).toEqual({ q: 'jed', page: 2 });
       expect(resolved.canonical).toBe('/17/centers?q=jed&page=2');
+    });
+
+    it('applies the view preference to a snapshot taken at another width, as a resize does', () => {
+      const setting = tmSearchTestSetting('gl.Center', {}, { width: 'narrow', preferences: { columns: null, view: { narrow: 'grid' }, pageSize: 50 } });
+      // Taken on a wide window, where grid was the default and left the query.
+      const saved = snapshot('gl.Center', { q: 'jed' }, '/17/centers?q=jed');
+      const resolved = tmSearchResolve(setting, tmSearchTestOpening('/17/centers', saved));
+      expect(resolved.source).toBe('page-state');
+      expect(resolved.state.query).toEqual({ q: 'jed', view: 'grid' });
+      expect(resolved.canonical).toBe('/17/centers?q=jed&view=grid');
+    });
+
+    it('skips the page state on Back and Forward, so Back to a bare URL reaches the first page', () => {
+      const setting = tmSearchTestSetting('gl.Center');
+      // Page 2 pushed `?page=2`, and a row opened from it left this snapshot.
+      const saved = snapshot('gl.Center', { page: 2 }, '/17/centers?page=2');
+      const back = tmSearchResolve(setting, { ...tmSearchTestOpening('/17/centers', saved), navigation: 'history' });
+      expect(back.source).toBe('defaults');
+      expect(back.state.query).toEqual({});
+      expect(back.canonical).toBe('/17/centers');
+      expect(back.snapshot).toBe(saved);
+      // A fresh opening of the same URL still takes the page state.
+      expect(tmSearchResolve(setting, tmSearchTestOpening('/17/centers', saved)).state.query).toEqual({ page: 2 });
+      // A snapshot that supersedes the URL still applies.
+      const moved = snapshot('gl.Center', { page: 3 }, '/17/centers?page=3', '/17/centers?page=2');
+      const superseded = tmSearchResolve(setting, { ...tmSearchTestOpening('/17/centers?page=2', moved), navigation: 'history' });
+      expect(superseded.source).toBe('supersedes');
+      expect(superseded.state.query).toEqual({ page: 3 });
     });
 
     it('applies a snapshot that supersedes the URL’s canonical query, and replaces the URL', () => {
@@ -183,6 +222,14 @@ describe('search state resolution', () => {
         { reason: 'unknown', source: 'url' },
         { reason: 'unknown', source: 'url' },
       ]);
+    });
+
+    it('reports a bad preference column once when the page state applies', async () => {
+      const { telemetry } = await tmEntityRig(SYSTEM);
+      const setting = tmSearchTestSetting('gl.Center', {}, { preferences: { columns: ['Code', 'Nope'], view: {}, pageSize: 50 } });
+      const resolved = tmSearchResolve(setting, tmSearchTestOpening('/17/centers', snapshot('gl.Center', { q: 'jed' }, '/17/centers?q=jed')));
+      expect(resolved.state.columns).toEqual(['Code']);
+      expect(drops(telemetry)).toEqual([{ reason: 'unknown', source: 'preference' }]);
     });
 
     it('drops a column key the user may not read', async () => {
@@ -313,13 +360,28 @@ describe('search state resolution', () => {
       const payload = tmSearchTestPayload({ filter: 'CreditLimit > 0' });
       const saved = snapshot('acme.Customer', { q: 'al' }, `/17/list/customers?q=al${payload}`);
       expect(tmSearchResolve(list(), tmSearchTestOpening(`/17/list/customers${payload}`, saved)).source).toBe('page-state');
+      // The selection restores from it whatever the query's source.
+      expect(tmSearchResolve(list(), tmSearchTestOpening(`/17/list/customers?q=x${payload}`, saved)).snapshot).toBe(saved);
       const other = tmSearchTestPayload({ filter: 'CreditLimit > 1' });
-      expect(tmSearchResolve(list(), tmSearchTestOpening(`/17/list/customers${other}`, saved)).source).toBe('defaults');
+      const elsewhere = tmSearchResolve(list(), tmSearchTestOpening(`/17/list/customers${other}`, saved));
+      expect(elsewhere.source).toBe('defaults');
+      expect(elsewhere.snapshot).toBeNull();
     });
 
-    it('reports a malformed payload', () => {
-      expect(tmSearchResolve(list(), tmSearchTestOpening('/17/list/customers#d=!!')).payloadInvalid).toBe(true);
-      expect(tmSearchResolve(list(), tmSearchTestOpening('/17/list/customers')).payloadInvalid).toBe(true);
+    it('writes no URL and reads nothing for a missing or malformed payload', () => {
+      const saved = snapshot('acme.Customer', { q: 'al' }, `/17/list/customers?q=al${tmSearchTestPayload({ filter: null })}`);
+      for (const url of ['/17/list/customers#d=!!', '/17/list/customers?q=al']) {
+        const resolved = tmSearchResolve(list(), tmSearchTestOpening(url, saved));
+        expect(resolved.payloadInvalid, url).toBe(true);
+        expect(resolved.state.payloadInvalid, url).toBe(true);
+        // The address bar keeps the link as it came, never an unfiltered list's URL.
+        expect(resolved.canonical, url).toBe('');
+        expect(resolved.snapshot, url).toBeNull();
+        expect(() => tmSearchRequest(list(), resolved.state, tmSearchPlan(list(), resolved.state)), url).toThrow();
+        const change = tmSearchUpdate(list(), resolved.state, { q: 'x' });
+        expect(change.canonical, url).toBe('');
+        expect(change.history, url).toBeNull();
+      }
     });
   });
 
@@ -352,7 +414,11 @@ describe('search state resolution', () => {
         const [entity, declaration] = pick([['acme.Customer', TM_TEST_CUSTOMERS], ['gl.Center', {}]] as const);
         const setting = tmSearchTestSetting(entity, declaration, {
           width,
-          preferences: { columns: pick([null, ['Code', 'Name', 'Rank']]), view: pick([{}, { narrow: 'grid' as const }, { wide: 'tiles' as const }]), pageSize: pick([50, 100]) },
+          preferences: {
+            columns: pick([null, ['Code', 'Name', 'Rank'], ['Code', { expression: 'CreditLimit * 3' }]]),
+            view: pick([{}, { narrow: 'grid' as const }, { wide: 'tiles' as const }, { list: true }]),
+            pageSize: pick([50, 100]),
+          },
         });
         const query = Array.from({ length: 1 + Math.floor(random() * 6) }, () => pick(parameters)()).join('&');
         const hash = random() < 0.3 ? tmSearchTestHash(pick(['CreditLimit > 0', 'Code = "A"'])) : '';
@@ -364,6 +430,11 @@ describe('search state resolution', () => {
         // The canonical query is a fixed point of its own canonical form.
         expect(tmSearchCanonical(setting, first.state.query, first.state.columns)).toEqual(first.state.query);
         expect(tmSearchUrl(setting, first.state)).toBe(first.canonical);
+        // A change from it reaches history by its verdict: none when the URL is unchanged, a push for a page alone.
+        const patch = pick<Partial<TmSearchQuery>>([{ page: 2 }, { page: 1 }, { q: 'zz' }, { size: 20 }, { list: true }, { list: undefined }]);
+        const change = tmSearchUpdate(setting, first.state, patch);
+        const pageOnly = Object.keys(patch).join() === 'page';
+        expect(change.history, `/17/customers?${query}${hash} ${JSON.stringify(patch)}`).toBe(tmSearchTestHistory(first.canonical, change.canonical, pageOnly));
       }
     });
   });

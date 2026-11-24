@@ -5,7 +5,7 @@
 
 import type { TmColumnInput, TmColumnPreference, TmSearchQuery } from '@tellma/core';
 
-import { tmSearchCanonical, tmSearchPlanColumns, tmSearchUrl } from './tm-search-canonical';
+import { tmSearchCanonical, tmSearchPlanColumns, tmSearchQuiet, tmSearchUrl } from './tm-search-canonical';
 import {
   tmSearchDefaultColumns,
   tmSearchEffective,
@@ -44,9 +44,9 @@ export interface TmSearchPreferenceWrites {
 export interface TmSearchTransition {
   /** The new state. */
   readonly state: TmSearchState;
-  /** The new state's canonical URL; empty in picker mode. */
+  /** The new state's canonical URL; empty, for nothing to write, in picker mode and for a list's invalid payload. */
   readonly canonical: string;
-  /** How the URL reaches history; `null` when the URL is unchanged or the page has none. */
+  /** How the URL reaches history; `null` when the URL is unchanged or the page has none to write. */
   readonly history: TmSearchHistory | null;
   /** The preferences to write. */
   readonly preferences: TmSearchPreferenceWrites;
@@ -97,7 +97,8 @@ export function tmSearchUpdate(setting: TmSearchSetting, state: TmSearchState, p
       (next as Record<string, unknown>)[field] = patch[field];
     }
   }
-  const provisional = tmSearchCanonical(setting, next, columns);
+  // Quiet: the final canonical form below reports each drop once.
+  const provisional = tmSearchCanonical(tmSearchQuiet(setting), next, columns);
   const changed = (field: keyof TmSearchQuery): boolean => !sameValue(state.query[field], provisional[field]);
 
   // --- The paging rules, unless the patch names the page ---
@@ -162,7 +163,7 @@ export function tmSearchResize(setting: TmSearchSetting, state: TmSearchState, f
   // The URL before the resize printed the view against the old width's default.
   const previous = tmSearchUrl({ ...setting, width: from }, state);
   const canonical = tmSearchUrl(setting, next);
-  return { state: next, canonical, history: setting.mode === 'picker' || canonical === previous ? null : 'replace', preferences: {} };
+  return { state: next, canonical, history: canonical === '' || canonical === previous ? null : 'replace', preferences: {} };
 }
 
 // -----------------------------------------------------------------------------
@@ -256,7 +257,7 @@ function transition(setting: TmSearchSetting, state: TmSearchState, next: TmSear
 
 /**
  * How a state change reaches history: not at all when the URL is
- * unchanged or the page has none.
+ * unchanged or the page has none to write.
  *
  * @param setting - The page's setting.
  * @param state - The state before.
@@ -265,7 +266,8 @@ function transition(setting: TmSearchSetting, state: TmSearchState, next: TmSear
  * @returns The history, or `null`.
  */
 function urlHistory(setting: TmSearchSetting, state: TmSearchState, next: TmSearchState, kind: TmSearchHistory): TmSearchHistory | null {
-  return setting.mode === 'picker' || tmSearchUrl(setting, state) === tmSearchUrl(setting, next) ? null : kind;
+  const url = tmSearchUrl(setting, next);
+  return url === '' || tmSearchUrl(setting, state) === url ? null : kind;
 }
 
 /**

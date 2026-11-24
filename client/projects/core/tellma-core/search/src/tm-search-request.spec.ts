@@ -116,15 +116,13 @@ describe('search request', () => {
     });
   });
 
-  it('leaves out a column filter whose column the user can no longer read', async () => {
+  it('leaves out a column filter whose column the user can no longer read, which the state reported when it dropped it', async () => {
     const { telemetry } = await tmEntityRig({ access: { securables: [{ resource: 'acme.Customer', action: 'Read', hasFilter: false }] } });
     const setting = tmSearchTestSetting('acme.Customer', {});
     const state = { ...tmSearchResolve(setting, {}).state, query: { columnFilters: { 'Currency.Name': 'contains:usd', Code: 'eq:A' } } };
     const request = tmSearchRequest(setting, state, tmSearchPlan(setting, state));
     expect(request.body['filters']).toEqual(["Code = 'A'"]);
-    expect(telemetry.recent().filter((item) => item.name === 'tm.entity.column-dropped').map((item) => item.props)).toEqual([
-      { reason: 'unreachable', source: 'url' },
-    ]);
+    expect(telemetry.recent().filter((item) => item.name === 'tm.entity.column-dropped')).toEqual([]);
   });
 
   describe('order, paging and flags', () => {

@@ -4,12 +4,21 @@
 // LICENSE file in the root directory of this source tree.
 
 import type { TmColumnInput, TmSearchQuery } from '@tellma/core';
+import type { TmFakeTelemetry } from '@tellma/core-testing';
 
 import { tmEntityRig } from '../../src/entity/tm-entity.testing.util';
 import { tmSearchApply, tmSearchResize, tmSearchSetColumns, tmSearchUpdate, type TmSearchTransition } from './tm-search-change';
-import { TM_SEARCH_EXPRESSION_LABEL, type TmSearchSetting, type TmSearchState } from './tm-search-model';
+import { TM_SEARCH_EXPRESSION_LABEL, type TmSearchDeclaration, type TmSearchSetting, type TmSearchState } from './tm-search-model';
+import { tmSearchPlan, tmSearchRequest } from './tm-search-request';
 import { tmSearchResolve } from './tm-search-resolve';
-import { TM_TEST_CUSTOMERS, TM_TEST_CUSTOMERS_WITH_EXPRESSION, tmSearchTestOpening, tmSearchTestPayload, tmSearchTestSetting } from './tm-search.testing.util';
+import {
+  TM_TEST_CUSTOMERS,
+  TM_TEST_CUSTOMERS_WITH_EXPRESSION,
+  tmSearchTestHistory,
+  tmSearchTestOpening,
+  tmSearchTestPayload,
+  tmSearchTestSetting,
+} from './tm-search.testing.util';
 
 // How each query change reaches the URL, the history and the preferences:
 // only a page change pushes; the text, a filter, the tab, Active only, a
@@ -29,9 +38,19 @@ function opened(setting: TmSearchSetting, url: string): TmSearchState {
 }
 
 describe('search changes', () => {
+  /** The rig's telemetry. */
+  let telemetry: TmFakeTelemetry;
+
   beforeEach(async () => {
-    await tmEntityRig({ access: { isSystem: true } });
+    ({ telemetry } = await tmEntityRig({ access: { isSystem: true } }));
   });
+
+  /** The `tm.entity.column-dropped` events reported so far, each event's properties. */
+  const drops = (): unknown[] =>
+    telemetry
+      .recent()
+      .filter((item) => item.name === 'tm.entity.column-dropped')
+      .map((item) => item.props);
 
   describe('history and paging', () => {
     it('goes back to the first page, with a replace, on a change of the text, a filter, the tab, Active only, a custom filter or the order', () => {
@@ -166,6 +185,39 @@ describe('search changes', () => {
     });
   });
 
+  describe('drops', () => {
+    it('report each value a change drops once, and the request reports nothing more', () => {
+      const setting = tmSearchTestSetting('acme.Customer', TM_TEST_CUSTOMERS);
+      const state = opened(setting, '/17/customers?page=2');
+      const change = tmSearchUpdate(setting, state, { columnFilters: { CreditLimit: 'gt:abc', Code: 'eq:A' }, order: 'Nope' });
+      expect(change.state.query).toEqual({ columnFilters: { Code: 'eq:A' } });
+      expect(drops()).toEqual([
+        { reason: 'invalid-value', source: 'url' },
+        { reason: 'unknown', source: 'url' },
+      ]);
+      tmSearchRequest(setting, change.state, tmSearchPlan(setting, change.state));
+      expect(drops()).toHaveLength(2);
+    });
+
+    it('drop an order on an expression column with a reason of its own', () => {
+      const setting = tmSearchTestSetting('acme.Customer', TM_TEST_CUSTOMERS_WITH_EXPRESSION);
+      const change = tmSearchUpdate(setting, opened(setting, '/17/customers?q=a'), { order: 'CreditLimit * 2:desc' });
+      expect(change.state.query).toEqual({ q: 'a' });
+      expect(change.history).toBeNull();
+      expect(drops()).toEqual([{ reason: 'expression', source: 'url' }]);
+    });
+
+    it('report a tile path that does not resolve under the declaration, whatever the columns’ source', () => {
+      const declaration: TmSearchDeclaration = { ...TM_TEST_CUSTOMERS, tile: { title: 'Nope' } };
+      const setting = tmSearchTestSetting('acme.Customer', declaration);
+      const state = opened(setting, '/17/customers?cols=Code,Name');
+      expect(state.columnsFrom).toBe('url');
+      expect(drops()).toEqual([]);
+      tmSearchPlan(setting, state);
+      expect(drops()).toEqual([{ reason: 'unknown', source: 'declaration' }]);
+    });
+  });
+
   describe('picker and resize', () => {
     it('never touch history in a picker', () => {
       const setting = tmSearchTestSetting('acme.Customer', TM_TEST_CUSTOMERS, { mode: 'picker' });
@@ -201,7 +253,7 @@ describe('search changes', () => {
   });
 
   describe('round trip', () => {
-    it('leaves a URL and preferences that reopen the page as it shows, after any run of changes', () => {
+    it('reaches history by its verdict and leaves a URL and preferences that reopen the page as it shows, after any run of changes', () => {
       // A seeded generator, so a failure reproduces.
       let seed = 1124;
       const random = (): number => {
@@ -221,6 +273,7 @@ describe('search changes', () => {
         () => ({ size: pick([20, 50, 100, 200]) }),
         () => ({ view: pick(['grid', 'tiles'] as const) }),
         () => ({ cols: pick([undefined, ['Code', 'Rank'], ['Name']]) }),
+        () => ({ list: pick([true, false, undefined]) }),
       ];
       const columns: readonly (readonly TmColumnInput<string>[])[] = [
         ['Code', 'Name'],
@@ -228,10 +281,34 @@ describe('search changes', () => {
         ['Code', { expression: 'CreditLimit * 3', labelKey: TM_SEARCH_EXPRESSION_LABEL }],
       ];
       for (let run = 0; run < 40; run++) {
-        let setting = tmSearchTestSetting('acme.Customer', TM_TEST_CUSTOMERS, { width: pick(['narrow', 'wide'] as const) });
-        let state = opened(setting, '/17/customers');
+        // Customers as declared, or centers, a tree without a declaration.
+        const [entity, declaration, path] = pick([
+          ['acme.Customer', TM_TEST_CUSTOMERS, '/17/customers'],
+          ['gl.Center', {}, '/17/centers'],
+        ] as const);
+        let setting = tmSearchTestSetting(entity, declaration, { width: pick(['narrow', 'wide'] as const) });
+        const first = tmSearchResolve(setting, tmSearchTestOpening(path));
+        let state = first.state;
+        let canonical = first.canonical;
         for (let step = 0; step < 12; step++) {
-          const change: TmSearchTransition = random() < 0.15 ? tmSearchSetColumns(setting, state, pick(columns)) : tmSearchUpdate(setting, state, pick(patches)());
+          // A resize across `md`, a change of the columns, or a patch of the query.
+          const roll = random();
+          let pageOnly = false;
+          let change: TmSearchTransition;
+          if (roll < 0.1) {
+            const from = setting.width;
+            setting = { ...setting, width: from === 'wide' ? 'narrow' : 'wide' };
+            change = tmSearchResize(setting, state, from);
+          } else if (roll < 0.25) {
+            change = tmSearchSetColumns(setting, state, pick(columns));
+          } else {
+            const patch = pick(patches)();
+            pageOnly = Object.keys(patch).join() === 'page';
+            change = tmSearchUpdate(setting, state, patch);
+          }
+          // None when the URL is unchanged, a push for a page change alone, else a replace.
+          expect(change.history, `run ${run} step ${step}`).toBe(tmSearchTestHistory(canonical, change.canonical, pageOnly));
+          canonical = change.canonical;
           // The host writes the preferences the change names.
           const { columns: shown, view, pageSize } = change.preferences;
           setting = {

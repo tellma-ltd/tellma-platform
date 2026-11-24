@@ -7,13 +7,15 @@ import { Injector } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { TmEntities, TmUrls, type TmListPayload, type TmSearchSnapshot } from '@tellma/core';
 
+import type { TmSearchHistory } from './tm-search-change';
 import type { TmSearchDeclaration, TmSearchSetting } from './tm-search-model';
 import type { TmSearchOpening } from './tm-search-resolve';
 
 // The search model's test fixtures over the entity rig's recorded model:
 // customers declared as a distribution would declare them (columns, an
 // order, a tile, custom filters and tabs), centers as a tree with none of
-// them, and a setting and an opening built from a URL.
+// them, a setting and an opening built from a URL, and the history verdict
+// a change must reach.
 
 /** Customers' search members: the declared columns, order and tile, a switch, an options filter, a named switch, and tabs with a leaf and a named filter. */
 export const TM_TEST_CUSTOMERS: TmSearchDeclaration = {
@@ -90,6 +92,19 @@ export function tmSearchTestOpening(url: string, snapshot?: TmSearchSnapshot): T
 export function tmSearchTestHash(filter: string): string {
   const url = TestBed.inject(TmUrls).search('acme.Customer', { filter });
   return url.slice(url.indexOf('#'));
+}
+
+/**
+ * The history verdict a page's change must reach: none when its URL is
+ * unchanged, a push for a change of the page alone, else a replace.
+ *
+ * @param previous - The canonical URL before the change.
+ * @param canonical - The canonical URL after it.
+ * @param pageOnly - Whether the change named the page alone.
+ * @returns The verdict.
+ */
+export function tmSearchTestHistory(previous: string, canonical: string, pageOnly: boolean): TmSearchHistory | null {
+  return canonical === previous ? null : pageOnly ? 'push' : 'replace';
 }
 
 /**

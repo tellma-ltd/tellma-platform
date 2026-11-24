@@ -971,14 +971,16 @@ canonical `TmSearchQuery`, the shown columns and their source). Pure functions o
 `search/src/`, give the host what it needs:
 
 - **Opening.** `tmSearchResolve` takes the state from a snapshot that supersedes the URL, the URL,
-  the page state, then the preferences and the code defaults. A URL cannot tell a value left out
-  from one at its code default, so both read as left out, and a canonical URL reopens the state it
-  was printed from.
+  the page state, then the preferences and the code defaults. Back and Forward skip the page
+  state. A URL cannot tell a value left out from one at its code default, so both read as left
+  out, and a canonical URL reopens the state it was printed from. A drill-through list whose `#d=`
+  payload is missing or malformed prints no URL and builds no request.
 - **The canonical query.** `tmSearchCanonical` drops what the entity cannot have (an inactive flag
   on an entity that is not activatable, an unknown tab or custom value, a column key that does not
   resolve or that the user may not read, an `f.` value its control rejects, a size the page does
-  not offer, a page past the skip window) and leaves out every code default. A dropped column key
-  is reported as `tm.entity.column-dropped`.
+  not offer, a page past the skip window, an order on an expression column) and leaves out every
+  code default. A dropped column key is reported once as `tm.entity.column-dropped`, where it
+  enters the state.
 - **Changes.** `tmSearchUpdate`, `tmSearchSetColumns`, `tmSearchApply` and `tmSearchResize` return
   the new state, its URL, whether the URL is pushed (a page change alone) or replaced, and the
   preferences to write.
