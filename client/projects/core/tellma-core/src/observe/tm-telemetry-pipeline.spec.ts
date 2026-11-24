@@ -239,6 +239,29 @@ describe('TmTelemetryPipeline', () => {
     });
   });
 
+  describe('the context a call saw', () => {
+    it("records the tenant, the page and the recent requests the call saw, not the host's at replay", () => {
+      const r = rig({ tenantId: 17, traceIds: [TRACE_ID] });
+      const context = { tenantId: null, page: { routeTemplate: '/', kind: 'custom' }, requests: [{ traceId: 'b'.repeat(32) }] };
+      r.pipeline.take(['event', ['tm.launch.cold'], Date.now(), context]);
+      r.pipeline.take(['error', [appError(1)], Date.now(), context]);
+      r.event('tm.launch.warm');
+
+      expect(r.recent().map((item) => [item.name, item.tenantId, item.props['route'], item.props['recentTraceIds']])).toEqual([
+        ['tm.launch.cold', null, '/', undefined],
+        ['tm.error.captured', null, '/', 'b'.repeat(32)],
+        ['tm.launch.warm', 17, '/:t/centers/:id', undefined],
+      ]);
+      expect(r.pipeline.errors[0]?.routeTemplate).toBe('/');
+    });
+
+    it('records no page properties when the call saw no page', () => {
+      const r = rig();
+      r.pipeline.take(['event', ['tm.launch.cold'], Date.now(), { tenantId: null, page: null, requests: [] }]);
+      expect(r.recent()[0]?.props).toEqual({});
+    });
+  });
+
   describe('error sources', () => {
     it('reads an error reported while the browser dispatches an error or a rejection as global', () => {
       const { recent, error } = rig();
@@ -433,7 +456,7 @@ describe('TmTelemetryPipeline', () => {
     it('sends nothing for an empty queue', () => {
       const { sent, pipeline } = rig();
       pipeline.flush();
-      pipeline.flush('pagehide');
+      pipeline.flush();
       expect(sent).toEqual([]);
     });
 
@@ -490,12 +513,30 @@ describe('TmTelemetryPipeline', () => {
       expect(itemsOf(r.sent)).toHaveLength(40);
     });
 
-    it('sends one batch at most on pagehide', () => {
+    // An unload fires visibilitychange and pagehide, in either order, and each flushes.
+    it('sends one batch for two flushes at once, as an unload makes', () => {
       const r = rig();
       queueHeld(r, 150);
-      r.pipeline.flush('pagehide');
-      vi.advanceTimersByTime(5_000);
+      r.pipeline.flush();
+      r.pipeline.flush();
       expect(r.sent.map((batch) => batch.items.length)).toEqual([100]);
+
+      // A page that stays sends the rest a second later.
+      vi.advanceTimersByTime(1_000);
+      expect(r.sent.map((batch) => batch.items.length)).toEqual([100, 50]);
+    });
+
+    it('joins the next batch when a flush comes within a second of the last one', () => {
+      const r = rig();
+      r.event('tm.launch.warm');
+      r.pipeline.flush();
+      r.event('tm.launch.cold');
+      r.pipeline.flush();
+      vi.advanceTimersByTime(999);
+      expect(namesOf(r.sent)).toEqual(['tm.launch.warm']);
+
+      vi.advanceTimersByTime(1);
+      expect(namesOf(r.sent)).toEqual(['tm.launch.warm', 'tm.launch.cold']);
     });
 
     it("sends one tenant's items per batch, the first item's tenant first", () => {
@@ -513,6 +554,20 @@ describe('TmTelemetryPipeline', () => {
       expect(r.sent.map((batch) => [batch.tenantId, batch.items.map((item) => item.properties['index'])])).toEqual([
         [17, [0, 2]],
         [18, [1]],
+      ]);
+    });
+
+    it('sends tenantless items while the tab is in a tenant', () => {
+      const r = rig({ tenantId: null });
+      r.event('tm.launch.cold');
+      r.state.tenantId = 17;
+      r.event('tm.launch.warm');
+      r.pipeline.flush();
+      vi.advanceTimersByTime(1_000);
+
+      expect(r.sent.map((batch) => [batch.tenantId, batch.items.map((item) => item.name)])).toEqual([
+        [null, ['tm.launch.cold']],
+        [17, ['tm.launch.warm']],
       ]);
     });
 

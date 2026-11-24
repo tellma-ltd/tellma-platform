@@ -21,10 +21,12 @@ import { TmApi } from '../api/tm-api';
 import { TM_UPDATES_LOAD } from '../api/tm-api-seams';
 import { TmHttpApi } from '../api/tm-http-api';
 import { TM_BOOT_RESULT } from '../boot/tm-boot-result';
+import { TmPageContexts } from '../context/tm-page-contexts';
 import { TmLocalization } from '../l10n/tm-localization';
 import { tmRoutedTenant } from '../launch/tm-routed-tenant';
 import { TmClientMetadataStore } from '../metadata/tm-client-metadata';
 import { TmTelemetry, TmTelemetryFront } from '../observe/tm-telemetry';
+import { TmRequestLog } from '../requests/tm-request-log';
 import { TmPageFocus } from '../routes/tm-page-focus';
 import { TmLaunchTimer } from '../routes/tm-route-host';
 import { TmSession } from '../session/tm-session';
@@ -139,8 +141,15 @@ export function tmStartup(config: TmAppConfig): EnvironmentProviders[] {
       const telemetry = inject(TmTelemetry);
       // Created now, so the routed tenant is known before the first page's links,
       // and the preferences hear the other tabs' choices from the start.
-      inject(TmUrls);
+      const urls = inject(TmUrls);
       inject(TmPreferences);
+      // Each telemetry call records what it sees where it is made, so a call
+      // held until the pipeline loads keeps its tenant, page and requests.
+      if (telemetry instanceof TmTelemetryFront) {
+        const contexts = inject(TmPageContexts);
+        const requests = inject(TmRequestLog);
+        telemetry.context = () => ({ tenantId: urls.tenantId(), page: contexts.current(), requests: requests.recent() });
+      }
       const loadRecents = inject(TM_RECENTS_LOAD);
       const loadLeader = inject(TM_LEADER_LOAD);
       const loadUpdates = inject(TM_UPDATES_LOAD);

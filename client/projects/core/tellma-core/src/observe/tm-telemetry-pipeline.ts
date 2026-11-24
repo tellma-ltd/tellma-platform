@@ -17,7 +17,7 @@ import { TmLaunchCache } from '../state/launch/tm-launch-cache';
 import { TmUrls } from '../urls/tm-urls';
 import { TmErrorCapture } from './tm-error-capture';
 import type { TmErrorRecord, TmErrorSource } from './tm-error-handler';
-import type { TmTelemetryCall, TmTelemetryItem, TmTelemetryOptions, TmTelemetryProps } from './tm-telemetry';
+import type { TmTelemetryCall, TmTelemetryCallContext, TmTelemetryItem, TmTelemetryOptions, TmTelemetryProps } from './tm-telemetry';
 
 // The telemetry pipeline (spec 0026 §3, §4): a lazy chunk the front loads at
 // idle after the first render. Each call is guarded, stamped with the
@@ -25,10 +25,13 @@ import type { TmTelemetryCall, TmTelemetryItem, TmTelemetryOptions, TmTelemetryP
 // queued. The queue flushes at 50 items, 30 s after its first item, 1 s
 // after an error, when the tab hides or the page is hidden, on a tenant
 // switch and on `flush()`; a flush cuts it into one tenant's batches of at
-// most 100 items and 16 KB, sent through TmApi.send one a second (one batch
-// at most on `pagehide`). Offline, without an active session or before the
-// UI version is known, the queue holds within its cap of 200. Nothing here
-// awaits, retries or throws in production.
+// most 100 items and 16 KB, sent through TmApi.send one a second, so the
+// `pagehide` of an unload sends one batch. An item takes its tenant, page and
+// recent requests from what its call saw where it was made, so a call the
+// front held until this chunk loaded is recorded as it was made. Offline,
+// without an active session or before the UI version is known, the queue
+// holds within its cap of 200. Nothing here awaits, retries or throws in
+// production.
 
 /** The relay's route. */
 export const TM_TELEMETRY_ROUTE = '/api/client-telemetry';
@@ -198,8 +201,11 @@ export class TmTelemetryPipeline {
   /** The flush 1 s after the latest error item. */
   #errorTimer: ReturnType<typeof setTimeout> | undefined;
 
-  /** The next batch of a flush in progress. */
+  /** The end of the second after a batch, when the next flush may send. */
   #paceTimer: ReturnType<typeof setTimeout> | undefined;
+
+  /** What the call being taken saw where it was made; `undefined` to read the host. */
+  #call: TmTelemetryCallContext | undefined;
 
   /**
    * Creates the pipeline and draws the tab's sampling decision.
@@ -221,35 +227,39 @@ export class TmTelemetryPipeline {
    * Takes one call of the front. In production nothing throws; in
    * development a malformed name or property throws {@link TmTelemetryError}.
    *
-   * @param call - The method, its arguments and when it was called.
+   * @param call - The method, its arguments, when it was called and what it saw.
    */
-  take([method, args, at]: TmTelemetryCall): void {
-    this.#guarded(() => {
-      switch (method) {
-        case 'event':
-          this.#record('event', args[0], args[1], args[2] as TmTelemetryOptions | undefined, at);
-          break;
-        case 'timing':
-          this.#record('timing', args[0], args[2], args[3] as TmTelemetryOptions | undefined, at, args[1]);
-          break;
-        case 'error':
-          this.#error(args[0], args[1], args[2], at);
-          break;
-        case 'flush':
-          this.flush();
-          break;
-      }
-    });
+  take([method, args, at, context]: TmTelemetryCall): void {
+    this.#call = context;
+    try {
+      this.#guarded(() => {
+        switch (method) {
+          case 'event':
+            this.#record('event', args[0], args[1], args[2] as TmTelemetryOptions | undefined, at);
+            break;
+          case 'timing':
+            this.#record('timing', args[0], args[2], args[3] as TmTelemetryOptions | undefined, at, args[1]);
+            break;
+          case 'error':
+            this.#error(args[0], args[1], args[2], at);
+            break;
+          case 'flush':
+            this.flush();
+            break;
+        }
+      });
+    } finally {
+      this.#call = undefined;
+    }
   }
 
   /**
    * Sends what is queued: one batch now, then the next a second later while
-   * items remain; on `pagehide`, one batch at most. While a flush is pacing
-   * its batches, another regular flush joins it.
-   *
-   * @param mode - `pagehide` as the page is hidden, else a regular flush.
+   * items remain. Within the second after a batch, any flush joins the next
+   * one, so `pagehide` sends one batch at most, even when the unload also
+   * fires `visibilitychange`.
    */
-  flush(mode: 'regular' | 'pagehide' = 'regular'): void {
+  flush(): void {
     this.#guarded(() => {
       clearTimeout(this.#firstTimer);
       clearTimeout(this.#errorTimer);
@@ -261,7 +271,7 @@ export class TmTelemetryPipeline {
         this.#drops.clear();
         return;
       }
-      if ((this.#queue.length === 0 && this.#drops.size === 0) || (mode === 'regular' && this.#paceTimer !== undefined)) {
+      if ((this.#queue.length === 0 && this.#drops.size === 0) || this.#paceTimer !== undefined) {
         return;
       }
       const version = this.#host.version();
@@ -271,12 +281,11 @@ export class TmTelemetryPipeline {
         return;
       }
       this.#sendOne(version);
-      if (mode === 'regular' && (this.#queue.length > 0 || this.#drops.size > 0)) {
-        this.#paceTimer = setTimeout(() => {
-          this.#paceTimer = undefined;
-          this.flush();
-        }, PACE_MS);
-      }
+      // The next batch waits a second; after `pagehide`, it is sent only if the page stays.
+      this.#paceTimer = setTimeout(() => {
+        this.#paceTimer = undefined;
+        this.flush();
+      }, PACE_MS);
     });
   }
 
@@ -311,7 +320,7 @@ export class TmTelemetryPipeline {
     const rate = this.#rate();
     const own = this.#reserved(sampled ? { ...reserved, sampleRate: rate } : reserved);
     const traceId = this.#traceId(options?.traceId);
-    this.#keep({ kind, name, at, ...(traceId === undefined ? {} : { traceId }), tenantId: this.#host.tenantId(), props: this.#props(name, own, props) }, !sampled || this.#draw < rate);
+    this.#keep({ kind, name, at, ...(traceId === undefined ? {} : { traceId }), tenantId: this.#tenantId(), props: this.#props(name, own, props) }, !sampled || this.#draw < rate);
   }
 
   /**
@@ -335,8 +344,7 @@ export class TmTelemetryPipeline {
     }
     // The caller's context is guarded before anything is kept.
     const contextProps = this.#props('tm.error.captured', {}, rest);
-    const page = this.#host.page();
-    const captured = this.#capture.capture(error, source, at, page?.route ?? '', this.#host.recentTraceIds());
+    const captured = this.#capture.capture(error, source, at, this.#page()?.route ?? '', this.#traceIds());
     if (captured === 'filtered') {
       return;
     }
@@ -361,7 +369,7 @@ export class TmTelemetryPipeline {
       name: 'tm.error.captured',
       at,
       ...(captured.traceId === undefined ? {} : { traceId: captured.traceId }),
-      tenantId: this.#host.tenantId(),
+      tenantId: this.#tenantId(),
       props,
     };
     if (this.#keep(item, false)) {
@@ -401,10 +409,10 @@ export class TmTelemetryPipeline {
    * thrown in development, since the platform derived it.
    *
    * @param own - The kind's own properties; an `undefined` one is left out.
+   * @param page - The routed page, by default the one the call saw.
    * @returns The properties.
    */
-  #reserved(own: Readonly<Record<string, unknown>>): Record<string, string | number | boolean> {
-    const page = this.#host.page();
+  #reserved(own: Readonly<Record<string, unknown>>, page = this.#page()): Record<string, string | number | boolean> {
     const props: Record<string, string | number | boolean> = {};
     for (const [key, value] of Object.entries(page === null ? own : { route: page.route, pageKind: page.pageKind, ...own })) {
       if (value === undefined) {
@@ -510,6 +518,36 @@ export class TmTelemetryPipeline {
     this.#armFirstTimer();
   }
 
+  // --- What the call saw, else what the host sees now ---
+
+  /**
+   * The routed tenant when the call was made.
+   *
+   * @returns The tenant, or `null` outside a tenant.
+   */
+  #tenantId(): number | null {
+    return this.#call === undefined ? this.#host.tenantId() : this.#call.tenantId;
+  }
+
+  /**
+   * The routed page when the call was made.
+   *
+   * @returns The page, or `null` before the first page.
+   */
+  #page(): TmTelemetryPage | null {
+    const page = this.#call === undefined ? undefined : this.#call.page;
+    return page === undefined ? this.#host.page() : page === null ? null : { route: page.routeTemplate, pageKind: page.kind };
+  }
+
+  /**
+   * The three most recent requests' trace ids when the call was made, newest first.
+   *
+   * @returns The trace ids.
+   */
+  #traceIds(): readonly string[] {
+    return this.#call === undefined ? this.#host.recentTraceIds() : this.#call.requests.slice(0, 3).map((request) => request.traceId);
+  }
+
   /**
    * The sampling rate in force, from 0 to 1.
    *
@@ -557,7 +595,9 @@ export class TmTelemetryPipeline {
    * @param version - The UI version.
    */
   #sendOne(version: string): void {
-    const tenantId = this.#queue[0]?.tenantId ?? this.#host.tenantId();
+    // The first item's tenant, `null` included; with only drop counts, the routed one.
+    const first = this.#queue[0];
+    const tenantId = first === undefined ? this.#host.tenantId() : first.tenantId;
     const sentAt = this.#host.now();
     const envelope = { version, tabId: this.#host.tabId, tenantId, sentAt: new Date(sentAt).toISOString() };
     // The body is the envelope with its items: its bytes, then each item's and a comma between them.
@@ -582,7 +622,7 @@ export class TmTelemetryPipeline {
     // --- The drop counts, each reason once ---
     for (const reason of DROP_REASONS) {
       const count = this.#drops.get(reason);
-      if (count !== undefined && add({ kind: 'event', name: 'tm.telemetry.dropped', at: sentAt, tenantId, props: this.#reserved({ count, reason }) })) {
+      if (count !== undefined && add({ kind: 'event', name: 'tm.telemetry.dropped', at: sentAt, tenantId, props: this.#reserved({ count, reason }, this.#host.page()) })) {
         this.#drops.delete(reason);
       }
     }
@@ -727,7 +767,7 @@ export function tmStartTelemetry(
       pipeline.flush();
     }
   };
-  const pagehide = (): void => pipeline.flush('pagehide');
+  const pagehide = (): void => pipeline.flush();
   document.addEventListener('visibilitychange', hidden);
   document.defaultView?.addEventListener('pagehide', pagehide);
   injector.get(DestroyRef).onDestroy(() => {

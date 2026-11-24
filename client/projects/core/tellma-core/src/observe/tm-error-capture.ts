@@ -32,9 +32,10 @@ const EMAILS = /[^\s@<>'"“”«»(),;[\]]+@[^\s@<>'"“”«»(),;[\]]+\.[^\s@
 
 /**
  * A quoted text in single, double, curly or angle quotes. A single quote
- * opens only after a non-letter, so an apostrophe never opens one.
+ * opens only after a non-letter and closes only before one, so an apostrophe
+ * inside a quoted name (`'O'Brien Trading'`) neither opens nor closes it.
  */
-const QUOTED = /(?<![\p{L}\p{N}])'([^'\n]*)'|"([^"\n]*)"|“([^”\n]*)”|«([^»\n]*)»/gu;
+const QUOTED = /(?<![\p{L}\p{N}])'((?:[^'\n]|'(?=[\p{L}\p{N}]))*)'(?![\p{L}\p{N}])|"([^"\n]*)"|“([^”\n]*)”|«([^»\n]*)»/gu;
 
 /** A run of digits. */
 const DIGITS = /[0-9]+/g;
@@ -291,7 +292,10 @@ export class TmErrorCapture {
     }
     // --- The record ---
     const errorClass = tmErrorClass(error);
-    const fingerprint = `${errorClass}@${stack.firstSameOrigin ?? ''}`.replace(NOT_VALUE, '_').slice(0, FINGERPRINT_CHARS);
+    // Every request error is built at one site of the HTTP layer, so its kind
+    // and code tell one failure from another where its frame cannot.
+    const where = api === null ? (stack.firstSameOrigin ?? '') : `${api.kind}.${api.code}`;
+    const fingerprint = `${errorClass}@${where}`.replace(NOT_VALUE, '_').slice(0, FINGERPRINT_CHARS);
     const record: TmErrorRecord = {
       source,
       errorClass,

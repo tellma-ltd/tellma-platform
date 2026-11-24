@@ -86,6 +86,13 @@ describe('tmRedactMessage', () => {
 
   it('leaves an apostrophe inside a word alone', () => {
     expect(tmRedactMessage("Can't parse 'Farah Nasser'")).toBe('Can\'t parse "…"');
+    expect(tmRedactMessage("it's 'Mary Ann' who's here")).toBe('it\'s "…" who\'s here');
+  });
+
+  it('masks a single-quoted name that holds an apostrophe as a whole', () => {
+    expect(tmRedactMessage("Invalid value 'O'Brien Trading' at row 4")).toBe('Invalid value "…" at row #');
+    expect(tmRedactMessage("Customer 'Farah's Bakery' not found")).toBe('Customer "…" not found');
+    expect(tmRedactMessage("Unknown 'querySelector'")).toBe("Unknown 'querySelector'");
   });
 
   it('masks each run of digits', () => {
@@ -212,7 +219,15 @@ describe('TmErrorCapture', () => {
     it("records a request error's kind, code, status and trace id, never its message", () => {
       const error = withStack(new TmApiError({ kind: 'server', status: 500, code: 'internal', traceId: TRACE_ID, message: 'Name "Farah" failed' }), V8_STACK);
       const record = recorded(capture, error, 'api');
-      expect(record).toMatchObject({ source: 'api', errorClass: 'TmApiError', kind: 'server', code: 'internal', status: 500, traceId: TRACE_ID });
+      expect(record).toMatchObject({
+        source: 'api',
+        errorClass: 'TmApiError',
+        fingerprint: 'TmApiError@server.internal',
+        kind: 'server',
+        code: 'internal',
+        status: 500,
+        traceId: TRACE_ID,
+      });
       expect(record).not.toHaveProperty('message');
     });
 
@@ -252,6 +267,12 @@ describe('TmErrorCapture', () => {
       const moved = recorded(capture, withStack(new TypeError('a'), V8_STACK.replace(':1:2345', ':1:2346')));
       expect(second.fingerprint).toBe(first.fingerprint);
       expect(moved.fingerprint).toBe('TypeError@chunk-K3J7Q2M9.js:1:2346');
+    });
+
+    it("name a request error by its kind and code, which tell failures of the one site apart", () => {
+      const server = recorded(capture, withStack(new TmApiError({ kind: 'server', status: 500, code: 'internal' }), V8_STACK), 'api');
+      const unavailable = recorded(capture, withStack(new TmApiError({ kind: 'unavailable', status: 503 }), V8_STACK), 'api');
+      expect([server.fingerprint, unavailable.fingerprint]).toEqual(['TmApiError@server.internal', 'TmApiError@unavailable.unavailable']);
     });
 
     it('skip foreign frames', () => {

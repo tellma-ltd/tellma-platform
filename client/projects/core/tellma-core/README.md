@@ -874,13 +874,15 @@ most 16 flat numbers, booleans and codes. In development a malformed name or pro
 item or property is dropped and counted into the next `tm.telemetry.dropped`. The lint rule
 `tm/telemetry-names` checks the literal names and page action ids where they are written.
 
-The root service is a thin front that stamps each call and holds it. The pipeline behind it is a
+The root service is a thin front that stamps each call with the time and the tenant, page and
+recent requests it saw, and holds it. The pipeline behind it is a
 lazy chunk of the primary (`tm-telemetry-pipeline`), which the app's startup loads at idle after
 the first render and which takes the held calls in order. It adds the envelope (the UI version,
 the tab, each item's tenant and the routed page's `route` and `pageKind`), samples per tab by the
 distribution's `sampleRate`, keeps the last 100 items in `recent`, and queues the rest within a
 cap of 200, dropping the oldest item that is not an error first. The queue flushes at 50 items,
-30 s after its first item, 1 s after an error, when the tab hides, on `pagehide` (one batch), on a
+30 s after its first item, 1 s after an error, when the tab hides or on `pagehide` (one batch for
+both), on a
 tenant switch, when a hold lifts and on `flush()`. Each flush sends one tenant's items per batch,
 at most 100 items and 16 KB, one batch a second, through `TmApi.send`. It holds while offline,
 without an active session or before the UI version is known, and sends nothing when the
@@ -894,10 +896,11 @@ loop notice) and an error from another origin's script counts as dropped. A fail
 is a `ChunkLoadError`. Messages pass five masks (URLs, e-mail addresses, quoted text that is not an
 identifier, digits, non-ASCII text) and a cap of 200 characters; a request error ships no message.
 Stacks keep 30 frames and 4 KB, each URL reduced to its file name. Each fingerprint
-(`TypeError@chunk-K3J7Q2M9.js:1:2345`) is sent once per 10 minutes, and 30 error items at most per
+(`TypeError@chunk-K3J7Q2M9.js:1:2345`, or `TmApiError@server.internal` for a request error, by
+its kind and code) is sent once per 10 minutes, and 30 error items at most per
 10 minutes; the last 50 records are kept for the support dump.
 
-An injector whose app never starts the pipeline, a unit test's, keeps at most 200 calls and sends
+An injector whose app never starts the pipeline, a unit test's, keeps at most 1,000 calls and sends
 nothing. Tests replace the service with `@tellma/core-testing`'s `TmFakeTelemetry`.
 
 ## Seams
@@ -947,6 +950,6 @@ carries a note beside it.
 The primary entry point also has the platform's cap of 50 KB at gzip level 9 on that same weight,
 which `size:check` holds it to: the whole entry point, every member counted whether or not an app
 uses it, its `import()`-only chunks apart. Raising it takes `"tellma".capsInKb` with a note,
-`{ ".": { "error": 52, "note": "…" } }`. A distribution's `tellma-client build` also prints the
-primary's code on its own app's first frame (`corePrimaryFirstFrame`), held to the same 50 KB: a
+`{ ".": { "error": 52, "note": "…" } }`; the product owner has raised this package's to 55 KB. A distribution's `tellma-client build` also prints the
+primary's code on its own app's first frame (`corePrimaryFirstFrame`), held to the same 55 KB: a
 lower bound of this weight, since an app ships only the members it uses.

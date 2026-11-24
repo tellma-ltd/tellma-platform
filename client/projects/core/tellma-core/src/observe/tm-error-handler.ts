@@ -30,7 +30,7 @@ export interface TmErrorRecord {
   readonly source: TmErrorSource;
   /** The error's class, such as `TypeError` or `ChunkLoadError`. */
   readonly errorClass: string;
-  /** The class and the first same-origin frame, such as `TypeError@chunk-K3J7Q2M9.js:1:2345`. */
+  /** The class and the first same-origin frame, such as `TypeError@chunk-K3J7Q2M9.js:1:2345`; for a request error, its kind and code, such as `TmApiError@server.internal`. */
   readonly fingerprint: string;
   /** The request error's kind, for a failed request. */
   readonly kind?: TmApiErrorKind;

@@ -3,14 +3,14 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-import { Injectable, signal } from '@angular/core';
+import { ErrorHandler, Injectable, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import type { RouterTestingHarness } from '@angular/router/testing';
 import type { TmFakeApiCall } from '@tellma/core-testing';
 
-import { tmAppRig, type TmAppRig, tmNavigate, tmSettleUntil } from '../routes/tm-app.testing.util';
+import { tmAppRig, type TmAppRig, tmNavigate, tmSettleUntil, tmUnhandled } from '../routes/tm-app.testing.util';
 import { TmTelemetry, TmTelemetryFront, type TmTelemetryItem } from './tm-telemetry';
-import type { TmTelemetryBatch } from './tm-telemetry-pipeline';
+import type { TmTelemetryBatch, TmTelemetryWireItem } from './tm-telemetry-pipeline';
 
 describe('TmTelemetry', () => {
   afterEach(() => {
@@ -71,8 +71,24 @@ describe('TmTelemetry', () => {
     /** The relay calls the fake API saw, oldest first. */
     const sends = (): readonly TmFakeApiCall[] => rig.api.calls().filter((call) => call.kind === 'send' && call.route === '/api/client-telemetry');
 
+    /** Every item of every relay call, oldest first. */
+    const sentItems = (): readonly TmTelemetryWireItem[] => sends().flatMap((call) => (call.body as TmTelemetryBatch).items);
+
     /** Every item name of every relay call, oldest first. */
-    const sentNames = (): readonly string[] => sends().flatMap((call) => (call.body as TmTelemetryBatch).items.map((item) => item.name));
+    const sentNames = (): readonly string[] => sentItems().map((item) => item.name);
+
+    /**
+     * Hands an error to the app's error handler while an event is
+     * dispatched, as the browser's global listeners do.
+     *
+     * @param event - The event.
+     * @param error - The error.
+     */
+    function duringEvent(event: Event, error: unknown): void {
+      const target = new EventTarget();
+      target.addEventListener(event.type, () => TestBed.inject(ErrorHandler).handleError(error));
+      target.dispatchEvent(event);
+    }
 
     /**
      * Renders the app, which starts the pipeline, and waits for the pipeline
@@ -110,8 +126,8 @@ describe('TmTelemetry', () => {
       expect(front.recent().at(-1)?.name).toBe('acme.report.closed');
     });
 
-    it('holds at most 200 calls before the pipeline loads', async () => {
-      for (let index = 0; index < 250; index++) {
+    it('holds at most 1,000 calls before the pipeline loads', async () => {
+      for (let index = 0; index < 1_100; index++) {
         front.event('acme.report.run', { index });
       }
       // The marker is past the cap, so the spec waits for the held calls instead.
@@ -119,36 +135,122 @@ describe('TmTelemetry', () => {
 
       const indices = front.recent().flatMap((item) => (item.name === 'acme.report.run' ? [item.props['index'] as number] : []));
       expect(indices.length).toBeGreaterThan(0);
-      expect(Math.max(...indices)).toBeLessThan(200);
+      expect(Math.max(...indices)).toBeLessThan(1_000);
+    });
+
+    it("sends an error held behind more than the queue's cap, and counts the overflow", async () => {
+      for (let index = 0; index < 250; index++) {
+        front.event('acme.report.run', { index });
+      }
+      front.error(new TypeError('held behind the events'));
+      await started();
+
+      await tmSettleUntil(
+        () => sentNames().includes('tm.error.captured') && sentItems().some((item) => item.name === 'tm.telemetry.dropped' && item.properties['reason'] === 'overflow'),
+        'the held error and the overflow count were sent',
+      );
+    });
+
+    it('keeps the tenant a held call saw', async () => {
+      front.event('acme.report.run');
+      await started();
+
+      expect(front.recent().find((item) => item.name === 'acme.report.run')?.tenantId).toBeNull();
+      expect(front.recent().find((item) => item.name === 'acme.spec.started')?.tenantId).toBe(17);
+    });
+
+    it('records a held uncaught error as global, its message redacted', async () => {
+      const failure = new TypeError('Invalid value "Farah Nasser" at row 42');
+      duringEvent(new ErrorEvent('error', { error: failure }), failure);
+      await started();
+
+      expect(front.recent().find((item) => item.name === 'tm.error.captured')?.props).toMatchObject({
+        source: 'global',
+        errorClass: 'TypeError',
+        message: 'Invalid value "…" at row #',
+      });
+    });
+
+    it("counts a held global error from another origin's script as foreign", async () => {
+      const foreign = new Error('injected');
+      Object.defineProperty(foreign, 'stack', { value: 'Error: injected\n    at chrome-extension://abcdef/content.js:1:1' });
+      duringEvent(new ErrorEvent('error', { error: foreign }), foreign);
+      await started();
+      front.flush();
+
+      expect(front.recent().some((item) => item.name === 'tm.error.captured')).toBe(false);
+      expect(sentItems().find((item) => item.name === 'tm.telemetry.dropped')?.properties).toMatchObject({ count: 1, reason: 'foreign' });
+    });
+
+    it('rethrows a malformed held call on its own in development, and replays the calls after it', async () => {
+      // Held in a variable, since the lint rule rejects a malformed literal name.
+      const malformed: string = 'Acme.Report';
+      front.event(malformed);
+      front.event('acme.report.after');
+      const caught = await tmUnhandled(async () => {
+        await started();
+      });
+
+      expect(caught).toEqual([expect.objectContaining({ name: 'TmTelemetryError' })]);
+      expect(front.recent().some((item) => item.name === 'acme.report.after')).toBe(true);
     });
 
     it('sends through the API in the background, with the UI version and the tab', async () => {
       await started();
       front.event('acme.report.run');
       front.flush();
+      // The launch's tenantless items go first, one tenant per batch, a second apart.
+      await tmSettleUntil(() => sentNames().includes('acme.report.run'), 'the item was sent');
 
-      const call = sends().at(-1);
+      const call = sends().find((sent) => (sent.body as TmTelemetryBatch).items.some((item) => item.name === 'acme.report.run'));
       expect(call?.options).toEqual({ background: true });
       expect(call?.body).toMatchObject({ version: expect.any(String), tabId: expect.any(String), tenantId: 17 });
-      expect(sentNames()).toContain('acme.report.run');
     });
 
     it('flushes when the tab hides', async () => {
       await started();
       const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
       front.event('acme.report.run');
+      const before = sends().length;
       document.dispatchEvent(new Event('visibilitychange'));
       visibility.mockRestore();
 
-      expect(sentNames()).toContain('acme.report.run');
+      expect(sends()).toHaveLength(before + 1);
+      await tmSettleUntil(() => sentNames().includes('acme.report.run'), 'the item was sent');
     });
 
     it('flushes when the page is hidden', async () => {
       await started();
       front.event('acme.report.run');
+      const before = sends().length;
       window.dispatchEvent(new PageTransitionEvent('pagehide'));
 
-      expect(sentNames()).toContain('acme.report.run');
+      expect(sends()).toHaveLength(before + 1);
+      await tmSettleUntil(() => sentNames().includes('acme.report.run'), 'the item was sent');
+    });
+
+    // An unload fires both events, in an order that depends on the browser and the unload.
+    it.each([
+      ['visibilitychange', 'pagehide'],
+      ['pagehide', 'visibilitychange'],
+    ])('sends one batch on an unload that fires %s, then %s', async (first, second) => {
+      await started();
+      front.event('acme.report.run');
+      const before = sends().length;
+      const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
+      for (const type of [first, second]) {
+        if (type === 'pagehide') {
+          window.dispatchEvent(new PageTransitionEvent('pagehide'));
+        } else {
+          document.dispatchEvent(new Event('visibilitychange'));
+        }
+        front.event('acme.report.closed');
+      }
+      visibility.mockRestore();
+      expect(sends()).toHaveLength(before + 1);
+
+      // A page that stays sends the rest one batch a second.
+      await tmSettleUntil(() => sentNames().includes('acme.report.closed'), 'the rest was sent');
     });
 
     it('holds the queue while offline, and sends it once back online', async () => {

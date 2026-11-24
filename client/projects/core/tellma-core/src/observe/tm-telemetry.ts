@@ -3,7 +3,7 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-import { inject, Injectable, Injector, signal, type Signal, type WritableSignal } from '@angular/core';
+import { inject, Injectable, Injector, signal, type Signal, untracked, type WritableSignal } from '@angular/core';
 
 import { TM_NOW } from '../app/tm-now';
 
@@ -12,9 +12,11 @@ import { TM_NOW } from '../app/tm-now';
 // thin front that stamps each call and holds it; the pipeline that guards,
 // samples, queues and sends the items is a lazy chunk of its own
 // (tm-telemetry-pipeline), which the app's startup loads at idle after the
-// first render. From then on the front hands every call straight to it. An
+// first render. From then on the front hands every call straight to it. Each
+// call carries what it saw where it was made (the routed tenant, the page and
+// the recent requests), so a held call is replayed as it was made. An
 // injector whose app never starts the pipeline, such as a unit test's, keeps
-// at most a few hundred calls and sends nothing.
+// at most a thousand calls and sends nothing.
 
 /** The properties of one telemetry item: flat strings, numbers and booleans. */
 export type TmTelemetryProps = Readonly<Record<string, string | number | boolean>>;
@@ -102,12 +104,28 @@ export abstract class TmTelemetry {
   abstract flush(): void;
 }
 
+/** What a call saw where it was made. Internal. */
+export interface TmTelemetryCallContext {
+  /** The routed tenant, or `null` outside a tenant. */
+  readonly tenantId: number | null;
+  /** The routed page's template and kind, or `null` before the first page. */
+  readonly page: { readonly routeTemplate: string; readonly kind: string } | null;
+  /** The most recent requests, newest first. */
+  readonly requests: readonly { readonly traceId: string }[];
+}
+
 /**
- * One call to the front: its method, its arguments and when it was made, in
- * epoch milliseconds. An error's arguments end with the event the browser
- * was dispatching at the call. Internal.
+ * One call to the front: its method, its arguments, when it was made, in
+ * epoch milliseconds, and what it saw, once the app's startup lets the front
+ * read it. An error's arguments end with the event the browser was
+ * dispatching at the call. Internal.
  */
-export type TmTelemetryCall = readonly [method: 'event' | 'timing' | 'error' | 'flush', args: readonly unknown[], at: number];
+export type TmTelemetryCall = readonly [
+  method: 'event' | 'timing' | 'error' | 'flush',
+  args: readonly unknown[],
+  at: number,
+  context?: TmTelemetryCallContext,
+];
 
 /** What the pipeline's chunk exports, as far as the front reads it. Internal. */
 export interface TmTelemetryChunk {
@@ -126,8 +144,12 @@ export interface TmTelemetryChunk {
   ): (call: TmTelemetryCall) => void;
 }
 
-/** The most calls the front holds before the pipeline starts; later ones are dropped. */
-const HELD_CALLS = 200;
+/**
+ * The most calls the front holds before the pipeline starts; later ones are
+ * dropped. It is well past the queue's cap, so the pipeline's own overflow
+ * order decides what a busy launch loses, and counts it.
+ */
+const HELD_CALLS = 1000;
 
 /**
  * The root {@link TmTelemetry}: it stamps each call and holds it until the
@@ -141,6 +163,9 @@ export class TmTelemetryFront extends TmTelemetry {
 
   /** The calls held until the pipeline starts, oldest first. */
   readonly #held: TmTelemetryCall[] = [];
+
+  /** Reads what a call sees; the app's startup sets it. */
+  context: (() => TmTelemetryCallContext) | undefined;
 
   /** Takes a call: held until the pipeline starts, then the pipeline's. */
   #sink = (call: TmTelemetryCall): unknown => this.#held.length < HELD_CALLS && this.#held.push(call);
@@ -182,12 +207,13 @@ export class TmTelemetryFront extends TmTelemetry {
   }
 
   /**
-   * Stamps a call and passes it on.
+   * Stamps a call with its time and what it sees, and passes it on.
    *
    * @param method - The method called.
    * @param args - Its arguments.
    */
   #take(method: TmTelemetryCall[0], args: readonly unknown[]): void {
-    this.#sink([method, args, this.#now()]);
+    // Read untracked: a caller in a reactive context depends on none of it.
+    this.#sink([method, args, this.#now(), this.context && untracked(this.context)]);
   }
 }
