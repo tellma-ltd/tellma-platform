@@ -41,7 +41,7 @@ const STRINGS_EN = {
 } as const;
 
 /** The heights a frame gives its rows, in CSS pixels. */
-interface TmShellRows {
+export interface TmShellRows {
   /** The app bar's row. */
   readonly '--tm-app-bar-height': number;
   /** The banner row. */
@@ -62,7 +62,7 @@ const ROWS = ['--tm-app-bar-height', '--tm-banner-height', '--tm-pinned-bar-heig
  * stylesheet's defaults.
  */
 @Injectable({ providedIn: 'root' })
-class TmShellRowsWriter {
+export class TmShellRowsWriter {
   readonly #frames = signal<readonly Signal<TmShellRows>[]>([]);
 
   /** Creates the writer, which follows the newest frame's rows; the app's end restores the defaults. */

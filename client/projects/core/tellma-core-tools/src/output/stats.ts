@@ -217,6 +217,23 @@ export function tmEntryPointModule(folder: string, entryPoint: string): (input: 
 }
 
 /**
+ * A test of a module path for a named lazy chunk of an entry point of a
+ * Tellma package: the module the entry point loads with `import()`, both as
+ * the package's built chunk (`fesm2022/tellma-core-shell-tm-tenantless-<hash>.mjs`)
+ * and as its source in a workspace (`tellma-core/shell/…/tm-tenantless.ts`).
+ *
+ * @param folder - The package's folder name, such as `tellma-core`.
+ * @param entryPoint - The secondary entry point, such as `shell`.
+ * @param chunk - The lazy chunk's module name, such as `tm-tenantless`.
+ * @returns The test.
+ */
+export function tmEntryPointChunk(folder: string, entryPoint: string, chunk: string): (input: string) => boolean {
+  const bundle = new RegExp(`(?:^|/)${escape(folder)}-${escape(entryPoint)}-${escape(chunk)}-[A-Za-z0-9_-]+\\.mjs$`);
+  const source = new RegExp(`(?:^|/)${escape(folder)}/${escape(entryPoint)}/(?:.+/)?${escape(chunk)}\\.ts$`);
+  return (input) => bundle.test(input) || source.test(input);
+}
+
+/**
  * A test of a module path for the module an entry point of a Tellma package
  * starts at: its built bundle (`fesm2022/tellma-core-shell.mjs`) or, in a
  * workspace, its public API (`tellma-core/shell/public-api.ts`). Unlike

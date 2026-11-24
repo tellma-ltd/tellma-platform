@@ -136,7 +136,7 @@ export const TM_STRINGS_AR: TmStringTree = {
       loading: 'جارٍ تحميل الشركات…',
       tenant: 'الشركة {id}',
       connect: 'دخول',
-      connectTo: 'الدخول إلى {name}',
+      connectTo: 'دخول إلى {name}',
       badges: {
         lastUsed: 'آخر استخدام',
         sandbox: 'بيئة تجريبية',
@@ -156,6 +156,7 @@ export const TM_STRINGS_AR: TmStringTree = {
         message: `${imperative('اطلب', 'اطلبي')} من المسؤول دعوتك. ${imperative('أنت مسجّل الدخول', 'أنتِ مسجّلة الدخول')} باسم {email}.`,
       },
       noMatch: 'لا توجد شركات تطابق «{query}».',
+      failed: 'تعذّر تحميل شركاتك.',
       notice: {
         named: 'لم يعد بإمكانك فتح {name}.',
         unnamed: 'لم يعد بإمكانك فتح الشركة {id}.',

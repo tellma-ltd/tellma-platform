@@ -11,6 +11,7 @@ import {
   DestroyRef,
   effect,
   inject,
+  InjectionToken,
   signal,
   untracked,
   viewChild,
@@ -65,6 +66,15 @@ const SEARCH_FROM = 7;
 
 /** The most rows the page context lists. */
 const CONTEXT_ROWS = 200;
+
+/**
+ * Loads the error views the picker's error state renders: `@tellma/core/errors`,
+ * through `import()`. A test replaces it to see the picker without them.
+ */
+export const TM_PICKER_ERROR_VIEWS = new InjectionToken<() => Promise<typeof import('@tellma/core/errors')>>('TM_PICKER_ERROR_VIEWS', {
+  providedIn: 'root',
+  factory: () => () => import('@tellma/core/errors'),
+});
 
 /** The tone of each badge. */
 const TONES: Readonly<Record<TmTenantBadge, TmBadgeTone>> = {
@@ -193,12 +203,18 @@ interface TmRowView {
               }
             </ul>
             @if (rows.length === 0) {
-              <p class="tm-tenant-picker__no-match" role="status">{{ noMatch() }}</p>
+              <p class="tm-tenant-picker__no-match">{{ noMatch() }}</p>
             }
           }
         } @else if (failure()) {
-          <!-- The read failed and nothing is stored: the error state, with Retry. -->
+          <!-- The read failed and nothing is stored: the error state, with Retry; a line of its own while the error views cannot load. -->
           <ng-container #errorSlot />
+          @if (errorViewsMissing()) {
+            <p class="tm-tenant-picker__failed">
+              {{ failedLabel() }}
+              <button tmButton size="sm" (click)="retry()">{{ retryLabel() }}</button>
+            </p>
+          }
         } @else {
           <!-- Four rows with the final geometry until the read answers. -->
           <ul class="tm-tenant-picker__list" aria-busy="true">
@@ -212,8 +228,9 @@ interface TmRowView {
               </li>
             }
           </ul>
-          <p class="tm-tenant-picker__hidden" role="status">{{ loadingLabel() }}</p>
         }
+        <!-- The one live region, present from the first frame and empty until it has something to say. -->
+        <p class="tm-tenant-picker__hidden" role="status">{{ announcement() }}</p>
       </div>
     </tm-tenantless-shell>
   `,
@@ -319,6 +336,15 @@ interface TmRowView {
       color: var(--text-muted);
     }
 
+    /* The failure's own line, while the error views cannot load. */
+    .tm-tenant-picker__failed {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: var(--space-3);
+      margin: 0;
+    }
+
     /* Text that is read but not drawn. */
     .tm-tenant-picker__hidden {
       position: absolute;
@@ -361,6 +387,10 @@ export class TmTenantPicker {
   readonly #failure = signal<TmApiError | null>(null);
   // The error state's view, once the error presenter has described the failure.
   readonly #errorView = signal<TmErrorView | null>(null);
+  // Whether the error views failed to load, so the picker shows its own line.
+  readonly #errorViewsMissing = signal(false);
+  // Whether the first frame has rendered, after which the live region speaks.
+  readonly #rendered = signal(false);
 
   /** The rows of the skeleton. */
   protected readonly skeletonRows = [0, 1, 2, 3] as const;
@@ -371,8 +401,11 @@ export class TmTenantPicker {
   /** The search field's accessible name. */
   protected readonly searchLabel = this.#l10n.ɵtext('tm.tenantless.picker.search');
 
-  /** The skeleton's announcement. */
-  protected readonly loadingLabel = this.#l10n.ɵtext('tm.tenantless.picker.loading');
+  /** The line shown while neither the list nor the error views could load. */
+  protected readonly failedLabel = this.#l10n.ɵtext('tm.tenantless.picker.failed');
+
+  /** Try again's label. */
+  protected readonly retryLabel = this.#l10n.ɵtext('tm.errors.retry');
 
   /** Connect's label. */
   protected readonly connectLabel = this.#l10n.ɵtext('tm.tenantless.picker.connect');
@@ -449,6 +482,30 @@ export class TmTenantPicker {
   /** The failed read's error, shown while no list is stored. */
   protected readonly failure = this.#failure.asReadonly();
 
+  /** Whether the error views failed to load. */
+  protected readonly errorViewsMissing = this.#errorViewsMissing.asReadonly();
+
+  /** Whether the skeleton shows: no list is stored and no read has failed. */
+  readonly #loading = computed(() => this.#rows() === undefined && this.#failure() === null);
+
+  /**
+   * What the live region says: the loading line under the skeleton, the
+   * no-match line, or the failure while the error views cannot load; empty
+   * in the first frame, so the region is in place before its text changes.
+   */
+  protected readonly announcement = computed(() => {
+    if (!this.#rendered()) {
+      return '';
+    }
+    if (this.#loading()) {
+      return this.#l10n.ɵtext('tm.tenantless.picker.loading')();
+    }
+    if (this.#rows() === undefined) {
+      return this.#errorViewsMissing() ? this.failedLabel() : '';
+    }
+    return this.count() > 0 && this.view()?.length === 0 ? this.noMatch() : '';
+  });
+
   /** Creates the picker, which reads the memberships again once it has rendered. */
   constructor() {
     tmRegisterTenantlessStrings(this.#l10n);
@@ -459,9 +516,17 @@ export class TmTenantPicker {
     destroyRef.onDestroy(() => subscription.unsubscribe());
 
     // --- The revalidation, after the first render (spec 0024 §14) ---
-    afterNextRender(() => this.#read());
+    afterNextRender(() => {
+      // The live region speaks from the next change detection, never in the
+      // render that inserts it: a region that arrives with its text is
+      // unreliably announced.
+      queueMicrotask(() => this.#rendered.set(true));
+      this.#read();
+    });
 
-    // --- The error state, from the lazily loaded error views ---
+    // --- The error state, from the lazily loaded error views; a line of its own when they fail to load ---
+    const telemetry = inject(TmTelemetry);
+    const errorViews = inject(TM_PICKER_ERROR_VIEWS);
     effect((onCleanup) => {
       const slot = this.errorSlot();
       const failure = this.#failure();
@@ -473,16 +538,26 @@ export class TmTenantPicker {
         live = false;
         slot.clear();
         this.#errorView.set(null);
+        this.#errorViewsMissing.set(false);
       });
-      void import('@tellma/core/errors').then(({ TmErrorPresenter, TmErrorState }) => {
-        if (live) {
-          const view = slot.injector.get(TmErrorPresenter).describe(failure, { kind: 'read' });
-          const state = slot.createComponent(TmErrorState);
-          state.setInput('view', view);
-          state.instance.retry.subscribe(() => this.#read());
-          this.#errorView.set(view);
-        }
-      });
+      errorViews().then(
+        ({ TmErrorPresenter, TmErrorState }) => {
+          if (live) {
+            const view = slot.injector.get(TmErrorPresenter).describe(failure, { kind: 'read' });
+            const state = slot.createComponent(TmErrorState);
+            state.setInput('view', view);
+            state.instance.retry.subscribe(() => this.#read());
+            this.#errorView.set(view);
+          }
+        },
+        (error: unknown) => {
+          // Offline, or after a deploy removed the chunk: say so, and offer Try again.
+          telemetry.error(error, { source: 'tm-tenant-picker' });
+          if (live) {
+            this.#errorViewsMissing.set(true);
+          }
+        },
+      );
     });
 
     // --- Mod+K focuses the search, which the picker owns outside a tenant ---
@@ -502,7 +577,6 @@ export class TmTenantPicker {
     });
 
     // --- Telemetry: once, when the list is first known ---
-    const telemetry = inject(TmTelemetry);
     let shown = false;
     effect(() => {
       const rows = this.#rows();
@@ -518,7 +592,10 @@ export class TmTenantPicker {
       kind: 'custom',
       routeTemplate: '/tenants',
       title: this.title,
-      status: computed(() => (this.#reading() ? 'loading' : this.#failure() !== null && this.#rows() === undefined ? 'error' : 'ready')),
+      // Loading while a read runs or the skeleton shows, never ready before the list is known.
+      status: computed(() =>
+        this.#reading() || this.#loading() ? 'loading' : this.#failure() !== null && this.#rows() === undefined ? 'error' : 'ready',
+      ),
       state: computed(() => ({ count: this.count(), query: this.searchable() ? this.query() : '' })),
       visible: computed((): TmVisibleData | undefined => {
         const shown = this.#search().shown;
@@ -595,6 +672,11 @@ export class TmTenantPicker {
   /** Signs out; a failure has shown its own toast. */
   protected signOut(): void {
     this.#session.signOut().catch(() => undefined);
+  }
+
+  /** Reads the memberships again, from the line shown while the error views cannot load. */
+  protected retry(): void {
+    this.#read();
   }
 
   /** Reads the memberships again; a failure shows the error state while no list is stored. */

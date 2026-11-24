@@ -5,14 +5,18 @@
 
 import { TM_BOOT_SCRIPT_FILE } from '../build/index-html-rules.js';
 import { tmAttribute, tmElements, tmParseDocument } from '../common/html.js';
-import { tmEntryPointRoot, type TmBuildGraph } from './stats.js';
+import { tmEntryPointChunk, tmEntryPointRoot, type TmBuildGraph } from './stats.js';
 
 // The preloads (spec 0024 §2.6, step 3), which let the browser fetch during
 // the boot script and the first parse what the first render needs: the fonts
 // of Latin and the offered scripts, the Core chunk and the default language's
 // string pack (fetched by the metadata loaders, hence `as="fetch"` with
 // `crossorigin` to match their same-origin, CORS-mode request), and the
-// /shell and /attention chunks with their static imports.
+// /shell and /attention chunks with their static imports. The tenantless
+// pages, a lazy chunk of /shell, are prefetched instead: a launch to the
+// picker or the signed-out page fetches them beside /shell rather than after
+// it (spec 0027 §1, Decision 1), while a tenant's first frame never waits on
+// them.
 
 /** The files the built `index.html` loads before the app runs. */
 export interface TmInitialFiles {
@@ -72,6 +76,8 @@ export interface TmPreloads {
   readonly fetches: readonly string[];
   /** Module chunks, preloaded `rel="modulepreload"`. */
   readonly modules: readonly string[];
+  /** Module chunks a likely next route loads, fetched at low priority with `rel="prefetch"`. */
+  readonly prefetches: readonly string[];
 }
 
 /** Escapes a URL for a double-quoted attribute. */
@@ -91,6 +97,7 @@ export function tmAddPreloads(html: string, preloads: TmPreloads): string {
     ...preloads.fonts.map((url) => `<link rel="preload" href="${attribute(url)}" as="font" type="font/woff2" crossorigin>`),
     ...preloads.fetches.map((url) => `<link rel="preload" href="${attribute(url)}" as="fetch" crossorigin>`),
     ...preloads.modules.map((url) => `<link rel="modulepreload" href="${attribute(url)}">`),
+    ...preloads.prefetches.map((url) => `<link rel="prefetch" href="${attribute(url)}">`),
   ].join('');
   return html.replace(/<\/head>/i, `${links}</head>`);
 }
@@ -101,17 +108,21 @@ export interface TmShellModulePreloads {
   readonly modules: readonly string[];
   /** The initial JavaScript: the scripts, their static imports, `index.html`'s own module preloads and the chunks above. */
   readonly initialJs: ReadonlySet<string>;
+  /** The chunks to prefetch: the tenantless pages' lazy chunk of `/shell`, with its static imports beyond the initial JavaScript; in ordinal order. */
+  readonly prefetches: readonly string[];
 }
 
 /**
  * Finds the `/shell` and `/attention` chunks to modulepreload: the chunks
  * holding each entry point's starting module, and their static imports. A
  * chunk they import dynamically, their own lazy chunks included, loads when
- * used.
+ * used; only the tenantless pages' chunk is prefetched, at low priority and
+ * outside the initial JavaScript, so a launch to `/tenants` or `/signed-out`
+ * does not fetch it only after `/shell`.
  *
  * @param graph - The build's chunk graph.
  * @param initial - The files the built `index.html` loads.
- * @returns The chunks to preload, and the initial JavaScript they join.
+ * @returns The chunks to preload, the initial JavaScript they join, and the chunks to prefetch.
  */
 export function tmShellModulePreloads(graph: TmBuildGraph, initial: TmInitialFiles): TmShellModulePreloads {
   const loaded = graph.staticClosure([...initial.scripts, ...initial.modulePreloads]);
@@ -119,5 +130,8 @@ export function tmShellModulePreloads(graph: TmBuildGraph, initial: TmInitialFil
   const attention = tmEntryPointRoot('tellma-core', 'attention');
   const roots = graph.outputsHolding((input) => shell(input) || attention(input));
   const modules = [...graph.staticClosure(roots)].filter((file) => !loaded.has(file)).sort();
-  return { modules, initialJs: new Set([...loaded, ...modules]) };
+  const initialJs = new Set([...loaded, ...modules]);
+  const tenantless = graph.outputsHolding(tmEntryPointChunk('tellma-core', 'shell', 'tm-tenantless'));
+  const prefetches = [...graph.staticClosure(tenantless)].filter((file) => !initialJs.has(file)).sort();
+  return { modules, initialJs, prefetches };
 }

@@ -55,6 +55,8 @@ export const TM_TENANTLESS_STRINGS_EN = {
       message: "Ask your administrator to invite you. You're signed in as {email}.",
     },
     noMatch: 'No tenants match “{query}”.',
+    /** The read's failure, while the error views cannot load either. */
+    failed: "Your tenants couldn't be loaded.",
     /** The notice of a tenant the user chose and can no longer open. */
     notice: {
       named: 'You can no longer open {name}.',

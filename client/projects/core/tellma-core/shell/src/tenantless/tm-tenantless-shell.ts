@@ -98,7 +98,9 @@ import { tmRegisterTenantlessStrings } from './tm-tenantless-strings';
       align-items: center;
       gap: var(--space-2);
       block-size: 100%;
-      padding-inline: max(var(--space-4), env(safe-area-inset-left)) max(var(--space-4), env(safe-area-inset-right));
+      /* The insets are physical sides, whatever the direction. */
+      padding-right: max(var(--space-4), env(safe-area-inset-right));
+      padding-left: max(var(--space-4), env(safe-area-inset-left));
       background: var(--ink-900);
       color: var(--text-on-dark);
     }

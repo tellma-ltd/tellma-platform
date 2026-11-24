@@ -56,20 +56,24 @@ export class TmTenantlessShell {
 // @public
 export class TmTenantPicker {
     constructor();
+    protected readonly announcement: _angular_core.Signal<string>;
     protected readonly connectLabel: _angular_core.Signal<string>;
     protected readonly count: _angular_core.Signal<number>;
     protected readonly dismissLabel: _angular_core.Signal<string>;
     protected dismissNotice(): void;
     protected readonly emptyMessage: _angular_core.Signal<string>;
     protected readonly emptyTitle: _angular_core.Signal<string>;
+    protected readonly errorViewsMissing: _angular_core.Signal<boolean>;
+    protected readonly failedLabel: _angular_core.Signal<string>;
     protected readonly failure: _angular_core.Signal<TmApiError | null>;
     protected follow(): void;
     protected keepQuery(text: string): void;
-    protected readonly loadingLabel: _angular_core.Signal<string>;
     protected readonly noMatch: _angular_core.Signal<string>;
     protected readonly notice: _angular_core.Signal<string | null>;
     protected preload(href: string): void;
     protected readonly query: _angular_core.WritableSignal<string>;
+    protected retry(): void;
+    protected readonly retryLabel: _angular_core.Signal<string>;
     protected readonly searchable: _angular_core.Signal<boolean>;
     protected readonly searchLabel: _angular_core.Signal<string>;
     protected signOut(): void;

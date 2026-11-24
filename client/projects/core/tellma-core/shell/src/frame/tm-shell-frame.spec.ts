@@ -5,18 +5,27 @@
 
 import { createEnvironmentInjector, DestroyRef, EnvironmentInjector, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { Router } from '@angular/router';
 import { TmBanners, TmShell } from '@tellma/core';
 
-import { tmAppRig, tmNavigate, tmSettleUntil } from '../../../src/routes/tm-app.testing.util';
+import { tmAppRig, tmNavigate, tmSettleUntil, tmTestMembership } from '../../../src/routes/tm-app.testing.util';
+import { type TmShellRows, TmShellRowsWriter } from './tm-shell-frame';
 
 // The shell frame on the signed-out page, the lightest page that renders
 // it: the landmarks in order with the skip link first, the skip link's
 // focus move, the row heights it writes on the root element and restores,
-// the banner row, and the immersive frame without its header.
+// the banner row, and the immersive frame without its header. Then the
+// rows across a navigation between the two shells, and the writer's
+// newest-frame-wins rule with two frames alive at once.
 
 /** The root element's value of a row variable, or `''` while the stylesheet's default holds. */
 function row(name: string): string {
   return document.documentElement.style.getPropertyValue(name);
+}
+
+/** The root element's three row variables, in order. */
+function rows(): string[] {
+  return ['--tm-app-bar-height', '--tm-banner-height', '--tm-pinned-bar-height'].map(row);
 }
 
 describe('the shell frame', () => {
@@ -51,9 +60,62 @@ describe('the shell frame', () => {
 
   it('writes the heights of its rows on the root element, and restores the defaults at its end', async () => {
     await open();
-    expect(['--tm-app-bar-height', '--tm-banner-height', '--tm-pinned-bar-height'].map(row)).toEqual(['40px', '0px', '0px']);
+    expect(rows()).toEqual(['40px', '0px', '0px']);
     TestBed.resetTestingModule();
-    expect(['--tm-app-bar-height', '--tm-banner-height', '--tm-pinned-bar-height'].map(row)).toEqual(['', '', '']);
+    expect(rows()).toEqual(['', '', '']);
+  });
+
+  it("writes the tenant shell's rows after a navigation from the picker, and the picker's again on the way back", async () => {
+    await tmAppRig({ tenants: [tmTestMembership(17, { name: 'Acme' })] });
+    await tmNavigate('/tenants');
+    await tmSettleUntil(() => document.querySelector('tm-tenant-picker tm-shell-frame') !== null, 'the picker renders');
+    expect(rows()).toEqual(['40px', '0px', '0px']);
+    const router = TestBed.inject(Router);
+    await router.navigateByUrl('/17');
+    await tmSettleUntil(() => document.querySelector('tm-tenant-shell tm-shell-frame') !== null, 'the tenant shell renders');
+    // The tenant shell's frame shows no app bar row until the tenant shell draws one.
+    await tmSettleUntil(() => rows().join() === '0px,0px,0px', "the tenant shell's rows are written");
+    await router.navigateByUrl('/tenants');
+    await tmSettleUntil(() => document.querySelector('tm-tenant-shell') === null, 'the tenant shell ends');
+    await tmSettleUntil(() => rows().join() === '40px,0px,0px', "the picker's rows are written again");
+  });
+
+  describe('the rows writer', () => {
+    /** A frame's rows, with the app bar's height given. */
+    const frame = (appBar: number): TmShellRows => ({ '--tm-app-bar-height': appBar, '--tm-banner-height': 0, '--tm-pinned-bar-height': 0 });
+
+    /** Holds two frames' rows, the second the newer, each until its own lifetime ends. */
+    function hold(): { readonly older: EnvironmentInjector; readonly newer: EnvironmentInjector } {
+      const writer = TestBed.inject(TmShellRowsWriter);
+      const parent = TestBed.inject(EnvironmentInjector);
+      const older = createEnvironmentInjector([], parent);
+      const newer = createEnvironmentInjector([], parent);
+      writer.hold(signal(frame(40)), older.get(DestroyRef));
+      writer.hold(signal(frame(0)), newer.get(DestroyRef));
+      TestBed.tick();
+      return { older, newer };
+    }
+
+    it("shows the newer frame's rows, and keeps them when the older frame ends first", () => {
+      const { older, newer } = hold();
+      expect(rows()).toEqual(['0px', '0px', '0px']);
+      older.destroy();
+      TestBed.tick();
+      expect(rows()).toEqual(['0px', '0px', '0px']);
+      newer.destroy();
+      TestBed.tick();
+      expect(rows()).toEqual(['', '', '']);
+    });
+
+    it("falls back to the older frame's rows when the newer frame ends first", () => {
+      const { older, newer } = hold();
+      newer.destroy();
+      TestBed.tick();
+      expect(rows()).toEqual(['40px', '0px', '0px']);
+      older.destroy();
+      TestBed.tick();
+      expect(rows()).toEqual(['', '', '']);
+    });
   });
 
   it('opens the banner row while a banner shows', async () => {

@@ -12,6 +12,8 @@ import { TmApiError, TmClientStore, TmLaunch, TmUrls, type TmMembership } from '
 import { TmFakeSession, TmPageContextHarness, TmTenantPickerHarness, type TmTenantPickerRowHarness } from '@tellma/core-testing';
 import { tmIsApplePlatform } from '@tellma/core-ui/kbd';
 
+import { TM_PICKER_ERROR_VIEWS } from './tm-tenant-picker';
+
 import {
   tmAppRig,
   tmNavigate,
@@ -82,6 +84,9 @@ describe('the tenant picker', () => {
   async function names(rows: readonly TmTenantPickerRowHarness[]): Promise<string[]> {
     return Promise.all(rows.map(async (row) => (await row.getName()).text));
   }
+
+  /** What the picker's one live region says. */
+  const announcement = (): string | undefined => document.querySelector('tm-tenant-picker [role="status"]')?.textContent?.trim();
 
   /** The routes the API was called on. */
   const routes = (): string[] => rig.api.calls().map((call) => call.route);
@@ -175,10 +180,47 @@ describe('the tenant picker', () => {
     const picker = await open();
     expect(await picker.isLoading()).toBe(true);
     expect(document.querySelectorAll('tm-tenant-picker [aria-busy="true"] > li')).toHaveLength(4);
+    // The skeleton is no empty list: the page context says it is loading.
+    expect(TestBed.inject(TmPageContextHarness).current()).toMatchObject({ status: 'loading', state: { count: 0 } });
     await tmSettleUntil(() => routes().includes('/bff/user'), 'the memberships are read');
+    expect(announcement()).toBe('Loading tenants…');
     answer({ tenants: [ACME] });
     await tmSettleUntil(() => document.querySelector('.tm-tenant-picker__name') !== null, 'the list renders');
     expect(await names(await picker.getRows())).toEqual(['Acme']);
+    expect(announcement()).toBe('');
+    expect(TestBed.inject(TmPageContextHarness).current()?.status).toBe('ready');
+  });
+
+  it('keeps its live region empty in the first frame, so its first words are announced', async () => {
+    await start();
+    rig.api.respond('/bff/user', () => new Promise(() => undefined));
+    // The first frame, before any render hook runs: the region is in place, and silent.
+    let first: string | undefined;
+    const observer = new MutationObserver(() => (first ??= document.querySelector('tm-tenant-picker [role="status"]')?.textContent ?? undefined));
+    observer.observe(document.body, { childList: true, subtree: true });
+    await open();
+    observer.disconnect();
+    expect(first?.trim()).toBe('');
+    await tmSettleUntil(() => announcement() === 'Loading tenants…', 'the loading line is announced');
+  });
+
+  it('says the read failed, with Try again, when the error views cannot load', async () => {
+    const missing = new TypeError('Failed to fetch dynamically imported module');
+    await start({ providers: [{ provide: TM_PICKER_ERROR_VIEWS, useValue: () => Promise.reject(missing) }] });
+    rig.api.respond('/bff/user', () => {
+      throw new TmApiError({ kind: 'offline' });
+    });
+    await open();
+    await tmSettleUntil(() => document.querySelector('.tm-tenant-picker__failed') !== null, 'the failure line renders');
+    expect(document.querySelector('.tm-tenant-picker__failed')?.textContent?.replace(/\s+/g, ' ').trim()).toBe(
+      "Your tenants couldn't be loaded. Try again",
+    );
+    expect(announcement()).toBe("Your tenants couldn't be loaded.");
+    expect(rig.telemetry.errors()).toEqual([missing]);
+    rig.api.respond('/bff/user', { tenants: [ACME] });
+    document.querySelector<HTMLButtonElement>('.tm-tenant-picker__failed button')!.click();
+    await tmSettleUntil(() => document.querySelector('.tm-tenant-picker__name') !== null, 'the list renders');
+    expect(document.querySelector('.tm-tenant-picker__failed')).toBeNull();
   });
 
   it('shows the error state when the read fails with nothing stored, and reads again on Try again', async () => {
@@ -263,6 +305,7 @@ describe('the tenant picker', () => {
       await picker.search('nothing');
       expect(await picker.getRows()).toEqual([]);
       expect(await picker.getNoMatch()).toBe('No tenants match “nothing”.');
+      await tmSettleUntil(() => announcement() === 'No tenants match “nothing”.', 'the no-match line is announced');
     });
 
     it('follows the only enabled match on Enter, and nothing while two match', async () => {
