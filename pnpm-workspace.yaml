@@ -9,6 +9,8 @@ packages:
   - client/projects/core/tellma-core-tools
   # Each distribution's Angular application (an esproj), once it exists.
   - distributions/*/src/*.Client
+  # Each distribution's browser suite: Playwright flows over its e2e host.
+  - distributions/*/test/*.E2E
 
 # Every external version the workspace packages use, in one place. A package names a dependency
 # with the specifier `catalog:` and takes its version from here, so no two packages can drift onto
@@ -34,6 +36,7 @@ catalog:
   '@internationalized/date': 3.12.2
   '@jsverse/transloco': 8.4.0
   '@microsoft/api-extractor': 7.58.9
+  '@microsoft/signalr': 10.0.11
   '@modelcontextprotocol/sdk': 1.29.0
   '@playwright/test': 1.61.1
   '@types/node': ^24.13.2

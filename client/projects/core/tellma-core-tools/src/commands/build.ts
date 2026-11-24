@@ -194,7 +194,7 @@ export async function tmBuild(context: TmCommandContext, options: TmEmitOptions)
   const graph = TmBuildGraph.read(project.statsFile);
   const indexFile = join(browser, 'index.html');
   const initial = tmReadInitialFiles(readFileSync(indexFile, 'utf8'));
-  const { modules, initialJs } = tmShellModulePreloads(graph, initial);
+  const { modules, initialJs, prefetches } = tmShellModulePreloads(graph, initial);
   const fontFragments = tmFontFragments(languages);
   const fetches = [core.name, strings.get(languages[0]!)?.name]
     .filter((name): name is string => name !== undefined)
@@ -210,6 +210,7 @@ export async function tmBuild(context: TmCommandContext, options: TmEmitOptions)
       fonts: tmBuiltFontUrls(browser).filter((url) => tmIsFontForFragments(url, fontFragments)),
       fetches,
       modules,
+      prefetches,
     }),
   );
 

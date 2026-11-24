@@ -198,8 +198,8 @@ describe('the route host', () => {
 
     // Leaving destroys the waiting host, which gives its focus hold back.
     await rig.router.navigateByUrl('/signed-out');
-    await tmSettle();
-    expect((document.activeElement as HTMLElement | null)?.textContent).toContain("You're signed out");
+    await tmSettleUntil(() => document.querySelector('tm-signed-out-page h1') !== null, 'the signed-out page renders');
+    expect((document.activeElement as HTMLElement | null)?.textContent).toContain('You signed out');
   });
 
   it.each<[string, boolean, string]>([

@@ -31,7 +31,7 @@ import {
   ɵTmClientMetadataStore,
 } from '@tellma/core';
 
-import { tmKnowsEvent, TmLeadership } from './tm-leadership';
+import { tmAccessEnded, tmKnowsEvent, TmLeadership } from './tm-leadership';
 
 // Leader election (spec 0025 §7). While a tab shows tenant t to a signed-in
 // user, it queues on the exclusive Web Lock tm:<slug>:<sub>:<t>:hub; the
@@ -309,7 +309,7 @@ export class TmLeaderElection {
           this.#end(term, 'stolen');
           this.#reconcile();
         } else if ((error as { readonly name?: unknown } | null)?.name !== 'AbortError') {
-          this.#telemetry.error(error, { source: 'tm-leader' });
+          this.#telemetry.error(error, { where: 'tm-leader' });
         }
       });
   }
@@ -324,7 +324,7 @@ export class TmLeaderElection {
       term.leadership = runInInjectionContext(this.#injector, () => new TmLeadership(term.partition, seenSince));
     } catch (error) {
       // A leader that cannot start lets the lock go, so another tab may lead.
-      this.#telemetry.error(error, { source: 'tm-leader' });
+      this.#telemetry.error(error, { where: 'tm-leader' });
       this.#leader.ɵisLeader.set(false);
       term.ended = true;
       term.release?.();
@@ -491,9 +491,17 @@ export class TmLeaderElection {
         }
         this.#leader.ɵhubStatus.set({ state: message.status, since: message.since, leaderVisible: message.leaderVisible });
         this.#judge(term);
-      } else if (message.type === 'hub.event' && message.event.tenantId === term.partition.tenantId && tmKnowsEvent(this.#metadata, message.event.name)) {
+      } else if (message.type === 'hub.event' && message.event.tenantId === term.partition.tenantId) {
+        // The server ended the user's access to the tenant: every follower
+        // syncs too, the one hub event on which a follower fetches (§8.5).
+        // The session's own end reaches it as the leader's sign-out message.
+        if (tmAccessEnded(message.event)) {
+          void this.#refresher.refresh(term.partition.tenantId, ['tenant'], 'terminal');
+        }
         // A relayed event reaches this tab's subscribers when its build knows the name (§8.4).
-        this.#leader.ɵdeliver(message.event);
+        if (tmKnowsEvent(this.#metadata, message.event.name)) {
+          this.#leader.ɵdeliver(message.event);
+        }
       }
     }
   }

@@ -340,6 +340,11 @@ jobs:
         timeout-minutes: 15
         run: pnpm --dir distributions/acme/src/Tellma.Distro.Acme.Client exec playwright install chromium
       - run: pnpm --dir distributions/acme/src/Tellma.Distro.Acme.Client run lint
+      # The browser suite's own sources, on both legs: Playwright transpiles them without a type
+      # check, and the client's lint does not reach them; then the e2e host's own unit tests.
+      - run: pnpm --dir distributions/acme/test/Tellma.Distro.Acme.E2E run typecheck
+      - run: pnpm --dir distributions/acme/test/Tellma.Distro.Acme.E2E run lint
+      - run: pnpm --dir distributions/acme/test/Tellma.Distro.Acme.E2E run test
       - run: dotnet publish distributions/acme/src/Tellma.Distro.Acme.Web -c Release -o "${{ runner.temp }}/acme-web"
       - name: The published wwwroot serves the hashed app and its worker
         shell: bash
@@ -364,6 +369,27 @@ jobs:
           fi
       # The build above wrote generated/, which the app's configuration imports.
       - run: pnpm --dir distributions/acme/src/Tellma.Distro.Acme.Client test
+      # The browser suite on the Acme e2e host (spec 0024 §13), on Linux: a SQL Server container,
+      # the Migrator's migrate, and the web host in Development over the app the publish above
+      # built, so no second client build runs. Chromium is the one installed above (one catalog
+      # version of Playwright). Windows runs it in the nightly tier, against LocalDB. Playwright's
+      # global timeout (17 minutes, the host's start included) ends a run below the step's limit,
+      # so a run out of time still stops on its own and writes its report, traces and errors for
+      # the upload below; a step killed at its limit leaves none of them.
+      - name: Acme browser suite (Linux)
+        if: runner.os == 'Linux'
+        timeout-minutes: 20
+        env:
+          TELLMA_E2E_WEBROOT: ${{ runner.temp }}/acme-web/wwwroot
+          TELLMA_E2E_CONFIGURATION: Release
+        run: node distributions/acme/test/Tellma.Distro.Acme.E2E/scripts/e2e.mjs --grep-invert "@nightly|@perf|@quarantine" --global-timeout 1020000
+      - name: Upload the Acme Playwright report on failure
+        if: failure() && runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: acme-e2e-report
+          path: distributions/acme/test/Tellma.Distro.Acme.E2E/.artifacts
+          if-no-files-found: ignore
 
   # PR merge gate: the single status check required by branch protection. It fails if any job
   # below did not succeed, without making any individual job a required check (which would couple

@@ -28,6 +28,7 @@
       "@tellma/locale-ar": ["../../../../client/projects/locale/tellma-locale-ar/public-api.ts"],
       "@tellma/locale-ar/platform-strings": ["../../../../client/projects/locale/tellma-locale-ar/platform-strings/public-api.ts"],
       "@tellma/locale-ar/queryex-strings": ["../../../../client/projects/locale/tellma-locale-ar/queryex-strings/public-api.ts"],
+      "@tellma/locale-ar/shell-strings": ["../../../../client/projects/locale/tellma-locale-ar/shell-strings/public-api.ts"],
       "@tellma/locale-ar/strings": ["../../../../client/projects/locale/tellma-locale-ar/strings/public-api.ts"],
       /* The stylesheets src/styles.css imports by package name, which the build's CSS bundler resolves here too. */
       "@tellma/core/styles.css": ["../../../../client/projects/core/tellma-core/styles.css"],

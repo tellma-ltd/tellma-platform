@@ -30,7 +30,7 @@ namespace Tellma.Core.Data.Batches
     ///     the participants again. Append-only: the participants neither execute the batch nor change
     ///     its mode or limits.
     /// </summary>
-    internal sealed class RecordingBatch : IDataBatch, IBatchKeyTables
+    internal sealed class RecordingBatch : IDataBatch, IBatchKeyTables, IBatchProvenCommit
     {
         /// <summary>The recorded appends, in order, each replaying itself onto a batch.</summary>
         private readonly List<Action<IDataBatch>> _replays = [];
@@ -41,8 +41,8 @@ namespace Tellma.Core.Data.Batches
         /// <summary>The batch's own result behind each result handed out, for its key-capture table.</summary>
         private readonly Dictionary<object, object> _sources = new(ReferenceEqualityComparer.Instance);
 
-        /// <summary>Receives a participant's commit callback that failed; null to let the executor log it.</summary>
-        private readonly Action<Action<BatchOutcome>, Exception>? _callbackFailed;
+        /// <summary>Receives a participant's commit callback, or proven-commit announcement, that failed; null to let the batch's runner log it.</summary>
+        private readonly Action<Delegate, Exception>? _callbackFailed;
 
         /// <summary>Refuses an append from a flow that may compose no more; null refuses none.</summary>
         private readonly Action? _guard;
@@ -59,10 +59,10 @@ namespace Tellma.Core.Data.Batches
         /// <summary>Creates a view over a persist batch being composed.</summary>
         /// <param name="inner">The batch.</param>
         /// <param name="callbackFailed">
-        ///     Receives a participant's commit callback that failed, which then fails no other callback;
-        ///     null to let the executor log it.
+        ///     Receives a participant's commit callback or proven-commit announcement that failed, which
+        ///     then fails no other; null to let the batch's runner log it.
         /// </param>
-        public RecordingBatch(IDataBatch inner, Action<Action<BatchOutcome>, Exception>? callbackFailed = null)
+        public RecordingBatch(IDataBatch inner, Action<Delegate, Exception>? callbackFailed = null)
         {
             ArgumentNullException.ThrowIfNull(inner);
             _inner = inner;
@@ -71,9 +71,9 @@ namespace Tellma.Core.Data.Batches
         }
 
         /// <summary>Creates a deferred view, whose appends reach no batch until its first replay.</summary>
-        /// <param name="callbackFailed">Receives a commit callback that failed; null to let the executor log it.</param>
+        /// <param name="callbackFailed">Receives a commit callback or proven-commit announcement that failed; null to let the batch's runner log it.</param>
         /// <param name="guard">Refuses an append from a flow that may compose no more; null refuses none.</param>
-        private RecordingBatch(Action<Action<BatchOutcome>, Exception>? callbackFailed, Action? guard)
+        private RecordingBatch(Action<Delegate, Exception>? callbackFailed, Action? guard)
         {
             _callbackFailed = callbackFailed;
             _guard = guard;
@@ -90,10 +90,10 @@ namespace Tellma.Core.Data.Batches
         ///     Creates a deferred view: its appends are recorded without reaching a batch, and composed
         ///     onto the batch of its first replay, then again onto each later one.
         /// </summary>
-        /// <param name="callbackFailed">Receives a commit callback that failed, which then fails no other callback; null to let the executor log it.</param>
+        /// <param name="callbackFailed">Receives a commit callback or proven-commit announcement that failed, which then fails no other; null to let the batch's runner log it.</param>
         /// <param name="guard">Runs before every append, and refuses one by throwing; null refuses none.</param>
         /// <returns>The view.</returns>
-        public static RecordingBatch Deferred(Action<Action<BatchOutcome>, Exception>? callbackFailed = null, Action? guard = null)
+        public static RecordingBatch Deferred(Action<Delegate, Exception>? callbackFailed = null, Action? guard = null)
         {
             return new RecordingBatch(callbackFailed, guard);
         }
@@ -296,7 +296,7 @@ namespace Tellma.Core.Data.Batches
         public void OnCommitted(Action<BatchOutcome> callback)
         {
             ArgumentNullException.ThrowIfNull(callback);
-            if (_callbackFailed is not Action<Action<BatchOutcome>, Exception> failed)
+            if (_callbackFailed is not Action<Delegate, Exception> failed)
             {
                 Record(inner => inner.OnCommitted(callback));
                 return;
@@ -308,6 +308,34 @@ namespace Tellma.Core.Data.Batches
                 try
                 {
                     callback(outcome);
+                }
+                catch (Exception failure) when (failure is not OutOfMemoryException)
+                {
+                    failed(callback, failure);
+                }
+            }));
+        }
+
+        /// <inheritdoc />
+        /// <remarks>
+        ///     Recorded like a commit callback, so every replay registers it on the batch that executes.
+        ///     A batch that takes no such announcement, such as a test's, ignores it.
+        /// </remarks>
+        public void OnCommitProven(Action callback)
+        {
+            ArgumentNullException.ThrowIfNull(callback);
+            if (_callbackFailed is not Action<Delegate, Exception> failed)
+            {
+                Record(inner => (inner as IBatchProvenCommit)?.OnCommitProven(callback));
+                return;
+            }
+
+            // --- A failure is the operation's to log and count, by the component that registered it ---
+            Record(inner => (inner as IBatchProvenCommit)?.OnCommitProven(() =>
+            {
+                try
+                {
+                    callback();
                 }
                 catch (Exception failure) when (failure is not OutOfMemoryException)
                 {

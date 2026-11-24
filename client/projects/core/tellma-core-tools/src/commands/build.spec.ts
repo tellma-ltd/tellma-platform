@@ -144,7 +144,7 @@ describe('tellma-client build, before ng build', { timeout: 60_000 }, () => {
   it('stops with exit 3 on a budget raised without a note', async () => {
     const run = await build('budget-note', (app) =>
       editJson(join(app, 'package.json'), (manifest) => {
-        (manifest['tellma'] as Record<string, unknown>)['budgets'] = { initialJs: { error: 300 }, corePrimaryFirstFrame: { error: 55 } };
+        (manifest['tellma'] as Record<string, unknown>)['budgets'] = { initialJs: { error: 300 }, corePrimaryFirstFrame: { error: 57 } };
       }),
     );
     expect(run.code).toBe(TM_CLI_EXIT.problem);

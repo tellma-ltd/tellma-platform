@@ -4,7 +4,7 @@
 // LICENSE file in the root directory of this source tree.
 
 import { inject, Injectable, type Signal } from '@angular/core';
-import type { TmBlobFetchOptions, TmBlobFetchResult } from '@tellma/core-ui/image';
+import type { TmBlobFetchOptions, TmBlobFetchResult } from '@tellma/core-ui/blob-fetcher';
 
 import type { TmDecimal } from '../json/tm-json';
 import { TmHttpApi } from './tm-http-api';

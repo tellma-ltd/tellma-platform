@@ -186,7 +186,7 @@ export class TmTreeExpansion {
         .then(settle, (error: unknown) => {
           settle();
           if (!(error instanceof TmStoreRefusedError)) {
-            this.#telemetry.error(error, { source: 'tm-tree-expansion' });
+            this.#telemetry.error(error, { where: 'tm-tree-expansion' });
           }
         });
     }

@@ -28,8 +28,9 @@ import { tmCorePrimaryModules, tmEchartsModule, tmEntryPointModule, type TmBuild
 // primary code the app does not use is shaken out first, and primary code
 // that loads only with import() later is not on the first frame. So it is a
 // lower bound of the primary's own weight, the whole entry point, whose
-// 50 KB cap the platform's size gate holds; a distribution checks it here
-// against the same level on its own app.
+// 55 KB cap the platform's size gate holds; a distribution checks it here
+// against the same level on its own app. The product owner raised that cap
+// from the 50 KB the client app foundation spec sets, and this level with it.
 
 /** The name prefix of a lazily loaded chunk's own line, followed by the module it starts at. */
 export const TM_LAZY_BUDGET_PREFIX = 'lazy:';
@@ -70,7 +71,8 @@ export const TM_BUDGETS: readonly TmBudgetDefinition[] = Object.freeze([
   { name: 'detailsRoute', label: 'The details route beyond the initial set', warn: null, error: 80 },
   { name: 'echartsEngine', label: 'The ECharts engine beyond the initial set', warn: null, error: 170 },
   { name: 'workerShell', label: "The worker's shell group", warn: 1536, error: null },
-  { name: TM_CORE_PRIMARY_FIRST_FRAME, label: "The @tellma/core primary's code on the first frame, a lower bound of its own weight", warn: null, error: 50 },
+  // The primary's cap, which the product owner raised from 50 KB to 55 KB.
+  { name: TM_CORE_PRIMARY_FIRST_FRAME, label: "The @tellma/core primary's code on the first frame, a lower bound of its own weight", warn: null, error: 55 },
   { name: 'codedReports', label: "The Core chunk's codedReports section", warn: null, error: 16 },
   { name: 'bootScript', label: 'tm-boot.js', warn: null, error: 3 },
 ]);

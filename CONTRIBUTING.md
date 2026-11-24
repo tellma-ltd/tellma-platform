@@ -194,6 +194,20 @@ pnpm --dir distributions/acme/src/Tellma.Distro.Acme.Client run lint
 pnpm --dir distributions/acme/src/Tellma.Distro.Acme.Client test
 ```
 
+The reference distribution's browser suite (`distributions/acme/test/Tellma.Distro.Acme.E2E`) runs
+on the Acme e2e host: Playwright's web server brings up SQL Server (LocalDB on Windows, a Docker
+container elsewhere, or the server `TELLMA_E2E_SQL` names), migrates it, builds the client app and
+runs the web host in Development over the built app. Install Chromium once with
+`pnpm --dir distributions/acme/test/Tellma.Distro.Acme.E2E exec playwright install chromium`:
+
+```bash
+node distributions/acme/test/Tellma.Distro.Acme.E2E/scripts/e2e.mjs --grep-invert "@nightly|@perf|@quarantine"
+```
+
+The client build takes about five minutes; with `TELLMA_E2E_WEBROOT` set to an app already built,
+such as the published `wwwroot` above, the host serves it instead, as CI does. CI runs the suite
+on Linux; the nightly tier runs it on Windows too.
+
 ### Nightly tier
 
 `nightly-tier.yml` runs each night on the `platform-core` branch, and can be started by hand with
@@ -229,6 +243,13 @@ From the repository root, with all three browsers installed
 
 ```bash
 node client/scripts/e2e.mjs --grep "@nightly|@cross-engine|@perf" --grep-invert "@quarantine" --pass-with-no-tests
+```
+
+The Acme browser suite's nightly gates (installability, the cold launch on Slow 4G and the warm
+chrome under CPU throttling), from the repository root with Chromium installed:
+
+```bash
+node distributions/acme/test/Tellma.Distro.Acme.E2E/scripts/e2e.mjs --grep "@nightly|@perf" --grep-invert "@quarantine" --pass-with-no-tests
 ```
 
 The quarantined tests, ten runs each:

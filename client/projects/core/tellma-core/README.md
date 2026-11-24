@@ -7,9 +7,9 @@ own.
 
 | Entry point | Holds | Loaded |
 |---|---|---|
-| `@tellma/core` | The distribution API: `bootstrapTellma`, `provideTellma`, `tmFeature`, the declaration functions (`tmEntity`, `tmPage`, `tmCodedReport`, `tmWidget`, `tmOverride`) and `TM_APP_DECLARATIONS`, the merged declarations; the client metadata's types, its loaders (`tmMetadataLoaders`) and the loaded Core chunk (`TM_CLIENT_METADATA`); the HTTP layer (`TmApi`, `TmApiError`, `TmProblem`), its plain-JSON value types (`TmJson`, `TmDecimal`, `TmId`) and the exact decimal helpers `TmDecimals`; the seams through which telemetry (`TmTelemetry`) and the request log (`TmRequestLog`) are provided; the page context and page actions (`TmPageContexts`, `TmPageActions`, `provideTmPageScope`) and the help seam (`TM_HELP_ARTICLES`); the session (`TmSession`, `tmSessionGuard`, `tmParseProfileCookie`), the launch mark (`TmLaunch`) and the single-membership rule (`tmSingleLiveTenant`); the client store (`TmClientStore`, `TmStoreRefusedError`, `TM_DOC_FORMATS`) and the tab bus (`TmTabBus`) with its message catalogue; the leader tab (`TmLeader`: whether this tab leads, the hub's status and the tenant's hub events) and the documents only the leader refreshes (`TM_LEADER_DOCUMENTS`); the boot script's result types and the app clock (`TM_NOW`); the derived router's pieces: the root component (`TmApp`), the route data (`TmRouteData`), the title strategy (`TmTitleStrategy`), the URL builders and classifier (`TmUrls`) with the search query's types; the entity registry (`TmEntities`, with its descriptors once the entity model loads, and the declaration types `tmEntity` takes, typed paths `TmPath` included), display names (`TmDisplayNames`, `tm-display-name`), client permissions (`TmPermissions`) and `tmRowsToObjects`; localization: `TmLocalization` (the language, the regional formats, the calendar and the zones, and their switches with the coalesced locale write), `TmServerText` (server codes and keys through the string packs) and `tmEnglish()`, the platform's English; the app-level keyboard shortcuts (`TmShortcuts`, `TmShortcut`, `TM_RESERVED_SHORTCUTS`, `TM_BROWSER_KEYS`, `TmShortcutConflictError`) and the shell frame's seams (`TmShell` with immersive mode, `TmShellMain`, `TM_SHELL_LAYOUT`); the banners (`TmBanners`) with the input-idle clock (`TmInputIdle`), the attention documents (`TM_ATTENTION_DOCUMENTS`, `TmInboxSummary`, `TmAssignmentsSummary`) and the toast durations (`TM_TOAST_FEEDBACK_MS`, `TM_TOAST_ARRIVAL_MS`); the navigation registry (`TmNavigation`: the launcher's sections and entries, and a stored URL's state), the pins model (`tmPinsKey`, `tmPinnedBarVisibleKey` and the pin types) and the launcher's provider seam (`TM_LAUNCHER_PROVIDERS`) | eager |
+| `@tellma/core` | The distribution API: `bootstrapTellma`, `provideTellma`, `tmFeature`, the declaration functions (`tmEntity`, `tmPage`, `tmCodedReport`, `tmWidget`, `tmOverride`) and `TM_APP_DECLARATIONS`, the merged declarations; the client metadata's types, its loaders (`tmMetadataLoaders`) and the loaded Core chunk (`TM_CLIENT_METADATA`); the HTTP layer (`TmApi`, `TmApiError`, `TmProblem`), its plain-JSON value types (`TmJson`, `TmDecimal`, `TmId`) and the exact decimal helpers `TmDecimals`; telemetry (`TmTelemetry`) and the app's error handler (`TmErrorHandler`, with its records' type `TmErrorRecord`), and the seam through which the request log (`TmRequestLog`) is provided; the page context and page actions (`TmPageContexts`, `TmPageActions`, `provideTmPageScope`) and the help seam (`TM_HELP_ARTICLES`); the session (`TmSession`, `tmSessionGuard`, `tmParseProfileCookie`), the launch mark (`TmLaunch`) and the single-membership rule (`tmSingleLiveTenant`); the client store (`TmClientStore`, `TmStoreRefusedError`, `TM_DOC_FORMATS`) and the tab bus (`TmTabBus`) with its message catalogue; the leader tab (`TmLeader`: whether this tab leads, the hub's status and the tenant's hub events) and the documents only the leader refreshes (`TM_LEADER_DOCUMENTS`); the boot script's result types and the app clock (`TM_NOW`); the derived router's pieces: the root component (`TmApp`), the route data (`TmRouteData`), the title strategy (`TmTitleStrategy`), the URL builders and classifier (`TmUrls`) with the search query's types; the entity registry (`TmEntities`, with its descriptors once the entity model loads, and the declaration types `tmEntity` takes, typed paths `TmPath` included), display names (`TmDisplayNames`, `tm-display-name`), client permissions (`TmPermissions`) and `tmRowsToObjects`; localization: `TmLocalization` (the language, the regional formats, the calendar and the zones, and their switches with the coalesced locale write), `TmServerText` (server codes and keys through the string packs) and `tmEnglish()`, the platform's English; the app-level keyboard shortcuts (`TmShortcuts`, `TmShortcut`, `TM_RESERVED_SHORTCUTS`, `TM_BROWSER_KEYS`, `TmShortcutConflictError`) and the shell frame's seams (`TmShell` with immersive mode, `TmShellMain`, `TM_SHELL_LAYOUT`); the banners (`TmBanners`) with the input-idle clock (`TmInputIdle`), the attention documents (`TM_ATTENTION_DOCUMENTS`, `TmInboxSummary`, `TmAssignmentsSummary`) and the toast durations (`TM_TOAST_FEEDBACK_MS`, `TM_TOAST_ARRIVAL_MS`); the navigation registry (`TmNavigation`: the launcher's sections and entries, and a stored URL's state), the pins model (`tmPinsKey`, `tmPinnedBarVisibleKey` and the pin types) and the launcher's provider seam (`TM_LAUNCHER_PROVIDERS`) | eager |
 | `@tellma/core/attention` | The attention surfaces every page shows: the banner host (`tm-banner-host`), which renders the banner row from `TmBanners` and announces each banner as it is queued; the attention model (`TmAttention`: the bell's and the tray's badges, the open panel, the verbs with their same-frame overlays); the arrival engine (`TmArrivals`, with the `tmNotificationToastsKey` preference); the server text of notifications, jobs and assignment captions (`TmAttentionText`); and the outcome toasts (`TmOutcomeToasts`) | eager, preloaded with the app |
-| `@tellma/core/shell` | The tenant shell, the tenant picker and the signed-out page, which the derived routes load; until their owners arrive they are plain stand-ins, beside one placeholder page for the platform's page families | eager, through `import()` |
+| `@tellma/core/shell` | The shell frame both shells render (the skip link, the `header` with the app bar, banner row and pinned bar, the one scrolling `main`, and the reserved `aside`); the tenant shell, still a stand-in inside the frame; the tenantless shell with the tenant picker at `/tenants` and the signed-out page, a lazy chunk of this entry point that their routes load; and one placeholder page for the platform's page families | eager, through `import()`; the tenantless pages lazy |
 | `@tellma/core/memory` | The tab's memory of its pages: page state (`TmPageState`, `tmPageStateKey`), drafts (`TmDrafts`) and tree expansion (`TmTreeExpansion`), which the page hosts load with them | lazy |
 | `@tellma/core/page-snapshot` | `tmSerializePageContext` and `TmPageContextSnapshot`: a page context read once into plain JSON, for the support dump and a future assistant | lazy, through `import()` by its callers |
 | `@tellma/core/recents` | The recently visited pages (`TmRecents`), which the launcher and the home page list; the app loads it with `import()` after its first render, when visits start to count | lazy, through `import()` after first render |
@@ -18,6 +18,7 @@ own.
 | `@tellma/core/expression-editor` | `tm-expression-editor`, the editor of one Queryex clause: a fixed-height box with the code drawn in colour under a native textarea, a status line with the problems list (F8 and Shift+F8 step through them), the clause's parameter chips, an insertion at the caret as one undo step (`insertAtCaret`) and a dropped path re-spaced, a form field control and a grid's popup cell editor; the draft its editors of one query share (`injectTmQueryexDraft`), which checks every clause with `queryex/discover` once the typing pauses; and the Queryex text it reads and writes beside the lexer: a text's parameters (`tmQxParameters`) and an insertion that never splits a token (`tmQxInsert`) | lazy, with the search page's advanced filter, the role editor's permission filters, the report studio and report parameters |
 | `@tellma/core/path-picker` | `tm-path-picker`, a root entity's fields as a tree: column keys or Queryex paths, navigations as branches, the multilingual twins, image and file navigations, date parts in the active calendar, a search three navigation steps deep, `tm.path` drags whose text is valid Queryex, activation and selection; paths the user cannot reach never show | lazy, with the search page's column chooser and advanced filter, the role editor and the report studio |
 | `@tellma/core/leader` | The leader election of the routed tenant over a Web Lock, and the leader tab's work: its realtime connection, the relay of hub events, the leader documents' reads and the polls of degraded mode; the app loads it with `import()` after its first render, and `TmLeader` reports what it decides | lazy, through `import()` after first render |
+| `@tellma/core/realtime` | The leader tab's realtime connection to its tenant's hub over `@microsoft/signalr`, which nothing else imports, with its own reconnect loop; platform-internal | lazy, through `import()` once a tab leads |
 | `@tellma/core/updates` | The app's updates through its service worker (`TmUpdates`): the worker's registration through the `tellma` Trusted Types policy, the update checks, the reload into a new version and the update banner; the app loads it with `import()` after its first render, and the HTTP layer's update check loads it on demand | lazy, through `import()` after first render |
 | `@tellma/core/errors` | Error presentation: `TmErrorPresenter`, whose one table turns a `TmApiError` into an error view, and which shows a write's or an action's error in the shared 5xx or 400 dialog, asks before a step-up, and handles a tenant that is gone or suspended; `tm-error-state` (`TmErrorState`), the inline state a page renders for a failed read | lazy, through `import()` with the first error presented |
 | `@tellma/core/config-check` | `tmCheckAppConfig`, the check of an app's configuration against the client metadata, which the build runs in Node and a development app at startup, and `tmCheckEntityDeclaration`, the check of one entity declaration against the Entities chunk | lazy |
@@ -353,7 +354,26 @@ follows.
   refresher, and a leader document's event re-reads the document, coalesced over 250 ms, one read in
   flight and one queued at most. A read's stored copy is stamped with the time it was sent, so it
   never replaces a later copy. A refusal or the end of the user's access stops the connection, and a
-  background sync decides what follows.
+  background sync decides what follows: the first sync that lands afterwards, the leader's own or a
+  later one such as a poll's, starts the connection again, unless it turns realtime off. When the
+  server ends the user's access to the tenant, every follower that hears the relayed event syncs
+  too; when it ends the session, the leader signs every tab out.
+- **The connection.** `@tellma/core/realtime` holds it, and the leader loads it with `import()` once
+  it leads, so the SignalR client never reaches a follower. It negotiates at `/{t}/hub` with the
+  session cookie, the tab's user check before every request, the JSON protocol and the library's
+  transports in its own order, with the server's timeout at 30 s and the keep-alive at 15 s. The
+  library reconnects nothing itself: each attempt is a fresh connection. The first start goes at
+  once; after a drop or a failed start, the first attempt goes at once too, then after 2 s, 10 s
+  and 30 s, then doubling to 5 minutes, each but the first with ±20 % jitter, and the count starts
+  over after a minute connected. A probe or the server becoming reachable cuts
+  a wait short; while the server is unreachable it waits in `offline`. An attempt that has not
+  connected in 100 s is abandoned, and a stop aborts the requests in flight and settles within 5 s,
+  so a hung negotiate or transport never holds anything up. Only a negotiate refused with 401, 403
+  or 404, a failed user check (reported as 401) and the server's `session.ended` stop it; it never
+  gives up on a network error, a 429 or a 5xx. It reports `tm.realtime.connected { attempt }` with
+  its timing, `tm.realtime.disconnected { reason }` and `tm.realtime.refused { status }`, and the
+  library's warnings and errors as errors from `tm-hub`. In a test, `provideTellmaStateTesting()`
+  puts `TmFakeHub` in its place.
 - **Degraded mode.** With realtime off, or a hub that has not connected for a minute, the leader
   polls (`tm.realtime.polling { cause }`): a sync of the tenant and a read of every leader document,
   each at most once a minute, while the leader is visible or a visible follower's probe asks. A
@@ -571,6 +591,29 @@ every row away through an attribute on the root element until the caller gives t
 `destroyRef` ends. `TmShellMain` says what the tenant shell's `main` shows: the route host, or a
 component the error presenter puts in its place (the tenant-state page), until `restore()` or a
 navigation to another path.
+
+Both shells render `tm-shell-frame` from `@tellma/core/shell`: the skip link first, then a
+`header` with the projected app bar (`[tmShellBar]`), the banner row and the projected pinned bar
+(`[tmShellPinnedBar]`), then `main#tm-main`, the one region that scrolls, and an empty, hidden
+`aside`. The frame writes the heights of the rows it shows on the root element while it lives (the
+newest frame wins while two overlap in a navigation) and an immersive frame renders no `header`.
+The tenantless shell (`/tenants` and `/signed-out`) puts an ink app bar with the wordmark, the
+language menu (with two languages or more) and the account menu (My account while the
+distribution's identity facts are stored, and Sign out) in it; the signed-out page shows the
+wordmark alone. Its pages are a lazy chunk of `/shell`, so a tenant's first frame carries none of
+them; `tellma-client build` prefetches that chunk, so a launch to either page fetches it beside
+`/shell` rather than after it. Their menus and the avatar's image stay out of the first frame too.
+An app's bundler puts the code a lazy chunk uses from a file into the first frame's chunks
+whenever the first frame reaches that file through static imports. So the size gate's
+static-graph check (`"tellma".staticGraphExcludes`) fails if any chain of static imports from
+the primary reaches `@tellma/core-ui/menu` or `@tellma/core-ui/image`, even one the primary
+never uses. The primary takes `TM_BLOB_FETCHER` from `@tellma/core-ui/blob-fetcher` for this
+reason. The tenant picker renders the stored memberships in its first frame and reads them again with
+`TmLaunchCache.revalidateUser()` only after that frame: live tenants by their name in the active
+language, each sandbox indented under its live tenant, the badges and the reason a tenant cannot be
+opened, a search from seven memberships kept in `?q=` (Enter follows the only enabled match, Mod+K
+focuses it), the skeleton, the error state of a failed read with nothing stored, the empty state,
+and the notice of a tenant the user can no longer open after an entry they chose.
 
 `tmSearchNormalize` (`@tellma/core/search-normalize`) folds a query and the terms it matches the
 same way: bidi controls stripped, NFKD with Latin and Arabic marks removed, lowercased, the
@@ -976,13 +1019,50 @@ const total = TmDecimals.add(line.amount, line.tax);
 if (TmDecimals.compare(total, creditLimit) > 0) { … }
 ```
 
+## Telemetry and error logging
+
+Code anywhere records events, timings and errors through `TmTelemetry`, and nothing awaits it.
+Names read `<scope>.<area>.<event>` (`tm.api.slow`, `acme.credit-exposure.run`); properties are at
+most 16 flat numbers, booleans and codes. In development a malformed name or property throws a
+`TmTelemetryError`, and every item is written to `console.debug('[tm]', …)`; in production the
+item or property is dropped and counted into the next `tm.telemetry.dropped`. The lint rule
+`tm/telemetry-names` checks the literal names and page action ids where they are written.
+
+The root service is a thin front that stamps each call with the time and the tenant, page and
+recent requests it saw, and holds it. The pipeline behind it is a
+lazy chunk of the primary (`tm-telemetry-pipeline`), which the app's startup loads at idle after
+the first render and which takes the held calls in order. It adds the envelope (the UI version,
+the tab, each item's tenant and the routed page's `route` and `pageKind`), samples per tab by the
+distribution's `sampleRate`, keeps the last 100 items in `recent`, and queues the rest within a
+cap of 200, dropping the oldest item that is not an error first. The queue flushes at 50 items,
+30 s after its first item, 1 s after an error, when the tab hides or on `pagehide` (one batch for
+both), on a
+tenant switch, when a hold lifts and on `flush()`. Each flush sends one tenant's items per batch,
+at most 100 items and 16 KB, one batch a second, through `TmApi.send`. It holds while offline,
+without an active session or before the UI version is known, and sends nothing when the
+distribution turns telemetry off.
+
+`provideTellma` installs `TmErrorHandler` as Angular's `ErrorHandler`. Every error it receives, and
+every `TmTelemetry.error`, is logged to the console and becomes one `tm.error.captured` item whose
+`source` is `render`, `global` (the browser's uncaught errors and rejections) or `api` (the error
+presenter). Global noise is filtered (a cancelled or unauthenticated request, the `ResizeObserver`
+loop notice) and an error from another origin's script counts as dropped. A failed dynamic import
+is a `ChunkLoadError`. Messages pass five masks (URLs, e-mail addresses, quoted text that is not an
+identifier, digits, non-ASCII text) and a cap of 200 characters; a request error ships no message.
+Stacks keep 30 frames and 4 KB, each URL reduced to its file name. Each fingerprint
+(`TypeError@chunk-K3J7Q2M9.js:1:2345`, or `TmApiError@server.internal` for a request error, by
+its kind and code) is sent once per 10 minutes, and 30 error items at most per
+10 minutes; the last 50 records are kept for the support dump.
+
+An injector whose app never starts the pipeline, a unit test's, keeps at most 1,000 calls and sends
+nothing. Tests replace the service with `@tellma/core-testing`'s `TmFakeTelemetry`.
+
 ## Seams
 
-`TmTelemetry` and `TmRequestLog` are abstract classes provided in root with quiet defaults that
-keep nothing and send nothing. Code records
-against them today; the observability features replace the defaults without changing a call
-site. Tests replace them through `@tellma/core-testing`, which also puts `TmFakeApi` behind
-`TmApi`.
+`TmRequestLog` is an abstract class provided in root with a quiet default that keeps nothing.
+Code records against it today; the observability features replace the default without changing a
+call site. Tests replace it through `@tellma/core-testing`, which also puts `TmFakeApi` behind
+`TmApi` and `TmFakeTelemetry` behind `TmTelemetry`.
 
 The HTTP layer reaches three services that arrive later through internal seams in `src/api/`, each
 with a default that is correct until its owner replaces it: the request locale (the document's
@@ -1024,6 +1104,6 @@ carries a note beside it.
 The primary entry point also has the platform's cap of 50 KB at gzip level 9 on that same weight,
 which `size:check` holds it to: the whole entry point, every member counted whether or not an app
 uses it, its `import()`-only chunks apart. Raising it takes `"tellma".capsInKb` with a note,
-`{ ".": { "error": 52, "note": "…" } }`. A distribution's `tellma-client build` also prints the
-primary's code on its own app's first frame (`corePrimaryFirstFrame`), held to the same 50 KB: a
+`{ ".": { "error": 52, "note": "…" } }`; the product owner has raised this package's to 55 KB. A distribution's `tellma-client build` also prints the
+primary's code on its own app's first frame (`corePrimaryFirstFrame`), held to the same 55 KB: a
 lower bound of this weight, since an app ships only the members it uses.

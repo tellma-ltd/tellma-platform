@@ -9,6 +9,7 @@ import { ComponentHarness } from '@angular/cdk/testing';
 import { EnvironmentProviders } from '@angular/core';
 import { HarnessPredicate } from '@angular/cdk/testing';
 import * as i0 from '@angular/core';
+import { Injector } from '@angular/core';
 import { ModifierKeys } from '@angular/cdk/testing';
 import { Observable } from 'rxjs';
 import { Signal } from '@angular/core';
@@ -157,6 +158,33 @@ export class TmFakeDiscover {
 export type TmFakeDiscoverAnswer = TmQueryexDiscoverResult | ((request: TmQueryexDiscoverRequest) => Promise<TmQueryexDiscoverResult> | TmQueryexDiscoverResult);
 
 // @public
+export class TmFakeHub {
+    get connections(): readonly TmFakeHubConnection[];
+    readonly factory: TmHubFactory;
+    static ɵfac: i0.ɵɵFactoryDeclaration<TmFakeHub, never>;
+    static ɵprov: i0.ɵɵInjectableDeclaration<TmFakeHub>;
+}
+
+// @public
+export class TmFakeHubConnection implements TmHubConnection {
+    constructor(tenantId: number, sink: TmHubSink);
+    connect(): void;
+    drop(): void;
+    emit(name: string, payload?: TmJson | null, tenantId?: number): void;
+    end(reason: TmFakeHubEndReason): void;
+    nudge(): void;
+    nudges: number;
+    refuse(status: 401 | 403 | 404): void;
+    readonly sink: TmHubSink;
+    start(): void;
+    starts: number;
+    stop(): Promise<void>;
+    stopResult: Promise<void>;
+    stops: number;
+    readonly tenantId: number;
+}
+
+// @public
 export function tmFakeInboxSummary(members?: Partial<TmInboxSummary>): TmInboxSummary;
 
 // @public
@@ -200,11 +228,11 @@ export class TmFakeTelemetry extends TmTelemetry {
     clear(): void;
     error(error: unknown, context?: Readonly<Record<string, string>>): void;
     readonly errors: Signal<readonly unknown[]>;
-    event(name: string, props?: TmTelemetryProps): void;
+    event(name: string, props?: TmTelemetryProps, options?: TmTelemetryOptions): void;
     flush(): void;
     readonly flushes: Signal<number>;
     readonly recent: Signal<readonly TmTelemetryItem[]>;
-    timing(name: string, ms: number, props?: TmTelemetryProps): void;
+    timing(name: string, ms: number, props?: TmTelemetryProps, options?: TmTelemetryOptions): void;
     static ɵfac: i0.ɵɵFactoryDeclaration<TmFakeTelemetry, never>;
     static ɵprov: i0.ɵɵInjectableDeclaration<TmFakeTelemetry>;
 }
@@ -235,6 +263,51 @@ export class TmPathPickerHarness extends ComponentHarness {
     readonly getTree: () => Promise<TmTreeHarness>;
     static hostSelector: string;
     search(query: string): Promise<void>;
+}
+
+// @public
+export class TmTenantPickerHarness extends ComponentHarness {
+    clickErrorAction(label: string): Promise<void>;
+    dismissNotice(): Promise<void>;
+    getEmptyState(): Promise<{
+        readonly heading: string;
+        readonly message: string;
+    } | null>;
+    getError(): Promise<string | null>;
+    getNoMatch(): Promise<string | null>;
+    getNotice(): Promise<string | null>;
+    getRows(): Promise<TmTenantPickerRowHarness[]>;
+    getSearchText(): Promise<string | null>;
+    getTitle(): Promise<string>;
+    hasSearch(): Promise<boolean>;
+    static hostSelector: string;
+    isLoading(): Promise<boolean>;
+    isSearchFocused(): Promise<boolean>;
+    search(text: string): Promise<void>;
+    signOutFromEmptyState(): Promise<void>;
+    submitSearch(): Promise<void>;
+}
+
+// @public
+export interface TmTenantPickerName {
+    readonly lang: string | null;
+    readonly text: string;
+}
+
+// @public
+export class TmTenantPickerRowHarness extends ComponentHarness {
+    connect(): Promise<void>;
+    getBadges(): Promise<string[]>;
+    getConnectHref(): Promise<string | null>;
+    getConnectName(): Promise<string | null>;
+    getName(): Promise<TmTenantPickerName>;
+    getOtherNames(): Promise<TmTenantPickerName[]>;
+    getSecondLine(): Promise<string>;
+    getUnavailableReason(): Promise<string | null>;
+    static hostSelector: string;
+    hoverConnect(): Promise<void>;
+    isDimmed(): Promise<boolean>;
+    isNested(): Promise<boolean>;
 }
 
 // @public

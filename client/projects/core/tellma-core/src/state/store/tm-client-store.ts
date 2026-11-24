@@ -263,14 +263,14 @@ export class TmClientStore {
     // Another tab's commit: re-read what this tab mirrors of it.
     const subscription = this.#bus.messages.subscribe((message) => {
       if (message.type === 'store.changed') {
-        void this.#changed(message).catch((error: unknown) => this.#telemetry.error(error, { source: 'tm-client-store' }));
+        void this.#changed(message).catch((error: unknown) => this.#telemetry.error(error, { where: 'tm-client-store' }));
       }
     });
     // Back from the back-forward cache, the tab missed every message posted
     // meanwhile (spec 0025 §6.1): every mirrored document is read again.
     const show = (event: Event): void => {
       if ((event as PageTransitionEvent).persisted) {
-        void this.#reread(() => true).catch((error: unknown) => this.#telemetry.error(error, { source: 'tm-client-store' }));
+        void this.#reread(() => true).catch((error: unknown) => this.#telemetry.error(error, { where: 'tm-client-store' }));
       }
     };
     this.#host.events?.addEventListener('pageshow', show);
@@ -627,7 +627,7 @@ export class TmClientStore {
         const sweep = (): void => {
           if (!this.#ended) {
             void this.sweep({ sessionOtherThan: profile.sh }).catch((error: unknown) =>
-              this.#telemetry.error(error, { source: 'tm-client-store' }),
+              this.#telemetry.error(error, { where: 'tm-client-store' }),
             );
           }
         };
@@ -1090,7 +1090,7 @@ export class TmClientStore {
 
   /** Reports a storage fault the caller did not cause, and runs the tab in memory from now on. */
   #fault(error: unknown): null {
-    this.#telemetry.error(error, { source: 'tm-client-store' });
+    this.#telemetry.error(error, { where: 'tm-client-store' });
     this.#toMemory('failed');
     return null;
   }

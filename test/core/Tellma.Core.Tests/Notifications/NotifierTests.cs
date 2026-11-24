@@ -33,8 +33,8 @@ namespace Tellma.Core.Tests.Notifications
     /// <summary>
     ///     The notifier with no database: the statements it appends and their golden text, the
     ///     parameters and rows they bind, the slices and the delivery condition, every programming
-    ///     error it refuses before appending anything, and the batch's one commit callback, fed the
-    ///     result sets a round trip would return.
+    ///     error it refuses before appending anything, the batch's one commit callback, fed the result
+    ///     sets a round trip would return, and its announcement of a commit only the probe proved.
     /// </summary>
     public sealed class NotifierTests : IDisposable
     {
@@ -585,6 +585,52 @@ namespace Tellma.Core.Tests.Notifications
             Assert.Single(batch.CommittedCallbacks)(null!);
 
             Assert.Empty(_publisher.Published);
+            Assert.Equal(0, woken);
+        }
+
+        // --- After a commit only the probe proved ---
+
+        [Fact]
+        public async Task After_a_proven_commit_every_inbox_a_request_may_have_changed_receives_one_event_and_the_poller_is_woken()
+        {
+            TenantPollerWake wake = _delivering.Services.GetRequiredService<TenantPollerWake>();
+            int woken = 0;
+            using IDisposable subscription = wake.Subscribe(TenantId, () => woken++);
+            DataBatch batch = _delivering.Batch(BatchPurpose.Persist);
+            Notifier notifier = Notifier(_delivering);
+            notifier.Notify(batch, [Order([7, 5])]);
+            notifier.Withdraw(batch, [new WithdrawRequest("acme.Order:41", [8, 5])]);
+
+            // --- The batch is sent and its response lost: no outcome is read, the announcement runs ---
+            _ = await BatchHarness.SealAsync(batch);
+            batch.RunProvenCommitCallbacks(static failure => Assert.Fail(failure.ToString()));
+
+            // Every recipient the requests named, whether or not its row was written; the enqueue's nudge.
+            ClientEvent published = Assert.Single(_publisher.Published);
+            Assert.Equal("inbox.changed", published.Name);
+            Assert.Null(published.Payload);
+            Assert.Equal([5, 7, 8], published.UserIds);
+            Assert.Equal(1, woken);
+        }
+
+        [Fact]
+        public async Task After_a_proven_commit_a_withdrawal_from_every_recipient_announces_to_the_whole_tenant_and_no_enqueue_wakes_no_poller()
+        {
+            TenantPollerWake wake = _plain.Services.GetRequiredService<TenantPollerWake>();
+            int woken = 0;
+            using IDisposable subscription = wake.Subscribe(TenantId, () => woken++);
+            DataBatch batch = _plain.Batch(BatchPurpose.Persist);
+            Notifier notifier = Notifier(_plain);
+            notifier.Notify(batch, [Order([5])]);
+            notifier.Withdraw(batch, [new WithdrawRequest("acme.Order:41")]);
+
+            _ = await BatchHarness.SealAsync(batch);
+            batch.RunProvenCommitCallbacks(static failure => Assert.Fail(failure.ToString()));
+
+            // The withdrawn users are unknown, so every user of the tenant hears of it.
+            ClientEvent published = Assert.Single(_publisher.Published);
+            Assert.Equal("inbox.changed", published.Name);
+            Assert.Empty(published.UserIds);
             Assert.Equal(0, woken);
         }
 

@@ -5,7 +5,7 @@
 
 import { inject, makeEnvironmentProviders, type EnvironmentProviders } from '@angular/core';
 import { TmApi, TmTelemetry, ɵTmClientMetadataStore } from '@tellma/core';
-import { TM_BLOB_FETCHER, type TmBlobFetcher } from '@tellma/core-ui/image';
+import { TM_BLOB_FETCHER, type TmBlobFetcher } from '@tellma/core-ui/blob-fetcher';
 
 import { tmMemoryStoreProvider } from './provide-tellma-state-testing';
 import { TmFakeApi } from './tm-fake-api';

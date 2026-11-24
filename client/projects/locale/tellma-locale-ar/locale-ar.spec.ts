@@ -24,6 +24,7 @@ import { TM_TILES_TREE_STRINGS_EN } from '@tellma/core-ui/tiles-tree';
 import { provideTellmaLocaleAr } from './provide-tellma-locale-ar';
 import { TM_STRINGS_AR } from '@tellma/locale-ar/platform-strings';
 import { TM_QUERYEX_STRINGS_AR } from '@tellma/locale-ar/queryex-strings';
+import { TM_SHELL_STRINGS_AR } from '@tellma/locale-ar/shell-strings';
 import { TM_LOCALE_AR_STRINGS } from '@tellma/locale-ar/strings';
 import { tmArabic } from './tm-arabic';
 
@@ -419,13 +420,18 @@ describe("the platform's Arabic plurals", () => {
 });
 
 describe('tmArabic', () => {
-  it("loads the platform's table, its Queryex tools' part and the component library's, each from its own entry point", async () => {
+  it("loads the platform's table, its shell's and Queryex tools' parts and the component library's, each from its own entry point", async () => {
     const arabic = tmArabic();
     expect(arabic).toMatchObject({ code: 'ar', dir: 'rtl' });
-    await expect(arabic.strings()).resolves.toEqual({ tm: { ...TM_STRINGS_AR, ...TM_QUERYEX_STRINGS_AR }, tmUi: TM_LOCALE_AR_STRINGS });
+    await expect(arabic.strings()).resolves.toEqual({
+      tm: { ...TM_STRINGS_AR, ...TM_SHELL_STRINGS_AR, ...TM_QUERYEX_STRINGS_AR },
+      tmUi: TM_LOCALE_AR_STRINGS,
+    });
   });
 
-  it("keeps the Queryex tools' part apart from the platform's table", () => {
-    expect(Object.keys(TM_QUERYEX_STRINGS_AR).filter((scope) => scope in TM_STRINGS_AR)).toEqual([]);
+  it("keeps the shell's and the Queryex tools' parts apart from the platform's table and from each other", () => {
+    // The merge under `tm` is shallow, so a scope in two tables would lose one side.
+    const scopes = [TM_STRINGS_AR, TM_SHELL_STRINGS_AR, TM_QUERYEX_STRINGS_AR].flatMap((table) => Object.keys(table));
+    expect(scopes.filter((scope, index) => scopes.indexOf(scope) !== index)).toEqual([]);
   });
 });
