@@ -384,6 +384,28 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-274 (orchestrator, 2026-11-24): PC-121 review 1 rulings, and PC-168's gate
+
+- R1 found 0 blocking, 0 major and 7 minor on 3f1e2a46, so there is no R2. A clean-build measure confirmed:
+  - "." and the cap line are unchanged;
+  - /entity is 24.55 of 25;
+  - /expression-editor is 7.90 of 8, and /path-picker 4.56 of 5;
+  - locale-ar ./queryex-strings is 0.75 of 1, and the locale-ar root is 0.46 of 0.5.
+- The queryex-strings re-split is honest under D-031, and PC-120's carry is complete.
+- Note: the locale-ar root reaches about 0.48 once PC-116's shell-strings lands. One more string part after that means the root's first raise.
+- fix1 fixes R1-1 to R1-5 and R1-7:
+  - the draft's stale answers;
+  - an abort test;
+  - re-spacing a drop;
+  - the missing tests;
+  - the deviation records;
+  - a TSDoc.
+- R1-6: spec 0029 §10.4's three-engine undo e2e is PC-168's deliverable, and it needs a page that hosts the editor. PC-168 is now gated on PC-131 (0030's column filters and Filters popup) in DEPS.md and CHECKPOINTS.md. The carry is in the PC-168 ledger row.
+- For Ahmad (spec 0029):
+  - (a) the editor and picker take the §1 budget, about 28 KB, well over: 37.01 KB with /entity, 41.0 with /column-filter;
+  - (b) §11.2's `Name (E)` slot-1 child conflicts with §6.1's "No slot-1 key";
+  - (c) should §11.1 gain TmPathPicker.text(node)?
+
 ### D-273 (orchestrator, 2026-11-24): PC-153 review 1 rulings
 
 - R1 found 0 blocking, 0 major and 8 minor on 86f53add, so there is no R2. Sizes were confirmed on a clean build:
