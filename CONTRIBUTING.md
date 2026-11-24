@@ -14,11 +14,14 @@ nightly tier only through the tags below; everything untagged is PR tier.
 Before tagging a slow test nightly, try to make it fast: a wall-clock wait (a watchdog, a poll
 interval, an expiry) is driven by a fake clock or a test `TimeProvider` wherever that is possible.
 
-A client unit spec waits on the state it expects, never on a number of task turns. Work that goes
-through a lazily loaded chunk (`import()`) goes on only once the chunk's first fetch lands, and
-under load the test server can take far longer than any fixed count of turns. The core specs wait
-with `tmSettleUntil(condition)` (`tm-app.testing.util.ts`), or, under fake timers, by advancing by
-zero until the condition holds; the test's own timeout bounds the wait.
+Across work that may load a chunk with `import()`, a client unit spec waits on the state the work
+produces, never on a number of task turns: the work goes on only once the chunk's first fetch
+lands, and under load the test server can take far longer than any fixed count of turns. The core
+specs wait with `tmSettleUntil(condition)`, or, under fake timers, with `tmWaitUntil(condition, () =>
+vi.advanceTimersByTimeAsync(0))`, both in `client/projects/core/tellma-core/src/routes/tm-app.testing.util.ts`.
+Each fails after a real 4 s deadline (`TM_WAIT_DEADLINE_MS`, below the 5 s test timeout) with an
+error naming the condition, and stops waiting there. A fixed settle (`tmSettle()`) stays right for
+work that loads no chunk.
 
 ### Tags
 

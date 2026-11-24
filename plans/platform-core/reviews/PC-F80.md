@@ -112,3 +112,120 @@ under 20 busy-loop node processes on this 20-core machine.
 - Whether any other core spec counts turns across a lazily loaded chunk that the injection did
   not cover (for example `@tellma/core-ui/confirm` from the page registry, or the calendar entry
   points, which load through `import()` as well).
+
+## Review 1
+
+### Findings
+
+What I ran, on ec93b432 in this worktree, every change reverted afterwards (`git status` clean):
+
+- `ng run core:test --watch=false` with no load: 1492/1492. Under 20 busy-loop node processes: 1492/1492.
+  The parent's specs under the same load passed 1492/1492 in my one run (warm cache), so load alone
+  did not reproduce it here; the injection below does, deterministically.
+- A real 300 ms delay injected before every `import()` of the implementer's four chunks: the parent's
+  specs fail 43/1492 (27 `tm-http-api`, 13 `tm-localization`, 1 `tm-navigation`, 2 `tm-route-host`),
+  exactly the implementer's figure; this commit's specs pass all of them.
+- The same delay extended to every other lazy `import()` the core specs reach (the `uq` and `et`
+  calendar entry points, `@tellma/core-ui/confirm`, `tm-entity-paste`, `@tellma/core/shell`,
+  `/recents`, `/leader`, core-ui's `grid-editing`, `chart-engine` and the blob fetcher's
+  `@angular/common/http`): 4 failures, all outside the implementer's set (R1-2, R1-3). The calendars
+  and the rest add none.
+- eslint on the six touched client files and `tsc -p projects/core/tellma-core/tsconfig.spec.json`: clean.
+- Each wait condition, read against the product code: every one holds only after the work under test
+  (I checked `digits() === 'Latin'`, the one that looked vacuous: digits is `null` before the change,
+  and the write is `saving` once it holds). No `flushUntil` moves fake time: the worker-timeout spec
+  starts its 2 999 + 1 ms count once `updates.checks === 1`, which `#askWorker` reaches only after it
+  arms the 3 s cap; the 29.999 s, 30 s and 30 s-retry specs start counting once the verdict is recorded,
+  and the retry timer is armed in the microtasks that `advanceTimersByTimeAsync`'s first real task
+  drains. The boundaries keep their meaning.
+
+1. **R1-1 (major) A wait that never ends keeps running after its test times out, and breaks the
+   next tests.** `client/projects/core/tellma-core/src/routes/tm-app.testing.util.ts:317-324`
+   (`tmSettleUntil`) and `client/projects/core/tellma-core/src/api/tm-http-api.spec.ts:152-157`
+   (`flushUntil`) loop until the condition holds, with no bound of their own. When a condition never
+   holds (a regression, or state that arrives in a shape the condition does not match), the test
+   fails with only "Test timed out in 5000ms": no word of which wait or which condition. Worse, the
+   loop is never stopped. Checked with a throwaway two-test spec: a `tmSettleUntil(() => false)` test
+   with a 300 ms timeout, then a test that waits 200 ms and calls `TestBed.configureTestingModule`.
+   The condition was checked 41 more times during the second test, and its `configureTestingModule`
+   threw "Cannot configure the test module when the test module has already been instantiated": the
+   orphaned loop's `TestBed.tick()` had instantiated the next test's module. So one stuck wait turns
+   into failures across the rest of its file, which hides the real one. In `tm-http-api.spec.ts`, the
+   orphaned `flushUntil` keeps driving the next test's fake clock, or rejects once real timers are
+   back. CONTRIBUTING.md now makes these helpers the standard wait, so the failure mode will spread.
+   Fix: give both helpers a real deadline below the test timeout (say 4 s, measured with
+   `performance.now()`, which neither the `tm-http-api` spec's `toFake` list nor real timers touch).
+   Past it, throw an `Error` that names the wait (an optional description argument, or
+   `String(condition)`) and the time waited. That ends the loop and reports the condition.
+
+2. **R1-2 (major) Three specs still count turns across the shell chunk's first load.**
+   `client/projects/core/tellma-core/src/launch/tm-launch-redirect.spec.ts:60` and `:71`, and
+   `client/projects/core/tellma-core/src/routes/tm-route-host.spec.ts:228`. Each opens `/` with
+   no cached memberships, so the redirect to `/17` (or `/tenants`) happens only after the memberships
+   read. That is outside the awaited `navigateByUrl('/')`, and it loads the tenant shell (or the
+   picker) through `import('@tellma/core/shell')` (`tm-route-hosts.ts:50`). One `tmSettle()` then
+   reads `router.url`. With a 300 ms delay on that one import, all three fail (`expected '/' to be
+   '/17'`, `'/tenants'`). In the default order, an earlier test in each file has already loaded the
+   shell inside an awaited navigation, so they pass today. Under load they fail whenever they run
+   first: a `-t` filter, a reordering, or a new test above them. That is the criterion the implementer
+   applied ("whatever the order or filter"), and it is the same shape as the specs this commit fixed.
+   Fix: `await tmSettleUntil(() => rig.router.url !== '/')` before each assertion. The assertion still
+   names the wrong target if the redirect goes astray.
+
+3. **R1-3 (minor) The real-confirmation spec counts turns across `@tellma/core-ui/confirm`.**
+   `client/projects/core/tellma-core/src/context/tm-page-actions.spec.ts:504`: `ask()` invokes the
+   action, runs one `tmSettle()`, then `loader.getHarness(TmConfirmHarness)`, which does not wait.
+   The registry first loads the dialog with `await import('@tellma/core-ui/confirm')`
+   (`tm-page-registry.ts:444`). The spec imports `TmConfirm` statically (line 11), so the module is
+   already evaluated and only a cached `import()`'s resolution is at risk. The implementer's own
+   reason for waiting on state rather than preloading names that as a hazard too. With the 300 ms
+   delay, it fails ("Failed to find element matching one of the following queries"). Fix:
+   `await tmSettleUntil(() => document.querySelector(TmConfirmHarness.hostSelector) !== null)` in
+   `ask()`, before `getHarness`.
+
+4. **R1-4 (minor) The CONTRIBUTING.md rule says more than the code base keeps.** `CONTRIBUTING.md:17-21`:
+   "waits on the state it expects, never on a number of task turns". `tmSettle()` (a fixed count of
+   turns) stays the core specs' ordinary wait, in dozens of places this commit rightly leaves alone,
+   negative checks among them. "The test's own timeout bounds the wait" does not hold for the loop
+   itself (R1-1). A reader cannot tell which turn-counted settles are now violations. Fix: scope the
+   rule to work that may go through a lazily loaded chunk, for example "Across work that may load a
+   chunk with `import()`, a client unit spec waits on the state the work produces, never on a number
+   of task turns". Say that the helper's own deadline bounds the wait once R1-1 lands. Give the
+   helper's full path (`client/projects/core/tellma-core/src/routes/tm-app.testing.util.ts`).
+
+### Responses
+
+Implementer, fix1 ("PC-F80: fix review 1").
+
+- **R1-1: fixed.** `tm-app.testing.util.ts` gains `tmWaitUntil(condition, step, description?)`,
+  which runs a step until the condition holds and throws past `TM_WAIT_DEADLINE_MS` (4 000 ms of
+  real time, measured with `performance.now()`, which the HTTP spec's `toFake` list leaves alone).
+  The error names the description, else the condition's source, and the time waited; the throw
+  ends the loop, so nothing ticks into the next test. `tmSettleUntil(condition, description?)`
+  and the HTTP spec's `flushUntil` are now that loop with a real task and render, or a zero
+  advance of faked timers, as the step. The new `tm-app.testing.util.spec.ts` shows a wait that
+  returns, one that fails past the deadline naming `state.ready` and is never checked again
+  after the throw, and one under faked timers that keeps the real deadline without moving fake
+  time. A wait started late in a test can still outlast the test's own 5 s timeout by up to its
+  own deadline; it stops at the deadline, which bounds the spill.
+- **R1-2: fixed.** `tm-launch-redirect.spec.ts` (the memberships read, and the unreadable
+  memberships) waits until `router.url` is no longer `/`. In `tm-route-host.spec.ts` "times a
+  launch at /", the URL alone was not enough: with the shell's chunk delayed, the URL moved before
+  the home page painted and timed the launch, so that spec waits until a `tm.launch.*` record
+  exists, then asserts the URL and the record.
+- **R1-3: fixed.** `ask()` in `tm-page-actions.spec.ts` waits until
+  `TmConfirmHarness.hostSelector` matches before `getHarness`; its now-unused `tmSettle` import
+  is gone.
+- **R1-4: fixed.** CONTRIBUTING.md scopes the rule to work that may load a chunk with
+  `import()`, names both helpers with the full path
+  `client/projects/core/tellma-core/src/routes/tm-app.testing.util.ts`, states the 4 s deadline
+  below the 5 s test timeout and that a failed wait stops, and keeps `tmSettle()` for work that
+  loads no chunk.
+
+Verification (fix1): the 300 ms delay injected before every lazy `import()` the core specs reach
+(the four chunks, the `uq` and `et` calendars, `@tellma/core-ui/confirm`, `tm-entity-paste`,
+`@tellma/core/shell`, `/recents`, `/leader`, core-ui's `grid-editing` and `chart-engine`, the
+blob fetcher's `@angular/common/http`): 1495/1495 (the first pass failed only the launch-timing
+spec above, fixed before the second pass); reverted. `ng run core:test` in full: no load
+1495/1495; under 20 busy-loop processes 1495/1495. eslint on the touched files, `tsc -p
+projects/core/tellma-core/tsconfig.spec.json`, and `pnpm run lint:test`: clean (lint:test 480/480).

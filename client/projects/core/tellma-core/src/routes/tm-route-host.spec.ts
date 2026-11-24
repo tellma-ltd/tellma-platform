@@ -13,6 +13,7 @@ import { TM_BOOT_RESULT } from '../boot/tm-boot-result';
 import type { TmBootResult } from '../boot/tm-boot-types';
 import { TmPageActions } from '../context/tm-page-actions';
 import { TmPageContexts } from '../context/tm-page-contexts';
+import type { TmTelemetryItem } from '../observe/tm-telemetry';
 import { TmClientStore } from '../state/store/tm-client-store';
 import {
   tmAppRig,
@@ -225,10 +226,12 @@ describe('the route host', () => {
     rig = await tmAppRig({ providers: [{ provide: TM_BOOT_RESULT, useValue: RETURNING }] });
     rig.api.respond('/bff/user', { tenants: [tmTestMembership(17)] });
     await tmNavigate('/');
-    await tmSettle();
+    const launches = (): TmTelemetryItem[] => rig.telemetry.recent().filter((item) => item.name.startsWith('tm.launch.'));
+    // The redirect follows the memberships' read, and the launch is timed once the
+    // tenant page, which loads the shell's chunk, paints.
+    await tmSettleUntil(() => launches().length > 0);
     expect(rig.router.url).toBe('/17');
-    const launches = rig.telemetry.recent().filter((item) => item.name.startsWith('tm.launch.'));
-    expect(launches.map((item) => [item.name, item.props['routeKind']])).toEqual([['tm.launch.warm', 'home']]);
+    expect(launches().map((item) => [item.name, item.props['routeKind']])).toEqual([['tm.launch.warm', 'home']]);
   });
 
   it('renders the forbidden view in place of a page whose permission the user lacks', async () => {

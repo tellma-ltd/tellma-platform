@@ -16,7 +16,7 @@ import { TmClientMetadataStore, type TmContracts } from '../metadata/tm-client-m
 import { TM_METADATA_LOADERS, type TmMetadataLoaders } from '../metadata/tm-metadata-loaders';
 import { TmTelemetry } from '../observe/tm-telemetry';
 import { TmRequestLog } from '../requests/tm-request-log';
-import { tmUnhandled } from '../routes/tm-app.testing.util';
+import { tmUnhandled, tmWaitUntil } from '../routes/tm-app.testing.util';
 import { tmProfileCookies, tmProfileCookieValue } from '../session/tm-profile.testing.util';
 import { TmSession } from '../session/tm-session';
 import { TmSessionPaths } from '../session/tm-session-paths';
@@ -147,13 +147,12 @@ const flush = async (): Promise<void> => {
  * task at a time, until a condition holds. A call's path through a lazily
  * loaded chunk (the outdated-client verdict, the download and upload code)
  * goes on only once the chunk's first fetch lands, which no number of turns
- * bounds; fake time never moves. The test's own timeout bounds the wait.
+ * bounds; fake time never moves. The wait fails after a real deadline,
+ * naming the condition.
  */
 const flushUntil = async (condition: () => boolean): Promise<void> => {
   await flush();
-  while (!condition()) {
-    await vi.advanceTimersByTimeAsync(0);
-  }
+  await tmWaitUntil(condition, () => vi.advanceTimersByTimeAsync(0));
 };
 
 /** A promise's outcome, as it settles. */
