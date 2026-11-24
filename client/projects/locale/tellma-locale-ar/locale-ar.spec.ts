@@ -23,6 +23,7 @@ import { TM_TILES_TREE_STRINGS_EN } from '@tellma/core-ui/tiles-tree';
 
 import { provideTellmaLocaleAr } from './provide-tellma-locale-ar';
 import { TM_STRINGS_AR } from '@tellma/locale-ar/platform-strings';
+import { TM_QUERYEX_STRINGS_AR } from '@tellma/locale-ar/queryex-strings';
 import { TM_LOCALE_AR_STRINGS } from '@tellma/locale-ar/strings';
 import { tmArabic } from './tm-arabic';
 
@@ -364,6 +365,22 @@ describe('@tellma/locale-ar (DoD 13)', () => {
   });
 });
 
+describe("the Queryex tools' Arabic plurals", () => {
+  it('words the problem and field counts in each Arabic plural form', async () => {
+    const fixture = await setup(true);
+    const host = fixture.componentInstance;
+    host.transloco.setActiveLang('ar');
+    await settle(fixture);
+    host.transloco.setTranslation({ tm: TM_QUERYEX_STRINGS_AR }, 'ar', { merge: true });
+    const text = (key: string, params: Record<string, unknown>): string =>
+      host.transloco.translate<string>(key, params, 'ar').replace(/[\u2066-\u2069\u200e\u200f]/g, '');
+
+    const counts = [1, 2, 3, 11, 100];
+    expect(counts.map((count) => text('tm.queryex.problems', { count }))).toEqual(['مشكلة واحدة', 'مشكلتان', '3 مشكلات', '11 مشكلة', '100 مشكلة']);
+    expect(counts.map((count) => text('tm.pathPicker.count', { count }))).toEqual(['حقل واحد', 'حقلان', '3 حقول', '11 حقلًا', '100 حقل']);
+  });
+});
+
 describe("the platform's Arabic plurals", () => {
   it('words the entity actions’ counts in each Arabic plural form', async () => {
     const fixture = await setup(true);
@@ -402,9 +419,13 @@ describe("the platform's Arabic plurals", () => {
 });
 
 describe('tmArabic', () => {
-  it("loads the platform's table and the component library's, each from its own entry point", async () => {
+  it("loads the platform's table, its Queryex tools' part and the component library's, each from its own entry point", async () => {
     const arabic = tmArabic();
     expect(arabic).toMatchObject({ code: 'ar', dir: 'rtl' });
-    await expect(arabic.strings()).resolves.toEqual({ tm: TM_STRINGS_AR, tmUi: TM_LOCALE_AR_STRINGS });
+    await expect(arabic.strings()).resolves.toEqual({ tm: { ...TM_STRINGS_AR, ...TM_QUERYEX_STRINGS_AR }, tmUi: TM_LOCALE_AR_STRINGS });
+  });
+
+  it("keeps the Queryex tools' part apart from the platform's table", () => {
+    expect(Object.keys(TM_QUERYEX_STRINGS_AR).filter((scope) => scope in TM_STRINGS_AR)).toEqual([]);
   });
 });
