@@ -118,58 +118,6 @@ export const TM_STRINGS_AR: TmStringTree = {
       meDisplay: 'السمة، الشريط المثبت',
     },
   },
-  shell: {
-    signedOut: { signIn: 'تسجيل الدخول' },
-    skip: 'الانتقال إلى المحتوى',
-    tenants: 'الشركات',
-  },
-  tenantless: {
-    bar: {
-      language: 'اللغة',
-      account: 'الحساب',
-      myAccount: 'حسابي',
-      signOut: 'تسجيل الخروج',
-    },
-    picker: {
-      title: `${imperative('اختر', 'اختاري')} شركة`,
-      search: 'البحث في الشركات',
-      loading: 'جارٍ تحميل الشركات…',
-      tenant: 'الشركة {id}',
-      connect: 'دخول',
-      connectTo: 'دخول إلى {name}',
-      badges: {
-        lastUsed: 'آخر استخدام',
-        sandbox: 'بيئة تجريبية',
-        readOnly: 'للقراءة فقط',
-        frozen: 'قيد الصيانة',
-        suspended: 'معلّقة',
-        provisioning: 'قيد الإعداد',
-        inactive: 'معطّلة',
-      },
-      unavailable: {
-        inactive: 'أُزيل وصولك إلى هذه الشركة.',
-        suspended: `معلّقة. ${imperative('تواصل', 'تواصلي')} مع المسؤول.`,
-        provisioning: 'يجري إعداد هذه الشركة.',
-      },
-      empty: {
-        title: imperative('لست عضوًا في أي شركة بعد', 'لستِ عضوة في أي شركة بعد'),
-        message: `${imperative('اطلب', 'اطلبي')} من المسؤول دعوتك. ${imperative('أنت مسجّل الدخول', 'أنتِ مسجّلة الدخول')} باسم {email}.`,
-      },
-      noMatch: 'لا توجد شركات تطابق «{query}».',
-      failed: 'تعذّر تحميل شركاتك.',
-      notice: {
-        named: 'لم يعد بإمكانك فتح {name}.',
-        unnamed: 'لم يعد بإمكانك فتح الشركة {id}.',
-        dismiss: 'إغلاق',
-      },
-    },
-    signedOut: {
-      title: imperative('لقد سجّلت الخروج', 'لقد سجّلتِ الخروج'),
-      message: `${imperative('لقد سجّلت', 'لقد سجّلتِ')} الخروج من {displayName} على هذا الجهاز.`,
-      signedInAs: `${imperative('أنت مسجّل الدخول', 'أنتِ مسجّلة الدخول')} باسم {name}.`,
-      continue: 'متابعة',
-    },
-  },
   entity: {
     permission: '{resource}: {action}',
     tenantReadOnly: '{tenant} للقراءة فقط.',

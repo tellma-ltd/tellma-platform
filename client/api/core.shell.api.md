@@ -11,6 +11,7 @@ import { ApplicationRef } from '@angular/core';
 import { CanActivateFn } from '@angular/router';
 import { DestroyRef } from '@angular/core';
 import { EnvironmentProviders } from '@angular/core';
+import { ErrorHandler } from '@angular/core';
 import { InjectionToken } from '@angular/core';
 import { InputSignal } from '@angular/core';
 import * as lucide from 'lucide';
