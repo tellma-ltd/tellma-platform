@@ -34,6 +34,13 @@ const UNPREFIXED_EXPORTS = [
   'provideTmPageScope',
   // The Playwright assertion the app-foundation spec names for every suite.
   'expectNoAxeViolations',
+  // The other e2e helpers the app-foundation spec names for every suite.
+  'warmUp',
+  'holdNetwork',
+  'goOffline',
+  'openTabs',
+  'signInAs',
+  'fakeProblem',
   // The app's one provider call, which the app-foundation spec names; the
   // prefix pattern expects a suffix after `provideTellma`.
   'provideTellma',
@@ -64,12 +71,24 @@ const tmPlugin = {
  * a `group` pattern only ever matches subpaths, so without it a pack could
  * pull the whole primary entry point in and still lint clean.
  */
+/**
+ * The realtime client's restriction: only @tellma/core/realtime imports
+ * @microsoft/signalr. Flat config replaces a rule's whole setting with the
+ * last block that matches a file, so every later block that sets
+ * no-restricted-imports names it again.
+ */
+const SIGNALR_RESTRICTION = {
+  name: '@microsoft/signalr',
+  message: 'Only @tellma/core/realtime imports the SignalR client; the leader election loads it with import().',
+};
+
 const CALENDAR_BOUNDARY = {
   paths: [
     {
       name: '@tellma/core-ui',
       message: 'Calendar entry points may depend on l10n and contracts only.',
     },
+    SIGNALR_RESTRICTION,
   ],
   patterns: [
     {
@@ -165,9 +184,10 @@ export default defineConfig(
 
   // The app framework's packages (spec 0024 §1, §10.4, §12): static imports
   // between @tellma/core entry points follow its graph, declarations keep
-  // their keys literal and their layouts lazy, and no + or comparison ever
-  // runs on a TmDecimal's text. The decimal rules need type information, so
-  // these files lint against their TypeScript projects.
+  // their keys literal and their layouts lazy, no + or comparison ever runs
+  // on a TmDecimal's text, and literal telemetry names and action ids follow
+  // their grammars (spec 0026 §3.2, §9.3). The decimal rules need type
+  // information, so these files lint against their TypeScript projects.
   {
     files: ['projects/core/tellma-core/**/*.ts', 'projects/core/tellma-core-testing/**/*.ts'],
     languageOptions: {
@@ -185,6 +205,7 @@ export default defineConfig(
       'tm/lazy-layouts': 'error',
       'tm/literal-declaration-keys': 'error',
       'tm/no-decimal-operators': 'error',
+      'tm/telemetry-names': 'error',
       '@typescript-eslint/restrict-plus-operands': TM_RESTRICT_PLUS_OPERANDS,
     },
   },
@@ -208,6 +229,7 @@ export default defineConfig(
   // Feature packs hold declarations and layouts, like a distribution's own
   // code, so they take the distribution rules (spec 0024 §2.1) — all but the
   // type-aware decimal rule, which joins when the first pack has a project.
+  // Without a project, the telemetry-names rule knows its receivers by name.
   {
     files: ['projects/module/**/*.ts'],
     plugins: { tm: tmPlugin },
@@ -217,6 +239,23 @@ export default defineConfig(
       'tm/no-web-storage': 'error',
       'tm/lazy-layouts': 'error',
       'tm/literal-declaration-keys': 'error',
+      'tm/telemetry-names': 'error',
+    },
+  },
+
+  // Realtime client boundary (spec 0025 §1): @microsoft/signalr is imported
+  // only by @tellma/core/realtime, which the leader election loads with
+  // import() once a tab leads, so no follower tab downloads the client. The
+  // size gate's static-graph check (staticGraphExcludes) catches a static
+  // path to the entry point; this rule names the mistake where it is made.
+  // The narrower blocks below set this rule for their own files, which
+  // replaces this setting there, so each of them names SIGNALR_RESTRICTION
+  // in its own list too.
+  {
+    files: ['projects/**/*.ts'],
+    ignores: ['projects/core/tellma-core/realtime/**'],
+    rules: {
+      'no-restricted-imports': ['error', { paths: [SIGNALR_RESTRICTION] }],
     },
   },
 
@@ -229,6 +268,7 @@ export default defineConfig(
       'no-restricted-imports': [
         'error',
         {
+          paths: [SIGNALR_RESTRICTION],
           patterns: [
             {
               group: ['@angular/*'],
@@ -263,6 +303,7 @@ export default defineConfig(
       'no-restricted-imports': [
         'error',
         {
+          paths: [SIGNALR_RESTRICTION],
           patterns: [
             {
               // Covers the bare '@tellma/core-ui' as well as its subpaths.
@@ -476,6 +517,7 @@ export default defineConfig(
               name: '@tellma/core-ui',
               message: 'The grid engine may depend on @tellma/core-ui/contracts only.',
             },
+            SIGNALR_RESTRICTION,
           ],
           patterns: [
             {
@@ -604,6 +646,7 @@ export default defineConfig(
               name: '@tellma/core-ui',
               message: 'The l10n entry point may depend on @tellma/core-ui/contracts only.',
             },
+            SIGNALR_RESTRICTION,
           ],
           patterns: [
             {

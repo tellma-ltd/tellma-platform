@@ -1,0 +1,15 @@
+/*
+ * The TypeScript project of the telemetry-names rule's test cases, whose code
+ * is inline and imports the stand-in services beside this file.
+ */
+{
+  "compilerOptions": {
+    "strict": true,
+    "target": "es2022",
+    "module": "preserve",
+    "skipLibCheck": true,
+    "noEmit": true,
+    "types": []
+  },
+  "files": ["services.ts"]
+}

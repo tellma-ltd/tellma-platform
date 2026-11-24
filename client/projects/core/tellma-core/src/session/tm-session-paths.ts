@@ -143,7 +143,7 @@ export class TmSessionPaths {
    */
   #run(path: (flows: TmSessionFlows) => unknown, fallback?: () => void): void {
     this.#load().then(path, (error: unknown) => {
-      this.#telemetry.error(error, { source: 'tm-session' });
+      this.#telemetry.error(error, { where: 'tm-session' });
       fallback?.();
     });
   }

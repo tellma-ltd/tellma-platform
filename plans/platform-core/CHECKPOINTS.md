@@ -1790,7 +1790,7 @@ authority. Where an entry disagrees with the spec, follow the spec and note it i
 
 - **Analysis id:** `0029-h` · **Spec:** 0029 · **Layer:** both · **Tier:** 2 · **Est. LOC:** 2,500
 - **Sections:** §17 (e2e row), §18
-- **Gated on (DEPS.md):** PC-121, PC-119, PC-092
+- **Gated on (DEPS.md):** PC-121, PC-119, PC-092, PC-131 (D-274: a page that hosts the editor and picker)
 - **Analyst dependency notes:** 0029-e; 0029-g; 0030; 0031; 0018 §1.4; 0024 Acme client build
 - **Deliverables:** Playwright on Acme: drag a field into a filter at the caret then undo (Chromium, Firefox, WebKit), keyboard-only insert, no unreachable path for a restricted role, a URL with an unreachable column loads without 403, picker advanced search and create round trips, display name copied from a cell/title/picker input pastes into a search and finds its row with no bidi control on the clipboard, a language switch with no request; entities-load.spec, expression-editor.spec, path-picker.spec, entity-language-switch.spec, discover-abort.spec, expression-editor-geometry.spec, column-filter-geometry.spec, path-picker-rtl.spec, display-name-bidi.spec, keyboard-insert.spec, axe battery; Acme customers declaration and the restricted role wiring
 - **Tests:** e2e (Playwright, three engines for drag/undo), axe

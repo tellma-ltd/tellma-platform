@@ -3,9 +3,10 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-import { Component } from '@angular/core';
+import { afterEveryRender, Component, Injector } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { provideRouter, Router } from '@angular/router';
+import { RouterTestingHarness } from '@angular/router/testing';
 import {
   provideTellmaStateTesting,
   provideTellmaTesting,
@@ -102,7 +103,15 @@ function stored<T>(data: T, tag: string | null = null): TmStoredDoc<T> {
 
 /** Configures the launch cache on a URL, with tenant 17's launch documents stored unless `cold`. */
 async function setUp(
-  options: { url?: string; cold?: boolean; entityTags?: Record<string, string>; attention?: boolean } = {},
+  options: {
+    /** The URL navigated to before the launch cache is created; `null` creates it before any navigation. */
+    url?: string | null;
+    cold?: boolean;
+    entityTags?: Record<string, string>;
+    attention?: boolean;
+    /** Runs before the launch cache is created, such as to register a render hook ahead of its own. */
+    beforeLaunch?: () => void;
+  } = {},
 ): Promise<TmRig> {
   const idle: (() => void)[] = [];
   vi.spyOn(window, 'requestIdleCallback').mockImplementation((callback) => {
@@ -122,7 +131,9 @@ async function setUp(
         : []),
     ],
   });
-  await TestBed.inject(Router).navigateByUrl(options.url ?? '/17/centers');
+  if (options.url !== null) {
+    await TestBed.inject(Router).navigateByUrl(options.url ?? '/17/centers');
+  }
   const store = TestBed.inject(TmClientStore);
   if (options.cold !== true) {
     await store.ɵwrite(T17, {
@@ -137,6 +148,7 @@ async function setUp(
   api.respond('client/sync', COLD_ANSWER);
   api.respond('/bff/user', { tenants: [] });
   api.respond('/api/distribution-info', {});
+  options.beforeLaunch?.();
   const launch = TestBed.inject(TmLaunchCache);
   return {
     launch,
@@ -440,6 +452,48 @@ describe('TmLaunchCache', () => {
       expect(rig.calls('/bff/user')).toHaveLength(1);
       expect(rig.calls('/api/distribution-info')).toEqual([]);
       expect(rig.calls('client/sync')).toEqual([]);
+    });
+
+    it("reads a launch's tenants on a tenantless route only after the render that holds its first page", async () => {
+      // A render hook registered ahead of the cache's own sees, at each render, the reads made before it.
+      const renders: { navigated: boolean; reads: number }[] = [];
+      const rig = await setUp({
+        url: null,
+        beforeLaunch: () => {
+          const router = TestBed.inject(Router);
+          const api = TestBed.inject(TmFakeApi);
+          afterEveryRender(
+            () => renders.push({ navigated: router.navigated, reads: api.calls().filter((call) => call.route === '/bff/user').length }),
+            { injector: TestBed.inject(Injector) },
+          );
+        },
+      });
+
+      // The app's root view renders while the launch's first page still loads: no read.
+      const harness = await RouterTestingHarness.create();
+      await settle();
+      expect(renders.length).toBeGreaterThan(0);
+      expect(renders.every((render) => !render.navigated)).toBe(true);
+      expect(rig.calls('/bff/user')).toEqual([]);
+
+      // The render once the first navigation has ended holds the page; the read follows it.
+      await harness.navigateByUrl('/tenants');
+      await settle();
+      expect(renders.find((render) => render.navigated)).toEqual({ navigated: true, reads: 0 });
+      expect(rig.calls('/bff/user')).toHaveLength(1);
+    });
+
+    it('reads the tenants at once on a later tenantless entry', async () => {
+      const rig = await setUp({ url: '/' });
+      await settle();
+      await TestBed.inject(Router).navigateByUrl('/17/centers');
+      await settle();
+      const before = rig.calls('/bff/user').length;
+
+      await TestBed.inject(Router).navigateByUrl('/tenants');
+      TestBed.tick();
+
+      expect(rig.calls('/bff/user')).toHaveLength(before + 1);
     });
   });
 });

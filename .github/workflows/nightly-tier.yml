@@ -25,6 +25,8 @@
 #   - Playwright: every test tagged @nightly, @cross-engine or @perf, on all four projects, minus
 #     the quarantined ones. The Firefox and WebKit projects keep their own @cross-engine filter on
 #     top, so a @nightly or @perf test reaches them only when it is also tagged @cross-engine.
+#   - The Acme browser suite: its @nightly and @perf gates on Linux, and every flow on Windows
+#     against LocalDB, quarantined tests excluded; the PR tier runs the other flows on Linux.
 #   - Quarantined Playwright tests (@quarantine) run in a job of their own, ten times each, and
 #     report per test whether they passed, flaked or failed. That job never decides the run's
 #     verdict: a known flake must not hide a new failure in the jobs above.
@@ -154,6 +156,94 @@ jobs:
       - run: dotnet test test/core/Tellma.Core.IntegrationTests -c Release --no-build --filter "Category=Integration&Category!=Nightly&Live!=true" --logger "console;verbosity=normal" -- xUnit.DiagnosticMessages=true
       - run: dotnet test distributions/acme/test/Tellma.Distro.Acme.IntegrationTests -c Release --no-build --filter "Category=Integration&Category!=Nightly&Live!=true" --logger "console;verbosity=normal" -- xUnit.DiagnosticMessages=true
       - run: dotnet test test/core/Tellma.Core.AspNetCore.IntegrationTests -c Release --no-build --filter "Category=Integration&Category!=Nightly&Live!=true" --logger "console;verbosity=normal" -- xUnit.DiagnosticMessages=true
+
+  # The Acme browser suite's nightly gates on Linux (spec 0024 §12): installability, the cold
+  # launch on Slow 4G and the warm chrome under CPU throttling, all through Chromium's DevTools
+  # protocol, on the e2e host over a SQL Server container and the published app.
+  acme-e2e:
+    if: github.ref == 'refs/heads/platform-core'
+    timeout-minutes: 45
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+      - uses: pnpm/action-setup@v6 # version from the root package.json packageManager
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # As in client-e2e: survives an apt-mirror outage as long as Chromium still launches.
+      - name: Install Chromium
+        timeout-minutes: 15
+        run: bash eng/playwright-browsers/install-browsers.sh chromium -- distributions/acme/test/Tellma.Distro.Acme.E2E/node_modules/.bin/playwright
+      # The publish builds the client app once; the e2e host serves its wwwroot.
+      - run: dotnet publish distributions/acme/src/Tellma.Distro.Acme.Web -c Release -o "${{ runner.temp }}/acme-web"
+      - name: Acme nightly gates
+        env:
+          TELLMA_E2E_WEBROOT: ${{ runner.temp }}/acme-web/wwwroot
+          TELLMA_E2E_CONFIGURATION: Release
+        run: node distributions/acme/test/Tellma.Distro.Acme.E2E/scripts/e2e.mjs --grep "@nightly|@perf" --grep-invert "@quarantine" --pass-with-no-tests
+      - name: Upload the Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-acme-e2e-report
+          path: distributions/acme/test/Tellma.Distro.Acme.E2E/.artifacts
+          if-no-files-found: ignore
+
+  # The Acme browser suite on Windows (spec 0024 §14: the e2e host runs on Ubuntu and Windows):
+  # every flow, nightly gates included, against LocalDB. The PR tier runs it on Linux alone.
+  acme-e2e-windows:
+    if: github.ref == 'refs/heads/platform-core'
+    timeout-minutes: 60
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+      - uses: pnpm/action-setup@v6 # version from the root package.json packageManager
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # As in integration-windows: the tool is located rather than assumed, and the instance created
+      # when the runner image lacks it.
+      - name: Start LocalDB
+        shell: pwsh
+        run: |
+          if (-not (Get-Command sqllocaldb -ErrorAction SilentlyContinue)) {
+            choco install sqllocaldb --no-progress -y
+            $tool = Get-ChildItem "$env:ProgramFiles\Microsoft SQL Server\*\Tools\Binn\SqlLocalDB.exe" | Select-Object -First 1
+            if (-not $tool) { throw 'SqlLocalDB.exe was not found after its install.' }
+            $env:PATH += ";$($tool.DirectoryName)"
+            Add-Content -Path $env:GITHUB_PATH -Value $tool.DirectoryName
+          }
+          if (-not (sqllocaldb info | Where-Object { $_.Trim() -eq 'MSSQLLocalDB' })) {
+            sqllocaldb create MSSQLLocalDB
+          }
+          sqllocaldb start MSSQLLocalDB
+      - name: Install Chromium
+        timeout-minutes: 15
+        run: pnpm --dir distributions/acme/test/Tellma.Distro.Acme.E2E exec playwright install chromium
+      - run: dotnet publish distributions/acme/src/Tellma.Distro.Acme.Web -c Release -o "${{ runner.temp }}/acme-web"
+      - name: Acme browser suite (Windows)
+        env:
+          TELLMA_E2E_SQL: localdb
+          TELLMA_E2E_WEBROOT: ${{ runner.temp }}/acme-web/wwwroot
+          TELLMA_E2E_CONFIGURATION: Release
+        run: node distributions/acme/test/Tellma.Distro.Acme.E2E/scripts/e2e.mjs --grep-invert "@quarantine"
+      - name: Upload the Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-acme-e2e-windows-report
+          path: distributions/acme/test/Tellma.Distro.Acme.E2E/.artifacts
+          if-no-files-found: ignore
 
   # The Playwright nightly tier on the showcase, every browser engine, quarantined tests excluded.
   client-e2e:

@@ -10,6 +10,7 @@ import { ApplicationRef } from '@angular/core';
 import { CanActivateFn } from '@angular/router';
 import { DestroyRef } from '@angular/core';
 import { EnvironmentProviders } from '@angular/core';
+import { ErrorHandler } from '@angular/core';
 import * as i0 from '@angular/core';
 import { InjectionToken } from '@angular/core';
 import { InputSignal } from '@angular/core';
@@ -916,6 +917,32 @@ export interface TmEnumValueMetadata {
 }
 
 // @public
+export class TmErrorHandler implements ErrorHandler {
+    handleError(error: unknown): void;
+    static ɵfac: i0.ɵɵFactoryDeclaration<TmErrorHandler, never>;
+    static ɵprov: i0.ɵɵInjectableDeclaration<TmErrorHandler>;
+}
+
+// @public
+export interface TmErrorRecord {
+    readonly at: number;
+    readonly code?: string;
+    readonly errorClass: string;
+    readonly fingerprint: string;
+    readonly kind?: TmApiErrorKind;
+    readonly message?: string;
+    readonly recentTraceIds: readonly string[];
+    readonly routeTemplate: string;
+    readonly source: TmErrorSource;
+    readonly stack: string;
+    readonly status?: number;
+    readonly traceId?: string;
+}
+
+// @public
+export type TmErrorSource = 'api' | 'global' | 'render';
+
+// @public
 export type TmFeature = TmFeatureDefinition & {
     readonly [tmFeatureBrand]: true;
 };
@@ -1137,7 +1164,7 @@ export class TmLaunchCache {
         readonly [K in keyof TmLaunchDocs]-?: Signal<TmLaunchDocs[K] | undefined>;
     };
     entitySet<T = TmJson>(name: string): Signal<TmCachedEntitySet<T> | undefined>;
-    revalidateUser(): Promise<void>;
+    revalidateUser(): Promise<TmApiError | null>;
     readonly tenants: Signal<readonly TmMembership[] | undefined>;
     readonly warm: Signal<boolean>;
     static ɵfac: i0.ɵɵFactoryDeclaration<TmLaunchCache, never>;
@@ -2199,6 +2226,7 @@ export interface TmTelemetryItem {
 // @public
 export interface TmTelemetryOptions {
     readonly sampled?: boolean;
+    readonly traceId?: string;
 }
 
 // @public

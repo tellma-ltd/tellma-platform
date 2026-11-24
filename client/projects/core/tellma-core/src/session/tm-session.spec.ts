@@ -301,7 +301,7 @@ describe('TmSessionPaths', () => {
     paths.expired('401');
     await vi.waitFor(() => expect(host.reloads).toBe(1));
     expect(host.cookieWrites).toEqual(['tellma.profile=; Max-Age=0; Path=/; Secure']);
-    expect(reported).toHaveBeenCalledWith(expect.any(Error), { source: 'tm-session' });
+    expect(reported).toHaveBeenCalledWith(expect.any(Error), { where: 'tm-session' });
     paths.changedUser();
     await vi.waitFor(() => expect(host.replaced).toEqual(['/']));
     await expect(paths.ɵsignOut()).rejects.toThrow('The chunk did not load.');

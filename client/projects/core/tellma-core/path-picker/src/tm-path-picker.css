@@ -1,0 +1,67 @@
+/*
+ * Copyright (c) Tellma Ltd. All rights reserved.
+ *
+ * This source code is licensed under the Apache-2.0 license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/* tm-path-picker (spec 0029 §11): the search field over the tree, which
+   scrolls inside whatever height its host gives the picker. */
+
+:host {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-block-size: 0;
+}
+
+.tm-path-picker__tree {
+  flex: 1 1 auto;
+  min-block-size: 0;
+  overflow: auto;
+}
+
+/* ---- A row: the glyph, the label and, for a navigation, its target ---- */
+
+.tm-path-picker__row {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--tree-gap);
+  min-inline-size: 0;
+}
+
+.tm-path-picker__icon {
+  flex: none;
+  color: var(--tree-twisty);
+}
+
+.tm-path-picker__label {
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The navigation's target, as a quiet pill after its label. */
+.tm-path-picker__pill {
+  flex: none;
+  padding-inline: var(--badge-padding-x);
+  border-radius: var(--badge-radius);
+  background: var(--badge-neutral-bg);
+  color: var(--text-secondary);
+  font-size: var(--badge-font-size);
+  line-height: var(--badge-height);
+  white-space: nowrap;
+}
+
+/* ---- The search's count: read by screen readers, never seen ---- */
+
+.tm-path-picker__status {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

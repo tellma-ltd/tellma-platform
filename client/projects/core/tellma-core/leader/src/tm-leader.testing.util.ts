@@ -15,8 +15,6 @@ import {
   TmTelemetry,
   type TmBusMessage,
   type TmCacheChangedEvent,
-  type TmHubConnection,
-  type TmHubSink,
   type TmLeaderDocument,
   type TmPartition,
   type TmSyncTrigger,
@@ -30,6 +28,8 @@ import {
   provideTellmaStateTesting,
   provideTellmaTesting,
   TmFakeApi,
+  TmFakeHub,
+  type TmFakeHubConnection,
   TmFakeSession,
   TmFakeTelemetry,
   tmTestMetadata,
@@ -37,7 +37,7 @@ import {
 import { Subject, type Observable } from 'rxjs';
 
 import { TM_LEADER_LOCKS, TmLeaderElection } from './tm-leader-election';
-import { TM_HUB_FACTORY, type TmHubFactory } from './tm-leadership';
+import { TM_HUB_FACTORY } from './tm-leadership';
 
 // The leader election's test rig: tabs of one browser in one test page. Each
 // tab is an injector of its own over the test's root, with its own election,
@@ -164,43 +164,6 @@ export class TmLinkedTabBus extends TmTabBus {
   }
 }
 
-/** A realtime connection the spec drives through the sink the leader gave it. */
-export class TmFakeHub implements TmHubConnection {
-  /** How many times the leader started it. */
-  starts = 0;
-  /** How many times the leader stopped it. */
-  stops = 0;
-  /** How many times the leader cut its wait short. */
-  nudges = 0;
-
-  /**
-   * Creates the connection.
-   *
-   * @param tenantId - The tenant it connects to.
-   * @param sink - Where it reports.
-   */
-  constructor(
-    readonly tenantId: number,
-    readonly sink: TmHubSink,
-  ) {}
-
-  /** Counts a start. */
-  start(): void {
-    this.starts++;
-  }
-
-  /** Counts a stop. */
-  stop(): Promise<void> {
-    this.stops++;
-    return Promise.resolve();
-  }
-
-  /** Counts a nudge. */
-  nudge(): void {
-    this.nudges++;
-  }
-}
-
 /** The refresher's surface the election uses, recorded. */
 export class TmRecordingRefresher {
   /** The routed tenant's partition, which the spec moves. */
@@ -263,7 +226,7 @@ export interface TmLeaderTab {
   /** The tab's refresher stand-in. */
   readonly refresher: TmRecordingRefresher;
   /** The realtime connections the tab's leaderships created, oldest first. */
-  readonly hubs: TmFakeHub[];
+  readonly hubs: readonly TmFakeHubConnection[];
   /** The iframe whose lock manager the tab uses. */
   readonly frame: HTMLIFrameElement;
   /** Hides the page. */
@@ -366,12 +329,8 @@ export async function tmLeaderRig(
       const bus = network.bus();
       const telemetry = new TmFakeTelemetry();
       const refresher = new TmRecordingRefresher();
-      const hubs: TmFakeHub[] = [];
-      const factory: TmHubFactory = (tenantId, sink) => {
-        const hub = new TmFakeHub(tenantId, sink);
-        hubs.push(hub);
-        return Promise.resolve(hub);
-      };
+      // Each tab's leaderships open their connections on a fake hub of the tab's own.
+      const hub = new TmFakeHub();
       const injector = createEnvironmentInjector(
         [
           TmLeaderElection,
@@ -381,7 +340,7 @@ export async function tmLeaderRig(
           { provide: TmTelemetry, useValue: telemetry },
           { provide: TmCacheRefresher, useValue: refresher },
           { provide: TM_LEADER_LOCKS, useValue: options.noLocks === true ? null : (options.locks ?? frame.contentWindow!.navigator.locks) },
-          { provide: TM_HUB_FACTORY, useValue: options.noHub === true ? null : factory },
+          { provide: TM_HUB_FACTORY, useValue: options.noHub === true ? null : hub.factory },
         ],
         root,
       );
@@ -393,7 +352,9 @@ export async function tmLeaderRig(
         bus,
         telemetry,
         refresher,
-        hubs,
+        get hubs() {
+          return hub.connections;
+        },
         frame,
         hide: () => {
           host.visibleNow = false;

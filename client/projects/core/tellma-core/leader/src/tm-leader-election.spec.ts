@@ -379,6 +379,24 @@ describe('TmLeaderElection', () => {
       expect(heard).toEqual([{ name: 'acme.jobs.changed', tenantId: 17, payload: { id: 4 } }]);
     });
 
+    it("syncs when the server ends the user's access to the tenant, and on no other event", async () => {
+      await rig.realtime(true);
+      const a = await leader();
+      await tmUntil(() => a.hubs.length === 1);
+      const b = await follower();
+      const terminal = (): number => b.refresher.triggers().filter((trigger) => trigger === 'terminal').length;
+      a.hubs[0]!.emit('acme.jobs.changed', { id: 4 });
+      a.hubs[0]!.emit('session.ended', { reason: 'session-terminated' });
+      a.hubs[0]!.emit('session.ended', { reason: 'access-revoked' }, 18);
+      a.hubs[0]!.emit('session.ended', { reason: 'access-revoked' });
+      await tmUntil(() => terminal() === 1);
+      a.hubs[0]!.emit('session.ended', { reason: 'tenant-unavailable' });
+      await tmUntil(() => terminal() === 2);
+      await tmPause();
+      expect(terminal()).toBe(2);
+      expect(b.refresher.refreshes.filter((refresh) => refresh.trigger === 'terminal').map((refresh) => refresh.tenantId)).toEqual([17, 17]);
+    });
+
     it('is answered by a hidden leader at once', async () => {
       const a = await leader({ hidden: true, noHub: true });
       const statuses = (): number => a.bus.posted.filter((message) => message.type === 'hub.status').length;

@@ -11,11 +11,13 @@
 //
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
+// The blob-fetching seam lives in its own entry point, which an app's
+// startup imports without reaching tm-image; re-exported for its users here.
 export {
   TM_BLOB_FETCHER,
   type TmBlobFetcher,
   type TmBlobFetchOptions,
   type TmBlobFetchResult,
-} from './tm-blob-fetcher';
+} from '@tellma/core-ui/blob-fetcher';
 export { TmImage, TmImagePlaceholder } from './tm-image';
 export type { TmImageEdit, TmImageFit } from './tm-image-types';

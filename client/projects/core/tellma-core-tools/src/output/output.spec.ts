@@ -15,7 +15,7 @@ import { tmBootConfig, tmBuildBootScript } from './boot.js';
 import { tmAddPreloads, tmReadInitialFiles, tmShellModulePreloads } from './preloads.js';
 import { tmRefreshRootFiles, tmWriteRootFiles } from './root-files.js';
 import { tmMoveSourceMaps } from './source-maps.js';
-import { TmBuildGraph, tmCorePrimaryModules, tmEchartsModule, tmEntryPointModule } from './stats.js';
+import { TmBuildGraph, tmCorePrimaryModules, tmEchartsModule, tmEntryPointChunk, tmEntryPointModule, tmEntryPointRoot } from './stats.js';
 import { tmNavigationUrls, tmOnDemandChunks, tmWorkerConfig, tmWorkerGroups } from './worker-config.js';
 
 let dir: string | undefined;
@@ -86,6 +86,16 @@ describe('the chunk graph', () => {
     expect(shell('../../../tellma-core/shell/src/tm-shell.ts')).toBe(true);
     expect(shell('../../../tellma-core/src/shell.ts')).toBe(false);
     expect(shell('../../node_modules/@tellma/core/fesm2022/tellma-core-shell-extra.mjs')).toBe(false);
+    const root = tmEntryPointRoot('tellma-core', 'shell');
+    expect(root('../../node_modules/@tellma/core/fesm2022/tellma-core-shell.mjs')).toBe(true);
+    expect(root('../../../tellma-core/shell/public-api.ts')).toBe(true);
+    expect(root('../../../tellma-core/shell/src/tm-shell.ts')).toBe(false);
+    expect(root('../../node_modules/@tellma/core/fesm2022/tellma-core-shell-tm-lazy-AB12CD34.mjs')).toBe(false);
+    const chunk = tmEntryPointChunk('tellma-core', 'shell', 'tm-lazy');
+    expect(chunk('../../node_modules/@tellma/core/fesm2022/tellma-core-shell-tm-lazy-AB_12-cd.mjs')).toBe(true);
+    expect(chunk('../../../tellma-core/shell/src/lazy/tm-lazy.ts')).toBe(true);
+    expect(chunk('../../node_modules/@tellma/core/fesm2022/tellma-core-shell.mjs')).toBe(false);
+    expect(chunk('../../../tellma-core/shell/src/lazy/tm-lazy-strings.ts')).toBe(false);
     expect(tmEchartsModule('../node_modules/.pnpm/zrender@6.0.0/node_modules/zrender/lib/zrender.js')).toBe(true);
     expect(tmEchartsModule('src/echarts-like.ts')).toBe(false);
   });
@@ -273,16 +283,22 @@ describe('the preloads', () => {
     expect(tmReadInitialFiles(BUILT)).toEqual({ scripts: ['main-C.js'], modulePreloads: ['chunk-B.js'], stylesheets: ['styles-A.css'] });
   });
 
-  it('go before the end of the head: fonts, fetches with crossorigin, then modules', () => {
-    const html = tmAddPreloads(BUILT, { fonts: ['media/a-AAAAAAAA.woff2'], fetches: ['tm-metadata/core-X.json'], modules: ['chunk-D.js'] });
+  it('go before the end of the head: fonts, fetches with crossorigin, modules, then prefetches', () => {
+    const html = tmAddPreloads(BUILT, {
+      fonts: ['media/a-AAAAAAAA.woff2'],
+      fetches: ['tm-metadata/core-X.json'],
+      modules: ['chunk-D.js'],
+      prefetches: ['chunk-E.js'],
+    });
     expect(html).toContain(
       '<link rel="preload" href="media/a-AAAAAAAA.woff2" as="font" type="font/woff2" crossorigin>' +
         '<link rel="preload" href="tm-metadata/core-X.json" as="fetch" crossorigin>' +
-        '<link rel="modulepreload" href="chunk-D.js"></head>',
+        '<link rel="modulepreload" href="chunk-D.js">' +
+        '<link rel="prefetch" href="chunk-E.js"></head>',
     );
   });
 
-  it('modulepreload the /shell and /attention chunks with their static imports, beyond what index.html loads', () => {
+  it('modulepreload the /shell and /attention chunks with their static imports, beyond what index.html loads, and none of their lazy chunks', () => {
     const graph = new TmBuildGraph([
       { path: 'main.js', inputs: ['src/main.ts'], imports: [{ path: 'common.js', kind: 'static' }, { path: 'shell.js', kind: 'dynamic' }, { path: 'attention.js', kind: 'dynamic' }] },
       { path: 'common.js', inputs: ['node_modules/@angular/core/fesm2022/core.mjs'], imports: [] },
@@ -290,18 +306,42 @@ describe('the preloads', () => {
       {
         path: 'shell.js',
         inputs: ['node_modules/@tellma/core/fesm2022/tellma-core-shell.mjs'],
-        imports: [{ path: 'common.js', kind: 'static' }, { path: 'nav.js', kind: 'static' }, { path: 'menu.js', kind: 'dynamic' }],
+        imports: [
+          { path: 'common.js', kind: 'static' },
+          { path: 'nav.js', kind: 'static' },
+          { path: 'menu.js', kind: 'dynamic' },
+          { path: 'tenantless.js', kind: 'dynamic' },
+        ],
       },
+      // The tenantless pages' chunk, whose static imports reach a chunk of its own and the initial ones.
+      {
+        path: 'tenantless.js',
+        inputs: ['node_modules/@tellma/core/fesm2022/tellma-core-shell-tm-tenantless-AB12CD34.mjs'],
+        imports: [{ path: 'common.js', kind: 'static' }, { path: 'search.js', kind: 'static' }],
+      },
+      { path: 'search.js', inputs: ['s.ts'], imports: [] },
       { path: 'nav.js', inputs: ['n.ts'], imports: [{ path: 'preloaded.js', kind: 'static' }] },
       { path: 'menu.js', inputs: ['m.ts'], imports: [] },
-      { path: 'attention.js', inputs: ['../tellma-core/attention/src/x.ts'], imports: [] },
+      {
+        path: 'attention.js',
+        inputs: ['../tellma-core/attention/public-api.ts', '../tellma-core/attention/src/x.ts'],
+        imports: [{ path: 'attention-lazy.js', kind: 'dynamic' }],
+      },
+      // A lazy chunk of a workspace entry point holds its sources, but not its public API.
+      { path: 'attention-lazy.js', inputs: ['../tellma-core/attention/src/lazy.ts'], imports: [] },
     ]);
-    const { modules, initialJs } = tmShellModulePreloads(graph, { scripts: ['main.js'], modulePreloads: ['preloaded.js'], stylesheets: [] });
+    const { modules, initialJs, prefetches } = tmShellModulePreloads(graph, { scripts: ['main.js'], modulePreloads: ['preloaded.js'], stylesheets: [] });
     // Already loaded files are not preloaded again, and a dynamic import of the shell's stays lazy.
     expect(modules).toEqual(['attention.js', 'nav.js', 'shell.js']);
     expect([...initialJs].sort()).toEqual(['attention.js', 'common.js', 'main.js', 'nav.js', 'preloaded.js', 'shell.js']);
+    // The tenantless pages are fetched beside the shell, never in series after it, outside the initial JavaScript.
+    expect(prefetches).toEqual(['search.js', 'tenantless.js']);
     // Without those entry points there is nothing to preload.
-    expect(tmShellModulePreloads(new TmBuildGraph([{ path: 'main.js', inputs: [], imports: [] }]), { scripts: ['main.js'], modulePreloads: [], stylesheets: [] }).modules).toEqual([]);
+    expect(tmShellModulePreloads(new TmBuildGraph([{ path: 'main.js', inputs: [], imports: [] }]), { scripts: ['main.js'], modulePreloads: [], stylesheets: [] })).toEqual({
+      modules: [],
+      initialJs: new Set(['main.js']),
+      prefetches: [],
+    });
   });
 });
 

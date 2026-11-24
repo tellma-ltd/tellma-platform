@@ -577,7 +577,7 @@ export class TmPreferences {
     // Spec 0025 §9.4's outcomes, each counted in telemetry and none shown.
     const kind = error instanceof TmApiError ? error.kind : 'server';
     if (!(error instanceof TmApiError)) {
-      this.#telemetry.error(error, { source: 'tm-preferences' });
+      this.#telemetry.error(error, { where: 'tm-preferences' });
     }
     this.#telemetry.event('tm.prefs.flush-failed', { kind });
     // Kept dirty for a later flush; a transient failure waits a while first.

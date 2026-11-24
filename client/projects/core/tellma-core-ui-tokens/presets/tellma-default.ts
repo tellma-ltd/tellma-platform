@@ -1118,6 +1118,32 @@ export const tmTokensDefault: TmTokens = {
       selectedBar: '{action.accent}',
       check: '{action.primary}',
     },
+    // tm-expression-editor: code on 20px lines in the mono face, in a box
+    // padded like a field, over a 20px status line and a 24px chip row
+    // (spec 0029 §10.3). Keywords take the action ink; functions, strings,
+    // numbers and parameters the categorical on-tint inks, which read at
+    // 7:1 on their tints and higher on the field; a problem's wavy line is
+    // the error ink. The selection is a translucent action tint, because the
+    // highlighted text shows through the textarea from beneath it.
+    expr: {
+      lineHeight: '20px',
+      paddingX: '8px',
+      paddingY: '6px',
+      gap: '4px',
+      statusHeight: '20px',
+      chipsHeight: '24px',
+      underlineOffset: '3px',
+      keyword: '{action.primary}',
+      function: '{categorical.3.onTint}',
+      identifier: '{text.strong}',
+      string: '{categorical.6.onTint}',
+      number: '{categorical.2.onTint}',
+      parameter: '{categorical.5.onTint}',
+      punctuator: '{text.body}',
+      error: '{status.error.fg}',
+      insertedBg: '{status.warning.bg}',
+      selection: 'color-mix(in srgb, var(--color-primary) 24%, transparent)',
+    },
     // tm-reorder-list: rows at the option-row height, each led by a 24px
     // grab handle. A grabbed row takes the selected tint; a 2px accent line
     // marks where a drag will land, drawn over the gap so rows never move.
