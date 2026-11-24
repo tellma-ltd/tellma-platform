@@ -384,6 +384,22 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-259 (orchestrator, 2026-11-23): PC-125's R1 rulings
+
+- PC-125's R1 found 0 blocking, 3 major and 8 minor issues. There is no R2.
+- Permission in offered(): accepted. A refused action shows disabled with its reason. Misalignment: spec 0031 §10.4 says an action "appears when the user allows it", which conflicts with §10.1 and 0030 §12.2. For Ahmad: the §10.4 text should read "is enabled when".
+- Job detection (R1-9): fix1 keeps shape-based detection (a body that is exactly {jobId, resourceId?}), stated as a deviation. Adding a ClientActionResult.Job member would amend spec 0029 §2.2 and the server's emitted shape. For Ahmad: should 0029 §2.2 gain a Job member? If yes, it becomes a fix item.
+- Budget: fix1 takes the reviewer's measured moves:
+  - R1-4: the ngDevMode guard, -0.14 KB;
+  - R1-5: dialog()'s decision moves into tm-action-run, -0.09 KB;
+  - R1-5: the error-path splitter and walker move to a shared secondary entry, -0.33 KB.
+
+  It then sets ./entity's ceiling to the measurement rounded up under D-031, which the reviewer expects to be 19.
+- locale-ar ./strings: PC-125 adds +0.26 KB and held PC-110 adds +1.05 KB, about 8.2 KB together, against PC-110's 8. Whichever of the two lands second re-measures and raises under D-031 (D-214).
+- Carries go to WATCHLIST in fix1:
+  - the tm.details.confirm telemetry seam in ɵtmConfirmationRounds;
+  - the swap to TmErrorPresenter.describe() once PC-110 lands, which fits only the heading and message.
+
 ### D-258 (orchestrator, 2026-11-23): PC-B05 result and its open items
 
 - PC-B05 found 4 minor issues (0/0/4). Its fixer fixed them, pushing back on part of FCS-1. It integrated fd0998ed onto platform-core as a fast-forward (pc 45285651946 green). Verdicts are in reviews/PC-B05.md.
