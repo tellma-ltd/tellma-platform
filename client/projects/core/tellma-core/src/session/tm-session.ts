@@ -20,6 +20,7 @@ import { TmSessionPaths, type TmSessionState } from './tm-session-paths';
 // reads it again at every check, and never asks the network. A sign-in
 // and a step-up leave the tab for the BFF's login with the sign-in mark in
 // session storage, which the boot script consumes when the tab comes back.
+// Sign-out is the session paths' (§8.4).
 
 /** The authentication a `401 step-up-required` asks for, as its `WWW-Authenticate` header names it. */
 export interface TmStepUpChallenge {
@@ -48,7 +49,7 @@ export interface TmSignInOptions {
 
 /**
  * The tab's session: the signed-in user, where the session stands, and the
- * way to sign in again.
+ * ways to sign in again and to sign out.
  *
  * @example
  * ```ts
@@ -162,6 +163,19 @@ export class TmSession {
     }
     location.assign(url);
     return new Promise<never>(() => undefined);
+  }
+
+  /**
+   * Signs the user out of every tab: running saves finish first, and unsaved
+   * changes or a save still running after a minute ask once. The tab then
+   * leaves for the identity server's sign-out, and the user's other tabs for
+   * the signed-out page. Unsaved drafts are discarded.
+   *
+   * @returns A promise that never settles once the tab leaves; it resolves
+   *   when the user cancels, and rejects, after a toast, when the sign-out fails.
+   */
+  signOut(): Promise<void> {
+    return this.#paths.ɵsignOut();
   }
 
   /**

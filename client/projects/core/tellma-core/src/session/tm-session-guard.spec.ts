@@ -10,7 +10,7 @@ import { TmTelemetry } from '../observe/tm-telemetry';
 import { tmProfileCookies } from './tm-profile.testing.util';
 import { TmSession } from './tm-session';
 import { tmSessionGuard } from './tm-session-guard';
-import { TmFakeSessionHost, TmRecordingTelemetry, tmSessionTestingProviders } from './tm-session.testing.util';
+import { TmFakeSessionHost, TmRecordingSessionFlows, TmRecordingTelemetry, tmSessionTestingProviders } from './tm-session.testing.util';
 
 /** Runs the guard once, as the router would. */
 function guard(): unknown {
@@ -41,14 +41,14 @@ describe('tmSessionGuard', () => {
     expect((TestBed.inject(TmTelemetry) as TmRecordingTelemetry).events).toEqual([
       { name: 'tm.session.expired', props: { source: 'cookie' } },
     ]);
-    await vi.waitFor(() => expect(host.assigned).toHaveLength(1));
-    expect(host.reloads).toBe(0);
+    // The session's flows run the rest of the path.
+    await vi.waitFor(() => expect(TestBed.inject(TmRecordingSessionFlows).calls).toEqual(['expired']));
   });
 
-  it('denies another user and runs the changed-user path', () => {
+  it('denies another user and runs the changed-user path', async () => {
     host.cookieJar = tmProfileCookies('7c1e');
     expect(guard()).toBe(false);
-    expect(host.replaced).toEqual(['/']);
+    await vi.waitFor(() => expect(TestBed.inject(TmRecordingSessionFlows).calls).toEqual(['changedUser']));
     expect(TestBed.inject(TmSession).state()).toBe('active');
   });
 });

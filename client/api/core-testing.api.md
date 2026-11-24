@@ -6,6 +6,7 @@
 
 import { ComponentHarness } from '@angular/cdk/testing';
 import { EnvironmentProviders } from '@angular/core';
+import { HarnessPredicate } from '@angular/cdk/testing';
 import * as i0 from '@angular/core';
 import { Observable } from 'rxjs';
 import { Signal } from '@angular/core';
@@ -24,6 +25,29 @@ export class TmBannerHostHarness extends ComponentHarness {
     static hostSelector: string;
     isEmpty(): Promise<boolean>;
     isOpen(): Promise<boolean>;
+}
+
+// @public
+export class TmEntityFieldHarness extends ComponentHarness {
+    getPicker(): Promise<TmEntityPickerHarness>;
+    getText(): Promise<string>;
+    static hostSelector: string;
+    isInvalid(): Promise<boolean>;
+    isReadonly(): Promise<boolean>;
+    pick(label: string): Promise<void>;
+    search(text: string): Promise<void>;
+}
+
+// @public
+export class TmEntityMultiFieldHarness extends ComponentHarness {
+    getChipLabels(): Promise<string[]>;
+    getPicker(): Promise<TmEntityMultiPickerHarness>;
+    static hostSelector: string;
+    isInvalid(): Promise<boolean>;
+    isReadonly(): Promise<boolean>;
+    pick(label: string): Promise<void>;
+    removeChip(label: string): Promise<void>;
+    search(text: string): Promise<void>;
 }
 
 // @public
@@ -82,6 +106,8 @@ export class TmFakeSession implements TmSessionSurface {
     setState(state: TmSessionState): void;
     signIn(options?: TmSignInOptions): Promise<never>;
     readonly signIns: Signal<readonly TmSignInOptions[]>;
+    signOut(): Promise<void>;
+    readonly signOuts: Signal<number>;
     readonly state: Signal<TmSessionState>;
     static ɵfac: i0.ɵɵFactoryDeclaration<TmFakeSession, never>;
     static ɵprov: i0.ɵɵInjectableDeclaration<TmFakeSession>;

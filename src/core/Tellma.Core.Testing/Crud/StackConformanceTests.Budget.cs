@@ -140,10 +140,12 @@ namespace Tellma.Core.Testing.Crud
 
         /// <summary>
         ///     Each write takes its round-trip budget, measured over two rows so a statement per row
-        ///     or per id shows: a create one, or two when it has anything to load; an update two; a
-        ///     delete by query one; a delete by ids or with descendants and a built-in action one, or
-        ///     two when a validator judges them; a custom action two; each plus the validators'
-        ///     dependent rounds where they apply.
+        ///     or per id shows: a create one, or two when it has anything to load; an update two; an
+        ///     import updating the two by id the upload's read, one read of every lookup together
+        ///     when a reference is looked up, the hydration and the update's two; a delete by query
+        ///     one; a delete by ids or with descendants and a built-in action one, or two when a
+        ///     validator judges them; a custom action two; each plus the validators' dependent rounds
+        ///     where they apply.
         /// </summary>
         /// <returns>A task that completes when the case ran.</returns>
         [Fact]
@@ -169,6 +171,30 @@ namespace Tellma.Core.Testing.Crud
                 Change(loaded[0], NextOrdinal());
                 Change(loaded[1], NextOrdinal());
                 AssertTrips(2 + DependentValidationRounds, await CountedAsync(writer, scope => Service(scope).SaveAsync(loaded, new SaveOptions(), Token)), "an update of two");
+            }
+
+            // --- An import updating the two rows by id (spec 0019 §1.4): the upload's read, the
+            // lookups in one read when a reference is looked up, the hydration, then the update's
+            // two. A first import warms the caller, the plans and the header caches; a fresh export
+            // after it carries the stamps that import left, so the counted one conflicts with none ---
+            ApiActionDescriptor[] workbookActions = [.. Stack.Actions.OfType<ApiActionDescriptor>()];
+            if (workbookActions.FirstOrDefault(static action => action.RequestType == typeof(ImportRequest)) is ApiActionDescriptor import
+                && workbookActions.FirstOrDefault(static action => action.RequestType == typeof(ExportForImportRequest)) is ApiActionDescriptor editable)
+            {
+                int warm = (await CountedAsync(writer, scope => StageEditableExportAsync(scope, editable, ids))).Result;
+                _ = await CountedAsync(writer, scope => UpdateByImportAsync(scope, import, warm));
+                int fileId = (await CountedAsync(writer, scope => StageEditableExportAsync(scope, editable, ids))).Result;
+                HashSet<long> imported = [.. ids.Select(static id => long.CreateChecked(id))];
+                bool looksUp = false;
+                foreach (TKey id in ids)
+                {
+                    looksUp |= LooksUp(Metadata, await LoadAsync(id), parentKey: null, imported);
+                }
+
+                AssertTrips(
+                    1 + (looksUp ? 1 : 0) + 1 + 2 + DependentValidationRounds,
+                    await CountedAsync(writer, scope => UpdateByImportAsync(scope, import, fileId)),
+                    "an import updating two by id");
             }
 
             // --- The built-in actions: the update with its pre-check, behind a validation round when judged ---
@@ -281,6 +307,53 @@ namespace Tellma.Core.Testing.Crud
 
             // --- The rows its collections hold, each under its own parent key ---
             return entity.Children.Any(collection => collection.Getter(row)?.Any(child => Loads(collection.Child, child, collection.ParentKey)) == true);
+        }
+
+        /// <summary>
+        ///     Whether an import of a row, or of any row its collections hold, looks a reference up:
+        ///     a reference the client writes holds a value, other than a row of the stack that the
+        ///     same file holds, which the import binds within the file.
+        /// </summary>
+        /// <param name="entity">The row's metadata.</param>
+        /// <param name="row">The row.</param>
+        /// <param name="parentKey">The row's parent key, which its nesting sets; null for a root.</param>
+        /// <param name="imported">The ids of the stack's rows the file holds.</param>
+        /// <returns>True when it does.</returns>
+        private bool LooksUp(EntityMetadata entity, object row, PropertyMetadata? parentKey, HashSet<long> imported)
+        {
+            // --- The references a client writes, each with a value the file does not hold itself ---
+            foreach (ReferenceMetadata reference in entity.References)
+            {
+                PropertyMetadata key = reference.ForeignKey;
+                if (ReferenceEquals(key, parentKey)
+                    || key.Ownership is not (PropertyOwnership.Editable or PropertyOwnership.WriteOnce)
+                    || entity.BlobReferences.Any(blob => ReferenceEquals(blob.Property, key))
+                    || key.Getter(row) is not object value)
+                {
+                    continue;
+                }
+
+                bool inFile = reference.Target.ClrType == Metadata.ClrType && imported.Contains(Convert.ToInt64(value, System.Globalization.CultureInfo.InvariantCulture));
+                if (!inFile)
+                {
+                    return true;
+                }
+            }
+
+            // --- The rows its collections hold, each under its own parent key ---
+            return entity.Children.Any(collection => collection.Getter(row)?.Any(child => LooksUp(collection.Child, child, collection.ParentKey, imported)) == true);
+        }
+
+        /// <summary>Updates rows by id through the stack's import action, from a staged editable export.</summary>
+        /// <param name="scope">The caller's scope.</param>
+        /// <param name="import">The stack's import action.</param>
+        /// <param name="fileId">The staged upload's id.</param>
+        /// <returns>The parent rows the import updated.</returns>
+        private static async Task<int> UpdateByImportAsync(IServiceProvider scope, ApiActionDescriptor import, int fileId)
+        {
+            ImportRequest request = new() { FileId = fileId, Mode = ImportMode.Update, RowKey = "Id" };
+            object? result = await scope.GetRequiredService<IApiActionInvoker>().InvokeAsync(import, request, Token);
+            return Assert.IsType<ImportOutcome>(result).Updated;
         }
 
         /// <summary>Invokes one of the stack's exports through the action invoker and disposes the workbook it answers.</summary>

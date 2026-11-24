@@ -39,8 +39,10 @@ namespace Tellma.Core.Abstractions.Notifications
     /// </param>
     /// <param name="TargetId">The id of the row the notification points at; set exactly when <paramref name="TargetResource" /> is.</param>
     /// <param name="ActorUserId">
-    ///     The user who caused the notification, an existing user id; <see langword="null" /> for the
-    ///     system. The caller passes the request's user where one acted.
+    ///     The user who caused the notification, an existing user id. <see langword="null" /> defaults to
+    ///     the scope's user, and to no actor in a system scope; <see cref="Access.WellKnownIds.SystemUserId" />
+    ///     names the system, which stores no actor in any scope, so code raising a notice the system
+    ///     caused from a user's scope passes it.
     /// </param>
     /// <param name="DedupKey">
     ///     At most 128 characters: the key under which a recipient's earlier row counts as a duplicate,

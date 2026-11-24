@@ -783,7 +783,7 @@ export interface TmEntityDeclarationInput<N extends string = string> {
 }
 
 // @public
-export interface TmEntityDescriptor extends Omit<TmEntityMetadata, 'actions' | 'capabilities' | 'children' | 'navigations' | 'operations' | 'properties' | 'relatedSelect' | 'searchable'> {
+export interface TmEntityDescriptor extends Omit<TmEntityMetadata, 'actions' | 'capabilities' | 'children' | 'navigations' | 'operations' | 'prefixSearchable' | 'properties' | 'relatedSelect' | 'searchable'> {
     readonly actions: readonly TmEntityActionDescriptor[];
     readonly capabilities: ReadonlySet<string>;
     child(name: string): TmChildDescriptor | undefined;
@@ -794,6 +794,7 @@ export interface TmEntityDescriptor extends Omit<TmEntityMetadata, 'actions' | '
     readonly navigations: readonly TmNavigationDescriptor[];
     readonly operations: ReadonlySet<TmEntityOperation>;
     readonly pluralLabel: Signal<string>;
+    readonly prefixSearchable?: readonly string[];
     readonly properties: readonly TmPropertyDescriptor[];
     property(name: string): TmPropertyDescriptor | undefined;
     readonly relatedSelect: readonly string[];
@@ -827,6 +828,7 @@ export interface TmEntityMetadata extends TmEntitySummary {
         readonly navigation: string;
         readonly collection: string;
     };
+    readonly prefixSearchable: readonly string[];
     readonly properties: readonly TmPropertyMetadata[];
     readonly relatedSelect: readonly string[];
     readonly searchable: readonly string[];
@@ -1310,6 +1312,7 @@ export class TmNavigation {
 // @public
 export interface TmNavigationDescriptor extends TmNavigationMetadata {
     readonly label: Signal<string>;
+    readonly ownership: TmPropertyMetadata['ownership'];
 }
 
 // @public
@@ -1916,6 +1919,7 @@ export class TmSession {
     check(): TmSessionCheck;
     readonly profile: Signal<TmProfile | null>;
     signIn(options?: TmSignInOptions): Promise<never>;
+    signOut(): Promise<void>;
     readonly state: Signal<TmSessionState>;
     static ɵfac: i0.ɵɵFactoryDeclaration<TmSession, never>;
     static ɵprov: i0.ɵɵInjectableDeclaration<TmSession>;

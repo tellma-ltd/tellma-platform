@@ -15,7 +15,7 @@ import { tmBootConfig, tmBuildBootScript } from './boot.js';
 import { tmAddPreloads, tmReadInitialFiles, tmShellModulePreloads } from './preloads.js';
 import { tmRefreshRootFiles, tmWriteRootFiles } from './root-files.js';
 import { tmMoveSourceMaps } from './source-maps.js';
-import { TmBuildGraph, tmEchartsModule, tmEntryPointModule } from './stats.js';
+import { TmBuildGraph, tmCorePrimaryModules, tmEchartsModule, tmEntryPointModule } from './stats.js';
 import { tmNavigationUrls, tmOnDemandChunks, tmWorkerConfig, tmWorkerGroups } from './worker-config.js';
 
 let dir: string | undefined;
@@ -49,7 +49,7 @@ describe('the chunk graph', () => {
         inputs: {},
         outputs: {
           'main-A.js': {
-            inputs: { 'src\\main.ts': {} },
+            inputs: { 'src\\main.ts': { bytesInOutput: 120 }, 'src/empty.ts': { bytesInOutput: 0 } },
             imports: [
               { path: 'chunk-B.js', kind: 'import-statement' },
               { path: 'chunk-C.js', kind: 'dynamic-import' },
@@ -68,7 +68,8 @@ describe('the chunk graph', () => {
     expect([...graph.outputs.keys()]).toEqual(['main-A.js', 'chunk-B.js', 'chunk-C.js']);
     expect(graph.outputs.get('main-A.js')).toEqual({
       path: 'main-A.js',
-      inputs: ['src/main.ts'],
+      inputs: ['src/main.ts', 'src/empty.ts'],
+      bytes: { 'src/main.ts': 120, 'src/empty.ts': 0 },
       imports: [
         { path: 'chunk-B.js', kind: 'static' },
         { path: 'chunk-C.js', kind: 'dynamic' },
@@ -87,6 +88,91 @@ describe('the chunk graph', () => {
     expect(shell('../../node_modules/@tellma/core/fesm2022/tellma-core-shell-extra.mjs')).toBe(false);
     expect(tmEchartsModule('../node_modules/.pnpm/zrender@6.0.0/node_modules/zrender/lib/zrender.js')).toBe(true);
     expect(tmEchartsModule('src/echarts-like.ts')).toBe(false);
+  });
+
+  it('reads the source modules, each import marked relative or by package name', () => {
+    const file = join(scratch(), 'stats.json');
+    writeFileSync(
+      file,
+      JSON.stringify({
+        inputs: {
+          'src\\main.ts': {
+            imports: [
+              { path: 'src\\app.ts', kind: 'import-statement', original: './app' },
+              { path: 'lib/x.ts', kind: 'dynamic-import', original: '../lib/x' },
+              // A folder's index, named by the folder alone, is relative too.
+              { path: 'src/index.ts', kind: 'import-statement', original: '.' },
+              { path: 'index.ts', kind: 'import-statement', original: '..' },
+              // A package whose name starts with dots is not.
+              { path: 'node_modules/.hidden/x.js', kind: 'import-statement', original: '.hidden' },
+              { path: 'node_modules/@angular/core/fesm2022/core.mjs', kind: 'import-statement', original: '@angular/core' },
+              { path: '<runtime>', kind: 'import-statement' },
+              { path: 'https://example.com/x.js', kind: 'import-statement', external: true, original: 'https://example.com/x.js' },
+            ],
+          },
+          'src/app.ts': {},
+        },
+        outputs: {},
+      }),
+    );
+    const graph = TmBuildGraph.read(file);
+    expect([...graph.modules.keys()]).toEqual(['src/main.ts', 'src/app.ts']);
+    expect(graph.modules.get('src/main.ts')!.imports).toEqual([
+      { path: 'src/app.ts', relative: true },
+      { path: 'lib/x.ts', relative: true },
+      { path: 'src/index.ts', relative: true },
+      { path: 'index.ts', relative: true },
+      { path: 'node_modules/.hidden/x.js', relative: false },
+      { path: 'node_modules/@angular/core/fesm2022/core.mjs', relative: false },
+      { path: '<runtime>', relative: false },
+    ]);
+    expect(graph.modules.get('src/app.ts')!.imports).toEqual([]);
+  });
+
+  it("finds the @tellma/core primary's modules through relative imports, from its sources or its built bundle", () => {
+    const module = (path: string, imports: [string, boolean][] = []): { path: string; imports: { path: string; relative: boolean }[] } => ({
+      path,
+      imports: imports.map(([target, relative]) => ({ path: target, relative })),
+    });
+    // A workspace maps the package to its sources: the public API, its modules, a
+    // lazily loaded module of its own, and a secondary entry point and another
+    // package it reaches by name, which stay out.
+    const core = '../../client/projects/core/tellma-core';
+    const sources = new TmBuildGraph(
+      [],
+      [
+        module(`${core}/public-api.ts`, [[`${core}/src/a.ts`, true]]),
+        module(`${core}/src/a.ts`, [[`${core}/src/b.ts`, true], [`${core}/src/lazy.ts`, true], [`${core}/shell/public-api.ts`, false], ['../../client/projects/core/tellma-core-ui/x/public-api.ts', false]]),
+        module(`${core}/src/b.ts`, [[`${core}/src/a.ts`, true]]),
+        module(`${core}/src/lazy.ts`),
+        module(`${core}/shell/public-api.ts`, [[`${core}/shell/src/shell.ts`, true], [`${core}/public-api.ts`, false]]),
+        module(`${core}/shell/src/shell.ts`),
+        module('src/main.ts', [[`${core}/public-api.ts`, false]]),
+      ],
+    );
+    expect([...tmCorePrimaryModules(sources)].sort()).toEqual([`${core}/public-api.ts`, `${core}/src/a.ts`, `${core}/src/b.ts`, `${core}/src/lazy.ts`]);
+
+    // An installed package: the bundle and the chunks it was split into, never
+    // a secondary entry point's bundle beside them, however its name reads.
+    const fesm = 'node_modules/.pnpm/@tellma+core@1.0.0/node_modules/@tellma/core/fesm2022';
+    const bundle = new TmBuildGraph(
+      [],
+      [
+        module(`${fesm}/tellma-core.mjs`, [[`${fesm}/tellma-core-tellma-core-AbCd1234.mjs`, true]]),
+        module(`${fesm}/tellma-core-tellma-core-AbCd1234.mjs`, [[`${fesm}/tellma-core-tm-model-EfGh5678.mjs`, true], [`${fesm}/tellma-core-shell.mjs`, false]]),
+        module(`${fesm}/tellma-core-tm-model-EfGh5678.mjs`, [[`${fesm}/tellma-core-tellma-core-AbCd1234.mjs`, true]]),
+        module(`${fesm}/tellma-core-shell.mjs`, [[`${fesm}/tellma-core-shell-x-IjKl9012.mjs`, true], [`${fesm}/tellma-core.mjs`, false]]),
+        module(`${fesm}/tellma-core-shell-x-IjKl9012.mjs`),
+      ],
+    );
+    expect([...tmCorePrimaryModules(bundle)].sort()).toEqual([
+      `${fesm}/tellma-core-tellma-core-AbCd1234.mjs`,
+      `${fesm}/tellma-core-tm-model-EfGh5678.mjs`,
+      `${fesm}/tellma-core.mjs`,
+    ]);
+
+    // A build without the package has no primary modules.
+    expect(tmCorePrimaryModules(new TmBuildGraph([], [module('src/main.ts')])).size).toBe(0);
   });
 });
 

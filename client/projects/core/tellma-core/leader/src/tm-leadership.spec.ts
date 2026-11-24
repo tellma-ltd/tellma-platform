@@ -3,7 +3,8 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-import { TM_ATTENTION_DOCUMENTS, type TmBusMessage, type TmClientEvent, type ɵTmSyncDoc } from '@tellma/core';
+import { TestBed } from '@angular/core/testing';
+import { TM_ATTENTION_DOCUMENTS, type TmBusMessage, type TmClientEvent, ɵTmSessionPaths, type ɵTmSyncDoc } from '@tellma/core';
 import { tmFakeAssignmentsSummary, tmFakeInboxSummary, type TmFakeApiCall } from '@tellma/core-testing';
 
 import { TmFakeApiHost } from '../../src/api/tm-api.testing.util';
@@ -204,12 +205,22 @@ describe('TmLeadership', () => {
       expect(hub.starts).toBe(2);
     });
 
-    it('stops the connection when the server ends the session or the access, and lets a sync decide', async () => {
+    it("stops the connection when the server ends the user's access, and lets a sync decide", async () => {
       const { tab, hub } = await connecting();
       hub.sink.ended('access-revoked');
       await tmPause();
       expect(hub.stops).toBe(1);
       expect(triggers(tab).at(-1)).toBe('terminal');
+    });
+
+    it('signs every tab out when the server ends the session elsewhere', async () => {
+      const { tab, hub } = await connecting();
+      const paths = TestBed.inject(ɵTmSessionPaths);
+      const signedOut = vi.spyOn(paths, 'ɵsignedOutElsewhere').mockImplementation(() => undefined);
+      hub.sink.ended('session-terminated');
+      await tmPause();
+      expect(signedOut).toHaveBeenCalledOnce();
+      expect(triggers(tab).at(-1)).not.toBe('terminal');
     });
 
     it('stops the connection when the tab stops leading', async () => {

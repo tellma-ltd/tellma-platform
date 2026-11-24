@@ -8,6 +8,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Tellma.Core.Abstractions.Blobs;
+using Tellma.Core.Abstractions.Calendars;
 using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.Abstractions.Excel;
 using Tellma.Core.Abstractions.Localization;
@@ -59,7 +60,9 @@ namespace Tellma.Core.Excel
                 provider.GetRequiredService<IBlobKindRegistry>(),
                 provider.GetRequiredService<HeaderIndexCache>(),
                 provider.GetRequiredService<ExcelMetrics>(),
-                provider.GetRequiredService<ILoggerFactory>()));
+                provider.GetRequiredService<ILoggerFactory>(),
+                provider.GetRequiredService<IValueSetRegistry>(),
+                provider.GetRequiredService<ICalendarRegistry>()));
 
             // --- Per scope: the request's context and the export and import runners over it ---
             services.TryAddScoped<ExcelContextFactory>();

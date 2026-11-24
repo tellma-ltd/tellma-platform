@@ -7,7 +7,7 @@ import { TestBed } from '@angular/core/testing';
 import { TmLocalization } from '@tellma/core';
 
 import { TmAttentionText } from './tm-attention-text';
-import { tmAttentionRig, tmSettle, tmTestAssignment } from '../../src/attention/tm-attention.testing.util';
+import { tmAttentionRig, tmSettleUntil, tmTestAssignment } from '../../src/attention/tm-attention.testing.util';
 
 // Server text on the client, in a whole test app entered into tenant 17,
 // whose content slots are English, Arabic and French: notification titles
@@ -24,12 +24,8 @@ async function setUp(): Promise<{ readonly text: TmAttentionText; readonly l10n:
 /** Switches the language and waits until its strings have loaded and it applies. */
 async function switchTo(l10n: TmLocalization, code: string): Promise<void> {
   l10n.setLanguage(code);
-  // The strings load on their own turns, which a loaded machine can stretch past one settle.
-  for (let i = 0; i < 20 && l10n.language() !== code; i++) {
-    await tmSettle();
-  }
-  await tmSettle();
-  expect(l10n.language()).toBe(code);
+  // The language applies once its strings load through a lazily loaded chunk, which no count of turns bounds.
+  await tmSettleUntil(() => l10n.language() === code, `the language is ${code}`);
 }
 
 describe('TmAttentionText', () => {

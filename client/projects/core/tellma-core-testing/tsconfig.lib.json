@@ -2,7 +2,7 @@
 /* To learn more about Angular compiler options: https://angular.dev/reference/configs/angular-compiler-options. */
 /*
  * The package build compiles against the BUILT @tellma/core, the built
- * @tellma/core-ui its declarations import, and the built
+ * @tellma/core-ui its declarations import and the built
  * @tellma/core-ui-testing its harnesses compose, as a consumer would, so its
  * paths point at dist/ rather than at the sources.
  */

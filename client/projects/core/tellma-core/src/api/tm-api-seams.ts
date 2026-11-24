@@ -3,7 +3,9 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-import { DOCUMENT, inject, InjectionToken } from '@angular/core';
+import { DOCUMENT, inject, InjectionToken, Injector, type Type, type ViewContainerRef } from '@angular/core';
+
+import type { TmApiError } from './tm-api-error';
 
 // The services the HTTP layer feeds or asks, each behind an internal seam
 // with a default that is correct until its owner provides the real one:
@@ -15,9 +17,12 @@ import { DOCUMENT, inject, InjectionToken } from '@angular/core';
 // - the cache refresher (spec 0025 §5.3): `provideTellma` provides
 //   `TmCacheRefresher`'s `observe` and `refresh`; without it, as in an HTTP
 //   test, no document is cached, so there is nothing to revalidate;
-// - the worker's update check (spec 0024 §5.5): `TmUpdates` provides
-//   `check()`; until then no worker controls the page, which is exactly what
-//   `disabled` says.
+// - the worker's update check (spec 0024 §5.5): `TmUpdates`, in the
+//   lazily loaded `@tellma/core/updates`, answers `check()`; the seam loads
+//   it on the first call. An app without it, as a test app, has no worker,
+//   which is exactly what `disabled` says; an entry point that fails to
+//   load leaves the worker unasked, which reads as `unreachable`. The error
+//   views, in their own lazy entry point, load it for Reload themselves.
 
 /** The language and calendar every request states. */
 export interface TmApiLocale {
@@ -74,8 +79,64 @@ export interface TmApiUpdates {
   check(): Promise<TmApiUpdateCheck>;
 }
 
-/** The worker's update check the HTTP layer asks. */
+/** The update service as its lazy callers use it: the check, and the update and reload it allows. Internal. */
+export interface TmWorkerUpdates extends TmApiUpdates {
+  /** Checks, and reloads into the new version on `ready`, or on `disabled` when no worker is in the way. */
+  update(): Promise<TmApiUpdateCheck>;
+  /** Reloads as the browser would, which a degraded worker sends to the network. */
+  reload(): void;
+}
+
+/** The update service's entry point, as far as its loaders read it. Internal. */
+export interface TmUpdatesModule {
+  /** The update service. */
+  readonly TmUpdates: Type<TmWorkerUpdates>;
+}
+
+/**
+ * Loads the update service's entry point, or nothing, as in a test app.
+ * Internal: the startup's, the seam's and the error views' loader, which a
+ * test replaces. The specifier is cast so that the package build does not
+ * report the import back as a cycle.
+ */
+export const TM_UPDATES_LOAD = new InjectionToken<() => Promise<TmUpdatesModule | null>>('TM_UPDATES_LOAD', {
+  providedIn: 'root',
+  factory: () => () => import('@tellma/core/updates' as string) as Promise<TmUpdatesModule>,
+});
+
+/** The worker's update check the HTTP layer and the route asks. */
 export const TM_API_UPDATES = new InjectionToken<TmApiUpdates>('TM_API_UPDATES', {
   providedIn: 'root',
-  factory: (): TmApiUpdates => ({ check: () => Promise.resolve('disabled') }),
+  factory: (): TmApiUpdates => {
+    const injector = inject(Injector);
+    const load = inject(TM_UPDATES_LOAD);
+    return {
+      check: () =>
+        load().then(
+          (loaded) => (loaded === null ? 'disabled' : injector.get(loaded.TmUpdates).check()),
+          (): TmApiUpdateCheck => 'unreachable',
+        ),
+    };
+  },
+});
+
+/** The error views' entry point, as far as the primary reads it. Internal. */
+export interface TmErrorsModule {
+  /** The error presenter. */
+  readonly TmErrorPresenter: Type<{
+    present(error: TmApiError, context: { kind: 'read'; tenantId: number }): Promise<void>;
+  }>;
+  /** Renders the client-outdated view's inline state into a slot; its Reload gets the new version first. */
+  readonly ɵtmClientOutdatedState: (slot: ViewContainerRef) => { ɵact(action: 'reload'): Promise<void> };
+}
+
+/**
+ * Loads the error views' entry point. Internal: the loader of the cache
+ * refresher's tenant refusals and of the route's Reload, which a test
+ * replaces. The specifier is cast so that the package build does not report
+ * the import back as a cycle.
+ */
+export const TM_ERRORS_LOAD = new InjectionToken<() => Promise<TmErrorsModule>>('TM_ERRORS_LOAD', {
+  providedIn: 'root',
+  factory: () => () => import('@tellma/core/errors' as string) as Promise<TmErrorsModule>,
 });

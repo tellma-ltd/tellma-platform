@@ -59,10 +59,10 @@ namespace Tellma.Core.Testing.Crud
                 operations.Add(($"the action {action.Name}", true, Reach.NotFound, (scope, id) => ActAsync(scope, action.Name, id, ActionArguments(action))));
             }
 
-            // An import inspection names an upload that does not exist, so it answers the upload as not found.
+            // An import inspection and an import name an upload that does not exist, so each answers the upload as not found.
             foreach (ApiActionDescriptor action in Stack.Actions.OfType<ApiActionDescriptor>())
             {
-                Reach reach = action.RequestType == typeof(InspectImportRequest) ? Reach.UploadNotFound : Reach.Answers;
+                Reach reach = action.RequestType == typeof(InspectImportRequest) || action.RequestType == typeof(ImportRequest) ? Reach.UploadNotFound : Reach.Answers;
                 operations.Add(($"the API action {action.Name}", true, reach, (scope, _) => InvokeAsync(scope, action)));
             }
 

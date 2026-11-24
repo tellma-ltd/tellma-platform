@@ -1300,6 +1300,7 @@ Size: about 37k LOC for 0030, 41k for 0031 and 41k for 0032, all including tests
 - English and Arabic copy for every `tm.search.*` string (ICU plurals, `tm.search.filterButton`, `tm.search.orderedBy`); e2e runs in `ar`.
 - Browser APIs: `document.execCommand('insertText')` (deprecated but still the only undoable insert), with a `setRangeText` fallback; `history.state` persistence across reloads.
 - No new npm packages: Angular 22 `resource()`, Signal Forms and router state already exist.
+- PC-119 → PC-160: give the entity picker its Advanced search page through `ɵTM_PICKER_PAGES` (`@tellma/core/entity`), not through 0029 §14.4's `import()` of `@tellma/core/search`, which the binding cannot reach: `{ provide: ɵTM_PICKER_PAGES, multi: true, useValue: { search: () => import('@tellma/core/search').then((m) => m.TmSearchPickerPage) } }`. Provide it at the root environment injector (the app's providers): `TmModal` opens its dialogs with no injector, so a provider on a route or component injector is never seen and the page shows as not available. A later provider of the same half wins.
 
 ## 0031
 
@@ -1332,6 +1333,7 @@ Size: about 37k LOC for 0030, 41k for 0031 and 41k for 0032, all including tests
 - sessionStorage (drafts) and `history.state` (`tmFrom`/`tmPage`). `structuredClone` for the clone strip.
 - Lucide icons: circle-check, sparkles, refresh-cw, lock and chevrons, registered in the icon registry.
 - English and Arabic copy for `tm.details.*` and `tm.entity.*` (confirmAction, permissionNeeded, outsideFilter, ICU plurals in the summary).
+- PC-119 → PC-161: give the entity picker its Create and Edit pages through `ɵTM_PICKER_PAGES` (`@tellma/core/entity`), not through 0029 §14.4's `import()` of `@tellma/core/details`, which the binding cannot reach: `{ provide: ɵTM_PICKER_PAGES, multi: true, useValue: { details: () => import('@tellma/core/details').then((m) => m.TmDetailsPickerPage) } }`. Provide it at the root environment injector (the app's providers): `TmModal` opens its dialogs with no injector, so a provider on a route or component injector is never seen and the page shows as not available. A later provider of the same half wins.
 
 ## 0032
 

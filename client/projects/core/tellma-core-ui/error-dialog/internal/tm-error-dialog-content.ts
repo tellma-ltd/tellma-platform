@@ -135,7 +135,13 @@ let nextRegionId = 0;
                   @for (detail of options().details; track $index) {
                     <div>
                       <dt>{{ detail.label }}</dt>
-                      <dd>{{ detail.value }}</dd>
+                      <dd>
+                        @if (detail.code) {
+                          <bdi class="tm-error-dialog__code" dir="ltr">{{ detail.value }}</bdi>
+                        } @else {
+                          {{ detail.value }}
+                        }
+                      </dd>
                     </div>
                   }
                 </dl>

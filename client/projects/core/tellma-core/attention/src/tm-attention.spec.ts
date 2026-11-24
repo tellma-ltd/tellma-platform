@@ -14,6 +14,7 @@ import {
   tmAttentionRig,
   tmEnterTestTenant,
   tmSettle,
+  tmSettleUntil,
   tmTestNotification,
   tmVersion,
   tmWarmTestTenant,
@@ -50,7 +51,7 @@ function inbox(version: number, members: Parameters<typeof tmFakeInboxSummary>[0
 /** Starts the app with the model created. */
 async function setUp(...args: Parameters<typeof tmAttentionRig>): Promise<TmAttentionRig & { readonly attention: TmAttention }> {
   const rig = await tmAttentionRig(...args);
-  // The server calls' chunk, loaded up front, so a call answers within the turns a test settles.
+  // The server calls' chunk, loaded up front, so a call that must not be made would be made within the turns a test settles.
   await import('./tm-attention-calls');
   return { ...rig, attention: TestBed.inject(TmAttention) };
 }
@@ -58,6 +59,16 @@ async function setUp(...args: Parameters<typeof tmAttentionRig>): Promise<TmAtte
 /** The calls to a route. */
 function callsTo(rig: TmAttentionRig, route: string): readonly TmFakeApiCall[] {
   return rig.api.calls().filter((call) => call.route === route);
+}
+
+/**
+ * Settles until the server calls were made, a route once for each time it
+ * is named. The calls go through the server calls' lazily loaded chunk,
+ * which no count of turns bounds, so a spec waits on the calls themselves.
+ */
+async function called(rig: TmAttentionRig, ...routes: readonly string[]): Promise<void> {
+  const wanted = (route: string): number => routes.filter((candidate) => candidate === route).length;
+  await tmSettleUntil(() => routes.every((route) => callsTo(rig, route).length >= wanted(route)), `calls to ${routes.join(', ')}`);
 }
 
 /** The ids of the inbox's rows, and which are read. */
@@ -154,8 +165,8 @@ describe('TmAttention', () => {
       void rig.attention.readAll();
       expect(rows(rig.attention)).toEqual(['3 read']);
       expect(rig.attention.inbox()).toMatchObject({ unread: 0, unseen: 1 });
-      // The calls follow on the server calls' own turns.
-      await tmSettle();
+      // The calls follow once the server calls' chunk loads.
+      await called(rig, 'inbox/clear', 'inbox/clear-read', 'inbox/read-all');
       expect(callsTo(rig, 'inbox/clear')[0]?.body).toEqual({ ids: [2] });
       expect(callsTo(rig, 'inbox/clear-read')[0]?.body).toEqual({});
       expect(callsTo(rig, 'inbox/read-all')[0]?.body).toEqual({});
@@ -186,7 +197,7 @@ describe('TmAttention', () => {
       rig.api.respond('inbox/read', { count: 1, version: tmVersion(6) });
       toast.action?.run();
       expect(rows(rig.attention)).toEqual(['3 read', '2', '1 read']);
-      await tmSettle();
+      await called(rig, 'inbox/read', 'inbox/read');
       expect(callsTo(rig, 'inbox/read')).toHaveLength(2);
     });
 
@@ -291,7 +302,7 @@ describe('TmAttention', () => {
         via: 'click',
         badge: '10+',
       });
-      await tmSettle();
+      await called(rig, 'inbox/seen', 'inbox/summary');
       expect(callsTo(rig, 'inbox/seen')).toHaveLength(1);
       const read = callsTo(rig, 'inbox/summary')[0];
       expect(read?.options).toMatchObject({ background: true, tenantId: 17 });
@@ -312,7 +323,7 @@ describe('TmAttention', () => {
       await rig.put('inbox', inbox(5, { unseen: 0 }));
       rig.api.respond('inbox/summary', () => new Promise(() => undefined));
       rig.attention.toggle('bell', 'shortcut');
-      await tmSettle();
+      await called(rig, 'inbox/summary');
       const signal = (callsTo(rig, 'inbox/summary')[0]?.options as TmReadOptions).signal;
       expect(signal.aborted).toBe(false);
       // No seen without something new.
@@ -337,6 +348,7 @@ describe('TmAttention', () => {
 
       rig.attention.toggle('tray', 'toast');
       expect(rig.attention.tray()).toMatchObject({ count: 3, tone: 'neutral' });
+      await called(rig, 'assignments/seen');
       await tmSettle();
       // The assignments document is not read until the app registers it.
       expect(callsTo(rig, 'assignments/summary')).toHaveLength(0);
@@ -355,7 +367,7 @@ describe('TmAttention', () => {
 
       rig.attention.toggle('bell', 'click');
       expect(rig.attention.bell().count).toBeNull();
-      await tmSettle();
+      await called(rig, 'inbox/summary');
       expect(callsTo(rig, 'inbox/seen')).toHaveLength(0);
 
       answer(inbox(5, { unseen: 2 }));
@@ -370,7 +382,7 @@ describe('TmAttention', () => {
       rig.api.respond('inbox/summary', () => new Promise(() => undefined));
 
       rig.attention.toggle('bell', 'click');
-      await tmSettle();
+      await called(rig, 'inbox/summary');
       expect(callsTo(rig, 'inbox/summary')).toHaveLength(1);
 
       // Another tab's copy, saved before this panel's read was sent.
@@ -390,7 +402,7 @@ describe('TmAttention', () => {
       rig.api.respond('inbox/summary', () => new Promise(() => undefined));
 
       rig.attention.toggle('bell', 'click');
-      await tmSettle();
+      await called(rig, 'inbox/seen');
       expect(callsTo(rig, 'inbox/seen')).toHaveLength(1);
       rig.attention.toggle('bell', 'click');
       expect(rig.attention.bell().count).toBeNull();

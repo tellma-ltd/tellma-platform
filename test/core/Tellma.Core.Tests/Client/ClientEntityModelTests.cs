@@ -85,7 +85,7 @@ namespace Tellma.Core.Tests.Client
             Assert.Equal("stack", currency.GetProperty("kind").GetString());
             Assert.Equal("currencies", currency.GetProperty("segment").GetString());
             Assert.Equal(["query", "export"], Strings(currency.GetProperty("operations")));
-            Assert.Equal(["activatable", "cacheable", "excel"], Strings(currency.GetProperty("capabilities")));
+            Assert.Equal(["activatable", "cacheable", "excel", "searchable"], Strings(currency.GetProperty("capabilities")));
             Assert.False(currency.TryGetProperty("owner", out _));
 
             JsonElement customer = composition.Entity(ClientModel.Customers);
@@ -114,6 +114,23 @@ namespace Tellma.Core.Tests.Client
         public void A_read_only_root_has_no_related_projection()
         {
             Assert.Equal(0, composition.Entity("core.UserStamp").GetProperty("relatedSelect").GetArrayLength());
+        }
+
+        /// <summary>
+        ///     The searchable columns a search matches from their start are listed apart, so a client's
+        ///     own search of a cached list matches each column as the server does.
+        /// </summary>
+        [Fact]
+        public void The_columns_search_matches_from_their_start_are_listed_apart()
+        {
+            JsonElement currency = composition.Entity(ClientModel.Currencies);
+            Assert.Equal(["Code", "Name"], Strings(currency.GetProperty("searchable")));
+            Assert.Equal(["Code"], Strings(currency.GetProperty("prefixSearchable")));
+
+            JsonElement customer = composition.Entity(ClientModel.Customers);
+            Assert.Equal(["Name"], Strings(customer.GetProperty("searchable")));
+            Assert.Empty(Strings(customer.GetProperty("prefixSearchable")));
+            Assert.Empty(Strings(composition.Entity("core.UserStamp").GetProperty("prefixSearchable")));
         }
 
         [Fact]

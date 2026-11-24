@@ -25,6 +25,7 @@ export class TmModal {
 export interface TmModalConfig {
     backdropDismiss?: boolean;
     canDismiss?: () => boolean | Promise<boolean>;
+    closeOnNavigation?: boolean;
     data?: unknown;
     describedBy?: string;
     escapeDismiss?: boolean;

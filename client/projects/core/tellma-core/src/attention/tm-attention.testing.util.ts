@@ -13,7 +13,7 @@ import type { TmEntitySummary } from '../entity/tm-entity-metadata';
 import type { TmEntityType } from '../entity/tm-entity-types';
 import type { TmDecimal } from '../json/tm-json';
 import { tmEnglish } from '../l10n/tm-english';
-import { tmAppRig, type TmAppRig, tmNavigate, tmRouteTestMetadata, tmSettle, TM_T17, TM_T17_DOCS } from '../routes/tm-app.testing.util';
+import { tmAppRig, type TmAppRig, tmNavigate, tmRouteTestMetadata, tmSettle, tmSettleUntil, TM_T17, TM_T17_DOCS } from '../routes/tm-app.testing.util';
 import type { TmLaunchDocs } from '../state/launch/tm-launch-docs';
 import type { TmNotificationTypeMetadata } from './tm-notification-metadata';
 
@@ -198,4 +198,4 @@ export async function tmEnterTestTenant(tenantId: number): Promise<void> {
   await tmSettle();
 }
 
-export { TM_T17, tmSettle };
+export { TM_T17, tmSettle, tmSettleUntil };

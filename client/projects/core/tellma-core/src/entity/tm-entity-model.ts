@@ -165,7 +165,14 @@ export class TmEntityModel {
     const properties = metadata.properties.filter((property) => admitted(property.name)).map((property) => this.#property(property, shape));
 
     // --- The members, each labelled ---
-    const navigations: TmNavigationDescriptor[] = metadata.navigations.map((navigation) => ({ ...navigation, label: label(navigation) }));
+    // A navigation is chosen by writing its key, so it carries the key's ownership.
+    const ownership = (key: string): TmPropertyMetadata['ownership'] =>
+      metadata.properties.find((property) => property.name.toLowerCase() === key.toLowerCase())?.ownership ?? 'editable';
+    const navigations: TmNavigationDescriptor[] = metadata.navigations.map((navigation) => ({
+      ...navigation,
+      label: label(navigation),
+      ownership: ownership(navigation.foreignKey),
+    }));
     const children: TmChildDescriptor[] = metadata.children.map((child) => ({ ...child, label: label(child) }));
     const merged: TmEntityDeclaration = declaration(metadata.name) ?? Object.freeze({ name: metadata.name });
     const declaredActions = Array.isArray(merged['actions']) ? (merged['actions'] as readonly TmEntityActionDeclaration<string>[]) : [];

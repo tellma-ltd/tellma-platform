@@ -17,6 +17,7 @@ import {
   tmAttentionRig,
   tmEnterTestTenant,
   tmSettle,
+  tmSettleUntil,
   TM_T17,
   tmTestAssignment,
   tmTestNotification,
@@ -48,7 +49,7 @@ async function setUp(): Promise<TmArrivalsRig> {
   const focus = vi.spyOn(document, 'hasFocus').mockReturnValue(true);
   const show = vi.spyOn(TestBed.inject(TmToasts), 'show');
   const navigate = vi.spyOn(TestBed.inject(Router), 'navigateByUrl').mockResolvedValue(true);
-  // The arrival toasts' chunk, loaded up front, so a copy's toasts show within the turns a put settles.
+  // The arrival toasts' chunk, loaded up front, so a toast that must not show would show within the turns a put settles.
   await import('./tm-arrival-toasts');
   const put: TmAttentionRig['put'] = async (name, data, savedAt) => {
     await rig.put(name, data, savedAt);
@@ -60,6 +61,16 @@ async function setUp(): Promise<TmArrivalsRig> {
 /** The toasts shown, in order. */
 function shown(rig: TmArrivalsRig): readonly TmToast[] {
   return rig.show.mock.calls.map(([toast]) => toast);
+}
+
+/**
+ * Waits until a number of toasts showed, and returns those shown. A copy's
+ * toasts show once the arrival toasts' lazily loaded chunk does, which no
+ * count of turns bounds, so a spec waits on the toasts themselves.
+ */
+async function toasted(rig: TmArrivalsRig, count: number): Promise<readonly TmToast[]> {
+  await tmSettleUntil(() => rig.show.mock.calls.length >= count, `${String(count)} toasts shown`);
+  return shown(rig);
 }
 
 /** An inbox with the given rows, newest first. */
@@ -113,7 +124,7 @@ describe('TmArrivals', () => {
       const rig = await setUp();
       await rig.put('inbox', inbox());
       await rig.put('inbox', inbox(notice(1, 5)));
-      expect(shown(rig).map((toast) => toast.key)).toEqual(['n:1']);
+      expect((await toasted(rig, 1)).map((toast) => toast.key)).toEqual(['n:1']);
     });
   });
 
@@ -123,7 +134,7 @@ describe('TmArrivals', () => {
       // Saved before the entry: it toasts nothing, but it is the previous copy, whatever its age.
       await rig.put('inbox', inbox(), Date.now() - 60_000);
       await rig.put('inbox', inbox(noticeAt(1, Date.now())));
-      expect(shown(rig).map((toast) => toast.key)).toEqual(['n:1']);
+      expect((await toasted(rig, 1)).map((toast) => toast.key)).toEqual(['n:1']);
     });
 
     it('toasts no row created before the tab entered the tenant, after a copy saved before', async () => {
@@ -135,7 +146,7 @@ describe('TmArrivals', () => {
 
       // The next copy's previous copy was saved since the entry, so its rows count by the newest alone.
       await rig.put('inbox', inbox(noticeAt(2, before + 1), noticeAt(1, before)));
-      expect(shown(rig).map((toast) => toast.key)).toEqual(['n:2']);
+      expect((await toasted(rig, 1)).map((toast) => toast.key)).toEqual(['n:2']);
     });
 
     it("toasts the leader's first copy in a follower tab, whose first copy the leader saved before the entry", async () => {
@@ -148,14 +159,14 @@ describe('TmArrivals', () => {
           tmTestAssignment(4, { assignedAt: new Date(Date.now() - 3_600_000).toISOString() }),
         ),
       );
-      expect(shown(rig).map((toast) => toast.key)).toEqual(['a:5']);
+      expect((await toasted(rig, 1)).map((toast) => toast.key)).toEqual(['a:5']);
     });
 
     it("toasts a change of the tenant's state from a copy saved since the entry, over the warm copy", async () => {
       const rig = await setUp();
       // The warm launch's copy, saved before the entry and active, is the previous copy.
       await rig.put('tenant', tenant('ReadOnly'));
-      expect(shown(rig)).toEqual([expect.objectContaining({ tone: 'warning', title: 'Acme is now read-only. You can view data but not change it.' })]);
+      expect(await toasted(rig, 1)).toEqual([expect.objectContaining({ tone: 'warning', title: 'Acme is now read-only. You can view data but not change it.' })]);
     });
 
     it("toasts no change of the tenant's state that only a copy saved before the entry shows", async () => {
@@ -167,7 +178,7 @@ describe('TmArrivals', () => {
       expect(rig.show).not.toHaveBeenCalled();
 
       await putIn(rig, 18, 'tenant', tenant('ReadOnly', 18));
-      expect(shown(rig).map((toast) => toast.tone)).toEqual(['warning']);
+      expect((await toasted(rig, 1)).map((toast) => toast.tone)).toEqual(['warning']);
       expect(shown(rig)[0]?.title).toContain('read-only');
     });
   });
@@ -186,7 +197,7 @@ describe('TmArrivals', () => {
       expect(rig.show).not.toHaveBeenCalled();
 
       await putIn(rig, 18, 'inbox', inbox(noticeAt(3, Date.now()), noticeAt(2, backlog)));
-      expect(shown(rig).map((toast) => toast.key)).toEqual(['n:3']);
+      expect((await toasted(rig, 1)).map((toast) => toast.key)).toEqual(['n:3']);
     });
   });
 
@@ -206,7 +217,7 @@ describe('TmArrivals', () => {
           notice(1, 0),
         ),
       );
-      expect(shown(rig).map((toast) => toast.key)).toEqual(['n:3']);
+      expect((await toasted(rig, 1)).map((toast) => toast.key)).toEqual(['n:3']);
     });
 
     it('toast a replaced row again under its key, which replaces its open toast', async () => {
@@ -214,7 +225,7 @@ describe('TmArrivals', () => {
       await rig.put('inbox', inbox(notice(1, 0)));
       await rig.put('inbox', inbox(notice(2, 5), notice(1, 0)));
       await rig.put('inbox', inbox(notice(2, 9), notice(1, 0)));
-      expect(shown(rig).map((toast) => toast.key)).toEqual(['n:2', 'n:2']);
+      expect((await toasted(rig, 2)).map((toast) => toast.key)).toEqual(['n:2', 'n:2']);
       await Promise.resolve();
       expect(rig.telemetry.recent().filter((item) => item.name === 'tm.attention.toast').map((item) => item.props)).toEqual([
         { kind: 'notification', outcome: 'replaced' },
@@ -236,7 +247,7 @@ describe('TmArrivals', () => {
           notice(1, 5, { argumentsJson: JSON.stringify({ fileName: 'C.xlsx', rowCount: 3, fileId: 77 }), targetResource: 'core.Export', targetId: '4' }),
         ),
       );
-      const [exported, failed, flagged] = shown(rig);
+      const [exported, failed, flagged] = await toasted(rig, 3);
       expect(exported).toMatchObject({ tone: 'success', title: 'Export is ready', detail: 'C.xlsx · 3 rows', duration: 6000, key: 'n:1' });
       expect(failed).toMatchObject({ tone: 'error', title: 'A job failed', duration: 'sticky', key: 'n:2' });
       expect(failed?.action).toBeUndefined();
@@ -255,7 +266,7 @@ describe('TmArrivals', () => {
       const rig = await setUp();
       await rig.put('inbox', inbox());
       await rig.put('inbox', inbox(notice(4, 20), notice(3, 15), notice(2, 10), notice(1, 5)));
-      expect(shown(rig).map((toast) => toast.key)).toEqual(['n:1', 'n:2', 'n:3', 'n:4']);
+      expect((await toasted(rig, 4)).map((toast) => toast.key)).toEqual(['n:1', 'n:2', 'n:3', 'n:4']);
       TestBed.tick();
       const pill = document.querySelector<HTMLButtonElement>('button.tm-toasts__pill');
       expect(pill?.textContent?.trim()).toBe('1 more · Open notifications');
@@ -275,7 +286,7 @@ describe('TmArrivals', () => {
       await rig.put('inbox', inbox(notice(1, 5)), Date.now() + 1);
       expect(rig.show).not.toHaveBeenCalled();
       await rig.put('inbox', inbox(notice(2, 10), notice(1, 5)), Date.now() + 2);
-      expect(shown(rig).map((toast) => toast.key)).toEqual(['n:2']);
+      expect((await toasted(rig, 1)).map((toast) => toast.key)).toEqual(['n:2']);
     });
 
     it('toast no arrival while the user turned arrival toasts off', async () => {
@@ -295,7 +306,7 @@ describe('TmArrivals', () => {
       await rig.put('assignments', assignments());
       const row = tmTestAssignment(1874, { captionJson: '{"code":"HQ"}', comment: 'For your kind approval', assignedAt: '2026-11-23T09:00:00.000Z' });
       await rig.put('assignments', assignments(row));
-      expect(shown(rig)).toEqual([
+      expect(await toasted(rig, 1)).toEqual([
         expect.objectContaining({
           tone: 'accent',
           icon: 'inbox',
@@ -314,7 +325,7 @@ describe('TmArrivals', () => {
       await rig.put('assignments', assignments());
       await rig.put('assignments', assignments(tmTestAssignment(2, { isReturn: true, assignedAt: '2026-11-23T09:00:00.000Z', captionJson: '{"detail":{"manager":"Omar"}}' })));
       await rig.put('assignments', assignments(tmTestAssignment(3, { assignedAt: '2026-11-23T09:05:00.000Z' })));
-      expect(shown(rig).map(({ title, detail }) => ({ title, detail }))).toEqual([
+      expect((await toasted(rig, 2)).map(({ title, detail }) => ({ title, detail }))).toEqual([
         { title: 'Center #23 returned to you', detail: 'Managed by Omar' },
         { title: 'Center #23 assigned to you', detail: 'Assigned by Sara Ahmed' },
       ]);
@@ -333,7 +344,7 @@ describe('TmArrivals', () => {
           tmTestAssignment(2, { assignedById: null, assignedAt: '2026-11-23T09:05:00.000Z' }),
         ),
       );
-      expect(shown(rig)).toEqual([expect.objectContaining({ tone: 'accent', title: '2 documents assigned to you', key: 'a:many' })]);
+      expect(await toasted(rig, 1)).toEqual([expect.objectContaining({ tone: 'accent', title: '2 documents assigned to you', key: 'a:many' })]);
       const attention = TestBed.inject(TmAttention);
       shown(rig)[0]?.action?.run();
       expect(attention.open()).toBe('tray');
@@ -352,7 +363,7 @@ describe('TmArrivals', () => {
       await rig.put('tenant', tenant('ReadOnly'));
       await rig.put('tenant', tenant('Frozen'));
       await rig.put('tenant', tenant('Active'));
-      expect(shown(rig)).toEqual([
+      expect(await toasted(rig, 2)).toEqual([
         expect.objectContaining({ tone: 'warning', title: 'Acme is now read-only. You can view data but not change it.', duration: 6000 }),
         expect.objectContaining({
           tone: 'warning',

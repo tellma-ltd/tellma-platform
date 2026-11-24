@@ -177,7 +177,7 @@ namespace Tellma.Core.AspNetCore.IntegrationTests.Security
             using SpaClient admin = await deployment.SignInAsync(deployment.Administrator);
 
             _ = (await admin.PostAsync(17, "x")).ExpectProblem(HttpStatusCode.NotFound, "route-not-found");
-            _ = (await admin.PostAsync(Tenant, "centers/import")).ExpectProblem(HttpStatusCode.NotFound, "route-not-found");
+            _ = (await admin.PostAsync(Tenant, "centers/no-such-action")).ExpectProblem(HttpStatusCode.NotFound, "route-not-found");
         }
 
         [Fact]

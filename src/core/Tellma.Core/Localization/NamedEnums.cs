@@ -40,9 +40,10 @@ namespace Tellma.Core.Localization
     ///     those of the setting keys in registry order, then those of the stacks' action arguments in
     ///     stack order. Each enum is named once, by its home schema, and its values are labelled by the
     ///     keys of every schema that carries it. The home schema is the ordinally smallest schema among
-    ///     the entities and action arguments declared in the enum's own assembly that carry it, else
-    ///     among everything that carries it, so the order features compose in never changes it. The
-    ///     platform registers it as a singleton, built on first use.
+    ///     the entities, and the action arguments of stacks over entities, declared in the enum's own
+    ///     assembly that carry it, else among everything that carries it, so neither the order features
+    ///     compose in nor the stacks another feature adds ever changes it. The platform registers it as
+    ///     a singleton, built on first use.
     /// </summary>
     /// <param name="metadata">The model's entity metadata.</param>
     /// <param name="settings">The setting keys; null in a composition without them.</param>
@@ -79,8 +80,9 @@ namespace Tellma.Core.Localization
             ArgumentNullException.ThrowIfNull(settingKeys);
 
             // --- The sites that carry an enum, in order: entity properties, setting keys, action arguments ---
-            // Each site notes the assembly that declares it, when it has one: an entity's class, an
-            // action's arguments type. A setting key's declaring type is not known here, so it has none.
+            // Each site notes the assembly that declares it, when it has one: an entity's class, or an
+            // action's arguments type when the stack's entity is declared beside it. A setting key's
+            // declaring type is not known here, so it has none.
             List<(string Owner, Type Type, Assembly? Declarer)> sites = [];
             if (metadata is not null)
             {
@@ -174,28 +176,32 @@ namespace Tellma.Core.Localization
 
         /// <summary>
         ///     The enums the stacks' action arguments carry, each under the resource it belongs to and
-        ///     with the assembly that declares the arguments type: a stack's actions, then its child
-        ///     query surfaces' actions.
+        ///     with the assembly that declares the arguments type, when that assembly declares the
+        ///     stack's entity too: a stack's actions, then its child query surfaces' actions.
         /// </summary>
         /// <param name="stacks">The stacks.</param>
         /// <returns>The sites, in stack order.</returns>
         private static IEnumerable<(string Owner, Type Type, Assembly? Declarer)> ActionSites(IStackRegistry stacks)
         {
-            IEnumerable<(string Resource, ActionDescriptor Action)> actions = stacks.Stacks
-                .SelectMany(static stack => stack.Actions.Select(action => (stack.Resource, action)))
-                .Concat(stacks.ChildQueries.SelectMany(static child => child.Actions.Select(action => (child.Resource, (ActionDescriptor)action))));
-            foreach ((string resource, ActionDescriptor action) in actions)
+            IEnumerable<(string Resource, Type Entity, ActionDescriptor Action)> actions = stacks.Stacks
+                .SelectMany(static stack => stack.Actions.Select(action => (stack.Resource, stack.EntityType, action)))
+                .Concat(stacks.ChildQueries.SelectMany(static child => child.Actions.Select(action => (child.Resource, child.EntityType, (ActionDescriptor)action))));
+            foreach ((string resource, Type entity, ActionDescriptor action) in actions)
             {
                 if (ActionArguments.TypeOf(action) is not Type arguments)
                 {
                     continue;
                 }
 
+                // A platform action rides every stack, another feature's too: its arguments' assembly
+                // declares the site only on a stack over that assembly's own entity, so such a stack
+                // never names the enum.
+                Assembly? declarer = entity.Assembly == arguments.Assembly ? arguments.Assembly : null;
                 foreach (ActionArguments.Member member in ActionArguments.Members(arguments))
                 {
                     if (Unwrap(member.Json.PropertyType) is Type type)
                     {
-                        yield return (resource, type, arguments.Assembly);
+                        yield return (resource, type, declarer);
                     }
                 }
             }

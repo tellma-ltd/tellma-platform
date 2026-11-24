@@ -14,6 +14,9 @@ import { TM_CLI_EXIT, tmRunCli } from '../cli/tellma-client.js';
 import { tmNodeProcessRunner, type TmProcessOptions } from '../common/process.js';
 import { tmListFiles } from '../common/files.js';
 import { tmAttribute, tmElements, tmParseDocument } from '../common/html.js';
+import { tmReadInitialFiles } from '../output/preloads.js';
+import { tmCodeFromSources, tmReadSourceMap } from '../output/source-attribution.js';
+import { TmBuildGraph, tmCorePrimaryModules } from '../output/stats.js';
 
 // The real build of the fixture app: one `ng build`, then the build's later
 // steps on its output. The output checks then run again on copies of that
@@ -94,6 +97,7 @@ describe('tellma-client build on the fixture app', () => {
     expect(first.code).toBe(TM_CLI_EXIT.success);
     expect(first.out).toContain('Built with 0 error(s) and 0 warning(s).');
     expect(first.out).toMatch(/^initialJs +\d+\.\d\d +\d+\.\d\d +230 +260 +\d+$/m);
+    expect(first.out).toMatch(/^corePrimaryFirstFrame +\d+\.\d\d +\d+\.\d\d +- +50 +[1-9]\d*$/m);
     // The lazy page, which no budget covers, prints on a line of its own with no level.
     expect(first.out).toMatch(/^lazy:src\/app\/review-page\.ts +\d+\.\d\d +\d+\.\d\d +- +- +\d+$/m);
   });
@@ -178,6 +182,32 @@ describe('tellma-client build on the fixture app', () => {
     }
   });
 
+  it("attributes to the @tellma/core primary the bytes the bundler's stats give its modules in the initial files", () => {
+    // The stats count each module's bytes in each file; the source maps cut
+    // the same code out of the files. The two must agree, or the primary's
+    // figure weighs something other than its code.
+    const stats = JSON.parse(readFileSync(join(output(), 'stats.json'), 'utf8')) as {
+      outputs: Record<string, { inputs: Record<string, { bytesInOutput: number }> }>;
+    };
+    const graph = TmBuildGraph.read(join(output(), 'stats.json'));
+    const primary = tmCorePrimaryModules(graph);
+    const initial = tmReadInitialFiles(read('index.html'));
+    const initialJs = graph.staticClosure([...initial.scripts, ...initial.modulePreloads]);
+    let counted = 0;
+    let attributed = 0;
+    for (const file of initialJs) {
+      for (const [input, { bytesInOutput }] of Object.entries(stats.outputs[file]!.inputs)) {
+        counted += primary.has(input.replace(/\\/g, '/')) ? bytesInOutput : 0;
+      }
+      const code = tmCodeFromSources(read(file), tmReadSourceMap(join(output(), 'sourcemaps', ...`${file}.map`.split('/'))), (source) => primary.has(source));
+      attributed += Buffer.byteLength(code);
+    }
+    expect(counted).toBeGreaterThan(10_000);
+    // The build's own band: code hoisted with no mapping comes with the run before it, a little over.
+    expect(attributed).toBeGreaterThanOrEqual(counted * 0.995 - 16);
+    expect(attributed).toBeLessThanOrEqual(counted * 1.01 + 16);
+  });
+
   it('moves the source maps out of the deployable output', () => {
     expect(tmListFiles(browser()).filter((file) => file.endsWith('.map'))).toEqual([]);
     expect(tmListFiles(join(output(), 'sourcemaps')).some((file) => /^main-[A-Z0-9]{8}\.js\.map$/.test(file))).toBe(true);
@@ -224,6 +254,12 @@ describe('the output checks on the fixture app', () => {
       const exceeded = await rebuild(() => undefined);
       expect(exceeded.code).toBe(TM_CLI_EXIT.problem);
       expect(exceeded.err).toMatch(/^budget-exceeded budget:initialCss fixture - [\d.]+ KB gzip is over the budget's error level of 0\.1 KB\.\n$/);
+
+      // The primary's line fails the same way; a lowered level needs no note.
+      budgets({ corePrimaryFirstFrame: { error: 0.1 } });
+      const primary = await rebuild(() => undefined);
+      expect(primary.code).toBe(TM_CLI_EXIT.problem);
+      expect(primary.err).toMatch(/^budget-exceeded budget:corePrimaryFirstFrame fixture - [\d.]+ KB gzip is over the budget's error level of 0\.1 KB\.\n$/);
 
       budgets({ initialJs: { warn: 1 } });
       const warned = await rebuild(() => undefined);
