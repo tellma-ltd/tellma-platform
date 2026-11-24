@@ -108,19 +108,22 @@ export class TmArrivalToasts {
   // --- Notifications ---
 
   /**
-   * Toasts the notifications newer than the previous copy's newest that are
-   * unread and of a toasting type, oldest first.
+   * Toasts the notifications newer than the previous copy's newest, and
+   * created at or after `since`, that are unread and of a toasting type,
+   * oldest first.
    *
    * @param copy - The copy that arrived.
    * @param previous - The copy before it.
    * @param tenantId - The tenant both copies belong to.
+   * @param since - The earliest creation time that counts, in epoch milliseconds.
    */
-  notifications(copy: TmInboxSummary, previous: TmInboxSummary, tenantId: number): void {
+  notifications(copy: TmInboxSummary, previous: TmInboxSummary, tenantId: number, since: number): void {
     const after = newest(previous.latest, 'createdAt');
     const types = this.#metadata.current()?.notificationTypes ?? [];
     const arrivals = copy.latest.filter(
       (row) =>
         timeOf(row, 'createdAt') > after &&
+        timeOf(row, 'createdAt') >= since &&
         (row['readAt'] === undefined || row['readAt'] === null) &&
         types.some((type) => type.key === row['type'] && type.toast),
     );
@@ -168,17 +171,19 @@ export class TmArrivalToasts {
   // --- Assignments ---
 
   /**
-   * Toasts the assignments newer than the previous copy's newest that the
-   * user did not assign: one with its caption, or several grouped.
+   * Toasts the assignments newer than the previous copy's newest, and
+   * assigned at or after `since`, that the user did not assign: one with
+   * its caption, or several grouped.
    *
    * @param copy - The copy that arrived.
    * @param previous - The copy before it.
    * @param tenantId - The tenant both copies belong to.
+   * @param since - The earliest assignment time that counts, in epoch milliseconds.
    */
-  assignments(copy: TmAssignmentsSummary, previous: TmAssignmentsSummary, tenantId: number): void {
+  assignments(copy: TmAssignmentsSummary, previous: TmAssignmentsSummary, tenantId: number, since: number): void {
     const after = newest(previous.latest, 'assignedAt');
     const me = this.#launch.docs.me()?.user.id;
-    const arrivals = copy.latest.filter((row) => timeOf(row, 'assignedAt') > after && row['assignedById'] !== me);
+    const arrivals = copy.latest.filter((row) => timeOf(row, 'assignedAt') > after && timeOf(row, 'assignedAt') >= since && row['assignedById'] !== me);
     const [row] = arrivals;
     if (arrivals.length === 1 && row !== undefined) {
       this.#names.rememberRelated(copy.related);

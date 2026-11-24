@@ -4,7 +4,8 @@
 // LICENSE file in the root directory of this source tree.
 
 import { TestBed } from '@angular/core/testing';
-import type { TmFakeApi } from '@tellma/core-testing';
+import { Router } from '@angular/router';
+import { type TmFakeApi, tmWarmTenant } from '@tellma/core-testing';
 
 import type { TmClientMetadata } from '../metadata/tm-client-metadata';
 import type { TmLanguageDefinition, TmStringTree } from '../app/tm-app-config';
@@ -163,6 +164,38 @@ export function tmTestAssignment(id: number, members: Readonly<Record<string, un
 /** An inbox version. */
 export function tmVersion(value: number): TmDecimal {
   return String(value) as TmDecimal;
+}
+
+/**
+ * Stores another tenant's launch documents, tenant 17's under its id, with
+ * the attention documents given, so the app enters it warm.
+ *
+ * @param rig - The rig.
+ * @param tenantId - The tenant.
+ * @param docs - The tenant's own documents, over tenant 17's.
+ * @param at - When the documents were saved; now by default.
+ * @returns The tenant's partition.
+ */
+export async function tmWarmTestTenant(
+  rig: TmAppRig,
+  tenantId: number,
+  docs: Partial<TmLaunchDocs> = {},
+  at = Date.now(),
+): Promise<typeof TM_T17> {
+  const partition = { ...TM_T17, tenantId };
+  const { settings, me, tenant } = TM_T17_DOCS;
+  await tmWarmTenant(rig.store, partition, { settings: { ...settings, tenantId }, me, tenant: { ...tenant, id: tenantId }, ...docs }, { at });
+  return partition;
+}
+
+/**
+ * Enters a tenant's centers page and lets the entry settle.
+ *
+ * @param tenantId - The tenant.
+ */
+export async function tmEnterTestTenant(tenantId: number): Promise<void> {
+  await TestBed.inject(Router).navigateByUrl(`/${String(tenantId)}/centers`);
+  await tmSettle();
 }
 
 export { TM_T17, tmSettle };

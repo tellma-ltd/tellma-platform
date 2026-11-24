@@ -28,12 +28,18 @@ import { tmRegisterAttentionStrings } from './tm-attention-strings';
 
 // The arrival engine (spec 0028 §8.2–§8.3): every tab watches the stored
 // inbox, assignments and tenant documents, and the visible, focused tab
-// toasts what arrived. A tab's baseline is the first copy written after it
-// started, so what arrived before never pops up; each later copy's arrivals
-// are the rows newer than the previous copy's newest. Every tab moves its
-// previous copy on with every copy, so a tab that gains focus later replays
-// nothing. Toasts come from document contents, never from hub events. What
-// arrived and how it toasts load as a chunk with the first copy handed on.
+// toasts what arrived. Each entry into a tenant starts its own clock, and
+// the first copy it observes, whatever its age, is the previous copy; each
+// later copy's arrivals are the rows newer than the previous copy's newest.
+// So that nothing which arrived before the entry pops up, a previous copy
+// saved before the entry admits only rows created or assigned since it, and
+// a change of the tenant's state toasts only from a copy saved since it.
+// (Spec 0028 §8.2 makes the first copy saved after the start a silent
+// baseline instead, which in a follower tab is the leader's first real
+// refresh, so its arrivals never toasted.) Every tab moves its previous copy
+// on with every copy, so a tab that gains focus later replays nothing.
+// Toasts come from document contents, never from hub events. What arrived
+// and how it toasts load as a chunk with the first copy handed on.
 
 /**
  * Whether arrivals toast: the user's `notifications.toasts` preference, on
@@ -76,9 +82,7 @@ export class TmArrivals {
   readonly #l10n = inject(TmLocalization);
   readonly #document = inject(DOCUMENT);
   readonly #injector = inject(Injector);
-
-  /** When the tab started watching: copies written before it toast nothing. */
-  readonly #start = inject(TM_NOW)();
+  readonly #now = inject(TM_NOW);
 
   /** Whether arrivals toast. */
   readonly #toastsOn: Signal<boolean> = this.#preferences.get(tmNotificationToastsKey);
@@ -102,37 +106,45 @@ export class TmArrivals {
     inject(DestroyRef).onDestroy(() => this.#toasts.ɵsetOverflow(null));
 
     // --- The three documents, each with its arrival rule; arrival toasts are switched off by the preference, a tenant's state is not ---
-    this.#watch<TmInboxSummary>('inbox', (copy, previous, tenantId) => {
+    this.#watch<TmInboxSummary>('inbox', (copy, previous, tenantId, start) => {
       if (this.#toastsOn()) {
-        this.#arrive((toasts) => toasts.notifications(copy, previous, tenantId));
+        const since = previous.savedAt < start ? start : -Infinity;
+        this.#arrive((toasts) => toasts.notifications(copy.data, previous.data, tenantId, since));
       }
     });
-    this.#watch<TmAssignmentsSummary>('assignments', (copy, previous, tenantId) => {
+    this.#watch<TmAssignmentsSummary>('assignments', (copy, previous, tenantId, start) => {
       if (this.#toastsOn()) {
-        this.#arrive((toasts) => toasts.assignments(copy, previous, tenantId));
+        const since = previous.savedAt < start ? start : -Infinity;
+        this.#arrive((toasts) => toasts.assignments(copy.data, previous.data, tenantId, since));
       }
     });
-    this.#watch<TmTenantFacts>('tenant', ({ state }, previous) => {
-      if (state !== previous.state && state !== 'Active') {
+    this.#watch<TmTenantFacts>('tenant', (copy, previous, _tenantId, start) => {
+      // Compared whatever the copies' age, but a change only a copy saved before the entry shows is old news.
+      const { state } = copy.data;
+      if (state !== previous.data.state && state !== 'Active' && copy.savedAt >= start) {
         this.#arrive((toasts) => toasts.tenant(state));
       }
     });
   }
 
-  /** Watches one stored document of the routed tenant, and hands each copy after the baseline to its rule. */
-  #watch<T>(name: string, arrive: (copy: T, previous: T, tenantId: number) => void): void {
+  /**
+   * Watches one stored document of the routed tenant, and hands each copy
+   * after the first it observes to its rule, with the copy before it and the
+   * time the tab entered the tenant.
+   */
+  #watch<T>(name: string, arrive: (copy: TmStoredDoc<T>, previous: TmStoredDoc<T>, tenantId: number, start: number) => void): void {
     let tenant: string | null = null;
-    let baseline = false;
+    let start = 0;
     let previous: TmStoredDoc<T> | undefined;
     effect(() => {
       const partition: TenantPartition | null = this.#refresher.ɵpartition();
       const copy = partition === null ? undefined : this.#store.doc<T>(partition, name)();
       untracked(() => {
-        // Another tenant starts over: its own baseline, its own previous copy.
+        // Each entry into a tenant starts over: its own clock, its own previous copy.
         const key = partition && `${partition.sub}/${partition.tenantId}`;
         if (key !== tenant) {
           tenant = key;
-          baseline = false;
+          start = this.#now();
           previous = undefined;
         }
         if (partition === null || copy === undefined || copy === previous) {
@@ -140,11 +152,9 @@ export class TmArrivals {
         }
         const last = previous;
         previous = copy;
-        if (!baseline) {
-          // The baseline is the first copy written after the tab started; it and earlier copies toast nothing.
-          baseline = copy.savedAt >= this.#start;
-        } else if (last !== undefined && this.#focused()) {
-          arrive(copy.data, last.data, partition.tenantId);
+        // The first copy observed only becomes the previous one.
+        if (last !== undefined && this.#focused()) {
+          arrive(copy, last, partition.tenantId, start);
         }
       });
     });

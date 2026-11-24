@@ -496,9 +496,10 @@ export class TmAttention {
       const pending: SeenHold = { kind: 'pending' };
       this.#seen[panel].set(pending);
       const release = await this.#call((calls) => calls.seen(panel, partition.tenantId));
-      // A failed seen marks nothing: the badge comes back with the panel's own copy.
+      // A failed seen marks nothing: the badge comes back with the panel's own
+      // copy, or at once when the panel closed meanwhile, since it reads none.
       if (this.#seen[panel]() === pending) {
-        this.#seen[panel].set(release ?? { kind: 'own', sentAt: null });
+        this.#seen[panel].set(release ?? (abort.aborted ? null : { kind: 'own', sentAt: null }));
       }
     } else if (fresh) {
       this.#seen[panel].set({ kind: 'own', sentAt: null });

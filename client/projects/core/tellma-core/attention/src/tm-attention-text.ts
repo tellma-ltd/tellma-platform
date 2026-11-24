@@ -23,12 +23,14 @@ import { tmIcuArguments, tmIcuObject } from './tm-icu-arguments';
 // language, content-language or calendar switch re-renders it with no
 // request. The keys follow the server's: a dotted key's `.` becomes `_`.
 
-/** A placeholder's delimiters: private-use characters no message holds. */
+/** A placeholder's opening delimiter: a private-use character no message holds. */
 const OPEN = '';
+/** A placeholder's closing delimiter: a private-use character no message holds. */
 const CLOSE = '';
 
-/** An assignment title's key, and the arguments it formats with placeholders. */
+/** An assignment title's key. */
 const TITLE_KEY = 'tm.attention.assignment.title';
+/** The arguments an assignment title formats with placeholders, so the code can be split out. */
 const TITLE_ARGS = ['entity', 'code'] as const;
 
 /** One piece of a message split around its isolated arguments. */
@@ -191,6 +193,9 @@ export class TmAttentionText {
     const caption = parseCaption(row['captionJson']);
     const code = textOf(caption.code) ?? `#${String(row['targetId'] ?? '')}`;
     const detailKey = `Assignment_${resourceOf(resource)}_Detail`;
+    // A caption without a detail renders none even when the resource has a
+    // detail key (spec 0028 §11.3 drops it only without the key): the
+    // message's placeholders would otherwise render raw.
     const detailArgs = tmIcuObject(caption.detail);
     const detail = detailArgs && this.#text.message(detailKey, detailArgs);
     const amount = textOf(caption.amount);

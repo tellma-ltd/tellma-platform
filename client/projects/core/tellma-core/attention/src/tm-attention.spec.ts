@@ -12,9 +12,11 @@ import { TmAttention } from './tm-attention';
 import {
   type TmAttentionRig,
   tmAttentionRig,
+  tmEnterTestTenant,
   tmSettle,
   tmTestNotification,
   tmVersion,
+  tmWarmTestTenant,
   TM_T17,
 } from '../../src/attention/tm-attention.testing.util';
 
@@ -231,6 +233,45 @@ describe('TmAttention', () => {
       await rig.attention.stopJob(9);
       await rig.put('inbox', inbox(7, { running: [job(9, 'Pending')] }));
       expect(rig.attention.inbox()?.running[0]?.cancelRequestedAt).toBeUndefined();
+
+      // The copy with the request released the overlay, so a later copy without it shows none.
+      await rig.put('inbox', inbox(8, { running: [job(8, 'Running')] }));
+      expect(rig.attention.inbox()?.running[0]?.cancelRequestedAt).toBeUndefined();
+    });
+
+    it('release a stopping overlay on a copy that drops the job', async () => {
+      const rig = await setUp();
+      await rig.put('inbox', inbox(5, { running: [job(8, 'Running')] }));
+      rig.api.respond('jobs/cancel', {});
+      await rig.attention.stopJob(8);
+      await rig.put('inbox', inbox(6, { running: [] }));
+      // The job listed again, as a stale copy would, shows no request: the overlay left with the copy that dropped it.
+      await rig.put('inbox', inbox(7, { running: [job(8, 'Running')] }));
+      expect(rig.attention.inbox()?.running[0]?.cancelRequestedAt).toBeUndefined();
+    });
+  });
+
+  describe('a tenant switch', () => {
+    it('drops the panel, the overlays and the seen hold of the tenant left', async () => {
+      const rig = await setUp();
+      await rig.put('inbox', inbox(5, { running: [job(8, 'Running')] }));
+      rig.api.respond('inbox/read', () => new Promise(() => undefined));
+      rig.api.respond('jobs/cancel', () => new Promise(() => undefined));
+      rig.api.respond('inbox/seen', () => new Promise(() => undefined));
+      rig.api.respond('inbox/summary', () => new Promise(() => undefined));
+      void rig.attention.read([3]);
+      void rig.attention.stopJob(8);
+      rig.attention.toggle('bell', 'click');
+      await tmSettle();
+      expect(rows(rig.attention)).toEqual(['3 read', '2', '1 read']);
+      expect(rig.attention.bell().count).toBeNull();
+
+      await tmWarmTestTenant(rig, 18, { inbox: inbox(5, { running: [job(8, 'Running')] }) });
+      await tmEnterTestTenant(18);
+      expect(rig.attention.open()).toBeNull();
+      expect(rows(rig.attention)).toEqual(['3', '2', '1 read']);
+      expect(rig.attention.inbox()?.running[0]?.cancelRequestedAt).toBeUndefined();
+      expect(rig.attention.bell().count).toBe(2);
     });
   });
 
@@ -320,6 +361,46 @@ describe('TmAttention', () => {
       answer(inbox(5, { unseen: 2 }));
       await tmSettle();
       expect(rig.attention.bell().count).toBe(2);
+    });
+
+    it("lift the overlay waiting on the panel's read on a copy saved after the read was sent, and not before", async () => {
+      const rig = await setUp({ tenant: { id: 17, category: 'Live', state: 'Frozen', realtime: true } });
+      const before = Date.now() - 1;
+      await rig.put('inbox', inbox(5, { unseen: 2 }), before - 1000);
+      rig.api.respond('inbox/summary', () => new Promise(() => undefined));
+
+      rig.attention.toggle('bell', 'click');
+      await tmSettle();
+      expect(callsTo(rig, 'inbox/summary')).toHaveLength(1);
+
+      // Another tab's copy, saved before this panel's read was sent.
+      await rig.put('inbox', inbox(5, { unseen: 2 }), before);
+      expect(rig.attention.bell().count).toBeNull();
+
+      // Another tab's copy, saved after it: as fresh as the panel's own.
+      await rig.put('inbox', inbox(5, { unseen: 2 }), Date.now() + 1);
+      expect(rig.attention.bell().count).toBe(2);
+    });
+
+    it('bring the count back at once when the seen fails after the panel closed', async () => {
+      const rig = await setUp();
+      await rig.put('inbox', inbox(5, { unseen: 3 }), Date.now() - 60_000);
+      let fail!: (error: unknown) => void;
+      rig.api.respond('inbox/seen', () => new Promise((_resolve, reject) => (fail = reject)));
+      rig.api.respond('inbox/summary', () => new Promise(() => undefined));
+
+      rig.attention.toggle('bell', 'click');
+      await tmSettle();
+      expect(callsTo(rig, 'inbox/seen')).toHaveLength(1);
+      rig.attention.toggle('bell', 'click');
+      expect(rig.attention.bell().count).toBeNull();
+
+      fail(new Error('boom'));
+      await tmSettle();
+      expect(rig.attention.bell().count).toBe(3);
+      await rig.put('inbox', inbox(6, { unseen: 4 }));
+      expect(rig.attention.bell().count).toBe(4);
+      TestBed.inject(TmToasts).clear();
     });
 
     it('attempt nothing offline, and lift the overlay when the panel closes', async () => {

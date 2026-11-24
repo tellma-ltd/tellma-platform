@@ -10,22 +10,26 @@ import { tmFakeAssignmentsSummary, tmFakeInboxSummary } from '@tellma/core-testi
 import { type TmToast, TmToasts } from '@tellma/core-ui/toast';
 import type { MockInstance } from 'vitest';
 
-import { TmArrivals, tmNotificationToastsKey } from './tm-arrivals';
+import { tmNotificationToastsKey } from './tm-arrivals';
 import { TmAttention } from './tm-attention';
 import {
   type TmAttentionRig,
   tmAttentionRig,
+  tmEnterTestTenant,
   tmSettle,
+  TM_T17,
   tmTestAssignment,
   tmTestNotification,
   tmVersion,
+  tmWarmTestTenant,
 } from '../../src/attention/tm-attention.testing.util';
 
 // The arrival engine in a whole test app entered into tenant 17, whose
-// tenant shell starts it: the baseline, the arrival rules of notifications,
-// assignments and the tenant's state, the replaced row, the visible and
-// focused tab, the preference that turns arrivals off, grouping, the keys,
-// the actions and the overflow pill.
+// tenant shell starts it, as no spec injects it: the first copy a tab
+// observes and the entry's clock, a tenant switch, the arrival rules of
+// notifications, assignments and the tenant's state, the replaced row, the
+// visible and focused tab, the preference that turns arrivals off,
+// grouping, the keys, the actions and the overflow pill.
 
 /** The rig with the toasts' show spied on, the tab visible and focused, and each put settled. */
 interface TmArrivalsRig extends TmAttentionRig {
@@ -37,14 +41,13 @@ interface TmArrivalsRig extends TmAttentionRig {
   readonly navigate: MockInstance<Router['navigateByUrl']>;
 }
 
-/** Starts the app in tenant 17 with its arrival engine, in a visible, focused tab. */
+/** Starts the app in tenant 17, whose shell starts the arrival engine, in a visible, focused tab. */
 async function setUp(): Promise<TmArrivalsRig> {
   const rig = await tmAttentionRig();
   vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible');
   const focus = vi.spyOn(document, 'hasFocus').mockReturnValue(true);
   const show = vi.spyOn(TestBed.inject(TmToasts), 'show');
   const navigate = vi.spyOn(TestBed.inject(Router), 'navigateByUrl').mockResolvedValue(true);
-  TestBed.inject(TmArrivals);
   // The arrival toasts' chunk, loaded up front, so a copy's toasts show within the turns a put settles.
   await import('./tm-arrival-toasts');
   const put: TmAttentionRig['put'] = async (name, data, savedAt) => {
@@ -69,9 +72,35 @@ function notice(id: number, minute: number, members: Readonly<Record<string, unk
   return tmTestNotification(id, { createdAt: `2026-11-23T08:${String(minute).padStart(2, '0')}:00.000Z`, ...members });
 }
 
-/** Tenant 17's facts in a state. */
-function tenant(state: TmTenantFacts['state']): TmTenantFacts {
-  return { id: 17, category: 'Live', state, realtime: true };
+/** A tenant's facts in a state; tenant 17's by default. */
+function tenant(state: TmTenantFacts['state'], id = 17): TmTenantFacts {
+  return { id, category: 'Live', state, realtime: true };
+}
+
+/** A notification created at the given epoch milliseconds. */
+function noticeAt(id: number, at: number): TmInboxSummary['latest'][number] {
+  return tmTestNotification(id, { createdAt: new Date(at).toISOString() });
+}
+
+/** The assignments summary with the given rows, the assigner among its related users. */
+function assignments(...latest: ReturnType<typeof tmTestAssignment>[]): ReturnType<typeof tmFakeAssignmentsSummary> {
+  return tmFakeAssignmentsSummary({ open: latest.length, new: latest.length, latest, related: { 'core.User': [{ id: 7, name: 'Sara Ahmed' }] } });
+}
+
+/** Stores a copy of another tenant's document, saved at the given time (now by default), and settles. */
+async function putIn(rig: TmArrivalsRig, tenantId: number, name: string, data: unknown, savedAt = Date.now()): Promise<void> {
+  await rig.store.put({ ...TM_T17, tenantId }, name, { tag: null, savedAt, data });
+  await tmSettle();
+}
+
+/** Leaves the router's navigations unmocked, so a spec can enter another tenant. */
+function unmockNavigation(rig: TmArrivalsRig): void {
+  rig.navigate.mockRestore();
+}
+
+/** Waits a few milliseconds, so a later instant differs from an earlier one. */
+function pause(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 5));
 }
 
 describe('TmArrivals', () => {
@@ -79,16 +108,84 @@ describe('TmArrivals', () => {
     vi.restoreAllMocks();
   });
 
-  describe('the baseline', () => {
-    it('toasts nothing for copies written before the tab started, or for the first copy after', async () => {
+  describe('the tenant shell', () => {
+    it('starts the engine on entering a tenant', async () => {
       const rig = await setUp();
-      // Written before the tab started: it toasts nothing, but it is the previous copy.
-      await rig.put('inbox', inbox(notice(1, 0)), Date.now() - 60_000);
-      // The baseline: what arrived before the tab started never pops up.
-      await rig.put('inbox', inbox(notice(2, 5), notice(1, 0)));
+      await rig.put('inbox', inbox());
+      await rig.put('inbox', inbox(notice(1, 5)));
+      expect(shown(rig).map((toast) => toast.key)).toEqual(['n:1']);
+    });
+  });
+
+  describe('the first copy', () => {
+    it('toasts a row created since the tab entered the tenant, after a copy saved before', async () => {
+      const rig = await setUp();
+      // Saved before the entry: it toasts nothing, but it is the previous copy, whatever its age.
+      await rig.put('inbox', inbox(), Date.now() - 60_000);
+      await rig.put('inbox', inbox(noticeAt(1, Date.now())));
+      expect(shown(rig).map((toast) => toast.key)).toEqual(['n:1']);
+    });
+
+    it('toasts no row created before the tab entered the tenant, after a copy saved before', async () => {
+      const rig = await setUp();
+      const before = Date.now() - 3_600_000;
+      await rig.put('inbox', inbox(), Date.now() - 60_000);
+      await rig.put('inbox', inbox(noticeAt(1, before)));
       expect(rig.show).not.toHaveBeenCalled();
 
-      await rig.put('inbox', inbox(notice(3, 10), notice(2, 5), notice(1, 0)));
+      // The next copy's previous copy was saved since the entry, so its rows count by the newest alone.
+      await rig.put('inbox', inbox(noticeAt(2, before + 1), noticeAt(1, before)));
+      expect(shown(rig).map((toast) => toast.key)).toEqual(['n:2']);
+    });
+
+    it("toasts the leader's first copy in a follower tab, whose first copy the leader saved before the entry", async () => {
+      const rig = await setUp();
+      await rig.put('assignments', assignments(), Date.now() - 60_000);
+      await rig.put(
+        'assignments',
+        assignments(
+          tmTestAssignment(5, { assignedAt: new Date().toISOString() }),
+          tmTestAssignment(4, { assignedAt: new Date(Date.now() - 3_600_000).toISOString() }),
+        ),
+      );
+      expect(shown(rig).map((toast) => toast.key)).toEqual(['a:5']);
+    });
+
+    it("toasts a change of the tenant's state from a copy saved since the entry, over the warm copy", async () => {
+      const rig = await setUp();
+      // The warm launch's copy, saved before the entry and active, is the previous copy.
+      await rig.put('tenant', tenant('ReadOnly'));
+      expect(shown(rig)).toEqual([expect.objectContaining({ tone: 'warning', title: 'Acme is now read-only. You can view data but not change it.' })]);
+    });
+
+    it("toasts no change of the tenant's state that only a copy saved before the entry shows", async () => {
+      const rig = await setUp();
+      unmockNavigation(rig);
+      await tmWarmTestTenant(rig, 18, { tenant: tenant('Active', 18) }, Date.now() - 60_000);
+      await tmEnterTestTenant(18);
+      await putIn(rig, 18, 'tenant', tenant('Frozen', 18), Date.now() - 30_000);
+      expect(rig.show).not.toHaveBeenCalled();
+
+      await putIn(rig, 18, 'tenant', tenant('ReadOnly', 18));
+      expect(shown(rig).map((toast) => toast.tone)).toEqual(['warning']);
+      expect(shown(rig)[0]?.title).toContain('read-only');
+    });
+  });
+
+  describe('a tenant switch', () => {
+    it("toasts none of the new tenant's backlog, only the rows created since the entry", async () => {
+      const rig = await setUp();
+      unmockNavigation(rig);
+      await rig.put('inbox', inbox());
+      // Created while the tab was in tenant 17, so after its entry there, but before the entry into tenant 18.
+      await pause();
+      const backlog = Date.now();
+      await tmWarmTestTenant(rig, 18, { inbox: inbox() });
+      await pause();
+      await tmEnterTestTenant(18);
+      expect(rig.show).not.toHaveBeenCalled();
+
+      await putIn(rig, 18, 'inbox', inbox(noticeAt(3, Date.now()), noticeAt(2, backlog)));
       expect(shown(rig).map((toast) => toast.key)).toEqual(['n:3']);
     });
   });
@@ -193,11 +290,6 @@ describe('TmArrivals', () => {
   });
 
   describe('assignments', () => {
-    /** The assignments summary with the given rows, the assigner among its related users. */
-    function assignments(...latest: ReturnType<typeof tmTestAssignment>[]): ReturnType<typeof tmFakeAssignmentsSummary> {
-      return tmFakeAssignmentsSummary({ open: latest.length, new: latest.length, latest, related: { 'core.User': [{ id: 7, name: 'Sara Ahmed' }] } });
-    }
-
     it('toast one arrival with its caption, the assigner\'s comment and Open', async () => {
       const rig = await setUp();
       await rig.put('assignments', assignments());
