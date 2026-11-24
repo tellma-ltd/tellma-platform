@@ -110,10 +110,10 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 
 | PC | Slot | Branch | Step | Implementer agent (name / id) | Reviewer agent (name / id) | Started (UTC) |
 |---|---|---|---|---|---|---|
-| PC-116 | pc-1 | pc/PC-116 | impl | from 22286f8b; /shell 1.32 of 1.35; replaces PC-114's stand-in tenant picker | | 2026-11-24 |
+| PC-116 | pc-1 | pc/PC-116 | R1 | impl b9d8f3f8 (6 deviations; tenantless pages lazy chunk tm-tenantless 7.69 of 8 vs 0027 §1; revalidateUser returns TmApiError|null vs 0025 §3.1; modulepreload root fix; "." +4 B, /shell 1.35->2.35, ./platform-strings +0.51 -> third raise on merge); merges with held PC-114 | | 2026-11-24 |
+| PC-153 | pc-3 | pc/PC-153 | impl | from 9ea0b700 | | 2026-11-24 |
 | PC-114 | pc-f2 | pc/PC-114 | held 7611d0fe | merge-tree: 2 conflicts (core package.json budgets, core-testing README e2e row); 60 files +5893/-51; impl f65107a0; R1 0/4/10 (D-266); fix1 c3f7d4c6; R2 1/1/4 (D-270); fix2 7611d0fe fixed all (clean-build "." 49.96 of 49.96, cap 49.86 of 50, /shell 1.27 of 1.28; skeleton frame 1; cold LCP 8.0-8.2 s vs 4 s warn-only; warm chrome medians 237/364/373 vs 300); release after PC-112 (cap 55 lands with it); Linux e2e leg first runs at integrate; R1-4 -> PC-F82; R1-9 carry to PC-152 | | 2026-11-24 |
-| PC-F81 | pc-4 | pc/PC-F81 | held | held 79a909d1 (impl f99bc1b6; R1 0/0/1 fixed; seam D-263); merge-tree clean; 21 files +1031/-118; releases after PC-120 | | 2026-11-23 |
-| PC-120 | pc-2 | pc/PC-120 | integrating | merge-tree clean on dabe38e3, 51 files +7407/-41; impl 00cb5242; R1 0/3/7, no R2; fix1 3bbae930 fixed all (new lazy entry @tellma/core/column-filter 3.99 of 4; /entity 24.12 of 24.5; disjunction lists; exact numbers; deviations +5, D-260); "." unchanged; release after PC-125 | | 2026-11-23 |
+| PC-F81 | pc-4 | pc/PC-F81 | integrating | held 79a909d1 (impl f99bc1b6; R1 0/0/1 fixed; seam D-263); merge-tree clean; 21 files +1031/-118; releases after PC-120 | | 2026-11-23 |
 | PC-112 | pc-f | pc/PC-112 | held 7a688915 | merge-tree clean, 44 files +3695/-127; impl e23a08d8; R1 0/2/4, no R2 (D-268); fix1 7a688915 fixed all (deviations 11; "." 50.147 of 50.15, cap 50.05 of 55 (D-267), telemetry chunk 4.51 of 5; #sendOne tenant bug fixed); backup deleted on Ahmad's approval; release after PC-F81 | | 2026-11-24 |
 
 ## Fix items
@@ -462,7 +462,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-117 | 0029-c | 1 | done (d0dda181; pc 45140827408 green on d0dda181; "." 44.87 of 45, ./entity 12.18 of 12.5 after re-measure, D-214; TmLocalization.ɵregisterStrings available to PC-119 to PC-121) | cbc8dd0, d49d7e3, d0dda18 (pc/PC-117) | | |
 | PC-118 | 0027-d | 1 | todo | | | |
 | PC-119 | 0029-e | 1 | done (835a4dd8, pc 45277059399 green on e0a10747; "." 49.39 of 49.5, no addition; ./entity 18.14 of 18.5) | 824918e, ab9ee41, 81e1355, e0a1074, 835a4dd (pc/PC-119) |  | carry (PC-058): tm-entity-multi-field must wire a length validator returning requiredError(); Signal Forms required() treats [] as a value |
-| PC-120 | 0029-d | 1 | in progress (pc-2) | | | carry from PC-117 R1-4: expression columns skip the reachability check, so a stale preference can 403 the search page; check reachability for the paths an expression references |
+| PC-120 | 0029-d | 1 | done (862dce17, pc 45356156300 green on 862dce17; ./entity 24.96 of 25 (D-271); ./column-filter 3.99 of 4; ./platform-strings 3.51 of 4; "." 49.89, cap 49.79; D-260) | 00cb524, 3bbae93, 862dce1 (pc/PC-120) | carry from PC-117 R1-4: expression columns skip the reachability check, so a stale preference can 403 the search page; check reachability for the paths an expression references |
 | PC-121 | 0029-g | 1 | todo | | | |
 | PC-122 | 0027-e | 1 | todo | | | carry from PC-115 (D-248): register the entry-icon names the launcher draws in platform-icons.ts |
 | PC-123 | 0035-a1 | 1 | todo | | | carry from PC-115 (D-248): register the entry-icon names home recents draws in platform-icons.ts |
@@ -495,7 +495,7 @@ Cost units are price-weighted (tools/usage_window.py). ρ = weekly points per M 
 | PC-150 | 0026-d | 2 | todo | | | |
 | PC-151 | 0023-h | 2 | done (99123772; CI 43994567778 red → PC-F53; green 44019377406 on 880b58d7) | 7b9c658, c678bc7, 9912377 (pc/PC-151) | | |
 | PC-152 | 0024-j | 2 | todo | | | carry (D-266): un-fixme the Acme device-zone e2e flows left pending by PC-114 |
-| PC-153 | 0025-d | 2 | todo | | | |
+| PC-153 | 0025-d | 2 | in progress (pc-3) | | | |
 | PC-154 | 0026-f | 2 | todo | | | carry (D-216): register PC-107's state dump with TmSupport (registerDumpSection) without pulling @tellma/core/memory onto the first frame |
 | PC-155 | 0028-d | 2 | done (0b7537de, pc 45340509211 green on 0b7537de; locale-ar re-split by table (D-265): ./platform-strings 2.84 of 3, ./strings 5.88 of 6; "." 49.89, cap 49.79; /attention 5.95 of 6; D-257 baseline) | 26b1f8b, c60d8f1, 832b71d, 9d326e4, 0b7537d (pc/PC-155) | carry from PC-106: add "./attention": ["./search-normalize"] to staticGraphExcludes in core-entry-points.ts; carry from PC-109: register the bell and tray strings with TmLocalization.ɵregisterStrings |
 | PC-156 | 0028-e | 2 | todo | | | carry from PC-155 (D-257): move TmAttentionText (1.13 KB) out of the eager /attention graph before adding the bell and tray (/attention 5.93 of 6); report for a ruling if 6 KB still cannot hold them |

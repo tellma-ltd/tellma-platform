@@ -384,6 +384,20 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-271 (orchestrator, 2026-11-24): PC-120 integration — a refused command form, and /entity at 25
+
+- PC-120's agent ran api:approve and the Acme client build together in one nested-subshell command. The safety check refused it because it "could not be checked for dangerous rm operations". The command contains no rm.
+- I notified Ahmad at once.
+- Judgement: the check refused the command's form, not either gate. Both gates are routine and other agents run them as plain commands.
+  - The agent re-runs each as its own plain, single command.
+  - If a plain command is refused, it stops and I notify Ahmad again.
+  - This is not a reroute around a denied action.
+  - From now on, briefs and messages ask agents for plain, single commands, with no nested subshells.
+- ./entity measures 24.96 on the merged tree against platform-core's 19, and its ceiling is set to 25.
+  - This is accepted as D-214's combination of two accepted additions over 18.5: PC-125's entity actions (+0.5) and PC-120's Queryex and filters after the D-260 re-split (+6).
+  - It is not a third raise. ./entity is lazy, so it does not touch the first frame.
+- @tellma/locale-ar ./platform-strings goes from 3.5 to 4 for the tm.filter block. That is its second raise, allowed under D-031.
+
 ### D-270 (orchestrator, 2026-11-24): PC-114 review 2 rulings
 
 - R2 (xhigh) on f65107a0..c3f7d4c6 found 1 blocking, 1 major and 4 minor. R1-1's fix is correct on every launch path: all 50 warm-launch requests go after the routed view renders.
