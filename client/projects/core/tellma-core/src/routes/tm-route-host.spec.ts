@@ -19,6 +19,7 @@ import {
   tmLoadTestPage,
   tmNavigate,
   tmSettle,
+  tmSettleUntil,
   TM_COLD_SYNC,
   TM_T17_DOCS,
   tmTestMembership,
@@ -271,7 +272,8 @@ describe('the route host', () => {
     expect(TestBed.inject(Title).getTitle()).toBe('Home · Acme');
 
     await rig.router.navigateByUrl('/17/centers');
-    await tmSettle();
+    // An entity's page loads the Entities chunk's model first.
+    await tmSettleUntil(() => document.activeElement?.hasAttribute('tmPageTitle') === true && document.activeElement.textContent.includes('Centers'));
     expect(TestBed.inject(Title).getTitle()).toBe('Centers · Acme');
     const title = document.activeElement as HTMLElement | null;
     expect(title?.hasAttribute('tmPageTitle')).toBe(true);
@@ -359,8 +361,9 @@ describe('the route host', () => {
     it("publishes every page route's context, the entity's segment in its template, titled as the document is", async () => {
       rig = await tmAppRig();
       const harness = await tmNavigate('/17/centers');
-      await tmSettle();
       const contexts = TestBed.inject(TmPageContexts);
+      // An entity's page loads the Entities chunk's model first.
+      await tmSettleUntil(() => contexts.current()?.status() === 'ready');
       const search = contexts.current()!;
       expect(search).toMatchObject({ kind: 'search', routeTemplate: '/:t/centers' });
       expect([search.status(), search.title()]).toEqual(['ready', 'Centers']);

@@ -11,6 +11,7 @@ import {
   provideTellmaStateTesting,
   provideTellmaTesting,
   TmFakeApi,
+  type TmFakeApiCall,
   TmFakeTabBus,
   TmFakeTelemetry,
   tmTestMetadata,
@@ -26,7 +27,7 @@ import { provideTellma } from '../app/provide-tellma';
 import type { TmAppConfig, TmCalendarDefinition, TmLanguageDefinition } from '../app/tm-app-config';
 import { TM_DEV_MODE } from '../app/tm-dev-mode';
 import type { TmClientMetadata } from '../metadata/tm-client-metadata';
-import { TM_T17, tmLoadTestPage, tmNavigate, tmRouteTestConfig, tmSettle } from '../routes/tm-app.testing.util';
+import { TM_T17, tmLoadTestPage, tmNavigate, tmRouteTestConfig, tmSettle, tmSettleUntil } from '../routes/tm-app.testing.util';
 import { TmLaunchCache } from '../state/launch/tm-launch-cache';
 import type { TmLaunchDocs, TmMeLocaleResult, TmMeResult, TmTenantSettingsForClient } from '../state/launch/tm-launch-docs';
 import { TmClientStore } from '../state/store/tm-client-store';
@@ -247,9 +248,21 @@ function switches(bus: TmFakeTabBus): unknown[] {
   return bus.posted().filter((message) => message.type === 'l10n.switched');
 }
 
-/** Waits past the locale write's coalescing delay, and lets its answer land. */
-async function afterTheWrite(): Promise<void> {
-  await new Promise((resolve) => setTimeout(resolve, 700));
+/** The locale writes the fake API received. */
+function localeWrites(api: TmFakeApi): TmFakeApiCall[] {
+  return api.calls().filter((call) => call.route === 'users/me/locale');
+}
+
+/**
+ * Waits until the locale write's next call goes, past its coalescing delay,
+ * and lets its answer land. The delay starts only once the change applies,
+ * after the locale write's chunk loads, so the wait is on the call itself.
+ *
+ * @param api - The fake API.
+ */
+async function afterTheWrite(api: TmFakeApi): Promise<void> {
+  const sent = localeWrites(api).length;
+  await tmSettleUntil(() => localeWrites(api).length > sent);
   await tmSettle();
 }
 
@@ -297,7 +310,7 @@ describe('TmLocalization', () => {
       expect(TestBed.inject(TM_API_LOCALE).acceptLanguage()).toBe('en-ZZ');
       // A second resolution of the same language reports nothing more.
       l10n.setLocale({ digits: 'Latin' });
-      await tmSettle();
+      await tmSettleUntil(() => l10n.digits() === 'Latin');
       expect(l10n.locale()).toBe('en-GB');
       expect(events(telemetry, 'tm.l10n.locale-fallback')).toEqual([{ language: 'en' }]);
     });
@@ -499,12 +512,9 @@ describe('TmLocalization', () => {
       expect(switches(bus)).toEqual([]);
 
       l10n.setLanguage('en');
-      // The switch lands once its loads have, and a module loaded for the
-      // first time can take more than a settle while the whole suite runs.
-      await vi.waitFor(async () => {
-        await tmSettle();
-        expect(switches(bus)).toEqual([{ type: 'l10n.switched', lang: 'en' }]);
-      });
+      // The switch lands once its loads have, the locale write's chunk among them.
+      await tmSettleUntil(() => switches(bus).length > 0);
+      expect(switches(bus)).toEqual([{ type: 'l10n.switched', lang: 'en' }]);
     });
 
     it("leaves a tenantless tab and a tenant tab with no preference as they are when another tab settles a preference, and follows a switch", async () => {
@@ -568,7 +578,7 @@ describe('TmLocalization', () => {
       expect(store.boot.read().lang).toBe('en');
 
       strings.resolve();
-      await tmSettle();
+      await tmSettleUntil(() => l10n.language() === 'ar');
       const arabicState = 'ar | rtl | ar-AE | 2 | حاول مرة أخرى | ar | rtl | ar';
       expect(sample()).toBe(arabicState);
       expect(new Set(seen)).toEqual(new Set([english, arabicState]));
@@ -597,7 +607,7 @@ describe('TmLocalization', () => {
       expect(sample()).toBe(gregorian);
 
       load.resolve();
-      await tmSettle();
+      await tmSettleUntil(() => l10n.calendarCode() === 'uq');
       const hijri = 'uq | islamic-umalqura | uq | Due Ramadan 16, 1447';
       expect(sample()).toBe(hijri);
       expect(new Set(seen)).toEqual(new Set([gregorian, hijri]));
@@ -611,7 +621,7 @@ describe('TmLocalization', () => {
       expect(retry()).toBe('Try again');
 
       l10n.setLanguage('ar');
-      await tmSettle();
+      await tmSettleUntil(() => l10n.language() === 'ar');
 
       expect(retry()).toBe('حاول مرة أخرى');
       expect(reload()).toBe('Reload');
@@ -624,7 +634,7 @@ describe('TmLocalization', () => {
       expect(due()).toBe('Due 5 March 2026');
 
       l10n.setCalendar('uq');
-      await tmSettle();
+      await tmSettleUntil(() => l10n.calendarCode() === 'uq');
 
       expect(l10n.calendar().id).toBe('islamic-umalqura');
       expect(due()).toBe('Due Ramadan 16, 1447');
@@ -643,7 +653,7 @@ describe('TmLocalization', () => {
       api.respond('users/me/locale', written({}));
 
       l10n.setLocale({ language: null, calendar: null });
-      await tmSettle();
+      await tmSettleUntil(() => l10n.language() === 'en');
 
       expect(l10n.language()).toBe('en');
       expect(l10n.calendarCode()).toBe('gc');
@@ -661,12 +671,12 @@ describe('TmLocalization', () => {
       l10n.setLanguage('ar');
       l10n.setLocale({ region: 'EG' });
       l10n.setLocale({ digits: null });
-      await tmSettle();
+      await tmSettleUntil(() => l10n.locale() === 'ar-EG');
       expect(l10n.localeSave()).toBe('saving');
       expect(l10n.locale()).toBe('ar-EG');
-      await afterTheWrite();
+      await afterTheWrite(api);
 
-      const writes = api.calls().filter((call) => call.route === 'users/me/locale');
+      const writes = localeWrites(api);
       expect(writes.map((call) => call.body)).toEqual([{ language: 'ar', region: 'EG', reset: ['Digits'] }]);
       expect(l10n.localeSave()).toBe('saved');
       // The result is adopted: the stored envelope moves, and the change stands on it.
@@ -687,7 +697,7 @@ describe('TmLocalization', () => {
         () => new Promise<TmMeLocaleResult>((resolve, reject) => void answers.push({ land: resolve, fail: reject })),
       );
       l10n.setLanguage('ar');
-      await afterTheWrite();
+      await afterTheWrite(api);
       expect(answers).toHaveLength(1);
 
       // Back to English while the Arabic write is in flight.
@@ -700,7 +710,7 @@ describe('TmLocalization', () => {
       answers[0].land(written({ preferredLanguage: 'ar' }));
       await tmSettle();
       expect(TestBed.inject(TmLaunchCache).docs.me()?.user.preferredLanguage).toBe('ar');
-      await afterTheWrite();
+      await afterTheWrite(api);
       expect(answers).toHaveLength(2);
       answers[1].fail(new TmApiError({ kind: 'validation' }));
       await tmSettle();
@@ -723,7 +733,7 @@ describe('TmLocalization', () => {
       });
 
       l10n.setLocale({ region: 'US' });
-      await afterTheWrite();
+      await afterTheWrite(api);
       expect(l10n.localeSave()).toBe('saving');
       expect(l10n.locale()).toBe('en-US');
 
@@ -733,7 +743,7 @@ describe('TmLocalization', () => {
       api.setOnline(true);
       await tmSettle();
 
-      const writes = api.calls().filter((call) => call.route === 'users/me/locale');
+      const writes = localeWrites(api);
       expect(writes.map((call) => call.body)).toEqual([{ region: 'US' }, { region: 'US' }]);
       expect(l10n.localeSave()).toBe('saved');
     });
@@ -745,7 +755,7 @@ describe('TmLocalization', () => {
       });
 
       l10n.setLocale({ timeZone: 'Africa/Cairo' });
-      await afterTheWrite();
+      await afterTheWrite(api);
 
       expect(l10n.localeSave()).toBe('failed');
       expect(l10n.timeZone()).toBe('Africa/Cairo');
@@ -755,10 +765,10 @@ describe('TmLocalization', () => {
       const { l10n, api } = await rig();
 
       l10n.setLocale({ region: 'US' });
-      await tmSettle();
+      await tmSettleUntil(() => l10n.localeSave() === 'saving');
       window.dispatchEvent(new Event('pagehide'));
 
-      expect(api.calls().filter((call) => call.route === 'users/me/locale')).toEqual([
+      expect(localeWrites(api)).toEqual([
         expect.objectContaining({ kind: 'send', body: { region: 'US' } }),
       ]);
       // Nothing is left saving for a return from the back-forward cache.
@@ -786,8 +796,7 @@ describe('TmLocalization', () => {
 
       // A language whose table lacks the scope falls back to the registered English.
       l10n.setLanguage('ar');
-      await tmSettle();
-      expect(l10n.language()).toBe('ar');
+      await tmSettleUntil(() => l10n.language() === 'ar');
       expect(greeting()).toBe('Hello Farah');
       expect(l10n.ɵtext('tm.errors.retry')()).not.toBe('Try again');
     });
@@ -827,7 +836,7 @@ describe('TmServerText', () => {
     expect(rendered()).toEqual({ title: "You don't have permission for that", detail: 'You need Read.' });
 
     l10n.setLanguage('ar');
-    await tmSettle();
+    await tmSettleUntil(() => l10n.language() === 'ar');
 
     expect(rendered()).toEqual({ title: 'ليست لديك صلاحية لذلك', detail: 'You need Read.' });
   });
@@ -848,7 +857,7 @@ describe('TmServerText', () => {
     expect(named()).toBe('Named Cash');
 
     l10n.setLanguage('ar');
-    await tmSettle();
+    await tmSettleUntil(() => l10n.language() === 'ar');
 
     expect(named()).toBe('Named النقد');
     expect(text.has('Problem_forbidden')).toBe(true);

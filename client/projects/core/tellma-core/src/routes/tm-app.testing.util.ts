@@ -306,6 +306,23 @@ export async function tmSettle(): Promise<void> {
   }
 }
 
+/**
+ * Runs the pending tasks and renders until a condition holds. A load through
+ * a lazily loaded chunk lands only once the chunk's first fetch does, which
+ * no number of turns bounds, so a spec waits on the state the load produces.
+ * The test's own timeout bounds the wait.
+ *
+ * @param condition - What the load produces.
+ */
+export async function tmSettleUntil(condition: () => boolean): Promise<void> {
+  await tmSettle();
+  // A task at a time, rendering after each, until the state is there.
+  while (!condition()) {
+    await new Promise((resolve) => setTimeout(resolve));
+    TestBed.tick();
+  }
+}
+
 /** The browser's own timer, taken before a spec fakes the timers. */
 const realSetTimeout = globalThis.setTimeout;
 
