@@ -68,7 +68,11 @@ sources with the client's Prettier settings.
    origin, which also moves the in-process identity authority. Email goes to the **development mail
    drop** (`Email:Provider` = `development-drop`), which writes one JSON file per message. The
    API's request rates per address and per user are raised: every worker reaches the host from one
-   loopback address, and parallel tests share the principals.
+   loopback address, and parallel tests share the principals. It serves HTTPS on the ASP.NET
+   development certificate, which the host creates. The web host's sign-in fetches the identity
+   engine's discovery document from its own origin, so .NET must trust that certificate: on Linux
+   the host runs `dotnet dev-certs https --trust`, which needs no prompt there; on Windows,
+   where trusting asks, trust it once yourself with the same command.
 
 `TELLMA_E2E_CONFIGURATION` sets the .NET build configuration (Debug by default). The port is
 `ACME_WEB_E2E` from `.dev-ports.local`, else one the OS assigns, so the suite never collides with

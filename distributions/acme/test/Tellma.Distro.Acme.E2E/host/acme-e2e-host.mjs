@@ -118,8 +118,19 @@ try {
 
   // --- The web host, serving the built app with the mail drop as its email transport ---
   // Kestrel serves HTTPS in Development with the ASP.NET development certificate, which a fresh
-  // machine (a CI runner) lacks; creating it needs no trust, since the browsers ignore its issuer.
-  spawnSync('dotnet', ['dev-certs', 'https'], { stdio: 'ignore' });
+  // machine (a CI runner) lacks. The browsers ignore its issuer, but the web host does not: its
+  // sign-in fetches the identity engine's discovery document from its own https://localhost
+  // origin, which fails with an untrusted root unless .NET trusts the certificate. On Linux,
+  // --trust adds it to the user's .NET root store with no prompt; it exits 4 when only the
+  // OpenSSL and browser stores, which the host never uses, are left untrusted. On Windows,
+  // trusting asks the user, so the host only creates it there, as a developer has trusted it.
+  const linux = process.platform === 'linux';
+  const trust = linux ? ['--trust'] : [];
+  const certificate = spawnSync('dotnet', ['dev-certs', 'https', ...trust], { encoding: 'utf8' });
+  if (linux && certificate.status !== 0 && certificate.status !== 4) {
+    log(`the development certificate could not be trusted (code ${certificate.status}):`);
+    log(`${certificate.stdout ?? ''}${certificate.stderr ?? ''}`.trim());
+  }
   rmSync(mailDrop, { recursive: true, force: true });
   mkdirSync(mailDrop, { recursive: true });
   log(`starting the web host on ${origin} (its log: ${join(artifacts, 'host.log')})`);
