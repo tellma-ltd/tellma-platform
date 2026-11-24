@@ -5,7 +5,7 @@
 
 import { TM_BOOT_SCRIPT_FILE } from '../build/index-html-rules.js';
 import { tmAttribute, tmElements, tmParseDocument } from '../common/html.js';
-import { tmEntryPointModule, type TmBuildGraph } from './stats.js';
+import { tmEntryPointRoot, type TmBuildGraph } from './stats.js';
 
 // The preloads (spec 0024 §2.6, step 3), which let the browser fetch during
 // the boot script and the first parse what the first render needs: the fonts
@@ -104,8 +104,10 @@ export interface TmShellModulePreloads {
 }
 
 /**
- * Finds the `/shell` and `/attention` chunks to modulepreload. Only static
- * imports are followed: a chunk they import dynamically loads when used.
+ * Finds the `/shell` and `/attention` chunks to modulepreload: the chunks
+ * holding each entry point's starting module, and their static imports. A
+ * chunk they import dynamically, their own lazy chunks included, loads when
+ * used.
  *
  * @param graph - The build's chunk graph.
  * @param initial - The files the built `index.html` loads.
@@ -113,8 +115,8 @@ export interface TmShellModulePreloads {
  */
 export function tmShellModulePreloads(graph: TmBuildGraph, initial: TmInitialFiles): TmShellModulePreloads {
   const loaded = graph.staticClosure([...initial.scripts, ...initial.modulePreloads]);
-  const shell = tmEntryPointModule('tellma-core', 'shell');
-  const attention = tmEntryPointModule('tellma-core', 'attention');
+  const shell = tmEntryPointRoot('tellma-core', 'shell');
+  const attention = tmEntryPointRoot('tellma-core', 'attention');
   const roots = graph.outputsHolding((input) => shell(input) || attention(input));
   const modules = [...graph.staticClosure(roots)].filter((file) => !loaded.has(file)).sort();
   return { modules, initialJs: new Set([...loaded, ...modules]) };

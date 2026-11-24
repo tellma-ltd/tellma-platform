@@ -1105,7 +1105,7 @@ export class TmLaunchCache {
         readonly [K in keyof TmLaunchDocs]-?: Signal<TmLaunchDocs[K] | undefined>;
     };
     entitySet<T = TmJson>(name: string): Signal<TmCachedEntitySet<T> | undefined>;
-    revalidateUser(): Promise<void>;
+    revalidateUser(): Promise<TmApiError | null>;
     readonly tenants: Signal<readonly TmMembership[] | undefined>;
     readonly warm: Signal<boolean>;
     static ɵfac: i0.ɵɵFactoryDeclaration<TmLaunchCache, never>;

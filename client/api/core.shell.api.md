@@ -4,34 +4,88 @@
 
 ```ts
 
-import * as i0 from '@angular/core';
+import { ActivatedRouteSnapshot } from '@angular/router';
+import * as _angular_core from '@angular/core';
+import { ApplicationConfig } from '@angular/core';
+import { ApplicationRef } from '@angular/core';
+import { CanActivateFn } from '@angular/router';
+import { DestroyRef } from '@angular/core';
+import { EnvironmentProviders } from '@angular/core';
+import { InjectionToken } from '@angular/core';
+import { InputSignal } from '@angular/core';
+import * as lucide from 'lucide';
+import { Observable } from 'rxjs';
+import { Provider } from '@angular/core';
+import { RouterStateSnapshot } from '@angular/router';
+import { SchemaPathTree } from '@angular/forms/signals';
 import { Signal } from '@angular/core';
+import { TemplateRef } from '@angular/core';
+import { TitleStrategy } from '@angular/router';
 import { Type } from '@angular/core';
 
 // @public
 export class TmSignedOutPage {
+    constructor();
+    protected readonly continueLabel: _angular_core.Signal<string>;
+    protected readonly message: _angular_core.Signal<string>;
+    protected readonly signedInAs: _angular_core.Signal<string | null>;
     protected signIn(): void;
-    protected readonly signInLabel: i0.Signal<string>;
-    protected readonly title: i0.Signal<string>;
-    static ɵcmp: i0.ɵɵComponentDeclaration<TmSignedOutPage, "tm-signed-out-page", never, {}, {}, never, never, true, never>;
-    static ɵfac: i0.ɵɵFactoryDeclaration<TmSignedOutPage, never>;
+    protected readonly signInLabel: _angular_core.Signal<string>;
+    protected readonly title: _angular_core.Signal<string>;
+    static ɵcmp: _angular_core.ɵɵComponentDeclaration<TmSignedOutPage, "tm-signed-out-page", never, {}, {}, never, never, true, never>;
+    static ɵfac: _angular_core.ɵɵFactoryDeclaration<TmSignedOutPage, never>;
+}
+
+// @public
+export class TmTenantlessShell {
+    constructor();
+    protected readonly accountItems: _angular_core.Signal<readonly TmMenuEntry[]>;
+    protected readonly accountLabel: _angular_core.Signal<string>;
+    protected readonly displayName: _angular_core.Signal<string>;
+    protected readonly globe: lucide.IconNode;
+    protected readonly language: _angular_core.Signal<string>;
+    protected readonly languageItems: _angular_core.Signal<readonly TmMenuEntry[]>;
+    protected readonly languageLabel: _angular_core.Signal<string>;
+    protected readonly languageName: _angular_core.Signal<string>;
+    protected readonly profile: _angular_core.Signal<_tellma_core.TmProfile | null>;
+    readonly signedOut: _angular_core.InputSignalWithTransform<boolean, unknown>;
+    static ɵcmp: _angular_core.ɵɵComponentDeclaration<TmTenantlessShell, "tm-tenantless-shell", never, { "signedOut": { "alias": "signedOut"; "required": false; "isSignal": true; }; }, {}, never, ["*"], true, never>;
+    static ɵfac: _angular_core.ɵɵFactoryDeclaration<TmTenantlessShell, never>;
 }
 
 // @public
 export class TmTenantPicker {
     constructor();
-    protected readonly tenants: Signal<readonly TmMembership[] | undefined>;
-    protected readonly title: Signal<string>;
-    protected readonly urls: TmUrls;
-    static ɵcmp: i0.ɵɵComponentDeclaration<TmTenantPicker, "tm-tenant-picker", never, {}, {}, never, never, true, never>;
-    static ɵfac: i0.ɵɵFactoryDeclaration<TmTenantPicker, never>;
+    protected readonly connectLabel: _angular_core.Signal<string>;
+    protected readonly count: _angular_core.Signal<number>;
+    protected readonly dismissLabel: _angular_core.Signal<string>;
+    protected dismissNotice(): void;
+    protected readonly emptyMessage: _angular_core.Signal<string>;
+    protected readonly emptyTitle: _angular_core.Signal<string>;
+    protected readonly failure: _angular_core.Signal<TmApiError | null>;
+    protected follow(): void;
+    protected keepQuery(text: string): void;
+    protected readonly loadingLabel: _angular_core.Signal<string>;
+    protected readonly noMatch: _angular_core.Signal<string>;
+    protected readonly notice: _angular_core.Signal<string | null>;
+    protected preload(href: string): void;
+    protected readonly query: _angular_core.WritableSignal<string>;
+    protected readonly searchable: _angular_core.Signal<boolean>;
+    protected readonly searchLabel: _angular_core.Signal<string>;
+    protected signOut(): void;
+    protected readonly signOutLabel: _angular_core.Signal<string>;
+    protected readonly skeletonRows: readonly [0, 1, 2, 3];
+    protected readonly title: _angular_core.Signal<string>;
+    protected readonly view: _angular_core.Signal<readonly TmRowView[] | undefined>;
+    static ɵcmp: _angular_core.ɵɵComponentDeclaration<TmTenantPicker, "tm-tenant-picker", never, {}, {}, never, never, true, never>;
+    static ɵfac: _angular_core.ɵɵFactoryDeclaration<TmTenantPicker, never>;
 }
 
 // @public
 export class TmTenantShell {
     constructor();
-    static ɵcmp: i0.ɵɵComponentDeclaration<TmTenantShell, "tm-tenant-shell", never, {}, {}, never, never, true, never>;
-    static ɵfac: i0.ɵɵFactoryDeclaration<TmTenantShell, never>;
+    static ɵcmp: _angular_core.ɵɵComponentDeclaration<TmTenantShell, "tm-tenant-shell", never, {}, {}, never, never, true, never>;
+    static ɵfac: _angular_core.ɵɵFactoryDeclaration<TmTenantShell, never>;
 }
 
 ```

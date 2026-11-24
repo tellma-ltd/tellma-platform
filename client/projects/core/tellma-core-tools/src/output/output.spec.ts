@@ -15,7 +15,7 @@ import { tmBootConfig, tmBuildBootScript } from './boot.js';
 import { tmAddPreloads, tmReadInitialFiles, tmShellModulePreloads } from './preloads.js';
 import { tmRefreshRootFiles, tmWriteRootFiles } from './root-files.js';
 import { tmMoveSourceMaps } from './source-maps.js';
-import { TmBuildGraph, tmCorePrimaryModules, tmEchartsModule, tmEntryPointModule } from './stats.js';
+import { TmBuildGraph, tmCorePrimaryModules, tmEchartsModule, tmEntryPointModule, tmEntryPointRoot } from './stats.js';
 import { tmNavigationUrls, tmOnDemandChunks, tmWorkerConfig, tmWorkerGroups } from './worker-config.js';
 
 let dir: string | undefined;
@@ -86,6 +86,11 @@ describe('the chunk graph', () => {
     expect(shell('../../../tellma-core/shell/src/tm-shell.ts')).toBe(true);
     expect(shell('../../../tellma-core/src/shell.ts')).toBe(false);
     expect(shell('../../node_modules/@tellma/core/fesm2022/tellma-core-shell-extra.mjs')).toBe(false);
+    const root = tmEntryPointRoot('tellma-core', 'shell');
+    expect(root('../../node_modules/@tellma/core/fesm2022/tellma-core-shell.mjs')).toBe(true);
+    expect(root('../../../tellma-core/shell/public-api.ts')).toBe(true);
+    expect(root('../../../tellma-core/shell/src/tm-shell.ts')).toBe(false);
+    expect(root('../../node_modules/@tellma/core/fesm2022/tellma-core-shell-tm-lazy-AB12CD34.mjs')).toBe(false);
     expect(tmEchartsModule('../node_modules/.pnpm/zrender@6.0.0/node_modules/zrender/lib/zrender.js')).toBe(true);
     expect(tmEchartsModule('src/echarts-like.ts')).toBe(false);
   });
@@ -282,7 +287,7 @@ describe('the preloads', () => {
     );
   });
 
-  it('modulepreload the /shell and /attention chunks with their static imports, beyond what index.html loads', () => {
+  it('modulepreload the /shell and /attention chunks with their static imports, beyond what index.html loads, and none of their lazy chunks', () => {
     const graph = new TmBuildGraph([
       { path: 'main.js', inputs: ['src/main.ts'], imports: [{ path: 'common.js', kind: 'static' }, { path: 'shell.js', kind: 'dynamic' }, { path: 'attention.js', kind: 'dynamic' }] },
       { path: 'common.js', inputs: ['node_modules/@angular/core/fesm2022/core.mjs'], imports: [] },
@@ -294,7 +299,13 @@ describe('the preloads', () => {
       },
       { path: 'nav.js', inputs: ['n.ts'], imports: [{ path: 'preloaded.js', kind: 'static' }] },
       { path: 'menu.js', inputs: ['m.ts'], imports: [] },
-      { path: 'attention.js', inputs: ['../tellma-core/attention/src/x.ts'], imports: [] },
+      {
+        path: 'attention.js',
+        inputs: ['../tellma-core/attention/public-api.ts', '../tellma-core/attention/src/x.ts'],
+        imports: [{ path: 'attention-lazy.js', kind: 'dynamic' }],
+      },
+      // A lazy chunk of a workspace entry point holds its sources, but not its public API.
+      { path: 'attention-lazy.js', inputs: ['../tellma-core/attention/src/lazy.ts'], imports: [] },
     ]);
     const { modules, initialJs } = tmShellModulePreloads(graph, { scripts: ['main.js'], modulePreloads: ['preloaded.js'], stylesheets: [] });
     // Already loaded files are not preloaded again, and a dynamic import of the shell's stays lazy.

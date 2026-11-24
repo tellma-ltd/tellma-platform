@@ -216,6 +216,24 @@ export function tmEntryPointModule(folder: string, entryPoint: string): (input: 
   return (input) => bundle.test(input) || source.test(input);
 }
 
+/**
+ * A test of a module path for the module an entry point of a Tellma package
+ * starts at: its built bundle (`fesm2022/tellma-core-shell.mjs`) or, in a
+ * workspace, its public API (`tellma-core/shell/public-api.ts`). Unlike
+ * {@link tmEntryPointModule}, it leaves out the entry point's own lazy
+ * chunks: a workspace build splits the sources an entry point loads with
+ * `import()` into chunks that hold none of its starting module.
+ *
+ * @param folder - The package's folder name, such as `tellma-core`.
+ * @param entryPoint - The secondary entry point, such as `shell`.
+ * @returns The test.
+ */
+export function tmEntryPointRoot(folder: string, entryPoint: string): (input: string) => boolean {
+  const bundle = new RegExp(`(?:^|/)${escape(folder)}-${escape(entryPoint)}\\.mjs$`);
+  const source = new RegExp(`(?:^|/)${escape(folder)}/${escape(entryPoint)}/public-api\\.ts$`);
+  return (input) => bundle.test(input) || source.test(input);
+}
+
 /** A test of a module path for the ECharts engine: ECharts itself and its renderer, ZRender. */
 export function tmEchartsModule(input: string): boolean {
   return /(?:^|\/)node_modules\/(?:echarts|zrender)\//.test(input);

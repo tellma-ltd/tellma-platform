@@ -74,7 +74,8 @@ first script) and `src/app.config.ts`, which exports `appConfig`.
    `name_localized` and `short_name_localized` to the output manifest;
 3. adds the preloads to the built `index.html`: the fonts of Latin and each offered language's
    script, the Core chunk and the default language's string pack (`as="fetch"`), and the `/shell`
-   and `/attention` chunks with their static imports (`modulepreload`);
+   and `/attention` chunks with their static imports (`modulepreload`), but none of the chunks
+   those entry points load with `import()`;
 4. copies `ngsw-worker.js` and `safety-worker.js` from `@angular/service-worker`, writes
    `dist/<slug>/ngsw-config.json` (a `shell` group cached at install, an `on-demand` group of the
    chunks only the ECharts engine, the report studio or the support tools reach, with the manifest

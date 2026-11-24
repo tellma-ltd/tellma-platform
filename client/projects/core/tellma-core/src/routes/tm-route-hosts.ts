@@ -13,23 +13,25 @@ import type { TmLazyComponent } from '../declarations/tm-declaration-types';
 
 /**
  * The components the primary entry point loads from `@tellma/core/shell`,
- * by name. Internal: the shell's `ɵTM_SHELL` satisfies it, so a component
- * either side renames or drops fails the build.
+ * by name, each through its loader. Internal: the shell's `ɵTM_SHELL`
+ * satisfies it, so a component either side renames or drops fails the
+ * build. A loader lets the shell keep a component in a chunk of its own,
+ * such as the tenantless pages, which no tenant route's first frame needs.
  */
 export interface TmShellComponents {
   /** The tenant shell, the tenant route's component. */
-  readonly TmTenantShell: Type<unknown>;
+  readonly TmTenantShell: () => Promise<Type<unknown>>;
   /** The tenant picker at `/tenants`. */
-  readonly TmTenantPicker: Type<unknown>;
+  readonly TmTenantPicker: () => Promise<Type<unknown>>;
   /** The page at `/signed-out`. */
-  readonly TmSignedOutPage: Type<unknown>;
+  readonly TmSignedOutPage: () => Promise<Type<unknown>>;
   /** The page of every family without an entry point of its own. */
-  readonly TmPagePlaceholder: Type<unknown>;
+  readonly TmPagePlaceholder: () => Promise<Type<unknown>>;
 }
 
 /** The shell entry point's module, as far as the primary reads it. */
 interface TmShellModule {
-  /** The shell's components, by name. */
+  /** The shell's components' loaders, by name. */
   readonly ɵTM_SHELL: TmShellComponents;
 }
 
@@ -47,7 +49,7 @@ interface TmShellModule {
  * @returns The lazy component.
  */
 export function tmShellComponent(name: keyof TmShellComponents): TmLazyComponent {
-  return () => (import('@tellma/core/shell' as string) as Promise<TmShellModule>).then((shell) => shell.ɵTM_SHELL[name]);
+  return () => (import('@tellma/core/shell' as string) as Promise<TmShellModule>).then((shell) => shell.ɵTM_SHELL[name]());
 }
 
 /** The page every family without an entry point of its own renders for now. */
