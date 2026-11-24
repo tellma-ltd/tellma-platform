@@ -74,6 +74,8 @@ export const TM_STRINGS_AR: TmStringTree = {
     tenantReadOnly: '{tenant} للقراءة فقط.',
     tenantFrozen: '{tenant} قيد الصيانة.',
     permissionNeeded: `يتطلب ذلك صلاحية «{permission}». ${imperative('اطلب', 'اطلبي')} من المسؤول منحها لك.`,
+    confirmAction: `هل ${imperative('تريد', 'تريدين')} تنفيذ «{action}» على {n, plural, one {هذا العنصر} two {العنصرين} few {# عناصر} many {# عنصرًا} other {# عنصر}}؟`,
+    confirmActionMessage: 'لا يمكن التراجع عن ذلك.',
   },
   attention: {
     banners: { offline: 'انقطع الاتصال. جارٍ إعادة الاتصال…' },
@@ -92,5 +94,15 @@ export const TM_STRINGS_AR: TmStringTree = {
     newLabel: '{label}…',
     unavailable: 'هذه الصفحة غير متاحة بعد.',
     loadFailed: 'تعذّر تحميل هذه الصفحة.',
+  },
+  confirmations: {
+    title: 'التأكيد للمتابعة',
+    continue: 'متابعة',
+    skip: '{n, plural, one {المتابعة دون هذا العنصر} two {المتابعة دون هذين العنصرين} few {المتابعة دون هذه العناصر الـ#} many {المتابعة دون هذه العناصر الـ#} other {المتابعة دون هذه العناصر الـ#}}',
+    more: '{n, plural, one {وعنصر آخر} two {وعنصران آخران} few {و# عناصر أخرى} many {و# عنصرًا آخر} other {و# عنصر آخر}}',
+  },
+  actionDialog: {
+    failed: 'تعذّر إتمام الإجراء.',
+    item: '{label}: {message}',
   },
 };

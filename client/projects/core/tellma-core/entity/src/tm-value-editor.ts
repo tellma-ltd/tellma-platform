@@ -106,6 +106,51 @@ function valueOf(property: TmEditedProperty): TmValueDescriptor {
 }
 
 /**
+ * The control a writable value takes by its type facts: a reference takes
+ * the entity field, and each type its control.
+ *
+ * @param of - The value's type facts.
+ * @returns The control; `readonly` for a type with none.
+ */
+function kindOf(of: TmValueDescriptor): TmEditorKind {
+  if (of.target !== undefined) {
+    return of.array ? 'entities' : 'entity';
+  }
+  switch (of.type) {
+    case 'string':
+      return of.maxLength !== undefined && of.maxLength <= SINGLE_LINE_MAX ? 'text' : 'textarea';
+    case 'guid':
+    case 'time':
+      return 'plain';
+    case 'integer':
+      return of.long ? 'exact' : 'integer';
+    case 'decimal':
+      return 'exact';
+    case 'bool':
+      return 'bool';
+    case 'date':
+      return 'date';
+    case 'enum':
+      return of.array ? 'enums' : 'enum';
+    default:
+      // Instants and date-times are read-only here; floats, JSON and binary have no control.
+      return 'readonly';
+  }
+}
+
+/**
+ * Whether `tm-value-editor` edits a value of these type facts, rather than
+ * showing it as read-only text. Internal: an action's generated dialog
+ * needs a control for each argument.
+ *
+ * @param of - The value's type facts.
+ * @returns Whether the value takes a control.
+ */
+export function ɵtmEditable(of: TmValueDescriptor): boolean {
+  return kindOf(of) !== 'readonly';
+}
+
+/**
  * Edits a typed value: the control its type takes, bound to a Signal Forms
  * field, inside the caller's `tm-form-field`. Text takes an input, or a
  * textarea when it may be longer than 255 characters; numbers take a
@@ -397,29 +442,7 @@ export class TmValueEditor {
     if (!this.#owned() || keyOf !== undefined) {
       return 'readonly';
     }
-    if (of.target !== undefined) {
-      return of.array ? 'entities' : 'entity';
-    }
-    switch (of.type) {
-      case 'string':
-        return of.maxLength !== undefined && of.maxLength <= SINGLE_LINE_MAX ? 'text' : 'textarea';
-      case 'guid':
-      case 'time':
-        return 'plain';
-      case 'integer':
-        return of.long ? 'exact' : 'integer';
-      case 'decimal':
-        return 'exact';
-      case 'bool':
-        return 'bool';
-      case 'date':
-        return 'date';
-      case 'enum':
-        return of.array ? 'enums' : 'enum';
-      default:
-        // Instants and date-times are read-only here; floats, JSON and binary have no control.
-        return 'readonly';
-    }
+    return kindOf(of);
   });
 
   /** A read-only value's text. */

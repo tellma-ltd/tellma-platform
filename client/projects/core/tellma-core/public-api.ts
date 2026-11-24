@@ -131,6 +131,9 @@ export { TmDisplayName } from './src/entity/tm-display-name';
 export { TmPermissions, type TmPermissionOperation } from './src/entity/tm-permissions';
 export { tmRowsToObjects, type TmQueryRowSet, type TmQueryRowSetColumn } from './src/entity/tm-rows-to-objects';
 
+// What a details page keeps between visits: its drafts and its snapshots (types only).
+export type { TmDetailsDraft, TmDetailsSnapshot } from './src/details/tm-details-types';
+
 // Features and the declaration functions.
 export type { TmDeclarationKey, TmLazyComponent, TmSecurableRef } from './src/declarations/tm-declaration-types';
 export { tmFeature, type TmFeature, type TmFeatureDefinition } from './src/declarations/tm-feature';

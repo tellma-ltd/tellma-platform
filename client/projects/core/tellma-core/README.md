@@ -13,7 +13,7 @@ own.
 | `@tellma/core/memory` | The tab's memory of its pages: page state (`TmPageState`, `tmPageStateKey`), drafts (`TmDrafts`) and tree expansion (`TmTreeExpansion`), which the page hosts load with them | lazy |
 | `@tellma/core/page-snapshot` | `tmSerializePageContext` and `TmPageContextSnapshot`: a page context read once into plain JSON, for the support dump and a future assistant | lazy, through `import()` by its callers |
 | `@tellma/core/recents` | The recently visited pages (`TmRecents`), which the launcher and the home page list; the app loads it with `import()` after its first render, when visits start to count | lazy, through `import()` after first render |
-| `@tellma/core/entity` | What the search and details pages share over the entity model: select plans (`tmSelectPlan`), which turn column keys into one query's terms and type its rows; value formats (`TmFormats`); the typed value in view mode (`tm-value`) and in edit mode (`tm-value-editor`), with a form's uploads (`TmUploads`); a plan column's grid column (`tmGridColumnFor`); the entity picker binding (`TmEntityPickers`), the entity fields over it (`tm-entity-field`, `tm-entity-multi-field`) and the page their pickers open (`TmLazyPickerPage`); and the client check of a picked file against its blob kind (`tmCheckBlobFile`) | lazy, with the page families |
+| `@tellma/core/entity` | What the search and details pages share over the entity model: select plans (`tmSelectPlan`), which turn column keys into one query's terms and type its rows; value formats (`TmFormats`); the typed value in view mode (`tm-value`) and in edit mode (`tm-value-editor`), with a form's uploads (`TmUploads`); a plan column's grid column (`tmGridColumnFor`); the entity picker binding (`TmEntityPickers`), the entity fields over it (`tm-entity-field`, `tm-entity-multi-field`) and the page their pickers open (`TmLazyPickerPage`); the client check of a picked file against its blob kind (`tmCheckBlobFile`); the entity actions (`TmEntityActions`) with their dialogs (`injectTmActionDialog`) and the confirmation loop (`TmConfirmations`), whose dialogs load on first use; and the server error paths a form's errors land by (`tmSplitErrorPath`, `tmWalkErrorPath`) | lazy, with the page families |
 | `@tellma/core/leader` | The leader election of the routed tenant over a Web Lock, and the leader tab's work: its realtime connection, the relay of hub events, the leader documents' reads and the polls of degraded mode; the app loads it with `import()` after its first render, and `TmLeader` reports what it decides | lazy, through `import()` after first render |
 | `@tellma/core/config-check` | `tmCheckAppConfig`, the check of an app's configuration against the client metadata, which the build runs in Node and a development app at startup, and `tmCheckEntityDeclaration`, the check of one entity declaration against the Entities chunk | lazy |
 | `@tellma/core/search-normalize` | `tmSearchNormalize`, the one text folding the launcher, the shortcuts filter, the field tree and the reports list match with | with the code that imports it |
@@ -769,6 +769,57 @@ its rows' names. `@tellma/core-testing` has `TmEntityFieldHarness` and
 </tm-form-field>
 ```
 
+### Entity actions
+
+`TmEntityActions` runs an entity's actions from their metadata, so the details page and the
+search page's bulk actions build the same requests. `run(entity, action, ids, options)` posts to
+`{segment}/{action}` through `TmApi.write`: an action that returns entities takes `{ ids,
+returnEntities, include, arguments }` (`include`, the entity's extras by default, only while
+`returnEntities`, which is true by default), a single-target one `{ id, arguments }`, any other
+`{ ids, arguments }`. It resolves to the outcome: the entities, the action's own result, a
+background job (an own result that is exactly `{ jobId, resourceId }`, the server's 202
+`JobAccepted`), or `declined`. The run's code, like the dialogs', loads on first use: a page's
+first frame only lists the actions. The busy overlay and a destructive action's confirmation are the
+caller's, which knows whether its trigger is still on screen; `confirmation(entity, action, n)`
+gives the confirmation to ask, the declaration's or "Run “{action}” on {n} items?" with "This
+can't be undone.".
+
+```ts
+const outcome = await inject(TmEntityActions).dialog('acme.Customer', 'set-credit-limit', [77]);
+// posts customers/set-credit-limit { ids: [77], returnEntities: true, include: ['permissions'], arguments: { creditLimit: '250000' } }
+```
+
+- **Dialogs.** `dialog(...)` opens the dialog an action with arguments takes, loaded on first use:
+  the declaration's `dialog`, else one generated from the metadata's `fields`, each in a
+  `tm-form-field` with its `tm-value-editor` (a picker for a field with a `target`), required per
+  the field, and Cancel beside the action's button (`danger` when destructive). An action with no
+  arguments and no declared dialog runs at once. A declared dialog injects its context with
+  `injectTmActionDialog()`: the rows, the invoker's `initial` arguments, `running`, `close`, and
+  `run(args, { form, keepOpen, ids, rethrow })`, which runs under the busy overlay and closes with
+  the outcome unless `keepOpen`. The server's errors at `arguments.*` land on `form`'s fields by
+  the error-path walk and clear as each field is edited; every other error lists in an alert atop
+  the dialog, a row's (`ids[i]`) under its display name, except the kinds `rethrow` names, which
+  reject for the dialog to read. A declined warning keeps the dialog open.
+- **Which actions appear.** `offered(entity, { record, bulk })` lists the entity's own actions,
+  not built in, that take no arguments, declare a dialog, or list fields that each take a control,
+  that the declaration's `visible` admits for the record; a selection (`bulk`) leaves out
+  single-target actions and those declared `bulk: false`, and reads no `visible`. Whether the user
+  may run each stays the caller's to show, disabled with `TmPermissions.disabledReason`. In
+  development the actions no page can offer are named once per entity, unless the declaration
+  lists them (`{ name: 'preferences/set', visible: () => false }` leaves one out on purpose).
+- **Warnings.** `TmConfirmations.run(send, { entity, ids, confirmations })` sends a write and,
+  on a 409 `confirmation-required`, loads its alert dialog: "Confirm to continue", each warning's
+  message through `TmServerText` with up to five of its rows by display name, Cancel (focused),
+  and Continue, which resends with the confirmed keys as `Tellma-Confirm`. When the warnings name
+  fewer rows than `ids` holds, "Continue without these {n}" resends the others through the
+  attempt's `skip`. Cancel resolves `null`; a fifth warning in one run, or more than 16 keys,
+  fails as a `server` error. Every action runs through it.
+- **Error paths.** `tmSplitErrorPath('entities[0].lines[1].amount')` splits a server path into
+  `['entities', 0, 'lines', 1, 'amount']`; `tmWalkErrorPath(form, segments, { entity, entities })`
+  follows the segments through a Signal Forms tree by the wire's names, each child collection
+  giving the next entity, and returns the field, the PascalCase path and the entity, or the
+  deepest field reached when a segment does not resolve.
+
 ### Strings of a lazy entry point
 
 Strings that only a lazily loaded entry point reads ship with it, never in the primary's English
@@ -784,7 +835,10 @@ The strings merge into the English translation, so they format through the same 
 and a language's table that holds the same keys (a locale pack's `tm.value`) wins, English being
 the fallback. A scope registers once and belongs to one entry point. `@tellma/core/entity`
 registers `tm.value` when `TmFormats` is first created, and `tm.picker` when `TmEntityPickers` is;
-the filters' and the expression editor's strings follow the same seam. The seam itself costs the primary one method
+`TmEntityActions` merges its default confirmation's two keys into `tm.entity` (a scope no other
+entry point registers), and the confirmation and action dialogs register `tm.confirmations` and
+`tm.actionDialog` from their own chunks; the filters' and the expression editor's strings follow
+the same seam. The seam itself costs the primary one method
 and a set of the scopes registered.
 
 ## Decimals

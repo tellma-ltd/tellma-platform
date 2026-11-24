@@ -4,8 +4,10 @@
  * app never loads at start: select plans that expand column keys into query
  * terms and read their rows back, the typed-value formats, the view and edit
  * components a value descriptor chooses, a form's uploads, the grid columns
- * of a plan, the client check of a blob kind's policy, and the entity picker
- * binding with the entity fields built on it.
+ * of a plan, the client check of a blob kind's policy, the entity picker
+ * binding with the entity fields built on it, and the entity actions with
+ * their dialogs, the confirmation loop and the server error paths a form's
+ * errors land by.
  *
  * @packageDocumentation
  */
@@ -43,3 +45,25 @@ export { TmLazyPickerPage, type TmEntityPickerContext, ÉµTM_PICKER_PAGES, type É
 
 // Blob-kind policies.
 export { tmCheckBlobFile, type TmBlobFileCheck } from './src/tm-blob-check';
+
+// Entity actions: the runner, its dialogs and the confirmation loop.
+export {
+  injectTmActionDialog,
+  TmEntityActions,
+  type TmActionDialogContext,
+  type TmActionDialogRunOptions,
+  type TmEntitiesResult,
+  type TmEntityActionOptions,
+  type TmEntityActionOutcome,
+  type TmOfferedActionsOptions,
+} from './src/tm-entity-actions';
+export { TmConfirmations, type TmConfirmationAttempt, type TmConfirmationContext } from './src/tm-confirmations';
+
+// Server error paths onto a form's fields.
+export {
+  tmSplitErrorPath,
+  tmWalkErrorPath,
+  type TmErrorPathSegment,
+  type TmErrorPathTarget,
+  type TmErrorPathWalkOptions,
+} from './src/tm-error-paths';

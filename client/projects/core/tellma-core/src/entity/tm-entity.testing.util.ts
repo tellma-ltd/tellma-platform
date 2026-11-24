@@ -30,7 +30,7 @@ import type { TmAccessSummary, TmLaunchDocs, TmMeResult, TmTenantFacts, TmTenant
 import { TmClientStore } from '../state/store/tm-client-store';
 import { TmDisplayNames } from './tm-display-names';
 import { TmEntities } from './tm-entities';
-import { tmEntity, type TmPickerDeclaration } from './tm-entity-declaration';
+import { tmEntity, type TmEntityActionDeclaration, type TmPickerDeclaration } from './tm-entity-declaration';
 import { TmPermissions } from './tm-permissions';
 
 // The entity registry's test app: the server's recorded entity model (the
@@ -130,6 +130,8 @@ export interface TmEntityRigOptions {
   readonly providers?: readonly Provider[];
   /** The picker options each declared entity declares; none when omitted. */
   readonly pickers?: Partial<Readonly<Record<'acme.Customer' | 'gl.Center' | 'acme.Currency', TmPickerDeclaration<string>>>>;
+  /** The actions `acme.Customer` declares; `set-credit-limit` as a button when omitted. */
+  readonly actions?: readonly TmEntityActionDeclaration<'acme.Customer'>[];
 }
 
 /** What an entity registry spec drives and inspects. */
@@ -216,7 +218,7 @@ export async function tmEntityRig(options: TmEntityRigOptions = {}): Promise<TmE
             entities: [
               tmEntity('acme.Customer', {
                 details: tmLoadTestPage,
-                actions: [{ name: 'set-credit-limit', button: true }],
+                actions: options.actions ?? [{ name: 'set-credit-limit', button: true }],
                 ...(pickers['acme.Customer'] && { picker: pickers['acme.Customer'] as never }),
               }),
               tmEntity('gl.Center', { details: { page: tmLoadTestPage }, ...(pickers['gl.Center'] && { picker: pickers['gl.Center'] as never }) }),
