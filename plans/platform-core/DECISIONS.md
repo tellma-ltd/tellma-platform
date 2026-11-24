@@ -384,6 +384,35 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-264 (Ahmad, 2026-11-24): PC-F80's platform-core push
+
+- PC-F80's agent was denied `git push origin HEAD:platform-core` from pc-f twice by the auto mode classifier, even after Ahmad's approval was relayed to it.
+- Ahmad approved this one push in chat ("Approve the push").
+- I checked the slot was clean at eecd88bb and that origin/platform-core was still ffbc43d8, then ran the fast-forward push myself.
+- The approval covers this push only. It sets no rule for other pushes.
+- If a later land push is blocked, I notify Ahmad again.
+
+### D-263 (orchestrator, 2026-11-24): PC-F81's proven-commit seam
+
+- PC-F81 closes both gaps from D-258 through an internal seam: IBatchProvenCommit.OnCommitProven on DataBatch and RecordingBatch, plus DataBatch.RunProvenCommitCallbacks.
+  - Only the job engine runs it, in its three Committed catches (JobRunner and ScheduleTick).
+  - It holds only announcements composed before execution.
+- R1 (0/0/1) confirmed several things:
+  - ExecuteAsync, IDataBatch and the executor are unchanged;
+  - no held announcement reads a result;
+  - nothing runs twice, and nothing runs after a commit that was not proven;
+  - neither audience deviation crosses tenants.
+- Accepted deviations:
+  - against spec 0021: after a proven commit, inbox.changed goes to a superset of the affected users, or the whole tenant when a withdrawal named no recipients;
+  - against spec 0013 §2.5: each bumped user-level column sends cache.changed to the tenant group with no value.
+
+  Both are the least departure possible, because the affected users are known only from the lost result set.
+- Later: the hosted proven-commit sites (SaveRun, DeleteRun, ActionRun, OpenWriteFrame.SendAsync, settings) still run no announcements, as spec 0015 §8 says. They could adopt the seam.
+- For Ahmad:
+  - should spec 0012 name the seam;
+  - should 0021 and 0013 state these audiences;
+  - should 0015 §8's hosted sites adopt it?
+
 ### D-262 (orchestrator, 2026-11-24): PC-110's integration adds flake stopgaps that PC-F80 replaces
 
 - PC-110's integration merge found the full core suite red in two of three local runs. The failures were the known load flakes that PC-F80 fixes: two TmHttpApi specs and one TmNavigation spec, across tm-api-verdict, tm-api-transfer and tm-locale-write.
