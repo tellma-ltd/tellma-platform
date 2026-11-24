@@ -519,8 +519,17 @@ namespace Tellma.Core.IntegrationTests.Jobs
         /// <summary>The table whose next writer loses its response; null when none is armed.</summary>
         private TableName? _losesResponseWriting;
 
+        /// <summary>How many batches lost their response since the last reset.</summary>
+        private int _responsesLost;
+
         /// <summary>The fixture's audit; null when the host has none.</summary>
         public IDataBatchAudit? Inner { get; set; }
+
+        /// <summary>
+        ///     How many batches lost their response since the last reset, so a test proves that the
+        ///     batch it armed did, rather than passing on the ordinary committed path.
+        /// </summary>
+        public int ResponsesLost => Volatile.Read(ref _responsesLost);
 
         /// <summary>Whether the audit is suspended: batches begun now are not checked.</summary>
         public bool Suspended
@@ -560,11 +569,12 @@ namespace Tellma.Core.IntegrationTests.Jobs
             Volatile.Write(ref _losesResponseWriting, writing);
         }
 
-        /// <summary>Disarms a lost response that has not happened yet.</summary>
+        /// <summary>Disarms a lost response that has not happened yet, and forgets the responses lost.</summary>
         public void Reset()
         {
             _ = Interlocked.Exchange(ref _losesResponseIn, -1);
             Volatile.Write(ref _losesResponseWriting, null);
+            _ = Interlocked.Exchange(ref _responsesLost, 0);
         }
 
         /// <inheritdoc />
@@ -575,13 +585,13 @@ namespace Tellma.Core.IntegrationTests.Jobs
             TableName? writing = Volatile.Read(ref _losesResponseWriting);
             if (writing is not null && writtenTables.Contains(writing) && ReferenceEquals(Interlocked.CompareExchange(ref _losesResponseWriting, null, writing), writing))
             {
-                throw new DataAccessAmbiguousException(new TimeoutException("The test dropped the connection during the commit."), CommitVerdict.Committed);
+                throw LostResponse();
             }
 
             // --- The writing batch armed by its place in line committed, and the probe is all its caller hears ---
             if (writtenTables.Count > 0 && Interlocked.Decrement(ref _losesResponseIn) == -1)
             {
-                throw new DataAccessAmbiguousException(new TimeoutException("The test dropped the connection during the commit."), CommitVerdict.Committed);
+                throw LostResponse();
             }
 
             // Below -1, nothing is armed: the count is put back so it never wraps.
@@ -593,6 +603,14 @@ namespace Tellma.Core.IntegrationTests.Jobs
             }
 
             await inner.AfterAsync(state, writtenTables, cancellationToken).ConfigureAwait(false);
+        }
+
+        /// <summary>Counts a lost response and returns what its caller hears: only the probe's verdict.</summary>
+        /// <returns>The exception to throw.</returns>
+        private DataAccessAmbiguousException LostResponse()
+        {
+            _ = Interlocked.Increment(ref _responsesLost);
+            return new DataAccessAmbiguousException(new TimeoutException("The test dropped the connection during the commit."), CommitVerdict.Committed);
         }
     }
 

@@ -185,3 +185,113 @@ New unit tests:
 - `dotnet format Tellma.slnx --verify-no-changes`: its output is clean.
 - The two new integration tests were first run against platform-core's product code, where they
   failed as described above.
+
+## Review 1
+
+Scope: commit f99bc1b6 only. Checked against spec 0012 §6.5, spec 0013 §2.5, spec 0020 §5.6 and
+§7.6, spec 0021 §3.4 and its events table, PLAN.md §7.1, and the 6 deviations above.
+
+What I ran and checked:
+
+- **The new integration tests on HEAD.** `Tellma.Core.IntegrationTests` was built with 0 warnings,
+  then run with `Category=Integration&Category!=Nightly&Live!=true&FullyQualifiedName~response_is_lost`.
+  All 7 passed: both new tests (Snapshot and Locking for the completion test), and the two FCS-1
+  tests in both isolation modes.
+- **The new tests against the parent's job engine.** I used a throwaway detached worktree of
+  f99bc1b6, since removed, with `JobRunner.cs` and `ScheduleTick.cs` restored from f99bc1b6^. The
+  fixture now calls `IBatchProvenCommit`, so it cannot compile against the parent's product code
+  as a whole. The same filter then failed 7 of 7:
+  - the completion test, in both modes, on `Assert.Single` of `test.shipped`;
+  - the tick test on `Assert.True(fixture.Wakes > 0)`;
+  - the FCS-1 tests on the new `Notices.Proven` assertion.
+- **The unit tests the change touches.** `Tellma.Core.Tests` was built with 0 warnings and run
+  with the filter narrowed to `.Notifications`, `.Caching`, `.Data.Batches` and `.Jobs`: 682
+  passed. The commit's own list adds `.Crud` (1165 in total) and the Crud, Caching and Settings
+  integration suites. I did not re-run those.
+- **CI.** The pc/PC-F81 push run (45315658495) was skipped, so there is no CI result to cite yet.
+
+The orchestrator's questions:
+
+1. **The seam.**
+   - `DataExecutor`, `IDataBatch` and `ExecuteAsync` are untouched. The executor still throws
+     `DataAccessAmbiguousException(Committed)` before the commit callbacks (DataExecutor.cs:209,
+     :247-260, :486, :533, :641), and nothing in it calls the new method.
+   - **No announcement reads a result or outcome.** The publisher's `Flush` reads only the events
+     composed before execution. `Notifier.Proven` reads the shaped recipients, the `Slices` flag and
+     `Connection.TenantId`. The bump's `Proven` reads `plan` and `batch.Tag`. The tick's wake reads
+     nothing.
+   - **No announcement runs twice.** `_provenRan` guards the second call, and
+     `DataBatchAssemblyTests` tests it. `Flush` drains its events, so even a double registration
+     through a `RecordingBatch` would send each event once.
+   - **No announcement runs without a proven commit.** It runs only in the three `Committed`
+     catches (JobRunner.cs:663, :839; ScheduleTick.cs:236). On the batch passed to it, the executor
+     has already skipped the commit callbacks.
+   - **`sent` is the batch that threw.** The guarded runner composes and executes one batch per
+     loop (GuardedBatchRunner.cs:79-88). Its other round trips are reads, which carry no probe and
+     so cannot surface `Committed`.
+   - **Proof of commit means the body ran.** The probe looks for the body's own inserted roots
+     (`DeclareInsertedRoots`), so a `Committed` verdict cannot come from a batch whose guard failed.
+   - **Confinement.** Registration is everywhere, but only the job engine runs the seam, which is
+     an accepted, stated deviation. `IBatchProvenCommit` is internal.
+2. **The audience deviations.** Both stay within the tenant: an event with empty `UserIds` reaches
+   only the publishing scope's tenant group, and both payloads carry no data. On load:
+   - A tenant-wide `inbox.changed` makes each connected leader tab call `inbox/summary` at once,
+     with no jitter (spec 0021 §5.4). It needs a proven commit whose batch carries a withdrawal
+     naming no recipients. In the job engine only a handler's enlisted writes produce one: neither
+     the completion's own notices nor the tick withdraw anything. I accept it.
+   - A `cache.changed` without a value makes the client refresh `me` after up to 10 s of jitter
+     (tm-cache-refresher.ts:426-429), the same cost as today's tenant-level `permissions` event.
+     `TellmaJson`'s `WhenWritingNull` keeps `value` off the wire, so the client takes the
+     no-value branch.
+   - Neither event can be narrower without the lost result set. Dropping them instead is the only
+     other option, and it also departs from the spec. I accept both as the least departure.
+3. **The fixture changes.**
+   - The real publisher can no longer show a duplicate event within one batch. Production
+     coalesces those too, so no existing assertion now tests something production does not do.
+     `JobRunTests.Poll`'s `Published.Count == 4` and `JobServiceTests`' lists were unaffected.
+   - Counting only writing batches leaves the 3 `LoseResponse(int)` callers armed on the batch
+     their comments name. The handler and handler-less FCS-1 tests still assert
+     `Notices.Raised` empty, which only a lost response satisfies.
+   - The one test that now passes without the lost response is the new one (R1-1).
+4. **Confirmed**, with the caveat stated in R1-1.
+5. **Deviations 1-6.** Each is justified.
+   - 4 makes the proven path match the committed one, where the callbacks also run inside
+     `ExecuteAsync`, before `AfterCommitAsync`.
+   - 6 is a mechanical widening.
+   - 5's event is unreachable in practice, since every current announcement catches its own
+     failures. It is harmless as a guard.
+
+### Findings
+
+#### R1-1 (minor): the enlisted-writes test passes without the lost response it exists to test
+
+- **Where:** test/core/Tellma.Core.IntegrationTests/Jobs/JobRunTests.cs:324-360 (the arming is at
+  :342; the fixture's `SuspendableAudit.AfterAsync` is at JobRunDatabase.cs:570-596).
+- **Scenario:** every assertion in
+  `A_completion_whose_response_is_lost_after_its_commit_still_sends_the_events_its_enlisted_writes_announce`
+  also holds on the ordinary committed path: one `test.shipped`, one `cache.changed` for
+  `settings` with its wire tag, one `job.changed`, and the committed payload.
+  - I replaced line 342 (`fixture.Audit.LoseResponse(batchesAhead: 0);`) with a comment, on HEAD's
+    product code. Both the Snapshot and Locking variants still passed.
+  - So if the completion ever stops being the next writing batch after the handler's
+    `PersistAsync`, the arming lands nowhere and the test keeps passing without testing the
+    proven path. That can happen if a validation round starts writing, or the job progress flush
+    or another scope's activity stamp runs in between. The two FCS-1 tests do not have this gap:
+    `Assert.Empty(fixture.Notices.Raised)` holds only when no commit callback ran.
+- **Fix:** have `SuspendableAudit` count the responses it lost, for example
+  `public int ResponsesLost`, incremented next to each `throw`. Assert it is 1 in this test, and in
+  the other three lost-response tests. Alternatively, assert an outcome only the proven path
+  produces, such as `Assert.Empty(fixture.Notices.Raised)` after giving the job a success notice.
+
+### Responses
+
+- R1-1: fixed in the "PC-F81: fix review 1" commit.
+  - `SuspendableAudit` now counts the responses it lost in `ResponsesLost`. Both arming paths
+    throw through one `LostResponse()` helper that increments it, and `Reset()` clears it before
+    each test.
+  - All four lost-response tests assert `Assert.Equal(1, fixture.Audit.ResponsesLost)`: the two
+    FCS-1 completion tests, the enlisted-writes completion test and the tick test.
+  - Vacuity check: I commented out the enlisted-writes test's arming
+    (`fixture.Audit.LoseResponse(batchesAhead: 0);`) locally and rebuilt. Both the Snapshot and
+    Locking variants then failed on the new assertion (Expected: 1, Actual: 0, JobRunTests.cs:352).
+    I restored the line, and the file is byte-identical to the backup taken first.

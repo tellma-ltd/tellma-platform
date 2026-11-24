@@ -246,7 +246,8 @@ namespace Tellma.Core.IntegrationTests.Jobs
             fixture.Audit.LoseResponse(JobStatements.Schedules);
             _ = await TickAsync();
 
-            // --- Step 2 committed: one schedule fired its job, the other paused ---
+            // --- Step 2 committed, and only the probe said so: one schedule fired its job, the other paused ---
+            Assert.Equal(1, fixture.Audit.ResponsesLost);
             Assert.Single(await JobsOfAsync(fired));
             Assert.Equal(nameof(SchedulePausedReason.OwnerInactive), (await ScheduleAsync(paused)).Get<string>("PausedReason"));
 

@@ -298,6 +298,7 @@ namespace Tellma.Core.IntegrationTests.Jobs
             // --- The outcomes committed, and no commit callback ran: the recording notifier heard nothing ---
             Assert.Equal([(requested, JobStatus.Failed), (unrequested, JobStatus.Failed)], polled.Select(static job => (job.JobId, job.Status)));
             Assert.Equal(nameof(JobStatus.Failed), (await fixture.JobAsync(requested)).Status);
+            Assert.Equal(1, fixture.Audit.ResponsesLost);
             Assert.Empty(fixture.Notices.Raised);
 
             // --- What the callbacks would have done is done anyway ---
@@ -316,6 +317,7 @@ namespace Tellma.Core.IntegrationTests.Jobs
             Assert.Equal((exhausted, JobStatus.Failed, JobErrorCodes.AttemptsExhausted), (polled.JobId, polled.Status, polled.ErrorCode));
             Assert.Equal(nameof(JobStatus.Failed), (await fixture.JobAsync(exhausted)).Status);
             Assert.Empty(fixture.Script.Invocations);
+            Assert.Equal(1, fixture.Audit.ResponsesLost);
             Assert.Empty(fixture.Notices.Raised);
             AssertAnnouncedAfterLostResponse(exhausted, [ActiveUserId]);
         }
@@ -344,9 +346,10 @@ namespace Tellma.Core.IntegrationTests.Jobs
 
             PolledJob polled = Assert.Single(await PollAsync(JobRunKeys.Ship));
 
-            // --- The outcome and the enlisted write committed ---
+            // --- The outcome and the enlisted write committed, and only the probe said so ---
             Assert.Equal((id, JobStatus.Succeeded), (polled.JobId, polled.Status));
             Assert.Equal(["shipped"], await PayloadsAsync());
+            Assert.Equal(1, fixture.Audit.ResponsesLost);
 
             // --- The effect's event, the bump's announcement and the requester's change all went out, each once ---
             ClientEvent shipped = Assert.Single(fixture.Events.Published, static published => published.Name == JobRunKeys.ShippedEvent);
