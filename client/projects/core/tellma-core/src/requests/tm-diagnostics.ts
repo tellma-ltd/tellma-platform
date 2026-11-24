@@ -3,49 +3,29 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-import { DestroyRef, DOCUMENT, type Injector, untracked } from '@angular/core';
+import { type Injector, untracked } from '@angular/core';
 import { tmStripBidiControls } from '@tellma/core-ui/l10n';
-import { TmToasts } from '@tellma/core-ui/toast';
 
 import { TmApi } from '../api/tm-api';
 import { TM_NOW } from '../app/tm-now';
-import { TM_TOAST_FEEDBACK_MS } from '../attention/tm-toast-durations';
 import type { TmPageContext } from '../context/tm-page-context';
 import { TmPageContexts } from '../context/tm-page-contexts';
 import { TmLocalization } from '../l10n/tm-localization';
 import { TmClientMetadataStore } from '../metadata/tm-client-metadata';
-import { TmShortcuts } from '../nav/tm-shortcuts';
-import { TmTelemetry } from '../observe/tm-telemetry';
 import { TmSession } from '../session/tm-session';
 import { TmTabBus } from '../state/bus/tm-tab-bus';
 import { TmLeader } from '../state/leader/tm-leader';
 import { TmUrls } from '../urls/tm-urls';
 import { TmAppVersion } from './tm-app-version';
-import { type TmDiagnostics, type TmDiagnosticsTrigger, type TmRequestRecord, TmRequestLog } from './tm-request-log';
+import type { TmRequestRecord } from './tm-request-log';
 
-// Copy diagnostics (spec 0026 §8.3): a lazy chunk of the primary, which the
-// app's startup loads at idle after the first render. It builds the
-// plain-text block support reads (the versions, the session, the page and
-// the last requests), registers the global shortcut that copies it
-// (`Mod+Alt+Shift+D`, which runs in fields and over modals, and matches the
-// physical key on any layout) and toasts the outcome once (spec 0028 §8.1).
-// The text is English with Latin digits in every UI language, and holds no
-// bidi control character (spec 0024 §7.9): every number is formatted here,
-// never through the locale. Times are the device's local time, with the
-// offset in the header.
-
-/** The diagnostics' English strings, under `tm.diagnostics`. */
-const STRINGS_EN = {
-  /** The shortcut's row in the keyboard shortcuts dialog. */
-  copy: 'Copy diagnostics',
-  /** The toast after a copy. */
-  copied: 'Diagnostics copied.',
-  /** The toast after a copy that failed. */
-  copyFailed: "Couldn't copy. Open About, then Diagnostics, to see the details.",
-} as const;
-
-/** The key the outcome toasts share, so a second copy replaces the first's toast. */
-const TOAST_KEY = 'tm-diagnostics';
+// The Copy diagnostics text (spec 0026 §8.3), which the request log builds
+// synchronously in the user's gesture: the plain-text block support reads
+// (the versions, the session, the page and the last requests). The text is
+// English with Latin digits in every UI language, and holds no bidi control
+// character (spec 0024 §7.9): every number is formatted here, never through
+// the locale. Times are the device's local time, with the offset in the
+// header.
 
 /** Everything the diagnostics text shows, read at one moment. */
 export interface TmDiagnosticsInput {
@@ -197,9 +177,10 @@ function seconds(ms: number, decimals: number): string {
  * Reads what the diagnostics text shows from the app's services, untracked.
  *
  * @param injector - The root injector.
+ * @param requests - The request log, newest first.
  * @returns The input.
  */
-export function tmDiagnosticsInput(injector: Injector): TmDiagnosticsInput {
+export function tmDiagnosticsInput(injector: Injector, requests: readonly TmRequestRecord[]): TmDiagnosticsInput {
   return untracked(() => {
     const version = injector.get(TmAppVersion);
     const l10n = injector.get(TmLocalization);
@@ -231,56 +212,7 @@ export function tmDiagnosticsInput(injector: Injector): TmDiagnosticsInput {
       hub: leader.hubStatus().state,
       page: current === null ? null : page(current),
       dialogs: contexts.overlays().map(page),
-      requests: injector.get(TmRequestLog).recent(),
+      requests,
     };
   });
-}
-
-/**
- * Starts the diagnostics: registers their strings and the global shortcut
- * that copies them. Internal: the request log loads this chunk and calls it once.
- *
- * @param injector - The root injector.
- * @returns The diagnostics.
- */
-export function tmStartDiagnostics(injector: Injector): TmDiagnostics {
-  const l10n = injector.get(TmLocalization);
-  l10n.ɵregisterStrings('diagnostics', STRINGS_EN);
-  const text = (key: keyof typeof STRINGS_EN): string => untracked(l10n.ɵtext(`tm.diagnostics.${key}`));
-  const diagnostics: TmDiagnostics = {
-    text: (count) => tmDiagnosticsText(tmDiagnosticsInput(injector), count),
-    copy: (trigger: TmDiagnosticsTrigger) => {
-      // --- The write, synchronously inside the gesture ---
-      let written: Promise<void>;
-      try {
-        written = injector.get(DOCUMENT).defaultView!.navigator.clipboard.writeText(diagnostics.text(10));
-      } catch (error) {
-        // No clipboard here, such as on an insecure origin.
-        written = Promise.reject(error);
-      }
-      // --- The outcome, toasted once ---
-      const toasts = injector.get(TmToasts);
-      written.then(
-        () => {
-          toasts.show({ tone: 'success', title: text('copied'), duration: TM_TOAST_FEEDBACK_MS, key: TOAST_KEY });
-          injector.get(TmTelemetry).event('tm.support.diagnostics-copied', { via: trigger });
-        },
-        () => toasts.show({ tone: 'error', title: text('copyFailed'), duration: 'sticky', key: TOAST_KEY }),
-      );
-    },
-  };
-  // --- The global shortcut, in fields and over modals (spec 0027 Appendix A) ---
-  injector.get(TmShortcuts).register(
-    {
-      id: 'tm.support.copy-diagnostics',
-      keys: 'Mod+Alt+Shift+D',
-      labelKey: 'tm.diagnostics.copy',
-      scope: 'global',
-      inFields: true,
-      overModals: true,
-      run: () => diagnostics.copy('shortcut'),
-    },
-    injector.get(DestroyRef),
-  );
-  return diagnostics;
 }

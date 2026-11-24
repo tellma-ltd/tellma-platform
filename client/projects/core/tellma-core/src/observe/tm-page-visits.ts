@@ -4,7 +4,7 @@
 // LICENSE file in the root directory of this source tree.
 
 import { afterNextRender, DestroyRef, DOCUMENT, effect, inject, Injectable, Injector, signal, untracked } from '@angular/core';
-import { NavigationCancel, NavigationEnd, NavigationError, NavigationSkipped, NavigationStart, Router } from '@angular/router';
+import { NavigationCancel, NavigationCancellationCode, NavigationEnd, NavigationError, NavigationSkipped, NavigationStart, ResolveEnd, Router } from '@angular/router';
 
 import type { TmPageContext } from '../context/tm-page-context';
 import { TmPageContexts } from '../context/tm-page-contexts';
@@ -18,9 +18,12 @@ import { TmTelemetry } from './tm-telemetry';
 // and its `chromeMs` to the first paint after its context is registered: the
 // render after it, then one animation frame. A visit adopts the routed
 // context registered after it starts; a navigation that keeps its page, as a
-// reused route does, adopts the context it kept one render after it ends. A
-// visit that adopted no context, such as the launch page's redirect, is not
-// a page's: its start and entry pass to the next visit. Times are
+// reused route does, adopts the context it kept one render after it ends,
+// unless another navigation has started since. A visit that adopted no
+// context is not a page's when its navigation rendered a route, as the launch
+// page's redirect does, kept the route shown, or was redirected: its start and
+// entry pass to the next visit. One whose navigation was abandoned before it
+// rendered a route, in a guard or a resolver, is reported as left. Times are
 // `performance.now()` readings, milliseconds since the time origin.
 
 /** One visit while it runs. */
@@ -33,6 +36,11 @@ interface TmVisit {
   readonly kept: TmPageContext | null;
   /** The context it adopted, once it has. */
   own: TmPageContext | null;
+  /**
+   * Whether its start passes to the next visit if it adopts no context: its
+   * navigation rendered a route, kept the one shown, or was redirected.
+   */
+  passes?: boolean;
   /** The chrome's paint, once stamped. */
   chromeMs?: number;
   /** The data's arrival, once stamped. */
@@ -58,6 +66,9 @@ export class TmPageVisits {
 
   /** Whether the first navigation has started; it belongs to the first visit. */
   #navigated = false;
+
+  /** The id of the latest navigation started. */
+  #latest = 0;
 
   /**
    * Starts following the visits. Internal: the app's startup calls it before
@@ -102,14 +113,30 @@ export class TmPageVisits {
           });
         }
         this.#navigated = true;
+        this.#latest = event.id;
         this.#settled.set(false);
       } else if (
+        (event instanceof ResolveEnd ||
+          event instanceof NavigationSkipped ||
+          (event instanceof NavigationCancel && event.code === NavigationCancellationCode.Redirect)) &&
+        event.id === this.#latest
+      ) {
+        // Past its guards and resolvers the navigation renders its route, as the launch page does
+        // before it redirects; a skipped one keeps the route shown, and a redirected one hands on.
+        const visit = untracked(this.#visit);
+        if (visit !== null) {
+          visit.passes = true;
+        }
+      }
+      if (
         event instanceof NavigationEnd ||
         event instanceof NavigationCancel ||
         event instanceof NavigationSkipped ||
         event instanceof NavigationError
       ) {
-        afterNextRender(() => this.#settled.set(true), { injector: this.#injector });
+        // Only the latest navigation settles: an earlier one's render must not let the next visit adopt the page it leaves.
+        const { id } = event;
+        afterNextRender(() => id === this.#latest && this.#settled.set(true), { injector: this.#injector });
       }
     });
 
@@ -139,15 +166,17 @@ export class TmPageVisits {
   }
 
   /**
-   * Ends the running visit and reports it, unless it adopted no context.
+   * Ends the running visit and reports it, unless it adopted no context and
+   * its start passes on.
    *
-   * @returns The visit when it adopted no context, whose start and entry pass
-   *   to the next; `null` once it was reported, or when none was running.
+   * @returns The visit when it adopted no context and its start passes on, whose
+   *   start and entry pass to the next; `null` once it was reported, or when
+   *   none was running.
    */
   #end(): TmVisit | null {
     const visit = untracked(this.#visit);
     this.#visit.set(null);
-    if (visit === null || visit.own === null) {
+    if (visit === null || (visit.own === null && visit.passes)) {
       return visit;
     }
     const now = performance.now();

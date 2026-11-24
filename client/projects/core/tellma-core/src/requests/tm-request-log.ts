@@ -3,20 +3,27 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-import { DestroyRef, inject, Injectable, Injector, signal, type Signal } from '@angular/core';
+import { DestroyRef, DOCUMENT, inject, Injectable, Injector, signal, type Signal, untracked } from '@angular/core';
+import { TmToasts } from '@tellma/core-ui/toast';
 
 import { TM_NOW } from '../app/tm-now';
+import { TM_TOAST_FEEDBACK_MS } from '../attention/tm-toast-durations';
+import { TmLocalization } from '../l10n/tm-localization';
+import { TmShortcuts } from '../nav/tm-shortcuts';
+import { TmTelemetry } from '../observe/tm-telemetry';
 import { TmAppVersion } from './tm-app-version';
+import { tmDiagnosticsInput, tmDiagnosticsText } from './tm-diagnostics';
 
 // The request log (spec 0026 §8.1). TmApi calls `begin` when it sends a
 // request and the handle's `end` when the request settles, so a slow, failed
 // or hanging call can always be quoted by its trace id. The log keeps the
 // last 100 calls, newest first; a pending call turns slow at 3 s on a timer
 // of its own, which `end` clears. Each end hands the response's
-// `Tellma-Build` to TmAppVersion. Copy diagnostics (§8.3) builds its text in
-// a lazy chunk of its own (tm-diagnostics), which the app's startup loads at
-// idle after the first render, with the shortcut that copies it; until then
-// the text is empty, and a copy loads the chunk first.
+// `Tellma-Build` to TmAppVersion. Copy diagnostics (§8.3) builds its text
+// and writes it to the clipboard synchronously, inside the key or click
+// handler that asked for it, as Safari and Firefox require; the outcome
+// toasts once (spec 0028 §8.1). The app's startup registers its global
+// shortcut before the first navigation.
 
 /** Where a logged request stands. */
 export type TmRequestOutcome = 'pending' | 'ok' | 'cancelled' | 'error';
@@ -101,8 +108,7 @@ export abstract class TmRequestLog {
 
   /**
    * The diagnostics as plain text for support: the versions, the session, the
-   * page and the most recent requests. It is built synchronously, and is
-   * empty until the diagnostics load at idle after the app's first render.
+   * page and the most recent requests, built synchronously.
    *
    * @param count - How many requests to include; 10 by default.
    * @returns The text.
@@ -127,40 +133,14 @@ export abstract class TmRequestLog {
   abstract begin(start: TmRequestStart): TmRequestHandle;
 }
 
-/** The diagnostics, once their chunk has loaded. Internal. */
-export interface TmDiagnostics {
-  /**
-   * Builds the diagnostics text.
-   *
-   * @param count - How many requests to include.
-   * @returns The text.
-   */
-  text(count: number): string;
-
-  /**
-   * Copies the diagnostics text and toasts the outcome.
-   *
-   * @param trigger - What triggered the copy.
-   */
-  copy(trigger: TmDiagnosticsTrigger): void;
-}
-
-/** What the diagnostics chunk exports, as far as the log reads it. Internal. */
-export interface TmDiagnosticsChunk {
-  /**
-   * Starts the diagnostics: registers their strings and the shortcut that copies them.
-   *
-   * @param injector - The root injector, for the diagnostics' sources.
-   * @returns The diagnostics.
-   */
-  tmStartDiagnostics(injector: Injector): TmDiagnostics;
-}
-
 /** The most requests the log keeps. */
 const RING = 100;
 
 /** How long a request runs before it is slow, in milliseconds. */
 const SLOW_MS = 3000;
+
+/** The key the copy's toasts share, so a second copy replaces the first's toast. */
+const TOAST_KEY = 'tm-diagnostics';
 
 /** The root {@link TmRequestLog}: a ring of the last 100 requests. Internal. */
 export class TmAppRequestLog extends TmRequestLog {
@@ -177,12 +157,6 @@ export class TmAppRequestLog extends TmRequestLog {
   /** The slow timers of the pending requests, which the app's end clears. */
   readonly #timers = new Set<ReturnType<typeof setTimeout>>();
 
-  /** The diagnostics, once loaded. */
-  #diagnostics: TmDiagnostics | undefined;
-
-  /** Their load, while it runs or once it has succeeded. */
-  #loading: Promise<TmDiagnostics | undefined> | undefined;
-
   /** Creates the log, whose timers end with the app. */
   constructor() {
     super();
@@ -191,18 +165,29 @@ export class TmAppRequestLog extends TmRequestLog {
 
   /** {@inheritDoc TmRequestLog.diagnosticsText} */
   override diagnosticsText(count = 10): string {
-    return this.#diagnostics?.text(count) ?? '';
+    return tmDiagnosticsText(tmDiagnosticsInput(this.#injector, untracked(this.#ring)), count);
   }
 
   /** {@inheritDoc TmRequestLog.copy} */
   override copy(trigger: TmDiagnosticsTrigger = 'button'): void {
-    if (this.#diagnostics === undefined) {
-      // Not loaded yet: the write runs once they are, outside the gesture,
-      // which a browser may refuse; the failure toast then says where to look.
-      void this.ɵstart().then((diagnostics) => diagnostics?.copy(trigger));
-    } else {
-      this.#diagnostics.copy(trigger);
+    // --- The write, synchronously inside the gesture ---
+    let written: Promise<void>;
+    try {
+      written = this.#injector.get(DOCUMENT).defaultView!.navigator.clipboard.writeText(this.diagnosticsText());
+    } catch (error) {
+      // No clipboard here, such as on an insecure origin, or the text failed.
+      written = Promise.reject(error);
     }
+    // --- The outcome, toasted once ---
+    const toasts = this.#injector.get(TmToasts);
+    const title = (key: 'copied' | 'copyFailed'): string => untracked(this.#injector.get(TmLocalization).ɵtext(`tm.diagnostics.${key}`));
+    written.then(
+      () => {
+        toasts.show({ tone: 'success', title: title('copied'), duration: TM_TOAST_FEEDBACK_MS, key: TOAST_KEY });
+        this.#injector.get(TmTelemetry).event('tm.support.diagnostics-copied', { via: trigger });
+      },
+      () => toasts.show({ tone: 'error', title: title('copyFailed'), duration: 'sticky', key: TOAST_KEY }),
+    );
   }
 
   /** {@inheritDoc TmRequestLog.begin} */
@@ -247,16 +232,22 @@ export class TmAppRequestLog extends TmRequestLog {
   }
 
   /**
-   * Loads the diagnostics and starts them: their strings and the shortcut
-   * that copies them. Internal: the app's startup calls it at idle after the
-   * first render. A load that fails is tried again by the next copy.
-   *
-   * @returns The diagnostics, or `undefined` when their chunk did not load.
+   * Registers the global shortcut that copies the diagnostics, in fields and
+   * over modals (spec 0027 Appendix A). Internal: the app's startup calls it
+   * before the first navigation.
    */
-  ɵstart(): Promise<TmDiagnostics | undefined> {
-    this.#loading ??= (import('./tm-diagnostics') as Promise<TmDiagnosticsChunk>)
-      .then((chunk) => (this.#diagnostics = chunk.tmStartDiagnostics(this.#injector)))
-      .catch(() => (this.#loading = undefined));
-    return this.#loading;
+  ɵstart(): void {
+    this.#injector.get(TmShortcuts).register(
+      {
+        id: 'tm.support.copy-diagnostics',
+        keys: 'Mod+Alt+Shift+D',
+        labelKey: 'tm.diagnostics.copy',
+        scope: 'global',
+        inFields: true,
+        overModals: true,
+        run: () => this.copy('shortcut'),
+      },
+      this.#injector.get(DestroyRef),
+    );
   }
 }

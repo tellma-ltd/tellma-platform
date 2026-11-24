@@ -112,12 +112,6 @@ describe('TmRequestLog', () => {
     expect(version.server()).toBe('1.5.0+9e8d7c6');
   });
 
-  it('has no diagnostics text before the diagnostics load', () => {
-    const log = TestBed.inject(TmRequestLog);
-    expect(log.diagnosticsText()).toBe('');
-    expect(log.diagnosticsText(3)).toBe('');
-  });
-
   it('is one instance per root injector', () => {
     expect(TestBed.inject(TmRequestLog)).toBe(TestBed.inject(TmRequestLog));
   });

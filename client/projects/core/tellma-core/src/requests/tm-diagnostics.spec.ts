@@ -8,15 +8,16 @@ import { ɵtmModalOpened } from '@tellma/core-ui/overlay';
 import { TmToasts } from '@tellma/core-ui/toast';
 import type { MockInstance } from 'vitest';
 
-import { tmAppRig, tmSettleUntil } from '../routes/tm-app.testing.util';
+import { tmAppRig, tmSettle, tmSettleUntil } from '../routes/tm-app.testing.util';
 import golden from './diagnostics-text-golden.json';
 import { type TmDiagnosticsInput, tmDiagnosticsText } from './tm-diagnostics';
-import { TmAppRequestLog, type TmRequestRecord, TmRequestLog } from './tm-request-log';
+import { type TmRequestRecord, TmRequestLog } from './tm-request-log';
 
 // Copy diagnostics (spec 0026 §8.3): the text pinned by goldens, which hold
 // Latin digits, local times with the offset and no bidi control in every UI
-// language; its cost; and the copy, from a button and from the global
-// shortcut on an Arabic layout, in a field and over a modal, with its toasts
+// language; its cost; and the copy right after launch, before the browser is
+// ever idle, from a button and from the global shortcut on an Arabic layout,
+// in a field and over a modal, written synchronously, with its toasts
 // (spec 0028 §8.1) and its event.
 
 /** A request in the log, from its start before `now` and its outcome. */
@@ -154,8 +155,8 @@ describe('tmDiagnosticsText', () => {
 describe('Copy diagnostics', () => {
   /** The rig's handles. */
   interface Rig {
-    /** The log under test, with its diagnostics loaded. */
-    readonly log: TmAppRequestLog;
+    /** The log under test. */
+    readonly log: TmRequestLog;
     /** The clipboard's write, stubbed. */
     readonly write: MockInstance<(text: string) => Promise<void>>;
     /** The toasts shown. */
@@ -170,16 +171,19 @@ describe('Copy diagnostics', () => {
     cleanups.splice(0).forEach((cleanup) => cleanup());
   });
 
-  /** Starts the app, stubs the clipboard and loads the diagnostics. */
+  /**
+   * Starts the app with the browser never idle, so nothing the startup
+   * defers to idle has run, and stubs the clipboard.
+   */
   async function rig(write: (text: string) => Promise<void> = () => Promise.resolve()): Promise<Rig> {
+    const idle = vi.spyOn(window, 'requestIdleCallback').mockImplementation(() => 0);
+    cleanups.push(() => idle.mockRestore());
     const { telemetry } = await tmAppRig();
     const stub = vi.fn(write);
     const spy = vi.spyOn(navigator.clipboard, 'writeText').mockImplementation(stub);
     cleanups.push(() => spy.mockRestore());
-    const log = TestBed.inject(TmRequestLog) as TmAppRequestLog;
-    await log.ɵstart();
     return {
-      log,
+      log: TestBed.inject(TmRequestLog),
       write: stub,
       toasts: vi.spyOn(TestBed.inject(TmToasts), 'show'),
       copied: () => telemetry.recent().filter((item) => item.name === 'tm.support.diagnostics-copied').map((item) => item.props['via']),
@@ -200,35 +204,41 @@ describe('Copy diagnostics', () => {
     return event;
   }
 
-  it('writes the text synchronously, then toasts and reports the copy once', async () => {
+  it('writes the text synchronously right after launch, before idle, then toasts and reports the copy once', async () => {
     const { log, write, toasts, copied } = await rig();
     log.copy('button');
     // The write ran inside the call, as the gesture requires.
     expect(write).toHaveBeenCalledOnce();
     const text = write.mock.calls[0][0];
     expect(text.split('\n')[0]).toMatch(/^Acme diagnostics · \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} [+-]\d{2}:\d{2}$/);
+    expect(text).toContain('UI 1.0.0+0123abc · server unknown · platform 1.0.0');
     await tmSettleUntil(() => copied().length > 0);
     expect(toasts).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ tone: 'success', title: 'Diagnostics copied.', duration: 4_000 }));
     expect(copied()).toEqual(['button']);
   });
 
-  it('toasts a sticky failure, and reports nothing, when the write is refused or throws', async () => {
+  it('toasts a sticky failure once, and reports nothing, when the write is refused or throws', async () => {
     const { log, write, toasts, copied } = await rig(() => Promise.reject(new DOMException('Denied', 'NotAllowedError')));
     log.copy('dialog');
+    expect(write).toHaveBeenCalledOnce();
     await tmSettleUntil(() => toasts.mock.calls.length > 0);
     const failure = expect.objectContaining({ tone: 'error', title: "Couldn't copy. Open About, then Diagnostics, to see the details.", duration: 'sticky' });
+    await tmSettle();
     expect(toasts).toHaveBeenCalledExactlyOnceWith(failure);
 
     write.mockImplementation(() => {
       throw new TypeError('No clipboard');
     });
     log.copy('button');
+    expect(write).toHaveBeenCalledTimes(2);
     await tmSettleUntil(() => toasts.mock.calls.length > 1);
+    await tmSettle();
+    expect(toasts).toHaveBeenCalledTimes(2);
     expect(toasts).toHaveBeenLastCalledWith(failure);
     expect(copied()).toEqual([]);
   });
 
-  it('copies with Mod+Alt+Shift+D on an Arabic layout, in a field and over a modal', async () => {
+  it('copies with Mod+Alt+Shift+D before idle, on an Arabic layout, in a field and over a modal', async () => {
     const { write, copied } = await rig();
     const field = press(attach(document.createElement('input')));
     expect(field.defaultPrevented).toBe(true);

@@ -1041,12 +1041,14 @@ The platform measures itself through the same service:
   the document's time origin for the first route) to the next navigation or `pagehide`. Its `ms`
   runs to the page context's first status away from `loading`, its `chromeMs` to the first paint
   after the context registers; `entry` is `load` or `navigation`, and `outcome` is `ready`,
-  `error`, or `left` for a page left before its data arrived. A navigation that registers no
-  context, such as the launch page's redirect, passes its start to the next visit.
+  `error`, or `left` for a page left before its data arrived. A navigation that renders a route
+  but registers no context, such as the launch page's redirect, passes its start to the next
+  visit; one abandoned in a guard or a resolver is reported as `left`.
 - **The load's paints.** A lazy chunk (`tm-load-metrics`), loaded at idle, observes the paint
   timeline with `buffered: true` and emits one sampled `tm.vitals.load` (`ttfbMs`, `fcpMs`,
-  `lcpMs`, `navigationType`, `controlled`) at the first input or when the page is hidden. A metric
-  the browser lacks is left out, never sent as zero.
+  `lcpMs`, `navigationType`, and `controlled` when a service worker handled the navigation's
+  request) at the first input or when the page is hidden. A metric the browser lacks is left out,
+  never sent as zero.
 - **Request outcomes.** The pipeline reads the request log on every change. Each flush sends one
   unsampled `tm.api.requests` per tenant and route for the 20 busiest routes of its window (counts
   by outcome, the sum and maximum of the durations, the calls over 1 s and 3 s, the background
@@ -1068,9 +1070,7 @@ calendar and connection, the routed page and its dialogs, and the last requests 
 ids. It is English with Latin digits in every UI language, with local times and the offset in its
 header, and holds no bidi control. `copy()` writes it to the clipboard synchronously, so call it in
 the user's gesture, and toasts the outcome once; `Mod+Alt+Shift+D` copies it from anywhere, in
-fields and over modals. The text, the toasts and the shortcut live in a lazy chunk
-(`tm-diagnostics`) that the app's startup loads at idle after the first render: until then the
-text is empty, and a copy loads the chunk first.
+fields and over modals, from the app's first page on.
 
 ## Seams
 

@@ -14,7 +14,8 @@ import { TmTelemetry, type TmTelemetryProps } from './tm-telemetry';
 // paint finalises: at the first input, or when the page is hidden. A metric
 // the browser does not expose is left out, never sent as zero. Times count
 // from the navigation's activation, so a prerendered page reports what its
-// user waited for. Launch timings belong to spec 0024.
+// user waited for. Whether a service worker served the page is read from the
+// navigation's `workerStart`. Launch timings belong to spec 0024.
 
 /** The navigation types the event reports. */
 const NAVIGATION_TYPES: ReadonlySet<string> = new Set(['navigate', 'reload', 'back_forward', 'prerender']);
@@ -86,7 +87,8 @@ export function tmCollectLoadMetrics({ window, emit }: TmLoadMetricsHost): () =>
       ...(fcp === undefined ? {} : { fcpMs: since(fcp) }),
       ...(lcp === undefined ? {} : { lcpMs: since(lcp) }),
       ...(type === undefined || !NAVIGATION_TYPES.has(type) ? {} : { navigationType: type }),
-      controlled: (window.navigator.serviceWorker?.controller ?? null) !== null,
+      // A worker handled the navigation's request only when it stamped its start; a worker that claims the page later served nothing.
+      ...(navigation?.workerStart === undefined ? {} : { controlled: navigation.workerStart > 0 }),
     });
   };
   const hidden = (): void => {

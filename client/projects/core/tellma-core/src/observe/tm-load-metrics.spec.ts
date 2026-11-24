@@ -17,7 +17,7 @@ interface TmFakePage {
   readonly navigation?: Partial<PerformanceNavigationTiming> & { readonly activationStart?: number };
   /** The entry types the browser observes. */
   readonly supported?: readonly string[];
-  /** Whether a service worker controls the page. */
+  /** Whether a service worker controls the page now, whether or not it served it. */
   readonly controlled?: boolean;
 }
 
@@ -113,7 +113,7 @@ function collect(page: TmFakePage = {}, buffered: Readonly<Record<string, Partia
 }
 
 /** A navigation that took 180 ms to its first byte. */
-const NAVIGATION = { type: 'navigate', responseStart: 180 } as const;
+const NAVIGATION = { type: 'navigate', responseStart: 180, workerStart: 0 } as const;
 
 describe('tmCollectLoadMetrics', () => {
   it('emits the buffered and later paints once, at the first input', () => {
@@ -133,7 +133,7 @@ describe('tmCollectLoadMetrics', () => {
   });
 
   it('emits when the page is hidden, with the entries not delivered yet', () => {
-    const rig = collect({ navigation: { type: 'reload', responseStart: 90 }, controlled: true });
+    const rig = collect({ navigation: { type: 'reload', responseStart: 90, workerStart: 12 }, controlled: true });
     rig.queue('paint', { name: 'first-contentful-paint', startTime: 200 });
     rig.queue('largest-contentful-paint', { startTime: 650 });
     rig.hide();
@@ -142,7 +142,7 @@ describe('tmCollectLoadMetrics', () => {
 
   it('counts from the activation of a prerendered page', () => {
     const rig = collect(
-      { navigation: { type: 'navigate', responseStart: 120, activationStart: 2_000 } },
+      { navigation: { type: 'navigate', responseStart: 120, activationStart: 2_000, workerStart: 0 } },
       { paint: [{ name: 'first-contentful-paint', startTime: 300 }], 'largest-contentful-paint': [{ startTime: 2_400 }] },
     );
     rig.window.dispatchEvent(new Event('keydown'));
@@ -152,17 +152,23 @@ describe('tmCollectLoadMetrics', () => {
   it('leaves out what the browser does not expose, never sending zero', () => {
     const rig = collect({ navigation: { type: 'navigate', responseStart: 0 }, supported: ['paint'] });
     rig.hide();
-    expect(rig.emitted).toEqual([{ navigationType: 'navigate', controlled: false }]);
+    expect(rig.emitted).toEqual([{ navigationType: 'navigate' }]);
 
     const bare = collect({ supported: [] });
     bare.window.dispatchEvent(new Event('keydown'));
-    expect(bare.emitted).toEqual([{ controlled: false }]);
+    expect(bare.emitted).toEqual([{}]);
   });
 
   it('reports only the navigation types the event names', () => {
     const rig = collect({ navigation: { type: 'other' as NavigationTimingType, responseStart: 50 } });
     rig.hide();
-    expect(rig.emitted).toEqual([{ ttfbMs: 50, controlled: false }]);
+    expect(rig.emitted).toEqual([{ ttfbMs: 50 }]);
+  });
+
+  it('reports a page the network served as not controlled, though a worker claimed it since', () => {
+    const rig = collect({ navigation: NAVIGATION, controlled: true });
+    rig.hide();
+    expect(rig.emitted).toEqual([{ ttfbMs: 180, navigationType: 'navigate', controlled: false }]);
   });
 
   it('emits nothing once stopped', () => {

@@ -49,9 +49,9 @@ import type { TmAppConfig } from './tm-app-config';
 // navigation and the launch's timing; the session's cross-tab paths; after
 // first render, the entry points of the recent pages, the leader election
 // and the worker's updates; and at idle the Contracts chunk, so the first
-// API call does not wait for it, the telemetry pipeline (spec 0026 §3), the
-// load's paint metrics (§5.2) and Copy diagnostics with its shortcut (§8.3).
-// The page visits are timed from the first navigation on (§5.1).
+// API call does not wait for it, the telemetry pipeline (spec 0026 §3) and
+// the load's paint metrics (§5.2). The page visits are timed from the first
+// navigation on (§5.1), and Copy diagnostics' shortcut works from then (§8.3).
 
 /** The recent pages' entry point, as far as the startup reads it. Internal. */
 export interface TmRecentsModule {
@@ -146,11 +146,11 @@ export function tmStartup(config: TmAppConfig): EnvironmentProviders[] {
       // and the preferences hear the other tabs' choices from the start.
       const urls = inject(TmUrls);
       inject(TmPreferences);
+      const requests = inject(TmRequestLog);
       // Each telemetry call records what it sees where it is made, so a call
       // held until the pipeline loads keeps its tenant, page and requests.
       if (telemetry instanceof TmTelemetryFront) {
         const contexts = inject(TmPageContexts);
-        const requests = inject(TmRequestLog);
         telemetry.context = () => ({ tenantId: urls.tenantId(), page: contexts.current(), requests: requests.recent() });
       }
       const loadRecents = inject(TM_RECENTS_LOAD);
@@ -161,6 +161,10 @@ export function tmStartup(config: TmAppConfig): EnvironmentProviders[] {
       inject(TmPageFocus).ɵstart();
       inject(TmLaunchTimer).ɵstart();
       inject(TmPageVisits).ɵstart();
+      // Copy diagnostics' shortcut, before the first page.
+      if (requests instanceof TmAppRequestLog) {
+        requests.ɵstart();
+      }
       // After first render: the recent pages' visit count, the leader
       // election and the worker's updates; at idle, the Contracts chunk,
       // which the HTTP layer keeps, and the telemetry pipeline.
@@ -199,16 +203,10 @@ export function tmStartup(config: TmAppConfig): EnvironmentProviders[] {
             if (alive && telemetry instanceof TmTelemetryFront) {
               telemetry.start(injector);
             }
-            // The load's paint metrics, observed with what the load buffered,
-            // and Copy diagnostics with its shortcut. Neither has a fallback:
-            // a chunk that fails to load sends no metrics, and the next copy
-            // tries the diagnostics again.
+            // The load's paint metrics, observed with what the load buffered;
+            // a chunk that fails to load sends no metrics.
             if (alive) {
               void import('../observe/tm-load-metrics').then(({ tmStartLoadMetrics }) => alive && tmStartLoadMetrics(injector), () => undefined);
-              const requests = injector.get(TmRequestLog);
-              if (requests instanceof TmAppRequestLog) {
-                void requests.ɵstart();
-              }
             }
           };
           if (window?.requestIdleCallback) {
