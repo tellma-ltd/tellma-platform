@@ -8,14 +8,18 @@ own.
 | Entry point | Holds | Loaded |
 |---|---|---|
 | `@tellma/core` | The distribution API: `bootstrapTellma`, `provideTellma`, `tmFeature`, the declaration functions (`tmEntity`, `tmPage`, `tmCodedReport`, `tmWidget`, `tmOverride`) and `TM_APP_DECLARATIONS`, the merged declarations; the client metadata's types, its loaders (`tmMetadataLoaders`) and the loaded Core chunk (`TM_CLIENT_METADATA`); the HTTP layer (`TmApi`, `TmApiError`, `TmProblem`), its plain-JSON value types (`TmJson`, `TmDecimal`, `TmId`) and the exact decimal helpers `TmDecimals`; the seams through which telemetry (`TmTelemetry`) and the request log (`TmRequestLog`) are provided; the page context and page actions (`TmPageContexts`, `TmPageActions`, `provideTmPageScope`) and the help seam (`TM_HELP_ARTICLES`); the session (`TmSession`, `tmSessionGuard`, `tmParseProfileCookie`), the launch mark (`TmLaunch`) and the single-membership rule (`tmSingleLiveTenant`); the client store (`TmClientStore`, `TmStoreRefusedError`, `TM_DOC_FORMATS`) and the tab bus (`TmTabBus`) with its message catalogue; the leader tab (`TmLeader`: whether this tab leads, the hub's status and the tenant's hub events) and the documents only the leader refreshes (`TM_LEADER_DOCUMENTS`); the boot script's result types and the app clock (`TM_NOW`); the derived router's pieces: the root component (`TmApp`), the route data (`TmRouteData`), the title strategy (`TmTitleStrategy`), the URL builders and classifier (`TmUrls`) with the search query's types; the entity registry (`TmEntities`, with its descriptors once the entity model loads, and the declaration types `tmEntity` takes, typed paths `TmPath` included), display names (`TmDisplayNames`, `tm-display-name`), client permissions (`TmPermissions`) and `tmRowsToObjects`; localization: `TmLocalization` (the language, the regional formats, the calendar and the zones, and their switches with the coalesced locale write), `TmServerText` (server codes and keys through the string packs) and `tmEnglish()`, the platform's English; the app-level keyboard shortcuts (`TmShortcuts`, `TmShortcut`, `TM_RESERVED_SHORTCUTS`, `TM_BROWSER_KEYS`, `TmShortcutConflictError`) and the shell frame's seams (`TmShell` with immersive mode, `TmShellMain`, `TM_SHELL_LAYOUT`); the banners (`TmBanners`) with the input-idle clock (`TmInputIdle`), the attention documents (`TM_ATTENTION_DOCUMENTS`, `TmInboxSummary`, `TmAssignmentsSummary`) and the toast durations (`TM_TOAST_FEEDBACK_MS`, `TM_TOAST_ARRIVAL_MS`); the navigation registry (`TmNavigation`: the launcher's sections and entries, and a stored URL's state), the pins model (`tmPinsKey`, `tmPinnedBarVisibleKey` and the pin types) and the launcher's provider seam (`TM_LAUNCHER_PROVIDERS`) | eager |
-| `@tellma/core/attention` | The attention surfaces every page shows; for now the banner host (`tm-banner-host`), which renders the banner row from `TmBanners` and announces each banner as it is queued | eager, preloaded with the app |
+| `@tellma/core/attention` | The attention surfaces every page shows: the banner host (`tm-banner-host`), which renders the banner row from `TmBanners` and announces each banner as it is queued; the attention model (`TmAttention`: the bell's and the tray's badges, the open panel, the verbs with their same-frame overlays); the arrival engine (`TmArrivals`, with the `tmNotificationToastsKey` preference); the server text of notifications, jobs and assignment captions (`TmAttentionText`); and the outcome toasts (`TmOutcomeToasts`) | eager, preloaded with the app |
 | `@tellma/core/shell` | The tenant shell, the tenant picker and the signed-out page, which the derived routes load; until their owners arrive they are plain stand-ins, beside one placeholder page for the platform's page families | eager, through `import()` |
 | `@tellma/core/memory` | The tab's memory of its pages: page state (`TmPageState`, `tmPageStateKey`), drafts (`TmDrafts`) and tree expansion (`TmTreeExpansion`), which the page hosts load with them | lazy |
 | `@tellma/core/page-snapshot` | `tmSerializePageContext` and `TmPageContextSnapshot`: a page context read once into plain JSON, for the support dump and a future assistant | lazy, through `import()` by its callers |
 | `@tellma/core/recents` | The recently visited pages (`TmRecents`), which the launcher and the home page list; the app loads it with `import()` after its first render, when visits start to count | lazy, through `import()` after first render |
-| `@tellma/core/entity` | What the search and details pages share over the entity model: select plans (`tmSelectPlan`), which turn column keys into one query's terms and type its rows; value formats (`TmFormats`); the typed value in view mode (`tm-value`) and in edit mode (`tm-value-editor`), with a form's uploads (`TmUploads`); a plan column's grid column (`tmGridColumnFor`); the entity picker binding (`TmEntityPickers`), the entity fields over it (`tm-entity-field`, `tm-entity-multi-field`) and the page their pickers open (`TmLazyPickerPage`); and the client check of a picked file against its blob kind (`tmCheckBlobFile`) | lazy, with the page families |
+| `@tellma/core/entity` | What the search and details pages share over the entity model: select plans (`tmSelectPlan`), which turn column keys into one query's terms and type its rows; value formats (`TmFormats`); the typed value in view mode (`tm-value`) and in edit mode (`tm-value-editor`), with a form's uploads (`TmUploads`); a plan column's grid column (`tmGridColumnFor`); the entity picker binding (`TmEntityPickers`), the entity fields over it (`tm-entity-field`, `tm-entity-multi-field`) and the page their pickers open (`TmLazyPickerPage`); the client check of a picked file against its blob kind (`tmCheckBlobFile`); the entity actions (`TmEntityActions`) with their dialogs (`injectTmActionDialog`) and the confirmation loop (`TmConfirmations`), whose dialogs load on first use; the server error paths a form's errors land by (`tmSplitErrorPath`, `tmWalkErrorPath`); client Queryex: the lexer (`tmQxLex`, `tmQxParameters`), the tree builder (`tmQx`), the canonical printer (`tmQxPrint`) and the editor's insertion (`tmQxInsert`); and column filters: the `f.` value (`tmParseFilter`, `tmFormatFilter`), its leaf (`tmFilterLeaf`) and its chip sentence (`tmDescribeFilter`, `tm-filter-description`) | lazy, with the page families |
+| `@tellma/core/column-filter` | `tm-column-filter`, the control that edits one column's filter: the operator, the values each column kind takes (a text input, exact number inputs, a date or a date range, an enum's checkboxes, multi-select or searchable multi-picker, true or false, related rows), Clear and Apply | lazy, when a column header's filter popover first opens |
 | `@tellma/core/leader` | The leader election of the routed tenant over a Web Lock, and the leader tab's work: its realtime connection, the relay of hub events, the leader documents' reads and the polls of degraded mode; the app loads it with `import()` after its first render, and `TmLeader` reports what it decides | lazy, through `import()` after first render |
+| `@tellma/core/updates` | The app's updates through its service worker (`TmUpdates`): the worker's registration through the `tellma` Trusted Types policy, the update checks, the reload into a new version and the update banner; the app loads it with `import()` after its first render, and the HTTP layer's update check loads it on demand | lazy, through `import()` after first render |
+| `@tellma/core/errors` | Error presentation: `TmErrorPresenter`, whose one table turns a `TmApiError` into an error view, and which shows a write's or an action's error in the shared 5xx or 400 dialog, asks before a step-up, and handles a tenant that is gone or suspended; `tm-error-state` (`TmErrorState`), the inline state a page renders for a failed read | lazy, through `import()` with the first error presented |
 | `@tellma/core/config-check` | `tmCheckAppConfig`, the check of an app's configuration against the client metadata, which the build runs in Node and a development app at startup, and `tmCheckEntityDeclaration`, the check of one entity declaration against the Entities chunk | lazy |
+| `@tellma/core/error-paths` | `tmSplitErrorPath` and `tmWalkErrorPath`, the server's error paths onto a Signal Forms tree, which an entity action's dialog and the details page's save land their errors by | with the code that imports it |
 | `@tellma/core/search-normalize` | `tmSearchNormalize`, the one text folding the launcher, the shortcuts filter, the field tree and the reports list match with | with the code that imports it |
 | `@tellma/core/private` | Wiring shared by the platform's own entry points and packages; no API goldens, no stability guarantee, never imported by app code | — |
 
@@ -81,14 +85,38 @@ again on every `check()`, never the network: `same`, `missing` (the expiry path)
 the app at `/`). `tmSessionGuard` runs the check on every route but `/signed-out`. `signIn()` writes
 the sign-in mark and leaves for `/bff/login` in the document's language; a step-up adds
 `acr_values` and `max_age`. After a sign-in it consumes the mark the boot script reported: it
-reports an expiry that led there and drops a previous user's drafts. Until the drafts and the
-session-ended dialog arrive, the paths beyond the tab's own state are tab-local: an expiry sweeps
-every user's stored data (in a 1 s box; a sweep cut short, failed or unable to reach the disk
-clears the boot record's user, so the next launch sweeps again), deletes the stale profile cookie and signs in again, returning to the
-same page, so the user's data leaves the disk and the screen and the expiry is reported once. An
-expiry within a minute of coming back from a sign-in shows the sign-in-failed boot page instead, so
-a server that keeps refusing fresh sessions cannot loop the tab through sign-ins; the sweep runs at
-the expiry either way.
+reports an expiry that led there and drops a previous user's drafts, and tells the user's other
+tabs that the session started.
+
+The paths beyond the tab's own state reach every tab of the user over the tab bus. The primary
+holds the session's state (`active`, `expired` or `signing-out`), the expiry's first step (the
+state turns `expired` at once, after the expiry is reported and flushed) and the routing of the
+other tabs' session messages; the flows themselves are a chunk of their own, which loads after the
+first render. A chunk that cannot load falls back to what the boot script does: an expiry or a
+session signed out elsewhere deletes the stale cookie and reloads into the boot's expiry branch,
+and a changed user restarts the app at `/`.
+
+- **Sign-out** (`TmSession.signOut()`) shows the busy overlay in the click's frame, asks every
+  tab of the user for its unsaved drafts and running saves (`drafts.query`, 300 ms to answer),
+  and waits up to 60 s while any tab saves, saying so. With nothing at risk it signs out with no
+  question; otherwise it asks once, and a confirmed sign-out never asks again. It reports and
+  flushes the sign-out, turns every tab `signing-out`, writes `/bff/logout`, runs the session
+  clean-up (every user's stored data, every other `tm` store but the store's database and the
+  boot record, the boot record's user and last tenant, and the user's drafts), tells the other
+  tabs, which follow to `/signed-out`, and follows the identity server's sign-out. A failed
+  sign-out restores the session and says so in a sticky toast; the other tabs lift their overlay
+  after 15 s.
+- **The expiry path** runs the same clean-up but keeps the drafts and the boot record's user and
+  last tenant, deletes the stale cookie, tells the other tabs, and shows the session-ended alert
+  dialog in every tab, whose only way on is Sign in. An expiry within a minute of coming back from
+  a sign-in shows the sign-in-failed boot page instead, so a server that keeps refusing fresh
+  sessions cannot loop the tab through sign-ins. A clean-up sweep cut short (1 s), failed or
+  unable to reach the disk clears the boot record's user, so the next launch sweeps again.
+- **A changed user** drops the previous user's drafts, tells the other tabs and restarts at `/`.
+- **Signed out elsewhere**, which the leader tab hears from the hub, cleans up for every tab and
+  sends them all to `/signed-out`.
+- **Re-checks** run the cookie check when the tab comes into view and when it returns from the
+  back-forward cache.
 
 `TmLaunch` holds the tenant this document entered without the user choosing it, seeded from the
 boot script and set by the launch redirect; it ends at the tenant's first 2xx, at a route into
@@ -396,6 +424,36 @@ fails as a network failure would.
 user check, the session's headers and the caller's signal, whose reason an aborted fetch rejects
 with; under `provideTellmaTesting()`, `TmFakeApi` answers it.
 
+## Service worker updates
+
+`@tellma/core/updates` registers Angular's service worker once the app settles after its first
+render, or after 30 s, at the root scope with every update check bypassing the HTTP cache. The CSP
+enforces Trusted Types, so the script URL goes through the `tellma` policy, created once per
+document, which admits only the same-origin `/ngsw-worker.js`. Angular's worker client runs in an
+injector of its own, outside development, whose own registration never runs.
+
+`TmUpdates.check()` answers `ready`, `none`, `failed`, `unreachable` or `disabled` from the
+worker's event during the check; a worker that already holds a newer version answers "no new
+version" naming it, which reads as `ready`. `update()` checks and reloads into the new version, or
+reloads plainly when no worker is in the way. The service checks once the worker is registered, so
+a version announced before the entry point loaded still shows, when the tab comes back into view
+after an hour hidden, and every 6 hours while visible, reloads at once when the worker's cache is
+broken, and shows the update banner, dismissible for its version, while a newer version waits.
+
+## Error presentation
+
+`@tellma/core/errors` holds `TmErrorPresenter`. `describe(error, context)` words an error by one
+table: its tone, icon, title and message, the server's items, the reference, the actions, and for
+a `forbidden` refusal the permission it needs by its label, with the raw resource and action pair
+for support. A page renders a failed read inline with `tm-error-state`. `present(error, context)`
+shows a write's or an action's error in the shared 5xx dialog (Try again, or Reload, which gets the
+update first and offers Reload anyway from the second failed download; with no worker in the way
+it reloads at once, without loading the update service) or the 400 dialog, and
+registers the open dialog as an overlay page context. A step-up asks before it signs in again. On
+any call, a tenant that is gone sweeps its data and goes to the picker, and a suspended tenant
+replaces the shell's main area with the tenant-state page. A cancelled call and an ended session
+show nothing.
+
 ## Features and the merge rule
 
 A distribution's app is one `provideTellma` call: the emitted metadata loaders, the languages it
@@ -449,7 +507,9 @@ Every page route renders `TmRouteHost`. It draws the page family's skeleton in t
 frame, loads the page's chunk beside a cold tenant entry's refresh, and creates the page once the
 tenant's launch documents are current. A page that names a `securable` the user lacks shows the
 forbidden view in place. A chunk that fails to load asks the service worker for an update and
-shows `client-outdated` or `offline`. Each page gets its own page scope and leave checks, which a
+shows `client-outdated` or `offline`. The `client-outdated` view loads `@tellma/core/errors` at
+once and renders its `tm-error-state` in its place, whose Reload gets the update first; when that
+entry point cannot load, Reload reloads plainly, which no worker is in the way of. Each page gets its own page scope and leave checks, which a
 navigation away runs, a move between My settings sections or into another tenant included; a
 settings tab change keeps the page and runs none. On every page route, the host registers a
 default page context of the route's kind, titled as the document is, whose route template names
@@ -555,7 +615,51 @@ queued, before the row opens. Each banner's time from queued to shown is the tim
 `@tellma/core/attention` holds `tm-banner-host`, which the shells place in the banner row. It renders
 `tm-banner-bar` from `current`, wires its action, pager and dismiss buttons back, never takes focus,
 and owns the one visually hidden live region: assertive for level 1, polite otherwise, written once
-per banner that becomes the row's.
+per banner that becomes the row's. A dismiss that empties the row while focus was in it moves focus
+to the page's `main`, so it never falls to the document's body.
+
+## Attention: the badges, the verbs and the arrivals
+
+`TmAttention` reads the routed tenant's stored `inbox` and `assignments` and renders the bell's and
+the tray's badges from them: the bell's count of unseen notifications (`99+` from 100), its
+`attention` tone while a warning or an error is unseen and its count of jobs that are pending or
+running, the tray's count of open assignments and its accent while some are new, each with its
+accessible name. `toggle` opens a panel or closes it; opening shows the stored document at once,
+quiets the badge, marks the document seen when it shows something new, then reads it once.
+
+```ts
+const attention = inject(TmAttention);
+const unseen = computed(() => attention.bell().count);
+attention.toggle('bell', 'click');
+await attention.read([4102]);
+```
+
+The verbs (`read`, `readAll`, `clear`, `clearRead`, `stopJob`) apply in the same frame through the
+tab's overlay, then call the server; an inbox verb's overlay drops when a copy arrives whose inbox
+version is at or above the one the verb returned, so a copy read before the verb committed never
+undoes it, whatever order the copies were saved in. A failed verb drops its overlay at once and
+toasts sticky with "Try again". The verbs do nothing on a frozen tenant or offline (`writable`). The
+server calls load as a chunk of their own with the first one, so the first frame carries only the
+overlays.
+
+`TmArrivals`, which the tenant shell creates, toasts what arrives in the visible, focused tab: a
+notification of a toasting type (by severity, with Download or View), one assignment (with its
+caption and the assigner's comment, and Open) or several grouped (View opens the tray), and a tenant
+that turned read-only or frozen. A tab's baseline is the first copy written after it started, and
+each later copy's arrivals are the rows newer than the previous copy's newest, so nothing that
+arrived before pops up and a tab that gains focus replays nothing. The user's
+`notifications.toasts` preference (`tmNotificationToastsKey`) turns the notification and assignment
+toasts off. Inside a tenant the toasts' overflow pill reads "{n} more · Open notifications" and
+opens the notifications. What arrived and how it toasts, with its strings (`tm.arrivals`), load as
+a chunk with the first copy handed on.
+
+`TmAttentionText` renders server text in the reader's language, following every language switch
+with no request: a notification's title and detail from its type's keys, a job's label (its own key,
+then its handler's, then the handler's fallback, an `entity` argument naming an entity rendering as
+its plural label), a job's message, and an assignment's caption (the title with its code split out
+for an isolate, the detail, and the amount at its own scale with its currency's code).
+`TmOutcomeToasts` raises the outcomes the platform's own pages toast: "Started in the background."
+with Track, and the sticky "Exporting…" with Cancel.
 
 The toast policy's durations are `TM_TOAST_FEEDBACK_MS` (4 s, an outcome the acting tab raises) and
 `TM_TOAST_ARRIVAL_MS` (6 s, an arriving notification or assignment).
@@ -777,6 +881,64 @@ its rows' names. `@tellma/core-testing` has `TmEntityFieldHarness` and
 </tm-form-field>
 ```
 
+### Entity actions
+
+`TmEntityActions` runs an entity's actions from their metadata, so the details page and the
+search page's bulk actions build the same requests. `run(entity, action, ids, options)` posts to
+`{segment}/{action}` through `TmApi.write`: an action that returns entities takes `{ ids,
+returnEntities, include, arguments }` (`include`, the entity's extras by default, only while
+`returnEntities`, which is true by default), a single-target one `{ id, arguments }`, any other
+`{ ids, arguments }`. It resolves to the outcome: the entities, the action's own result, a
+background job (an own result that is exactly `{ jobId, resourceId }`, the server's 202
+`JobAccepted`), or `declined`. The run's code, like the dialogs', loads on first use: a page's
+first frame only lists the actions. A chunk that cannot load rejects as an `offline` `TmApiError`
+(code `network`), as a call that never reached the server. The busy overlay and a destructive action's confirmation are the
+caller's, which knows whether its trigger is still on screen; `confirmation(entity, action, n)`
+gives the confirmation to ask, the declaration's or "Run “{action}” on {n} items?" with "This
+can't be undone.".
+
+```ts
+const outcome = await inject(TmEntityActions).dialog('acme.Customer', 'set-credit-limit', [77]);
+// posts customers/set-credit-limit { ids: [77], returnEntities: true, include: ['permissions'], arguments: { creditLimit: '250000' } }
+```
+
+- **Dialogs.** `dialog(...)` opens the dialog an action with arguments takes, loaded on first use:
+  the declaration's `dialog`, else one generated from the metadata's `fields`, each in a
+  `tm-form-field` with its `tm-value-editor` (a picker for a field with a `target`), required per
+  the field, and Cancel beside the action's button (`danger` when destructive). An action with no
+  arguments and no declared dialog runs at once. A declared dialog injects its context with
+  `injectTmActionDialog()`: the rows, the invoker's `initial` arguments, `running`, `close`, and
+  `run(args, { form, keepOpen, ids, rethrow })`, which runs under the busy overlay, shows the
+  action's button pending, and closes with the outcome unless `keepOpen`; `dialog()` resolves to
+  the last successful run's outcome however the dialog then closes, and `null` only when nothing
+  ran. The server's errors at `arguments.*` land on `form`'s fields by the error-path walk and
+  clear as each field is edited; the generated form records each with the value it was sent for,
+  so it shows while the field holds that value and every one clears as the next run starts. A
+  required yes/no argument takes "no" as an answer. Every other error lists in an alert atop the
+  dialog with the call's reference, a row's (`ids[i]`) under its display name, except the kinds
+  `rethrow` names, which reject for the dialog to read; a write whose answer never came reads as
+  unconfirmed, apart from one never sent. A declined warning keeps the dialog open.
+- **Which actions appear.** `offered(entity, { record, bulk })` lists the entity's own actions,
+  not built in, that take no arguments, declare a dialog, or list fields that each take a control,
+  that the declaration's `visible` admits for the record, those the declaration lists first, in its
+  order, then the rest in the metadata's; a selection (`bulk`) leaves out
+  single-target actions and those declared `bulk: false`, and reads no `visible`. Whether the user
+  may run each stays the caller's to show, disabled with `TmPermissions.disabledReason`. In
+  development the actions no page can offer are named once per entity, unless the declaration
+  lists them (`{ name: 'preferences/set', visible: () => false }` leaves one out on purpose).
+- **Warnings.** `TmConfirmations.run(send, { entity, ids, confirmations })` sends a write and,
+  on a 409 `confirmation-required`, loads its alert dialog: "Confirm to continue", each warning's
+  message through `TmServerText` with up to five of its rows by display name, Cancel (focused),
+  and Continue, which resends with the confirmed keys as `Tellma-Confirm`. When the warnings name
+  fewer rows than `ids` holds, "Continue without these {n}" resends the others through the
+  attempt's `skip`. Cancel resolves `null`; a fifth warning in one run, or more than 16 keys,
+  fails as a `server` error. Every action runs through it.
+- **Error paths** (`@tellma/core/error-paths`). `tmSplitErrorPath('entities[0].lines[1].amount')` splits a server path into
+  `['entities', 0, 'lines', 1, 'amount']`; `tmWalkErrorPath(form, segments, { entity, entities })`
+  follows the segments through a Signal Forms tree by the wire's names, each child collection
+  giving the next entity, and returns the field, the PascalCase path and the entity, or the
+  deepest field reached when a segment does not resolve.
+
 ### Strings of a lazy entry point
 
 Strings that only a lazily loaded entry point reads ship with it, never in the primary's English
@@ -792,7 +954,12 @@ The strings merge into the English translation, so they format through the same 
 and a language's table that holds the same keys (a locale pack's `tm.value`) wins, English being
 the fallback. A scope registers once and belongs to one entry point. `@tellma/core/entity`
 registers `tm.value` when `TmFormats` is first created, and `tm.picker` when `TmEntityPickers` is;
-the filters' and the expression editor's strings follow the same seam. The seam itself costs the primary one method
+`TmEntityActions` merges its default confirmation's two keys into `tm.entity` (a scope no other
+entry point registers), and the confirmation and action dialogs register `tm.confirmations` and
+`tm.actionDialog` from their own chunks; the filters' and the expression editor's strings follow
+the same seam. `@tellma/core/attention`
+registers `tm.attention` when its first service is created, and its arrival toasts' chunk registers
+`tm.arrivals` as it loads. The seam itself costs the primary one method
 and a set of the scopes registered.
 
 ## Decimals
@@ -818,8 +985,10 @@ site. Tests replace them through `@tellma/core-testing`, which also puts `TmFake
 The HTTP layer reaches three services that arrive later through internal seams in `src/api/`, each
 with a default that is correct until its owner replaces it: the request locale (the document's
 language and no calendar, until the localization service), the cache refresher (nothing cached, so
-nothing to revalidate), and the worker's update check (`disabled`, as no worker controls the
-page yet).
+nothing to revalidate), and the worker's update check, which loads `@tellma/core/updates` on its
+first call (`disabled` in an app without it, as a test app, and `unreachable` when it cannot load).
+The sync's refusals that end a tenant's use go through one more to the error presenter, which
+they load through the same loader as the route's `client-outdated` view.
 
 The route host reads one more: the platform's text, which reads the loaded string packs and
 client tables until the localization service replaces it. A page's `securable` gate asks
@@ -830,14 +999,14 @@ client tables until the localization service replaces it. A page's `securable` g
 Static imports between entry points follow one graph, always through `@tellma/core/<entry point>`
 and never a relative path: the primary imports no other entry point, `/attention` only the
 primary, `/shell` the primary and `/attention`, and no eager entry point imports a lazy one. A
-shared entry point (`/private`, `/search-normalize`) loads with whichever code imports it: every
+shared entry point (`/private`, `/search-normalize`, `/error-paths`) loads with whichever code imports it: every
 entry point but the primary and the shared ones may import it, so the primary never carries it.
 Dynamic `import()` and `import type` cross any boundary, and a spec may reach another entry
 point's test rigs (`*.testing.util.ts`) by a relative path, since no build ships either. The lint
 rule `tm/core-import-boundary` enforces the graph, and ng-packagr refuses a cycle between entry
 points.
 
-The primary reaches `/shell`, `/recents` and `/leader` only through `import()` with a specifier TypeScript
+The primary reaches `/shell`, `/recents`, `/leader`, `/updates` and `/errors` only through `import()` with a specifier TypeScript
 does not follow, since ng-packagr would count a followed one as a cycle. The components it loads
 from the shell are named in an internal contract that the shell's component map `satisfies`, so
 either side's rename fails the build. A build or test that compiles the primary from sources in

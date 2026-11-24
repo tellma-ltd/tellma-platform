@@ -34,6 +34,7 @@ export interface TmErrorDialogOptions {
     readonly details?: readonly {
         readonly label: string;
         readonly value: string;
+        readonly code?: boolean;
     }[];
     readonly items?: readonly string[];
     readonly message: string;

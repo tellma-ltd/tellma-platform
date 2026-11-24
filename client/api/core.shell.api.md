@@ -29,6 +29,7 @@ export class TmTenantPicker {
 
 // @public
 export class TmTenantShell {
+    constructor();
     static ɵcmp: i0.ɵɵComponentDeclaration<TmTenantShell, "tm-tenant-shell", never, {}, {}, never, never, true, never>;
     static ɵfac: i0.ɵɵFactoryDeclaration<TmTenantShell, never>;
 }

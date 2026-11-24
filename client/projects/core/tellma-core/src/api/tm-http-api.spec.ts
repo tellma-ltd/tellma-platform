@@ -16,11 +16,11 @@ import { TmClientMetadataStore, type TmContracts } from '../metadata/tm-client-m
 import { TM_METADATA_LOADERS, type TmMetadataLoaders } from '../metadata/tm-metadata-loaders';
 import { TmTelemetry } from '../observe/tm-telemetry';
 import { TmRequestLog } from '../requests/tm-request-log';
-import { tmUnhandled } from '../routes/tm-app.testing.util';
+import { tmUnhandled, tmWaitUntil } from '../routes/tm-app.testing.util';
 import { tmProfileCookies, tmProfileCookieValue } from '../session/tm-profile.testing.util';
 import { TmSession } from '../session/tm-session';
 import { TmSessionPaths } from '../session/tm-session-paths';
-import { TmFakeSessionHost, tmSessionTestingProviders } from '../session/tm-session.testing.util';
+import { TmFakeSessionHost, TmRecordingSessionFlows, tmSessionTestingProviders } from '../session/tm-session.testing.util';
 import { TmApi } from './tm-api';
 import { TmApiError } from './tm-api-error';
 import { TM_API_HOST } from './tm-api-host';
@@ -140,6 +140,19 @@ const flush = async (): Promise<void> => {
   for (let i = 0; i < 5; i++) {
     await vi.advanceTimersByTimeAsync(0);
   }
+};
+
+/**
+ * Flushes, then runs the pending microtasks and the timers due now, a real
+ * task at a time, until a condition holds. A call's path through a lazily
+ * loaded chunk (the outdated-client verdict, the download and upload code)
+ * goes on only once the chunk's first fetch lands, which no number of turns
+ * bounds; fake time never moves. The wait fails after a real deadline,
+ * naming the condition.
+ */
+const flushUntil = async (condition: () => boolean): Promise<void> => {
+  await flush();
+  await tmWaitUntil(condition, () => vi.advanceTimersByTimeAsync(0));
 };
 
 /** A promise's outcome, as it settles. */
@@ -404,9 +417,8 @@ describe('TmHttpApi', () => {
       expect(rig.host.requests).toHaveLength(0);
       expect(write.error).toMatchObject({ kind: 'unauthenticated' });
       expect(rig.paths.state()).toBe('expired');
-      // The expiry path sweeps the store, then leaves to sign in again.
-      await vi.waitFor(() => expect(rig.sessionHost.assigned).toHaveLength(1));
-      expect(rig.sessionHost.reloads).toBe(0);
+      // The session's flows run the rest of the expiry path.
+      await vi.waitFor(() => expect(TestBed.inject(TmRecordingSessionFlows).calls).toEqual(['expired']));
     });
 
     it('runs the changed-user path and rejects cancelled, unsent, under another user', async () => {
@@ -416,7 +428,7 @@ describe('TmHttpApi', () => {
       await flush();
       expect(rig.host.requests).toHaveLength(0);
       expect(read.error).toMatchObject({ kind: 'cancelled' });
-      expect(rig.sessionHost.replaced).toEqual(['/']);
+      await vi.waitFor(() => expect(TestBed.inject(TmRecordingSessionFlows).calls).toEqual(['changedUser']));
     });
 
     it("runs again on the response: another user's answer is discarded", async () => {
@@ -428,7 +440,7 @@ describe('TmHttpApi', () => {
       await flush();
       expect(read.error).toMatchObject({ kind: 'cancelled' });
       expect(read.value).toBeUndefined();
-      expect(rig.sessionHost.replaced).toEqual(['/']);
+      await vi.waitFor(() => expect(TestBed.inject(TmRecordingSessionFlows).calls).toEqual(['changedUser']));
     });
 
     it("observes nothing of another user's answer", async () => {
@@ -464,9 +476,8 @@ describe('TmHttpApi', () => {
       rig.host.last().answer(tmAnswer(200, {}));
       await flush();
       expect(write.error).toMatchObject({ kind: 'unauthenticated' });
-      // The expiry path sweeps the store, then leaves to sign in again.
-      await vi.waitFor(() => expect(rig.sessionHost.assigned).toHaveLength(1));
-      expect(rig.sessionHost.reloads).toBe(0);
+      // The session's flows run the rest of the expiry path.
+      await vi.waitFor(() => expect(TestBed.inject(TmRecordingSessionFlows).calls).toEqual(['expired']));
     });
 
     it.each(['/api/distribution-info', '/health/ready', '/.well-known/openid-configuration'])('skips the anonymous route %s', async (route) => {
@@ -487,9 +498,8 @@ describe('TmHttpApi', () => {
       rig.host.last().answer(tmProblemAnswer(401, 'unauthenticated'));
       await flush();
       expect(read.error).toMatchObject({ kind: 'unauthenticated', status: 401 });
-      // The expiry path sweeps the store, then leaves to sign in again.
-      await vi.waitFor(() => expect(rig.sessionHost.assigned).toHaveLength(1));
-      expect(rig.sessionHost.reloads).toBe(0);
+      // The session's flows run the rest of the expiry path.
+      await vi.waitFor(() => expect(TestBed.inject(TmRecordingSessionFlows).calls).toEqual(['expired']));
     });
 
     it('cancels, ending nothing, a 401 for a session the cookie no longer names', async () => {
@@ -795,7 +805,7 @@ describe('TmHttpApi', () => {
       await flush();
       expect(rig.host.requests).toHaveLength(1);
       expect(read.error).toMatchObject({ kind: 'cancelled' });
-      expect(rig.sessionHost.replaced).toEqual(['/']);
+      await vi.waitFor(() => expect(TestBed.inject(TmRecordingSessionFlows).calls).toEqual(['changedUser']));
       expect(rig.log.entries[0].end).toMatchObject({ outcome: 'cancelled' });
     });
 
@@ -825,13 +835,21 @@ describe('TmHttpApi', () => {
   });
 
   describe('the outdated-client verdict', () => {
-    /** Answers the next write with a 412 under a server build, and returns its error. */
-    async function verdictOf(rig: TmRig, build: string | null, status = 412): Promise<TmTracked<unknown>> {
+    /** Answers the next write with a 412 under a server build, and returns the write while its verdict is decided. */
+    async function refused(rig: TmRig, build: string | null, status = 412): Promise<TmTracked<unknown>> {
+      const sent = rig.host.requests.length;
       const write = track(rig.api.write('centers/save', {}));
-      await flush();
+      await flushUntil(() => rig.host.requests.length > sent);
       const code = status === 412 ? 'client-outdated' : 'route-not-found';
       rig.host.last().answer(tmProblemAnswer(status, code, build === null ? {} : { 'Tellma-Build': build }));
-      await flush();
+      return write;
+    }
+
+    /** Answers the next write with a 412 under a server build, and returns it once its verdict settles it. */
+    async function verdictOf(rig: TmRig, build: string | null, status = 412): Promise<TmTracked<unknown>> {
+      const write = await refused(rig, build, status);
+      // The verdict loads its rules with the first such answer.
+      await flushUntil(() => write.settled);
       return write;
     }
 
@@ -886,7 +904,9 @@ describe('TmHttpApi', () => {
     it('blames the client when the worker does not answer within 3 s', async () => {
       const rig = await setUp();
       rig.updates.answer = null;
-      const write = await verdictOf(rig, '1.0.0+fedcba9');
+      const write = await refused(rig, '1.0.0+fedcba9');
+      // The builds are unordered, so the worker is asked once the verdict's rules load.
+      await flushUntil(() => rig.updates.checks === 1);
       expect(write.settled).toBe(false);
       await vi.advanceTimersByTimeAsync(2_999);
       expect(write.settled).toBe(false);
@@ -938,7 +958,8 @@ describe('TmHttpApi', () => {
       for (const request of [...rig.host.requests]) {
         request.answer(tmProblemAnswer(412, 'client-outdated', { 'Tellma-Build': '0.9.0' }));
       }
-      await flush();
+      // The first verdict loads the rules for all three.
+      await flushUntil(() => verdicts(rig).length === 3);
       expect(rig.updates.checks).toBe(0);
       expect(verdicts(rig)).toEqual(Array(3).fill({ verdict: 'server-outdated', source: 'build' }));
       // Each read retries once, 30 s after its own verdict, and the swap has finished by then.
@@ -957,11 +978,14 @@ describe('TmHttpApi', () => {
       const read = track(rig.api.read('centers/query', {}, signal()));
       await flush();
       rig.host.last().answer(tmProblemAnswer(412, 'client-outdated', { 'Tellma-Build': '0.9.0' }));
+      // The retry's wait starts once the verdict, which loads its rules first, is decided.
+      await flushUntil(() => verdicts(rig).length === 1);
       await vi.advanceTimersByTimeAsync(29_999);
       expect(rig.host.requests).toHaveLength(1);
       await vi.advanceTimersByTimeAsync(1);
       expect(rig.host.requests).toHaveLength(2);
       rig.host.last().answer(tmProblemAnswer(412, 'client-outdated', { 'Tellma-Build': '0.9.0' }));
+      await flushUntil(() => read.settled);
       await vi.advanceTimersByTimeAsync(60_000);
       expect(rig.host.requests).toHaveLength(2);
       expect(read.error).toMatchObject({ code: 'server-outdated' });
@@ -1175,7 +1199,8 @@ describe('TmHttpApi', () => {
       const blob = track(rig.api.fetchBlob('/17/blobs/51'));
       const write = track(rig.api.write('centers/save', {}));
       const upload = track(rig.api.upload('attachment', new Blob(['1']), { ...signal(), fileName: 'a.txt' }));
-      await flush();
+      // An upload is sent once the transfer code loads.
+      await flushUntil(() => rig.host.uploads.length === 1);
       expect(rig.host.requests).toHaveLength(4);
       rig.paths.state.set(state);
       TestBed.tick();
@@ -1276,7 +1301,8 @@ describe('TmHttpApi', () => {
       const write = track(rig.api.write('centers/save', {}));
       await flush();
       rig.host.last().answer(tmProblemAnswer(412, 'client-outdated', { 'Tellma-Build': '1.0.0+fedcba9' }));
-      await flush();
+      // The builds are unordered, so the worker is asked once the verdict's rules load.
+      await flushUntil(() => rig.updates.checks === 1);
       expect(rig.updates.checks).toBe(1);
       expect(write.settled).toBe(false);
 
@@ -1339,7 +1365,8 @@ describe('TmHttpApi', () => {
       await flush();
       body.push(4);
       body.close();
-      await flush();
+      // The body is read once the transfer code loads.
+      await flushUntil(() => download.settled);
       expect(progress).toEqual([3, 7]);
       expect(download.value).toMatchObject({
         fileName: 'مراكز.xlsx',
@@ -1350,13 +1377,16 @@ describe('TmHttpApi', () => {
 
     it('restarts the watchdog at each chunk, so only a stall ends it', async () => {
       const rig = await setUp();
-      const download = track(rig.api.download('centers/export', {}, signal()));
+      const progress: number[] = [];
+      const download = track(rig.api.download('centers/export', {}, { ...signal(), onProgress: (bytes) => progress.push(bytes) }));
       await flush();
       const body = streamed(rig.host.last(), { 'Content-Disposition': 'attachment; filename=centers.xlsx' });
       rig.host.last().answer(body.response);
-      for (let i = 0; i < 3; i++) {
+      for (let i = 1; i <= 3; i++) {
         await vi.advanceTimersByTimeAsync(50_000);
         body.push(1);
+        // A chunk restarts the watchdog once it is read, and the body is read once the transfer code loads.
+        await flushUntil(() => progress.length === i);
       }
       await flush();
       expect(download.settled).toBe(false);
@@ -1369,13 +1399,16 @@ describe('TmHttpApi', () => {
     /** A file with a type. */
     const file = (type = 'image/png'): Blob => new Blob(['12345678'], { type });
 
+    /** Waits until the upload is sent, which it is once the transfer code loads. */
+    const sent = (rig: TmRig): Promise<void> => flushUntil(() => rig.host.uploads.length > 0);
+
     it('posts the raw file with its headers and reports its progress', async () => {
       const rig = await setUp();
       const progress: number[] = [];
       const upload = track(
         rig.api.upload('customer-image', file(), { ...signal(), fileName: 'logo 1.png', onProgress: (share) => progress.push(share) }),
       );
-      await flush();
+      await sent(rig);
       const xhr = rig.host.uploads[0];
       expect(xhr.method).toBe('POST');
       expect(xhr.url).toBe('/17/blobs/customer-image?fileName=logo%201.png');
@@ -1409,7 +1442,7 @@ describe('TmHttpApi', () => {
     it('declares a file with no type as octet-stream', async () => {
       const rig = await setUp();
       track(rig.api.upload('attachment', file(''), { ...signal(), fileName: 'notes' }));
-      await flush();
+      await sent(rig);
       expect(rig.host.uploads[0].headers['Content-Type']).toBe('application/octet-stream');
     });
 
@@ -1417,7 +1450,7 @@ describe('TmHttpApi', () => {
       const rig = await setUp();
       const controller = new AbortController();
       const upload = track(rig.api.upload('attachment', file(), { signal: controller.signal, fileName: 'a.png' }));
-      await flush();
+      await sent(rig);
       controller.abort();
       await flush();
       expect(rig.host.uploads[0].aborted).toBe(true);
@@ -1427,7 +1460,7 @@ describe('TmHttpApi', () => {
     it('maps a refusal and never retries', async () => {
       const rig = await setUp();
       const upload = track(rig.api.upload('attachment', file(), { ...signal(), fileName: 'a.exe' }));
-      await flush();
+      await sent(rig);
       rig.host.uploads[0].respond(400, { code: 'blob-rejected', status: 400, instance: 'x', arguments: { reason: 'type' } });
       await vi.advanceTimersByTimeAsync(10_000);
       expect(upload.error).toMatchObject({ kind: 'validation', code: 'blob-rejected' });
@@ -1437,7 +1470,7 @@ describe('TmHttpApi', () => {
     it('rejects a network failure as offline, never retried', async () => {
       const rig = await setUp();
       const upload = track(rig.api.upload('attachment', file(), { ...signal(), fileName: 'a.png' }));
-      await flush();
+      await sent(rig);
       rig.host.uploads[0].error();
       await vi.advanceTimersByTimeAsync(10_000);
       expect(upload.error).toMatchObject({ kind: 'offline', code: 'network' });
@@ -1447,7 +1480,7 @@ describe('TmHttpApi', () => {
     it('ends an upload that stalls or whose answer is lost after 60 s, restarting at each progress event', async () => {
       const rig = await setUp();
       const upload = track(rig.api.upload('attachment', file(), { ...signal(), fileName: 'a.png' }));
-      await flush();
+      await sent(rig);
       const xhr = rig.host.uploads[0];
       for (let i = 1; i <= 3; i++) {
         await vi.advanceTimersByTimeAsync(50_000);
@@ -1466,7 +1499,7 @@ describe('TmHttpApi', () => {
     it('applies the user check on the answer', async () => {
       const rig = await setUp();
       const upload = track(rig.api.upload('attachment', file(), { ...signal(), fileName: 'a.png' }));
-      await flush();
+      await sent(rig);
       rig.sessionHost.cookieJar = tmProfileCookies(SARA);
       rig.host.uploads[0].respond(201, { id: 1 });
       await flush();
@@ -1526,8 +1559,7 @@ describe('TmHttpApi', () => {
       await flush();
       expect(rig.host.requests).toHaveLength(0);
       expect(rig.paths.state()).toBe('active');
-      expect(rig.sessionHost.replaced).toEqual([]);
-      expect(rig.sessionHost.reloads).toBe(0);
+      expect(TestBed.inject(TmRecordingSessionFlows).calls).toEqual([]);
     });
 
     it('carries the fingerprint once the chunk is loaded', async () => {

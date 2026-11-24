@@ -14,6 +14,7 @@ import {
   ɵTM_DRAFT_KEY_PREFIX,
   ɵTM_DRAFTS_STORAGE,
   ɵTM_STATE_PARTS,
+  ɵtmDraftKeyTail,
   ɵtmDraftPrefix,
   ɵtmRemoveDrafts,
   ɵtmStorageKeys,
@@ -91,7 +92,12 @@ export class TmDrafts {
 
   /** Creates the service, which flushes the saves when the page hides. */
   constructor() {
-    inject(ɵTM_STATE_PARTS).drafts = () => this.ɵkeys();
+    // The dump lists the drafts' keys; the session's paths count and clear
+    // them through this service once it exists, so a pending save is never
+    // written back after a sign-out.
+    const parts = inject(ɵTM_STATE_PARTS);
+    parts.drafts = () => this.ɵkeys();
+    parts.draftsService = this;
     const host = inject(ɵTM_API_HOST);
     const stops = [
       host.listen('window', 'pagehide', () => this.ɵflush()),
@@ -202,7 +208,7 @@ export class TmDrafts {
    * @returns The keys, such as `17:gl.Center:5`.
    */
   ɵkeys(): string[] {
-    return [...this.#keys()].map((key) => key.slice(key.indexOf(':', ɵTM_DRAFT_KEY_PREFIX.length) + 1));
+    return [...this.#keys()].map(ɵtmDraftKeyTail);
   }
 
   /** The signed-in user's subject, or `null`. */

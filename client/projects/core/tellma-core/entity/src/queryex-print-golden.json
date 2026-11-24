@@ -1,0 +1,401 @@
+{
+  "description": "Expression trees and the text the engine's canonical printer writes for each. The client's printer must print every tree as its text.",
+  "regenerate": "dotnet run --project eng/queryex-client-corpus/Tellma.Queryex.ClientCorpus",
+  "rows": [
+    {
+      "name": "an equal-power right operand is grouped",
+      "text": "a - (b - c)",
+      "expression": {"kind": "binary", "op": "-", "left": {"kind": "path", "segments": ["a"]}, "right": {"kind": "binary", "op": "-", "left": {"kind": "path", "segments": ["b"]}, "right": {"kind": "path", "segments": ["c"]}}}
+    },
+    {
+      "name": "an equal-power left operand is not",
+      "text": "a - b - c",
+      "expression": {"kind": "binary", "op": "-", "left": {"kind": "binary", "op": "-", "left": {"kind": "path", "segments": ["a"]}, "right": {"kind": "path", "segments": ["b"]}}, "right": {"kind": "path", "segments": ["c"]}}
+    },
+    {
+      "name": "a looser operand of a product is grouped",
+      "text": "a * (b + c)",
+      "expression": {"kind": "binary", "op": "*", "left": {"kind": "path", "segments": ["a"]}, "right": {"kind": "binary", "op": "+", "left": {"kind": "path", "segments": ["b"]}, "right": {"kind": "path", "segments": ["c"]}}}
+    },
+    {
+      "name": "a tighter operand of a sum is not",
+      "text": "a * b + c",
+      "expression": {"kind": "binary", "op": "+", "left": {"kind": "binary", "op": "*", "left": {"kind": "path", "segments": ["a"]}, "right": {"kind": "path", "segments": ["b"]}}, "right": {"kind": "path", "segments": ["c"]}}
+    },
+    {
+      "name": "a sum under a negation is grouped",
+      "text": "-(a + b)",
+      "expression": {"kind": "negate", "operand": {"kind": "binary", "op": "+", "left": {"kind": "path", "segments": ["a"]}, "right": {"kind": "path", "segments": ["b"]}}}
+    },
+    {
+      "name": "a negation under a negation is not",
+      "text": "--a",
+      "expression": {"kind": "negate", "operand": {"kind": "negate", "operand": {"kind": "path", "segments": ["a"]}}}
+    },
+    {
+      "name": "a negation in a product is not grouped on the left",
+      "text": "-a * b",
+      "expression": {"kind": "binary", "op": "*", "left": {"kind": "negate", "operand": {"kind": "path", "segments": ["a"]}}, "right": {"kind": "path", "segments": ["b"]}}
+    },
+    {
+      "name": "a negation in a product is not grouped on the right",
+      "text": "a * -b",
+      "expression": {"kind": "binary", "op": "*", "left": {"kind": "path", "segments": ["a"]}, "right": {"kind": "negate", "operand": {"kind": "path", "segments": ["b"]}}}
+    },
+    {
+      "name": "a comparison under not is not grouped",
+      "text": "not a = b",
+      "expression": {"kind": "not", "operand": {"kind": "binary", "op": "=", "left": {"kind": "path", "segments": ["a"]}, "right": {"kind": "path", "segments": ["b"]}}}
+    },
+    {
+      "name": "not under a comparison is grouped",
+      "text": "(not a) = b",
+      "expression": {"kind": "binary", "op": "=", "left": {"kind": "not", "operand": {"kind": "path", "segments": ["a"]}}, "right": {"kind": "path", "segments": ["b"]}}
+    },
+    {
+      "name": "a comparison on the left of a comparison is grouped",
+      "text": "(a = b) = c",
+      "expression": {"kind": "binary", "op": "=", "left": {"kind": "binary", "op": "=", "left": {"kind": "path", "segments": ["a"]}, "right": {"kind": "path", "segments": ["b"]}}, "right": {"kind": "path", "segments": ["c"]}}
+    },
+    {
+      "name": "a comparison on the right of a comparison is grouped",
+      "text": "a = (b = c)",
+      "expression": {"kind": "binary", "op": "=", "left": {"kind": "path", "segments": ["a"]}, "right": {"kind": "binary", "op": "=", "left": {"kind": "path", "segments": ["b"]}, "right": {"kind": "path", "segments": ["c"]}}}
+    },
+    {
+      "name": "an or under an and is grouped",
+      "text": "(a or b) and c",
+      "expression": {"kind": "binary", "op": "and", "left": {"kind": "binary", "op": "or", "left": {"kind": "path", "segments": ["a"]}, "right": {"kind": "path", "segments": ["b"]}}, "right": {"kind": "path", "segments": ["c"]}}
+    },
+    {
+      "name": "an and under an or is not",
+      "text": "a or b and c",
+      "expression": {"kind": "binary", "op": "or", "left": {"kind": "path", "segments": ["a"]}, "right": {"kind": "binary", "op": "and", "left": {"kind": "path", "segments": ["b"]}, "right": {"kind": "path", "segments": ["c"]}}}
+    },
+    {
+      "name": "an and under not is grouped",
+      "text": "not (a and b)",
+      "expression": {"kind": "not", "operand": {"kind": "binary", "op": "and", "left": {"kind": "path", "segments": ["a"]}, "right": {"kind": "path", "segments": ["b"]}}}
+    },
+    {
+      "name": "not under not is not",
+      "text": "not not a",
+      "expression": {"kind": "not", "operand": {"kind": "not", "operand": {"kind": "path", "segments": ["a"]}}}
+    },
+    {
+      "name": "an and chain grouped to the left needs no parentheses",
+      "text": "a and b and c",
+      "expression": {"kind": "binary", "op": "and", "left": {"kind": "binary", "op": "and", "left": {"kind": "path", "segments": ["a"]}, "right": {"kind": "path", "segments": ["b"]}}, "right": {"kind": "path", "segments": ["c"]}}
+    },
+    {
+      "name": "an and chain grouped to the right keeps them",
+      "text": "a and (b and c)",
+      "expression": {"kind": "binary", "op": "and", "left": {"kind": "path", "segments": ["a"]}, "right": {"kind": "binary", "op": "and", "left": {"kind": "path", "segments": ["b"]}, "right": {"kind": "path", "segments": ["c"]}}}
+    },
+    {
+      "name": "a concatenation chain grouped to the left needs no parentheses",
+      "text": "a || b || c",
+      "expression": {"kind": "binary", "op": "||", "left": {"kind": "binary", "op": "||", "left": {"kind": "path", "segments": ["a"]}, "right": {"kind": "path", "segments": ["b"]}}, "right": {"kind": "path", "segments": ["c"]}}
+    },
+    {
+      "name": "a sum on the right of a concatenation is grouped",
+      "text": "a || (b + c)",
+      "expression": {"kind": "binary", "op": "||", "left": {"kind": "path", "segments": ["a"]}, "right": {"kind": "binary", "op": "+", "left": {"kind": "path", "segments": ["b"]}, "right": {"kind": "path", "segments": ["c"]}}}
+    },
+    {
+      "name": "a remainder, a quotient and a product read left to right",
+      "text": "a % b / c * d",
+      "expression": {"kind": "binary", "op": "*", "left": {"kind": "binary", "op": "/", "left": {"kind": "binary", "op": "%", "left": {"kind": "path", "segments": ["a"]}, "right": {"kind": "path", "segments": ["b"]}}, "right": {"kind": "path", "segments": ["c"]}}, "right": {"kind": "path", "segments": ["d"]}}
+    },
+    {
+      "name": "a product on the right of a quotient is grouped",
+      "text": "a / (b * c)",
+      "expression": {"kind": "binary", "op": "/", "left": {"kind": "path", "segments": ["a"]}, "right": {"kind": "binary", "op": "*", "left": {"kind": "path", "segments": ["b"]}, "right": {"kind": "path", "segments": ["c"]}}}
+    },
+    {
+      "name": "an in list takes sums bare and comparisons grouped",
+      "text": "a + b in (1, 2 + 3, (4 = 5))",
+      "expression": {"kind": "in", "value": {"kind": "binary", "op": "+", "left": {"kind": "path", "segments": ["a"]}, "right": {"kind": "path", "segments": ["b"]}}, "items": [{"kind": "number", "value": "1"}, {"kind": "binary", "op": "+", "left": {"kind": "number", "value": "2"}, "right": {"kind": "number", "value": "3"}}, {"kind": "binary", "op": "=", "left": {"kind": "number", "value": "4"}, "right": {"kind": "number", "value": "5"}}]}
+    },
+    {
+      "name": "a comparison tested for membership is grouped",
+      "text": "(a = b) in (1)",
+      "expression": {"kind": "in", "value": {"kind": "binary", "op": "=", "left": {"kind": "path", "segments": ["a"]}, "right": {"kind": "path", "segments": ["b"]}}, "items": [{"kind": "number", "value": "1"}]}
+    },
+    {
+      "name": "a sum tested for absence is not grouped",
+      "text": "a + b is null",
+      "expression": {"kind": "is-null", "value": {"kind": "binary", "op": "+", "left": {"kind": "path", "segments": ["a"]}, "right": {"kind": "path", "segments": ["b"]}}, "negated": false}
+    },
+    {
+      "name": "an and tested for presence is grouped",
+      "text": "(a and b) is not null",
+      "expression": {"kind": "is-null", "value": {"kind": "binary", "op": "and", "left": {"kind": "path", "segments": ["a"]}, "right": {"kind": "path", "segments": ["b"]}}, "negated": true}
+    },
+    {
+      "name": "a negated path",
+      "text": "-a.b",
+      "expression": {"kind": "negate", "operand": {"kind": "path", "segments": ["a", "b"]}}
+    },
+    {
+      "name": "call arguments are never grouped",
+      "text": "f(a or b, -c)",
+      "expression": {"kind": "call", "name": "f", "args": [{"kind": "binary", "op": "or", "left": {"kind": "path", "segments": ["a"]}, "right": {"kind": "path", "segments": ["b"]}}, {"kind": "negate", "operand": {"kind": "path", "segments": ["c"]}}]}
+    },
+    {
+      "name": "a reserved word in a path is bracketed",
+      "text": "[not].[in] = [desc]",
+      "expression": {"kind": "binary", "op": "=", "left": {"kind": "path", "segments": ["not", "in"]}, "right": {"kind": "path", "segments": ["desc"]}}
+    },
+    {
+      "name": "a name that is not reserved is not bracketed",
+      "text": "Order = 1",
+      "expression": {"kind": "binary", "op": "=", "left": {"kind": "path", "segments": ["Order"]}, "right": {"kind": "number", "value": "1"}}
+    },
+    {
+      "name": "a name with a space or a leading digit is bracketed",
+      "text": "[a b] = [1a]",
+      "expression": {"kind": "binary", "op": "=", "left": {"kind": "path", "segments": ["a b"]}, "right": {"kind": "path", "segments": ["1a"]}}
+    },
+    {
+      "name": "an underscore name is not bracketed",
+      "text": "_x1 = 1",
+      "expression": {"kind": "binary", "op": "=", "left": {"kind": "path", "segments": ["_x1"]}, "right": {"kind": "number", "value": "1"}}
+    },
+    {
+      "name": "an Arabic name is not bracketed",
+      "text": "ناصر.الاسم = 1",
+      "expression": {"kind": "binary", "op": "=", "left": {"kind": "path", "segments": ["ناصر", "الاسم"]}, "right": {"kind": "number", "value": "1"}}
+    },
+    {
+      "name": "a name with a combining mark is bracketed",
+      "text": "[x\u0301] = 1",
+      "expression": {"kind": "binary", "op": "=", "left": {"kind": "path", "segments": ["x\u0301"]}, "right": {"kind": "number", "value": "1"}}
+    },
+    {
+      "name": "a name with a letter beyond the basic plane is bracketed",
+      "text": "[\uD835\uDCB3] = 1",
+      "expression": {"kind": "binary", "op": "=", "left": {"kind": "path", "segments": ["\uD835\uDCB3"]}, "right": {"kind": "number", "value": "1"}}
+    },
+    {
+      "name": "a parameter",
+      "text": "@From = 1",
+      "expression": {"kind": "binary", "op": "=", "left": {"kind": "param", "name": "From"}, "right": {"kind": "number", "value": "1"}}
+    },
+    {
+      "name": "a parameter named by a reserved word",
+      "text": "@order = @[in]",
+      "expression": {"kind": "binary", "op": "=", "left": {"kind": "param", "name": "order"}, "right": {"kind": "param", "name": "in"}}
+    },
+    {
+      "name": "a parameter with a space",
+      "text": "@[a b] = 1",
+      "expression": {"kind": "binary", "op": "=", "left": {"kind": "param", "name": "a b"}, "right": {"kind": "number", "value": "1"}}
+    },
+    {
+      "name": "a string with a quote",
+      "text": "Name = 'O''Neil'",
+      "expression": {"kind": "binary", "op": "=", "left": {"kind": "path", "segments": ["Name"]}, "right": {"kind": "string", "value": "O'Neil"}}
+    },
+    {
+      "name": "an empty string",
+      "text": "Name = ''",
+      "expression": {"kind": "binary", "op": "=", "left": {"kind": "path", "segments": ["Name"]}, "right": {"kind": "string", "value": ""}}
+    },
+    {
+      "name": "a string that looks like a parameter",
+      "text": "Name = 'a@b'",
+      "expression": {"kind": "binary", "op": "=", "left": {"kind": "path", "segments": ["Name"]}, "right": {"kind": "string", "value": "a@b"}}
+    },
+    {
+      "name": "a string with a line break",
+      "text": "Name = 'line\nbreak'",
+      "expression": {"kind": "binary", "op": "=", "left": {"kind": "path", "segments": ["Name"]}, "right": {"kind": "string", "value": "line\nbreak"}}
+    },
+    {
+      "name": "a number keeps its trailing zeros",
+      "text": "x = 0.500",
+      "expression": {"kind": "binary", "op": "=", "left": {"kind": "path", "segments": ["x"]}, "right": {"kind": "number", "value": "0.500"}}
+    },
+    {
+      "name": "a number keeps its leading zeros",
+      "text": "x = 007",
+      "expression": {"kind": "binary", "op": "=", "left": {"kind": "path", "segments": ["x"]}, "right": {"kind": "number", "value": "007"}}
+    },
+    {
+      "name": "a negative number is a negation",
+      "text": "x = -1.5",
+      "expression": {"kind": "binary", "op": "=", "left": {"kind": "path", "segments": ["x"]}, "right": {"kind": "negate", "operand": {"kind": "number", "value": "1.5"}}}
+    },
+    {
+      "name": "true, false and null",
+      "text": "a = true or b = false or c = null",
+      "expression": {"kind": "binary", "op": "or", "left": {"kind": "binary", "op": "or", "left": {"kind": "binary", "op": "=", "left": {"kind": "path", "segments": ["a"]}, "right": {"kind": "bool", "value": true}}, "right": {"kind": "binary", "op": "=", "left": {"kind": "path", "segments": ["b"]}, "right": {"kind": "bool", "value": false}}}, "right": {"kind": "binary", "op": "=", "left": {"kind": "path", "segments": ["c"]}, "right": {"kind": "null"}}}
+    },
+    {
+      "name": "a call",
+      "text": "contains(Name, 'jed')",
+      "expression": {"kind": "call", "name": "contains", "args": [{"kind": "path", "segments": ["Name"]}, {"kind": "string", "value": "jed"}]}
+    },
+    {
+      "name": "a call with no arguments",
+      "text": "today()",
+      "expression": {"kind": "call", "name": "today", "args": []}
+    },
+    {
+      "name": "a call with three arguments",
+      "text": "coalesce(a, b, 0)",
+      "expression": {"kind": "call", "name": "coalesce", "args": [{"kind": "path", "segments": ["a"]}, {"kind": "path", "segments": ["b"]}, {"kind": "number", "value": "0"}]}
+    },
+    {
+      "name": "a numeric between",
+      "text": "CreditLimit >= 100000 and CreditLimit <= 500000",
+      "expression": {"kind": "binary", "op": "and", "left": {"kind": "binary", "op": ">=", "left": {"kind": "path", "segments": ["CreditLimit"]}, "right": {"kind": "number", "value": "100000"}}, "right": {"kind": "binary", "op": "<=", "left": {"kind": "path", "segments": ["CreditLimit"]}, "right": {"kind": "number", "value": "500000"}}}
+    },
+    {
+      "name": "an escaped string beside a code",
+      "text": "contains(Name, 'O''Neil') or Code = '7'",
+      "expression": {"kind": "binary", "op": "or", "left": {"kind": "call", "name": "contains", "args": [{"kind": "path", "segments": ["Name"]}, {"kind": "string", "value": "O'Neil"}]}, "right": {"kind": "binary", "op": "=", "left": {"kind": "path", "segments": ["Code"]}, "right": {"kind": "string", "value": "7"}}}
+    },
+    {
+      "name": "text contains, over two slots",
+      "text": "contains(Memo, 'jed') or contains(Notes, 'jed')",
+      "expression": {"kind": "binary", "op": "or", "left": {"kind": "call", "name": "contains", "args": [{"kind": "path", "segments": ["Memo"]}, {"kind": "string", "value": "jed"}]}, "right": {"kind": "call", "name": "contains", "args": [{"kind": "path", "segments": ["Notes"]}, {"kind": "string", "value": "jed"}]}}
+    },
+    {
+      "name": "text starts with, over two slots",
+      "text": "startsWith(Memo, 'jed') or startsWith(Notes, 'jed')",
+      "expression": {"kind": "binary", "op": "or", "left": {"kind": "call", "name": "startsWith", "args": [{"kind": "path", "segments": ["Memo"]}, {"kind": "string", "value": "jed"}]}, "right": {"kind": "call", "name": "startsWith", "args": [{"kind": "path", "segments": ["Notes"]}, {"kind": "string", "value": "jed"}]}}
+    },
+    {
+      "name": "text ends with, over two slots",
+      "text": "endsWith(Memo, 'jed') or endsWith(Notes, 'jed')",
+      "expression": {"kind": "binary", "op": "or", "left": {"kind": "call", "name": "endsWith", "args": [{"kind": "path", "segments": ["Memo"]}, {"kind": "string", "value": "jed"}]}, "right": {"kind": "call", "name": "endsWith", "args": [{"kind": "path", "segments": ["Notes"]}, {"kind": "string", "value": "jed"}]}}
+    },
+    {
+      "name": "text equals, over two slots",
+      "text": "Memo = 'x' or Notes = 'x'",
+      "expression": {"kind": "binary", "op": "or", "left": {"kind": "binary", "op": "=", "left": {"kind": "path", "segments": ["Memo"]}, "right": {"kind": "string", "value": "x"}}, "right": {"kind": "binary", "op": "=", "left": {"kind": "path", "segments": ["Notes"]}, "right": {"kind": "string", "value": "x"}}}
+    },
+    {
+      "name": "text differs, over two slots",
+      "text": "Memo != 'x' and Notes != 'x'",
+      "expression": {"kind": "binary", "op": "and", "left": {"kind": "binary", "op": "!=", "left": {"kind": "path", "segments": ["Memo"]}, "right": {"kind": "string", "value": "x"}}, "right": {"kind": "binary", "op": "!=", "left": {"kind": "path", "segments": ["Notes"]}, "right": {"kind": "string", "value": "x"}}}
+    },
+    {
+      "name": "number between",
+      "text": "Amount >= 100000 and Amount <= 500000",
+      "expression": {"kind": "binary", "op": "and", "left": {"kind": "binary", "op": ">=", "left": {"kind": "path", "segments": ["Amount"]}, "right": {"kind": "number", "value": "100000"}}, "right": {"kind": "binary", "op": "<=", "left": {"kind": "path", "segments": ["Amount"]}, "right": {"kind": "number", "value": "500000"}}}
+    },
+    {
+      "name": "number less than a negative",
+      "text": "Amount < -5",
+      "expression": {"kind": "binary", "op": "<", "left": {"kind": "path", "segments": ["Amount"]}, "right": {"kind": "negate", "operand": {"kind": "number", "value": "5"}}}
+    },
+    {
+      "name": "number at most a fraction",
+      "text": "Amount <= 0.25",
+      "expression": {"kind": "binary", "op": "<=", "left": {"kind": "path", "segments": ["Amount"]}, "right": {"kind": "number", "value": "0.25"}}
+    },
+    {
+      "name": "number equals",
+      "text": "Amount = 12",
+      "expression": {"kind": "binary", "op": "=", "left": {"kind": "path", "segments": ["Amount"]}, "right": {"kind": "number", "value": "12"}}
+    },
+    {
+      "name": "number at least",
+      "text": "Amount >= 1",
+      "expression": {"kind": "binary", "op": ">=", "left": {"kind": "path", "segments": ["Amount"]}, "right": {"kind": "number", "value": "1"}}
+    },
+    {
+      "name": "number greater than",
+      "text": "Amount > 2.5",
+      "expression": {"kind": "binary", "op": ">", "left": {"kind": "path", "segments": ["Amount"]}, "right": {"kind": "number", "value": "2.5"}}
+    },
+    {
+      "name": "date between",
+      "text": "PostingDate >= '2026-01-01' and PostingDate <= '2026-01-31'",
+      "expression": {"kind": "binary", "op": "and", "left": {"kind": "binary", "op": ">=", "left": {"kind": "path", "segments": ["PostingDate"]}, "right": {"kind": "string", "value": "2026-01-01"}}, "right": {"kind": "binary", "op": "<=", "left": {"kind": "path", "segments": ["PostingDate"]}, "right": {"kind": "string", "value": "2026-01-31"}}}
+    },
+    {
+      "name": "date before",
+      "text": "PostingDate < '2026-03-01'",
+      "expression": {"kind": "binary", "op": "<", "left": {"kind": "path", "segments": ["PostingDate"]}, "right": {"kind": "string", "value": "2026-03-01"}}
+    },
+    {
+      "name": "date after",
+      "text": "PostingDate > '2026-03-01'",
+      "expression": {"kind": "binary", "op": ">", "left": {"kind": "path", "segments": ["PostingDate"]}, "right": {"kind": "string", "value": "2026-03-01"}}
+    },
+    {
+      "name": "date-time between",
+      "text": "DueOn >= '2026-01-01T00:00:00' and DueOn < '2026-02-01T00:00:00'",
+      "expression": {"kind": "binary", "op": "and", "left": {"kind": "binary", "op": ">=", "left": {"kind": "path", "segments": ["DueOn"]}, "right": {"kind": "string", "value": "2026-01-01T00:00:00"}}, "right": {"kind": "binary", "op": "<", "left": {"kind": "path", "segments": ["DueOn"]}, "right": {"kind": "string", "value": "2026-02-01T00:00:00"}}}
+    },
+    {
+      "name": "date-time before",
+      "text": "DueOn < '2026-03-01T00:00:00'",
+      "expression": {"kind": "binary", "op": "<", "left": {"kind": "path", "segments": ["DueOn"]}, "right": {"kind": "string", "value": "2026-03-01T00:00:00"}}
+    },
+    {
+      "name": "date-time after",
+      "text": "DueOn >= '2026-03-02T00:00:00'",
+      "expression": {"kind": "binary", "op": ">=", "left": {"kind": "path", "segments": ["DueOn"]}, "right": {"kind": "string", "value": "2026-03-02T00:00:00"}}
+    },
+    {
+      "name": "instant between",
+      "text": "PostedAt >= '2025-12-31T21:00:00+00:00' and PostedAt < '2026-01-31T21:00:00+00:00'",
+      "expression": {"kind": "binary", "op": "and", "left": {"kind": "binary", "op": ">=", "left": {"kind": "path", "segments": ["PostedAt"]}, "right": {"kind": "string", "value": "2025-12-31T21:00:00+00:00"}}, "right": {"kind": "binary", "op": "<", "left": {"kind": "path", "segments": ["PostedAt"]}, "right": {"kind": "string", "value": "2026-01-31T21:00:00+00:00"}}}
+    },
+    {
+      "name": "instant before",
+      "text": "PostedAt < '2026-02-28T21:00:00+00:00'",
+      "expression": {"kind": "binary", "op": "<", "left": {"kind": "path", "segments": ["PostedAt"]}, "right": {"kind": "string", "value": "2026-02-28T21:00:00+00:00"}}
+    },
+    {
+      "name": "instant after",
+      "text": "PostedAt >= '2026-03-01T21:00:00+00:00'",
+      "expression": {"kind": "binary", "op": ">=", "left": {"kind": "path", "segments": ["PostedAt"]}, "right": {"kind": "string", "value": "2026-03-01T21:00:00+00:00"}}
+    },
+    {
+      "name": "enum in",
+      "text": "Gender in ('M', 'F')",
+      "expression": {"kind": "in", "value": {"kind": "path", "segments": ["Gender"]}, "items": [{"kind": "string", "value": "M"}, {"kind": "string", "value": "F"}]}
+    },
+    {
+      "name": "bool is true",
+      "text": "IsPosted = true",
+      "expression": {"kind": "binary", "op": "=", "left": {"kind": "path", "segments": ["IsPosted"]}, "right": {"kind": "bool", "value": true}}
+    },
+    {
+      "name": "bool is false",
+      "text": "IsApproved = false",
+      "expression": {"kind": "binary", "op": "=", "left": {"kind": "path", "segments": ["IsApproved"]}, "right": {"kind": "bool", "value": false}}
+    },
+    {
+      "name": "navigation in",
+      "text": "CustomerId in (1012, 1015)",
+      "expression": {"kind": "in", "value": {"kind": "path", "segments": ["CustomerId"]}, "items": [{"kind": "number", "value": "1012"}, {"kind": "number", "value": "1015"}]}
+    },
+    {
+      "name": "navigation in, through a navigation",
+      "text": "Customer.ManagerId in (7)",
+      "expression": {"kind": "in", "value": {"kind": "path", "segments": ["Customer", "ManagerId"]}, "items": [{"kind": "number", "value": "7"}]}
+    },
+    {
+      "name": "absent",
+      "text": "DueDate is null",
+      "expression": {"kind": "is-null", "value": {"kind": "path", "segments": ["DueDate"]}, "negated": false}
+    },
+    {
+      "name": "present, through a navigation",
+      "text": "Customer.ManagerId is not null",
+      "expression": {"kind": "is-null", "value": {"kind": "path", "segments": ["Customer", "ManagerId"]}, "negated": true}
+    },
+    {
+      "name": "leaves joined",
+      "text": "(contains(Memo, 'jed') or contains(Notes, 'jed')) and Amount > 0",
+      "expression": {"kind": "binary", "op": "and", "left": {"kind": "binary", "op": "or", "left": {"kind": "call", "name": "contains", "args": [{"kind": "path", "segments": ["Memo"]}, {"kind": "string", "value": "jed"}]}, "right": {"kind": "call", "name": "contains", "args": [{"kind": "path", "segments": ["Notes"]}, {"kind": "string", "value": "jed"}]}}, "right": {"kind": "binary", "op": ">", "left": {"kind": "path", "segments": ["Amount"]}, "right": {"kind": "number", "value": "0"}}}
+    }
+  ]
+}

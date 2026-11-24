@@ -384,6 +384,176 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-271 (orchestrator, 2026-11-24): PC-120 integration — a refused command form, and /entity at 25
+
+- PC-120's agent ran api:approve and the Acme client build together in one nested-subshell command. The safety check refused it because it "could not be checked for dangerous rm operations". The command contains no rm.
+- I notified Ahmad at once.
+- Judgement: the check refused the command's form, not either gate. Both gates are routine and other agents run them as plain commands.
+  - The agent re-runs each as its own plain, single command.
+  - If a plain command is refused, it stops and I notify Ahmad again.
+  - This is not a reroute around a denied action.
+  - From now on, briefs and messages ask agents for plain, single commands, with no nested subshells.
+- ./entity measures 24.96 on the merged tree against platform-core's 19, and its ceiling is set to 25.
+  - This is accepted as D-214's combination of two accepted additions over 18.5: PC-125's entity actions (+0.5) and PC-120's Queryex and filters after the D-260 re-split (+6).
+  - It is not a third raise. ./entity is lazy, so it does not touch the first frame.
+- @tellma/locale-ar ./platform-strings goes from 3.5 to 4 for the tm.filter block. That is its second raise, allowed under D-031.
+
+### D-270 (orchestrator, 2026-11-24): PC-114 review 2 rulings
+
+- R2 (xhigh) on f65107a0..c3f7d4c6 found 1 blocking, 1 major and 4 minor. R1-1's fix is correct on every launch path: all 50 warm-launch requests go after the routed view renders.
+- R2-1, blocking: size:check had passed on a stale client/dist. A fresh build measures "." at 49.93 against 49.9. fix2 clean-builds, sets the honest ceiling (+0.05 under D-031) and re-runs every gate.
+  - Process note: agents must measure sizes on a fresh build. I add this to future briefs.
+- R2-2, major: the skeleton can paint in frame 1.
+  - fix2 adds a memoized route loader that returns synchronously once the /shell chunk is loaded, keeping /shell lazy and "." about the same.
+  - If that works, deviation 6 and D-266(b) fall away. If not, D-266(b) stays with Ahmad.
+- R2-3: the cold-LCP figure was skewed: no 4x throttle, the sign-in redirects included, and the multiplier hid the warning. fix2 corrects it, and the corrected figures feed D-266(a).
+- R2-4 (the container sweep killed live runs), R2-5 (other users rendered in the wrong language) and R2-6 (no test pinned the mail-drop check): all fixed in fix2.
+- The Linux e2e path has never run. It first runs at PC-114's integrate CI, and I watch that run.
+- PC-114 holds after fix2. PC-116, now in implementation, replaces its stand-in tenant picker, so expect a merge between the two.
+
+### D-269 (orchestrator, 2026-11-24): a core typecheck against emitted entity types
+
+- PC-155's first CI failed only in acme-client. Its new attention helpers indexed entity rows with a string, and Acme's build re-checks core's sources with TmEntityTypes augmented by the closed emitted interfaces.
+- Core's own gates see TmEntityType<N> as the open TmJsonObject, so they cannot catch this. A distribution using the built package would not see it either, because it checks only the .d.ts.
+- PC-155 fixed its own sites, and the latent ones in tm-attention.ts, with keyof-constrained generics, no any and no casts. Its "CI fixes" commit is 0b7537de.
+- The gap becomes fix item PC-F84 (non-blocking): a client-job typecheck leg of core's sources against emitted declarations for core's own entities.
+
+### D-268 (orchestrator, 2026-11-24): PC-112 review 1 rulings
+
+- R1 found 0 blocking, 2 major and 4 minor on e23a08d8, so there is no R2.
+- The +0.20 KB on "." is honest under D-031. The reviewer measured each piece; none can move to lazy or idle.
+- Fixed in fix1:
+  - R1-1: the held-call cap goes to about 1,000, so §3.3's overflow order applies at replay. The remaining pre-load losses are recorded as deviations:
+    - recent() is empty before the load;
+    - nothing is sent if the tab is hidden before idle;
+    - a chunk that fails to load drops the tab's calls.
+  - R1-2: an apostrophe-safe regex for quoted names.
+  - R1-3: context is captured when a call is made, if it costs about 0.1 KB or less on ".". Otherwise it is recorded as a deviation.
+  - R1-4: a single unload batch.
+  - R1-5: TmApiError is fingerprinted by kind and code.
+  - R1-6: the missing tests.
+- fix1 also sets "tellma".capsInKb "." to 55 (D-267).
+- Lazy placement, against 0026 §1's eager share, is accepted as deviation 1. It was forced by the cap and stays the default even after the raise, because it keeps the first frame small.
+- For Ahmad:
+  - 0026 §3's TmTelemetryOptions should gain traceId.
+  - Should 0026 §4.2 say how TmApiError is fingerprinted, by kind and code?
+
+### D-267 (Ahmad, 2026-11-24): raise the primary's cap
+
+- Ahmad answered D-247, D-252 and D-254 with "Raise the cap".
+- Spec 0024 §12 caps the @tellma/core primary at 50 KB. bundle-caps enforces it at gzip 9; the cap line read 49.98 of 50 on PC-112's branch.
+- The ruling did not give a size, so I chose 55 KB: about 10% headroom for the rest of the run's first-frame features.
+- How it is applied:
+  - PC-112's fix round sets "tellma".capsInKb "." to 55 in @tellma/core's package.json, with a note saying the product owner raised it over the spec's 50 KB. The note names no PC or D ids.
+  - D-031 still governs the "." budget ceiling: honest, measured raises only. Moving bytes off the first frame is still preferred.
+- Misalignment, for Ahmad: spec 0024 §12 still says 50 KB and needs updating to 55, or to whatever size he prefers. ARCHITECTURE.md follows in the same fix round if it states the cap.
+
+### D-266 (orchestrator, 2026-11-24): PC-114 review 1 rulings
+
+- R1 found 0 blocking, 4 major and 10 minor on f65107a0. Four majors trigger R2 (§4.4) after fix1.
+- Fixed in PC-114:
+  - R1-1: the launch's first tenantless GET /bff/user moves after the first render, per spec 0024 §14.
+  - R1-2: an `ar` project for the PR tier, per 0024 §14 and PLAN §6.
+  - R1-3, its own gap: a CI multiplier and the median of 3 or more samples on the timing gates.
+  - The minors R1-5 to R1-8 and R1-10 to R1-14.
+- Accepted deviations:
+  - the mail-drop config keys;
+  - ACME_WEB_E2E, documented in the Acme README;
+  - the Docker CLI;
+  - CDP in place of Lighthouse;
+  - the E2E package is a TS pnpm package, not a csproj (ARCHITECTURE.md updated);
+  - one Chromium project per locale;
+  - the route-feedback PR/@perf split;
+  - the dark-theme styles.css fix;
+  - the Max Pool Size=20 dev appsettings;
+  - the e2e host's rate limits at 100000, set only as environment variables in the e2e web host.
+- Route feedback: PC-114 tries a first-frame probe and keeps the second-frame check only if the product fails it.
+- R1-4: the concurrent-grant race in TellmaPrincipalFactory, which gives a 500 on the BFF callback, becomes fix item PC-F82 (non-blocking). The signInAs retry stays as a harness guard.
+- R1-9: the device-zone e2e flows carry to PC-152.
+- For Ahmad:
+  - (a) The nightly warm-chrome budget. At 4x CPU throttle, chrome shows at about 480-530 ms, against 300. The time is in the boot path: about 250 ms of initial JS and about 250 ms of bootstrap, IndexedDB and first render. Meeting 300 needs about half of today's unthrottled boot. Options: raise the budget with a note, or open a boot-performance item. The nightly Acme jobs stay red until then.
+  - (b) Spec 0024 §4.4 "the click's frame" vs §14 "the next frame", if the first-frame probe fails.
+  - (c) The API's default of 60 anonymous requests per minute per address refused /bff/login mid-run. An office behind one NAT signing in at once could hit it too.
+
+### D-265 (orchestrator, 2026-11-24): locale-ar ./strings is re-split, not raised a third time
+
+- Situation: PC-155's integrate (832b71d7) measured @tellma/locale-ar/strings at 8.36 KB against platform-core's ceiling of 8. Platform-core's 8 already came from PC-110's raise (7.94 measured).
+  - The agent raised it to 8.5 to let CI run, which would make its history 6.5 → 7 → 8 → 8.5.
+  - PC-125 (+0.26 KB) and PC-120 queue behind PC-155 and add more Arabic.
+- Ruling: D-031's revisit clause applies, so 8.5 is not accepted. PC-155 re-splits ./strings before it lands.
+  - It makes the smallest split consistent with the specs, moving one feature area's strings into its own lazy part.
+  - Each part gets an honest ceiling.
+  - ./strings returns to 8 or less, with headroom for PC-125.
+  - "." and the cap line must not grow.
+  - The integration's other numbers stand: "." 49.89 of 49.89 and the cap line 49.79 of 50.
+- If the specs require ./strings to be loaded whole, PC-155 returns blocked, and the question goes to Ahmad.
+- Outcome (9d326e4a): the specs allow the split. Spec 0024 §7.3 asks only that the definition provide its tm and tmUi tables, and core calls only definition.strings().
+  - The split is by table: a new @tellma/locale-ar/platform-strings holds the platform's tm table (2.84 of 3). ./strings holds the component library's Arabic (5.88 of 6, down from 8).
+  - tmArabic() loads both with Promise.all (root 0.44 of 0.5).
+  - "." and the cap line are unchanged.
+  - PC-125's +0.26 KB lands in ./platform-strings, about 3.10 against 3. That is that entry's first raise, to 3.5, and D-031 allows it.
+
+### D-264 (Ahmad, 2026-11-24): PC-F80's platform-core push
+
+- PC-F80's agent was denied `git push origin HEAD:platform-core` from pc-f twice by the auto mode classifier, even after Ahmad's approval was relayed to it.
+- Ahmad approved this one push in chat ("Approve the push").
+- I checked the slot was clean at eecd88bb and that origin/platform-core was still ffbc43d8, then ran the fast-forward push myself.
+- The approval covers this push only. It sets no rule for other pushes.
+- If a later land push is blocked, I notify Ahmad again.
+
+### D-263 (orchestrator, 2026-11-24): PC-F81's proven-commit seam
+
+- PC-F81 closes both gaps from D-258 through an internal seam: IBatchProvenCommit.OnCommitProven on DataBatch and RecordingBatch, plus DataBatch.RunProvenCommitCallbacks.
+  - Only the job engine runs it, in its three Committed catches (JobRunner and ScheduleTick).
+  - It holds only announcements composed before execution.
+- R1 (0/0/1) confirmed several things:
+  - ExecuteAsync, IDataBatch and the executor are unchanged;
+  - no held announcement reads a result;
+  - nothing runs twice, and nothing runs after a commit that was not proven;
+  - neither audience deviation crosses tenants.
+- Accepted deviations:
+  - against spec 0021: after a proven commit, inbox.changed goes to a superset of the affected users, or the whole tenant when a withdrawal named no recipients;
+  - against spec 0013 §2.5: each bumped user-level column sends cache.changed to the tenant group with no value.
+
+  Both are the least departure possible, because the affected users are known only from the lost result set.
+- Later: the hosted proven-commit sites (SaveRun, DeleteRun, ActionRun, OpenWriteFrame.SendAsync, settings) still run no announcements, as spec 0015 §8 says. They could adopt the seam.
+- For Ahmad:
+  - should spec 0012 name the seam;
+  - should 0021 and 0013 state these audiences;
+  - should 0015 §8's hosted sites adopt it?
+
+### D-262 (orchestrator, 2026-11-24): PC-110's integration adds flake stopgaps that PC-F80 replaces
+
+- PC-110's integration merge found the full core suite red in two of three local runs. The failures were the known load flakes that PC-F80 fixes: two TmHttpApi specs and one TmNavigation spec, across tm-api-verdict, tm-api-transfer and tm-locale-write.
+- PC-110 added two test-only stopgaps in its merge commit:
+  - a beforeAll that preloads tm-api-verdict and tm-api-transfer in tm-http-api.spec;
+  - a wait for the 'ar' language in tm-navigation.spec.
+
+  The suite then passed twice.
+- Ruling: they stay for PC-110's CI run, so the queue does not stall on a known flake. They are not root fixes (D-011, D-113). PC-115 had found that a per-test preload in tm-http-api.spec broke timer-sensitive tests; a once-per-file beforeAll is a different setup.
+- PC-F80 releases next (D-261). Its integration removes both stopgaps in favour of its tmSettleUntil and flushUntil waits, and shows the suite green under the 300 ms import-delay injection.
+
+### D-261 (orchestrator, 2026-11-24): PC-F80 releases ahead of PC-155 and PC-125
+
+- PC-F80, a non-blocking test fix, finished after PC-155 and PC-125 were held. D-087 would release it after them.
+- Ruling: it releases right after PC-110, ahead of both.
+  - Its tmSettleUntil and tmWaitUntil helpers are what those two items' integrations need, to move their new on-demand chunks' specs off turn-counted waits (PC-F80 R1). Releasing PC-F80 first lets them do that in their integration step.
+  - It also takes the known load flakes off every later CI run.
+  - It is test-only, so it cannot move a budget.
+
+### D-260 (orchestrator, 2026-11-23): PC-120's R1 rulings
+
+- PC-120's R1 found 0 blocking, 3 major and 7 minor issues. All 8 deviations are accepted, and there is no R2.
+- Budget (R1-1): /entity's 18.5-to-27.5 raise is that ceiling's third (11.5, 12.5, 19, 27.5) and took no savings, so D-031's re-split clause applies. Fix1 makes these moves:
+  - TmColumnFilter (2.70 KB) goes to its own lazy chunk or entry point;
+  - the 18 error messages go under an ngDevMode guard (about -0.35 net);
+  - tmQxInsert (0.20) and tmQxParameters (0.14) leave the eager /entity graph, or carry to PC-121 if they cannot.
+
+  The ceiling is then reset to the measure rounded up to 0.5 KB, about 24. With PC-125, /entity is then about 25 of spec 0029's roughly 28, which leaves PC-121 room.
+- R1-3: an any-of `in` chip joins with Intl.ListFormat type 'disjunction', so it reads correctly in Arabic and Amharic. This is a stated deviation: English then reads "Type: Service or Sale" where 0029 §13.2's example shows "Type: Service, Sale". For Ahmad: confirm, or prefer a translatable separator.
+- For Ahmad: 0029 §8.2's `[Order]` example should read `[not]`, because Order is not a keyword (PC-120 deviation 1).
+- PC-120 fix1 made the column filter its own lazy entry point, @tellma/core/column-filter (3.99 KB), because hosts put the control in templates. /entity is now 24.12 of 24.5. Misalignment: spec 0029 §1 places the control in /entity. For Ahmad: confirm.
+
 ### D-259 (orchestrator, 2026-11-23): PC-125's R1 rulings
 
 - PC-125's R1 found 0 blocking, 3 major and 8 minor issues. There is no R2.
@@ -399,6 +569,7 @@ Format, one entry per ruling:
 - Carries go to WATCHLIST in fix1:
   - the tm.details.confirm telemetry seam in ɵtmConfirmationRounds;
   - the swap to TmErrorPresenter.describe() once PC-110 lands, which fits only the heading and message.
+- PC-125 fix1 moved the error-path splitter and walker to a new shared entry point, @tellma/core/error-paths (0.51 KB). Misalignment: spec 0031 §1 says /details imports only the primary and /entity, so it must now admit this entry. For Ahmad: confirm.
 
 ### D-258 (orchestrator, 2026-11-23): PC-B05 result and its open items
 

@@ -17,4 +17,11 @@
     <EmbeddedResource Include="Time\zone-tab-ids.txt" LogicalName="zone-tab-ids.txt" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- The client's lexer corpus and print golden, which the engine writes: read from the output
+         folder so the suite can fail when a checked-in file no longer matches the engine. -->
+    <None Include="../../../client/projects/core/tellma-core/entity/src/queryex-lexer-corpus.json" Link="Client/queryex-lexer-corpus.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../../client/projects/core/tellma-core/entity/src/queryex-print-golden.json" Link="Client/queryex-print-golden.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

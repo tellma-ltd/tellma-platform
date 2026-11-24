@@ -52,8 +52,12 @@ export interface TmErrorDialogOptions {
   readonly items?: readonly string[];
   /** A trace id, shown in a reference row the user can copy. */
   readonly reference?: string;
-  /** Labelled facts, listed inside the Details disclosure. The caller localizes the labels. */
-  readonly details?: readonly { readonly label: string; readonly value: string }[];
+  /**
+   * Labelled facts, listed inside the Details disclosure. The caller
+   * localizes the labels. A `code` value, such as an identifier support
+   * reads, shows in mono and left to right, isolated from the text around it.
+   */
+  readonly details?: readonly { readonly label: string; readonly value: string; readonly code?: boolean }[];
   /** Buttons inside the Details disclosure, after the details. */
   readonly actions?: readonly TmErrorDialogAction[];
   /** The first footer button, styled primary; Close then becomes secondary. */

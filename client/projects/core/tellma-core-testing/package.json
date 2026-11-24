@@ -1,7 +1,7 @@
 {
   "name": "@tellma/core-testing",
   "version": "0.1.0",
-  "description": "Test providers and fakes for apps built on @tellma/core, and Playwright helpers in its /e2e entry point.",
+  "description": "Test providers, fakes and component harnesses for apps built on @tellma/core, and Playwright helpers in its /e2e entry point.",
   "license": "Apache-2.0",
   "peerDependencies": {
     "@angular/cdk": "^22.0.0",

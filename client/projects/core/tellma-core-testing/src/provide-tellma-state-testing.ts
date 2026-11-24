@@ -4,7 +4,16 @@
 // LICENSE file in the root directory of this source tree.
 
 import { makeEnvironmentProviders, type EnvironmentProviders, type Provider } from '@angular/core';
-import { TmSession, TmTabBus, ɵTM_DRAFTS_STORAGE, ɵTM_LEADER_LOAD, ɵTM_STORE_HOST, ɵTmLocks, type ɵTmStoreHost } from '@tellma/core';
+import {
+  TmSession,
+  TmTabBus,
+  ɵTM_DRAFTS_STORAGE,
+  ɵTM_LEADER_LOAD,
+  ɵTM_STORE_HOST,
+  ɵTM_UPDATES_LOAD,
+  ɵTmLocks,
+  type ɵTmStoreHost,
+} from '@tellma/core';
 
 import { TmFakeLocks } from './tm-fake-locks';
 import { TmFakeSession } from './tm-fake-session';
@@ -79,7 +88,8 @@ export function tmMemoryStoreProvider(): Provider {
  * changes the session, and `@tellma/core/memory`'s `TmDrafts` over a session
  * storage of its own, so no draft outlives the test. A test app starts no
  * leader election, since it has no other tabs and no hub: `TmLeader` reports
- * a follower until the test sets it. Use it beside `provideTellmaTesting()`.
+ * a follower until the test sets it. Nor does it run a service worker: the
+ * update checks find updates disabled. Use it beside `provideTellmaTesting()`.
  *
  * @example
  * ```ts
@@ -103,5 +113,6 @@ export function provideTellmaStateTesting(): EnvironmentProviders {
     TmFakeSession,
     { provide: TmSession, useExisting: TmFakeSession },
     { provide: ɵTM_LEADER_LOAD, useValue: () => Promise.resolve(null) },
+    { provide: ɵTM_UPDATES_LOAD, useValue: () => Promise.resolve(null) },
   ]);
 }

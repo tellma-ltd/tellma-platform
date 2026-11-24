@@ -132,7 +132,8 @@ interface TmRig {
   readonly locks: TmFakeLocks;
   readonly host: TmFakeApiHost;
   readonly telemetry: TmFakeTelemetry;
-  readonly presented: TmApiError[];
+  /** The refusals handed to the error presenter, each with the tenant the sync was for. */
+  readonly presented: (readonly [TmApiError, number])[];
   /** The `client/sync` calls so far. */
   syncs(): TmFakeApiCall[];
   /** The routed tenant's stored document. */
@@ -177,8 +178,8 @@ interface TmSetUp {
 async function setUp(options: TmSetUp = {}): Promise<TmRig> {
   const host = new TmFakeApiHost();
   host.visibleNow = options.hidden !== true;
-  const presented: TmApiError[] = [];
-  const errors: TmSyncErrors = { present: (error) => void presented.push(error) };
+  const presented: (readonly [TmApiError, number])[] = [];
+  const errors: TmSyncErrors = { present: (error, tenantId) => void presented.push([error, tenantId]) };
   TestBed.configureTestingModule({
     providers: [
       provideTellmaTesting(),
@@ -460,7 +461,7 @@ describe('TmCacheRefresher', () => {
       const refusal = new TmApiError({ kind: 'tenant-not-found', status: 404, code: 'tenant-not-found' });
       rig.api.respond('client/sync', () => Promise.reject(refusal));
       await rig.refresher.refresh(17, ['tenant'], 'header');
-      expect(rig.presented).toEqual([refusal]);
+      expect(rig.presented).toEqual([[refusal, 17]]);
       expect(items(rig, 'tm.sync.failed')).toEqual([]);
     });
 
@@ -469,7 +470,7 @@ describe('TmCacheRefresher', () => {
       const refusal = new TmApiError({ kind: 'tenant-unavailable', status: 403, code: 'tenant-suspended' });
       rig.api.respond('client/sync', () => Promise.reject(refusal));
       await expect(rig.refresher.refresh(17, ['settings', 'me', 'tenant'], 'cold')).rejects.toBe(refusal);
-      expect(rig.presented).toEqual([refusal]);
+      expect(rig.presented).toEqual([[refusal, 17]]);
     });
 
     it('leaves a session end and an outdated client to the HTTP layer, and reports anything else', async () => {

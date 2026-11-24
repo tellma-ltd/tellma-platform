@@ -33,7 +33,8 @@ export const TM_CORE_PACKAGE = '@tellma/core';
  *   primary's first frame never carries it. `/private` is the package's own
  *   wiring between its entry points and may import the primary;
  *   `/search-normalize` is the text folding the launcher and the lazy pages
- *   match with, and imports none.
+ *   match with, and `/error-paths` the walk of the server's error paths
+ *   onto a form; neither imports any.
  * - A lazy entry point may import every eager and shared one, plus the lazy
  *   ones it lists. No eager entry point imports a lazy one.
  */
@@ -48,16 +49,24 @@ export const TM_CORE_ENTRY_POINTS: Readonly<Record<string, TmEntryPointRule>> = 
   // staticGraphExcludes keeps every one of them (`/shell` and `/attention`)
   // from reaching it statically.
   './search-normalize': { load: 'shared', imports: [] },
+  // Spec 0031 §8.5's server error paths: only `/entity`'s lazy action
+  // dialog and the details page's save land errors by them, so they load
+  // with whichever imports them first, not with `/entity`'s first frame.
+  './error-paths': { load: 'shared', imports: [] },
   './realtime': { load: 'lazy', imports: [] },
   // The support dump reads the page contexts' snapshots.
   './support': { load: 'lazy', imports: ['./page-snapshot'] },
   './entity': { load: 'lazy', imports: [] },
+  // Spec 0029 §13.3's column filter control, which spec 0029 §1 places in
+  // /entity; a column header's popover opens it, so the search page loads
+  // it then, and /entity's own measure never carries it.
+  './column-filter': { load: 'lazy', imports: ['./entity'] },
   './sharing': { load: 'lazy', imports: [] },
   // The page hosts load the tab's memory with them: the search page's state
   // and tree expansion, the details page's drafts and state, the stock
   // pages' and the report studio's drafts, a report's state. The home page,
   // in `/dashboards`, lists the recent pages.
-  './search': { load: 'lazy', imports: ['./entity', './memory'] },
+  './search': { load: 'lazy', imports: ['./entity', './memory', './column-filter'] },
   './details': { load: 'lazy', imports: ['./entity', './memory'] },
   './admin': { load: 'lazy', imports: ['./memory'] },
   './attention-pages': { load: 'lazy', imports: [] },
@@ -75,6 +84,11 @@ export const TM_CORE_ENTRY_POINTS: Readonly<Record<string, TmEntryPointRule>> = 
   // primary; nothing on the first frame reads it, so the support dump and a
   // future assistant load it with import().
   './page-snapshot': { load: 'lazy', imports: [] },
+  // Spec 0024's service worker updates and error presenter, which spec 0024
+  // §1 places in the primary; the worker registers after first render, and
+  // nothing on the first frame presents an API error.
+  './updates': { load: 'lazy', imports: [] },
+  './errors': { load: 'lazy', imports: [] },
 });
 
 /**

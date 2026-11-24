@@ -4,18 +4,52 @@
 
 ```ts
 
+import { BaseHarnessFilters } from '@angular/cdk/testing';
 import { ComponentHarness } from '@angular/cdk/testing';
 import { EnvironmentProviders } from '@angular/core';
 import { HarnessPredicate } from '@angular/cdk/testing';
 import * as i0 from '@angular/core';
 import { Observable } from 'rxjs';
 import { Signal } from '@angular/core';
+import { TestKey } from '@angular/cdk/testing';
 
 // @public
 export function provideTellmaStateTesting(): EnvironmentProviders;
 
 // @public
 export function provideTellmaTesting(): EnvironmentProviders;
+
+// @public
+export class TmBannerHostHarness extends ComponentHarness {
+    getAnnouncement(): Promise<string>;
+    getBar(): Promise<TmBannerBarHarness | null>;
+    getPoliteness(): Promise<'assertive' | 'polite'>;
+    static hostSelector: string;
+    isEmpty(): Promise<boolean>;
+    isOpen(): Promise<boolean>;
+}
+
+// @public
+export class TmColumnFilterHarness extends ComponentHarness {
+    apply(): Promise<void>;
+    clear(): Promise<void>;
+    getCheckboxes(): Promise<TmCheckboxHarness[]>;
+    getDatePicker(): Promise<TmDatePickerHarness | null>;
+    getDateRange(): Promise<TmDateRangeHarness | null>;
+    getEntityField(): Promise<TmEntityMultiFieldHarness | null>;
+    getEnumPicker(): Promise<TmEntityMultiPickerHarness | null>;
+    getGroupLabel(): Promise<string | null>;
+    getMultiSelect(): Promise<TmMultiSelectHarness | null>;
+    getNumberInputs(): Promise<TmNumberHarness[]>;
+    getOperator(): Promise<TmSelectHarness | null>;
+    getOperatorText(): Promise<string | null>;
+    getRadioGroup(): Promise<TmRadioGroupHarness | null>;
+    getTextInput(): Promise<TmInputHarness | null>;
+    static hostSelector: string;
+    isApplyEnabled(): Promise<boolean>;
+    pressEnter(): Promise<void>;
+    selectOperator(label: string): Promise<void>;
+}
 
 // @public
 export class TmEntityFieldHarness extends ComponentHarness {
@@ -96,6 +130,8 @@ export class TmFakeSession implements TmSessionSurface {
     setState(state: TmSessionState): void;
     signIn(options?: TmSignInOptions): Promise<never>;
     readonly signIns: Signal<readonly TmSignInOptions[]>;
+    signOut(): Promise<void>;
+    readonly signOuts: Signal<number>;
     readonly state: Signal<TmSessionState>;
     static ɵfac: i0.ɵɵFactoryDeclaration<TmFakeSession, never>;
     static ɵprov: i0.ɵɵInjectableDeclaration<TmFakeSession>;

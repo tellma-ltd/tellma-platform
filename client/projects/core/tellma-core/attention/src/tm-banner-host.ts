@@ -3,14 +3,26 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-import { ChangeDetectionStrategy, Component, DestroyRef, effect, inject, signal, untracked } from '@angular/core';
+import {
+  afterNextRender,
+  ChangeDetectionStrategy,
+  Component,
+  DestroyRef,
+  effect,
+  ElementRef,
+  inject,
+  Injector,
+  signal,
+  untracked,
+} from '@angular/core';
 import { TmBanners } from '@tellma/core';
 import { TmBannerBar } from '@tellma/core-ui/banner';
 
 // The banner host (spec 0028 §9.4), which both shells place in the banner
 // row. It renders `tm-banner-bar` from what `TmBanners` says the row shows
 // after the idle gate, and wires the bar's buttons back to the service. It
-// never moves focus to a banner. It owns the one visually hidden live region
+// never moves focus to a banner; a dismiss that empties the row moves the
+// focus it took away to the page's main landmark. It owns the one visually hidden live region
 // the banners speak through: assertive for a level-1 banner, polite for the
 // rest. The region speaks when a banner becomes the row's banner, before the
 // gate opens the row, so keyboard and screen-reader users hear "Connection
@@ -84,6 +96,12 @@ export class TmBannerHost {
   /** The banners the row shows. */
   protected readonly banners = inject(TmBanners);
 
+  /** The host element, whose focus a dismiss may take away. */
+  readonly #host = inject<ElementRef<HTMLElement>>(ElementRef);
+
+  /** Schedules the focus move after a dismiss renders. */
+  readonly #injector = inject(Injector);
+
   /** The live region's politeness: assertive for a level-1 banner. */
   protected readonly politeness = signal<'assertive' | 'polite'>('polite');
 
@@ -120,12 +138,34 @@ export class TmBannerHost {
   }
 
   /**
-   * The dismiss button: the user's own dismiss, which applies at once.
+   * The dismiss button: the user's own dismiss, which applies at once. When
+   * it empties the row, focus moves to the page's main landmark.
    *
    * @param id - The shown banner's id.
    */
   protected dismiss(id: string): void {
+    const document = this.#host.nativeElement.ownerDocument;
+    const focused = this.#host.nativeElement.contains(document.activeElement);
     this.banners.ɵdismiss(id);
+    if (focused) {
+      // A dismiss that empties the row takes the focused button away with
+      // the bar; focus then goes to the page's main landmark rather than
+      // falling to the document's body. A bar that stays keeps it.
+      afterNextRender(
+        () => {
+          if (document.activeElement === null || document.activeElement === document.body) {
+            const main = document.querySelector<HTMLElement>('main');
+            if (main !== null) {
+              if (!main.hasAttribute('tabindex')) {
+                main.setAttribute('tabindex', '-1');
+              }
+              main.focus({ preventScroll: true });
+            }
+          }
+        },
+        { injector: this.#injector },
+      );
+    }
   }
 
   /**

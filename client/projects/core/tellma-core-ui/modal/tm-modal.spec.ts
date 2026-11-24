@@ -200,6 +200,23 @@ describe('TmModal', () => {
     expect(shell()).not.toBeNull();
   });
 
+  it('a history navigation closes as an empty api close; closeOnNavigation: false keeps it open', async () => {
+    const { fixture, modal } = await setup();
+    const ref = modal.open(ContentProbe, { title: 'Back' });
+    await fixture.whenStable();
+    window.dispatchEvent(new PopStateEvent('popstate'));
+    await fixture.whenStable();
+    expect(await ref.closed).toEqual({ via: 'api', value: undefined });
+
+    const pinned = modal.open(ContentProbe, { title: 'Stays', closeOnNavigation: false });
+    const tracked = track(pinned);
+    await fixture.whenStable();
+    window.dispatchEvent(new PopStateEvent('popstate'));
+    await fixture.whenStable();
+    expect(tracked.result()).toBe('open');
+    expect(shell()).not.toBeNull();
+  });
+
   it('a consumed Escape never dismisses', async () => {
     const { fixture, modal } = await setup();
     const ref = modal.open(ContentProbe, { title: 'Consumed Esc' });

@@ -50,7 +50,7 @@
  */
 import { createRequire } from 'node:module';
 import { readdirSync, readFileSync } from 'node:fs';
-import { basename, dirname, join, resolve } from 'node:path';
+import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { capFailure, CAP_GZIP_LEVEL, ceilingProblem, readEntryPointCaps, unmeasuredCaps } from '../tools/bundle-caps.mjs';
@@ -280,10 +280,19 @@ for (const library of discoverLibraries(clientDir)) {
     });
     const outputs = result.metafile.outputs;
     // Walk the entry output's static imports; dynamic ones are the boundary.
-    const start = Object.keys(outputs).find((out) => outputs[out].entryPoint !== undefined);
+    // Every dynamically imported sibling is an entry point of the build too,
+    // so the walk starts at the output whose entry point is this one's FESM.
+    const entryInput = relative(clientDir, entryFesm).split(sep).join('/');
+    const start = Object.keys(outputs).find((out) => outputs[out].entryPoint === entryInput);
+    if (start === undefined) {
+      // A walk with no start would pass without having looked.
+      console.error(`${library.name}: '${id}' has no output built from ${entryInput}, so its static graph cannot be walked.`);
+      failed = true;
+      continue;
+    }
     const seen = new Set();
     let reached = false;
-    const queue = start === undefined ? [] : [start];
+    const queue = [start];
     while (queue.length > 0) {
       const out = queue.pop();
       if (seen.has(out)) {
