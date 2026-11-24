@@ -3,6 +3,7 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Tellma.Identity.Data;
 using Tellma.Identity.Data.Entities;
@@ -55,15 +56,17 @@ namespace Tellma.Identity.Services.Sessions
 
             IdentitySessionClient? registration =
                 await context.Set<IdentitySessionClient>().FindAsync([sid, clientId], cancellationToken);
+            IdentitySessionClient? added = null;
             if (registration is null)
             {
-                context.Set<IdentitySessionClient>().Add(new IdentitySessionClient
+                added = new IdentitySessionClient
                 {
                     Sid = sid,
                     ClientId = clientId,
                     AuthorizationId = authorizationId,
                     CreatedUtc = now,
-                });
+                };
+                context.Set<IdentitySessionClient>().Add(added);
             }
             else if (authorizationId is not null)
             {
@@ -74,7 +77,32 @@ namespace Tellma.Identity.Services.Sessions
             IdentitySession? session = await context.Set<IdentitySession>().FindAsync([sid], cancellationToken);
             session?.LastSeenUtc = now;
 
-            await context.SaveChangesAsync(cancellationToken);
+            try
+            {
+                await context.SaveChangesAsync(cancellationToken);
+            }
+            catch (DbUpdateException exception) when (added is not null && IsDuplicateKey(exception))
+            {
+                // Another grant of the same session (a second tab) registered the client between
+                // the read above and this insert. Its row stands, and this grant's authorization
+                // is recorded on it as a later registration's would be. The refused row is
+                // forgotten first: left tracked, every later save on this context would insert
+                // it again and fail the same way.
+                context.Entry(added).State = EntityState.Detached;
+                IdentitySessionClient? winner =
+                    await context.Set<IdentitySessionClient>().FindAsync([sid, clientId], cancellationToken);
+                if (winner is null)
+                {
+                    throw;
+                }
+
+                if (authorizationId is not null)
+                {
+                    winner.AuthorizationId = authorizationId;
+                }
+
+                await context.SaveChangesAsync(cancellationToken);
+            }
         }
 
         /// <inheritdoc />
@@ -178,6 +206,13 @@ namespace Tellma.Identity.Services.Sessions
                 .ExecuteDeleteAsync(cancellationToken);
 
             return new SessionPruneResult(expired, removed);
+        }
+
+        /// <summary>Whether a save failed on a row that another writer inserted first.</summary>
+        private static bool IsDuplicateKey(DbUpdateException exception)
+        {
+            // 2627: a primary key or unique constraint; 2601: a unique index.
+            return exception.InnerException is SqlException { Number: 2627 or 2601 };
         }
 
         /// <summary>Bounds free-text columns to their configured lengths.</summary>

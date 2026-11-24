@@ -209,8 +209,14 @@ explicit. Remembered consent is bound to places: every permanent authorization r
 the user granted the client through it (`AuthorizationResources`, property `tellma:resources`), and
 an explicit-consent request naming a resource its authorization does not cover shows the consent
 page again (`consent_required` under `prompt=none`); accepting adds the resource to that same
-authorization, so a session keeps one authorization per client for global logout to revoke. The
-consent and device-approval pages name each place (`ConsentTargetCatalog`: a distribution's host
+authorization, so a session keeps one authorization per client for global logout to revoke. Grants
+of one user to one client may extend that authorization at once (two tabs signing in): the store
+refuses the write that comes second on the authorization's concurrency token, and that grant reads
+the authorizations again (detaching the request's stale tracked copies) and goes on from what the
+first wrote, up to three attempts before it answers `temporarily_unavailable`. Two grants of one
+session registering the same client at once both succeed (`SqlSessionRegistry` treats the losing
+insert's duplicate key as a registration that already exists). Two first grants at once still
+create one authorization each. The consent and device-approval pages name each place (`ConsentTargetCatalog`: a distribution's host
 in ASCII form, or its host and a tenant id). `Seed:InterimClients` holds such entries keyed by client id (each must be a third-party
 `Native` entry whose client id is its key); they seed beside `Seed:Clients`, and any entry of either
 with `Enabled=false` is neither validated nor seeded.

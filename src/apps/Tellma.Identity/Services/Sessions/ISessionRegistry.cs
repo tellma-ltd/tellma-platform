@@ -28,7 +28,11 @@ namespace Tellma.Identity.Services.Sessions
         /// <returns>A task that completes when the row is stored.</returns>
         Task UpsertSessionAsync(string sid, string userId, string? userAgent, string? ipAddress, CancellationToken cancellationToken);
 
-        /// <summary>Records that a client obtained tokens under a session (fan-out target list).</summary>
+        /// <summary>
+        ///     Records that a client obtained tokens under a session (fan-out target list). Grants of
+        ///     one session may register the same client at once, as two tabs signing in do: each
+        ///     succeeds, and the one registration holds the authorization of whichever wrote last.
+        /// </summary>
         /// <param name="sid">The session identifier.</param>
         /// <param name="clientId">The client that obtained tokens.</param>
         /// <param name="authorizationId">The OpenIddict authorization backing the grant.</param>

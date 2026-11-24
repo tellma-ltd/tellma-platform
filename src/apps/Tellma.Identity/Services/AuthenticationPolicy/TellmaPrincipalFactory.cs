@@ -3,8 +3,12 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.ChangeTracking;
+using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.Tokens;
 using OpenIddict.Abstractions;
+using OpenIddict.EntityFrameworkCore.Models;
 using System.Collections.Immutable;
 using System.Security.Claims;
 using System.Text.Json;
@@ -47,14 +51,25 @@ namespace Tellma.Identity.Services.AuthenticationPolicy
     /// <param name="policyService">Assurance derivation.</param>
     /// <param name="sessionRegistry">The sid registry.</param>
     /// <param name="timeProvider">The clock a new authorization is dated by.</param>
+    /// <param name="dbContext">The request's store context, the one the OpenIddict managers read through.</param>
+    /// <param name="logger">Records grants that lose their authorization write to a concurrent grant.</param>
     public sealed class TellmaPrincipalFactory(
         IOpenIddictApplicationManager applicationManager,
         IOpenIddictAuthorizationManager authorizationManager,
         IOpenIddictScopeManager scopeManager,
         IAuthenticationPolicyService policyService,
         ISessionRegistry sessionRegistry,
-        TimeProvider timeProvider)
+        TimeProvider timeProvider,
+        TellmaIdentityDbContext dbContext,
+        ILogger<TellmaPrincipalFactory> logger)
     {
+        /// <summary>
+        ///     How many times a grant writes the authorization it extends before it gives up on
+        ///     concurrent grants. Each lost write means another grant's write landed, so a grant
+        ///     gets through two others extending the same authorization at once.
+        /// </summary>
+        internal const int MaxAuthorizationWriteAttempts = 3;
+
         /// <summary>Builds the principal for an interactive authorization request.</summary>
         /// <param name="user">The authenticated user.</param>
         /// <param name="cookiePrincipal">The SSO-cookie principal carrying the session evidence.</param>
@@ -196,28 +211,11 @@ namespace Tellma.Identity.Services.AuthenticationPolicy
             // rather than a second one being created beside it: the session registers one
             // authorization per client, and that is the one global logout revokes.
             string clientObjectId = (await applicationManager.GetIdAsync(application, cancellationToken))!;
-            ImmutableArray<string> resources = identity.GetResources();
-            (object? covering, object? existing) = await FindAuthorizationAsync(
-                user.Id, clientObjectId, identity.GetScopes(), resources, cancellationToken);
-
-            object authorization;
-            if (covering is not null)
+            object? authorization = await AttachAuthorizationAsync(identity, user.Id, clientObjectId, cancellationToken);
+            if (authorization is null)
             {
-                authorization = covering;
-            }
-            else if (existing is not null)
-            {
-                if (!await TryAddResourcesAsync(existing, resources, cancellationToken))
-                {
-                    return new PrincipalResult(
-                        null, Errors.TemporarilyUnavailable, "The authorization changed while it was being granted; try again.");
-                }
-
-                authorization = existing;
-            }
-            else
-            {
-                authorization = await CreateAuthorizationAsync(identity, user.Id, clientObjectId, resources, cancellationToken);
+                return new PrincipalResult(
+                    null, Errors.TemporarilyUnavailable, "The authorization changed while it was being granted; try again.");
             }
 
             string authorizationId = (await authorizationManager.GetIdAsync(authorization, cancellationToken))!;
@@ -260,6 +258,73 @@ namespace Tellma.Identity.Services.AuthenticationPolicy
         }
 
         /// <summary>
+        ///     Finds the permanent authorization that backs a grant: one already covering its
+        ///     resources, or else the user's existing one for the client, extended by them, or else
+        ///     a new one. Grants of one user to one client may run at once (two tabs signing in), and
+        ///     both may extend the same authorization from the same copy. The store refuses the
+        ///     write that comes second, and that grant reads the authorizations again and goes on
+        ///     from what the first wrote: usually it now covers the grant, and otherwise the grant
+        ///     extends the authorization as it now stands. A grant that loses its write
+        ///     <see cref="MaxAuthorizationWriteAttempts" /> times gives up. Two first grants at once
+        ///     both find none and each create one, as the store has nothing to refuse; both then
+        ///     succeed, and the session registers the client with whichever registers last.
+        /// </summary>
+        /// <returns>The authorization, or null when the grant gave up.</returns>
+        private async Task<object?> AttachAuthorizationAsync(
+            ClaimsIdentity identity, string subject, string clientObjectId, CancellationToken cancellationToken)
+        {
+            ImmutableArray<string> resources = identity.GetResources();
+            for (int attempt = 1; ; attempt++)
+            {
+                (object? covering, object? existing) = await FindAuthorizationAsync(
+                    subject, clientObjectId, identity.GetScopes(), resources, cancellationToken);
+                if (covering is not null)
+                {
+                    return covering;
+                }
+
+                if (existing is null)
+                {
+                    return await CreateAuthorizationAsync(identity, subject, clientObjectId, resources, cancellationToken);
+                }
+
+                if (await TryAddResourcesAsync(existing, resources, cancellationToken))
+                {
+                    return existing;
+                }
+
+                if (attempt == MaxAuthorizationWriteAttempts)
+                {
+                    TellmaPrincipalFactoryLog.GaveUpAuthorizationWrite(logger, clientObjectId, attempt);
+                    return null;
+                }
+
+                TellmaPrincipalFactoryLog.LostAuthorizationWrite(logger, clientObjectId, attempt, MaxAuthorizationWriteAttempts);
+                ForgetAuthorizationsRead();
+            }
+        }
+
+        /// <summary>
+        ///     Stops tracking every authorization this request's store context has read, so the
+        ///     next read materializes them from the database. A tracked copy is otherwise handed
+        ///     back as it is by any later query, and the store leaves the copy whose write it
+        ///     refused holding this grant's own edits and a concurrency token the database never
+        ///     saw: a retry over it would see its own lost write as recorded, or lose again.
+        /// </summary>
+        private void ForgetAuthorizationsRead()
+        {
+            // Only unchanged copies are dropped: a pending change belongs to whoever made it, and
+            // detaching it would discard it silently. The store marks a refused copy unchanged.
+            foreach (EntityEntry<OpenIddictEntityFrameworkCoreAuthorization> entry in dbContext.ChangeTracker
+                .Entries<OpenIddictEntityFrameworkCoreAuthorization>()
+                .Where(static entry => entry.State == EntityState.Unchanged)
+                .ToList())
+            {
+                entry.State = EntityState.Detached;
+            }
+        }
+
+        /// <summary>
         ///     Finds the user's valid permanent authorizations for the client that hold the scopes,
         ///     and returns the first that also covers the resources, and the last one found
         ///     whatever it covers (the one a grant extends when none covers it).
@@ -299,8 +364,8 @@ namespace Tellma.Identity.Services.AuthenticationPolicy
 
         /// <summary>
         ///     Adds resources to an authorization's covered set. When a concurrent grant changed the
-        ///     same authorization first, this write is lost and the grant is refused for the caller
-        ///     to retry, rather than recorded over a stale copy.
+        ///     same authorization first, this write is lost rather than recorded over a stale copy,
+        ///     and the caller reads the authorization again.
         /// </summary>
         /// <returns>Whether the resources were recorded.</returns>
         private async Task<bool> TryAddResourcesAsync(
@@ -400,5 +465,28 @@ namespace Tellma.Identity.Services.AuthenticationPolicy
             identity.SetResources(resources);
             return null;
         }
+    }
+
+    /// <summary>Log messages of <see cref="TellmaPrincipalFactory" />.</summary>
+    internal static partial class TellmaPrincipalFactoryLog
+    {
+        /// <summary>A grant lost its write to the authorization it extends; it reads it again.</summary>
+        /// <param name="logger">The logger.</param>
+        /// <param name="applicationId">The client's application object id.</param>
+        /// <param name="attempt">The attempt that lost.</param>
+        /// <param name="maxAttempts">The bound on attempts.</param>
+        [LoggerMessage(
+            Level = LogLevel.Information,
+            Message = "A grant for application {ApplicationId} lost its authorization write to a concurrent grant on attempt {Attempt} of {MaxAttempts}; reading the authorization again.")]
+        public static partial void LostAuthorizationWrite(ILogger logger, string applicationId, int attempt, int maxAttempts);
+
+        /// <summary>A grant lost every attempt at its authorization write, and was refused.</summary>
+        /// <param name="logger">The logger.</param>
+        /// <param name="applicationId">The client's application object id.</param>
+        /// <param name="attempts">The attempts made.</param>
+        [LoggerMessage(
+            Level = LogLevel.Warning,
+            Message = "A grant for application {ApplicationId} lost its authorization write to concurrent grants {Attempts} times; it was refused with temporarily_unavailable.")]
+        public static partial void GaveUpAuthorizationWrite(ILogger logger, string applicationId, int attempts);
     }
 }
