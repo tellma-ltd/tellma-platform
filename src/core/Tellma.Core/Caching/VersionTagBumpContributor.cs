@@ -33,6 +33,12 @@ namespace Tellma.Core.Caching
     ///         The users come from the batch's user-id sources: the rows a platform statement wrote, and
     ///         the ids every raw statement declared for a table with a user-level rule.
     ///     </para>
+    ///     <para>
+    ///         A batch whose commit only the commit probe proved never read its affected users, so the
+    ///         announcement its owner runs then tells the tenant group of each user-level column the
+    ///         batch moved, without a value, as it tells of the tenant's <c>permissions</c>: every
+    ///         client fetches its own tags anew.
+    ///     </para>
     /// </remarks>
     /// <param name="publisher">The client event publisher, which the commit callback publishes through.</param>
     /// <param name="metrics">The version tags' instruments.</param>
@@ -214,7 +220,10 @@ namespace Tellma.Core.Caching
             }
 
             // --- After the commit: meter the moves and announce them ---
+            // A commit only the probe proved runs no commit callback (spec 0012 §6.5): its owner runs
+            // the announcement registered for that case, which needs neither results nor outcome.
             data.OnCommitted(outcome => Committed(data, plan, outcome));
+            data.OnCommitProven(() => Proven(data, plan));
         }
 
         /// <summary>Reads the affected users, on which the cursor's next set stands.</summary>
@@ -252,6 +261,52 @@ namespace Tellma.Core.Caching
         }
 
         /// <summary>
+        ///     Meters the moves of a batch whose commit only the commit probe proved, and publishes their
+        ///     <c>cache.changed</c> events: the affected users were never read, so none is counted.
+        /// </summary>
+        /// <param name="batch">The batch.</param>
+        /// <param name="plan">What it bumped.</param>
+        private void Proven(DataBatch batch, VersionTagBumpPlan plan)
+        {
+            metrics.RecordBumps(plan.TenantNames, userTags: 0);
+            foreach (ClientEvent clientEvent in ProvenEvents(plan, new VersionTag(batch.Tag)))
+            {
+                publisher.Publish(null, clientEvent);
+            }
+        }
+
+        /// <summary>
+        ///     The <c>cache.changed</c> events of the moves of a batch whose affected users are unknown:
+        ///     the tenant group hears of each tenant-level move as after any commit, then of each
+        ///     user-level column moved, without a value, unless it heard of that tag already.
+        /// </summary>
+        /// <param name="plan">What the batch bumped.</param>
+        /// <param name="tag">The tag every moved name now holds.</param>
+        /// <returns>The events.</returns>
+        internal static IEnumerable<ClientEvent> ProvenEvents(VersionTagBumpPlan plan, VersionTag tag)
+        {
+            ArgumentNullException.ThrowIfNull(plan);
+
+            // --- The tenant-level moves, each with the value the clients key by, or none ---
+            HashSet<string> announced = new(StringComparer.Ordinal);
+            foreach (ClientEvent clientEvent in TenantEvents(plan.TenantNames, tag))
+            {
+                _ = announced.Add(((CacheChangedPayload)clientEvent.Payload!).Tag);
+                yield return clientEvent;
+            }
+
+            // --- The user-level columns: a user's tag composes per user, so the clients fetch their own ---
+            foreach (UserVersionTagNames column in plan.UserColumns)
+            {
+                string item = column == UserVersionTagNames.Permissions ? VersionTagWire.PermissionsItem : VersionTagWire.PreferencesItem;
+                if (announced.Add(item))
+                {
+                    yield return new ClientEvent(CacheChangedEvent, [], new CacheChangedPayload(item, null));
+                }
+            }
+        }
+
+        /// <summary>
         ///     The <c>cache.changed</c> events of a batch's moves: the tenant group hears of
         ///     <c>settings</c>, each <c>entity:*</c> list and <c>permissions</c> (without a value, since
         ///     the client's permissions tag is per user); each affected user hears of their own tags.
@@ -263,6 +318,30 @@ namespace Tellma.Core.Caching
         /// <param name="tenantPermissions">The tenant's <c>permissions</c> tag after the batch, part of a user's composite.</param>
         /// <returns>The events.</returns>
         internal static IEnumerable<ClientEvent> Events(IReadOnlyList<string> tenantNames, IReadOnlyList<AffectedUser> affected, VersionTag tag, VersionTag tenantPermissions)
+        {
+            foreach (ClientEvent clientEvent in TenantEvents(tenantNames, tag))
+            {
+                yield return clientEvent;
+            }
+
+            foreach (AffectedUser user in affected)
+            {
+                CacheChangedPayload payload = user.Column == UserVersionTagNames.Permissions
+                    ? new(VersionTagWire.PermissionsItem, VersionTagWire.Permissions(tenantPermissions, tag))
+                    : new(VersionTagWire.PreferencesItem, VersionTagWire.Preferences(tag));
+                yield return new ClientEvent(CacheChangedEvent, [user.UserId], payload);
+            }
+        }
+
+        /// <summary>
+        ///     The tenant group's <c>cache.changed</c> events of a batch's tenant-level moves:
+        ///     <c>settings</c> and each <c>entity:*</c> list with their new wire tag, <c>permissions</c>
+        ///     without one; <c>entities</c> and a pack's tags are announced to no one.
+        /// </summary>
+        /// <param name="tenantNames">The tenant-level names moved.</param>
+        /// <param name="tag">The tag every moved name now holds.</param>
+        /// <returns>The events.</returns>
+        private static IEnumerable<ClientEvent> TenantEvents(IReadOnlyList<string> tenantNames, VersionTag tag)
         {
             foreach (string name in tenantNames)
             {
@@ -278,14 +357,6 @@ namespace Tellma.Core.Caching
                 {
                     yield return new ClientEvent(CacheChangedEvent, [], payload);
                 }
-            }
-
-            foreach (AffectedUser user in affected)
-            {
-                CacheChangedPayload payload = user.Column == UserVersionTagNames.Permissions
-                    ? new(VersionTagWire.PermissionsItem, VersionTagWire.Permissions(tenantPermissions, tag))
-                    : new(VersionTagWire.PreferencesItem, VersionTagWire.Preferences(tag));
-                yield return new ClientEvent(CacheChangedEvent, [user.UserId], payload);
             }
         }
     }

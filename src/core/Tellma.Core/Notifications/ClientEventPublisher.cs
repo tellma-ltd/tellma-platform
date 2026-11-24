@@ -10,6 +10,7 @@ using System.Text.Json;
 using Tellma.Core.Abstractions.Api;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Realtime;
+using Tellma.Core.Data.Batches;
 
 namespace Tellma.Core.Notifications
 {
@@ -29,6 +30,11 @@ namespace Tellma.Core.Notifications
     ///         The events published on one batch are sent from one commit callback, each distinct
     ///         name, set of users and payload once, in the order first published. A failed delivery
     ///         is logged as <c>ClientEventFailed</c> and never thrown or retried.
+    ///     </para>
+    ///     <para>
+    ///         The events are composed before the batch runs and read none of its results, so a
+    ///         platform batch whose commit only the commit probe proved sends them too, once its
+    ///         owner runs the announcements of that commit; a batch sends them once either way.
     ///     </para>
     /// </remarks>
     public abstract class ClientEventPublisher : IClientEventPublisher
@@ -79,9 +85,11 @@ namespace Tellma.Core.Notifications
                 if (!_pending.TryGetValue(batch, out PendingEvents? pending))
                 {
                     // The callback is registered before the batch is remembered, so a registration the
-                    // batch refuses leaves nothing waiting on it.
+                    // batch refuses leaves nothing waiting on it. The same flush is the announcement of
+                    // a commit only the probe proved (spec 0012 §6.5), where no commit callback runs.
                     PendingEvents created = new();
                     batch.OnCommitted(_ => Flush(batch, created));
+                    (batch as IBatchProvenCommit)?.OnCommitProven(() => Flush(batch, created));
                     _pending.Add(batch, created);
                     pending = created;
                 }
@@ -150,7 +158,7 @@ namespace Tellma.Core.Notifications
             return Encoding.UTF8.GetString(payload);
         }
 
-        /// <summary>Sends every distinct event published on a batch that committed.</summary>
+        /// <summary>Sends every distinct event published on a batch that committed, its commit seen or only proven.</summary>
         /// <param name="batch">The batch.</param>
         /// <param name="pending">Its events.</param>
         private void Flush(IDataBatch batch, PendingEvents pending)

@@ -24,11 +24,13 @@ providers: [provideTellmaUi(), provideTellmaLocaleAr()]
 ## What the pack contributes
 
 - **Strings** — the library's built-in messages in Arabic
-  (`strings/strings-ar.ts`), merged into Transloco's `ar` resources under the
-  shared `tmUi` namespace, and the platform's own (`strings/strings-tm-ar.ts`,
-  under `tm`), which `tmArabic()` hands the platform. Both live in the
-  `@tellma/locale-ar/strings` entry point, which `tmArabic()` loads on the
-  first switch to Arabic, so an app's other languages never download them.
+  (`strings/strings-ar.ts`, the `@tellma/locale-ar/strings` entry point),
+  merged into Transloco's `ar` resources under the shared `tmUi` namespace,
+  and the platform's own (`platform-strings/strings-tm-ar.ts`, under `tm`, the
+  `@tellma/locale-ar/platform-strings` entry point), which `tmArabic()` hands
+  the platform. `tmArabic()` loads both entry points at once on the first
+  switch to Arabic, so an app's other languages never download them, and an
+  app on the component library alone never downloads the platform's table.
   Plurals carry the full Arabic ICU
   categories (one/two/few/many/other); imperative verbs conjugate for the
   addressee via the ambient `{gender}` parameter (see below).
@@ -58,11 +60,11 @@ Copy this package's structure:
 2. Vendor the script's font subsets (see `tools/fonts/vendor-fonts-ar.mjs`)
    if the language needs a non-Latin face; skip fonts entirely for
    Latin-script locales.
-3. `strings/strings-tm-xx.ts` — translate every key of the platform's English
+3. `platform-strings/strings-tm-xx.ts` — translate every key of the platform's English
    `tm` table (`tmEnglish()` in `@tellma/core`).
 4. `provide-tellma-locale-xx.ts` — register the strings; `tm-xx.ts` — the
    language definition `tmXx()`, with its direction and both tables, loaded
-   with `import()` from the `strings` entry point;
+   together with `import()` from the `platform-strings` and `strings` entry points;
    `styles.css` — import the pack's fonts.
 5. If the script's leading differs from Latin, add the language to the token
    preset's `leadingByLang`; if it needs a new face, add the family to the

@@ -28,14 +28,15 @@ import {
 } from '@tellma/core-ui';
 import { TmDatePicker } from '@tellma/core-ui/date-picker';
 import { TmFormField } from '@tellma/core-ui/form-field';
-import { tmFormatZoneOffset, type TmCalendar } from '@tellma/core-ui/l10n';
-
 import {
+  tmFormatZoneOffset,
   ɵtmFormatOffsetInstant,
   ɵtmInstantOfWallTime,
   ɵtmReadInstant,
   ɵtmWallTimeOf,
-} from './internal/tm-zone-wall-time';
+  type TmCalendar,
+} from '@tellma/core-ui/l10n';
+
 import { TmTimeField } from './tm-time-field';
 
 let nextUniqueId = 0;

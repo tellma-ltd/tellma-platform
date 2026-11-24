@@ -291,7 +291,12 @@ collapses into an identical earlier statement when it declares no write or is id
 executor counts the result sets against what each statement declares, skips the body's sets when
 the guard failed, and maps a server error's line number to the ordinal of the statement that
 raised it. It traces each round trip as a span of `Tellma.Core`, logs a slow round trip with its
-text, and runs the commit callbacks once the body ran.
+text, and runs the commit callbacks once the body ran. A batch whose commit only the probe proved
+(its response lost) runs none, since its results were never read; a composer whose callback can
+announce its part without them registers that announcement too (`IBatchProvenCommit.OnCommitProven`,
+which `RecordingBatch` records and replays), and the batch's owner runs them once
+(`DataBatch.RunProvenCommitCallbacks`). The job engine does, for its completions and tick step 2;
+nothing else does yet.
 
 A failed round trip is classified. A transient error the server reported (a deadlock, a lock
 timeout, throttling, `THROW 50503`), at any severity, rolled the batch back under `XACT_ABORT`, so
@@ -1017,7 +1022,9 @@ A version tag is a `Guid` a tenant database keeps per cached input, in `core.Ver
   write the plan does not cover; a write with a tag appended after the bump; an autocommit
   (`None`) batch whose writes bump a tag; and a dependency on a name the registry does not hold
   exactly. Re-running the statement moves the same rows to the same tag. On commit it publishes `cache.changed` to the tenant for each tenant-level
-  name and to the affected users for each user-level one.
+  name and to the affected users for each user-level one. After a commit only the probe proved, the
+  affected users were never read: the tenant hears of each tenant-level name as usual and of each
+  user-level column without a value, once per tag, so every client fetches its own.
 - **The snapshots.** `IVersionTagSnapshots` and `IUserVersionTagSnapshots` keep, per tenant (and
   per user), the last tags a batch read or wrote, bounded by `Tellma:Cache`. A batch's read
   replaces the tenant's snapshot; a bump overlays its new tags without a read-back.
@@ -1205,7 +1212,8 @@ package replaces both. Every publisher derives from `ClientEventPublisher`, whic
 unregistered name, a payload over 4,096 UTF-8 bytes and a batch that already executed before
 anything is registered or sent,
 coalesces the events published on one batch into its one commit callback (each distinct name, set of
-users and payload once), and logs a failed delivery as `ClientEventFailed` without throwing it.
+users and payload once), sends the same events from the batch's announcement of a commit only the
+probe proved, and logs a failed delivery as `ClientEventFailed` without throwing it.
 
 ### Raising, withdrawing and rendering
 
@@ -1230,7 +1238,10 @@ for everyone or for named recipients. After the commit, one callback per batch c
 statement did (`tellma.notifications.created`, `suppressed`, `replaced`, `withdrawn` and
 `delivery_enqueued`, by type), wakes the tenant's pollers when a delivery job was enqueued, and
 publishes one `inbox.changed` to the users whose inbox changed, logging a failure as
-`InboxEventFailed` without throwing it.
+`InboxEventFailed` without throwing it. After a commit only the probe proved, no outcome was read:
+the batch's announcement wakes the pollers when a request may have enqueued a delivery job and
+publishes one `inbox.changed` to every recipient a request named, or to the whole tenant when a
+withdrawal named none.
 
 `NotificationRenderer` (scoped `INotificationRenderer`) renders a row's text server-side: the
 resource `Notification_<type key, dots as underscores>` of the package whose feature registered the
@@ -2701,7 +2712,12 @@ under the token, rolling back whatever their transaction carries.
   Any other failure discards the handler's work and records the outcomes the failure maps to, a
   constraint an enlisted group breaks failing every item with its translated error. A batch that
   could not be sent after the handler threw maps the items by what it threw (a stop, its own error,
-  a validation). A failure that cannot be recorded leaves the lease to lapse.
+  a validation). A failure that cannot be recorded leaves the lease to lapse. A completion whose
+  response was lost but whose commit the probe proved is completed: the tenant's poller on this
+  instance is woken unconditionally, the batch's proven-commit announcements run (`job.changed`, the notices'
+  `inbox.changed`, and the events and `cache.changed` of the writes the handler enlisted), then the
+  enlisted writes' post-commit work. Tick step 2 does likewise: its nudge and its pause notices'
+  announcements still go out, a failure logged as `SchedulerTickAnnouncementFailed`.
 - **Progress.** `IJobProgress.Report` buffers progress for the next renewal and makes the
   checkpoint current at once; `FlushAsync` runs that renewal now; `Append` writes a fenced
   checkpoint that counts only once its batch committed. `Append` refuses `JobBatch.Batch`: the

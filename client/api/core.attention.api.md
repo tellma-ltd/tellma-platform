@@ -4,19 +4,116 @@
 
 ```ts
 
-import * as _angular_core from '@angular/core';
+import * as i0 from '@angular/core';
 import { Signal } from '@angular/core';
+
+// @public
+export class TmArrivals {
+    constructor();
+    static ɵfac: i0.ɵɵFactoryDeclaration<TmArrivals, never>;
+    static ɵprov: i0.ɵɵInjectableDeclaration<TmArrivals>;
+}
+
+// @public
+export interface TmAssignmentCaption {
+    readonly amount: string | null;
+    readonly detail: string | null;
+    readonly title: string;
+    readonly titleSegments: readonly TmTextSegment[];
+}
+
+// @public
+export class TmAttention {
+    constructor();
+    readonly assignments: Signal<TmAssignmentsSummary | undefined>;
+    readonly bell: Signal<TmBellBadge>;
+    clear(ids: readonly number[]): Promise<void>;
+    clearRead(): Promise<void>;
+    readonly inbox: Signal<TmInboxSummary | undefined>;
+    readonly live: Signal<'live' | 'paused'>;
+    readonly open: Signal<TmPanel | null>;
+    read(ids: readonly number[]): Promise<void>;
+    readAll(): Promise<void>;
+    refresh(document: 'assignments' | 'inbox'): Promise<void>;
+    stopJob(id: number): Promise<void>;
+    toggle(panel: TmPanel, via: 'click' | 'shortcut' | 'toast'): void;
+    readonly tray: Signal<TmTrayBadge>;
+    readonly writable: Signal<boolean>;
+    static ɵfac: i0.ɵɵFactoryDeclaration<TmAttention, never>;
+    static ɵprov: i0.ɵɵInjectableDeclaration<TmAttention>;
+}
+
+// @public
+export class TmAttentionText {
+    constructor();
+    caption(row: TmEntityType<'core.Assignment'>): Signal<TmAssignmentCaption>;
+    isolate(key: string, args: Readonly<Record<string, unknown>>, isolated: readonly string[]): Signal<readonly TmTextSegment[]>;
+    job(job: TmJobLabelSource): Signal<string>;
+    jobMessage(key: string | null, argumentsJson: string | null): Signal<string | null>;
+    notification(type: string, argumentsJson: string | null): Signal<TmNotificationText>;
+    static ɵfac: i0.ɵɵFactoryDeclaration<TmAttentionText, never>;
+    static ɵprov: i0.ɵɵInjectableDeclaration<TmAttentionText>;
+}
 
 // @public
 export class TmBannerHost {
     constructor();
-    protected readonly announcement: _angular_core.WritableSignal<string>;
+    protected readonly announcement: i0.WritableSignal<string>;
     protected readonly banners: TmBanners;
     protected dismiss(id: string): void;
     protected page(step: -1 | 1): void;
-    protected readonly politeness: _angular_core.WritableSignal<"assertive" | "polite">;
-    static ɵcmp: _angular_core.ɵɵComponentDeclaration<TmBannerHost, "tm-banner-host", never, {}, {}, never, never, true, never>;
-    static ɵfac: _angular_core.ɵɵFactoryDeclaration<TmBannerHost, never>;
+    protected readonly politeness: i0.WritableSignal<"assertive" | "polite">;
+    static ɵcmp: i0.ɵɵComponentDeclaration<TmBannerHost, "tm-banner-host", never, {}, {}, never, never, true, never>;
+    static ɵfac: i0.ɵɵFactoryDeclaration<TmBannerHost, never>;
+}
+
+// @public
+export interface TmBellBadge {
+    readonly count: number | null;
+    readonly jobsRunning: number;
+    readonly label: string;
+    readonly tone: 'accent' | 'attention';
+}
+
+// @public
+export interface TmJobLabelSource {
+    readonly handlerKey: string;
+    readonly labelArgumentsJson?: string | null;
+    readonly labelKey?: string | null;
+}
+
+// @public
+export interface TmNotificationText {
+    readonly detail: string | null;
+    readonly title: string;
+}
+
+// @public
+export const tmNotificationToastsKey: TmPreferenceKey<boolean>;
+
+// @public
+export class TmOutcomeToasts {
+    constructor();
+    exporting(cancel: () => void): TmToastRef;
+    jobStarted(jobId: number): TmToastRef;
+    static ɵfac: i0.ɵɵFactoryDeclaration<TmOutcomeToasts, never>;
+    static ɵprov: i0.ɵɵInjectableDeclaration<TmOutcomeToasts>;
+}
+
+// @public
+export type TmPanel = 'bell' | 'tray';
+
+// @public
+export interface TmTextSegment {
+    readonly arg?: string;
+    readonly text: string;
+}
+
+// @public
+export interface TmTrayBadge {
+    readonly count: number | null;
+    readonly label: string;
+    readonly tone: 'accent' | 'neutral';
 }
 
 ```

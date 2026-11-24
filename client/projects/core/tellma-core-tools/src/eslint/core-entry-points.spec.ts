@@ -16,12 +16,14 @@ describe('the @tellma/core entry-point table', () => {
     expect([...tmAllowedImports(TM_CORE_ENTRY_POINTS, '.')]).toEqual([]);
     expect([...tmAllowedImports(TM_CORE_ENTRY_POINTS, './attention')].sort()).toEqual([
       '.',
+      './error-paths',
       './private',
       './search-normalize',
     ]);
     expect([...tmAllowedImports(TM_CORE_ENTRY_POINTS, './shell')].sort()).toEqual([
       '.',
       './attention',
+      './error-paths',
       './private',
       './search-normalize',
     ]);
@@ -30,13 +32,16 @@ describe('the @tellma/core entry-point table', () => {
   it('keeps the shared entry points off the primary and out of each other', () => {
     expect([...tmAllowedImports(TM_CORE_ENTRY_POINTS, './private')]).toEqual(['.']);
     expect([...tmAllowedImports(TM_CORE_ENTRY_POINTS, './search-normalize')]).toEqual([]);
+    expect([...tmAllowedImports(TM_CORE_ENTRY_POINTS, './error-paths')]).toEqual([]);
   });
 
   it('lets lazy entry points import every eager and shared one', () => {
     expect([...tmAllowedImports(TM_CORE_ENTRY_POINTS, './search')].sort()).toEqual([
       '.',
       './attention',
+      './column-filter',
       './entity',
+      './error-paths',
       './memory',
       './private',
       './search-normalize',
@@ -61,6 +66,15 @@ describe('the @tellma/core entry-point table', () => {
     expect(tmAllowedImports(TM_CORE_ENTRY_POINTS, './support').has('./page-snapshot')).toBe(true);
     for (const eager of ['.', './attention', './shell']) {
       expect(tmAllowedImports(TM_CORE_ENTRY_POINTS, eager).has('./page-snapshot')).toBe(false);
+    }
+  });
+
+  it('keeps the column filter control out of the entity entry point, for the search page to load', () => {
+    expect(TM_CORE_ENTRY_POINTS['./column-filter']).toEqual({ load: 'lazy', imports: ['./entity'] });
+    expect(tmAllowedImports(TM_CORE_ENTRY_POINTS, './search').has('./column-filter')).toBe(true);
+    expect(tmAllowedImports(TM_CORE_ENTRY_POINTS, './entity').has('./column-filter')).toBe(false);
+    for (const eager of ['.', './attention', './shell']) {
+      expect(tmAllowedImports(TM_CORE_ENTRY_POINTS, eager).has('./column-filter')).toBe(false);
     }
   });
 

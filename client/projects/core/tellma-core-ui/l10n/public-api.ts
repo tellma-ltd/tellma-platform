@@ -63,3 +63,10 @@ export {
   type TmTimeStyle,
 } from './tm-instant';
 export { tmFirstDayOfWeek } from './tm-week-info';
+export {
+  ɵtmFormatOffsetInstant,
+  ɵtmInstantOfWallTime,
+  ɵtmReadInstant,
+  ɵtmWallTimeOf,
+  type ɵTmWallTime,
+} from './tm-zone-wall-time';

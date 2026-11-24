@@ -7,9 +7,11 @@ import type { TmLanguageDefinition } from '@tellma/core';
 
 // Arabic as a Tellma app's language (spec 0024 §7.3): the platform's `tm`
 // table and the component library's Arabic, which the localization service
-// merges into the language's strings on Arabic's first use. Both tables live
-// in the ./strings entry point, loaded on that first use, so an app's other
-// languages never download them (as §7.4 loads a calendar).
+// merges into the language's strings on Arabic's first use. The tables live
+// in two entry points, ./platform-strings and ./strings, both loaded at once
+// on that first use, so an app's other languages never download them (as
+// §7.4 loads a calendar); one entry point per table keeps each one's growth
+// under its own ceiling.
 
 /**
  * Arabic, right to left, with the platform's and the component library's
@@ -27,6 +29,9 @@ export function tmArabic(): TmLanguageDefinition {
     code: 'ar',
     dir: 'rtl',
     strings: () =>
-      import('@tellma/locale-ar/strings').then((tables) => ({ tm: tables.TM_STRINGS_AR, tmUi: tables.TM_LOCALE_AR_STRINGS })),
+      Promise.all([import('@tellma/locale-ar/platform-strings'), import('@tellma/locale-ar/strings')]).then(([platform, library]) => ({
+        tm: platform.TM_STRINGS_AR,
+        tmUi: library.TM_LOCALE_AR_STRINGS,
+      })),
   };
 }

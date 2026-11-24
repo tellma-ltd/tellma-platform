@@ -21,7 +21,8 @@ namespace Tellma.Core.Jobs
     // Spec 0020 §7.4 to §7.7: step 1 rides the poll's round trip under a fresh token; step 2 runs
     // after it, in the poll's system scope, over what step 1 leased. Step 2 computes each schedule's
     // firing in C# from the database's clock, then sends one persist batch: the fenced fire-and-advance
-    // statement, the pauses, their notices, and the nudge of this instance's poller once it commits.
+    // statement, the pauses, their notices, and the nudge of this instance's poller once it commits,
+    // which a commit only the probe proved still makes.
     // A failure is logged and leaves the leased states unchanged, so the lease lapses and the next
     // tick on any instance computes them again: at least once, the overlap predicate keeping a Skip
     // schedule from firing twice.
@@ -196,6 +197,10 @@ namespace Tellma.Core.Jobs
             IGuardedBatchRunner runner = services.GetRequiredService<IGuardedBatchRunner>();
             INotifier notifier = services.GetRequiredService<INotifier>();
             BatchResult<IReadOnlyList<ScheduleFired>>? fired = null;
+
+            // The batch last composed, which a failed guard recomposes once: the one whose commit the
+            // probe may prove.
+            DataBatch? sent = null;
             try
             {
                 _ = await runner.RunAsync(
@@ -203,6 +208,7 @@ namespace Tellma.Core.Jobs
                     (user, batch) =>
                     {
                         var data = (DataBatch)batch;
+                        sent = data;
                         fired = JobStatements.TickStep2(data, token, jobs, next);
                         foreach ((SchedulePausedReason reason, List<int> ids) in pauses)
                         {
@@ -214,9 +220,12 @@ namespace Tellma.Core.Jobs
                             notifier.Notify(data, notices);
                         }
 
+                        // The nudge needs no result, so a commit only the probe proved nudges too: a
+                        // job the overlap rule skipped only makes the wake spurious.
                         if (jobs.Count > 0)
                         {
                             data.OnCommitted(_ => _wake.Wake(tenantId));
+                            data.OnCommitProven(() => _wake.Wake(tenantId));
                         }
 
                         return ValueTask.CompletedTask;
@@ -227,8 +236,11 @@ namespace Tellma.Core.Jobs
             catch (DataAccessAmbiguousException ambiguous) when (ambiguous.Verdict == CommitVerdict.Committed)
             {
                 // The probe found the batch committed; its response, and the fired jobs, were lost with
-                // the connection, so nothing is counted.
+                // the connection, so nothing is counted. Its commit callbacks were lost too (spec 0012
+                // §6.5): what they announce without the results is announced here, the nudge of §7.6
+                // and the notices' inbox.changed and delivery wake.
                 fired = null;
+                sent?.RunProvenCommitCallbacks(failure => JobsLog.SchedulerTickAnnouncementFailed(_logger, failure, rows.Count));
             }
 
             // --- §7.6 and §13: what fired, what the overlap rule skipped, what the policies dropped ---
