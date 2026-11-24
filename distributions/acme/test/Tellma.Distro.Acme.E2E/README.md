@@ -15,8 +15,9 @@ Tellma.Distro.Acme.E2E/
 ├── playwright.config.ts     # Chromium in English and in Arabic; webServer starts the e2e host
 ├── scripts/e2e.mjs          # picks the host's port and runs Playwright
 ├── host/acme-e2e-host.mjs   # SQL Server, migrate, client build, the web host
+├── host/containers.mjs      # which SQL Server containers a starting run may remove, and its tests
 ├── support/acme.ts          # the fixture (the CSP watch), the casts and texts, shared page probes
-├── support/global-setup.ts  # once the host is up: the Arabic project's account reads Arabic
+├── support/global-setup.ts  # once the host is up: the Arabic project's accounts read Arabic
 └── specs/                   # the flows
 ```
 
@@ -39,7 +40,8 @@ Arguments pass through to `playwright test`; `--project chromium` or `--project 
 one language. The report and traces go to `.artifacts/`, beside the host's log
 (`.artifacts/host/host.log`), its mail drop and blob root, and the kept sign-ins.
 `pnpm --dir distributions/acme/test/Tellma.Distro.Acme.E2E run typecheck` and `run lint` check the
-sources without a host; `run format` formats them with the client's Prettier settings.
+sources without a host, and `run test` runs the host's own unit tests; `run format` formats the
+sources with the client's Prettier settings.
 
 ## The e2e host
 
@@ -51,8 +53,11 @@ sources without a host; `run format` formats them with the client's Prettier set
    `TELLMA_TEST_SQL` the integration suites read is used when it is set. The databases are
    `Tellma.e2e.<DB_SUFFIX>.acme.*`, with the worktree's `DB_SUFFIX` from `.dev-ports.local`, never
    the development host's `Tellma.dev.acme.*`. A server that outlives the run keeps them, so a rerun
-   migrates nothing; a container is fresh every run. Each container carries the label
-   `tellma-e2e=<DB_SUFFIX>`, and a run removes any its worktree's killed runs left behind.
+   migrates nothing; a container is fresh every run. Each container carries the labels
+   `tellma-e2e=<DB_SUFFIX>`, `tellma-e2e.pid` (its host's process id) and `tellma-e2e.started`.
+   A starting run removes only the stale ones: those whose host process is gone (a killed run's)
+   and those older than twelve hours. A concurrent run's container stays (`host/containers.mjs`,
+   tested by `run test`).
 2. **Client build.** `tellma-client build` of `Tellma.Distro.Acme.Client`, about five minutes cold.
    `TELLMA_E2E_WEBROOT` names an app already built instead (CI passes the published `wwwroot`); a
    relative path is taken from the folder the suite was started in.
@@ -81,17 +86,19 @@ the development host on `ACME_WEB` or with another worktree.
 - Every flow runs twice, in the `chromium` project (an English browser) and in `chromium-ar` (an
   Arabic one), except those that pick their languages themselves (`responsive`, `rtl-boot`) and the
   nightly gates. Sign in as the `cast` fixture's principals and match the `text` fixture's texts, so
-  a flow reads the project's language: the English cast's user is the administrator, the Arabic
-  cast's the sales representative, whose account the global setup sets to Arabic (the seed creates
-  every account in English). Both casts share the sandbox tester, whose account reads English.
+  a flow reads the project's language. The English cast is the administrator, with the sandbox
+  tester as the other user; the Arabic cast is the sales representative, with the center reader as
+  the other user, both of whose accounts the global setup sets to Arabic (the seed creates every
+  account in English). Both casts share the sandbox tester, whose account reads English.
 - The principals are `ACME_PRINCIPALS`: the administrator (tenants 1 and 2), the sales
   representative and the center reader (every tenant), and the sandbox tester (tenant 2 alone).
 - Wait on observable state (a heading, the boot result, the store, a held request), never on the
   clock. `warmUp` waits for the service worker's shell cache and the stored launch documents.
-- A timing budget is a quiet machine's, times `ACME_PERF_MULTIPLIER` (`TM_PERF_MULTIPLIER`, else 2
-  on CI), and judges the `median` of `ACME_TIMING_SAMPLES` measurements.
+- A CPU-bound timing budget is a quiet machine's, times `ACME_PERF_MULTIPLIER`
+  (`TM_PERF_MULTIPLIER`, a positive number, else 2 on CI), and judges the `median` of
+  `ACME_TIMING_SAMPLES` measurements. The cold launch's network-bound budget takes no multiplier.
 - Tag a test `@nightly` or `@perf` for the nightly tier, `@cross-engine` once a Firefox and WebKit
   project joins the config, and `@quarantine` to take a flaky test out of the pull-request tier.
 - A flow whose surface a later spec ships is a `test.fixme`, with a comment naming that spec. A
   known gap in a shipped surface is a `test.fail()` with a comment, so its fix shows.
-- Format with `run format`; CI runs `typecheck` and `lint` on both of its legs.
+- Format with `run format`; CI runs `typecheck`, `lint` and `test` on both of its legs.

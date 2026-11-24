@@ -33,10 +33,14 @@ export const ACME_PRINCIPALS = {
 export const ACME_TENANTS = { live: 1, sandbox: 2 } as const;
 
 /**
- * The principal whose account reads Arabic: the run's global setup sets its
- * language, since the development seed creates every account in English.
+ * The principals whose accounts read Arabic, the Arabic project's user and
+ * other user: the run's global setup sets their language, since the
+ * development seed creates every account in English. The English project's
+ * casts never sign them in; the flows that choose their own language (the
+ * responsive checks, the right-to-left boot) sign in as the sales
+ * representative and set the language they assert in the boot record.
  */
-export const ACME_ARABIC_READER = ACME_PRINCIPALS.sales;
+export const ACME_ARABIC_READERS = [ACME_PRINCIPALS.sales, ACME_PRINCIPALS.centers] as const;
 
 /** A language the suite's projects run in. */
 export type AcmeLanguage = 'en' | 'ar';
@@ -45,22 +49,27 @@ export type AcmeLanguage = 'en' | 'ar';
 export interface AcmeCast {
   /** The flow's user, a member of the live tenant (1) and its sandbox (2), whose account reads the project's language. */
   readonly user: string;
-  /** Another member of both tenants, who takes the device over. */
+  /** Another user, who takes the device over, whose account reads the project's language too. */
   readonly other: string;
   /** The sandbox tester, a member of the sandbox (2) alone. Its account reads English in every project. */
   readonly sandbox: string;
 }
 
-/** Each project's cast: the Arabic project's user is the account that reads Arabic. */
+/**
+ * Each project's cast. The Arabic project's user and other user are the
+ * accounts that read Arabic. The English project's other user is the sandbox
+ * tester, the one other account that keeps English; the sandbox tester reads
+ * English in both projects, since the seed holds one.
+ */
 const CASTS: Readonly<Record<AcmeLanguage, AcmeCast>> = {
   en: {
     user: ACME_PRINCIPALS.admin,
-    other: ACME_PRINCIPALS.sales,
+    other: ACME_PRINCIPALS.sandbox,
     sandbox: ACME_PRINCIPALS.sandbox,
   },
   ar: {
-    user: ACME_ARABIC_READER,
-    other: ACME_PRINCIPALS.centers,
+    user: ACME_ARABIC_READERS[0],
+    other: ACME_ARABIC_READERS[1],
     sandbox: ACME_PRINCIPALS.sandbox,
   },
 };
@@ -425,12 +434,30 @@ export async function headingShownAt(page: Page, text: string | RegExp): Promise
 }
 
 /**
- * The timing budgets' multiplier: `TM_PERF_MULTIPLIER` when set, else 2 on
- * CI, whose shared runners are slower and noisier than a quiet machine.
+ * The CPU-bound timing budgets' multiplier: `TM_PERF_MULTIPLIER` when set,
+ * else 2 on CI, whose shared runners are slower and noisier than a quiet
+ * machine.
  */
-export const ACME_PERF_MULTIPLIER = Number(
-  process.env['TM_PERF_MULTIPLIER'] ?? (process.env['CI'] ? 2 : 1),
-);
+export const ACME_PERF_MULTIPLIER = perfMultiplier(process.env['TM_PERF_MULTIPLIER']);
+
+/**
+ * Reads the timing budgets' multiplier.
+ *
+ * @param value - `TM_PERF_MULTIPLIER`, when set.
+ * @returns The multiplier.
+ * @throws When the value is set but is not a positive finite number, which
+ *   would zero or void every budget.
+ */
+function perfMultiplier(value: string | undefined): number {
+  if (value === undefined) {
+    return process.env['CI'] ? 2 : 1;
+  }
+  const multiplier = Number(value);
+  if (value.trim() === '' || !Number.isFinite(multiplier) || multiplier <= 0) {
+    throw new Error(`TM_PERF_MULTIPLIER must be a positive number; it is '${value}'.`);
+  }
+  return multiplier;
+}
 
 /** How many times a timing gate measures before it judges the median. */
 export const ACME_TIMING_SAMPLES = 3;

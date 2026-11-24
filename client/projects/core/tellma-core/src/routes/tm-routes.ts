@@ -23,7 +23,7 @@ import { tmIsIdSegment, tmTenantSegment } from '../launch/tm-routed-tenant';
 import { tmSessionGuard } from '../session/tm-session-guard';
 import { TM_ROUTE_ERROR_VIEWS, TmRouteError } from './tm-route-error';
 import { TmRouteHost } from './tm-route-host';
-import { TM_ROUTE_HOSTS, tmShellComponent } from './tm-route-hosts';
+import { TM_ROUTE_HOSTS, tmShellRoute } from './tm-route-hosts';
 import { TM_ME_SECTIONS, TmRouteRules } from './tm-route-rules';
 
 // The route table (spec 0024 §9.2), built once at provider time from the
@@ -239,9 +239,9 @@ export function tmBuildRoutes(pages: readonly TmPageDeclaration[]): Routes {
   ];
   return [
     { path: '', pathMatch: 'full', canMatch: [tmLaunchMatch], canActivate: [tmSessionGuard], component: TmLaunchRedirect },
-    { path: 'tenants', canActivate: [tmSessionGuard], loadComponent: tmShellComponent('TmTenantPicker') },
-    { path: 'signed-out', loadComponent: tmShellComponent('TmSignedOutPage') },
-    { matcher: tenantMatcher, canActivate: [tmSessionGuard], loadComponent: tmShellComponent('TmTenantShell'), children: tenant },
+    { path: 'tenants', canActivate: [tmSessionGuard], loadComponent: tmShellRoute('TmTenantPicker') },
+    { path: 'signed-out', loadComponent: tmShellRoute('TmSignedOutPage') },
+    { matcher: tenantMatcher, canActivate: [tmSessionGuard], loadComponent: tmShellRoute('TmTenantShell'), children: tenant },
     {
       path: '**',
       canActivate: [tmSessionGuard],

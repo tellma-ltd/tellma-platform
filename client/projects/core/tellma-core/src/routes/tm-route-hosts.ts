@@ -33,6 +33,9 @@ interface TmShellModule {
   readonly ɵTM_SHELL: TmShellComponents;
 }
 
+/** The shell entry point's module, kept by its first load to settle; `undefined` before. */
+let shell: TmShellModule | undefined;
+
 /**
  * Loads a component of `@tellma/core/shell`.
  *
@@ -47,7 +50,23 @@ interface TmShellModule {
  * @returns The lazy component.
  */
 export function tmShellComponent(name: keyof TmShellComponents): TmLazyComponent {
-  return () => (import('@tellma/core/shell' as string) as Promise<TmShellModule>).then((shell) => shell.ɵTM_SHELL[name]);
+  return () => (import('@tellma/core/shell' as string) as Promise<TmShellModule>).then((loaded) => (shell = loaded).ɵTM_SHELL[name]);
+}
+
+/**
+ * A route's `loadComponent` for a component of `@tellma/core/shell`: the
+ * component itself once the shell's chunk is in memory, else its load.
+ * Internal: the route table's shell routes use it.
+ *
+ * @param name - The component's name.
+ * @returns The loader.
+ */
+export function tmShellRoute(name: keyof TmShellComponents): () => Type<unknown> | ReturnType<TmLazyComponent> {
+  // A first entry into a route whose chunk another route already loaded
+  // activates within the click's task, so its first frame shows the route
+  // (spec 0024 §4.4); a promise would wait a task, and miss that frame.
+  const load = tmShellComponent(name);
+  return () => shell?.ɵTM_SHELL[name] ?? load();
 }
 
 /** The page every family without an entry point of its own renders for now. */

@@ -113,7 +113,7 @@ test.describe('session', () => {
       );
     }, sub);
     await expireInApp(page);
-    // The administrator's identity sign-in is gone too: the sales representative signs in here.
+    // The user's identity sign-in is gone too: the other user signs in here.
     await tmSignInToIdentityAs(page.context(), cast.other);
 
     await sessionEndedDialog(page).getByRole('button', { name: text.signIn }).click();

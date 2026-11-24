@@ -3,6 +3,8 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+using Microsoft.AspNetCore.Builder;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
 using System.Text.Json;
@@ -10,6 +12,7 @@ using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.Abstractions.Email;
 using Tellma.Core.Email;
 using Tellma.Distro.Acme.Web.Development;
+using Tellma.Distro.Acme.Web.Tests.Infrastructure;
 
 namespace Tellma.Distro.Acme.Web.Tests.Development
 {
@@ -141,6 +144,25 @@ namespace Tellma.Distro.Acme.Web.Tests.Development
 
             Assert.Single(AcmeMailDropCheck.Check("log", _directory, host));
             Assert.Single(AcmeMailDropCheck.Check(AcmeMailDrop.TransportName, "relative/drop", host));
+        }
+
+        /// <summary>
+        ///     The web host registers the check among its startup checks, so a drop configured wrongly
+        ///     stops the host at startup rather than at its first send.
+        /// </summary>
+        /// <returns>A task that completes when the host's check has run.</returns>
+        [Fact]
+        public async Task The_web_host_runs_the_check_among_its_startup_checks()
+        {
+            await using WebApplication app = AcmeWebApplication.Build(Environments.Development, new Dictionary<string, string?>
+            {
+                [AcmeMailDrop.ProviderKey] = AcmeMailDrop.TransportName,
+                [AcmeMailDrop.DirectoryKey] = "relative/drop",
+            });
+
+            IStartupCheck check = Assert.Single(app.Services.GetServices<IStartupCheck>(), static check => check.Name == AcmeMailDrop.CheckName);
+            IReadOnlyList<CompositionProblem> problems = await check.CheckAsync(app.Services, TestContext.Current.CancellationToken);
+            Assert.Equal(AcmeMailDrop.CheckName, Assert.Single(problems).Source);
         }
 
         /// <summary>A host environment of a given name.</summary>

@@ -38,6 +38,15 @@ import { randomBytes } from 'node:crypto';
 import { createWriteStream, existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+import {
+  CONTAINER_FORMAT,
+  CONTAINER_LABEL,
+  containerLabels,
+  parseContainers,
+  processAlive,
+  staleContainers,
+} from './containers.mjs';
 import { parseEnv } from 'node:util';
 
 const packageDir = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -172,16 +181,23 @@ async function bringUpSql() {
       process.env['TELLMA_TEST_SQL_IMAGE'] || 'mcr.microsoft.com/mssql/server:2022-latest';
     const name = `tellma-e2e-acme-${port}`;
     const password = `Tm-${randomBytes(12).toString('hex')}-A1`;
-    // Every container of this worktree's runs carries its label. A run that was
-    // killed before its cleanup left one behind, under another run's port; it
-    // is this run's to remove, as is one that holds this run's name.
-    const label = `tellma-e2e=${suffix || 'default'}`;
-    const leftovers = spawnSync('docker', ['ps', '-aq', '--filter', `label=${label}`], {
-      encoding: 'utf8',
-    })
-      .stdout?.split(/\s+/)
-      .filter((id) => id !== '');
-    spawnSync('docker', ['rm', '-f', name, ...(leftovers ?? [])], { stdio: 'ignore' });
+    // A run removes the containers that are provably stale: their host is gone
+    // (a run killed before its cleanup), or they outlived any run. A container
+    // another live run uses stays, as does one an older host script started
+    // without the labels; one that holds this run's name is this run's.
+    const listed = spawnSync(
+      'docker',
+      ['ps', '-a', '--filter', `label=${CONTAINER_LABEL}`, '--format', CONTAINER_FORMAT],
+      { encoding: 'utf8' },
+    ).stdout;
+    const stale = staleContainers(parseContainers(listed ?? ''), {
+      now: Date.now(),
+      alive: processAlive,
+    });
+    spawnSync('docker', ['rm', '-f', name, ...stale], { stdio: 'ignore' });
+    const labels = containerLabels(suffix || 'default', process.pid, Date.now()).flatMap(
+      (label) => ['--label', label],
+    );
     log(`starting SQL Server (${image})`);
     const started = spawnSync(
       'docker',
@@ -190,8 +206,7 @@ async function bringUpSql() {
         '-d',
         '--name',
         name,
-        '--label',
-        label,
+        ...labels,
         '-e',
         'ACCEPT_EULA=Y',
         '-e',

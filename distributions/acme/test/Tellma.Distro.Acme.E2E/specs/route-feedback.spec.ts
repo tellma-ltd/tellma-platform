@@ -13,8 +13,8 @@ import { type AcmeCast, type AcmeText, expect, test } from '../support/acme';
 // their way. The pull-request tier checks the skeleton and its replacement;
 // the frame itself is a timing gate, which parallel workers on one machine
 // cannot hold, so it runs in the nightly tier's performance gates. That gate
-// holds the skeleton to the second frame painted after the click, the one
-// after the click's own; the report records the frame it showed in.
+// holds the skeleton to the first frame painted after the click; the report
+// records the frame it showed in.
 
 /** The frame the route skeleton first showed in, recorded by {@link watchSkeletonFrame}. */
 interface AcmeSkeletonFrameWindow {
@@ -25,8 +25,8 @@ interface AcmeSkeletonFrameWindow {
 /** The frames after the click the probe watches before it gives up. */
 const WATCHED_FRAMES = 10;
 
-/** The latest frame the skeleton may first show in: the frame after the click's. */
-const SKELETON_FRAME = 2;
+/** The latest frame the skeleton may first show in: the first painted after the click. */
+const SKELETON_FRAME = 1;
 
 /**
  * Signs in, warms the app on the picker alone (the tenant's launch documents
@@ -96,7 +96,7 @@ test.describe('route feedback', () => {
     await expect(page.locator('tm-route-host')).not.toHaveAttribute('aria-busy', 'true');
   });
 
-  test('a link click shows the route skeleton by the frame after its own @perf', async ({
+  test('a link click shows the route skeleton in the first frame after it @perf', async ({
     page,
     text,
     cast,
