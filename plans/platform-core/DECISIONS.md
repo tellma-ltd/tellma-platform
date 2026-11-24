@@ -384,6 +384,18 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-260 (orchestrator, 2026-11-23): PC-120's R1 rulings
+
+- PC-120's R1 found 0 blocking, 3 major and 7 minor issues. All 8 deviations are accepted, and there is no R2.
+- Budget (R1-1): /entity's 18.5-to-27.5 raise is that ceiling's third (11.5, 12.5, 19, 27.5) and took no savings, so D-031's re-split clause applies. Fix1 makes these moves:
+  - TmColumnFilter (2.70 KB) goes to its own lazy chunk or entry point;
+  - the 18 error messages go under an ngDevMode guard (about -0.35 net);
+  - tmQxInsert (0.20) and tmQxParameters (0.14) leave the eager /entity graph, or carry to PC-121 if they cannot.
+
+  The ceiling is then reset to the measure rounded up to 0.5 KB, about 24. With PC-125, /entity is then about 25 of spec 0029's roughly 28, which leaves PC-121 room.
+- R1-3: an any-of `in` chip joins with Intl.ListFormat type 'disjunction', so it reads correctly in Arabic and Amharic. This is a stated deviation: English then reads "Type: Service or Sale" where 0029 §13.2's example shows "Type: Service, Sale". For Ahmad: confirm, or prefer a translatable separator.
+- For Ahmad: 0029 §8.2's `[Order]` example should read `[not]`, because Order is not a keyword (PC-120 deviation 1).
+
 ### D-259 (orchestrator, 2026-11-23): PC-125's R1 rulings
 
 - PC-125's R1 found 0 blocking, 3 major and 8 minor issues. There is no R2.
@@ -399,6 +411,7 @@ Format, one entry per ruling:
 - Carries go to WATCHLIST in fix1:
   - the tm.details.confirm telemetry seam in ɵtmConfirmationRounds;
   - the swap to TmErrorPresenter.describe() once PC-110 lands, which fits only the heading and message.
+- PC-125 fix1 moved the error-path splitter and walker to a new shared entry point, @tellma/core/error-paths (0.51 KB). Misalignment: spec 0031 §1 says /details imports only the primary and /entity, so it must now admit this entry. For Ahmad: confirm.
 
 ### D-258 (orchestrator, 2026-11-23): PC-B05 result and its open items
 
