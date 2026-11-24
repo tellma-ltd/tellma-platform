@@ -384,6 +384,37 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-283 (orchestrator, 2026-11-24): PC-F84 review 1 rulings
+
+- R1 found 0 blocking, 0 major and 2 minor on a7cff53c. The review confirmed three things:
+  - the fixture is the Migrator's own output, and its golden fails on model drift;
+  - the leg reports PC-155's 8 errors while plain tsc passes;
+  - leaving core-ui out is right, because it never imports @tellma/core.
+- fix1 fixes both minors:
+  - R1-1: a typed probe replaces the text regex, because skipLibCheck hides an augmentation that does not apply.
+  - R1-2: core's sources are checked once, which saves about 20 s per job.
+- The client-windows step is accepted: that job promises every gate except e2e.
+- tmTestMetadata() gives core.Blob a `Name` and core.User `ManagerId`/`Manager`, which the real model lacks, and some specs rely on them. That is not this item's defect, and it opens PC-F94.
+- After fix1, PC-F84 holds behind PC-124 and PC-F82 (D-087).
+
+### D-282 (orchestrator, 2026-11-24): PC-113 review 1 rulings
+
+- R1 found 0 blocking, 2 major and 3 minor on 5edd489e. Under §4.4 that does not trigger R2 (R2 needs a blocking finding or four majors), and fix1 is not large, so there is no R2.
+- R1-1: deviation 1 (Copy diagnostics in a lazy chunk loaded at idle) is withdrawn.
+  - Before idle the shortcut does nothing.
+  - The clipboard write lands after an import(), outside the gesture, and WebKit refuses it.
+  - A failed load copies nothing and shows no toast, against §8.3.
+  - I chose returning to the spec over a ClipboardItem-with-a-promise design, which would need cross-engine proof for a 1.77 KB saving under a 55 KB cap.
+  - fix1 puts copy(), diagnosticsText, the shortcut and the failure toast back in the primary, as §1 and §8.3 place them, with an honest measured raise (D-031).
+  - Tests: a copy right after launch, and the failure toast.
+- R1-2: the page-visit specs assert the real `ms` and `chromeMs` stamps, and gain specs for the error outcome, the launch redirect's start being passed on, a reused route, and the telemetry startup wiring.
+- R1-3 to R1-5 are fixed: an abandoned navigation is reported as `left` and does not pass its start on; the settled flag is per navigation; `controlled` reads `navigation.workerStart > 0`.
+- Accepted:
+  - the "." raise (+1.43 KB, honest; page visits must see the first navigation), to be re-measured at integration against platform-core's 50.23 (D-214);
+  - tm-telemetry-pipeline 5 to 5.5, and tm-api-verdict 1 to 0.5;
+  - tm.api.requests per tenant and route.
+- For Ahmad: should spec 0026 §8.1 gain `copy(trigger?)` and `TmDiagnosticsTrigger`? It is additive, and it fills the event's `via`.
+
 ### D-281 (orchestrator, 2026-11-24): PC-116's first-frame leak at integration
 
 - PC-116's integration (3b40cd3e) is green except lint:test. The build fixture's initialJs is 232.41 KB gzip against its 230 warn level, up from 212.72 on platform-core; the Acme client's is 232.89.
