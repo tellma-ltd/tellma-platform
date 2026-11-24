@@ -154,7 +154,7 @@ namespace Tellma.Core.Tests.Api
             Assert.Equal("sm.Inbox:Purge", purge.Securable!.ToString());
 
             // --- A route the projection does not map ---
-            Assert.Null(routes.For(Prefix + "gadgets/import"));
+            Assert.Null(routes.For(Prefix + "gadgets/no-such-action"));
             Assert.Null(routes.For("POST /{tenantId}/api/web/GADGETS/query"));
         }
 

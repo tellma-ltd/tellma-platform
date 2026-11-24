@@ -7,6 +7,7 @@ import { inject, Injectable, InjectionToken, untracked } from '@angular/core';
 
 import type { TmHubStatus } from './leader/tm-hub-types';
 import { TmLeader } from './leader/tm-leader';
+import { TM_DRAFT_KEY_PREFIX, TM_DRAFTS_STORAGE, tmDraftKeyTail, tmStorageKeys } from './memory/tm-draft-keys';
 import { TmClientStore, type TmStoredDocInfo } from './store/tm-client-store';
 import { TmCacheRefresher } from './sync/tm-cache-refresher';
 
@@ -14,9 +15,11 @@ import { TmCacheRefresher } from './sync/tm-cache-refresher';
 // tags, never values. The support service registers the section once it
 // lands. The preferences, the drafts and the page state report through
 // TM_STATE_PARTS when they are created, so reading the section never creates
-// them: the drafts and the page state live in a lazily loaded entry point,
-// and a tab that never loaded it holds none. The leader's member reads the
-// small TmLeader, which the election writes once its entry point loads.
+// them: the drafts and the page state live in a lazily loaded entry point.
+// A tab that never loaded it holds no page state, but may hold drafts in its
+// session storage from before a reload, which the section lists from there.
+// The leader's member reads the small TmLeader, which the election writes
+// once its entry point loads.
 
 /** The client state's section of the support dump: names and tags, never values. Internal. */
 export interface TmStateDumpSection {
@@ -46,9 +49,15 @@ export interface TmStateParts {
   drafts?: () => readonly string[];
   /** The page-state keys this tab holds. */
   pageState?: () => readonly string[];
+  /**
+   * The drafts service, which the session's paths count and clear through
+   * once it exists: its count of the user's drafts, and its delete of a
+   * user's drafts, pending saves included.
+   */
+  draftsService?: { readonly dirtyCount: () => number; clearAll(sub: string): void };
 }
 
-/** The parts of the dump the services report. Internal. */
+/** The parts the services report: the dump's readers, and the drafts service. Internal. */
 export const TM_STATE_PARTS = new InjectionToken<TmStateParts>('TM_STATE_PARTS', {
   providedIn: 'root',
   factory: () => ({}),
@@ -61,6 +70,7 @@ export class TmStateDump {
   readonly #refresher = inject(TmCacheRefresher);
   readonly #leader = inject(TmLeader);
   readonly #parts = inject(TM_STATE_PARTS);
+  readonly #drafts = inject(TM_DRAFTS_STORAGE);
 
   /**
    * The section now.
@@ -74,7 +84,7 @@ export class TmStateDump {
       leader: { isLeader: this.#leader.isLeader(), hubStatus: this.#leader.hubStatus() },
       refresher: { lastSyncAt: this.#refresher.lastSyncAt() },
       preferences: { dirty: parts.preferences?.() ?? [] },
-      drafts: parts.drafts?.() ?? [],
+      drafts: parts.drafts?.() ?? tmStorageKeys(this.#drafts, TM_DRAFT_KEY_PREFIX).map(tmDraftKeyTail),
       pageState: parts.pageState?.() ?? [],
     }));
   }

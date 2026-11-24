@@ -35,4 +35,9 @@
     <PackageReference Include="xunit.runner.visualstudio" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- The edits a user makes to an exported workbook, shared with the core suite's import tests. -->
+    <Compile Include="..\Tellma.Core.Tests\Excel\WorkbookEdits.cs" Link="Excel\WorkbookEdits.cs" />
+  </ItemGroup>
+
 </Project>

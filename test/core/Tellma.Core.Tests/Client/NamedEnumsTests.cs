@@ -7,6 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Crud;
 using Tellma.Core.Abstractions.Data;
+using Tellma.Core.Abstractions.Excel;
 using Tellma.Core.Abstractions.Settings;
 using Tellma.Core.Localization;
 
@@ -37,6 +38,18 @@ namespace Tellma.Core.Tests.Client
             NamedEnums enums = composition.Services.GetRequiredService<NamedEnums>();
 
             Assert.Equal("core.Gender: Core Acme", Describe(enums.Find(typeof(Gender))));
+        }
+
+        [Fact]
+        public void A_platform_action_on_another_features_stack_does_not_name_the_platforms_enum()
+        {
+            // The platform's import request rides every stack, acme's too, and acme sorts before core.
+            NamedEnums enums = composition.Services.GetRequiredService<NamedEnums>();
+
+            NamedEnum mode = enums.Find(typeof(ImportMode))!;
+            Assert.Equal("core.ImportMode", mode.Name);
+            Assert.Equal("Core", mode.KeyPrefixes[0]);
+            Assert.Contains("Acme", mode.KeyPrefixes);
         }
 
         [Fact]

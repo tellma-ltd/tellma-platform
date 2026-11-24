@@ -75,6 +75,11 @@ export const TM_CORE_ENTRY_POINTS: Readonly<Record<string, TmEntryPointRule>> = 
   // primary; nothing on the first frame reads it, so the support dump and a
   // future assistant load it with import().
   './page-snapshot': { load: 'lazy', imports: [] },
+  // Spec 0024's service worker updates and error presenter, which spec 0024
+  // §1 places in the primary; the worker registers after first render, and
+  // nothing on the first frame presents an API error.
+  './updates': { load: 'lazy', imports: [] },
+  './errors': { load: 'lazy', imports: [] },
 });
 
 /**

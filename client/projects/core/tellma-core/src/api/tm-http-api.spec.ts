@@ -20,7 +20,7 @@ import { tmUnhandled, tmWaitUntil } from '../routes/tm-app.testing.util';
 import { tmProfileCookies, tmProfileCookieValue } from '../session/tm-profile.testing.util';
 import { TmSession } from '../session/tm-session';
 import { TmSessionPaths } from '../session/tm-session-paths';
-import { TmFakeSessionHost, tmSessionTestingProviders } from '../session/tm-session.testing.util';
+import { TmFakeSessionHost, TmRecordingSessionFlows, tmSessionTestingProviders } from '../session/tm-session.testing.util';
 import { TmApi } from './tm-api';
 import { TmApiError } from './tm-api-error';
 import { TM_API_HOST } from './tm-api-host';
@@ -417,9 +417,8 @@ describe('TmHttpApi', () => {
       expect(rig.host.requests).toHaveLength(0);
       expect(write.error).toMatchObject({ kind: 'unauthenticated' });
       expect(rig.paths.state()).toBe('expired');
-      // The expiry path sweeps the store, then leaves to sign in again.
-      await vi.waitFor(() => expect(rig.sessionHost.assigned).toHaveLength(1));
-      expect(rig.sessionHost.reloads).toBe(0);
+      // The session's flows run the rest of the expiry path.
+      await vi.waitFor(() => expect(TestBed.inject(TmRecordingSessionFlows).calls).toEqual(['expired']));
     });
 
     it('runs the changed-user path and rejects cancelled, unsent, under another user', async () => {
@@ -429,7 +428,7 @@ describe('TmHttpApi', () => {
       await flush();
       expect(rig.host.requests).toHaveLength(0);
       expect(read.error).toMatchObject({ kind: 'cancelled' });
-      expect(rig.sessionHost.replaced).toEqual(['/']);
+      await vi.waitFor(() => expect(TestBed.inject(TmRecordingSessionFlows).calls).toEqual(['changedUser']));
     });
 
     it("runs again on the response: another user's answer is discarded", async () => {
@@ -441,7 +440,7 @@ describe('TmHttpApi', () => {
       await flush();
       expect(read.error).toMatchObject({ kind: 'cancelled' });
       expect(read.value).toBeUndefined();
-      expect(rig.sessionHost.replaced).toEqual(['/']);
+      await vi.waitFor(() => expect(TestBed.inject(TmRecordingSessionFlows).calls).toEqual(['changedUser']));
     });
 
     it("observes nothing of another user's answer", async () => {
@@ -477,9 +476,8 @@ describe('TmHttpApi', () => {
       rig.host.last().answer(tmAnswer(200, {}));
       await flush();
       expect(write.error).toMatchObject({ kind: 'unauthenticated' });
-      // The expiry path sweeps the store, then leaves to sign in again.
-      await vi.waitFor(() => expect(rig.sessionHost.assigned).toHaveLength(1));
-      expect(rig.sessionHost.reloads).toBe(0);
+      // The session's flows run the rest of the expiry path.
+      await vi.waitFor(() => expect(TestBed.inject(TmRecordingSessionFlows).calls).toEqual(['expired']));
     });
 
     it.each(['/api/distribution-info', '/health/ready', '/.well-known/openid-configuration'])('skips the anonymous route %s', async (route) => {
@@ -500,9 +498,8 @@ describe('TmHttpApi', () => {
       rig.host.last().answer(tmProblemAnswer(401, 'unauthenticated'));
       await flush();
       expect(read.error).toMatchObject({ kind: 'unauthenticated', status: 401 });
-      // The expiry path sweeps the store, then leaves to sign in again.
-      await vi.waitFor(() => expect(rig.sessionHost.assigned).toHaveLength(1));
-      expect(rig.sessionHost.reloads).toBe(0);
+      // The session's flows run the rest of the expiry path.
+      await vi.waitFor(() => expect(TestBed.inject(TmRecordingSessionFlows).calls).toEqual(['expired']));
     });
 
     it('cancels, ending nothing, a 401 for a session the cookie no longer names', async () => {
@@ -808,7 +805,7 @@ describe('TmHttpApi', () => {
       await flush();
       expect(rig.host.requests).toHaveLength(1);
       expect(read.error).toMatchObject({ kind: 'cancelled' });
-      expect(rig.sessionHost.replaced).toEqual(['/']);
+      await vi.waitFor(() => expect(TestBed.inject(TmRecordingSessionFlows).calls).toEqual(['changedUser']));
       expect(rig.log.entries[0].end).toMatchObject({ outcome: 'cancelled' });
     });
 
@@ -1562,8 +1559,7 @@ describe('TmHttpApi', () => {
       await flush();
       expect(rig.host.requests).toHaveLength(0);
       expect(rig.paths.state()).toBe('active');
-      expect(rig.sessionHost.replaced).toEqual([]);
-      expect(rig.sessionHost.reloads).toBe(0);
+      expect(TestBed.inject(TmRecordingSessionFlows).calls).toEqual([]);
     });
 
     it('carries the fingerprint once the chunk is loaded', async () => {

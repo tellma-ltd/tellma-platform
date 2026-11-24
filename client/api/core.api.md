@@ -1919,6 +1919,7 @@ export class TmSession {
     check(): TmSessionCheck;
     readonly profile: Signal<TmProfile | null>;
     signIn(options?: TmSignInOptions): Promise<never>;
+    signOut(): Promise<void>;
     readonly state: Signal<TmSessionState>;
     static ɵfac: i0.ɵɵFactoryDeclaration<TmSession, never>;
     static ɵprov: i0.ɵɵInjectableDeclaration<TmSession>;

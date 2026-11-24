@@ -34,7 +34,7 @@ type TmSessionSurface = { [K in keyof TmSession]: TmSession[K] };
 /**
  * A {@link TmSession} the test drives: signed in as {@link tmTestProfile}'s
  * user and active from the start, it changes only when the test says so, and
- * records sign-ins instead of leaving the page.
+ * records sign-ins and sign-outs instead of leaving the page.
  *
  * @example
  * ```ts
@@ -48,6 +48,7 @@ export class TmFakeSession implements TmSessionSurface {
   readonly #profile = signal<TmProfile | null>(tmTestProfile());
   readonly #state = signal<TmSessionState>('active');
   readonly #signIns = signal<readonly TmSignInOptions[]>([]);
+  readonly #signOuts = signal(0);
   /** What the cookie check reports, or `null` to follow the profile. */
   #check: TmSessionCheck | null = null;
 
@@ -59,6 +60,9 @@ export class TmFakeSession implements TmSessionSurface {
 
   /** The options of every sign-in the code under test started, oldest first. */
   readonly signIns: Signal<readonly TmSignInOptions[]> = this.#signIns.asReadonly();
+
+  /** How many sign-outs the code under test started. */
+  readonly signOuts: Signal<number> = this.#signOuts.asReadonly();
 
   /**
    * What the profile cookie says now: what the test set with
@@ -80,6 +84,16 @@ export class TmFakeSession implements TmSessionSurface {
   signIn(options: TmSignInOptions = {}): Promise<never> {
     this.#signIns.update((signIns) => [...signIns, options]);
     return new Promise<never>(() => undefined);
+  }
+
+  /**
+   * Records the sign-out; the session stays.
+   *
+   * @returns A promise that settles at once.
+   */
+  signOut(): Promise<void> {
+    this.#signOuts.update((signOuts) => signOuts + 1);
+    return Promise.resolve();
   }
 
   /**

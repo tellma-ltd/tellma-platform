@@ -7,7 +7,7 @@ using Microsoft.Extensions.Logging;
 
 namespace Tellma.Core.Excel
 {
-    /// <summary>Source-generated log messages of the Excel exports, in the <c>Tellma.Core.Excel</c> category.</summary>
+    /// <summary>Source-generated log messages of the Excel exports and imports, in the <c>Tellma.Core.Excel</c> category.</summary>
     /// <remarks>
     ///     The events carry the entity, row counts and durations, never a cell's value or a file's
     ///     name; the tenant and the user ride the log scope of the request or job.
@@ -38,6 +38,43 @@ namespace Tellma.Core.Excel
             Level = LogLevel.Information,
             Message = "An export of {Entity} was refused: {Rows} rows against a cap of {Cap}.")]
         public static partial void ExportRejected(ILogger logger, string entity, int rows, int cap);
+
+        /// <summary>An import committed its rows.</summary>
+        /// <param name="logger">The logger.</param>
+        /// <param name="entity">The imported entity's name.</param>
+        /// <param name="mode">The import's mode.</param>
+        /// <param name="inserted">The parent rows inserted.</param>
+        /// <param name="updated">The parent rows updated.</param>
+        /// <param name="durationMs">How long the import took, in milliseconds.</param>
+        [LoggerMessage(
+            EventName = "ImportCompleted",
+            Level = LogLevel.Information,
+            Message = "An import of {Entity} in the {Mode} mode inserted {Inserted} and updated {Updated} rows in {DurationMs} ms.")]
+        public static partial void ImportCompleted(ILogger logger, string entity, string mode, int inserted, int updated, long durationMs);
+
+        /// <summary>An import was refused with errors, and nothing it read was committed.</summary>
+        /// <param name="logger">The logger.</param>
+        /// <param name="entity">The imported entity's name.</param>
+        /// <param name="mode">The import's mode.</param>
+        /// <param name="totalErrors">The errors found, before the report's cap.</param>
+        /// <param name="firstCode">The code of the first error reported.</param>
+        [LoggerMessage(
+            EventName = "ImportFailed",
+            Level = LogLevel.Warning,
+            Message = "An import of {Entity} in the {Mode} mode was refused with {TotalErrors} errors, the first {FirstCode}.")]
+        public static partial void ImportFailed(ILogger logger, string entity, string mode, int totalErrors, string firstCode);
+
+        /// <summary>A chunk of an import is saved again after rows it read changed before its save.</summary>
+        /// <param name="logger">The logger.</param>
+        /// <param name="importId">The background import's id; null for a synchronous import.</param>
+        /// <param name="firstRow">The Excel row of the chunk's first parent row.</param>
+        /// <param name="attempt">The retry's number, from 1.</param>
+        /// <param name="conflicts">The rows that changed.</param>
+        [LoggerMessage(
+            EventName = "ImportChunkRetried",
+            Level = LogLevel.Information,
+            Message = "The import {ImportId} saves its chunk from row {FirstRow} again, attempt {Attempt}, after {Conflicts} rows changed since they were read.")]
+        public static partial void ImportChunkRetried(ILogger logger, int? importId, int firstRow, int attempt, int conflicts);
 
         /// <summary>An import's shared strings outgrew their memory budget and spilled to scratch files.</summary>
         /// <param name="logger">The logger.</param>

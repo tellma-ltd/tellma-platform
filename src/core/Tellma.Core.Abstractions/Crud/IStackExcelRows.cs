@@ -9,7 +9,8 @@ namespace Tellma.Core.Abstractions.Crud
 {
     /// <summary>
     ///     A stack's service as the platform's Excel operations reach it without knowing its key type:
-    ///     the row source an export streams from, under the caller's read filter.
+    ///     the row source an export streams from and an import's lookups read, under the caller's read
+    ///     filter, and the details read and save an import hydrates and writes through.
     /// </summary>
     internal interface IStackExcelRows
     {
@@ -20,5 +21,24 @@ namespace Tellma.Core.Abstractions.Crud
         /// <param name="source">The rows to read.</param>
         /// <returns>The row source.</returns>
         IExcelRowSource ExcelRowSource(ExportSource source);
+
+        /// <summary>
+        ///     Reads rows in details shape by id, each with its child collections at every depth, under
+        ///     the caller's read filter: the stored rows an import overlays. An absent or hidden id is
+        ///     omitted.
+        /// </summary>
+        /// <param name="ids">The ids, each a key the stack's key type holds.</param>
+        /// <param name="cancellationToken">Cancels the read.</param>
+        /// <returns>The rows, each of the stack's entity type.</returns>
+        /// <exception cref="OverflowException">An id is beyond the stack's key type.</exception>
+        Task<IReadOnlyList<object>> HydrateAsync(IReadOnlyList<long> ids, CancellationToken cancellationToken);
+
+        /// <summary>Saves an import's rows, inserts and updates together, in one transaction, answering nothing.</summary>
+        /// <param name="entities">The rows, each of the stack's entity type.</param>
+        /// <param name="options">The save's options.</param>
+        /// <param name="cancellationToken">Cancels the save.</param>
+        /// <returns>A task that completes when the rows are committed.</returns>
+        /// <exception cref="InvalidCastException">A row is not of the stack's entity type.</exception>
+        Task SaveImportAsync(IReadOnlyList<object> entities, SaveOptions options, CancellationToken cancellationToken);
     }
 }
