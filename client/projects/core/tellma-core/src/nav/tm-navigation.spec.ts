@@ -16,7 +16,17 @@ import { tmEnglish } from '../l10n/tm-english';
 import { TmLocalization } from '../l10n/tm-localization';
 import type { TmClientMetadata } from '../metadata/tm-client-metadata';
 import { tmCodedReport } from '../reports/tm-coded-report';
-import { tmAppRig, tmLoadTestPage, tmNavigate, tmRouteTestMetadata, tmSettle, TM_T17, TM_T17_DOCS, TM_TEST_SUB } from '../routes/tm-app.testing.util';
+import {
+  tmAppRig,
+  tmLoadTestPage,
+  tmNavigate,
+  tmRouteTestMetadata,
+  tmSettle,
+  tmSettleUntil,
+  TM_T17,
+  TM_T17_DOCS,
+  TM_TEST_SUB,
+} from '../routes/tm-app.testing.util';
 import type { TmLaunchDocs, TmMeResult } from '../state/launch/tm-launch-docs';
 import type { TmClientStore } from '../state/store/tm-client-store';
 import type { TmDistributionInfo } from '../state/tm-distribution-info';
@@ -402,11 +412,10 @@ describe('TmNavigation', () => {
     it('labels and re-sorts the entries when the language switches', async () => {
       const { navigation } = await rig({ offersArabic: true });
       expect(outline(navigation)).toContain('sales: credit-review acme.Customer acme.overdue');
-      TestBed.inject(TmLocalization).setLanguage('ar');
-      // The Arabic pack loads with import(), which can outlast one settle
-      // while the whole suite runs.
-      await vi.waitFor(() => expect(TestBed.inject(TmLocalization).language()).toBe('ar'));
-      await tmSettle();
+      const l10n = TestBed.inject(TmLocalization);
+      l10n.setLanguage('ar');
+      // In a tenant the switch first loads the locale write's chunk.
+      await tmSettleUntil(() => l10n.language() === 'ar');
       expect(outline(navigation)).toContain('sales: acme.Customer credit-review acme.overdue');
       expect(item(navigation, 'acme.Customer').label).toBe('العملاء');
       expect(navigation.sections().find((section) => section.id === 'sales')?.label).toBe('المبيعات');

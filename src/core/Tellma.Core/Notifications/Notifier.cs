@@ -37,6 +37,12 @@ namespace Tellma.Core.Notifications
     ///         requests changed receives one event. The callback reads each statement's outcome only
     ///         when the statement completed in the attempt that committed.
     ///     </para>
+    ///     <para>
+    ///         A batch whose commit only the commit probe proved completes no outcome, so its owner runs
+    ///         the batch's announcement of that commit instead: it wakes the poller when a request may
+    ///         have enqueued a delivery job, and announces <c>inbox.changed</c> to every user a request
+    ///         may have changed the inbox of, the tenant's every user when a withdrawal named none.
+    ///     </para>
     /// </remarks>
     internal sealed class Notifier : INotifier
     {
@@ -161,7 +167,9 @@ namespace Tellma.Core.Notifications
             foreach (ShapedNotification statement in shaped)
             {
                 BatchResult<NotifyOutcome> result = NotificationStatements.Notify(data, statement);
-                Requests(data).Notified.Add(new NotifiedRequest(statement.Type, statement.Inbox, result));
+                // The recipients an inbox type writes rows for, which a proven commit announces to.
+                IReadOnlyList<int> inboxes = statement.Inbox ? [.. statement.Recipients.Select(static recipient => recipient.UserId)] : [];
+                Requests(data).Notified.Add(new NotifiedRequest(statement.Type, statement.Inbox, inboxes, statement.Slices is not null, result));
             }
         }
 
@@ -227,7 +235,7 @@ namespace Tellma.Core.Notifications
             foreach ((string key, IReadOnlyList<IdList>? recipients) in shaped)
             {
                 BatchResult<WithdrawOutcome> result = NotificationStatements.Withdraw(data, key, recipients);
-                Requests(data).Withdrawn.Add(new WithdrawnRequest(key, result));
+                Requests(data).Withdrawn.Add(new WithdrawnRequest(key, recipients?.Select(static recipient => recipient.Id).ToList(), result));
             }
         }
 
@@ -261,7 +269,8 @@ namespace Tellma.Core.Notifications
             DataBatch data = Writable(batch);
             EnsureCapacity(data, 1);
             BatchResult<WithdrawOutcome> result = NotificationStatements.WithdrawEach(data, keyPrefix, ids);
-            Requests(data).Withdrawn.Add(new WithdrawnRequest(keyPrefix + "*", result));
+            // The rows' recipients exist only inside the batch: a proven commit cannot name them.
+            Requests(data).Withdrawn.Add(new WithdrawnRequest(keyPrefix + "*", null, result));
         }
 
         /// <inheritdoc />
@@ -554,7 +563,7 @@ namespace Tellma.Core.Notifications
             }
         }
 
-        /// <summary>The requests appended to a batch, registering the batch's one commit callback on the first.</summary>
+        /// <summary>The requests appended to a batch, registering the batch's one commit callback and its proven-commit announcement on the first.</summary>
         /// <param name="data">The batch.</param>
         /// <returns>The batch's requests.</returns>
         private BatchRequests Requests(DataBatch data)
@@ -562,9 +571,11 @@ namespace Tellma.Core.Notifications
             if (!_batches.TryGetValue(data, out BatchRequests? requests))
             {
                 // The callback is registered before the batch is remembered, so a registration the
-                // batch refuses leaves nothing waiting on it.
+                // batch refuses leaves nothing waiting on it. A commit only the probe proved runs no
+                // commit callback (spec 0012 §6.5), so its announcement is registered alongside.
                 BatchRequests created = new();
                 data.OnCommitted(_ => Committed(data, created));
+                data.OnCommitProven(() => Proven(data, created));
                 _batches.Add(data, created);
                 requests = created;
             }
@@ -624,8 +635,57 @@ namespace Tellma.Core.Notifications
             }
         }
 
+        /// <summary>
+        ///     The batch's announcement of a commit only the commit probe proved, whose outcomes were
+        ///     never read: wakes the poller when a request may have enqueued a delivery job, and
+        ///     announces <c>inbox.changed</c> to every user whose inbox a request may have changed.
+        ///     Never throws: the rows are committed whatever happens here.
+        /// </summary>
+        /// <param name="data">The committed batch.</param>
+        /// <param name="requests">Its requests.</param>
+        private void Proven(DataBatch data, BatchRequests requests)
+        {
+            try
+            {
+                // --- The nudge: a spurious one is harmless, a missed one leaves the jobs to the next poll ---
+                if (requests.Notified.Any(static notified => notified.Enqueues))
+                {
+                    _wake.Wake(data.Connection.TenantId);
+                }
+
+                // --- The users each request may have changed the inbox of: a superset of those it did ---
+                // A withdrawal that named no recipients may have changed anyone's, so the event goes to
+                // the whole tenant, which an event without users reaches.
+                if (requests.Withdrawn.Any(static withdrawn => withdrawn.Recipients is null))
+                {
+                    _ = AnnounceAsync([]);
+                    return;
+                }
+
+                SortedSet<int> users = [];
+                foreach (NotifiedRequest notified in requests.Notified)
+                {
+                    users.UnionWith(notified.Recipients);
+                }
+
+                foreach (WithdrawnRequest withdrawn in requests.Withdrawn)
+                {
+                    users.UnionWith(withdrawn.Recipients!);
+                }
+
+                if (users.Count > 0)
+                {
+                    _ = AnnounceAsync([.. users]);
+                }
+            }
+            catch (Exception exception) when (exception is not OutOfMemoryException)
+            {
+                NotificationsLog.InboxEventFailed(_logger, exception);
+            }
+        }
+
         /// <summary>Publishes <c>inbox.changed</c> to some users, logging rather than throwing a failure.</summary>
-        /// <param name="users">The users whose inbox changed.</param>
+        /// <param name="users">The users whose inbox changed; empty for every user of the tenant.</param>
         /// <returns>A task that completes once the event was handed over or failed.</returns>
         private async Task AnnounceAsync(IReadOnlyList<int> users)
         {
@@ -652,12 +712,15 @@ namespace Tellma.Core.Notifications
         /// <summary>One raised request on a batch.</summary>
         /// <param name="Type">Its type key.</param>
         /// <param name="Inbox">Whether its type writes inbox rows.</param>
+        /// <param name="Recipients">The users it may write inbox rows for; empty when its type writes none.</param>
+        /// <param name="Enqueues">Whether its statement may enqueue delivery jobs.</param>
         /// <param name="Result">What its statement did, once the batch executed.</param>
-        private sealed record NotifiedRequest(string Type, bool Inbox, BatchResult<NotifyOutcome> Result);
+        private sealed record NotifiedRequest(string Type, bool Inbox, IReadOnlyList<int> Recipients, bool Enqueues, BatchResult<NotifyOutcome> Result);
 
         /// <summary>One withdrawal on a batch.</summary>
         /// <param name="Key">The withdrawn key.</param>
+        /// <param name="Recipients">The users it withdraws from; null when it withdraws from every recipient.</param>
         /// <param name="Result">What its statement deleted, once the batch executed.</param>
-        private sealed record WithdrawnRequest(string Key, BatchResult<WithdrawOutcome> Result);
+        private sealed record WithdrawnRequest(string Key, IReadOnlyList<int>? Recipients, BatchResult<WithdrawOutcome> Result);
     }
 }

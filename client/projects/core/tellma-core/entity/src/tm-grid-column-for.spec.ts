@@ -11,7 +11,7 @@ import { TM_PARSE_ERROR } from '@tellma/core-ui/contracts';
 import { TmGrid, TmGridColumn } from '@tellma/core-ui/grid';
 
 import { tmEntityRig, type TmEntityRigOptions } from '../../src/entity/tm-entity.testing.util';
-import { tmSettle } from '../../src/routes/tm-app.testing.util';
+import { tmSettle, tmSettleUntil } from '../../src/routes/tm-app.testing.util';
 import { tmGridColumnFor, type TmGridColumnOptions } from './tm-grid-column-for';
 import { tmSelectPlan, type TmSelectPlan } from './tm-select-plan';
 
@@ -206,12 +206,8 @@ describe('tmGridColumnFor', () => {
     expect(config().key).toBe('name');
     const l10n = TestBed.inject(TmLocalization);
     l10n.setLanguage('ar');
-    // The switch lands once the language's strings have loaded, which can
-    // take more than one settle while the whole suite runs.
-    await vi.waitFor(async () => {
-      await tmSettle();
-      expect(l10n.language()).toBe('ar');
-    });
+    // The switch lands once its loads have, the locale write's chunk among them.
+    await tmSettleUntil(() => l10n.language() === 'ar');
     expect(config().key).toBe('name2');
   });
 

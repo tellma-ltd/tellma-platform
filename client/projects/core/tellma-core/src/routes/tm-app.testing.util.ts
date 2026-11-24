@@ -306,6 +306,58 @@ export async function tmSettle(): Promise<void> {
   }
 }
 
+/**
+ * How long a wait on state may run before it fails. It stays below the test
+ * timeout (5 s), so the wait reports its condition and stops before the
+ * runner abandons the test; a wait left running would drive the next test.
+ */
+export const TM_WAIT_DEADLINE_MS = 4_000;
+
+/**
+ * Runs a step at a time until a condition holds, for at most
+ * {@link TM_WAIT_DEADLINE_MS} of real time. The deadline is measured with
+ * `performance.now()`, which faked timers leave alone, so it holds under
+ * `vi.useFakeTimers()` too.
+ *
+ * @param condition - The state the spec waits for.
+ * @param step - One turn of the wait, such as a real task and a render, or a zero advance of faked timers.
+ * @param description - What the condition waits for, in the error; the condition's source when omitted.
+ * @throws Error naming the condition when it has not held by the deadline; the wait stops there.
+ */
+export async function tmWaitUntil(condition: () => boolean, step: () => Promise<unknown>, description = String(condition)): Promise<void> {
+  const started = performance.now();
+  while (!condition()) {
+    const waited = performance.now() - started;
+    if (waited > TM_WAIT_DEADLINE_MS) {
+      throw new Error(`The condition did not hold within ${Math.round(waited)} ms: ${description}`);
+    }
+    await step();
+  }
+}
+
+/**
+ * Runs the pending tasks and renders until a condition holds. A load through
+ * a lazily loaded chunk lands only once the chunk's first fetch does, which
+ * no number of turns bounds, so a spec waits on the state the load produces.
+ * The wait fails after {@link TM_WAIT_DEADLINE_MS}, naming the condition.
+ *
+ * @param condition - What the load produces.
+ * @param description - What the condition waits for, in the error; the condition's source when omitted.
+ * @throws Error naming the condition when it has not held by the deadline.
+ */
+export async function tmSettleUntil(condition: () => boolean, description = String(condition)): Promise<void> {
+  await tmSettle();
+  // A task at a time, rendering after each, until the state is there.
+  await tmWaitUntil(
+    condition,
+    async () => {
+      await new Promise((resolve) => setTimeout(resolve));
+      TestBed.tick();
+    },
+    description,
+  );
+}
+
 /** The browser's own timer, taken before a spec fakes the timers. */
 const realSetTimeout = globalThis.setTimeout;
 

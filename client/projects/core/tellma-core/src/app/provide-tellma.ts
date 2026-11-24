@@ -3,7 +3,14 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-import { type ApplicationConfig, type EnvironmentProviders, inject, isDevMode, makeEnvironmentProviders } from '@angular/core';
+import {
+  type ApplicationConfig,
+  type EnvironmentProviders,
+  ErrorHandler,
+  inject,
+  isDevMode,
+  makeEnvironmentProviders,
+} from '@angular/core';
 import {
   provideRouter,
   RouteReuseStrategy,
@@ -36,6 +43,7 @@ import { TmLocalization } from '../l10n/tm-localization';
 import { tmTranslationsLoader } from '../l10n/tm-translations';
 import { TM_CLIENT_METADATA } from '../metadata/tm-client-metadata';
 import { TM_METADATA_LOADERS } from '../metadata/tm-metadata-loaders';
+import { TmErrorHandler } from '../observe/tm-error-handler';
 import { TmRouteReuse } from '../routes/tm-route-reuse';
 import { tmBuildRoutes } from '../routes/tm-routes';
 import { TmTitleStrategy } from '../routes/tm-title-strategy';
@@ -63,6 +71,7 @@ const configs = new WeakMap<object, TmAppConfig>();
  * The providers of a Tellma app: the router over the route table its
  * declarations derive, with the title strategy and a reuse strategy that
  * creates every route anew on a change of tenant; the startup initializers;
+ * the error handler, which reports every uncaught error to telemetry;
  * the component library over the app's strings, seeded with the boot
  * record's theme; the active locale, calendar and time zones, which
  * `TmLocalization` resolves; the merged declarations of its features, built
@@ -104,6 +113,8 @@ export function provideTellma(config: TmAppConfig): EnvironmentProviders {
     { provide: RouteReuseStrategy, useClass: TmRouteReuse },
     tmStartup(config),
     { provide: ɵTM_APP_CONFIG, useValue: config },
+    // Every uncaught error, rejection and template error reaches telemetry.
+    { provide: ErrorHandler, useClass: TmErrorHandler },
     // The attention documents, which only the leader tab refreshes, and the
     // platform's banners, which run in every shell.
     ...TM_ATTENTION_DOCUMENTS.map((document) => ({ provide: TM_LEADER_DOCUMENTS, multi: true, useValue: document })),

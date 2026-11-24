@@ -17,7 +17,7 @@ import { TM_DEV_MODE } from '../app/tm-dev-mode';
 import type { TmJsonObject } from '../json/tm-json';
 import { TmLocalization } from '../l10n/tm-localization';
 import { TmShortcuts } from '../nav/tm-shortcuts';
-import { tmAppRig, tmSettle } from '../routes/tm-app.testing.util';
+import { tmAppRig, tmSettleUntil } from '../routes/tm-app.testing.util';
 import type { TmActionOrigin, TmActionResult, TmPageAction } from './tm-page-action';
 import { TmPageActions } from './tm-page-actions';
 import { TmPageContexts } from './tm-page-contexts';
@@ -501,7 +501,8 @@ describe('TmPageActions', () => {
         dialog: TmConfirmHarness;
       }> => {
         const answer = actions.invoke('acme.center.delete', {}, 'user');
-        await tmSettle();
+        // The question opens once the confirmation's entry point loads.
+        await tmSettleUntil(() => document.querySelector(TmConfirmHarness.hostSelector) !== null);
         return { answer, dialog: await loader.getHarness(TmConfirmHarness) };
       };
 

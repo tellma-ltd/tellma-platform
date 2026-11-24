@@ -15,6 +15,7 @@ and cross-platform.
 | `Versioning/` | The Queryex-version stamp: that the engine asks for it, refuses one it cannot honour, already tells two versions apart in the caches, and binds each stamped filter leaf under its own. |
 | `Time/` | The embedded zone table: current ids only, checked against a copy of the time-zone database's location ids kept beside the test, and the aliases browsers report. |
 | `Properties/` | Round-trip, determinism, no-duplication, and robustness, over generated input. Writing the arguments into a text admits the rows that compiling with them does, and a measure aggregated over the rows its condition admits is the measure over every row. |
+| `Client/` | That the browser client's lexer corpus and print golden are what the engine now writes, that every golden text parses back to itself and means its tree, that every filter leaf discovers cleanly against the fixture schema, and that the corpus's parameters are the ones discovery reports. |
 | `Goldens/` | The recorded SQL of every query the corpus compiles, and under `Constants/` of every constant statement. |
 
 ## Golden SQL snapshots

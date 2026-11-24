@@ -352,7 +352,4 @@ export const TM_LOCALE_AR_STRINGS: {
     };
 };
 
-// @public
-export const TM_STRINGS_AR: TmStringTree;
-
 ```

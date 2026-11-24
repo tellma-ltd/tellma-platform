@@ -255,6 +255,17 @@ describe('tmSelectPlan', () => {
       ]);
     });
 
+    it('drops an expression that reads a path the user may not read', async () => {
+      await tmEntityRig(READER);
+      const { select, columns, dropped } = plan('acme.Customer', [
+        { expression: "coalesce(Currency.Name, 'none')", labelKey: 'Acme_Customer_Currency' },
+        { expression: 'CreditLimit * 2 + len(Currency.Code)', labelKey: 'Acme_Customer' },
+      ]);
+      expect(select).toBe('Id,CreditLimit * 2 + len(Currency.Code)');
+      expect(columns.map((column) => column.key)).toEqual(['CreditLimit * 2 + len(Currency.Code)']);
+      expect(dropped).toEqual([{ key: "coalesce(Currency.Name, 'none')", reason: 'unreachable' }]);
+    });
+
     it('drops every key of an entity the user may not read', async () => {
       await tmEntityRig({ access: { securables: [] } });
       const { select, dropped } = plan('acme.Customer', ['Code']);

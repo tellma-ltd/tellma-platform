@@ -172,9 +172,10 @@ export default defineConfig(
 
   // The app framework's packages (spec 0024 §1, §10.4, §12): static imports
   // between @tellma/core entry points follow its graph, declarations keep
-  // their keys literal and their layouts lazy, and no + or comparison ever
-  // runs on a TmDecimal's text. The decimal rules need type information, so
-  // these files lint against their TypeScript projects.
+  // their keys literal and their layouts lazy, no + or comparison ever runs
+  // on a TmDecimal's text, and literal telemetry names and action ids follow
+  // their grammars (spec 0026 §3.2, §9.3). The decimal rules need type
+  // information, so these files lint against their TypeScript projects.
   {
     files: ['projects/core/tellma-core/**/*.ts', 'projects/core/tellma-core-testing/**/*.ts'],
     languageOptions: {
@@ -192,6 +193,7 @@ export default defineConfig(
       'tm/lazy-layouts': 'error',
       'tm/literal-declaration-keys': 'error',
       'tm/no-decimal-operators': 'error',
+      'tm/telemetry-names': 'error',
       '@typescript-eslint/restrict-plus-operands': TM_RESTRICT_PLUS_OPERANDS,
     },
   },
@@ -215,6 +217,7 @@ export default defineConfig(
   // Feature packs hold declarations and layouts, like a distribution's own
   // code, so they take the distribution rules (spec 0024 §2.1) — all but the
   // type-aware decimal rule, which joins when the first pack has a project.
+  // Without a project, the telemetry-names rule knows its receivers by name.
   {
     files: ['projects/module/**/*.ts'],
     plugins: { tm: tmPlugin },
@@ -224,6 +227,7 @@ export default defineConfig(
       'tm/no-web-storage': 'error',
       'tm/lazy-layouts': 'error',
       'tm/literal-declaration-keys': 'error',
+      'tm/telemetry-names': 'error',
     },
   },
 

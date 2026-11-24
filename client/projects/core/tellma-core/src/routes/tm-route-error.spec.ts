@@ -9,7 +9,7 @@ import { TM_ERRORS_LOAD, type TmErrorsModule } from '../api/tm-api-seams';
 import { TmFakeApiUpdates, tmFakeUpdatesProviders } from '../api/tm-api.testing.util';
 import { TM_SESSION_HOST } from '../session/tm-session-host';
 import { TmFakeSessionHost } from '../session/tm-session.testing.util';
-import { tmAppRig, tmSettle } from './tm-app.testing.util';
+import { tmAppRig, tmSettle, tmSettleUntil } from './tm-app.testing.util';
 import { TM_ROUTE_ERROR_VIEWS, TmRouteError } from './tm-route-error';
 
 // The route's client-outdated view in a whole test app: Reload's download
@@ -42,7 +42,12 @@ async function setUp(load?: () => Promise<TmErrorsModule>): Promise<TmRouteError
   });
   const fixture = TestBed.createComponent(TmRouteError);
   fixture.componentRef.setInput('view', TM_ROUTE_ERROR_VIEWS['client-outdated']);
-  await tmSettle();
+  if (load === undefined) {
+    // The view's inline state renders once the error views' entry point loads.
+    await tmSettleUntil(() => document.querySelector('tm-error-state') !== null);
+  } else {
+    await tmSettle();
+  }
   return { updates, page, fixture };
 }
 

@@ -22,6 +22,7 @@ package, built with `tsc -b` into `dist/`, and nothing in it ships to the browse
 | `tm/lazy-layouts` | In `tmEntity`, `tmPage`, `tmFeature`, `tmWidget`, `tmOverride` and `tmCodedReport`, a layout member (`details`, `page`, `create`, `search`, `component`, `display`, `dialog`, `home`, `settingsEditor`, `panel`) that is not an inline `() => import('…')`; an entity's `details` may be an object whose `page` and `create` are checked instead, and `icons` and `providers` are not entered |
 | `tm/literal-declaration-keys` | A declaration key that is not a string literal |
 | `tm/no-decimal-operators` | `+`, `+=`, `<`, `<=`, `>` and `>=` on a `TmDecimal` (type-aware) |
+| `tm/telemetry-names` | A literal name passed to `TmTelemetry`'s `event` or `timing` that is not `<scope>.<area>.<event>` in at most 64 characters, or a `tm.` name outside the platform's areas; a literal page action id (in an object literal with `id`, `labelKey` and `invoke`, or passed to `TmPageActions.invoke`) that is not two to five lowercase parts. With type information the receivers are known by type, else by name |
 
 The preset also enables typescript-eslint's `restrict-plus-operands` at its strictest, so a decimal's
 text is never added to a number, and takes the distribution's slug as the component and directive
@@ -89,7 +90,7 @@ own files). `label-missing` and `budget-warning` are warnings, which print and p
 
 **Budgets.** `initialJs` (warn 230 KB, error 260 KB), `initialCss` (40), `searchRoute` (110),
 `detailsRoute` (80), `echartsEngine` (170), `workerShell` (warn 1,536), `corePrimaryFirstFrame`
-(50), `codedReports` (16) and `bootScript` (3 KB for the script with English, plus 0.4 KB per
+(55), `codedReports` (16) and `bootScript` (3 KB for the script with English, plus 0.4 KB per
 further string table).
 
 `corePrimaryFirstFrame` is the `@tellma/core` primary entry point's code on this app's first frame:
@@ -98,8 +99,8 @@ imports, whether from the built package or its sources) contribute to the initia
 out of those files through their hidden source maps and compressed alone. Primary code the app
 never uses is shaken out first, and primary code that loads with `import()` later is not on the
 first frame, so the figure is a lower bound of the primary's own weight, not its cap: the
-platform's `size:check` holds the whole entry point to the 50 KB cap, and this line lets a
-distribution check the same level on its own app. A build in which no module is the primary's, no
+platform's `size:check` holds the whole entry point to its 55 KB cap (the product owner raised it
+from the platform's 50 KB), and this line lets a distribution check the same level on its own app. A build in which no module is the primary's, no
 initial file holds its code, or a file's source map disagrees with the stats' count of its primary
 bytes (beyond 0.5% under or 1% over, plus 16 bytes) reports `budget-unmeasurable`; a file holding
 primary code without a source map fails the build. Every

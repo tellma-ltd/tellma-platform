@@ -30,13 +30,14 @@
 export type { TmDecimal, TmId, TmJson, TmJsonObject, TmJsonSchema } from './src/json/tm-json';
 export { TmDecimals } from './src/json/tm-decimals';
 
-// Telemetry.
+// Telemetry and error logging.
 export {
   TmTelemetry,
   type TmTelemetryItem,
   type TmTelemetryOptions,
   type TmTelemetryProps,
 } from './src/observe/tm-telemetry';
+export { TmErrorHandler, type TmErrorRecord, type TmErrorSource } from './src/observe/tm-error-handler';
 
 // The HTTP layer.
 export {
@@ -130,6 +131,9 @@ export { TmDisplayNames, type TmDisplayNameParts } from './src/entity/tm-display
 export { TmDisplayName } from './src/entity/tm-display-name';
 export { TmPermissions, type TmPermissionOperation } from './src/entity/tm-permissions';
 export { tmRowsToObjects, type TmQueryRowSet, type TmQueryRowSetColumn } from './src/entity/tm-rows-to-objects';
+
+// What a details page keeps between visits: its drafts and its snapshots (types only).
+export type { TmDetailsDraft, TmDetailsSnapshot } from './src/details/tm-details-types';
 
 // Features and the declaration functions.
 export type { TmDeclarationKey, TmLazyComponent, TmSecurableRef } from './src/declarations/tm-declaration-types';

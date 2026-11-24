@@ -31,7 +31,7 @@ describe('the budget levels', () => {
     expect(problems).toEqual([]);
     expect(levels.get('initialJs')).toEqual({ warn: 230, error: 260 });
     expect(levels.get('workerShell')).toEqual({ warn: 1536, error: null });
-    expect(levels.get('corePrimaryFirstFrame')).toEqual({ warn: null, error: 50 });
+    expect(levels.get('corePrimaryFirstFrame')).toEqual({ warn: null, error: 55 });
     expect(levels.get('bootScript')).toEqual({ warn: null, error: 3.4 });
     expect(tmBootScriptBudget(1)).toBe(3);
     expect(tmBootScriptBudget(3)).toBeCloseTo(3.8);
@@ -52,11 +52,11 @@ describe('the budget levels', () => {
   });
 
   it("raise the @tellma/core primary's level only with a note", () => {
-    const noted = tmReadBudgetLevels({ corePrimaryFirstFrame: { error: 52, note: 'The launcher grew the shell share by 2 KB.' } }, 1, 'acme');
+    const noted = tmReadBudgetLevels({ corePrimaryFirstFrame: { error: 57, note: 'The launcher grew the shell share by 2 KB.' } }, 1, 'acme');
     expect(noted.problems).toEqual([]);
-    expect(noted.levels.get('corePrimaryFirstFrame')).toEqual({ warn: null, error: 52 });
+    expect(noted.levels.get('corePrimaryFirstFrame')).toEqual({ warn: null, error: 57 });
 
-    const bare = tmReadBudgetLevels({ corePrimaryFirstFrame: { error: 52 } }, 1, 'acme');
+    const bare = tmReadBudgetLevels({ corePrimaryFirstFrame: { error: 57 } }, 1, 'acme');
     expect(bare.problems).toEqual([
       {
         code: 'budget-note-missing',
@@ -340,17 +340,17 @@ describe('the budget figures', () => {
     expect(tmBudgetProblems([figure('initialJs', 261)], levels, 'acme').map((problem) => problem.code)).toEqual(['budget-exceeded']);
   });
 
-  it("fail the @tellma/core primary over 50 KB, and pass it at 50 KB or under", () => {
+  it("fail the @tellma/core primary over 55 KB, and pass it at 55 KB or under", () => {
     const { levels } = tmReadBudgetLevels(undefined, 1, 'acme');
     const primary = (bytes: number): TmBudgetFigure => ({ name: 'corePrimaryFirstFrame', gzip: bytes, brotli: bytes, files: 2 });
-    expect(tmBudgetProblems([primary(50 * 1024 + 1)], levels, 'acme')).toEqual([
-      { code: 'budget-exceeded', severity: 'error', key: 'budget:corePrimaryFirstFrame', feature: 'acme', message: "50.00 KB gzip is over the budget's error level of 50 KB." },
+    expect(tmBudgetProblems([primary(55 * 1024 + 1)], levels, 'acme')).toEqual([
+      { code: 'budget-exceeded', severity: 'error', key: 'budget:corePrimaryFirstFrame', feature: 'acme', message: "55.00 KB gzip is over the budget's error level of 55 KB." },
     ]);
-    expect(tmBudgetProblems([primary(50 * 1024)], levels, 'acme')).toEqual([]);
+    expect(tmBudgetProblems([primary(55 * 1024)], levels, 'acme')).toEqual([]);
     expect(tmBudgetProblems([primary(37 * 1024)], levels, 'acme')).toEqual([]);
     // A distribution's noted raise moves the line.
-    const raised = tmReadBudgetLevels({ corePrimaryFirstFrame: { error: 52, note: 'A share grew.' } }, 1, 'acme').levels;
-    expect(tmBudgetProblems([primary(51 * 1024)], raised, 'acme')).toEqual([]);
+    const raised = tmReadBudgetLevels({ corePrimaryFirstFrame: { error: 57, note: 'A share grew.' } }, 1, 'acme').levels;
+    expect(tmBudgetProblems([primary(56 * 1024)], raised, 'acme')).toEqual([]);
   });
 
   it('print gzip and Brotli beside the levels', () => {

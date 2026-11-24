@@ -219,14 +219,20 @@ export class TmToasts {
   /** How many toasts hide behind the pill. */
   private readonly hidden = computed(() => Math.max(0, this.open().length - this.maxVisible));
 
-  /** The overflow pill: the app's, else "N more". */
+  /** The overflow pill a late-loading part of the app installed; it wins over the options'. */
+  private readonly overflow = signal<((hidden: number) => TmToastPill | null) | null>(null);
+
+  /** The overflow pill: the installed one, else the app's, else "N more". */
   private readonly pill = computed<TmToastPill | null>(() => {
     const hidden = this.hidden();
     if (hidden === 0) {
       return null;
     }
     return (
-      this.options.overflow?.(hidden) ?? { label: this.translate('toast.more', { count: hidden })() }
+      this.overflow()?.(hidden) ??
+      this.options.overflow?.(hidden) ?? {
+        label: this.translate('toast.more', { count: hidden })(),
+      }
     );
   });
 
@@ -305,7 +311,9 @@ export class TmToasts {
    */
   show(toast: TmToast): TmToastRef {
     const existing =
-      toast.key === undefined ? undefined : this.open().find((item) => item.toast.key === toast.key);
+      toast.key === undefined
+        ? undefined
+        : this.open().find((item) => item.toast.key === toast.key);
     let ref: ToastRef;
     if (existing !== undefined) {
       // In place: the slot, the id and the card stay; the handle is new.
@@ -335,6 +343,25 @@ export class TmToasts {
     this.announce(toast);
     this.reconcileTimers();
     return ref;
+  }
+
+  /**
+   * Installs the overflow pill from a part of the app that loads after its
+   * providers, over the `provideTellmaToasts` option: the platform's
+   * attention surfaces, whose pill opens the notifications. The function
+   * runs whenever the hidden count changes, and reactively; returning `null`
+   * falls back to the option, else to "N more". Internal to the platform.
+   *
+   * @param overflow - The pill for `hidden` hidden toasts, or `null` to uninstall it.
+   */
+  ɵsetOverflow(
+    overflow:
+      ((hidden: number) => ReturnType<NonNullable<TmToastsOptions['overflow']>> | null) | null,
+  ): void {
+    // The pill's shape is named through the option's type, so the emitted
+    // declaration stays on one line in the API report, whose ɵ filter drops
+    // whole lines.
+    this.overflow.set(overflow);
   }
 
   /** Closes every toast (each handle resolves `'api'`). */
@@ -388,7 +415,9 @@ export class TmToasts {
     const toast: TmToast = { ...before, ...patch };
     // Taking another open toast's key replaces that toast.
     if (toast.key !== undefined && toast.key !== before.key) {
-      const other = this.open().find((candidate) => candidate !== item && candidate.toast.key === toast.key);
+      const other = this.open().find(
+        (candidate) => candidate !== item && candidate.toast.key === toast.key,
+      );
       if (other !== undefined) {
         this.ɵclose(other.id, 'replaced');
       }

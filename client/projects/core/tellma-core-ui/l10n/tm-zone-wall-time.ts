@@ -3,7 +3,7 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-import { ɵtmParseInstant, ɵtmZoneOffset } from '@tellma/core-ui/l10n';
+import { ɵtmParseInstant, ɵtmZoneOffset } from './tm-instant';
 
 /** Milliseconds in a minute and in a day. */
 const MINUTE = 60_000;
