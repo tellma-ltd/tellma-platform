@@ -384,6 +384,182 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-281 (orchestrator, 2026-11-24): PC-116's first-frame leak at integration
+
+- PC-116's integration (3b40cd3e) is green except lint:test. The build fixture's initialJs is 232.41 KB gzip against its 230 warn level, up from 212.72 on platform-core; the Acme client's is 232.89.
+- Root cause, measured from esbuild's stats: the primary statically reaches two core-ui entry points it does not use. Once PC-116's lazy tenantless chunk makes their code live, esbuild places that code in chunks main loads, so about 19.7 KB lands on every tenant route's first frame.
+  - The menu path: tm-button → tooltip controller → `ɵtmObserveLongPress` from @tellma/core-ui/menu.
+  - The image path: provide-tellma → `TM_BLOB_FETCHER` from @tellma/core-ui/image.
+  - R1 and phase 1 missed this: phase 1 passed with 0.04 KB to spare.
+- Ruling: PC-116 fixes it at integration, because a first-frame regression must not land. Hiding it by moving the fixture's warn level or the test's expectation is rejected.
+  - Move `ɵtmObserveLongPress` to an entry point tooltip can import without the menu.
+  - Give `TM_BLOB_FETCHER` a home the primary can import without tm-image, with @tellma/core-ui/image still re-exporting it.
+  - Add a static-graph exclusion so the primary can never again reach core-ui/menu or core-ui/image, shown failing before the fix.
+- If the token's new home is a public entry point, it is flagged for Ahmad as an API addition.
+- The rest of the integration is accepted: four conflicts kept both sides; the ./shell-strings re-split (born at 1, 0.99 measured; ./platform-strings back to 3.45 of 4; locale-ar root 0.46 of 0.5); "." raised by the measured +0.012 KB to 50.16 (D-214). The delayed run's only failure was the known PC-F85.
+- Outcome (0b160367): the fixture's initialJs is 215.55 and Acme's 216.01, both with no warning. The guard failed on both chains before the fix and passes after.
+  - `TM_BLOB_FETCHER` now lives in a new public entry point, @tellma/core-ui/blob-fetcher. It cannot live in core, because core-ui cannot import core. For Ahmad: accept the new entry point.
+  - The rest above platform-core plus /shell's intent (+2.8 KB fixture, +5.6 KB Acme) is accepted. Most of it is Angular runtime the new templates use. The parts that can be cut open PC-F91 (lucide's whole-index import) and PC-F92 (TmKbd); both are platform-wide and non-blocking.
+
+
+### D-280 (orchestrator, 2026-11-24): PC-114 back to hold; PC-116 integrates first
+
+- PC-114's second CI round (45394472159) was red only on its new Linux browser leg. 17 tests timed out, each retried once.
+- Root cause: the tests that call warmUp() wait for a service worker, and Chromium refuses to register one whose script fetch has a certificate error. A per-context ignoreHTTPSErrors does not cover that. On Windows the dev certificate is trusted in the OS store; on Linux Chromium reads NSS, which `dotnet dev-certs https --trust` does not update (its exit 4).
+  - The fix is reproduced on the suite's own Chromium: `--ignore-certificate-errors` in the Acme test browser's launch options, test-only. It keeps the .NET trust, which the host's own HTTPS fetch still needs.
+  - The same round added `--global-timeout` so a slow run still writes its report, and fixed two Windows races in PC-114's own tests.
+- A layout-shift intermittent remains unexplained: 3 in 44 local runs, where the cold entry's page never renders after the hold is released. It may be a product bug in the cold-entry path PC-114 changed. CI runs with failOnFlakyTests, so another round is likely, which is the case where I said I would hold PC-114.
+- Ruling:
+  - PC-114 commits its fixes without ": integrate" and goes back to hold, keeping its slot (D-255). It root-causes the layout-shift intermittent there, under D-011.
+  - PC-116 is released now, ahead of PC-114, so the queue does not stall. D-087 still holds: one integration at a time.
+  - PC-114 is first in line after PC-116 lands. D-272's merge notes then apply from PC-114's side: keep PC-114's TmLaunchCache, and make its memoized loader memoize PC-116's inner loader's class.
+- The agent's refused `rm -rf *` in a scratch folder was a permission block. It was notified as such and needed no action; the agent tried no other route.
+
+### D-279 (orchestrator, 2026-11-24): PC-F82 review 2 rulings
+
+- R2 found 0 blocking, 1 major and 2 minor on 322845ef. fix2 is the last implementer round (§4.4); after it PC-F82 holds behind the queue (D-087).
+- R2-1: fix it in fix2 by expand and contract, following spec 0010 Part A's N−1 rule (0012 §4.3). I am not asking Ahmad to waive it.
+  - Keep `SessionClients.AuthorizationId` for one more release. Write it as before (the latest authorization) and also write the new rows. Revocation revokes the column's authorization plus every row.
+  - Re-scaffold so the migration only creates the new table. That keeps the previous engine working on the new schema, and keeps every pre-upgrade session revocable through the column. No data copy is needed, so no migration is hand-edited.
+  - Add an upgrade test: a session registered before the migration is still revoked at logout after it.
+  - Dropping the column is opened as PC-F90, not before the release after the one that carries PC-F82.
+- R2-2: add tests for sign-out-everywhere through the new include, for the prune cascade with a real authorization, and for a duplicate-key conflict on the authorization row alone.
+- R2-3(b), added by the retry: fix it in fix2. Registration refuses a session that is already terminated, so a grant that loses to a logout gets no code, as it did before.
+- R2-3(a) is pre-existing: NotifyAsync ignores a revoke that loses on the concurrency token. It opens PC-F89 (log, audit, and re-read and retry the revoke).
+
+### D-278 (orchestrator, 2026-11-24): PC-114's integration fixes
+
+- CI 45387562810 on PC-114's merge (80f95902) was red in two jobs.
+  - acme-client (ubuntu-latest), PC-114's new Linux browser leg: the sign-in returned a 500 because the BFF could not fetch its own HTTPS discovery document. The dev certificate was created but not trusted on the runner. This is PC-114's.
+  - client-windows: a tm-tab-bus.spec drain timed out. PC-114 does not touch the tab bus, so it opens PC-F87 (D-011).
+- "PC-114: integrate (fixes)" (59f7b6d8) is accepted with one deviation from D-276. The `ɵloaded()` seam added about 10 bytes to "." and put it at 50.23 of 50.22, so the fix is spec-only: setUp waits until the flows chunk has registered its strings, which happens only once the chunk has loaded. No product code changed.
+- The Linux leg now runs `dotnet dev-certs https --trust` (exit 0 or 4 accepted), which reproduces as fixed in a Linux container. Neither existing precedent applied: identity-e2e uses plain HTTP, and the integration suites use TestServer.
+- The Windows nightly leg still only creates the certificate and will likely fail the same way. Trusting on Windows can prompt, so that leg opens PC-F88; it does not block PC-114.
+- Finding on the 300 ms injection: it charges every call of a per-call `import()` 300 ms, where a browser caches the module after the first load. That can fail tests the product would pass, and it is a lead for PC-F85. Until PC-F85 rules, a timeout under the injection on a per-call import path is attributed with that in mind.
+
+### D-277 (orchestrator, 2026-11-24): PC-F82 review 1 rulings
+
+- R1 found 0 blocking, 1 major and 1 minor on 04056370. The retry, the detach, the duplicate-key filter and the barrier tests are sound.
+- R1-1 is fixed in PC-F82, not deferred.
+  - As committed, the fix turns a fail-closed race (the losing grant got a 500 and no tokens) into a fail-open one. The loser gets a refresh token that a session logout does not revoke, which breaks spec 0003 §7.3's "logout stops renewal" for public and native clients.
+  - A checkpoint must not land a security regression, even a narrow one.
+  - The fix: the session registry holds every authorization a session's grants used, as rows keyed (session, client, authorization), and logout revokes them all. This also closes the same gap that already exists without the race, when a later grant asks for a scope the authorization lacks.
+  - The schema change goes through a generated Identity migration, never a hand-edited one.
+  - sp_getapplock is rejected: it closes only the race, and adds a lock and a transaction to every grant.
+  - If spec 0003 names the registry's shape, the change is recorded as a deviation.
+- R1-2: add a test that pins the registry catch's narrowness and its rethrow (a session deleted mid-grant gets no code).
+- The BFF re-challenge on temporarily_unavailable stays unbuilt. It is reachable only at four or more simultaneous grants extending one authorization, and the e2e sign-in retry stays.
+- fix1 adds a migration and changes a security path, which makes it a large fix1, so R2 runs at xhigh (§4.4).
+
+### D-276 (orchestrator, 2026-11-24): PC-114's delayed-import failures at integration
+
+- PC-114's integration (80f95902) ran full core under the 300 ms import delay: 2086 passed and 5 failed (four tm-session-flows specs and one tm-session-guard spec). The rule is that the delayed run gates the integration, so I had them attributed before landing.
+- Run alone under the same 26-site injection, twice on each tree, the four flows specs pass on platform-core (b8cd3adf) and fail on 80f95902. Making the shell route always lazy turned them green, which confirms the cause.
+  - The specs' setUp never waited for the lazily loaded flows chunk. It relied on navigation waiting for the shell route's import.
+  - PC-114 returns the cached shell route synchronously, so later tests switch to fake timers before the chunk resolves.
+- This is a test-timing bug that PC-114 exposed, not a production regression: sign-out and the bus handlers always chain on the chunk load. It is still PC-114's to fix before landing, in "PC-114: integrate (fixes)": an internal `ɵloaded()` on TmSessionPaths, awaited in setUp, plus the same check for other fake-timer specs.
+- The guard spec passes alone under the delay on both trees and failed only inside the full run, at 4,769 ms. It is not PC-114's: it is logged as a flaky row and opens PC-F86 (D-011).
+- PC-114's "." raise from 50.15 to 50.22 is the measured +0.07 KB, which is honest under D-031. The cap line reads 50.12 of 55.
+
+### D-275 (orchestrator, 2026-11-24): PC-124 review 1 rulings
+
+- R1 found 0 blocking, 2 major and 6 minor on a302765d, so there is no R2 (§4.4). A clean-build measure confirmed "." unchanged at 49.88 of 49.89 (cap 49.78 of 50) and ./search at 0.02 of 0.5. The 0.5 ceiling is honest under D-031; PC-126 raises it with its own measurement.
+- All ten deviations are accepted.
+- fix1 fixes:
+  - R1-1: a missing or malformed `#d=` payload leaves the address bar alone and builds no request, so the invalid-link state shows instead of an unfiltered list.
+  - R1-2: an opening flag for Back and Forward that skips page state (§4.2 step 3) and keeps steps 1 and 2 (§4.4).
+  - R1-3: the selection is restored from a matching snapshot whatever the query's source (§15.2).
+  - R1-4: each dropped column is reported once, under its real source (a bad tile path under `declaration`).
+  - R1-5: the canonical query's drop of an order on an expression column is reported with its own reason, not `unknown`; the non-sortable rule is recorded as a deviation.
+  - R1-7: a page-state restore at another width applies the view preference, as a resize does.
+  - R1-8: both seeded round trips assert the history verdict and cover a tree entity, a `list` patch, `list` and expression preferences, and a resize.
+- Carries to PC-126: the refresh bump when a path column is added while an expression column shows, together with R1-6 (compare the snapshot request's `select`, not only the canonical query); registering `tm.search.expressionColumn`; typing `TmSearchPageActionDeclaration.run`; building the plan once per columns change.
+- After fix1 PC-124 holds, behind PC-114, PC-116, PC-153 and PC-121 (D-087).
+- For Ahmad, on spec 0030:
+  - (a) §7.3 makes every column sortable, but an order on an expression column cannot travel in the URL. PC-124 makes expression columns non-sortable.
+  - (b) §4.2's colleague-link example conflicts with §4.3 when the link's `cols` equal the code default; PC-124 lets the reader's preference win. §4.2 should say so.
+  - (c) While an expression column shows, the canonical query does not identify the result, yet the grid's content key, the anchor and §15.2's snapshot match all key on it (R1-6).
+
+### D-274 (orchestrator, 2026-11-24): PC-121 review 1 rulings, and PC-168's gate
+
+- R1 found 0 blocking, 0 major and 7 minor on 3f1e2a46, so there is no R2. A clean-build measure confirmed:
+  - "." and the cap line are unchanged;
+  - /entity is 24.55 of 25;
+  - /expression-editor is 7.90 of 8, and /path-picker 4.56 of 5;
+  - locale-ar ./queryex-strings is 0.75 of 1, and the locale-ar root is 0.46 of 0.5.
+- The queryex-strings re-split is honest under D-031, and PC-120's carry is complete.
+- Note: the locale-ar root reaches about 0.48 once PC-116's shell-strings lands. One more string part after that means the root's first raise.
+- fix1 fixes R1-1 to R1-5 and R1-7:
+  - the draft's stale answers;
+  - an abort test;
+  - re-spacing a drop;
+  - the missing tests;
+  - the deviation records;
+  - a TSDoc.
+- R1-6: spec 0029 §10.4's three-engine undo e2e is PC-168's deliverable, and it needs a page that hosts the editor. PC-168 is now gated on PC-131 (0030's column filters and Filters popup) in DEPS.md and CHECKPOINTS.md. The carry is in the PC-168 ledger row.
+- For Ahmad (spec 0029):
+  - (a) the editor and picker take the §1 budget, about 28 KB, well over: 37.01 KB with /entity, 41.0 with /column-filter;
+  - (b) §11.2's `Name (E)` slot-1 child conflicts with §6.1's "No slot-1 key";
+  - (c) should §11.1 gain TmPathPicker.text(node)?
+
+### D-273 (orchestrator, 2026-11-24): PC-153 review 1 rulings
+
+- R1 found 0 blocking, 0 major and 8 minor on 86f53add, so there is no R2. Sizes were confirmed on a clean build:
+  - "." 49.89, unchanged;
+  - ./leader 4.04 of 4.1, its second raise, honest under D-031;
+  - ./realtime 15.77 of 16, with SignalR tree-shaken as far as its public API allows.
+- Accepted deviations:
+  - a failed user check is reported to the sink as refused(401), which is faithful to §8.2;
+  - restart on the first sync after a terminal signal, from any source;
+  - the 100 s attempt deadline and the 5 s stop grace. These go beyond spec 0025 and are sound; neither leaks timers.
+- fix1 fixes all eight findings:
+  - R1-1 aligns the attempt numbering with 0025 §8.3's table;
+  - R1-2 makes the offline wait state-based;
+  - R1-3 rejects sync stamps ahead of the clock;
+  - R1-4 makes session.ended tenant-scoped, as §8.4 says;
+  - R1-5 makes the ESLint signalr ban cover every block;
+  - R1-6 adds two missing specs;
+  - R1-7 makes the fake hub's end() report reconnecting first;
+  - R1-8 removes a spec citation from the TSDoc.
+- PC-153 holds after fix1 and is released in queue order.
+
+### D-272 (orchestrator, 2026-11-24): PC-116 review 1 rulings
+
+- R1 found 0 blocking, 1 major and 6 minor issues on b9d8f3f8, so there is no R2. A clean-build re-measure matched the implementer's figures.
+- R1-1, major: the tenantless chunk (13.9 KB) was fetched after /shell, in series. That goes against spec 0024's eager, modulepreloaded /shell and spec 0027 Decision 1's parallel cold path. fix1 keeps the chunk lazy but starts fetching it in parallel.
+- fix1 also fixes R1-2 to R1-7:
+  - the picker's loading status;
+  - an errors-chunk failure, which now shows Try again;
+  - the RTL safe-area sides;
+  - the live-region announcement;
+  - the Arabic Connect button's label-in-name;
+  - tests for frame order and row heights.
+- Deviations accepted:
+  1. The tenantless pages are a lazy chunk with types-only /shell exports, against spec 0027 §1.
+  2. revalidateUser() returns Promise<TmApiError | null>. For Ahmad: should spec 0025 §3.1 gain this return type?
+  3. The tmEntryPointRoot modulepreload rule.
+  4. The size raises on its base: "." +4 B and /shell 1.35 to 2.35.
+  5. The title key lives in the frame.
+  6. The two adjusted specs.
+- At its integration, PC-116's Arabic would make ./platform-strings' third raise (about 4.02 of 4). Under D-031 it re-splits instead: the spec 0027 Arabic blocks move to a new @tellma/locale-ar/shell-strings, loaded in tmArabic()'s Promise.all. Each part gets an honest ceiling, and ./platform-strings goes back under 4.
+- Merge with held PC-114:
+  - keep PC-114's TmLaunchCache, which does not read before the first render;
+  - PC-114's memoized loader memoizes the class that the inner loader returns.
+
+### D-271 (orchestrator, 2026-11-24): PC-120 integration — a refused command form, and /entity at 25
+
+- PC-120's agent ran api:approve and the Acme client build together in one nested-subshell command. The safety check refused it because it "could not be checked for dangerous rm operations". The command contains no rm.
+- I notified Ahmad at once.
+- Judgement: the check refused the command's form, not either gate. Both gates are routine and other agents run them as plain commands.
+  - The agent re-runs each as its own plain, single command.
+  - If a plain command is refused, it stops and I notify Ahmad again.
+  - This is not a reroute around a denied action.
+  - From now on, briefs and messages ask agents for plain, single commands, with no nested subshells.
+- ./entity measures 24.96 on the merged tree against platform-core's 19, and its ceiling is set to 25.
+  - This is accepted as D-214's combination of two accepted additions over 18.5: PC-125's entity actions (+0.5) and PC-120's Queryex and filters after the D-260 re-split (+6).
+  - It is not a third raise. ./entity is lazy, so it does not touch the first frame.
+- @tellma/locale-ar ./platform-strings goes from 3.5 to 4 for the tm.filter block. That is its second raise, allowed under D-031.
+
 ### D-270 (orchestrator, 2026-11-24): PC-114 review 2 rulings
 
 - R2 (xhigh) on f65107a0..c3f7d4c6 found 1 blocking, 1 major and 4 minor. R1-1's fix is correct on every launch path: all 50 warm-launch requests go after the routed view renders.

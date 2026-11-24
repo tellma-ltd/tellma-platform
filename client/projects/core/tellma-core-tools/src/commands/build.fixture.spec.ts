@@ -16,7 +16,7 @@ import { tmListFiles } from '../common/files.js';
 import { tmAttribute, tmElements, tmParseDocument } from '../common/html.js';
 import { tmReadInitialFiles } from '../output/preloads.js';
 import { tmCodeFromSources, tmReadSourceMap } from '../output/source-attribution.js';
-import { TmBuildGraph, tmCorePrimaryModules } from '../output/stats.js';
+import { TmBuildGraph, tmCorePrimaryModules, tmEntryPointChunk } from '../output/stats.js';
 
 // The real build of the fixture app: one `ng build`, then the build's later
 // steps on its output. The output checks then run again on copies of that
@@ -97,7 +97,7 @@ describe('tellma-client build on the fixture app', () => {
     expect(first.code).toBe(TM_CLI_EXIT.success);
     expect(first.out).toContain('Built with 0 error(s) and 0 warning(s).');
     expect(first.out).toMatch(/^initialJs +\d+\.\d\d +\d+\.\d\d +230 +260 +\d+$/m);
-    expect(first.out).toMatch(/^corePrimaryFirstFrame +\d+\.\d\d +\d+\.\d\d +- +50 +[1-9]\d*$/m);
+    expect(first.out).toMatch(/^corePrimaryFirstFrame +\d+\.\d\d +\d+\.\d\d +- +55 +[1-9]\d*$/m);
     // The lazy page, which no budget covers, prints on a line of its own with no level.
     expect(first.out).toMatch(/^lazy:src\/app\/review-page\.ts +\d+\.\d\d +\d+\.\d\d +- +- +\d+$/m);
   });
@@ -127,6 +127,17 @@ describe('tellma-client build on the fixture app', () => {
     expect(html).toMatch(/<link rel="preload" href="media\/noto-sans-latin-wght-normal-[A-Z0-9]{8}\.woff2" as="font" type="font\/woff2" crossorigin>/);
     expect(html).toMatch(/<link rel="preload" href="media\/noto-sans-arabic-arabic-wght-normal-[A-Z0-9]{8}\.woff2"/);
     expect(html).not.toMatch(/href="media\/noto-sans-latin-ext-/);
+  });
+
+  it('prefetches the tenantless pages beside the shell, outside the initial JavaScript', () => {
+    const html = read('index.html');
+    const graph = TmBuildGraph.read(join(output(), 'stats.json'));
+    const [tenantless, ...others] = graph.outputsHolding(tmEntryPointChunk('tellma-core', 'shell', 'tm-tenantless'));
+    expect(others).toEqual([]);
+    expect(html).toContain(`<link rel="prefetch" href="${tenantless}">`);
+    // Neither the scripts nor the module preloads reach it, so a tenant's first frame never waits on it.
+    const initial = tmReadInitialFiles(html);
+    expect(graph.staticClosure([...initial.scripts, ...initial.modulePreloads]).has(tenantless!)).toBe(false);
   });
 
   it('loads every URL of the built index.html from the root on a deep-link reload', () => {

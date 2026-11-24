@@ -10,15 +10,17 @@ using Microsoft.Extensions.Logging.Testing;
 using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Realtime;
+using Tellma.Core.Data.Batches;
 using Tellma.Core.Notifications;
+using Tellma.Core.Tests.Data.Batches;
 using Tellma.Core.Tests.Infrastructure;
 
 namespace Tellma.Core.Tests.Notifications
 {
     /// <summary>
     ///     The client event publisher: its refusals, the coalescing of a batch's events into its one
-    ///     commit callback, the logging of a failed delivery, and the hub-less defaults the composition
-    ///     registers.
+    ///     commit callback, and into the announcement of a commit only the probe proved, the logging of
+    ///     a failed delivery, and the hub-less defaults the composition registers.
     /// </summary>
     public class ClientEventPublisherTests
     {
@@ -217,6 +219,32 @@ namespace Tellma.Core.Tests.Notifications
 
             Assert.Equal(2, publisher.Attempts);
             Assert.Equal(2, logger.Collector.Count);
+        }
+
+        // --- A commit only the probe proved ---
+
+        [Fact]
+        public async Task A_platform_batchs_events_are_sent_once_by_the_announcement_of_a_commit_only_the_probe_proved()
+        {
+            using BatchHarness harness = new();
+            DataBatch batch = harness.Batch(BatchPurpose.Persist);
+            RecordingPublisher publisher = new();
+
+            ClientEvent toBoth = new("inbox.changed", [1, 2], null);
+            ClientEvent tenant = new("cache.changed", [], new { tag = "settings" });
+            publisher.Publish(batch, toBoth);
+            publisher.Publish(batch, new ClientEvent("inbox.changed", [2, 1], null));
+            publisher.Publish(batch, tenant);
+
+            // --- The batch is sent and its response lost: no commit callback runs, the announcement does ---
+            _ = await BatchHarness.SealAsync(batch);
+            Assert.Empty(publisher.Delivered);
+            batch.RunProvenCommitCallbacks(static failure => Assert.Fail(failure.ToString()));
+
+            Assert.Equal([toBoth, tenant], publisher.Delivered);
+
+            // --- The batch executed: publishing on it again is refused, so nothing waits on it ---
+            _ = Assert.Throws<InvalidOperationException>(() => publisher.Publish(batch, new ClientEvent("inbox.changed", [3], null)));
         }
 
         // --- The composition's defaults ---

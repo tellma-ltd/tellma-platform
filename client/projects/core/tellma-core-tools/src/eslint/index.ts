@@ -31,6 +31,7 @@ import { tmLiteralDeclarationKeys } from './rules/literal-declaration-keys.js';
 import { tmNoDecimalOperators } from './rules/no-decimal-operators.js';
 import { tmNoRawHttp } from './rules/no-raw-http.js';
 import { tmNoWebStorage } from './rules/no-web-storage.js';
+import { tmTelemetryNames } from './rules/telemetry-names.js';
 
 // The plugin. A config registers it under `tm`, so its rules read `tm/<rule>`.
 
@@ -50,6 +51,7 @@ const manifest = createRequire(import.meta.url)('../../package.json') as {
  * - `lazy-layouts`: every layout member of a declaration is `() => import('…')`.
  * - `literal-declaration-keys`: every declaration key is a string literal.
  * - `no-decimal-operators`: no `+`, `+=`, `<`, `<=`, `>` or `>=` on a `TmDecimal` (type-aware).
+ * - `telemetry-names`: literal telemetry names and page action ids follow their grammars.
  */
 export const tmEslintPlugin: ESLint.Plugin = {
   meta: { name: manifest.name, version: manifest.version },
@@ -60,6 +62,7 @@ export const tmEslintPlugin: ESLint.Plugin = {
     'lazy-layouts': tmLazyLayouts,
     'literal-declaration-keys': tmLiteralDeclarationKeys,
     'no-decimal-operators': tmNoDecimalOperators,
+    'telemetry-names': tmTelemetryNames,
   } as unknown as ESLint.Plugin['rules'],
 };
 
@@ -157,6 +160,7 @@ export function tmEslintConfig(options: TmEslintOptions = {}): Linter.Config[] {
         'tm/lazy-layouts': 'error',
         'tm/literal-declaration-keys': 'error',
         'tm/no-decimal-operators': 'error',
+        'tm/telemetry-names': 'error',
         '@typescript-eslint/restrict-plus-operands': TM_RESTRICT_PLUS_OPERANDS,
         '@angular-eslint/component-selector': [
           'error',

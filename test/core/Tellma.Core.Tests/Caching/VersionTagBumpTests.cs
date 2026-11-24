@@ -15,7 +15,7 @@ namespace Tellma.Core.Tests.Caching
     /// <summary>
     ///     What a batch bumps and how: the plan its writes and explicit bumps resolve to, the bump
     ///     epilogue's text pinned, its refusal of a rule no source covers, and the <c>cache.changed</c>
-    ///     events each move announces.
+    ///     events each move announces, after a commit seen or one only the probe proved.
     /// </summary>
     public sealed class VersionTagBumpTests
     {
@@ -194,6 +194,27 @@ namespace Tellma.Core.Tests.Caching
                     ("8", new CacheChangedPayload("preferences", "1.0000000a000000000000000000000000")),
                 ],
                 events.Select(static clientEvent => (string.Join(",", clientEvent.UserIds), (CacheChangedPayload)clientEvent.Payload!)));
+        }
+
+        [Fact]
+        public void A_commit_only_the_probe_proved_announces_each_user_level_column_to_the_tenant_without_a_value_once_per_tag()
+        {
+            VersionTag tag = new(new Guid("0000000a-0000-0000-0000-000000000000"));
+            var plan = VersionTagBumpPlan.Resolve(Registry, new HashSet<TableName> { Profiles, Grants }, new HashSet<string> { VersionTagNames.Permissions, VersionTagNames.Settings });
+
+            List<ClientEvent> events = [.. VersionTagBumpContributor.ProvenEvents(plan, tag)];
+
+            // The affected users were never read: the tenant group hears of each column, and the
+            // permissions column joins the tenant's own permissions event.
+            Assert.All(events, static clientEvent => Assert.Equal(VersionTagBumpContributor.CacheChangedEvent, clientEvent.Name));
+            Assert.All(events, static clientEvent => Assert.Empty(clientEvent.UserIds));
+            Assert.Equal(
+                [
+                    new CacheChangedPayload("permissions", null),
+                    new CacheChangedPayload("settings", "1.0000000a000000000000000000000000"),
+                    new CacheChangedPayload("preferences", null),
+                ],
+                events.Select(static clientEvent => (CacheChangedPayload)clientEvent.Payload!));
         }
     }
 }

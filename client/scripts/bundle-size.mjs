@@ -28,7 +28,12 @@
  * A library may also declare "tellma".staticGraphExcludes: entry points
  * another entry point may load only with import(). The check bundles that
  * entry point with its sibling entry points resolved and fails when an
- * excluded one is reachable through static imports.
+ * excluded one is reachable through static imports. An excluded name may
+ * also be another workspace library's import path (`@tellma/core-ui/menu`):
+ * that one fails when any chain of static imports reaches its file, whether
+ * or not the entry point uses it, because an app's bundler places the code a
+ * lazy chunk uses from a file in a chunk the first frame loads whenever the
+ * first frame reaches that file.
  *
  * The platform also caps some whole entry points (tools/bundle-caps.mjs):
  * the same linked measure at gzip level 9 against the level a spec sets,
@@ -235,6 +240,13 @@ for (const problem of unmeasuredCaps(capped)) {
 // check bundles the entry point WITH its library's siblings resolved to their
 // built FESMs and code splitting on, walks the static imports from the entry
 // output, and fails if any excluded sibling's code is reachable that way.
+// Every workspace library's entry points by import path, for the excluded
+// names that belong to another library.
+const workspaceFesms = new Map(
+  discoverLibraries(clientDir).flatMap((library) =>
+    library.entryPoints.map((entryPoint) => [entryPoint.importPath, join(clientDir, entryPoint.fesm)]),
+  ),
+);
 for (const library of discoverLibraries(clientDir)) {
   const excludes = library.tellma?.staticGraphExcludes;
   if (!excludes) {
@@ -257,10 +269,27 @@ for (const library of discoverLibraries(clientDir)) {
       });
     },
   };
+  // Resolves every workspace library's entry points to their FESMs, so a
+  // chain through another library (core to core-ui's button, its tooltip and
+  // its menu) is walked too; packages outside the workspace stay external.
+  const workspace = {
+    name: 'workspace-libraries',
+    setup(build) {
+      build.onResolve({ filter: /^@/ }, (args) => {
+        const path = workspaceFesms.get(args.path);
+        return path === undefined ? { path: args.path, external: true } : { path };
+      });
+    },
+  };
   for (const [id, excluded] of Object.entries(excludes)) {
     const entryFesm = fesmById.get(id);
-    const banned = new Map(excluded.map((name) => [fesmById.get(name), name]));
-    if (entryFesm === undefined || banned.has(undefined)) {
+    // A name of this library's own is a sibling; a name of another workspace
+    // library's is checked by the reach of its file.
+    const own = excluded.filter((name) => !name.startsWith('@'));
+    const foreign = excluded.filter((name) => name.startsWith('@'));
+    const banned = new Map(own.map((name) => [fesmById.get(name), name]));
+    const bannedFiles = new Map(foreign.map((name) => [workspaceFesms.get(name), name]));
+    if (entryFesm === undefined || banned.has(undefined) || bannedFiles.has(undefined)) {
       console.error(`${library.name}: "tellma".staticGraphExcludes names an entry point that does not exist.`);
       failed = true;
       continue;
@@ -276,7 +305,7 @@ for (const library of discoverLibraries(clientDir)) {
       metafile: true,
       logLevel: 'silent',
       external: ['@angular/*', 'rxjs', 'rxjs/*', 'tslib', '@jsverse/*'],
-      plugins: [siblings],
+      plugins: [foreign.length > 0 ? workspace : siblings],
     });
     const outputs = result.metafile.outputs;
     // Walk the entry output's static imports; dynamic ones are the boundary.
@@ -312,6 +341,35 @@ for (const library of discoverLibraries(clientDir)) {
       for (const imported of outputs[out].imports) {
         if (imported.kind !== 'dynamic-import' && outputs[imported.path] !== undefined) {
           queue.push(imported.path);
+        }
+      }
+    }
+    // Another library's file: walk the static import statements between the
+    // input files, used or not, from the entry point's FESM, as an app's
+    // bundler does when it decides which chunk holds a file's code.
+    if (foreign.length > 0) {
+      const inputs = result.metafile.inputs;
+      const from = new Map([[entryInput, null]]);
+      const files = [entryInput];
+      while (files.length > 0) {
+        const file = files.shift();
+        const name = bannedFiles.get(join(clientDir, file));
+        if (name !== undefined) {
+          const chain = [];
+          for (let at = file; at !== null; at = from.get(at)) {
+            chain.unshift(basename(at));
+          }
+          console.error(
+            `${library.name}: '${id}' reaches '${name}' through static imports (${chain.join(' -> ')}), ` +
+              `so an app's first frame would carry whatever a lazy chunk uses from it.`,
+          );
+          reached = true;
+        }
+        for (const imported of inputs[file]?.imports ?? []) {
+          if (imported.kind === 'import-statement' && !imported.external && !from.has(imported.path)) {
+            from.set(imported.path, file);
+            files.push(imported.path);
+          }
         }
       }
     }

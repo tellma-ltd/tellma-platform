@@ -34,6 +34,7 @@ disabled/readonly/required).
 | `@tellma/core-ui/tooltip` | `tmTooltip` — plain-text tooltips with an always-available description |
 | `@tellma/core-ui/alert` | `tm-alert` — page/section status messaging with live announcement |
 | `@tellma/core-ui/image` | `tm-image` — cached record images with an edit (replace/re-fit/delete) mode, and `placeholderOnError` for a placeholder fallback (an avatar's initials) |
+| `@tellma/core-ui/blob-fetcher` | `TM_BLOB_FETCHER` — the seam `tm-image` fetches every blob through, with its default over `HttpClient`; its own entry point so an app's startup provides it without reaching `tm-image` (`@tellma/core-ui/image` re-exports it) |
 | `@tellma/core-ui/files` | `tmFilePicker` + `tm-dropzone` — file selection over one guardrail engine |
 | `@tellma/core-ui/file-preview` | `TmFilePreview` — the modal file viewer (download-only for HTML/unknown) |
 | `@tellma/core-ui/menu` | `tm-menu` + `tmMenuTriggerFor` + `tmContextMenuTrigger` — data-driven menus opened from a menu button, a right-click or code. Entries are items (plain, checkbox or radio; with a description, a detail, a key-cap shortcut, `keepOpen`, `disabledReason`), links, one level of submenus, labelled groups and separators; `ng-template[tmMenuHeader]` adds a header block |
@@ -69,7 +70,7 @@ disabled/readonly/required).
 | `@tellma/core-ui/reorder-list` | `tm-reorder-list` + `tmReorderItem` / `tmReorderEmpty` — an ordered list rearranged by dragging, by a grab handle's keys or by the move menu its click opens, each step announced, that also takes drops from other sources |
 | `@tellma/core-ui/tiles` | `tm-tiles` + `tmTileContent` / `tmTilesEmpty` / `tmTilesLoading` — rows as a virtualized lattice of fixed-size tiles (an image and four text corners each) that becomes a divided list on narrow containers, on the data grid's selection, activation and driver members |
 | `@tellma/core-ui/tiles-tree` | `TmTilesTree` (`tm-tiles[parentId]`) — tree mode for `tm-tiles`: a single-column tree over flat rows with two-way expansion and batched lazy children, in its own entry point so a flat list never downloads it |
-| `@tellma/core-ui/overlay` | `tmCreateAnchoredOverlay`, `tmLogicalPositions` and `tmPushEscapeDismissal` — the anchoring and the one Escape stack every Tellma overlay shares, for overlays built outside the library; also the `ɵ` top-layer wiring that orders the page-wide layers (modals, then the toasts, then a blocking busy overlay) |
+| `@tellma/core-ui/overlay` | `tmCreateAnchoredOverlay`, `tmLogicalPositions` and `tmPushEscapeDismissal` — the anchoring and the one Escape stack every Tellma overlay shares, for overlays built outside the library; also the `ɵ` top-layer wiring that orders the page-wide layers (modals, then the toasts, then a blocking busy overlay), and the `ɵ` touch and pen long-press observer the menu's context trigger, the tooltip and the grid share, here so a tooltip reaches it without the menu |
 | `@tellma/core-ui/private` | Unstable wiring shared between Tellma libraries (the validation bubble) — no API goldens, never for app code |
 
 ## Consuming

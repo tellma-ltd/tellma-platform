@@ -98,7 +98,7 @@ export const TM_SYNC_ERRORS = new InjectionToken<TmSyncErrors>('TM_SYNC_ERRORS',
       present: (error, tenantId) =>
         void load()
           .then((errors) => injector.get(errors.TmErrorPresenter).present(error, { kind: 'read', tenantId }))
-          .catch((failure: unknown) => injector.get(TmTelemetry).error(failure, { source: 'tm-cache-refresher' })),
+          .catch((failure: unknown) => injector.get(TmTelemetry).error(failure, { where: 'tm-cache-refresher' })),
     };
   },
 });
@@ -723,7 +723,7 @@ export class TmCacheRefresher {
       }
     } else if (!(error instanceof TmStoreRefusedError)) {
       // A refused write was reported by the store.
-      this.#telemetry.error(error, { source: 'tm-cache-refresher' });
+      this.#telemetry.error(error, { where: 'tm-cache-refresher' });
     }
   }
 

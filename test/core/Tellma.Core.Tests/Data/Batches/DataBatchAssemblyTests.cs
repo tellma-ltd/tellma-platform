@@ -16,7 +16,7 @@ namespace Tellma.Core.Tests.Data.Batches
     /// <summary>
     ///     How a batch assembles with no database: the frame and the contributors' stages, ordinals and
     ///     statement-local names, the line map, the hole renderer, deduplication, the caller's write
-    ///     authority and the parameter budget.
+    ///     authority, the parameter budget, and the announcements of a commit only the probe proved.
     /// </summary>
     public sealed class DataBatchAssemblyTests : IDisposable
     {
@@ -609,7 +609,34 @@ namespace Tellma.Core.Tests.Data.Batches
             _ = Assert.Throws<InvalidOperationException>(() => batch.Sql($"SELECT 1;", null));
             _ = Assert.Throws<InvalidOperationException>(() => batch.TransactionMode = TransactionMode.None);
             _ = Assert.Throws<InvalidOperationException>(() => batch.OnCommitted(static _ => { }));
+            _ = Assert.Throws<InvalidOperationException>(() => batch.OnCommitProven(static () => { }));
             _ = await Assert.ThrowsAsync<InvalidOperationException>(() => batch.ExecuteAsync(TestContext.Current.CancellationToken));
+        }
+
+        [Fact]
+        public async Task The_announcements_of_a_proven_commit_run_once_in_order_after_the_batch_executed_each_failure_reported_and_the_rest_run()
+        {
+            DataBatch batch = _harness.Batch(BatchPurpose.Persist);
+            List<string> ran = [];
+            InvalidOperationException thrown = new("The announcement failed.");
+            batch.OnCommitProven(() => ran.Add("first"));
+            batch.OnCommitProven(() => throw thrown);
+            batch.OnCommitProven(() => ran.Add("third"));
+
+            // --- Not before the batch executed: no commit of it can have been proven ---
+            _ = Assert.Throws<InvalidOperationException>(() => batch.RunProvenCommitCallbacks(static _ => { }));
+            Assert.Empty(ran);
+
+            // --- Once executed: every announcement in order, the failure handed over ---
+            _ = await BatchHarness.SealAsync(batch);
+            List<Exception> failed = [];
+            batch.RunProvenCommitCallbacks(failed.Add);
+            Assert.Equal(["first", "third"], ran);
+            Assert.Same(thrown, Assert.Single(failed));
+
+            // --- And once only ---
+            _ = Assert.Throws<InvalidOperationException>(() => batch.RunProvenCommitCallbacks(failed.Add));
+            Assert.Equal(2, ran.Count);
         }
 
         /// <inheritdoc />

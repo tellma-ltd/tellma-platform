@@ -16,4 +16,3 @@ export * from './tm-menu';
 export * from './tm-menu-entries';
 export * from './tm-menu-trigger';
 export * from './tm-context-menu-trigger';
-export { tmObserveLongPress as ɵtmObserveLongPress } from './internal/long-press';

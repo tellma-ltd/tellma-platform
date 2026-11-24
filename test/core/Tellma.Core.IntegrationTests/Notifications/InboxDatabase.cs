@@ -14,7 +14,6 @@ using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Caching;
 using Tellma.Core.Abstractions.Crud;
 using Tellma.Core.Abstractions.Notifications;
-using Tellma.Core.Abstractions.Realtime;
 using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.Composition;
 using Tellma.Core.Crud;
@@ -127,7 +126,7 @@ namespace Tellma.Core.IntegrationTests.Notifications
                     _ = services.RemoveAll<INotificationChannel>();
                     _ = services.AddScoped<INotificationChannel, RecordingEmail>();
                     _ = services.AddScoped<INotificationChannel, RecordingSms>();
-                    _ = services.Replace(ServiceDescriptor.Scoped<IClientEventPublisher>(_ => Events));
+                    _ = services.Replace(ServiceDescriptor.Scoped(Events.PublisherFor));
                     _ = services.Replace(ServiceDescriptor.Scoped<IAdministratorDirectory>(static _ => new FixedAdministrators()));
                     _ = services.PostConfigure<NotificationsOptions>(static options => options.RetentionPageSize = RetentionPageSize);
                     _ = services.AddFakeLogging();

@@ -27,10 +27,14 @@ providers: [provideTellmaUi(), provideTellmaLocaleAr()]
   (`strings/strings-ar.ts`, the `@tellma/locale-ar/strings` entry point),
   merged into Transloco's `ar` resources under the shared `tmUi` namespace,
   and the platform's own (`platform-strings/strings-tm-ar.ts`, under `tm`, the
-  `@tellma/locale-ar/platform-strings` entry point), which `tmArabic()` hands
-  the platform. `tmArabic()` loads both entry points at once on the first
-  switch to Arabic, so an app's other languages never download them, and an
-  app on the component library alone never downloads the platform's table.
+  `@tellma/locale-ar/platform-strings` entry point, with the shell's part, the
+  shell frame's, the tenantless shell's, the tenant picker's and the
+  signed-out page's strings, in `shell-strings/strings-shell-ar.ts`, the
+  `@tellma/locale-ar/shell-strings` entry point), which `tmArabic()` merges
+  and hands the platform. `tmArabic()` loads the three entry points at once on
+  the first switch to Arabic, so an app's other languages never download
+  them, and an app on the component library alone never downloads the
+  platform's tables.
   Plurals carry the full Arabic ICU
   categories (one/two/few/many/other); imperative verbs conjugate for the
   addressee via the ambient `{gender}` parameter (see below).
@@ -61,10 +65,13 @@ Copy this package's structure:
    if the language needs a non-Latin face; skip fonts entirely for
    Latin-script locales.
 3. `platform-strings/strings-tm-xx.ts` — translate every key of the platform's English
-   `tm` table (`tmEnglish()` in `@tellma/core`).
+   `tm` table (`tmEnglish()` in `@tellma/core`); `shell-strings/strings-shell-xx.ts` —
+   the `shell` and `tenantless` scopes the shell frame and the tenantless pages
+   register in English.
 4. `provide-tellma-locale-xx.ts` — register the strings; `tm-xx.ts` — the
-   language definition `tmXx()`, with its direction and both tables, loaded
-   together with `import()` from the `platform-strings` and `strings` entry points;
+   language definition `tmXx()`, with its direction and its tables, loaded
+   together with `import()` from the `platform-strings`, `shell-strings` and
+   `strings` entry points;
    `styles.css` — import the pack's fonts.
 5. If the script's leading differs from Latin, add the language to the token
    preset's `leadingByLang`; if it needs a new face, add the family to the

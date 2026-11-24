@@ -229,10 +229,10 @@ namespace Tellma.Core.Crud.Save
             }
         }
 
-        /// <summary>Logs and counts a commit callback a participant registered that failed.</summary>
+        /// <summary>Logs and counts a commit callback, or proven-commit announcement, a participant registered that failed.</summary>
         /// <param name="callback">The callback.</param>
         /// <param name="failure">Its failure.</param>
-        protected void CallbackFailed(Action<BatchOutcome> callback, Exception failure)
+        protected void CallbackFailed(Delegate callback, Exception failure)
         {
             // A lambda's method lives on a closure class nested in the component that wrote it.
             Type? component = callback.Method.DeclaringType;

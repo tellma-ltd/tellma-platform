@@ -19,6 +19,10 @@
  *   sits inside `role="row"` passes `popoverHost: { type: 'parent', element }`
  *   so the pane never becomes an invalid child of the row.
  *
+ * It also holds the touch and pen long-press observer that the menu's
+ * context trigger, the tooltip and the grid share, so a tooltip reaches it
+ * without the menu.
+ *
  * @packageDocumentation
  */
 
@@ -36,6 +40,9 @@ export {
   type TmOverlaySide,
 } from './tm-anchored-overlay';
 export { tmPushEscapeDismissal } from './tm-dismiss-stack';
+// Private-by-convention: the long-press observer the menu, the tooltip and
+// the grid share, with no compatibility promise.
+export { tmObserveLongPress as ɵtmObserveLongPress } from './tm-long-press';
 // Private-by-convention wiring between the page-wide layers (modals,
 // toasts, the busy overlay) and the code that must yield to them, with no
 // compatibility promise.

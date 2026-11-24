@@ -13,6 +13,7 @@
 
 export { provideTellmaTesting } from './src/provide-tellma-testing';
 export { provideTellmaStateTesting } from './src/provide-tellma-state-testing';
+export { TmColumnFilterHarness } from './src/tm-column-filter-harness';
 export { TmEntityFieldHarness, TmEntityMultiFieldHarness } from './src/tm-entity-field-harness';
 export { tmFakeAssignmentsSummary, tmFakeInboxSummary } from './src/tm-fake-attention';
 export { TmBannerHostHarness } from './src/tm-banner-host-harness';
@@ -23,6 +24,7 @@ export { TmFakeSession, tmTestProfile } from './src/tm-fake-session';
 export { TmFakeTabBus } from './src/tm-fake-tab-bus';
 export { TmFakeTelemetry } from './src/tm-fake-telemetry';
 export { TmPageContextHarness } from './src/tm-page-context-harness';
+export { TmTenantPickerHarness, type TmTenantPickerName, TmTenantPickerRowHarness } from './src/tm-tenant-picker-harness';
 export { tmTestEntities, type TmTestEntities } from './src/tm-test-entities';
 export { tmTestEntitiesChunk, tmTestMetadata } from './src/tm-test-metadata';
 export { tmWarmTenant, type TmWarmTenantOptions } from './src/tm-warm-tenant';

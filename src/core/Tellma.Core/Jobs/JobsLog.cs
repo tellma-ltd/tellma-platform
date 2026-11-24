@@ -265,6 +265,19 @@ namespace Tellma.Core.Jobs
         public static partial void SchedulerTickFailed(ILogger logger, Exception exception, int count);
 
         /// <summary>
+        ///     An announcement of a tick's second step failed after its commit was proven but its
+        ///     response lost; the schedules fired and advanced, but a wake or an event may not have gone out.
+        /// </summary>
+        /// <param name="logger">The logger.</param>
+        /// <param name="exception">The failure.</param>
+        /// <param name="count">The schedules the tick leased.</param>
+        [LoggerMessage(
+            EventName = "SchedulerTickAnnouncementFailed",
+            Level = LogLevel.Error,
+            Message = "Firing {Count} leased schedule(s) committed, but announcing it failed; the poller and the clients learn of it at their next read.")]
+        public static partial void SchedulerTickAnnouncementFailed(ILogger logger, Exception exception, int count);
+
+        /// <summary>
         ///     A schedule the tick leased was no longer leased under its token when it fired: the lease
         ///     lapsed, or a save of the schedule released it. Nothing the step wrote survives.
         /// </summary>

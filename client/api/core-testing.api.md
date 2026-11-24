@@ -4,6 +4,7 @@
 
 ```ts
 
+import { BaseHarnessFilters } from '@angular/cdk/testing';
 import { ComponentHarness } from '@angular/cdk/testing';
 import { EnvironmentProviders } from '@angular/core';
 import { HarnessPredicate } from '@angular/cdk/testing';
@@ -11,6 +12,7 @@ import * as i0 from '@angular/core';
 import { Injector } from '@angular/core';
 import { Observable } from 'rxjs';
 import { Signal } from '@angular/core';
+import { TestKey } from '@angular/cdk/testing';
 
 // @public
 export function provideTellmaStateTesting(): EnvironmentProviders;
@@ -26,6 +28,28 @@ export class TmBannerHostHarness extends ComponentHarness {
     static hostSelector: string;
     isEmpty(): Promise<boolean>;
     isOpen(): Promise<boolean>;
+}
+
+// @public
+export class TmColumnFilterHarness extends ComponentHarness {
+    apply(): Promise<void>;
+    clear(): Promise<void>;
+    getCheckboxes(): Promise<TmCheckboxHarness[]>;
+    getDatePicker(): Promise<TmDatePickerHarness | null>;
+    getDateRange(): Promise<TmDateRangeHarness | null>;
+    getEntityField(): Promise<TmEntityMultiFieldHarness | null>;
+    getEnumPicker(): Promise<TmEntityMultiPickerHarness | null>;
+    getGroupLabel(): Promise<string | null>;
+    getMultiSelect(): Promise<TmMultiSelectHarness | null>;
+    getNumberInputs(): Promise<TmNumberHarness[]>;
+    getOperator(): Promise<TmSelectHarness | null>;
+    getOperatorText(): Promise<string | null>;
+    getRadioGroup(): Promise<TmRadioGroupHarness | null>;
+    getTextInput(): Promise<TmInputHarness | null>;
+    static hostSelector: string;
+    isApplyEnabled(): Promise<boolean>;
+    pressEnter(): Promise<void>;
+    selectOperator(label: string): Promise<void>;
 }
 
 // @public
@@ -158,11 +182,11 @@ export class TmFakeTelemetry extends TmTelemetry {
     clear(): void;
     error(error: unknown, context?: Readonly<Record<string, string>>): void;
     readonly errors: Signal<readonly unknown[]>;
-    event(name: string, props?: TmTelemetryProps): void;
+    event(name: string, props?: TmTelemetryProps, options?: TmTelemetryOptions): void;
     flush(): void;
     readonly flushes: Signal<number>;
     readonly recent: Signal<readonly TmTelemetryItem[]>;
-    timing(name: string, ms: number, props?: TmTelemetryProps): void;
+    timing(name: string, ms: number, props?: TmTelemetryProps, options?: TmTelemetryOptions): void;
     static ɵfac: i0.ɵɵFactoryDeclaration<TmFakeTelemetry, never>;
     static ɵprov: i0.ɵɵInjectableDeclaration<TmFakeTelemetry>;
 }
@@ -178,6 +202,51 @@ export class TmPageContextHarness {
     top(includeData?: boolean): TmPageContextSnapshot | null;
     static ɵfac: i0.ɵɵFactoryDeclaration<TmPageContextHarness, never>;
     static ɵprov: i0.ɵɵInjectableDeclaration<TmPageContextHarness>;
+}
+
+// @public
+export class TmTenantPickerHarness extends ComponentHarness {
+    clickErrorAction(label: string): Promise<void>;
+    dismissNotice(): Promise<void>;
+    getEmptyState(): Promise<{
+        readonly heading: string;
+        readonly message: string;
+    } | null>;
+    getError(): Promise<string | null>;
+    getNoMatch(): Promise<string | null>;
+    getNotice(): Promise<string | null>;
+    getRows(): Promise<TmTenantPickerRowHarness[]>;
+    getSearchText(): Promise<string | null>;
+    getTitle(): Promise<string>;
+    hasSearch(): Promise<boolean>;
+    static hostSelector: string;
+    isLoading(): Promise<boolean>;
+    isSearchFocused(): Promise<boolean>;
+    search(text: string): Promise<void>;
+    signOutFromEmptyState(): Promise<void>;
+    submitSearch(): Promise<void>;
+}
+
+// @public
+export interface TmTenantPickerName {
+    readonly lang: string | null;
+    readonly text: string;
+}
+
+// @public
+export class TmTenantPickerRowHarness extends ComponentHarness {
+    connect(): Promise<void>;
+    getBadges(): Promise<string[]>;
+    getConnectHref(): Promise<string | null>;
+    getConnectName(): Promise<string | null>;
+    getName(): Promise<TmTenantPickerName>;
+    getOtherNames(): Promise<TmTenantPickerName[]>;
+    getSecondLine(): Promise<string>;
+    getUnavailableReason(): Promise<string | null>;
+    static hostSelector: string;
+    hoverConnect(): Promise<void>;
+    isDimmed(): Promise<boolean>;
+    isNested(): Promise<boolean>;
 }
 
 // @public

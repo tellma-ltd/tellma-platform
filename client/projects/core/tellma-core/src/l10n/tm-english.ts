@@ -52,8 +52,7 @@ export const TM_STRINGS_EN = {
     },
   },
   shell: {
-    tenantPicker: { title: 'Choose a company' },
-    signedOut: { title: "You're signed out", signIn: 'Sign in' },
+    signedOut: { signIn: 'Sign in' },
   },
   entity: {
     permission: '{resource}: {action}',

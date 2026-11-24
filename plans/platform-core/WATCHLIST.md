@@ -1271,6 +1271,7 @@ Size: about 37k LOC for 0030, 41k for 0031 and 41k for 0032, all including tests
 - No new npm packages
 - (D-046, from PC-019) The enum-name clash startup check (`<entity schema>.<EnumTypeName>`) covers only entity-property enums. When the 0029 emit lands, extend it to setting-key and action-field enums.
 - PC-033 → the 0029 client display-name renderer: `client/projects/core/tellma-core/src/entity/display-name-golden.json` pins the .NET renderer's date rows, `3/15/2026` (`en`, gregorian) and `15/3/2026` (`ar-SA-u-nu-latn`, gregorian, compared after bidi marks are stripped). The TypeScript renderer must produce the same strings against the same file; nothing on the client reads it yet.
+- PC-120 → PC-121: move `tmQxInsert` (0.20 KB) and `tmQxParameters` (0.14 KB) out of `@tellma/core/entity` into the expression editor's own entry point or chunk, since only the editor, the path picker and report parameters use them (D-260); keep `tmQxLex`, `ɵtmQxPaths` and the builder and printer in `/entity`, which select plans and filter leaves need on the first frame. `/entity` measures 24.12 KB (ceiling 24.5) after PC-120's re-split against spec 0029's roughly 28 KB, so the editor and path picker belong outside its measure too. `tmQxInsert` keeps every token apart, so a drop needs no re-spacing of its own.
 
 ## 0030
 

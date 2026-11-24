@@ -43,9 +43,14 @@ namespace Tellma.Core.Data.Batches
     ///         it ran, and before its commit callbacks, the platform's own completion steps run
     ///         (<see cref="OnExecuted" />): settling id reservations, stamping saved entities.
     ///     </para>
+    ///     <para>
+    ///         A batch whose commit only the commit probe proved runs no commit callback, since its
+    ///         results were never completed. Its owner may run the announcements its composers
+    ///         registered for that case instead (<see cref="RunProvenCommitCallbacks" />).
+    ///     </para>
     ///     <para>A batch is single-threaded: compose it, then execute it once.</para>
     /// </remarks>
-    internal sealed partial class DataBatch : IDataBatch, IBatchKeyTables, IBatchNamedTables, IBatchAuthority, IBatchDependencies, IBatchOrdinals
+    internal sealed partial class DataBatch : IDataBatch, IBatchKeyTables, IBatchNamedTables, IBatchAuthority, IBatchDependencies, IBatchOrdinals, IBatchProvenCommit
     {
         /// <summary>The executor that runs the batch.</summary>
         private readonly DataExecutor _executor;
@@ -85,6 +90,12 @@ namespace Tellma.Core.Data.Batches
 
         /// <summary>The commit callbacks, in registration order.</summary>
         private readonly List<Action<BatchOutcome>> _committed = [];
+
+        /// <summary>The announcements of a commit only the probe proved, in registration order.</summary>
+        private readonly List<Action> _proven = [];
+
+        /// <summary>Whether the owner ran the announcements of a proven commit.</summary>
+        private bool _provenRan;
 
         /// <summary>The platform's completion steps, in registration order.</summary>
         private readonly List<Func<CancellationToken, Task>> _executed = [];
@@ -517,6 +528,51 @@ namespace Tellma.Core.Data.Batches
             ArgumentNullException.ThrowIfNull(callback);
             EnsureComposing();
             _committed.Add(callback);
+        }
+
+        /// <inheritdoc />
+        public void OnCommitProven(Action callback)
+        {
+            ArgumentNullException.ThrowIfNull(callback);
+            EnsureComposing();
+            _proven.Add(callback);
+        }
+
+        /// <summary>
+        ///     Runs the announcements of a commit only the commit probe proved, once, in registration
+        ///     order: the owner of a batch that surfaced as committed without its response calls this
+        ///     after it caught the proof. A failing announcement is handed to
+        ///     <paramref name="failed" /> and the rest still run.
+        /// </summary>
+        /// <param name="failed">Told of each announcement that threw.</param>
+        /// <exception cref="InvalidOperationException">The batch has not executed, or the announcements already ran.</exception>
+        internal void RunProvenCommitCallbacks(Action<Exception> failed)
+        {
+            ArgumentNullException.ThrowIfNull(failed);
+            if (_broken || _stage != Stage.Sealed)
+            {
+                throw new InvalidOperationException("The batch has not executed, so no commit of it can have been proven.");
+            }
+
+            if (_provenRan)
+            {
+                throw new InvalidOperationException("The announcements of the batch's proven commit already ran. They run once.");
+            }
+
+            _provenRan = true;
+
+            // --- Outside the transaction, never thrown: as the executor runs the commit callbacks ---
+            foreach (Action callback in _proven)
+            {
+                try
+                {
+                    callback();
+                }
+                catch (Exception exception) when (exception is not OutOfMemoryException)
+                {
+                    failed(exception);
+                }
+            }
         }
 
         /// <inheritdoc />

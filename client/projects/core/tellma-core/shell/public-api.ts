@@ -1,11 +1,15 @@
 /**
- * Public API Surface of @tellma/core/shell — the app's shells: the tenant
- * picker, the signed-out page and the tenant shell, which the route table
- * loads with the app.
+ * Public API Surface of @tellma/core/shell — the app's shells, in the frame
+ * they share: the tenantless shell with the tenant picker and the
+ * signed-out page, and the tenant shell, which the route table loads with
+ * the app.
  *
- * Each is a plain stand-in for now, enough for the app to boot, route and
- * render its pages; the shells with their app bars, launcher and pins
- * replace them.
+ * The tenantless shell and its two pages ship in a chunk of their own that
+ * only `/tenants` and `/signed-out` load, so this entry point exports their
+ * types; the route table reaches the classes through the component map. The
+ * tenant shell is a stand-in for now, enough for the app to boot, route and
+ * render its pages; the shell with its app bar, launcher and pins replaces
+ * it.
  *
  * @packageDocumentation
  */
@@ -16,8 +20,8 @@
 // LICENSE file in the root directory of this source tree.
 
 export { TmTenantShell } from './src/tm-tenant-shell';
-export { TmTenantPicker } from './src/tm-tenant-picker';
-export { TmSignedOutPage } from './src/tm-signed-out-page';
+// The tenantless chunk's components, as types: the classes load with the chunk.
+export type { TmSignedOutPage, TmTenantlessShell, TmTenantPicker } from './src/tenantless/tm-tenantless';
 
 // The components the primary entry point loads by name, the shells above
 // among them; not for app code.
