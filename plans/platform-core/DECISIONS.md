@@ -384,6 +384,19 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-270 (orchestrator, 2026-11-24): PC-114 review 2 rulings
+
+- R2 (xhigh) on f65107a0..c3f7d4c6 found 1 blocking, 1 major and 4 minor. R1-1's fix is correct on every launch path: all 50 warm-launch requests go after the routed view renders.
+- R2-1, blocking: size:check had passed on a stale client/dist. A fresh build measures "." at 49.93 against 49.9. fix2 clean-builds, sets the honest ceiling (+0.05 under D-031) and re-runs every gate.
+  - Process note: agents must measure sizes on a fresh build. I add this to future briefs.
+- R2-2, major: the skeleton can paint in frame 1.
+  - fix2 adds a memoized route loader that returns synchronously once the /shell chunk is loaded, keeping /shell lazy and "." about the same.
+  - If that works, deviation 6 and D-266(b) fall away. If not, D-266(b) stays with Ahmad.
+- R2-3: the cold-LCP figure was skewed: no 4x throttle, the sign-in redirects included, and the multiplier hid the warning. fix2 corrects it, and the corrected figures feed D-266(a).
+- R2-4 (the container sweep killed live runs), R2-5 (other users rendered in the wrong language) and R2-6 (no test pinned the mail-drop check): all fixed in fix2.
+- The Linux e2e path has never run. It first runs at PC-114's integrate CI, and I watch that run.
+- PC-114 holds after fix2. PC-116, now in implementation, replaces its stand-in tenant picker, so expect a merge between the two.
+
 ### D-269 (orchestrator, 2026-11-24): a core typecheck against emitted entity types
 
 - PC-155's first CI failed only in acme-client. Its new attention helpers indexed entity rows with a string, and Acme's build re-checks core's sources with TmEntityTypes augmented by the closed emitted interfaces.
