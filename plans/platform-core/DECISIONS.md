@@ -384,6 +384,24 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-281 (orchestrator, 2026-11-24): PC-116's first-frame leak at integration
+
+- PC-116's integration (3b40cd3e) is green except lint:test. The build fixture's initialJs is 232.41 KB gzip against its 230 warn level, up from 212.72 on platform-core; the Acme client's is 232.89.
+- Root cause, measured from esbuild's stats: the primary statically reaches two core-ui entry points it does not use. Once PC-116's lazy tenantless chunk makes their code live, esbuild places that code in chunks main loads, so about 19.7 KB lands on every tenant route's first frame.
+  - The menu path: tm-button → tooltip controller → `ɵtmObserveLongPress` from @tellma/core-ui/menu.
+  - The image path: provide-tellma → `TM_BLOB_FETCHER` from @tellma/core-ui/image.
+  - R1 and phase 1 missed this: phase 1 passed with 0.04 KB to spare.
+- Ruling: PC-116 fixes it at integration, because a first-frame regression must not land. Hiding it by moving the fixture's warn level or the test's expectation is rejected.
+  - Move `ɵtmObserveLongPress` to an entry point tooltip can import without the menu.
+  - Give `TM_BLOB_FETCHER` a home the primary can import without tm-image, with @tellma/core-ui/image still re-exporting it.
+  - Add a static-graph exclusion so the primary can never again reach core-ui/menu or core-ui/image, shown failing before the fix.
+- If the token's new home is a public entry point, it is flagged for Ahmad as an API addition.
+- The rest of the integration is accepted: four conflicts kept both sides; the ./shell-strings re-split (born at 1, 0.99 measured; ./platform-strings back to 3.45 of 4; locale-ar root 0.46 of 0.5); "." raised by the measured +0.012 KB to 50.16 (D-214). The delayed run's only failure was the known PC-F85.
+- Outcome (0b160367): the fixture's initialJs is 215.55 and Acme's 216.01, both with no warning. The guard failed on both chains before the fix and passes after.
+  - `TM_BLOB_FETCHER` now lives in a new public entry point, @tellma/core-ui/blob-fetcher. It cannot live in core, because core-ui cannot import core. For Ahmad: accept the new entry point.
+  - The rest above platform-core plus /shell's intent (+2.8 KB fixture, +5.6 KB Acme) is accepted. Most of it is Angular runtime the new templates use. The parts that can be cut open PC-F91 (lucide's whole-index import) and PC-F92 (TmKbd); both are platform-wide and non-blocking.
+
+
 ### D-280 (orchestrator, 2026-11-24): PC-114 back to hold; PC-116 integrates first
 
 - PC-114's second CI round (45394472159) was red only on its new Linux browser leg. 17 tests timed out, each retried once.
