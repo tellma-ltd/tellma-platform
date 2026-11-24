@@ -20,9 +20,9 @@ using Tellma.Core.Abstractions.Notifications;
 using Tellma.Core.Abstractions.Realtime;
 using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.Abstractions.Validation;
+using Tellma.Core.Caching;
 using Tellma.Core.Crud.Validation;
 using Tellma.Core.Jobs;
-using Tellma.Core.Notifications;
 using Tellma.Testing.Entities;
 using static Tellma.Core.IntegrationTests.Jobs.JobRunDatabase;
 
@@ -318,6 +318,45 @@ namespace Tellma.Core.IntegrationTests.Jobs
             Assert.Empty(fixture.Script.Invocations);
             Assert.Empty(fixture.Notices.Raised);
             AssertAnnouncedAfterLostResponse(exhausted, [ActiveUserId]);
+        }
+
+        [Fact]
+        public async Task A_completion_whose_response_is_lost_after_its_commit_still_sends_the_events_its_enlisted_writes_announce()
+        {
+            int id = await ShipmentJobAsync(0, "stored-0");
+
+            // --- The enlisted save's effect publishes an event and bumps the settings tag on the completion batch ---
+            fixture.Script.ShipmentEffect = static (context, publisher) =>
+            {
+                publisher.Publish(context.Batch, new ClientEvent(JobRunKeys.ShippedEvent, [ActiveUserId], null));
+                context.Batch.BumpVersionTag(VersionTagNames.Settings);
+                return Task.CompletedTask;
+            };
+            fixture.Script.Ship = async (batch, context, writer) =>
+            {
+                batch.Single.Item.Payload = "shipped";
+                _ = await writer.EnlistSaveAsync(context.Host, [batch.Single.Item]);
+                _ = await context.Host.PersistAsync(Token);
+
+                // The validation rounds have ended: the completion is the next batch to end.
+                fixture.Audit.LoseResponse(batchesAhead: 0);
+            };
+
+            PolledJob polled = Assert.Single(await PollAsync(JobRunKeys.Ship));
+
+            // --- The outcome and the enlisted write committed ---
+            Assert.Equal((id, JobStatus.Succeeded), (polled.JobId, polled.Status));
+            Assert.Equal(["shipped"], await PayloadsAsync());
+
+            // --- The effect's event, the bump's announcement and the requester's change all went out, each once ---
+            ClientEvent shipped = Assert.Single(fixture.Events.Published, static published => published.Name == JobRunKeys.ShippedEvent);
+            Assert.Equal([ActiveUserId], shipped.UserIds);
+            Guid settings = await SqlServerFixture.ScalarAsync<Guid>(fixture.ConnectionString, $"SELECT [Tag] FROM [core].[VersionTags] WHERE [Name] = N'{VersionTagNames.Settings}';");
+            ClientEvent cache = Assert.Single(fixture.Events.Published, static published => published.Name == VersionTagBumpContributor.CacheChangedEvent);
+            Assert.Empty(cache.UserIds);
+            Assert.Equal(new CacheChangedPayload(VersionTagNames.Settings, VersionTagWire.Settings(new VersionTag(settings))), cache.Payload);
+            ClientEvent changed = Assert.Single(fixture.Events.Published, static published => published.Name == JobNotices.ChangedEvent);
+            Assert.Equal((ActiveUserId, id), (Assert.Single(changed.UserIds), Assert.IsType<JobChangedPayload>(changed.Payload).JobId));
         }
 
         [Fact]
@@ -1089,7 +1128,8 @@ namespace Tellma.Core.IntegrationTests.Jobs
 
         /// <summary>
         ///     Asserts what a completion whose response was lost announced: the poller woken, the job's
-        ///     change to its requester, and one inbox change to every recipient its notices named.
+        ///     change to its requester, and its notices handed to the notifier's announcement of a proven
+        ///     commit, which tells their recipients' inboxes.
         /// </summary>
         /// <param name="jobId">The requested job.</param>
         /// <param name="recipients">The notices' recipients, in ascending order.</param>
@@ -1098,8 +1138,7 @@ namespace Tellma.Core.IntegrationTests.Jobs
             Assert.True(fixture.Wakes > 0);
             ClientEvent changed = Assert.Single(fixture.Events.Published, static published => published.Name == JobNotices.ChangedEvent);
             Assert.Equal((ActiveUserId, jobId), (Assert.Single(changed.UserIds), Assert.IsType<JobChangedPayload>(changed.Payload).JobId));
-            ClientEvent inbox = Assert.Single(fixture.Events.Published, static published => published.Name == Notifier.InboxChangedEvent);
-            Assert.Equal(recipients, inbox.UserIds);
+            Assert.Equal(recipients, fixture.Notices.Proven.SelectMany(static notice => notice.RecipientIds).Distinct().Order());
         }
 
         /// <summary>The trace id a log record's scopes carry, as the logger factory adds it from the current activity.</summary>

@@ -163,7 +163,7 @@ namespace Tellma.Core.IntegrationTests.Jobs
                     // --- The handlers' script, the recorded notices and events, the fixed administrators and the log ---
                     _ = services.AddSingleton(Script);
                     _ = services.Replace(ServiceDescriptor.Scoped<INotifier>(_ => Notices));
-                    _ = services.AddScoped<IClientEventPublisher>(_ => Events);
+                    _ = services.AddScoped(Events.PublisherFor);
                     _ = services.Replace(ServiceDescriptor.Scoped<IAdministratorDirectory>(static _ => new FixedAdministrators()));
                     _ = services.AddFakeLogging();
 
@@ -513,8 +513,11 @@ namespace Tellma.Core.IntegrationTests.Jobs
         /// <summary>Whether the audit is suspended.</summary>
         private volatile bool _suspended;
 
-        /// <summary>How many batches end before the one that loses its response; -1 when none is armed.</summary>
+        /// <summary>How many writing batches end before the one that loses its response; -1 when none is armed.</summary>
         private int _losesResponseIn = -1;
+
+        /// <summary>The table whose next writer loses its response; null when none is armed.</summary>
+        private TableName? _losesResponseWriting;
 
         /// <summary>The fixture's audit; null when the host has none.</summary>
         public IDataBatchAudit? Inner { get; set; }
@@ -533,29 +536,50 @@ namespace Tellma.Core.IntegrationTests.Jobs
         }
 
         /// <summary>
-        ///     Arms a lost response: the batch that ends after <paramref name="batchesAhead" /> others
-        ///     committed, but its caller learns so only from the probe, as when the connection drops
-        ///     during the commit and the probe finds the batch's rows. Its results are never completed
-        ///     and its commit callbacks never run, as the executor's are not on that path.
+        ///     Arms a lost response: the writing batch that ends after <paramref name="batchesAhead" />
+        ///     others committed, but its caller learns so only from the probe, as when the connection
+        ///     drops during the commit and the probe finds the batch's rows. Its results are never
+        ///     completed and its commit callbacks never run, as the executor's are not on that path. A
+        ///     batch that declared no write, such as a cold cache's load, is not counted.
         /// </summary>
-        /// <param name="batchesAhead">How many batches end, as they are, before that one.</param>
+        /// <param name="batchesAhead">How many writing batches end, as they are, before that one.</param>
         public void LoseResponse(int batchesAhead)
         {
             ArgumentOutOfRangeException.ThrowIfNegative(batchesAhead);
             _ = Interlocked.Exchange(ref _losesResponseIn, batchesAhead);
         }
 
+        /// <summary>
+        ///     Arms a lost response for the next batch to end that declared a write to
+        ///     <paramref name="writing" />, however many batches end before it.
+        /// </summary>
+        /// <param name="writing">The table whose next writer loses its response.</param>
+        public void LoseResponse(TableName writing)
+        {
+            ArgumentNullException.ThrowIfNull(writing);
+            Volatile.Write(ref _losesResponseWriting, writing);
+        }
+
         /// <summary>Disarms a lost response that has not happened yet.</summary>
         public void Reset()
         {
             _ = Interlocked.Exchange(ref _losesResponseIn, -1);
+            Volatile.Write(ref _losesResponseWriting, null);
         }
 
         /// <inheritdoc />
         public async ValueTask AfterAsync(object? state, IReadOnlySet<TableName> writtenTables, CancellationToken cancellationToken)
         {
-            // --- The armed batch committed, and the probe is all its caller hears ---
-            if (Interlocked.Decrement(ref _losesResponseIn) == -1)
+            // --- The batch armed by a table it writes committed, and the probe is all its caller hears ---
+            // The exchange disarms it, so of two such batches ending together only one loses its response.
+            TableName? writing = Volatile.Read(ref _losesResponseWriting);
+            if (writing is not null && writtenTables.Contains(writing) && ReferenceEquals(Interlocked.CompareExchange(ref _losesResponseWriting, null, writing), writing))
+            {
+                throw new DataAccessAmbiguousException(new TimeoutException("The test dropped the connection during the commit."), CommitVerdict.Committed);
+            }
+
+            // --- The writing batch armed by its place in line committed, and the probe is all its caller hears ---
+            if (writtenTables.Count > 0 && Interlocked.Decrement(ref _losesResponseIn) == -1)
             {
                 throw new DataAccessAmbiguousException(new TimeoutException("The test dropped the connection during the commit."), CommitVerdict.Committed);
             }
@@ -619,13 +643,17 @@ namespace Tellma.Core.IntegrationTests.Jobs
         public DateTimeOffset DueAt => (DateTimeOffset)Columns["DueAt"]!;
     }
 
-    /// <summary>A client event publisher that records an event once its batch committed, and at once without a batch.</summary>
-    public sealed class CommittedEvents : IClientEventPublisher
+    /// <summary>
+    ///     The client events a host delivered, in place of a hub. Each scope's publisher is the
+    ///     platform's own, with its refusals and its coalescing of a batch's events into one delivery
+    ///     once the batch committed, delivering here instead of to connections.
+    /// </summary>
+    public sealed class CommittedEvents
     {
-        /// <summary>The events, in the order recorded.</summary>
+        /// <summary>The events, in the order delivered.</summary>
         private readonly ConcurrentQueue<ClientEvent> _events = new();
 
-        /// <summary>The events recorded since the last clear.</summary>
+        /// <summary>The events delivered since the last clear.</summary>
         public IReadOnlyList<ClientEvent> Published => [.. _events];
 
         /// <summary>Forgets every event.</summary>
@@ -634,30 +662,34 @@ namespace Tellma.Core.IntegrationTests.Jobs
             _events.Clear();
         }
 
-        /// <inheritdoc />
-        public void Publish(IDataBatch? batch, ClientEvent clientEvent)
+        /// <summary>Creates the publisher of one scope, which delivers here.</summary>
+        /// <param name="services">The scope's services.</param>
+        /// <returns>The publisher.</returns>
+        public IClientEventPublisher PublisherFor(IServiceProvider services)
         {
-            ArgumentNullException.ThrowIfNull(clientEvent);
-            if (batch is null)
-            {
-                _events.Enqueue(clientEvent);
-                return;
-            }
-
-            batch.OnCommitted(_ => _events.Enqueue(clientEvent));
+            ArgumentNullException.ThrowIfNull(services);
+            return new Publisher(services.GetRequiredService<IClientEventRegistry>(), services.GetRequiredService<ILogger<CommittedEvents>>(), this);
         }
 
-        /// <inheritdoc />
-        public Task PublishAsync(ClientEvent clientEvent)
+        /// <summary>The platform's publisher, delivering to the fixture's events.</summary>
+        /// <param name="registry">The registered client events.</param>
+        /// <param name="logger">Where a failed delivery is logged.</param>
+        /// <param name="sink">The events it delivers to.</param>
+        private sealed class Publisher(IClientEventRegistry registry, ILogger logger, CommittedEvents sink) : Core.Notifications.ClientEventPublisher(registry, logger)
         {
-            Publish(null, clientEvent);
-            return Task.CompletedTask;
+            /// <inheritdoc />
+            protected override Task DeliverAsync(ClientEvent clientEvent)
+            {
+                sink._events.Enqueue(clientEvent);
+                return Task.CompletedTask;
+            }
         }
     }
 
     /// <summary>
-    ///     A notifier that records each request and each withdrawal once its batch committed, and each
-    ///     sent on its own at once, and delivers nothing; a test may have it refuse every request, as a notifier whose
+    ///     A notifier that records each request and each withdrawal once its batch committed, each
+    ///     request of a batch whose commit only the probe proved apart, and each sent on its own at
+    ///     once, and delivers nothing; a test may have it refuse every request, as a notifier whose
     ///     statement cannot be composed would.
     /// </summary>
     public sealed class CommittedNotices : INotifier
@@ -668,11 +700,17 @@ namespace Tellma.Core.IntegrationTests.Jobs
         /// <summary>The withdrawals, in the order recorded.</summary>
         private readonly ConcurrentQueue<WithdrawRequest> _withdrawals = new();
 
+        /// <summary>The requests of batches whose commit only the probe proved, in the order announced.</summary>
+        private readonly ConcurrentQueue<NotificationRequest> _proven = new();
+
         /// <summary>The requests recorded since the last clear.</summary>
         public IReadOnlyList<NotificationRequest> Raised => [.. _requests];
 
         /// <summary>The withdrawals recorded since the last clear.</summary>
         public IReadOnlyList<WithdrawRequest> Withdrawn => [.. _withdrawals];
+
+        /// <summary>The requests of batches whose commit only the probe proved, announced since the last clear.</summary>
+        public IReadOnlyList<NotificationRequest> Proven => [.. _proven];
 
         /// <summary>Whether every request appended to a batch is refused with an exception; off again after each clear.</summary>
         public bool Refuses { get; set; }
@@ -688,6 +726,7 @@ namespace Tellma.Core.IntegrationTests.Jobs
         {
             _requests.Clear();
             _withdrawals.Clear();
+            _proven.Clear();
             Refuses = false;
             Withdrawing = null;
         }
@@ -709,6 +748,15 @@ namespace Tellma.Core.IntegrationTests.Jobs
                 foreach (NotificationRequest request in raised)
                 {
                     _requests.Enqueue(request);
+                }
+            });
+
+            // --- As the platform notifier does, the requests are announced after a commit only the probe proved ---
+            (batch as IBatchProvenCommit)?.OnCommitProven(() =>
+            {
+                foreach (NotificationRequest request in raised)
+                {
+                    _proven.Enqueue(request);
                 }
             });
         }
@@ -778,6 +826,9 @@ namespace Tellma.Core.IntegrationTests.Jobs
         /// <summary>A key the feature retired: its jobs are cancelled by the hourly sweep.</summary>
         public const string Retired = "test.retired";
 
+        /// <summary>The client event the shipments' scripted effect publishes.</summary>
+        public const string ShippedEvent = "test.shipped";
+
         /// <summary>A warning the handlers raise, which a job's initiator may confirm.</summary>
         public const string Backdated = "Test.Backdated";
 
@@ -811,6 +862,9 @@ namespace Tellma.Core.IntegrationTests.Jobs
         /// <summary>What <see cref="JobRunKeys.Inbox" /> does.</summary>
         public Func<JobBatch<Job>, JobRunContext, Task>? Inbox { get; set; }
 
+        /// <summary>What a shipment save's persist effect appends, given the scope's client event publisher; nothing when null.</summary>
+        public Func<PersistContext<Shipment>, IClientEventPublisher, Task>? ShipmentEffect { get; set; }
+
         /// <summary>The batches the handlers were invoked with, by key, in order.</summary>
         public ConcurrentQueue<(string Key, int[] JobIds)> Invocations { get; } = new();
 
@@ -821,6 +875,7 @@ namespace Tellma.Core.IntegrationTests.Jobs
             Ship = null;
             Steps = null;
             Inbox = null;
+            ShipmentEffect = null;
             Invocations.Clear();
         }
 
@@ -835,7 +890,7 @@ namespace Tellma.Core.IntegrationTests.Jobs
         }
     }
 
-    /// <summary>The feature of the scripted handlers and the warnings they raise.</summary>
+    /// <summary>The feature of the scripted handlers, the warnings they raise, the shipments' scripted effect and the event it publishes.</summary>
     internal sealed class JobRunFeature : ITellmaFeature
     {
         /// <inheritdoc />
@@ -857,6 +912,8 @@ namespace Tellma.Core.IntegrationTests.Jobs
                 .JobHandler<RunInboxHandler>()
                 .JobHandler<RunSweepHandler>()
                 .RetiredJobKey(JobRunKeys.Retired)
+                .PersistEffect<Shipment, RunShipmentEffect>()
+                .ClientEvent(JobRunKeys.ShippedEvent)
                 .Confirmation(JobRunKeys.Backdated)
                 .Confirmation(JobRunKeys.Negative);
             foreach (string key in JobRunKeys.Numbered)
@@ -927,6 +984,19 @@ namespace Tellma.Core.IntegrationTests.Jobs
             ArgumentNullException.ThrowIfNull(batch);
             script.Invoked(JobRunKeys.Inbox, batch);
             return script.Inbox?.Invoke(batch, new JobRunContext(services, host)) ?? Task.CompletedTask;
+        }
+    }
+
+    /// <summary>The shipments' scripted persist effect, which appends nothing until a test sets it.</summary>
+    /// <param name="script">The script.</param>
+    /// <param name="publisher">The scope's client event publisher.</param>
+    public sealed class RunShipmentEffect(JobRunScript script, IClientEventPublisher publisher) : IPersistEffect<Shipment>
+    {
+        /// <inheritdoc />
+        public Task ContributeAsync(PersistContext<Shipment> context)
+        {
+            ArgumentNullException.ThrowIfNull(context);
+            return script.ShipmentEffect?.Invoke(context, publisher) ?? Task.CompletedTask;
         }
     }
 

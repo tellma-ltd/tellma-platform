@@ -233,6 +233,31 @@ namespace Tellma.Core.IntegrationTests.Jobs
             Assert.Equal(JobNotices.SchedulePausedKey(id), notice.DedupKey);
         }
 
+        // --- The tick: a step 2 whose commit only the probe proved ---
+
+        [Fact]
+        public async Task A_tick_whose_step_two_response_is_lost_after_its_commit_still_wakes_the_poller_for_the_jobs_it_fired()
+        {
+            DateTimeOffset due = (await DatabaseNowAsync()).AddMinutes(-1);
+            int fired = await InsertScheduleAsync(FixtureJobKeys.Probe, zone: Utc, nextDueAt: due);
+            int paused = await InsertScheduleAsync(FixtureJobKeys.Probe, runAs: InactiveUserId, nextDueAt: due);
+
+            // Step 2 is the tick's one batch that writes the schedules: the pause's.
+            fixture.Audit.LoseResponse(JobStatements.Schedules);
+            _ = await TickAsync();
+
+            // --- Step 2 committed: one schedule fired its job, the other paused ---
+            Assert.Single(await JobsOfAsync(fired));
+            Assert.Equal(nameof(SchedulePausedReason.OwnerInactive), (await ScheduleAsync(paused)).Get<string>("PausedReason"));
+
+            // --- No commit callback ran, yet the poller was woken to claim the fired job and the pause was announced ---
+            Assert.Empty(fixture.Notices.Raised);
+            Assert.True(fixture.Wakes > 0);
+            NotificationRequest notice = Assert.Single(fixture.Notices.Proven);
+            Assert.Equal(JobNotices.SchedulePausedKey(paused), notice.DedupKey);
+            Assert.DoesNotContain(fixture.Log.GetSnapshot(), static record => record.Id.Name is "SchedulerTickFailed" or "SchedulerTickLeaseLost");
+        }
+
         // --- The tick: several schedules at once ---
 
         [Fact]

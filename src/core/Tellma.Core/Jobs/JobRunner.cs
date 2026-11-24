@@ -23,7 +23,6 @@ using Tellma.Core.Crud.Save;
 using Tellma.Core.Crud.Validation;
 using Tellma.Core.Data;
 using Tellma.Core.Data.Batches;
-using Tellma.Core.Notifications;
 
 namespace Tellma.Core.Jobs
 {
@@ -664,9 +663,10 @@ namespace Tellma.Core.Jobs
             catch (DataAccessAmbiguousException ambiguous) when (ambiguous.Verdict == CommitVerdict.Committed)
             {
                 // The probe found the batch committed; its response was lost with the connection, and
-                // with it the batch's commit callbacks.
+                // with it the batch's commit callbacks. Their announcements run first, as the callbacks
+                // would have run inside the round trip, then the enlisted writes' post-commit work.
+                AfterProvenCommit(main.Batch, partition.TenantId, handler);
                 await AfterCommitAsync(main.Frame, committed: null, handler).ConfigureAwait(false);
-                AfterProvenCommit(services, partition.TenantId, handler, completions, notices);
                 Completed(partition.TenantId, handler, completions, partition.ClaimedAt);
                 return (Settled(completions), null);
             }
@@ -817,6 +817,10 @@ namespace Tellma.Core.Jobs
             IReadOnlyList<int> administrators = await AdministratorsAsync(services, handler, completions).ConfigureAwait(false);
             List<NotificationRequest> notices = Notices(completions, handler.Options, administrators, successNotices: null);
             IGuardedBatchRunner runner = services.GetRequiredService<IGuardedBatchRunner>();
+
+            // The batch last composed, which a failed guard recomposes once: the one whose commit the
+            // probe may prove.
+            DataBatch? sent = null;
             try
             {
                 _ = await runner.RunAsync(
@@ -824,6 +828,7 @@ namespace Tellma.Core.Jobs
                     (user, batch) =>
                     {
                         var data = (DataBatch)batch;
+                        sent = data;
                         _ = JobStatements.Complete(data, token, Rows(completions));
                         AppendWorkerStatements(data, tenantId, completions, notices, services);
                         return ValueTask.CompletedTask;
@@ -835,7 +840,7 @@ namespace Tellma.Core.Jobs
             {
                 // The probe found the batch committed; its response was lost with the connection, and
                 // with it the batch's commit callbacks.
-                AfterProvenCommit(services, tenantId, handler, completions, notices);
+                AfterProvenCommit(sent, tenantId, handler);
             }
 
             Completed(tenantId, handler, completions, claimedAt);
@@ -874,41 +879,30 @@ namespace Tellma.Core.Jobs
             }
         }
 
-        // A batch's commit callbacks run only when its response is read, so a commit the probe proved
-        // runs none: not the notifier's (inbox.changed and the wake for the delivery jobs), not the
-        // publisher's (job.changed), not the queue's or the worker's wakes. What they would have done
-        // is done here without the lost results: the wake unconditionally, job.changed to each
-        // requester, and inbox.changed to every recipient a notice named, a superset of the inboxes
-        // that changed, which only costs a client a refetch.
-        /// <summary>Wakes the poller and publishes the events a completion's commit would have, after a commit the probe proved; never throws.</summary>
-        /// <param name="services">The scope's services.</param>
+        // Spec 0012 §6.5: a batch's commit callbacks run only when its response is read, so a commit
+        // the probe proved runs none, whoever registered them: the worker, the notifier, the
+        // publisher, the version-tag bump, or a write the handler enlisted (spec 0020 §5.4). Each
+        // composer that can announce its part without the lost results registered that announcement
+        // on the batch too, and it runs here: job.changed and every other event published on the
+        // batch, inbox.changed to a superset of the changed inboxes, cache.changed for the tags the
+        // batch moved. The wakes are not announced one by one: the poller is woken unconditionally,
+        // which covers the jobs the batch queued, whoever queued them, and a job queued again at once.
+        /// <summary>
+        ///     Wakes the poller and runs the announcements of the completion batch's commit, after a
+        ///     commit the probe proved; never throws.
+        /// </summary>
+        /// <param name="batch">The batch whose commit was proven; null when the completion never composed one.</param>
         /// <param name="tenantId">The tenant.</param>
         /// <param name="handler">The jobs' handler.</param>
-        /// <param name="completions">The outcomes.</param>
-        /// <param name="notices">The notices the completion carried.</param>
-        private void AfterProvenCommit(
-            IServiceProvider services, int tenantId, JobHandlerRegistration handler, IReadOnlyList<JobCompletion> completions, IReadOnlyList<NotificationRequest> notices)
+        private void AfterProvenCommit(DataBatch? batch, int tenantId, JobHandlerRegistration handler)
         {
             try
             {
                 // --- The wake: the jobs the batch queued, whoever queued them, are claimed now ---
                 _wake.Wake(tenantId);
 
-                // --- The events, each sent now rather than on a commit that already happened ---
-                IClientEventPublisher publisher = services.GetRequiredService<IClientEventPublisher>();
-                foreach (JobCompletion completion in completions)
-                {
-                    if (completion.Job.RequestedById is int requester)
-                    {
-                        publisher.Publish(null, JobNotices.Changed(completion.Job.Id, requester));
-                    }
-                }
-
-                int[] recipients = [.. notices.SelectMany(static notice => notice.RecipientIds).Distinct().Order()];
-                if (recipients.Length > 0)
-                {
-                    publisher.Publish(null, new ClientEvent(Notifier.InboxChangedEvent, recipients, null));
-                }
+                // --- The announcements: each failure logged, and the rest still made ---
+                batch?.RunProvenCommitCallbacks(failure => JobsLog.JobCompletionFailed(_logger, failure, handler.Key, ProvenCommitNext));
             }
             catch (Exception failure) when (failure is not OutOfMemoryException)
             {
