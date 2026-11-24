@@ -239,7 +239,13 @@ export function tmBuildRoutes(pages: readonly TmPageDeclaration[]): Routes {
   ];
   return [
     { path: '', pathMatch: 'full', canMatch: [tmLaunchMatch], canActivate: [tmSessionGuard], component: TmLaunchRedirect },
-    { path: 'tenants', canActivate: [tmSessionGuard], loadComponent: tmShellRoute('TmTenantPicker') },
+    {
+      path: 'tenants',
+      canActivate: [tmSessionGuard],
+      loadComponent: tmShellRoute('TmTenantPicker'),
+      // The shell frame registers the title's string (spec 0027 §6.2).
+      data: { titleKey: 'tm.shell.tenants' } satisfies Partial<TmRouteData>,
+    },
     { path: 'signed-out', loadComponent: tmShellRoute('TmSignedOutPage') },
     { matcher: tenantMatcher, canActivate: [tmSessionGuard], loadComponent: tmShellRoute('TmTenantShell'), children: tenant },
     {

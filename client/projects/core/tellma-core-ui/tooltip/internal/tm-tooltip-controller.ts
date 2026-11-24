@@ -6,8 +6,7 @@
 import { type ComponentRef, untracked, type ViewContainerRef } from '@angular/core';
 import type { AriaDescriber } from '@angular/cdk/a11y';
 
-import { ɵtmObserveLongPress } from '@tellma/core-ui/menu';
-import { tmPushEscapeDismissal } from '@tellma/core-ui/overlay';
+import { ɵtmObserveLongPress, tmPushEscapeDismissal } from '@tellma/core-ui/overlay';
 
 import { ɵTmTooltipPanel } from './tm-tooltip-panel';
 

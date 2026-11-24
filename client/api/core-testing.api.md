@@ -177,6 +177,51 @@ export class TmPageContextHarness {
 }
 
 // @public
+export class TmTenantPickerHarness extends ComponentHarness {
+    clickErrorAction(label: string): Promise<void>;
+    dismissNotice(): Promise<void>;
+    getEmptyState(): Promise<{
+        readonly heading: string;
+        readonly message: string;
+    } | null>;
+    getError(): Promise<string | null>;
+    getNoMatch(): Promise<string | null>;
+    getNotice(): Promise<string | null>;
+    getRows(): Promise<TmTenantPickerRowHarness[]>;
+    getSearchText(): Promise<string | null>;
+    getTitle(): Promise<string>;
+    hasSearch(): Promise<boolean>;
+    static hostSelector: string;
+    isLoading(): Promise<boolean>;
+    isSearchFocused(): Promise<boolean>;
+    search(text: string): Promise<void>;
+    signOutFromEmptyState(): Promise<void>;
+    submitSearch(): Promise<void>;
+}
+
+// @public
+export interface TmTenantPickerName {
+    readonly lang: string | null;
+    readonly text: string;
+}
+
+// @public
+export class TmTenantPickerRowHarness extends ComponentHarness {
+    connect(): Promise<void>;
+    getBadges(): Promise<string[]>;
+    getConnectHref(): Promise<string | null>;
+    getConnectName(): Promise<string | null>;
+    getName(): Promise<TmTenantPickerName>;
+    getOtherNames(): Promise<TmTenantPickerName[]>;
+    getSecondLine(): Promise<string>;
+    getUnavailableReason(): Promise<string | null>;
+    static hostSelector: string;
+    hoverConnect(): Promise<void>;
+    isDimmed(): Promise<boolean>;
+    isNested(): Promise<boolean>;
+}
+
+// @public
 export interface TmTestEntities {
     readonly chunk: TmEntitiesChunk;
     readonly summaries: readonly TmEntitySummary[];

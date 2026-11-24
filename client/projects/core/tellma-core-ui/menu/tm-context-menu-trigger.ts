@@ -5,7 +5,7 @@
 
 import { booleanAttribute, Directive, DestroyRef, ElementRef, inject, input } from '@angular/core';
 
-import { tmObserveLongPress } from './internal/long-press';
+import { ɵtmObserveLongPress } from '@tellma/core-ui/overlay';
 import type { TmMenu } from './tm-menu';
 
 /**
@@ -38,7 +38,7 @@ export class TmContextMenuTrigger {
     // Gate the long-press observer on the disabled state: a disabled trigger
     // starts no press timer and arms no suppression, so the platform's native
     // long-press context menu comes back and the follow-up tap is untouched.
-    const stop = tmObserveLongPress(
+    const stop = ɵtmObserveLongPress(
       this.element,
       (point) => this.tmContextMenuTrigger().open(point, { restoreFocus: this.element }),
       { enabled: () => !this.tmContextMenuTriggerDisabled() },

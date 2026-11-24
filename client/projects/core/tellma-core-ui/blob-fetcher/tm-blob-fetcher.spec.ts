@@ -11,7 +11,7 @@ import {
 } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
 
-import { TM_BLOB_FETCHER, type TmBlobFetcher } from './tm-blob-fetcher';
+import { TM_BLOB_FETCHER, type TmBlobFetcher } from '@tellma/core-ui/blob-fetcher';
 
 /**
  * The request the default fetcher sent: it goes out once `@angular/common/http`

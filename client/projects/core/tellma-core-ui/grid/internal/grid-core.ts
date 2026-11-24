@@ -72,12 +72,8 @@ import {
   tmParseNumber,
   type TmCalendar,
 } from '@tellma/core-ui/l10n';
-import {
-  ɵtmObserveLongPress,
-  type TmMenu,
-  type TmMenuEntry,
-  type TmMenuItem,
-} from '@tellma/core-ui/menu';
+import { type TmMenu, type TmMenuEntry, type TmMenuItem } from '@tellma/core-ui/menu';
+import { ɵtmObserveLongPress } from '@tellma/core-ui/overlay';
 // Types only: the editing code itself arrives through import() (loadEditing).
 import type {
   ɵTmGridEditing,

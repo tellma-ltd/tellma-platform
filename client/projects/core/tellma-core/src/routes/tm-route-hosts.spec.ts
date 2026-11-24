@@ -5,12 +5,12 @@
 
 import { tmShellComponent, tmShellRoute } from './tm-route-hosts';
 
-// The shell routes' loader: a promise until the shell's chunk is in memory,
-// then the component itself, so the router activates a first entry into the
-// route without waiting a task.
+// The shell routes' loader: a promise until the component's own load has
+// settled, then the component itself, so the router activates a later entry
+// into the route without waiting a task.
 
 describe('the shell route loader', () => {
-  it('returns the component itself once the shell has loaded', async () => {
+  it('returns the component itself once its load has settled', async () => {
     const load = tmShellRoute('TmTenantShell');
     const first = load();
     const component = first instanceof Promise ? await first : first;
@@ -18,13 +18,18 @@ describe('the shell route loader', () => {
     expect(load()).toBe(component);
   });
 
-  it("returns another route's component at once after one route loaded the shell", async () => {
+  it('returns at once a component that another load brought in, such as a preload', async () => {
+    const signedOut = await tmShellComponent('TmSignedOutPage')();
+
+    expect(tmShellRoute('TmSignedOutPage')()).toBe(signedOut);
+  });
+
+  it("keeps each component apart: a tenantless page's load does not stand in for another's", async () => {
     const picker = await tmShellComponent('TmTenantPicker')();
+    const signedOut = await tmShellComponent('TmSignedOutPage')();
 
-    const signedOut = tmShellRoute('TmSignedOutPage')();
-
-    expect(signedOut).not.toBeInstanceOf(Promise);
-    expect(signedOut).not.toBe(picker);
-    expect(signedOut).toBe(await tmShellComponent('TmSignedOutPage')());
+    expect(tmShellRoute('TmTenantPicker')()).toBe(picker);
+    expect(tmShellRoute('TmSignedOutPage')()).toBe(signedOut);
+    expect(picker).not.toBe(signedOut);
   });
 });

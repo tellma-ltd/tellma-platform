@@ -308,7 +308,8 @@ describe('TmErrorPresenter', () => {
       vi.spyOn(TestBed.inject(TmLaunch), 'takeAutomatic').mockReturnValue(false);
       const gone = new TmApiError({ kind: 'tenant-not-found', status: 404, code: 'tenant-not-found' });
       await presenter.present(gone, { kind: 'read' });
-      expect(sweep.mock.calls).toEqual([[{ tenant: 17 }]]);
+      // The idle sweep of the user's other sessions may run while the picker's chunk loads.
+      expect(sweep.mock.calls.filter(([rule]) => typeof rule === 'object' && 'tenant' in rule)).toEqual([[{ tenant: 17 }]]);
       expect(store.boot.read().lastTenantId).toBeNull();
       expect(store.doc(TM_T17, 'settings')()).toBeUndefined();
       expect(router.url).toBe('/tenants?notice=tenant-not-found&from=17');

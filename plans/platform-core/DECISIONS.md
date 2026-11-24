@@ -384,6 +384,84 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-280 (orchestrator, 2026-11-24): PC-114 back to hold; PC-116 integrates first
+
+- PC-114's second CI round (45394472159) was red only on its new Linux browser leg. 17 tests timed out, each retried once.
+- Root cause: the tests that call warmUp() wait for a service worker, and Chromium refuses to register one whose script fetch has a certificate error. A per-context ignoreHTTPSErrors does not cover that. On Windows the dev certificate is trusted in the OS store; on Linux Chromium reads NSS, which `dotnet dev-certs https --trust` does not update (its exit 4).
+  - The fix is reproduced on the suite's own Chromium: `--ignore-certificate-errors` in the Acme test browser's launch options, test-only. It keeps the .NET trust, which the host's own HTTPS fetch still needs.
+  - The same round added `--global-timeout` so a slow run still writes its report, and fixed two Windows races in PC-114's own tests.
+- A layout-shift intermittent remains unexplained: 3 in 44 local runs, where the cold entry's page never renders after the hold is released. It may be a product bug in the cold-entry path PC-114 changed. CI runs with failOnFlakyTests, so another round is likely, which is the case where I said I would hold PC-114.
+- Ruling:
+  - PC-114 commits its fixes without ": integrate" and goes back to hold, keeping its slot (D-255). It root-causes the layout-shift intermittent there, under D-011.
+  - PC-116 is released now, ahead of PC-114, so the queue does not stall. D-087 still holds: one integration at a time.
+  - PC-114 is first in line after PC-116 lands. D-272's merge notes then apply from PC-114's side: keep PC-114's TmLaunchCache, and make its memoized loader memoize PC-116's inner loader's class.
+- The agent's refused `rm -rf *` in a scratch folder was a permission block. It was notified as such and needed no action; the agent tried no other route.
+
+### D-279 (orchestrator, 2026-11-24): PC-F82 review 2 rulings
+
+- R2 found 0 blocking, 1 major and 2 minor on 322845ef. fix2 is the last implementer round (§4.4); after it PC-F82 holds behind the queue (D-087).
+- R2-1: fix it in fix2 by expand and contract, following spec 0010 Part A's N−1 rule (0012 §4.3). I am not asking Ahmad to waive it.
+  - Keep `SessionClients.AuthorizationId` for one more release. Write it as before (the latest authorization) and also write the new rows. Revocation revokes the column's authorization plus every row.
+  - Re-scaffold so the migration only creates the new table. That keeps the previous engine working on the new schema, and keeps every pre-upgrade session revocable through the column. No data copy is needed, so no migration is hand-edited.
+  - Add an upgrade test: a session registered before the migration is still revoked at logout after it.
+  - Dropping the column is opened as PC-F90, not before the release after the one that carries PC-F82.
+- R2-2: add tests for sign-out-everywhere through the new include, for the prune cascade with a real authorization, and for a duplicate-key conflict on the authorization row alone.
+- R2-3(b), added by the retry: fix it in fix2. Registration refuses a session that is already terminated, so a grant that loses to a logout gets no code, as it did before.
+- R2-3(a) is pre-existing: NotifyAsync ignores a revoke that loses on the concurrency token. It opens PC-F89 (log, audit, and re-read and retry the revoke).
+
+### D-278 (orchestrator, 2026-11-24): PC-114's integration fixes
+
+- CI 45387562810 on PC-114's merge (80f95902) was red in two jobs.
+  - acme-client (ubuntu-latest), PC-114's new Linux browser leg: the sign-in returned a 500 because the BFF could not fetch its own HTTPS discovery document. The dev certificate was created but not trusted on the runner. This is PC-114's.
+  - client-windows: a tm-tab-bus.spec drain timed out. PC-114 does not touch the tab bus, so it opens PC-F87 (D-011).
+- "PC-114: integrate (fixes)" (59f7b6d8) is accepted with one deviation from D-276. The `ɵloaded()` seam added about 10 bytes to "." and put it at 50.23 of 50.22, so the fix is spec-only: setUp waits until the flows chunk has registered its strings, which happens only once the chunk has loaded. No product code changed.
+- The Linux leg now runs `dotnet dev-certs https --trust` (exit 0 or 4 accepted), which reproduces as fixed in a Linux container. Neither existing precedent applied: identity-e2e uses plain HTTP, and the integration suites use TestServer.
+- The Windows nightly leg still only creates the certificate and will likely fail the same way. Trusting on Windows can prompt, so that leg opens PC-F88; it does not block PC-114.
+- Finding on the 300 ms injection: it charges every call of a per-call `import()` 300 ms, where a browser caches the module after the first load. That can fail tests the product would pass, and it is a lead for PC-F85. Until PC-F85 rules, a timeout under the injection on a per-call import path is attributed with that in mind.
+
+### D-277 (orchestrator, 2026-11-24): PC-F82 review 1 rulings
+
+- R1 found 0 blocking, 1 major and 1 minor on 04056370. The retry, the detach, the duplicate-key filter and the barrier tests are sound.
+- R1-1 is fixed in PC-F82, not deferred.
+  - As committed, the fix turns a fail-closed race (the losing grant got a 500 and no tokens) into a fail-open one. The loser gets a refresh token that a session logout does not revoke, which breaks spec 0003 §7.3's "logout stops renewal" for public and native clients.
+  - A checkpoint must not land a security regression, even a narrow one.
+  - The fix: the session registry holds every authorization a session's grants used, as rows keyed (session, client, authorization), and logout revokes them all. This also closes the same gap that already exists without the race, when a later grant asks for a scope the authorization lacks.
+  - The schema change goes through a generated Identity migration, never a hand-edited one.
+  - sp_getapplock is rejected: it closes only the race, and adds a lock and a transaction to every grant.
+  - If spec 0003 names the registry's shape, the change is recorded as a deviation.
+- R1-2: add a test that pins the registry catch's narrowness and its rethrow (a session deleted mid-grant gets no code).
+- The BFF re-challenge on temporarily_unavailable stays unbuilt. It is reachable only at four or more simultaneous grants extending one authorization, and the e2e sign-in retry stays.
+- fix1 adds a migration and changes a security path, which makes it a large fix1, so R2 runs at xhigh (§4.4).
+
+### D-276 (orchestrator, 2026-11-24): PC-114's delayed-import failures at integration
+
+- PC-114's integration (80f95902) ran full core under the 300 ms import delay: 2086 passed and 5 failed (four tm-session-flows specs and one tm-session-guard spec). The rule is that the delayed run gates the integration, so I had them attributed before landing.
+- Run alone under the same 26-site injection, twice on each tree, the four flows specs pass on platform-core (b8cd3adf) and fail on 80f95902. Making the shell route always lazy turned them green, which confirms the cause.
+  - The specs' setUp never waited for the lazily loaded flows chunk. It relied on navigation waiting for the shell route's import.
+  - PC-114 returns the cached shell route synchronously, so later tests switch to fake timers before the chunk resolves.
+- This is a test-timing bug that PC-114 exposed, not a production regression: sign-out and the bus handlers always chain on the chunk load. It is still PC-114's to fix before landing, in "PC-114: integrate (fixes)": an internal `ɵloaded()` on TmSessionPaths, awaited in setUp, plus the same check for other fake-timer specs.
+- The guard spec passes alone under the delay on both trees and failed only inside the full run, at 4,769 ms. It is not PC-114's: it is logged as a flaky row and opens PC-F86 (D-011).
+- PC-114's "." raise from 50.15 to 50.22 is the measured +0.07 KB, which is honest under D-031. The cap line reads 50.12 of 55.
+
+### D-275 (orchestrator, 2026-11-24): PC-124 review 1 rulings
+
+- R1 found 0 blocking, 2 major and 6 minor on a302765d, so there is no R2 (§4.4). A clean-build measure confirmed "." unchanged at 49.88 of 49.89 (cap 49.78 of 50) and ./search at 0.02 of 0.5. The 0.5 ceiling is honest under D-031; PC-126 raises it with its own measurement.
+- All ten deviations are accepted.
+- fix1 fixes:
+  - R1-1: a missing or malformed `#d=` payload leaves the address bar alone and builds no request, so the invalid-link state shows instead of an unfiltered list.
+  - R1-2: an opening flag for Back and Forward that skips page state (§4.2 step 3) and keeps steps 1 and 2 (§4.4).
+  - R1-3: the selection is restored from a matching snapshot whatever the query's source (§15.2).
+  - R1-4: each dropped column is reported once, under its real source (a bad tile path under `declaration`).
+  - R1-5: the canonical query's drop of an order on an expression column is reported with its own reason, not `unknown`; the non-sortable rule is recorded as a deviation.
+  - R1-7: a page-state restore at another width applies the view preference, as a resize does.
+  - R1-8: both seeded round trips assert the history verdict and cover a tree entity, a `list` patch, `list` and expression preferences, and a resize.
+- Carries to PC-126: the refresh bump when a path column is added while an expression column shows, together with R1-6 (compare the snapshot request's `select`, not only the canonical query); registering `tm.search.expressionColumn`; typing `TmSearchPageActionDeclaration.run`; building the plan once per columns change.
+- After fix1 PC-124 holds, behind PC-114, PC-116, PC-153 and PC-121 (D-087).
+- For Ahmad, on spec 0030:
+  - (a) §7.3 makes every column sortable, but an order on an expression column cannot travel in the URL. PC-124 makes expression columns non-sortable.
+  - (b) §4.2's colleague-link example conflicts with §4.3 when the link's `cols` equal the code default; PC-124 lets the reader's preference win. §4.2 should say so.
+  - (c) While an expression column shows, the canonical query does not identify the result, yet the grid's content key, the anchor and §15.2's snapshot match all key on it (R1-6).
+
 ### D-274 (orchestrator, 2026-11-24): PC-121 review 1 rulings, and PC-168's gate
 
 - R1 found 0 blocking, 0 major and 7 minor on 3f1e2a46, so there is no R2. A clean-build measure confirmed:
