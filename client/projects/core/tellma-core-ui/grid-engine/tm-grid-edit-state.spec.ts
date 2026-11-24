@@ -381,6 +381,18 @@ describe('TmGridEditState', () => {
       });
     });
 
+    it('a label the resolver reports unchecked records the retryable resolutionFailed reason', () => {
+      const h = setup();
+      h.engine.edit.openEdit({ row: 0, col: 0 }, 'edit');
+      const request = h.engine.commitEditorLabel('Alice');
+      h.engine.clipboard.applyResolution(request!.id, new Map([['Alice', { error: 'resolutionFailed' }]]));
+      expect(h.rows()[0]['agent']).toBeNull();
+      expect(h.engine.annotations.invalidInput(1, 'agent')).toMatchObject({
+        rawText: 'Alice',
+        reason: 'resolutionFailed',
+      });
+    });
+
     it('undo while the resolution is pending aborts it and restores the value', () => {
       const h = setup();
       h.engine.edit.openEdit({ row: 0, col: 0 }, 'edit');

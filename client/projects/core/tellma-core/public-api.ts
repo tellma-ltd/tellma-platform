@@ -11,10 +11,12 @@
  * display names and client permissions, the client metadata's types and loaders, the
  * HTTP layer with its error and plain-JSON value types, the exact decimal
  * helpers, the client store, the tab bus and the leader tab, the app-level
- * keyboard shortcut registry, the shell frame's seams (immersive mode and what
- * the tenant shell's `main` shows), the page-context registry with the page
- * actions and their dispatcher, and the seams through which telemetry and the
- * request log are provided.
+ * keyboard shortcut registry, the navigation registry with the pins model's
+ * keys and the launcher's provider seam, the shell frame's seams (immersive
+ * mode and what the tenant shell's `main` shows), the page-context registry
+ * with the page actions and their dispatcher, the banners with the
+ * input-idle clock, the attention documents and the toast durations, and the
+ * seams through which telemetry and the request log are provided.
  *
  * @packageDocumentation
  */
@@ -176,6 +178,16 @@ export type { TmSettingsTabDeclaration } from './src/admin/tm-settings-tab';
 export type { TmNavContext, TmNavEntry, TmNavSection } from './src/nav/tm-nav-declarations';
 export type { TmShellSlot } from './src/nav/tm-shell-slot';
 
+// The navigation registry, the pins model's keys and the launcher's provider seam.
+export { TmNavigation, type TmNavItem, type TmNavSectionView } from './src/nav/tm-navigation';
+export { tmPinnedBarVisibleKey, tmPinsKey, type TmPin, type TmPinFolder, type TmPinItem, type TmPinsDoc } from './src/nav/tm-pins';
+export {
+  TM_LAUNCHER_PROVIDERS,
+  type TmLauncherItem,
+  type TmLauncherProvider,
+  type TmLauncherSearchContext,
+} from './src/nav/tm-launcher-providers';
+
 // App-level keyboard shortcuts and the shell frame's seams.
 export {
   TM_BROWSER_KEYS,
@@ -271,7 +283,7 @@ export type {
 // startup loads after the first render; the state testing providers replace
 // its loader.
 export { TmLeader } from './src/state/leader/tm-leader';
-export { TM_LEADER_DOCUMENTS, type TmLeaderDocument } from './src/state/leader/tm-leader-documents';
+export { TM_LEADER_DOCUMENTS, type TmLeaderDocument, ɵTM_UNIQUE_LEADER_DOCUMENTS } from './src/state/leader/tm-leader-documents';
 export { TM_LEADER_LOAD as ɵTM_LEADER_LOAD, type TmLeaderModule as ɵTmLeaderModule } from './src/app/tm-app-init';
 
 // The launch documents and their cache: the routed tenant's settings,
@@ -388,3 +400,17 @@ export type {
   TmSettingVisibility,
 } from './src/admin/tm-admin-metadata';
 export type { TmNotificationSeverity, TmNotificationTypeMetadata } from './src/attention/tm-notification-metadata';
+
+// Attention: the banners and the input-idle clock their row waits for, the
+// attention documents the leader tab keeps fresh, and the toast policy's
+// durations.
+export { TmBanners, type TmBannerLevel, type TmBannerOptions, type TmBannerRef, type TmBannerView } from './src/attention/tm-banners';
+export { TmInputIdle } from './src/attention/tm-input-idle';
+export {
+  TM_ATTENTION_DOCUMENTS,
+  type TmAssignmentsSummary,
+  type TmInboxRunningJob,
+  type TmInboxSummary,
+  type TmInboxVerbResult,
+} from './src/attention/tm-attention-documents';
+export { TM_TOAST_ARRIVAL_MS, TM_TOAST_FEEDBACK_MS } from './src/attention/tm-toast-durations';

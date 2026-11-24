@@ -263,6 +263,8 @@ export interface TmEntityMetadata extends TmEntitySummary {
   readonly defaultOrderBy: string;
   /** The properties search matches. */
   readonly searchable: readonly string[];
+  /** The searchable properties search matches from their start; the others it matches anywhere. */
+  readonly prefixSearchable: readonly string[];
   /** The properties that identify a row to people. */
   readonly naturalKeys: readonly string[];
   /** The names of the extras a details read may ask for. */

@@ -14,7 +14,8 @@ import type { TmStepUpChallenge } from '../session/tm-session';
 /**
  * What went wrong with a call, as the platform presents it:
  *
- * - `cancelled` — the caller aborted the call, or the session left this tab; nothing is shown;
+ * - `cancelled` — the caller aborted the call, the session left this tab, or the app ended; a
+ *   write cancelled after it was sent may still have completed on the server; nothing is shown;
  * - `offline` — the call never reached the server (`network`, `not-sent`) or its outcome is
  *   unknown (`outcome-unknown`);
  * - `unauthenticated` — the session ended; `step-up` — the call needs a stronger sign-in;

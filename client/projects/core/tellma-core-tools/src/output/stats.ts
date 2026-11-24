@@ -12,6 +12,9 @@ import { TmBuildFailure } from '../common/problems.js';
 // it holds and the files it imports, statically or dynamically. The preloads,
 // the worker's groups and the budgets all walk this graph. Paths are relative
 // to the deployable output, with forward slashes, as the metafile writes them.
+// Beside it, the module graph: every source module with the modules it
+// imports and whether it named each by a relative path, which tells a
+// package's own modules from the packages it imports by name.
 
 /** How one output file imports another. */
 export type TmImportKind = 'static' | 'dynamic';
@@ -22,24 +25,50 @@ export interface TmBuildOutput {
   readonly path: string;
   /** The modules it holds, as paths relative to the project folder. */
   readonly inputs: readonly string[];
+  /** The bytes each module it holds contributes to it, by the module's path; read from the metafile, absent where a graph is built without them. */
+  readonly bytes?: Readonly<Record<string, number>>;
   /** The JavaScript files it imports, with how. */
   readonly imports: readonly { readonly path: string; readonly kind: TmImportKind }[];
   /** The module the file starts at when it is an entry point or a dynamic import's chunk, relative to the project folder with forward slashes. */
   readonly entryPoint?: string;
 }
 
+/** One import of a source module. */
+export interface TmModuleImport {
+  /** The imported module's path, relative to the project folder with forward slashes. */
+  readonly path: string;
+  /** Whether the importing module named it by a relative path (`.`, `..`, `./x`, `../x`) rather than by a package name. */
+  readonly relative: boolean;
+}
+
+/** One source module of the build. */
+export interface TmBuildModule {
+  /** The module's path, relative to the project folder with forward slashes. */
+  readonly path: string;
+  /** The modules it imports, in any way, that the build bundles. */
+  readonly imports: readonly TmModuleImport[];
+}
+
 /** The metafile's shape, as far as the build reads it. */
 interface Metafile {
+  /** Every source module by its path, with what it imports. */
+  readonly inputs?: Readonly<Record<string, MetafileInput>>;
   /** Every output file by its path, with what it imports, the modules it holds and the module it starts at. */
   readonly outputs?: Readonly<Record<string, MetafileOutput>>;
+}
+
+/** One source module in the metafile. */
+interface MetafileInput {
+  /** The modules it imports: the resolved path, whether it is outside the build, and the specifier as written. */
+  readonly imports?: readonly { readonly path: string; readonly external?: boolean; readonly original?: string }[];
 }
 
 /** One output file in the metafile. */
 interface MetafileOutput {
   /** The files and modules it imports, with how and whether they are outside the build. */
   readonly imports?: readonly { readonly path: string; readonly kind: string; readonly external?: boolean }[];
-  /** The modules it holds, by path relative to the project folder. */
-  readonly inputs?: Readonly<Record<string, unknown>>;
+  /** The modules it holds, by path relative to the project folder, with the bytes each contributes. */
+  readonly inputs?: Readonly<Record<string, { readonly bytesInOutput?: number }>>;
   /** The module it starts at, when it is an entry point or a dynamic import's chunk. */
   readonly entryPoint?: string;
 }
@@ -49,13 +78,18 @@ export class TmBuildGraph {
   /** Every JavaScript output, by path. */
   readonly outputs: ReadonlyMap<string, TmBuildOutput>;
 
+  /** Every source module, by path. */
+  readonly modules: ReadonlyMap<string, TmBuildModule>;
+
   /**
-   * Creates the graph from the outputs.
+   * Creates the graph from the outputs and the source modules.
    *
    * @param outputs - The build's JavaScript outputs.
+   * @param modules - The build's source modules; none by default.
    */
-  constructor(outputs: readonly TmBuildOutput[]) {
+  constructor(outputs: readonly TmBuildOutput[], modules: readonly TmBuildModule[] = []) {
     this.outputs = new Map(outputs.map((output) => [output.path, output]));
+    this.modules = new Map(modules.map((module) => [module.path, module]));
   }
 
   /**
@@ -84,6 +118,7 @@ export class TmBuildGraph {
       outputs.push({
         path,
         inputs: Object.keys(output.inputs ?? {}).map((input) => input.replace(/\\/g, '/')),
+        bytes: Object.fromEntries(Object.entries(output.inputs ?? {}).map(([input, held]) => [input.replace(/\\/g, '/'), held.bytesInOutput ?? 0])),
         imports: (output.imports ?? [])
           .filter((edge) => edge.external !== true && /\.m?js$/.test(edge.path))
           .filter((edge) => edge.kind === 'import-statement' || edge.kind === 'dynamic-import')
@@ -91,7 +126,17 @@ export class TmBuildGraph {
         ...(output.entryPoint === undefined ? {} : { entryPoint: output.entryPoint.replace(/\\/g, '/') }),
       });
     }
-    return new TmBuildGraph(outputs);
+    // --- The source modules, each import marked relative or by package name ---
+    const modules: TmBuildModule[] = [];
+    for (const [path, input] of Object.entries(metafile.inputs ?? {})) {
+      modules.push({
+        path: path.replace(/\\/g, '/'),
+        imports: (input.imports ?? [])
+          .filter((edge) => edge.external !== true)
+          .map((edge) => ({ path: edge.path.replace(/\\/g, '/'), relative: /^\.\.?(?:[\\/]|$)/.test(edge.original ?? '') })),
+      });
+    }
+    return new TmBuildGraph(outputs, modules);
   }
 
   /**
@@ -174,4 +219,36 @@ export function tmEntryPointModule(folder: string, entryPoint: string): (input: 
 /** A test of a module path for the ECharts engine: ECharts itself and its renderer, ZRender. */
 export function tmEchartsModule(input: string): boolean {
   return /(?:^|\/)node_modules\/(?:echarts|zrender)\//.test(input);
+}
+
+/** The module `@tellma/core`'s primary entry point starts at: its built bundle, or its public API in a workspace. */
+const CORE_PRIMARY_ROOT = /(?:^|\/)(?:@tellma\/core\/fesm2022\/tellma-core\.mjs|tellma-core\/public-api\.ts)$/;
+
+/**
+ * The modules of `@tellma/core`'s primary entry point in a build: the module
+ * it starts at and every module reached from it through relative imports,
+ * statically or with import(). Its secondary entry points and other packages
+ * are imported by package name, so they stay out. That holds for the built
+ * package, whose bundle imports the chunks it was split into by relative
+ * paths, and for the sources a workspace maps the package to alike.
+ *
+ * @param graph - The build's graph, with its source modules.
+ * @returns The modules' paths, relative to the project folder with forward slashes.
+ */
+export function tmCorePrimaryModules(graph: TmBuildGraph): Set<string> {
+  const reached = new Set<string>();
+  const pending = [...graph.modules.keys()].filter((path) => CORE_PRIMARY_ROOT.test(path));
+  while (pending.length > 0) {
+    const path = pending.pop()!;
+    if (reached.has(path)) {
+      continue;
+    }
+    reached.add(path);
+    for (const edge of graph.modules.get(path)?.imports ?? []) {
+      if (edge.relative && !reached.has(edge.path)) {
+        pending.push(edge.path);
+      }
+    }
+  }
+  return reached;
 }

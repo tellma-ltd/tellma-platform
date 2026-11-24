@@ -26,15 +26,16 @@ export interface TmApiHost {
   /** Whether the page is visible now. */
   visible(): boolean;
   /**
-   * Listens to an event of the window (`online`, `offline`) or the document
-   * (`visibilitychange`).
+   * Listens to an event of the window (`online`, `offline`, `keydown`) or
+   * the document (`visibilitychange`).
    *
    * @param target - Where the event fires.
    * @param type - The event's name.
    * @param listener - What runs when it fires.
+   * @param options - How it listens, such as `{ capture: true, passive: true }`.
    * @returns The function that stops listening.
    */
-  listen(target: 'window' | 'document', type: string, listener: () => void): () => void;
+  listen(target: 'window' | 'document', type: string, listener: () => void, options?: AddEventListenerOptions): () => void;
   /**
    * Fills an array with cryptographically random bytes, as `crypto.getRandomValues` does.
    *
@@ -56,10 +57,10 @@ export const TM_API_HOST = new InjectionToken<TmApiHost>('TM_API_HOST', {
       xhr: () => new window.XMLHttpRequest(),
       onLine: () => window.navigator.onLine,
       visible: () => document.visibilityState === 'visible',
-      listen: (target, type, listener) => {
+      listen: (target, type, listener, options) => {
         const on = target === 'window' ? window : document;
-        on.addEventListener(type, listener);
-        return () => on.removeEventListener(type, listener);
+        on.addEventListener(type, listener, options);
+        return () => on.removeEventListener(type, listener, options);
       },
       random: (array) => window.crypto.getRandomValues(array),
       devMode: isDevMode,

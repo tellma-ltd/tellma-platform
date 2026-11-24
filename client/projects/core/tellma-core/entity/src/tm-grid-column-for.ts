@@ -3,11 +3,24 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-import { assertInInjectionContext, inject, Injector } from '@angular/core';
-import { TmEntities, TmLocalization, type TmJson, type TmPlanRow, type TmPropertyDescriptor, type TmValueDescriptor } from '@tellma/core';
+import { assertInInjectionContext, inject, Injector, signal, untracked, type Signal } from '@angular/core';
+import {
+  TmDisplayNames,
+  TmEntities,
+  TmLocalization,
+  TmPermissions,
+  type TmDisplayNameParts,
+  type TmId,
+  type TmJson,
+  type TmNavigationDescriptor,
+  type TmPlanRow,
+  type TmPropertyDescriptor,
+  type TmValueDescriptor,
+} from '@tellma/core';
 import { TM_PARSE_ERROR, type TmParseContext, type TmParseError } from '@tellma/core-ui/contracts';
 import type { TmGridColumn } from '@tellma/core-ui/grid';
 
+import { TmEntityPickers, ɵtmLabelParts } from './tm-entity-pickers';
 import { ɵtmParseExact } from './tm-exact-number';
 import { TmFormats } from './tm-formats';
 import type { TmColumnPlan } from './tm-select-plan';
@@ -16,7 +29,8 @@ import type { TmColumnPlan } from './tm-select-plan';
 // the grid type, alignment, width, display and parse each type takes, so a
 // search grid and a form's child grid bind every column the same way. A
 // search grid's rows are plan rows, read by the column's key; a child
-// grid's rows are the form model's wire objects, read by JSON names.
+// grid's rows are the form model's wire objects, read by JSON names. A
+// child grid's navigation edits through the entity picker binding (§14.5).
 
 /** The `tm-grid-column` inputs a plan's column binds. */
 type TmBoundInput =
@@ -33,7 +47,17 @@ type TmBoundInput =
   | 'align'
   | 'minDecimals'
   | 'maxDecimals'
-  | 'sortable';
+  | 'sortable'
+  | 'formatParts'
+  | 'search'
+  | 'itemId'
+  | 'itemLabel'
+  | 'itemDescription'
+  | 'itemLabelParts'
+  | 'advancedSearch'
+  | 'create'
+  | 'edit'
+  | 'resolvePastedLabels';
 
 /**
  * The `tm-grid-column` inputs a column binds, by input name, each typed as
@@ -95,9 +119,13 @@ function isNew(row: unknown): boolean {
  * physical right alignment in either direction. Only a scalar at the
  * row's own level edits, or a group there, whose cell edits the active
  * language's slot under its JSON name (made inside a computed, the config
- * follows a language switch); navigations, blobs, instants and expressions
- * stay read-only, and a write-once value edits only in a new row. A host
- * binds `header` to the column's label itself, which follows the language.
+ * follows a language switch), or a navigation there, whose cell picks the
+ * related row through the entity's picker binding with the column's
+ * filter, shows its display name with each part isolated, and resolves
+ * pasted names in one query; it is read-only when the user may not query
+ * the target. Navigations elsewhere, blobs, instants and expressions stay
+ * read-only, and a write-once value edits only in a new row. A host binds
+ * `header` to the column's label itself, which follows the language.
  *
  * @param column - The plan's column.
  * @param options - Whether the grid edits it, and what its rows are.
@@ -162,6 +190,12 @@ export function tmGridColumnFor(column: TmColumnPlan, options: TmGridColumnOptio
     const slots = [...resolution.end.slots].sort((a, b) => (a.multilingual?.slot ?? 1) - (b.multilingual?.slot ?? 1));
     slot = slots[injector.get(TmLocalization).contentSlot() - 1] ?? slots[0]!;
   }
+  // --- A navigation at the row's own level, in a form's grid, picks its related row ---
+  if (model && options.editable === true && resolution?.end.kind === 'navigation' && resolution.steps.length === 0) {
+    const navigation = resolution.end.navigation;
+    return navigationColumn(column, navigation, entities.get(resolution.entity).property(navigation.foreignKey), injector);
+  }
+
   const config: { -readonly [K in keyof TmGridColumnConfig]?: TmGridColumnConfig[K] } = model
     ? slot !== null
       ? { key: slot.json }
@@ -243,6 +277,82 @@ export function tmGridColumnFor(column: TmColumnPlan, options: TmGridColumnOptio
   // Groups elsewhere, navigations and blobs show the plan's cell, read-only.
   Object.assign(config, { type: column.kind === 'image' ? 'custom' : 'text', format: text, readonly: true });
   return config;
+}
+
+/**
+ * The grid column of a navigation a form's grid edits: the related row's
+ * id under its key property's JSON name, picked through the target's
+ * binding with the column's filter, shown by its display name.
+ *
+ * @param column - The plan's column.
+ * @param navigation - The navigation.
+ * @param key - The navigation's key property, whose JSON name the cell's value is under.
+ * @param injector - The injector the binding reads through.
+ * @returns The inputs to bind.
+ */
+function navigationColumn(
+  column: TmColumnPlan,
+  navigation: TmNavigationDescriptor,
+  key: TmPropertyDescriptor | undefined,
+  injector: Injector,
+): Partial<TmGridColumnConfig> {
+  const target = navigation.target;
+  const pickers = injector.get(TmEntityPickers);
+  const names = injector.get(TmDisplayNames);
+  const input = column.input;
+  const filter = signal(typeof input === 'object' && 'path' in input ? (input.filter ?? null) : null).asReadonly();
+  const binding = pickers.binding(target, { filter });
+
+  // --- Who writes the cell: the key's ownership, and a target the user may search ---
+  const ownership = navigation.ownership;
+  const searchable = injector.get(TmPermissions).allows(target, 'query')();
+  const readonly =
+    !searchable || ownership === 'server-owned' || ownership === 'database-owned' || ownership === 'derived'
+      ? true
+      : ownership === 'write-once'
+        ? (row: unknown) => !isNew(row)
+        : false;
+
+  // --- The display: the display name, its parts memoized per id so a cell follows the language ---
+  const parts = new Map<string, Signal<TmDisplayNameParts | null>>();
+  const partsOf = (id: TmId): TmDisplayNameParts | null => {
+    let label = parts.get(String(id));
+    if (label === undefined) {
+      if (parts.size >= 1000) {
+        parts.clear();
+      }
+      parts.set(String(id), (label = names.labelParts(target, id)));
+    }
+    return label();
+  };
+  const isId = (value: unknown): value is TmId => typeof value === 'number' || (typeof value === 'string' && value !== '');
+
+  return {
+    key: key?.json ?? navigation.json,
+    type: 'entity',
+    readonly,
+    width: 200,
+    search: binding.search,
+    itemId: binding.itemId,
+    itemLabel: binding.itemLabel,
+    itemLabelParts: binding.itemLabelParts,
+    ...(binding.itemDescription && { itemDescription: binding.itemDescription }),
+    ...(binding.advancedSearch && { advancedSearch: binding.advancedSearch }),
+    ...(binding.create && { create: binding.create }),
+    ...(binding.edit && { edit: binding.edit }),
+    format: (value) => (isId(value) ? (binding.displayWith(value) ?? '') : ''),
+    formatParts: (value) => {
+      if (!isId(value)) {
+        return null;
+      }
+      const label = partsOf(value);
+      if (label === null) {
+        untracked(() => names.resolve(target, [value]));
+      }
+      return label && ɵtmLabelParts(label);
+    },
+    resolvePastedLabels: pickers.ɵpasteResolver(target, filter),
+  };
 }
 
 /**

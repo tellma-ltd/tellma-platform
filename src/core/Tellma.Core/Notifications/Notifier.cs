@@ -8,6 +8,7 @@ using Microsoft.Extensions.Options;
 using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
+using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Api;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Notifications;
@@ -390,7 +391,16 @@ namespace Tellma.Core.Notifications
 
             // --- The resolved values ---
             NotificationSeverity severity = request.Severity ?? descriptor.Severity;
+
+            // The actor defaults to the scope's user, none in a system scope (spec 0021 §3.1); the
+            // system user, named or defaulted, stores no actor, so a worker raising a notice for the
+            // system from a user's scope says so explicitly.
             int? actor = request.ActorUserId ?? (context.IsSystem ? null : context.UserId);
+            if (actor == WellKnownIds.SystemUserId)
+            {
+                actor = null;
+            }
+
             List<NotificationRowList> recipients = [.. distinct.Select(static (userId, ordinal) => new NotificationRowList { Ordinal = ordinal, UserId = userId })];
 
             // --- The delivery slices, unless the request is inbox-only or no channel delivers ---

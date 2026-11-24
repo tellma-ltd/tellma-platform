@@ -136,6 +136,9 @@ namespace Tellma.Core.Tests.Jobs
             Assert.Equal(new JobFailedArguments("acme.ship", "Acme.Closed"), notice.Arguments);
             Assert.Equal((CoreResources.Job, 41), (notice.TargetResource, notice.TargetId));
             Assert.False(notice.InboxOnly);
+
+            // The system caused it, though it is raised in the run-as user's scope.
+            Assert.Equal(WellKnownIds.SystemUserId, notice.ActorUserId);
         }
 
         [Fact]
@@ -160,6 +163,7 @@ namespace Tellma.Core.Tests.Jobs
             Assert.Equal(JobNotices.PendingConfirmationType, notice.Type);
             Assert.Equal(new JobPendingConfirmationArguments("acme.ship", 2), notice.Arguments);
             Assert.Equal("core.job.pending-confirmation:41", notice.DedupKey);
+            Assert.Equal(WellKnownIds.SystemUserId, notice.ActorUserId);
         }
 
         [Fact]

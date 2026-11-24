@@ -4,7 +4,9 @@
 
 ```ts
 
+import { ComponentHarness } from '@angular/cdk/testing';
 import { EnvironmentProviders } from '@angular/core';
+import { HarnessPredicate } from '@angular/cdk/testing';
 import * as i0 from '@angular/core';
 import { Observable } from 'rxjs';
 import { Signal } from '@angular/core';
@@ -14,6 +16,29 @@ export function provideTellmaStateTesting(): EnvironmentProviders;
 
 // @public
 export function provideTellmaTesting(): EnvironmentProviders;
+
+// @public
+export class TmEntityFieldHarness extends ComponentHarness {
+    getPicker(): Promise<TmEntityPickerHarness>;
+    getText(): Promise<string>;
+    static hostSelector: string;
+    isInvalid(): Promise<boolean>;
+    isReadonly(): Promise<boolean>;
+    pick(label: string): Promise<void>;
+    search(text: string): Promise<void>;
+}
+
+// @public
+export class TmEntityMultiFieldHarness extends ComponentHarness {
+    getChipLabels(): Promise<string[]>;
+    getPicker(): Promise<TmEntityMultiPickerHarness>;
+    static hostSelector: string;
+    isInvalid(): Promise<boolean>;
+    isReadonly(): Promise<boolean>;
+    pick(label: string): Promise<void>;
+    removeChip(label: string): Promise<void>;
+    search(text: string): Promise<void>;
+}
 
 // @public
 export class TmFakeApi extends TmApi {
@@ -47,6 +72,12 @@ export type TmFakeApiCallKind = 'download' | 'fetch-blob' | 'read' | 'send' | 'u
 
 // @public
 export type TmFakeApiResponder = (call: TmFakeApiCall) => unknown;
+
+// @public
+export function tmFakeAssignmentsSummary(members?: Partial<TmAssignmentsSummary>): TmAssignmentsSummary;
+
+// @public
+export function tmFakeInboxSummary(members?: Partial<TmInboxSummary>): TmInboxSummary;
 
 // @public
 export class TmFakeLocks extends TmLocks {

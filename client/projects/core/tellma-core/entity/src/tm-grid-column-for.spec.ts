@@ -3,10 +3,12 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-import { computed, Injector } from '@angular/core';
+import { Component, computed, Injector, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { form } from '@angular/forms/signals';
 import { TmEntities, TmLocalization, type TmColumnInput, type TmPlanRow } from '@tellma/core';
 import { TM_PARSE_ERROR } from '@tellma/core-ui/contracts';
+import { TmGrid, TmGridColumn } from '@tellma/core-ui/grid';
 
 import { tmEntityRig, type TmEntityRigOptions } from '../../src/entity/tm-entity.testing.util';
 import { tmSettle } from '../../src/routes/tm-app.testing.util';
@@ -32,6 +34,44 @@ function gridColumn(root: string, key: string, options?: TmGridColumnOptions): R
 
 /** The parse context of an English grid. */
 const EN = { locale: 'en' };
+
+/** A row of a customer's contacts. */
+interface TmContactRow {
+  /** The row's id. */
+  readonly id: number;
+  /** The contact's customer. */
+  readonly customerId: number | null;
+}
+
+/** A child grid of contacts whose customer column a plan's column binds. */
+@Component({
+  imports: [TmGrid, TmGridColumn],
+  template: `
+    <tm-grid gridId="contacts" [field]="lines" [rowId]="rowId" style="block-size: 200px">
+      <tm-grid-column
+        [key]="customer.key!"
+        [type]="customer.type!"
+        header="Customer"
+        [search]="customer.search"
+        [itemId]="customer.itemId"
+        [itemLabel]="customer.itemLabel"
+        [format]="customer.format"
+        [formatParts]="customer.formatParts"
+        [width]="200"
+      />
+    </tm-grid>
+  `,
+})
+class TmContactsHost {
+  /** The customer column. */
+  readonly customer = gridColumn('acme.CustomerContact', 'Customer', { editable: true });
+  /** The rows. */
+  readonly model = signal<TmContactRow[]>([{ id: 1, customerId: 7 }]);
+  /** The rows' form. */
+  readonly lines = form(this.model);
+  /** A row's id. */
+  readonly rowId = (row: TmContactRow): number => row.id;
+}
 
 describe('tmGridColumnFor', () => {
   it('binds a search grid’s column by its key, sorting when it orders', async () => {
@@ -81,14 +121,49 @@ describe('tmGridColumnFor', () => {
     expect(gridColumn('acme.Customer', 'IsActive')).toMatchObject({ type: 'boolean', readonly: true });
   });
 
-  it('keeps server-owned values, instants and navigations read-only in a child grid', async () => {
+  it('keeps server-owned values and instants read-only in a child grid', async () => {
     await tmEntityRig({ ...SYSTEM, languages: 2 });
     expect(gridColumn('acme.Customer', 'IsActive', { editable: true }).readonly).toBe(true);
     expect(gridColumn('acme.Customer', 'CreatedAt', { editable: true })).toMatchObject({ type: 'text', readonly: true });
+    expect(gridColumn('acme.Customer', 'Code', { editable: false }).readonly).toBe(true);
+  });
+
+  it('picks a navigation’s related row in a child grid through the binding, under its key’s JSON name', async () => {
+    const rig = await tmEntityRig({ ...SYSTEM, languages: 2 });
+    rig.names.remember('acme.Currency', [{ id: 3, code: 'SAR' }]);
     const currency = gridColumn('acme.Customer', 'Currency', { editable: true });
+    expect(currency).toMatchObject({ key: 'currencyId', type: 'entity', readonly: false, width: 200 });
+    expect([typeof currency.search, typeof currency.itemLabel, typeof currency.resolvePastedLabels]).toEqual(['function', 'function', 'function']);
+    expect(currency.format!(3, {})).toBe('SAR');
+    expect(currency.formatParts!(3, {})).toEqual(['SAR']);
+    expect([currency.format!(null, {}), currency.formatParts!(null, {})]).toEqual(['', null]);
+  });
+
+  it('draws a prefixed display name’s prefix and name each in its own isolate', async () => {
+    const rig = await tmEntityRig(SYSTEM);
+    rig.names.remember('acme.Customer', [{ id: 7, code: '1101', name: 'Cash' }]);
+    expect(gridColumn('acme.CustomerContact', 'Customer', { editable: true }).formatParts!(7, {})).toEqual(['1101', 'Cash']);
+
+    const fixture = TestBed.createComponent(TmContactsHost);
+    await fixture.whenStable();
+    await tmSettle();
+    const runs = (fixture.nativeElement as HTMLElement).querySelectorAll('.tm-grid__text > bdi');
+    expect(Array.from(runs, (run) => run.textContent)).toEqual(['1101', 'Cash']);
+  });
+
+  it('keeps a navigation read-only in a child grid when the server writes its key or the user may not search its target', async () => {
+    await tmEntityRig({ ...SYSTEM });
+    expect(gridColumn('acme.Customer', 'CreatedBy', { editable: true })).toMatchObject({ type: 'entity', readonly: true });
+    TestBed.resetTestingModule();
+    await tmEntityRig({ access: { securables: [{ resource: 'acme.Customer', action: 'Read', hasFilter: false }] } });
+    expect(gridColumn('acme.Customer', 'Currency', { editable: true })).toMatchObject({ type: 'entity', readonly: true });
+  });
+
+  it('shows a navigation read-only in a form’s grid that does not edit', async () => {
+    await tmEntityRig(SYSTEM);
+    const currency = gridColumn('acme.Customer', 'Currency', { rows: 'model' });
     expect(currency).toMatchObject({ type: 'text', readonly: true });
     expect(currency.value!({ currencyId: 3, currency: { id: 3 } })).toBe(3);
-    expect(gridColumn('acme.Customer', 'Code', { editable: false }).readonly).toBe(true);
   });
 
   it('edits a write-once value in a new row only', async () => {

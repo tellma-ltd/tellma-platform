@@ -3,7 +3,7 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-import { effect, inject, Injectable, Injector, signal, untracked, type Signal } from '@angular/core';
+import { DestroyRef, effect, inject, Injectable, Injector, signal, untracked, type Signal } from '@angular/core';
 import { Router } from '@angular/router';
 import type { TmBlobFetchOptions, TmBlobFetchResult } from '@tellma/core-ui/image';
 
@@ -40,8 +40,6 @@ import {
 } from './tm-api-seams';
 import {
   TM_OUTDATED,
-  tmCompareBuilds,
-  tmDispositionFileName,
   tmKindOf,
   tmParseProblem,
   tmParseStepUp,
@@ -219,42 +217,18 @@ const BLOB_READER: TmReader<Blob | null, TmBlobFetchResult> = {
 };
 
 /**
- * The reader of a download: streams the body, reporting the bytes received
- * and restarting the watchdog at each chunk, and names the file from
- * `Content-Disposition`.
+ * The reader of a download: the streamed read and the file name, which load
+ * with the first download's answer.
  *
  * @param onProgress - Receives the bytes received so far.
  * @returns The reader.
  */
-function downloadReader(onProgress: ((bytes: number) => void) | undefined): TmReader<Blob, TmDownload> {
+function downloadReader(onProgress: ((bytes: number) => void) | undefined): TmReader<TmDownload, TmDownload> {
   return {
     accepts: isSuccess,
-    read: async (response, rearm) => {
-      const type = response.headers.get('Content-Type') ?? '';
-      if (response.body === null) {
-        return new Blob([], { type });
-      }
-      const reader = response.body.getReader();
-      const chunks: Uint8Array<ArrayBuffer>[] = [];
-      let bytes = 0;
-      for (;;) {
-        const { done, value } = await reader.read();
-        if (done) {
-          break;
-        }
-        chunks.push(value);
-        bytes += value.byteLength;
-        // A slow export that keeps sending is alive: only a stall trips the watchdog.
-        rearm();
-        onProgress?.(bytes);
-      }
-      return new Blob(chunks, { type });
-    },
-    finish: (blob, answer) => ({
-      fileName: tmDispositionFileName(answer.header('Content-Disposition')) ?? 'download',
-      contentType: blob.type,
-      blob,
-    }),
+    // A chunk that cannot load fails the attempt as a network failure would.
+    read: async (response, rearm) => (await import('./tm-api-transfer')).tmReadDownload(response, rearm, onProgress),
+    finish: (download) => download,
   };
 }
 
@@ -280,6 +254,8 @@ export class TmHttpApi implements TmApi {
   readonly #log = inject(TmRequestLog);
   readonly #loaders = inject(TM_METADATA_LOADERS, { optional: true });
   readonly #injector = inject(Injector);
+  /** The app's lifetime: once it ends, its injector resolves nothing, so no call goes on. */
+  readonly #app = inject(DestroyRef);
   readonly #now = inject(TM_NOW);
   readonly #writes = signal(0);
   readonly #random = (array: Uint8Array<ArrayBuffer>): Uint8Array<ArrayBuffer> => this.#host.random(array);
@@ -677,10 +653,14 @@ export class TmHttpApi implements TmApi {
    * @returns Whether the call is authenticated.
    */
   #admit(route: string, mode: 'read' | 'write' | 'upload', cancel: AbortSignal | null, traceId: string): boolean {
-    if (cancel?.aborted === true) {
-      throw new TmApiError({ kind: 'cancelled', traceId });
-    }
-    if (this.#session.state() !== 'active' && !(mode === 'write' && route === LOGOUT_ROUTE)) {
+    // Cancelled: by the caller, by the app's end (which may overtake a retry's
+    // wait; the session is not read then, as its injector is gone), or by the
+    // session leaving the tab, which still sends its sign-out.
+    if (
+      cancel?.aborted === true ||
+      this.#app.destroyed ||
+      (this.#session.state() !== 'active' && !(mode === 'write' && route === LOGOUT_ROUTE))
+    ) {
       throw new TmApiError({ kind: 'cancelled', traceId });
     }
     const authenticated = !ANONYMOUS_ROUTE.test(route);
@@ -934,7 +914,8 @@ export class TmHttpApi implements TmApi {
   }
 
   /**
-   * Sends an upload's one attempt over `XMLHttpRequest`.
+   * Sends an upload's one attempt over `XMLHttpRequest`, which loads with
+   * the first upload.
    *
    * @param call - The upload.
    * @param file - The file.
@@ -942,55 +923,31 @@ export class TmHttpApi implements TmApi {
    * @returns What the attempt produced.
    */
   #xhrAttempt(call: TmCall, file: Blob, onProgress: ((fraction: number) => void) | undefined): Promise<TmAttempt<TmBlobDescriptor>> {
-    return new Promise((resolve) => {
-      const xhr = this.#host.xhr();
-      const abort = (): void => xhr.abort();
-      // The watchdog restarts at each progress event: a slow upload that keeps
-      // sending is alive, while a stalled one, or a lost answer, ends.
-      let timedOut = false;
-      let timer: ReturnType<typeof setTimeout> | undefined;
-      const rearm = (): void => {
-        clearTimeout(timer);
-        timer = setTimeout(() => {
-          timedOut = true;
-          xhr.abort();
-        }, call.watchdogMs);
-      };
-      const settle = (attempt: Promise<TmAttempt<TmBlobDescriptor>> | TmAttempt<TmBlobDescriptor>): void => {
-        clearTimeout(timer);
-        call.cancel?.removeEventListener('abort', abort);
-        resolve(attempt);
-      };
-      xhr.open('POST', call.url);
-      // An empty type would leave the body undeclared, which the server refuses.
-      const headers = this.#headers(call.tenantId, call.client, call.traceId, file.type === '' ? 'application/octet-stream' : file.type);
-      for (const [name, value] of Object.entries(headers)) {
-        xhr.setRequestHeader(name, value);
-      }
-      xhr.upload.onprogress = (event): void => {
-        rearm();
-        if (event.lengthComputable && event.total > 0) {
-          onProgress?.(event.loaded / event.total);
-        }
-      };
-      xhr.onload = (): void => {
-        this.#connectivity.answered();
-        const answer: TmAnswer = { status: xhr.status, header: (name) => xhr.getResponseHeader(name) };
-        settle(
-          this.#conclude(call, answer, isSuccess(xhr.status), xhr.responseText, (text) => JSON.parse(text) as TmBlobDescriptor),
-        );
-      };
-      xhr.onerror = (): void => settle(this.#unanswered(call, false));
-      xhr.onabort = (): void => settle(this.#unanswered(call, timedOut));
-      call.cancel?.addEventListener('abort', abort, { once: true });
-      rearm();
-      xhr.send(file);
-    });
+    // An empty type would leave the body undeclared, which the server refuses.
+    const headers = this.#headers(call.tenantId, call.client, call.traceId, file.type === '' ? 'application/octet-stream' : file.type);
+    return import('./tm-api-transfer').then(
+      ({ tmSendFile }) =>
+        tmSendFile(
+          this.#host.xhr(),
+          call,
+          headers,
+          file,
+          onProgress,
+          (status, header, text) => {
+            this.#connectivity.answered();
+            return this.#conclude(call, { status, header }, isSuccess(status), text, (body) => JSON.parse(body) as TmBlobDescriptor);
+          },
+          (timedOut) => this.#unanswered(call, timedOut),
+        ),
+      // A chunk that cannot load fails the attempt as a network failure would.
+      () => this.#unanswered(call, false),
+    );
   }
 
   /**
-   * The attempt of a call that got no answer: cancelled by its caller or
-   * the session, ended by the watchdog, or failed at the network level.
+   * The attempt of a call that got no answer: cancelled by its caller, the
+   * session or the app's end, ended by the watchdog, or failed at the
+   * network level.
    *
    * @param call - The call.
    * @param timedOut - Whether the watchdog ended it.
@@ -998,7 +955,9 @@ export class TmHttpApi implements TmApi {
    */
   #unanswered(call: TmCall, timedOut: boolean): TmAttempt<never> {
     const traceId = call.traceId;
-    if (call.cancel?.aborted === true) {
+    // A failure that lands after the app's end is cancelled too: it plans no
+    // retry, and does not mark the server unreachable for an app that is gone.
+    if (call.cancel?.aborted === true || this.#app.destroyed) {
       return { ok: false, error: new TmApiError({ kind: 'cancelled', traceId }), retry: null, build: null };
     }
     if (timedOut) {
@@ -1036,6 +995,11 @@ export class TmHttpApi implements TmApi {
     const build = answer.header('Tellma-Build');
     const traceId = answer.header('Tellma-Trace-Id') || call.traceId;
 
+    // --- The app's end: an answer that lands afterwards cannot be checked, so it is cancelled unobserved ---
+    if (this.#app.destroyed) {
+      return { ok: false, error: new TmApiError({ kind: 'cancelled', traceId }), retry: null, build };
+    }
+
     // --- Step 4: the response check; another user's answer is discarded ---
     if (call.checksAnswer) {
       try {
@@ -1051,7 +1015,12 @@ export class TmHttpApi implements TmApi {
       const tags = tmParseVersionTags(answer.header('Tellma-Version-Tags'));
       if (tags !== null) {
         // One task later, so the caller adopts its own result before the refresher compares tags.
-        setTimeout(() => this.#cache.observe(tenantId, tags, 'header'), 0);
+        // The app may end within that task, and then the tags go nowhere.
+        setTimeout(() => {
+          if (!this.#app.destroyed) {
+            this.#cache.observe(tenantId, tags, 'header');
+          }
+        }, 0);
       }
       if (isSuccess(answer.status)) {
         this.#launch.settle(tenantId);
@@ -1093,7 +1062,12 @@ export class TmHttpApi implements TmApi {
 
     // --- The kind, and §5.6's verdict for an outdated side ---
     if (mapped === TM_OUTDATED) {
-      ({ kind, code } = await this.#verdict(build));
+      const judged = await this.#verdict(build);
+      // The app ended while the verdict was decided, so the call is cancelled like an answer that lands after the end.
+      if (judged === null) {
+        return { ok: false, error: new TmApiError({ kind: 'cancelled', traceId }), retry: null, build };
+      }
+      ({ kind, code } = judged);
     } else {
       kind = mapped;
       if (kind === 'server' && problem === null) {
@@ -1148,51 +1122,35 @@ export class TmHttpApi implements TmApi {
    * worker's update check, capped at 3 s.
    *
    * @param build - The server's build, from `Tellma-Build`.
-   * @returns The kind and the code.
+   * @returns The kind and the code, or `null` when the app ended while the verdict was decided.
    */
-  async #verdict(build: string | null): Promise<{ kind: TmApiErrorKind; code: string }> {
-    const order = tmCompareBuilds(this.#uiVersion(), build);
-    if (order === 0) {
+  async #verdict(build: string | null): Promise<{ kind: TmApiErrorKind; code: string } | null> {
+    // The build rules load with the first such answer; a chunk that cannot
+    // load leaves the builds unordered, so the worker decides.
+    const decided = await import('./tm-api-verdict')
+      .then(({ tmBuildVerdict }) =>
+        tmBuildVerdict(this.#uiVersion(), build, this.#judgedOlder, this.#now(), SERVER_OUTDATED_WAIT_MS),
+      )
+      .catch(() => null);
+    // Unordered builds, or a second older verdict for the same build past the
+    // first one's retry window (a rollback): the worker decides, and only a
+    // confirmed `none` blames the server.
+    const verdict = decided ?? ((await this.#askWorker()) === 'none' ? 'server-outdated' : 'client-outdated');
+    // The chunk's load or the worker's check (up to 3 s) may outlast the app;
+    // then nothing is asked or reported.
+    if (this.#app.destroyed) {
+      return null;
+    }
+    if (verdict === 'same') {
       // The same build refused its own contract: a bug, reported by the caller.
       return { kind: 'server', code: 'contract-mismatch' };
     }
-    let verdict: 'client-outdated' | 'server-outdated';
-    let source: 'build' | 'worker';
-    if (order === 1) {
-      verdict = 'client-outdated';
-      source = 'build';
+    if (decided === 'client-outdated') {
       // So an old tab whose only calls are background syncs still learns of the update.
       this.#updates.check().catch(() => undefined);
-    } else if (order === -1 && build !== null && this.#firstOlderVerdict(build)) {
-      verdict = 'server-outdated';
-      source = 'build';
-    } else {
-      // Unordered builds, or a second older verdict for the same build past
-      // the first one's retry window (a rollback): the worker decides, and
-      // only a confirmed `none` blames the server.
-      verdict = (await this.#askWorker()) === 'none' ? 'server-outdated' : 'client-outdated';
-      source = 'worker';
     }
-    this.#telemetry.event('tm.api.client-outdated', { verdict, source });
+    this.#telemetry.event('tm.api.client-outdated', { verdict, source: decided === null ? 'worker' : 'build' });
     return { kind: 'client-outdated', code: verdict };
-  }
-
-  /**
-   * Whether an older server build's verdict counts as its first: the first
-   * verdict for the build, or one within the first one's retry window, which
-   * the same slot swap answered.
-   *
-   * @param build - The older server build.
-   * @returns `true` for a first verdict, `false` for a second one.
-   */
-  #firstOlderVerdict(build: string): boolean {
-    const now = this.#now();
-    const first = this.#judgedOlder.get(build);
-    if (first === undefined) {
-      this.#judgedOlder.set(build, now);
-      return true;
-    }
-    return now - first < SERVER_OUTDATED_WAIT_MS;
   }
 
   /**

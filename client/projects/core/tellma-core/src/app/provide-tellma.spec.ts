@@ -6,16 +6,27 @@
 import { provideLocationMocks } from '@angular/common/testing';
 import { type ApplicationConfig, ApplicationInitStatus, Injectable, type Provider, provideZonelessChangeDetection } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { provideTellmaStateTesting, provideTellmaTesting, TmFakeTelemetry, tmTestEntitiesChunk, tmTestMetadata } from '@tellma/core-testing';
+import {
+  provideTellmaStateTesting,
+  provideTellmaTesting,
+  TmFakeApi,
+  TmFakeTelemetry,
+  tmTestEntitiesChunk,
+  tmTestMetadata,
+} from '@tellma/core-testing';
 
 import { TmApi } from '../api/tm-api';
 import { TmHttpApi } from '../api/tm-http-api';
+import { TM_ATTENTION_DOCUMENTS } from '../attention/tm-attention-documents';
+import { TmBanners } from '../attention/tm-banners';
 import { TM_BOOT_RESULT } from '../boot/tm-boot-result';
 import type { TmBootResult } from '../boot/tm-boot-types';
 import { tmFeature } from '../declarations/tm-feature';
 import { tmEntity } from '../entity/tm-entity-declaration';
 import { TM_CLIENT_METADATA, TmClientMetadataStore } from '../metadata/tm-client-metadata';
 import type { TmMetadataLoaders } from '../metadata/tm-metadata-loaders';
+import { TM_LEADER_DOCUMENTS } from '../state/leader/tm-leader-documents';
+import { TM_STORE_EXTRA_FORMATS } from '../state/store/tm-doc-formats';
 import { TM_STATE_PARTS } from '../state/tm-state-dump';
 import { provideTellma, tmAppConfigOf } from './provide-tellma';
 import type { TmAppConfig } from './tm-app-config';
@@ -79,6 +90,30 @@ describe('provideTellma', () => {
     expect(declarations.features).toEqual(['core', 'acme']);
     expect(declarations.entities.get('acme.Customer')?.['order']).toBe(1);
     expect(declarations.reports.map((report) => report.key)).toEqual(['acme-credit-exposure']);
+  });
+
+  it('registers the attention documents as leader documents, with their store formats', () => {
+    TestBed.configureTestingModule({ providers: [provideTellma(config), provideTellmaTesting()] });
+    expect(TestBed.inject(TM_LEADER_DOCUMENTS)).toEqual(TM_ATTENTION_DOCUMENTS);
+    expect(TestBed.inject(TM_STORE_EXTRA_FORMATS)).toEqual({ inbox: 1 });
+  });
+
+  it('starts the offline banner, which shows once the server has been unreachable for 5 s', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date', 'performance'] });
+    try {
+      // The recent pages never load, so no startup work outlives the test.
+      const recents: Provider = { provide: TM_RECENTS_LOAD, useValue: () => new Promise<never>(() => undefined) };
+      TestBed.configureTestingModule({ providers: [provideTellma(config), provideTellmaTesting(), provideTellmaStateTesting(), recents] });
+      const api = TestBed.inject(TmFakeApi);
+      const banners = TestBed.inject(TmBanners);
+      TestBed.tick();
+      api.setOnline(false);
+      TestBed.tick();
+      await vi.advanceTimersByTimeAsync(5000);
+      expect(banners.ɵhead()?.options.id).toBe('tm.offline');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

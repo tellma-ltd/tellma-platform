@@ -384,6 +384,86 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-258 (orchestrator, 2026-11-23): PC-B05 result and its open items
+
+- PC-B05 found 4 minor issues (0/0/4). Its fixer fixed them, pushing back on part of FCS-1. It integrated fd0998ed onto platform-core as a fast-forward (pc 45285651946 green). Verdicts are in reviews/PC-B05.md.
+- XC-2 extends spec 0021 §3.1: a request that names WellKnownIds.SystemUserId as its actor stores no actor in any scope, and all job-engine notices now name it. For Ahmad: spec 0021 should state this.
+- FCS-1 is fixed for JobRunner only. The fixer pushed back on the general fix, a DataBatch replay of every commit callback at every proven-commit site, because it changes spec 0012's ExecuteAsync contract. I accept the pushback. The two gaps it leaves become PC-F81, a non-blocking fix after PC-F80:
+  - (a) the commit callbacks of enlisted writes publish no events on a proven completion;
+  - (b) ScheduleTick skips its wake after a proven commit.
+- PC-F78's CI run was started on a merge of 835a4dd8, before PC-B05 landed. Its platform-core push will be rejected by non-plans commits and must re-integrate (D-144); I accept that cost of D-256.
+
+### D-257 (orchestrator, 2026-11-23): PC-155's arrival baseline, its seams, and the load-dependent core flakes
+
+- PC-155's R1-2: spec 0028 §8.2 step 1 makes the first copy saved at or after a tab's start its silent baseline. In a follower tab (spec 0025 §8.6), that copy is usually the leader's first real refresh, so the first real arrival never toasts. The first ReadOnly or Frozen change to the tenant document is lost the same way.
+- Ruling: fix1 applies the reviewer's rule as a stated deviation from 0028 §8.2. It keeps the spec's intent that nothing which arrived before the tab started pops up.
+  - The first copy observed becomes `previous`, whatever its savedAt.
+  - When `previous` was saved before the tab's start, the next copy's arrivals are only the rows created or assigned at or after that start.
+  - The tenant state is compared whatever the savedAt, but toasts only when the new copy's savedAt is at or after the start.
+- Deviation 5 (the tenant-state toast ignores notifications.toasts) is accepted as a ruling: a state change that blocks saves must reach the user.
+- Misalignment: spec 0024 §2.2 and 0028 §8.1 have provideTellma install the toast overflow. PC-155 installs it through the core-ui seam TmToasts.ɵsetOverflow, called from TmArrivals, which keeps it out of the primary.
+- Carry to PC-156: /attention is at 5.93 of spec 0028's 6 KB. PC-156 moves TmAttentionText (1.13 KB) out of the eager /attention graph before adding the bell and tray. If that is not enough, it reports for a ruling on the 6 KB figure.
+- PC-155's R1 reproduced the two load-dependent core flakes (1446/1448 under CPU load). TmNavigation "labels and re-sorts the entries when the language switches" and TmHttpApi "blames the client when the server is newer" each wait a fixed number of turns across a first-use dynamic import: tm-locale-write with the Arabic strings, and PC-115's lazy tm-api-verdict. PC-F80 is opened as a non-blocking fix (D-229).
+- For Ahmad:
+  - confirm the 0028 §8.2 baseline rule;
+  - align 0024 §2.2 and 0028 §8.1 with the overflow seam;
+  - expect a /attention budget question at PC-156.
+
+### D-256 (orchestrator, 2026-11-23): PC-B05 starts late, in PC-F76's slot
+
+- Phase 5 (PC-085…PC-102) has been all done since PC-095 landed, and the §6.3 gate passes (R about 26, F about 9). PROCESS §5.2 says to start its batch review then, but I did not queue it. Ahmad's question surfaced the miss.
+- Ruling: PC-B05 takes pc-2, freed by PC-F76's landing; no Tier 1 item is ready (D-229).
+  - Finders run on Fable (meter 3%); the Opus fixer integrates per the §13 template.
+  - Its integration joins the D-087 queue as the fixer finds it, by re-merging if platform-core moved (§4.3).
+- PC-B06 is due when Phase 6 completes. PC-110, PC-119 and the other Phase 6 checkpoints are still open, so I check for it after every Phase 6 landing.
+
+### D-255 (Ahmad, 2026-11-23): held items keep their slots
+
+- At 21:22 UTC, weekly usage was 74% with 22.6 h to the reset: about 1.45 pts/h since D-178, while the rest needs about 1.15 pts/h.
+- Three slots held items in the D-087 release queue (PC-119, PC-F78, PC-177), leaving two agents working.
+- I offered to start T3 fills in those slots, with the held items integrating from whichever slot is free at release. Ahmad: keep as is. Held items keep their slots until they land.
+
+### D-254 (orchestrator, 2026-11-23): PC-115 lands with two lazy chunks of the primary
+
+- PC-115 integrated under D-252. Merged, "." measured 50.09 KB; its two lazy moves brought it to 49.40, against a ceiling of 49.5 (D-031). It landed at 4231428e.
+  - The outdated-client verdict moved to the lazy chunk tm-api-verdict (0.51 KB, -0.34 from the primary). If the chunk cannot load, the builds count as unordered and the worker's update check decides.
+  - The file transfers moved to the lazy chunk tm-api-transfer (0.75 KB, -0.35). If the chunk cannot load, the attempt fails as a network failure would.
+  - Both moves are stated deviations (reviews/PC-115.md, Deviations 8 and 9) from spec 0024 placing the HTTP layer in the primary.
+- The chunk-load fallbacks have no test: making a dynamic import fail in vitest browser mode was not practical. Accepted.
+- Misalignment: ARCHITECTURE.md's @tellma/core row lists only the entity model as a lazy chunk of the primary. It now also has tm-api-verdict, tm-api-transfer and, once PC-110 lands, tm-session-flows. PC-110 updates that row; until then it is out of date.
+- Room left: 0.60 KB. PC-F76, PC-119, PC-F78 and PC-110 (+0.48 as built) re-measure at integration (D-214), and any that would exceed 50 stops with status=blocked (D-247). PC-110's R1 is asked to list further lazy candidates.
+- For Ahmad: the D-247/D-252 question is now pressing. Should spec 0024 allow these lazy chunks, or should the cap change?
+
+### D-253 (orchestrator, 2026-11-23): PC-177's export default reference key skips nullable natural keys
+
+- PC-177's R1 (R1-3) found a spec gap in 0019 §6.2 and §9.4. The editable export references a target by its default reference key, which may be a nullable natural key (core.Role.Code). For a target whose key value is null, the export writes a blank cell.
+  - Re-import then fails with Required, which breaks the export-fix-import loop.
+  - Worse, a nullable foreign key to such a target clears silently on Update.
+- Ruling: PC-177's fix1 takes the reviewer's option (c), as a stated deviation from 0019 §6.2. The default reference key becomes the first non-nullable NaturalKeys member, else the surrogate Id. Role would export by Name.
+  - The change is in the export planner (PC-176's code). It is applied here because PC-177 owns the round trip, and the silent clear is data loss.
+  - It comes with a round-trip test for a target whose nullable natural key is null.
+- Rejected:
+  - Option (a), a per-row key kind: it adds a column shape that 0019 does not describe.
+  - Option (b), a blank cell keeps the stored reference: it makes a deliberate clear impossible.
+- PC-177 R1-4 (no ordering edge from child-sheet references to new parent rows) carries to PC-178, whose chunked import is where it can fail.
+- For Ahmad: confirm option (c), or say which 0019 should state.
+
+### D-252 (orchestrator, 2026-11-23): the primary's room after PC-109, and what PC-115 does at release
+
+- After PC-109's integration, "." measures 48.24 KB (linked, gzip 6), leaving 1.76 KB under the 50 KB cap. PC-109 is pending on CI.
+- The rest of the queue adds about:
+  - PC-115: +1.75.
+  - PC-F78: +0.06.
+  - PC-119: its own delta, still to be measured on the merged base.
+- That puts the primary at or just over 50 before any further primary checkpoint lands.
+- Ruling: when PC-115 is released, it must bring "." to 49.5 or below on the merged base, which leaves room for PC-F78 and PC-119. Its options, in this order:
+  1. Move bytes that no first-frame caller needs out of the primary into lazy entries, each move stated as a deviation from its spec's placement.
+  2. Trim within its own additions.
+- PC-115 reports every candidate with its saving, including ones outside its own code, such as the outdated-client verdict machinery that PC-F78's reviewer estimated at 0.3 to 0.4 KB.
+- If 49.5 cannot be reached without cutting spec behaviour, PC-115 stops with status=blocked and I decide.
+- PC-119 and PC-F78 re-measure at their releases (D-214). Any of them that would exceed 50 stops with status=blocked (D-247).
+- For Ahmad (sharpens D-247): the primary reaches its 50 KB cap with Tier 1 still incomplete. Raising 0024's cap, re-cutting the shares or moving members lazy is now needed soon. Until you rule, I keep it under 50 by lazy moves, each one a stated deviation.
+
 ### D-251 (orchestrator, 2026-11-23): PC-F76 measures the 50 KB cap on the whole primary entry
 
 - PC-F76's implementation measured the primary as Acme's first-frame cut through source maps: 37.80 KB, against size:check's whole-entry "." of 44.97. Review 1 (R1-1, major) showed this is the wrong reading of "own weight":

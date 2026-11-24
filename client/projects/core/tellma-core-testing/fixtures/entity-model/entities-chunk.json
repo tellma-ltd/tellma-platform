@@ -13,7 +13,8 @@
       "capabilities": [
         "activatable",
         "cacheable",
-        "excel"
+        "excel",
+        "searchable"
       ],
       "displayName": {
         "source": "Code",
@@ -316,7 +317,10 @@
       ],
       "defaultOrderBy": "Id desc",
       "searchable": [
-        "Name",
+        "Code",
+        "Name"
+      ],
+      "prefixSearchable": [
         "Code"
       ],
       "naturalKeys": [
@@ -1631,6 +1635,7 @@
       "searchable": [
         "Name"
       ],
+      "prefixSearchable": [],
       "naturalKeys": [
         "Code"
       ],
@@ -1905,6 +1910,7 @@
       "searchable": [
         "Name"
       ],
+      "prefixSearchable": [],
       "naturalKeys": [],
       "extras": [],
       "limits": {
@@ -2616,6 +2622,7 @@
       ],
       "defaultOrderBy": "Id desc",
       "searchable": [],
+      "prefixSearchable": [],
       "naturalKeys": [],
       "extras": [
         "permissions"
@@ -2825,6 +2832,7 @@
       ],
       "defaultOrderBy": "Id desc",
       "searchable": [],
+      "prefixSearchable": [],
       "naturalKeys": [],
       "extras": [],
       "limits": {
@@ -3081,6 +3089,7 @@
       ],
       "defaultOrderBy": "CreatedAt desc",
       "searchable": [],
+      "prefixSearchable": [],
       "naturalKeys": [],
       "extras": [
         "permissions"
@@ -3348,6 +3357,7 @@
       ],
       "defaultOrderBy": "CreatedAt desc",
       "searchable": [],
+      "prefixSearchable": [],
       "naturalKeys": [],
       "extras": [
         "permissions"
@@ -3809,6 +3819,7 @@
       ],
       "defaultOrderBy": "Id desc",
       "searchable": [],
+      "prefixSearchable": [],
       "naturalKeys": [],
       "extras": [
         "permissions"
@@ -4004,6 +4015,7 @@
       ],
       "defaultOrderBy": "Id desc",
       "searchable": [],
+      "prefixSearchable": [],
       "naturalKeys": [],
       "extras": [],
       "limits": {
@@ -4487,6 +4499,7 @@
       ],
       "defaultOrderBy": "CreatedAt desc",
       "searchable": [],
+      "prefixSearchable": [],
       "naturalKeys": [],
       "extras": [
         "permissions"
@@ -4637,6 +4650,7 @@
       ],
       "defaultOrderBy": "Id desc",
       "searchable": [],
+      "prefixSearchable": [],
       "naturalKeys": [],
       "extras": [],
       "limits": {
@@ -4941,6 +4955,7 @@
       ],
       "defaultOrderBy": "Id desc",
       "searchable": [],
+      "prefixSearchable": [],
       "naturalKeys": [],
       "extras": [],
       "limits": {
@@ -5495,6 +5510,7 @@
       "searchable": [
         "Title"
       ],
+      "prefixSearchable": [],
       "naturalKeys": [
         "Code"
       ],
@@ -6388,6 +6404,7 @@
       "searchable": [
         "Name"
       ],
+      "prefixSearchable": [],
       "naturalKeys": [
         "Code",
         "Name",
@@ -6698,6 +6715,7 @@
       ],
       "defaultOrderBy": "Id desc",
       "searchable": [],
+      "prefixSearchable": [],
       "naturalKeys": [],
       "extras": [],
       "limits": {
@@ -7706,6 +7724,7 @@
         "Code",
         "Name"
       ],
+      "prefixSearchable": [],
       "naturalKeys": [
         "Code"
       ],
@@ -7851,6 +7870,7 @@
       ],
       "defaultOrderBy": "Id desc",
       "searchable": [],
+      "prefixSearchable": [],
       "naturalKeys": [
         "Key"
       ],
@@ -8127,6 +8147,7 @@
         "Name2",
         "Name3"
       ],
+      "prefixSearchable": [],
       "naturalKeys": [],
       "extras": [],
       "limits": {
@@ -9985,6 +10006,7 @@
         "Email",
         "Name"
       ],
+      "prefixSearchable": [],
       "naturalKeys": [
         "Email",
         "Subject"
@@ -10097,6 +10119,7 @@
       "relatedSelect": [],
       "defaultOrderBy": "UserId desc",
       "searchable": [],
+      "prefixSearchable": [],
       "naturalKeys": [],
       "extras": [],
       "limits": {
@@ -11011,6 +11034,7 @@
         "Name",
         "Code"
       ],
+      "prefixSearchable": [],
       "naturalKeys": [
         "Code"
       ],
