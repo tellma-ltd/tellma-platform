@@ -9,6 +9,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Testing;
 using System.Collections.Concurrent;
+using System.Data;
 using System.Globalization;
 using System.Text;
 using Tellma.Core.Abstractions.Access;
@@ -183,6 +184,7 @@ namespace Tellma.Core.IntegrationTests.Jobs
                 readCommittedSnapshot: ReadCommittedSnapshot,
                 compose: static tellma => tellma.AddFeature(new JobRunFeature()),
                 cancellationToken: TestContext.Current.CancellationToken);
+            Audit.ConnectionString = ConnectionString;
 
             // --- The tenant's settings and version tags, the users, and the raw table ---
             string tags = string.Join(", ", Tenant.Services.GetRequiredService<IVersionTagRegistry>().Names.Select(static name => $"(N'{name}')"));
@@ -505,15 +507,17 @@ namespace Tellma.Core.IntegrationTests.Jobs
     ///     that runs batches side by side suspends it; a batch begun while it was suspended is not
     ///     checked when it ends. A test may also have one batch lose its response once it committed.
     /// </summary>
+    /// <remarks>
+    ///     A batch's end is reached whether or not its body ran: a batch whose guard failed ends having
+    ///     committed nothing, and is composed again. The probe proves a commit only by finding the
+    ///     batch's rows, so a lost response is given only to a batch that change tracking saw write.
+    /// </remarks>
     internal sealed class SuspendableAudit : IDataBatchAudit
     {
-        /// <summary>What a batch begun while the audit was suspended carries to its end.</summary>
-        private static readonly object Unchecked = new();
-
         /// <summary>Whether the audit is suspended.</summary>
         private volatile bool _suspended;
 
-        /// <summary>How many writing batches end before the one that loses its response; -1 when none is armed.</summary>
+        /// <summary>How many committing batches end before the one that loses its response; -1 when none is armed.</summary>
         private int _losesResponseIn = -1;
 
         /// <summary>The table whose next writer loses its response; null when none is armed.</summary>
@@ -524,6 +528,9 @@ namespace Tellma.Core.IntegrationTests.Jobs
 
         /// <summary>The fixture's audit; null when the host has none.</summary>
         public IDataBatchAudit? Inner { get; set; }
+
+        /// <summary>The fixture database's connection string, on which a lost response's change tracking is read; null until the database exists.</summary>
+        public string? ConnectionString { get; set; }
 
         /// <summary>
         ///     How many batches lost their response since the last reset, so a test proves that the
@@ -538,20 +545,29 @@ namespace Tellma.Core.IntegrationTests.Jobs
             set => _suspended = value;
         }
 
+        /// <summary>Whether a lost response is armed and has not happened yet.</summary>
+        private bool Armed => Volatile.Read(ref _losesResponseIn) >= 0 || Volatile.Read(ref _losesResponseWriting) is not null;
+
         /// <inheritdoc />
         public async ValueTask<object?> BeforeAsync(CancellationToken cancellationToken)
         {
-            return _suspended || Inner is not IDataBatchAudit inner ? Unchecked : await inner.BeforeAsync(cancellationToken).ConfigureAwait(false);
+            // --- While a lost response is armed, the version the batch begins at, so its end can tell whether it wrote ---
+            long? since = Armed ? await CurrentVersionAsync(cancellationToken).ConfigureAwait(false) : null;
+
+            // --- The fixture's audit, unless it is suspended ---
+            return _suspended || Inner is not IDataBatchAudit inner
+                ? new Window(since, Checked: false, InnerState: null)
+                : new Window(since, Checked: true, InnerState: await inner.BeforeAsync(cancellationToken).ConfigureAwait(false));
         }
 
         /// <summary>
-        ///     Arms a lost response: the writing batch that ends after <paramref name="batchesAhead" />
-        ///     others committed, but its caller learns so only from the probe, as when the connection
-        ///     drops during the commit and the probe finds the batch's rows. Its results are never
-        ///     completed and its commit callbacks never run, as the executor's are not on that path. A
-        ///     batch that declared no write, such as a cold cache's load, is not counted.
+        ///     Arms a lost response: the batch that commits a write after <paramref name="batchesAhead" />
+        ///     others did, but its caller learns so only from the probe, as when the connection drops
+        ///     during the commit and the probe finds the batch's rows. Its results are never completed
+        ///     and its commit callbacks never run, as the executor's are not on that path. A batch that
+        ///     wrote nothing, such as a cold cache's load or a batch whose guard failed, is not counted.
         /// </summary>
-        /// <param name="batchesAhead">How many writing batches end, as they are, before that one.</param>
+        /// <param name="batchesAhead">How many batches commit a write, as they are, before that one.</param>
         public void LoseResponse(int batchesAhead)
         {
             ArgumentOutOfRangeException.ThrowIfNegative(batchesAhead);
@@ -559,8 +575,8 @@ namespace Tellma.Core.IntegrationTests.Jobs
         }
 
         /// <summary>
-        ///     Arms a lost response for the next batch to end that declared a write to
-        ///     <paramref name="writing" />, however many batches end before it.
+        ///     Arms a lost response for the next batch to end that wrote <paramref name="writing" />,
+        ///     however many batches end before it.
         /// </summary>
         /// <param name="writing">The table whose next writer loses its response.</param>
         public void LoseResponse(TableName writing)
@@ -580,29 +596,42 @@ namespace Tellma.Core.IntegrationTests.Jobs
         /// <inheritdoc />
         public async ValueTask AfterAsync(object? state, IReadOnlySet<TableName> writtenTables, CancellationToken cancellationToken)
         {
-            // --- The batch armed by a table it writes committed, and the probe is all its caller hears ---
-            // The exchange disarms it, so of two such batches ending together only one loses its response.
-            TableName? writing = Volatile.Read(ref _losesResponseWriting);
-            if (writing is not null && writtenTables.Contains(writing) && ReferenceEquals(Interlocked.CompareExchange(ref _losesResponseWriting, null, writing), writing))
+            ArgumentNullException.ThrowIfNull(writtenTables);
+            var window = (Window)state!;
+
+            // A batch begun before the arming neither counts nor loses its response.
+            if (window.Since is long since)
             {
-                throw LostResponse();
+                // --- The batch armed by a table it wrote committed, and the probe is all its caller hears ---
+                // The exchange disarms it, so of two such batches ending together only one loses its response.
+                TableName? writing = Volatile.Read(ref _losesResponseWriting);
+                if (writing is not null
+                    && writtenTables.Contains(writing)
+                    && await WroteAnyAsync(since, [writing], cancellationToken).ConfigureAwait(false)
+                    && ReferenceEquals(Interlocked.CompareExchange(ref _losesResponseWriting, null, writing), writing))
+                {
+                    throw LostResponse();
+                }
+
+                // --- The batch armed by its place among the committing batches committed, and the probe is all its caller hears ---
+                if (Volatile.Read(ref _losesResponseIn) >= 0
+                    && writtenTables.Count > 0
+                    && await WroteAnyAsync(since, writtenTables, cancellationToken).ConfigureAwait(false)
+                    && Interlocked.Decrement(ref _losesResponseIn) == -1)
+                {
+                    throw LostResponse();
+                }
+
+                // Below -1, nothing is armed: two batches that raced past the read put the count back.
+                _ = Interlocked.CompareExchange(ref _losesResponseIn, -1, -2);
             }
 
-            // --- The writing batch armed by its place in line committed, and the probe is all its caller hears ---
-            if (writtenTables.Count > 0 && Interlocked.Decrement(ref _losesResponseIn) == -1)
-            {
-                throw LostResponse();
-            }
-
-            // Below -1, nothing is armed: the count is put back so it never wraps.
-            _ = Interlocked.CompareExchange(ref _losesResponseIn, -1, -2);
-
-            if (ReferenceEquals(state, Unchecked) || Inner is not IDataBatchAudit inner)
+            if (!window.Checked || Inner is not IDataBatchAudit inner)
             {
                 return;
             }
 
-            await inner.AfterAsync(state, writtenTables, cancellationToken).ConfigureAwait(false);
+            await inner.AfterAsync(window.InnerState, writtenTables, cancellationToken).ConfigureAwait(false);
         }
 
         /// <summary>Counts a lost response and returns what its caller hears: only the probe's verdict.</summary>
@@ -612,7 +641,85 @@ namespace Tellma.Core.IntegrationTests.Jobs
             _ = Interlocked.Increment(ref _responsesLost);
             return new DataAccessAmbiguousException(new TimeoutException("The test dropped the connection during the commit."), CommitVerdict.Committed);
         }
+
+        /// <summary>The database's change-tracking version now.</summary>
+        /// <param name="cancellationToken">Cancels the read.</param>
+        /// <returns>The version.</returns>
+        private async Task<long> CurrentVersionAsync(CancellationToken cancellationToken)
+        {
+            await using SqlConnection connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
+            await using SqlCommand command = connection.CreateCommand();
+            command.CommandText = "SELECT CHANGE_TRACKING_CURRENT_VERSION();";
+            return await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false) is long version ? version : 0L;
+        }
+
+        /// <summary>Whether change tracking saw a write to any of the tables after a version.</summary>
+        /// <param name="since">The version the batch began at.</param>
+        /// <param name="tables">The tables the batch declared it writes.</param>
+        /// <param name="cancellationToken">Cancels the read.</param>
+        /// <returns>True when one of the tracked tables among them changed.</returns>
+        private async Task<bool> WroteAnyAsync(long since, IEnumerable<TableName> tables, CancellationToken cancellationToken)
+        {
+            await using SqlConnection connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
+
+            // --- The tracked tables among them: a table change tracking is off for cannot be probed ---
+            HashSet<TableName> tracked = [];
+            await using (SqlCommand list = connection.CreateCommand())
+            {
+                list.CommandText = """
+                    SELECT s.[name], t.[name]
+                    FROM sys.change_tracking_tables AS c
+                    JOIN sys.tables AS t ON t.[object_id] = c.[object_id]
+                    JOIN sys.schemas AS s ON s.[schema_id] = t.[schema_id];
+                    """;
+                await using SqlDataReader reader = await list.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+                while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+                {
+                    _ = tracked.Add(new TableName(reader.GetString(0), reader.GetString(1)));
+                }
+            }
+
+            List<TableName> probed = [.. tables.Where(tracked.Contains)];
+            if (probed.Count == 0)
+            {
+                return false;
+            }
+
+            // --- One probe per table, in one statement: any change after the version ---
+            await using SqlCommand command = connection.CreateCommand();
+            command.CommandText = string.Concat(
+                "SELECT CASE WHEN ",
+                string.Join(" OR ", probed.Select(static table => $"EXISTS (SELECT 1 FROM CHANGETABLE(CHANGES {table.Delimited}, @since) AS c)")),
+                " THEN 1 ELSE 0 END;");
+            _ = command.Parameters.Add(new SqlParameter("@since", SqlDbType.BigInt) { Value = since });
+            return await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false) is 1;
+        }
+
+        /// <summary>Opens a connection of the audit's own, so the batch's round trips stay its own.</summary>
+        /// <param name="cancellationToken">Cancels the open.</param>
+        /// <returns>The open connection.</returns>
+        private async Task<SqlConnection> OpenAsync(CancellationToken cancellationToken)
+        {
+            SqlConnection connection = new(ConnectionString ?? throw new InvalidOperationException("The audit has no database to read change tracking from yet."));
+            try
+            {
+                await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
+                return connection;
+            }
+            catch
+            {
+                await connection.DisposeAsync().ConfigureAwait(false);
+                throw;
+            }
+        }
+
+        /// <summary>What a batch carries from its start to its end.</summary>
+        /// <param name="Since">The change-tracking version the batch began at, read only while a lost response was armed; null otherwise.</param>
+        /// <param name="Checked">Whether the fixture's audit checks the batch: it was neither suspended nor absent when the batch began.</param>
+        /// <param name="InnerState">What the fixture's audit returned when the batch began.</param>
+        private sealed record Window(long? Since, bool Checked, object? InnerState);
     }
+
 
     /// <summary>A job's stored row, every column by name.</summary>
     /// <param name="Columns">The columns.</param>

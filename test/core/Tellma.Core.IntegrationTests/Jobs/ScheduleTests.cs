@@ -238,11 +238,16 @@ namespace Tellma.Core.IntegrationTests.Jobs
         [Fact]
         public async Task A_tick_whose_step_two_response_is_lost_after_its_commit_still_wakes_the_poller_for_the_jobs_it_fired()
         {
+            // --- The settings move under the host's warm cache, so step 2's first attempt fails its guard, commits nothing and is composed again ---
+            _ = await TickAsync();
+            await SqlServerFixture.ExecuteAsync(fixture.ConnectionString, Sql($"UPDATE [core].[VersionTags] SET [Tag] = NEWID() WHERE [Name] = N'{VersionTagNames.Settings}';"));
+
             DateTimeOffset due = (await DatabaseNowAsync()).AddMinutes(-1);
             int fired = await InsertScheduleAsync(FixtureJobKeys.Probe, zone: Utc, nextDueAt: due);
             int paused = await InsertScheduleAsync(FixtureJobKeys.Probe, runAs: InactiveUserId, nextDueAt: due);
 
-            // Step 2 is the tick's one batch that writes the schedules: the pause's.
+            // Step 2 is the tick's one batch that writes the schedules: the pause's. Only the attempt
+            // that wrote them loses its response.
             fixture.Audit.LoseResponse(JobStatements.Schedules);
             _ = await TickAsync();
 

@@ -295,3 +295,30 @@ The orchestrator's questions:
     (`fixture.Audit.LoseResponse(batchesAhead: 0);`) locally and rebuilt. Both the Snapshot and
     Locking variants then failed on the new assertion (Expected: 1, Actual: 0, JobRunTests.cs:352).
     I restored the line, and the file is byte-identical to the backup taken first.
+
+### CI fix (integration run 45361322163 on b4eb5796)
+
+- **Failure:** the tick test failed on Linux at `Assert.Single(await JobsOfAsync(fired))`, after
+  `ResponsesLost` had already read 1. It passed locally because the local order differs.
+- **Root cause (test seam, not product):** `IDataBatchAudit.AfterAsync` runs at the end of every
+  executed batch, whether or not its body ran. It always receives the batch's declared writes.
+  `SuspendableAudit` lost the response of the first batch that *declared* a write to the armed
+  table.
+  - On CI the take-over test ran just before this one. It moved the settings tag, and the next
+    reset moved it again by SQL. That left the host's settings cache warm but stale.
+  - So step 2's first attempt failed its system settings guard and committed nothing. The seam
+    still threw `Committed` for that attempt, which stopped `GuardedBatchRunner` from
+    recomposing. No job was ever inserted.
+  - The real probe proves a commit only by finding the batch's rows, so it can never say that.
+    (In production, tick step 2 is not probeable at all: it reserves no ids, so a dropped
+    connection there surfaces `Unknown`.)
+- **Reproduced deterministically:** warm the cache with a tick, then bump the settings tag by
+  SQL before arming. With the old seam, the test failed the same way on Windows.
+- **Fix:**
+  - While a lost response is armed, `SuspendableAudit` reads `CHANGE_TRACKING_CURRENT_VERSION()`
+    in `BeforeAsync`. In `AfterAsync` it loses the response only for a batch that change tracking
+    saw write: the armed table, or, for count-based arming, one of the batch's declared tables.
+  - A batch that wrote nothing, such as a failed-guard attempt, neither loses its response nor
+    counts toward `batchesAhead`.
+  - The tick test now starts with the warm-cache settings bump, so every run exercises a
+    failed-guard first attempt followed by the recomposed attempt that loses its response.
