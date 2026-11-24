@@ -15,6 +15,13 @@ namespace Tellma.Identity.Services.Sessions
     /// <param name="timeProvider">The clock.</param>
     public sealed class SqlSessionRegistry(TellmaIdentityDbContext context, TimeProvider timeProvider) : ISessionRegistry
     {
+        /// <summary>
+        ///     How many times a registration saves before a lost insert fails it. Each lost insert
+        ///     is a row another grant wrote, which the next attempt reads instead, and a registration
+        ///     inserts at most two rows, so the third attempt has nothing left to lose.
+        /// </summary>
+        private const int MaxRegistrationAttempts = 3;
+
         /// <inheritdoc />
         public async Task UpsertSessionAsync(
             string sid, string userId, string? userAgent, string? ipAddress, CancellationToken cancellationToken)
@@ -53,55 +60,33 @@ namespace Tellma.Identity.Services.Sessions
             ArgumentException.ThrowIfNullOrWhiteSpace(clientId);
 
             DateTimeOffset now = timeProvider.GetUtcNow();
-
-            IdentitySessionClient? registration =
-                await context.Set<IdentitySessionClient>().FindAsync([sid, clientId], cancellationToken);
-            IdentitySessionClient? added = null;
-            if (registration is null)
+            for (int attempt = 1; ; attempt++)
             {
-                added = new IdentitySessionClient
+                List<object> added = await StageRegistrationAsync(sid, clientId, authorizationId, now, cancellationToken);
+
+                // The session was just observed.
+                IdentitySession? session = await context.Set<IdentitySession>().FindAsync([sid], cancellationToken);
+                session?.LastSeenUtc = now;
+
+                try
                 {
-                    Sid = sid,
-                    ClientId = clientId,
-                    AuthorizationId = authorizationId,
-                    CreatedUtc = now,
-                };
-                context.Set<IdentitySessionClient>().Add(added);
-            }
-            else if (authorizationId is not null)
-            {
-                registration.AuthorizationId = authorizationId;
-            }
-
-            // The session was just observed.
-            IdentitySession? session = await context.Set<IdentitySession>().FindAsync([sid], cancellationToken);
-            session?.LastSeenUtc = now;
-
-            try
-            {
-                await context.SaveChangesAsync(cancellationToken);
-            }
-            catch (DbUpdateException exception) when (added is not null && IsDuplicateKey(exception))
-            {
-                // Another grant of the same session (a second tab) registered the client between
-                // the read above and this insert. Its row stands, and this grant's authorization
-                // is recorded on it as a later registration's would be. The refused row is
-                // forgotten first: left tracked, every later save on this context would insert
-                // it again and fail the same way.
-                context.Entry(added).State = EntityState.Detached;
-                IdentitySessionClient? winner =
-                    await context.Set<IdentitySessionClient>().FindAsync([sid, clientId], cancellationToken);
-                if (winner is null)
-                {
-                    throw;
+                    await context.SaveChangesAsync(cancellationToken);
+                    return;
                 }
-
-                if (authorizationId is not null)
+                catch (DbUpdateException exception) when (
+                    added.Count > 0 && attempt < MaxRegistrationAttempts && IsDuplicateKey(exception))
                 {
-                    winner.AuthorizationId = authorizationId;
+                    // Another grant of the same session (a second tab) inserted one of these rows
+                    // between the reads above and this save. Its row stands, so the next attempt
+                    // reads it and inserts only what is still missing. The refused rows are
+                    // forgotten first: left tracked, every later save on this context would insert
+                    // them again and fail the same way. Any other failure, a foreign key on a
+                    // session ended meanwhile among them, is not caught, so the grant fails.
+                    foreach (object row in added)
+                    {
+                        context.Entry(row).State = EntityState.Detached;
+                    }
                 }
-
-                await context.SaveChangesAsync(cancellationToken);
             }
         }
 
@@ -112,6 +97,7 @@ namespace Tellma.Identity.Services.Sessions
 
             IdentitySession? session = await context.Set<IdentitySession>()
                 .Include(static s => s.Clients)
+                .ThenInclude(static c => c.Authorizations)
                 .FirstOrDefaultAsync(s => s.Sid == sid, cancellationToken);
             if (session is null)
             {
@@ -134,6 +120,7 @@ namespace Tellma.Identity.Services.Sessions
 
             List<IdentitySession> sessions = await context.Set<IdentitySession>()
                 .Include(static s => s.Clients)
+                .ThenInclude(static c => c.Authorizations)
                 .Where(s => s.UserId == userId && s.TerminatedUtc == null)
                 .ToListAsync(cancellationToken);
 
@@ -206,6 +193,42 @@ namespace Tellma.Identity.Services.Sessions
                 .ExecuteDeleteAsync(cancellationToken);
 
             return new SessionPruneResult(expired, removed);
+        }
+
+        /// <summary>
+        ///     Adds whichever of a registration's two rows is missing: the client under the session,
+        ///     and the authorization under the client.
+        /// </summary>
+        /// <returns>The rows added, still to be saved.</returns>
+        private async Task<List<object>> StageRegistrationAsync(
+            string sid, string clientId, string? authorizationId, DateTimeOffset now, CancellationToken cancellationToken)
+        {
+            List<object> added = [];
+            if (await context.Set<IdentitySessionClient>().FindAsync([sid, clientId], cancellationToken) is null)
+            {
+                IdentitySessionClient client = new() { Sid = sid, ClientId = clientId, CreatedUtc = now };
+                context.Set<IdentitySessionClient>().Add(client);
+                added.Add(client);
+            }
+
+            // Every authorization the client's grants use is kept, never replaced: each backs
+            // refresh tokens that a logout of this session must stop.
+            if (authorizationId is not null
+                && await context.Set<IdentitySessionClientAuthorization>().FindAsync(
+                    [sid, clientId, authorizationId], cancellationToken) is null)
+            {
+                IdentitySessionClientAuthorization authorization = new()
+                {
+                    Sid = sid,
+                    ClientId = clientId,
+                    AuthorizationId = authorizationId,
+                    CreatedUtc = now,
+                };
+                context.Set<IdentitySessionClientAuthorization>().Add(authorization);
+                added.Add(authorization);
+            }
+
+            return added;
         }
 
         /// <summary>Whether a save failed on a row that another writer inserted first.</summary>

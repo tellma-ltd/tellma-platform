@@ -208,8 +208,9 @@ namespace Tellma.Identity.Services.AuthenticationPolicy
             // every resource the user has granted the client, so consent remembered by it covers
             // those places and no other. An existing authorization that lacks one of this grant's
             // resources gains it (the user was asked first when the client's consent is explicit)
-            // rather than a second one being created beside it: the session registers one
-            // authorization per client, and that is the one global logout revokes.
+            // rather than a second one being created beside it, so consent stays remembered in one
+            // place. The session registers every authorization a client's grants use under it, and
+            // a logout revokes them all.
             string clientObjectId = (await applicationManager.GetIdAsync(application, cancellationToken))!;
             object? authorization = await AttachAuthorizationAsync(identity, user.Id, clientObjectId, cancellationToken);
             if (authorization is null)
@@ -267,7 +268,7 @@ namespace Tellma.Identity.Services.AuthenticationPolicy
         ///     extends the authorization as it now stands. A grant that loses its write
         ///     <see cref="MaxAuthorizationWriteAttempts" /> times gives up. Two first grants at once
         ///     both find none and each create one, as the store has nothing to refuse; both then
-        ///     succeed, and the session registers the client with whichever registers last.
+        ///     succeed, and the session registers both, so a logout revokes both.
         /// </summary>
         /// <returns>The authorization, or null when the grant gave up.</returns>
         private async Task<object?> AttachAuthorizationAsync(

@@ -56,26 +56,27 @@ namespace Tellma.Identity.Services.BackchannelLogout
             string subject, IReadOnlyList<IdentitySessionClient> clients, CancellationToken cancellationToken)
         {
             // Revoke the backing authorizations first: renewal stops even if a delivery fails.
+            // Every authorization the client's grants used under the session is revoked, not only
+            // the latest: grants asking for different scopes, or two first grants made at once,
+            // each back their own refresh tokens.
             foreach (IdentitySessionClient registration in clients)
             {
-                if (registration.AuthorizationId is null)
+                foreach (IdentitySessionClientAuthorization used in registration.Authorizations)
                 {
-                    continue;
-                }
-
-                object? authorization = await authorizationManager.FindByIdAsync(registration.AuthorizationId, cancellationToken);
-                if (authorization is not null && await authorizationManager.TryRevokeAsync(authorization, cancellationToken))
-                {
-                    await auditLogger.LogAsync(
-                        new AuditEventEntry
-                        {
-                            Action = AuditActions.TokenRevoked,
-                            Subject = subject,
-                            ClientId = registration.ClientId,
-                            Sid = registration.Sid,
-                            Outcome = "success",
-                        },
-                        cancellationToken);
+                    object? authorization = await authorizationManager.FindByIdAsync(used.AuthorizationId, cancellationToken);
+                    if (authorization is not null && await authorizationManager.TryRevokeAsync(authorization, cancellationToken))
+                    {
+                        await auditLogger.LogAsync(
+                            new AuditEventEntry
+                            {
+                                Action = AuditActions.TokenRevoked,
+                                Subject = subject,
+                                ClientId = registration.ClientId,
+                                Sid = registration.Sid,
+                                Outcome = "success",
+                            },
+                            cancellationToken);
+                    }
                 }
             }
 
