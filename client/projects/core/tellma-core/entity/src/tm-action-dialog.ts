@@ -15,7 +15,16 @@ import {
   type Signal,
   type Type,
 } from '@angular/core';
-import { form, required, submit, type FieldTree, type SchemaPathTree, type ValidationError } from '@angular/forms/signals';
+import {
+  form,
+  required,
+  requiredError,
+  submit,
+  validate,
+  type FieldTree,
+  type SchemaPathTree,
+  type ValidationError,
+} from '@angular/forms/signals';
 import {
   TmApiError,
   TmDisplayNames,
@@ -29,22 +38,24 @@ import {
   type TmProblemError,
   type TmStringTree,
 } from '@tellma/core';
+import { tmSplitErrorPath, tmWalkErrorPath } from '@tellma/core/error-paths';
 import { TM_UI_TRANSLATE } from '@tellma/core-ui';
 import { TmAlert } from '@tellma/core-ui/alert';
 import { TmBusyOverlay } from '@tellma/core-ui/busy-overlay';
 import { TmButton } from '@tellma/core-ui/button';
+import { TmReference } from '@tellma/core-ui/copy';
 import { TmFormField } from '@tellma/core-ui/form-field';
 import { TM_MODAL_DATA, TmModal, TmModalFooter, TmModalRef } from '@tellma/core-ui/modal';
 
 import { ɵtmRunAction } from './tm-action-run';
 import {
   ɵTM_ACTION_DIALOG,
+  ɵtmLoad,
   type TmActionDialogContext,
   type TmActionDialogRunOptions,
   type TmEntityActionOptions,
   type TmEntityActionOutcome,
 } from './tm-entity-actions';
-import { tmSplitErrorPath, tmWalkErrorPath } from './tm-error-paths';
 import { TmValueEditor } from './tm-value-editor';
 
 // An entity action's dialog (spec 0031 §10.4), which `TmEntityActions.dialog`
@@ -53,8 +64,9 @@ import { TmValueEditor } from './tm-value-editor';
 // arguments' fields, and the context both run the action through. A run goes
 // under the busy overlay and through the confirmation loop; the server's
 // argument errors land on the dialog's form by the error-path walk (§8.5),
-// and every other failure lists in an alert atop the dialog. Its strings
-// ship here, under `tm.actionDialog`, since only this chunk reads them.
+// and every other failure lists in an alert atop the dialog, with the
+// call's reference. Its strings ship here, under `tm.actionDialog`, since
+// only this chunk reads them.
 
 /**
  * The action dialog's English strings, under `tm.actionDialog`. Internal:
@@ -63,6 +75,10 @@ import { TmValueEditor } from './tm-value-editor';
 export const ɵTM_ACTION_DIALOG_STRINGS_EN = {
   failed: "The action couldn't be completed.",
   item: '{label}: {message}',
+  outcomeUnknown: {
+    title: "We couldn't confirm this",
+    message: 'The connection dropped before the action finished. Check whether it went through before you run it again.',
+  },
 } as const satisfies TmStringTree;
 
 /** The kind of a server error placed on a dialog's field. */
@@ -80,6 +96,8 @@ interface TmActionDialogData {
   readonly options: TmEntityActionOptions;
   /** The declared dialog's component; `null` for the generated one. */
   readonly component: Type<unknown> | null;
+  /** The outcome of the last successful run, which a dismissal still reports. */
+  readonly ran: { outcome: TmEntityActionOutcome | null };
 }
 
 /** One argument of the generated dialog. */
@@ -92,29 +110,51 @@ interface TmGeneratedField {
   readonly tree: FieldTree<unknown>;
 }
 
+/** A server error on a generated field, as the run that reported it recorded it. */
+interface TmPlacedError {
+  /** The field's value at that run, as JSON: the error shows while the value is that one. */
+  readonly value: string;
+  /** The message. */
+  readonly message: Signal<string>;
+}
+
 /** A failure as the dialog's alert shows it. */
 interface TmShownFailure {
   /** The alert's heading. */
-  readonly heading: string;
+  readonly heading: Signal<string>;
   /** The problem's detail; empty for none. */
-  readonly detail: string;
+  readonly detail: Signal<string>;
   /** The errors no field shows. */
   readonly items: readonly Signal<string>[];
+  /** The call's reference for support; empty for none. */
+  readonly traceId: string;
 }
 
 /** The generated forms' per-dialog ids. */
 let nextId = 0;
 
 /**
- * Opens an action's dialog and resolves once it closes. Internal:
- * `TmEntityActions.dialog` calls it.
+ * A field's value as JSON, to compare with the value a server error was
+ * reported for.
+ *
+ * @param value - The value.
+ * @returns Its JSON.
+ */
+function json(value: unknown): string {
+  return JSON.stringify(value ?? null);
+}
+
+/**
+ * Opens an action's dialog and resolves once it closes. Internal: the
+ * dialog's decision in the run's chunk calls it.
  *
  * @param injector - The root injector.
  * @param entity - The entity.
  * @param action - The action.
  * @param ids - The rows.
  * @param options - The initial arguments and request options.
- * @returns The outcome the dialog closed with; `null` when dismissed.
+ * @returns The outcome the dialog closed with, else that of its last successful run; `null` when nothing ran.
+ * @throws TmApiError of kind `offline` when a declared dialog's code cannot load.
  */
 export async function ɵtmOpenActionDialog(
   injector: Injector,
@@ -126,15 +166,17 @@ export async function ɵtmOpenActionDialog(
   injector.get(TmLocalization).ɵregisterStrings('actionDialog', ɵTM_ACTION_DIALOG_STRINGS_EN);
   // A declared dialog's code loads before the modal opens.
   const declared: TmLazyComponent | undefined = action.declaration?.dialog;
-  const loaded = declared === undefined ? null : await declared();
+  const loaded = declared === undefined ? null : await ɵtmLoad(declared);
   const component = loaded === null ? null : typeof loaded === 'function' ? loaded : loaded.default;
+  const ran: TmActionDialogData['ran'] = { outcome: null };
   const ref = injector.get(TmModal).open<TmEntityActionOutcome | null>(ɵTmActionDialog, {
     size: 'md',
     title: action.label(),
-    data: { entity, action, ids, options, component } satisfies TmActionDialogData,
+    data: { entity, action, ids, options, component, ran } satisfies TmActionDialogData,
   });
   const result = await ref.closed;
-  return result.via === 'api' ? (result.value ?? null) : null;
+  // A dismissal, or a close with no outcome, after a run that stayed open still reports that run.
+  return (result.via === 'api' ? result.value : null) ?? ran.outcome;
 }
 
 /**
@@ -144,7 +186,7 @@ export async function ɵtmOpenActionDialog(
  */
 @Component({
   selector: 'tm-action-dialog',
-  imports: [NgComponentOutlet, TmAlert, TmButton, TmFormField, TmModalFooter, TmValueEditor],
+  imports: [NgComponentOutlet, TmAlert, TmButton, TmFormField, TmModalFooter, TmReference, TmValueEditor],
   changeDetection: ChangeDetectionStrategy.OnPush,
   styles: `
     :host {
@@ -158,17 +200,20 @@ export async function ɵtmOpenActionDialog(
     .tm-action-dialog__failure ul {
       padding-inline-start: var(--space-5);
     }
+    .tm-action-dialog__reference {
+      margin-block-start: var(--space-2);
+    }
     .tm-action-dialog__form {
       display: grid;
       gap: var(--space-4);
     }
   `,
   template: `
-    <!-- The last failed run's errors that no field shows -->
+    <!-- The last failed run's errors that no field shows, and its reference -->
     @if (failure(); as shown) {
-      <tm-alert class="tm-action-dialog__failure" kind="error" live="assertive" [heading]="shown.heading">
-        @if (shown.detail) {
-          <p>{{ shown.detail }}</p>
+      <tm-alert class="tm-action-dialog__failure" kind="error" live="assertive" [heading]="shown.heading()">
+        @if (shown.detail(); as detail) {
+          <p>{{ detail }}</p>
         }
         @if (shown.items.length > 0) {
           <ul>
@@ -176,6 +221,9 @@ export async function ɵtmOpenActionDialog(
               <li>{{ item() }}</li>
             }
           </ul>
+        }
+        @if (shown.traceId) {
+          <tm-reference class="tm-action-dialog__reference" [value]="shown.traceId" />
         }
       </tm-alert>
     }
@@ -209,6 +257,9 @@ export class ɵTmActionDialog {
   readonly #names = inject(TmDisplayNames);
   readonly #running = signal(false);
   readonly #failure = signal<TmShownFailure | null>(null);
+
+  /** The server's errors on the generated form's fields, by argument, from the last run. */
+  readonly #placed = signal<Readonly<Record<string, readonly TmPlacedError[]>>>({});
 
   /** The action, its rows and the invoker's options. */
   protected readonly data = inject<TmActionDialogData>(TM_MODAL_DATA);
@@ -246,12 +297,24 @@ export class ɵTmActionDialog {
     ),
   );
 
-  /** The generated form, each argument required as its metadata says. */
+  /**
+   * The generated form: each argument required as its metadata says (a
+   * yes/no needs only an answer, since "no" is one), and the last run's
+   * server errors on each, while its value is the one they were reported for.
+   */
   readonly #form = form(this.#model, (root) => {
+    const paths = root as unknown as Readonly<Record<string, SchemaPathTree<unknown>>>;
     for (const field of this.data.action.fields ?? []) {
-      if (field.required) {
-        required((root as unknown as Readonly<Record<string, SchemaPathTree<unknown>>>)[field.name]!);
+      const path = paths[field.name]!;
+      if (field.required && field.value.type === 'bool') {
+        validate(path, ({ value }) => (value() === null || value() === undefined ? requiredError() : undefined));
+      } else if (field.required) {
+        required(path);
       }
+      validate(path, ({ value }) => {
+        const now = json(value());
+        return (this.#placed()[field.name] ?? []).filter((placed) => placed.value === now).map((placed) => ({ kind: SERVER_ERROR, message: placed.message() }));
+      });
     }
   });
 
@@ -288,15 +351,20 @@ export class ɵTmActionDialog {
   async #run<A>(args: A, options: TmActionDialogRunOptions<A>): Promise<TmEntityActionOutcome | null> {
     const { entity, action, ids } = this.data;
     let sent: readonly TmId[] = options.ids ?? ids;
+    // Every error of the last run clears as this one starts.
     this.#failure.set(null);
+    this.#placed.set({});
     this.#running.set(true);
     try {
       const outcome = await this.#busy.run(
         ɵtmRunAction(this.#injector, entity, action.name, options.ids ?? ids, { ...this.data.options, arguments: args as TmJsonObject }, (rows) => (sent = rows)),
       );
-      // A declined warning keeps the dialog open, as it was.
-      if (outcome.kind !== 'declined' && !options.keepOpen) {
-        this.#ref.close(outcome);
+      // A declined warning keeps the dialog open, as it was; a success is reported however the dialog closes.
+      if (outcome.kind !== 'declined') {
+        this.data.ran.outcome = outcome;
+        if (!options.keepOpen) {
+          this.#ref.close(outcome);
+        }
       }
       return outcome;
     } catch (error) {
@@ -307,7 +375,7 @@ export class ɵTmActionDialog {
         // Not the server's answer: reported as the app's error, and shown as a failure.
         this.#injector.get(ErrorHandler).handleError(error);
       }
-      await this.#show(error, options.form as FieldTree<unknown> | undefined, sent);
+      await this.#show(error, options.form as FieldTree<unknown> | undefined, args as Readonly<Record<string, unknown>>, sent);
       return null;
     } finally {
       this.#running.set(false);
@@ -320,12 +388,15 @@ export class ɵTmActionDialog {
    *
    * @param error - The failure.
    * @param tree - The form the argument errors land on.
+   * @param args - The arguments the run sent, whose values the generated form's errors are recorded for.
    * @param sent - The rows the last send carried, which a row error's index points into.
    */
-  async #show(error: unknown, tree: FieldTree<unknown> | undefined, sent: readonly TmId[]): Promise<void> {
+  async #show(error: unknown, tree: FieldTree<unknown> | undefined, args: Readonly<Record<string, unknown>>, sent: readonly TmId[]): Promise<void> {
     const { entity, action } = this.data;
     const problem = error instanceof TmApiError ? error.problem : null;
+    const generated = this.data.component === null;
     const placed: ValidationError.WithFieldTree[] = [];
+    const recorded: Record<string, TmPlacedError[]> = {};
     const items: Signal<string>[] = [];
     // An item that names a field or a row reads "{label}: {message}".
     const listed = (label: (() => string) | null, message: Signal<string>): Signal<string> =>
@@ -336,12 +407,17 @@ export class ɵTmActionDialog {
     for (const item of Array.isArray(errors) ? (errors as readonly TmProblemError[]) : []) {
       const path = typeof item['path'] === 'string' ? tmSplitErrorPath(item['path']) : null;
       if (path?.[0] === 'arguments') {
-        const target = tree === undefined || path.length < 2 ? null : tmWalkErrorPath(tree, path.slice(1));
+        const field = action.fields?.find((candidate) => candidate.name === path[1]);
         const message = this.#serverText.error(item);
+        if (generated && field !== undefined && path.length === 2) {
+          // The generated form records the error with the value it was sent for (spec 0031 §8.5 step 3).
+          (recorded[field.name] ??= []).push({ value: json(args[field.name]), message });
+          continue;
+        }
+        const target = generated || tree === undefined || path.length < 2 ? null : tmWalkErrorPath(tree, path.slice(1));
         if (target?.resolved) {
           placed.push({ kind: SERVER_ERROR, message: message(), fieldTree: target.field });
         } else {
-          const field = action.fields?.find((candidate) => candidate.name === path[1]);
           items.push(listed(field === undefined ? null : this.#localization.ɵtext(field.labelKey, undefined, field.labelFallback), message));
         }
       } else if ((path?.[0] === 'ids' && typeof path[1] === 'number') || path?.[0] === 'id') {
@@ -359,21 +435,27 @@ export class ɵTmActionDialog {
         items.push(this.#serverText.error(item, entity));
       }
     }
+    this.#placed.set(recorded);
     if (tree !== undefined && placed.length > 0) {
-      // Each error clears once its field is edited.
+      // A declared dialog's form: each error clears once its field is edited.
       await submit(tree, { action: () => Promise.resolve(placed), ignoreValidators: 'all' });
     }
 
     // --- The alert: the problem's title and detail, unless every error is on a field ---
-    if (error instanceof TmApiError && error.kind === 'validation' && items.length === 0 && placed.length > 0) {
+    const onFields = placed.length + Object.keys(recorded).length;
+    if (error instanceof TmApiError && error.kind === 'validation' && items.length === 0 && onFields > 0) {
       return;
     }
-    const text = problem === null ? null : this.#serverText.problem(problem)();
+    const text = problem === null ? null : this.#serverText.problem(problem);
     const offline = error instanceof TmApiError && error.kind === 'offline';
+    // A write whose answer never came may have gone through: it is worded apart from one never sent.
+    const words = offline ? (error.code === 'outcome-unknown' ? 'tm.actionDialog.outcomeUnknown' : 'tm.errors.offline') : null;
+    const failed = this.#localization.ɵtext('tm.actionDialog.failed');
     this.#failure.set({
-      heading: offline ? this.#localization.ɵtext('tm.errors.offline.title')() : (text?.title ?? this.#localization.ɵtext('tm.actionDialog.failed')()),
-      detail: offline ? this.#localization.ɵtext('tm.errors.offline.message')() : (text?.detail ?? ''),
+      heading: words !== null ? this.#localization.ɵtext(`${words}.title`) : computed(() => text?.().title ?? failed()),
+      detail: words !== null ? this.#localization.ɵtext(`${words}.message`) : computed(() => text?.().detail ?? ''),
       items,
+      traceId: error instanceof TmApiError ? error.traceId : '',
     });
   }
 }

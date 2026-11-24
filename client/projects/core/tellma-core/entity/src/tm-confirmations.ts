@@ -6,6 +6,8 @@
 import { inject, Injectable, Injector } from '@angular/core';
 import { TmApiError, type TmId } from '@tellma/core';
 
+import { ɵtmLoad } from './tm-entity-actions';
+
 // The confirmation loop (spec 0031 §9.3): a write the server answers with a
 // 409 `confirmation-required` lists the warnings the user must confirm, and
 // the client resends it with their keys, which `TmApi.write` sends as
@@ -55,7 +57,8 @@ export class TmConfirmations {
   /**
    * Sends a write, and again after each warning the user confirms. A fifth
    * warning response in one run, or more confirmed keys than a request
-   * carries, fails as a `server` error.
+   * carries, fails as a `server` error; when the dialog's code cannot
+   * load, the warned write fails as `offline`, not done.
    *
    * @param send - Sends the write with an attempt's keys and the rows to leave out.
    * @param context - The write's entity and rows, and any keys already confirmed.
@@ -70,7 +73,7 @@ export class TmConfirmations {
         throw error;
       }
       // The dialog and the rounds after the first warning load now.
-      const { ɵtmConfirmationRounds } = await import('./tm-confirmations-dialog');
+      const { ɵtmConfirmationRounds } = await ɵtmLoad(() => import('./tm-confirmations-dialog'));
       return ɵtmConfirmationRounds(this.#injector, send, context, error);
     }
   }

@@ -33,7 +33,8 @@ export const TM_CORE_PACKAGE = '@tellma/core';
  *   primary's first frame never carries it. `/private` is the package's own
  *   wiring between its entry points and may import the primary;
  *   `/search-normalize` is the text folding the launcher and the lazy pages
- *   match with, and imports none.
+ *   match with, and `/error-paths` the walk of the server's error paths
+ *   onto a form; neither imports any.
  * - A lazy entry point may import every eager and shared one, plus the lazy
  *   ones it lists. No eager entry point imports a lazy one.
  */
@@ -48,6 +49,10 @@ export const TM_CORE_ENTRY_POINTS: Readonly<Record<string, TmEntryPointRule>> = 
   // staticGraphExcludes keeps every one of them (`/shell` and `/attention`)
   // from reaching it statically.
   './search-normalize': { load: 'shared', imports: [] },
+  // Spec 0031 §8.5's server error paths: only `/entity`'s lazy action
+  // dialog and the details page's save land errors by them, so they load
+  // with whichever imports them first, not with `/entity`'s first frame.
+  './error-paths': { load: 'shared', imports: [] },
   './realtime': { load: 'lazy', imports: [] },
   // The support dump reads the page contexts' snapshots.
   './support': { load: 'lazy', imports: ['./page-snapshot'] },

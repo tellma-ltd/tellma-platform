@@ -6,8 +6,7 @@
  * components a value descriptor chooses, a form's uploads, the grid columns
  * of a plan, the client check of a blob kind's policy, the entity picker
  * binding with the entity fields built on it, and the entity actions with
- * their dialogs, the confirmation loop and the server error paths a form's
- * errors land by.
+ * their dialogs and the confirmation loop.
  *
  * @packageDocumentation
  */
@@ -58,12 +57,3 @@ export {
   type TmOfferedActionsOptions,
 } from './src/tm-entity-actions';
 export { TmConfirmations, type TmConfirmationAttempt, type TmConfirmationContext } from './src/tm-confirmations';
-
-// Server error paths onto a form's fields.
-export {
-  tmSplitErrorPath,
-  tmWalkErrorPath,
-  type TmErrorPathSegment,
-  type TmErrorPathTarget,
-  type TmErrorPathWalkOptions,
-} from './src/tm-error-paths';

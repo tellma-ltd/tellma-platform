@@ -233,23 +233,6 @@ export class TmEntityPickers {
 }
 
 // @public
-export type TmErrorPathSegment = number | string;
-
-// @public
-export interface TmErrorPathTarget {
-    readonly entity?: string;
-    readonly field: FieldTree<unknown>;
-    readonly path: readonly TmErrorPathSegment[];
-    readonly resolved: boolean;
-}
-
-// @public
-export interface TmErrorPathWalkOptions {
-    readonly entities: TmEntities;
-    readonly entity: string;
-}
-
-// @public
 export type TmFilterKind = 'bool' | 'date' | 'enum' | 'instant' | 'navigation' | 'number' | 'text';
 
 // @public
@@ -314,9 +297,6 @@ export interface TmSelectPlanOptions {
     readonly injector?: Injector;
     readonly source?: TmColumnSource;
 }
-
-// @public
-export function tmSplitErrorPath(path: string): readonly TmErrorPathSegment[] | null;
 
 // @public
 export class TmUploads {
@@ -397,8 +377,5 @@ export class TmValueEditor {
 
 // @public
 export type TmValueStyle = 'details' | 'grid';
-
-// @public
-export function tmWalkErrorPath(root: FieldTree<unknown>, segments: readonly TmErrorPathSegment[], options?: TmErrorPathWalkOptions): TmErrorPathTarget;
 
 ```

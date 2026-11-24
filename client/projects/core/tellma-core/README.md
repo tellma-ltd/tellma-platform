@@ -16,6 +16,7 @@ own.
 | `@tellma/core/entity` | What the search and details pages share over the entity model: select plans (`tmSelectPlan`), which turn column keys into one query's terms and type its rows; value formats (`TmFormats`); the typed value in view mode (`tm-value`) and in edit mode (`tm-value-editor`), with a form's uploads (`TmUploads`); a plan column's grid column (`tmGridColumnFor`); the entity picker binding (`TmEntityPickers`), the entity fields over it (`tm-entity-field`, `tm-entity-multi-field`) and the page their pickers open (`TmLazyPickerPage`); the client check of a picked file against its blob kind (`tmCheckBlobFile`); the entity actions (`TmEntityActions`) with their dialogs (`injectTmActionDialog`) and the confirmation loop (`TmConfirmations`), whose dialogs load on first use; and the server error paths a form's errors land by (`tmSplitErrorPath`, `tmWalkErrorPath`) | lazy, with the page families |
 | `@tellma/core/leader` | The leader election of the routed tenant over a Web Lock, and the leader tab's work: its realtime connection, the relay of hub events, the leader documents' reads and the polls of degraded mode; the app loads it with `import()` after its first render, and `TmLeader` reports what it decides | lazy, through `import()` after first render |
 | `@tellma/core/config-check` | `tmCheckAppConfig`, the check of an app's configuration against the client metadata, which the build runs in Node and a development app at startup, and `tmCheckEntityDeclaration`, the check of one entity declaration against the Entities chunk | lazy |
+| `@tellma/core/error-paths` | `tmSplitErrorPath` and `tmWalkErrorPath`, the server's error paths onto a Signal Forms tree, which an entity action's dialog and the details page's save land their errors by | with the code that imports it |
 | `@tellma/core/search-normalize` | `tmSearchNormalize`, the one text folding the launcher, the shortcuts filter, the field tree and the reports list match with | with the code that imports it |
 | `@tellma/core/private` | Wiring shared by the platform's own entry points and packages; no API goldens, no stability guarantee, never imported by app code | — |
 
@@ -779,7 +780,8 @@ returnEntities, include, arguments }` (`include`, the entity's extras by default
 `{ ids, arguments }`. It resolves to the outcome: the entities, the action's own result, a
 background job (an own result that is exactly `{ jobId, resourceId }`, the server's 202
 `JobAccepted`), or `declined`. The run's code, like the dialogs', loads on first use: a page's
-first frame only lists the actions. The busy overlay and a destructive action's confirmation are the
+first frame only lists the actions. A chunk that cannot load rejects as an `offline` `TmApiError`
+(code `network`), as a call that never reached the server. The busy overlay and a destructive action's confirmation are the
 caller's, which knows whether its trigger is still on screen; `confirmation(entity, action, n)`
 gives the confirmation to ask, the declaration's or "Run “{action}” on {n} items?" with "This
 can't be undone.".
@@ -795,14 +797,20 @@ const outcome = await inject(TmEntityActions).dialog('acme.Customer', 'set-credi
   the field, and Cancel beside the action's button (`danger` when destructive). An action with no
   arguments and no declared dialog runs at once. A declared dialog injects its context with
   `injectTmActionDialog()`: the rows, the invoker's `initial` arguments, `running`, `close`, and
-  `run(args, { form, keepOpen, ids, rethrow })`, which runs under the busy overlay and closes with
-  the outcome unless `keepOpen`. The server's errors at `arguments.*` land on `form`'s fields by
-  the error-path walk and clear as each field is edited; every other error lists in an alert atop
-  the dialog, a row's (`ids[i]`) under its display name, except the kinds `rethrow` names, which
-  reject for the dialog to read. A declined warning keeps the dialog open.
+  `run(args, { form, keepOpen, ids, rethrow })`, which runs under the busy overlay, shows the
+  action's button pending, and closes with the outcome unless `keepOpen`; `dialog()` resolves to
+  the last successful run's outcome however the dialog then closes, and `null` only when nothing
+  ran. The server's errors at `arguments.*` land on `form`'s fields by the error-path walk and
+  clear as each field is edited; the generated form records each with the value it was sent for,
+  so it shows while the field holds that value and every one clears as the next run starts. A
+  required yes/no argument takes "no" as an answer. Every other error lists in an alert atop the
+  dialog with the call's reference, a row's (`ids[i]`) under its display name, except the kinds
+  `rethrow` names, which reject for the dialog to read; a write whose answer never came reads as
+  unconfirmed, apart from one never sent. A declined warning keeps the dialog open.
 - **Which actions appear.** `offered(entity, { record, bulk })` lists the entity's own actions,
   not built in, that take no arguments, declare a dialog, or list fields that each take a control,
-  that the declaration's `visible` admits for the record; a selection (`bulk`) leaves out
+  that the declaration's `visible` admits for the record, those the declaration lists first, in its
+  order, then the rest in the metadata's; a selection (`bulk`) leaves out
   single-target actions and those declared `bulk: false`, and reads no `visible`. Whether the user
   may run each stays the caller's to show, disabled with `TmPermissions.disabledReason`. In
   development the actions no page can offer are named once per entity, unless the declaration
@@ -814,7 +822,7 @@ const outcome = await inject(TmEntityActions).dialog('acme.Customer', 'set-credi
   fewer rows than `ids` holds, "Continue without these {n}" resends the others through the
   attempt's `skip`. Cancel resolves `null`; a fifth warning in one run, or more than 16 keys,
   fails as a `server` error. Every action runs through it.
-- **Error paths.** `tmSplitErrorPath('entities[0].lines[1].amount')` splits a server path into
+- **Error paths** (`@tellma/core/error-paths`). `tmSplitErrorPath('entities[0].lines[1].amount')` splits a server path into
   `['entities', 0, 'lines', 1, 'amount']`; `tmWalkErrorPath(form, segments, { entity, entities })`
   follows the segments through a Signal Forms tree by the wire's names, each child collection
   giving the next entity, and returns the field, the PascalCase path and the entity, or the
@@ -876,7 +884,7 @@ client tables until the localization service replaces it. A page's `securable` g
 Static imports between entry points follow one graph, always through `@tellma/core/<entry point>`
 and never a relative path: the primary imports no other entry point, `/attention` only the
 primary, `/shell` the primary and `/attention`, and no eager entry point imports a lazy one. A
-shared entry point (`/private`, `/search-normalize`) loads with whichever code imports it: every
+shared entry point (`/private`, `/search-normalize`, `/error-paths`) loads with whichever code imports it: every
 entry point but the primary and the shared ones may import it, so the primary never carries it.
 Dynamic `import()` and `import type` cross any boundary, and a spec may reach another entry
 point's test rigs (`*.testing.util.ts`) by a relative path, since no build ships either. The lint

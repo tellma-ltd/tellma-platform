@@ -104,5 +104,9 @@ export const TM_STRINGS_AR: TmStringTree = {
   actionDialog: {
     failed: 'تعذّر إتمام الإجراء.',
     item: '{label}: {message}',
+    outcomeUnknown: {
+      title: 'تعذّر علينا التأكد من ذلك',
+      message: `انقطع الاتصال قبل أن ينتهي الإجراء. ${imperative('تحقق', 'تحققي')} مما إذا كان قد تم قبل أن ${imperative('تشغّله', 'تشغّليه')} مرة أخرى.`,
+    },
   },
 };

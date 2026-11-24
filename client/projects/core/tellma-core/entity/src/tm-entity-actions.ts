@@ -3,15 +3,17 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-import { computed, inject, Injectable, InjectionToken, Injector, isDevMode, type Signal } from '@angular/core';
+import { computed, inject, Injectable, InjectionToken, Injector, type Signal } from '@angular/core';
 import type { FieldTree } from '@angular/forms/signals';
 import {
+  TmApiError,
   TmEntities,
   TmLaunchCache,
   TmLocalization,
   type TmActionConfirmation,
   type TmActionMetadata,
   type TmApiErrorKind,
+  type TmEntityActionDeclaration,
   type TmEntityActionDescriptor,
   type TmEntityDescriptor,
   type TmId,
@@ -31,6 +33,8 @@ import { ɵtmEditable } from './tm-value-editor';
 // destructive action's confirmation belong to the caller, which knows
 // whether its trigger is still on screen; the dialog's own runs take the
 // overlay themselves.
+
+declare const ngDevMode: unknown;
 
 /**
  * What an action that returns entities answers: the rows it changed, with
@@ -107,7 +111,8 @@ export interface TmActionDialogContext<A = TmJsonObject> {
   /**
    * Sends the action with the arguments, under the busy overlay and through
    * the server's warnings. On success the dialog closes with the outcome,
-   * unless `keepOpen`; a declined warning keeps it open. The server's
+   * unless `keepOpen`, after which closing it any way still reports that
+   * outcome; a declined warning keeps it open. The server's
    * argument errors land on `form`; every other failure lists in an alert
    * atop the dialog, except the kinds `rethrow` names.
    *
@@ -120,7 +125,7 @@ export interface TmActionDialogContext<A = TmJsonObject> {
   /**
    * Closes the dialog: `TmEntityActions.dialog` resolves to the outcome.
    *
-   * @param outcome - The outcome to report; dismissed (`null`) when omitted.
+   * @param outcome - The outcome to report; when omitted, the last successful run's, else `null` (nothing ran).
    */
   close(outcome?: TmEntityActionOutcome | null): void;
 }
@@ -190,7 +195,8 @@ export class TmEntityActions {
   }
 
   /**
-   * The actions a page offers on an entity's records, in metadata order:
+   * The actions a page offers on an entity's records, those its
+   * declaration lists first, in that order, then the rest in metadata order:
    * the entity's own actions, not built in, that take no arguments, whose
    * every argument takes a control, or that declare a dialog, and that the
    * declaration's `visible` admits for the record. Whether the user may run
@@ -204,12 +210,22 @@ export class TmEntityActions {
    */
   offered(entity: string, options: TmOfferedActionsOptions = {}): readonly TmEntityActionDescriptor[] {
     const descriptor = this.#entities.get(entity);
-    this.#warn(descriptor);
+    if (typeof ngDevMode !== 'undefined' && ngDevMode && !this.#warned.has(entity)) {
+      this.#warned.add(entity);
+      warnUnoffered(descriptor);
+    }
     const { record, bulk } = options;
     const userId = record === undefined || bulk ? undefined : this.#injector.get(TmLaunchCache).docs.me()?.user.id;
-    return descriptor.actions.filter((action) => {
+    // The declaration's order first; the sort is stable, so the rest keep the metadata's.
+    const entries = descriptor.declaration['actions'];
+    const declared = Array.isArray(entries) ? (entries as readonly TmEntityActionDeclaration<string>[]).map((entry) => entry.name) : [];
+    const rank = (action: TmEntityActionDescriptor): number => {
+      const at = declared.indexOf(action.name);
+      return at < 0 ? declared.length : at;
+    };
+    const offered = descriptor.actions.filter((action) => {
       const declaration = action.declaration;
-      if (!offerable(action)) {
+      if (!ɵtmOfferable(action)) {
         return false;
       }
       if (bulk) {
@@ -219,6 +235,7 @@ export class TmEntityActions {
       const visible = declaration?.visible;
       return record === undefined || visible === undefined || (userId !== undefined && visible(record as never, { userId }));
     });
+    return offered.sort((a, b) => rank(a) - rank(b));
   }
 
   /**
@@ -253,39 +270,29 @@ export class TmEntityActions {
    * @param ids - The rows.
    * @param options - The arguments, the extras and whether to return the entities.
    * @returns The outcome; `declined` when the user declined a warning.
-   * @throws TmApiError when the action fails.
+   * @throws TmApiError when the action fails, or an `offline` one when its code cannot load.
    */
   async run(entity: string, action: string, ids: readonly TmId[], options: TmEntityActionOptions = {}): Promise<TmEntityActionOutcome> {
-    const { ɵtmRunAction } = await import('./tm-action-run');
+    const { ɵtmRunAction } = await ɵtmLoad(() => import('./tm-action-run'));
     return ɵtmRunAction(this.#injector, entity, action, ids, options);
   }
 
   /**
    * Opens an action's dialog, generated from its arguments' fields or the
    * one its declaration names, filled from the supplied arguments; an
-   * action with neither arguments nor a declared dialog runs at once.
+   * action with neither arguments nor a declared dialog runs at once. Its
+   * code loads on first use.
    *
    * @param entity - The entity's name.
    * @param action - The action's name.
    * @param ids - The rows.
    * @param options - The initial arguments, the extras and whether to return the entities.
-   * @returns The outcome; `null` when the user dismissed the dialog.
-   * @throws Error for an action whose arguments no dialog can take.
+   * @returns The outcome of the dialog's last successful run, however it closed; `null` when nothing ran.
+   * @throws Error for an action whose arguments no dialog can take; an `offline` TmApiError when the dialog's code cannot load.
    */
   async dialog(entity: string, action: string, ids: readonly TmId[], options: TmEntityActionOptions = {}): Promise<TmEntityActionOutcome | null> {
-    await this.#entities.load();
-    const descriptor = this.#action(this.#entities.get(entity), action);
-    if (descriptor.declaration?.dialog === undefined) {
-      if (takesNoArguments(descriptor)) {
-        return this.run(entity, action, ids, options);
-      }
-      if (!offerable(descriptor)) {
-        throw new Error(`The action '${action}' of '${entity}' needs a declared dialog.`);
-      }
-    }
-    // The dialog's code loads on first use.
-    const { ɵtmOpenActionDialog } = await import('./tm-action-dialog');
-    return ɵtmOpenActionDialog(this.#injector, entity, descriptor, ids, options);
+    const { ɵtmDialog } = await ɵtmLoad(() => import('./tm-action-run'));
+    return ɵtmDialog(this.#injector, entity, action, ids, options);
   }
 
   /**
@@ -304,52 +311,67 @@ export class TmEntityActions {
     return action;
   }
 
-  /**
-   * Reports, once per entity in development, the actions no page can offer
-   * that its declaration does not list: an entry, such as one whose
-   * `visible` is always false, says the omission is on purpose.
-   *
-   * @param descriptor - The entity.
-   */
-  #warn(descriptor: TmEntityDescriptor): void {
-    if (!isDevMode() || this.#warned.has(descriptor.name)) {
-      return;
-    }
-    this.#warned.add(descriptor.name);
-    const unoffered = descriptor.actions.filter((action) => !action.builtIn && action.declaration === undefined && !offerable(action));
-    if (unoffered.length > 0) {
-      const names = unoffered.map((action) => `'${action.name}'`).join(', ');
-      console.warn(
-        `[tellma] ${descriptor.name}: no page offers ${names}; declare a dialog, or list each in the declaration to leave it out.`,
-      );
-    }
+}
+
+/**
+ * Reports, in development, the actions of an entity no page can offer that
+ * its declaration does not list: an entry, such as one whose `visible` is
+ * always false, says the omission is on purpose. A production build drops
+ * it with its only call.
+ *
+ * @param descriptor - The entity.
+ */
+function warnUnoffered(descriptor: TmEntityDescriptor): void {
+  const unoffered = descriptor.actions.filter((action) => !action.builtIn && action.declaration === undefined && !ɵtmOfferable(action));
+  if (unoffered.length > 0) {
+    const names = unoffered.map((action) => `'${action.name}'`).join(', ');
+    console.warn(`[tellma] ${descriptor.name}: no page offers ${names}; declare a dialog, or list each in the declaration to leave it out.`);
   }
 }
 
 /**
- * Whether an action takes no arguments.
+ * Loads a chunk of the entity actions' code. Internal: the actions and their
+ * dialogs load each part on first use.
+ *
+ * @param chunk - The chunk's `import()`.
+ * @returns The chunk's module.
+ * @throws TmApiError of kind `offline` when the chunk cannot load, as a call that never reached the server.
+ */
+export async function ɵtmLoad<T>(chunk: () => Promise<T>): Promise<T> {
+  try {
+    return await chunk();
+  } catch {
+    // Offline, or a deploy removed the chunk: nothing was sent.
+    throw new TmApiError({ kind: 'offline', code: 'network' });
+  }
+}
+
+/**
+ * Whether an action takes no arguments. Internal: the actions and their
+ * dialog read it.
  *
  * @param action - The action.
  * @returns Whether it takes none.
  */
-function takesNoArguments(action: TmActionMetadata): boolean {
+export function ɵtmTakesNoArguments(action: TmActionMetadata): boolean {
   return action.arguments === undefined && (action.fields?.length ?? 0) === 0;
 }
 
 /**
  * Whether a page can offer an action at all: an entity action, not built
  * in, that takes no arguments, declares a dialog, or lists its arguments'
- * fields with a control for each.
+ * fields with a control for each. Internal: the actions and their dialog
+ * read it.
  *
  * @param action - The action.
  * @returns Whether it can be offered.
  */
-function offerable(action: TmEntityActionDescriptor): boolean {
+export function ɵtmOfferable(action: TmEntityActionDescriptor): boolean {
   const fields = action.fields ?? [];
   return (
     action.kind === 'entity' &&
     !action.builtIn &&
-    (takesNoArguments(action) ||
+    (ɵtmTakesNoArguments(action) ||
       action.declaration?.dialog !== undefined ||
       (fields.length > 0 && fields.every((field) => ɵtmEditable(field.value))))
   );

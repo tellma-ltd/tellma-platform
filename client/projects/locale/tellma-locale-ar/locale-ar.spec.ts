@@ -22,7 +22,7 @@ import { TM_PIVOT_STRINGS_EN } from '@tellma/core-ui/pivot';
 import { TM_TILES_TREE_STRINGS_EN } from '@tellma/core-ui/tiles-tree';
 
 import { provideTellmaLocaleAr } from './provide-tellma-locale-ar';
-import { TM_LOCALE_AR_STRINGS } from '@tellma/locale-ar/strings';
+import { TM_LOCALE_AR_STRINGS, TM_STRINGS_AR } from '@tellma/locale-ar/strings';
 
 @Component({
   imports: [TmInput, TmFormField, FormField],
@@ -359,5 +359,42 @@ describe('@tellma/locale-ar (DoD 13)', () => {
     host.transloco.setActiveLang('en');
     await settle(fixture);
     expect(errorText(fixture)).toBe('This field is required');
+  });
+});
+
+describe("the platform's Arabic plurals", () => {
+  it('words the entity actions’ counts in each Arabic plural form', async () => {
+    const fixture = await setup(true);
+    const host = fixture.componentInstance;
+    host.transloco.setActiveLang('ar');
+    await settle(fixture);
+    // The platform's table, merged under `tm` as the app merges it on Arabic's first use.
+    host.transloco.setTranslation({ tm: TM_STRINGS_AR }, 'ar', { merge: true });
+    // The platform strips the bidi isolates the formatter puts around arguments.
+    const text = (key: string, params: Record<string, unknown>): string =>
+      host.transloco.translate<string>(key, params, 'ar').replace(/[\u2066-\u2069\u200e\u200f]/g, '');
+
+    const counts = [1, 2, 3, 11, 100];
+    expect(counts.map((n) => text('tm.entity.confirmAction', { action: 'أرشفة', n }))).toEqual([
+      'هل تريد تنفيذ «أرشفة» على هذا العنصر؟',
+      'هل تريد تنفيذ «أرشفة» على العنصرين؟',
+      'هل تريد تنفيذ «أرشفة» على 3 عناصر؟',
+      'هل تريد تنفيذ «أرشفة» على 11 عنصرًا؟',
+      'هل تريد تنفيذ «أرشفة» على 100 عنصر؟',
+    ]);
+    expect(counts.map((n) => text('tm.confirmations.skip', { n }))).toEqual([
+      'المتابعة دون هذا العنصر',
+      'المتابعة دون هذين العنصرين',
+      'المتابعة دون هذه العناصر الـ3',
+      'المتابعة دون هذه العناصر الـ11',
+      'المتابعة دون هذه العناصر الـ100',
+    ]);
+    expect(counts.map((n) => text('tm.confirmations.more', { n }))).toEqual([
+      'وعنصر آخر',
+      'وعنصران آخران',
+      'و3 عناصر أخرى',
+      'و11 عنصرًا آخر',
+      'و100 عنصر آخر',
+    ]);
   });
 });

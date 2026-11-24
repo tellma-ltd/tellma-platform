@@ -7,12 +7,21 @@ import type { Injector } from '@angular/core';
 import { TmApi, TmEntities, type TmActionMetadata, type TmId, type TmJson, type TmJsonObject } from '@tellma/core';
 
 import { TmConfirmations } from './tm-confirmations';
-import type { TmEntitiesResult, TmEntityActionOptions, TmEntityActionOutcome } from './tm-entity-actions';
+import {
+  ɵtmLoad,
+  ɵtmOfferable,
+  ɵtmTakesNoArguments,
+  type TmEntitiesResult,
+  type TmEntityActionOptions,
+  type TmEntityActionOutcome,
+} from './tm-entity-actions';
 
 // An entity action's request and outcome (spec 0031 §10.4), which
-// `TmEntityActions.run` and the action dialog load on first use: nothing on
-// a page's first frame sends an action. The body follows spec 0016 §2.3, and
-// the send goes through the confirmation loop (§9.3).
+// `TmEntityActions.run`, `TmEntityActions.dialog` and the action dialog load
+// on first use: nothing on a page's first frame sends an action. The body
+// follows spec 0016 §2.3, and the send goes through the confirmation loop
+// (§9.3). The choice between running an action at once and opening its
+// dialog is here too, so the dialog's code loads only when one opens.
 
 /**
  * The body an entity action posts: the rows and options of an action that
@@ -113,4 +122,43 @@ function jobOf(body: TmJson): number | null {
   const { jobId, resourceId, ...rest } = body as TmJsonObject;
   const valid = Number.isSafeInteger(jobId) && (resourceId === undefined || resourceId === null || Number.isSafeInteger(resourceId));
   return valid && Object.keys(rest).length === 0 ? (jobId as number) : null;
+}
+
+/**
+ * Opens an action's dialog, or runs at once an action that takes no
+ * arguments and declares no dialog. Internal: `TmEntityActions.dialog`
+ * calls it.
+ *
+ * @param injector - The root injector.
+ * @param entity - The entity's name.
+ * @param name - The action's name.
+ * @param ids - The rows.
+ * @param options - The initial arguments, the extras and whether to return the entities.
+ * @returns The outcome of the dialog's last successful run, however it closed; `null` when nothing ran.
+ * @throws Error for an action the entity does not have, or whose arguments no dialog can take.
+ */
+export async function ɵtmDialog(
+  injector: Injector,
+  entity: string,
+  name: string,
+  ids: readonly TmId[],
+  options: TmEntityActionOptions,
+): Promise<TmEntityActionOutcome | null> {
+  const entities = injector.get(TmEntities);
+  await entities.load();
+  const action = entities.get(entity).actions.find((candidate) => candidate.name === name);
+  if (action === undefined) {
+    throw new Error(`The entity '${entity}' has no action '${name}'.`);
+  }
+  if (action.declaration?.dialog === undefined) {
+    if (ɵtmTakesNoArguments(action)) {
+      return ɵtmRunAction(injector, entity, name, ids, options);
+    }
+    if (!ɵtmOfferable(action)) {
+      throw new Error(`The action '${name}' of '${entity}' needs a declared dialog.`);
+    }
+  }
+  // The dialog's code loads on first use.
+  const { ɵtmOpenActionDialog } = await ɵtmLoad(() => import('./tm-action-dialog'));
+  return ɵtmOpenActionDialog(injector, entity, action, ids, options);
 }
