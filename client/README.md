@@ -47,7 +47,8 @@ empty, so every entity row is an open JSON object; a distribution's build compil
 beside its emitted `tellma-entities.d.ts`, which closes each row to its wire interface.
 `typecheck:emitted` (`tools/typecheck/emitted-entities.mts`) compiles core and core-testing once
 more beside the declarations the platform alone emits, so code that indexes a row with any string,
-or passes an open row where a closed one is due, fails here rather than in a distribution. Those
+or passes an open row where a closed one is due, fails here rather than in a distribution. A typed
+probe beside them fails the check if the declarations stop augmenting core's registries. Those
 declarations are the server's output, kept as text in
 `tools/typecheck/fixtures/tellma-entities.d.ts.txt` and served to the compiler from memory (on disk
 as a `.d.ts`, they would augment `@tellma/core` in every program the workspace's tools build). The
