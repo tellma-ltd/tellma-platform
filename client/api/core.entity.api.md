@@ -22,7 +22,29 @@ import { Type } from '@angular/core';
 import { ValidationError } from '@angular/forms/signals';
 
 // @public
+export function injectTmActionDialog<A = TmJsonObject>(): TmActionDialogContext<A>;
+
+// @public
 export const TM_ENUM_PICKER_THRESHOLD = 50;
+
+// @public
+export interface TmActionDialogContext<A = TmJsonObject> {
+    readonly action: TmEntityActionDescriptor;
+    close(outcome?: TmEntityActionOutcome | null): void;
+    readonly entity: string;
+    readonly ids: readonly TmId[];
+    readonly initial: Partial<A>;
+    run(args: A, options?: TmActionDialogRunOptions<A>): Promise<TmEntityActionOutcome | null>;
+    readonly running: Signal<boolean>;
+}
+
+// @public
+export interface TmActionDialogRunOptions<A> {
+    readonly form?: FieldTree<A>;
+    readonly ids?: readonly TmId[];
+    readonly keepOpen?: boolean;
+    readonly rethrow?: readonly TmApiErrorKind[];
+}
 
 // @public
 export type TmBlobFileCheck = 'ok' | 'size' | 'type';
@@ -51,6 +73,26 @@ export interface TmColumnPlan {
 export type TmColumnSource = 'declaration' | 'preference' | 'url';
 
 // @public
+export interface TmConfirmationAttempt {
+    readonly confirmations: readonly string[];
+    readonly skip: readonly TmId[];
+}
+
+// @public
+export interface TmConfirmationContext {
+    readonly confirmations?: readonly string[];
+    readonly entity?: string;
+    readonly ids?: readonly TmId[];
+}
+
+// @public
+export class TmConfirmations {
+    run<T>(send: (attempt: TmConfirmationAttempt) => Promise<T>, context?: TmConfirmationContext): Promise<T | null>;
+    static ɵfac: _angular_core.ɵɵFactoryDeclaration<TmConfirmations, never>;
+    static ɵprov: _angular_core.ɵɵInjectableDeclaration<TmConfirmations>;
+}
+
+// @public
 export function tmDescribeFilter(column: TmColumnPlan, spec: TmFilterSpec, options?: TmDescribeFilterOptions): Signal<TmFilterDescription>;
 
 // @public
@@ -66,6 +108,46 @@ export interface TmDroppedKey {
 
 // @public
 export type TmDroppedReason = 'unknown' | 'unreachable';
+
+// @public
+export interface TmEntitiesResult<T = TmJsonObject> {
+    readonly entities: readonly T[];
+    readonly extras?: Readonly<Record<string, TmJson>>;
+    readonly ids: readonly TmId[];
+    readonly related?: Readonly<Record<string, readonly TmJsonObject[]>>;
+}
+
+// @public
+export interface TmEntityActionOptions {
+    readonly arguments?: TmJsonObject;
+    readonly include?: readonly string[];
+    readonly returnEntities?: boolean;
+}
+
+// @public
+export type TmEntityActionOutcome = {
+    readonly kind: 'declined';
+} | {
+    readonly kind: 'entities';
+    readonly result: TmEntitiesResult;
+} | {
+    readonly kind: 'job';
+    readonly jobId: number;
+} | {
+    readonly kind: 'own';
+    readonly result: TmJson;
+};
+
+// @public
+export class TmEntityActions {
+    constructor();
+    confirmation(entity: string, action: string, n: number): TmActionConfirmation;
+    dialog(entity: string, action: string, ids: readonly TmId[], options?: TmEntityActionOptions): Promise<TmEntityActionOutcome | null>;
+    offered(entity: string, options?: TmOfferedActionsOptions): readonly TmEntityActionDescriptor[];
+    run(entity: string, action: string, ids: readonly TmId[], options?: TmEntityActionOptions): Promise<TmEntityActionOutcome>;
+    static ɵfac: _angular_core.ɵɵFactoryDeclaration<TmEntityActions, never>;
+    static ɵprov: _angular_core.ɵɵInjectableDeclaration<TmEntityActions>;
+}
 
 // @public
 export class TmEntityField implements FormValueControl<TmId | null> {
@@ -235,6 +317,12 @@ export class TmLazyPickerPage {
     protected readonly unavailableText: ReturnType<TmLocalization['ɵtext']>;
     static ɵcmp: _angular_core.ɵɵComponentDeclaration<TmLazyPickerPage, "tm-lazy-picker-page", never, {}, {}, never, never, true, never>;
     static ɵfac: _angular_core.ɵɵFactoryDeclaration<TmLazyPickerPage, never>;
+}
+
+// @public
+export interface TmOfferedActionsOptions {
+    readonly bulk?: boolean;
+    readonly record?: TmJsonObject;
 }
 
 // @public

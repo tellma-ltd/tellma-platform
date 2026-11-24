@@ -78,8 +78,8 @@ namespace Tellma.Core.Excel
     // and the merged index by the entity and the request's list of cultures, which the tenant's
     // languages and the request culture fix.
     /// <summary>
-    ///     Builds and caches, for the life of the process, the header index of each sheet's entity
-    ///     and the sheet-name index of each stack's entity, per list of candidate cultures.
+    ///     Builds and caches, for the life of the process, the header index of each sheet's entity,
+    ///     the sheet-name index of each stack's entity and the labels of each choice column, per list of candidate cultures.
     /// </summary>
     internal sealed class HeaderIndexCache
     {
@@ -100,6 +100,9 @@ namespace Tellma.Core.Excel
 
         /// <summary>The merged sheet-name indexes, by entity and list of languages.</summary>
         private readonly ConcurrentDictionary<string, SheetIndex> _sheets = new(StringComparer.Ordinal);
+
+        /// <summary>The labels of each choice column, by entity, property and list of languages.</summary>
+        private readonly ConcurrentDictionary<string, IReadOnlyDictionary<string, string>> _choices = new(StringComparer.Ordinal);
 
         /// <summary>The header index of a sheet's entity.</summary>
         /// <param name="entity">The sheet's entity.</param>
@@ -142,6 +145,60 @@ namespace Tellma.Core.Excel
 
                 names.AddRange(collections.Select(static collection => (SheetNames.Scrub(collection.Path), collection.Path)));
                 return SheetIndex.Merge(names);
+            });
+        }
+
+        /// <summary>
+        ///     The labels a choice column is also read by: each choice's label in every candidate
+        ///     culture, mapped to its stored value. A label two choices share, or one that is another
+        ///     choice's stored value, names nothing and is left out.
+        /// </summary>
+        /// <param name="entity">The entity declaring the property.</param>
+        /// <param name="property">The property: an enum, or a string of a value set.</param>
+        /// <param name="choices">The stored values: the enum's names, or the value set's values.</param>
+        /// <param name="context">The request's context.</param>
+        /// <returns>The labels, compared without regard to case; empty for a property of no choices.</returns>
+        public IReadOnlyDictionary<string, string> ChoiceLabels(EntityMetadata entity, PropertyMetadata property, IReadOnlyList<string> choices, ExcelContext context)
+        {
+            ArgumentNullException.ThrowIfNull(entity);
+            ArgumentNullException.ThrowIfNull(property);
+            ArgumentNullException.ThrowIfNull(choices);
+            ArgumentNullException.ThrowIfNull(context);
+            IReadOnlyList<(string Language, CultureInfo Culture)> cultures = Cultures(context);
+            string key = string.Join(KeySeparator, [entity.Name, property.Name, .. cultures.Select(static culture => culture.Language)]);
+            return GetOrAdd(_choices, key, () =>
+            {
+                // --- Each culture's label of each choice; an enum's by its type, a value set's by its set ---
+                Type type = Nullable.GetUnderlyingType(property.ClrType) ?? property.ClrType;
+                HashSet<string> stored = new(choices, StringComparer.OrdinalIgnoreCase);
+                Dictionary<string, string> labels = new(StringComparer.OrdinalIgnoreCase);
+                HashSet<string> colliding = new(StringComparer.OrdinalIgnoreCase);
+                foreach ((_, CultureInfo culture) in cultures)
+                {
+                    foreach ((string label, string value) in Rendered(culture, context, () => choices.Select(choice => (type.IsEnum
+                        ? context.Labels.EnumValueLabel(type, choice)
+                        : context.Labels.ValueLabel(property.ValueSet!, choice), choice)).ToList()))
+                    {
+                        // A label that is a stored value reads as that value already; a label of two choices reads as neither.
+                        string trimmed = label.Trim();
+                        if (trimmed.Length == 0 || stored.Contains(trimmed) || colliding.Contains(trimmed))
+                        {
+                            continue;
+                        }
+
+                        if (labels.TryGetValue(trimmed, out string? existing) && !string.Equals(existing, value, StringComparison.Ordinal))
+                        {
+                            _ = labels.Remove(trimmed);
+                            _ = colliding.Add(trimmed);
+                        }
+                        else
+                        {
+                            labels[trimmed] = value;
+                        }
+                    }
+                }
+
+                return labels;
             });
         }
 

@@ -7,7 +7,7 @@ import { Component, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { TmEntities, type TmColumnInput, type TmEntitiesChunk } from '@tellma/core';
 import { tmTestEntities } from '@tellma/core-testing';
-import { TM_STRINGS_AR } from '@tellma/locale-ar/strings';
+import { TM_STRINGS_AR } from '@tellma/locale-ar/platform-strings';
 
 import { tmEntityRig, type TmEntityRigOptions } from '../../src/entity/tm-entity.testing.util';
 import {

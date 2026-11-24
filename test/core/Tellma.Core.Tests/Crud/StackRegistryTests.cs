@@ -108,7 +108,7 @@ namespace Tellma.Core.Tests.Crud
             await using ServiceProvider provider = Compose(StackOperations.Query | StackOperations.Details | StackOperations.Save | StackOperations.Import);
             IStackRegistry registry = provider.GetRequiredService<IStackRegistry>();
 
-            Assert.Equal(["export-for-import", "inspect-import"], WorkbookActions(registry.Find(StackModel.Gadgets)!));
+            Assert.Equal(["export-for-import", "inspect-import", "import"], WorkbookActions(registry.Find(StackModel.Gadgets)!));
             ChildQueryDescriptor parts = registry.FindChildQuery(StackModel.Parts)!;
             Assert.False(parts.Exportable);
             Assert.Empty(parts.Actions);
@@ -146,7 +146,7 @@ namespace Tellma.Core.Tests.Crud
             StackDescriptor gadgets = registry.Find(StackModel.Gadgets)!;
 
             // --- Built-ins first, then the base class's actions, then the subclass's, then the workbook operations ---
-            Assert.Equal(["activate", "deactivate", "archive", "prices/reprice", "summary", "take-over", "export", "export-for-import", "inspect-import"], gadgets.Actions.Select(static action => action.Name));
+            Assert.Equal(["activate", "deactivate", "archive", "prices/reprice", "summary", "take-over", "export", "export-for-import", "inspect-import", "import"], gadgets.Actions.Select(static action => action.Name));
             EntityActionDescriptor archive = Assert.IsType<EntityActionDescriptor>(gadgets.Actions[2]);
             EntityActionDescriptor reprice = Assert.IsType<EntityActionDescriptor>(gadgets.Actions[3]);
             EntityActionDescriptor takeOver = Assert.IsType<EntityActionDescriptor>(gadgets.Actions[5]);

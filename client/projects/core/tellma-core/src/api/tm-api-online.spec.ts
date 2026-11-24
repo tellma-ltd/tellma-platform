@@ -75,6 +75,19 @@ describe('TmApiOnline', () => {
     expect(online.online()).toBe(false);
   });
 
+  it('arms no further probe once the app has ended, when the probe in flight fails', async () => {
+    const { host, online } = setUp();
+    online.failed();
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(host.requests).toHaveLength(1);
+
+    TestBed.resetTestingModule();
+    host.last().fail();
+    await vi.advanceTimersByTimeAsync(120_000);
+    expect(host.requests).toHaveLength(1);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   it('ends the outage at the next answer of any call', async () => {
     const { host, online } = setUp();
     online.failed();

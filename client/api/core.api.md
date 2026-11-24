@@ -587,6 +587,33 @@ export interface TmDetailsDeclaration<N extends string> {
 }
 
 // @public
+export interface TmDetailsDraft {
+    readonly baseModifiedAt: string | null;
+    readonly clonedFrom?: TmId;
+    readonly contract: string;
+    readonly mode: 'create' | 'edit';
+    readonly model: TmJson;
+    readonly savingAt?: number;
+    readonly tabs?: Readonly<Record<string, string>>;
+    readonly uploads?: readonly TmBlobDescriptor[];
+    readonly v: 1;
+}
+
+// @public
+export interface TmDetailsSnapshot {
+    readonly cards: Readonly<Record<string, boolean>>;
+    readonly entity: TmJsonObject;
+    readonly extras: Readonly<Record<string, TmJson>>;
+    readonly related: Readonly<Record<string, readonly TmJsonObject[]>>;
+    readonly scroll: {
+        readonly body: number;
+        readonly aside: number;
+        readonly panels: Readonly<Record<string, number>>;
+    };
+    readonly tabs: Readonly<Record<string, string>>;
+}
+
+// @public
 export type TmDigitStyle = 'Latin' | 'Native';
 
 // @public
@@ -1919,6 +1946,7 @@ export class TmSession {
     check(): TmSessionCheck;
     readonly profile: Signal<TmProfile | null>;
     signIn(options?: TmSignInOptions): Promise<never>;
+    signOut(): Promise<void>;
     readonly state: Signal<TmSessionState>;
     static ɵfac: i0.ɵɵFactoryDeclaration<TmSession, never>;
     static ɵprov: i0.ɵɵInjectableDeclaration<TmSession>;

@@ -95,6 +95,13 @@ export interface TmModalConfig {
   /** Whether the Escape key dismisses. Default `true`. */
   escapeDismiss?: boolean;
   /**
+   * Whether a history navigation (Back, Forward) closes the modal, as an
+   * `'api'` close. Default `true`. Pass `false` for a modal the user must
+   * answer whatever the page does, such as an alert dialog whose only way
+   * on is its action.
+   */
+  closeOnNavigation?: boolean;
+  /**
    * Guard consulted before every user-initiated dismissal (X button,
    * backdrop, Escape); returning or resolving `false` keeps the modal
    * open. The unsaved-changes pattern: open a confirm modal from the guard
@@ -220,6 +227,7 @@ export class TmModal {
         // The CDK never self-closes: every dismissal flows through the ref
         // so the guard and the typed result stay accurate.
         disableClose: true,
+        closeOnNavigation: config.closeOnNavigation ?? true,
         autoFocus: 'first-tabbable',
         restoreFocus: true,
         role,

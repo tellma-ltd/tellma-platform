@@ -179,6 +179,24 @@ namespace Tellma.Core.Abstractions.Crud
             return Pipeline.CreateExcelRowSource(source);
         }
 
+        /// <inheritdoc />
+        async Task<IReadOnlyList<object>> IStackExcelRows.HydrateAsync(IReadOnlyList<long> ids, CancellationToken cancellationToken)
+        {
+            ArgumentNullException.ThrowIfNull(ids);
+            TKey[] keys = [.. ids.Select(static id => TKey.CreateChecked(id))];
+            EntitiesResult<TEntity> result = await Pipeline.GetByIdsAsync(keys, DetailsRequest.None, cancellationToken).ConfigureAwait(false);
+            return result.Entities;
+        }
+
+        /// <inheritdoc />
+        Task IStackExcelRows.SaveImportAsync(IReadOnlyList<object> entities, SaveOptions options, CancellationToken cancellationToken)
+        {
+            ArgumentNullException.ThrowIfNull(entities);
+            ArgumentNullException.ThrowIfNull(options);
+            TEntity[] rows = [.. entities.Select(static entity => (TEntity)entity)];
+            return Pipeline.SaveAsync(rows, options, cancellationToken);
+        }
+
         // --- Hooks: empty by default; the pipeline sees them through IEntityBehavior ---
 
         /// <summary>

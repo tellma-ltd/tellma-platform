@@ -5,7 +5,8 @@
  * terms and read their rows back, the typed-value formats, the view and edit
  * components a value descriptor chooses, a form's uploads, the grid columns
  * of a plan, the client check of a blob kind's policy, the entity picker
- * binding with the entity fields built on it, the client Queryex (a lexer,
+ * binding with the entity fields built on it, the entity actions with
+ * their dialogs and the confirmation loop, the client Queryex (a lexer,
  * and a builder and printer for the Queryex the client writes), and the
  * column filters with their descriptions. The control that edits a column
  * filter is `@tellma/core/column-filter`'s.
@@ -46,6 +47,19 @@ export { TmLazyPickerPage, type TmEntityPickerContext, ÉµTM_PICKER_PAGES, type É
 
 // Blob-kind policies.
 export { tmCheckBlobFile, type TmBlobFileCheck } from './src/tm-blob-check';
+
+// Entity actions: the runner, its dialogs and the confirmation loop.
+export {
+  injectTmActionDialog,
+  TmEntityActions,
+  type TmActionDialogContext,
+  type TmActionDialogRunOptions,
+  type TmEntitiesResult,
+  type TmEntityActionOptions,
+  type TmEntityActionOutcome,
+  type TmOfferedActionsOptions,
+} from './src/tm-entity-actions';
+export { TmConfirmations, type TmConfirmationAttempt, type TmConfirmationContext } from './src/tm-confirmations';
 
 // Queryex: the lexer, and the builder and printer of the Queryex the client writes.
 export {

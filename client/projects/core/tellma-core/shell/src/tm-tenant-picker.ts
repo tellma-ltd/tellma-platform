@@ -6,18 +6,22 @@
 import { ChangeDetectionStrategy, Component, inject, type Signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { TmLaunchCache, TmLocalization, type TmMembership, TmUrls } from '@tellma/core';
+import { TmBannerHost } from '@tellma/core/attention';
 import { TmSkeleton } from '@tellma/core-ui/skeleton';
 
-// The tenant picker's stand-in (spec 0024 §9.2; spec 0027 §6.2): the user's
-// memberships from the cache, revalidated in the background, each a link
-// into its tenant. It never redirects, so a stale membership cannot loop.
+// The tenant picker's stand-in (spec 0024 §9.2; spec 0027 §6.2): the banner
+// row, then the user's memberships from the cache, revalidated in the
+// background, each a link into its tenant. It never redirects, so a stale
+// membership cannot loop.
 
-/** The tenant picker: the user's tenants, each a link to its home. */
+/** The tenant picker: the banner row, then the user's tenants, each a link to its home. */
 @Component({
   selector: 'tm-tenant-picker',
-  imports: [RouterLink, TmSkeleton],
+  imports: [RouterLink, TmSkeleton, TmBannerHost],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
+    <!-- The banner row, above the page. -->
+    <tm-banner-host />
     <main class="tm-tenant-picker">
       <h1 tmPageTitle tabindex="-1">{{ title() }}</h1>
       <!-- The cached memberships, else skeleton rows while they are read. -->

@@ -9,10 +9,12 @@ import { TM_NOW } from '../app/tm-now';
 import { TM_BOOT_RESULT } from '../boot/tm-boot-result';
 import type { TmBootResult } from '../boot/tm-boot-types';
 import { TmTelemetry, type TmTelemetryItem, type TmTelemetryProps } from '../observe/tm-telemetry';
+import type { TmBusMessage } from '../state/bus/tm-bus-messages';
 import { TM_STORE_HOST } from '../state/store/tm-store-host';
 import { tmMemoryStoreHost } from '../state/store/tm-store.testing.util';
 import { TmFakeStorage } from '../state/tm-storage.testing.util';
 import { tmParseProfileCookie } from './tm-profile';
+import { TmSessionFlows } from './tm-session-flows';
 import { TM_SESSION_HOST, type TmSessionHost } from './tm-session-host';
 
 // The session's browser, faked for the specs: a cookie jar the spec rewrites,
@@ -106,9 +108,59 @@ export class TmRecordingTelemetry extends TmTelemetry {
 }
 
 /**
+ * The session's flows, recorded: what the session paths hand them. The real
+ * flows need the whole app (its localization, dialogs and tab bus); their own
+ * specs run them in a whole test app.
+ */
+@Injectable()
+export class TmRecordingSessionFlows implements Pick<
+  TmSessionFlows,
+  'received' | 'started' | 'expired' | 'changedUser' | 'signedOutElsewhere' | 'signOut'
+> {
+  /** The calls, in order: a name, followed by the argument as JSON when there is one. */
+  readonly calls: string[] = [];
+
+  /** Records another tab's message. */
+  received(message: TmBusMessage): void {
+    this.#record('received', message);
+  }
+
+  /** Records a started session. */
+  started(sub: string): void {
+    this.#record('started', sub);
+  }
+
+  /** Records the expiry path. */
+  expired(): void {
+    this.#record('expired');
+  }
+
+  /** Records the changed-user path. */
+  changedUser(): void {
+    this.#record('changedUser');
+  }
+
+  /** Records the signed-out-elsewhere path. */
+  signedOutElsewhere(): void {
+    this.#record('signedOutElsewhere');
+  }
+
+  /** Records a sign-out, which resolves at once. */
+  signOut(): Promise<void> {
+    this.#record('signOut');
+    return Promise.resolve();
+  }
+
+  /** Records a call. */
+  #record(name: string, argument?: unknown): void {
+    this.calls.push(argument === undefined ? name : `${name} ${JSON.stringify(argument)}`);
+  }
+}
+
+/**
  * The providers of a session spec: the faked browser, a fixed clock, the
- * recording telemetry, the boot script's result and a client store that runs
- * in memory.
+ * recording telemetry, the boot script's result, a client store that runs
+ * in memory, and the session's flows recorded.
  *
  * @param host - The faked browser.
  * @param boot - The boot script's result, or `null` for none. Without a
@@ -123,5 +175,7 @@ export function tmSessionTestingProviders(host: TmFakeSessionHost, boot: Partial
     { provide: TmTelemetry, useClass: TmRecordingTelemetry },
     { provide: TM_BOOT_RESULT, useValue: boot === null ? null : { profile: tmParseProfileCookie(host.cookieJar), ...boot } },
     { provide: TM_STORE_HOST, useFactory: () => tmMemoryStoreHost() },
+    TmRecordingSessionFlows,
+    { provide: TmSessionFlows, useExisting: TmRecordingSessionFlows },
   ];
 }

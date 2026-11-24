@@ -9,10 +9,10 @@ import { TestbedHarnessEnvironment } from '@angular/cdk/testing/testbed';
 import { TmEntities, type TmColumnInput, type TmEntitiesChunk } from '@tellma/core';
 import { TM_ENUM_PICKER_THRESHOLD, tmSelectPlan, type TmColumnPlan } from '@tellma/core/entity';
 import { TmColumnFilterHarness, tmTestEntities } from '@tellma/core-testing';
-import { TM_STRINGS_AR } from '@tellma/locale-ar/strings';
+import { TM_STRINGS_AR } from '@tellma/locale-ar/platform-strings';
 
 import { tmEntityRig, type TmEntityRig, type TmEntityRigOptions } from '../../src/entity/tm-entity.testing.util';
-import { tmSettle } from '../../src/routes/tm-app.testing.util';
+import { tmSettleUntil } from '../../src/routes/tm-app.testing.util';
 import { TmColumnFilter } from './tm-column-filter';
 
 // The column filter control over the recorded entity model, patched with a
@@ -319,7 +319,9 @@ describe('TmColumnFilter', () => {
       expect(await harness.isApplyEnabled()).toBe(false);
       const field = (await harness.getEntityField())!;
       await field.pick('SAR');
-      await tmSettle();
+      // The picked row's chip lands once the field's lookups do, however many turns they take.
+      const host = fixture.nativeElement as HTMLElement;
+      await tmSettleUntil(() => host.querySelector('tm-entity-multi-field tm-chip') !== null, 'the picked row has a chip');
       expect(await field.getChipLabels()).toEqual(['SAR']);
       await harness.apply();
       expect(fixture.componentInstance.applied).toEqual(['in:2']);
