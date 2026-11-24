@@ -15,6 +15,7 @@ own.
 | `@tellma/core/recents` | The recently visited pages (`TmRecents`), which the launcher and the home page list; the app loads it with `import()` after its first render, when visits start to count | lazy, through `import()` after first render |
 | `@tellma/core/entity` | What the search and details pages share over the entity model: select plans (`tmSelectPlan`), which turn column keys into one query's terms and type its rows; value formats (`TmFormats`); the typed value in view mode (`tm-value`) and in edit mode (`tm-value-editor`), with a form's uploads (`TmUploads`); a plan column's grid column (`tmGridColumnFor`); the entity picker binding (`TmEntityPickers`), the entity fields over it (`tm-entity-field`, `tm-entity-multi-field`) and the page their pickers open (`TmLazyPickerPage`); the client check of a picked file against its blob kind (`tmCheckBlobFile`); the entity actions (`TmEntityActions`) with their dialogs (`injectTmActionDialog`) and the confirmation loop (`TmConfirmations`), whose dialogs load on first use; and the server error paths a form's errors land by (`tmSplitErrorPath`, `tmWalkErrorPath`) | lazy, with the page families |
 | `@tellma/core/leader` | The leader election of the routed tenant over a Web Lock, and the leader tab's work: its realtime connection, the relay of hub events, the leader documents' reads and the polls of degraded mode; the app loads it with `import()` after its first render, and `TmLeader` reports what it decides | lazy, through `import()` after first render |
+| `@tellma/core/realtime` | The leader tab's realtime connection to its tenant's hub over `@microsoft/signalr`, which nothing else imports, with its own reconnect loop; platform-internal | lazy, through `import()` once a tab leads |
 | `@tellma/core/updates` | The app's updates through its service worker (`TmUpdates`): the worker's registration through the `tellma` Trusted Types policy, the update checks, the reload into a new version and the update banner; the app loads it with `import()` after its first render, and the HTTP layer's update check loads it on demand | lazy, through `import()` after first render |
 | `@tellma/core/errors` | Error presentation: `TmErrorPresenter`, whose one table turns a `TmApiError` into an error view, and which shows a write's or an action's error in the shared 5xx or 400 dialog, asks before a step-up, and handles a tenant that is gone or suspended; `tm-error-state` (`TmErrorState`), the inline state a page renders for a failed read | lazy, through `import()` with the first error presented |
 | `@tellma/core/config-check` | `tmCheckAppConfig`, the check of an app's configuration against the client metadata, which the build runs in Node and a development app at startup, and `tmCheckEntityDeclaration`, the check of one entity declaration against the Entities chunk | lazy |
@@ -350,7 +351,25 @@ follows.
   refresher, and a leader document's event re-reads the document, coalesced over 250 ms, one read in
   flight and one queued at most. A read's stored copy is stamped with the time it was sent, so it
   never replaces a later copy. A refusal or the end of the user's access stops the connection, and a
-  background sync decides what follows.
+  background sync decides what follows: the first sync that lands afterwards, the leader's own or a
+  later one such as a poll's, starts the connection again, unless it turns realtime off. When the
+  server ends the user's access to the tenant, every follower that hears the relayed event syncs
+  too; when it ends the session, the leader signs every tab out.
+- **The connection.** `@tellma/core/realtime` holds it, and the leader loads it with `import()` once
+  it leads, so the SignalR client never reaches a follower. It negotiates at `/{t}/hub` with the
+  session cookie, the tab's user check before every request, the JSON protocol and the library's
+  transports in its own order, with the server's timeout at 30 s and the keep-alive at 15 s. The
+  library reconnects nothing itself: each attempt is a fresh connection, at once for the first,
+  then after 2 s, 10 s and 30 s, then doubling to 5 minutes, each but the first with ±20 % jitter,
+  and the count starts over after a minute connected. A probe or the server becoming reachable cuts
+  a wait short; while the server is unreachable it waits in `offline`. An attempt that has not
+  connected in 100 s is abandoned, and a stop aborts the requests in flight and settles within 5 s,
+  so a hung negotiate or transport never holds anything up. Only a negotiate refused with 401, 403
+  or 404, a failed user check (reported as 401) and the server's `session.ended` stop it; it never
+  gives up on a network error, a 429 or a 5xx. It reports `tm.realtime.connected { attempt }` with
+  its timing, `tm.realtime.disconnected { reason }` and `tm.realtime.refused { status }`, and the
+  library's warnings and errors as errors from `tm-hub`. In a test, `provideTellmaStateTesting()`
+  puts `TmFakeHub` in its place.
 - **Degraded mode.** With realtime off, or a hub that has not connected for a minute, the leader
   polls (`tm.realtime.polling { cause }`): a sync of the tenant and a read of every leader document,
   each at most once a minute, while the leader is visible or a visible follower's probe asks. A

@@ -5,7 +5,7 @@
 
 import { TestBed } from '@angular/core/testing';
 import { TM_ATTENTION_DOCUMENTS, type TmBusMessage, type TmClientEvent, ɵTmSessionPaths, type ɵTmSyncDoc } from '@tellma/core';
-import { tmFakeAssignmentsSummary, tmFakeInboxSummary, type TmFakeApiCall } from '@tellma/core-testing';
+import { tmFakeAssignmentsSummary, tmFakeInboxSummary, type TmFakeApiCall, type TmFakeHubConnection } from '@tellma/core-testing';
 
 import { TmFakeApiHost } from '../../src/api/tm-api.testing.util';
 import { tmDevModeProvider } from '../../src/app/tm-dev-mode.testing.util';
@@ -18,7 +18,6 @@ import {
   tmLeaderRig,
   tmPause,
   tmUntil,
-  type TmFakeHub,
   type TmLeaderRig,
   type TmLeaderTab,
 } from './tm-leader.testing.util';
@@ -61,7 +60,7 @@ describe('TmLeadership', () => {
   };
 
   /** Opens a leader of a tenant with realtime on, and waits for its connection. */
-  const connecting = async (): Promise<{ readonly tab: TmLeaderTab; readonly hub: TmFakeHub }> => {
+  const connecting = async (): Promise<{ readonly tab: TmLeaderTab; readonly hub: TmFakeHubConnection }> => {
     await rig.realtime(true);
     const tab = await leader();
     await tmUntil(() => tab.hubs.length === 1 && tab.hubs[0]!.starts === 1);
@@ -197,12 +196,54 @@ describe('TmLeadership', () => {
       await tmUntil(() => hub.starts === 2);
       expect(triggers(tab).at(-1)).toBe('terminal');
 
-      // A sync that fails stores nothing, and the connection stays stopped.
-      tab.refresher.onRefresh = () => Promise.resolve();
+      // A sync that fails stores nothing, and the connection stays stopped,
       await tmAdvance(1_000);
+      tab.refresher.onRefresh = () => Promise.resolve();
       hub.sink.refused(403);
       await tmPause();
       expect(hub.starts).toBe(2);
+      // until a later sync lands, such as a poll's.
+      await tmAdvance(1_000);
+      await rig.store.put(TM_LEADER_T17, 'sync', { tag: null, savedAt: Date.now(), data: { at: Date.now(), entities: null, entityTags: {} } });
+      await tmUntil(() => hub.starts === 3);
+    });
+
+    it('does not start the connection again for a sync sent before the refusal', async () => {
+      const { tab, hub } = await connecting();
+      const before = Date.now();
+      await tmAdvance(1_000);
+      hub.sink.refused(404);
+      await rig.store.put(TM_LEADER_T17, 'sync', { tag: null, savedAt: Date.now(), data: { at: before, entities: null, entityTags: {} } });
+      await tmPause();
+      expect(hub.starts).toBe(1);
+      expect(triggers(tab).at(-1)).toBe('terminal');
+    });
+
+    it("waits for a sync after the latest terminal signal, not an earlier one's", async () => {
+      const { hub } = await connecting();
+      const stamp = (at: number): Promise<void> =>
+        rig.store.put(TM_LEADER_T17, 'sync', { tag: null, savedAt: Date.now(), data: { at, entities: null, entityTags: {} } });
+      const first = Date.now();
+      hub.sink.refused(401);
+      await tmPause();
+      await tmAdvance(1_000);
+      hub.sink.refused(403);
+      await tmPause();
+      await stamp(first + 500);
+      await tmPause();
+      expect(hub.starts).toBe(1);
+      await stamp(Date.now());
+      await tmUntil(() => hub.starts === 2);
+    });
+
+    it('does not start the connection again once realtime goes off', async () => {
+      const { hub } = await connecting();
+      hub.sink.refused(404);
+      await rig.realtime(false);
+      await rig.store.put(TM_LEADER_T17, 'sync', { tag: null, savedAt: Date.now(), data: { at: Date.now(), entities: null, entityTags: {} } });
+      await tmPause();
+      expect(hub.starts).toBe(1);
+      expect(hub.stops).toBe(1);
     });
 
     it("stops the connection when the server ends the user's access, and lets a sync decide", async () => {
@@ -211,6 +252,9 @@ describe('TmLeadership', () => {
       await tmPause();
       expect(hub.stops).toBe(1);
       expect(triggers(tab).at(-1)).toBe('terminal');
+      // The sync that lands starts it again, once its stop has settled.
+      await rig.store.put(TM_LEADER_T17, 'sync', { tag: null, savedAt: Date.now(), data: { at: Date.now(), entities: null, entityTags: {} } });
+      await tmUntil(() => hub.starts === 2);
     });
 
     it('signs every tab out when the server ends the session elsewhere', async () => {

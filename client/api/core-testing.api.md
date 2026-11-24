@@ -8,6 +8,7 @@ import { ComponentHarness } from '@angular/cdk/testing';
 import { EnvironmentProviders } from '@angular/core';
 import { HarnessPredicate } from '@angular/cdk/testing';
 import * as i0 from '@angular/core';
+import { Injector } from '@angular/core';
 import { Observable } from 'rxjs';
 import { Signal } from '@angular/core';
 
@@ -85,6 +86,32 @@ export type TmFakeApiResponder = (call: TmFakeApiCall) => unknown;
 
 // @public
 export function tmFakeAssignmentsSummary(members?: Partial<TmAssignmentsSummary>): TmAssignmentsSummary;
+
+// @public
+export class TmFakeHub {
+    get connections(): readonly TmFakeHubConnection[];
+    readonly factory: TmHubFactory;
+    static ɵfac: i0.ɵɵFactoryDeclaration<TmFakeHub, never>;
+    static ɵprov: i0.ɵɵInjectableDeclaration<TmFakeHub>;
+}
+
+// @public
+export class TmFakeHubConnection implements TmHubConnection {
+    constructor(tenantId: number, sink: TmHubSink);
+    connect(): void;
+    drop(): void;
+    emit(name: string, payload?: TmJson | null, tenantId?: number): void;
+    end(reason: TmFakeHubEndReason): void;
+    nudge(): void;
+    nudges: number;
+    refuse(status: 401 | 403 | 404): void;
+    readonly sink: TmHubSink;
+    start(): void;
+    starts: number;
+    stop(): Promise<void>;
+    stops: number;
+    readonly tenantId: number;
+}
 
 // @public
 export function tmFakeInboxSummary(members?: Partial<TmInboxSummary>): TmInboxSummary;

@@ -17,6 +17,7 @@ export { TmEntityFieldHarness, TmEntityMultiFieldHarness } from './src/tm-entity
 export { tmFakeAssignmentsSummary, tmFakeInboxSummary } from './src/tm-fake-attention';
 export { TmBannerHostHarness } from './src/tm-banner-host-harness';
 export { TmFakeApi, type TmFakeApiCall, type TmFakeApiCallKind, type TmFakeApiResponder } from './src/tm-fake-api';
+export { TmFakeHub, TmFakeHubConnection } from './src/tm-fake-hub';
 export { TmFakeLocks } from './src/tm-fake-locks';
 export { TmFakeSession, tmTestProfile } from './src/tm-fake-session';
 export { TmFakeTabBus } from './src/tm-fake-tab-bus';

@@ -220,6 +220,31 @@ export default defineConfig(
     },
   },
 
+  // Realtime client boundary (spec 0025 §1): @microsoft/signalr is imported
+  // only by @tellma/core/realtime, which the leader election loads with
+  // import() once a tab leads, so no follower tab downloads the client. The
+  // size gate's static-graph check (staticGraphExcludes) catches a static
+  // path to the entry point; this rule names the mistake where it is made.
+  // The narrower blocks below that set this rule for their own files keep
+  // their own, stricter lists.
+  {
+    files: ['projects/**/*.ts'],
+    ignores: ['projects/core/tellma-core/realtime/**'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            {
+              name: '@microsoft/signalr',
+              message: 'Only @tellma/core/realtime imports the SignalR client; the leader election loads it with import().',
+            },
+          ],
+        },
+      ],
+    },
+  },
+
   // Contracts entry-point boundary (spec §10, DoD 10): types + pure helpers
   // only — no Angular, no other @tellma packages, no i18n/rxjs, no reaching
   // into the primary entry point's internals.
