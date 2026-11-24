@@ -34,6 +34,11 @@ export class TmFakeHubConnection implements TmHubConnection {
   stops = 0;
   /** How many times the leader cut its wait short. */
   nudges = 0;
+  /**
+   * What each stop returns: settled at once by default. A test that holds it
+   * open checks what waits for the connection to close.
+   */
+  stopResult: Promise<void> = Promise.resolve();
   /** The tenant it connects to. */
   readonly tenantId: number;
   /** Where it reports: the sink the leader gave it. */
@@ -58,11 +63,11 @@ export class TmFakeHubConnection implements TmHubConnection {
   /**
    * Counts a stop.
    *
-   * @returns A promise that settles at once.
+   * @returns {@link TmFakeHubConnection.stopResult}.
    */
   stop(): Promise<void> {
     this.stops++;
-    return Promise.resolve();
+    return this.stopResult;
   }
 
   /** Counts a nudge. */
@@ -103,13 +108,15 @@ export class TmFakeHubConnection implements TmHubConnection {
   }
 
   /**
-   * Reports that the server ended the session or the user's access: the
-   * `session.ended` event, then the end, as a real connection does.
+   * Reports that the server ended the session or the user's access, as a
+   * real connection does: the `session.ended` event, the connection no
+   * longer connected, then the end.
    *
    * @param reason - Why the server ended it.
    */
   end(reason: TmFakeHubEndReason): void {
     this.emit('session.ended', { reason });
+    this.sink.state('reconnecting');
     this.sink.ended(reason);
   }
 }

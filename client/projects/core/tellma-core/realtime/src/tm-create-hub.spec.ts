@@ -164,11 +164,8 @@ describe('tmCreateHub', () => {
     TmFakeSocket.sockets[0]!.drop();
     await until(() => reports.at(-1) === 'reconnecting');
     expect(telemetry.recent().filter((item) => item.name === 'tm.realtime.disconnected').map((item) => item.props)).toEqual([{ reason: 'error' }]);
-    // The second attempt waits at least 1.6 s; a nudge, once the wait began, cuts it short.
-    await until(() => {
-      hub.nudge();
-      return reports.filter((report) => report === 'sink.connected').length === 2;
-    });
+    // The first attempt after a drop goes at once.
+    await until(() => reports.filter((report) => report === 'sink.connected').length === 2);
     expect(negotiates).toHaveLength(2);
   });
 
@@ -200,11 +197,8 @@ describe('tmCreateHub', () => {
     hub.start();
     await until(() => telemetry.errors().length > 0);
     expect(telemetry.recent().filter((item) => item.name === 'tm.error.captured').every((item) => item.props['source'] === 'tm-hub')).toBe(true);
-    // The next attempt waits; a nudge, once the wait began, cuts it short.
-    await until(() => {
-      hub.nudge();
-      return negotiates.length === 2;
-    });
+    // The first retry after a failed start goes at once, and it fails the same way.
+    await until(() => negotiates.length >= 2);
     expect(reports).toEqual(['connecting']);
   });
 

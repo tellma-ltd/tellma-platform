@@ -392,12 +392,13 @@ export class TmLeadership {
   }
 
   /**
-   * A terminal signal: a background sync decides what it means (§8.5). The
+   * A terminal signal: a background sync decides what it means. The
    * first sync that lands after the signal, this one or any later one such
    * as a poll's, restarts the connection, once a stop in progress has
    * settled; a sync reporting realtime off stops it instead.
    */
   #terminal(generation: number, stopped: Promise<unknown> = Promise.resolve()): void {
+    // Spec 0025 §8.5: the sync the signal asks for, not the signal, decides what follows.
     const requested = this.#now();
     const signal = ++this.#signals;
     void this.#refresher.refresh(this.#t, ['tenant'], 'terminal');
@@ -411,7 +412,9 @@ export class TmLeadership {
       }
       const resume = (this.#resume = effect(
         () => {
-          if ((sync()?.data.at ?? -Infinity) >= requested) {
+          // A stamp ahead of the clock, left by a clock set back, proves nothing.
+          const at = sync()?.data.at ?? -Infinity;
+          if (at >= requested && at <= this.#now()) {
             untracked(() => {
               resume.destroy();
               this.#resume = null;

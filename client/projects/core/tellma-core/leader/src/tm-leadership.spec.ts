@@ -257,6 +257,34 @@ describe('TmLeadership', () => {
       await tmUntil(() => hub.starts === 2);
     });
 
+    it('starts the connection again only once its stop has settled, though the sync landed first', async () => {
+      const { hub } = await connecting();
+      let settle!: () => void;
+      hub.stopResult = new Promise<void>((resolve) => (settle = resolve));
+      hub.sink.ended('access-revoked');
+      await tmPause();
+      expect(hub.stops).toBe(1);
+      await rig.store.put(TM_LEADER_T17, 'sync', { tag: null, savedAt: Date.now(), data: { at: Date.now(), entities: null, entityTags: {} } });
+      await tmPause();
+      expect(hub.starts).toBe(1);
+      settle();
+      await tmUntil(() => hub.starts === 2);
+    });
+
+    it('does not take a sync stamped ahead of the clock for one after the signal', async () => {
+      const { hub } = await connecting();
+      const stamp = (at: number): Promise<void> =>
+        rig.store.put(TM_LEADER_T17, 'sync', { tag: null, savedAt: Date.now(), data: { at, entities: null, entityTags: {} } });
+      hub.sink.refused(401);
+      // A stamp left by a clock since set back.
+      await stamp(Date.now() + 3_600_000);
+      await tmPause();
+      expect(hub.starts).toBe(1);
+      await tmAdvance(1_000);
+      await stamp(Date.now());
+      await tmUntil(() => hub.starts === 2);
+    });
+
     it('signs every tab out when the server ends the session elsewhere', async () => {
       const { tab, hub } = await connecting();
       const paths = TestBed.inject(ɵTmSessionPaths);

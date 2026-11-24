@@ -109,6 +109,7 @@ export class TmFakeHubConnection implements TmHubConnection {
     start(): void;
     starts: number;
     stop(): Promise<void>;
+    stopResult: Promise<void>;
     stops: number;
     readonly tenantId: number;
 }

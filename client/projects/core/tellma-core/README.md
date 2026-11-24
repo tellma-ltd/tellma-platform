@@ -359,9 +359,10 @@ follows.
   it leads, so the SignalR client never reaches a follower. It negotiates at `/{t}/hub` with the
   session cookie, the tab's user check before every request, the JSON protocol and the library's
   transports in its own order, with the server's timeout at 30 s and the keep-alive at 15 s. The
-  library reconnects nothing itself: each attempt is a fresh connection, at once for the first,
-  then after 2 s, 10 s and 30 s, then doubling to 5 minutes, each but the first with ±20 % jitter,
-  and the count starts over after a minute connected. A probe or the server becoming reachable cuts
+  library reconnects nothing itself: each attempt is a fresh connection. The first start goes at
+  once; after a drop or a failed start, the first attempt goes at once too, then after 2 s, 10 s
+  and 30 s, then doubling to 5 minutes, each but the first with ±20 % jitter, and the count starts
+  over after a minute connected. A probe or the server becoming reachable cuts
   a wait short; while the server is unreachable it waits in `offline`. An attempt that has not
   connected in 100 s is abandoned, and a stop aborts the requests in flight and settles within 5 s,
   so a hung negotiate or transport never holds anything up. Only a negotiate refused with 401, 403

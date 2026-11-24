@@ -57,6 +57,9 @@ describe('provideTellmaStateTesting', () => {
     await connection.stop();
     const fake = hub.connections[0]!;
     expect([fake.tenantId, fake.starts, fake.nudges, fake.stops]).toEqual([17, 1, 1, 1]);
+    // A test may hold the stop open.
+    fake.stopResult = new Promise<void>(() => undefined);
+    expect(fake.stop()).toBe(fake.stopResult);
     fake.connect();
     fake.emit('acme.jobs.changed', { id: 4 });
     fake.drop();
@@ -69,6 +72,7 @@ describe('provideTellmaStateTesting', () => {
       'state reconnecting',
       'refused 403',
       'event session.ended',
+      'state reconnecting',
       'ended access-revoked',
     ]);
   });

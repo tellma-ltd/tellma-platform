@@ -117,6 +117,7 @@ describe('TmHub', () => {
       ended: (reason) => reports.push(`ended ${reason}`),
     };
     hub = new TmHub(sink, {
+      tenantId: 17,
       connect: (handlers) => {
         const attempt = new TmFakeAttempt(handlers);
         attempts.push(attempt);
@@ -144,6 +145,14 @@ describe('TmHub', () => {
   /** The props of the telemetry items of one name. */
   const items = (name: string): unknown[] => telemetry.recent().filter((item) => item.name === name).map((item) => item.props);
 
+  /** Fails the latest attempt, and expects the next one at once, as the first after a failed start. */
+  const failAndRetryAtOnce = async (): Promise<void> => {
+    const count = attempts.length;
+    latest().fail();
+    await advance(0);
+    expect(attempts).toHaveLength(count + 1);
+  };
+
   /** Waits just short of the next attempt, finds none, then waits for it. */
   const expectNextAfter = async (ms: number): Promise<void> => {
     const count = attempts.length;
@@ -156,11 +165,12 @@ describe('TmHub', () => {
   // --- The schedule ---
 
   describe('schedule', () => {
-    it('connects at once, then retries after 2 s, 10 s, 30 s and doubling waits up to 5 minutes', async () => {
+    it('connects at once, retries at once, then after 2 s, 10 s, 30 s and doubling waits up to 5 minutes', async () => {
       hub.start();
       await advance(0);
       expect(attempts).toHaveLength(1);
       expect(latest().starts).toBe(1);
+      await failAndRetryAtOnce();
       for (const wait of [2_000, 10_000, 30_000, 60_000, 120_000, 240_000, 300_000, 300_000]) {
         latest().fail();
         await expectNextAfter(wait);
@@ -173,6 +183,8 @@ describe('TmHub', () => {
       random = 0;
       hub.start();
       await advance(0);
+      // The first retry is never jittered.
+      await failAndRetryAtOnce();
       latest().fail();
       await expectNextAfter(1_600);
       random = 0.999_999;
@@ -183,6 +195,7 @@ describe('TmHub', () => {
     it('reports the connection, its timing by attempt, and `reconnecting` once it drops', async () => {
       hub.start();
       await advance(0);
+      await failAndRetryAtOnce();
       latest().fail();
       await advance(2_000);
       await advance(500);
@@ -201,10 +214,9 @@ describe('TmHub', () => {
     it('starts the count over after a connection that lasted a minute', async () => {
       hub.start();
       await advance(0);
+      await failAndRetryAtOnce();
       latest().fail();
       await advance(2_000);
-      latest().fail();
-      await advance(10_000);
       latest().succeed();
       await advance(60_000);
       latest().handlers.closed(undefined);
@@ -219,10 +231,38 @@ describe('TmHub', () => {
       expect(items('tm.realtime.connected').map((props) => (props as { attempt: string }).attempt)).toEqual(['2-4', '2-4']);
     });
 
+    it('starts the count over when it stops a connection that lasted a minute', async () => {
+      hub.start();
+      await advance(0);
+      await failAndRetryAtOnce();
+      latest().fail();
+      await advance(2_000);
+      latest().succeed();
+      await advance(60_000);
+      await hub.stop();
+      // Started again, as after the server's session end and the sync that follows: at once.
+      hub.start();
+      await advance(0);
+      expect(attempts).toHaveLength(4);
+    });
+
+    it('keeps the count when it stops a connection that lasted less', async () => {
+      hub.start();
+      await advance(0);
+      await failAndRetryAtOnce();
+      latest().fail();
+      await advance(2_000);
+      latest().succeed();
+      await advance(59_000);
+      await hub.stop();
+      hub.start();
+      await expectNextAfter(2_000);
+    });
+
     it('counts the fifth attempt and later as such', async () => {
       hub.start();
       await advance(0);
-      for (const wait of [2_000, 10_000, 30_000, 60_000]) {
+      for (const wait of [0, 2_000, 10_000, 30_000, 60_000]) {
         latest().fail();
         await advance(wait);
       }
@@ -238,13 +278,14 @@ describe('TmHub', () => {
     it('cut a wait short', async () => {
       hub.start();
       await advance(0);
+      await failAndRetryAtOnce();
       latest().fail();
       await advance(2_000);
       latest().fail();
       await advance(3_000);
-      expect(attempts).toHaveLength(2);
-      hub.nudge();
       expect(attempts).toHaveLength(3);
+      hub.nudge();
+      expect(attempts).toHaveLength(4);
       // The count goes on: the next wait is the fourth attempt's.
       latest().fail();
       await expectNextAfter(30_000);
@@ -266,11 +307,12 @@ describe('TmHub', () => {
       expect(attempts).toHaveLength(0);
       hub.start();
       await advance(0);
+      await failAndRetryAtOnce();
       latest().fail();
       await hub.stop();
       hub.nudge();
       await advance(600_000);
-      expect(attempts).toHaveLength(1);
+      expect(attempts).toHaveLength(2);
     });
 
     it('come when the server becomes reachable, and the loop waits in `offline` until then', async () => {
@@ -292,6 +334,7 @@ describe('TmHub', () => {
     it('come when the server becomes reachable during a wait', async () => {
       hub.start();
       await advance(0);
+      await failAndRetryAtOnce();
       latest().fail();
       await advance(0);
       online.set(false);
@@ -300,7 +343,22 @@ describe('TmHub', () => {
       expect(reports.at(-1)).toBe('offline');
       online.set(true);
       TestBed.tick();
-      expect(attempts).toHaveLength(2);
+      expect(attempts).toHaveLength(3);
+    });
+
+    it('come when the server became reachable again before the effect saw it unreachable', async () => {
+      hub.start();
+      await advance(0);
+      TestBed.tick();
+      await failAndRetryAtOnce();
+      latest().fail();
+      // The flag flaps between two runs of the effect, and the wait ends in between.
+      online.set(false);
+      await advance(2_000);
+      expect(reports.at(-1)).toBe('offline');
+      online.set(true);
+      TestBed.tick();
+      expect(attempts).toHaveLength(3);
     });
 
     it('report a connection that dropped while unreachable as offline', async () => {
@@ -357,16 +415,16 @@ describe('TmHub', () => {
     it('keep the attempt count through a refusal and the start that follows a sync', async () => {
       hub.start();
       await advance(0);
-      for (const wait of [2_000, 10_000, 30_000]) {
+      for (const wait of [0, 2_000, 10_000]) {
         latest().fail();
         await advance(wait);
       }
       latest().fail(403);
       await advance(0);
       expect(attempts).toHaveLength(4);
-      // The leader's sync succeeded: the loop starts again, waiting as the fifth attempt.
+      // The leader's sync succeeded: the loop starts again, waiting as the fourth attempt after a failure.
       hub.start();
-      await expectNextAfter(60_000);
+      await expectNextAfter(30_000);
       expect(reports).toEqual(['connecting', 'refused 403', 'connecting']);
     });
 
@@ -396,6 +454,17 @@ describe('TmHub', () => {
       expect(reports.at(-1)).toBe('ended session-terminated');
       await advance(3_600_000);
       expect(attempts).toHaveLength(1);
+    });
+
+    it("only hand on another tenant's session end", async () => {
+      hub.start();
+      await advance(0);
+      latest().succeed();
+      await advance(0);
+      latest().handlers.event({ name: 'session.ended', tenantId: 18, payload: { reason: 'session-terminated' } });
+      expect(events).toEqual([{ name: 'session.ended', tenantId: 18, payload: { reason: 'session-terminated' } }]);
+      expect(reports.at(-1)).toBe('sink.connected');
+      expect(latest().stops).toBe(0);
     });
 
     it('only hand on a session end whose reason this build does not know', async () => {
@@ -449,9 +518,14 @@ describe('TmHub', () => {
       hub.start();
       await advance(0);
       const hung = latest();
-      await advance(100_000);
+      await advance(99_999);
+      expect(hung.stops).toBe(0);
+      // Abandoned, it counts as a failed start: the first retry goes at once.
+      await advance(1);
       expect(hung.stops).toBe(1);
-      await expectNextAfter(2_000);
+      // The fake clock runs a timer set from inside another a millisecond later.
+      await advance(1);
+      expect(attempts).toHaveLength(2);
       hung.succeed();
       await advance(0);
       expect(reports).toEqual(['connecting']);
@@ -486,21 +560,23 @@ describe('TmHub', () => {
     it('stop a wait before its attempt', async () => {
       hub.start();
       await advance(0);
+      await failAndRetryAtOnce();
       latest().fail();
       await advance(0);
       await hub.stop();
       await advance(3_600_000);
-      expect(attempts).toHaveLength(1);
+      expect(attempts).toHaveLength(2);
     });
 
     it('start again after a stop, keeping the count', async () => {
       hub.start();
       await advance(0);
+      await failAndRetryAtOnce();
       latest().fail();
-      await advance(2_000);
+      await advance(1_000);
       await hub.stop();
       hub.start();
-      await expectNextAfter(10_000);
+      await expectNextAfter(2_000);
       // Starting a running loop does nothing.
       hub.start();
       await advance(0);

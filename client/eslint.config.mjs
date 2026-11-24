@@ -64,12 +64,24 @@ const tmPlugin = {
  * a `group` pattern only ever matches subpaths, so without it a pack could
  * pull the whole primary entry point in and still lint clean.
  */
+/**
+ * The realtime client's restriction: only @tellma/core/realtime imports
+ * @microsoft/signalr. Flat config replaces a rule's whole setting with the
+ * last block that matches a file, so every later block that sets
+ * no-restricted-imports names it again.
+ */
+const SIGNALR_RESTRICTION = {
+  name: '@microsoft/signalr',
+  message: 'Only @tellma/core/realtime imports the SignalR client; the leader election loads it with import().',
+};
+
 const CALENDAR_BOUNDARY = {
   paths: [
     {
       name: '@tellma/core-ui',
       message: 'Calendar entry points may depend on l10n and contracts only.',
     },
+    SIGNALR_RESTRICTION,
   ],
   patterns: [
     {
@@ -225,23 +237,14 @@ export default defineConfig(
   // import() once a tab leads, so no follower tab downloads the client. The
   // size gate's static-graph check (staticGraphExcludes) catches a static
   // path to the entry point; this rule names the mistake where it is made.
-  // The narrower blocks below that set this rule for their own files keep
-  // their own, stricter lists.
+  // The narrower blocks below set this rule for their own files, which
+  // replaces this setting there, so each of them names SIGNALR_RESTRICTION
+  // in its own list too.
   {
     files: ['projects/**/*.ts'],
     ignores: ['projects/core/tellma-core/realtime/**'],
     rules: {
-      'no-restricted-imports': [
-        'error',
-        {
-          paths: [
-            {
-              name: '@microsoft/signalr',
-              message: 'Only @tellma/core/realtime imports the SignalR client; the leader election loads it with import().',
-            },
-          ],
-        },
-      ],
+      'no-restricted-imports': ['error', { paths: [SIGNALR_RESTRICTION] }],
     },
   },
 
@@ -254,6 +257,7 @@ export default defineConfig(
       'no-restricted-imports': [
         'error',
         {
+          paths: [SIGNALR_RESTRICTION],
           patterns: [
             {
               group: ['@angular/*'],
@@ -288,6 +292,7 @@ export default defineConfig(
       'no-restricted-imports': [
         'error',
         {
+          paths: [SIGNALR_RESTRICTION],
           patterns: [
             {
               // Covers the bare '@tellma/core-ui' as well as its subpaths.
@@ -501,6 +506,7 @@ export default defineConfig(
               name: '@tellma/core-ui',
               message: 'The grid engine may depend on @tellma/core-ui/contracts only.',
             },
+            SIGNALR_RESTRICTION,
           ],
           patterns: [
             {
@@ -629,6 +635,7 @@ export default defineConfig(
               name: '@tellma/core-ui',
               message: 'The l10n entry point may depend on @tellma/core-ui/contracts only.',
             },
+            SIGNALR_RESTRICTION,
           ],
           patterns: [
             {

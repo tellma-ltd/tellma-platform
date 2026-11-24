@@ -8,7 +8,8 @@ import type { TmClientEvent, TmHubConnection, TmHubSink, TmHubState, TmJson, TmT
 
 // The leader tab's realtime connection and its reconnect loop (spec 0025
 // §8.2-§8.5). Each attempt builds a fresh connection; the loop, not the
-// library, decides when the next one starts: at once for the first, then
+// library, decides when the next one starts. The first start goes at once;
+// after a drop or a failed start, the first attempt goes at once too, then
 // after 2 s, 10 s and 30 s, then doubling to 5 min, each but the first with
 // ±20 % jitter. A connection that lasted a minute resets the count. A wait is
 // cut short by a nudge (a follower's probe, the server becoming reachable),
@@ -72,6 +73,8 @@ export type TmHubConnect = (handlers: TmHubAttemptHandlers) => TmHubAttempt;
 
 /** What the loop runs on. */
 export interface TmHubOptions {
+  /** The tenant whose hub it connects to; another tenant's session end is not this connection's. */
+  readonly tenantId: number;
   /** Makes each attempt's connection. */
   readonly connect: TmHubConnect;
   /** Whether the server is reachable, as the HTTP layer knows it. */
@@ -115,11 +118,13 @@ type TmEndReason = Parameters<TmHubSink['ended']>[0];
 const END_REASONS: readonly string[] = ['session-terminated', 'access-revoked', 'tenant-unavailable'] satisfies TmEndReason[];
 
 /**
- * The wait before an attempt: none for the first, then 2 s, 10 s and 30 s,
- * then the previous wait doubled, at most 5 minutes; every wait but the
- * first moves by up to 20 % either way.
+ * The wait before an attempt after a drop or a failed start: none for the
+ * first, then 2 s, 10 s and 30 s, then the previous wait doubled, at most
+ * 5 minutes; every wait but the first moves by up to 20 % either way. The
+ * first start, which follows nothing, waits for nothing either.
  *
- * @param attempt - The attempt's number since the count last started over, from 1.
+ * @param attempt - The attempt's number among those after a drop or a failed start since the count
+ *   last started over, from 1; 0 for a start that follows none.
  * @param random - A random number in [0, 1).
  * @returns The wait, in milliseconds.
  */
@@ -157,7 +162,10 @@ export class TmHub implements TmHubConnection {
   readonly #sink: TmHubSink;
   readonly #options: TmHubOptions;
 
-  /** Attempts made since the count last started over; the next one waits by its number. */
+  /**
+   * Drops and failed starts since the count last started over: the number of
+   * the next attempt, which waits by it.
+   */
   #attempts = 0;
   /** Whether a connection of this hub has connected, after which a new attempt reconnects. */
   #connectedOnce = false;
@@ -198,18 +206,20 @@ export class TmHub implements TmHubConnection {
     this.#running = true;
     this.#reported = null;
     const run = ++this.#run;
-    // The server becoming reachable cuts the wait short.
+    // The server becoming reachable cuts the wait short. The effect reads
+    // the state rather than a change it saw: an effect sees only the latest
+    // value, so a loop parked in `offline` while the flag went false and back
+    // to true between two of its runs still goes on.
     const online = this.#options.online;
-    let was = untracked(online);
     this.#online = effect(
       () => {
-        const now = online();
-        untracked(() => {
-          if (now && !was) {
-            this.nudge();
-          }
-          was = now;
-        });
+        if (online()) {
+          untracked(() => {
+            if (this.#reported === 'offline') {
+              this.nudge();
+            }
+          });
+        }
       },
       { injector: this.#options.injector, manualCleanup: true },
     );
@@ -254,7 +264,13 @@ export class TmHub implements TmHubConnection {
   /** Waits for the next attempt by its number. */
   #next(run: number): void {
     this.#waiting = true;
-    this.#timer = setTimeout(() => this.#ready(run), tmHubDelay(this.#attempts + 1, this.#options.random()));
+    this.#timer = setTimeout(() => this.#ready(run), tmHubDelay(this.#attempts, this.#options.random()));
+  }
+
+  /** A drop or a failed start: the next attempt counts one more, and waits by its number. */
+  #retry(run: number): void {
+    this.#attempts++;
+    this.#next(run);
   }
 
   /** The wait is over: connects, or waits in `offline` until the server is reachable. */
@@ -273,7 +289,7 @@ export class TmHub implements TmHubConnection {
 
   /** Makes one attempt; its success, failure or deadline moves the loop on. */
   #connect(run: number): void {
-    const number = ++this.#attempts;
+    const number = this.#attempts;
     const startedAt = this.#options.now();
     this.#state(this.#connectedOnce ? 'reconnecting' : 'connecting');
     // The attempt reports only while it is the current one of this run.
@@ -297,7 +313,7 @@ export class TmHub implements TmHubConnection {
       if (live()) {
         this.#attempt = null;
         void attempt.stop().catch(() => undefined);
-        this.#next(run);
+        this.#retry(run);
       }
     }, START_TIMEOUT_MS);
     attempt.start().then(
@@ -308,7 +324,8 @@ export class TmHub implements TmHubConnection {
           this.#connectedOnce = true;
           this.#state('connected');
           this.#options.telemetry.timing('tm.realtime.connected', now - startedAt, {
-            attempt: number === 1 ? '1' : number <= 4 ? '2-4' : '5+',
+            // The first start counts as the first attempt, as does the first after a drop.
+            attempt: number <= 1 ? '1' : number <= 4 ? '2-4' : '5+',
           });
           this.#sink.connected();
         }
@@ -317,12 +334,7 @@ export class TmHub implements TmHubConnection {
         if (live()) {
           clearTimeout(this.#timer);
           this.#attempt = null;
-          const refusal = attempt.refusal();
-          if (refusal === null) {
-            this.#next(run);
-          } else {
-            this.#refuse(refusal);
-          }
+          this.#failed(run, attempt);
         }
       },
     );
@@ -336,10 +348,20 @@ export class TmHub implements TmHubConnection {
       reason: !untracked(this.#options.online) ? 'offline' : error === undefined ? 'closed' : 'error',
     });
     this.#state('reconnecting');
+    this.#failed(run, attempt);
+  }
+
+  /**
+   * A start failed or a connection dropped: the next attempt counts one more,
+   * and goes on unless the server refused the tab for good, after which a
+   * start waits by that count.
+   */
+  #failed(run: number, attempt: TmHubAttempt): void {
     const refusal = attempt.refusal();
     if (refusal === null) {
-      this.#next(run);
+      this.#retry(run);
     } else {
+      this.#attempts++;
       this.#refuse(refusal);
     }
   }
@@ -391,7 +413,8 @@ export class TmHub implements TmHubConnection {
     }
     this.#sink.event(event);
     const reason = event.name === SESSION_ENDED ? (event.payload as { readonly reason?: unknown } | null)?.reason : undefined;
-    if (typeof reason === 'string' && END_REASONS.includes(reason)) {
+    // Another tenant's session end is dropped as every other event of its is (spec 0025 §8.4).
+    if (event.tenantId === this.#options.tenantId && typeof reason === 'string' && END_REASONS.includes(reason)) {
       this.#options.telemetry.event('tm.realtime.disconnected', { reason: 'ended' });
       this.#state('reconnecting');
       void this.stop();

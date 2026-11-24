@@ -24,6 +24,7 @@ export function tmCreateHub(tenantId: number, sink: TmHubSink, injector: Injecto
   const session = injector.get(TmSession);
   const telemetry = injector.get(TmTelemetry);
   return new TmHub(sink, {
+    tenantId,
     connect: tmSignalRConnect({ url: `/${tenantId}/hub`, check: () => session.check(), telemetry }),
     online: injector.get(TmApi).online,
     telemetry,
