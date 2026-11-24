@@ -32,6 +32,7 @@ pnpm run test           # all unit suites (vitest via @angular/build:unit-test),
 pnpm run e2e            # Playwright behavioral/a11y/RTL suite against the showcase
 pnpm run lint           # ESLint (tm- rules, entry-point boundaries, decimal rules) + stylelint (token sizing, breakpoints)
 pnpm run typecheck      # the core, core-testing, core-tools and core-ui programs incl. files no build compiles (examples, specs)
+pnpm run typecheck:emitted # core and core-testing again, against the entity declarations the platform alone emits
 pnpm run lint:test      # the custom lint rules' own unit tests, the core-tools specs + MCP smoke tests
 pnpm run tokens:check   # token schema + missing-ref gate (contrast is axe's job in e2e)
 pnpm run api:check      # public-API goldens (client/api/*.api.md)
@@ -40,6 +41,20 @@ pnpm run docs:build     # components.json (schema-validated) + llms.txt for the 
 pnpm run size:check     # linked, gzipped production self-weight vs "tellma".budgetsInKb ceilings and the platform caps
 pnpm start              # showcase dev server (the component showcase + e2e target)
 ```
+
+`typecheck` compiles `@tellma/core` with its entity registries (`TmEntityTypes`, `TmEntityShapes`)
+empty, so every entity row is an open JSON object; a distribution's build compiles the same sources
+beside its emitted `tellma-entities.d.ts`, which closes each row to its wire interface.
+`typecheck:emitted` (`tools/typecheck/emitted-entities.mts`) compiles core and core-testing once
+more beside the declarations the platform alone emits, so code that indexes a row with any string,
+or passes an open row where a closed one is due, fails here rather than in a distribution. Those
+declarations are the server's output, kept as text in
+`tools/typecheck/fixtures/tellma-entities.d.ts.txt` and served to the compiler from memory (on disk
+as a `.d.ts`, they would augment `@tellma/core` in every program the workspace's tools build). The
+server's unit suite fails when the text no longer matches the platform's model. To re-record it,
+run `dotnet test test/core/Tellma.Core.Tests --filter "FullyQualifiedName~ClientEntityFixturesTests"`
+from the repository root with `TELLMA_UPDATE_GOLDENS=1` in the environment, review the diff, and
+run the suite again without the variable.
 
 `lint` and `lint:test` first compile `@tellma/core-tools` (`tsc -b`, incremental): the workspace's
 ESLint and stylelint configs load its built presets, as a distribution's would.
